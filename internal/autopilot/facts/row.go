@@ -128,6 +128,9 @@ type DetailsRow struct {
 	ReviewUsers []string
 
 	AutoMerge bool
+
+	// FetchedAt is when the details were read, zero when it isn't known.
+	FetchedAt time.Time
 }
 
 // CheckOutcome is how one check run or status ended.

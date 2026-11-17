@@ -150,7 +150,7 @@ describe('chipOf', () => {
       action: '',
       status: 'ended',
       outcome: 'done',
-      verdict: '',
+      verdict: '' as const,
       headBefore: '',
       commit: '',
       headAfter: '',

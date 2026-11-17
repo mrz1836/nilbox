@@ -163,7 +163,7 @@ func TestImportLeavesOutWhatItCantUseWithANote(t *testing.T) {
 		{Name: "Twice", Mode: autopilotprefs.ModeAsk, Spec: mustSpec(t, notifySpec())},
 		{Name: "TWICE", Mode: autopilotprefs.ModeAsk, Spec: mustSpec(t, notifySpec())},
 		{Name: "Garbled", Mode: autopilotprefs.ModeAsk, Spec: json.RawMessage(`[1]`)},
-		{Name: "Unknown mode", Mode: "sometimes", Spec: mustSpec(t, verifySpec())},
+		{Name: "Unknown mode", Mode: "sometimes", Spec: mustSpec(t, notifySpec())},
 	}}
 
 	here := newRig(t, autopilotprefs.ModeAuto)
@@ -179,8 +179,7 @@ func TestImportLeavesOutWhatItCantUseWithANote(t *testing.T) {
 
 	got := here.list(t)
 	require.Len(t, got, 2)
-	assert.Equal(t, autopilotprefs.ModeDryRun, got[1].Mode,
-		"an unknown mode takes the default, and a step this build can't run keeps it in Dry run")
+	assert.Equal(t, autopilotprefs.ModeAuto, got[1].Mode, "an unknown mode takes the default")
 }
 
 func TestAnImportLeavesARoutineANewerBuildWroteAsItIs(t *testing.T) {

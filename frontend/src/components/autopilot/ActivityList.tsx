@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 
 import { counted } from '../../lib/format'
-import { itemText, type ActivityLine } from '../../lib/autopilot'
+import { itemText, sheetLine, verdictChips, type ActivityLine } from '../../lib/autopilot'
 import { agentRunOf } from '../../lib/runView'
 import { formatFull } from '../../lib/time'
 import { useMutation } from '../../lib/useMutation'
@@ -77,7 +77,21 @@ function matchHeadline(m: AutopilotMatch): string {
     return 'A step failed'
   }
 
+  // A fix whose push was checked leads with what its checks found.
+  const verdict = m.steps.findLast((s) => s.verdict !== '')?.verdict
+  if (verdict !== undefined && verdict !== '') {
+    return verdictChips[verdict].label
+  }
+
   return m.steps.some((s) => s.kind === 'notify' || s.kind === 'tellMe') ? 'Told you' : 'Ran'
+}
+
+// matchWords is what a match's line says after its item: the verdict on its fix's checks
+// once its Wait for the checks reached one, else where the match is or how it closed.
+function matchWords(m: AutopilotMatch): string {
+  const line = m.state === 'done' ? sheetLine(m) : undefined
+
+  return line?.words ?? m.words
 }
 
 // groupItems names the items a grouped line stands for, the first few by name.
@@ -205,7 +219,7 @@ function ActivityLineRow({ line, highlighted, routineColumn, onOpen, onShowRun, 
       what = (
         <span className="truncate" title={m.item.title}>
           {itemText(m.item)}
-          {m.words !== '' && ` · ${m.words}`}
+          {matchWords(m) !== '' && ` · ${matchWords(m)}`}
         </span>
       )
       actions = (

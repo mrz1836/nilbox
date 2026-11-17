@@ -47,6 +47,7 @@ import {
   routineStatus,
   runLabel,
   sameSecond,
+  sheetLine,
   shortHead,
   skipLabel,
   troubled,
@@ -317,6 +318,7 @@ describe('chipOf', () => {
               runId: 0,
               actions: [],
               sent: 0,
+              verdict: '',
               startedAt: null,
               endedAt: null,
             },
@@ -348,6 +350,64 @@ const everyState: Readonly<Record<AutopilotState, true>> = {
   closed: true,
   baseline: true,
 }
+
+// verified is a match whose agent pushed 4f2a9c1 and whose Wait for the checks reached
+// verdict, saying note, with Tell me after it.
+function verified(verdict: AutopilotMatch['steps'][number]['verdict'], note: string): AutopilotMatch {
+  const step = (kind: AutopilotMatch['steps'][number]['kind'], extra = {}) => ({
+    kind,
+    label: kind,
+    status: 'done',
+    outcome: '',
+    note: '',
+    runId: 0,
+    actions: [],
+    sent: 0,
+    verdict: '' as const,
+    startedAt: null,
+    endedAt: null,
+    ...extra,
+  })
+
+  return autopilotMatch({
+    routine: 'Heal Dependabot',
+    effects: [],
+    steps: [step('agent', { outcome: 'pushed' }), step('waitForChecks', { verdict, note }), step('tellMe')],
+  })
+}
+
+describe('the verdicts', () => {
+  it('chips each verdict, over a notice after it', () => {
+    expect(chipOf(verified('fixed', 'Fixed: checks pass on 4f2a9c1.'))).toEqual({ label: 'Fixed', tone: 'accent' })
+    expect(chipOf(verified('still_failing', 'Still failing: CodeQL.'))).toEqual({
+      label: 'Still failing',
+      tone: 'danger',
+    })
+    expect(chipOf(verified('overtaken', 'Pushed 4f2a9c1, but…')).label).toBe('Overtaken')
+    expect(chipOf(verified('push_rejected', 'Its push was rejected…')).label).toBe('Push rejected')
+    expect(chipOf(verified('no_push', 'No push: nothing to do.')).label).toBe('No push')
+    expect(chipOf(verified('unknown', 'Unknown: …')).label).toBe('Checks unknown')
+    expect(chipOf(bare('skipped', 'tries'))).toEqual({ label: 'Gave up', tone: 'danger' })
+  })
+
+  it('puts the verdict on the sheet’s line, and that the checks are being read', () => {
+    expect(sheetLine(verified('fixed', 'Fixed: checks pass on 4f2a9c1.'))).toEqual({
+      routine: 'Heal Dependabot',
+      words: 'Fixed: checks pass on 4f2a9c1.',
+      tone: 'accent',
+    })
+    expect(
+      sheetLine(autopilotMatch({ state: 'verifying', words: 'The checks on its commit haven’t finished.' })),
+    ).toEqual({
+      routine: 'Snooze passing bot PRs',
+      words: 'The checks on its commit haven’t finished.',
+      tone: 'accent',
+    })
+    expect(sheetLine(autopilotMatch()), 'a match that followed no push has no line').toBeUndefined()
+    expect(sheetLine({ ...verified('fixed', 'Fixed.'), dryRun: true }), 'nor a Dry run').toBeUndefined()
+    expect(sheetLine(undefined)).toBeUndefined()
+  })
+})
 
 // bare is a match in state, closed for reason, that ran no step and changed nothing.
 function bare(state: AutopilotState, reason: AutopilotMatch['reason']): AutopilotMatch {
@@ -510,6 +570,7 @@ describe('the results', () => {
         runId: 0,
         actions: [],
         sent: 0,
+        verdict: '',
         startedAt: null,
         endedAt: null,
       },

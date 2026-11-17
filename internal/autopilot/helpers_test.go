@@ -236,8 +236,7 @@ func backgroundSpec() spec.Spec {
 	return s
 }
 
-// verifySpec is a routine whose agent pushes, then waits for the checks on its commit,
-// which no build follows yet, so it runs in Dry run alone wherever it is.
+// verifySpec is a routine whose agent pushes, then waits for the checks on its commit.
 func verifySpec() spec.Spec {
 	s := backgroundSpec()
 	s.Steps = append(s.Steps, spec.Step{WaitForChecks: &spec.WaitStep{}, OnlyIf: catalog.OutcomePushed})

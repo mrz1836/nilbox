@@ -102,6 +102,22 @@ func TestTheWatchSetHoldsTheEnabledRoutinesSearchesOnce(t *testing.T) {
 	assert.False(t, set.Searches[0].Follow, "Appears doesn't read the checks")
 }
 
+func TestARoutineThatWaitsForTheChecksFollowsWhatItsSearchesReturn(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, autopilotprefs.ModeAuto)
+
+	sp := searchSpec(catalog.EventAppears, orgSearch)
+	sp.Steps = verifySpec().Steps
+
+	saved := r.on(t, "Fix and check", sp)
+	assert.Equal(t, autopilotprefs.ModeAuto, saved.Mode, "this build follows an agent's checks, so it needs no Dry run")
+
+	set := autopilot.NewSearches(r.svc).Current()
+	require.Len(t, set.Searches, 1)
+	assert.True(t, set.Searches[0].Follow, "the checks on its agent's push are read every round")
+}
+
 func TestTheWatchSetLeavesOutAnotherAccountsAndBrokenRoutines(t *testing.T) {
 	t.Parallel()
 

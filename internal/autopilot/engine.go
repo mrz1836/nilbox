@@ -247,6 +247,10 @@ type EngineConfig struct {
 	// finished; nil tells no one.
 	Finished NoticeSink
 
+	// Checks tells the user the verdict on the checks after a routine's fix, as Checks
+	// after a fix; nil tells no one.
+	Checks NoticeSink
+
 	// Views reads what the runner keeps of the agents' runs, for the window; RunLogs
 	// clears their logs with Clear history. Either may be nil.
 	Views   RunViews
@@ -261,26 +265,27 @@ type EngineConfig struct {
 
 // Engine runs the routines (see the notes at the top of this file).
 type Engine struct {
-	svc         *Service
-	items       EngineItems
-	ledger      *ledger
-	prefs       *prefs.Store
-	lock        *Lock
-	runner      Runner
-	scripts     Runner
-	dispatchers map[catalog.Dispatcher]Dispatcher
-	triage      Triage
-	holds       Holds
-	outside     OutsideRules
-	problems    ProblemSink
-	needsYou    NoticeSink
-	finished    NoticeSink
-	views       RunViews
-	runLogs     RunLogs
-	events      event.Sink
-	clock       clock.Clock
-	logger      *slog.Logger
-	tick        time.Duration
+	svc          *Service
+	items        EngineItems
+	ledger       *ledger
+	prefs        *prefs.Store
+	lock         *Lock
+	runner       Runner
+	scripts      Runner
+	dispatchers  map[catalog.Dispatcher]Dispatcher
+	triage       Triage
+	holds        Holds
+	outside      OutsideRules
+	problems     ProblemSink
+	needsYou     NoticeSink
+	finished     NoticeSink
+	checkNotices NoticeSink
+	views        RunViews
+	runLogs      RunLogs
+	events       event.Sink
+	clock        clock.Clock
+	logger       *slog.Logger
+	tick         time.Duration
 
 	// since is when the engine was built: its first cycle waits for a refresh that
 	// stored after it.
@@ -313,6 +318,10 @@ type Engine struct {
 	stateReads map[int64]time.Time
 	checksRead map[int64]time.Time
 	holdOff    time.Time
+
+	// verifyReads holds, by item, when a verifying match last asked for the item to be
+	// read again, so it asks at most every verifyReadAfter.
+	verifyReads map[int64]time.Time
 
 	// waits are the matches that came to wait for the user since the last cycle ended,
 	// whose Needs your OK notices it tells.
@@ -423,8 +432,9 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 		svc: svc, items: cfg.Items, ledger: newLedger(svc.store.db, svc.clock), prefs: prefs.New(svc.store.db, svc.clock),
 		lock: lock, runner: cfg.Runner, scripts: cfg.Scripts, dispatchers: maps.Clone(cfg.Dispatchers), triage: cfg.Triage,
 		holds: cfg.Holds, outside: cfg.Outside, problems: cfg.Problems, needsYou: cfg.NeedsYou, waits: map[int64]bool{},
-		finished: cfg.Finished, views: cfg.Views, runLogs: cfg.RunLogs,
-		events: event.Or(cfg.Events), clock: svc.clock, logger: logging.Or(svc.logger), tick: tick,
+		finished: cfg.Finished, checkNotices: cfg.Checks, views: cfg.Views, runLogs: cfg.RunLogs,
+		verifyReads: map[int64]time.Time{},
+		events:      event.Or(cfg.Events), clock: svc.clock, logger: logging.Or(svc.logger), tick: tick,
 		since: svc.clock.Now().Truncate(time.Second), wake: make(chan struct{}, 1), cmds: make(chan command),
 		mail: mailbox{signal: make(chan struct{}, 1)}, closed: make(chan struct{}),
 		inflight: map[int64]bool{}, freshReads: map[int64]fresh{}, stopping: map[int64]stopAsk{},

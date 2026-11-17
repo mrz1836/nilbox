@@ -428,7 +428,7 @@ func newAutopilotEngine(deps autopilotEngine) *autopilot.Engine {
 		sink := autopilotNotices{dispatcher: deps.notices}
 		cfg.Dispatchers = map[catalog.Dispatcher]autopilot.Dispatcher{catalog.DispatchNotices: autopilot.NewNotices(sink)}
 		cfg.Problems = autopilot.NewProblemNotices(sink)
-		cfg.NeedsYou, cfg.Finished = sink, sink
+		cfg.NeedsYou, cfg.Finished, cfg.Checks = sink, sink, sink
 	}
 
 	if deps.agents.launch != nil {

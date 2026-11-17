@@ -464,7 +464,7 @@ export function routineTest(overrides: Partial<AutopilotTestResult> = {}): Autop
 // readyCheck is the GitHub sign-in, checked at noon and fine.
 export function readyCheck(overrides: Partial<AutopilotReadyCheck> = {}): AutopilotReadyCheck {
   return {
-    need: { kind: 'github', agent: '', profile: '', tool: '', place: '' },
+    need: { kind: 'github', agent: '', profile: '', tool: '', place: '', fallback: false },
     id: 'github',
     label: 'GitHub',
     level: 'ok',
@@ -479,7 +479,7 @@ export function readyCheck(overrides: Partial<AutopilotReadyCheck> = {}): Autopi
 // claudeMissing is Claude Code not found on this Mac, with the command that installs it.
 export function claudeMissing(overrides: Partial<AutopilotReadyCheck> = {}): AutopilotReadyCheck {
   return readyCheck({
-    need: { kind: 'agent', agent: 'claude', profile: '', tool: '', place: '' },
+    need: { kind: 'agent', agent: 'claude', profile: '', tool: '', place: '', fallback: false },
     id: 'agent:claude',
     label: 'Claude',
     level: 'problem',
@@ -663,6 +663,7 @@ export function autopilotMatch(overrides: Partial<AutopilotMatch> = {}): Autopil
         runId: 0,
         actions: [],
         sent: 0,
+        verdict: '',
         startedAt: '2026-06-15T11:30:00Z',
         endedAt: '2026-06-15T11:30:00Z',
       },
@@ -844,6 +845,7 @@ export function githubStep(overrides: Partial<AutopilotMatch['steps'][number]> =
     endedAt: null,
     actions: ['rebase'],
     sent: 0,
+    verdict: '',
     ...overrides,
   }
 }

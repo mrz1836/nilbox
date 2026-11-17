@@ -296,23 +296,69 @@ func (b *backgroundAgents) noteChanges(ctx context.Context, end agentrun.End) {
 	}
 }
 
-// dispatch plans and starts job's step in the background; a waitError says what held it.
+// dispatch plans and starts job's step in the background, on the first of its chain (its
+// own profile as a click resolves it, then each fallback in order) whose agent's profile
+// isn't resting out of usage (job.Resting) and that can run here; a waitError says what
+// held it. A fallback that can't run in the background on this Mac (its agent can't keep
+// the preset yet, or isn't there) is passed over; with none left, the start waits until the
+// soonest rest ends, as not ready when a fallback was passed over for that.
 func (b *backgroundAgents) dispatch(ctx context.Context, job autopilot.Job, step spec.AgentStep) (autopilot.Result, error) {
-	req, err := b.request(ctx, job.RunRequest())
+	chain := chainOf(job.Resting)
+
+	for i := range 1 + len(step.Fallbacks) {
+		cand := step
+		if i > 0 {
+			cand = fallbackStep(step, step.Fallbacks[i-1], chain.primary)
+		}
+
+		res, started, err := b.tryLaunch(ctx, job, cand, chain, i > 0)
+		if started || err != nil {
+			return res, err
+		}
+	}
+
+	return chain.waits(), nil
+}
+
+// tryLaunch plans job's step as cand, one launch of its chain, and starts it unless its
+// agent's profile rests out of usage, or, for a fallback, it can't run here: it reports
+// whether it is done (started, or held back for something that holds every launch of the
+// chain), which res says, and an error that fails the start.
+func (b *backgroundAgents) tryLaunch(ctx context.Context, job autopilot.Job, cand spec.AgentStep, chain *fallbacks,
+	fallback bool,
+) (autopilot.Result, bool, error) {
+	run := job.RunRequest()
+	run.Step = cand
+
+	req, err := b.request(ctx, run)
 	if err != nil {
-		return autopilot.Result{}, err
+		return autopilot.Result{}, false, err
 	}
 
 	bp, hold, err := b.launch.Plan(ctx, req)
 
 	switch {
+	case err != nil && fallback && cantRunHere(err):
+		chain.passOver(err)
+
+		return autopilot.Result{}, false, nil
 	case err != nil:
-		return autopilot.Result{}, planError(err, job)
+		return autopilot.Result{}, false, planError(err, job)
 	case hold != nil:
-		return heldResult(*hold), nil
+		return heldResult(*hold), true, nil
 	}
 
-	return b.start(ctx, job, step, req, bp)
+	if !fallback {
+		chain.primary = bp.Plan.Agent
+	}
+
+	if chain.rests(bp.Plan.Agent, bp.Profile) {
+		return autopilot.Result{}, false, nil
+	}
+
+	res, err := b.start(ctx, job, cand, req, bp)
+
+	return res, true, err
 }
 
 // start makes the item's worktree, trusts it, and starts the run there, reporting what it
@@ -694,20 +740,37 @@ func runEnd(end agentrun.End) autopilot.RunEnd {
 		out.Commit = strings.ToLower(rep.PushedCommit)
 	}
 
-	switch o.Status {
-	case agentrun.StatusDone:
-		out.Outcome = autopilot.RunDone
-	case agentrun.StatusStopped:
-		out.Outcome = autopilot.RunStopped
-	case agentrun.StatusInterrupted:
-		out.Outcome = autopilot.RunInterrupted
-	case agentrun.StatusFailed, agentrun.StatusOutOfBudget, agentrun.StatusOutOfUsage, agentrun.StatusTimedOut:
-		out.Outcome, out.Error = autopilot.RunFailed, o.Summary
-	default:
-		out.Outcome, out.Error = autopilot.RunFailed, o.Summary
+	out.Outcome = runOutcome(o.Status)
+
+	switch out.Outcome {
+	case autopilot.RunOutOfUsage:
+		out.Error, out.Limit = o.Summary, usageLimit(o.Limit)
+	case autopilot.RunFailed:
+		out.Error = o.Summary
+	case autopilot.RunDone, autopilot.RunStopped, autopilot.RunInterrupted, autopilot.RunNotSent, autopilot.RunNotStarted:
 	}
 
 	return out
+}
+
+// runOutcome is how a run came out, in the engine's words: one refused for its profile's
+// usage limit is out of usage, which the engine falls back from, and every failure, its
+// budget or time limit included, failed.
+func runOutcome(s agentrun.Status) autopilot.RunOutcome {
+	switch s {
+	case agentrun.StatusDone:
+		return autopilot.RunDone
+	case agentrun.StatusStopped:
+		return autopilot.RunStopped
+	case agentrun.StatusInterrupted:
+		return autopilot.RunInterrupted
+	case agentrun.StatusOutOfUsage:
+		return autopilot.RunOutOfUsage
+	case agentrun.StatusFailed, agentrun.StatusOutOfBudget, agentrun.StatusTimedOut:
+		return autopilot.RunFailed
+	}
+
+	return autopilot.RunFailed
 }
 
 // byOf names a run in the Worktrees view: "⚡ <its title>".
@@ -845,5 +908,114 @@ func agentLogsFor(prefs *prefsstore.Store) func(context.Context) time.Duration {
 		}
 
 		return time.Duration(c.LogDays) * 24 * time.Hour
+	}
+}
+
+// usageLimit is the usage limit that refused a run, in the engine's words; nil for none.
+func usageLimit(l *agentrun.Limit) *autopilot.UsageLimit {
+	if l == nil {
+		return nil
+	}
+
+	out := &autopilot.UsageLimit{Type: l.Type}
+	if l.ResetsAt > 0 {
+		out.ResetsAt = time.Unix(l.ResetsAt, 0).UTC()
+	}
+
+	return out
+}
+
+// fallbackStep is step run on the fallback fb: that agent's profile, for every repository
+// (the step's rows per org or repository are its own profile's), with the step's model and
+// effort only while fb is the agent the step's own launch resolved to (primary), since
+// another agent's catalog names others.
+func fallbackStep(step spec.AgentStep, fb spec.ProfileRef, primary agent.ID) spec.AgentStep {
+	out := step
+	out.Agent, out.Profile, out.LaunchFor, out.Fallbacks = fb.Agent, fb.Profile, nil, nil
+
+	if agent.ID(fb.Agent) != primary {
+		out.Model, out.Effort = "", ""
+	}
+
+	return out
+}
+
+// cantRunHere reports a plan's failure that passes a fallback over: its agent can't keep
+// the preset in a background run yet, can't run in the background at all, or isn't on
+// this Mac.
+func cantRunHere(err error) bool {
+	return errors.Is(err, launcher.ErrFenceNotKept) || errors.Is(err, agent.ErrPresetNotKept) ||
+		errors.Is(err, agent.ErrNoBackground) || errors.Is(err, execpath.ErrNotFound)
+}
+
+// fallbacks is a start's walk through its chain: the profiles resting, the agent its own
+// launch resolved to, and what it passed over.
+type fallbacks struct {
+	resting map[string]autopilot.Resting
+	primary agent.ID
+
+	// rested are the resting profiles it passed over, and notHere why it passed over the
+	// fallbacks that can't run here.
+	rested  []autopilot.Resting
+	notHere []string
+}
+
+// chainOf starts a walk through a chain with the profiles resting now.
+func chainOf(resting []autopilot.Resting) *fallbacks {
+	out := &fallbacks{resting: map[string]autopilot.Resting{}}
+
+	for _, r := range resting {
+		out.resting[restingKey(r.Agent, r.Profile)] = r
+	}
+
+	return out
+}
+
+// restingKey names an agent's profile among those resting, as the engine does.
+func restingKey(agentID, profile string) string {
+	return strings.ToLower(agentID) + "/" + strings.ToLower(profile)
+}
+
+// rests reports a launch on the agent's profile that rests out of usage, and notes it by
+// the names the launch resolved to.
+func (f *fallbacks) rests(id agent.ID, profile string) bool {
+	r, ok := f.resting[restingKey(string(id), profile)]
+	if ok {
+		r.Agent, r.Profile = string(id), profile
+		f.rested = append(f.rested, r)
+	}
+
+	return ok
+}
+
+// passOver notes a fallback that can't run here, and why.
+func (f *fallbacks) passOver(err error) {
+	f.notHere = append(f.notHere, textutil.Sentence(uierr.Message(err)))
+}
+
+// waits is the start's answer once nothing in its chain could start: it waits until the
+// soonest rest ends, queued while only rests held it, else as not ready, naming why.
+func (f *fallbacks) waits() autopilot.Result {
+	var soonest time.Time
+
+	for _, r := range f.rested {
+		if soonest.IsZero() || r.Until.Before(soonest) {
+			soonest = r.Until
+		}
+	}
+
+	rested := autopilot.RestingWords(f.rested)
+
+	if len(f.notHere) > 0 {
+		words := "Not ready on this Mac: " + strings.Join(f.notHere, " ")
+		if rested != "" {
+			words += " And " + rested + "."
+		}
+
+		return autopilot.Result{Wait: autopilot.BlockNotReady, WaitWords: words, RetryAt: soonest}
+	}
+
+	return autopilot.Result{
+		Wait: autopilot.BlockOutOfUsage, RetryAt: soonest, WaitWords: textutil.Sentence("Queued: " + rested),
 	}
 }

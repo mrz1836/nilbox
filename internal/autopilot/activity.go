@@ -106,19 +106,23 @@ type MatchStep struct {
 	// the next to send is Actions[Sent]; none for any other step.
 	Actions []catalog.GitHubActionKind `json:"actions"`
 	Sent    int                        `json:"sent"`
+
+	// Verdict is what a Wait for the checks found of the agent's run, "" before it did
+	// and for any other step.
+	Verdict Verdict `json:"verdict"`
 }
 
 // Run is one run a match started: an agent's, or a GitHub action the app sent.
 type Run struct {
-	ID      int64  `json:"id"`
-	MatchID int64  `json:"matchId"`
-	Step    int    `json:"step"`
-	Runner  string `json:"runner"`
-	Agent   string `json:"agent"`
-	Action  string `json:"action"`
-	Status  string `json:"status"`
-	Outcome string `json:"outcome"`
-	Verdict string `json:"verdict"`
+	ID      int64   `json:"id"`
+	MatchID int64   `json:"matchId"`
+	Step    int     `json:"step"`
+	Runner  string  `json:"runner"`
+	Agent   string  `json:"agent"`
+	Action  string  `json:"action"`
+	Status  string  `json:"status"`
+	Outcome string  `json:"outcome"`
+	Verdict Verdict `json:"verdict"`
 
 	HeadBefore string `json:"headBefore"`
 	Commit     string `json:"commit"`
@@ -598,7 +602,7 @@ func stepView(sr *stepRun) MatchStep {
 
 	return MatchStep{
 		Kind: kind, Label: info.Label, Status: sr.Status, Outcome: sr.Outcome, Note: sr.Note, RunID: sr.RunID,
-		StartedAt: sr.Started, EndedAt: sr.Ended, Actions: actions, Sent: sent,
+		StartedAt: sr.Started, EndedAt: sr.Ended, Actions: actions, Sent: sent, Verdict: sr.Verdict,
 	}
 }
 
@@ -630,7 +634,7 @@ func defaultWords(s State, b Blocker) string {
 func runView(r queries.AutopilotRun) Run {
 	return Run{
 		ID: r.ID, MatchID: r.MatchID, Step: int(r.Step), Runner: r.Runner, Agent: r.Agent, Action: r.GithubAction,
-		Status: r.Status, Outcome: r.Outcome, Verdict: r.Verdict, HeadBefore: r.HeadBefore, Commit: r.RunCommit,
+		Status: r.Status, Outcome: r.Outcome, Verdict: Verdict(r.Verdict), HeadBefore: r.HeadBefore, Commit: r.RunCommit,
 		HeadAfter: r.HeadAfter, Budget: r.BudgetReserved, Unit: r.BudgetUnit, Cost: r.Cost, TokensIn: r.TokensIn,
 		TokensOut: r.TokensOut, CacheRead: r.CacheReadTokens, Turns: r.Turns, Summary: r.Summary, Error: r.Error,
 		Manual: r.Manual, QueuedAt: r.QueuedAt, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt,

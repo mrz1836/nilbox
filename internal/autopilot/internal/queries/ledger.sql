@@ -313,6 +313,15 @@ UPDATE autopilot_runs SET
     updated_at = sqlc.arg(finished_at)
 WHERE id = sqlc.arg(id) AND status = 'ended' AND outcome = 'interrupted';
 
+-- name: SetRunVerdict :execrows
+-- SetRunVerdict records what Wait for the checks found of a run that ended: its verdict,
+-- and when it was reached.
+UPDATE autopilot_runs SET
+    verdict = sqlc.arg(verdict),
+    verified_at = sqlc.narg(verified_at),
+    updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id) AND status = 'ended';
+
 -- name: ListRunsSince :many
 -- ListRunsSince returns the runs queued since a moment, or still active, for the daily
 -- counts, the daily cap, and the pace of the GitHub actions.

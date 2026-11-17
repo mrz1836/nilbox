@@ -23,8 +23,10 @@ import type {
   AutopilotReason,
   AutopilotRoutine,
   AutopilotRoutineReady,
+  AutopilotRun,
   AutopilotStepKind,
   AutopilotTarget,
+  AutopilotVerdict,
 } from '../platform'
 import { counted, formatCount } from './format'
 
@@ -257,6 +259,60 @@ export const reasonChips: Readonly<Record<AutopilotReason, Chip>> = {
   taken_over: { label: 'Taken over', tone: 'accent' },
 }
 
+// SheetLine is what a sheet's Autopilot line says of the newest of the routines' matches on
+// its item that follows an agent's push: the routine, and how the checks on its commit came
+// out, or that they are being checked, in the chip's tone.
+export interface SheetLine {
+  routine: string
+  words: string
+  tone: Chip['tone']
+}
+
+// sheetLine is m's line under a sheet's work line, while it follows an agent's push or once
+// its checks reached a verdict ("Fixed: checks pass on 4f2a9c1."); undefined for a match
+// that does neither, or for none.
+export function sheetLine(m: AutopilotMatch | undefined): SheetLine | undefined {
+  if (m === undefined || m.dryRun) {
+    return undefined
+  }
+
+  if (m.state === 'verifying') {
+    return { routine: m.routine, words: m.words, tone: openChips.verifying.tone }
+  }
+
+  const step = m.steps.findLast((s) => s.verdict !== '')
+  if (step === undefined || step.verdict === '') {
+    return undefined
+  }
+
+  return { routine: m.routine, words: step.note, tone: verdictChips[step.verdict].tone }
+}
+
+// verdictChips are what a match that ran says of the checks on its agent's push, by the
+// verdict its Wait for the checks reached: a record over the generated union, so a verdict
+// added in Go fails to compile until it is worded here.
+export const verdictChips: Readonly<Record<AutopilotVerdict, Chip>> = {
+  fixed: { label: 'Fixed', tone: 'accent' },
+  still_failing: { label: 'Still failing', tone: 'danger' },
+  unknown: { label: 'Checks unknown', tone: 'muted' },
+  no_push: { label: 'No push', tone: 'muted' },
+  push_rejected: { label: 'Push rejected', tone: 'warning' },
+  overtaken: { label: 'Overtaken', tone: 'muted' },
+}
+
+// runVerdictWords is what the checks on run's push came to, in the words of the Wait for
+// the checks after its step in m ("Fixed: checks pass on 4f2a9c1."), else the verdict's
+// chip; '' while none reached a verdict.
+export function runVerdictWords(m: Pick<AutopilotMatch, 'steps'>, run: Pick<AutopilotRun, 'step' | 'verdict'>): string {
+  if (run.verdict === '') {
+    return ''
+  }
+
+  const wait = m.steps.slice(run.step + 1).find((s) => s.kind === 'waitForChecks' && s.verdict === run.verdict)
+
+  return wait === undefined || wait.note === '' ? verdictChips[run.verdict].label : wait.note
+}
+
 // chipOf is what a match says, on an item's ⚡ chip (the newest a routine has on it,
 // LatestMatches) and in the item's history: a Dry run's "Would run"; where an open match
 // is; a baseline's "Already matched when you turned it on"; what a local step did
@@ -287,6 +343,12 @@ export function chipOf(m: AutopilotMatch): Chip {
         : reasonChips[m.reason]
     case 'done':
       break
+  }
+
+  // A fix whose push was checked says what its checks found.
+  const verdict = m.steps.findLast((s) => s.verdict !== '')?.verdict
+  if (verdict !== undefined && verdict !== '') {
+    return verdictChips[verdict]
   }
 
   const effect = m.effects.at(-1)

@@ -83,6 +83,7 @@ describe('ActivityList', () => {
             runId: 0,
             actions: [],
             sent: 0,
+            verdict: '',
             startedAt: null,
             endedAt: null,
           },

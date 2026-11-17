@@ -151,8 +151,8 @@ ON CONFLICT (item_id) DO UPDATE SET
 -- name: ListFactsRows :many
 -- ListFactsRows returns what a routine's facts are built from for each stored item among
 -- ids, by id: the item with its lists, the times it arrived in them, and its state; its
--- repository; its triage; and its details, file check, and checks when they were read (a
--- column of a missing row is NULL).
+-- repository; its triage; and its details (with when they were read), file check, and
+-- checks when they were read (a column of a missing row is NULL).
 SELECT
     i.id, i.kind, i.number, i.title, i.url, i.author_login, i.author_type, i.author_association, i.is_draft,
     i.head_ref, i.is_cross_repository, i.item_created_at, i.item_updated_at, i.reason_review_requested,
@@ -163,7 +163,7 @@ SELECT
     d.item_id AS details_item_id, d.head_oid, d.base_ref, d.mergeable, d.merge_state, d.review_decision,
     d.checks_state, d.checks_passed, d.checks_failed, d.checks_pending, d.checks_awaiting, d.additions,
     d.deletions, d.changed_files, d.commits, d.comments, d.labels, d.approvals, d.changes_requested,
-    d.review_users, d.auto_merge_method,
+    d.review_users, d.auto_merge_method, d.fetched_at AS details_fetched_at,
     f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.files, f.complete AS files_complete,
     f.error AS files_error,
     c.item_id AS checks_item_id, c.head_oid AS checks_head_oid, c.checks, c.complete AS checks_complete

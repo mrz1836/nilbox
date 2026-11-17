@@ -219,9 +219,14 @@ describe('sheetLine', () => {
   it('says what the newest background run made of the item', () => {
     expect(sheetLine(agentMatch())).toBe('Fix failing checks is working on this')
 
-    const pushed = agentRun({ status: 'ended', outcome: 'done', commit: '4f2a9c1abcdef', verdict: 'checks pass' })
+    const pushed = agentRun({ status: 'ended', outcome: 'done', commit: '4f2a9c1abcdef' })
     expect(sheetLine(agentMatch({ state: 'verifying', runs: [pushed] }))).toBe(
-      'Fix failing checks pushed 4f2a9c1 · checks pass',
+      'Fix failing checks pushed 4f2a9c1 · Checking',
+    )
+
+    const fixed = { ...pushed, verdict: 'fixed' as const }
+    expect(sheetLine(agentMatch({ state: 'done', reason: 'ran', runs: [fixed] }))).toBe(
+      'Fix failing checks pushed 4f2a9c1 · Fixed',
     )
 
     const taken = agentRun({ status: 'ended', outcome: 'stopped' })

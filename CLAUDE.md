@@ -907,7 +907,21 @@ changing the package, and keep the section and its summary in step.
   steps of one cycle are one notice per routine (`digest.go`, grouped by where each item
   stands). The bound `RunOnMatches` runs a saved routine now on what its Test offered
   (`TestItem.RunsNow`), each approved, and `Stats` is a routine's last seven days, the dollars
-  an estimate. A routine with any other step still runs in Dry run. Its `PromptFollower`, never bound, tells
+  an estimate. Wait for the
+  checks is the engine's own (`verify.go`): each cycle judges every verifying match from the
+  facts it read (the pure `judgeVerify`: fixed, still failing, unknown, overtaken, push
+  rejected, no push), reading the check names or the item itself only for what it lacks, and
+  records the verdict on the step and the run in one transaction, told once as Checks after a
+  fix; a still failing last try says it gave up, and Try again starts the count over. Tries
+  count across fire keys, so a rebase resets nothing; while an agent works on an item, New
+  commits waits (`eval.History.Working`), so a routine's own push never fires it. A run out of
+  usage (`RunOutOfUsage`, with its limit) rests its profile in the engine's state until the
+  reset, counts as no try, and goes back to the queue; each agent start hands its runner the
+  profiles resting (`Job.Resting`), and core's runner works through the step's chain, its own
+  profile then each fallback, passing over a fallback that can't run in the background here
+  (Codex, until its headless half lands), and waits until the soonest reset (`Result.RetryAt`)
+  with none left (`fallback.go`). A routine with any other step still runs in Dry run. Its
+  `PromptFollower`, never bound, tells
   the prompt library which routines name each prompt and follows a renamed one. The user's
   own reversal of what a routine did (told through the outcomes, `Outcome.Reversed`), and an Undo, leave the routine
   hands off the item until Let it act again. The bound Service's ledger actions (`Approve`,

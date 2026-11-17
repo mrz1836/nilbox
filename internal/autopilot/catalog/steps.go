@@ -43,7 +43,8 @@ const (
 	// DispatchAgent starts a coding agent, in the background or in the user's terminal.
 	DispatchAgent Dispatcher = "agent"
 
-	// DispatchVerify follows the checks on the commit an agent pushed.
+	// DispatchVerify follows the checks on the commit an agent pushed: the engine's own,
+	// which judges a verifying match on every cycle from what the inbox stored.
 	DispatchVerify Dispatcher = "verify"
 
 	// DispatchMerge merges, or turns auto-merge back on, inside GitHub's own rules.
@@ -201,7 +202,8 @@ func Steps() []Step {
 		scriptStep(),
 		{
 			Kind: StepWaitForChecks, Label: "Wait for the checks", Dispatcher: DispatchVerify, Kinds: prOnly(),
-			Help: "Follows the checks on the agent's pushed commit until every one has finished and settled.",
+			Offered: true,
+			Help:    "Follows the checks on the agent's pushed commit until every one has finished and settled.",
 		},
 		{
 			Kind: StepMerge, Label: "Merge it", Dispatcher: DispatchMerge, AsksFirst: true, Kinds: prOnly(),

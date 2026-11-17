@@ -228,15 +228,16 @@ func (p *pass) tellNotices(ctx context.Context) {
 	p.notices = nil
 }
 
-// verify follows the checks on the commit the agent pushed, through the verify part
-// once it is there; until then the match stays verifying.
+// verify follows the checks on the commit the agent pushed: the match verifies, and the
+// engine judges it from this cycle on (verifyMatch), as a run that pushed does once it
+// ends.
 func (p *pass) verify(ctx context.Context, r *routineRun, m *match, sr *stepRun) {
 	m.set(StateVerifying, "", "The checks on its commit haven't finished.")
 
 	sr.Status, sr.Started = stepRunning, new(p.now)
 
-	if p.e.dispatchers[catalog.DispatchVerify] != nil {
-		p.e.dispatch(ctx, m.ID, 0, catalog.DispatchVerify, p.job(r, m, sr))
+	if p.verifyMatch(ctx, r, m) {
+		p.advance(ctx, r, m)
 	}
 }
 
@@ -514,10 +515,7 @@ func (p *pass) firstTry(r *routineRun, id int64, first bool) verdict {
 
 	switch {
 	case h.Tries >= lim.Tries():
-		return verdict{
-			closeAs: StateSkipped, reason: ReasonTries,
-			words: "It gave up: " + textutil.Counted(lim.Tries(), "try", "tries") + " used.",
-		}
+		return verdict{closeAs: StateSkipped, reason: ReasonTries, words: gaveUpWords(lim.Tries())}
 	case p.counts.routineRuns[r.id()] >= lim.Runs():
 		return wait(BlockCapRuns, "The routine ran "+textutil.Counted(lim.Runs(), "time", "times")+" today.")
 	}
@@ -573,6 +571,10 @@ func (p *pass) itemRules(m *match, id int64, sr *stepRun, agent bool) verdict {
 		if agent && sr.Step.Agent.MayPush() && fork.Known() && fork.Bool {
 			return wait(BlockCrossRepo, "Its branch is in a fork, which a run can't push to.")
 		}
+	}
+
+	if other, ok := p.active[[2]int64{m.RoutineID, id}]; ok && other != m.ID {
+		return wait(BlockSettling, "It waits for the checks on this routine's last run on it.")
 	}
 
 	if p.counts.activeItems[id] {
@@ -712,6 +714,7 @@ func (p *pass) job(r *routineRun, m *match, sr *stepRun) Job {
 	if sr.Step.Agent != nil {
 		amount, unit := runBudget(sr.Step.Agent)
 		j.Budget, j.Unit = amount, string(unit)
+		j.Resting = p.e.restingNow(p.now)
 	}
 
 	return j
@@ -945,7 +948,7 @@ func (e *Engine) dispatchAnswered(ctx context.Context, q *queries.Queries, m *ma
 	case res.Wait != "" || res.Requeue:
 		err = e.endRunIf(ctx, q, runID, RunEnd{Outcome: RunNotStarted, Summary: res.WaitWords, EndedAt: now}, false)
 		e.heldAt(m, sr, res)
-		e.holdBack(m, now)
+		e.holdBack(m, now, res.RetryAt)
 	case res.unsent():
 		err = e.unsent(ctx, q, m, sr, runID, res, now)
 	default:
@@ -1139,6 +1142,10 @@ func (e *Engine) applyRunEnd(ctx context.Context, end RunEnd) {
 	told, forItem := e.stoppedFor(end)
 	taken := e.takenOver[end.RunID]
 
+	if told.Outcome == RunOutOfUsage {
+		e.rest(ctx, run, told.Limit, e.clock.Now())
+	}
+
 	err := e.endAndMove(ctx, run, told, endCounts(run, told) && !taken, late, func(m *match) {
 		e.moveEnded(m, run, told, forItem, late, taken)
 	})
@@ -1257,7 +1264,7 @@ func (e *Engine) retryEnds(ctx context.Context) {
 // nothing.
 func endCounts(run queries.AutopilotRun, end RunEnd) bool {
 	return !run.Manual && end.Outcome != RunInterrupted && end.Outcome != RunNotStarted && !end.StoppedForMe &&
-		end.Outcome != RunNotSent
+		end.Outcome != RunNotSent && end.Outcome != RunOutOfUsage
 }
 
 // endable reads the run end is for, and reports whether end applies to it, and late when
@@ -1319,6 +1326,12 @@ func (e *Engine) moveOn(m *match, index int64, end RunEnd, forItem Reason, now t
 		} else {
 			m.close(StateDismissed, ReasonYouStopped, "You stopped it.", now)
 		}
+	case RunOutOfUsage:
+		// No try: its step starts again on the next profile its chain may use.
+		sr.Status, sr.RunID, sr.Started, sr.Ended, sr.Note = stepPending, 0, nil, nil, outOfUsageWords(end)
+
+		m.unstarted()
+		m.set(StateQueued, "", sr.Note)
 	case RunFailed, RunNotSent:
 		sr.Status, sr.Outcome, sr.Note = stepFailed, string(catalog.OutcomeNotPushed), textutil.Sentence(end.Error)
 		m.Step = index + 1
@@ -1689,7 +1702,8 @@ func (e *Engine) moveByRecord(m *match, run queries.AutopilotRun) {
 		// Nothing was sent, so sending it again sends it once.
 		notSent(m, &m.steps[m.Step], run.ID)
 		m.set(StateQueued, "", "")
-	case end.Outcome == RunDone, end.Outcome == RunFailed, end.Outcome == RunInterrupted:
+	case end.Outcome == RunDone, end.Outcome == RunFailed, end.Outcome == RunInterrupted,
+		end.Outcome == RunOutOfUsage:
 		e.moveOn(m, m.Step, end, "", now)
 	default:
 		e.moveOn(m, m.Step, RunEnd{RunID: run.ID, Outcome: RunInterrupted}, "", now)
@@ -1777,8 +1791,10 @@ func (e *Engine) dayCounts(ctx context.Context, now time.Time) (dayCounts, error
 // GitHub actions toward their pace. One that never started, or a GitHub action that sent
 // nothing, counts toward nothing.
 func (d *dayCounts) add(r queries.ListRunsSinceRow, day time.Time) {
-	if RunOutcome(r.Outcome) == RunNotStarted || RunOutcome(r.Outcome) == RunNotSent {
+	switch RunOutcome(r.Outcome) {
+	case RunNotStarted, RunNotSent, RunOutOfUsage:
 		return
+	case RunDone, RunFailed, RunStopped, RunInterrupted:
 	}
 
 	active := r.Status == runStarting || r.Status == runRunning || r.Status == runStopping

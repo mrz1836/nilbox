@@ -6,9 +6,11 @@ import { formatClock } from '../../lib/time'
 import type { AutopilotRunEvents } from '../../platform'
 import { at } from '../../test/clock'
 import {
+  agentMatch,
   agentRun,
   agentRunView,
   agents,
+  githubStep,
   launchHold,
   launchResult,
   runEnding,
@@ -163,7 +165,20 @@ describe('RunView', () => {
           outcome: 'done',
           cost: 0.61,
           costEstimated: true,
-          verdict: 'Checks pass on 4f2a9c1',
+          verdict: 'fixed',
+        }),
+        match: agentMatch({
+          steps: [
+            githubStep({ kind: 'agent', label: 'Agent', status: 'done', runId: 81, actions: [] }),
+            githubStep({
+              kind: 'waitForChecks',
+              label: 'Wait for the checks',
+              status: 'done',
+              verdict: 'fixed',
+              note: 'Fixed: checks pass on 4f2a9c1.',
+              actions: [],
+            }),
+          ],
         }),
       }),
     )
@@ -171,7 +186,7 @@ describe('RunView', () => {
 
     const ended = await screen.findByRole('region', { name: 'How it ended' })
 
-    expect(ended).toHaveTextContent('Checks pass on 4f2a9c1')
+    expect(ended).toHaveTextContent('Fixed: checks pass on 4f2a9c1.')
     expect(ended).toHaveTextContent('The agent reports:Moved esbuild to 0.25.1, which fixes GHSA-xxxx.')
     expect(ended).toHaveTextContent('12 turns · 6 min 12 s · on 4f2a9c1 · changed 2 files')
     expect(screen.getByRole('status')).toHaveTextContent('Finished: fixed. · 30 min · ≈ $0.61 of $3.00')

@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
-import { itemText } from '../../lib/autopilot'
+import { itemText, runVerdictWords } from '../../lib/autopilot'
 import { counted } from '../../lib/format'
 import { agentName } from '../../lib/launch'
 import {
@@ -222,6 +222,7 @@ function Diff({ diff }: { diff: AutopilotRunDiff }) {
 // verdict from GitHub, and what it cost.
 function Ending({ view, ending }: { view: AutopilotRunView; ending: AutopilotRunEnding }) {
   const { run } = view
+  const verdict = runVerdictWords(view.match, run)
   const report = agentReport(ending)
   const facts = [
     ending.turns > 0 ? counted(ending.turns, 'turn', 'turns') : '',
@@ -235,7 +236,7 @@ function Ending({ view, ending }: { view: AutopilotRunView; ending: AutopilotRun
       aria-label="How it ended"
       className="flex flex-col gap-1.5 rounded-lg border border-border px-3 py-2.5 text-xs"
     >
-      {run.verdict !== '' && <p className="font-medium text-text">{run.verdict}</p>}
+      {verdict !== '' && <p className="font-medium text-text">{verdict}</p>}
       {report !== '' && (
         <div>
           <p className="text-muted">

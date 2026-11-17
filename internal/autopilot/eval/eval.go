@@ -105,6 +105,10 @@ type History struct {
 	// OwnHeads are the head commits routines' own runs pushed to the item.
 	OwnHeads []string `json:"ownHeads"`
 
+	// Working reports a routine's agent working on the item now: a commit it pushes is
+	// told apart from another's only once its run ends and records it.
+	Working bool `json:"working,omitempty"`
+
 	// CommentsSeen is the comment count the routine last fired at, or first saw the item
 	// with; nil before it saw it.
 	CommentsSeen *int `json:"commentsSeen"`

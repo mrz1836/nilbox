@@ -137,7 +137,8 @@ export const Dispatcher = {
     DispatchAgent: "agent",
 
     /**
-     * DispatchVerify follows the checks on the commit an agent pushed.
+     * DispatchVerify follows the checks on the commit an agent pushed: the engine's own,
+     * which judges a verifying match on every cycle from what the inbox stored.
      */
     DispatchVerify: "verify",
 

@@ -329,11 +329,16 @@ func TestAPushToTheRunsOwnCommitGoesToVerifying(t *testing.T) {
 		assert.Equal(t, autopilot.StateVerifying, m.State, "the head moved to its own commit: verifying, never moved on")
 		assert.Equal(t, fix, m.Runs[0].Commit)
 
-		// Its own commit fails: New commits' loop guard and Checks fail's key would move on,
-		// but a verifying match keeps its place.
+		// Its own commit fails: Checks fail's key moves on, but the verifying match keeps its
+		// place until its own verdict, which the failure is.
 		s.World.Fail(1)
 		s.Refresh()
-		assert.Equal(t, autopilot.StateVerifying, s.Matches()[0].State)
+		s.Refresh()
+
+		m = s.Matches()[0]
+		assert.Equal(t, autopilot.StateDone, m.State, m.Words)
+		assert.Equal(t, autopilot.ReasonRan, m.Reason, "never closed as moved on")
+		assert.Equal(t, autopilot.VerdictFailing, m.Runs[0].Verdict)
 	})
 }
 

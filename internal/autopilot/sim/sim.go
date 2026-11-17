@@ -239,7 +239,7 @@ func (s *Sim) Begin() {
 	eng := autopilot.EngineConfig{
 		Items: items, Lock: autopilot.NewLock(s.Lock), Runner: s.Runner, Triage: s.Triage,
 		Dispatchers: map[catalog.Dispatcher]autopilot.Dispatcher{catalog.DispatchNotices: autopilot.NewNotices(s.Notices)},
-		Problems:    autopilot.NewProblemNotices(s.Notices), Finished: s.Notices, Events: s.Events,
+		Problems:    autopilot.NewProblemNotices(s.Notices), Finished: s.Notices, Checks: s.Notices, Events: s.Events,
 	}
 	s.config(&svc, &eng)
 

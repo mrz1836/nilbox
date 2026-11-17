@@ -151,6 +151,7 @@ func factsDetails(r queries.ListFactsRowsRow) (*facts.DetailsRow, error) {
 		Commits: int(store.Deref(r.Commits)), Comments: int(store.Deref(r.Comments)), Labels: names,
 		Approvals: int(store.Deref(r.Approvals)), ChangesRequested: int(store.Deref(r.ChangesRequested)),
 		ReviewUsers: users, AutoMerge: store.Deref(r.AutoMergeMethod) != "",
+		FetchedAt: store.Deref(r.DetailsFetchedAt).UTC(),
 	}, nil
 }
 

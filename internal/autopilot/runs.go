@@ -57,9 +57,11 @@ func (e *Engine) RunUsage(runID int64, u RunUsage) {
 	})
 }
 
-// heldBack is a start its runner held back, and when.
+// heldBack is a start its runner held back, and when, and until when it waits, zero for
+// a tick.
 type heldBack struct {
 	at      time.Time
+	until   time.Time
 	blocker Blocker
 	words   string
 }
@@ -68,8 +70,11 @@ type heldBack struct {
 // would start (Result.Wait, a queued blocker) from being tried again until a tick passes:
 // each try reads the item from GitHub again first, so a session in its worktree would
 // otherwise cost a point every cycle until it ends.
-func (e *Engine) holdBack(m *match, now time.Time) {
-	if m.state() == StateQueued && m.BlockedBy != "" {
+func (e *Engine) holdBack(m *match, now, until time.Time) {
+	switch {
+	case !until.IsZero() && m.BlockedBy != "" && m.state() != StateWaiting:
+		e.heldBack[m.ID] = heldBack{at: now, until: until, blocker: Blocker(m.BlockedBy), words: m.Detail}
+	case m.state() == StateQueued && m.BlockedBy != "":
 		e.heldBack[m.ID] = heldBack{at: now, blocker: Blocker(m.BlockedBy), words: m.Detail}
 	}
 }
@@ -82,7 +87,7 @@ func (p *pass) backOff(m *match) bool {
 	switch {
 	case !held:
 		return false
-	case p.now.Sub(h.at) >= p.e.tick:
+	case !h.until.IsZero() && !p.now.Before(h.until), h.until.IsZero() && p.now.Sub(h.at) >= p.e.tick:
 		delete(p.e.heldBack, m.ID)
 
 		return false

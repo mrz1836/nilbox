@@ -50,6 +50,10 @@ type engineState struct {
 
 	// LastPrune is when the retention last ran.
 	LastPrune time.Time `json:"lastPrune,omitzero"`
+
+	// Resting holds the agents' profiles out of usage, by agent and profile
+	// ("claude/work"), each until its limit resets.
+	Resting map[string]Resting `json:"resting,omitempty"`
 }
 
 // fromNow is a routine waiting to record what matches now as its baseline.
