@@ -149,6 +149,8 @@ func TestTheSandboxKeepsCommandsInBounds(t *testing.T) {
 
 	assert.Contains(t, sb.DenyRead, home+"/.ssh")
 	assert.Contains(t, sb.DenyRead, configDir)
+	assert.NotContains(t, sb.DenyRead, dataDir, "the sandbox check writes its proof into the run's folder, in the data")
+	assert.Contains(t, f.Policy.ReadDeny, dataDir, "the hook still refuses a command that names the app's data")
 	assert.Contains(t, sb.Domains, "github.com")
 	assert.Contains(t, sb.Domains, "proxy.golang.org")
 	assert.Contains(t, sb.Domains, "registry.npmjs.org")

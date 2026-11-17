@@ -567,8 +567,11 @@ func readDenied(s Spec, worktree string) []string {
 // sandboxFor works out a sandboxed preset's sandbox.
 func sandboxFor(s Spec, p Policy) *Sandbox {
 	sb := &Sandbox{
-		Write: []string{p.Worktree}, DenyWrite: []string{}, DenyRead: slices.Clone(p.ReadDeny),
-		Domains: Domains(), Excluded: excludedFor(p),
+		Write: []string{p.Worktree}, DenyWrite: []string{},
+		// The run's folder, which the sandbox check writes its proof into, stays readable:
+		// the hook still refuses a command that names the app's data.
+		DenyRead: slices.DeleteFunc(slices.Clone(p.ReadDeny), func(d string) bool { return within(d, s.RunDir) }),
+		Domains:  Domains(), Excluded: excludedFor(p),
 	}
 
 	sb.Write = append(sb.Write, p.GitDirs...)

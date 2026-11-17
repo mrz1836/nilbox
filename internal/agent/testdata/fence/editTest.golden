@@ -661,7 +661,6 @@ settings.json:
         "/Users/example/.vault-token",
         "/Users/example/.zsh_history",
         "/Users/example/.bash_history",
-        "/Users/example/Library/Application Support/App",
         "/Users/example/.claude"
       ]
     },
