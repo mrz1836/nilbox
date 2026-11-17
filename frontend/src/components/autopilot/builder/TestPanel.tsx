@@ -6,8 +6,11 @@ import {
   previewAutopilotActions,
   previewRoutineRun,
   type AutopilotDraft,
+  type AutopilotItemRef,
   type AutopilotMode,
+  type AutopilotResult,
   type AutopilotTestItem,
+  type AutopilotTrace,
   type AutopilotTestResult,
   type ItemKind,
 } from '../../../platform'
@@ -37,6 +40,25 @@ export interface TestPanelProps {
   // preview is the draft, when it sends GitHub anything: a matching item's Preview says what
   // it would send it, built and not sent.
   preview?: AutopilotDraft | undefined
+  // pinned is the item a routine was made from, with what the draft decides about it from
+  // what is stored: it shows at the top before a test, and first in one.
+  pinned?: Pinned | undefined
+}
+
+// Pinned is an item Test shows at the top, with what the draft decides about it now.
+export interface Pinned {
+  item: AutopilotItemRef
+  match: AutopilotResult
+  trace: AutopilotTrace[]
+}
+
+// pinnedFirst puts the item pinned names first among items, else leaves them as they are.
+export function pinnedFirst(items: readonly AutopilotTestItem[], pinned: Pinned | undefined): AutopilotTestItem[] {
+  if (pinned === undefined) {
+    return [...items]
+  }
+
+  return [...items.filter((it) => it.id === pinned.item.id), ...items.filter((it) => it.id !== pinned.item.id)]
 }
 
 // previewed is the item a test tried that Preview plans the agent step on: the first that
@@ -153,6 +175,7 @@ export function TestPanel({
   draft,
   onTest,
   preview,
+  pinned,
 }: TestPanelProps) {
   const agent = draft.spec.steps.some((st) => st.agent != null)
   const sample = previewed(result)
@@ -209,9 +232,14 @@ export function TestPanel({
           Your GitHub API budget is low, so this test read nothing new; it tried what is stored.
         </p>
       )}
+      {result === undefined && pinned !== undefined && (
+        <ul aria-label="The item it was made from" className="flex flex-col">
+          <PinnedRow pinned={pinned} />
+        </ul>
+      )}
       {result !== undefined && result.items.length > 0 && (
         <ul aria-label="Items it watches" className="flex flex-col">
-          {result.items.map((it) => (
+          {pinnedFirst(result.items, pinned).map((it) => (
             <TestRow key={it.id} item={it} mode={mode} preview={it.match === 'yes' ? preview : undefined} />
           ))}
         </ul>
@@ -320,5 +348,49 @@ function ActionPreviews({ draft, itemId, name }: ActionPreviewsProps) {
         </li>
       ))}
     </ul>
+  )
+}
+
+// pinnedWords say what the draft decides about the item it was made from, before a test.
+const pinnedWords: Readonly<Record<string, string>> = {
+  yes: 'matches now, from what is stored',
+  no: 'doesn’t match now: Why ▸ says which part',
+  unknown: 'can’t tell yet: Test reads what it waits on',
+}
+
+// PinnedRow is the item a routine was made from, at the top of Test until a test reads
+// more: whether the draft matches it now, and Why ▸.
+function PinnedRow({ pinned }: { pinned: Pinned }) {
+  const [open, setOpen] = useState(false)
+  const name = `${pinned.item.repo} #${String(pinned.item.number)}`
+
+  return (
+    <li className="flex flex-col py-1">
+      <div className="flex items-center gap-2 text-sm">
+        <ResultMark result={pinned.match} />
+        <span className="w-44 shrink-0 truncate font-mono text-[0.75rem] text-muted" title={name}>
+          {name}
+        </span>
+        <span className="min-w-0 flex-1 truncate" title={pinned.item.title}>
+          {pinned.item.title}
+        </span>
+        <span className={`shrink-0 text-xs ${pinned.match === 'yes' ? 'text-text' : 'text-muted'}`}>
+          {pinnedWords[pinned.match] ?? pinned.match}
+        </span>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-label={`Why, for ${name}`}
+          onClick={() => {
+            setOpen(!open)
+          }}
+          className={quietButtonClass}
+        >
+          {open ? <ChevronDownIcon className="size-3" /> : <ChevronRightIcon className="size-3" />}
+          Why
+        </button>
+      </div>
+      {open && <TraceList label={`Why, for ${name}`} trace={pinned.trace} className="ml-6 py-1" />}
+    </li>
   )
 }

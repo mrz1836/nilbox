@@ -27,22 +27,27 @@ import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
 import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
+  declineGraduate,
   deleteRoutine,
   duplicateRoutine,
   getAutopilotCatalog,
   itemsByID,
+  listTemplates,
   on,
   openExternal,
+  routineFromItem,
   routineWatching,
   saveRoutine,
   setAutopilotPaused,
   suggestForRoutines,
   type AgentInfo,
+  type AutopilotClause,
   type AutopilotDraft,
   type AutopilotItemRef,
   type AutopilotMatch,
   type AutopilotRoutine,
   type AutopilotSuggestions,
+  type AutopilotTemplate,
   type Profile,
   type Prompt,
   type Settings,
@@ -50,14 +55,30 @@ import {
 import { ConfirmDialog } from '../ConfirmDialog'
 import { buttonClass, captionClass, fieldClass, primaryButtonClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import { AlertIcon, AutopilotIcon, PauseIcon, PlayIcon, PlusIcon, PulseIcon, RoutineIcon, SlidersIcon } from '../icons'
+import {
+  AlertIcon,
+  AutopilotIcon,
+  ExportIcon,
+  ImportIcon,
+  PauseIcon,
+  PlayIcon,
+  PlusIcon,
+  PulseIcon,
+  RoutineIcon,
+  SlidersIcon,
+  StarIcon,
+} from '../icons'
 import { defaultToastSeconds, Toast, type ToastMessage } from '../Toast'
 import { ActivityList } from './ActivityList'
 import { NeedsYouSection } from './NeedsYouSection'
 import type { AgentKit } from './builder/AgentStepBlock'
 import { RoutineBuilder } from './builder/RoutineBuilder'
+import type { Pinned } from './builder/TestPanel'
+import { QuickSetup } from './QuickSetup'
 import { RoutineList, type RoutineActions } from './RoutineList'
 import { RoutinePane } from './RoutinePane'
+import { useRoutineTransfer } from './RoutineTransfer'
+import { TemplateGallery } from './TemplateGallery'
 import { useRoutineChange } from './useRoutineChange'
 import { useSheetHost, type RowsKit } from './useSheetHost'
 import { WatchingList } from './WatchingList'
@@ -89,16 +110,25 @@ export interface AutopilotViewProps {
   agents: readonly AgentInfo[]
   profiles: readonly Profile[]
   onEditPrompts: () => void
+  // onShowInbox shows the inbox, whose items' ⋯ menus make a routine from an item.
+  onShowInbox?: () => void
   toastSeconds?: number
 }
 
 // Editing is the routine the builder holds: its key (a routine's ID, or NEW_ROUTINE), as it
-// was opened or last saved, and as edited.
+// was opened or last saved, and as edited; for a new routine made from an item, the
+// conditions the item suggests and the item itself, which Test shows at the top.
 interface Editing {
   key: number
   baseline: AutopilotDraft
   draft: AutopilotDraft
+  suggested?: AutopilotClause[]
+  pinned?: Pinned
 }
+
+// TEMPLATES is the gallery's place in the tab, beside Activity (0), a routine, and a new
+// routine (NEW_ROUTINE).
+const TEMPLATES = -2
 
 // noSuggestions are the pickers' suggestions until they load.
 const noSuggestions: AutopilotSuggestions = { authors: [], bots: [], owners: [], labels: [], checks: [] }
@@ -292,6 +322,7 @@ export default function AutopilotView({
   agents,
   profiles,
   onEditPrompts,
+  onShowInbox,
   toastSeconds = defaultToastSeconds,
 }: AutopilotViewProps) {
   const id = useId()
@@ -356,6 +387,13 @@ export default function AutopilotView({
   const [synced, setSynced] = useState<AutopilotRoutine | null>(null)
   const catalog = useQuery(() => getAutopilotCatalog(), [], { log: 'could not read Autopilot’s catalog' })
   const suggestions = useQuery(() => suggestForRoutines(), [], { log: 'could not read what the items suggest' })
+  // templates are the gallery as this Mac sees it, and quick the template whose quick setup
+  // shows, by its key, as the gallery last read it; fromItemHint says how to start from an
+  // item, once asked.
+  const templates = useQuery(() => listTemplates(), [], { log: 'could not read the templates' })
+  const [quickKey, setQuickKey] = useState('')
+  const quick = quickKey === '' ? null : (templates.data?.find((t) => t.key === quickKey) ?? null)
+  const [fromItemHint, setFromItemHint] = useState(false)
   const agentKit: AgentKit = {
     prompts,
     agents,
@@ -379,6 +417,12 @@ export default function AutopilotView({
     },
   )
 
+  // transfer is Export and Import, whose dialogs show over the tab.
+  const transfer = useRoutineTransfer(say, () => {
+    reload()
+    void templates.refetch()
+  })
+
   // noteOf is a toast a request's answer raises as the tab renders, numbered by the
   // request, below every toast the tab raises from a click.
   const noteOf = (seq: number, text: string): ToastMessage => ({ id: -seq, text, tone: 'warning' })
@@ -391,6 +435,7 @@ export default function AutopilotView({
   // A routine's builder is filled in as it shows, below.
   const open = (next: number) => {
     setSelected(next)
+    setQuickKey('')
 
     if (next === NEW_ROUTINE && editing?.key === NEW_ROUTINE) {
       return
@@ -416,9 +461,84 @@ export default function AutopilotView({
     }
   }
 
+  // newFrom opens a new routine's builder over draft, as a template's Customize or an item's
+  // Make a routine from this… fills it in: leaving it asks first, as any new routine's
+  // changes do.
+  const newFrom = (draft: AutopilotDraft, extra: Pick<Editing, 'suggested' | 'pinned'> = {}) => {
+    const scratch = scratchDraft(newRoutineName(routines), settings?.autopilot.defaultMode ?? 'ask')
+
+    setSelected(NEW_ROUTINE)
+    setQuickKey('')
+    setSaveError('')
+    setEditing({ key: NEW_ROUTINE, baseline: scratch, draft, ...extra })
+  }
+
+  // showTemplate opens a template's quick setup.
+  const showTemplate = (t: AutopilotTemplate) => {
+    if (editing !== null && dirty) {
+      setLeaving(TEMPLATES)
+
+      return
+    }
+
+    open(TEMPLATES)
+    setQuickKey(t.key)
+  }
+
+  // Make a routine from this… reads what the item suggests, once per request, and opens the
+  // builder with it; while the builder holds unsaved changes, it says so instead.
+  const makeFrom = useEffectEvent((itemId: number) => {
+    if (editing !== null && dirty) {
+      say('Save or discard the routine you’re editing first, then make one from the item.', 'error')
+
+      return
+    }
+
+    void attempt(routineFromItem(itemId)).then((made) => {
+      if (made.ok) {
+        newFrom(made.data.draft, {
+          suggested: made.data.suggestions,
+          pinned: { item: made.data.item, match: made.data.match, trace: made.data.trace },
+        })
+      } else {
+        say(made.error, 'error')
+      }
+    })
+  })
+
+  // made is the last request made from an item, kept while the tab hides, whose effects
+  // run again as it shows.
+  const made = useRef(0)
+
+  useEffect(() => {
+    if (request !== null && (request.fromItem ?? 0) > 0 && made.current !== request.seq) {
+      made.current = request.seq
+      makeFrom(request.fromItem ?? 0)
+    }
+  }, [request])
+
+  // A request for a template's quick setup shows it once the gallery is read.
+  if (request?.template !== undefined && request.seq !== handled && templates.data !== undefined) {
+    setHandled(request.seq)
+
+    const t = templates.data.find((x) => x.key === request.template)
+
+    open(TEMPLATES)
+
+    if (t !== undefined) {
+      setQuickKey(t.key)
+    }
+  }
+
   // A request from a notification, the menu bar, or a chip shows Activity, at the match
   // it names, or the routine it names, once the routines are read.
-  if (request !== null && request.seq !== handled && (request.target.matchId > 0 || autopilot.loaded)) {
+  if (
+    request !== null &&
+    request.seq !== handled &&
+    request.template === undefined &&
+    (request.fromItem ?? 0) === 0 &&
+    (request.target.matchId > 0 || autopilot.loaded)
+  ) {
     setHandled(request.seq)
 
     const { target } = request
@@ -621,6 +741,8 @@ export default function AutopilotView({
         }}
         onSave={saveEditing}
         onDiscard={discardEditing}
+        {...(r === null && editing.suggested !== undefined ? { suggested: editing.suggested } : {})}
+        pinned={r === null ? editing.pinned : undefined}
       />
     )
   }
@@ -650,10 +772,91 @@ export default function AutopilotView({
         }
       })
     },
+    onExport: (r) => {
+      transfer.exportRoutines([r])
+    },
     onDelete: (r) => {
       setDeleting(r)
     },
   }
+
+  // notNow answers Not now to putting a routine on Autopilot: it offers again after five
+  // more clean approvals, and its mode stays as it is.
+  const notNow = (r: AutopilotRoutine) => {
+    void attempt(declineGraduate(r.id)).then((result) => {
+      if (result.ok) {
+        reload()
+      } else {
+        say(result.error, 'error')
+      }
+    })
+  }
+
+  // madeFromTemplate is a routine quick setup just saved: the list reads it again, and the
+  // tab shows it.
+  const madeFromTemplate = (saved: AutopilotRoutine) => {
+    reload()
+    setQuickKey('')
+    setJustSaved(saved)
+    setSelected(saved.id)
+    say(`Made “${saved.name}”, switched off. Switch it on once you’re happy with it.`)
+  }
+
+  // quickSetup is the template's quick setup, once the catalog is read.
+  const quickSetup = (t: AutopilotTemplate) =>
+    catalog.data === undefined ? (
+      <p role="status" className="text-sm text-muted">
+        Reading what a routine can do…
+      </p>
+    ) : (
+      <QuickSetup
+        key={t.key}
+        template={t}
+        routines={routines}
+        defaultMode={settings?.autopilot.defaultMode ?? 'ask'}
+        catalog={catalog.data}
+        suggestions={suggestions.data ?? noSuggestions}
+        viewer={viewer}
+        onSaved={madeFromTemplate}
+        onCustomize={(draft) => {
+          newFrom(draft)
+        }}
+        onCancel={() => {
+          setQuickKey('')
+        }}
+        onPromptsChanged={() => {
+          void templates.refetch()
+        }}
+      />
+    )
+
+  // gallery is every template, the suggested first; picking one opens its quick setup.
+  const gallery = (limit?: number) =>
+    templates.data === undefined ? (
+      <p role="status" className="text-sm text-muted">
+        {templates.error === '' ? 'Reading the templates…' : templates.error}
+      </p>
+    ) : (
+      <TemplateGallery templates={templates.data} onPick={showTemplate} {...(limit === undefined ? {} : { limit })} />
+    )
+
+  // fromItem says how to start from an item: its ⋯ menu, in the inbox or a Watching list.
+  const fromItem = fromItemHint && (
+    <div
+      role="status"
+      className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface px-3 py-2 text-sm"
+    >
+      <span className="min-w-0 flex-1">
+        Open the ⋯ menu on any item, in the inbox or a routine’s Watching list, and choose Autopilot ▸ Make a routine
+        from this…
+      </span>
+      {onShowInbox !== undefined && (
+        <button type="button" onClick={onShowInbox} className={buttonClass}>
+          Show the inbox
+        </button>
+      )}
+    </div>
+  )
 
   const removeChosen = () => {
     if (deleting === null) {
@@ -757,34 +960,74 @@ export default function AutopilotView({
 
   const making = selected === NEW_ROUTINE && editing?.key === NEW_ROUTINE
 
-  if (empty && !making && chosen === undefined) {
+  // The empty tab explains Autopilot in two sentences, then offers the templates that fit
+  // what this Mac knows (the first few), Start from scratch, Start from an item, Import, and
+  // every template.
+  if (empty && !making && chosen === undefined && selected !== TEMPLATES) {
     return (
-      <div className="flex h-full items-center justify-center p-8">
-        <div className="flex max-w-lg flex-col items-center gap-3 text-center">
-          <AutopilotIcon className="size-8 text-accent" />
-          <h2 className="text-lg font-semibold">Autopilot</h2>
-          {introText.map((sentence) => (
-            <p key={sentence} className="text-sm text-muted">
-              {sentence}
-            </p>
-          ))}
-          <button
-            type="button"
-            onClick={() => {
-              open(NEW_ROUTINE)
-            }}
-            className={`${primaryButtonClass} mt-2`}
-          >
-            <PlusIcon className="size-4" />
-            Start from scratch
-          </button>
+      <div className="flex h-full justify-center overflow-y-auto p-8">
+        <div className="flex w-full max-w-2xl flex-col gap-5">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <AutopilotIcon className="size-8 text-accent" />
+            <h2 className="text-lg font-semibold">Autopilot</h2>
+            {introText.map((sentence) => (
+              <p key={sentence} className="text-sm text-muted">
+                {sentence}
+              </p>
+            ))}
+          </div>
+          {gallery(4)}
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                open(NEW_ROUTINE)
+              }}
+              className={primaryButtonClass}
+            >
+              <PlusIcon className="size-4" />
+              Start from scratch
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFromItemHint(true)
+              }}
+              className={buttonClass}
+            >
+              Start from an item
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                open(TEMPLATES)
+              }}
+              className={buttonClass}
+            >
+              <StarIcon className="size-3.5 text-muted" />
+              Every template
+            </button>
+            <button type="button" onClick={transfer.importRoutines} className={quietButtonClass}>
+              <ImportIcon className="size-3.5" />
+              Import routines…
+            </button>
+          </div>
+          {fromItem}
         </div>
+        {transfer.node}
+        <Toast
+          toast={toast}
+          seconds={toastSeconds}
+          onClose={() => {
+            setToast(null)
+          }}
+        />
       </div>
     )
   }
 
   // shown is what the right side shows: a new routine's builder, a routine, or Activity.
-  const shown = making ? 'new' : chosen === undefined ? 'activity' : 'routine'
+  const shown = making ? 'new' : selected === TEMPLATES ? 'templates' : chosen === undefined ? 'activity' : 'routine'
 
   return (
     <div className="flex h-full min-h-0">
@@ -829,7 +1072,33 @@ export default function AutopilotView({
           <PlusIcon className="size-3.5" />
           New routine
         </button>
-        <div className="mt-auto border-t border-border pt-2">
+        <button
+          type="button"
+          aria-current={shown === 'templates' ? 'page' : undefined}
+          onClick={() => {
+            go(TEMPLATES)
+          }}
+          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted transition-colors hover:bg-raised hover:text-text aria-[current=page]:bg-raised aria-[current=page]:text-text"
+        >
+          <StarIcon className="size-3.5" />
+          Templates
+        </button>
+        <div className="mt-auto flex flex-col gap-1 border-t border-border pt-2">
+          <button type="button" onClick={transfer.importRoutines} className={`${quietButtonClass} w-full`}>
+            <ImportIcon className="size-3.5" />
+            Import routines…
+          </button>
+          <button
+            type="button"
+            disabled={routines.length === 0}
+            onClick={() => {
+              transfer.exportRoutines(routines)
+            }}
+            className={`${quietButtonClass} w-full`}
+          >
+            <ExportIcon className="size-3.5" />
+            Export every routine…
+          </button>
           <button type="button" onClick={onSettings} className={`${quietButtonClass} w-full`}>
             <SlidersIcon className="size-3.5" />
             Autopilot settings
@@ -854,6 +1123,17 @@ export default function AutopilotView({
                 New routine
               </h2>
             )}
+            {shown === 'templates' && quick === null && (
+              <h2 id={`${id}-title`} className="flex items-center gap-3 text-lg font-semibold">
+                <StarIcon className="size-5 shrink-0 text-muted" />
+                Templates
+              </h2>
+            )}
+            {shown === 'templates' && quick !== null && (
+              <span id={`${id}-title`} className="sr-only">
+                {`Set up ${quick.name}`}
+              </span>
+            )}
             <div className="ml-auto flex items-center gap-2">
               {settings !== null && <PauseButton settings={settings} onSaved={onSettingsSaved} />}
             </div>
@@ -869,6 +1149,30 @@ export default function AutopilotView({
                 Reading what a routine can do…
               </p>
             ))
+          ) : shown === 'templates' ? (
+            quick === null ? (
+              <>
+                <p className="text-sm text-muted">
+                  Each is a routine made for you to start from: set up its few blanks, try it on your items, and save
+                  it. Customize opens the whole builder with it filled in.
+                </p>
+                {gallery()}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFromItemHint(true)
+                    }}
+                    className={buttonClass}
+                  >
+                    Start from an item
+                  </button>
+                </div>
+                {fromItem}
+              </>
+            ) : (
+              quickSetup(quick)
+            )
           ) : chosen === undefined ? (
             <>
               <WorkingList onOpen={onOpen} onToast={toastText} />
@@ -966,6 +1270,12 @@ export default function AutopilotView({
               onMode={(mode) => {
                 changes.request(chosen, { kind: 'mode', mode })
               }}
+              onGraduate={() => {
+                changes.request(chosen, { kind: 'mode', mode: 'auto' })
+              }}
+              onNotNow={() => {
+                notNow(chosen)
+              }}
               builder={editable(chosen) ? builderFor(chosen) : undefined}
               heldText={catalog.data === undefined ? undefined : dryRunWhy(catalog.data, chosen.dryRunOnly)}
               watching={
@@ -997,6 +1307,7 @@ export default function AutopilotView({
         </div>
       </section>
       {changes.dialog}
+      {transfer.node}
       {loneHost.node}
       {leaving !== null && editing !== null && (
         <ConfirmDialog

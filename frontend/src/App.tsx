@@ -25,7 +25,7 @@ import { QuitDialog } from './components/QuitDialog'
 import type { SearchFieldProps } from './components/SearchField'
 import type { SettingsSection } from './components/SettingsView'
 import { defaultToastSeconds, Toast, type ToastMessage } from './components/Toast'
-import { autopilotBadge, type AutopilotRequest } from './lib/autopilot'
+import { activityTarget, autopilotBadge, type AutopilotRequest } from './lib/autopilot'
 import { attempt, serial } from './lib/call'
 import { filterInbox, inboxItems, inboxSpec, inboxSuggestions } from './lib/inboxFilter'
 import { isFindKey, isTyping } from './lib/keys'
@@ -665,6 +665,21 @@ export function App() {
     go({ type: 'show', view: 'autopilot' })
   }
 
+  // openAutopilotWith opens the Autopilot tab at a new routine's builder filled in from an
+  // item (Make a routine from this…), or at a template's quick setup, as the first-run
+  // setup's suggestion asks.
+  const openAutopilotWith = (ask: { fromItem?: number; template?: string }) => {
+    if (!autopilotOn) {
+      sayOfRun('Autopilot is off. Turn it on in Settings → Labs to make routines.')
+
+      return
+    }
+
+    requests.current += 1
+    setAutopilotRequest({ seq: requests.current, target: activityTarget, ...ask })
+    go({ type: 'show', view: 'autopilot' })
+  }
+
   // openRun opens Scripts → Runs with a run in its panel, as a failed run's notification
   // asks, once the run with that id says it started when the notification says: the history
   // hands an id out again once it is cleared, and a later run must never open in its place.
@@ -825,7 +840,9 @@ export function App() {
   const toastSeconds = config.settings?.toastSeconds ?? defaultToastSeconds
   // routineMenu is what every item's ⋯ menu offers of Autopilot, while it is on, and the
   // dialogs and toasts its choices show.
-  const routineMenu = useRoutineMenu(autopilot.routines, toastSeconds)
+  const routineMenu = useRoutineMenu(autopilot.routines, toastSeconds, (item) => {
+    openAutopilotWith({ fromItem: item.id })
+  })
 
   const openSettings = () => {
     go({ type: 'settings', section: 'account' })
@@ -1317,6 +1334,9 @@ export function App() {
                         agents={config.agents}
                         profiles={config.profiles}
                         onEditPrompts={openPrompts}
+                        onShowInbox={() => {
+                          changeView('inbox')
+                        }}
                         toastSeconds={toastSeconds}
                       />
                     </div>
@@ -1440,6 +1460,11 @@ export function App() {
             onLaunchChanged={reload}
             inbox={inbox}
             integrations={integrations}
+            autopilot={autopilotOn}
+            onTemplate={(key) => {
+              setupControl.finish()
+              openAutopilotWith({ template: key })
+            }}
           />
         </Suspense>
       )}

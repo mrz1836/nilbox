@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { Setup } from './platform'
-import { appInfo, autopilotTarget, item, list, snapshot } from './test/fixtures'
+import { appInfo, autopilotTarget, galleryTemplate, item, list, snapshot } from './test/fixtures'
 import { emit, platform, renderApp } from './test/platform'
 
 vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platform))
@@ -59,6 +59,21 @@ describe('App with the first-run setup', () => {
     expect(platform.finishSetup).toHaveBeenCalledOnce()
     expect(column()).not.toHaveAttribute('inert')
     expect(await screen.findByRole('region', { name: 'Review requested' })).toBeInTheDocument()
+  })
+
+  it('ends the setup on its suggested template, opening the template’s quick setup in the Autopilot tab', async () => {
+    platform.getSetup.mockResolvedValue({ done: false, step: 'finish' })
+    platform.listTemplates.mockResolvedValue([
+      galleryTemplate({ suggested: 'One of your clones runs go-fortress’s security checks.' }),
+    ])
+    await renderApp()
+
+    const suggested = within(await screen.findByRole('region', { name: 'Suggested for you' }))
+
+    await userEvent.click(suggested.getByRole('button', { name: 'Set it up' }))
+
+    expect(platform.finishSetup).toHaveBeenCalledOnce()
+    expect(await screen.findByRole('region', { name: 'Fix Dependabot security failures' })).toBeInTheDocument()
   })
 
   it('covers the window from the first frame the URL asks for the setup', async () => {

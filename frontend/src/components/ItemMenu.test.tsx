@@ -6,11 +6,12 @@ import { describe, expect, it, vi } from 'vitest'
 import type { TriageTab } from '../lib/triage'
 import type { AutopilotRoutine, InboxItem, RepoRules } from '../platform'
 import { at } from '../test/clock'
-import { explanation, item, routine, routineSpec } from '../test/fixtures'
+import { autopilotMatch, explanation, item, routine, routineSpec } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { AutopilotMenuContext, useRoutineMenu } from './autopilot/RoutineMenu'
 import { teamsText, type EditActions } from './ItemMenu'
 import { ItemRow } from './ItemRow'
+import { defaultToastSeconds } from './Toast'
 import type { TriageActions } from './TriageControls'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -491,7 +492,7 @@ function menuRoutines(): AutopilotRoutine[] {
 
 // WithRoutines provides the item menus' Autopilot as the window does, over routines.
 function WithRoutines({ routines, children }: { routines: readonly AutopilotRoutine[]; children: ReactNode }) {
-  const { menu, node } = useRoutineMenu(routines)
+  const { menu, node } = useRoutineMenu(routines, defaultToastSeconds, () => undefined)
 
   return (
     <AutopilotMenuContext value={menu}>
@@ -538,6 +539,7 @@ describe('ItemMenu Autopilot', () => {
     await openSubmenu('Autopilot')
     expect(names(screen.getByRole('menu', { name: 'Autopilot' }))).toEqual([
       'Run a routine',
+      'Make a routine from this…',
       'Why didn’t a routine run?',
     ])
 
@@ -571,6 +573,26 @@ describe('ItemMenu Autopilot', () => {
     expect(platform.runRoutineNow).toHaveBeenLastCalledWith(3, 1, true)
     expect(await screen.findByText('It starts as soon as a slot frees.')).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    // Its toast closes on asking.
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Notification' })).getByRole('button', { name: 'Close' }),
+    )
+    expect(screen.queryByText('It starts as soon as a slot frees.')).not.toBeInTheDocument()
+  })
+
+  it('runs nothing when Run anyway is cancelled', async () => {
+    platform.runRoutineNow.mockRejectedValueOnce(new Error('It doesn’t match it: checks pass.'))
+    await renderWithRoutines()
+
+    await userEvent.click((await openRoutines()).getByRole('menuitem', { name: 'Snooze passing bot PRs' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Run “Snooze passing bot PRs” anyway?' }))
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.runRoutineNow).toHaveBeenCalledOnce()
   })
 
   it('tells any other refusal as it is, and offers nothing more', async () => {
@@ -632,4 +654,78 @@ describe('ItemMenu Autopilot', () => {
     await userEvent.click(dialog.getByRole('button', { name: 'Done' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
+
+  it('says why a routine didn’t run: what holds it back, why the item isn’t watched, and its whole ledger', async () => {
+    platform.explainRoutine.mockResolvedValue(
+      explanation({
+        inWatch: false,
+        routine: ['It’s switched off, so it runs on nothing.'],
+        watch: ['Not in its search: its author is octo-other, not Dependabot.'],
+        records: [
+          autopilotMatch({ id: 31, words: 'It already ran on this commit.' }),
+          autopilotMatch({ id: 30, dryRun: true, words: 'Would have run.' }),
+        ],
+      }),
+    )
+    await renderWithRoutines()
+
+    await openMenu()
+    await openSubmenu('Autopilot')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Why didn’t a routine run?' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Why didn’t a routine run?' }))
+
+    expect(await dialog.findByRole('list', { name: 'What holds the routine back' })).toHaveTextContent(
+      'It’s switched off, so it runs on nothing.',
+    )
+    expect(dialog.getByRole('list', { name: 'Why it isn’t in what it watches' })).toHaveTextContent(
+      'its author is octo-other, not Dependabot.',
+    )
+    expect(dialog.queryByText('The item isn’t in what it watches.')).not.toBeInTheDocument()
+
+    await userEvent.click(dialog.getByText('Its ledger for this item: 2 records'))
+
+    const ledger = dialog.getByRole('list', { name: 'Its ledger for this item' })
+
+    expect(
+      within(ledger)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual([
+      expect.stringContaining('It already ran on this commit.'),
+      expect.stringContaining('Dry run · Would have run.'),
+    ])
+  })
+
+  it('makes a routine from the item through the window’s own call', async () => {
+    const made = vi.fn<(it: InboxItem) => void>()
+
+    render(
+      <MakeRoutines onMake={made}>
+        <ul>
+          <ItemRow item={item()} launch={null} triage={triageActions()} edits={editActions()} />
+        </ul>
+      </MakeRoutines>,
+      { wrapper: at() },
+    )
+
+    await openMenu()
+    await openSubmenu('Autopilot')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Make a routine from this…' }))
+
+    expect(made).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: item().id }))
+  })
 })
+
+// MakeRoutines provides the item menus' Autopilot with no routines, and onMake as the
+// window's Make a routine from this….
+function MakeRoutines({ onMake, children }: { onMake: (it: InboxItem) => void; children: ReactNode }) {
+  const { menu, node } = useRoutineMenu([], defaultToastSeconds, onMake)
+
+  return (
+    <AutopilotMenuContext value={menu}>
+      {children}
+      {node}
+    </AutopilotMenuContext>
+  )
+}

@@ -4,7 +4,7 @@ import { canSwitch, modeLabel, type StatusLine } from '../../lib/autopilot'
 import { formatAgo } from '../../lib/time'
 import type { AutopilotRoutine } from '../../platform'
 import { Switch } from '../controls'
-import { CopyIcon, MoreIcon, RingIcon, RoutineIcon, TrashIcon } from '../icons'
+import { CopyIcon, ExportIcon, MoreIcon, RingIcon, RoutineIcon, TrashIcon } from '../icons'
 import { MenuButton, type MenuItem } from '../Menu'
 import { RelativeTime } from '../RelativeTime'
 
@@ -32,17 +32,23 @@ export function Status({ line }: { line: StatusLine }) {
 
 export interface RoutineActions {
   // onSwitch switches a routine on or off; onDryRun puts it in Dry run, or takes it out;
-  // onDuplicate copies it, and onDelete deletes it, after asking.
+  // onDuplicate copies it, onExport writes it to a file, and onDelete deletes it, after
+  // asking.
   onSwitch: (routine: AutopilotRoutine, on: boolean) => void
   onDryRun: (routine: AutopilotRoutine, on: boolean) => void
   onDuplicate: (routine: AutopilotRoutine) => void
+  onExport: (routine: AutopilotRoutine) => void
   onDelete: (routine: AutopilotRoutine) => void
 }
+
+// graduateText says why a routine offers to go on Autopilot: a suggestion, never a change.
+export const graduateText =
+  'Its last 5 runs you approved all finished cleanly. Put it on Autopilot to let it run without asking; nothing changes until you do.'
 
 // iconClass is a menu item's icon.
 const iconClass = 'size-3.5 shrink-0 text-muted'
 
-// routineMenu is a routine's ⋯ menu: Duplicate, Dry run (or out of it), and Delete. A
+// routineMenu is a routine's ⋯ menu: Duplicate, Export, Dry run (or out of it), and Delete. A
 // routine that is broken, or another account's, keeps its mode.
 export function routineMenu(r: AutopilotRoutine, actions: RoutineActions): MenuItem[] {
   const dry = r.mode === 'dryRun'
@@ -55,6 +61,14 @@ export function routineMenu(r: AutopilotRoutine, actions: RoutineActions): MenuI
       title: 'Make a copy, switched off, right after it',
       onSelect: () => {
         actions.onDuplicate(r)
+      },
+    },
+    {
+      label: 'Export…',
+      icon: <ExportIcon className={iconClass} />,
+      title: 'Save it to a file, to keep or to use on another Mac',
+      onSelect: () => {
+        actions.onExport(r)
       },
     },
     {
@@ -130,6 +144,11 @@ export function RoutineList({ routines, selected, onSelect, status, busy, action
                 {r.name}
               </span>
               <Status line={line} />
+              {r.figures.graduate && (
+                <span className="block truncate text-xs text-accent" title={graduateText}>
+                  Put it on Autopilot?
+                </span>
+              )}
             </button>
             <span className="relative z-10 flex shrink-0 items-center gap-1">
               <MenuButton

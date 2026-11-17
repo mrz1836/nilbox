@@ -19,6 +19,7 @@ import {
   MuteIcon,
   PinIcon,
   PlayIcon,
+  PlusIcon,
   RefreshIcon,
   ResetIcon,
   RoutineIcon,
@@ -214,8 +215,9 @@ function inboxActions(item: InboxItem, tab: TriageTab, triage: TriageActions, wo
 }
 
 // autopilotItems are what Autopilot offers for the item: Run a routine, each of the user's
-// routines that are on and act on its kind, which runs it now, and Why didn't a routine
-// run?, which shows what each decides about it.
+// routines that are on and act on its kind, which runs it now; Make a routine from this…,
+// which opens the builder filled in from the item; and Why didn't a routine run?, which
+// shows what each decides about it.
 function autopilotItems(item: InboxItem, autopilot: AutopilotMenu): MenuItem[] {
   const routines = autopilot.runnable(item)
   const asks = autopilot.askable(item)
@@ -243,6 +245,14 @@ function autopilotItems(item: InboxItem, autopilot: AutopilotMenu): MenuItem[] {
             },
           })),
         },
+    {
+      label: 'Make a routine from this…',
+      icon: <PlusIcon className={iconClass} />,
+      title: 'Open the builder filled in from this item: its author, its owner, and what is happening to it',
+      onSelect: () => {
+        autopilot.onMake(item)
+      },
+    },
     {
       label: 'Why didn’t a routine run?',
       icon: <InfoIcon className={iconClass} />,

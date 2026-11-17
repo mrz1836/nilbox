@@ -139,6 +139,85 @@ export interface ActivityPage {
 }
 
 /**
+ * Arrives says what bringing in one of a bundle's prompts would do.
+ */
+export type Arrives = "new" | "same" | "differs";
+
+/**
+ * The values of Arrives, by the names of their Go constants.
+ */
+export const Arrives = {
+    /**
+     * What a bundle's prompt does on arrival.
+     *
+     * ArrivesNew: no prompt here has its nickname, so it is added.
+     */
+    ArrivesNew: "new",
+
+    /**
+     * ArrivesSame: the prompt here with its nickname is the same, so nothing changes.
+     */
+    ArrivesSame: "same",
+
+    /**
+     * ArrivesDiffers: the prompt here with its nickname differs, and the one here is kept.
+     */
+    ArrivesDiffers: "differs",
+} as const;
+
+/**
+ * Blank is one thing quick setup asks for: a part of the template's spec the user fills
+ * in, with its words.
+ */
+export interface Blank {
+    "kind": BlankKind;
+
+    /**
+     * Label and Help say what it asks.
+     */
+    "label": string;
+    "help": string;
+
+    /**
+     * Source is the watch's source whose search's Where it fills (BlankWhere).
+     */
+    "source": number;
+
+    /**
+     * Condition is the condition whose values it fills (BlankChecks).
+     */
+    "condition": number;
+
+    /**
+     * Required reports a blank the template can't run without: the spec is invalid until
+     * it is filled.
+     */
+    "required": boolean;
+}
+
+/**
+ * BlankKind is a kind of blank a template leaves for quick setup.
+ */
+export type BlankKind = "where" | "checks";
+
+/**
+ * The values of BlankKind, by the names of their Go constants.
+ */
+export const BlankKind = {
+    /**
+     * The kinds of blank.
+     *
+     * BlankWhere is a search's Where: your account, orgs, users, and repositories.
+     */
+    BlankWhere: "where",
+
+    /**
+     * BlankChecks is a condition's check names.
+     */
+    BlankChecks: "checks",
+} as const;
+
+/**
  * Blocker is what an open match waits on.
  */
 export type Blocker = "ask" | "hold" | "warning" | "no_clone" | "dirty_worktree" | "catch_up" | "interrupted" | "outside_contributor" | "backlog" | "not_ready" | "missing_tool" | "cross_repository" | "slot" | "cap_runs" | "cap_actions" | "cap_spend" | "active_hours" | "paused" | "busy_worktree" | "github_budget" | "writes_held" | "provider_outage" | "settling" | "wait" | "signed_out" | "starting";
@@ -463,6 +542,32 @@ export interface Explanation {
      * Record is the match for the occurrence now, nil when there is none.
      */
     "record": Match | null;
+
+    /**
+     * Routine says, in sentences, what of the routine itself holds it back here: switched
+     * off, Pause Autopilot, Dry run, another account's, not ready on this Mac.
+     */
+    "routine": string[] | null;
+
+    /**
+     * Watch says why the item isn't in the routine's watch, a sentence a source, when it
+     * isn't: "Its author isn't dependabot."
+     */
+    "watch": string[] | null;
+
+    /**
+     * Records are every match the routine recorded on the item, newest first: the
+     * ledger's full view of the two.
+     */
+    "records": Match[] | null;
+}
+
+/**
+ * Exported says what Export wrote.
+ */
+export interface Exported {
+    "routines": number;
+    "prompts": number;
 }
 
 /**
@@ -541,6 +646,96 @@ export interface Hold {
     "dir": string;
     "worktree": string;
     "dirty": number;
+}
+
+/**
+ * ImportPreview is what importing a bundle would do.
+ */
+export interface ImportPreview {
+    /**
+     * SHA256 names the file as read, which Import takes back, so a file that changed
+     * since is read again rather than imported unseen.
+     */
+    "sha256": string;
+
+    /**
+     * Routines are its routines, each arriving switched off.
+     */
+    "routines": ImportRoutine[] | null;
+
+    /**
+     * Prompts are the prompts it brings, each with what bringing it in would do.
+     */
+    "prompts": PromptArrival[] | null;
+
+    /**
+     * Missing are what its routines name that this Mac lacks, after the prompts it brings.
+     */
+    "missing": MissingRef[] | null;
+}
+
+/**
+ * ImportRequest is an import as the user confirmed it: the file and its SHA-256 as the
+ * preview read it, and what each missing reference maps to (left out, it inherits).
+ */
+export interface ImportRequest {
+    "path": string;
+    "sha256": string;
+    "map": RefChoice[] | null;
+}
+
+/**
+ * ImportRoutine is one of a bundle's routines as it would arrive.
+ */
+export interface ImportRoutine {
+    /**
+     * Name is its name in the file, and ArrivesAs the name it takes here, another when a
+     * routine here has it.
+     */
+    "name": string;
+    "arrivesAs": string;
+
+    /**
+     * Sentence says it in one sentence, "" when it won't load, and Broken why it won't.
+     */
+    "sentence": string;
+    "broken": string;
+}
+
+/**
+ * Imported says what Import brought in.
+ */
+export interface Imported {
+    /**
+     * Routines are the names the routines arrived under, each switched off, and Prompts
+     * the nicknames of the prompts added.
+     */
+    "routines": string[] | null;
+    "prompts": string[] | null;
+}
+
+/**
+ * ItemDraft is a new routine filled in from one item.
+ */
+export interface ItemDraft {
+    /**
+     * Draft is the routine, unsaved, in the mode new routines start in.
+     */
+    "draft": Draft;
+
+    /**
+     * Suggestions are conditions the item suggests, left for the user to tick: its labels,
+     * and its dependency update's type.
+     */
+    "suggestions": spec$0.Clause[] | null;
+
+    /**
+     * Item is the item, and Match and Trace what the draft decides about it now, from what
+     * is stored, which Test shows at the top until a test reads more.
+     */
+    "item": ItemRef;
+    "match": eval$0.Result;
+    "trace": eval$0.Trace[] | null;
 }
 
 /**
@@ -705,6 +900,48 @@ export interface Matching {
 }
 
 /**
+ * MissingRef is something a bundle's routines name that this Mac lacks, which the user
+ * maps to something it has, or to inherit.
+ */
+export interface MissingRef {
+    "kind": RefKind;
+
+    /**
+     * Agent is a profile's agent (RefProfile), or the agent (RefAgent); Name is a prompt's
+     * nickname or a starter's words (RefPrompt), or a profile's name (RefProfile).
+     */
+    "agent": string;
+    "name": string;
+
+    /**
+     * Starter is a starter prompt's key (RefPrompt), "" for one named by nickname.
+     */
+    "starter": string;
+
+    /**
+     * Reply reports a prompt a GitHub step comments, which can't inherit.
+     */
+    "reply": boolean;
+
+    /**
+     * Routines name the routines that name it.
+     */
+    "routines": string[] | null;
+
+    /**
+     * Choices are what it may be mapped to: the library's prompts of its purpose, or the
+     * agent's profiles. "" (inherit) is offered beside them but for a reply.
+     */
+    "choices": string[] | null;
+
+    /**
+     * Inherits reports one the import maps to inherit by itself, with no choice: an
+     * agent whose program this Mac lacks.
+     */
+    "inherits": boolean;
+}
+
+/**
  * Need is one thing a routine needs on this Mac.
  */
 export interface Need {
@@ -820,6 +1057,14 @@ export const ProblemKind = {
      */
     ProblemNotReady: "not_ready",
 } as const;
+
+/**
+ * PromptArrival is what bringing in one of a bundle's prompts would do.
+ */
+export interface PromptArrival {
+    "nickname": string;
+    "arrives": Arrives;
+}
 
 /**
  * Readiness is this Mac's readiness, as Settings → Autopilot's This Mac and the routines'
@@ -940,6 +1185,35 @@ export const Reason = {
 } as const;
 
 /**
+ * RefChoice maps one MissingRef to what this Mac has: To is a prompt's nickname or a
+ * profile's name, "" to inherit.
+ */
+export interface RefChoice {
+    "kind": RefKind;
+    "agent": string;
+    "name": string;
+    "starter": string;
+    "to": string;
+}
+
+/**
+ * RefKind is what a routine names that this Mac may lack.
+ */
+export type RefKind = "prompt" | "profile" | "agent";
+
+/**
+ * The values of RefKind, by the names of their Go constants.
+ */
+export const RefKind = {
+    /**
+     * The kinds of reference.
+     */
+    RefPrompt: "prompt",
+    RefProfile: "profile",
+    RefAgent: "agent",
+} as const;
+
+/**
  * Routine is one routine as the window shows it.
  */
 export interface Routine {
@@ -1031,6 +1305,12 @@ export interface RoutineFigures {
     "waiting": number;
     "lastAt": string | null;
     "lastDryRun": boolean;
+
+    /**
+     * Graduate reports a routine in Ask first whose last GraduateAfter approved runs all
+     * finished cleanly, which offers to go on Autopilot: a suggestion, never a change.
+     */
+    "graduate": boolean;
 }
 
 /**
@@ -1257,6 +1537,61 @@ export interface Suggestions {
     "owners": string[] | null;
     "labels": string[] | null;
     "checks": string[] | null;
+}
+
+/**
+ * Template is a template as the gallery shows it on this Mac.
+ */
+export interface Template {
+    "key": string;
+    "name": string;
+    "icon": string;
+    "summary": string;
+    "suggests": autopilotprefs$0.Mode;
+    "blanks": Blank[] | null;
+
+    /**
+     * Spec is its definition, its blanks as shipped, and Sentence the sentence it reads as
+     * so, "" while a required blank is empty.
+     */
+    "spec": spec$0.Spec;
+    "sentence": string;
+
+    /**
+     * Needs names, in plain words, each part of it this build can't run yet ("agents in
+     * the background", "“Wait for the checks”"), and NeedsWords says it as a sentence; both
+     * empty when it runs here.
+     */
+    "needs": string[] | null;
+    "needsWords": string;
+
+    /**
+     * Prompts are the starter prompts its steps run, each with whether the library holds
+     * it: one the user deleted can be added again (the prompts' AddStarter).
+     */
+    "prompts": TemplatePrompt[] | null;
+
+    /**
+     * Suggested says why it fits what this Mac already knows, "" when nothing does.
+     */
+    "suggested": string;
+}
+
+/**
+ * TemplatePrompt is a starter prompt a template runs.
+ */
+export interface TemplatePrompt {
+    /**
+     * Starter is the starter's key, and Name its nickname in the library, or its key's
+     * words when the library lacks it.
+     */
+    "starter": string;
+    "name": string;
+
+    /**
+     * InLibrary reports a library that holds a copy of it.
+     */
+    "inLibrary": boolean;
 }
 
 /**

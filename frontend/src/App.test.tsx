@@ -2342,6 +2342,38 @@ describe('Autopilot (beta)', () => {
     ).toBeInTheDocument()
   })
 
+  it('makes a routine from an item’s menu in the Autopilot tab’s builder, and Start from an item shows the inbox', async () => {
+    platform.listRoutines.mockResolvedValue([])
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    const [more] = screen.getAllByRole('button', { name: 'More actions' })
+    if (more === undefined) {
+      throw new Error('no row menu')
+    }
+    await userEvent.click(more)
+    await userEvent.click(
+      await within(screen.getByRole('menu', { name: 'More actions' })).findByRole('menuitem', { name: 'Autopilot' }),
+    )
+    await userEvent.click(
+      await within(screen.getByRole('menu', { name: 'Autopilot' })).findByRole('menuitem', {
+        name: 'Make a routine from this…',
+      }),
+    )
+
+    expect(await screen.findByRole('heading', { name: 'New routine' })).toBeInTheDocument()
+    expect(platform.routineFromItem).toHaveBeenCalledOnce()
+    expect(views().getByRole('button', { name: 'Autopilot' })).toHaveAttribute('aria-pressed', 'true')
+
+    // Leaving the routine filled in from the item asks first, as any unsaved new routine does.
+    await userEvent.click(screen.getByRole('button', { name: 'Templates' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Discard changes' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Start from an item' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show the inbox' }))
+
+    expect(views().getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
   it('shows none of Autopilot while it is off: no tab, chip, mark, or type of notification', async () => {
     pinnedByARoutine()
     platform.getSettings.mockResolvedValue(autopilotOff())

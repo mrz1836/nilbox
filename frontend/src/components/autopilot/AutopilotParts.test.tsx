@@ -650,7 +650,7 @@ describe('useAutopilotChips', () => {
 })
 
 describe('RoutinePane', () => {
-  const actions = { onSwitch: vi.fn(), onDryRun: vi.fn(), onDuplicate: vi.fn(), onDelete: vi.fn() }
+  const actions = { onSwitch: vi.fn(), onDryRun: vi.fn(), onDuplicate: vi.fn(), onExport: vi.fn(), onDelete: vi.fn() }
 
   function renderPane(r = routine()) {
     render(

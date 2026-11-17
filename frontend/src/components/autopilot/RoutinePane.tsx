@@ -2,10 +2,10 @@ import { useId, type ReactNode } from 'react'
 
 import { canSwitch, modeHelp, modeLabels, modeOrder, type StatusLine } from '../../lib/autopilot'
 import type { AutopilotMode, AutopilotRoutine } from '../../platform'
-import { captionClass, Segmented, Switch } from '../controls'
+import { captionClass, primaryButtonClass, quietButtonClass, Segmented, Switch } from '../controls'
 import { MoreIcon, RoutineIcon } from '../icons'
 import { MenuButton } from '../Menu'
-import { routineMenu, Status, type RoutineActions } from './RoutineList'
+import { graduateText, routineMenu, Status, type RoutineActions } from './RoutineList'
 
 export interface RoutinePaneProps {
   routine: AutopilotRoutine
@@ -21,6 +21,10 @@ export interface RoutinePaneProps {
   // says why it stays in Dry run, when it does.
   builder?: ReactNode
   heldText?: string | undefined
+  // onGraduate puts the routine on Autopilot, and onNotNow answers Not now, while it offers
+  // to go there.
+  onGraduate?: () => void
+  onNotNow?: () => void
 }
 
 // RoutinePane shows one routine: its name, switch, mode, and ⋯ menu; its status line; the
@@ -37,6 +41,8 @@ export function RoutinePane({
   activity,
   builder,
   heldText = 'It has steps this version can only try in Dry run, so it stays there.',
+  onGraduate,
+  onNotNow,
 }: RoutinePaneProps) {
   const id = useId()
   const switchable = canSwitch(r)
@@ -79,6 +85,22 @@ export function RoutinePane({
           )}
         </div>
         <Status line={status} />
+        {r.figures.graduate && onGraduate !== undefined && (
+          <div
+            role="status"
+            className="flex flex-wrap items-center gap-3 rounded-md border border-accent/45 bg-accent/10 px-3 py-2 text-sm"
+          >
+            <span className="min-w-0 flex-1">{graduateText}</span>
+            <button type="button" disabled={busy} onClick={onGraduate} className={primaryButtonClass}>
+              Put it on Autopilot
+            </button>
+            {onNotNow !== undefined && (
+              <button type="button" disabled={busy} onClick={onNotNow} className={quietButtonClass}>
+                Not now
+              </button>
+            )}
+          </div>
+        )}
         {switchable && (
           <div className="flex flex-wrap items-center gap-3">
             <Segmented

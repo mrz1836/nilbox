@@ -7,6 +7,9 @@ import type {
   AutopilotDescribed,
   AutopilotExplanation,
   AutopilotHold,
+  AutopilotImportPreview,
+  AutopilotItemDraft,
+  AutopilotTemplate,
   AutopilotReadiness,
   AutopilotReadyCheck,
   AutopilotRoutineReady,
@@ -525,6 +528,9 @@ export function explanation(overrides: Partial<AutopilotExplanation> = {}): Auto
     leftAlone: false,
     ledger: ['It hasn’t acted on this item yet.'],
     record: null,
+    routine: [],
+    watch: [],
+    records: [],
     ...overrides,
   }
 }
@@ -560,7 +566,7 @@ export function routine(overrides: Partial<AutopilotRoutine> = {}): AutopilotRou
 // routineFigures are what a routine's ledger says of it: nothing matched yet, unless
 // overrides say.
 export function routineFigures(overrides: Partial<AutopilotFigures> = {}): AutopilotFigures {
-  return { today: 0, wouldRunToday: 0, waiting: 0, lastAt: null, lastDryRun: false, ...overrides }
+  return { today: 0, wouldRunToday: 0, waiting: 0, lastAt: null, lastDryRun: false, graduate: false, ...overrides }
 }
 
 // itemRef is the ledger's copy of pull request 7 of example-repo, item 1.
@@ -3700,4 +3706,123 @@ export function runGoing(overrides: Partial<RunGoing> = {}): RunGoing {
 // backend's words and the runs as its detail (Go's update.RunsGoingDetail).
 export function runsGoingError(runs: readonly RunGoing[] = [runGoing()], message = 'Restarting stops runs.'): Error {
   return new Error('runs are going in the app', { cause: { message, detail: { runsGoing: runs } } })
+}
+
+// galleryTemplate is the flagship template, Fix Dependabot security failures, as the gallery
+// shows it in a build that can't run its background agent yet.
+export function galleryTemplate(overrides: Partial<AutopilotTemplate> = {}): AutopilotTemplate {
+  return {
+    key: 'fix-dependabot-security',
+    name: 'Fix Dependabot security failures',
+    icon: '🛡️',
+    summary: 'When a Dependabot update fails a security scan, an agent fixes the cause in the background.',
+    suggests: 'ask',
+    blanks: [
+      {
+        kind: 'where',
+        label: 'Where',
+        help: 'Your account, and the orgs, users, or repositories to watch too.',
+        source: 0,
+        condition: 0,
+        required: false,
+      },
+    ],
+    spec: {
+      version: 1,
+      watch: { sources: [{ search: { kind: 'pr', authors: ['app/dependabot'], where: ['@me'] } }] },
+      trigger: { event: 'checks_failed', waitForChecks: true },
+      conditions: {
+        match: 'all',
+        of: [{ field: 'checks.failedNames', op: 'anyContains', values: ['security', 'codeql'] }],
+      },
+      steps: [{ agent: { prompt: { starter: 'fix-dependency-security' }, where: 'background' } }, { tellMe: {} }],
+      limits: { oncePer: 'headCommit' },
+    },
+    sentence:
+      'When checks fail on pull requests by Dependabot in your account, run "Fix dep security" in the background.',
+    needs: ['agents in the background'],
+    needsWords: `It needs agents in the background, which this version of ${brand.name} can’t run yet.`,
+    prompts: [{ starter: 'fix-dependency-security', name: 'Fix dep security', inLibrary: true }],
+    suggested: '',
+    ...overrides,
+  }
+}
+
+// snoozeTemplate is Snooze passing bot PRs, which asks nothing and runs in every build.
+export function snoozeTemplate(overrides: Partial<AutopilotTemplate> = {}): AutopilotTemplate {
+  return galleryTemplate({
+    key: 'snooze-passing-bot-prs',
+    name: 'Snooze passing bot PRs',
+    icon: '⏾',
+    summary: 'A trusted bot’s patch or minor update whose checks pass leaves your lists for three days.',
+    suggests: 'auto',
+    blanks: [],
+    spec: routineSpec(),
+    sentence: 'When checks pass on pull requests in your Review requested list, snooze it for 3 days.',
+    needs: [],
+    needsWords: '',
+    prompts: [],
+    ...overrides,
+  })
+}
+
+// itemDraft is a routine filled in from pull request 7, Dependabot's, whose checks failed.
+export function itemDraft(overrides: Partial<AutopilotItemDraft> = {}): AutopilotItemDraft {
+  return {
+    draft: {
+      id: 0,
+      name: 'Dependabot’s pull requests in acme-org',
+      mode: 'ask',
+      spec: {
+        version: 1,
+        watch: { sources: [{ search: { kind: 'pr', authors: ['app/dependabot'], where: ['org:acme-org'] } }] },
+        trigger: { event: 'checks_failed' },
+        conditions: { match: 'all', of: [{ field: 'checks.failedNames', op: 'anyContains', values: ['CodeQL'] }] },
+        steps: [{ agent: { prompt: { itemDefault: true }, where: 'terminal' } }],
+        limits: {},
+      },
+    },
+    suggestions: [{ field: 'dep.updateType', op: 'oneOf', values: ['minor'] }],
+    item: {
+      id: 7,
+      kind: 'pr',
+      repo: 'acme-org/example-repo',
+      number: 7,
+      title: 'Bump vite from 7.1.0 to 7.2.1',
+      url: 'https://github.com/acme-org/example-repo/pull/7',
+    },
+    match: 'yes',
+    trace: [{ path: 'trigger', condition: 'checks fail', result: 'yes', actual: 'CodeQL failed' }],
+    ...overrides,
+  }
+}
+
+// routineImportPreview is a bundle of one routine that names a profile this Mac lacks, and
+// brings one prompt.
+export function routineImportPreview(overrides: Partial<AutopilotImportPreview> = {}): AutopilotImportPreview {
+  return {
+    sha256: 'a1b2c3',
+    routines: [
+      {
+        name: 'Triage bugs',
+        arrivesAs: 'Triage bugs',
+        sentence: 'When an issue in your Assigned list is labeled bug, run "Triage" in your terminal.',
+        broken: '',
+      },
+    ],
+    prompts: [{ nickname: 'Triage', arrives: 'new' }],
+    missing: [
+      {
+        kind: 'profile',
+        agent: 'claude',
+        name: 'work',
+        starter: '',
+        reply: false,
+        routines: ['Triage bugs'],
+        choices: ['default', 'personal'],
+        inherits: false,
+      },
+    ],
+    ...overrides,
+  }
 }

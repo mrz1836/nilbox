@@ -790,11 +790,18 @@ export function skipLabel(m: Pick<AutopilotMatch, 'item' | 'fireKey'>): string {
 }
 
 // AutopilotRequest is what the window asks the Autopilot tab to show, numbered so the same
-// target asked again shows again: Activity, at a match when one is named, or a routine.
+// target asked again shows again: Activity, at a match when one is named, or a routine; or
+// a new routine's builder filled in from an item (fromItem, Make a routine from this…), or
+// a template's quick setup (template, as the first-run setup suggests one).
 export interface AutopilotRequest {
   seq: number
   target: AutopilotTarget
+  fromItem?: number
+  template?: string
 }
+
+// activityTarget is a target that shows Activity alone.
+export const activityTarget: AutopilotTarget = { routineId: 0, matchId: 0, runId: 0, createdAt: '', activity: true }
 
 // targetOf is the target that shows a match in Activity, as a notification's would.
 export function targetOf(m: AutopilotMatch): AutopilotTarget {

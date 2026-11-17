@@ -75,6 +75,10 @@ export interface SetupViewProps {
   onLaunchChanged: () => Promise<void>
   inbox: SetupInbox
   integrations: IntegrationsState
+  // autopilot reports Autopilot (beta) on, and onTemplate sets up the template the last step
+  // suggests, in the Autopilot tab; off, the setup says nothing of Autopilot.
+  autopilot?: boolean
+  onTemplate?: (key: string) => void
 }
 
 // interactive matches the elements whose own Enter must not also move the setup on.
@@ -394,6 +398,8 @@ export default function SetupView(props: SetupViewProps) {
                   elapsed={elapsed}
                   onFix={go}
                   onDone={control.finish}
+                  autopilot={props.autopilot ?? false}
+                  {...(props.onTemplate === undefined ? {} : { onTemplate: props.onTemplate })}
                 />
               )}
             </div>

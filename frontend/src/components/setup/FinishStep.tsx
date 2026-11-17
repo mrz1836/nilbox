@@ -4,6 +4,8 @@ import { brand, palettes } from '../../generated/brand'
 import { prefersReducedMotion } from '../../lib/motion'
 import { earnedBurst } from '../../lib/nil'
 import { finishLog, finishMarks, goDuration, inboxPreview, logName } from '../../lib/setup'
+import { useQuery } from '../../lib/useQuery'
+import { listTemplates } from '../../platform'
 import type {
   AgentInfo,
   AgentVersion,
@@ -16,7 +18,7 @@ import type {
   TerminalChoice,
 } from '../../platform'
 import { Confetti, useConfetti } from '../Confetti'
-import { primaryButtonClass } from '../controls'
+import { buttonClass, primaryButtonClass } from '../controls'
 import { ChevronRightIcon, InboxIcon, TrophyIcon } from '../icons'
 import { Spinner } from '../Spinner'
 import type { SetupInbox } from './SetupView'
@@ -62,6 +64,45 @@ export interface FinishStepProps {
   // onFix goes back to the step a line that needs attention names; onDone opens the inbox.
   onFix: (step: SetupStep) => void
   onDone: () => void
+  // autopilot reports Autopilot (beta) on, which alone suggests a template, from what this
+  // Mac already knows; onTemplate sets it up in the Autopilot tab.
+  autopilot?: boolean
+  onTemplate?: (key: string) => void
+}
+
+// SuggestedTemplate is the template the setup's clones and the inbox suggest, as the last
+// step offers it: its name, why, and Set it up, which opens its quick setup.
+function SuggestedTemplate({ onTemplate }: { onTemplate: (key: string) => void }) {
+  const templates = useQuery(() => listTemplates(), [], { log: 'could not read the templates' })
+  const t = templates.data?.find((tmpl) => tmpl.suggested !== '')
+
+  if (t === undefined) {
+    return null
+  }
+
+  return (
+    <section
+      aria-label="Suggested for you"
+      className="flex w-full max-w-lg items-center gap-3 rounded-lg border border-accent/45 bg-accent/10 px-3 py-2 text-left"
+    >
+      <span aria-hidden="true" className="text-xl leading-none">
+        {t.icon}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="text-sm font-medium text-text">{`Suggested for you: ${t.name}`}</span>
+        <span className="text-xs text-muted">{t.suggested}</span>
+      </span>
+      <button
+        type="button"
+        onClick={() => {
+          onTemplate(t.key)
+        }}
+        className={buttonClass}
+      >
+        Set it up
+      </button>
+    </section>
+  )
 }
 
 // InboxPreview says what the inbox holds by now: its lists' counts once the first refresh
@@ -104,6 +145,8 @@ export function FinishStep({
   elapsed,
   onFix,
   onDone,
+  autopilot = false,
+  onTemplate,
 }: FinishStepProps) {
   const { bursts, fire, land } = useConfetti()
   const terminal = terminals?.find((t) => t.id === settings?.terminal)
@@ -210,6 +253,7 @@ export function FinishStep({
 
       <div className="nil-rise mt-6 flex w-full flex-col items-center gap-4" style={{ animationDelay: '300ms' }}>
         <InboxPreview inbox={inbox} connected={github?.state === 'ready'} />
+        {autopilot && onTemplate !== undefined && <SuggestedTemplate onTemplate={onTemplate} />}
         <ul aria-label="Tips" className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-xs text-muted">
           <li>
             <kbd className="font-mono">⌘F</kbd> filters the inbox

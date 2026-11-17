@@ -8,6 +8,7 @@ import {
   agents,
   agentVersions,
   githubSignIn,
+  galleryTemplate,
   goPreCommitTool,
   integrationTool,
   integrationTools,
@@ -15,9 +16,13 @@ import {
   locationState,
   settings,
   snapshot,
+  snoozeTemplate,
   terminalChoices,
 } from '../../test/fixtures'
+import { platform } from '../../test/platform'
 import { FinishStep, type FinishStepProps } from './FinishStep'
+
+vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -133,5 +138,33 @@ describe('FinishStep', () => {
     showFinish()
 
     expect(screen.queryAllByTestId('confetti')).toHaveLength(0)
+  })
+
+  it('suggests a template from what this Mac knows, while Autopilot is on, and sets it up on asking', async () => {
+    platform.listTemplates.mockResolvedValue([
+      snoozeTemplate(),
+      galleryTemplate({ suggested: '3 of your clones run go-fortress’s security checks.' }),
+    ])
+    const onTemplate = vi.fn()
+    showFinish({ autopilot: true, onTemplate })
+
+    const suggested = within(await screen.findByRole('region', { name: 'Suggested for you' }))
+
+    expect(suggested.getByText('Suggested for you: Fix Dependabot security failures')).toBeInTheDocument()
+    expect(suggested.getByText('3 of your clones run go-fortress’s security checks.')).toBeInTheDocument()
+
+    await userEvent.click(suggested.getByRole('button', { name: 'Set it up' }))
+    expect(onTemplate).toHaveBeenCalledExactlyOnceWith('fix-dependabot-security')
+  })
+
+  it('suggests nothing while Autopilot is off, or when nothing this Mac knows fits a template', async () => {
+    showFinish({ autopilot: false, onTemplate: vi.fn() })
+    expect(platform.listTemplates).not.toHaveBeenCalled()
+
+    showFinish({ autopilot: true, onTemplate: vi.fn() })
+    await vi.waitFor(() => {
+      expect(platform.listTemplates).toHaveBeenCalledOnce()
+    })
+    expect(screen.queryByRole('region', { name: 'Suggested for you' })).not.toBeInTheDocument()
   })
 })
