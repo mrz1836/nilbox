@@ -2527,9 +2527,13 @@ started is still going. A backup carries the switch with the other settings.
 session from its start), with an amber dot while something waits for you and a red dot while a
 routine is broken or its search fails; hover it for what they mean (*2 agents working · 1 needs
 you · 1 routine can’t run*). While you have no routine, the tab explains Autopilot in the two
-sentences above, with **Start from scratch**. Otherwise it lists your routines on the left, under
-**Activity**, then **New routine**, with **Autopilot settings** at the bottom, and shows
-Activity, the routine you chose, or the routine you are making on the right. **Pause
+sentences above, then offers the [templates](#templates-and-quick-setup) that fit what Nilbox
+already knows (the first few, *Suggested for you* first), **Start from scratch**, **Start from
+an item** (which says to use an item's **⋯** menu, with **Show the inbox**), **Every template**,
+and **Import routines…**. Otherwise it lists your routines on the left, under **Activity**, then
+**New routine** and **Templates**, with **Import routines…**, **Export every routine…**, and
+**Autopilot settings** at the bottom, and shows Activity, the routine you chose, the gallery or
+a template's quick setup, or the routine you are making on the right. **Pause
 Autopilot** sits in the header: while paused, nothing new starts, a snooze or a pin included,
 and the button reads **Resume Autopilot**.
 
@@ -2545,6 +2549,7 @@ switch. A routine that belongs to another GitHub account than the one signed in 
 *Belongs to @other-login*, has no switch, and doesn't run. Its **⋯** menu holds:
 
 - **Duplicate**, a copy right after it, switched off, named "<name> copy";
+- **Export…**, which saves it to a file ([export and import](#export-and-import));
 - **Dry run**, or **Leave Dry run**, which puts it back in Ask first (a routine with steps this
   version can only try in Dry run stays there);
 - **Delete…**, which asks first. The routine stops and leaves the list; what it did stays in
@@ -2560,6 +2565,13 @@ or that matched more than a page), saying more may match than it counts. Only wh
 none, and it read everything, does it ask nothing. Escape asks nothing more and changes
 nothing. A change that can't be made says why in its own words, as *Autopilot is running in
 another copy of Nilbox; make this change there.*
+
+**Put it on Autopilot?** A routine in Ask first whose last five runs you approved all finished
+cleanly (every step done, its agent pushed, its checks passed after) offers to go on Autopilot:
+its row says *Put it on Autopilot?*, and the routine shows why, with **Put it on Autopilot**
+and **Not now**. It is a suggestion alone: nothing ever changes a routine's mode but you. A run
+you skipped, or one that didn't finish cleanly, starts the count again, and **Not now** waits
+for five more.
 
 **A routine.** Choosing a routine shows its switch, its mode (**Dry run · Ask first ·
 Autopilot**, which asks the question above when it leaves Dry run while on), and the routine
@@ -2726,6 +2738,85 @@ each came from, the filled-in prompt, the folder and its worktree, the permissio
 environment changes, and the command line. It is the launch menu's own Preview of the same
 request a start makes, so what it shows is what runs.
 
+### Templates and quick setup
+
+**Templates** lists routines made for you to start from, each with its icon, one line on what it
+does, the mode it suggests, and, when this version can't run one of its steps yet, what it needs
+(*Needs agents in the background*): a template is never locked, it says what it needs, and
+works as soon as a version that runs the step does. Those that fit what Nilbox already knows
+come first, under **Suggested for you**, each with why: *3 of your clones run go-fortress’s
+security checks.* (from the clones the first-run setup looks at), *Dependabot opened 9 pull
+requests in your inbox this week.*, *Bots opened 4 pull requests in your Review requested and
+Assigned lists this week.* (from the stored items). Nothing is read for them that isn't on this
+Mac already.
+
+| Template | What it does | Suggests |
+|---|---|---|
+| 🛡️ **Fix Dependabot security failures** | When a Dependabot update fails a security scan (a failed check's name holds security, codeql, govulncheck, gitleaks, nancy, or osv), runs **Fix dep security** in the background, pushes once to the pull request's branch, waits for the checks, and tells you how it went | Ask first |
+| 🩹 **Heal Dependabot PRs, then merge them** | When a patch or minor Dependabot update fails its checks, runs **Heal Dependabot PR**, waits for the checks, merges inside GitHub's rules if they pass, and tells you if they still fail | Ask first |
+| 👥 **Review members' PRs** | When a member opens a pull request under 400 lines with no sensitive file, runs **Review** read only, and posts its verdict | Ask first |
+| ⏾ **Snooze passing bot PRs** | A trusted bot's patch or minor update whose checks pass, in Review requested or Assigned, is snoozed for 3 days | Autopilot |
+| 🔔 **Tell me about security failures** | A notification when a Dependabot update fails a security scan | Autopilot |
+| 💬 **Address requested changes** | When a reviewer asks for changes on your pull request, runs **Address review** in your terminal | Ask first |
+| 🔀 **Resolve merge conflicts on my PRs** | When your pull request conflicts with its base, runs **Resolve conflicts**, which merges the base in (never a rebase) | Ask first |
+| 🔁 **Re-run flaky checks once** | When a check you name as flaky fails, runs **Re-run failed jobs** (GitHub tasks only), once a commit | Autopilot |
+| ↻ **Ask Dependabot to rebase what conflicts** | Comments *@dependabot rebase* on a conflicting Dependabot update, once a commit | Autopilot |
+| 🏷️ **Ask for a repro on quiet bugs** | When a bug assigned to you goes quiet for 14 days with no needs-repro label, comments your **Needs repro** reply and adds the label | Ask first |
+| ⬆️ **Update my PRs when they fall behind** | Updates the branch of your pull request that fell behind, where the repository allows it | Ask first |
+| 🔧 **Fix failing checks on my PRs** | When your pull request's checks fail, runs **Fix checks** in the background, waits for the checks, and tells you how it went | Ask first |
+
+The fixed tools presets keep a background agent out of agent, workflow, and tooling files,
+`package.json` among them ([fences](#fences-what-a-background-agent-may-do)), so a fix that
+needs one (a JavaScript dependency's, say) pushes nothing and says what a person must change;
+the templates' descriptions say so, and the fence is never widened for them.
+
+**Quick setup.** Picking a template opens a short form, not the whole builder: only the
+template's blanks (for most, **Where**: your account, and the orgs, users, or repositories to
+watch too; for Re-run flaky checks once, the checks' names, picked from those seen on your pull
+requests), the mode it starts in (the one new routines start in, Ask first unless you changed
+it; the template's own suggestion shows beside it as a hint, never as a change), the sentence
+it reads as, what it needs that this version can't run yet, and **This Mac**: what this Mac
+lacks for it (its agent, its profile's sign-in, gh), checked from what the checks last found,
+never asking GitHub. **Test** tries it on your items, as the builder's does. **Save** makes the
+routine, switched off, named after the template ("<name> 2" when you have one of that name),
+and **Customize** opens the full builder with everything filled in. A template whose starter
+prompt you deleted says so, with **Add it again**, which puts the starter back in your prompts
+as it ships.
+
+**Make a routine from this…** on an item's **⋯** menu (**Autopilot ▸**) opens the builder
+filled in from the item, saving nothing: its kind; its author, or its bot; its repository's
+owner (your account for your own); **Checks fail** when its checks fail, with the failed checks'
+names as one *contains any of* condition, else **Merge conflicts** when it conflicts, else
+**Changes requested** when that is the review decision, else **Appears**; and the prompt a click
+would launch on it, run in the background once this version does, else in your terminal, in the
+mode new routines start in. Its labels and its dependency update's type wait as
+**Suggested by the item:** buttons under **If**, one click each, and **Test** shows the item at
+the top, with whether the routine matches it now, until a test reads more.
+
+The first-run setup's last step suggests one template, the first that fits what this Mac knows,
+while Autopilot (beta) is on: *Suggested for you: Fix Dependabot security failures*, with why and
+**Set it up**, which ends the setup and opens its quick setup.
+
+### Export and import
+
+**Export…** on a routine's **⋯** menu, or **Export every routine…** under the routines, saves
+them to a file you choose, in the export format ([backup files](backup-files.md)), with the text
+of the prompts they run by nickname unless you untick **Include the text of the prompts they
+run** (a starter prompt travels by its key, as every Mac has it). The file holds your org and
+repository names, so it is yours to share or not; it never holds a routine's history or your
+account, and Nilbox never sends it anywhere.
+
+**Import routines…** reads such a file and shows what would arrive, changing nothing: each
+routine, its sentence, and the name it takes here (another when you have a routine of the
+name); each prompt it brings (*added to your prompts* when no prompt of yours has its nickname,
+else *yours is the same* or *yours differs, and yours is kept*); and **What this Mac doesn’t
+have**: a prompt, a profile, or an agent its routines name that this Mac lacks, each with a
+choice of what to use instead or **Inherit** (the item's own default prompt, or the profile a
+click would use). An agent whose program this Mac lacks inherits by itself. **Import** brings
+the prompts in first, then every routine, switched off, at the end of your list; a file that
+changed since it was read is read again rather than imported unseen, and a routine a newer
+Nilbox made arrives as it was, unable to run until you update.
+
 ### Agents in your terminal
 
 A routine's **Run a coding agent** step, **In my terminal**, opens your terminal on the item
@@ -2835,8 +2926,22 @@ banner opens its card.
 routines that act on its kind, and runs one on it now, once, needing no OK and counting toward no
 cap or try (every other limit still holds it). A routine whose conditions don't match the item
 says why, and offers **Run anyway**. **Why didn't a routine run?** shows a routine's decision on
-the item now, each condition with the value it compared, and what its history says (*It already
-ran on this commit*, *2 of 2 tries used*).
+the item now, from what is stored, asking GitHub nothing:
+
+- what of the routine itself holds it back: *It's switched off*, *Autopilot is paused*, *It's in
+  Dry run*, *It belongs to @other-login*, and what this Mac lacks for it, as This Mac says it;
+- when the item isn't in what it watches, why, a line for each source: *It isn't in your Review
+  requested list: it's in your Authored list.*, *Not in its search: its author is octo-other,
+  not Dependabot.*, *it's in acme-labs/web, not acme-org*, or, for an item its search should
+  find, that the next refresh brings it;
+- each condition with the value it compared, and what its history says (*It already ran on this
+  commit*, *2 of 2 tries used*, its record for the occurrence now, as *Queued: today's cap is
+  reached*);
+- and, folded, **Its ledger for this item**: every match the routine recorded on it, newest
+  first, a Dry run's marked.
+
+**Make a routine from this…**, beside them, opens the builder filled in from the item, as
+[Templates](#templates-and-quick-setup) says.
 
 ### Snooze, dismiss, and pin: by a routine
 
@@ -3418,7 +3523,7 @@ The **Prompts** tab is the prompt library: every prompt a launch can fill in. Ea
 characters (the short label the launch button and menu show, such as "Review"), what it is
 **for** (pull requests, issues, or both), its **text**, and optional **launch settings**.
 
-**Starter prompts.** The app adds five starters, each once: **Review** (review a pull request),
+**Starter prompts.** The app adds nine starters, each once: **Review** (review a pull request),
 **Work on it** (work on an issue), **Quick look** (a fast read of a pull request's diff for
 blockers only, set to Sonnet at low effort without a worktree), **Fix checks** (find and fix
 a pull request's failing checks, then push the fix), and **Fix dep security** (fix the failing
@@ -3426,7 +3531,13 @@ security checks on a bot's dependency update: move the vulnerable dependency to 
 fixes it, never silence a scanner, and push with one exact `git push` to the pull request's
 own branch, named by its full ref and quoted, never forced; for a fork's pull request, or
 another outside contributor's, and for a branch or remote whose name isn't plain, it commits
-the fix but pushes nothing). A
+the fix but pushes nothing). Four more are the starters Autopilot's [templates](#templates-and-quick-setup) run: **Heal
+Dependabot PR** (adapt the code to what a dependency update broke, never pinning it back or
+silencing a check, and push as Fix dep security does), **Address review** (work through the
+changes a review asked for, acting only on members' and collaborators' requests), **Resolve
+conflicts** (merge the base branch in, never a rebase, and push as Fix dep security does), and
+**Re-run failed jobs** (re-run a pull request's failed jobs once with `gh run rerun --failed`,
+changing nothing else, set to Haiku at low effort). A
 starter new in a later version is added to your library once, as these were, and a starter
 whose text you never changed takes the new text when a later version changes it, keeping the
 title and settings you gave it. Review and Work
@@ -3534,7 +3645,9 @@ for the work on this, @{{.Author}}!" **Update OK** (approve, the default for bot
 minor update of `golang.org/x/net` from 0.30.0 to 0.31.0. All checks pass. Approved.", which says
 "Reviewed this automated update." when the title says nothing it can read, and "All checks pass."
 only when they do. **Needs
-changes** (request changes) and **Question** (comment). Like the starter prompts, each is added
+changes** (request changes) and **Question** (comment). **Needs repro** (comment, for issues: it asks the person who
+opened the issue how to reproduce it, and fills no default, since a review's default is for pull
+requests; the Ask for a repro on quiet bugs template comments it). Like the starter prompts, each is added
 once, and **Reset to original** restores one you changed.
 
 **Defaults.** The **⋯** menu makes a reply the default for approvals, for approvals of bots' pull

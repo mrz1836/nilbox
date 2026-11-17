@@ -927,6 +927,21 @@ changing the package, and keep the section and its summary in step.
   and `eval` (`Evaluate`: three-valued, cheapest first and order-free, with a fire key per
   trigger and reasons). They import only `item`, `repo`, `trust`, `sensitive`, `bump`,
   `clock`, `textutil`, and one another (`TestLeafImports`).
+  Easy mode: the template gallery is one embedded spec a template (`gallery/<key>.json`,
+  `Gallery`, `TemplateByKey`), served by the bound `Templates` with what this build can't run
+  of it yet in plain words (`Offers.needs`, from the build's offers on every read, so a
+  template works as its step lands, never locked), its starters and whether the library holds
+  them (the prompts' `AddStarter` puts one back), and why it is suggested, from setup's
+  `Signals` and the inbox's `BotPullRequests` alone (`Signals`, core's `templateSignals`);
+  every template is held to its fixture items and saved cleanly through `Save` over the real
+  library (core's `TestEveryShippedTemplateSavesCleanly`). `FromItem` fills a new routine
+  from a stored item's facts, `DraftReadiness` checks an unsaved draft's needs, `Explain`
+  says what holds the routine back, why an item isn't watched, and its whole ledger on it,
+  `Export`, `PreviewImport`, and `Import` carry routines and the prompts they name
+  (`PromptTransfer`, the prompts' `RoutinePrompts`; `Profiles`) with a mapping for what this
+  Mac lacks, every routine arriving off, and `Figures.Graduate` offers *Put it on
+  Autopilot?* after `GraduateAfter` clean approvals in a row (`DeclineGraduate` is Not now;
+  nothing changes a mode by itself).
   Full design: [docs/architecture.md](docs/architecture.md#internalautopilot)
 - `internal/agentrun/` is the background runner, which runs a routine's agent step **In the
   background**, through core's `backgroundAgents` (`adapters_agentrun.go`), the `Runner`

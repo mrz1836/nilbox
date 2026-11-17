@@ -148,6 +148,14 @@ left as it is, and a routine's history never travels with it.
 | `format` | `nilbox-autopilot/<version>`, `nilbox-autopilot/1` today. Another value is refused, and a newer version asks you to update the app. |
 | `exportedAt`, `app` | When it was written, as RFC 3339 in UTC, and the version of the app that wrote it. Informational only. |
 | `routines` | The routines, in their order. |
+| `prompts` | Only in a file the Autopilot tab's **Export…** wrote with **Include the text of the prompts they run**: the prompts its routines name by nickname, in the [prompt file format](prompt-files.md). Never in a backup or the copy beside the database, whose prompts travel in their own section and file. |
+
+The Autopilot tab's **Export…** and **Import routines…** read and write the same format on its
+own, one routine or all of them, outside a backup. Such an import says first what would
+arrive, and maps each prompt, profile, or agent its routines name that this Mac lacks to one
+it has or to inherit; its `prompts` arrive only where no prompt here has the nickname, and
+every routine arrives switched off, added at the end of the list under its name, or another
+when a routine here has it.
 
 Each routine has its `name` (unique, ignoring case), `description` (left out when empty),
 `mode` (`dryRun`, `ask`, or `auto`), `enabled` (whether it was on where it was exported),
