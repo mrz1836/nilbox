@@ -249,6 +249,9 @@ type Service struct {
 	// passes holds the watch pass worker's state (see watches.go).
 	passes watchPasses
 
+	// merges holds the follows the merges the inbox learned of are owed (see merges.go).
+	merges *mergeQueue
+
 	// refreshes runs one whole refresh at a time; a refresh asked for while one runs
 	// joins it.
 	refreshes flight.Group[Snapshot]
@@ -286,7 +289,8 @@ func NewService(cfg Config) *Service {
 		client: cfg.Client, clock: c, events: event.Or(cfg.Events), arrivals: cfg.Arrivals, outcomes: cfg.Outcomes,
 		usage: cfg.Usage, logger: logging.Or(cfg.Logger), watchSource: cfg.Watches, changedSink: cfg.Changed,
 		keep: cfg.Keep, marks: cfg.Marks, passes: watchPasses{jobs: make(chan *watchJob, 1), ended: make(chan struct{})},
-		order: orderOf(cfg.Store), progressEvery: progress.Every,
+		merges: newMergeQueue(),
+		order:  orderOf(cfg.Store), progressEvery: progress.Every,
 	}
 }
 
@@ -743,6 +747,7 @@ func (s *Service) save(ctx context.Context, seq uint64, got refreshed) (refreshT
 	}
 
 	s.storedBy(seq, w)
+	s.noteMergedClosed(w.accountID, got)
 
 	return told, nil
 }

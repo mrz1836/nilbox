@@ -110,7 +110,7 @@ const getEditItem = `-- name: GetEditItem :one
 SELECT
     i.id, i.account_id, i.kind, i.number, i.node_id, i.item_updated_at, i.reason_review_requested,
     i.reason_authored, i.reason_assigned, r.owner AS repo_owner, r.name AS repo_name, a.login AS account_login,
-    d.head_oid, CAST(EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id) AS BOOLEAN) AS watched
+    d.head_oid, d.base_ref, CAST(EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id) AS BOOLEAN) AS watched
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 JOIN accounts a ON a.id = i.account_id
@@ -132,13 +132,14 @@ type GetEditItemRow struct {
 	RepoName              string
 	AccountLogin          string
 	HeadOID               *string
+	BaseRef               *string
 	Watched               bool
 }
 
 // GetEditItem returns what an edit to the item with id on GitHub needs: the item, its
 // node ID, its repository, the account whose inbox lists it, the lists it is in, whether a
-// routine's search watches it, and its head commit when a refresh has read its details
-// (NULL otherwise). It returns sql.ErrNoRows when no item has id.
+// routine's search watches it, and its head commit and base branch when a refresh has read
+// its details (NULL otherwise). It returns sql.ErrNoRows when no item has id.
 func (q *Queries) GetEditItem(ctx context.Context, id int64) (GetEditItemRow, error) {
 	row := q.db.QueryRowContext(ctx, getEditItem, id)
 	var i GetEditItemRow
@@ -156,6 +157,7 @@ func (q *Queries) GetEditItem(ctx context.Context, id int64) (GetEditItemRow, er
 		&i.RepoName,
 		&i.AccountLogin,
 		&i.HeadOID,
+		&i.BaseRef,
 		&i.Watched,
 	)
 	return i, err
@@ -832,7 +834,7 @@ SELECT
     i.id, i.kind, i.number, i.url, i.title, i.head_ref, i.author_login, i.author_type, i.author_association,
     i.is_cross_repository, i.is_draft, r.id AS repo_id, r.owner, r.name, r.local_path, r.default_branch,
     d.labels, d.additions, d.deletions, d.changed_files, d.commits, d.mergeable, d.checks_state,
-    d.review_decision, d.head_oid, c.head_oid AS checks_head_oid, c.checks
+    d.review_decision, d.head_oid, d.base_ref, c.head_oid AS checks_head_oid, c.checks
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 LEFT JOIN item_details d ON d.item_id = i.id
@@ -867,6 +869,7 @@ type ListLaunchItemsRow struct {
 	ChecksState       *string
 	ReviewDecision    *string
 	HeadOID           *string
+	BaseRef           *string
 	ChecksHeadOID     *string
 	Checks            *string
 }
@@ -920,6 +923,7 @@ func (q *Queries) ListLaunchItems(ctx context.Context, ids []int64) ([]ListLaunc
 			&i.ChecksState,
 			&i.ReviewDecision,
 			&i.HeadOID,
+			&i.BaseRef,
 			&i.ChecksHeadOID,
 			&i.Checks,
 		); err != nil {
@@ -1052,6 +1056,119 @@ func (q *Queries) ListListedNodeIDs(ctx context.Context, login string) ([]string
 			return nil, err
 		}
 		items = append(items, node_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenPullsInRepo = `-- name: ListOpenPullsInRepo :many
+SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
+    CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 AS BOOLEAN) AS listed,
+    CAST(CAST(?1 AS BOOLEAN) = 1
+      AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+JOIN repos r ON r.id = i.repo_id
+JOIN item_details d ON d.item_id = i.id
+LEFT JOIN item_local_state l ON l.item_id = i.id
+WHERE a.login = ?2
+  AND i.account_id = ?3
+  AND r.owner = ?4
+  AND r.name = ?5
+  AND i.kind = 'pr'
+  AND i.node_id <> ''
+  AND i.state NOT IN ('CLOSED', 'MERGED')
+  AND (d.fetched_at < ?6 OR d.mergeable = 'UNKNOWN')
+  AND (
+    ((i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+      AND l.dismissed_at IS NULL
+      AND (l.snoozed_until IS NULL OR l.snoozed_until <= ?7))
+    OR (CAST(?1 AS BOOLEAN) = 1
+      AND EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id AND w.follow = 1))
+  )
+  AND (CAST(?8 AS BOOLEAN) = 1 OR d.base_ref IN (/*SLICE:bases*/?))
+ORDER BY d.fetched_at, i.id
+`
+
+type ListOpenPullsInRepoParams struct {
+	Watched    bool
+	Login      string
+	AccountID  int64
+	Owner      string
+	Name       string
+	ReadBefore time.Time
+	Now        *time.Time
+	AnyBase    bool
+	Bases      []string
+}
+
+type ListOpenPullsInRepoRow struct {
+	ID        int64
+	AccountID int64
+	NodeID    string
+	Number    int64
+	RepoOwner string
+	RepoName  string
+	Listed    bool
+	Followed  bool
+}
+
+// ListOpenPullsInRepo returns the open pull requests of the account with account_id, signed
+// in as login, in the repository owner/name, that a merge into it may have changed: the
+// ones merging into one of bases, or into any base when any_base is set, whose details were
+// last read before read_before or left GitHub still working out whether they merge
+// (mergeable UNKNOWN), the longest unread first, each with its number, its repository's
+// owner and name, and whether it is listed and whether a routine's search follows it, as
+// ListRunningChecks reads them: the listed ones neither dismissed nor snoozed at now, and,
+// while watched says this copy reads the routines' searches, the ones a routine's search
+// watches and follows. The follow of a merge leaves out the listed ones of a muted
+// repository or org, which only the prefs name. bases comes last, so the parameters before
+// it keep their numbers however long it is; it is never empty.
+func (q *Queries) ListOpenPullsInRepo(ctx context.Context, arg ListOpenPullsInRepoParams) ([]ListOpenPullsInRepoRow, error) {
+	query := listOpenPullsInRepo
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Watched)
+	queryParams = append(queryParams, arg.Login)
+	queryParams = append(queryParams, arg.AccountID)
+	queryParams = append(queryParams, arg.Owner)
+	queryParams = append(queryParams, arg.Name)
+	queryParams = append(queryParams, arg.ReadBefore)
+	queryParams = append(queryParams, arg.Now)
+	queryParams = append(queryParams, arg.AnyBase)
+	if len(arg.Bases) > 0 {
+		for _, v := range arg.Bases {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:bases*/?", strings.Repeat(",?", len(arg.Bases))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:bases*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOpenPullsInRepoRow{}
+	for rows.Next() {
+		var i ListOpenPullsInRepoRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.NodeID,
+			&i.Number,
+			&i.RepoOwner,
+			&i.RepoName,
+			&i.Listed,
+			&i.Followed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

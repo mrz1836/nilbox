@@ -38,10 +38,11 @@ func reasonFlagDecisions() map[string]string {
 		"LeaveAnsweredReview": "none",
 
 		// What else reads them.
-		"PruneFiles":        "keeps the file checks of watched items",
-		"ListRepoCounts":    "counts watched items too, so a repository only watched can have launch defaults",
-		"ListRunningChecks": "adds the watched pull requests a routine follows, muted or not",
-		"GetEditItem":       "accepts a watched item (watched), so its sheet acts from the Watching list",
+		"PruneFiles":          "keeps the file checks of watched items",
+		"ListRepoCounts":      "counts watched items too, so a repository only watched can have launch defaults",
+		"ListRunningChecks":   "adds the watched pull requests a routine follows, muted or not",
+		"ListOpenPullsInRepo": "adds the watched pull requests a routine follows, as ListRunningChecks does",
+		"GetEditItem":         "accepts a watched item (watched), so its sheet acts from the Watching list",
 
 		// The reads for the routines.
 		"ListItemsByID":     "reads listed and watched items alike, for the Watching list",

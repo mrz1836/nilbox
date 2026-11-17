@@ -121,6 +121,9 @@ type LaunchItem struct {
 	// HeadOID is a pull request's head commit as the last refresh read it, or "".
 	HeadOID string
 
+	// BaseRef is the branch a pull request merges into, as the last refresh read it, or "".
+	BaseRef string
+
 	// FailedChecks names a pull request's failed checks at that head commit, as Autopilot's
 	// conditions name them ("workflow / job", each once), from the last read of its checks:
 	// empty when none failed, and when they weren't read at that commit.
@@ -175,7 +178,8 @@ func launchItemOf(r queries.ListLaunchItemsRow) (LaunchItem, error) {
 		Labels: labels, Additions: int(store.Deref(r.Additions)), Deletions: int(store.Deref(r.Deletions)),
 		ChangedFiles: int(store.Deref(r.ChangedFiles)), Commits: int(store.Deref(r.Commits)),
 		Mergeable: store.Deref(r.Mergeable), ChecksState: store.Deref(r.ChecksState),
-		ReviewDecision: store.Deref(r.ReviewDecision), HeadOID: store.Deref(r.HeadOID), FailedChecks: failed,
+		ReviewDecision: store.Deref(r.ReviewDecision), HeadOID: store.Deref(r.HeadOID), BaseRef: store.Deref(r.BaseRef),
+		FailedChecks: failed,
 	}, nil
 }
 

@@ -211,6 +211,12 @@ type Core struct {
 	// request, and nothing while none runs; the desktop shell runs it with the scheduler.
 	ChecksFollower *inbox.ChecksFollower
 
+	// MergeFollower reads again, a few seconds after each merge the inbox learns of, the
+	// repository's other open pull requests on the branch merged into, whose merge state
+	// the merge changed, and again while GitHub is still working one out; the desktop
+	// shell runs it with the other work. It is not bound.
+	MergeFollower *inbox.MergeFollower
+
 	// Rereads reads again, one at a time, the item of each agent session that stops
 	// working, as the Watcher asks (one GraphQL point each), so a pull request the agent
 	// reviewed leaves Review requested at once; the desktop shell runs it with the other
@@ -856,6 +862,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		GHThreads:             ghThreads,
 		GHThreadsSyncer:       ghThreadsSyncer,
 		ChecksFollower:        checksFollower,
+		MergeFollower:         inbox.NewMergeFollower(inboxSvc, logger),
 		Rereads:               rereads,
 		Sweeper:               sweeper,
 		Timing:                recorder,

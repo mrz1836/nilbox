@@ -1607,6 +1607,17 @@ round (your own cards first, then those a routine follows), and none is read whi
 run: at most some 160 points an hour, and only while checks run. One stops being read as soon
 as its checks end, passed or failed, and a dismissed or snoozed one isn't read at all.
 
+**After a merge.** A merge into a branch can give every other open pull request on it
+conflicts, or put it behind, and GitHub works that out again only once asked. So about ten
+seconds after Nilbox learns of a merge (yours from the review sheet, an Autopilot routine's, or
+one a read of the inbox finds, as an auto-merge), it reads the repository's other open pull
+requests on the same branch again, 25 to a request, and their cards show **Conflicts** without
+waiting for the next whole refresh. While GitHub is still working one
+out, it reads that one again 30 seconds later, three rounds at most. A pull request read since
+the merge, dismissed, snoozed, or in a muted repository is left alone. It costs about a point
+per 25 pull requests a round, counted with the running checks', and nothing while no merge
+happened.
+
 **How often.** **Settings → Refreshing** sets each interval: the inbox (every 2 minutes to every
 hour, five minutes by default), the running checks (off, or every 30 seconds to every 2 minutes,
 45 seconds by default), the worktrees' sweep (every 5 minutes to every hour, five minutes by
@@ -4445,7 +4456,8 @@ branch, pulls, tags, and pushes the tag, and the app then checks where the tag a
 are. When a session needs a pull request's branch, the
 starter prompts ask the agent to run `gh pr checkout <n>` inside the worktree. The only git
 commands the app runs that change a clone are its [worktree creation](#worktrees) (a fetch into
-the item's own refs, and `git worktree add`), the [Worktrees view's](#the-worktrees-view)
+the item's own refs, or into a pull request's base's remote-tracking branch, and `git worktree
+add`), the [Worktrees view's](#the-worktrees-view)
 removals, prunes, and unlocks, with the [branch deletions](#branches) you confirm there, and
 [Repo scripts'](#repo-scripts) **Pull** you click, which fast-forwards the clone's branch.
 
@@ -4499,6 +4511,14 @@ A launch finds the item's worktree, or makes it, in this order:
    branch is fetched, then `git worktree add --no-track -b worktree-issue-<n>`, so a push never
    lands on the default branch. When the fetch fails (offline, say) and an earlier fetch left the
    branch, the worktree starts from that, and the launch says so.
+
+Whichever of these a pull request's launch does, it also fetches the branch the pull request
+merges into, such as `main`, into its remote-tracking branch, `origin/main`, the same fetch an
+issue's worktree starts from. An agent working in the worktree then has the base as GitHub has it
+now, to rebase onto, merge, or compare with, even when it doesn't fetch, or can't, as an agent
+in the background can fetch only within its fence. The fetch moves only `origin/main`: never the
+worktree's checkout, nor your own `main`. When it fails (offline, say), the launch goes ahead
+and says so, as in *Couldn't fetch origin/main, so the worktree has the last fetched copy*.
 
 Entries for worktrees whose folders are gone are pruned first. When something git doesn't know is
 already at the worktree's path, the app prunes git's entries and tries once more, then says what

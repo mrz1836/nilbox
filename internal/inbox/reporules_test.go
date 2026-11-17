@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
-	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/reporules"
 )
@@ -140,14 +139,14 @@ func TestTheChecksFollowLeavesAMutedRepositoryAlone(t *testing.T) {
 func TestFollowableTakesTheFirstOfThoseNotMuted(t *testing.T) {
 	t.Parallel()
 
-	listed := make([]queries.ListRunningChecksRow, 0, 2*followMax)
+	listed := make([]followRow, 0, 2*followMax)
 	for i := range 2 * followMax {
 		name := "example-repo"
 		if i%2 == 0 {
 			name = "muted-repo"
 		}
 
-		listed = append(listed, queries.ListRunningChecksRow{ID: int64(i), RepoOwner: acmeOrg, RepoName: name, Listed: true})
+		listed = append(listed, followRow{ID: int64(i), RepoOwner: acmeOrg, RepoName: name, Listed: true})
 	}
 
 	got := followable(listed, reporules.Rules{Muted: []string{"acme-org/muted-repo"}})
@@ -163,7 +162,7 @@ func TestFollowableKeepsTheMutedPullRequestsARoutineFollows(t *testing.T) {
 	t.Parallel()
 
 	muted := reporules.Rules{Muted: []string{"acme-org/muted-repo"}}
-	rows := []queries.ListRunningChecksRow{
+	rows := []followRow{
 		{ID: 1, RepoOwner: acmeOrg, RepoName: "muted-repo", Listed: true},
 		{ID: 2, RepoOwner: acmeOrg, RepoName: "muted-repo", Followed: true},
 		{ID: 3, RepoOwner: acmeOrg, RepoName: "muted-repo", Listed: true, Followed: true},

@@ -50,6 +50,10 @@ type WorktreeRequest struct {
 	// DefaultBranch is the repository's default branch as GitHub reported it, or "".
 	DefaultBranch string
 
+	// Base is the branch a pull request merges into, as the last refresh read it, or "".
+	// The maker fetches it, so the worktree has it fresh to rebase onto or compare with.
+	Base string
+
 	// Head is the pull request's head commit whose files the launch checked, or "". A
 	// worktree made for the pull request must start there; the maker refuses otherwise.
 	Head string

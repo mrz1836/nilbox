@@ -69,6 +69,9 @@ type StoredItem struct {
 	// HeadOID is a pull request's head commit as the last refresh read it, or "".
 	HeadOID string
 
+	// BaseRef is the branch a pull request merges into, as the last refresh read it, or "".
+	BaseRef string
+
 	// FailedChecks names a pull request's failed checks at HeadOID, "workflow / job" each
 	// once, from the last read of its checks; empty when none failed or they weren't read
 	// at that commit.

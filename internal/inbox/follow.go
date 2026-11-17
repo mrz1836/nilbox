@@ -94,36 +94,67 @@ func (s *Service) followRound(ctx context.Context) ([]Outcome, []int64, error) {
 		return nil, nil, fmt.Errorf("read the pull requests whose checks run: %w", err)
 	}
 
-	running := followable(listed, reporules.Decode(stored))
+	running := followable(followRowsOf(listed), reporules.Decode(stored))
 
-	if len(running) == 0 {
-		return nil, nil, nil
-	}
-
-	// Each pull request waits for other work on it, as RefreshItem does, in one order, so
-	// two rounds never hold each other up.
-	slices.SortFunc(running, func(a, b queries.ListRunningChecksRow) int { return cmp.Compare(a.ID, b.ID) })
-
-	unlock, err := s.lockAll(ctx, running)
-	if err != nil {
-		return nil, nil, fmt.Errorf("follow the running checks: %w", err)
-	}
-
-	defer unlock()
-
-	told, wrote, err := s.followRunning(ctx, login, running)
+	res, err := s.followRows(ctx, login, running)
 	if err != nil {
 		err = fmt.Errorf("follow the running checks: %w", err)
 	}
 
+	return res.told, res.wrote, err
+}
+
+// followRow is a pull request a follow reads again: its item, account, node ID, number,
+// and repository, and whether it is listed and whether a routine's search follows it.
+type followRow struct {
+	ID        int64
+	AccountID int64
+	NodeID    string
+	Number    int64
+	RepoOwner string
+	RepoName  string
+	Listed    bool
+	Followed  bool
+}
+
+// followResult is what a follow's round stored: what to tell once it has let go of the
+// pull requests, the items it stored, and whether an answer it stored left GitHub still
+// working out whether the pull request merges (mergeable UNKNOWN).
+type followResult struct {
+	told    []Outcome
+	wrote   []int64
+	unknown bool
+}
+
+// followRows reads rows again, the pull requests of the account login, under their locks,
+// and stores each GitHub answered for, as refreshRunning says. It tells the window of
+// what it stored, a part of it when a request failed.
+func (s *Service) followRows(ctx context.Context, login string, rows []followRow) (followResult, error) {
+	if len(rows) == 0 {
+		return followResult{}, nil
+	}
+
+	// Each pull request waits for other work on it, as RefreshItem does, in one order, so
+	// two rounds never hold each other up.
+	slices.SortFunc(rows, func(a, b followRow) int { return cmp.Compare(a.ID, b.ID) })
+
+	unlock, err := s.lockAll(ctx, rows)
+	if err != nil {
+		return followResult{}, err
+	}
+
+	defer unlock()
+
+	res, err := s.followRunning(ctx, login, rows)
+
 	// What a round stored, a part of it when a request failed, reaches the window.
-	if len(wrote) > 0 {
+	if len(res.wrote) > 0 {
 		if _, changedErr := s.changed(ctx); changedErr != nil {
 			err = errors.Join(err, changedErr)
 		}
 	}
 
-	return told, wrote, err
+	return res, err
 }
 
 // followable returns the first followMax of rows, the listed pull requests first and then
@@ -131,9 +162,9 @@ func (s *Service) followRound(ctx context.Context) ([]Outcome, []int64, error) {
 // requests of the repositories and orgs rules mutes. A pull request a routine's search
 // follows is kept muted or not, since a routine watches a muted repository on purpose, but
 // it comes after the inbox's own cards.
-func followable(rows []queries.ListRunningChecksRow, rules reporules.Rules) []queries.ListRunningChecksRow {
-	listed := make([]queries.ListRunningChecksRow, 0, len(rows))
-	followed := make([]queries.ListRunningChecksRow, 0, len(rows))
+func followable(rows []followRow, rules reporules.Rules) []followRow {
+	listed := make([]followRow, 0, len(rows))
+	followed := make([]followRow, 0, len(rows))
 
 	for _, r := range rows {
 		muted := rules.IsMuted(repo.Name{Owner: r.RepoOwner, Repo: r.RepoName})
@@ -153,7 +184,7 @@ func followable(rows []queries.ListRunningChecksRow, rules reporules.Rules) []qu
 
 // lockAll takes each pull request's lock, in running's order, and returns what lets go of
 // them all; when one can't be taken, it lets go of those it took.
-func (s *Service) lockAll(ctx context.Context, running []queries.ListRunningChecksRow) (func(), error) {
+func (s *Service) lockAll(ctx context.Context, running []followRow) (func(), error) {
 	unlocks := make([]func(), 0, len(running))
 	release := func() {
 		for _, unlock := range slices.Backward(unlocks) {
@@ -182,14 +213,12 @@ type followed struct {
 }
 
 // followRunning asks GitHub about running, the pull requests of the account login, and
-// stores each pull request it answered for. It returns the ones it stored, and what the
-// answers it stored tell (see seenClosed), those stored before a failure included.
-func (s *Service) followRunning(
-	ctx context.Context, login string, running []queries.ListRunningChecksRow,
-) ([]Outcome, []int64, error) {
+// stores each pull request it answered for. It returns what it stored (see followResult),
+// those stored before a failure included.
+func (s *Service) followRunning(ctx context.Context, login string, running []followRow) (followResult, error) {
 	last, err := s.projectAccess(ctx)
 	if err != nil {
-		return nil, nil, err
+		return followResult{}, err
 	}
 
 	ids := make([]string, 0, len(running))
@@ -205,24 +234,22 @@ func (s *Service) followRunning(
 		return s.fetchRunning(ctx, tok, running, ids, readOptions(last))
 	})
 	if got.updates == nil {
-		return nil, nil, err
+		return followResult{}, err
 	}
 
 	// The requests that were answered are stored, whatever became of the others.
-	told, wrote, storeErr := s.storeFollowed(ctx, login, running, got, seq)
+	res, storeErr := s.storeFollowed(ctx, login, running, got, seq)
 
-	return told, wrote, errors.Join(err, storeErr)
+	return res, errors.Join(err, storeErr)
 }
 
 // storeFollowed stores what a round read, fetched as seq, for each pull request of running
-// GitHub answered for, as followRunning says.
+// GitHub answered for, as followRunning says, and notes a merge an answer it stored shows
+// (see noteMergedRead).
 func (s *Service) storeFollowed(
-	ctx context.Context, login string, running []queries.ListRunningChecksRow, got followed, seq uint64,
-) ([]Outcome, []int64, error) {
-	var (
-		told  []Outcome
-		wrote []int64
-	)
+	ctx context.Context, login string, running []followRow, got followed, seq uint64,
+) (followResult, error) {
+	var res followResult
 
 	for _, r := range running {
 		update, ok := got.updates.Items[r.NodeID]
@@ -236,17 +263,28 @@ func (s *Service) storeFollowed(
 
 		stored, err := s.storeItemWrite(ctx, w)
 		if err != nil {
-			return told, wrote, fmt.Errorf("save the item: %w", err)
+			return res, fmt.Errorf("save the item: %w", err)
 		}
 
-		if stored {
-			ref := refOf(r.RepoOwner, r.RepoName, r.Number, item.KindPR)
-			told = append(told, seenClosed(w, login, ref, s.now())...)
-			wrote = append(wrote, r.ID)
+		if !stored {
+			continue
 		}
+
+		ref := refOf(r.RepoOwner, r.RepoName, r.Number, item.KindPR)
+		res.told = append(res.told, seenClosed(w, login, ref, s.now())...)
+		res.wrote = append(res.wrote, r.ID)
+		res.unknown = res.unknown || stillWorkingOut(update)
+
+		s.noteMergedRead(w, ref)
 	}
 
-	return told, wrote, nil
+	return res, nil
+}
+
+// stillWorkingOut reports an answer about an open pull request that left GitHub still
+// working out whether it merges.
+func stillWorkingOut(u github.ItemUpdate) bool {
+	return u.Found && !u.Item.Closed() && u.Details.Mergeable == mergeableUnknown
 }
 
 // fetchRunning reads running from GitHub with tok, followBatch at a time side by side, and
@@ -254,7 +292,7 @@ func (s *Service) storeFollowed(
 // request that fails leaves its pull requests out, and its error is returned beside what
 // the others read; a token GitHub refused fails the whole, to be borrowed again.
 func (s *Service) fetchRunning(
-	ctx context.Context, tok github.Token, running []queries.ListRunningChecksRow, ids []string,
+	ctx context.Context, tok github.Token, running []followRow, ids []string,
 	opts github.DetailOptions,
 ) (followed, error) {
 	updates, err := s.fetchFollowed(ctx, tok, ids, opts)
