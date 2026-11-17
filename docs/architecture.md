@@ -937,6 +937,33 @@ GitHub works out each one's merge state as it answers; `GetEditItem` says whethe
 watched, so the Actor acts on a watched item's sheet as on a listed one's, while the review
 and issue sheets' reads take any stored item.
 
+**The follow of a merge** (`merges.go`). A merge into a branch changes whether every other
+open pull request on it merges cleanly, and GitHub works that out again only once asked,
+answering `UNKNOWN` for a few seconds after the branch moved, so the cards would say what was
+true before the merge until the next whole refresh. Every merge the inbox learns of is noted
+(`noteMerged`, which never waits): the Actor's (`recordActed`, the review sheet's merge and
+Autopilot's Merge it, into the base `GetEditItem` reads), a stored single read that finds a pull
+request merged (the follower's `storeFollowed`, `RefreshItem`, and the Actor's `storeRead`,
+`noteMergedRead`, into the base its details read), and a whole refresh's pull requests the
+search still listed though they merged (`noteMergedClosed`), whatever `tellOutcomes` says. The
+`mergeQueue` keeps one follow per account and repository (its name compared ignoring case),
+with the bases merged into (any base when one wasn't known), and remembers each merged pull
+request for `mergeRecent` (an hour) by node ID, so a read that sees it merged again starts no
+follow. A follow's first round is due `mergeSettle` (10 s) after its latest merge, so two
+merges in a row share it. The `MergeFollower`, a desktop worker in its own select loop
+(recovering and logging a panic; its timer tests run in a `testing/synctest` bubble), runs
+each round due: `ListOpenPullsInRepo` lists the account's open pull requests in the
+repository on a base merged into whose details were read before the first round was due, or
+that GitHub left `UNKNOWN`, the listed ones neither dismissed nor snoozed and those a routine's
+search follows while this copy holds the watches (as `ListRunningChecks`, and `followable`
+leaves out a muted repository's listed ones and takes the first `followMax`); `followRows`
+reads them `followBatch` to a request, side by side, under their locks, as the checks follower
+reads its own, with `github.PurposeFollower`, then settles and tells the window as a follower
+round does. A round whose stored answers left GitHub still working one out, or that failed,
+has the follow read again `mergeRetry` (30 s) later, at most `mergeRounds` (3) rounds in all;
+a merge noted while a round ran keeps its own round. It costs about a point per 25 pull
+requests a round, and nothing while no merge happened.
+
 **State, arrivals, and the prune.** `items.state` and `closed_at` are written by every read
 that carries them: the inbox's searches (`UpsertItem`), an item's own read and the follower's
 (`UpdateItem`, `UnlistItem`, which also drops a closed or gone item's watch rows), the closed
@@ -1058,7 +1085,8 @@ have too, at the newest time read.
 
 **The budget's purposes.** Each request's context names what it was sent for
 (`github.WithPurpose`): the refresh is `PurposeInbox`, the watch pass `PurposeWatches`, the
-checks follower `PurposeFollower`, and `SearchNow` and `ReadChecks` `PurposeAutopilot`;
+checks follower and the follow of a merge `PurposeFollower`, and `SearchNow` and `ReadChecks`
+`PurposeAutopilot`;
 anything else is `PurposeOther`. The client hands the purpose to the `Tracker` with each
 reading (`RateReading.Purpose`, which the tracker strips before it keeps the reading), and the
 tracker splits each budget's spend by it (`Reading.Purposes`, kept across runs, a state saved

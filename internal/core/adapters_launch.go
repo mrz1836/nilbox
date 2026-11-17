@@ -68,7 +68,7 @@ func (m worktreeMaker) EnsureWorktree(ctx context.Context, req launcher.Worktree
 func ensureRequest(req launcher.WorktreeRequest) worktrees.EnsureRequest {
 	return worktrees.EnsureRequest{
 		Clone: req.Clone, Remote: req.Remote, Owner: req.Owner, Name: req.Name, Kind: req.Kind, Number: req.Number,
-		DefaultBranch: req.DefaultBranch, Head: req.Head,
+		DefaultBranch: req.DefaultBranch, Base: req.Base, Head: req.Head,
 	}
 }
 

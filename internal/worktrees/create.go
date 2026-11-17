@@ -21,8 +21,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
-// This file is the only one allowed to make worktrees: to fetch a pull request's head or
-// a default branch, and to add a worktree. Nothing in the app changes a clone's own
+// This file is the only one allowed to make worktrees: to fetch a pull request's head, its
+// base, or a default branch, and to add a worktree. Nothing in the app changes a clone's own
 // checkout; only worktree creation fetches and adds worktrees (see the repoguard tests).
 
 const (
@@ -96,6 +96,11 @@ type EnsureRequest struct {
 	// DefaultBranch is the repository's default branch as GitHub reports it, or "". An
 	// issue's worktree starts from it.
 	DefaultBranch string
+
+	// Base is the branch a pull request merges into, or "". Ensure fetches it into its
+	// remote-tracking ref, so the worktree has it fresh to rebase onto, merge, or compare
+	// with; a fetch that fails only says so (see fetchBase).
+	Base string
 
 	// Head is the pull request's head commit whose files the launch checked, or "" when
 	// it checked none. A pull request's worktree made now must start there (see
@@ -222,19 +227,55 @@ func (m *Maker) ensure(ctx context.Context, req EnsureRequest) (Ensured, error) 
 		return Ensured{}, err
 	}
 
+	// One setup serves every guarded command Ensure runs: the build's fetches, its
+	// ls-remote, and its checkout, and the base's fetch.
+	session := g.session(req.Clone, req.remote())
+
 	if f.action == ActionAttach || f.action == ActionCreate {
-		// One setup serves every guarded command the build runs: its fetches, its
-		// ls-remote, and its checkout.
-		if err = m.build(ctx, g.session(req.Clone, req.remote()), req, &f); err != nil {
+		if err = m.build(ctx, session, req, &f); err != nil {
 			return Ensured{}, err
 		}
 	}
+
+	m.fetchBase(ctx, session, req, &f)
 
 	if err = m.s.recordWorktree(ctx, req, f.path, f.branch, f.fetched()); err != nil {
 		return Ensured{}, err
 	}
 
 	return f.ensured(), nil
+}
+
+// fetchBase fetches the branch a pull request merges into from the item's remote into its
+// remote-tracking ref, whatever Ensure did, a worktree made or found, so an agent in it has
+// the base fresh to rebase onto, merge, or compare with: a background run can fetch only
+// within its fence, and a session in the terminal often doesn't. It is fetchDefault's
+// fetch, which moves only that ref, never a checkout or a local branch. It is best-effort:
+// a fetch that fails, or that gitread's guards refuse, fails no launch and only says so in
+// f's notice. A base that isn't a plain branch name is never fetched.
+func (m *Maker) fetchBase(ctx context.Context, g git, req EnsureRequest, f *found) {
+	if req.Kind != item.KindPR || !gitread.ValidBranch(req.Base) || ctx.Err() != nil {
+		return
+	}
+
+	remote := req.remote()
+
+	stderr, err := g.fetchBranch(ctx, req.Clone, remote, req.Base)
+	if err == nil {
+		return
+	}
+
+	extra, cause := remoteWhy(remote, err, stderr, g.setAside())
+	name := remote + "/" + req.Base
+	notice := fmt.Sprintf("Couldn't fetch %s, so the worktree has the last fetched copy: %s", name,
+		remoteSaid(err, cause, extra))
+
+	if ok, _ := refExists(ctx, g, req.Clone, remotesRef+name); !ok {
+		notice = fmt.Sprintf("Couldn't fetch %s, the branch the pull request merges into: %s", name,
+			remoteSaid(err, cause, extra))
+	}
+
+	f.notice = strings.TrimSpace(f.notice + " " + notice)
 }
 
 // fetched is the commit a worktree Ensure just made starts at, which it fetched from

@@ -192,6 +192,122 @@ func TestEnsureStartsFromTheLastFetchWhenTheRemoteIsUnreachable(t *testing.T) {
 	assert.NoDirExists(t, ManagedPath(f.clone, "pr-7"))
 }
 
+// advanceMain adds a commit of file to the remote's main, as a merge on GitHub does, and
+// returns it.
+func (f remoteFixture) advanceMain(t *testing.T, e *env, file string) string {
+	t.Helper()
+
+	src := filepath.Join(e.home, "src")
+	head := testutil.Commit(t, src, file, file+"\n")
+	testutil.RunGit(t, src, "push", "-q", f.bare, mainBranch)
+
+	return head
+}
+
+// refAt is the commit ref points at in dir.
+func refAt(t *testing.T, dir, ref string) string {
+	t.Helper()
+
+	return strings.TrimSpace(testutil.RunGit(t, dir, "rev-parse", ref))
+}
+
+func TestEnsureFetchesAPullRequestsBase(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	f := newRemoteFixture(t, e)
+	m, _ := e.maker(&fakeLaunches{})
+
+	req := f.request(item.KindPR, 7)
+	req.Base = mainBranch
+
+	merged := f.advanceMain(t, e, "merged.txt")
+
+	planned, err := m.Plan(t.Context(), req)
+	require.NoError(t, err)
+	assert.Equal(t, ActionCreate, planned.Action)
+	assert.Equal(t, f.main, refAt(t, f.clone, "refs/remotes/origin/main"), "a plan asks no remote")
+
+	got, err := m.Ensure(t.Context(), req)
+	require.NoError(t, err)
+	assert.Equal(t, ActionCreate, got.Action)
+	assert.Empty(t, got.Notice)
+	assert.Equal(t, f.prHead, got.Head, "the worktree stays at the pull request's head")
+	assert.Equal(t, merged, refAt(t, f.clone, "refs/remotes/origin/main"), "with its base as GitHub has it")
+	assert.Equal(t, merged, refAt(t, got.Path, "origin/main"), "which the worktree shares")
+
+	again := f.advanceMain(t, e, "again.txt")
+
+	got, err = m.Ensure(t.Context(), req)
+	require.NoError(t, err)
+	assert.Equal(t, ActionResume, got.Action)
+	assert.Empty(t, got.Notice)
+	assert.Equal(t, again, refAt(t, f.clone, "refs/remotes/origin/main"), "a resumed worktree fetches it again")
+
+	assert.Equal(t, f.main, refAt(t, f.clone, "refs/heads/main"), "the clone's own branch is left alone")
+	assert.Empty(t, strings.TrimSpace(testutil.RunGit(t, f.clone, "status", "--porcelain")),
+		"and so is its checkout")
+	assert.Empty(t, strings.TrimSpace(testutil.RunGit(t, got.Path, "status", "--porcelain")),
+		"and the worktree's")
+}
+
+func TestEnsureSaysWhenItCouldNotFetchTheBase(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	f := newRemoteFixture(t, e)
+	m, _ := e.maker(&fakeLaunches{})
+
+	req := f.request(item.KindPR, 7)
+	req.Base = "release"
+
+	got, err := m.Ensure(t.Context(), req)
+	require.NoError(t, err, "a base that can't be fetched fails no launch")
+	assert.Equal(t, ActionCreate, got.Action)
+	assert.Equal(t, f.prHead, got.Head)
+	assert.Contains(t, got.Notice, "Couldn't fetch origin/release, the branch the pull request merges into:")
+
+	require.NoError(t, os.Rename(f.bare, f.bare+".offline"))
+
+	req.Base = mainBranch
+
+	got, err = m.Ensure(t.Context(), req)
+	require.NoError(t, err)
+	assert.Equal(t, ActionResume, got.Action)
+	assert.Contains(t, got.Notice, "Couldn't fetch origin/main, so the worktree has the last fetched copy:")
+}
+
+func TestEnsureFetchesNoBaseItShouldNot(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	f := newRemoteFixture(t, e)
+	m, _ := e.maker(&fakeLaunches{})
+
+	_, err := m.Ensure(t.Context(), f.request(item.KindPR, 7))
+	require.NoError(t, err)
+
+	// Offline, a fetch would say so in the notice.
+	require.NoError(t, os.Rename(f.bare, f.bare+".offline"))
+
+	for _, base := range []string{"", "-main", "main..x", "refs/heads/main:refs/heads/x", "main lock"} {
+		req := f.request(item.KindPR, 7)
+		req.Base = base
+
+		got, ensureErr := m.Ensure(t.Context(), req)
+		require.NoError(t, ensureErr, "%q", base)
+		assert.Empty(t, got.Notice, "%q is no branch to fetch", base)
+	}
+
+	// An issue's worktree starts from its default branch, and has no base of its own.
+	issue := f.request(item.KindIssue, 3)
+	issue.DefaultBranch, issue.Base = mainBranch, "release"
+
+	got, err := m.Ensure(t.Context(), issue)
+	require.NoError(t, err)
+	assert.NotContains(t, got.Notice, "release")
+}
+
 func TestEnsureAdoptsALegacyClaudeWorktree(t *testing.T) {
 	t.Parallel()
 

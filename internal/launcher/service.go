@@ -636,7 +636,7 @@ func (p planned) onPRHead() bool {
 func (p planned) worktreeRequest() WorktreeRequest {
 	return WorktreeRequest{
 		Clone: p.clone.Dir, Remote: p.clone.Remote, Owner: p.row.Owner, Name: p.row.Name, Kind: p.row.Kind,
-		Number: p.row.Number, DefaultBranch: p.row.DefaultBranch, Head: p.checkedHead(),
+		Number: p.row.Number, DefaultBranch: p.row.DefaultBranch, Base: p.row.BaseRef, Head: p.checkedHead(),
 	}
 }
 

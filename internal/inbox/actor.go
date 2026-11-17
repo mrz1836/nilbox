@@ -370,6 +370,7 @@ func (s *Service) storeRead(ctx context.Context, row editRow, w itemWrite) (Snap
 	}
 
 	told := seenClosed(w, row.AccountLogin, refOfRow(row), s.now())
+	s.noteMergedRead(w, refOfRow(row))
 	snap, err := s.changed(ctx)
 
 	return snap, told, err
@@ -581,7 +582,8 @@ func pullTargetOfRow(row editRow) PullTarget {
 // recordActed records what an action made happen on the item row is: a review takes it
 // out of the Review requested list, stamped as an edit is (see UpsertItem), and a merge or
 // a close takes it out of every list, as an item write numbered now, after GitHub's answer,
-// so a refresh that was fetching applies it again.
+// so a refresh that was fetching applies it again. A merge has the repository's other
+// open pull requests on its base read again (see noteMerged).
 func (s *Service) recordActed(ctx context.Context, row editRow, acted Acted) error {
 	target := pullTargetOfRow(row)
 
@@ -596,16 +598,28 @@ func (s *Service) recordActed(ctx context.Context, row editRow, acted Acted) err
 		}
 	}
 
-	if acted.Merged || acted.Closed {
-		state := github.StateClosed
-		if acted.Merged {
-			state = github.StateMerged
-		}
+	return s.recordEnded(ctx, row, acted)
+}
 
-		w := itemWrite{id: target.ID, seq: s.startFetch(), unlist: true, state: state}
-		if _, err := s.storeItemWrite(ctx, w); err != nil {
-			return fmt.Errorf("record the merge or close: %w", err)
-		}
+// recordEnded takes the item row is out of every list when acted merged or closed it, as
+// recordActed says, and has a merge followed (see noteMerged).
+func (s *Service) recordEnded(ctx context.Context, row editRow, acted Acted) error {
+	if !acted.Merged && !acted.Closed {
+		return nil
+	}
+
+	state := github.StateClosed
+	if acted.Merged {
+		state = github.StateMerged
+	}
+
+	w := itemWrite{id: row.ID, seq: s.startFetch(), unlist: true, state: state}
+	if _, err := s.storeItemWrite(ctx, w); err != nil {
+		return fmt.Errorf("record the merge or close: %w", err)
+	}
+
+	if acted.Merged {
+		s.noteMerged(row.NodeID, row.AccountID, refOfRow(row).Repo, store.Deref(row.BaseRef))
 	}
 
 	return nil

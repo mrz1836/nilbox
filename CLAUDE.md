@@ -329,6 +329,10 @@ changing the package, and keep the section and its summary in step.
   `(*github.Client).FetchItems`, and nothing while none runs; a pull request whose workflow
   runs GitHub holds for approval, `item_details.checks_awaiting`, which its card marks held
   in place of the rollup's state, isn't running, and waits for the whole refresh), the
+  merge follower (`inbox.MergeFollower`: a few seconds after each merge the inbox learns of,
+  its own through the Actor or one a read finds, the repository's other open pull requests on
+  the branch merged into, read again as the checks follower reads its own, and again while
+  GitHub answers `UNKNOWN`, three rounds at most, and nothing while no merge happened), the
   Release page's checks follower (`release.ChecksFollower`, below), the sweeper (these four
   as often as Settings → Refreshing says, through `periodic.RunEvery`, which core wakes on the Go-only
   `event.IntervalsChanged` the settings setter emits, so a change applies at once), the GitHub
@@ -490,7 +494,11 @@ changing the package, and keep the section and its summary in step.
   kept), and removes
   them safely. A listing runs git only in the clones worth listing (`worthListing`): one whose
   common git folder registers a linked worktree or can't be read, and one a record names, read
-  without git by `linkedWorktrees`, which the sweep's count shares. Only `internal/worktrees/create.go` fetches or runs `git worktree add` (Repo
+  without git by `linkedWorktrees`, which the sweep's count shares. A pull request's worktree
+  fetches its head, and, on every Ensure, made or found, its base into the remote-tracking ref
+  (`fetchBase`, the default branch's own fetch: best-effort, a notice when it fails, never a
+  checkout or a local branch moved), so an agent has a fresh base to rebase onto or compare
+  with. Only `internal/worktrees/create.go` fetches or runs `git worktree add` (Repo
   scripts' pull, below, fetches only as `git pull` itself does), and nothing the app runs
   changes a clone's own checkout; `TestNoGitCommandChangesAClone` in `internal/repoguard` fails
   the build otherwise. There are two exceptions, each on the user's click. A tool the user

@@ -11,6 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 )
 
@@ -128,6 +131,37 @@ func TestLaunchMakesAPullRequestsWorktreeAtTheHeadItChecked(t *testing.T) {
 	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
 	require.Len(t, h.maker.ensures(), 2)
 	assert.Empty(t, h.maker.ensures()[1].Head)
+}
+
+func TestLaunchAsksForThePullRequestsBase(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+
+	based := storedItem(exampleRepo, item.KindPR, 21, "OWNER", false)
+	id := h.storeWith(t, inbox.FixtureItem{Item: based, Details: &github.ItemDetails{BaseRef: "release/2.x"}})
+
+	h.launch(t, LaunchRequest{ItemID: id})
+	require.Len(t, h.maker.ensures(), 1)
+	assert.Equal(t, "release/2.x", h.maker.ensures()[0].Base, "the maker fetches it beside the worktree")
+
+	// An item whose details no refresh read yet names no base.
+	h.launch(t, LaunchRequest{ItemID: h.trustedPR})
+	require.Len(t, h.maker.ensures(), 2)
+	assert.Empty(t, h.maker.ensures()[1].Base)
+}
+
+// storeWith stores one fixture item, as a refresh would have, and returns its id.
+func (h *launchHarness) storeWith(t *testing.T, it inbox.FixtureItem) int64 {
+	t.Helper()
+
+	ids, err := inbox.StoreFixture(t.Context(), h.pool, inbox.Fixture{
+		Viewer: "octo-user", At: fixedNow(), Items: []inbox.FixtureItem{it},
+	})
+	require.NoError(t, err)
+	require.Len(t, ids, 1)
+
+	return ids[0]
 }
 
 func TestLaunchHoldsBackAPullRequestThatChangesAgentFiles(t *testing.T) {
