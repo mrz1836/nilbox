@@ -147,17 +147,18 @@ func (codex) args(o Options) []string {
 }
 
 // codexOverrides returns the config overrides a launch passes: the effort level and Fast
-// mode, which Codex has no flags for. Each value is read as TOML, so it is quoted as a
-// TOML string.
+// mode, which Codex has no flags for. Each value is read as TOML, so it is written as a
+// TOML string by tomlString, which escapes it: a quote in the value can never end the
+// string and add a key of its own.
 func codexOverrides(o Options) []string {
 	var args []string
 
 	if o.Effort != "" {
-		args = append(args, codexConfig, codexEffortKey+`="`+o.Effort+`"`)
+		args = append(args, codexConfig, codexEffortKey+"="+tomlString(o.Effort))
 	}
 
 	if o.Fast {
-		args = append(args, codexConfig, codexServiceTierKey+`="`+codexFastTier+`"`)
+		args = append(args, codexConfig, codexServiceTierKey+"="+tomlString(codexFastTier))
 	}
 
 	return args

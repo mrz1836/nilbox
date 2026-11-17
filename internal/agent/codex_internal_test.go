@@ -544,3 +544,14 @@ func TestACodexBackgroundRunRefusesFlagsThatSetOrLoosenItsFence(t *testing.T) {
 	_, err := HeadlessArgs(Codex, HeadlessOptions{SessionID: codexSession, Access: a, Extra: []string{"-c", "model_verbosity=\"low\""}})
 	require.NoError(t, err, "an override that doesn't touch the fence still passes")
 }
+
+func TestCodexsOverridesEscapeTheirValues(t *testing.T) {
+	t.Parallel()
+
+	got := codexOverrides(Options{Effort: "high\"\nsandbox_mode=\"danger-full-access", Fast: true})
+
+	assert.Equal(t, []string{
+		codexConfig, `model_reasoning_effort="high\"\nsandbox_mode=\"danger-full-access"`,
+		codexConfig, `service_tier="fast"`,
+	}, got, "a quote in the value never ends the string")
+}
