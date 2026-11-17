@@ -225,8 +225,9 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getAutopilotReadiness: () => Promise.resolve(readiness()),
     checkAutopilotReadiness: () => Promise.resolve(readiness()),
     runRoutineNow: (id, itemId) =>
-      Promise.resolve(
-        autopilotMatch({
+      Promise.resolve({
+        ran: true,
+        match: autopilotMatch({
           id: 40,
           routineId: id,
           item: { ...autopilotMatch().item, id: itemId },
@@ -237,7 +238,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
           words: 'It starts as soon as a slot frees.',
           closedAt: null,
         }),
-      ),
+      }),
     explainRoutine: (id, itemId) => Promise.resolve(explanation({ routineId: id, itemId })),
     // The gallery holds the flagship and Snooze passing bot PRs, nothing suggested, and every
     // import and export goes through, unless a test says otherwise.
@@ -415,7 +416,6 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getCollapsedSections: () => Promise.resolve([]),
     setSectionCollapsed: (section, collapsed) => stored({ collapsedSections: collapsed ? [section] : [] }),
     setProjectsTipDismissed: (projectsTipDismissed) => stored({ projectsTipDismissed }),
-    setKeptRunningTold: (keptRunningTold) => stored({ keptRunningTold }),
     setReviewTab: (reviewTab) => stored({ reviewTab }),
     setNotificationsTab: (notificationsTab) => stored({ notificationsTab }),
     setConversationOrder: (conversationOrder) => stored({ conversationOrder }),

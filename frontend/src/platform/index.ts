@@ -896,7 +896,6 @@ export const {
   CollapsedSections: getCollapsedSections,
   SetSectionCollapsed: setSectionCollapsed,
   SetProjectsTipDismissed: setProjectsTipDismissed,
-  SetKeptRunningTold: setKeptRunningTold,
   SetReviewTab: setReviewTab,
   SetNotificationsTab: setNotificationsTab,
   SetConversationOrder: setConversationOrder,
@@ -1260,10 +1259,9 @@ export const tryRoutineAgain = autopilotService.TryAgain as (
 // this Mac is fixed, and those that start by themselves. Approve gives the OK, which for a
 // hold confirms exactly the hold shown; Skip closes one as the user skipped it. Readiness
 // is this Mac's readiness as the checks last found it, and CheckReadiness runs every check
-// again now (asking GitHub, one point) and wakes the engine. RunNow runs a routine on an
-// item now, from its menu: only on an item its conditions match, unless anyway, which the
-// user chose knowing why it doesn't. Explain says why a routine did or didn't act on an
-// item. PreviewRun plans a draft's agent step on an item, as it would start, and starts
+// again now (asking GitHub, one point) and wakes the engine. runRoutineNow (below) runs a
+// routine on an item now, from its menu. Explain says why a routine did or didn't act on
+// an item. PreviewRun plans a draft's agent step on an item, as it would start, and starts
 // nothing.
 export const autopilotNeedsYou = autopilotService.NeedsYou as () => CancellablePromise<AutopilotMatch[]>
 export const approveMatches = autopilotService.Approve as (ids: number[] | null) => CancellablePromise<AutopilotMatch[]>
@@ -1275,11 +1273,51 @@ export const postReviewAsComment = autopilotService.PostAsComment as (
 export const skipMatch = autopilotService.Skip as (id: number) => CancellablePromise<AutopilotMatch>
 export const getAutopilotReadiness = autopilotService.Readiness as () => CancellablePromise<AutopilotReadiness>
 export const checkAutopilotReadiness = autopilotService.CheckReadiness as () => CancellablePromise<AutopilotReadiness>
-export const runRoutineNow = autopilotService.RunNow as (
-  id: number,
-  itemID: number,
-  anyway: boolean,
-) => CancellablePromise<AutopilotMatch>
+
+// RunNowAnswer is how running a routine on an item now ended: it ran, with the match it
+// recorded; or it was refused because the routine doesn't match the item, with the
+// backend's words for why, for the window to offer Run anyway.
+export type RunNowAnswer = { ran: true; match: AutopilotMatch } | { ran: false; notMatching: string }
+
+// notMatchingOf reads the backend's words for a run refused because the routine doesn't
+// match the item, whose detail Go sends as {"code": "noMatch"} (autopilot.RefusalDetail).
+// It returns null for any other failure: words alone are never read as that refusal.
+function notMatchingOf(err: unknown): string | null {
+  const cause = causeOf(err)
+  const detail = cause?.detail
+
+  if (cause === null || typeof detail !== 'object' || detail === null || !('code' in detail)) {
+    return null
+  }
+
+  return detail.code === 'noMatch' ? cause.message : null
+}
+
+// runRoutineNow runs a routine on an item now, from its menu: only on an item its
+// conditions match, unless anyway, which the user chose knowing why it doesn't. On an item
+// it doesn't match it resolves refused, with why, so the window offers Run anyway without
+// asking anything more; any other failure rejects with the backend's words.
+export function runRoutineNow(id: number, itemID: number, anyway: boolean): CancellablePromise<RunNowAnswer> {
+  const run = autopilotService.RunNow as (
+    id: number,
+    itemID: number,
+    anyway: boolean,
+  ) => CancellablePromise<AutopilotMatch>
+
+  return run(id, itemID, anyway).then(
+    (match): RunNowAnswer => ({ ran: true, match }),
+    (err: unknown): RunNowAnswer => {
+      const why = notMatchingOf(err)
+
+      if (why === null) {
+        throw err
+      }
+
+      return { ran: false, notMatching: why }
+    },
+  )
+}
+
 export const explainRoutine = autopilotService.Explain as (
   id: number,
   itemID: number,

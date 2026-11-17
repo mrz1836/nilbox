@@ -87,14 +87,6 @@ export interface IssueProgress {
 }
 
 /**
- * KeptRunning says the window shows again after a close only hid it, the menu bar icon
- * off, because Autopilot has a routine on or an agent working: the window says, once, that
- * the app kept running and how to bring it back or quit.
- */
-export interface KeptRunning {
-}
-
-/**
  * NotificationsUpdated says the notification log changed: the window reads it again.
  */
 export interface NotificationsUpdated {

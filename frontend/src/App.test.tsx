@@ -2276,42 +2276,6 @@ describe('the Notifications page', () => {
   })
 })
 
-describe('the window’s close, kept running for Autopilot', () => {
-  it('says once, as the window shows again, why the app kept running, and remembers it said so', async () => {
-    await renderApp()
-    await screen.findByRole('region', { name: 'Review requested' })
-
-    act(() => {
-      emit('app:keptRunning')
-    })
-
-    const said = await screen.findByRole('group', { name: 'Notification' })
-
-    expect(within(said).getByText(/kept running, so Autopilot can go on/)).toBeInTheDocument()
-    expect(within(said).getByText(/in the Dock/)).toBeInTheDocument()
-    expect(platform.setKeptRunningTold).toHaveBeenCalledExactlyOnceWith(true)
-
-    act(() => {
-      emit('app:keptRunning')
-    })
-
-    expect(platform.setKeptRunningTold).toHaveBeenCalledOnce()
-  })
-
-  it('says nothing once it has said so before', async () => {
-    platform.getSettings.mockImplementation(() => stored({ keptRunningTold: true }))
-    await renderApp()
-    await screen.findByRole('region', { name: 'Review requested' })
-
-    act(() => {
-      emit('app:keptRunning')
-    })
-
-    expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
-    expect(platform.setKeptRunningTold).not.toHaveBeenCalled()
-  })
-})
-
 describe('Autopilot (beta)', () => {
   const views = () => within(screen.getByRole('navigation', { name: 'Views' }))
 

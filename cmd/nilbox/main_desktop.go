@@ -456,7 +456,6 @@ func registerEvents() {
 	application.RegisterEvent[event.AutopilotUpdated](event.NameAutopilotUpdated)
 	application.RegisterEvent[event.AutopilotRun](event.NameAutopilotRun)
 	application.RegisterEvent[event.UpdateRestartRequested](event.NameUpdateRestartRequested)
-	application.RegisterEvent[event.KeptRunning](event.NameKeptRunning)
 }
 
 // services wraps every service the core binds, in the core's order. A service no binder

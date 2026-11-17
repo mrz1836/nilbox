@@ -437,14 +437,6 @@ export function SetIntegrationsAnnounced(announced: boolean): $CancellablePromis
 }
 
 /**
- * SetKeptRunningTold stores whether the window said why the app kept running after its
- * close, and returns the settings with it.
- */
-export function SetKeptRunningTold(told: boolean): $CancellablePromise<$models.Settings> {
-    return $Call.ByID(1701347477, told);
-}
-
-/**
  * SetListKind stores which kind of item an inbox list shows on its own tab, every one or
  * only its pull requests or its issues, and returns the settings with it.
  */

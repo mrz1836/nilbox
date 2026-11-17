@@ -243,10 +243,6 @@ type Settings struct {
 	// the GitHub projects an issue is in.
 	ProjectsTipDismissed bool `json:"projectsTipDismissed"`
 
-	// KeptRunningTold is set once the window said that closing it only hid it, because
-	// Autopilot has a routine on or an agent working, the menu bar icon off.
-	KeptRunningTold bool `json:"keptRunningTold"`
-
 	// ReviewTab is the review sheet's tab the user last chose, which it opens on.
 	ReviewTab ReviewTab `json:"reviewTab"`
 
@@ -790,7 +786,6 @@ func fromStored(stored map[string]string) Settings {
 		CollapsedSections: decodeCollapsed(stored),
 
 		ProjectsTipDismissed: prefval.Bool(stored[KeyProjectsTipDismissed], false),
-		KeptRunningTold:      prefval.Bool(stored[KeyKeptRunningTold], false),
 		ReviewTab:            reviewTabs().decode(stored[KeyReviewTab]),
 		NotificationsTab:     notificationsTabs().decode(stored[KeyNotificationsTab]),
 		ConversationOrder:    conversationOrders().decode(stored[KeyConversationOrder]),
@@ -921,7 +916,7 @@ func settingKeys() []string {
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
-		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyKeptRunningTold, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
+		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus, updateprefs.KeyMode,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
 		append(append(append(integrationprefs.Keys(), threadrules.Keys()...), statusprefs.Keys()...),

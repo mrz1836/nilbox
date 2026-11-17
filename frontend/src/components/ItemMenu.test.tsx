@@ -554,19 +554,16 @@ describe('ItemMenu Autopilot', () => {
     expect(platform.explainRoutine).not.toHaveBeenCalled()
   })
 
-  it('offers Run anyway on an item a routine doesn’t match, showing why, and runs it on asking', async () => {
-    platform.runRoutineNow.mockRejectedValueOnce(new Error('It doesn’t match it: checks pass.'))
+  it('offers Run anyway on an item a routine doesn’t match, from the refusal alone, and runs it on asking', async () => {
+    platform.runRoutineNow.mockResolvedValueOnce({ ran: false, notMatching: 'It doesn’t match it: checks pass.' })
     await renderWithRoutines()
 
     await userEvent.click((await openRoutines()).getByRole('menuitem', { name: 'Snooze passing bot PRs' }))
 
     const dialog = within(await screen.findByRole('dialog', { name: 'Run “Snooze passing bot PRs” anyway?' }))
 
-    expect(platform.explainRoutine).toHaveBeenCalledWith(3, 1)
     expect(dialog.getByText('It doesn’t match it: checks pass.')).toBeInTheDocument()
-    expect(dialog.getByRole('list', { name: 'Why, for example-repo #7' })).toHaveTextContent(
-      'checks pass· test (go 1.26) failed',
-    )
+    expect(platform.explainRoutine).not.toHaveBeenCalled()
 
     await userEvent.click(dialog.getByRole('button', { name: 'Run anyway' }))
 
@@ -582,7 +579,7 @@ describe('ItemMenu Autopilot', () => {
   })
 
   it('runs nothing when Run anyway is cancelled', async () => {
-    platform.runRoutineNow.mockRejectedValueOnce(new Error('It doesn’t match it: checks pass.'))
+    platform.runRoutineNow.mockResolvedValueOnce({ ran: false, notMatching: 'It doesn’t match it: checks pass.' })
     await renderWithRoutines()
 
     await userEvent.click((await openRoutines()).getByRole('menuitem', { name: 'Snooze passing bot PRs' }))
@@ -597,13 +594,48 @@ describe('ItemMenu Autopilot', () => {
 
   it('tells any other refusal as it is, and offers nothing more', async () => {
     platform.runRoutineNow.mockRejectedValueOnce(new Error('The item isn’t stored on this Mac.'))
-    platform.explainRoutine.mockRejectedValueOnce(new Error('The item isn’t stored on this Mac.'))
     await renderWithRoutines()
 
     await userEvent.click((await openRoutines()).getByRole('menuitem', { name: 'Snooze passing bot PRs' }))
 
     expect(await screen.findByText('Couldn’t run “Snooze passing bot PRs”')).toBeInTheDocument()
     expect(screen.getByText('· The item isn’t stored on this Mac.')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.explainRoutine).not.toHaveBeenCalled()
+  })
+
+  it('tells a Run anyway that is refused as it is', async () => {
+    platform.runRoutineNow
+      .mockResolvedValueOnce({ ran: false, notMatching: 'It doesn’t match it: checks pass.' })
+      .mockRejectedValueOnce(new Error('It acts only on pull requests.'))
+    await renderWithRoutines()
+
+    await userEvent.click((await openRoutines()).getByRole('menuitem', { name: 'Snooze passing bot PRs' }))
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Run “Snooze passing bot PRs” anyway?' }))
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Run anyway' }))
+
+    expect(await screen.findByText('Couldn’t run “Snooze passing bot PRs”')).toBeInTheDocument()
+    expect(screen.getByText('· It acts only on pull requests.')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('never asks Run anyway twice: one that still doesn’t match is told as it is', async () => {
+    platform.runRoutineNow
+      .mockResolvedValueOnce({ ran: false, notMatching: 'It doesn’t match it: checks pass.' })
+      .mockResolvedValueOnce({ ran: false, notMatching: 'It doesn’t match it: it isn’t a bot’s.' })
+    await renderWithRoutines()
+
+    await userEvent.click((await openRoutines()).getByRole('menuitem', { name: 'Snooze passing bot PRs' }))
+    await userEvent.click(
+      within(await screen.findByRole('dialog', { name: 'Run “Snooze passing bot PRs” anyway?' })).getByRole('button', {
+        name: 'Run anyway',
+      }),
+    )
+
+    expect(await screen.findByText('Couldn’t run “Snooze passing bot PRs”')).toBeInTheDocument()
+    expect(screen.getByText('· It doesn’t match it: it isn’t a bot’s.')).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 

@@ -1921,7 +1921,13 @@ for that section.
 
 **Run a routine** (`RunNow(id, itemID, anyway)`): a manual match, once per click, counting
 toward no cap or try; with `anyway`, on an item its conditions don't match but of a kind it acts
-on, under a manual fire key. Every limit of a start still holds it.
+on, under a manual fire key. Every limit of a start still holds it. Without `anyway`, an item its
+conditions don't match is refused with a `RefusalError` (`refusal.go`) whose code is
+`RefusalNoMatch`, its words naming the first condition that fails and its chain holding
+`ErrNoMatch`; `desktop.MarshalError` sends the window `{"code": "noMatch"}` beside them, as
+`update.RefusalError`'s codes go, so the window offers Run anyway from the code, never the
+words, and never asks `Explain` for it. Every other refusal, the same `ErrNoMatch` for a match
+that is gone and a Run anyway on a kind it doesn't act on among them, carries no code.
 
 **Preview** (`PreviewRun(draft, itemID)`) is `Previewer` (core's `runPreviews`): the launcher's
 own `Preview` of the same `routineRequest` a start would launch, with where each setting came
@@ -2338,11 +2344,10 @@ window stays and the shell quits the normal way (`Quit`), so `ShouldQuit` asks a
 or holds the quit for a move, in a window that still exists. The app never quits on the last
 window's close by itself: `ApplicationShouldTerminateAfterLastWindowClosed` stays off
 (`macAppOptions`), since AppKit asks it as the last visible window hides too, and with it on a
-close that only hid the window ended the app a moment later. A close hidden for Autopilot
-alone is noted, and the next time the window shows (`showWindow`, every way it comes forward)
-the page hears `event.KeptRunning` (`app:keptRunning`) once, and says why the app kept running,
-once ever (`ui.keptRunningTold`, window memory a backup never holds). A click on an Autopilot
-notification or banner about an item opens that item, as an inbox arrival's does
+close that only hid the window ended the app a moment later. The window comes back with
+nothing said about the hide (an earlier build's `ui.keptRunningTold` is left stored, and
+nothing reads it). A click on an Autopilot notification or banner about an item opens that
+item, as an inbox arrival's does
 (`bannerOpens` falls back to the item, `opensAutopilot` is an entry about no item alone), and
 one about no item, as a problem is, or on a menu row of the group, opens the Autopilot tab at
 what its target names (**The Autopilot tab**, below).
@@ -2676,9 +2681,11 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   is missing, from `Readiness`, and a waiting match's chip reads *Needs you*.
 - **This Mac** (Settings → Autopilot) lists `Readiness`'s checks, each with its mark, what it
   found, and its fix as a command to copy or as words, and **Check again**.
-- **An item's ⋯ menu** (`RoutineMenu`) holds **Autopilot ▸**: **Run a routine ▸** (`RunNow`;
-  after a refusal it asks `Explain`, and offers **Run anyway** only when the routine doesn't
-  match the item), **Make a routine from this…** (the window's `onMake`, which App turns into
+- **An item's ⋯ menu** (`RoutineMenu`) holds **Autopilot ▸**: **Run a routine ▸** (`RunNow`,
+  through the platform's `runRoutineNow`; it offers **Run anyway**, with the refusal's words,
+  only on a refusal whose detail is `{"code": "noMatch"}`, `autopilot.RefusalNoMatch`, which
+  the routine not matching the item alone carries, so it asks nothing more; any other refusal,
+  a Run anyway's included, is told as it is), **Make a routine from this…** (the window's `onMake`, which App turns into
   an `AutopilotRequest` with `fromItem`), and **Why didn't a routine run?**, which reads
   `Explain` and shows its `routine` and `watch` lines and, folded, its `records`. It reads the
   routines, the catalog, and `onMake` through one source made once (`MenuSource.hold`), so the

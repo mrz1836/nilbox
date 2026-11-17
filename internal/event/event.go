@@ -137,9 +137,6 @@ const (
 
 	// NameUpdateQuitHeld is UpdateQuitHeld's name.
 	NameUpdateQuitHeld = "updates:quitHeld"
-
-	// NameKeptRunning is KeptRunning's name.
-	NameKeptRunning = "app:keptRunning"
 )
 
 // Event is something that happened, or was asked for, that another part of the app
@@ -199,7 +196,6 @@ func WindowEvents() []WindowEvent {
 		UpdateRestartRequested{},
 		AutopilotUpdated{},
 		AutopilotRun{},
-		KeptRunning{},
 	}
 }
 
@@ -567,16 +563,6 @@ type QuitRequested struct{}
 func (QuitRequested) Name() string { return NameQuitRequested }
 
 func (QuitRequested) window() {}
-
-// KeptRunning says the window shows again after a close only hid it, the menu bar icon
-// off, because Autopilot has a routine on or an agent working: the window says, once, that
-// the app kept running and how to bring it back or quit.
-type KeptRunning struct{}
-
-// Name returns NameKeptRunning.
-func (KeptRunning) Name() string { return NameKeptRunning }
-
-func (KeptRunning) window() {}
 
 // QuitConfirmed says the user chose to stop the runs and quit. The desktop shell hears it,
 // lets the next quit through, and quits; shutdown stops the runs.

@@ -15,7 +15,6 @@ export type {
     HooksUpdated,
     InboxUpdated,
     IssueProgress,
-    KeptRunning,
     NotificationsUpdated,
     QuitRequested,
     ReleasesProgress,

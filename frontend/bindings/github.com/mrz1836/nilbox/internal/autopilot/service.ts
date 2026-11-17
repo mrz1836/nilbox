@@ -378,7 +378,9 @@ export function RunEventsBefore(runID: number, before: number): $CancellableProm
  * doesn't match), on any item of a kind it acts on. It counts toward no daily cap or try,
  * needs no OK, and keeps to the routine's mode, so a Dry run records what it would have
  * done. Every limit that keeps a start from happening still holds it, as for any match:
- * the outside contributor rule, this Mac's readiness, the item read fresh, the holds.
+ * the outside contributor rule, this Mac's readiness, the item read fresh, the holds. On
+ * an item the routine doesn't match, without anyway, it is refused with RefusalNoMatch,
+ * whose code tells the window to offer Run anyway.
  */
 export function RunNow(id: number, itemID: number, anyway: boolean): $CancellablePromise<$models.Match> {
     return $Call.ByID(1162826700, id, itemID, anyway);

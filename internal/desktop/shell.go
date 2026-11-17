@@ -301,13 +301,11 @@ type Shell struct {
 	// from; only the redraw loop touches it. autopilotAsked is set by an ask to read it
 	// again. autopilotKeeps and autopilotPaused are what it last said of keeping the app
 	// running and of Pause Autopilot, which the window's close and the menu's Pause row
-	// read. hidForAutopilot is set when a close only hid the window because of Autopilot,
-	// the icon off, until the window next shows.
+	// read.
 	autopilotMenu   menubar.AutopilotState
 	autopilotAsked  atomic.Bool
 	autopilotKeeps  atomic.Bool
 	autopilotPaused atomic.Bool
-	hidForAutopilot atomic.Bool
 
 	// quitConfirmed is set once the user chose to stop the runs and quit, or asked for a
 	// reset, which lets every later quit through.
@@ -505,7 +503,7 @@ func (s *Shell) ShowWindow() {
 		return
 	}
 
-	s.showWindow()
+	s.window.Show()
 }
 
 // RefreshNow refreshes the inbox from GitHub in the background, as the menu bar's Refresh
@@ -559,7 +557,7 @@ func (s *Shell) ShouldQuit() bool {
 
 	if s.heldForMove() {
 		s.goTracked(func(context.Context) {
-			s.showWindow()
+			s.window.Show()
 		})
 
 		return false
@@ -570,7 +568,7 @@ func (s *Shell) ShouldQuit() bool {
 	}
 
 	s.goTracked(func(context.Context) {
-		s.showWindow()
+		s.window.Show()
 		s.frontend.Emit(event.QuitRequested{})
 	})
 
@@ -580,26 +578,13 @@ func (s *Shell) ShouldQuit() bool {
 // HidesOnClose reports whether closing the window only hides it, keeping the app running,
 // while the app is not quitting: while the menu bar icon shows, and while Autopilot has a
 // routine switched on or an agent run going, whatever the icon setting, since quitting
-// would quietly stop them. The Dock icon brings the window back. A close it hides for
-// Autopilot alone is noted, so the window says why the app kept running, once, when it
-// next shows. The window's close asks it (WindowClosing), which answers at once, so it
-// reads only what the shell last read.
+// would quietly stop them. The Dock icon brings the window back. The window's close asks
+// it (WindowClosing), which answers at once, so it reads only what the shell last read.
 func (s *Shell) HidesOnClose() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	switch {
-	case s.stopping.Load():
-		return false
-	case s.trayOn:
-		return true
-	case s.autopilotKeeps.Load():
-		s.hidForAutopilot.Store(true)
-
-		return true
-	default:
-		return false
-	}
+	return !s.stopping.Load() && (s.trayOn || s.autopilotKeeps.Load())
 }
 
 // Stopping reports whether Stop has begun. Work the desktop runtime queued before then
@@ -752,7 +737,7 @@ func (s *Shell) waitForWork() {
 // reveal brings the window forward and, when the request names an item, its URL, a run,
 // what Autopilot's tab opens at, or a notification to mark read, asks the page to show it.
 func (s *Shell) reveal(r event.RevealItem) {
-	s.showWindow()
+	s.window.Show()
 
 	if !r.Named() {
 		return

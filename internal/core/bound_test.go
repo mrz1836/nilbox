@@ -207,9 +207,6 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetProjectsTipDismissed": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetProjectsTipDismissed(ctx, true)
 		},
-		"settings.Service.SetKeptRunningTold": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Settings.SetKeptRunningTold(ctx, true)
-		},
 		"settings.Service.SetReviewTab": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetReviewTab(ctx, settings.ReviewTabComments)
 		},

@@ -43,7 +43,6 @@ import {
   bannerEntry,
   bannerOpens,
   filterEntries,
-  keptRunningText,
   opensAutopilot,
   opensRun,
   opensUpdate,
@@ -96,7 +95,6 @@ import {
   setReviewTab,
   setConversationOrder,
   setIntegrationsAnnounced,
-  setKeptRunningTold,
   setScriptsLastPage,
   setScriptsLastRepo,
   setScriptsSectionOpen,
@@ -642,10 +640,6 @@ export function App() {
     setRunToast({ id: changes.current, text, tone: 'warning' })
   }
 
-  // keptToast says once, as the window shows again after a close that only hid it because
-  // Autopilot had work, the menu bar icon off, that the app kept running, and how to quit.
-  const [keptToast, setKeptToast] = useState<ToastMessage | null>(null)
-
   // autopilotRequest is what an Autopilot notification, a row of the menu bar's Autopilot
   // group, or an item's ⚡ chip last asked the Autopilot tab to show, numbered as requests
   // are.
@@ -819,24 +813,18 @@ export function App() {
   const closeRunToast = () => {
     setRunToast(null)
   }
-  const closeKeptToast = () => {
-    setKeptToast(null)
-  }
-  // The update's toast says what the window opened on, so it shows first; why the app kept
-  // running answers the window's coming back, so it shows over what a click asked.
-  const shownToast = updated.toast ?? foundToast ?? keptToast ?? runToast ?? changeShown
+  // The update's toast says what the window opened on, so it shows first.
+  const shownToast = updated.toast ?? foundToast ?? runToast ?? changeShown
   const closeToast =
     updated.toast !== null
       ? updated.close
       : foundToast !== null
         ? found.close
-        : keptToast !== null
-          ? closeKeptToast
-          : runToast !== null
-            ? closeRunToast
-            : changeToast === null
-              ? closeSweepToast
-              : closeChangeToast
+        : runToast !== null
+          ? closeRunToast
+          : changeToast === null
+            ? closeSweepToast
+            : closeChangeToast
   // toastSeconds is how long every toast shows, the inbox's too, as set in Settings.
   const toastSeconds = config.settings?.toastSeconds ?? defaultToastSeconds
   // routineMenu is what every item's ⋯ menu offers of Autopilot, while it is on, and the
@@ -1010,26 +998,6 @@ export function App() {
       storeAnnounced()
     }
   }, [found.announced])
-
-  // The window says why the app kept running once, ever: that it said so is stored, and
-  // before the settings load, it says nothing rather than say it twice.
-  const sayKeptRunning = useEffectEvent(() => {
-    if (config.settings === null || config.settings.keptRunningTold) {
-      return
-    }
-
-    changes.current -= 1
-    setKeptToast({ id: changes.current, text: keptRunningText })
-    remember(setKeptRunningTold(true), 'that the window said why the app kept running')
-  })
-
-  useEffect(
-    () =>
-      on('app:keptRunning', () => {
-        sayKeptRunning()
-      }),
-    [],
-  )
 
   const launch: LaunchOptions | null =
     config.settings === null

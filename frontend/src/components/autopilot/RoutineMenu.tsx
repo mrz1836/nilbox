@@ -47,12 +47,11 @@ interface Held {
 }
 
 // Anyway is a routine the item didn't match, which the user may run on it anyway: why it
-// doesn't match, in the backend's words and its decision's.
+// doesn't match, in the backend's words.
 interface Anyway {
   routine: AutopilotRoutine
   item: InboxItem
   message: string
-  explanation: AutopilotExplanation
 }
 
 // Why is the item whose routines the user asks about, and the routine chosen.
@@ -109,22 +108,16 @@ class MenuSource implements AutopilotMenu {
   askable = (item: InboxItem): AutopilotRoutine[] => this.listed(askable, item)
 
   // onRun runs the routine on the item now, and says what became of it. On an item it
-  // doesn't match, which its decision now says, it asks whether to run it anyway; any
+  // doesn't match, which the refusal's code says, it asks whether to run it anyway; any
   // other refusal is told as it is.
   onRun = (routine: AutopilotRoutine, item: InboxItem) => {
-    void attempt(runRoutineNow(routine.id, item.id, false)).then(async (ran) => {
-      if (ran.ok) {
-        this.say(startedWords(routine, ran.data.words))
-
-        return
-      }
-
-      const explained = await attempt(explainRoutine(routine.id, item.id))
-
-      if (explained.ok && explained.data.match !== 'yes') {
-        this.shows.anyway({ routine, item, message: ran.error, explanation: explained.data })
-      } else {
+    void attempt(runRoutineNow(routine.id, item.id, false)).then((ran) => {
+      if (!ran.ok) {
         this.say({ text: `Couldn’t run “${routine.name}”`, detail: ran.error, tone: 'error' })
+      } else if (ran.data.ran) {
+        this.say(startedWords(routine, ran.data.match.words))
+      } else {
+        this.shows.anyway({ routine, item, message: ran.data.notMatching })
       }
     })
   }
@@ -315,11 +308,14 @@ export function useRoutineMenu(
 
     setRunning(false)
     setAnyway(null)
-    menu.say(
-      ran.ok
-        ? startedWords(a.routine, ran.data.words)
-        : { text: `Couldn’t run “${a.routine.name}”`, detail: ran.error, tone: 'error' },
-    )
+
+    if (!ran.ok) {
+      menu.say({ text: `Couldn’t run “${a.routine.name}”`, detail: ran.error, tone: 'error' })
+    } else if (ran.data.ran) {
+      menu.say(startedWords(a.routine, ran.data.match.words))
+    } else {
+      menu.say({ text: `Couldn’t run “${a.routine.name}”`, detail: ran.data.notMatching, tone: 'error' })
+    }
   }
 
   const node = (
@@ -340,7 +336,6 @@ export function useRoutineMenu(
         >
           <div className="flex flex-col gap-2">
             <p className="text-text">{anyway.message}</p>
-            <TraceList label={`Why, for ${itemText(anyway.item)}`} trace={anyway.explanation.trace} />
             <p>
               Run anyway runs it once on {itemText(anyway.item)}, in its mode, whatever its conditions say. Every limit
               still holds it, as for any match.

@@ -3303,7 +3303,7 @@ menu has an **Autopilot** group after your lists: each agent working, *N needs y
 opens Activity, and **Pause Autopilot** as a checkbox row, the same setting as the tab's button
 and Settings'. The number by the icon stays the inbox's. While a routine is on (and Autopilot
 is) or an agent works, closing the window only hides it, even with the menu bar icon off, so
-Autopilot carries on; the Dock icon brings it back, and the window says so the first time.
+Autopilot carries on; the Dock icon brings it back.
 
 ### Settings → Autopilot
 
