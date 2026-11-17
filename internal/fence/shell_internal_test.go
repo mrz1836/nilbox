@@ -154,7 +154,7 @@ func FuzzReadShell(f *testing.F) {
 
 		for _, c := range s.commands {
 			for _, w := range c.words {
-				assert.NotContains(t, w.text, "\x00\x00\x00", "a word is never more than its line")
+				assert.LessOrEqual(t, len(w.text), len(line), "a word is never more than its line")
 			}
 		}
 	})
