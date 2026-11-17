@@ -165,8 +165,8 @@ func TestSeed(t *testing.T) {
 	ctx := t.Context()
 
 	assert.Equal(t, []string{
-		"Fix checks", "Fix dep security", "LGTM", "Needs changes", "Question", "Quick look", "Review", "Update OK",
-		"Work on it",
+		"Address review", "Fix checks", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro",
+		"Question", "Quick look", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK", "Work on it",
 	}, nicknames(t, s))
 
 	review, work := byNickname(t, s, "Review"), byNickname(t, s, "Work on it")
@@ -193,7 +193,8 @@ func TestSeed(t *testing.T) {
 	require.NoError(t, s.Delete(ctx, quick.ID))
 	require.NoError(t, Seed(ctx, s.store))
 	assert.Equal(t, []string{
-		"Fix checks", "Fix dep security", "LGTM", "Needs changes", "Question", "Review", "Update OK", "Work on it",
+		"Address review", "Fix checks", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro",
+		"Question", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK", "Work on it",
 	}, nicknames(t, s))
 }
 
@@ -580,7 +581,7 @@ func TestDefaultsFallBack(t *testing.T) {
 
 	defaults, err = s.store.Defaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, byNickname(t, s, "Fix checks").ID, defaults.PR, "the first pull request prompt by nickname")
+	assert.Equal(t, byNickname(t, s, "Address review").ID, defaults.PR, "the first pull request prompt by nickname")
 	assert.Equal(t, byNickname(t, s, "Work on it").ID, defaults.Issue)
 }
 

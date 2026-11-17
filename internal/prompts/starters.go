@@ -246,6 +246,12 @@ type Starter struct {
 
 // Starters returns every starter prompt, in the order they are added.
 func Starters() []Starter {
+	return append(builtStarters(), routineStarters()...)
+}
+
+// builtStarters returns the starters the launcher and the sheets ship, before
+// Autopilot's.
+func builtStarters() []Starter {
 	return []Starter{
 		{
 			Key: StarterReviewPR, Name: "Review a pull request", Nickname: "Review",

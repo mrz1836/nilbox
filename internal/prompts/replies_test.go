@@ -303,9 +303,15 @@ func TestStarterRepliesFillIn(t *testing.T) {
 
 	assert.Equal(t, "Reviewed and approved. Thanks for the work on this, @octo-user!\n", fill("LGTM", Sample(item.KindPR)))
 
+	// A starter reply that fills a slot fills one of its own review; one for issues fills none, since no
+	// review's default can be for issues.
 	for _, starter := range Starters() {
-		if starter.Purpose == PurposeReply {
+		if starter.Purpose == PurposeReply && starter.Slot != "" {
 			assert.Equal(t, starter.ReplyAction, starter.Slot.Action(), starter.Key)
+		}
+
+		if starter.Purpose == PurposeReply && starter.Slot == "" {
+			assert.False(t, starter.AppliesTo.Covers(item.KindPR), "%s: a reply for pull requests fills its slot", starter.Key)
 		}
 	}
 }
