@@ -273,5 +273,9 @@ func WakeDetail(r snooze.Reasons) string {
 		parts = append(parts, textutil.Counted(r.Comments, "new comment", "new comments"))
 	}
 
+	if r.Ready {
+		parts = append(parts, "marked ready for review")
+	}
+
 	return strings.Join(parts, ", ")
 }

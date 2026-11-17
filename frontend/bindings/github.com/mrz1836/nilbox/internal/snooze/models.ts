@@ -24,6 +24,11 @@ export interface Reasons {
      * Comments is how many comments were added since the snooze began.
      */
     "comments": number;
+
+    /**
+     * Ready is set when a draft was marked ready for review since the snooze began.
+     */
+    "ready": boolean;
 }
 
 /**
@@ -76,8 +81,9 @@ export const ReviewRule = {
     ReviewsAny: "any",
 
     /**
-     * Defaults for a fresh database: three days, waking on any push or a review decision,
-     * and not on comments, which bots post as often as people do.
+     * Defaults for a fresh database: three days, waking on any push, a review decision, or
+     * a draft marked ready for review, and not on comments, which bots post as often as
+     * people do.
      */
     DefaultWakeReviews: "decisions",
 } as const;
@@ -103,4 +109,10 @@ export interface Rules {
      * count, and so do bots'.
      */
     "comments": number;
+
+    /**
+     * Ready wakes a snooze when a draft pull request is marked ready for review. A pull
+     * request turned into a draft never wakes one.
+     */
+    "ready": boolean;
 }

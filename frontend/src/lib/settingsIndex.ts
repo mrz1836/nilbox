@@ -271,6 +271,7 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'New commits', keywords: ['wake', 'push', 'force-push'] },
     { label: 'Reviews', keywords: ['wake', 'approval', 'changes requested'] },
     { label: 'New comments', keywords: ['wake', 'bots'] },
+    { label: 'Marked ready for review', keywords: ['wake', 'draft', 'ready'] },
   ],
   cards: [
     {

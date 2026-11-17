@@ -2052,24 +2052,27 @@ GitHub never hears about them.
 ### Waking a snooze early
 
 When you snooze an item, its activity as the last refresh read it is recorded: the head
-commit, the number of commits and comments, and its reviews. Every refresh compares the item
-with that record, and a snooze ends at once when the new activity reaches any of your rules:
+commit, the number of commits and comments, its reviews, and whether it is a draft. Every
+refresh compares the item with that record, and a snooze ends at once when the new activity
+reaches any of your rules:
 
 | Rule | Choices | Default |
 |---|---|---|
 | New commits | **Never**, **Any** (any push), **3+**, or **5+** new commits | Any |
 | Reviews | **Never**, **Decisions** (an approval or a request for changes, or the review decision turning to either), or **Any** (also a review that only comments) | Decisions |
 | New comments | **Never**, **Any**, **3+**, **5+**, or **10+** new comments | Never |
+| Marked ready for review | **Never** or **Any** (a draft pull request taken out of draft) | Any |
 
 **Any** push counts a force-push too, which keeps the commit count but moves the head, except
 on a bot's pull request, where a force-push is usually a rebase. Comments include review
 comments and bots' comments, since GitHub reports only their count; a higher threshold rides
 out bot noise. Counts are measured from the moment you snoozed, so three comments over three
-refreshes reach **3+**.
+refreshes reach **3+**. A pull request turned into a draft never wakes a snooze, and a draft
+snoozed before this rule existed still wakes when it's marked ready.
 
 An item woken early comes back to its lists with a tag saying what was new, most decisive
-first, such as **Back early: approved, 2 new commits** or **Back early: changes requested,
-force-pushed**. Hover the tag for when it woke. Only the activity that met a rule is named.
+first, such as **Back early: approved, 2 new commits**, **Back early: changes requested,
+force-pushed**, or **Back early: marked ready for review**. Hover the tag for when it woke. Only the activity that met a rule is named.
 Dismissed items never wake, and a snooze that has ended is not woken again; snoozing an item
 again starts a fresh record.
 

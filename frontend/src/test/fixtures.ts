@@ -1201,7 +1201,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     trustedBots: ['dependabot', 'github-actions', 'renovate'],
     defaultTrustedBots: ['dependabot', 'github-actions', 'renovate'],
     snoozeDays: 3,
-    snoozeWake: { commits: 1, reviews: 'decisions', comments: 0 },
+    snoozeWake: { commits: 1, reviews: 'decisions', comments: 0, ready: true },
     windowSize: { width: 1440, height: 900 },
     defaultWindowSize: { width: 1440, height: 900 },
     sensitiveFiles: { scope: 'collaborators', off: [], patterns: [] },

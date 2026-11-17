@@ -41,10 +41,12 @@ ON CONFLICT (item_id) DO UPDATE SET
 
 -- name: GetActivity :one
 -- GetActivity returns the activity a snooze compares from the details of the item with
--- item_id, or sql.ErrNoRows when no refresh has read them.
-SELECT head_oid, commits, comments, review_decision, reviewed, approvals, changes_requested
-FROM item_details
-WHERE item_id = ?;
+-- item_id and whether it is a draft, or sql.ErrNoRows when no refresh has read them.
+SELECT d.head_oid, d.commits, d.comments, d.review_decision, d.reviewed, d.approvals, d.changes_requested,
+    i.is_draft
+FROM item_details d
+JOIN items i ON i.id = d.item_id
+WHERE d.item_id = ?;
 
 -- name: SetReviewRequests :exec
 -- SetReviewRequests rewrites who the pull request with item_id asks to review, as GitHub

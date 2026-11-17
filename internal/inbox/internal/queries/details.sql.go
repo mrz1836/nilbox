@@ -11,9 +11,11 @@ import (
 )
 
 const getActivity = `-- name: GetActivity :one
-SELECT head_oid, commits, comments, review_decision, reviewed, approvals, changes_requested
-FROM item_details
-WHERE item_id = ?
+SELECT d.head_oid, d.commits, d.comments, d.review_decision, d.reviewed, d.approvals, d.changes_requested,
+    i.is_draft
+FROM item_details d
+JOIN items i ON i.id = d.item_id
+WHERE d.item_id = ?
 `
 
 type GetActivityRow struct {
@@ -24,10 +26,11 @@ type GetActivityRow struct {
 	Reviewed         int64
 	Approvals        int64
 	ChangesRequested int64
+	IsDraft          bool
 }
 
 // GetActivity returns the activity a snooze compares from the details of the item with
-// item_id, or sql.ErrNoRows when no refresh has read them.
+// item_id and whether it is a draft, or sql.ErrNoRows when no refresh has read them.
 func (q *Queries) GetActivity(ctx context.Context, itemID int64) (GetActivityRow, error) {
 	row := q.db.QueryRowContext(ctx, getActivity, itemID)
 	var i GetActivityRow
@@ -39,6 +42,7 @@ func (q *Queries) GetActivity(ctx context.Context, itemID int64) (GetActivityRow
 		&i.Reviewed,
 		&i.Approvals,
 		&i.ChangesRequested,
+		&i.IsDraft,
 	)
 	return i, err
 }

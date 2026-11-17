@@ -922,7 +922,7 @@ func settingKeys() []string {
 		KeyWorktreeDefault, KeyWorktreeAutoCleanup, KeyTerminal, KeyFollowSessions, KeyCodexEffort, KeyCodexFast,
 		KeyClaudeAPIKey, KeyCodexAPIKey, KeyCloneRoot, KeyCloneLocations, KeyTrustedBots,
 		KeySnoozeDays, KeyWindowSize,
-		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments,
+		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments, snooze.PrefWakeReady,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus, updateprefs.KeyMode,

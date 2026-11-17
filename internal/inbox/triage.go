@@ -276,6 +276,7 @@ func activityBaseline(ctx context.Context, q *queries.Queries, id int64) (*strin
 	return encodeJSON(snooze.State{
 		Head: row.HeadOID, Commits: int(row.Commits), Comments: int(row.Comments), Decision: row.ReviewDecision,
 		Reviewed: int(row.Reviewed), Approvals: int(row.Approvals), ChangesRequested: int(row.ChangesRequested),
+		Draft: row.IsDraft,
 	})
 }
 
@@ -285,6 +286,7 @@ func snoozedActivity(r queries.ListRunningSnoozesRow) snooze.State {
 	return snooze.State{
 		Head: r.HeadOID, Commits: int(r.Commits), Comments: int(r.Comments), Decision: r.ReviewDecision,
 		Reviewed: int(r.Reviewed), Approvals: int(r.Approvals), ChangesRequested: int(r.ChangesRequested),
+		Draft: r.IsDraft,
 	}
 }
 
@@ -325,6 +327,16 @@ func (w *writer) wake(ctx context.Context, rules snooze.Rules, r queries.ListRun
 		return w.recordBaseline(ctx, r.ItemID, now)
 	}
 
+	if now.Draft && !recordsDraft(*r.SnoozeBaseline) {
+		// A snooze an earlier build recorded holds no draft flag, so it reads as ready:
+		// a draft snoozed then would never wake when marked ready. While the item is
+		// still a draft, record that much and compare as usual.
+		then.Draft = true
+		if err = w.recordBaseline(ctx, r.ItemID, then); err != nil {
+			return err
+		}
+	}
+
 	bot := trust.Author{Type: r.AuthorType}.IsBot()
 
 	reasons := snooze.Wake(rules, then, now, bot)
@@ -353,6 +365,16 @@ func (w *writer) wake(ctx context.Context, rules snooze.Rules, r queries.ListRun
 	return nil
 }
 
+// recordsDraft reports whether a recorded baseline says whether its item was a draft,
+// which a baseline an earlier build recorded doesn't.
+func recordsDraft(baseline string) bool {
+	keys, err := store.DecodeJSON[struct {
+		Draft *bool `json:"draft"`
+	}](baseline)
+
+	return err == nil && keys.Draft != nil
+}
+
 // recordBaseline records now as the activity the item's snooze compares with, when none
 // is recorded or the one recorded can't be read.
 func (w *writer) recordBaseline(ctx context.Context, id int64, now snooze.State) error {
@@ -371,7 +393,7 @@ func (w *writer) recordBaseline(ctx context.Context, id int64, now snooze.State)
 
 // wakeRules reads the user's wake rules from the prefs.
 func wakeRules(ctx context.Context, p *prefs.Store) (snooze.Rules, error) {
-	stored, err := p.GetMany(ctx, snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments)
+	stored, err := p.GetMany(ctx, snooze.Keys()...)
 	if err != nil {
 		return snooze.Rules{}, fmt.Errorf("read the snooze rules: %w", err)
 	}

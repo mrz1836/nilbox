@@ -291,20 +291,33 @@ describe('SettingsView', () => {
 
     await userEvent.click(within(comments).getByRole('radio', { name: '5+' }))
 
-    expect(platform.setSnoozeWake).toHaveBeenCalledWith({ commits: 1, reviews: 'decisions', comments: 5 })
+    expect(platform.setSnoozeWake).toHaveBeenCalledWith({ commits: 1, reviews: 'decisions', comments: 5, ready: true })
     await waitFor(() => {
-      expect(onSaved).toHaveBeenCalledWith(settings({ snoozeWake: { commits: 1, reviews: 'decisions', comments: 5 } }))
+      expect(onSaved).toHaveBeenCalledWith(
+        settings({ snoozeWake: { commits: 1, reviews: 'decisions', comments: 5, ready: true } }),
+      )
     })
 
     // Each rule changes from the settings the last change stored.
     await userEvent.click(within(reviews).getByRole('radio', { name: 'Never' }))
-    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 1, reviews: 'never', comments: 5 })
+    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 1, reviews: 'never', comments: 5, ready: true })
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledTimes(2)
     })
 
     await userEvent.click(within(commits).getByRole('radio', { name: 'Never' }))
-    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 0, reviews: 'never', comments: 5 })
+    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 0, reviews: 'never', comments: 5, ready: true })
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(3)
+    })
+
+    const ready = screen.getByRole('radiogroup', { name: 'Wake when marked ready for review' })
+    expect(within(ready).getByRole('radio', { name: 'Any' })).toBeChecked()
+    await userEvent.click(within(ready).getByRole('radio', { name: 'Never' }))
+    expect(platform.setSnoozeWake).toHaveBeenLastCalledWith({ commits: 0, reviews: 'never', comments: 5, ready: false })
+    await waitFor(() => {
+      expect(within(ready).getByRole('radio', { name: 'Never' })).toBeChecked()
+    })
   })
 
   it('shows wake rules the backend refused', async () => {
@@ -1596,9 +1609,9 @@ describe('SettingsView search', () => {
     expect(sidebar()).toEqual(['Snoozing', 'Autopilot'])
     expect(screen.getByRole('group', { name: 'Inbox' })).toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'Agents' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Snoozing (4 matches)' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('button', { name: 'Snoozing (5 matches)' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('region', { name: 'Snoozing' })).toBeInTheDocument()
-    expect(matched()).toEqual(['Wake early', 'New commits', 'Reviews', 'New comments'])
+    expect(matched()).toEqual(['Wake early', 'New commits', 'Reviews', 'New comments', 'Marked ready for review'])
   })
 
   it('says a single match in the singular', () => {

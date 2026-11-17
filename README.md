@@ -508,7 +508,8 @@ More in [Issue projects](docs/desktop.md#issue-projects).
 - **Undo** is in the toast that confirms each snooze, dismissal, pin, and mute.
 - **Wake rules** end a snooze early when new commits (any push, by default), reviews (an approval
   or a request for changes, by default), or comments reach your thresholds in **Settings →
-  Snoozing**, and the card says why, as in **Back early: approved, 2 new commits**.
+  Snoozing**, or when a draft is marked ready for review, and the card says why, as in **Back
+  early: approved, 2 new commits**.
 - **Inbox nil:** empty every list and the inbox throws a party, with confetti, a terminal that
   checks off each list, and **Achievement unlocked** when you get there while you watch. With
   Reduce motion on, it holds still.

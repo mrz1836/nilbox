@@ -50,7 +50,8 @@ const reviewText: Readonly<Partial<Record<WakeReview, string>>> = {
 }
 
 // wakeParts lists the new activity that ended a snooze early, most decisive first: "changes
-// requested", "2 new commits" or "force-pushed", then "3 new comments".
+// requested", "2 new commits" or "force-pushed", then "3 new comments", then "marked ready
+// for review".
 export function wakeParts(reasons: WakeReasons): string[] {
   const parts: string[] = []
   const review = reviewText[reasons.review]
@@ -67,6 +68,10 @@ export function wakeParts(reasons: WakeReasons): string[] {
 
   if (reasons.comments > 0) {
     parts.push(counted(reasons.comments, 'new comment', 'new comments'))
+  }
+
+  if (reasons.ready) {
+    parts.push('marked ready for review')
   }
 
   return parts
