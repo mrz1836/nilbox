@@ -235,7 +235,7 @@ function CapRow({ controlId, cap, error, onChange }: CapRowProps) {
       description={
         <>
           The most your routines’ coding agents will use in a day, together. Dollars count what an agent reports a run
-          cost; tokens count any agent that reports its usage.
+          cost, so they can’t count Codex’s runs, which report none; tokens count any agent that reports its usage.
         </>
       }
       error={shownError}

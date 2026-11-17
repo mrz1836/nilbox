@@ -2114,8 +2114,9 @@ codex-cli 0.163.0, its version floor (`codexFloor`, `Headless.MinVersion`).
   its reading commands run (`fence.Spec.ShellReads`, set by its spec). The edit presets are
   `--sandbox workspace-write`, with `sandbox_workspace_write.writable_roots` naming the
   worktree's own git folder and the clone's `objects`, `refs`, and `logs` (so it can commit,
-  never touching the clone's hooks or config) and the sandbox check's proof folder; Edit, test,
-  and push turns the sandbox's network on for its one push (`network_access`), which reaches
+  never touching the clone's hooks or config) and the sandbox check's proof folder, and `/tmp`
+  kept out (`exclude_slash_tmp`: workspace-write lets `/tmp` be written by default, which the
+  sandbox check caught); Edit, test, and push turns the sandbox's network on for its one push (`network_access`), which reaches
   any host: the hook refuses the network tools, but a test program isn't held to GitHub and the
   registries as Claude Code's sandbox holds it. The profile's own is a click's access. Every
   preset passes `approval_policy="never"`, `web_search="disabled"`, and the fence hook as
@@ -2130,7 +2131,12 @@ codex-cli 0.163.0, its version floor (`codexFloor`, `Headless.MinVersion`).
   `settings.json` (`codexFence`), which Take over finds the fence by, as for Claude Code. The
   argv needs the fence worked out for the worktree, so `agent.Fence` carries its `Policy` and
   `Hook` once `Backgrounds.Fenced` has them (`Access.Worked`, `launcher.Fence.Policy`), and Take
-  over reads the policy back from the run's folder.
+  over reads the policy back from the run's folder. This argv was run, locally and once, by a
+  real codex-cli 0.163.0 against a stand-in for its provider (no usage spent): the app's own
+  binary ran as the hook on every shell call, held commands until the sandbox check, which
+  wrote its proof and was refused its probe, refused `git push origin HEAD:other` and `curl`,
+  logged both, and let a write in the worktree through; Codex took the strict schema and the
+  note as written.
 - **The stream** (`agentrun/codex.go`): `thread.started` names the thread, which Codex picks,
   so the runner links the run's session to it as soon as it comes
   (`SessionUpdate.AgentSessionID`, `sessions.RunUpdate.AgentSessionID`); items' starts and ends

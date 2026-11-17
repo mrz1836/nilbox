@@ -17,6 +17,8 @@ argv:
   "--config"
   "sandbox_workspace_write.writable_roots=[\"/Users/example/projects/example-repo/.git/worktrees/pr-12\",\"/Users/example/projects/example-repo/.git/objects\",\"/Users/example/projects/example-repo/.git/refs\",\"/Users/example/projects/example-repo/.git/logs\",\"/Users/example/Library/Application Support/App/agent-runs/00000000-0000-4000-8000-000000000012/sandbox\"]"
   "--config"
+  "sandbox_workspace_write.exclude_slash_tmp=true"
+  "--config"
   "sandbox_workspace_write.network_access=true"
   "--config"
   "web_search=\"disabled\""
@@ -39,6 +41,8 @@ settings.json:
     "approval_policy=\"never\"",
     "--config",
     "sandbox_workspace_write.writable_roots=[\"/Users/example/projects/example-repo/.git/worktrees/pr-12\",\"/Users/example/projects/example-repo/.git/objects\",\"/Users/example/projects/example-repo/.git/refs\",\"/Users/example/projects/example-repo/.git/logs\",\"/Users/example/Library/Application Support/App/agent-runs/00000000-0000-4000-8000-000000000012/sandbox\"]",
+    "--config",
+    "sandbox_workspace_write.exclude_slash_tmp=true",
     "--config",
     "sandbox_workspace_write.network_access=true",
     "--config",

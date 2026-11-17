@@ -96,6 +96,11 @@ func strictProperty(prop map[string]any) {
 	if prop["type"] == "object" {
 		strictObject(prop)
 	}
+
+	// An array's items are held to the same, an object among them included.
+	if items, ok := prop["items"].(map[string]any); ok {
+		strictProperty(items)
+	}
 }
 
 // nullable lets a property be null too: its type, or each of its types, with "null".

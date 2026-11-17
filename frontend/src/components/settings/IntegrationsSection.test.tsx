@@ -203,7 +203,8 @@ describe('IntegrationsSection', () => {
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Install' }))
 
     expect(await card.findByText('Installed mage-x 1.30.0 in ~/.local/bin')).toBeInTheDocument()
-    expect(card.getByText('magex 1.29.5 · ~/.local/bin/magex · GitHub release')).toBeInTheDocument()
+    // The note and the tools the install returned may render a moment apart under load.
+    expect(await card.findByText('magex 1.29.5 · ~/.local/bin/magex · GitHub release')).toBeInTheDocument()
     expect(card.queryByRole('button', { name: /^install/i })).not.toBeInTheDocument()
     expect(platform.installIntegration).toHaveBeenCalledExactlyOnceWith('mage-x')
     // The install returned the tools, so the list is not read again.

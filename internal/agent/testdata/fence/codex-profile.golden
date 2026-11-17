@@ -17,6 +17,8 @@ argv:
   "--config"
   "sandbox_workspace_write.writable_roots=[\"/Users/example/projects/example-repo/.git/worktrees/pr-12\",\"/Users/example/projects/example-repo/.git/objects\",\"/Users/example/projects/example-repo/.git/refs\",\"/Users/example/projects/example-repo/.git/logs\"]"
   "--config"
+  "sandbox_workspace_write.exclude_slash_tmp=true"
+  "--config"
   "web_search=\"disabled\""
   "--dangerously-bypass-hook-trust"
   "--config"
@@ -37,6 +39,8 @@ settings.json:
     "approval_policy=\"never\"",
     "--config",
     "sandbox_workspace_write.writable_roots=[\"/Users/example/projects/example-repo/.git/worktrees/pr-12\",\"/Users/example/projects/example-repo/.git/objects\",\"/Users/example/projects/example-repo/.git/refs\",\"/Users/example/projects/example-repo/.git/logs\"]",
+    "--config",
+    "sandbox_workspace_write.exclude_slash_tmp=true",
     "--config",
     "web_search=\"disabled\"",
     "--dangerously-bypass-hook-trust",

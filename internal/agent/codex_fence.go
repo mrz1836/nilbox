@@ -15,7 +15,8 @@ import (
 //
 //   - Its sandbox is a real boundary: read-only writes nothing, and workspace-write writes
 //     only in the worktree, the folders named writable, and TMPDIR, with the network off
-//     unless turned on. It refuses .git and .codex inside a writable folder, but not
+//     unless turned on. It also lets /tmp be written unless told not to (exclude_slash_tmp,
+//     checked locally on 0.163.0), which every fence tells it. It refuses .git and .codex inside a writable folder, but not
 //     AGENTS.md, so the fence hook refuses that and every other agent and tooling file.
 //   - A linked worktree can't commit until its own git folder and the clone's objects,
 //     refs, and logs are writable (sandbox_workspace_write.writable_roots); the clone's
@@ -49,6 +50,7 @@ const (
 	codexNever            = "never"
 	codexWritableRootsKey = "sandbox_workspace_write.writable_roots"
 	codexNetworkKey       = "sandbox_workspace_write.network_access"
+	codexNoSlashTmpKey    = "sandbox_workspace_write.exclude_slash_tmp"
 	codexWebSearchKey     = "web_search"
 	codexWebSearchOff     = "disabled"
 	codexHooksKey         = "hooks.PreToolUse"
@@ -66,8 +68,8 @@ func codexFenceReviewed() []string {
 		"--ask-for-approval", "--config", "--dangerously-bypass-approvals-and-sandbox",
 		"--dangerously-bypass-hook-trust", "--sandbox",
 		// Config keys.
-		"approval_policy", "hooks.PreToolUse", "sandbox_workspace_write.network_access",
-		"sandbox_workspace_write.writable_roots", "web_search",
+		"approval_policy", "hooks.PreToolUse", "sandbox_workspace_write.exclude_slash_tmp",
+		"sandbox_workspace_write.network_access", "sandbox_workspace_write.writable_roots", "web_search",
 	}
 }
 
@@ -202,6 +204,8 @@ func codexWorkspaceArgs(f *Fence) []string {
 	if roots := codexWritable(*f.Policy); len(roots) > 0 {
 		args = append(args, codexConfig, codexWritableRootsKey+"="+tomlStrings(roots))
 	}
+
+	args = append(args, codexConfig, codexNoSlashTmpKey+"=true")
 
 	if f.Preset == fence.EditTestPush && f.Policy.Push != nil && !f.TakenOver {
 		args = append(args, codexConfig, codexNetworkKey+"=true")

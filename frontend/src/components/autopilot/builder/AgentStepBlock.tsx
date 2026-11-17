@@ -382,7 +382,7 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
               {kit.catalog.presets.map((p) => {
                 // A preset the step's own agent can't keep isn't offered, and says why;
                 // one that inherits its agent is checked as it starts, per repository.
-                const keep = inherits ? undefined : agent?.background.presets?.find((k) => k.preset === p.id)
+                const keep = inherits ? undefined : agent?.background.presets.find((k) => k.preset === p.id)
                 const offered = keep === undefined || keep.kept
 
                 return (

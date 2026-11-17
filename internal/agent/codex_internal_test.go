@@ -255,11 +255,14 @@ func TestTheStrictSchemaIsWhatCodexTakes(t *testing.T) {
 	}
 
 	nested, err := StrictSchema(`{"type":"object","properties":{"a":{"type":"object","properties":{"b":{"type":"integer"}}},` +
-		`"c":{"enum":["x"]},"d":{"description":"any"}}}`)
+		`"c":{"enum":["x"]},"d":{"description":"any"},` +
+		`"e":{"type":"array","items":{"type":"object","properties":{"f":{"type":"string"}}}}}}`)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"type":"object","additionalProperties":false,"required":["a","c","d"],"properties":{`+
+	assert.JSONEq(t, `{"type":"object","additionalProperties":false,"required":["a","c","d","e"],"properties":{`+
 		`"a":{"type":["object","null"],"additionalProperties":false,"required":["b"],"properties":{"b":{"type":["integer","null"]}}},`+
-		`"c":{"type":["string","null"],"enum":["x",null]},"d":{"anyOf":[{"description":"any"},{"type":"null"}]}}}`, nested)
+		`"c":{"type":["string","null"],"enum":["x",null]},"d":{"anyOf":[{"description":"any"},{"type":"null"}]},`+
+		`"e":{"type":["array","null"],"items":{"type":"object","additionalProperties":false,"required":["f"],`+
+		`"properties":{"f":{"type":["string","null"]}}}}}}`, nested, "an array's objects are strict too")
 
 	files, err := HeadlessFiles(Claude, draftSchema)
 	require.NoError(t, err)
@@ -501,4 +504,43 @@ func TestTheCodexFenceHoldsWhole(t *testing.T) {
 
 	count, _ := fence.ReadDenials(runDir)
 	assert.Equal(t, 7, count, "each refusal is in the run's log, which Codex's stream never shows")
+}
+
+func TestACodexBackgroundRunRefusesFlagsThatSetOrLoosenItsFence(t *testing.T) {
+	t.Parallel()
+
+	a := FenceAccess(fence.EditTest, Access{}).InRun(testRunDir)
+
+	for _, extra := range [][]string{
+		{"--json"},
+		{"--output-schema", "/x.json"},
+		{"-o", "/x.md"},
+		{"--ignore-user-config"},
+		{"--ephemeral"},
+		{"--enable", "web_search"},
+		{"--disable", "x"},
+		{"--oss"},
+		{"--local-provider", "ollama"},
+		{"-p", "work"},
+		{"--profile=work"},
+		{"--add-dir=/x"},
+		{"--image", "/x.png"},
+		{"--search"},
+		{"--sandbox", "danger-full-access"},
+		{"-a", "on-request"},
+		{"--approve-for-me"},
+		{"--dangerously-bypass-approvals-and-sandbox"},
+		{"--dangerously-bypass-hook-trust"},
+		{"-c", "approval_policy=\"on-request\""},
+		{"-c", "sandbox_workspace_write.network_access=true"},
+		{"-C", "/x"},
+		{"exec"},
+		{"resume"},
+	} {
+		_, err := HeadlessArgs(Codex, HeadlessOptions{SessionID: codexSession, Access: a, Extra: extra})
+		require.ErrorIs(t, err, ErrReservedFlag, "%q", extra)
+	}
+
+	_, err := HeadlessArgs(Codex, HeadlessOptions{SessionID: codexSession, Access: a, Extra: []string{"-c", "model_verbosity=\"low\""}})
+	require.NoError(t, err, "an override that doesn't touch the fence still passes")
 }
