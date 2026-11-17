@@ -392,9 +392,18 @@ export type AutopilotMode = autopilotprefs.Mode
 export const AutopilotMode = autopilotprefs.Mode
 export type AutopilotCurrent = autopilot.Current
 export type AutopilotMatching = NonNullLists<autopilot.Matching>
-export type AutopilotMatch = Omit<NonNullLists<autopilot.Match>, 'blockedBy' | 'reason'> & {
+// A step, and a run, has '' for a verdict until a Wait for the checks reaches one, and
+// for every step but that wait.
+export type AutopilotVerdict = autopilot.Verdict
+export type AutopilotMatchStep = Omit<NonNullLists<autopilot.MatchStep>, 'verdict'> & {
+  verdict: autopilot.Verdict | ''
+}
+export type AutopilotRun = Omit<NonNullLists<autopilot.Run>, 'verdict'> & { verdict: autopilot.Verdict | '' }
+export type AutopilotMatch = Omit<NonNullLists<autopilot.Match>, 'blockedBy' | 'reason' | 'steps' | 'runs'> & {
   blockedBy: autopilot.Blocker | ''
   reason: autopilot.Reason | ''
+  steps: AutopilotMatchStep[]
+  runs: AutopilotRun[]
 }
 export type AutopilotEffect = NonNullLists<autopilot.Effect>
 // The agents' runs going, as Activity's Working lists them; a run's events, as the run view reads them; and today's runs, as a bug report
@@ -408,8 +417,10 @@ export type AutopilotRunEnding = NonNullLists<runevent.Ending>
 export type AutopilotRunDiff = NonNullLists<runevent.Diff>
 // AutopilotRunView is one agent's run as the run view shows it: the run and its match, with
 // the routine's steps, whether it still goes, and whether Take over can resume it.
-export type AutopilotRunView = Omit<NonNullLists<autopilot.RunView>, 'match'> & { match: AutopilotMatch }
-export type AutopilotRun = NonNullLists<autopilot.Run>
+export type AutopilotRunView = Omit<NonNullLists<autopilot.RunView>, 'match' | 'run'> & {
+  match: AutopilotMatch
+  run: AutopilotRun
+}
 export type AutopilotRunsToday = NonNullLists<autopilot.RunsToday>
 export type AutopilotStepKind = autopilotcatalog.StepKind
 export type AutopilotState = autopilot.State

@@ -163,6 +163,9 @@ type Facts struct {
 
 	// Updated is the item's last activity.
 	Updated time.Time `json:"updated"`
+
+	// DetailsAt is when the item's details were last read, zero before they were.
+	DetailsAt time.Time `json:"detailsAt,omitzero"`
 }
 
 // Value returns a field's value: unknown for a field Build didn't fill, such as the

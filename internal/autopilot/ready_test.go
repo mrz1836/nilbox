@@ -151,6 +151,43 @@ func TestAWarningLeavesARoutineReadyAndAProblemDoesnt(t *testing.T) {
 	assert.Equal(t, 2, ck.asked, "Check again checks again")
 }
 
+func TestAFallbackThisMacLacksOnlyWarns(t *testing.T) {
+	t.Parallel()
+
+	ck := &checker{levels: map[string]autopilot.ReadyLevel{
+		"agent:codex": autopilot.ReadyProblem, "profile:codex/default": autopilot.ReadyProblem,
+	}}
+	r := newRig(t, autopilotprefs.ModeAsk)
+	r.svc = autopilot.NewService(autopilot.Config{Pool: r.db, Accounts: r.accounts, Clock: r.clock, Readiness: ck})
+
+	sp := backgroundSpec()
+	sp.Steps[0].Agent.Fallbacks = []spec.ProfileRef{{Agent: "codex", Profile: "default"}}
+
+	needs := autopilot.Needs(sp, autopilot.LaunchDefaults{Agent: "claude"})
+	for _, n := range needs {
+		assert.Equal(t, n.Agent == "codex", n.Fallback, "%s is the fallback's alone", n.ID())
+	}
+
+	fix := r.save(t, draft("Fix", sp))
+	_, err := r.svc.SetEnabled(t.Context(), fix.ID, true, autopilot.CurrentRun)
+	require.NoError(t, err)
+
+	got, err := r.svc.Readiness(t.Context())
+	require.NoError(t, err)
+	require.Len(t, got.Routines, 1)
+
+	rr := got.Routines[0]
+	assert.True(t, rr.Ready, "the step runs on its own profile")
+	assert.Empty(t, rr.Problems)
+	assert.Len(t, rr.Warnings, 2, "Codex, missing here, only warns")
+
+	// A need its own profile brings too is never only a fallback's.
+	sp.Steps[0].Agent.Fallbacks = []spec.ProfileRef{{Agent: "claude", Profile: "default"}}
+	for _, n := range autopilot.Needs(sp, autopilot.LaunchDefaults{Agent: "claude"}) {
+		assert.False(t, n.Fallback, n.ID())
+	}
+}
+
 func TestPreviewRunPlansTheDraftsAgentStepAsItWouldStart(t *testing.T) {
 	t.Parallel()
 

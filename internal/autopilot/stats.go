@@ -24,9 +24,9 @@ import (
 // statsWeek is how far back This week reaches.
 const statsWeek = 7 * 24 * time.Hour
 
-// verdictPassed is a run's verdict when the checks on its commit passed, as the follow of
-// an agent's checks records it: the Only if outcome it ends Wait for the checks with.
-const verdictPassed = string(catalog.OutcomePassedChecks)
+// verdictPassed is a run's verdict when the checks on its commit passed, as Wait for the
+// checks records it on the run (verify.go); its step ends with the Only if outcome passed.
+const verdictPassed = string(VerdictFixed)
 
 // RoutineStats is what a routine's runs did since Since.
 type RoutineStats struct {

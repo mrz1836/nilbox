@@ -163,7 +163,12 @@ func TestTheGalleryPutsWhatThisMacSuggestsFirst(t *testing.T) {
 	flagship := byKey["fix-dependabot-security"]
 	assert.Equal(t, autopilotprefs.ModeAsk, flagship.Suggests)
 	assert.Contains(t, flagship.Sentence, "run \"Fix dependency security\" in the background")
-	assert.NotEmpty(t, flagship.NeedsWords, "this build can't run it yet, and says so in words")
+	assert.Empty(t, flagship.Needs, "this build runs each of its steps, Wait for the checks included")
+	assert.Empty(t, flagship.NeedsWords)
+
+	heal := byKey["heal-dependabot-then-merge"]
+	assert.Equal(t, []string{"“Merge it”"}, heal.Needs, "it waits for Merge it alone")
+	assert.NotEmpty(t, heal.NeedsWords, "and says so in words")
 	assert.Equal(t, []autopilot.Blank{{
 		Kind: autopilot.BlankWhere, Label: "Where", Help: "Your account, and the orgs, users, or repositories to watch too.",
 	}}, flagship.Blanks, "the flagship asks one thing")

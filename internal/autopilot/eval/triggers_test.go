@@ -47,6 +47,15 @@ func TestTriggers(t *testing.T) {
 			history: eval.History{OwnHeads: []string{head}}, want: eval.Yes, key: "new_commits:commit:" + head,
 		},
 		{
+			name:    "new commits while a routine's agent works on it: told apart once it ends",
+			trigger: spec.Trigger{Event: catalog.EventNewCommits}, history: eval.History{Working: true}, want: eval.Unknown,
+		},
+		{
+			name: "new commits while an agent works, its own pushes let through", history: eval.History{Working: true},
+			trigger: spec.Trigger{Event: catalog.EventNewCommits, OwnPushesToo: ptr(true)}, want: eval.Yes,
+			key: "new_commits:commit:" + head,
+		},
+		{
 			name: "new commits, not the first", trigger: spec.Trigger{Event: catalog.EventNewCommits, FirstToo: ptr(false)},
 			history: eval.History{FirstHead: head}, want: eval.No,
 		},

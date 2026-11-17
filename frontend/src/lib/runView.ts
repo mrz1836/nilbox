@@ -9,6 +9,7 @@ import type {
   AutopilotRunEvent,
   AutopilotRunProgress,
 } from '../platform'
+import { verdictChips } from './autopilot'
 import { counted } from './format'
 
 // presetLabels name the tools presets, as the fence names them.
@@ -392,8 +393,9 @@ export function agentRunOf(m: AutopilotMatch): AutopilotRun | undefined {
 
 // sheetLine is the one line a sheet says, under its work line, of the newest background run
 // a routine made on its item: "⚡ Fix failing checks is working on this", "⚡ Fix failing
-// checks pushed 4f2a9c1 · checks pass", or how it came out. A match with no such run says
-// nothing: its chip does.
+// checks pushed 4f2a9c1 · Fixed" (its checks' verdict, or Checking while its Wait for the
+// checks follows them), or how it came out. A match with no such run says nothing: its chip
+// does.
 export function sheetLine(m: AutopilotMatch): string {
   const run = agentRunOf(m)
 
@@ -401,7 +403,8 @@ export function sheetLine(m: AutopilotMatch): string {
     return ''
   }
 
-  const verdict = run.verdict === '' ? '' : ` · ${run.verdict}`
+  const verdict =
+    run.verdict !== '' ? ` · ${verdictChips[run.verdict].label}` : m.state === 'verifying' ? ' · Checking' : ''
 
   if (run.status !== 'ended') {
     return `${m.routine} is working on this`

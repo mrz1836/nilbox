@@ -36,11 +36,23 @@ type Runner struct {
 	// launcher held back does, and held the jobs each answered.
 	answers []autopilot.Result
 	held    []autopilot.Job
+
+	// launched is what each start says it launched, nil for nothing.
+	launched *autopilot.Launched
 }
 
 // NewRunner returns a runner with nothing going.
 func NewRunner() *Runner {
 	return &Runner{going: map[int64]autopilot.Job{}}
+}
+
+// LaunchAs has each start say it launched the agent's profile, as the runner reports what
+// a launch resolved to.
+func (r *Runner) LaunchAs(agent, profile string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.launched = &autopilot.Launched{Agent: agent, Profile: profile}
 }
 
 // AnswerWith has the next starts answer with each of results in turn instead of starting,
@@ -201,7 +213,7 @@ func (r *Runner) Dispatch(ctx context.Context, job autopilot.Job) (autopilot.Res
 	r.going[job.RunID] = job
 	r.started = append(r.started, job)
 
-	return autopilot.Result{Running: true}, nil
+	return autopilot.Result{Running: true, Launched: r.launched}, nil
 }
 
 // Stop stops a run, and tells the engine; while HoldStops holds them, it waits for

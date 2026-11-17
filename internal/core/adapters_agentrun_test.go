@@ -1,7 +1,9 @@
 package core
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -284,6 +286,14 @@ func TestABackgroundRunRestartsCleanly(t *testing.T) {
 
 	t.Cleanup(func() { _ = syscall.Kill(-pid, syscall.SIGKILL) })
 
+	// The fake answers SIGINT only once it is ready, and it writes its first lines after
+	// that: a signal sent sooner ends it with no result, which is no fault of the run.
+	require.Eventually(t, func() bool {
+		page, readErr := r.agents.Events(t.Context(), 11, 0)
+
+		return readErr == nil && len(page.Events) > 0
+	}, waitAgent, 10*time.Millisecond, "the agent wrote its first lines")
+
 	// The app quits, letting the run finish: its agent keeps to its own budget.
 	r.runs.LetFinish(true)
 	r.runs.StopAll()
@@ -350,9 +360,16 @@ func (r *agentRig) build(t *testing.T) {
 		launch: r.planner, maker: r.maker, shellEnv: func() ([]string, bool) { return os.Environ(), true },
 		home: t.TempDir(), runs: r.runs, program: "/Applications/App.app/Contents/MacOS/app", changes: r.changes,
 		requests: func(_ context.Context, run autopilot.RunRequest) (launcher.LaunchRequest, error) {
-			return launcher.LaunchRequest{
+			req := launcher.LaunchRequest{
 				ItemID: run.ItemID, Routine: &launcher.RoutineLaunch{Name: run.Routine, Confirmed: run.Confirmed},
-			}, nil
+				Agent: agentOf(run.Step.AgentID()), Profile: run.Step.Profile,
+			}
+
+			if run.Step.Model != "" {
+				req.Model = new(run.Step.Model)
+			}
+
+			return req, nil
 		},
 	}
 	r.agents.runner = agentrun.New(agentrun.Config{
@@ -426,7 +443,9 @@ func agentLastLine(t *testing.T, name string) string {
 	return all[len(all)-1] + "\n"
 }
 
-// fakePlanner plans every run as the plan it holds, or holds it back, or fails.
+// fakePlanner plans every run as the plan it holds, or holds it back, or fails; with
+// profiles, a request for an agent's profile ("claude/work", "/" for Inherit) resolves
+// to that profile of its plan, or fails with its error.
 type fakePlanner struct {
 	folders string
 
@@ -437,15 +456,42 @@ type fakePlanner struct {
 	fenceErr error
 	trusts   int
 	fenced   []launcher.FenceIn
+	profiles map[string]plannedProfile
+	asked    []launcher.BackgroundRequest
 }
 
-func (f *fakePlanner) Plan(_ context.Context, _ launcher.BackgroundRequest) (launcher.BackgroundPlan, *launcher.Hold,
+// errNoProfile is a request for a profile the fake planner doesn't know.
+var errNoProfile = errors.New("no such profile")
+
+// plannedProfile is what a request for one agent's profile plans to: the agent and the
+// profile it resolves to, or an error.
+type plannedProfile struct {
+	agent   agent.ID
+	profile string
+	err     error
+}
+
+func (f *fakePlanner) Plan(_ context.Context, req launcher.BackgroundRequest) (launcher.BackgroundPlan, *launcher.Hold,
 	error,
 ) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return f.bp, f.hold, f.err
+	f.asked = append(f.asked, req)
+
+	if f.profiles == nil {
+		return f.bp, f.hold, f.err
+	}
+
+	p, ok := f.profiles[string(req.Agent)+"/"+req.Profile]
+	if !ok || p.err != nil {
+		return launcher.BackgroundPlan{}, nil, cmp.Or(p.err, errNoProfile)
+	}
+
+	bp := f.bp
+	bp.Plan.Agent, bp.Profile = p.agent, p.profile
+
+	return bp, f.hold, nil
 }
 
 func (f *fakePlanner) Preview(context.Context, launcher.BackgroundRequest) (launcher.Preview, error) {
@@ -491,6 +537,14 @@ func (f *fakePlanner) Trust(context.Context, launcher.BackgroundPlan) error {
 	f.trusts++
 
 	return nil
+}
+
+// requests returns each request planned, in order.
+func (f *fakePlanner) requests() []launcher.BackgroundRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return slices.Clone(f.asked)
 }
 
 // fences returns what each run's fence was worked out from.

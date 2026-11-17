@@ -97,13 +97,17 @@ type Job struct {
 	// on a commit, a dirty worktree), which an agent's launch goes ahead past; a hold with
 	// any other key holds it again.
 	Confirmed []string
+
+	// Resting are the agents' profiles out of usage now, which an agent step's start
+	// passes over for the next of its chain (fallback.go).
+	Resting []Resting
 }
 
 // RunRequest is the agent step of a job, as its runner launches it, and Preview plans it.
 func (j Job) RunRequest() RunRequest {
 	out := RunRequest{
 		ItemID: j.Item.ID, RoutineID: j.RoutineID, Routine: j.RoutineName, Trigger: j.Trigger, Attempt: j.Attempt + 1,
-		Confirmed: append([]string{}, j.Confirmed...),
+		Confirmed: append([]string{}, j.Confirmed...), Resting: append([]Resting{}, j.Resting...),
 	}
 
 	if j.Step.Agent != nil {
@@ -176,6 +180,10 @@ type Result struct {
 	// decided again on a fresh read, as when the pull request's head moved as its worktree
 	// was made. The run counts as never started.
 	Requeue bool
+
+	// RetryAt is when a start that waits (Wait) may be tried again, as when every profile
+	// it may run with rests until a moment; zero tries it again a tick later.
+	RetryAt time.Time
 
 	// Launched is what an agent's launch started, for the run's record.
 	Launched *Launched
@@ -315,6 +323,10 @@ type RunEnd struct {
 	Error         string
 	EndedAt       time.Time
 	StoppedForMe  bool
+
+	// Limit is the usage limit that refused a run out of usage (RunOutOfUsage), nil for
+	// any other end.
+	Limit *UsageLimit
 }
 
 // RunOutcome is how a run ended.
@@ -337,6 +349,11 @@ const (
 
 	// RunNotSent is a GitHub action that sent nothing.
 	RunNotSent RunOutcome = "not_sent"
+
+	// RunOutOfUsage is one the provider refused for its profile's usage limit: it counts
+	// as no try, its profile rests until the limit resets, and its step starts again on
+	// the next profile of its chain (fallback.go).
+	RunOutOfUsage RunOutcome = "out_of_usage"
 
 	// RunNotStarted is one that never reached its runner, as a start the quit cut off, or
 	// one the runner refused as it closed: it counts as no run and no try, against no

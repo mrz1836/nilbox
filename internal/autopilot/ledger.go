@@ -136,6 +136,10 @@ const (
 	BlockSettling     Blocker = "settling"
 	BlockWait         Blocker = "wait"
 
+	// BlockOutOfUsage is every profile an agent step may run with resting until its
+	// usage limit resets: it starts by itself once one's rest ends.
+	BlockOutOfUsage Blocker = "out_of_usage"
+
 	// BlockSignedOut is no one signed in to GitHub: nothing starts, local steps included.
 	BlockSignedOut Blocker = "signed_out"
 
@@ -253,6 +257,11 @@ type stepRun struct {
 	// goes ahead past.
 	Hold      *Hold    `json:"hold,omitempty"`
 	Confirmed []string `json:"confirmed,omitempty"`
+
+	// Verdict is what a Wait for the checks found of the agent's run, once it did, and
+	// Seen when it first saw the run's commit as the pull request's head.
+	Verdict Verdict    `json:"verdict,omitempty"`
+	Seen    *time.Time `json:"seen,omitempty"`
 }
 
 // match is a ledger row, with its steps and trace read, and the row as stored, so a
@@ -636,7 +645,8 @@ func (l *ledger) itemRuns(ctx context.Context, ids []int64) (map[int64][]itemRun
 
 // history works out what the ledger knows of a routine and an item, for the evaluator:
 // the routine's tries since the last Try again, its last outcome, the head it first saw,
-// the comments it last counted, and the commits every routine's runs pushed to the item.
+// the comments it last counted, the commits every routine's runs pushed to the item, and
+// whether an agent of any routine's works on it now.
 // A try is one match's runs, however many it started: an agent's and the steps after it,
 // or a GitHub step's actions, each a run of its own.
 func history(routineID int64, runs []itemRun, b baseline, seen bool, resetAt time.Time, last string) eval.History {
@@ -650,6 +660,7 @@ func history(routineID int64, runs []itemRun, b baseline, seen bool, resetAt tim
 
 	for _, r := range runs {
 		h.OwnHeads = addHeads(h.OwnHeads, r.RunCommit, r.HeadAfter)
+		h.Working = h.Working || (isAgentRunner(r.Runner) && activeStatus(r.Status))
 
 		if r.RoutineID == routineID && countsTry(r) && r.QueuedAt.After(resetAt) && !tried[r.MatchID] {
 			tried[r.MatchID] = true
@@ -669,6 +680,11 @@ func addHeads(list []string, heads ...string) []string {
 	}
 
 	return list
+}
+
+// activeStatus reports a run's status while it goes: starting, running, or stopping.
+func activeStatus(status string) bool {
+	return status == runStarting || status == runRunning || status == runStopping
 }
 
 // countsTry reports a run that counts as one of its routine's tries on the item: not a

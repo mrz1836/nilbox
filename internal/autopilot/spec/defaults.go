@@ -100,6 +100,18 @@ func (s SnoozeStep) SnoozeDays() int {
 	return or(s.Days, catalog.DefaultSnoozeDays)
 }
 
+// Settle is how long after the last check on the agent's commit finished Wait for the
+// checks counts them as settled.
+func (w WaitStep) Settle() time.Duration {
+	return time.Duration(or(w.SettleMinutes, catalog.DefaultSettleMinutes)) * time.Minute
+}
+
+// GiveUp is how long Wait for the checks waits for the checks on the agent's commit before
+// it gives up on them.
+func (w WaitStep) GiveUp() time.Duration {
+	return time.Duration(or(w.GiveUpHours, catalog.DefaultGiveUpHours)) * time.Hour
+}
+
 // Tries caps the runs of the routine's agent and GitHub steps on one item.
 func (l Limits) Tries() int {
 	return or(l.TriesPerItem, catalog.DefaultTries)

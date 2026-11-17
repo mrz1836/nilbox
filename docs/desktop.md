@@ -2490,10 +2490,12 @@ waits for something to happen to one of them (checks pass, checks fail, it appea
 its conditions, and then takes its steps. A routine's steps can pin, snooze, dismiss, or
 restore the item ([by a routine](#snooze-dismiss-and-pin-by-a-routine)), tell you about it
 (**Notify me** and **Tell me**), send the few changes to GitHub the review and issue sheets
-already send ([what Autopilot may change on GitHub](#what-autopilot-may-change-on-github)), and
-start a coding agent on it in your terminal ([agents in your terminal](#agents-in-your-terminal)).
-A routine with a step this version can't take yet (an agent in the background, say) runs only in
-Dry run, and says so. Each routine acts once per occurrence (once per head commit, say), across
+already send ([what Autopilot may change on GitHub](#what-autopilot-may-change-on-github)),
+start a coding agent on it in your terminal ([agents in your terminal](#agents-in-your-terminal))
+or in the background ([agents in the background](#agents-in-the-background)), and wait for the
+checks on what that agent pushed ([closing the loop](#closing-the-loop-wait-for-the-checks)).
+A routine with a step this version can't take yet (**Merge it**, say) runs only in Dry run, and
+says so. Each routine acts once per occurrence (once per head commit, say), across
 refreshes and restarts, and in its mode:
 
 | Mode | On a match |
@@ -2610,7 +2612,8 @@ it reads as. Below them:
 | A routine's local steps on a day, grouped | *Snoozed 6*, the items, the routine | **Undo**, which puts back each item that is still as the routine left it; one you changed since stays as you left it (*Put back 5 items. 1 changed since, so it's left as it is.*). Once all are taken back it says so |
 | A Dry run's record | *Would run*, the item | **Open** |
 | A notice | *Told you*, the item | **Open** |
-| A routine that gave up | *Gave up*, *It gave up: 2 tries used.* | **Try again**, which resets its tries on the item |
+| A fix whose push was checked | Its verdict, *Fixed: checks pass on 4f2a9c1.* ([closing the loop](#closing-the-loop-wait-for-the-checks)) | **Open** |
+| A routine that gave up | *Gave up*, *Gave up after 2 tries.* | **Try again**, which resets its tries on the item |
 | An item a routine leaves alone | *Left alone*, why (*You brought back what it snoozed.*) | **Let it act again** |
 
 **Filter** by routine (**Every routine**, or one) and by result (**Snoozes, pins, and
@@ -2629,8 +2632,10 @@ card and its Watching row alike, saying what the newest of the routines' matches
 **⚡ Snoozed**, **⚡ Pinned**, **⚡ Dismissed**, **⚡ Restored**, **⚡ Undone**, **⚡ Taken back**,
 **⚡ Would run**, **⚡ Told you**, or **⚡ Queued** while Pause or a routine's active hours hold a
 step; what it last sent GitHub (**⚡ Asked rebase**, **⚡ Updated branch**, **⚡ Commented**,
-**⚡ Labeled**, **⚡ Marked done**); one that waits or works says so (**⚡ Needs you**,
-**⚡ Working**), and one that ended
+**⚡ Labeled**, **⚡ Marked done**); what the checks on its agent's push came to (**⚡ Fixed**,
+**⚡ Still failing**, **⚡ Overtaken**, and the rest of
+[the verdicts](#closing-the-loop-wait-for-the-checks)); one that waits or works says so
+(**⚡ Needs you**, **⚡ Working**, **⚡ Checking**), and one that ended
 without acting says why, each reason in words of its own (**⚡ Gave up**, **⚡ You skipped it**,
 **⚡ Skipped: an outside contributor's**, **⚡ Left alone**). Click it for the item's history
 with the routines: each match, newest first, with its routine, when, what it said, and each
@@ -2937,7 +2942,7 @@ that can't keep the preset (Codex, in this version) leaves the routine not ready
   the run**, an **Agent finished** banner or notification, the menu bar's agent, the item's
   session panel, its launch button,
   or the line a review or issue sheet shows under its work line (*⚡ Fix failing checks
-  pushed 4f2a9c1 · checks pass*). Its header says where the run stands, how long it took, its
+  pushed 4f2a9c1 · Fixed*). Its header says where the run stands, how long it took, its
   cost against its budget (≈ for an estimate on your plan; the budget alone until the agent
   reports), the agent, model, effort, worktree, and preset, its tokens in and out with its
   cache's apart, and the routine's steps with the one it is at marked. **Take over in
@@ -2978,6 +2983,62 @@ that can't keep the preset (Codex, in this version) leaves the routine not ready
   data folder, readable only by you, for **Run logs kept** (30 days), 200 runs and 1 GB at
   most; **Clear history…** removes those of the runs that ended. These runs aren't listed in
   Scripts → Runs.
+- **Out of usage.** A run your plan's usage limit refused (*Out of usage: its plan's five-hour
+  limit is reached.*) is no try: its profile rests until the limit resets (an hour when the
+  limit doesn't say), and the step starts again on the next profile of its chain, its own
+  profile first and then each of its **Fallbacks** in order, another agent's included. A
+  fallback of the same agent keeps the step's model and effort; another agent's takes that
+  agent's launch defaults. A fallback this Mac can't run in the background (Codex, in this
+  version) is passed over, and only warns in [This Mac](#this-mac). With every profile resting,
+  the start waits, *Queued: the default profile is out of usage until Mon 15:04*, asking GitHub
+  nothing, and starts once the soonest rest ends; a restart remembers which profiles rest.
+
+### Closing the loop: Wait for the checks
+
+**Wait for the checks** follows an agent's push in the background: it comes after the agent
+step (*only if it pushed*, as **+ Add a step** sets it), and its match is *Checking* until the
+checks on the run's own commit say how they came out. Nothing is read twice: the checks
+follower reads the pull request every round while its checks run (a routine with this step
+follows the checks of what its searches return), and Nilbox reads it itself, a point at a time,
+only when nothing did for two minutes, or while the push isn't seen yet.
+
+| Verdict | When | Says |
+|---|---|---|
+| **Fixed** | Every check passes on its commit, once they settled (**Settle for**, 2 minutes) | *Fixed: checks pass on 4f2a9c1.* |
+| **Still failing** | A check fails on it | *Still failing: CodeQL.*, naming up to three; on the routine's last try, *Gave up after 2 tries.* too |
+| **Unknown** | No verdict within **Give up after** (2 hours), no check ran on it within ten minutes, or its workflow runs wait for a maintainer to approve them | *Unknown: the checks on 4f2a9c1 hadn't finished after 2 hours.* |
+| **Overtaken** | Someone else pushed after it, a Dependabot rebase say | *Pushed 4f2a9c1, but someone else pushed after it, so its fix wasn't checked.* |
+| **Push rejected** | It committed, but the branch moved while it worked, and it never force-pushes | *Its push was rejected: the branch moved while it worked.* |
+| **No push** | It pushed nothing | *No push:* and the agent's own words |
+
+The verdict is the step's and the run's, so the ⚡ chip says it (**⚡ Fixed**, **⚡ Still
+failing**, **⚡ Overtaken**, **⚡ Push rejected**, **⚡ No push**, **⚡ Checks unknown**,
+**⚡ Checking** while it waits), Activity's line leads with it, the run view's *How it ended*
+says it in full (*Fixed: checks pass on 4f2a9c1.*), and the line the review and issue sheets
+show under their work line ends with it (*⚡ Heal Dependabot pushed 4f2a9c1 · Fixed*, or
+*· Checking* while it waits), opening the run. **Checks after a fix** tells you each verdict on a fix's checks once (fixed,
+still failing, unknown, or overtaken).
+
+**Only if** on a later step names how a step before it ended: *it pushed* or *it didn't push*
+(the agent step), *the checks passed* or *the checks still fail* (the latest Wait for the
+checks). A step whose Only if doesn't hold is skipped, and the next one runs, so *if the fix
+passes, merge; if it still fails, tell me* is two steps. An unknown or overtaken verdict holds
+neither.
+
+**Tries.** A routine's runs on an item count as its tries (**Tries per item**, 2), across
+occurrences: a fix that still fails puts a new commit at the head, which the routine fires on
+again after **Wait between tries**, until the last try, which says it gave up. A Dependabot
+rebase is a new occurrence, never a new count, so a pull request rebased every day that the
+agent can't fix gets no run every day. The next occurrence then closes *Gave up after 2 tries.*
+with **Try again**, which starts the count over and opens it again; only you can. A run that
+was interrupted, stopped because its item closed, or refused for usage counts as no try.
+While one of a routine's matches on an item works or is checking, another of its matches there
+waits for it.
+
+**The loop guard.** A **New commits** routine never fires on a commit a routine's own run
+pushed, unless its trigger says **Also on commits a routine pushed**. While an agent works on
+the item, a new head waits to be told apart until its run ends and records what it pushed;
+someone else's push then fires it as before.
 
 ### Needs you
 
@@ -3229,7 +3290,9 @@ account's email. A fix is a command to copy and run in a terminal (`CLAUDE_CONFI
 claude auth login`) or where to go: Nilbox never signs in for you. Below it, *Not ready here:*
 names the routines this Mac can't run.
 
-A routine is ready when each of its needs is ok or only a warning. One that isn't still decides
+A routine is ready when each of its needs is ok or only a warning; what only its agent step's
+**Fallbacks** need is only ever a warning, since the step runs on its own profile and a start
+passes over a fallback this Mac can't run. One that isn't still decides
 (Test and Dry run work), its row and builder say *Not ready on this Mac: ...*, the tab shows its
 red dot, Activity says *This Mac can't run 2 of your routines* with **See what's missing**, and
 you are told once per new problem. Its agent starts wait as *Can't start yet* until it is

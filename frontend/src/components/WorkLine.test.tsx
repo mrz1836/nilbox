@@ -31,11 +31,11 @@ function showLine(match: AutopilotMatch | undefined) {
 
 describe('WorkLine’s Autopilot line', () => {
   it('says what the newest background run made of the item, linking to its run', async () => {
-    const pushed = agentRun({ status: 'ended', outcome: 'done', commit: '4f2a9c1000', verdict: 'checks pass' })
-    const match = agentMatch({ state: 'verifying', runs: [pushed] })
+    const pushed = agentRun({ status: 'ended', outcome: 'done', commit: '4f2a9c1000', verdict: 'fixed' })
+    const match = agentMatch({ state: 'done', reason: 'ran', runs: [pushed] })
     const onShow = showLine(match)
 
-    const line = screen.getByRole('button', { name: 'Fix failing checks pushed 4f2a9c1 · checks pass' })
+    const line = screen.getByRole('button', { name: 'Fix failing checks pushed 4f2a9c1 · Fixed' })
     await userEvent.click(line)
 
     expect(onShow).toHaveBeenCalledExactlyOnceWith({

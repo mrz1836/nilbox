@@ -220,7 +220,7 @@ export const BlankKind = {
 /**
  * Blocker is what an open match waits on.
  */
-export type Blocker = "ask" | "hold" | "warning" | "no_clone" | "dirty_worktree" | "catch_up" | "interrupted" | "outside_contributor" | "backlog" | "script_asks" | "not_ready" | "missing_tool" | "cross_repository" | "slot" | "cap_runs" | "cap_actions" | "cap_spend" | "active_hours" | "paused" | "busy_worktree" | "github_budget" | "writes_held" | "provider_outage" | "settling" | "wait" | "signed_out" | "starting";
+export type Blocker = "ask" | "hold" | "warning" | "no_clone" | "dirty_worktree" | "catch_up" | "interrupted" | "outside_contributor" | "backlog" | "script_asks" | "not_ready" | "missing_tool" | "cross_repository" | "slot" | "cap_runs" | "cap_actions" | "cap_spend" | "active_hours" | "paused" | "busy_worktree" | "github_budget" | "writes_held" | "provider_outage" | "settling" | "wait" | "out_of_usage" | "signed_out" | "starting";
 
 /**
  * The values of Blocker, by the names of their Go constants.
@@ -267,6 +267,12 @@ export const Blocker = {
     BlockOutage: "provider_outage",
     BlockSettling: "settling",
     BlockWait: "wait",
+
+    /**
+     * BlockOutOfUsage is every profile an agent step may run with resting until its
+     * usage limit resets: it starts by itself once one's rest ends.
+     */
+    BlockOutOfUsage: "out_of_usage",
 
     /**
      * BlockSignedOut is no one signed in to GitHub: nothing starts, local steps included.
@@ -879,6 +885,12 @@ export interface MatchStep {
      */
     "actions": catalog$0.GitHubActionKind[] | null;
     "sent": number;
+
+    /**
+     * Verdict is what a Wait for the checks found of the agent's run, "" before it did
+     * and for any other step.
+     */
+    "verdict": Verdict;
 }
 
 /**
@@ -998,6 +1010,13 @@ export interface Need {
      * Place is where an agent step runs (NeedPlace).
      */
     "place": catalog$0.Where;
+
+    /**
+     * Fallback reports a need only an agent step's fallbacks bring, which this Mac lacking
+     * only warns of: the step still runs on its own profile, and a start passes over a
+     * fallback that can't run here.
+     */
+    "fallback": boolean;
 }
 
 /**
@@ -1450,7 +1469,7 @@ export interface Run {
     "action": string;
     "status": string;
     "outcome": string;
-    "verdict": string;
+    "verdict": Verdict;
     "headBefore": string;
     "commit": string;
     "headAfter": string;
@@ -1877,6 +1896,51 @@ export interface Undone {
      */
     "words": string;
 }
+
+/**
+ * Verdict is what Wait for the checks found of an agent's run.
+ */
+export type Verdict = "fixed" | "still_failing" | "unknown" | "no_push" | "push_rejected" | "overtaken";
+
+/**
+ * The values of Verdict, by the names of their Go constants.
+ */
+export const Verdict = {
+    /**
+     * The verdicts.
+     *
+     * VerdictFixed is every check passing on the run's commit.
+     */
+    VerdictFixed: "fixed",
+
+    /**
+     * VerdictFailing is a check failing on it.
+     */
+    VerdictFailing: "still_failing",
+
+    /**
+     * VerdictUnknown is checks that didn't finish, or never ran, within the step's
+     * give-up time, or that wait for a maintainer to approve them.
+     */
+    VerdictUnknown: "unknown",
+
+    /**
+     * VerdictNoPush is a run that pushed nothing.
+     */
+    VerdictNoPush: "no_push",
+
+    /**
+     * VerdictRejected is a run whose push was refused because the branch moved while it
+     * worked, which is safe: it never force-pushes.
+     */
+    VerdictRejected: "push_rejected",
+
+    /**
+     * VerdictOvertaken is someone else's push after the run's commit, so its fix wasn't
+     * checked.
+     */
+    VerdictOvertaken: "overtaken",
+} as const;
 
 /**
  * Working is an agent's run going.

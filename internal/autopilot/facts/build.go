@@ -46,6 +46,10 @@ func Build(r Row, env Env) Facts {
 		Updated:     r.UpdatedAt,
 	}
 
+	if r.Details != nil {
+		f.DetailsAt = r.Details.FetchedAt
+	}
+
 	if r.Kind == item.KindPR {
 		b.pullRequest()
 		b.checks()

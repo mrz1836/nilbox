@@ -73,9 +73,12 @@ func TestOnlyAStepThisBuildCantRunKeepsARoutineInDryRun(t *testing.T) {
 		{WaitForChecks: &spec.WaitStep{}},
 		{WaitForChecks: &spec.WaitStep{}},
 	}}
-	assert.Equal(t, []catalog.StepKind{catalog.StepWaitForChecks}, catalogs.notOffered(verify),
-		"each kind once: following an agent's checks can't run yet")
-	assert.Equal(t, autopilotprefs.ModeDryRun, catalogMode(autopilotprefs.ModeAuto, verify))
+	assert.Empty(t, catalogs.notOffered(verify), "the engine follows an agent's checks itself")
+
+	noticesOnly := &Offers{Steps: []catalog.StepKind{catalog.StepNotify}}
+	assert.Equal(t, []catalog.StepKind{catalog.StepWaitForChecks}, noticesOnly.notOffered(verify),
+		"each kind once: a build that can't follow an agent's checks")
+	assert.Equal(t, autopilotprefs.ModeDryRun, noticesOnly.modeFor(autopilotprefs.ModeAuto, verify))
 
 	notices := spec.Spec{Steps: []spec.Step{{Notify: &spec.NotifyStep{}}, {Pin: &spec.Empty{}}, {TellMe: &spec.TellStep{}}}}
 	assert.Empty(t, catalogs.notOffered(notices), "the notices and the triage steps run in this build")

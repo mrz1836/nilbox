@@ -34,6 +34,10 @@ type RunRequest struct {
 
 	// Confirmed are the Keys of the holds the user confirmed.
 	Confirmed []string
+
+	// Resting are the agents' profiles out of usage now, which the start passes over for
+	// the next of the step's chain: its profile, then its fallbacks, in order.
+	Resting []Resting
 }
 
 // Previewer plans a routine's agent step on one item without starting anything: core's

@@ -115,6 +115,15 @@ type pass struct {
 	checks     []int64
 	stateReads []int64
 
+	// itemReads are the items a verifying match reads again, and verifying the agent's run
+	// each verifying match follows, by match.
+	itemReads []int64
+	verifying map[int64]int64
+
+	// active holds, by routine and item, the routine's match running or verifying on the
+	// item: another of its matches there waits for it.
+	active map[[2]int64]int64
+
 	// notices are the notices the cycle's steps tell, handed over together as it ends.
 	notices []Job
 
@@ -158,7 +167,7 @@ func (e *Engine) cycle(ctx context.Context) {
 	p := &pass{
 		e: e, now: e.clock.Now(), cfg: e.svc.settings(ctx), inbox: inbox, byID: map[int64]*routineRun{},
 		others: map[int64]queries.AutopilotRoutine{}, cycle: c, ready: e.svc.ready.snapshot(),
-		outside: e.outsideIndex(ctx),
+		outside: e.outsideIndex(ctx), verifying: map[int64]int64{}, active: map[[2]int64]int64{},
 	}
 
 	if err = p.run(ctx); err != nil && ctx.Err() == nil {
@@ -485,15 +494,7 @@ func (p *pass) read(ctx context.Context, open []*match) error {
 		return err
 	}
 
-	every := slices.Clone(all)
-
-	for _, m := range open {
-		if m.ItemID != nil {
-			every = append(every, *m.ItemID)
-		}
-	}
-
-	every = union(every, nil)
+	every := union(all, p.openItems(open))
 
 	// The items' triage is read before their facts, so a triage step's compare-and-set is
 	// on a state no newer than what the routine decided on.
@@ -501,7 +502,9 @@ func (p *pass) read(ctx context.Context, open []*match) error {
 		return err
 	}
 
-	list, err := p.e.items.Facts(ctx, all, p.now.UTC())
+	// The open matches' items are read too: one verifying, or a later step's, may have
+	// left every watch.
+	list, err := p.e.items.Facts(ctx, every, p.now.UTC())
 	if err != nil {
 		return err
 	}
@@ -522,6 +525,26 @@ func (p *pass) read(ctx context.Context, open []*match) error {
 	p.counts, err = p.e.dayCounts(ctx, p.now)
 
 	return err
+}
+
+// openItems returns the items of the open matches, and notes each routine's match running
+// or verifying on an item (p.active).
+func (p *pass) openItems(open []*match) []int64 {
+	out := make([]int64, 0, len(open))
+
+	for _, m := range open {
+		if m.ItemID == nil {
+			continue
+		}
+
+		out = append(out, *m.ItemID)
+
+		if m.state().active() {
+			p.active[[2]int64{m.RoutineID, *m.ItemID}] = m.ID
+		}
+	}
+
+	return out
 }
 
 // readWatched reads the items each routine watches, and returns them all, each once.
@@ -1043,6 +1066,15 @@ func (p *pass) settleOpen(ctx context.Context, open []*match) {
 	}
 }
 
+// judgeVerifying judges m, verifying, once its item is still there: a verdict moves it on
+// to its next step, which r, its routine, runs, nil for one that no longer runs, whose
+// match the next cycle closes.
+func (p *pass) judgeVerifying(ctx context.Context, r *routineRun, m *match) {
+	if m.state() == StateVerifying && p.verifyMatch(ctx, r, m) && r != nil {
+		p.advance(ctx, r, m)
+	}
+}
+
 // goesOn reports an open match the engine moves on by itself: one queued or blocked, and
 // one waiting for its routine's OK, which a change of mode may give.
 func goesOn(m *match) bool {
@@ -1055,6 +1087,7 @@ func goesOn(m *match) bool {
 func (p *pass) routineGone(ctx context.Context, m *match) {
 	if m.state().active() {
 		p.watchActive(ctx, m, nil)
+		p.judgeVerifying(ctx, nil, m)
 
 		return
 	}
@@ -1075,6 +1108,7 @@ func (p *pass) settle(ctx context.Context, r *routineRun, m *match) bool {
 	switch {
 	case m.state().active():
 		p.watchActive(ctx, m, r.inWatch)
+		p.judgeVerifying(ctx, r, m)
 
 		return true
 	case p.closeDone(ctx, r, m):
@@ -1256,10 +1290,33 @@ func (e *Engine) saveIn(ctx context.Context, q *queries.Queries, m *match) error
 }
 
 // askReads asks, on workers, for the check names of the pull requests whose decision
-// waits on them, and the states of the items that left a watch.
+// waits on them, the states of the items that left a watch, and the items a verifying
+// match reads again.
 func (p *pass) askReads(ctx context.Context) {
 	p.askChecks(ctx)
 	p.askStates(ctx)
+	p.askItems(ctx)
+}
+
+// askItems reads again, on a worker, one at a time, the items verifying matches wait on;
+// the cycle each read wakes judges them again.
+func (p *pass) askItems(ctx context.Context) {
+	ids := union(p.itemReads, nil)
+	if len(ids) == 0 {
+		return
+	}
+
+	p.cycle.Reads += len(ids)
+
+	p.e.goWork(ctx, func(ctx context.Context) {
+		for _, id := range ids {
+			if err := p.e.items.ReadItem(ctx, id); err != nil && ctx.Err() == nil {
+				p.e.logger.InfoContext(ctx, "Autopilot could not read an item it verifies", "item", id, "error", err)
+			}
+		}
+
+		p.e.Wake()
+	})
 }
 
 // askChecks asks for the check names of the pull requests whose decision waits on them,

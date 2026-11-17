@@ -91,6 +91,11 @@ type Need struct {
 
 	// Place is where an agent step runs (NeedPlace).
 	Place catalog.Where `json:"place"`
+
+	// Fallback reports a need only an agent step's fallbacks bring, which this Mac lacking
+	// only warns of: the step still runs on its own profile, and a start passes over a
+	// fallback that can't run here.
+	Fallback bool `json:"fallback"`
 }
 
 // ID names the need, the same for every routine that has it: "github", "tool:pnpm",
@@ -143,8 +148,11 @@ func (d LaunchDefaults) profileOf(agent string) string {
 func Needs(sp spec.Spec, d LaunchDefaults) []Need {
 	out := []Need{{Kind: NeedGitHub}}
 	add := func(n Need) {
-		if !slices.ContainsFunc(out, func(have Need) bool { return have.ID() == n.ID() }) {
+		switch i := slices.IndexFunc(out, func(have Need) bool { return have.ID() == n.ID() }); {
+		case i < 0:
 			out = append(out, n)
+		case !n.Fallback:
+			out[i].Fallback = false
 		}
 	}
 
@@ -182,10 +190,15 @@ func agentNeeds(a spec.AgentStep, d LaunchDefaults) []Need {
 		}
 	}
 
-	pairs = append(pairs, a.Fallbacks...)
-
 	for _, p := range pairs {
 		out = append(out, d.profileNeeds(p)...)
+	}
+
+	for _, p := range a.Fallbacks {
+		for _, n := range d.profileNeeds(p) {
+			n.Fallback = true
+			out = append(out, n)
+		}
 	}
 
 	return append(out, Need{Kind: NeedTool, Tool: "gh"}, Need{Kind: NeedTool, Tool: "git"})
@@ -490,13 +503,13 @@ func (s readySnapshot) routineReady(id int64, name string, sp spec.Spec, startOn
 			return nil, false
 		}
 
-		switch c.Level {
-		case ReadyProblem:
+		switch {
+		case c.Level == ReadyProblem && !n.Fallback:
 			out.Ready = false
 			out.Problems = append(out.Problems, c)
-		case ReadyWarning:
+		case c.Level == ReadyWarning, c.Level == ReadyProblem:
+			// A fallback this Mac can't run only warns: the step runs on its own profile.
 			out.Warnings = append(out.Warnings, c)
-		case ReadyOK:
 		}
 	}
 

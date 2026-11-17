@@ -2264,6 +2264,36 @@ func (q *Queries) SetRunUsage(ctx context.Context, arg SetRunUsageParams) (int64
 	return result.RowsAffected()
 }
 
+const setRunVerdict = `-- name: SetRunVerdict :execrows
+UPDATE autopilot_runs SET
+    verdict = ?1,
+    verified_at = ?2,
+    updated_at = ?3
+WHERE id = ?4 AND status = 'ended'
+`
+
+type SetRunVerdictParams struct {
+	Verdict    string
+	VerifiedAt *time.Time
+	UpdatedAt  time.Time
+	ID         int64
+}
+
+// SetRunVerdict records what Wait for the checks found of a run that ended: its verdict,
+// and when it was reached.
+func (q *Queries) SetRunVerdict(ctx context.Context, arg SetRunVerdictParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setRunVerdict,
+		arg.Verdict,
+		arg.VerifiedAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updateBaseline = `-- name: UpdateBaseline :exec
 UPDATE autopilot_baselines SET state = ?1, updated_at = ?2
 WHERE routine_id = ?3 AND item_id = ?4

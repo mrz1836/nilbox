@@ -305,7 +305,7 @@ describe('This Mac', () => {
         readyCheck(),
         claudeMissing(),
         readyCheck({
-          need: { kind: 'banners', agent: '', profile: '', tool: '', place: '' },
+          need: { kind: 'banners', agent: '', profile: '', tool: '', place: '', fallback: false },
           id: 'banners',
           label: 'Banners',
           level: 'warning',

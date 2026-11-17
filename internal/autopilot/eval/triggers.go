@@ -135,6 +135,9 @@ func newCommits(t spec.Trigger, f facts.Facts, h History, _ time.Time) fired {
 	switch {
 	case !t.OwnPushes() && containsAny(h.OwnHeads, oid):
 		return no("a routine's own run pushed " + short(oid))
+	case !t.OwnPushes() && h.Working:
+		return fired{result: Unknown, actual: "a routine's agent is working on it, so whether it pushed " + short(oid) +
+			" is known once it ends"}
 	case !t.FirstCommitToo() && (h.FirstHead == "" || strings.EqualFold(h.FirstHead, oid)):
 		return no("it's the first commit this routine has seen, " + short(oid))
 	}

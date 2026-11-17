@@ -1153,7 +1153,10 @@ describe('App’s GitHub notifications', () => {
       expect(platform.checkGitHubThreadsNow).toHaveBeenCalledOnce()
     })
     expect(platform.setGitHubNotificationSwitch).toHaveBeenCalledExactlyOnceWith('auto', true)
-    expect(screen.queryByRole('button', { name: 'Turn on automatic clearing' })).not.toBeInTheDocument()
+    // The check goes out as the setting is saved, before the window renders what it stored.
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Turn on automatic clearing' })).not.toBeInTheDocument()
+    })
   })
 
   it('opens Settings → GitHub notifications from the button', async () => {

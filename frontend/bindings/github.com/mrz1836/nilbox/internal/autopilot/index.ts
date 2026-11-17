@@ -16,7 +16,8 @@ export {
     ReadyLevel,
     Reason,
     RefKind,
-    State
+    State,
+    Verdict
 } from "./models.js";
 
 export type {

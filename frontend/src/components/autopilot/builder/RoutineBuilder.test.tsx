@@ -191,7 +191,7 @@ describe('the routine builder', () => {
     const then = block('Then')
 
     expect(then.getByText('Run a coding agent')).toBeInTheDocument()
-    expect(then.getAllByText('· Dry run for now').length).toBe(1)
+    expect(then.queryByText('· Dry run for now'), 'this build runs Wait for the checks').not.toBeInTheDocument()
     expect(then.getByRole('combobox', { name: 'Step 2 runs' })).toHaveValue('pushed')
     expect(then.getByRole('combobox', { name: 'Prompt' })).toHaveValue('starter:fix-checks')
     expect(block('Limits').getByRole('combobox', { name: 'Once per' })).toHaveValue('headCommit')

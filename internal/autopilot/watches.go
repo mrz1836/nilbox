@@ -29,7 +29,8 @@ type WatchSearch struct {
 	Query string
 
 	// Follow says the checks follower follows the checks of what it returns: one of its
-	// routines' triggers reads checks.
+	// routines' triggers reads checks, or one of them waits for the checks on its agent's
+	// push.
 	Follow bool
 
 	// Routines are the routines that use it, by ID.
@@ -153,7 +154,7 @@ func (set *WatchSet) add(id int64, sp spec.Spec, byKey map[string]int) {
 		}
 
 		w := &set.Searches[i]
-		w.Follow = w.Follow || readsChecks(sp.Trigger.Event)
+		w.Follow = w.Follow || readsChecks(sp.Trigger.Event) || waitsForChecks(sp)
 
 		if !slices.Contains(w.Routines, id) {
 			w.Routines = append(w.Routines, id)
@@ -203,6 +204,12 @@ func listsOf(sp spec.Spec) []catalog.ListSource {
 // follower follows.
 func readsChecks(e catalog.Event) bool {
 	return e == catalog.EventChecksFailed || e == catalog.EventChecksPassed
+}
+
+// waitsForChecks reports a routine with a Wait for the checks, whose items the checks
+// follower follows too, so the checks on its agent's push are read every round.
+func waitsForChecks(sp spec.Spec) bool {
+	return slices.ContainsFunc(sp.Steps, func(st spec.Step) bool { return st.WaitForChecks != nil })
 }
 
 // sameLogin reports whether two logins name one account, ignoring case.
