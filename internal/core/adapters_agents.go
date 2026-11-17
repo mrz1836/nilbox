@@ -194,8 +194,9 @@ func refNames(ref spec.PromptRef, p prompts.Prompt) bool {
 // agentRuns runs a routine's agent steps (autopilot.Runner). A run in the user's terminal is
 // a click's launch, opened through the launcher with the routine's choices: it ends as the
 // terminal opens, since the app follows the session from there as any session (its pill and
-// panel), and a later start finds it working in the folder (the launcher's hold). The
-// background is the background runner's, which this build doesn't have yet.
+// panel), and a later start finds it working in the folder (the launcher's hold). A step in
+// the background is the background runner's (backgroundAgents), which hands this one each
+// step in the terminal; one reaching it here means this copy runs no background runner.
 type agentRuns struct {
 	deps agentDeps
 }
@@ -209,7 +210,7 @@ func (r agentRuns) Dispatch(ctx context.Context, job autopilot.Job) (autopilot.R
 	if place := job.Step.Agent.Place(); place != catalog.WhereTerminal {
 		return autopilot.Result{
 			Wait:      autopilot.BlockNotReady,
-			WaitWords: "Not ready on this Mac: this version can't run an agent in the background yet.",
+			WaitWords: "Not ready on this Mac: this copy can't run an agent in the background.",
 		}, nil
 	}
 

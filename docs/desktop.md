@@ -1666,7 +1666,8 @@ repositories (the clone root, the other [repository locations](#repository-locat
 [launch defaults](#launch-defaults) for orgs and repositories), [coding agents and
 profiles](#coding-agents-and-profiles), launching (the terminal, the default coding agent, each
 agent's default profile, the default prompt for pull requests and for issues, the worktree
-default, and following agent sessions), trust (the [trusted bots](#outside-contributors)),
+default, following agent sessions, and whether an agent may sign in with an [API key from your
+shell](#launching-a-session)), trust (the [trusted bots](#outside-contributors)),
 [sensitive files](#sensitive-files), and worktrees (whether to [clean up worktrees after
 merging](#the-worktrees-view), which branches go with them, and protected branches); under
 **Tools**, [integrations](#tools-the-app-finds-and-installs) (mage-x, go-pre-commit, and
@@ -2508,8 +2509,8 @@ its mode:
 Nothing changes a routine's mode but you. One copy of Nilbox on a data folder runs Autopilot at
 a time; another copy shows what it does and starts nothing.
 
-**Autopilot (beta).** Autopilot is still being built, so it is off on every install, an
-existing one included, until you turn it on in **Settings → Labs**: **Autopilot (beta)**,
+**Autopilot (beta).** Autopilot is in beta, so it is off on every install, an existing one
+included, until you turn it on in **Settings → Labs**: **Autopilot (beta)**,
 *Routines that triage and fix pull requests for you. Still being built.* While it is off,
 Nilbox shows none of it and runs none of it:
 
@@ -2532,6 +2533,28 @@ and acts only on what they say then, asking first, as after a long gap, when it 
 than **Ask before catching up after** says. Turning it off starts nothing new from then on and
 stops nothing: a step already handed over finishes, and the lock is let go once nothing it
 started is still going. A backup carries the switch with the other settings.
+
+**Start here.** A routine earns your trust one mode at a time:
+
+1. Turn on **Settings → Labs → Autopilot (beta)**, then open the **Autopilot** tab.
+2. Pick a template, *Suggested for you* first ([templates](#templates-and-quick-setup)), or
+   **Start from scratch** in the [builder](#building-a-routine).
+3. Fill in its blanks, click **Test** to see what it matches on your items now and why
+   ([testing a routine](#testing-a-routine)), then **Save**. It is saved switched off.
+4. Switch it on in **Dry run**: Activity lists each *Would run*, and nothing else happens.
+5. Move it to **Ask first**: each match that would start an agent or send GitHub something
+   waits under [Needs you](#needs-you) for your **Run**.
+6. Once its runs come out as you want, put it on **Autopilot**, within the
+   [limits](#settings--autopilot) you set. **Pause Autopilot** stops every new start at once.
+
+Coding agents run [in your terminal](#agents-in-your-terminal), as a click does, or [in the
+background](#agents-in-the-background), headless, inside a
+[fence](#fences-what-a-background-agent-may-do). Either way they run on the profile's own
+sign-in (a subscription such as Claude Max, through `claude auth login`), never on an API key
+from your shell unless you turn on **Use an API key when one is set** ([API
+keys](#launching-a-session)). What a run costs is counted in tokens, the real measure; its
+dollars are what the agent reports, an estimate of the API's price when you are on a
+subscription ([budgets and caps](#budgets-and-caps)).
 
 **The tab.** **Autopilot** sits after **Notifications**, while Autopilot (beta) is on, marked
 **Beta**. Its count is the agents working in the background (a run in your terminal is your
@@ -2697,9 +2720,7 @@ you have.
   it, and **🗑**. **+ Add a step** offers only what fits at the end: one agent step at most,
   **Wait for the checks** only after an agent step that may push, **Merge it** only after a
   wait on its push, **Post the agent's review** only after a read-only agent step, and only a
-  notice after an agent step in your terminal. A step this version can't run yet says *Dry run
-  for now*: it can be built and saved, and the routine stays in Dry run, the mode control
-  saying why.
+  notice after an agent step in your terminal.
 - **The GitHub step** lists its actions in the order they are sent, each with **↑ ↓** and
   **🗑**, and **+ Add an action** offers what it hasn't and what fits the items: **Ask
   Dependabot to rebase** and **Update branch** for pull requests, **Comment one of my replies**
@@ -2719,22 +2740,27 @@ you have.
   so a routine from another Mac, or from a backup, never runs another script that happens to
   have the same ID here. **Stop** stops it, as in Scripts → Runs.
 - **The agent step** names its **Prompt** (a library prompt for the items' kind, or the item's
-  own default prompt; **Edit in Prompts** opens the Prompts tab), **Where** it runs (**In my
-  terminal**, which a new agent step starts with; **In the background** is a problem this
-  version names, *this version of Nilbox can't run an agent in the background yet*, so a routine
-  is never saved to wait for it), and its launch on one line, *As a click would: Claude ·
+  own default prompt; **Edit in Prompts** opens the Prompts tab), **Where** it runs (**In the
+  background**, which a new agent step starts with, or **In my terminal**, exactly a click's
+  launch, which suits Ask first), and its launch on one line, *As a click would: Claude ·
   default · its default model · default effort*. **Change ▸** opens the agent, profile, model,
   and effort, each on **Inherit** until set, saying what it inherits at the app's level (a
   click takes each repository's and org's own launch defaults first), and the **Fallbacks**,
   up to three profiles to use when one is out of usage. **+ Per org** sets them for one org or
   repository at a time. Changing the agent drops a model and a profile, which are one agent's
-  own, and an effort the new agent doesn't take. In the background, plan mode is set by Tools
-  and the worktree is always the item's own, and the **Fence** holds the run in: its budget in
-  dollars or tokens (default $3.00), its time limit (default 30 minutes), and its **Tools**.
-  Each value set here has **Reset**.
-- **LIMITS** are once per what (the trigger's by default), the tries per item, the runs a day,
-  and the wait between tries, each at its default until set; Settings → Autopilot's limits
-  still hold over every routine together.
+  own, and an effort the new agent doesn't take. An agent left on **Inherit** follows the
+  [launch defaults](#launch-defaults): switch a repository's from Claude Code to Codex and its
+  routines' runs there switch with it, while each run already made keeps the agent it ran
+  with. In the background, plan mode is set by Tools and the worktree is always the item's
+  own, and the **Fence** holds the run in: its budget in dollars or tokens (default $3.00, or
+  in tokens from 10,000 to 50 million), its time limit (default 30 minutes, 5 to 180), and its
+  **Tools** preset, offered only as the step's agent keeps it (Codex keeps every preset but
+  **GitHub tasks only**, and the builder says why), with extra commands to allow or deny. Each
+  value set here has **Reset**.
+- **LIMITS** are once per what (the trigger's by default), the tries per item (2), the runs a
+  day (10), the wait between tries on one item (30 minutes), its **Active hours** (always, by
+  default), and its own **Daily budget**, in dollars or tokens (off), each at its default until
+  set; Settings → Autopilot's limits and daily cap still hold over every routine together.
 
 **Problems and warnings.** What keeps a routine from being saved shows where it is, in red: a
 search with no scope, a regex that doesn't compile, a prompt your library doesn't have or that
@@ -2797,15 +2823,14 @@ request a start makes, so what it shows is what runs.
 
 ### Templates and quick setup
 
-**Templates** lists routines made for you to start from, each with its icon, one line on what it
-does, the mode it suggests, and, when this version can't run one of its steps yet, what it needs
-(*Needs agents in the background*): a template is never locked, it says what it needs, and
-works as soon as a version that runs the step does. Those that fit what Nilbox already knows
-come first, under **Suggested for you**, each with why: *3 of your clones run go-fortress’s
-security checks.* (from the clones the first-run setup looks at), *Dependabot opened 9 pull
-requests in your inbox this week.*, *Bots opened 4 pull requests in your Review requested and
-Assigned lists this week.* (from the stored items). Nothing is read for them that isn't on this
-Mac already.
+This is Autopilot's easy mode: a routine from a template takes a few blanks and a click, and
+opens in the full builder whenever you want more. **Templates** lists routines made for you to
+start from, each with its icon, one line on what it does, and the mode it suggests. Those that
+fit what Nilbox already knows come first, under **Suggested for you**, each with why: *3 of your
+clones run go-fortress’s security checks.* (from the clones the first-run setup looks at),
+*Dependabot opened 9 pull requests in your inbox this week.*, *Bots opened 4 pull requests in
+your Review requested and Assigned lists this week.* (from the stored items). Nothing is read
+for them that isn't on this Mac already.
 
 | Template | What it does | Suggests |
 |---|---|---|
@@ -2831,24 +2856,23 @@ the templates' descriptions say so, and the fence is never widened for them.
 template's blanks (for most, **Where**: your account, and the orgs, users, or repositories to
 watch too; for Re-run flaky checks once, the checks' names, picked from those seen on your pull
 requests), the mode it starts in (the one new routines start in, Ask first unless you changed
-it; the template's own suggestion shows beside it as a hint, never as a change), the sentence
-it reads as, what it needs that this version can't run yet, and **This Mac**: what this Mac
-lacks for it (its agent, its profile's sign-in, gh), checked from what the checks last found,
-never asking GitHub. **Test** tries it on your items, as the builder's does. **Save** makes the
-routine, switched off, named after the template ("<name> 2" when you have one of that name),
-and **Customize** opens the full builder with everything filled in. A template whose starter
-prompt you deleted says so, with **Add it again**, which puts the starter back in your prompts
-as it ships.
+it; the template's own suggestion shows beside it as a hint, never as a change), the sentence it
+reads as, and **This Mac**: what this Mac lacks for it (its agent, its profile's sign-in, gh),
+checked from what the checks last found, never asking GitHub. **Test** tries it on your items,
+as the builder's does. **Save** makes the routine, switched off, named after the template
+("<name> 2" when you have one of that name), and **Customize** opens the full builder with
+everything filled in. A template whose starter prompt you deleted says so, with **Add it
+again**, which puts the starter back in your prompts as it ships.
 
-**Make a routine from this…** on an item's **⋯** menu (**Autopilot ▸**) opens the builder
-filled in from the item, saving nothing: its kind; its author, or its bot; its repository's
-owner (your account for your own); **Checks fail** when its checks fail, with the failed checks'
-names as one *contains any of* condition, else **Merge conflicts** when it conflicts, else
-**Changes requested** when that is the review decision, else **Appears**; and the prompt a click
-would launch on it, run in the background once this version does, else in your terminal, in the
-mode new routines start in. Its labels and its dependency update's type wait as
-**Suggested by the item:** buttons under **If**, one click each, and **Test** shows the item at
-the top, with whether the routine matches it now, until a test reads more.
+**Make a routine from this…** on an item's **⋯** menu (**Autopilot ▸**) opens the builder filled
+in from the item, saving nothing: its kind; its author, or its bot; its repository's owner (your
+account for your own); **Checks fail** when its checks fail, with the failed checks' names as
+one *contains any of* condition, else **Merge conflicts** when it conflicts, else **Changes
+requested** when that is the review decision, else **Appears**; and the prompt a click would
+launch on it, run in the background, in the mode new routines start in. Its labels and its
+dependency update's type wait as **Suggested by the item:** buttons under **If**, one click
+each, and **Test** shows the item at the top, with whether the routine matches it now, until a
+test reads more.
 
 The first-run setup's last step suggests one template, the first that fits what this Mac knows,
 while Autopilot (beta) is on: *Suggested for you: Fix Dependabot security failures*, with why and
@@ -2953,23 +2977,23 @@ repository, leaves the start not ready.
   what it waits on.
 - **The run view** opens beside Activity, from Working's **Watch**, an Activity line's **Show
   the run**, an **Agent finished** banner or notification, the menu bar's agent, the item's
-  session panel, its launch button,
-  or the line a review or issue sheet shows under its work line (*⚡ Fix failing checks
-  pushed 4f2a9c1 · Fixed*). Its header says where the run stands, how long it took, its
-  cost against its budget (≈ for an estimate on your plan; the budget alone until the agent
-  reports), the agent, model, effort, worktree, and preset, its tokens in and out with its
-  cache's apart, and the routine's steps with the one it is at marked. **Take over in
-  iTerm2**, **Stop**, **Diff** (the worktree's changes since the run started, committed or not,
-  read-only, with the files git doesn't track), **Show the worktree**, **View on GitHub**, and
-  **Show the log file**. The agent's todo list is a live checklist on the left; on the right,
-  the timeline: each command with ✓ or ✗ once it answers, the files it edited, its reads and
-  searches collapsed, what it said, what the fence refused, and its end, each at the time the
-  agent wrote it. A run that works shows from memory, as it goes; one that ended, or one from
-  before a restart, reads its timeline from its log a page at a time, and **Show earlier
-  events** reads the page before, so a long log never loads whole. Messages the app didn't know
-  are counted, never shown. Once it ends, the view says how it came out: Nilbox's verdict from
-  GitHub, the agent's own report or its last words, whether it needs a person, its turns, its
-  time, its commit, and how many files it changed.
+  session panel, its launch button, or the line a review or issue sheet shows under its work
+  line (*⚡ Fix failing checks pushed 4f2a9c1 · Fixed*). Its header says where the run stands,
+  how long it took, its cost against its budget (≈ for an estimate on your plan; the budget
+  alone until the agent reports), the agent, model, effort, worktree, and preset, its tokens in
+  and out with its cache's apart, and the routine's steps with the one it is at marked. **Take
+  over in iTerm2** (named for the terminal chosen in Settings), **Stop**, **Diff** (the
+  worktree's changes since the run started, committed or not, read-only, with the files git
+  doesn't track), **Show the worktree**, **View on GitHub**, and **Show the log file**. The
+  agent's todo list is a live checklist on the left; on the right, the timeline: each command
+  with ✓ or ✗ once it answers, the files it edited, its reads and searches collapsed, what it
+  said, what the fence refused, and its end, each at the time the agent wrote it. A run that
+  works shows from memory, as it goes; one that ended, or one from before a restart, reads its
+  timeline from its log a page at a time, and **Show earlier events** reads the page before, so
+  a long log never loads whole. Messages the app didn't know are counted, never shown. Once it
+  ends, the view says how it came out: Nilbox's verdict from GitHub, the agent's own report or
+  its last words, whether it needs a person, its turns, its time, its commit, and how many files
+  it changed.
 - **Take over** stops the agent while it works, waits for its end, and opens its conversation
   in the terminal chosen in Settings, in its worktree, with its profile (`claude --resume
   <session>`), as a launch does, held back as one is. It keeps the run's fence, but someone
@@ -2992,9 +3016,16 @@ repository, leaves the start not ready.
   says **Watch**. The Worktrees view marks its worktree *made by ⚡ <routine>* and *in use ·
   Claude in the background*, so the cleanup never removes it; a click's launch there is held
   back, never started beside it: the dialog offers **Watch it** and **Take over** instead.
-- **Quitting** stops every run (the agent's own Control-C first, so it reports its end), unless
-  you let them finish ([Runs](#runs)); a run a quit or a crash cut off is *interrupted*, and its
-  match comes back under Needs you, with **Take over** in its session's panel. A process the
+- **Quitting** while agents work asks first, as for any run ([Runs](#runs)), naming them
+  (*2 agents are still working.*). **Stop and quit** stops each (the agent's own Control-C
+  first, so it reports its end). **Let them finish** (**Let it finish** for one), offered while
+  every run keeps to a budget of its own (Claude Code's), quits and leaves them working: they
+  stay recorded as going, and the next start follows each again to its end and its verdict,
+  stopping at once one found past its time limit. A Codex run keeps no budget of its own, so it
+  always stops with the app, and the question says so. A confirmed **Restart to Update** lets
+  such runs carry on the same way, and the new version follows them. A run a quit or a crash
+  cut off is *interrupted*, and its match comes back under Needs you, with **Take over** in its
+  session's panel. A process the
   agent left working in the worktree is ended with it. While **Keep the Mac awake while agents
   work** is on, the Mac stays awake for each run.
 - **Its log** is kept in `script-runs/` and its prompt and settings in `agent-runs/` in the
@@ -3318,7 +3349,7 @@ Notifications**, all on by default, and the **Autopilot** type on the
 | Autopilot problem | **Autopilot problems** | A routine can't run: its search fails, it won't load, or this Mac lacks something it needs. You hear of each problem once, as it starts |
 | Needs your OK | **Needs your OK** | A routine's match waits for you: Ask first, a hold, no clone, a dirty worktree, a catch-up, a GitHub action's warnings, an outside contributor's item, a first pass's backlog; its banner opens the match's card |
 | Agent finished | **Agents finishing** | A routine's coding agent in the background ends, done or failed, with what it cost; never one you stopped |
-| Checks after a fix | **Checks after a fix** | The checks on a routine's fix finish (later versions) |
+| Checks after a fix | **Checks after a fix** | A **Wait for the checks** step comes to its verdict on an agent's push: fixed, still failing, unknown, or overtaken ([closing the loop](#closing-the-loop-wait-for-the-checks)) |
 
 A routine can turn its own banners on or off, whatever the switches say. More than three at once
 arrive as one banner that sums them up (*4 new from Autopilot*). Clicking an alert about an item
@@ -3345,14 +3376,14 @@ This section, marked **Beta**, shows while Autopilot (beta) is on in **Settings 
 | **Agents at once** | 2 | The most coding agents your routines will run at the same time, at most 3 |
 | **Agent runs a day** | 20 | The most coding agent runs your routines will start in a day, together |
 | **GitHub actions a day** | 50 | The most actions on GitHub your routines will send in a day, together |
-| **Daily cap** | Off | The most your routines' coding agents will use in a day, in dollars ($1 to $500) or tokens |
+| **Daily cap** | Off | The most your routines' coding agents will use in a day, in dollars ($1 to $500) or tokens (100,000 to 50 million); see [budgets and caps](#budgets-and-caps) |
 | **Keep the Mac awake while agents work** | Off | Keeps the Mac from going to sleep on its own while a routine's agent works |
 | **Hold agent starts while their provider reports an outage** | On | Holds a routine's agent while its provider's status page reports a major outage |
 | **Ask before catching up after** | 24 hours | After Nilbox was closed this long, a routine's agent and GitHub steps will wait for your OK; local steps never do |
 | **History kept** | 90 days | How long what the routines did is kept; lowering it lowers the run logs with it |
 | **Run logs kept** | 30 days | How long an agent run's log will be kept, never longer than the history |
 | **Clear history…** | | Removes now, after asking, what the routines did with items that are done with: gone, merged, or closed, or out of every list and search for longer than the history is kept. Your routines and what still waits stay, and it says *Nothing to clear.* when there was nothing |
-| **Stop all** | | Stops every routine's coding agent working in the background at once, and leaves the scripts' runs alone |
+| **Stop all** | | Stops at once every routine's coding agent working in the background, and every script a routine's step runs; the runs you started yourself carry on |
 | **Last checked** | | When Autopilot last checked the routines, how long it took, and what it found (*Last checked today, 11:59 AM · 34 ms · 7 matches · 1 start*), or that another copy runs it |
 
 The limits hold every routine's coding agents, in the background and in your terminal, and its
@@ -3361,6 +3392,30 @@ it: one over today's limit starts tomorrow, and a day runs from local midnight. 
 only to Pause Autopilot and a routine's own active hours. Backups carry these settings, and the
 **Autopilot routines** category carries the routines (see
 [Backing up your setup](#backing-up-your-setup)).
+
+### Budgets and caps
+
+Three limits bound what the routines' agents spend, each set in dollars or in tokens:
+
+- **A run's budget**, in the agent step's fence ($3.00 by default). In dollars, the agent keeps
+  to it itself, as Claude Code does, and ends *Out of budget ($3.00).*; Codex keeps none, so a
+  Codex step's budget is set in tokens. In tokens, Nilbox counts what the run reports as it goes
+  and stops it there (Codex reports its tokens as its run ends, so its budget is checked then).
+  The time limit (30 minutes by default) holds every run.
+- **A routine's own Daily budget** (its limits) and the **Daily cap** above, across every
+  routine, both off by default. Before each start, today's use, plus the budgets of the runs
+  still working, plus the new run's budget, must fit under each; otherwise the start waits
+  (*It would go over today's cap.*) and starts the next day, once. A cap counts the runs
+  budgeted in its own unit, so a dollar cap can't hold back a run budgeted in tokens, nor
+  count a Codex run.
+- **Tokens are the real measure.** Every run shows its tokens, in and out, with what it read
+  from the cache apart, in the run view, Working, and a routine's **This week**. Its dollars are
+  what the agent reports: on a subscription (Claude Max, say), what the same work would cost
+  through the API, an estimate and never a bill, which Nilbox always words as *about* or
+  *estimated*; with an API key, which a run uses only while **Use an API key when one is set**
+  is on for its agent, what that key was charged. A run in your terminal reports neither, so no
+  budget or cap counts it; the item's [session panel](#following-a-session) counts its
+  session's tokens.
 
 ### This Mac
 
@@ -3387,14 +3442,25 @@ fixed. The checks run as Autopilot starts (after the first paint, never on the c
 when a routine is saved or switched on, every ten minutes, and on **Check again**; right before
 each start, the item's own agent and profile are checked again.
 
-**What Autopilot never does.** It never changes a routine's mode on its own. A local step never
-replaces what you set aside yourself, and has **Undo**. Dry run changes nothing. It changes on
-GitHub only the [five things](#what-autopilot-may-change-on-github) the sheets already change,
-and merges or posts an agent's review only through the opt-in
-[steps that follow a run](#merge-it-and-post-the-agents-review), inside GitHub's own rules; it
-never closes anything, approves workflow runs, or merges past GitHub's rules. Nothing it
-reads or decides leaves your Mac: it reads
-and writes GitHub through the app's own API calls, as the inbox and the sheets do.
+### What Autopilot never does
+
+- It never changes a routine's mode on its own, and never runs while **Autopilot (beta)** is
+  off.
+- A local step never replaces what you set aside yourself, and has **Undo**. Dry run changes
+  nothing.
+- It changes on GitHub only the [five things](#what-autopilot-may-change-on-github) the sheets
+  already change, and merges or posts an agent's review only through the opt-in
+  [steps that follow a run](#merge-it-and-post-the-agents-review), inside GitHub's own rules.
+  It never closes anything, approves workflow runs, or merges past branch protection, and a
+  test fails the build if any of its code could; nor does it approve a pull request a routine
+  pushed to.
+- It never starts an agent on an outside contributor's item unless its org or repository
+  allows it, and then read only; never runs a pull request you didn't open that changes agent
+  configuration without your OK; and never pushes but once, to the pull request's own branch,
+  never with `--force` ([fences](#fences-what-a-background-agent-may-do)).
+- Nothing it reads or decides leaves your Mac: it reads and writes GitHub through the app's
+  own API calls, as the inbox and the sheets do, and its agents send what they read only to
+  their own model provider, as a session you open does.
 
 ### Routine searches
 
@@ -3458,6 +3524,35 @@ measured numbers.
 pinned, snoozed, or dismissed, and that no agent session or notification names is removed 30
 days after the last read that brought it, whether a routine's search found it or it left your
 lists; its details, file check, check names, and the sheets' cached views of it go with it.
+
+### When a routine misbehaves
+
+- **It does something you didn't want.** **Pause Autopilot** (the tab's header, the menu bar,
+  or Settings), and **Stop all** if agents are working. Open the routine's Activity to see each
+  match and why, **Undo** what it changed on your Mac, put it back in **Dry run**, fix its
+  conditions or limits, and **Test** before you turn it back on.
+- **It seems to do nothing.** Settings → Autopilot's **Last checked** says whether the engine
+  ran, and *another copy runs it* means this one doesn't hold the lock. **This Mac** says what
+  is missing. The routine's **Watching** list shows whether its search finds the item, and the
+  item's **⋯** menu → **Autopilot ▸** → **Why didn't a routine run?** gives each condition with
+  its value, and the ledger's view.
+- **A run is stuck.** **Stop** asks the agent to stop, then SIGTERM, then SIGKILL. A run still
+  marked working after a restart is followed again if its process lives, else *interrupted*,
+  its match back under Needs you with **Take over**. Its worktree can be cleaned up in the
+  Worktrees view once nothing runs in it.
+- **The GitHub budget burns.** The budget menu shows Autopilot's share, and the routines'
+  searches stop themselves below a quarter of the GraphQL budget. Watch fewer owners, or narrow
+  the searches.
+- **GitHub actions pile up.** **GitHub actions a day** and the write pace bound them, and a
+  routine's first pass over 25 waits as a backlog. Lower the limit, or move the routine to Ask
+  first.
+- **Spend runs high.** Lower the run budget and the daily cap, move routines to a smaller
+  model or a lower effort, and check each routine's **This week**.
+- **An agent pushed a bad change.** It is on the pull request's own branch, and nothing merges
+  it but a **Merge it** step you added, once its checks pass. Revert it on the branch, then
+  tighten the routine: **Edit and test, no push**, or its prompt.
+- **Run logs fill the disk.** Shorten **History kept** or **Run logs kept**, or **Clear
+  history…**, which removes the ended runs' logs and keeps the routines.
 
 <br>
 
@@ -4462,12 +4557,14 @@ Codex's project config) then apply in every session, as they would after you acc
 question, hooks included, which is why a launch on a pull request that changes agent
 configuration [asks first](#sensitive-files).
 
-### The one-time Automation prompt
+### macOS's Automation permission
 
-The first launch in iTerm2 makes macOS ask once whether the app may control iTerm2: "“Nilbox”
+The first launch in iTerm2 makes macOS ask once whether the app may control iTerm2 (macOS's
+Automation permission, which has nothing to do with [Autopilot](#autopilot)): "“Nilbox”
 wants access to control “iTerm”", followed by the app's reason: Nilbox opens your terminal app
 (such as iTerm2) to start coding sessions in your local clones. Choose **Allow**. Terminal.app
-launches never ask.
+launches never ask. An Autopilot routine's run in your terminal, and **Take over**, open
+iTerm2 the same way, so allow it before you leave a routine to run while you're away.
 
 If you chose **Don't Allow**, the launch fails with a message that says so. Change it in
 **System Settings → Privacy & Security → Automation**, under Nilbox. A build from source asks,

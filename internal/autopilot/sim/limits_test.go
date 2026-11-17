@@ -63,6 +63,11 @@ func tally(s *sim.Sim) []string {
 	return out
 }
 
+// inTokens budgets the routine's agent step at 300,000 tokens a run.
+func inTokens(sp *spec.Spec) {
+	sp.Steps[0].Agent.Fence = &spec.Fence{Budget: &spec.Budget{Tokens: new(int64(300_000))}}
+}
+
 // states returns each match's state and what it waits on, by item.
 func states(s *sim.Sim) map[int]string {
 	out := map[int]string{}
@@ -99,6 +104,22 @@ func TestEveryLimitDelaysAStartAndOnlyItsOwnLimitsCloseOne(t *testing.T) {
 				c.DailyCap = autopilotprefs.DailyCap{Amount: 5, Unit: autopilotprefs.UnitUSD}
 			},
 			want: []string{"queued:cap_spend", running},
+		},
+		{
+			name: "the daily cap in tokens, over runs budgeted in tokens", edit: inTokens,
+			settings: func(c *autopilotprefs.Config) {
+				c.DailyCap = autopilotprefs.DailyCap{Amount: 500_000, Unit: autopilotprefs.UnitTokens}
+			},
+			want: []string{"queued:cap_spend", running},
+		},
+		{
+			// A cap counts only the runs budgeted in its own unit: a run whose budget is
+			// in tokens can't be counted against dollars, so a dollar cap holds it not.
+			name: "a daily cap in dollars, over runs budgeted in tokens", edit: inTokens,
+			settings: func(c *autopilotprefs.Config) {
+				c.DailyCap = autopilotprefs.DailyCap{Amount: 1, Unit: autopilotprefs.UnitUSD}
+			},
+			want: []string{running, running},
 		},
 		{
 			name: "the routine's own budget", edit: func(sp *spec.Spec) { sp.Limits.BudgetPerDay = &spec.Budget{USD: new(4.0)} },
@@ -148,6 +169,60 @@ func TestPauseHoldsLocalStepsTooAndResumeRunsThem(t *testing.T) {
 		assert.Equal(t, []sim.Row{row(1, autopilot.StateDone, "", autopilot.ReasonRan, "appears:item")}, s.Ledger(),
 			"a short pause runs what waited on Resume")
 		assert.Len(t, s.Triage.Calls(), 1)
+	})
+}
+
+func TestPausedOverAWeekendResumeRunsEachLocalStepOnceWithNoQuestion(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s := sim.New(t)
+		s.Begin()
+
+		r := s.Save("Pin bumps", sim.Pins(), autopilotprefs.ModeAuto)
+		s.Enable(r.ID, autopilot.CurrentRun)
+		s.Change(func(c *autopilotprefs.Config) { c.Paused = true })
+
+		// Friday evening: three pull requests appear while Autopilot is paused, and the
+		// app is closed over the weekend, longer than Ask before catching up after.
+		for n := 1; n <= 3; n++ {
+			s.World.Add(sim.Item{Number: n, Watched: true})
+		}
+
+		s.Refresh()
+		require.Equal(t, []string{"queued:paused", "queued:paused", "queued:paused"}, tally(s))
+
+		s.Stop()
+		s.Sleep(60 * time.Hour)
+		s.Begin()
+		s.Refresh()
+		s.Refresh()
+		require.Equal(t, []string{"queued:paused", "queued:paused", "queued:paused"}, tally(s),
+			"still paused after the weekend")
+		require.Empty(t, s.Triage.Calls(), "Pause held every local step")
+
+		// Monday: Resume.
+		s.Change(func(c *autopilotprefs.Config) { c.Paused = false })
+		s.Refresh()
+		s.Advance(10*time.Minute, true)
+		s.Restart()
+		s.Refresh()
+
+		assert.Equal(t, slices.Repeat([]string{string(autopilot.StateDone) + ":" + string(autopilot.ReasonRan)}, 3), tally(s),
+			"each ran on Resume, none waiting for a catch-up's question")
+
+		pins := map[int64]int{}
+
+		for _, call := range s.Triage.Calls() {
+			assert.Equal(t, catalog.StepPin, call.Action)
+			pins[call.ItemID]++
+		}
+
+		assert.Len(t, pins, 3, "every item's pin ran")
+
+		for id, n := range pins {
+			assert.Equal(t, 1, n, "item %d was pinned once", id)
+		}
 	})
 }
 

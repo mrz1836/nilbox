@@ -300,7 +300,7 @@ work: [docs/desktop.md](docs/desktop.md#updates).
 
 ## ⚡ Quick Start
 
-Six steps, in the order you'll use them. On the first launch Nilbox walks you through the first
+Seven steps, in the order you'll use them. On the first launch Nilbox walks you through the first
 few itself: a short [setup](docs/desktop.md#first-run-setup) checks your GitHub sign-in, finds
 your clones, picks your agent and terminal, and sets up your notifications, with the command
 that fixes anything missing. **Settings → About → Run setup again** brings it back.
@@ -379,6 +379,16 @@ every clone with unreleased changes, has magex tag and push the exact version yo
 follows it until GitHub publishes it. **Hooks** installs go-pre-commit's Git hook across your
 clones and runs its checks, and **Repo scripts** runs a clone's `t3.json` scripts, VS Code tasks,
 magex targets, and commands of your own.
+
+<br>
+
+### Put routines on Autopilot (beta)
+
+Turn on **Settings → Labs → Autopilot (beta)**, and an **Autopilot** tab appears. Pick a
+template, such as **Fix Dependabot security failures**, fill in where it watches, click
+**Test** to see what it would match now and why, and **Save**. Switch it on in **Dry run**
+first, then **Ask first**, where each match waits for your **Run**, and put it on
+**Autopilot** once you trust it. **Pause Autopilot** stops every new start at once.
 
 <br/>
 
@@ -791,6 +801,65 @@ More in [Outside contributors](docs/desktop.md#outside-contributors) and
 
 <br>
 
+### <code>Autopilot (beta)</code>
+
+Off until you turn it on in **Settings → Labs**.
+
+<details>
+<summary><strong>Routines</strong>: watch your items, and act when something happens</summary>
+<br/>
+
+- **A routine** watches your inbox lists or a GitHub search of its own (Dependabot's pull
+  requests across your orgs, say), waits for something to happen (checks fail, a reviewer asks
+  for changes, a bug goes quiet), checks its conditions, and takes its steps, once per
+  occurrence, across refreshes and restarts.
+- **Its steps:** pin, snooze, dismiss, or restore the item; tell you; send one of five changes
+  the sheets already send (ask Dependabot to rebase, update the branch, comment one of your
+  replies, labels, mark the GitHub notification done); run one of your own scripts; start a
+  coding agent; wait for the checks on what it pushed; then, only if you add them, merge the
+  fix inside GitHub's rules or post the agent's review.
+- **Three modes:** **Dry run** records what it would do, **Ask first** waits for your OK, and
+  **Autopilot** runs within your limits. Nothing changes a routine's mode but you.
+- **Easy to start:** twelve templates, the ones that fit your clones and inbox suggested
+  first, each a short quick setup; **Make a routine from this…** on any item; **Test** on your
+  own items with a reason for every match and miss; and **Why didn't a routine run?**
+- **Everything shows:** Activity, with **Undo** for what a routine changed on your Mac, a ⚡
+  chip on every row a routine touched, **Needs you** for what waits, This week's counts, and
+  the menu bar's Autopilot group with **Pause Autopilot**.
+
+More in [Autopilot](docs/desktop.md#autopilot).
+
+</details>
+
+<details>
+<summary><strong>Agents in the background</strong>: headless, fenced, followed to a verdict</summary>
+<br/>
+
+- **Headless runs** of Claude Code or Codex in the item's own worktree, on the profile's own
+  sign-in (a subscription included), never an API key from your shell unless you turn on **Use
+  an API key when one is set**.
+- **Fences:** each run keeps to a tools preset (Read only, GitHub tasks only, Edit and test, or
+  Edit, test, and push to the pull request's own branch, exactly once), with hard lines under
+  every preset: no edits to agent, workflow, or tooling files, no network tools, no `gh` merge
+  or review, no reading your credentials. A hook decides every tool call, and the edit presets
+  run in the agent's sandbox.
+- **Limits:** a budget and a time limit per run, runs and GitHub actions a day, and a daily cap,
+  in dollars or tokens. Tokens are the real measure: on a subscription, the dollars an agent
+  reports are an estimate of the API's price.
+- **The run view** shows each command, edit, and refusal live, with **Stop**, a diff of its
+  work, and **Take over**, which opens the same conversation in your terminal.
+- **Closing the loop:** **Wait for the checks** judges the agent's push (*Fixed*, *Still
+  failing*, ...), tries again up to its limit, and says when it gave up.
+- **Quitting:** **Let them finish** leaves runs that keep to their own budget working, and the
+  next start follows each to its verdict.
+
+More in [Agents in the background](docs/desktop.md#agents-in-the-background) and
+[Fences](docs/desktop.md#fences-what-a-background-agent-may-do).
+
+</details>
+
+<br>
+
 ### <code>Your clones</code>
 
 The **Scripts** tab, with Release, Hooks, Repo scripts, and Runs, appears while mage-x or
@@ -1093,6 +1162,7 @@ More in [The window](docs/desktop.md#the-window).
 | ✅ mage-x and go-pre-commit           | **Supported** | Releases, Git hooks, and repository scripts in the Scripts tab      |
 | ✅ Mute or pin repositories and orgs  | **Supported** | Hide or raise everything from a repository or org at once           |
 | ✅ First-run setup                    | **Supported** | GitHub, clones, agent, terminal, notifications, and tools, in steps |
+| 🧪 Autopilot                         | **Beta**      | Routines that triage, fix, and merge, off until turned on in Labs   |
 | 🚧 Security alert sweeps             | **Planned**   | Sweep security alerts across every repository                       |
 | 🚧 More coding agents and terminals  | **Planned**   | Beyond Claude Code, Codex, iTerm2, and Terminal.app                 |
 | 🚧 More integrations                 | **Planned**   | Beyond mage-x and go-pre-commit                                     |
@@ -1113,6 +1183,7 @@ More in [The window](docs/desktop.md#the-window).
 | **Worktrees**     | Made, resumed, and tracked in Go, one per item per clone and shared by every agent; the launch script only changes into the folder and starts the agent                                         |
 | **Git**           | Every git command Nilbox runs is an argument list, never a shell, and none runs a hook or a program a clone's own config names                                                                  |
 | **Integrations**  | mage-x and go-pre-commit, found and run with your login shell's environment, as your terminal runs them; one runner records every run and its whole log                                         |
+| **Autopilot**     | One engine loop, the only writer of its ledger, so a routine acts once per occurrence across refreshes and restarts; every limit checked in Go before a start; GitHub writes only through the review and issue sheets' own services; background agents held in by a hook on every tool call and the agent's own sandbox |
 
 <br>
 
@@ -1128,7 +1199,9 @@ More in [The window](docs/desktop.md#the-window).
 > taking you off an item, a review, comment, merge, auto-merge, branch update, Dependabot rebase
 > request, approval of held workflow runs, or close you send from the review sheet, or a comment or
 > close you send from the issue
-> sheet. The git it runs reaches a clone's own
+> sheet, or a step of an [Autopilot](docs/desktop.md#what-autopilot-may-change-on-github) routine
+> you made and turned on, which sends only what those sheets send, and never a close. The git
+> it runs reaches a clone's own
 > remote only to make a worktree, to check a release before and after magex pushes its tag, and
 > for Repo scripts' branch check and **Pull**, which ask an origin that isn't on GitHub only when
 > you click **Check**. Your preferences, triage state, and cache, the diffs of pull requests you
@@ -1162,6 +1235,12 @@ View the full documentation for Nilbox:
 >
 > - **Agents act on your machine:** a launched coding agent runs with your profile's permissions
 >   and can run commands and change files in your clones.
+> - **Autopilot starts agents unattended:** a routine you turn on in Ask first or Autopilot mode
+>   can start a coding agent with no one watching. It runs inside its fence (a tools preset, a
+>   hook that decides every tool call, and the agent's sandbox for the edit presets), within
+>   your budgets and limits, and still with your git and `gh` credentials. A fence reads
+>   command lines, which a determined command can disguise; start in Dry run, and read what a
+>   routine does in Activity before you leave it on Autopilot.
 > - **Untrusted content stays untrusted:** pull requests and issues from outside contributors can
 >   carry prompt injection. Plan mode (Codex's read-only sandbox) for outsiders and the
 >   sensitive-file checks reduce that risk; they don't remove it.

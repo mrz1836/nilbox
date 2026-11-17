@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -15,7 +16,11 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/profiles"
@@ -302,6 +307,58 @@ func TestAMajorOutageOnTheAgentsPartHoldsItsStart(t *testing.T) {
 	assert.False(t, down, "another agent's provider holds nothing of this one")
 }
 
+// claudeDown answers Claude's status page with Claude Code in a major outage, and every
+// other page with an empty summary.
+type claudeDown struct{}
+
+func (claudeDown) FetchStatus(_ context.Context, req github.StatusRequest) (github.StatusAnswer, error) {
+	if req.Host != "status.claude.com" {
+		return github.StatusAnswer{Body: []byte(`{"components":[],"incidents":[]}`)}, nil
+	}
+
+	return github.StatusAnswer{Body: []byte(`{"status":{"indicator":"major"},"components":[` +
+		`{"id":"yyzkbfz2thpt","name":"Claude Code","status":"major_outage"}],"incidents":[]}`)}, nil
+}
+
+// holdPrefs is Settings → Autopilot, with Hold agent starts while their provider reports
+// an outage as given.
+type holdPrefs bool
+
+func (h holdPrefs) Autopilot(context.Context) (autopilotprefs.Config, error) {
+	cfg := autopilotprefs.Defaults()
+	cfg.HoldOnOutage = bool(h)
+
+	return cfg, nil
+}
+
+func TestAMajorOutageHoldsTheAgentsStartOnlyWhileTheSettingSaysSo(t *testing.T) {
+	t.Parallel()
+
+	rules := svcstatus.Rules{Every: 30 * time.Minute, Watch: statusprefs.Defaults()}
+	status := svcstatus.NewService(svcstatus.Config{
+		Fetcher: claudeDown{},
+		Rules:   func(context.Context) svcstatus.Rules { return rules },
+	})
+	status.CheckNow(t.Context())
+
+	held := agentHolds{deps: agentDeps{status: status}, prefs: holdPrefs(true)}
+
+	blocker, words := held.outage(t.Context(), agent.Default())
+	assert.Equal(t, autopilot.BlockOutage, blocker, "a major outage on Claude Code holds its start")
+	assert.Equal(t, "Queued: Claude reports a major outage; starts once it's back.", words, "and says why")
+
+	codex, err := agent.Lookup(agent.Codex)
+	require.NoError(t, err)
+
+	blocker, _ = held.outage(t.Context(), codex)
+	assert.Empty(t, blocker, "another provider's outage holds nothing of Codex")
+
+	off := agentHolds{deps: agentDeps{status: status}, prefs: holdPrefs(false)}
+	blocker, words = off.outage(t.Context(), agent.Default())
+	assert.Empty(t, blocker, "with the setting off, nothing waits for the outage")
+	assert.Empty(t, words)
+}
+
 func TestALaunchHoldBecomesWhatTheMatchWaitsOn(t *testing.T) {
 	t.Parallel()
 
@@ -337,6 +394,94 @@ func TestARepositorysLaunchRowWinsOverItsOrgsAndTheStepsOwn(t *testing.T) {
 	assert.Equal(t, spec.LaunchRow{Agent: "codex", Profile: "default", Model: "gpt-6"}, launchRowFor(step, "acme-org/web"))
 	assert.Equal(t, spec.LaunchRow{Agent: "claude", Profile: "default", Model: "sonnet"}, launchRowFor(step, "other/web"))
 	assert.Equal(t, agent.Inherit, agentOf("inherit"))
+}
+
+// originGit answers `git config --get-regexp` in every clone with origin acme-org/<the
+// clone's folder>, the read the launcher matches a clone by, and runs nothing else.
+func originGit() *testutil.Runner {
+	return &testutil.Runner{Script: func(_ context.Context, argv []string) ([]byte, []byte, error) {
+		if dir, ok := gitDir(argv); ok && slices.Contains(argv, "--get-regexp") {
+			return []byte("remote.origin.url git@github.com:acme-org/" + filepath.Base(dir) + ".git\n"), nil, nil
+		}
+
+		return nil, []byte("not run"), exitError{}
+	}}
+}
+
+// gitDir returns the folder a `git -C <dir> ...` argv runs in.
+func gitDir(argv []string) (string, bool) {
+	i := slices.Index(argv, "-C")
+	if i < 0 || i+1 >= len(argv) {
+		return "", false
+	}
+
+	return argv[i+1], true
+}
+
+func TestARunOnARepositoryWhoseToolIsMissingWaitsAndNamesTheTool(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	home := testutil.RealTempDir(t)
+	testutil.MakeClaudeDirs(t, home, ".claude", "projects/example-repo/.git", "projects/plain-repo/.git")
+
+	// The clone's files say it needs go and pnpm.
+	repoDir := filepath.Join(home, "projects", "example-repo")
+	testutil.WriteFile(t, filepath.Join(repoDir, "go.mod"), "module example.com/example-repo\n")
+	testutil.WriteFile(t, filepath.Join(repoDir, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n")
+
+	opts := testOptions(t)
+	opts.Home = home
+	opts.Runner = originGit()
+	c := bootstrap(t, opts)
+
+	now := time.Now()
+	pr := func(number int, name string) inbox.FixtureItem {
+		return inbox.FixtureItem{Item: github.Item{
+			IsPR: true, NodeID: "NODE_" + strconv.Itoa(number), Number: number, Title: "Bump example-lib",
+			URL:       "https://github.com/acme-org/" + name + "/pull/" + strconv.Itoa(number),
+			CreatedAt: now, UpdatedAt: now, AuthorLogin: "dependabot", RepoOwner: boundOwner, RepoName: name,
+		}, ReviewRequested: true}
+	}
+
+	ids, err := inbox.StoreFixture(ctx, c.DB, inbox.Fixture{
+		Viewer: "octo-user", Items: []inbox.FixtureItem{pr(7, "example-repo"), pr(8, "plain-repo"), pr(9, "no-clone")},
+	})
+	require.NoError(t, err)
+
+	holdsWith := func(found ...string) agentHolds {
+		paths := map[string]string{}
+		for _, name := range found {
+			paths[name] = "/opt/tools/bin/" + name
+		}
+
+		return agentHolds{
+			deps:   agentDeps{launch: c.Launcher, home: home},
+			checks: &readyChecks{deps: agentDeps{finder: testutil.Finder{Paths: paths}}},
+		}
+	}
+	job := func(id int64, name string) autopilot.Job {
+		return autopilot.Job{Item: autopilot.ItemRef{ID: id, Kind: item.KindPR, Repo: "acme-org/" + name}}
+	}
+
+	blocker, words, err := holdsWith("go").cloneHolds(ctx, job(ids[0], "example-repo"))
+	require.NoError(t, err)
+	assert.Equal(t, autopilot.BlockMissingTool, blocker, "a tool the clone's files need, missing on this Mac, holds the run")
+	assert.Equal(t, "acme-org/example-repo needs pnpm, which isn't on this Mac.", words, "naming the tool")
+
+	blocker, words, err = holdsWith("go", "pnpm").cloneHolds(ctx, job(ids[0], "example-repo"))
+	require.NoError(t, err)
+	assert.Empty(t, blocker, "once the tool is found, nothing holds it")
+	assert.Empty(t, words)
+
+	blocker, _, err = holdsWith().cloneHolds(ctx, job(ids[1], "plain-repo"))
+	require.NoError(t, err)
+	assert.Empty(t, blocker, "a clone whose files name no tool needs none")
+
+	blocker, words, err = holdsWith("go", "pnpm").cloneHolds(ctx, job(ids[2], "no-clone"))
+	require.NoError(t, err)
+	assert.Equal(t, autopilot.BlockNoClone, blocker)
+	assert.Equal(t, "No local clone of acme-org/no-clone.", words)
 }
 
 func TestARepositorysMarkersNameTheToolsItNeeds(t *testing.T) {

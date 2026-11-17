@@ -1070,7 +1070,8 @@ builder renders what it lists. Its parts:
   set operators, `Takes`);
 - the steps (`Steps`: each with the `Dispatcher` that runs it, triage, notices, github,
   agent, scripts, verify, merging, or review, whether it runs at once (`Local`) or follows
-  the routine's mode (`AsksFirst`), and `Offered`, false until its dispatcher is built);
+  the routine's mode (`AsksFirst`), and `Offered`, which every step and action is in this
+  build: one a later catalog lists before its dispatcher is built stays unoffered);
 - a schedule's styles (`ScheduleStyles`: each match on its own, or one digest);
 - the Only if outcomes, the tools presets (`MayPush`, `ReadOnly`), the agent step's
   settings (a budget in tokens among them, `budgetTokens`), the other steps' whole-number
@@ -1280,7 +1281,7 @@ nil list, and words every refusal with `uierr`.
   (`PromptFollower.Renamed`, told by `prompts.Config.Renamed`, in one transaction, each spec
   compared-and-set on the one read); a starter's key follows its prompt on its own.
 - A step's **Where** must be a place this build runs an agent in (`catalog.Places`,
-  `Offers.Places`, the background and the terminal in this build): one it can't is a problem
+  `Offers.Places`: the background and the terminal, both offered): one it can't is a problem
   at `steps[i].agent.where` (`placeProblems`), in `Describe` and `Save` alike, never a Dry run
   hold, so a routine is never saved to wait for a later build; a routine stored before with
   such a step isn't ready on this Mac (its `place:` need, **Readiness**, below).
@@ -1291,11 +1292,12 @@ nil list, and words every refusal with `uierr`.
   Autopilot, an agent in the terminal or with the profile's own permissions, unless the routine
   is held in Dry run), and, only while it has no problem, its sentence, so the builder keeps
   the last one that read.
-- A routine whose steps include a kind the catalog doesn't offer yet (`Step.Offered`, or a
+- A routine whose steps include a kind the catalog doesn't offer (`Step.Offered`, or a
   GitHub step with an action `GitHubActions` doesn't offer) runs in Dry run alone:
   `Routine.DryRunOnly` names the kinds, `Save` stores it as `dryRun` whatever the mode, and
-  `SetMode` refuses Ask first and Autopilot for it with a sentence naming the steps. As each
-  dispatcher is built and its steps offered, the same routines take any mode.
+  `SetMode` refuses Ask first and Autopilot for it with a sentence naming the steps. This
+  build offers every step and action, so no routine is held there; the rule is the seam for a
+  step a later catalog lists before its dispatcher is built.
 - `List` marks a routine of another account than the one signed in (`OtherAccount`; logins
   compare ignoring case, and with no one signed in none is another's). It doesn't run.
   `List` also gives each routine its `Figures`, for its status line, from three reads of the
@@ -1748,7 +1750,7 @@ What the user sees is in `docs/desktop.md`'s *Closing the loop: Wait for the che
   fix** (`EngineConfig.Checks`, a `NoticeChecks` keyed by the match and its run); a still
   failing verdict on the routine's last try says it gave up (`gaveUpWords`).
 - **Tries** are a routine's counted runs on an item since its last Try again, across fire
-  keys, so a Dependabot rebase, a new key, resets nothing (Q11, for agent runs as for GitHub
+  keys, so a Dependabot rebase, a new key, resets nothing (for agent runs as for GitHub
   actions); an interrupted run, one stopped for its item, one that sent nothing, and one out of
   usage count as none (`endCounts`). The occurrence after the last try closes `skipped:
   tries`, *Gave up after 2 tries.*, which `TryAgain` reopens.
@@ -2037,7 +2039,7 @@ the same tools, rules, hook, and sandbox, in `manual` rather than `dontAsk` for 
 so anything the fence doesn't allow asks the user (`fenced: <preset>; asks you about the rest`);
 `profile` resumes with the profile's own access, under the trust rule. A fence whose settings
 are gone from the run's folder is `ErrNoFence`. Background runs pass
-`--system-prompt-snapshot off`, so a resume replays no unattended note (S1), and the resumed
+`--system-prompt-snapshot off`, so a resume replays no unattended note, and the resumed
 session is a terminal session like any (`ResumedFrom` the run's), which the launcher's running
 hold and the engine's busy check follow from there.
 
@@ -2086,7 +2088,7 @@ session (`fenceKeeper`, `Fence.TakenOver`); the run view reads it through its st
 
 Codex runs in the background through the same planner, fence, runner, run view, and Take over
 as Claude Code: everything it does differently is its spec's (`internal/agent/codex_headless.go`,
-`codex_fence.go`) and its parser's (`internal/agentrun/codex.go`), as S6 measured them on
+`codex_fence.go`) and its parser's (`internal/agentrun/codex.go`), as measured on
 codex-cli 0.163.0, its version floor (`codexFloor`, `Headless.MinVersion`).
 
 - **The run.** `codex exec --json --ignore-user-config --ignore-rules`, the model and
@@ -2448,15 +2450,17 @@ blank is a part of the spec quick setup fills: a search's Where (`BlankWhere`, a
 a condition's check names (`BlankChecks`, at a condition, `Required` when the spec is invalid
 until it is filled). Every template names its prompts by starter, so every Mac has them. The
 bound `Templates` serves them as this Mac sees them: the sentence (empty while a required blank
-is), what this build can't run of it yet (`Offers.needs`: an agent's place, then each step and
-GitHub action the build's `Offers` don't offer, in plain words, and `NeedsWords` as a sentence),
+is), what this build can't run of it (`Offers.needs`: an agent's place, then each step and
+GitHub action the build's `Offers` don't offer, in plain words, and `NeedsWords` as a sentence;
+none, in this build, which runs every template),
 the starters it runs with whether the library holds each (`TemplatePrompt.InLibrary`, which the
 prompts' `AddStarter` puts back), and why it is suggested (`suggestedWhy` over
 `TemplateSignals`: the clones whose CI is go-fortress's, from setup's `Signals`; Dependabot's
 pull requests in the inbox lists this week and bots' in Review requested and Assigned, from the
 inbox's `BotPullRequests`, `CountBotPullRequests`; core's `templateSignals`), the suggested
-first. Since the needs are worked out from the offers on every read, a template whose step a
-later part builds works as that part lands, with no change to it. A routine made from one is
+first. Since the needs are worked out from the offers on every read, a template is never
+locked: one with a step a later catalog adds before its dispatcher would say what it needs,
+and work as that step is offered, with no change to it. A routine made from one is
 an ordinary routine (`Draft.TemplateKey`), in the mode new routines start in. The tests hold
 every template to its file, its blanks to its spec, its starters to `prompts.Starters`, its
 fixture items (it matches each match and none of its misses, and each match is in its watch),

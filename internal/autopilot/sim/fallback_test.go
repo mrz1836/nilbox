@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/autopilot"
+	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/sim"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
@@ -106,5 +107,50 @@ func TestAProfileOutOfUsageRestsAndTheStepStartsAgainOnItsFallback(t *testing.T)
 		assert.Equal(t, []autopilot.Resting{{Agent: "claude", Profile: "default", Until: reset.UTC()}},
 			started[2].Resting, "with only the default profile still resting")
 		assert.Equal(t, 1, only(t, s).Attempt, "the run that starts is its first try")
+	})
+}
+
+func TestEachRunKeepsTheAgentItRanWithWhenTheLaunchDefaultsSwitchAgents(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		sp := sim.FixFailing()
+		sp.Limits.WaitMinutes = new(0)
+		s, _ := started(t, sp, autopilotprefs.ModeAuto)
+
+		// The step inherits its agent, and the launch defaults name Claude Code.
+		s.Runner.LaunchAs("claude", "default")
+		s.World.Fail(1)
+		s.Refresh()
+
+		first := only(t, s)
+		require.Equal(t, autopilot.StateRunning, first.State, first.Words)
+		s.Runner.Finish(first.Runs[0].ID, autopilot.RunEnd{})
+		s.Settle()
+
+		// The repository's launch default switches to Codex, which the launch resolves the
+		// same inherited step to; a new commit fails again.
+		s.Runner.LaunchAs("codex", "default")
+		s.World.Push(1, sim.Commit(1, 2))
+		s.Refresh()
+		s.World.Fail(1)
+		s.Refresh()
+
+		jobs := s.Runner.Started()
+		require.Len(t, jobs, 2)
+
+		for _, job := range jobs {
+			assert.Equal(t, catalog.Inherit, job.Step.Agent.AgentID(), "the routine itself names no agent")
+		}
+
+		agents := map[string]string{}
+
+		for _, m := range s.Matches() {
+			require.Len(t, m.Runs, 1)
+			agents[m.FireKey] = m.Runs[0].Agent
+		}
+
+		assert.Equal(t, map[string]string{failedKey(1): "claude", failedKey(2): "codex"}, agents,
+			"each run row keeps the agent it ran with")
 	})
 }

@@ -1001,6 +1001,42 @@ describe('a routine', () => {
     })
   })
 
+  it('shows a Dependabot pull request no inbox list holds in its Watching list, with its chip and menus', async () => {
+    const bump = item({
+      title: 'Bump golang.org/x/net from 0.30.0 to 0.31.0',
+      author: 'dependabot',
+      authorIsBot: true,
+      authorAssociation: 'NONE',
+      assigned: false,
+      reviewRequest: 'none',
+    })
+
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.routineWatching.mockResolvedValue([1])
+    platform.itemsByID.mockResolvedValue([bump])
+    platform.latestAutopilotMatches.mockResolvedValue([autopilotMatch()])
+    renderTab()
+
+    await userEvent.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
+
+    const pane = within(screen.getByRole('region', { name: 'Snooze passing bot PRs' }))
+    const watching = within(await pane.findByRole('list', { name: 'Watching' }))
+
+    expect(
+      await watching.findByRole('button', { name: /^Autopilot: Snoozed · Snooze passing bot PRs\./ }),
+    ).toBeInTheDocument()
+    expect(platform.latestAutopilotMatches).toHaveBeenCalledWith([1])
+    expect(watching.getByRole('button', { name: 'More actions' })).toBeInTheDocument()
+
+    await userEvent.click(watching.getByRole('button', { name: bump.title }))
+
+    // The sheet opens on the row's item and takes its title from its own read of it.
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(platform.openReview).toHaveBeenCalledWith(1)
+    })
+  })
+
   it('takes a routine that is on out of Dry run by its mode, after asking', async () => {
     platform.listRoutines.mockResolvedValue([routine({ mode: 'dryRun' })])
     platform.routineMatching.mockResolvedValue({ count: 4, pullRequests: 4, issues: 0, unknown: 0, incomplete: false })

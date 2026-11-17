@@ -275,7 +275,9 @@ describe('AutopilotSection', () => {
 
     expect(await screen.findByText('The agents’ runs couldn’t be stopped.')).toBeInTheDocument()
     expect(
-      screen.getByText('Stops every agent working in the background now. Your scripts’ runs carry on.'),
+      screen.getByText(
+        'Stops every agent working in the background now, and the scripts your routines run. Runs you started yourself carry on.',
+      ),
     ).toBeInTheDocument()
   })
 

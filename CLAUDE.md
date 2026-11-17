@@ -830,181 +830,47 @@ changing the package, and keep the section and its summary in step.
   head branch is and the ecosystem a Dependabot branch names (`ParseBranch`, the
   `dependabot.yml` words, `Ecosystems`), for Autopilot's conditions. It is pure and imports
   no service.
-- `internal/autopilot/` is Autopilot, which runs the user's routines. Its root package keeps
-  them, in `autopilot_routines`, which it owns: the bound `Service` (`List`, `Get`, `Save`,
-  `Delete`, `Duplicate`, `SetEnabled`, `SetMode`, `Reorder`, `Catalog`, and the builder's
-  `Suggest`, `Watching`, `Describe`, `Test`, and `PreviewRun`) checks every spec on
-  save and load (and, on save and in `Describe`, the prompts its steps name against the
-  `Library`: one the library lacks, or that isn't for the kinds it acts on, is a problem, as
-  is an agent step set to run where this build can't, the background in this one,
-  `placeProblems`; `Describe` reads a draft's sentence, problems, and warnings without saving
-  it or asking GitHub), carries one that won't load (a newer build's, say) as broken with why and
-  never rewrites it, stores a routine with a step this build doesn't offer in Dry run alone,
-  starts a new one off in the mode Settings says (Ask first to begin with) and of the account
-  signed in (`Accounts`, the inbox's viewer; `Routine.OtherAccount` marks another's), keeps
-  names unique ignoring case in any alphabet (`nameKey`, Unicode's simple folding, stored as
-  `name_key` under the unique index, since NOCASE folds ASCII alone), and deletes softly;
-  mode, switch, and account are columns, never spec. It writes its copy,
-  `autopilot.json` (`File`, the export format `Bundle`, `"<slug>-autopilot/1"`), after every
-  change, which `Restore` brings back, off, into a table that is new, and holds a backup's
-  Autopilot section through `NewBackupPart`, apart from the Service. After every change it
-  builds again the snapshot of the enabled routines' searches for the account signed in, each
-  key once, one build at a time so the last to read stores last, which the inbox reads as
-  each refresh starts (`NewSearches`, never bound); a draft's `Test` sends nothing while the
-  GraphQL budget is low and says so (`LowBudget`). The engine (`NewEngine`, a deferred desktop
-  worker, never bound) runs them: one loop, the only writer of the ledger it owns
-  (`autopilot_matches`, one row per routine, item, fire key, and Dry run, open or closed,
-  every change a compare-and-set; `autopilot_runs`, with the one-active-run index;
-  `autopilot_tries`, `autopilot_baselines`, `autopilot_hands_off`, `autopilot_effects`; its
-  state in `autopilot.engine`), keeping the ledger's keys in memory between cycles
-  (`ledgerindex.go`: each routine's matches by occurrence and its baselines, noted where it
-  writes them, a transaction's once it commits, and built again when it takes the lock or a
-  count of the rows differs, as the inbox's prune of an item deletes some; the simulator holds
-  them to the database after every cycle), woken by the inbox, the settings, the outcomes, a
-  1-minute tick, and the window's commands, doing everything slow on workers; it runs only while
-  Autopilot (beta) is on (`Engine.Enabled`, which the loop follows on every wake: off, it takes
-  no lock, runs no cycle, refuses every command with `ErrOff`, and the snapshot of the
-  searches is empty, as `Test` is refused; turned on, it starts as a start does; turned off,
-  it starts nothing new, kills nothing, and lets go of the lock once nothing it started is
-  still going); it holds a `flock` on
-  `<data>/autopilot.lock` (only the holder sends the routines' searches, `inbox.WatchHolder`),
-  waits for a refresh that carried its searches, checks every limit in
-  Go before a start, never sends a GitHub action again on its own once a quit cut it off,
-  and starts steps only through the dispatchers each part registers, each handed over only
-  while `Enabled` says so (`dispatch`, the one check a part that starts an agent relies on): the
-  triage steps (Pin, Snooze, Dismiss, Restore) through the inbox's own triage (`Triage`, core's
-  `inboxTriage`), each recorded as an effect in the triage's own transaction, held back only
-  by a sign-out, Pause, and the active hours, and acting on outside contributors' items too;
-  and the notices, Notify me and Tell me, through `NewNotices`, each cycle's handed over as it
-  ends and gathered when several come at once, each told once through its key; it tells each
-  problem once (`NewProblemNotices`), and each match that comes to wait for the user once, as
-  Needs your OK (`EngineConfig.NeedsYou`). Both hand a `Notice` to a `NoticeSink`, which core
-  adapts over the notifications (`adapters_notices.go`). The agent step runs through the
-  `Runner` core registers (`adapters_agents.go`, `agentRuns`): in the user's terminal, the
-  launcher's own `Launch` of the request a click would make with the routine's choices
-  (`routineRequest`, which `PreviewRun` previews too), ending as the terminal opens; its start
-  passes the gate (an outside contributor's item only where its org or repository allows it,
-  `EngineConfig.Outside`, planning only; this Mac's readiness, `ready.go`: `Needs(spec)`, a
-  `ReadinessChecker` core adapts over each agent's version and sign-in commands, the profiles,
-  the finder over the shell's PATH, the terminal, and setup's GitHub check, kept ten minutes,
-  the bound `Readiness` and `CheckReadiness`, and one problem per need not met), then on a
-  worker the step's prompt checked again (`promptHold`) and `Holds` (core's `agentHolds`: the
-  item's own agent and profile, the provider's outage while Settings holds for one, the clone,
-  the repository's tools), and only then the fresh read; a hold the launch reports waits for
-  the user (`Result.Wait`, `Hold`), and only `Approve` of exactly that hold confirms it. The
-  GitHub step (Ask Dependabot to rebase, Update branch, a comment reply, labels) and Mark the
-  GitHub notification done run through `NewGitHub` over the Service's `GitHubActions`, which
-  core's `githubSteps` (`adapters_githubsteps.go`) adapts over the review and issue sheets'
-  own services and the mirror's `ClearItemThreads`, never the client: each action its own
-  run, recorded before it is sent, read through its sheet right before it (one point, the
-  fresh read), pinned to that read's head, sent only while the sheet's `Decide` offers it
-  with no warning the user didn't accept (an offer withdrawn closes the match, one with
-  warnings waits `warning` until `Approve` accepts exactly those, a push since sends nothing
-  and is no try), paced at `ActionsPerMinute` and `ActionsPerHour` under the write gate, a
-  match one try however many runs it starts; a reply is a comment's alone, never an
-  approval's (`LibraryPrompt.ReplyFor`, checked in `Describe`, `Save`, and before each start,
-  `promptHold`); a guard test fails if the adapter names any other sheet action. Run one of my
-  scripts runs one of the user's own Repo scripts, by its ID, in the item's clone, in the app,
-  through the scripts `Runner` core registers (`EngineConfig.Scripts`, `adapters_scriptsteps.go`
-  over `scripts.Routines`, the same run Repo scripts' Run works out), recorded as a run under
-  runner `script`, with a GitHub action's limits and no agent's slot; a script set to ask
-  before each run waits `script_asks` every time, whatever the mode, until `Approve` confirms
-  it as the user saw it (`ScriptKey`), which the runner checks once more as it starts; the
-  bound `MyScripts` lists what a step picks from. On a schedule fires on the tick once its
-  time of day comes, once a day by the clock's own location; a digest schedule's Notify me
-  steps of one cycle are one notice per routine (`digest.go`, grouped by where each item
-  stands). The bound `RunOnMatches` runs a saved routine now on what its Test offered
-  (`TestItem.RunsNow`), each approved, and `Stats` is a routine's last seven days, the dollars
-  an estimate. Wait for the
-  checks is the engine's own (`verify.go`): each cycle judges every verifying match from the
-  facts it read (the pure `judgeVerify`: fixed, still failing, unknown, overtaken, push
-  rejected, no push), reading the check names or the item itself only for what it lacks, and
-  records the verdict on the step and the run in one transaction, told once as Checks after a
-  fix; a still failing last try says it gave up, and Try again starts the count over. Tries
-  count across fire keys, so a rebase resets nothing; while an agent works on an item, New
-  commits waits (`eval.History.Working`), so a routine's own push never fires it. A run out of
-  usage (`RunOutOfUsage`, with its limit) rests its profile in the engine's state until the
-  reset, counts as no try, and goes back to the queue; each agent start hands its runner the
-  profiles resting (`Job.Resting`), and core's runner works through the step's chain, its own
-  profile then each fallback, passing over a fallback that can't run in the background here
-  (Codex, until its headless half lands), and waits until the soonest reset (`Result.RetryAt`)
-  with none left (`fallback.go`). Merge it and Post the agent's review (`merge.go`,
-  `postreview.go`) are GitHub writes of their own over the same `GitHubActions` (core's
-  `adapters_followups.go`, through the review sheet's `Refresh` and `Act`, each a run,
-  paced as the GitHub step's): Merge it is pinned to the commit its Wait for the checks
-  passed on, turns auto-merge back on only when it was on at the match, else merges
-  (`merge_now`) only as the sheet's fresh offer says GitHub would, waits `review_required`
-  for the user when GitHub wants an approving review, and never merges an outside
-  contributor's pull request or one whose agent's commits changed workflow, agent, or tooling
-  files; Post the agent's review posts a read-only agent's report's `review` at the commit it
-  read, its line comments fitted to the cached diff (`review.Fitter`), as a comment, or as
-  its verdict, approving only with Allow approving on a member's or trusted bot's fully
-  checked pull request with no sensitive file that no routine pushed to (the pure
-  `reviewEvent`), else as a comment saying why. In Ask first both ask again once reached,
-  showing what the run came to (`stepRun.OK`, `PostAsComment`). A guard test fails if the
-  adapter names `merge_bypass`, a close, approving workflow runs, or the combined approve and
-  merge. Its
-  `PromptFollower`, never bound, tells
-  the prompt library which routines name each prompt and follows a renamed one. The user's
-  own reversal of what a routine did (told through the outcomes, `Outcome.Reversed`), and an Undo, leave the routine
-  hands off the item until Let it act again. The bound Service's ledger actions (`Approve`,
-  `Skip`, `ApproveBacklog` and `SkipBacklog` (a backlog card's Run on them and Skip them, the
-  skip one transaction over the matches the card showed), `RunNow`, with Run anyway for an
-  item it doesn't match, which the window offers from its refusal's code, `RefusalNoMatch`,
-  as `update.RefusalError`'s, `TryAgain`, `LetActAgain`, `Undo`, `ClearHistory`) are commands
-  it
-  applies; `StopRun` and `StopAll` go straight to the runner; `NeedsYou` (the open matches not
-  started, each with what it waits on and a hold's `Hold`, for Activity's Needs you),
-  `Activity` (with each day's
-  grouped lines of local steps, "Snoozed 6", and the items left alone), `ActivityFrom`
-  (a stretch of the pages the window has loaded, read again by its bounds), `ItemHistory`,
-  `LatestMatches` (each item's newest match that did something, for its row's chip, at most
-  500 ids a call, which the window sends in chunks), `RoutineNames` (every routine's name,
-  the deleted ones' too, for the history and marks that name them), `List`'s `Figures` (each
-  routine's counts for its status line and when it last ran, by its match that closed last,
-  from three reads of the ledger),
-  `Explain`, `Engine`, `Matching`, and `Glance` (the routines, what waits for the user, the
-  agents working: the menu bar's Autopilot group, the window's close, and the Autopilot tab's
-  count and dots) read. `internal/autopilot/sim` (test
-  support only) is its simulator, which runs the triage steps through the inbox's real triage
-  and the notices through the real dispatcher, with fakes for readiness, the holds, the
-  outside contributor rule, and the prompt library. It
-  reaches the rest only through the interfaces it declares (`Prefs`, `Accounts`, `Names`,
-  `Library`, `Items`, `Costs`, `EngineItems`, `Triage`, the dispatchers, `Runner`, `Holds`,
-  `OutsideRules`, `ReadinessChecker`, `Previewer`, `ProblemSink`, `NoticeSink`), which
-  `internal/core/adapters_autopilot.go` and `adapters_agents.go` adapt, and never imports the
-  inbox, the sheets, the launcher, the worktrees, the sessions, the runs, notify, settings, the desktop, or core (the
-  repoguard boundary test). Beneath it, the routines core, five pure leaves that read nothing
-  and keep no clock: `catalog` (the
-  vocabulary every spec name comes from: the triggers, the fields and their operators, the
-  steps with the dispatcher that runs each, not `Offered` until it is built, the presets,
-  the limits, and the builder's words; no entry for a close, approving workflow runs, or a
-  merge past GitHub's rules, which a guard test holds), `watch` (a search into its query:
-  scoped, its labels quoted, no value holding a quote, a backslash, or a control character,
-  refused by its field and again as the query is written, at most 256 characters, the
-  query its own dedup key), `spec`
-  (the routine's JSON, format version 1 holding every step kind; strict `Decode`,
-  `Normalize`, `Validate` naming the part and the field and holding the steps to their
-  order, `Load` broken rather than fatal, and `Sentence`), `facts` (an item's values from
-  the plain `Row` the inbox fills, each known, unknown with what to read, or not applying),
-  and `eval` (`Evaluate`: three-valued, cheapest first and order-free, with a fire key per
-  trigger and reasons). They import only `item`, `repo`, `trust`, `sensitive`, `bump`,
-  `clock`, `textutil`, and one another (`TestLeafImports`).
-  Easy mode: the template gallery is one embedded spec a template (`gallery/<key>.json`,
-  `Gallery`, `TemplateByKey`), served by the bound `Templates` with what this build can't run
-  of it yet in plain words (`Offers.needs`, from the build's offers on every read, so a
-  template works as its step lands, never locked), its starters and whether the library holds
-  them (the prompts' `AddStarter` puts one back), and why it is suggested, from setup's
-  `Signals` and the inbox's `BotPullRequests` alone (`Signals`, core's `templateSignals`);
-  every template is held to its fixture items and saved cleanly through `Save` over the real
-  library (core's `TestEveryShippedTemplateSavesCleanly`). `FromItem` fills a new routine
-  from a stored item's facts, `DraftReadiness` checks an unsaved draft's needs, `Explain`
-  says what holds the routine back, why an item isn't watched, and its whole ledger on it,
-  `Export`, `PreviewImport`, and `Import` carry routines and the prompts they name
-  (`PromptTransfer`, the prompts' `RoutinePrompts`; `Profiles`) with a mapping for what this
-  Mac lacks, every routine arriving off, and `Figures.Graduate` offers *Put it on
-  Autopilot?* after `GraduateAfter` clean approvals in a row (`DeclineGraduate` is Not now;
-  nothing changes a mode by itself).
+- `internal/autopilot/` is Autopilot, which runs the user's routines. The bound `Service`
+  keeps them in `autopilot_routines`, which it owns: every spec checked on save and load (and
+  the prompts its steps name against the `Library`), one that won't load (a newer build's,
+  say) carried as broken and never rewritten, a new one started off in the mode Settings says
+  and of the account signed in, names unique under Unicode's simple folding (`nameKey`), and
+  every delete soft; mode, switch, and account are columns, never spec. It writes their copy,
+  `autopilot.json` (`File`, the export format `Bundle`), after every change, which `Restore`
+  brings back, off, into a table that is new, holds a backup's section through
+  `NewBackupPart`, and builds the snapshot of the enabled routines' searches the inbox reads
+  as each refresh starts (`NewSearches`). The engine (`NewEngine`, a deferred desktop worker,
+  never bound) is one loop, the only writer of the ledger it owns (`autopilot_matches`,
+  `autopilot_runs`, `autopilot_tries`, `autopilot_baselines`, `autopilot_hands_off`,
+  `autopilot_effects`, every change a compare-and-set, its keys kept in memory between
+  cycles, `ledgerindex.go`; its state in `autopilot.engine`). It runs only while Autopilot
+  (beta) is on (`Engine.Enabled`, which `dispatch` asks before every step, so every start path
+  passes it), holds a `flock` on `<data>/autopilot.lock` (only the holder sends the routines'
+  searches, `inbox.WatchHolder`), checks every limit in Go before a start, never sends a
+  GitHub action again on its own once a quit cut it off, and starts steps only through the
+  dispatchers each part registers, which core adapts: the triage steps through the inbox's own
+  triage; the notices and Needs your OK through the notifications (`adapters_notices.go`);
+  the agent step through the `Runner` (`adapters_agentrun.go`'s `backgroundAgents`, which
+  hands a step in the terminal to `adapters_agents.go`'s `agentRuns`), once this Mac is ready
+  for it (`ready.go`), the outside contributor rule holds, and `Holds` let it; the GitHub step
+  and Mark the GitHub notification done through the review and issue sheets' own services and
+  the mirror (`NewGitHub`, core's `githubSteps`), each action its own run, read and decided
+  again right before it, pinned to that read's head, and paced under the write gate, a reply a
+  comment's alone; Run one of my scripts through `scripts.Routines`
+  (`adapters_scriptsteps.go`); Wait for the checks in the engine itself (`verify.go`); and
+  Merge it and Post the agent's review over the review sheet (`adapters_followups.go`),
+  pinned to the commit the checks passed on or the agent read. Guard tests fail if any of it
+  can reach `merge_bypass`, a close, approving workflow runs, or the combined approve and
+  merge. Nothing changes a routine's mode but the user (`Figures.Graduate` only suggests).
+  Beneath it, five pure leaves that read nothing and keep no clock: `catalog` (the vocabulary
+  every spec name comes from), `watch` (a search into its query), `spec` (the routine's JSON),
+  `facts` (an item's values), and `eval` (the three-valued decision), importing only `item`,
+  `repo`, `trust`, `sensitive`, `bump`, `clock`, `textutil`, and one another
+  (`TestLeafImports`). `gallery/` holds the templates, and `internal/autopilot/sim` (test
+  support only) is the simulator its scenarios run in. It reaches the rest only through the
+  interfaces it declares, which `internal/core/adapters_*.go` adapt, and never imports the
+  inbox, the sheets, the launcher, the worktrees, the sessions, the runs, notify, settings, the
+  desktop, or core (the repoguard boundary test).
   Full design: [docs/architecture.md](docs/architecture.md#internalautopilot)
 - `internal/agentrun/` is the background runner, which runs a routine's agent step **In the
   background**, through core's `backgroundAgents` (`adapters_agentrun.go`), the `Runner`
@@ -1054,9 +920,8 @@ changing the package, and keep the section and its summary in step.
   the Go-only `event.AutopilotChanged`, writing only the keys that change), backups carry
   them (`Portable.Autopilot`, the switch included), and Autopilot reads them. It is a leaf
   that imports only `prefval`. While Autopilot (beta) is off, the window, the menu bar, and the
-  window's close show and count none of Autopilot, and its engine takes no lock, sends no
-  routine search, and starts nothing (`Engine.Enabled`, which every start's `dispatch` asks);
-  the routines and their history stay as they are.
+  window's close show and count none of Autopilot, and its engine starts nothing; the routines
+  and their history stay as they are.
   Full design: [docs/architecture.md](docs/architecture.md#internalautopilot)
 - `internal/fence/` keeps an unattended agent run inside its routine's tools preset (`Preset`:
   Read only, GitHub tasks only, Edit and test, Edit test and push, The profile's own),

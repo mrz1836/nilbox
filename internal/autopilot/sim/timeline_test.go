@@ -11,6 +11,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/eval"
 	"github.com/mrz1836/nilbox/internal/autopilot/sim"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
@@ -238,6 +239,26 @@ func TestTheItemMergedWhileItsMatchWaitsAndWhileItRuns(t *testing.T) {
 		assert.Equal(t, map[int]string{1: "closed:merged", 2: "closed:merged"}, states(s))
 		assert.Len(t, s.Runner.Stopped(), 1, "the running agent was stopped")
 		assert.Empty(t, s.Runner.Going())
+
+		// The run the merge stopped counts as no try: nothing is left to fix, and it never
+		// ran to its end.
+		var runs int
+
+		for _, m := range s.Matches() {
+			for _, run := range m.Runs {
+				runs++
+
+				assert.Equal(t, string(autopilot.RunStopped), run.Outcome)
+
+				var counted bool
+
+				require.NoError(t, s.DB.QueryRowContext(t.Context(), "SELECT counted FROM autopilot_runs WHERE id = ?",
+					run.ID).Scan(&counted))
+				assert.False(t, counted, "a run stopped because its item merged counts as no try")
+			}
+		}
+
+		assert.Equal(t, 1, runs, "only the running match had started a run")
 	})
 }
 
@@ -492,4 +513,72 @@ func notDependabot() spec.Clause {
 // numberIs is a condition on the item's title naming its number.
 func numberIs(n int) spec.Clause {
 	return spec.Clause{Field: catalog.FieldTitle, Op: "contains", Value: "1.0." + strconv.Itoa(n)}
+}
+
+func TestWhyDidntARoutineRunExplainsAMatchAndAMissWithEachValueAndTheLedger(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s := sim.New(t)
+		s.World.Add(sim.Item{Number: 1, Watched: true, Checks: passing, Passed: 4})
+		s.World.Add(sim.Item{Number: 2, Watched: true, Checks: passing, Passed: 4})
+		s.Begin()
+
+		// The flagship, exactly as the gallery holds it, watching the scenarios' org.
+		flagship, ok := autopilot.TemplateByKey("fix-dependabot-security")
+		require.True(t, ok)
+
+		sp := flagship.Spec
+		sp.Watch.Sources[0].Search.Where = []string{"org:" + sim.Owner}
+		r := s.Save("Fix Dependabot security failures", sp, autopilotprefs.ModeAuto)
+		s.Enable(r.ID, autopilot.CurrentRun)
+		s.Refresh()
+
+		s.World.FailNamed(1, "Security / gitleaks")
+		s.World.FailNamed(2, "ci / lint")
+		s.Advance(5*time.Minute, true)
+
+		m := only(t, s)
+		require.Equal(t, 1, m.Item.Number, "only the security failure matched")
+		s.Runner.Finish(m.Runs[0].ID, autopilot.RunEnd{})
+		s.Settle()
+
+		conditionOf := func(e autopilot.Explanation) (string, eval.Result) {
+			t.Helper()
+
+			for _, tr := range e.Trace {
+				if tr.Path == "conditions.of[0]" {
+					return tr.Actual, tr.Result
+				}
+			}
+
+			require.FailNow(t, "no trace of the condition", "%+v", e.Trace)
+
+			return "", ""
+		}
+
+		// The match: each condition with the value it compared, and the ledger's view.
+		ran, err := s.Service.Explain(t.Context(), r.ID, s.ItemID(1))
+		require.NoError(t, err)
+		assert.True(t, ran.InWatch)
+		assert.Equal(t, eval.Yes, ran.Match)
+		actual, result := conditionOf(ran)
+		assert.Equal(t, eval.Yes, result)
+		assert.Contains(t, actual, "Security / gitleaks", "the value it compared")
+		assert.Contains(t, ran.Ledger, "1 of 2 tries used.")
+		require.NotNil(t, ran.Record, "its record for the occurrence now")
+		assert.Contains(t, ran.Ledger, "Its record for this: "+ran.Record.Words)
+		require.Len(t, ran.Records, 1, "the ledger's full view of the routine on the item")
+
+		// The miss: why, condition by condition, and an empty ledger.
+		missed, err := s.Service.Explain(t.Context(), r.ID, s.ItemID(2))
+		require.NoError(t, err)
+		assert.True(t, missed.InWatch, "watched, but its conditions don't hold")
+		assert.Equal(t, eval.No, missed.Match)
+		actual, result = conditionOf(missed)
+		assert.Equal(t, eval.No, result, "the condition that failed")
+		assert.Contains(t, actual, "ci / lint", "with the value it compared")
+		assert.Nil(t, missed.Record)
+		assert.Empty(t, missed.Records, "it never recorded a match on #2")
+	})
 }

@@ -107,6 +107,69 @@ func TestAFixWhoseChecksPassIsFixedAndTakesThePassedBranch(t *testing.T) {
 	})
 }
 
+func TestAskFirstFromItsBannerToItsVerdictWithOneClick(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s := sim.New(t)
+		s.TellWaits = true
+		s.World.Add(sim.Item{Number: 1, Watched: true, Checks: passing, Passed: 4})
+		s.Begin()
+
+		r := s.Save("Fix failing", fixThenTell(), autopilotprefs.ModeAsk)
+		s.Enable(r.ID, autopilot.CurrentRun)
+		s.Refresh()
+
+		// The checks fail: the match waits for the user's OK, told once as Needs your OK,
+		// whose banner opens its card, and nothing starts.
+		s.World.Fail(1)
+		s.Refresh()
+		s.Advance(10*time.Minute, true)
+
+		m := only(t, s)
+		require.Equal(t, autopilot.StateWaiting, m.State, m.Words)
+		assert.Equal(t, autopilot.BlockAsk, m.BlockedBy)
+		assert.Empty(t, s.Runner.Started(), "Ask first starts nothing on its own")
+
+		needs := noticesOf(s, autopilot.NoticeNeedsYou)
+		require.Len(t, needs, 1, "one Needs your OK, however often a cycle sees it wait")
+		assert.Equal(t, m.ID, needs[0].MatchID, "its banner opens its card")
+
+		// One click: Run.
+		_, err := s.Service.Approve(t.Context(), []int64{m.ID})
+		require.NoError(t, err)
+		s.Settle()
+
+		m = only(t, s)
+		require.Equal(t, autopilot.StateRunning, m.State, m.Words)
+		require.Len(t, s.Runner.Started(), 1, "the click starts the agent")
+		assert.Equal(t, catalog.WhereBackground, s.Runner.Started()[0].Step.Agent.Place(), "in the background")
+
+		view, err := s.Service.RunView(t.Context(), m.Runs[0].ID)
+		require.NoError(t, err)
+		assert.True(t, view.Live, "the live view follows it")
+
+		// The agent pushes its fix, and the checks on it pass.
+		fix := pushAndFinish(t, s, m.Runs[0].ID, 2)
+		require.Equal(t, autopilot.StateVerifying, only(t, s).State)
+
+		s.World.Pass(1)
+		s.Refresh()
+		s.Refresh()
+
+		m = only(t, s)
+		assert.Equal(t, autopilot.StateDone, m.State, m.Words)
+		assert.Equal(t, autopilot.VerdictFixed, m.Steps[1].Verdict)
+		assert.Equal(t, "Fixed: checks pass on "+fix[:7]+".", m.Steps[1].Note)
+
+		checks := noticesOf(s, autopilot.NoticeChecks)
+		require.Len(t, checks, 1, "the banner after it: Checks after a fix")
+		assert.Equal(t, m.Runs[0].ID, checks[0].RunID)
+		assert.Len(t, noticesOf(s, autopilot.NoticeNeedsYou), 1, "and nothing more asks for an OK")
+		assert.Len(t, s.Runner.Started(), 1)
+	})
+}
+
 func TestAFixThatStillFailsTriesAgainOnItsOwnCommitThenGivesUpUntilTryAgain(t *testing.T) {
 	t.Parallel()
 
