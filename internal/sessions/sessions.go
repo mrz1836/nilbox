@@ -191,6 +191,10 @@ type Session struct {
 	// its conversation.
 	CanFocus  bool `json:"canFocus"`
 	CanResume bool `json:"canResume"`
+
+	// RunID is the run of an agent working in the background, whose session this is, or 0
+	// for a session in the terminal: it has no terminal to show, and stops from Autopilot.
+	RunID int64 `json:"runId"`
 }
 
 // Snapshot is the sessions the window shows: every one still running, and the others

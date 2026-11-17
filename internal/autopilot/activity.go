@@ -137,6 +137,20 @@ type Run struct {
 	Error   string `json:"error"`
 	Manual  bool   `json:"manual"`
 
+	// CostEstimated says Cost is the agent's estimate of what the API would have charged,
+	// as for a run on the user's plan.
+	CostEstimated bool `json:"costEstimated"`
+
+	// ScriptRunID is the run in the run engine's history, SessionID its session, Preset
+	// its tools preset, Command its command line, and LogCleared reports that its log is
+	// gone, as Clear history or the retention leaves it.
+	ScriptRunID int64  `json:"scriptRunId"`
+	SessionID   string `json:"sessionId"`
+	Preset      string `json:"preset"`
+	Profile     string `json:"profile"`
+	Command     string `json:"command"`
+	LogCleared  bool   `json:"logCleared"`
+
 	QueuedAt   time.Time  `json:"queuedAt"`
 	StartedAt  *time.Time `json:"startedAt"`
 	FinishedAt *time.Time `json:"finishedAt"`
@@ -602,6 +616,8 @@ func runView(r queries.AutopilotRun) Run {
 		HeadAfter: r.HeadAfter, Budget: r.BudgetReserved, Unit: r.BudgetUnit, Cost: r.Cost, TokensIn: r.TokensIn,
 		TokensOut: r.TokensOut, CacheRead: r.CacheReadTokens, Turns: r.Turns, Summary: r.Summary, Error: r.Error,
 		Manual: r.Manual, QueuedAt: r.QueuedAt, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt,
+		ScriptRunID: r.ScriptRunID, SessionID: r.SessionID, Preset: r.Preset, Profile: r.Profile,
+		Command: r.DisplayCommand, LogCleared: r.LogCleared, CostEstimated: r.CostEstimated,
 	}
 }
 

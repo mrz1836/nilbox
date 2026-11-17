@@ -152,16 +152,17 @@ UPDATE autopilot_runs SET
     run_commit = ?2,
     head_after = ?3,
     cost = ?4,
-    tokens_in = ?5,
-    tokens_out = ?6,
-    cache_read_tokens = ?7,
-    turns = ?8,
-    summary = ?9,
-    error = ?10,
-    counted = ?11,
-    finished_at = ?12,
-    updated_at = ?12
-WHERE id = ?13 AND status <> 'ended'
+    cost_estimated = ?5,
+    tokens_in = ?6,
+    tokens_out = ?7,
+    cache_read_tokens = ?8,
+    turns = ?9,
+    summary = ?10,
+    error = ?11,
+    counted = ?12,
+    finished_at = ?13,
+    updated_at = ?13
+WHERE id = ?14 AND status <> 'ended'
 `
 
 type EndRunParams struct {
@@ -169,6 +170,7 @@ type EndRunParams struct {
 	RunCommit       string
 	HeadAfter       string
 	Cost            *float64
+	CostEstimated   bool
 	TokensIn        int64
 	TokensOut       int64
 	CacheReadTokens int64
@@ -187,6 +189,7 @@ func (q *Queries) EndRun(ctx context.Context, arg EndRunParams) (int64, error) {
 		arg.RunCommit,
 		arg.HeadAfter,
 		arg.Cost,
+		arg.CostEstimated,
 		arg.TokensIn,
 		arg.TokensOut,
 		arg.CacheReadTokens,
@@ -246,7 +249,7 @@ func (q *Queries) GetMatch(ctx context.Context, id int64) (AutopilotMatch, error
 }
 
 const getRun = `-- name: GetRun :one
-SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at FROM autopilot_runs WHERE id = ?1
+SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at, cost_estimated FROM autopilot_runs WHERE id = ?1
 `
 
 // GetRun returns one run, or sql.ErrNoRows.
@@ -301,6 +304,7 @@ func (q *Queries) GetRun(ctx context.Context, id int64) (AutopilotRun, error) {
 		&i.FinishedAt,
 		&i.VerifiedAt,
 		&i.UpdatedAt,
+		&i.CostEstimated,
 	)
 	return i, err
 }
@@ -515,7 +519,7 @@ func (q *Queries) InsertRun(ctx context.Context, arg InsertRunParams) (int64, er
 }
 
 const listActiveRuns = `-- name: ListActiveRuns :many
-SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at FROM autopilot_runs WHERE status IN ('starting', 'running', 'stopping') ORDER BY id
+SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at, cost_estimated FROM autopilot_runs WHERE status IN ('starting', 'running', 'stopping') ORDER BY id
 `
 
 // ListActiveRuns returns the runs starting, running, or stopping, oldest first.
@@ -576,6 +580,7 @@ func (q *Queries) ListActiveRuns(ctx context.Context) ([]AutopilotRun, error) {
 			&i.FinishedAt,
 			&i.VerifiedAt,
 			&i.UpdatedAt,
+			&i.CostEstimated,
 		); err != nil {
 			return nil, err
 		}
@@ -950,7 +955,7 @@ func (q *Queries) ListMatchHeads(ctx context.Context, ids []int64) ([]ListMatchH
 }
 
 const listMatchRuns = `-- name: ListMatchRuns :many
-SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at FROM autopilot_runs WHERE match_id IN (/*SLICE:ids*/?) ORDER BY id
+SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at, cost_estimated FROM autopilot_runs WHERE match_id IN (/*SLICE:ids*/?) ORDER BY id
 `
 
 // ListMatchRuns returns the runs of the matches among ids, oldest first.
@@ -1021,6 +1026,7 @@ func (q *Queries) ListMatchRuns(ctx context.Context, ids []int64) ([]AutopilotRu
 			&i.FinishedAt,
 			&i.VerifiedAt,
 			&i.UpdatedAt,
+			&i.CostEstimated,
 		); err != nil {
 			return nil, err
 		}
@@ -1547,22 +1553,35 @@ func (q *Queries) ListTries(ctx context.Context, routineID int64) ([]ListTriesRo
 	return items, nil
 }
 
+const markRunLogsCleared = `-- name: MarkRunLogsCleared :exec
+UPDATE autopilot_runs SET log_cleared = 1 WHERE runner = 'background' AND status = 'ended'
+`
+
+// MarkRunLogsCleared records that the agents' runs that ended lost their logs, as Clear
+// history clears them.
+func (q *Queries) MarkRunLogsCleared(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, markRunLogsCleared)
+	return err
+}
+
 const recordRunLaunch = `-- name: RecordRunLaunch :exec
 UPDATE autopilot_runs SET
     session_id = ?1,
-    agent = ?2,
-    profile = ?3,
-    model = ?4,
-    effort = ?5,
-    clone_path = ?6,
-    worktree = ?7,
-    display_command = ?8,
-    updated_at = ?9
-WHERE id = ?10 AND status <> 'ended'
+    script_run_id = ?2,
+    agent = ?3,
+    profile = ?4,
+    model = ?5,
+    effort = ?6,
+    clone_path = ?7,
+    worktree = ?8,
+    display_command = ?9,
+    updated_at = ?10
+WHERE id = ?11 AND status <> 'ended'
 `
 
 type RecordRunLaunchParams struct {
 	SessionID      string
+	ScriptRunID    int64
 	Agent          string
 	Profile        string
 	Model          string
@@ -1576,10 +1595,12 @@ type RecordRunLaunchParams struct {
 
 // RecordRunLaunch records what an agent's launch started for a run not ended yet: the
 // session the sessions ledger records, the agent, the profile, the model, and the effort
-// it resolved to, the clone and the worktree, and the command line shown.
+// it resolved to, the clone and the worktree, the command line shown, and, for a run in
+// the background, the run engine's run.
 func (q *Queries) RecordRunLaunch(ctx context.Context, arg RecordRunLaunchParams) error {
 	_, err := q.db.ExecContext(ctx, recordRunLaunch,
 		arg.SessionID,
+		arg.ScriptRunID,
 		arg.Agent,
 		arg.Profile,
 		arg.Model,
@@ -1600,16 +1621,17 @@ UPDATE autopilot_runs SET
     run_commit = ?2,
     head_after = ?3,
     cost = ?4,
-    tokens_in = ?5,
-    tokens_out = ?6,
-    cache_read_tokens = ?7,
-    turns = ?8,
-    summary = ?9,
-    error = ?10,
-    counted = ?11,
-    finished_at = ?12,
-    updated_at = ?12
-WHERE id = ?13 AND status = 'ended' AND outcome = 'interrupted'
+    cost_estimated = ?5,
+    tokens_in = ?6,
+    tokens_out = ?7,
+    cache_read_tokens = ?8,
+    turns = ?9,
+    summary = ?10,
+    error = ?11,
+    counted = ?12,
+    finished_at = ?13,
+    updated_at = ?13
+WHERE id = ?14 AND status = 'ended' AND outcome = 'interrupted'
 `
 
 type ReviseRunEndParams struct {
@@ -1617,6 +1639,7 @@ type ReviseRunEndParams struct {
 	RunCommit       string
 	HeadAfter       string
 	Cost            *float64
+	CostEstimated   bool
 	TokensIn        int64
 	TokensOut       int64
 	CacheReadTokens int64
@@ -1636,6 +1659,7 @@ func (q *Queries) ReviseRunEnd(ctx context.Context, arg ReviseRunEndParams) (int
 		arg.RunCommit,
 		arg.HeadAfter,
 		arg.Cost,
+		arg.CostEstimated,
 		arg.TokensIn,
 		arg.TokensOut,
 		arg.CacheReadTokens,
@@ -1727,6 +1751,38 @@ func (q *Queries) SetRunStatus(ctx context.Context, arg SetRunStatusParams) (int
 		arg.UpdatedAt,
 		arg.ID,
 		arg.Was,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const setRunUsage = `-- name: SetRunUsage :execrows
+UPDATE autopilot_runs SET
+    tokens_in = ?1,
+    tokens_out = ?2,
+    cache_read_tokens = ?3,
+    updated_at = ?4
+WHERE id = ?5 AND status <> 'ended'
+`
+
+type SetRunUsageParams struct {
+	TokensIn        int64
+	TokensOut       int64
+	CacheReadTokens int64
+	UpdatedAt       time.Time
+	ID              int64
+}
+
+// SetRunUsage records an agent's run's tokens so far, while it goes.
+func (q *Queries) SetRunUsage(ctx context.Context, arg SetRunUsageParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setRunUsage,
+		arg.TokensIn,
+		arg.TokensOut,
+		arg.CacheReadTokens,
+		arg.UpdatedAt,
+		arg.ID,
 	)
 	if err != nil {
 		return 0, err

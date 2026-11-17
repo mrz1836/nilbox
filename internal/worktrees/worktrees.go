@@ -164,11 +164,20 @@ type Session struct {
 	// followed session stands for the processes folded with it, such as the user's shell
 	// it runs in.
 	Agent agent.ID `json:"agent"`
+
+	// By names the app's own run working there, as "⚡ Fix checks", or is "" for any other
+	// process: an agent Autopilot runs in the background, which the process list leaves
+	// out, as it leaves out the app's children and an orphan after a quit.
+	By string `json:"by"`
 }
 
 // name is what the session is called: its agent's name when the app follows it, else its
 // program's.
 func (s Session) name() string {
+	if s.By != "" {
+		return s.By
+	}
+
 	if a, err := agent.Lookup(s.Agent); err == nil && s.Agent != agent.Inherit {
 		return a.Name
 	}

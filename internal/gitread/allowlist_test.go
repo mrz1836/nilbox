@@ -34,6 +34,7 @@ func readOnlyForms() map[string]string {
 	return map[string]string{
 		revParse: "", "status": "--porcelain", "symbolic-ref": "--short", "worktree": "list", configCmd: getFlag,
 		"rev-list": "--count", "merge-base": "--is-ancestor", "tag": "--list", lsRemote: remoteName,
+		"diff": "--name-only",
 	}
 }
 

@@ -19,6 +19,11 @@ export const AppKeptRunning = "app:keptRunning";
 export const AppQuitRequested = "app:quitRequested";
 
 /**
+ * Name of the custom event "autopilot:run".
+ */
+export const AutopilotRun = "autopilot:run";
+
+/**
  * Name of the custom event "autopilot:updated".
  */
 export const AutopilotUpdated = "autopilot:updated";

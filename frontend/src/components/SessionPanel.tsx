@@ -45,6 +45,11 @@ function StateLine({ session }: { session: AgentSession }) {
         </span>
       )}
       {session.detail !== '' && <span className="min-w-0 truncate text-muted">· {session.detail}</span>}
+      {session.runId !== 0 && (
+        <span className="shrink-0 text-accent" title="Autopilot runs it in the background">
+          · ⚡ in the background
+        </span>
+      )}
     </p>
   )
 }

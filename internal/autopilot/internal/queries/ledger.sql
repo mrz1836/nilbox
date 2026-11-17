@@ -191,6 +191,20 @@ UPDATE autopilot_runs SET
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id) AND status = sqlc.arg(was);
 
+-- name: SetRunUsage :execrows
+-- SetRunUsage records an agent's run's tokens so far, while it goes.
+UPDATE autopilot_runs SET
+    tokens_in = sqlc.arg(tokens_in),
+    tokens_out = sqlc.arg(tokens_out),
+    cache_read_tokens = sqlc.arg(cache_read_tokens),
+    updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id) AND status <> 'ended';
+
+-- name: MarkRunLogsCleared :exec
+-- MarkRunLogsCleared records that the agents' runs that ended lost their logs, as Clear
+-- history clears them.
+UPDATE autopilot_runs SET log_cleared = 1 WHERE runner = 'background' AND status = 'ended';
+
 -- name: SetRunStatus :execrows
 -- SetRunStatus moves a run from one status to the next.
 UPDATE autopilot_runs SET status = sqlc.arg(status), updated_at = sqlc.arg(updated_at)
@@ -199,9 +213,11 @@ WHERE id = sqlc.arg(id) AND status = sqlc.arg(was);
 -- name: RecordRunLaunch :exec
 -- RecordRunLaunch records what an agent's launch started for a run not ended yet: the
 -- session the sessions ledger records, the agent, the profile, the model, and the effort
--- it resolved to, the clone and the worktree, and the command line shown.
+-- it resolved to, the clone and the worktree, the command line shown, and, for a run in
+-- the background, the run engine's run.
 UPDATE autopilot_runs SET
     session_id = sqlc.arg(session_id),
+    script_run_id = sqlc.arg(script_run_id),
     agent = sqlc.arg(agent),
     profile = sqlc.arg(profile),
     model = sqlc.arg(model),
@@ -220,6 +236,7 @@ UPDATE autopilot_runs SET
     run_commit = sqlc.arg(run_commit),
     head_after = sqlc.arg(head_after),
     cost = sqlc.narg(cost),
+    cost_estimated = sqlc.arg(cost_estimated),
     tokens_in = sqlc.arg(tokens_in),
     tokens_out = sqlc.arg(tokens_out),
     cache_read_tokens = sqlc.arg(cache_read_tokens),
@@ -240,6 +257,7 @@ UPDATE autopilot_runs SET
     run_commit = sqlc.arg(run_commit),
     head_after = sqlc.arg(head_after),
     cost = sqlc.narg(cost),
+    cost_estimated = sqlc.arg(cost_estimated),
     tokens_in = sqlc.arg(tokens_in),
     tokens_out = sqlc.arg(tokens_out),
     cache_read_tokens = sqlc.arg(cache_read_tokens),

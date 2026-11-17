@@ -187,6 +187,10 @@ type Plan struct {
 
 	// Permission is a short summary of the session's permissions, for the UI.
 	Permission string
+
+	// access is the access a background run's plan was built with, which its fence is
+	// worked out from as it starts (Backgrounds.Fenced); zero for a click's launch.
+	access agent.Access
 }
 
 // Argv returns the full command line: the binary, then the prompt and Args, the prompt

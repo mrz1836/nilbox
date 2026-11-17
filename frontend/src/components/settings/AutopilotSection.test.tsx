@@ -257,6 +257,27 @@ describe('AutopilotSection', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Autopilot’s history couldn’t be cleared.')
   })
 
+  it('stops every agent working in the background with Stop all, and says so', async () => {
+    renderSection()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Stop all' }))
+
+    expect(platform.stopAllAutopilotRuns).toHaveBeenCalledOnce()
+    expect(await screen.findByText('Stopping every agent’s run.')).toBeInTheDocument()
+  })
+
+  it('says why Stop all didn’t go through', async () => {
+    platform.stopAllAutopilotRuns.mockRejectedValueOnce(new Error('The agents’ runs couldn’t be stopped.'))
+    renderSection()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Stop all' }))
+
+    expect(await screen.findByText('The agents’ runs couldn’t be stopped.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Stops every agent working in the background now. Your scripts’ runs carry on.'),
+    ).toBeInTheDocument()
+  })
+
   it('reads the engine again whenever Autopilot changes', async () => {
     renderSection()
 

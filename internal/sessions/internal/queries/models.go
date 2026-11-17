@@ -39,4 +39,5 @@ type AgentSession struct {
 	Permission     string
 	WorktreeAction string
 	LaunchNotice   string
+	RunID          int64
 }

@@ -334,7 +334,8 @@ func (e *Engine) recordLaunch(ctx context.Context, q *queries.Queries, runID int
 
 	err := q.RecordRunLaunch(ctx, queries.RecordRunLaunchParams{
 		SessionID: l.SessionID, Agent: l.Agent, Profile: l.Profile, Model: l.Model, Effort: l.Effort,
-		ClonePath: l.ClonePath, Worktree: l.Worktree, DisplayCommand: l.Command, UpdatedAt: now, ID: runID,
+		ClonePath: l.ClonePath, Worktree: l.Worktree, DisplayCommand: l.Command, ScriptRunID: l.ScriptRunID,
+		UpdatedAt: now, ID: runID,
 	})
 	if err != nil {
 		return fmt.Errorf("record what run %d started: %w", runID, err)

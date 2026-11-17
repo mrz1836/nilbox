@@ -188,6 +188,7 @@ type linkDeps struct {
 	auto      bool
 	procs     processTable
 	running   procs.Lister
+	runs      RunFolders
 
 	// guard, when set, runs the Service under gitread's guards, as core does.
 	guard Guard
@@ -215,6 +216,10 @@ func (e *env) linked(deps linkDeps) *Service {
 
 	if deps.running != nil {
 		cfg.Procs = deps.running
+	}
+
+	if deps.runs != nil {
+		cfg.Runs = deps.runs
 	}
 
 	if deps.events != nil {

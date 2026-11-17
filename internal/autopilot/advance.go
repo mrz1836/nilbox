@@ -248,6 +248,10 @@ func (p *pass) tryStart(ctx context.Context, r *routineRun, m *match, sr *stepRu
 		return
 	}
 
+	if p.backOff(m) {
+		return
+	}
+
 	got, read := p.e.freshReads[m.ID]
 	if !read || p.now.Sub(got.at) > freshFor {
 		p.readFresh(ctx, r, m, sr)
@@ -929,6 +933,7 @@ func (e *Engine) dispatchAnswered(ctx context.Context, q *queries.Queries, m *ma
 	case res.Wait != "" || res.Requeue:
 		err = e.endRunIf(ctx, q, runID, RunEnd{Outcome: RunNotStarted, Summary: res.WaitWords, EndedAt: now}, false)
 		e.heldAt(m, sr, res)
+		e.holdBack(m, now)
 	case res.unsent():
 		err = e.unsent(ctx, q, m, sr, runID, res, now)
 	default:
@@ -1038,7 +1043,7 @@ func (e *Engine) endRunIn(ctx context.Context, q *queries.Queries, runID int64, 
 
 	params := queries.EndRunParams{
 		Outcome: string(end.Outcome), RunCommit: end.Commit, HeadAfter: end.Head, Cost: end.Cost,
-		TokensIn: end.TokensIn, TokensOut: end.TokensOut, CacheReadTokens: end.CacheRead, Turns: end.Turns,
+		CostEstimated: end.CostEstimated, TokensIn: end.TokensIn, TokensOut: end.TokensOut, CacheReadTokens: end.CacheRead, Turns: end.Turns,
 		Summary: end.Summary, Error: end.Error, Counted: counted, FinishedAt: new(end.EndedAt), ID: runID,
 	}
 
@@ -1141,6 +1146,7 @@ func (e *Engine) applyRunEnd(ctx context.Context, end RunEnd) {
 
 	delete(e.stopping, end.RunID)
 	delete(e.gone, end.RunID)
+	e.tellFinished(ctx, run, told)
 	e.Wake()
 }
 
@@ -1586,7 +1592,9 @@ func (e *Engine) moveByRecord(m *match, run queries.AutopilotRun) {
 
 // alive says what is known of a run the ledger records as going: a GitHub action is
 // asked of no one (settleRun), a run with no runner to ask is gone, and a runner that
-// can't say, or answers what the engine doesn't know, is unknown.
+// can't say, or answers what the engine doesn't know, is unknown. A run in the terminal
+// its runner never started is gone all the same: its launch may have opened the terminal
+// before a quit or a crash cut it off, so it is never started again on its own.
 func (e *Engine) alive(ctx context.Context, run queries.AutopilotRun) Liveness {
 	switch {
 	case run.Runner == runnerGitHub:
@@ -1600,6 +1608,8 @@ func (e *Engine) alive(ctx context.Context, run queries.AutopilotRun) Liveness {
 	switch {
 	case err != nil:
 		return LiveUnknown
+	case live == LiveNever && run.Runner == string(catalog.WhereTerminal):
+		return LiveGone
 	case live == LiveAlive, live == LiveGone, live == LiveNever:
 		return live
 	}

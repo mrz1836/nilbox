@@ -599,7 +599,7 @@ describe('useRestartToUpdate', () => {
         },
       })
     })
-    expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '' })
+    expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '', withAgents: true })
     expect(platform.restartToUpdateNow).not.toHaveBeenCalled()
 
     // Go names the release the question listed: confirmed, it stops it.

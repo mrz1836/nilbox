@@ -258,8 +258,11 @@ changing the package, and keep the section and its summary in step.
   preset yet, `KeepsPreset`), its version, sign-in, and
   login commands with their parsers (`ParseVersion`, `ParseSignIn`, which keep no email), the
   API key variables a launch unsets unless the user's setting lets a key through (`KeyEnv`),
-  and the status page part it depends on (`StatusPart`), so adding an agent adds
-  a spec and the launcher, profiles, and editors read the rest from it; `internal/procs` lists
+  and the status page part it depends on (`StatusPart`), and its headless half for a run
+  in the background (`HeadlessArgs` around the fence's own flags, `HeadlessEnv`, and the
+  version whose flags it needs, the fence's floor), so adding an agent adds a spec and the launcher,
+  profiles, and editors read the rest from it (`TestOnlyTheAgentsHomesSpellTheirFlags` fails
+  on an agent's flag or program name spelled anywhere else but its parsers and observers); `internal/procs` lists
   the running processes' working directories (`lsof` on macOS, `/proc` on Linux), which tell
   a worktree some session is in, reads a process's start time (`StartedAt`), which tells a
   process from a stranger that reused its PID, and probes a PID as running, gone, or unknown
@@ -925,6 +928,31 @@ changing the package, and keep the section and its summary in step.
   trigger and reasons). They import only `item`, `repo`, `trust`, `sensitive`, `bump`,
   `clock`, `textutil`, and one another (`TestLeafImports`).
   Full design: [docs/architecture.md](docs/architecture.md#internalautopilot)
+- `internal/agentrun/` is the background runner, which runs a routine's agent step **In the
+  background**, through core's `backgroundAgents` (`adapters_agentrun.go`), the `Runner`
+  that hands a step in the terminal to `agentRuns`. A run is planned as a click's launch is
+  (`launcher.Backgrounds`, never bound: `routineRequest`, the launch's own holds, the item's
+  worktree always, the fence's access through `Request.Fence` and `resolvePermission`, the
+  run's fence worked out for the worktree made, `Backgrounds.Fenced` over
+  `agent.PrepareFence`, and written into its folder, and the environment from
+  `launcher.AgentEnv` with `agent.HeadlessEnv`), and runs as a `scriptrun.KindAgent` run holding its worktree's lock,
+  recorded as a session (`agent_sessions.run_id`, whose state its stream moves, never an
+  observer). It is judged by the agent's `result` line, never its exit status
+  (`outcome.go`): the time limit, the quit (interrupted), a Stop, and a token budget first,
+  then out of budget, out of usage (a `rate_limit_event` rejected), the agent's error, or
+  *Finished:* with its report (`structured_output`), and a leaked sandbox fails it
+  (`fence.Sandboxed`); its cost from the result, an estimate on the user's plan
+  (`cost_estimated`); the files its commits changed are noted on the item at both heads
+  (`inbox.Store.NoteAgentChanges`). A result ends the run (`Callbacks.Over`), a SIGKILL's
+  leftovers in the worktree are ended (`ProcSweeper`), and `Engine.RunEnded` hears each end
+  once its record holds it, again from the record after a restart. The stream's parser keeps
+  the last 2,000 events and the progress, which `runevent` (a leaf) and the bound
+  `Working`, `RunEvents`, and `StopRun`/`StopAll` carry to the window. The seams for Let
+  them finish (`scriptrun.Engine.LetFinish`) and the profile fallback (`Outcome.Limit`) are
+  the next phases'. It never imports
+  Autopilot, the launcher, the desktop, the sessions, the worktrees, or notify (the repoguard
+  boundary test).
+  Full design: [docs/architecture.md](docs/architecture.md#agents-in-the-background)
 - `internal/autopilotprefs/` declares the `autopilot.*` settings (Autopilot (beta),
   `autopilot.enabled`, off on every install, an existing one included, until the user turns
   it on in Settings → Labs; Pause Autopilot, the mode new routines start in, agents at once, runs and GitHub actions a day, the daily cap in
@@ -1019,7 +1047,9 @@ changing the package, and keep the section and its summary in step.
   kinds of update back, nothing installs a tool while it updates itself, and nothing installs
   before this run's first detection ends (the kept one is only shown, never acted on).
 - `internal/scriptrun/` runs the commands the integrations start (releases, hooks actions,
-  checks, scripts, a clone's pull, and a tool's own update) and follows them, in the app or in the user's terminal, and owns
+  checks, scripts, a clone's pull, and a tool's own update), and a routine's agent in the
+  background (`KindAgent`: its own retention and log age, its stdin and folder, never on the
+  Runs page or told as a failure), and follows them, in the app or in the user's terminal, and owns
   `script_runs`. The `Engine` is never bound, since a `Spec` holds functions: `Start` takes the
   clone's lock first and fails at once when the clone is busy, runs the program through
   `execpath.Start` in its own process group, writing straight into its log in

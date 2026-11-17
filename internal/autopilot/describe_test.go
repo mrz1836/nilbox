@@ -117,16 +117,43 @@ func TestDescribeWritesTheSentenceOfADraftThatLoads(t *testing.T) {
 
 	background, err := r.svc.Describe(t.Context(), draft("Fix", backgroundSpec()))
 	require.NoError(t, err)
-	require.Len(t, background.Problems, 1, "an agent in the background is a problem this build says plainly")
-	assert.Equal(t, "steps[0].agent.where", background.Problems[0].Path())
-	assert.Equal(t, "this version of "+brand.Name+" can't run an agent in the background yet: choose In my terminal",
-		background.Problems[0].Message)
-	assert.Empty(t, background.DryRunOnly, "it isn't held in Dry run: it can't be saved")
-
-	_, err = r.svc.Save(t.Context(), draft("Fix", backgroundSpec()))
-	require.ErrorIs(t, err, spec.ErrInvalid, "Save refuses it as Describe says")
+	assert.Empty(t, background.Problems, "this build runs an agent in the background, under any of the fence's presets")
+	assert.Empty(t, background.DryRunOnly, "in any mode")
 
 	assert.Empty(t, r.list(t), "describing saves nothing")
+
+	// A build without the background runner says so plainly, and saves nothing.
+	older := libraryRig(t, library{}, terminalOnly())
+
+	unrun, err := older.svc.Describe(t.Context(), draft("Fix", backgroundSpec()))
+	require.NoError(t, err)
+	require.Len(t, unrun.Problems, 1, "an agent where this build can't run one is a problem it says plainly")
+	assert.Equal(t, "steps[0].agent.where", unrun.Problems[0].Path())
+	assert.Equal(t, "this version of "+brand.Name+" can't run an agent in the background yet: choose In my terminal",
+		unrun.Problems[0].Message)
+	assert.Empty(t, unrun.DryRunOnly, "it isn't held in Dry run: it can't be saved")
+
+	_, err = older.svc.Save(t.Context(), draft("Fix", backgroundSpec()))
+	require.ErrorIs(t, err, spec.ErrInvalid, "Save refuses it as Describe says")
+}
+
+// terminalOnly is the catalog's offers but the background, as a build without its runner.
+func terminalOnly() *autopilot.Offers {
+	out := &autopilot.Offers{Places: []catalog.Where{catalog.WhereTerminal}}
+
+	for _, st := range catalog.Steps() {
+		if st.Offered {
+			out.Steps = append(out.Steps, st.Kind)
+		}
+	}
+
+	for _, a := range catalog.GitHubActions() {
+		if a.Offered {
+			out.Actions = append(out.Actions, a.Kind)
+		}
+	}
+
+	return out
 }
 
 // withVersion is s at this build's version, as Save stores it.

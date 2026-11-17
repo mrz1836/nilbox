@@ -17,7 +17,8 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * ClearHistory forgets every run that has ended, with its log. Runs going are kept.
+ * ClearHistory forgets every run that has ended, with its log, but the agents' runs, which
+ * the Runs page doesn't list: Autopilot's Clear history forgets those. Runs going are kept.
  */
 export function ClearHistory(): $CancellablePromise<void> {
     return $Call.ByID(4062492165);

@@ -274,6 +274,16 @@ func boundaries() []boundary {
 				"(adapters_autopilot.go); it reads its settings through autopilotprefs",
 		},
 		{
+			pkg: "internal/agentrun",
+			forbidden: append([]string{
+				"internal/autopilot", "internal/launcher", "internal/desktop", "internal/sessions", "internal/worktrees",
+				"internal/notify",
+			}, services...),
+			why: "the background runner takes a finished plan (agentrun.Plan), which core builds from the launcher's " +
+				"background plan, and tells how each run ended through the interfaces it declares: it never plans a " +
+				"launch itself, so a run has no more access than the launcher gave it",
+		},
+		{
 			pkg:       "internal/autopilotprefs",
 			forbidden: append(slices.Clone(noService), "internal/autopilot", "internal/event"),
 			why: "autopilotprefs declares Autopilot's settings keys and a routine's modes, which settings writes " +
@@ -332,6 +342,10 @@ func leaves() []leaf {
 		pkg: "internal/fence", allowed: []string{"internal/sensitive", "internal/paths", "internal/textutil"},
 		why: "fence is the agent-independent fence policy, and its hook mode runs before the app opens anything, so " +
 			"it imports only sensitive's patterns, paths' readers, textutil's quoting, and the standard library",
+	}, leaf{
+		pkg: "internal/agentrun/runevent", allowed: []string{},
+		why: "runevent is a background run's event model, which Autopilot and the window read without reaching " +
+			"the runner, so it imports nothing of the app's",
 	})
 }
 

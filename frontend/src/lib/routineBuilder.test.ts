@@ -184,6 +184,18 @@ describe('the steps', () => {
     expect(newStep('snooze', [])).toEqual({ snooze: {} })
     expect(newStep('agent', [])).toEqual({ agent: { agent: 'inherit', prompt: { itemDefault: true } } })
     expect(newStep('agent', [], catalog.places)).toEqual({
+      agent: { agent: 'inherit', prompt: { itemDefault: true }, where: 'background' },
+    })
+    expect(
+      newStep(
+        'agent',
+        [],
+        [
+          { id: 'background', offered: false },
+          { id: 'terminal', offered: true },
+        ],
+      ),
+    ).toEqual({
       agent: { agent: 'inherit', prompt: { itemDefault: true }, where: 'terminal' },
     })
     expect(newStep('waitForChecks', [])).toEqual({ waitForChecks: {}, onlyIf: 'pushed' })

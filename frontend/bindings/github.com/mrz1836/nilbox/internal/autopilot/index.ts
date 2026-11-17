@@ -48,10 +48,13 @@ export type {
     Run,
     RunPreview,
     RunWorktree,
+    RunsToday,
     Suggestions,
     TestItem,
     TestResult,
     TestSearch,
     Undone,
+    Working,
+    WorkingList,
     WorkingRun
 } from "./models.js";

@@ -4,14 +4,14 @@ INSERT INTO agent_sessions (
     id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice
+    launch_notice, run_id
 ) VALUES (
     sqlc.arg(id), sqlc.arg(agent_session_id), sqlc.arg(resumed_from), sqlc.arg(agent), sqlc.arg(profile),
     sqlc.arg(config_dir), sqlc.arg(prompt), sqlc.arg(prompt_head), sqlc.arg(terminal),
     sqlc.arg(item_id), sqlc.arg(owner), sqlc.arg(name), sqlc.arg(kind), sqlc.arg(number), sqlc.arg(title),
     sqlc.arg(url), sqlc.arg(dir), sqlc.arg(clone_path), sqlc.arg(worktree), 0,
     sqlc.arg(state), '', '', sqlc.arg(launched_at), sqlc.narg(linked_at), sqlc.arg(launched_at), NULL,
-    sqlc.arg(permission), sqlc.arg(worktree_action), sqlc.arg(launch_notice)
+    sqlc.arg(permission), sqlc.arg(worktree_action), sqlc.arg(launch_notice), sqlc.arg(run_id)
 );
 
 -- name: GetSession :one
@@ -19,7 +19,7 @@ INSERT INTO agent_sessions (
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice
+    launch_notice, run_id
 FROM agent_sessions
 WHERE id = sqlc.arg(id);
 
@@ -28,7 +28,7 @@ WHERE id = sqlc.arg(id);
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice
+    launch_notice, run_id
 FROM agent_sessions
 WHERE state <> 'ended'
 ORDER BY launched_at, id;
@@ -39,7 +39,7 @@ ORDER BY launched_at, id;
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice
+    launch_notice, run_id
 FROM agent_sessions
 WHERE state <> 'ended' OR launched_at >= sqlc.arg(since)
 ORDER BY launched_at DESC, id DESC
@@ -82,7 +82,7 @@ DELETE FROM agent_sessions WHERE state = 'ended' AND (
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice
+    launch_notice, run_id
 FROM agent_sessions
 WHERE state = 'ended' AND agent_session_id <> '' AND ended_at >= sqlc.arg(since)
 ORDER BY ended_at DESC, id DESC
@@ -98,3 +98,14 @@ WHERE state <> 'ended' AND agent_session_id = sqlc.arg(agent_session_id) AND age
 -- ListSessionItems returns each inbox item a session was launched for, once: the items the
 -- inbox keeps while a session names them.
 SELECT DISTINCT item_id FROM agent_sessions WHERE item_id > 0 ORDER BY item_id;
+
+-- name: GetRunSession :one
+-- GetRunSession returns the session of a background run, by the run's script_runs ID.
+SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
+    item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
+    launch_notice, run_id
+FROM agent_sessions
+WHERE run_id = sqlc.arg(run_id) AND run_id <> 0
+ORDER BY launched_at DESC, id DESC
+LIMIT 1;

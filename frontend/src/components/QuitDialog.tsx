@@ -82,7 +82,7 @@ export function QuitDialog() {
   }
 
   const ask = useEffectEvent(async () => {
-    const listed = await attempt(listScriptRuns({ kinds: [], repo: '' }))
+    const listed = await attempt(listScriptRuns({ kinds: [], repo: '', withAgents: true }))
 
     if (!listed.ok) {
       console.error('could not list the runs going as the app quits:', listed.error)

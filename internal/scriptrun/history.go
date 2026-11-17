@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"time"
 	"unicode/utf8"
 )
 
@@ -17,6 +18,20 @@ const maxChunk = 256 << 10
 type retention struct {
 	runs  int
 	bytes int64
+}
+
+// dropOld returns the runs of recs that ended before cutoff, which an agent's history
+// keeps no longer: newest first, as drop's are. A run going is never dropped.
+func dropOld(recs []Record, cutoff time.Time) []int64 {
+	var out []int64
+
+	for i := len(recs) - 1; i >= 0; i-- {
+		if rec := recs[i]; !rec.Status.Live() && !rec.FinishedAt.IsZero() && rec.FinishedAt.Before(cutoff) {
+			out = append(out, rec.ID)
+		}
+	}
+
+	return out
 }
 
 // drop returns the runs to forget, from recs, newest first: the oldest finished ones,
@@ -50,7 +65,9 @@ func (r retention) drop(recs []Record, size func(id int64) int64) []int64 {
 	return out
 }
 
-// prune forgets the runs the retention drops, their logs with them.
+// prune forgets the runs the retention drops, their logs and folders with them: the
+// agents' runs and every other kind's each within their own limits, so neither pushes the
+// other out, and the agents' none older than their run logs are kept.
 func (e *Engine) prune(ctx context.Context) {
 	e.pruneMu.Lock()
 	defer e.pruneMu.Unlock()
@@ -62,12 +79,51 @@ func (e *Engine) prune(ctx context.Context) {
 		return
 	}
 
-	if err = e.forget(ctx, e.keep.drop(recs, e.files.size)); err != nil {
+	agents, others := splitAgents(recs)
+
+	drop := e.keep.drop(others, e.files.size)
+	drop = append(drop, e.agentKeep.drop(agents, e.files.size)...)
+	drop = append(drop, dropOld(agents, e.clock.Now().Add(-e.agentLogsFor(ctx)))...)
+
+	if err = e.forget(ctx, pick(recs, drop)); err != nil {
 		e.logger.WarnContext(ctx, "couldn't keep the history short", "error", err)
 	}
 }
 
-// clearHistory forgets every run that has ended, with its log. Runs going are kept.
+// splitAgents splits recs, in their order, into the agents' runs and every other kind's.
+func splitAgents(recs []Record) (agents, others []Record) {
+	for _, rec := range recs {
+		if rec.Kind == KindAgent {
+			agents = append(agents, rec)
+		} else {
+			others = append(others, rec)
+		}
+	}
+
+	return agents, others
+}
+
+// pick returns the records of recs whose IDs are among ids, each once.
+func pick(recs []Record, ids []int64) []Record {
+	want := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+
+	var out []Record
+
+	for _, rec := range recs {
+		if want[rec.ID] {
+			out = append(out, rec)
+			delete(want, rec.ID)
+		}
+	}
+
+	return out
+}
+
+// clearHistory forgets every run that has ended, with its log, but the agents' runs, which
+// the Runs page doesn't list and Autopilot clears (ClearAgentHistory). Runs going are kept.
 func (e *Engine) clearHistory(ctx context.Context) error {
 	e.pruneMu.Lock()
 	defer e.pruneMu.Unlock()
@@ -77,29 +133,37 @@ func (e *Engine) clearHistory(ctx context.Context) error {
 		return err
 	}
 
-	ids := make([]int64, 0, len(recs))
+	drop := make([]Record, 0, len(recs))
 
 	for _, rec := range recs {
-		if !rec.Status.Live() {
-			ids = append(ids, rec.ID)
+		if !rec.Status.Live() && rec.Kind != KindAgent {
+			drop = append(drop, rec)
 		}
 	}
 
-	err = e.forget(ctx, ids)
+	err = e.forget(ctx, drop)
 
 	e.notify()
 
 	return err
 }
 
-// forget removes the files of the runs ids, which have ended, and then their records.
-// The files go first: a run's ID can be handed out again once its record, the newest,
-// is gone, and the files of a run that took it must never be removed.
-func (e *Engine) forget(ctx context.Context, ids []int64) error {
+// forget removes the files and folders of the runs recs, which have ended, and then their
+// records. The files go first: a run's ID can be handed out again once its record, the
+// newest, is gone, and the files of a run that took it must never be removed.
+func (e *Engine) forget(ctx context.Context, recs []Record) error {
 	var errs []error
 
-	for _, id := range ids {
-		if err := e.files.clear(id); err != nil {
+	ids := make([]int64, 0, len(recs))
+
+	for _, rec := range recs {
+		ids = append(ids, rec.ID)
+
+		if err := e.files.clear(rec.ID); err != nil {
+			errs = append(errs, err)
+		}
+
+		if err := e.clearFolder(rec.Result.Folder); err != nil {
 			errs = append(errs, err)
 		}
 	}

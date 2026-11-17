@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -34,6 +36,15 @@ const (
 	// the oldest finished runs go first, and a run still going is never dropped.
 	KeepRuns     = 200
 	KeepLogBytes = 512 << 20
+
+	// KeepAgentRuns and KeepAgentLogBytes are the same for the agents' runs, which are
+	// counted apart, so they never push the Scripts tab's runs out, and kept no longer
+	// than Config.AgentLogsFor says.
+	KeepAgentRuns     = 200
+	KeepAgentLogBytes = 1 << 30
+
+	// DefaultAgentLogsFor is how long an agent's run is kept without Config.AgentLogsFor.
+	DefaultAgentLogsFor = 30 * 24 * time.Hour
 
 	// A finished log over CompactOver bytes keeps its first CompactHead bytes and its last
 	// CompactTail.
@@ -118,6 +129,14 @@ type Config struct {
 	// quit. Kept is what its KeepRunning calls: the user chose to keep the app running.
 	Quit func()
 	Kept func()
+
+	// Folders is the absolute folder the runs' own folders (Spec.Folder) are made in:
+	// <data>/agent-runs. A run's folder must be directly inside it; "" allows none.
+	Folders string
+
+	// AgentLogsFor says how long an agent's run that ended is kept (Autopilot's run logs
+	// setting); nil, or a duration that isn't positive, keeps DefaultAgentLogsFor.
+	AgentLogsFor func(ctx context.Context) time.Duration
 }
 
 // Engine starts runs and follows them to their end. It is safe for concurrent use. Run
@@ -137,12 +156,20 @@ type Engine struct {
 	reveal     Revealer
 	quit       func()
 	kept       func()
+	folders    string
+	logsFor    func(context.Context) time.Duration
+
+	// letFinish reports that the user lets the runs that may outlive a quit finish
+	// (LetFinish): StopAll then lets them go.
+	letFinish atomic.Bool
 
 	// slots holds a token per run going in the app.
 	slots chan struct{}
 
-	// The retention, the compaction, and the times, which tests shorten.
+	// The retention, the agents' apart, the compaction, and the times, which tests
+	// shorten.
 	keep       retention
+	agentKeep  retention
 	compaction compaction
 	tailEvery  time.Duration
 	quitKill   time.Duration
@@ -190,8 +217,10 @@ func NewEngine(cfg Config) *Engine {
 		store: runStore{db: cfg.DB, q: queries.New(cfg.DB)}, locks: locks, files: logFiles{dir: cfg.LogDir}, home: cfg.Home,
 		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), changed: cfg.Changed, progressed: cfg.Progressed,
 		failed: cfg.Failed, terminal: cfg.Terminal, reveal: cfg.Reveal, quit: cfg.Quit, kept: cfg.Kept,
+		folders: cfg.Folders, logsFor: cfg.AgentLogsFor,
 		slots:      make(chan struct{}, Slots),
 		keep:       retention{runs: KeepRuns, bytes: KeepLogBytes},
+		agentKeep:  retention{runs: KeepAgentRuns, bytes: KeepAgentLogBytes},
 		compaction: compaction{over: CompactOver, head: CompactHead, tail: CompactTail},
 		tailEvery:  tailEvery, quitKill: QuitKillAfter, quitGrace: quitGrace, pidWait: pidWait,
 		ladder: execpath.StopLadder(), alive: procs.Alive, groupAlive: groupAlive, startedAt: procs.StartedAt,
@@ -332,23 +361,20 @@ func (e *Engine) StopAll() {
 		close(e.closing)
 	}
 
-	var runs, settling []*live
-
-	for _, l := range e.live {
-		switch {
-		case l.settling:
-			settling = append(settling, l)
-		case l.runsIn == RunsInApp && !l.ended:
-			runs = append(runs, l)
-		}
-	}
+	runs, settling, finishing := e.quitting()
 
 	e.mu.Unlock()
 	e.regMu.Unlock()
 
 	// A run only being settled has nothing left to stop: its Finish ends at once, and the
-	// next start settles it again.
+	// next start settles it again. A run the user lets finish is let go, still recorded as
+	// going, and the next start follows it again.
 	for _, l := range settling {
+		l.giveUp()
+	}
+
+	for _, l := range finishing {
+		e.logger.Info("left a run going as the app quit, to finish on its own", "run", l.id, "kind", string(l.kind))
 		l.giveUp()
 	}
 
@@ -357,6 +383,26 @@ func (e *Engine) StopAll() {
 	}
 
 	e.wg.Wait()
+}
+
+// quitting sorts the runs as the app quits: those in the app to stop, those only being
+// settled, and those the user lets finish (LetFinish), which may outlive the quit. The
+// caller holds mu.
+func (e *Engine) quitting() (runs, settling, finishing []*live) {
+	letFinish := e.letFinish.Load()
+
+	for _, l := range e.live {
+		switch {
+		case l.settling:
+			settling = append(settling, l)
+		case l.runsIn == RunsInApp && !l.ended && letFinish && l.outlives:
+			finishing = append(finishing, l)
+		case l.runsIn == RunsInApp && !l.ended:
+			runs = append(runs, l)
+		}
+	}
+
+	return runs, settling, finishing
 }
 
 // stopForQuit sends each of runs SIGTERM as soon as its kind lets it be stopped, within
@@ -482,6 +528,18 @@ func (e *Engine) check(spec Spec) error {
 		return fmt.Errorf("%w: no folder for the logs", ErrInvalidSpec)
 	case e.isClosed():
 		return closedError()
+	default:
+		return e.checkFiles(spec)
+	}
+}
+
+// checkFiles returns why spec's stdin or own folder won't do, if they won't.
+func (e *Engine) checkFiles(spec Spec) error {
+	switch {
+	case spec.Stdin != "" && (!filepath.IsAbs(spec.Stdin) || spec.RunsIn == RunsInTerminal):
+		return fmt.Errorf("%w: a run's stdin must be a file's absolute path, in the app", ErrInvalidSpec)
+	case spec.Folder != "" && !e.ownFolder(spec.Folder):
+		return fmt.Errorf("%w: the run's folder %q isn't one of the runs' own", ErrInvalidSpec, spec.Folder)
 	default:
 		return nil
 	}
@@ -639,8 +697,18 @@ func (e *Engine) launch(ctx context.Context, l *live, spec Spec) error {
 
 	defer func() { _ = log.Close() }() // the program holds its own descriptor
 
+	var stdin *os.File
+
+	if spec.Stdin != "" {
+		if stdin, err = openStdin(spec.Stdin); err != nil {
+			return err
+		}
+
+		defer func() { _ = stdin.Close() }() // the program holds its own descriptor
+	}
+
 	proc, err := execpath.Start(context.WithoutCancel(ctx), execpath.Cmd{
-		Path: spec.Argv[0], Args: spec.Argv[1:], Dir: spec.Dir, Env: spec.Env, Output: log,
+		Path: spec.Argv[0], Args: spec.Argv[1:], Dir: spec.Dir, Env: spec.Env, Output: log, Stdin: stdin,
 	})
 	if err != nil {
 		return fmt.Errorf("start the run: %w", err)
@@ -744,7 +812,9 @@ func (e *Engine) insert(ctx context.Context, spec Spec, at time.Time) (int64, er
 
 	return e.store.insert(ctx, started{
 		spec: spec, command: command, runsIn: spec.RunsIn, at: at,
-		result: Result{Tool: spec.Tool, Intent: spec.Intent, Warnings: []string{}, Unrecognized: []string{}},
+		result: Result{
+			Tool: spec.Tool, Intent: spec.Intent, Warnings: []string{}, Unrecognized: []string{}, Folder: spec.Folder,
+		},
 	})
 }
 
@@ -761,6 +831,7 @@ func (e *Engine) newLive(spec Spec, h holds) *live {
 	return &live{
 		Callbacks: spec.Callbacks, kind: spec.Kind, runsIn: spec.RunsIn, tool: spec.Tool, dir: spec.Dir, name: spec.Repo,
 		repo: e.where(spec.Repo, spec.Dir), title: spec.Title, timeout: timeout, intent: spec.Intent, holds: h,
+		folder: spec.Folder, outlives: spec.OutlivesQuit,
 		started: e.clock.Now(), done: make(chan struct{}), abandon: make(chan struct{}),
 	}
 }
@@ -848,6 +919,10 @@ func alreadyEnded() error {
 // its group is gone or is no longer the run's.
 func (e *Engine) climb(l *live, ladder execpath.Ladder) {
 	ladder.Climb(l.done, func() bool { return e.groupLive(l) }, func(sig syscall.Signal) error {
+		if sig == syscall.SIGKILL {
+			l.killed.Store(true)
+		}
+
 		return e.signal(l.pgid, sig)
 	})
 }
@@ -856,6 +931,10 @@ func (e *Engine) climb(l *live, ladder execpath.Ladder) {
 // runs, or, for a run from before the app restarted, by its group once its start time
 // says it is still that run.
 func (e *Engine) signalRun(l *live, sig syscall.Signal) {
+	if sig == syscall.SIGKILL {
+		l.killed.Store(true)
+	}
+
 	if l.proc != nil {
 		select {
 		case <-l.proc.Done():

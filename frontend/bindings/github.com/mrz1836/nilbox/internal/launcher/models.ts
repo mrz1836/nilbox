@@ -566,6 +566,12 @@ export interface RunningSession {
      * CanFocus reports a session whose terminal tab can be brought forward.
      */
     "canFocus": boolean;
+
+    /**
+     * Background reports an agent's run in the background, which the app started itself: a
+     * launch there is always held back, never started beside it.
+     */
+    "background": boolean;
 }
 
 /**

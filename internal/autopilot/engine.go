@@ -239,6 +239,15 @@ type EngineConfig struct {
 	// your OK); nil tells no one, and the matches still wait.
 	NeedsYou NoticeSink
 
+	// Finished tells the user that an agent's background run finished, or failed, as Agent
+	// finished; nil tells no one.
+	Finished NoticeSink
+
+	// Views reads what the runner keeps of the agents' runs, for the window; RunLogs
+	// clears their logs with Clear history. Either may be nil.
+	Views   RunViews
+	RunLogs RunLogs
+
 	// Events hears event.AutopilotUpdated.
 	Events event.Sink
 
@@ -260,6 +269,9 @@ type Engine struct {
 	outside     OutsideRules
 	problems    ProblemSink
 	needsYou    NoticeSink
+	finished    NoticeSink
+	views       RunViews
+	runLogs     RunLogs
 	events      event.Sink
 	clock       clock.Clock
 	logger      *slog.Logger
@@ -300,6 +312,11 @@ type Engine struct {
 	// waits are the matches that came to wait for the user since the last cycle ended,
 	// whose Needs your OK notices it tells.
 	waits map[int64]bool
+	// heldBack holds, by match, the start its runner last held back on something working
+	// where it would start, which the match waits on for a tick before it is tried again
+	// (holdBack): a session in the worktree never has the engine read the item from GitHub
+	// on every cycle.
+	heldBack map[int64]heldBack
 
 	// writesHeld is when GitHub actions may go again after the write gate refused one,
 	// with why: the app's own pace, the budget's reserve, or GitHub asking it to wait.
@@ -391,14 +408,16 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 	e := &Engine{
 		svc: svc, items: cfg.Items, ledger: newLedger(svc.store.db, svc.clock), prefs: prefs.New(svc.store.db, svc.clock),
 		lock: lock, runner: cfg.Runner, dispatchers: maps.Clone(cfg.Dispatchers), triage: cfg.Triage, holds: cfg.Holds,
-		outside: cfg.Outside, problems: cfg.Problems, needsYou: cfg.NeedsYou, waits: map[int64]bool{},
+		outside: cfg.Outside, problems: cfg.Problems, needsYou: cfg.NeedsYou, waits: map[int64]bool{}, finished: cfg.Finished,
+		views: cfg.Views, runLogs: cfg.RunLogs,
 		events: event.Or(cfg.Events), clock: svc.clock, logger: logging.Or(svc.logger), tick: tick,
 		since: svc.clock.Now().Truncate(time.Second), wake: make(chan struct{}, 1), cmds: make(chan command),
 		mail: mailbox{signal: make(chan struct{}, 1)}, closed: make(chan struct{}),
 		inflight: map[int64]bool{}, freshReads: map[int64]fresh{}, stopping: map[int64]stopAsk{},
 		stateReads: map[int64]time.Time{}, statesAsked: map[int64]bool{},
 		checksRead: map[int64]time.Time{}, gone: map[int64]sighting{}, unsaved: map[int64]RunEnd{},
-		ending: map[int64]int{},
+		heldBack: map[int64]heldBack{},
+		ending:   map[int64]int{},
 	}
 
 	e.register(cfg)

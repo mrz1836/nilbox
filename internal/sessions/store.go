@@ -105,6 +105,11 @@ type Record struct {
 	LinkedAt   time.Time
 	StateAt    time.Time
 	EndedAt    time.Time
+
+	// RunID is the script_runs ID of the background run whose session this is, or 0 for a
+	// session in the user's terminal. Its state comes from its run (RunState), and the
+	// Watcher leaves it alone.
+	RunID int64
 }
 
 // Repo is the item's repository as "owner/name".
@@ -120,8 +125,8 @@ func (r Record) Session(home string) Session {
 		Title: r.Title, URL: r.URL, Dir: paths.Tilde(r.Dir, home), Worktree: r.Worktree,
 		WorktreeAction: r.WorktreeAction, Permission: r.Permission, Notice: r.Notice, State: r.State, Detail: r.Detail,
 		StateAt: stamp(r.StateAt), LastMessage: r.LastMessage, LaunchedAt: stamp(r.LaunchedAt),
-		EndedAt: stamp(r.EndedAt), CanFocus: r.State.Live() && r.PID > 0,
-		CanResume: !r.State.Live() && r.AgentSessionID != "",
+		EndedAt: stamp(r.EndedAt), CanFocus: r.State.Live() && r.PID > 0 && r.RunID == 0,
+		CanResume: !r.State.Live() && r.AgentSessionID != "", RunID: r.RunID,
 	}
 }
 
@@ -220,7 +225,7 @@ func (s *Store) Insert(ctx context.Context, r Record) error {
 		ItemID: r.ItemID, Owner: r.Owner, Name: r.Name, Kind: string(r.Kind), Number: int64(r.Number), Title: r.Title,
 		URL: r.URL, Dir: r.Dir, ClonePath: r.ClonePath, Worktree: r.Worktree, State: string(r.State),
 		LaunchedAt: r.LaunchedAt.UTC(), Permission: r.Permission, WorktreeAction: string(r.WorktreeAction),
-		LaunchNotice: r.Notice,
+		LaunchNotice: r.Notice, RunID: max(r.RunID, 0),
 	}
 
 	if r.AgentSessionID != "" {
@@ -353,6 +358,85 @@ func (s *Store) Apply(ctx context.Context, now time.Time, observed []Observation
 	}
 
 	return changes, nil
+}
+
+// RunUpdate is what a background run's own stream says of its session.
+type RunUpdate struct {
+	// State is what it does now, Detail says more, and LastMessage is the start of what
+	// the agent last said, "" to keep the one stored.
+	State       State
+	Detail      string
+	LastMessage string
+
+	// PID is the agent's process, 0 to keep the one stored.
+	PID int
+}
+
+// ByRun returns the session of the background run runID, or ErrNotFound.
+func (s *Store) ByRun(ctx context.Context, runID int64) (Record, error) {
+	row, err := s.q.GetRunSession(ctx, runID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Record{}, fmt.Errorf("%w: run %d", ErrNotFound, runID)
+	}
+
+	if err != nil {
+		return Record{}, fmt.Errorf("read the run's session: %w", err)
+	}
+
+	return fromRow(row), nil
+}
+
+// SetRunState stores at now what a background run says of its session id, and returns the
+// change it made, if it made one. Only a run's session is changed, and only while it hasn't
+// ended: a session ended stays as it ended.
+func (s *Store) SetRunState(ctx context.Context, id string, u RunUpdate, now time.Time) (Change, bool, error) {
+	var (
+		change  Change
+		changed bool
+	)
+
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		var err error
+
+		change, changed, err = setRunState(ctx, s.q.WithTx(tx), id, u, now)
+
+		return err
+	})
+	if err != nil {
+		return Change{}, false, fmt.Errorf("store what the run says of its session: %w", err)
+	}
+
+	return change, changed, nil
+}
+
+// setRunState stores through q what a background run says of its session id (SetRunState).
+func setRunState(ctx context.Context, q *queries.Queries, id string, u RunUpdate, now time.Time) (Change, bool, error) {
+	row, err := q.GetSession(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Change{}, false, nil
+	}
+
+	if err != nil {
+		return Change{}, false, err //nolint:wrapcheck // SetRunState says what failed
+	}
+
+	before := fromRow(row)
+	if before.RunID == 0 {
+		return Change{}, false, nil
+	}
+
+	after, moved := merge(before, Observation{
+		ID: id, PID: u.PID, State: u.State, Detail: u.Detail, LastMessage: u.LastMessage,
+	}, now)
+	if !moved {
+		return Change{}, false, nil
+	}
+
+	if _, err = q.UpdateSession(ctx, updateParams(after)); err != nil {
+		return Change{}, false, err //nolint:wrapcheck // SetRunState says what failed
+	}
+
+	return Change{Before: before, After: after}, true, nil
 }
 
 // Prune forgets, as of now, the sessions that ended more than KeepEnded ago, and each
@@ -507,7 +591,7 @@ func fromRow(row queries.AgentSession) Record {
 		Number: int(row.Number), Title: row.Title, URL: row.URL, Dir: row.Dir, ClonePath: row.ClonePath,
 		Worktree: row.Worktree, WorktreeAction: WorktreeAction(row.WorktreeAction), Permission: row.Permission,
 		Notice: row.LaunchNotice, PID: int(row.Pid), State: State(row.State), Detail: row.StateDetail,
-		LastMessage: row.LastMessage, LaunchedAt: row.LaunchedAt, StateAt: row.StateAt,
+		LastMessage: row.LastMessage, LaunchedAt: row.LaunchedAt, StateAt: row.StateAt, RunID: row.RunID,
 	}
 
 	if !r.State.Valid() {

@@ -229,6 +229,9 @@ func (w *Watcher) Reconcile(ctx context.Context) time.Duration {
 		return w.tick
 	}
 
+	// A background run's session is its run's to say, never an observer's.
+	live = slices.DeleteFunc(live, func(r Record) bool { return r.RunID != 0 })
+
 	ended := w.resumable(ctx, now, live)
 	if wait, idle := w.idle(ctx, live, ended); idle {
 		return wait

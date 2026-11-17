@@ -61,6 +61,7 @@ import { RoutinePane } from './RoutinePane'
 import { useRoutineChange } from './useRoutineChange'
 import { useSheetHost, type RowsKit } from './useSheetHost'
 import { WatchingList } from './WatchingList'
+import { WorkingList } from './WorkingList'
 
 export interface AutopilotViewProps {
   // autopilot is Autopilot as the window shares it: at a glance, the routines, the engine.
@@ -870,6 +871,7 @@ export default function AutopilotView({
             ))
           ) : chosen === undefined ? (
             <>
+              <WorkingList onOpen={onOpen} onToast={toastText} />
               <div className="flex flex-wrap items-center gap-2">
                 <label htmlFor={`${id}-routine`} className="sr-only">
                   Routine

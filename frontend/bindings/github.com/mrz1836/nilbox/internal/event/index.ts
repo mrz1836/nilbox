@@ -7,6 +7,7 @@ export {
 } from "./models.js";
 
 export type {
+    AutopilotRun,
     AutopilotTarget,
     AutopilotUpdated,
     BudgetUpdated,

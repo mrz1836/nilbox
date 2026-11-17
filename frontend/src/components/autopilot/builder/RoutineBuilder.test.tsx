@@ -142,6 +142,13 @@ function renderBuilder(props: HarnessProps = {}) {
   return render(<Harness {...props} />)
 }
 
+// terminalOnly is the catalog of a build that runs agents in the terminal alone.
+function terminalOnly() {
+  const c = autopilotCatalog()
+
+  return { ...c, places: c.places.map((p) => (p.id === 'background' ? { ...p, offered: false } : p)) }
+}
+
 describe('the routine builder', () => {
   it('renders a routine from the catalog, top to bottom in the order it runs, with its sentence and its cost', async () => {
     platform.describeRoutine.mockResolvedValue(
@@ -516,9 +523,21 @@ describe('the routine builder', () => {
     expect(block('If').getByRole('combobox', { name: 'Condition 1: field' })).toHaveValue('item.gone')
   })
 
-  it('adds an agent step where this build runs agents, in the terminal, after which only a notice fits', async () => {
+  it('adds an agent step in the background where this build runs agents there', async () => {
     const user = userEvent.setup()
     renderBuilder({ spec: { ...flagship(), steps: [{ notify: {} }] } })
+
+    const then = block('Then')
+
+    await user.click(then.getByRole('button', { name: 'Add a step' }))
+    await user.click(screen.getByRole('menuitem', { name: /Run a coding agent/ }))
+    expect(spec().steps[1]).toEqual({ agent: { agent: 'inherit', prompt: { itemDefault: true }, where: 'background' } })
+    expect(then.getByRole('radio', { name: 'In the background' })).toBeChecked()
+  })
+
+  it('adds an agent step where this build runs agents, in the terminal, after which only a notice fits', async () => {
+    const user = userEvent.setup()
+    renderBuilder({ spec: { ...flagship(), steps: [{ notify: {} }] }, catalog: terminalOnly() })
 
     const then = block('Then')
 
@@ -712,7 +731,10 @@ describe('the agent step', () => {
         ],
       }),
     )
-    renderBuilder({ spec: agentOnly({ agent: 'inherit', prompt: { itemDefault: true }, where: 'background' }) })
+    renderBuilder({
+      spec: agentOnly({ agent: 'inherit', prompt: { itemDefault: true }, where: 'background' }),
+      catalog: terminalOnly(),
+    })
 
     const then = block('Then')
     const background = then.getByRole('radio', { name: 'In the background' })
@@ -734,7 +756,7 @@ describe('the agent step', () => {
 
   it('runs in the background or in the terminal, with the fence only in the background', async () => {
     const user = userEvent.setup()
-    // A later build runs agents in the background too.
+    // This build runs agents in both places.
     const both = autopilotCatalog()
 
     renderBuilder({

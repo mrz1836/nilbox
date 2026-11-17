@@ -573,6 +573,14 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Env: func() []string { env, _ := shellEnv.Env(); return env }, Runner: toolRunners,
 	})
 
+	// The routines' agents run in the background through the launcher's own background
+	// plan; their runs count as in use wherever a session would, since the process list
+	// leaves the app's own children out. The runner is filled in once the runs are built.
+	background := &backgroundAgents{
+		ledger: follow.ledger, git: shellGit, shellEnv: shellEnv.Env, home: opts.Home,
+		logger: logger, touch: workLog, program: ownExecutable(), changes: inboxStore,
+	}
+
 	// The worktrees find git with gitread's own finder, so the git a guarded command runs
 	// (its Setup's) is the one every other worktree command runs: one clone, one git build.
 	sweeps := worktrees.NewService(worktrees.Config{
@@ -589,6 +597,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Procs:    procs.System{Run: runner},
 		History:  workLog,
 		Agents:   follow.ledger,
+		Runs:     background,
 		Events:   opts.Events,
 		Clones:   clones,
 		Logger:   logger,
@@ -600,26 +609,28 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	}
 
 	launch := launcher.NewService(launcher.Config{
-		Items:     launchItems{Store: inboxStore},
-		Settings:  settingsView[launcher.LaunchSettings]{settings: prefs, part: launchSettings},
-		Profiles:  profileStore,
-		Prompts:   promptStore,
-		Defaults:  defaultsStore,
-		Git:       runner,
-		GH:        runner,
-		Finder:    search,
-		Registry:  registry,
-		Paths:     opts.Paths,
-		Home:      opts.Home,
-		Clock:     opts.Clock,
-		Worktrees: worktreeMaker{maker: worktrees.NewMaker(sweeps)},
-		Sessions:  workLog,
-		Ledger:    sessionLedger{ledger: follow.ledger},
-		Trust:     trusters(opts.Home, logger),
-		Files:     launchChecks,
-		Reader:    locations,
-		Logger:    logger,
+		Items:      launchItems{Store: inboxStore},
+		Settings:   settingsView[launcher.LaunchSettings]{settings: prefs, part: launchSettings},
+		Profiles:   profileStore,
+		Prompts:    promptStore,
+		Defaults:   defaultsStore,
+		Git:        runner,
+		GH:         runner,
+		Finder:     search,
+		Registry:   registry,
+		Paths:      opts.Paths,
+		Home:       opts.Home,
+		Clock:      opts.Clock,
+		Worktrees:  worktreeMaker{maker: worktrees.NewMaker(sweeps)},
+		Sessions:   workLog,
+		Ledger:     sessionLedger{ledger: follow.ledger},
+		Trust:      trusters(opts.Home, logger),
+		Files:      launchChecks,
+		Reader:     locations,
+		RunFolders: background,
+		Logger:     logger,
 	})
+	background.launch, background.maker = launcher.NewBackgrounds(launch), worktreeMaker{maker: worktrees.NewMaker(sweeps)}
 
 	previews := launcher.NewPromptSource(launch)
 	// One terminal opens the runs in the user's terminal, and the terminal in a run's folder
@@ -630,6 +641,17 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	}
 	runs := newRuns(pool, opts, clones, terminals, runner, dispatcher, logger)
 	scriptRuns := scriptrun.NewService(runs)
+	background.runner, background.runs = newAgentRunner(pool, opts, agentRunnerDeps{
+		runs: runs, history: scriptRuns, git: shellGit, ledger: follow.ledger, agents: background, engine: engine,
+		runner: runner,
+	}, logger), runs
+	background.engine = func() runEngine {
+		if engine.engine == nil {
+			return nil
+		}
+
+		return engine.engine
+	}
 
 	// The app's updates read GitHub's release download hosts through the shared client, no
 	// token and no budget, in a release build alone, and a change of what to do when a new
@@ -751,10 +773,13 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		banners: opts.Banners, home: opts.Home, logger: logger, runners: agentRunners, environ: shellEnv.Env,
 	}
 	readiness := newReadyChecks(agents)
+	background.requests = func(ctx context.Context, run autopilot.RunRequest) (launcher.LaunchRequest, error) {
+		return routineRequest(ctx, agents, run)
+	}
 	routines := newAutopilot(pool, opts, autopilotDeps{
 		inbox: inboxStore, service: inboxRoutines, prompts: promptStore, file: info.kept.routinesFile,
 		costs: watchCosts{inbox: inboxRoutines, every: refreshEvery(prefs, settings.RefreshInbox, logger), budget: budgetSvc},
-		ready: readiness, agents: agents,
+		ready: readiness, agents: agents, background: background,
 		github: githubSteps{
 			review: reviewSheet, issues: issueSheet, threads: ghThreads, prompts: promptStore,
 			replies: replyFiller{store: promptStore, source: previews},
@@ -770,7 +795,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		store: inboxStore, inbox: inboxSvc, faces: inboxRoutines, tokens: tokens, client: client,
 		lock: opts.Paths.AutopilotLock, events: opts.Events, logger: logger, service: routines, notices: dispatcher,
 		agents: agents, ready: readiness, defaults: defaultsStore,
-		prefs: autopilotPrefs{prefs: prefsstore.New(pool, opts.Clock)},
+		prefs: autopilotPrefs{prefs: prefsstore.New(pool, opts.Clock)}, background: background,
 	})
 	routinePromptUses := routinePrompts{follower: autopilot.NewPromptFollower(routines), logger: logger}
 
@@ -883,7 +908,8 @@ func newRuns(
 
 	return scriptrun.NewEngine(scriptrun.Config{
 		DB: pool, Locks: clones, LogDir: filepath.Join(opts.Paths.Root, "script-runs"), Home: opts.Home,
-		Clock: opts.Clock, Logger: logger,
+		Clock: opts.Clock, Logger: logger, Folders: opts.Paths.AgentRuns,
+		AgentLogsFor: agentLogsFor(prefsstore.New(pool, opts.Clock)),
 		Changed: func() {
 			events.Emit(event.ScriptRunsUpdated{})
 			events.Emit(event.ToolsUpdated{})
@@ -1021,6 +1047,7 @@ func followSessions(
 	cfg := sessions.Config{
 		Store: store, Watcher: watcher, Switch: prefs, Focuser: terminalFocuser{registry: registry}, PS: runner,
 		Reveal: revealer(runner), Home: opts.Home, Events: opts.Events, Clock: opts.Clock, Logger: logger,
+		Rereader: rereader,
 		Words: map[agent.ID]sessions.WordsReader{
 			agent.Claude: claude.Words{Home: opts.Home}, agent.Codex: codex.Words{Home: opts.Home},
 		},

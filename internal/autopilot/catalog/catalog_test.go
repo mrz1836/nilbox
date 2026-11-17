@@ -180,7 +180,7 @@ func builtDispatchers() []catalog.Dispatcher {
 }
 
 // TestTheAgentRunsWhereThisBuildCanRunIt holds the places an agent step can run to the
-// runners this build has: the user's terminal, and not yet the background.
+// runners this build has: the background runner, and the user's terminal.
 func TestTheAgentRunsWhereThisBuildCanRunIt(t *testing.T) {
 	t.Parallel()
 
@@ -191,7 +191,7 @@ func TestTheAgentRunsWhereThisBuildCanRunIt(t *testing.T) {
 		assert.NotEmpty(t, p.Help, p.ID)
 	}
 
-	assert.Equal(t, map[catalog.Where]bool{catalog.WhereTerminal: true, catalog.WhereBackground: false}, offered)
+	assert.Equal(t, map[catalog.Where]bool{catalog.WhereTerminal: true, catalog.WhereBackground: true}, offered)
 
 	_, ok := catalog.PlaceByID("elsewhere")
 	assert.False(t, ok)

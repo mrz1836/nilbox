@@ -12,8 +12,8 @@ import (
 	"syscall"
 )
 
-// Start starts cmd in a new process group, with stdin from /dev/null and stdout and
-// stderr both written straight into cmd.Output. When ctx ends, the whole group is killed.
+// Start starts cmd in a new process group, with stdin from cmd.Stdin, or /dev/null, and
+// stdout and stderr both written straight into cmd.Output. When ctx ends, the whole group is killed.
 // When the program exits, the rest of its group gets SIGHUP, as closing a terminal sends
 // it: what the program left running in the background ends, unless it was started to
 // survive a hang-up (nohup) or left the group (setsid).
@@ -39,6 +39,11 @@ func Start(ctx context.Context, cmd Cmd) (*Proc, error) {
 	c.Env = cmd.Env
 	c.Stdout = out
 	c.Stderr = out
+
+	if cmd.Stdin != nil {
+		c.Stdin = cmd.Stdin
+	}
+
 	c.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	c.Cancel = func() error { return killGroup(c.Process.Pid) }
 	c.WaitDelay = groupWaitDelay

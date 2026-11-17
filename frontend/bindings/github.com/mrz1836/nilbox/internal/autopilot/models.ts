@@ -3,6 +3,9 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as runevent$0 from "../agentrun/runevent/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as catalog$0 from "./catalog/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -1086,6 +1089,24 @@ export interface Run {
     "summary": string;
     "error": string;
     "manual": boolean;
+
+    /**
+     * CostEstimated says Cost is the agent's estimate of what the API would have charged,
+     * as for a run on the user's plan.
+     */
+    "costEstimated": boolean;
+
+    /**
+     * ScriptRunID is the run in the run engine's history, SessionID its session, Preset
+     * its tools preset, Command its command line, and LogCleared reports that its log is
+     * gone, as Clear history or the retention leaves it.
+     */
+    "scriptRunId": number;
+    "sessionId": string;
+    "preset": string;
+    "profile": string;
+    "command": string;
+    "logCleared": boolean;
     "queuedAt": string;
     "startedAt": string | null;
     "finishedAt": string | null;
@@ -1148,6 +1169,16 @@ export interface RunWorktree {
     "action": string;
     "base": string;
     "dirty": number;
+}
+
+/**
+ * RunsToday counts the runs started today, from local midnight: the agents', in the
+ * background and in the terminal, and the GitHub actions sent, as a bug report words them.
+ */
+export interface RunsToday {
+    "background": number;
+    "terminal": number;
+    "actions": number;
 }
 
 /**
@@ -1372,6 +1403,57 @@ export interface Undone {
      * is."
      */
     "words": string;
+}
+
+/**
+ * Working is an agent's run going.
+ */
+export interface Working {
+    "runId": number;
+    "matchId": number;
+    "routineId": number;
+    "routine": string;
+
+    /**
+     * Item is the item it works on, as the ledger keeps a copy of it.
+     */
+    "item": ItemRef;
+
+    /**
+     * Agent is the agent's ID, and Where where it runs: background or terminal.
+     */
+    "agent": string;
+    "where": string;
+
+    /**
+     * StartedAt is when it started, or was queued when it hasn't said.
+     */
+    "startedAt": string;
+
+    /**
+     * CreatedAt is when the run was recorded, which tells it from a later run given its
+     * ID, as a notice's target does.
+     */
+    "createdAt": string;
+
+    /**
+     * Status is starting, running, or stopping.
+     */
+    "status": string;
+
+    /**
+     * Progress is how far it has got, as its runner reads its stream; zero for a run its
+     * runner doesn't follow, as one in the terminal.
+     */
+    "progress": runevent$0.Progress;
+}
+
+/**
+ * WorkingList is what Activity's Working shows: the agents' runs going, each with how far
+ * it has got. The starts queued are Needs you's (NeedsYou).
+ */
+export interface WorkingList {
+    "working": Working[] | null;
 }
 
 /**

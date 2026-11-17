@@ -131,6 +131,7 @@ func (e *Engine) leftBehind(ctx context.Context) ([]Record, error) {
 	}
 
 	e.sweep(ctx)
+	e.sweepAllFolders(ctx)
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -201,11 +202,13 @@ func (e *Engine) liveOf(rec Record) *live {
 	l := &live{
 		id: rec.ID, kind: rec.Kind, runsIn: rec.RunsIn, tool: rec.Result.Tool, dir: rec.Dir, name: rec.Repo,
 		repo: e.where(rec.Repo, rec.Dir), title: rec.Title, intent: rec.Result.Intent, pid: rec.PID, pgid: rec.PGID,
-		procStart: rec.ProcStartedAt, started: rec.StartedAt, done: make(chan struct{}), abandon: make(chan struct{}),
+		procStart: rec.ProcStartedAt, started: rec.StartedAt, folder: rec.Result.Folder,
+		done: make(chan struct{}), abandon: make(chan struct{}),
 	}
 
 	if v := e.verifier(rec.Kind); v != nil {
-		l.Callbacks = v.Verify(rec).Callbacks
+		got := v.Verify(rec)
+		l.Callbacks, l.timeout, l.outlives = got.Callbacks, got.Timeout, got.OutlivesQuit
 	}
 
 	return l
@@ -225,6 +228,19 @@ func (e *Engine) placeholder(ctx context.Context, rec Record) func() {
 	}
 
 	return release
+}
+
+// sweepAllFolders removes the runs' own folders no run names (sweepFolders). The caller
+// holds regMu.
+func (e *Engine) sweepAllFolders(ctx context.Context) {
+	recs, err := e.store.list(ctx)
+	if err != nil {
+		e.logger.WarnContext(ctx, "couldn't read the runs to tidy their folders", "error", err)
+
+		return
+	}
+
+	e.sweepFolders(ctx, recs)
 }
 
 // sweep removes the files of the runs the history no longer holds, as after the database

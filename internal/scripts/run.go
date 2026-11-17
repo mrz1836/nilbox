@@ -509,7 +509,7 @@ func (r Rerunner) Rerun(ctx context.Context, run scriptrun.Record) (scriptrun.Sp
 		return r.script(ctx, run)
 	case scriptrun.KindPull:
 		return r.pull(ctx, run)
-	case scriptrun.KindRelease, scriptrun.KindHooks, scriptrun.KindChecks, scriptrun.KindUpdate:
+	case scriptrun.KindRelease, scriptrun.KindHooks, scriptrun.KindChecks, scriptrun.KindUpdate, scriptrun.KindAgent:
 	}
 
 	return scriptrun.Spec{}, fmt.Errorf("%w: a %s run", ErrInvalidRequest, run.Kind)

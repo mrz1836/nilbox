@@ -238,6 +238,34 @@ func TestReadsARealClone(t *testing.T) {
 		require.Error(t, err, "a commit the clone lacks can't be counted to")
 	})
 
+	t.Run("the checked out commit", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := g.Head(t.Context(), f.clone)
+		require.NoError(t, err)
+		assert.Equal(t, f.third, got)
+
+		got, err = g.Head(t.Context(), f.detached)
+		require.NoError(t, err)
+		assert.Equal(t, f.second, got, "a detached worktree's commit")
+	})
+
+	t.Run("the files the commits between two changed", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := g.ChangedFiles(t.Context(), f.clone, f.first, f.third)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"three.txt", "two.txt"}, got, "never the changed file the worktree holds uncommitted")
+
+		got, err = g.ChangedFiles(t.Context(), f.clone, f.third, f.third)
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		assert.NotNil(t, got)
+
+		_, err = g.ChangedFiles(t.Context(), f.clone, f.first, otherSHA)
+		require.Error(t, err, "a commit the clone lacks can't be compared")
+	})
+
 	t.Run("ancestors", func(t *testing.T) {
 		t.Parallel()
 

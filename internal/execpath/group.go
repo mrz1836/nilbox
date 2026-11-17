@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -44,6 +45,10 @@ type Cmd struct {
 
 	// Output gets stdout and stderr both, in one ordered stream; nil discards them.
 	Output *os.File
+
+	// Stdin is what the program reads on its standard input, such as a file holding a
+	// prompt, so the text never appears on a command line; nil reads /dev/null.
+	Stdin *os.File
 }
 
 // Step is one rung of a Ladder: a signal for the whole group, then how long to wait for
@@ -78,6 +83,10 @@ type Proc struct {
 	err  error
 
 	stopOnce sync.Once
+
+	// killed records that the group was sent SIGKILL, which leaves alive a descendant that
+	// left it (see Killed).
+	killed atomic.Bool
 }
 
 // Pid returns the program's process ID.
@@ -101,7 +110,18 @@ func (p *Proc) Wait() (exitCode int, err error) {
 
 // Signal sends sig to the program's whole process group.
 func (p *Proc) Signal(sig syscall.Signal) error {
+	if sig == syscall.SIGKILL {
+		p.killed.Store(true)
+	}
+
 	return signalGroup(p.pgid, sig)
+}
+
+// Killed reports whether the group was sent SIGKILL, by Signal or by Stop's ladder. A
+// program that gets SIGKILL can't stop what it started in the background, so whatever of
+// it left the group may still run.
+func (p *Proc) Killed() bool {
+	return p.killed.Load()
 }
 
 // Stop climbs ladder until the program exits: it sends the first step's signal to the
@@ -116,7 +136,7 @@ func (p *Proc) Stop(ladder Ladder) {
 
 // climb sends ladder's signals in turn until the program exits.
 func (p *Proc) climb(ladder Ladder) {
-	ladder.Climb(p.done, nil, func(sig syscall.Signal) error { return signalGroup(p.pgid, sig) })
+	ladder.Climb(p.done, nil, p.Signal)
 }
 
 // Climb sends each step's signal in turn through signal, waiting the step's time between

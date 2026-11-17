@@ -320,7 +320,7 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
       return
     }
 
-    const listed = await attempt(listScriptRuns({ kinds: [], repo: '' }))
+    const listed = await attempt(listScriptRuns({ kinds: [], repo: '', withAgents: true }))
 
     if (!listed.ok) {
       console.error('could not list the runs a restart would stop:', listed.error)

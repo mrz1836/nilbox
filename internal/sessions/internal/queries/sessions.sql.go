@@ -28,7 +28,7 @@ const endedSince = `-- name: EndedSince :many
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice
+    launch_notice, run_id
 FROM agent_sessions
 WHERE state = 'ended' AND agent_session_id <> '' AND ended_at >= ?1
 ORDER BY ended_at DESC, id DESC
@@ -82,6 +82,7 @@ func (q *Queries) EndedSince(ctx context.Context, arg EndedSinceParams) ([]Agent
 			&i.Permission,
 			&i.WorktreeAction,
 			&i.LaunchNotice,
+			&i.RunID,
 		); err != nil {
 			return nil, err
 		}
@@ -109,11 +110,62 @@ func (q *Queries) ForgetEndedSession(ctx context.Context, id string) (int64, err
 	return result.RowsAffected()
 }
 
+const getRunSession = `-- name: GetRunSession :one
+SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
+    item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
+    state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
+    launch_notice, run_id
+FROM agent_sessions
+WHERE run_id = ?1 AND run_id <> 0
+ORDER BY launched_at DESC, id DESC
+LIMIT 1
+`
+
+// GetRunSession returns the session of a background run, by the run's script_runs ID.
+func (q *Queries) GetRunSession(ctx context.Context, runID int64) (AgentSession, error) {
+	row := q.db.QueryRowContext(ctx, getRunSession, runID)
+	var i AgentSession
+	err := row.Scan(
+		&i.ID,
+		&i.AgentSessionID,
+		&i.ResumedFrom,
+		&i.Agent,
+		&i.Profile,
+		&i.ConfigDir,
+		&i.Prompt,
+		&i.PromptHead,
+		&i.Terminal,
+		&i.ItemID,
+		&i.Owner,
+		&i.Name,
+		&i.Kind,
+		&i.Number,
+		&i.Title,
+		&i.URL,
+		&i.Dir,
+		&i.ClonePath,
+		&i.Worktree,
+		&i.Pid,
+		&i.State,
+		&i.StateDetail,
+		&i.LastMessage,
+		&i.LaunchedAt,
+		&i.LinkedAt,
+		&i.StateAt,
+		&i.EndedAt,
+		&i.Permission,
+		&i.WorktreeAction,
+		&i.LaunchNotice,
+		&i.RunID,
+	)
+	return i, err
+}
+
 const getSession = `-- name: GetSession :one
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice
+    launch_notice, run_id
 FROM agent_sessions
 WHERE id = ?1
 `
@@ -153,6 +205,7 @@ func (q *Queries) GetSession(ctx context.Context, id string) (AgentSession, erro
 		&i.Permission,
 		&i.WorktreeAction,
 		&i.LaunchNotice,
+		&i.RunID,
 	)
 	return i, err
 }
@@ -162,14 +215,14 @@ INSERT INTO agent_sessions (
     id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice
+    launch_notice, run_id
 ) VALUES (
     ?1, ?2, ?3, ?4, ?5,
     ?6, ?7, ?8, ?9,
     ?10, ?11, ?12, ?13, ?14, ?15,
     ?16, ?17, ?18, ?19, 0,
     ?20, '', '', ?21, ?22, ?21, NULL,
-    ?23, ?24, ?25
+    ?23, ?24, ?25, ?26
 )
 `
 
@@ -199,6 +252,7 @@ type InsertSessionParams struct {
 	Permission     string
 	WorktreeAction string
 	LaunchNotice   string
+	RunID          int64
 }
 
 // InsertSession records a session the app just launched.
@@ -229,6 +283,7 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.Permission,
 		arg.WorktreeAction,
 		arg.LaunchNotice,
+		arg.RunID,
 	)
 	return err
 }
@@ -266,7 +321,7 @@ const liveSessions = `-- name: LiveSessions :many
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice
+    launch_notice, run_id
 FROM agent_sessions
 WHERE state <> 'ended'
 ORDER BY launched_at, id
@@ -313,6 +368,7 @@ func (q *Queries) LiveSessions(ctx context.Context) ([]AgentSession, error) {
 			&i.Permission,
 			&i.WorktreeAction,
 			&i.LaunchNotice,
+			&i.RunID,
 		); err != nil {
 			return nil, err
 		}
@@ -363,7 +419,7 @@ const recentSessions = `-- name: RecentSessions :many
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice
+    launch_notice, run_id
 FROM agent_sessions
 WHERE state <> 'ended' OR launched_at >= ?1
 ORDER BY launched_at DESC, id DESC
@@ -417,6 +473,7 @@ func (q *Queries) RecentSessions(ctx context.Context, arg RecentSessionsParams) 
 			&i.Permission,
 			&i.WorktreeAction,
 			&i.LaunchNotice,
+			&i.RunID,
 		); err != nil {
 			return nil, err
 		}

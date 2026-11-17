@@ -454,6 +454,7 @@ func registerEvents() {
 	application.RegisterEvent[event.ServiceStatusUpdated](event.NameServiceStatusUpdated)
 	application.RegisterEvent[event.UpdatesUpdated](event.NameUpdatesUpdated)
 	application.RegisterEvent[event.AutopilotUpdated](event.NameAutopilotUpdated)
+	application.RegisterEvent[event.AutopilotRun](event.NameAutopilotRun)
 	application.RegisterEvent[event.UpdateRestartRequested](event.NameUpdateRestartRequested)
 	application.RegisterEvent[event.KeptRunning](event.NameKeptRunning)
 }

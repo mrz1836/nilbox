@@ -43,7 +43,7 @@ export interface Chunk {
  */
 export interface Filter {
     /**
-     * Kinds are the kinds listed; none lists every kind.
+     * Kinds are the kinds listed; none lists every kind but an agent's (WithAgents).
      */
     "kinds": Kind[] | null;
 
@@ -52,12 +52,19 @@ export interface Filter {
      * every run.
      */
     "repo": string;
+
+    /**
+     * WithAgents lists the agents' runs too, with no Kinds: the Runs page and the Scripts
+     * tab's count leave them out, as the Autopilot tab is their home, while the quit and an
+     * update's restart, which would stop them, name them.
+     */
+    "withAgents": boolean;
 }
 
 /**
  * Kind is what a run does.
  */
-export type Kind = "release" | "hooks" | "checks" | "script" | "update" | "gitPull";
+export type Kind = "release" | "hooks" | "checks" | "script" | "update" | "gitPull" | "agent";
 
 /**
  * The values of Kind, by the names of their Go constants.
@@ -97,6 +104,15 @@ export const Kind = {
      * scripts: git's fast-forward-only pull, and nothing else.
      */
     KindPull: "gitPull",
+
+    /**
+     * KindAgent is a coding agent's run in the background, which Autopilot starts in an
+     * item's worktree: it holds the worktree, never the clone, so two items of one clone
+     * run side by side. Its history is kept apart from the others' (KeepAgentRuns), it
+     * tells Config.Failed nothing (Autopilot tells how it ended), and the Runs page leaves
+     * it out (Filter.WithAgents): the Autopilot tab is its home.
+     */
+    KindAgent: "agent",
 } as const;
 
 /**
@@ -151,6 +167,11 @@ export interface Result {
      * Outcome is the kind's own result, or nil.
      */
     "outcome": any;
+
+    /**
+     * Folder is the run's own folder (Spec.Folder), or "".
+     */
+    "folder"?: string;
 }
 
 /**

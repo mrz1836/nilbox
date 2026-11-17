@@ -18,7 +18,8 @@ export interface ScriptRunsState {
 // and filters what it shows itself: the history keeps at most a few hundred runs. While
 // enabled is false, as while the Scripts tab is hidden, nothing is listed.
 export function useScriptRuns(enabled = true): ScriptRunsState {
-  const runs = useQuery(() => listScriptRuns({ kinds: [], repo: '' }), [], { enabled })
+  // The agents' runs are the Autopilot tab's, never the Runs page's.
+  const runs = useQuery(() => listScriptRuns({ kinds: [], repo: '', withAgents: false }), [], { enabled })
   const reloadOnUpdate = useEffectEvent(() => {
     void runs.refetch()
   })

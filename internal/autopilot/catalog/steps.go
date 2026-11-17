@@ -297,7 +297,7 @@ type PlaceInfo struct {
 func Places() []PlaceInfo {
 	return []PlaceInfo{
 		{
-			ID: WhereBackground, Label: "In the background",
+			ID: WhereBackground, Label: "In the background", Offered: true,
 			Help: "Headless, always in the item's worktree, held in by the fence.",
 		},
 		{

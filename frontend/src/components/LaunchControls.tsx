@@ -429,14 +429,20 @@ export function LaunchControls({
                 void showTerminal(running.id)
               }}
               title={
-                running.canFocus
-                  ? `${agentLabel(agents, running.agent)} ${stateLabel(running.state)}: show its terminal tab. To start another session, use the launch options.`
-                  : `${agentLabel(agents, running.agent)} is starting; its terminal tab can be shown once it has started.`
+                running.runId !== 0
+                  ? `${agentLabel(agents, running.agent)} ${stateLabel(running.state)} in the background, for Autopilot: watch or stop it from the Autopilot tab.`
+                  : running.canFocus
+                    ? `${agentLabel(agents, running.agent)} ${stateLabel(running.state)}: show its terminal tab. To start another session, use the launch options.`
+                    : `${agentLabel(agents, running.agent)} is starting; its terminal tab can be shown once it has started.`
               }
               className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
             >
               <TerminalIcon className="size-3.5 text-accent" />
-              {state.kind === 'launching' ? 'Opening…' : 'Show in terminal'}
+              {state.kind === 'launching'
+                ? 'Opening…'
+                : running.runId !== 0
+                  ? `${agentLabel(agents, running.agent)} · ${stateLabel(running.state)} ⚡`
+                  : 'Show in terminal'}
             </button>
           )}
           <button
