@@ -20,6 +20,9 @@ type claudeLine struct {
 	Type    string `json:"type"`
 	Subtype string `json:"subtype"`
 
+	// Timestamp is when an assistant's or a user's message was written.
+	Timestamp string `json:"timestamp"`
+
 	// system/init
 	Model        string `json:"model"`
 	Version      string `json:"claude_code_version"`
@@ -117,6 +120,8 @@ func readClaudeLine(s *stream, raw []byte) {
 
 		return
 	}
+
+	s.stamp(line.Timestamp)
 
 	switch line.Type {
 	case "system":

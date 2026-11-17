@@ -184,6 +184,11 @@ const (
 	// ReasonHandsOff closes a match that hadn't started on an item its routine leaves
 	// alone, since the user took back what it did there.
 	ReasonHandsOff Reason = "hands_off"
+
+	// ReasonTakenOver closes a match, done, whose agent's run the user took over: its
+	// conversation carries on in the user's terminal, where the session that resumed it is
+	// followed as any is.
+	ReasonTakenOver Reason = "taken_over"
 )
 
 // reopens reports a reason that closes a match before it ran, which reopens on its own

@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/textutil"
@@ -29,9 +30,6 @@ const (
 
 	// promptHeadRunes is how much of the prompt the session's record keeps.
 	promptHeadRunes = 200
-
-	// maxReplay caps how much of an ended run's log its events are read from.
-	maxReplay = 64 << 20
 )
 
 // ErrNoRun is returned for a run the runner doesn't know.
@@ -41,6 +39,7 @@ var ErrNoRun = errors.New("no such agent run")
 type Git interface {
 	Head(ctx context.Context, dir string) (string, error)
 	ChangedFiles(ctx context.Context, dir, from, to string) ([]string, error)
+	WorktreeDiff(ctx context.Context, dir, from string) (gitread.WorktreeDiff, error)
 }
 
 // SessionState is what a run's session does, as its run says.
@@ -194,6 +193,20 @@ type run struct {
 	lastUsage time.Time
 	awake     *execpath.Proc
 	cancel    context.CancelFunc
+
+	// done is closed once the run's end is told, or its start failed (Wait).
+	done     chan struct{}
+	doneOnce sync.Once
+}
+
+// newRun returns a run of intent in dir, read by parser.
+func newRun(intent Intent, dir string, parser *stream) *run {
+	return &run{intent: intent, dir: dir, parser: parser, done: make(chan struct{})}
+}
+
+// finished marks the run's end told, or its start failed, once.
+func (rn *run) finished() {
+	rn.doneOnce.Do(func() { close(rn.done) })
 }
 
 // Start starts plan's run and returns its ID in the history. In order, under the
@@ -214,7 +227,8 @@ func (r *Runner) Start(ctx context.Context, plan Plan) (int64, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	rn := &run{intent: intentOf(plan), dir: plan.Dir, parser: parserFor(plan.Agent, plan.Dir), cancel: cancel}
+	rn := newRun(intentOf(plan), plan.Dir, parserFor(plan.Agent, plan.Dir))
+	rn.cancel = cancel
 
 	r.mu.Lock()
 	r.starting[plan.RunID] = rn
@@ -228,6 +242,8 @@ func (r *Runner) Start(ctx context.Context, plan Plan) (int64, error) {
 
 	id, err := r.engine.Start(ctx, r.spec(plan, rn))
 	if err != nil {
+		rn.finished()
+
 		return id, err
 	}
 
@@ -242,7 +258,8 @@ func (r *Runner) Start(ctx context.Context, plan Plan) (int64, error) {
 // its log is read from the start, and its end judged as a run the runner started.
 func (r *Runner) Verify(rec scriptrun.Record) scriptrun.Verification {
 	intent := intentIn(rec.Result.Intent)
-	rn := &run{intent: intent, dir: rec.Dir, parser: parserFor(intent.Agent, rec.Dir), recorded: true}
+	rn := newRun(intent, rec.Dir, parserFor(intent.Agent, rec.Dir))
+	rn.recorded = true
 
 	r.register(rec.ID, rn)
 
@@ -350,39 +367,6 @@ func (r *Runner) Progress(runID int64) (runevent.Progress, bool) {
 	}
 
 	return rn.parser.Progress(), true
-}
-
-// Events returns the ledger's run's events after the one numbered after: from memory while
-// the runner follows it, else read from its log, which a run that ended keeps.
-func (r *Runner) Events(ctx context.Context, runID, after int64) (runevent.Page, error) {
-	r.mu.Lock()
-	rn, ok := r.byLedger[runID]
-	r.mu.Unlock()
-
-	if ok {
-		return rn.parser.Page(after), nil
-	}
-
-	id, found := r.ScriptRun(ctx, runID)
-	if !found {
-		return runevent.Page{}, fmt.Errorf("%w: run %d", ErrNoRun, runID)
-	}
-
-	rec, err := r.runs.Run(ctx, id)
-	if err != nil {
-		return runevent.Page{}, err
-	}
-
-	parser := parserFor(intentIn(rec.Result.Intent).Agent, "")
-
-	if err = r.replay(ctx, id, parser); err != nil {
-		return runevent.Page{}, err
-	}
-
-	page := parser.Page(after)
-	page.Done = !rec.Status.Live()
-
-	return page, nil
 }
 
 // Folders returns the worktrees the agents' runs work in now, those still starting and
@@ -571,6 +555,8 @@ func (r *Runner) finish(ctx context.Context, rn *run, end scriptrun.Ending) scri
 		out.TokensIn, out.TokensOut, out.CacheRead = progress.TokensIn, progress.TokensOut, progress.CacheRead
 	}
 
+	out.Todos = progress.Todos
+
 	if end.Killed && r.sweeper != nil {
 		r.sweeper.Sweep(ctx, rn.dir)
 	}
@@ -622,6 +608,8 @@ func (r *Runner) recorded(ctx context.Context, rn *run, id int64, out scriptrun.
 	if awake != nil {
 		_ = awake.Signal(syscall.SIGTERM)
 	}
+
+	defer rn.finished()
 
 	outcome, ok := out.Detail.(Outcome)
 	if !ok {
@@ -677,28 +665,6 @@ func (r *Runner) record(ctx context.Context, runID int64) (scriptrun.Run, error)
 	}
 
 	return scriptrun.Run{}, fmt.Errorf("%w: run %d", ErrNoRun, runID)
-}
-
-// replay feeds parser the run id's log, a chunk at a time, up to maxReplay.
-func (r *Runner) replay(ctx context.Context, id int64, parser io.Writer) error {
-	var offset int64
-
-	for offset < maxReplay {
-		chunk, err := r.runs.Output(ctx, id, offset, 0)
-		if err != nil {
-			return err
-		}
-
-		_, _ = parser.Write([]byte(chunk.Text))
-
-		if chunk.Next <= offset || chunk.Done {
-			return nil
-		}
-
-		offset = chunk.Next
-	}
-
-	return nil
 }
 
 // outlives reports a run that may go on once the app quits: its agent keeps to a budget in

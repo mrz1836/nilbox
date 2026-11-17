@@ -419,10 +419,55 @@ describe('runsGoingIn', () => {
       progress: { ...scriptRun().progress, stopRefused: 'git is writing' },
     })
     const ended = scriptRun({ id: 3, canStop: false })
+    const agent = scriptRun({ id: 4, kind: 'agent', title: 'Fix checks', canStop: true, outlivesQuit: true })
 
-    expect(runsGoingIn([going, held, ended])).toEqual([
-      { id: 1, kind: 'release', title: 'Release v1.2.0', repo: going.repo, dir: going.dir, stopRefused: '' },
-      { id: 2, kind: 'gitPull', title: 'Pull main', repo: held.repo, dir: held.dir, stopRefused: 'git is writing' },
+    expect(runsGoingIn([going, held, ended, agent])).toEqual([
+      {
+        id: 1,
+        kind: 'release',
+        title: 'Release v1.2.0',
+        repo: going.repo,
+        dir: going.dir,
+        stopRefused: '',
+        outlives: false,
+      },
+      {
+        id: 2,
+        kind: 'gitPull',
+        title: 'Pull main',
+        repo: held.repo,
+        dir: held.dir,
+        stopRefused: 'git is writing',
+        outlives: false,
+      },
+      { id: 4, kind: 'agent', title: 'Fix checks', repo: agent.repo, dir: agent.dir, stopRefused: '', outlives: true },
+    ])
+  })
+})
+
+describe('questionWords and the runs that carry on', () => {
+  it('says which agents carry on through the restart, and stops only the rest', () => {
+    const release = runGoing()
+    const agent = runGoing({ id: 9, kind: 'agent', title: 'Fix checks · acme-org/sdk #12', outlives: true })
+
+    expect(questionWords({ runs: [release, agent], sheets: 0 })).toEqual({
+      text: 'Restarting stops Release v1.2.0 in acme-org/sdk.',
+      list: [],
+      notes: [
+        'Stopping it now can leave a tag on this Mac but not on GitHub.',
+        `Fix checks · acme-org/sdk #12 in acme-org/sdk carries on through the restart, and ${brand.name} picks it up when it opens again.`,
+      ],
+    })
+
+    const words = questionWords({ runs: [agent], sheets: 0 })
+    expect(words.text).toBe('')
+    expect(words.notes).toEqual([
+      `Fix checks · acme-org/sdk #12 in acme-org/sdk carries on through the restart, and ${brand.name} picks it up when it opens again.`,
+    ])
+
+    const other = runGoing({ id: 10, kind: 'agent', title: 'Review · acme-org/api #4', outlives: true })
+    expect(questionWords({ runs: [agent, other], sheets: 0 }).notes).toEqual([
+      `Fix checks · acme-org/sdk #12, Review · acme-org/api #4 carry on through the restart, and ${brand.name} picks them up when it opens again.`,
     ])
   })
 })

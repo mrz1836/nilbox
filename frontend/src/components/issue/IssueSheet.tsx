@@ -383,7 +383,7 @@ export function IssueSheet({
                 <aside className="flex min-h-0 flex-col border-l border-border">
                   <div className="shrink-0 space-y-1.5 border-b border-border px-4 py-3">
                     <StandingLine standing={issue.standing} />
-                    <WorkLine worktree={worktree} sessions={sessions} agents={launch?.agents ?? []} />
+                    <WorkLine worktree={worktree} sessions={sessions} agents={launch?.agents ?? []} itemId={id} />
                   </div>
                   <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
                     {reading ? <SummarySkeleton /> : <IssueSummary issue={issue} onEdit={edit} />}

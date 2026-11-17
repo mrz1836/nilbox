@@ -232,6 +232,107 @@ describe('QuitDialog', () => {
     expect(logged).toHaveBeenCalledWith('could not list the runs going as the app quits:', 'database is locked')
   })
 
+  describe('with agents working', () => {
+    // agent is one of Autopilot's agents in the background, which keeps to a budget of its
+    // own, so it can outlive the quit.
+    const agent = going({ id: 8, kind: 'agent', title: 'Fix checks · acme-org/sdk #12', outlivesQuit: true })
+    const other = going({ id: 9, kind: 'agent', title: 'Review · acme-org/api #4', outlivesQuit: true })
+
+    it('lets them finish: they carry on, and the next start picks them up', async () => {
+      await askToQuit([agent, other])
+
+      const asked = await dialog()
+
+      expect(asked.getByText('2 agents are still working. Stopping them now ends them partway.')).toBeInTheDocument()
+      expect(asked.getAllByRole('listitem').map((li) => li.textContent)).toEqual([agent.title, other.title])
+      expect(asked.getByText(`They carry on, and ${brand.name} picks them up when it opens again.`)).toBeInTheDocument()
+
+      await userEvent.click(asked.getByRole('button', { name: 'Let them finish' }))
+
+      expect(platform.letThemFinish).toHaveBeenCalledOnce()
+      expect(platform.quitAnyway).not.toHaveBeenCalled()
+      expect(platform.keepRunning).not.toHaveBeenCalled()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('stops them and quits', async () => {
+      await askToQuit([agent])
+
+      const asked = await dialog()
+
+      expect(asked.getByText(`${agent.title} is still working. Stopping it now ends it partway.`)).toBeInTheDocument()
+
+      await userEvent.click(asked.getByRole('button', { name: 'Stop it and quit' }))
+
+      expect(platform.quitAnyway).toHaveBeenCalledOnce()
+      expect(platform.letThemFinish).not.toHaveBeenCalled()
+    })
+
+    it('keeps running', async () => {
+      await askToQuit([agent, other])
+
+      await userEvent.click((await dialog()).getByRole('button', { name: 'Keep running' }))
+
+      expect(platform.keepRunning).toHaveBeenCalledOnce()
+      expect(platform.quitAnyway).not.toHaveBeenCalled()
+      expect(platform.letThemFinish).not.toHaveBeenCalled()
+    })
+
+    it('lets the agents finish beside script runs, which stop', async () => {
+      await askToQuit([agent, release])
+
+      const asked = await dialog()
+
+      expect(asked.getByRole('button', { name: 'Stop them and quit' })).toBeInTheDocument()
+      expect(
+        asked.getByText(/It carries on, and .* picks it up when it opens again\. 1 other run stops\./),
+      ).toBeInTheDocument()
+
+      await userEvent.click(asked.getByRole('button', { name: 'Let it finish' }))
+      expect(platform.letThemFinish).toHaveBeenCalledOnce()
+    })
+
+    it('names every agent that stops with the app', async () => {
+      const one = going({ id: 11, kind: 'agent', title: 'Fix A', outlivesQuit: false })
+      const two = going({ id: 12, kind: 'agent', title: 'Fix B', outlivesQuit: false })
+
+      await askToQuit([one, two])
+
+      expect(
+        (await dialog()).getByText(
+          `Fix A, Fix B stop with ${brand.name}: their agents keep to no budget of their own, so nothing would bound them while ${brand.name} is closed.`,
+        ),
+      ).toBeInTheDocument()
+    })
+
+    it('writes a failure to let them finish to the console', async () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+      platform.letThemFinish.mockRejectedValueOnce(new Error('the shell is gone'))
+      await askToQuit([agent])
+      await userEvent.click((await dialog()).getByRole('button', { name: 'Let it finish' }))
+
+      await waitFor(() => {
+        expect(logged).toHaveBeenCalledWith('could not quit letting the agents finish:', 'the shell is gone')
+      })
+    })
+
+    it('offers no Let them finish while an agent can’t outlive the quit, and says it stops', async () => {
+      const unbounded = going({ id: 10, kind: 'agent', title: 'Fix lint · acme-org/sdk #13', outlivesQuit: false })
+
+      await askToQuit([agent, unbounded])
+
+      const asked = await dialog()
+
+      expect(asked.queryByRole('button', { name: /Let (them|it) finish/ })).not.toBeInTheDocument()
+      expect(
+        asked.getByText(
+          `${unbounded.title} stops with ${brand.name}: its agent keeps to no budget of its own, so nothing would bound it while ${brand.name} is closed.`,
+        ),
+      ).toBeInTheDocument()
+    })
+  })
+
   it('writes a failure to quit to the console', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 

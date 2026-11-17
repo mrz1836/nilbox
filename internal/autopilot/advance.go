@@ -21,6 +21,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/trust"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // A match moves through the steps it started with, one at a time, each starting when the
@@ -1136,17 +1137,10 @@ func (e *Engine) applyRunEnd(ctx context.Context, end RunEnd) {
 	}
 
 	told, forItem := e.stoppedFor(end)
+	taken := e.takenOver[end.RunID]
 
-	err := e.endAndMove(ctx, run, told, endCounts(run, told), late, func(m *match) {
-		if late {
-			if !waitsOn(m, run) {
-				return
-			}
-
-			m.steps[run.Step].RunID = run.ID
-		}
-
-		e.moveOn(m, run.Step, told, forItem, e.clock.Now())
+	err := e.endAndMove(ctx, run, told, endCounts(run, told) && !taken, late, func(m *match) {
+		e.moveEnded(m, run, told, forItem, late, taken)
 	})
 	if err != nil {
 		e.logger.WarnContext(ctx, "Autopilot could not record a run's end; it tries again", "run", end.RunID, "error", err)
@@ -1157,8 +1151,97 @@ func (e *Engine) applyRunEnd(ctx context.Context, end RunEnd) {
 
 	delete(e.stopping, end.RunID)
 	delete(e.gone, end.RunID)
-	e.tellFinished(ctx, run, told)
+	delete(e.takenOver, end.RunID)
+
+	// A run the user took over carries on in their terminal: nothing tells them it ended.
+	if !taken {
+		e.tellFinished(ctx, run, told)
+	}
+
 	e.Wake()
+}
+
+// moveEnded moves m on from run, which ended as end says: a late end only while m still
+// waits on the run's interruption; a run the user took over closes m as taken over; any
+// other moves on as moveOn says.
+func (e *Engine) moveEnded(m *match, run queries.AutopilotRun, end RunEnd, forItem Reason, late, taken bool) {
+	if late {
+		if !waitsOn(m, run) {
+			return
+		}
+
+		m.steps[run.Step].RunID = run.ID
+	}
+
+	if taken {
+		tookOver(m, run.Step, e.clock.Now())
+
+		return
+	}
+
+	e.moveOn(m, run.Step, end, forItem, e.clock.Now())
+}
+
+// takenOverWords is what a match whose run the user took over says.
+const takenOverWords = "You took it over: it carries on in your terminal."
+
+// tookOver closes m, done, at its step at index, whose run the user took over.
+func tookOver(m *match, index int64, now time.Time) {
+	if int(index) < len(m.steps) {
+		sr := &m.steps[index]
+		sr.Status, sr.Note, sr.Ended = stepDone, takenOverWords, new(now)
+	}
+
+	m.close(StateDone, ReasonTakenOver, takenOverWords, now)
+}
+
+// takeOver records that the user takes the run with runID over: a run still working is
+// marked, so its end, which its Stop brings, closes its match as taken over, counting as no
+// try and telling nothing; a run that ended already closes its match so when the match
+// still waits on it (interrupted) or closed as the user stopped it. Any other match is left
+// as it is: it moved on from the run already.
+func (e *Engine) takeOver(ctx context.Context, runID int64) error {
+	run, err := e.ledger.q.GetRun(ctx, runID)
+	if err != nil {
+		return uierr.New("That run isn't in Autopilot's history.", errors.Join(ErrNoRun, err))
+	}
+
+	if run.Status != runEnded {
+		e.takenOver[runID] = true
+
+		return nil
+	}
+
+	return e.ledger.inTx(ctx, func(q *queries.Queries) error {
+		m, getErr := e.ledger.getIn(ctx, q, run.MatchID)
+
+		switch {
+		case errors.Is(getErr, ErrNoMatch):
+			return nil
+		case getErr != nil:
+			return getErr
+		case !waitsOnTakeOver(m, run):
+			return nil
+		}
+
+		tookOver(m, run.Step, e.clock.Now())
+
+		return e.saveIn(ctx, q, m)
+	})
+}
+
+// waitsOnTakeOver reports a match a take over of run closes: one that waits on the run's
+// interruption, or one the user closed by stopping the run.
+func waitsOnTakeOver(m *match, run queries.AutopilotRun) bool {
+	if m.Step != run.Step {
+		return false
+	}
+
+	if m.state() == StateWaiting && Blocker(m.BlockedBy) == BlockInterrupted {
+		return true
+	}
+
+	return m.state() == StateDismissed && Reason(m.Reason) == ReasonYouStopped
 }
 
 // retryEnds applies again the runs' ends that couldn't be written.

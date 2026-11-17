@@ -63,6 +63,7 @@ export type {
     RoutineStats,
     Run,
     RunPreview,
+    RunView,
     RunWorktree,
     RunsToday,
     Suggestions,

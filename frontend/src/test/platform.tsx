@@ -16,6 +16,8 @@ import type * as real from '../platform'
 import { clockAt, FIXED_NOW, withClock } from './clock'
 import {
   afterMerge,
+  agentRun,
+  agentRunView,
   agentVersions,
   toolVersions,
   agents,
@@ -83,6 +85,7 @@ import {
   routineStats,
   routineSuggestions,
   routineTest,
+  runEventsPage,
   runPreview,
   scriptClones,
   scriptRun,
@@ -201,13 +204,11 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     testRoutine: () => Promise.resolve(routineTest()),
     // No agent works, and none waits, unless a test says so.
     autopilotWorking: () => Promise.resolve({ working: [] }),
-    autopilotRunEvents: () =>
-      Promise.resolve({
-        events: [],
-        first: 0,
-        done: true,
-        progress: { step: '', todos: [], tokensIn: 0, tokensOut: 0, cacheRead: 0, events: 0, unknown: 0 },
-      }),
+    autopilotRunEvents: () => Promise.resolve(runEventsPage({ done: true })),
+    autopilotRunEventsBefore: () => Promise.resolve(runEventsPage({ done: true })),
+    autopilotRunView: (id) => Promise.resolve(agentRunView({ run: agentRun({ id }) })),
+    autopilotRunBySession: () => Promise.resolve(0),
+    autopilotRunDiff: () => Promise.resolve({ from: '', patch: '', cut: false, untracked: [] }),
     autopilotRunsToday: () => Promise.resolve({ background: 0, terminal: 0, actions: 0 }),
     stopAutopilotRun: done,
     stopAllAutopilotRuns: done,
@@ -303,6 +304,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     cloneRepo: () => Promise.resolve(cloneTarget()),
     linkClone: () => Promise.resolve(linkedClone()),
     resumeSession: () => Promise.resolve(launchResult({ worktreeAction: 'resume' })),
+    takeOverRun: () => Promise.resolve(launchResult({ worktreeAction: 'resume' })),
 
     listSessions: () => Promise.resolve(sessionsSnapshot()),
     focusSession: done,
@@ -502,6 +504,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     markScriptRunSeen: done,
     clearScriptRunHistory: done,
     quitAnyway: done,
+    letThemFinish: done,
     keepRunning: done,
 
     listReleaseCandidates: () => Promise.resolve(releaseCandidates()),

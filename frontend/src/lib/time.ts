@@ -163,6 +163,16 @@ export function formatFull(iso: string, locale?: string): string {
   return ms === undefined ? '' : dateFormat(locale, { dateStyle: 'full', timeStyle: 'short' }).format(ms)
 }
 
+// formatClock names a time of day to the second, as a run's timeline lines its events up:
+// "06:15:02". locale is for tests; the app uses the system's.
+export function formatClock(iso: string, locale?: string): string {
+  const ms = parseTime(iso)
+
+  return ms === undefined
+    ? ''
+    : dateFormat(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(ms)
+}
+
 // formatDateTime names a time with its date, for a list of things made at different
 // times: "Nov 8, 2026, 11:51 AM". locale is for tests; the app uses the system's.
 export function formatDateTime(iso: string, locale?: string): string {

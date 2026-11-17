@@ -105,10 +105,12 @@ type agentChangeNoter interface {
 	NoteAgentChanges(ctx context.Context, itemID int64, heads, files []string, runID int64) error
 }
 
-// runEngine is what the runner tells Autopilot's engine of its runs: *autopilot.Engine.
+// runEngine is what the runner tells Autopilot's engine of its runs, and Take over of the
+// runs the user takes over: *autopilot.Engine.
 type runEngine interface {
 	RunUsage(runID int64, u autopilot.RunUsage)
 	RunEnded(end autopilot.RunEnd)
+	TakeOver(ctx context.Context, runID int64) error
 }
 
 // errNoBackground is returned while the background runner isn't built.

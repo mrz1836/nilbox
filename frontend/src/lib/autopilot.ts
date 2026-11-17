@@ -254,6 +254,7 @@ export const reasonChips: Readonly<Record<AutopilotReason, Chip>> = {
   failed: { label: 'A step failed', tone: 'danger' },
   from_now: { label: 'Already matched when you turned it on', tone: 'muted' },
   hands_off: { label: 'Left alone', tone: 'muted' },
+  taken_over: { label: 'Taken over', tone: 'accent' },
 }
 
 // chipOf is what a match says, on an item's ⚡ chip (the newest a routine has on it,

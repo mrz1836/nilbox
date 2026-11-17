@@ -363,7 +363,10 @@ forward), once it is ready, or available where it doesn't download; Don't check 
 what it finds told without a notification once it is available or ready, so a download it
 started that fails still lets a later check tell of it. `Restart(confirmed)` refuses while
 runs go in the app, unless confirmed, with a `RunsGoingError` whose `Detail` (`{"runsGoing":
-[...]}`, through `desktop.MarshalError`) names them; it checks the zip against its manifest
+[...]}`, through `desktop.MarshalError`) names them, each with whether it carries on through
+the restart (`Run.Outlives`: an agent's run that keeps to a budget of its own, which the
+restart lets go through `Runs.LetFinish` just before it lets the quit through, and stops
+letting go should the restart fail after); it checks the zip against its manifest
 again (`CheckFile`; a damaged or missing one is dropped, back to available, downloaded
 again when downloads are on, and the refusal says so), backs the database up first
 (`store.Backup`, through its `DataBackup`, reusing one it took under `BackupReuse`, 10
@@ -421,7 +424,9 @@ with `config --show-scope` and runs with every one the clone's own config define
 Git LFS's too, since git-lfs's clean writes into the clone (its clean, smudge, and process
 emptied and required off),
 and with `--ignore-submodules=dirty`, so it runs no status inside a submodule, whose own config
-could name one. An `ls-remote` likewise first reads, with `config --show-scope`, the settings
+could name one. A diff against the worktree (`WorktreeDiff`, the run view's Diff) reads files
+too, and runs the same way (`readsFiles`), with `--no-ext-diff` and `--no-textconv`, which every
+diff passes, so no external diff or textconv the clone names runs either. An `ls-remote` likewise first reads, with `config --show-scope`, the settings
 it weighs, and origin's URL with `ls-remote --get-url` (which asks origin nothing): a remote
 helper (a `<name>::` URL after `insteadOf`, or `remote.origin.vcs`) is refused
 (`ErrRemoteHelper`), since git falls back to an alias the clone defines; only the file, http,
@@ -1874,9 +1879,53 @@ takes a step in the background itself and hands one in the terminal to `agentRun
 **The stream** (`agentrun/stream.go`, `claude.go`) splits the log into lines itself (one is
 read up to 64 MB, a longer one counted and skipped), keeps the last 2,000 events (each text cut
 to 8 KB, `runevent.MaxText`) and the progress (the latest step, the todo list, tokens counted
-once per message), and counts a message it doesn't know (`Progress.Unknown`). `runevent` is the
-leaf both sides share; the window asks for a run's events after the last it has
-(`Service.RunEvents`) on each `event.AutopilotRun` (`autopilot:run`, at most four a second a run).
+once per message), and counts a message it doesn't know (`Progress.Unknown`). Each event
+carries where its line starts in the log and which of the line's events it is (`Offset`,
+`Part`, together its key) and the latest time a line gave (`At`, from the assistant's and the
+user's messages' `timestamp`). `runevent` is the leaf both sides share; the window asks for a
+run's events after the last it has (`Service.RunEvents`) on each `event.AutopilotRun`
+(`autopilot:run`, at most four a second a run).
+
+**The run view** (`agentrun/view.go`, `autopilot/runview.go`). `RunView` is the ledger's run
+and its match; `RunEvents` follows a working run from the runner's memory, whose first page
+says what its log holds before the events kept (`Page.Earlier`, `Before`, the first event's
+line); a run that ended, or one the runner doesn't follow, is its log's last page
+(`Runner.EventsBefore` at the end), and `RunEventsBefore` reads the page before an offset:
+`readBack` reads the log back a 256 KB chunk at a time (`scriptrun.Service.Output`) until it
+holds about 200 whole lines, or 1 MB and one (a line longer still is read whole, to its start),
+drops the line the chunk started inside, keeps the last 200 lines, and parses them with a
+parser started at that offset (`stream.from`), so a long log is read a page at a time, never
+whole. A page of an ended run carries its `Ending` (`runevent.Ending`: the record's summary,
+the agent's report or last message, whether it needs a person, its turns, time, models, commit,
+changed files, and its last todo list, `Outcome.Todos`), and its progress the record's tokens.
+`RunDiff` is the worktree's changes since the head the run started on, committed or not, with
+the files git doesn't track (`gitread.WorktreeDiff`: `git diff --no-ext-diff --no-textconv
+--no-color --no-renames --ignore-submodules=dirty <head> --`, run with the clone's own filter
+drivers off as a status is, cut to 1 MB at a line's end, beside the porcelain v2 status's
+untracked files), from the worktree the run's intent names (`Intent.Dir`). A run that isn't an
+agent's in the background (one in the terminal, a script's, a GitHub action's) has no timeline
+here: its events are an empty page (`followedElsewhere`), and the window says where it is
+followed. `RunBySession` is the ledger's run a session is (`autopilot_runs.session_id`), which a
+session's Watch opens.
+
+**Take over** (`launcher.Service.TakeOver`, `internal/core/adapters_takeover.go`). A run's
+session is resumable as any is (`ResumableSession.RunID`, and `Fence`, the run's preset and
+folder from its record's intent, `agentrun.Runner.TakenOf`). `TakeOver` asks core's
+`TakeOvers` first: it tells Autopilot's engine (`Engine.TakeOver`, a command applied on the loop
+before the run's end can be: a run still working is marked, so its end closes its match done
+as `taken_over`, counting as no try and telling no Agent finished; an ended one closes its match
+so when the match still waits on its interruption or the user stopped it), stops the run while
+it works (`Runner.Stop`), and waits for its end to be told (`Runner.Wait`, at most 30 seconds),
+so the session is recorded ended and its conversation whole. Then it resumes the session as
+`Resume` does, with `ResumeRequest.Access`: `fence` (the default for a run's session) resumes
+under the run's own fence, taken over (`launcher.Fence.TakenOver`, `agent.Access.TakenOver`):
+the same tools, rules, hook, and sandbox, in `manual` rather than `dontAsk` for a fixed preset,
+so anything the fence doesn't allow asks the user (`fenced: <preset>; asks you about the rest`);
+`profile` resumes with the profile's own access, under the trust rule. A fence whose settings
+are gone from the run's folder is `ErrNoFence`. Background runs pass
+`--system-prompt-snapshot off`, so a resume replays no unattended note (S1), and the resumed
+session is a terminal session like any (`ResumedFrom` the run's), which the launcher's running
+hold and the engine's busy check follow from there.
 
 **The end.** A run is judged by the agent's `result` line, never its exit status (a Control-C
 ends with `error_during_execution` and exit 0; `judge`, `outcome.go`): its time limit, the
@@ -1901,16 +1950,24 @@ twice. Each end done or failed is told once as **Agent finished** (`NoticeFinish
 `EngineConfig.Finished`), with its cost.
 
 **Stopping and the quit.** `Stop` and `StopAll` reach the run engine at once
-(`scriptrun.Engine.StopKind`, the stop ladder). The quit stops every run in the app; the seam
-for *Let them finish* (its question and setting are the next phase's) is
-`scriptrun.Engine.LetFinish`: a run the quit lets go keeps its record as going, and the next
-start follows it again as an orphan, stopping it at once when its time limit is past. With
-**Keep the Mac awake while agents work** on, `caffeinate -i -w <pid>` holds the Mac awake for
-each run's program.
+(`scriptrun.Engine.StopKind`, the stop ladder). The quit stops every run in the app unless the
+user lets the agents finish: the quit dialog offers **Let them finish** while every agent's run
+going may outlive the quit (`scriptrun.Run.OutlivesQuit`, a spec's `OutlivesQuit`: an agent
+that keeps to a dollar budget of its own), and `scriptrun.Service.LetThemFinish` sets
+`Engine.LetFinish` and quits; `QuitAnyway` and `KeepRunning` clear it. `StopAll` then lets such
+runs go: each keeps its record as going, and the next start follows it again as an orphan,
+stopping it at once when its time limit is past. A confirmed restart to update lets them go
+too (`update.Runs.LetFinish`, set just before the quit is let through and cleared again when
+the restart fails after it), and its question says which carry on (`update.Run.Outlives`).
+With **Keep the Mac awake while agents work** on, `caffeinate -i -w <pid>` holds the Mac awake
+for each run's program.
 
 **Seams.** The fallback to another profile when one is out of usage is the next phase's:
-the outcome keeps the limit's type and reset (`Outcome.Limit`). The run view, Watch, and Take
-over read the events and the session this records.
+the outcome keeps the limit's type and reset (`Outcome.Limit`). Take over for another agent
+needs its spec's `Resume` capability, its headless resume in `agent.Args` (Codex's `codex
+resume <id>`, with the thread ID its stream names), and a fence it keeps in an interactive
+session (`fenceKeeper`, `Fence.TakenOver`); the run view needs its stream parser
+(`parserFor`), which every page and the memory share.
 
 ### Local actions: by a routine, Undo, and hands off
 
@@ -2356,6 +2413,20 @@ and keeps its own state only when it changed beyond the last cycle (`keepCycle`)
 The window side lives in `frontend/src/components/autopilot/` (the tab itself,
 `AutopilotView`, loaded on its first visit and kept mounted in an `Activity`) and
 `frontend/src/lib/`; it reaches Go only through the platform module.
+
+- **The run view** (`RunView`, keyed by its run, beside Activity as the Runs page's run panel
+  is beside its list) opens on a target with a `runId` (Agent finished, the menu bar, the
+  sheets' Autopilot line under `WorkLine`) and on Working's **Watch**; a session's Watch and the
+  launch button's (`AutopilotRowsContext`'s `onWatch`, App's `watchSessionWith`) find the run by
+  its session first (`RunBySession`). `useRunTimeline` holds its timeline: the first page, then
+  what is new on each `autopilot:run` and `autopilot:updated`, one read at a time, until the
+  run ends, and **Show earlier events** a page back from the first event shown
+  (`RunEventsBefore`), each event once by its key (`lib/runView.ts`'s `joinEvents`), whose pure
+  half also words the rows (`timelineRows`), the header, the plan's checklist, the diff, and the
+  sheets' line (`sheetLine`). `TakeOverDialog` is the one take over the run view, the session
+  panel, and the launch button's hold dialog share (`takeOverRun`), its box the profile's
+  permissions; a hold it meets asks as `LaunchHoldDialog` does. `LaunchHoldDialog` with a
+  background run offers **Watch it** and **Take over**, never Start another.
 
 - **Autopilot (beta).** App reads the switch from the settings (`autopilotOn`, off until they
   load). Off, the window shows none of Autopilot: `AppHeader` gets `autopilot={null}` and

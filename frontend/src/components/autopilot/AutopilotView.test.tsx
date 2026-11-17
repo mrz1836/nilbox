@@ -14,6 +14,7 @@ import { at } from '../../test/clock'
 import {
   activityGroup,
   activityPage,
+  agentRun,
   agents,
   autopilotEngine,
   autopilotHold,
@@ -698,6 +699,77 @@ describe('Activity', () => {
     expect(
       await screen.findByText('Activity has no line for that one. Already matched when you turned it on.'),
     ).toBeInTheDocument()
+  })
+
+  it('opens an agent’s run beside Activity when a request names it, as Agent finished does', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab({
+      request: {
+        seq: 1,
+        target: { routineId: 3, matchId: 12, runId: 81, createdAt: '2026-06-15T11:30:00Z', activity: false },
+      },
+    })
+
+    const view = await screen.findByRole('region', { name: 'Fix failing checks' })
+    expect(platform.autopilotRunView).toHaveBeenCalledWith(81)
+    expect(screen.getByRole('heading', { name: 'Activity' })).toBeInTheDocument()
+
+    await userEvent.click(within(view).getByRole('button', { name: 'Close the run' }))
+    expect(screen.queryByRole('region', { name: 'Fix failing checks' })).not.toBeInTheDocument()
+  })
+
+  it('opens a finished agent’s run from its line in Activity', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(
+      activityPage({
+        days: [
+          {
+            date: '2026-06-15',
+            matches: [
+              autopilotMatch({
+                effects: [],
+                runs: [agentRun({ status: 'ended', outcome: 'done', finishedAt: '2026-06-15T11:40:00Z' })],
+              }),
+            ],
+            groups: [],
+          },
+        ],
+      }),
+    )
+    renderTab()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Show the run' }))
+
+    expect(await screen.findByRole('region', { name: 'Fix failing checks' })).toBeInTheDocument()
+    expect(platform.autopilotRunView).toHaveBeenCalledWith(81)
+  })
+
+  it('opens a working agent’s run from Working’s Watch', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotWorking.mockResolvedValue({
+      working: [
+        {
+          runId: 81,
+          matchId: 12,
+          routineId: 3,
+          routine: 'Fix failing checks',
+          item: itemRef(),
+          agent: 'claude',
+          where: 'background',
+          startedAt: '2026-06-15T11:30:00Z',
+          createdAt: '2026-06-15T11:30:00Z',
+          status: 'running',
+          progress: { step: '', todos: [], tokensIn: 0, tokensOut: 0, cacheRead: 0, events: 0, unknown: 0 },
+        },
+      ],
+    })
+    renderTab()
+
+    const working = await screen.findByRole('region', { name: 'Working' })
+    await userEvent.click(within(working).getByRole('button', { name: 'Watch' }))
+
+    expect(await screen.findByRole('region', { name: 'Fix failing checks' })).toBeInTheDocument()
+    expect(within(working).getByRole('button', { name: 'Watch' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('shows every line again once the filter is back to every routine', async () => {

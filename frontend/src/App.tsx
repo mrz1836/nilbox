@@ -80,6 +80,7 @@ import { useQuery } from './lib/useQuery'
 import { useTheme } from './lib/useTheme'
 import { useTriage } from './lib/useTriage'
 import { releasePageOf, unsentSheets } from './lib/update'
+import { watchSessionWith } from './lib/watchSession'
 import { useRestartToUpdate, useUpdate, useUpdateControl } from './lib/useUpdate'
 import { filterWorktrees, worktreeSpec, worktreeSuggestions } from './lib/worktreeFilter'
 import type { Summary } from './lib/worktreeSummary'
@@ -1073,9 +1074,22 @@ export function App() {
     onSettingsSaved: setSettings,
     onItemOpened: notifications.markItemRead,
   }
+  // watchSession opens the run view of the agent's background run a session is, as its
+  // panel's and its launch button's Watch do; a session that is no run of Autopilot's any
+  // more says so.
+  const watchSession = (sessionId: string) => {
+    watchSessionWith(openAutopilot, sayOfRun)(sessionId)
+  }
+
   // rows are what every row says of Autopilot: the routines' names, each inbox item's
-  // chip, and the way to Activity.
-  const rows = { names: autopilot.names, chips, onShow: openAutopilot }
+  // chip, the way to Activity, and the way to a background run's view.
+  const rows = {
+    names: autopilot.names,
+    chips,
+    onShow: openAutopilot,
+    onWatch: watchSession,
+    terminal: config.settings?.terminal ?? null,
+  }
 
   // launchFor is the launch control for a worktree's item, when the inbox lists it: it
   // launches in the item's worktree, which resumes it.

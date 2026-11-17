@@ -514,6 +514,37 @@ export interface Resolution {
 }
 
 /**
+ * ResumeAccess is what a resumed session may do without asking.
+ */
+export type ResumeAccess = "" | "fence" | "profile";
+
+/**
+ * The values of ResumeAccess, by the names of their Go constants.
+ */
+export const ResumeAccess = {
+    /**
+     * The accesses a session resumes with.
+     *
+     * ResumeAsRan resumes a background run's session under its run's fence, and any other
+     * with the profile's permissions, as the item's launch settings resolve them now.
+     */
+    ResumeAsRan: "",
+
+    /**
+     * ResumeFence resumes a background run's session under its run's fence, asking the
+     * user about whatever the fence doesn't allow, since someone answers now: taking a run
+     * over never widens what its conversation may do.
+     */
+    ResumeFence: "fence",
+
+    /**
+     * ResumeProfile resumes it with the profile's permissions, as a click's launch starts,
+     * under the trust rule as always: the user's choice for one session.
+     */
+    ResumeProfile: "profile",
+} as const;
+
+/**
  * ResumeRequest asks to resume an ended session. Every field is a plain value.
  */
 export interface ResumeRequest {
@@ -521,6 +552,11 @@ export interface ResumeRequest {
      * SessionID is the app's ID of the session to resume.
      */
     "sessionId": string;
+
+    /**
+     * Access is what the resumed session may do: as it ran, by default.
+     */
+    "access": ResumeAccess;
 
     /**
      * Alongside and Confirmed carry the keys of the holds the user confirmed, as a
@@ -634,6 +670,30 @@ export const Source = {
      */
     SourceNone: "",
 } as const;
+
+/**
+ * TakeOverRequest asks to take a background run over: stop it, if it still works, and
+ * resume its conversation in the terminal chosen in settings. Every field is a plain value.
+ */
+export interface TakeOverRequest {
+    /**
+     * SessionID is the app's ID of the run's session.
+     */
+    "sessionId": string;
+
+    /**
+     * Profile widens the resumed session to the profile's permissions, for this one
+     * session, as the user ticked; otherwise it keeps the run's fence.
+     */
+    "profile": boolean;
+
+    /**
+     * Alongside and Confirmed carry the keys of the holds the user confirmed, as a
+     * ResumeRequest's do.
+     */
+    "alongside": string;
+    "confirmed": string;
+}
 
 /**
  * Toggle is a resolved on-or-off launch setting, like Setting.

@@ -107,14 +107,18 @@ type Installer interface {
 	Restart(ctx context.Context) error
 }
 
-// Runs says which runs are going in the app, which a restart would stop: core adapts the
-// runs' engine.
+// Runs says which runs are going in the app, which a restart would stop, and lets the
+// ones that can outlive it go: core adapts the runs' engine.
 type Runs interface {
 	// Active reports whether a run is going in the app. It never waits.
 	Active() bool
 
 	// Going lists the runs going in the app.
 	Going(ctx context.Context) ([]Run, error)
+
+	// LetFinish says whether the runs that can outlive the app's quit (Run.Outlives) are
+	// let go as it quits rather than stopped, so the new version follows them.
+	LetFinish(on bool)
 }
 
 // Run is a run going in the app, as the window names it when it asks before a restart.
@@ -131,6 +135,10 @@ type Run struct {
 	// StopRefused says why the run can't be stopped right now, or "": quitting then waits a
 	// few seconds for it.
 	StopRefused string `json:"stopRefused"`
+
+	// Outlives reports a run that carries on through the restart, as an agent's that keeps
+	// to a budget of its own does: the restart lets it go, and the new version follows it.
+	Outlives bool `json:"outlives"`
 }
 
 // DataBackup backs up the database before an install: core adapts store.Backup. It

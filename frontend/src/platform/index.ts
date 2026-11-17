@@ -404,6 +404,12 @@ export type AutopilotWorking = NonNullLists<autopilot.Working>
 export type AutopilotRunProgress = NonNullLists<runevent.Progress>
 export type AutopilotRunEvents = NonNullLists<runevent.Page>
 export type AutopilotRunEvent = NonNullLists<runevent.Event>
+export type AutopilotRunEnding = NonNullLists<runevent.Ending>
+export type AutopilotRunDiff = NonNullLists<runevent.Diff>
+// AutopilotRunView is one agent's run as the run view shows it: the run and its match, with
+// the routine's steps, whether it still goes, and whether Take over can resume it.
+export type AutopilotRunView = Omit<NonNullLists<autopilot.RunView>, 'match'> & { match: AutopilotMatch }
+export type AutopilotRun = NonNullLists<autopilot.Run>
 export type AutopilotRunsToday = NonNullLists<autopilot.RunsToday>
 export type AutopilotStepKind = autopilotcatalog.StepKind
 export type AutopilotState = autopilot.State
@@ -770,7 +776,12 @@ export const {
   Clone: cloneRepo,
   LinkClone: linkClone,
   Resume: resumeSession,
+  TakeOver: takeOverRun,
 } = narrow(launcher.Service)
+
+// TakeOverRequest asks to take an agent's background run over: stop it while it works, and
+// resume its conversation in the terminal, under its fence unless profile widens it.
+export type TakeOverRequest = launcher.TakeOverRequest
 
 export const {
   List: listSessions,
@@ -935,7 +946,9 @@ export const {
 // of status, never output: the window reads a live run's output by polling Output from
 // where it left off. Stop works only on a run going in the app; Run again never on a
 // release. QuitAnyway answers the "app:quitRequested" question: stop the runs and quit;
-// KeepRunning its other answer, which also forgets the copy a move asked to open at the quit.
+// LetThemFinish quits and lets the agents' runs that can outlive the quit go on
+// (outlivesQuit), stopping every other run; KeepRunning its last answer, which also forgets
+// the copy a move asked to open at the quit.
 export const {
   Runs: listScriptRuns,
   Run: getScriptRun,
@@ -947,6 +960,7 @@ export const {
   MarkSeen: markScriptRunSeen,
   ClearHistory: clearScriptRunHistory,
   QuitAnyway: quitAnyway,
+  LetThemFinish: letThemFinish,
   KeepRunning: keepRunning,
 } = narrow(scriptrun.Service)
 
@@ -1171,11 +1185,21 @@ export const {
   Suggest: suggestForRoutines,
   Describe: describeRoutine,
   Test: testRoutine,
-  RunEvents: autopilotRunEvents,
   RunsToday: autopilotRunsToday,
   StopRun: stopAutopilotRun,
   StopAll: stopAllAutopilotRuns,
+  RunBySession: autopilotRunBySession,
+  RunDiff: autopilotRunDiff,
+  RunEvents: autopilotRunEvents,
+  RunEventsBefore: autopilotRunEventsBefore,
 } = autopilotService
+
+// The run view's reads: RunView is a run and its match; RunEvents its timeline after an
+// event, from memory while it works, else its log's last page, with how it came out; and
+// RunEventsBefore the page of its log before an offset (a page's before), as a long
+// timeline pages back. RunBySession is the run a session is, 0 for none, which its Watch
+// opens; RunDiff its worktree's changes since it started, read-only.
+export const autopilotRunView = autopilotService.RunView as (id: number) => CancellablePromise<AutopilotRunView>
 
 // The agents' runs: Working lists those going, each with how far it has got (the starts
 // queued are Needs you's); an "autopilot:run" event follows a run's new events, a few times
@@ -1339,7 +1363,8 @@ export const {
 
 // RunGoing is a run going in the app that restarting to update would stop, as Go's
 // update.Run names it: its id, kind, and title, its repository ("owner/name", or '') and
-// folder (with ~ for home), and why it can't be stopped right now, or ''.
+// folder (with ~ for home), why it can't be stopped right now, or '', and whether it carries
+// on through the restart, as an agent's that keeps to its own budget does.
 export interface RunGoing {
   id: number
   kind: string
@@ -1347,6 +1372,7 @@ export interface RunGoing {
   repo: string
   dir: string
   stopRefused: string
+  outlives: boolean
 }
 
 // UpdateRefusal names a refusal of a download or a restart that the window answers on its
@@ -1398,6 +1424,7 @@ const runFields = {
   repo: 'string',
   dir: 'string',
   stopRefused: 'string',
+  outlives: 'boolean',
 }
 
 // runGoingOf reads one run of a refusal's detail, or null when it isn't one.

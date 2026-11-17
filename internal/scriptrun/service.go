@@ -102,6 +102,11 @@ type Run struct {
 	// out again, never a release.
 	CanStop     bool `json:"canStop"`
 	CanRunAgain bool `json:"canRunAgain"`
+
+	// OutlivesQuit reports a run going in the app that may go on once the app has quit, as
+	// an agent that keeps to a budget of its own does (Spec.OutlivesQuit): the quit's Let
+	// them finish lets it go, and the next start follows it again.
+	OutlivesQuit bool `json:"outlivesQuit"`
 }
 
 // Runs returns the runs filter picks, newest first.
@@ -253,6 +258,20 @@ func (s *Service) ClearHistory(ctx context.Context) error {
 // QuitAnyway is the user's answer to quitting while runs go in the app: stop them and
 // quit. The desktop shell then lets the quit through, and shutdown stops the runs.
 func (s *Service) QuitAnyway(_ context.Context) {
+	s.e.LetFinish(false)
+
+	if s.e.quit != nil {
+		s.e.quit()
+	}
+}
+
+// LetThemFinish is the user's third answer to quitting while runs go in the app, offered
+// while every agent's run going can outlive the quit (Run.OutlivesQuit): quit, and let
+// those runs finish on their own. Shutdown then lets them go, still recorded as going, and
+// the next start follows each again; it stops every other run, as Stop and quit does.
+func (s *Service) LetThemFinish(_ context.Context) {
+	s.e.LetFinish(true)
+
 	if s.e.quit != nil {
 		s.e.quit()
 	}
@@ -262,6 +281,8 @@ func (s *Service) QuitAnyway(_ context.Context) {
 // running. The runs go on, and the desktop shell forgets what the quit was to do after,
 // such as opening the copy a move to Applications made.
 func (s *Service) KeepRunning(_ context.Context) {
+	s.e.LetFinish(false)
+
 	if s.e.kept != nil {
 		s.e.kept()
 	}
@@ -299,6 +320,7 @@ func (s *Service) view(rec Record) Run {
 	}
 
 	run.CanStop = run.Progress.StopRefused == ""
+	run.OutlivesQuit = l.outlives
 
 	return run
 }

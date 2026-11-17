@@ -41,14 +41,18 @@ function renderList() {
   const onOpen = vi.fn()
   const onToast = vi.fn()
 
-  render(<WorkingList onOpen={onOpen} onToast={onToast} />, { wrapper: at() })
+  const onWatch = vi.fn()
 
-  return { onOpen, onToast }
+  render(<WorkingList onOpen={onOpen} onWatch={onWatch} watching={0} onToast={onToast} />, { wrapper: at() })
+
+  return { onOpen, onToast, onWatch }
 }
 
 describe('WorkingList', () => {
   it('shows nothing while no agent works', async () => {
-    const { container } = render(<WorkingList onOpen={vi.fn()} onToast={vi.fn()} />, { wrapper: at() })
+    const { container } = render(<WorkingList onOpen={vi.fn()} onWatch={vi.fn()} watching={0} onToast={vi.fn()} />, {
+      wrapper: at(),
+    })
 
     await waitFor(() => {
       expect(platform.autopilotWorking).toHaveBeenCalled()
@@ -167,6 +171,9 @@ describe('chipOf', () => {
       profile: 'default',
       command: '',
       logCleared: false,
+      model: '',
+      effort: '',
+      worktree: 'pr-1',
       queuedAt: '2026-06-15T11:56:00Z',
       startedAt: '2026-06-15T11:56:00Z',
       finishedAt: '2026-06-15T12:00:00Z',

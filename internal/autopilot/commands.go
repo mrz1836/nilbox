@@ -478,6 +478,13 @@ func (s *Service) StopRun(ctx context.Context, id int64) error {
 	return nil
 }
 
+// TakeOver records that the user takes the run id over in their terminal, as Take over
+// does before it stops the run (takeOver): applied on the loop and waited for, so it holds
+// before the run's end, which the Stop brings, is applied.
+func (e *Engine) TakeOver(ctx context.Context, id int64) error {
+	return e.do(ctx, func(ctx context.Context) error { return e.takeOver(ctx, id) })
+}
+
 // StopAll stops every agent run and every script run at once, through their runners, and
 // leaves them open for later starts.
 func (s *Service) StopAll(ctx context.Context) error {

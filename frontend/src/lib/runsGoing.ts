@@ -1,7 +1,17 @@
 // What closing the app does to the runs going in it, as the dialogs that ask first say
-// it: quitting (QuitDialog) and restarting to update (UpdateRestartDialog) stop them alike.
+// it: quitting (QuitDialog) and restarting to update (UpdateRestartDialog) stop them alike,
+// but for the agents' runs that keep to a budget of their own, which the user can let finish
+// on a quit, and which carry on through a restart.
 
 import { brand } from '../generated/brand'
+
+// carryOnText says what letting the agents finish does: they carry on, and the app picks
+// them up when it opens again. n is how many there are.
+export function carryOnText(n: number): string {
+  return n === 1
+    ? `It carries on, and ${brand.name} picks it up when it opens again.`
+    : `They carry on, and ${brand.name} picks them up when it opens again.`
+}
 
 // tagRisk is what stopping a release partway can leave behind, said of the one release
 // named before, and releaseTagRisk the same among several runs.

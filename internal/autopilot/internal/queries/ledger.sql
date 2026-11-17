@@ -172,6 +172,12 @@ RETURNING id;
 -- GetRun returns one run, or sql.ErrNoRows.
 SELECT * FROM autopilot_runs WHERE id = sqlc.arg(id);
 
+-- name: GetRunBySession :one
+-- GetRunBySession returns the newest run recorded as the session session_id, or
+-- sql.ErrNoRows: the run view of a session's Watch.
+SELECT * FROM autopilot_runs WHERE session_id = sqlc.arg(session_id) AND session_id != ''
+ORDER BY id DESC LIMIT 1;
+
 -- name: ListActiveRuns :many
 -- ListActiveRuns returns the runs starting, running, or stopping, oldest first.
 SELECT * FROM autopilot_runs WHERE status IN ('starting', 'running', 'stopping') ORDER BY id;

@@ -463,16 +463,34 @@ export interface QuestionWords {
   notes: readonly string[]
 }
 
+// carryOnNote says which agents' runs carry on through the restart: those that keep to a
+// budget of their own, which the new version picks up when it opens.
+function carryOnNote(carrying: readonly RunGoing[]): string {
+  const [only] = carrying
+
+  if (only === undefined) {
+    return ''
+  }
+
+  const names = carrying.length === 1 ? runText(only) : carrying.map((run) => run.title).join(', ')
+
+  return `${names} ${carrying.length === 1 ? 'carries' : 'carry'} on through the restart, and ${brand.name} picks ${carrying.length === 1 ? 'it' : 'them'} up when it opens again.`
+}
+
 // questionWords says what restarting to update would lose, in the quit dialog's words for
 // the runs: "Restarting stops Release v1.2.0 in acme-org/sdk and loses the text you
-// haven’t sent in 2 sheets."
+// haven’t sent in 2 sheets." An agent's run that keeps to a budget of its own isn't
+// stopped: a note says it carries on through the restart.
 export function questionWords(question: RestartQuestion): QuestionWords {
   const { runs, sheets } = question
-  const stops = namesRuns(question)
-  const going = runs ?? []
-  const parts = [stops && `stops ${runsText(runs)}`, sheets > 0 && `loses ${sheetsText(sheets)}`].filter(
-    (part) => part !== false,
-  )
+  const all = runs ?? []
+  const carrying = all.filter((run) => run.outlives)
+  const going = all.filter((run) => !run.outlives)
+  const stops = runs === null || going.length > 0
+  const parts = [
+    stops && `stops ${runsText(runs === null ? null : going)}`,
+    sheets > 0 && `loses ${sheetsText(sheets)}`,
+  ].filter((part) => part !== false)
   const text = parts.length === 0 ? '' : `Restarting ${parts.join(' and ')}.`
   const one = going.length === 1
   const releases = going.filter((run) => run.kind === 'release')
@@ -491,6 +509,12 @@ export function questionWords(question: RestartQuestion): QuestionWords {
     notes.push(one ? `${sentence(heldRun.stopRefused)} ${heldRunText(true, 'Restarting')}` : heldRunText(false))
   }
 
+  const carryOn = carryOnNote(carrying)
+
+  if (carryOn !== '') {
+    notes.push(carryOn)
+  }
+
   return { text, list: going.length > 1 ? going : [], notes }
 }
 
@@ -506,6 +530,7 @@ export function runsGoingIn(listed: readonly ScriptRun[]): RunGoing[] {
       repo: run.repo,
       dir: run.dir,
       stopRefused: run.progress.stopRefused,
+      outlives: run.outlivesQuit,
     }))
 }
 

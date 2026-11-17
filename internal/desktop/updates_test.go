@@ -402,6 +402,8 @@ func (r runs) Active() bool { return len(r.going) > 0 }
 
 func (r runs) Going(context.Context) ([]update.Run, error) { return r.going, nil }
 
+func (r runs) LetFinish(bool) {}
+
 // installer records what the update's installer was asked to do.
 type installer struct {
 	log *journal

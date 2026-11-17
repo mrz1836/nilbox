@@ -8,6 +8,7 @@ export {
 
 export {
     HoldReason,
+    ResumeAccess,
     Source,
     WorktreeAction
 } from "./models.js";
@@ -25,6 +26,7 @@ export type {
     ResumeRequest,
     RunningSession,
     Setting,
+    TakeOverRequest,
     Toggle,
     WorktreePlan
 } from "./models.js";

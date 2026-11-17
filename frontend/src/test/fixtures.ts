@@ -37,6 +37,11 @@ import type {
   AutopilotLeftAlone,
   AutopilotMatch,
   AutopilotRoutine,
+  AutopilotRun,
+  AutopilotRunEnding,
+  AutopilotRunEvent,
+  AutopilotRunEvents,
+  AutopilotRunView,
   AutopilotTarget,
   BudgetGauge,
   BudgetReading,
@@ -710,9 +715,118 @@ export function githubRun(overrides: Partial<AutopilotMatch['runs'][number]> = {
     profile: '',
     command: '',
     logCleared: false,
+    model: '',
+    effort: '',
+    worktree: '',
     queuedAt: '2026-06-15T11:30:00Z',
     startedAt: '2026-06-15T11:30:00Z',
     finishedAt: '2026-06-15T11:30:00Z',
+    ...overrides,
+  }
+}
+
+// agentRun is the background run 81 routine 3's match 12 started on item 1 at 11:30, an
+// Edit and test agent working in pr-7 on Claude's default profile.
+export function agentRun(overrides: Partial<AutopilotRun> = {}): AutopilotRun {
+  return githubRun({
+    id: 81,
+    runner: 'background',
+    agent: 'claude',
+    action: '',
+    status: 'running',
+    outcome: '',
+    headBefore: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    budget: 3,
+    unit: 'usd',
+    summary: '',
+    scriptRunId: 44,
+    sessionId: '0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f71',
+    preset: 'editTest',
+    profile: 'default',
+    model: 'opus',
+    effort: 'high',
+    worktree: 'pr-7',
+    finishedAt: null,
+    ...overrides,
+  })
+}
+
+// agentMatch is routine 3's match 12 on item 1, its agent step running as run 81, then a
+// wait for the checks.
+export function agentMatch(overrides: Partial<AutopilotMatch> = {}): AutopilotMatch {
+  return autopilotMatch({
+    routine: 'Fix failing checks',
+    state: 'running',
+    reason: '',
+    words: 'Running.',
+    closedAt: null,
+    step: 0,
+    effects: [],
+    steps: [
+      { ...githubStep({ kind: 'agent', label: 'Agent', status: 'running', runId: 81, actions: [] }) },
+      { ...githubStep({ kind: 'waitForChecks', label: 'Wait for the checks', actions: [] }) },
+    ],
+    runs: [agentRun()],
+    ...overrides,
+  })
+}
+
+// agentRunView is run 81 as the run view shows it: working, and one Take over can resume.
+export function agentRunView(overrides: Partial<AutopilotRunView> = {}): AutopilotRunView {
+  return { run: agentRun(), match: agentMatch(), live: true, canTakeOver: true, ...overrides }
+}
+
+// runEvent is one event of a run's timeline: what the agent said, at 06:15:02.
+export function runEvent(overrides: Partial<AutopilotRunEvent> = {}): AutopilotRunEvent {
+  return {
+    seq: 1,
+    offset: 0,
+    part: 0,
+    at: '2026-06-15T06:15:02Z',
+    kind: 'text',
+    tool: '',
+    category: 'other',
+    text: 'Reading the failing checks.',
+    cut: false,
+    error: false,
+    ...overrides,
+  }
+}
+
+// runEventsPage is a page of a run's timeline: none, a run still going, with nothing
+// before it.
+export function runEventsPage(overrides: Partial<AutopilotRunEvents> = {}): AutopilotRunEvents {
+  return {
+    events: [],
+    first: 0,
+    earlier: false,
+    before: 0,
+    done: false,
+    progress: { step: '', todos: [], tokensIn: 0, tokensOut: 0, cacheRead: 0, events: 0, unknown: 0 },
+    ending: null,
+    ...overrides,
+  }
+}
+
+// runEnding is how a run came out: finished, with its report.
+export function runEnding(overrides: Partial<AutopilotRunEnding> = {}): AutopilotRunEnding {
+  return {
+    summary: 'Finished: fixed.',
+    message: 'Moved esbuild to 0.25.1; the checks pass here.',
+    reported: true,
+    outcome: 'fixed',
+    report: 'Moved esbuild to 0.25.1, which fixes GHSA-xxxx.',
+    pushed: true,
+    pushedCommit: '4f2a9c1000000000000000000000000000000000',
+    needsPerson: false,
+    reason: '',
+    noReport: '',
+    turns: 12,
+    durationMs: 372000,
+    models: ['claude-opus-5-5'],
+    commit: '4f2a9c1000000000000000000000000000000000',
+    changed: ['package.json', 'pnpm-lock.yaml'],
+    todos: [],
     ...overrides,
   }
 }
@@ -1179,6 +1293,7 @@ export function scriptRun(overrides: Partial<ScriptRun> = {}): ScriptRun {
     progress: { step: '', working: '', stopRefused: '', stopConfirm: '' },
     canStop: false,
     canRunAgain: true,
+    outlivesQuit: false,
     ...overrides,
   }
 }
@@ -3734,6 +3849,7 @@ export function runGoing(overrides: Partial<RunGoing> = {}): RunGoing {
     repo: 'acme-org/sdk',
     dir: '~/projects/sdk',
     stopRefused: '',
+    outlives: false,
     ...overrides,
   }
 }

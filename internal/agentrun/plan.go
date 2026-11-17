@@ -173,12 +173,15 @@ type Intent struct {
 	// where its fence's policy is read from as it ends.
 	ItemID int64  `json:"itemId"`
 	Folder string `json:"folder,omitempty"`
+
+	// Dir is the worktree it works in, whose changes the run view's Diff reads.
+	Dir string `json:"dir,omitempty"`
 }
 
 // intentOf returns the plan's intent.
 func intentOf(p Plan) Intent {
 	return Intent{
 		RunID: p.RunID, MatchID: p.MatchID, RoutineID: p.RoutineID, Agent: p.Agent, SessionID: p.SessionID,
-		HeadBefore: p.HeadBefore, Fence: p.Fence, ItemID: p.Session.ItemID, Folder: p.Folder,
+		HeadBefore: p.HeadBefore, Fence: p.Fence, ItemID: p.Session.ItemID, Folder: p.Folder, Dir: p.Dir,
 	}
 }

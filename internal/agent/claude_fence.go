@@ -37,8 +37,11 @@ const (
 	claudeToolsFlag       = "--tools"
 	claudeRestricted      = "--restricted"
 
-	// claudeDontAsk is the --permission-mode value that denies whatever no rule allows.
+	// claudeDontAsk is the --permission-mode value that denies whatever no rule allows, and
+	// claudeAsks the one that asks the user about it, which a run taken over in the
+	// terminal starts in.
 	claudeDontAsk = "dontAsk"
+	claudeAsks    = "manual"
 
 	// claudeUserSettings keeps only the user's settings; "" keeps none.
 	claudeUserSettings = "user"
@@ -99,16 +102,24 @@ func claudeFenceArgs(f *Fence) []string {
 	return append(claudePresetFlags(f), claudeStrictMCPConfig, claudeSettingsFlag, f.Settings)
 }
 
-// claudePresetFlags returns a preset's own mode, tools, and settings sources.
+// claudePresetFlags returns a preset's own mode, tools, and settings sources. A fixed
+// preset runs in dontAsk, which denies whatever no rule allows, while nobody answers; taken
+// over in the terminal (Fence.TakenOver), it runs in manual, which asks the user instead,
+// under the same tools, rules, hook, and sandbox.
 func claudePresetFlags(f *Fence) []string {
+	mode := claudeDontAsk
+	if f.TakenOver {
+		mode = claudeAsks
+	}
+
 	switch f.Preset {
 	case fence.ReadOnly:
-		return []string{claudeRestricted, claudeToolsFlag, "Read,Grep,Glob", claudePermissionMode, claudeDontAsk}
+		return []string{claudeRestricted, claudeToolsFlag, "Read,Grep,Glob", claudePermissionMode, mode}
 	case fence.GitHubTasks:
-		return []string{claudeSettingSources, "", claudeToolsFlag, "Bash,Read", claudePermissionMode, claudeDontAsk}
+		return []string{claudeSettingSources, "", claudeToolsFlag, "Bash,Read", claudePermissionMode, mode}
 	case fence.EditTest, fence.EditTestPush:
 		return []string{
-			claudeSettingSources, "", claudeToolsFlag, "Bash,Read,Edit,Write,Grep,Glob", claudePermissionMode, claudeDontAsk,
+			claudeSettingSources, "", claudeToolsFlag, "Bash,Read,Edit,Write,Grep,Glob", claudePermissionMode, mode,
 		}
 	case fence.Profile:
 		return append([]string{claudeSettingSources, claudeUserSettings}, claudeAccess(f.Base)...)

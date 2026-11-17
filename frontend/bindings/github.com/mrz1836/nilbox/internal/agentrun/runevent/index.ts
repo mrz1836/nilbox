@@ -7,6 +7,8 @@ export {
 } from "./models.js";
 
 export type {
+    Diff,
+    Ending,
     Event,
     Page,
     Progress,

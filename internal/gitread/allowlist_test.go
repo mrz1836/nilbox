@@ -34,7 +34,9 @@ func readOnlyForms() map[string]string {
 	return map[string]string{
 		revParse: "", "status": "--porcelain", "symbolic-ref": "--short", "worktree": "list", configCmd: getFlag,
 		"rev-list": "--count", "merge-base": "--is-ancestor", "tag": "--list", lsRemote: remoteName,
-		"diff": "--name-only",
+		// A diff writes nothing but its output; the external diff and the textconv the
+		// clone names are what it could run, so every diff turns both off.
+		"diff": "--no-ext-diff",
 	}
 }
 
@@ -235,6 +237,7 @@ func TestAllowlist(t *testing.T) {
 		}
 
 		assertReadOnlyForm(t, c.name, verb.text, words, form)
+		assertSafeDiff(t, c, words)
 
 		assert.True(t, allowed(fill(t, c, -1, "")), "%s: its own words are refused", c.name)
 	}
@@ -337,6 +340,22 @@ func TestIsDir(t *testing.T) {
 	} {
 		assert.False(t, isDir(dir), "%q", dir)
 	}
+}
+
+// assertSafeDiff checks that a diff runs no textconv the clone names, writes no file, and,
+// when it reads the worktree's files, runs with the clone's filter drivers off.
+func assertSafeDiff(t *testing.T, c command, words []string) {
+	t.Helper()
+
+	if c.words[0].text != diffCmd {
+		return
+	}
+
+	assert.Contains(t, words, "--no-textconv", "%s: a diff runs no textconv the clone names", c.name)
+	assert.False(t, slices.ContainsFunc(words, func(w string) bool { return strings.HasPrefix(w, "--output") }),
+		"%s: a diff writes no file", c.name)
+	assert.Equal(t, !slices.Contains(words, "--name-only"), readsFiles(fill(t, c, -1, "")),
+		"%s: a diff that reads the worktree's files runs with the clone's filters off", c.name)
 }
 
 // assertReadOnlyForm checks that a command holds the word that makes its subcommand only

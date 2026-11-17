@@ -20,6 +20,7 @@ const (
 	summaryDefault    = "the agent's default permissions"
 	summaryModePrefix = "permission mode "
 	summaryFenced     = "fenced: "
+	summaryAsks       = "; asks you about the rest"
 )
 
 // ErrFenceNotKept is returned for a background run under a tools preset its agent can't
@@ -27,10 +28,13 @@ const (
 var ErrFenceNotKept = errors.New("the routine's fence can't be kept")
 
 // Fence is a background run's fence, as its request carries it: the routine's tools
-// preset, and the run's own folder, where its settings and policy go.
+// preset, and the run's own folder, where its settings and policy go. TakenOver marks the
+// run's conversation resumed in the user's terminal (TakeOver), under the same fence,
+// asking about whatever it doesn't allow rather than refusing it.
 type Fence struct {
-	Preset fence.Preset
-	RunDir string
+	Preset    fence.Preset
+	RunDir    string
+	TakenOver bool
 }
 
 // permission is the outcome of resolvePermission: the access to start with and a short
@@ -92,16 +96,33 @@ func resolvePermission(a agent.Agent, trusted, override bool, p profiles.Profile
 		return permission{}, fmt.Errorf("%w: the run has no folder for its settings", ErrFenceNotKept)
 	}
 
+	return fencedPermission(preset, click, !trusted && !override, f), nil
+}
+
+// fencedPermission is a fenced run's access under preset: its fence in the run's folder,
+// from the click's access for the profile's own preset, and, taken over in the user's
+// terminal, asking about whatever a fixed preset's rules don't allow.
+func fencedPermission(preset fence.Preset, click permission, outside bool, f *Fence) permission {
 	summary := summaryFenced + preset.Label()
 
 	switch {
-	case !trusted && !override:
+	case outside:
 		summary += summaryOutside
 	case preset == fence.Profile:
 		summary += ", " + click.summary
 	}
 
-	return permission{access: agent.FenceAccess(preset, click.access).InRun(f.RunDir), summary: summary}, nil
+	access := agent.FenceAccess(preset, click.access).InRun(f.RunDir)
+
+	if f.TakenOver {
+		access = access.TakenOver()
+
+		if preset.Fixed() {
+			summary += summaryAsks
+		}
+	}
+
+	return permission{access: access, summary: summary}
 }
 
 // clickPermission is a click's access: the outside-contributor rule, then the profile's.

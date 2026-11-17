@@ -1197,7 +1197,7 @@ export const ReadyLevel = {
 /**
  * Reason is why a match closed.
  */
-export type Reason = "ran" | "would_run" | "tries" | "outside_contributor" | "you_skipped" | "you_stopped" | "merged" | "item_closed" | "gone" | "left_watch" | "moved_on" | "no_longer_matches" | "routine_changed" | "routine_off" | "not_offered" | "failed" | "from_now" | "hands_off";
+export type Reason = "ran" | "would_run" | "tries" | "outside_contributor" | "you_skipped" | "you_stopped" | "merged" | "item_closed" | "gone" | "left_watch" | "moved_on" | "no_longer_matches" | "routine_changed" | "routine_off" | "not_offered" | "failed" | "from_now" | "hands_off" | "taken_over";
 
 /**
  * The values of Reason, by the names of their Go constants.
@@ -1229,6 +1229,13 @@ export const Reason = {
      * alone, since the user took back what it did there.
      */
     ReasonHandsOff: "hands_off",
+
+    /**
+     * ReasonTakenOver closes a match, done, whose agent's run the user took over: its
+     * conversation carries on in the user's terminal, where the session that resumed it is
+     * followed as any is.
+     */
+    ReasonTakenOver: "taken_over",
 } as const;
 
 /**
@@ -1479,6 +1486,14 @@ export interface Run {
     "profile": string;
     "command": string;
     "logCleared": boolean;
+
+    /**
+     * Model and Effort are what it ran with, "" for the agent's own; Worktree is the item's
+     * worktree it works in, as in "pr-88".
+     */
+    "model": string;
+    "effort": string;
+    "worktree": string;
     "queuedAt": string;
     "startedAt": string | null;
     "finishedAt": string | null;
@@ -1528,6 +1543,29 @@ export interface RunPreview {
      * profile that is gone.
      */
     "warnings": string[] | null;
+}
+
+/**
+ * RunView is an agent's run as the run view shows it.
+ */
+export interface RunView {
+    /**
+     * Run is the run, and Match the match it is for, with the routine's steps and where
+     * it stands.
+     */
+    "run": Run;
+    "match": Match;
+
+    /**
+     * Live reports a run still going: starting, running, or stopping.
+     */
+    "live": boolean;
+
+    /**
+     * CanTakeOver reports a run in the background whose agent resumes its conversation in
+     * the terminal, by its session: the run view's Take over.
+     */
+    "canTakeOver": boolean;
 }
 
 /**

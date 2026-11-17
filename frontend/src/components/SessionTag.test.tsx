@@ -7,6 +7,7 @@ import type { AgentSession } from '../platform'
 import { at } from '../test/clock'
 import { agentSession, agents, launchHold, launchResult, runningHold } from '../test/fixtures'
 import { platform } from '../test/platform'
+import { AutopilotRowsContext } from './autopilot/AutopilotChip'
 import { SessionTag } from './SessionTag'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -319,7 +320,12 @@ describe('SessionTag', () => {
     expect(platform.focusSession).toHaveBeenCalledWith('0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70')
 
     await user.click(within(done).getByRole('button', { name: 'Resume' }))
-    expect(platform.resumeSession).toHaveBeenCalledWith({ sessionId: 'older', alongside: '', confirmed: '' })
+    expect(platform.resumeSession).toHaveBeenCalledWith({
+      sessionId: 'older',
+      access: '',
+      alongside: '',
+      confirmed: '',
+    })
 
     await user.click(within(running).getByRole('button', { name: 'Copy session ID' }))
     expect(platform.copyText).toHaveBeenCalledWith('0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70')
@@ -395,7 +401,7 @@ describe('SessionTag', () => {
     await user.click(await screen.findByRole('button', { name: 'Start another' }))
     await user.click(await screen.findByRole('button', { name: 'Open anyway' }))
 
-    const request = { sessionId: 'older', alongside: '', confirmed: '' }
+    const request = { sessionId: 'older', access: '', alongside: '', confirmed: '' }
     expect(platform.resumeSession).toHaveBeenNthCalledWith(2, { ...request, alongside: running.key })
     expect(platform.resumeSession).toHaveBeenNthCalledWith(3, {
       ...request,
@@ -442,5 +448,107 @@ describe('SessionTag', () => {
 
     await user.click(screen.getByRole('button', { name: 'Resume' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('The session’s folder is gone.')
+  })
+})
+
+describe('SessionTag for an agent working in the background', () => {
+  // inRows renders the tag inside the rows' Autopilot, whose Watch opens a run's view and
+  // whose terminal Take over opens the conversation in.
+  function inRows(sessions: readonly AgentSession[]) {
+    const onWatch = vi.fn()
+    const Clock = at()
+
+    render(
+      <Clock>
+        <AutopilotRowsContext value={{ names: new Map(), chips: new Map(), onWatch, terminal: 'iterm2' }}>
+          <SessionTag sessions={sessions} agents={agents()} />
+        </AutopilotRowsContext>
+      </Clock>,
+    )
+
+    return onWatch
+  }
+
+  it('offers Watch, Stop, and Take over in place of Show in terminal and Resume', async () => {
+    const user = userEvent.setup()
+    platform.autopilotRunBySession.mockResolvedValue(81)
+    const onWatch = inRows([
+      agentSession({ id: 'run', state: 'working', runId: 44, canFocus: false, canResume: false }),
+    ])
+
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+
+    const [run = document.body] = entries(1)
+    expect(within(run).queryByRole('button', { name: 'Show in terminal' })).toBeNull()
+    expect(within(run).queryByRole('button', { name: 'Resume' })).toBeNull()
+
+    await user.click(within(run).getByRole('button', { name: 'Watch' }))
+    expect(onWatch).toHaveBeenCalledExactlyOnceWith('run')
+
+    await user.click(within(run).getByRole('button', { name: 'Stop' }))
+    expect(platform.autopilotRunBySession).toHaveBeenCalledWith('run')
+    expect(platform.stopAutopilotRun).toHaveBeenCalledExactlyOnceWith(81)
+
+    await user.click(within(run).getByRole('button', { name: 'Take over' }))
+
+    const dialog = within(screen.getByRole('dialog', { name: 'Take over this run?' }))
+    expect(dialog.getByText(/opens its conversation in iTerm2/)).toBeInTheDocument()
+    await user.click(dialog.getByRole('button', { name: 'Take over' }))
+
+    expect(platform.takeOverRun).toHaveBeenCalledExactlyOnceWith({
+      sessionId: 'run',
+      profile: false,
+      alongside: '',
+      confirmed: '',
+    })
+    expect(await within(run).findByRole('status')).toHaveTextContent('Its conversation carries on in iTerm2.')
+  })
+
+  it('says a run is gone from the history, and what its take over worked around', async () => {
+    const user = userEvent.setup()
+    platform.autopilotRunBySession.mockResolvedValue(0)
+    platform.takeOverRun.mockResolvedValueOnce(launchResult({ notice: 'Its worktree was already there.' }))
+    inRows([agentSession({ id: 'run', state: 'working', runId: 44, canFocus: false, canResume: false })])
+
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+
+    const [run = document.body] = entries(1)
+    await user.click(within(run).getByRole('button', { name: 'Stop' }))
+    expect(await within(run).findByRole('alert')).toHaveTextContent('That run is no longer in Autopilot’s history.')
+    expect(platform.stopAutopilotRun).not.toHaveBeenCalled()
+
+    await user.click(within(run).getByRole('button', { name: 'Take over' }))
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Take over this run?' })).getByRole('button', { name: 'Take over' }),
+    )
+    expect(await within(run).findByRole('status')).toHaveTextContent('Its worktree was already there.')
+
+    await user.click(within(run).getByRole('button', { name: 'Take over' }))
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Take over this run?' })).getByRole('button', { name: 'Cancel' }),
+    )
+    expect(screen.queryByRole('dialog', { name: 'Take over this run?' })).toBeNull()
+  })
+
+  it('takes an ended run over without stopping it, and offers no Stop', async () => {
+    const user = userEvent.setup()
+    inRows([
+      agentSession({
+        id: 'run',
+        state: 'ended',
+        endedAt: '2026-06-15T11:00:00Z',
+        runId: 44,
+        canFocus: false,
+        canResume: true,
+      }),
+    ])
+
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+
+    const [run = document.body] = entries(1)
+    expect(within(run).queryByRole('button', { name: 'Stop' })).toBeNull()
+
+    await user.click(within(run).getByRole('button', { name: 'Take over' }))
+    expect(screen.getByRole('dialog', { name: 'Take over this conversation?' })).toBeInTheDocument()
   })
 })
