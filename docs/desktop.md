@@ -3788,6 +3788,12 @@ alone.
   so an item reopened stops counting at once. **Include repositories you only watch** clears a
   notification you get only by watching its repository once its item is merged or closed
   elsewhere; what you do in Nilbox clears one either way.
+- **After a merge or a close.** GitHub tells of a merge or a close a little after it happens,
+  and of what follows it (a bot's comment, a release noted on the pull request), and each brings
+  a notification already cleared back to your inbox on GitHub. So for ten minutes after Nilbox
+  learns an item merged or closed, or left your lists, as an auto-merge does, it reads your
+  notifications again every two minutes and clears the item's notification as soon as it comes
+  back, rather than at the next check. A read GitHub answers with "nothing new" costs nothing.
 - **Nothing you haven't seen.** A notification that changed more than two minutes after the
   moment and is still unread is held back, since someone may have said something you haven't
   read. With **Count bot activity after it closes as seen**, it clears anyway when everything

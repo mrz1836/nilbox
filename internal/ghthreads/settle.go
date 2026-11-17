@@ -72,7 +72,8 @@ func NewSettler(svc *Service) *Settler {
 }
 
 // Settle records outcomes in one transaction, then nudges the Syncer to decide the threads
-// about their items soon, and returns without waiting for it. A merge or a close records its
+// about their items soon, follows up the items merged or closed, or that left the inbox's
+// lists (see FollowUpFor), and returns without waiting for it. A merge or a close records its
 // moment, and GitHub's state of the item as it answered the user's merge or close (merged
 // or closed then, read now), so the moment needs no state check; a review that decides, a
 // dismissal, and taking oneself off record their moments; a restore takes the dismissal's
@@ -83,21 +84,8 @@ func (st *Settler) Settle(ctx context.Context, outcomes []Outcome) {
 	s := st.svc
 	now := s.clock.Now()
 
-	var refs, check []item.Ref
-
-	for _, o := range outcomes {
-		if o.Login == "" || !o.Ref.Repo.Valid() || o.Ref.Number <= 0 {
-			continue
-		}
-
-		refs = append(refs, o.Ref)
-
-		if o.Kind == OutcomeSeenClosed || o.Kind == OutcomeUnlisted {
-			check = append(check, o.Ref)
-		}
-	}
-
-	if len(refs) == 0 {
+	items := sortOutcomes(outcomes)
+	if len(items.refs) == 0 {
 		return
 	}
 
@@ -106,7 +94,51 @@ func (st *Settler) Settle(ctx context.Context, outcomes []Outcome) {
 			slog.Any("error", err))
 	}
 
-	s.nudges.add(refs, check, false)
+	s.nudges.add(items.refs, items.check, false)
+	s.nudges.follow(items.finished, now)
+}
+
+// outcomeItems are the items outcomes name, each as often as it is named: every one
+// (refs), those whose state is checked first (check), and those followed up (finished).
+type outcomeItems struct {
+	refs, check, finished []item.Ref
+}
+
+// sortOutcomes sorts the items of outcomes that name one, as Settle does.
+func sortOutcomes(outcomes []Outcome) outcomeItems {
+	var out outcomeItems
+
+	for _, o := range outcomes {
+		if o.Login == "" || !o.Ref.Repo.Valid() || o.Ref.Number <= 0 {
+			continue
+		}
+
+		out.refs = append(out.refs, o.Ref)
+
+		if o.Kind == OutcomeSeenClosed || o.Kind == OutcomeUnlisted {
+			out.check = append(out.check, o.Ref)
+		}
+
+		if o.Kind.finishes() {
+			out.finished = append(out.finished, o.Ref)
+		}
+	}
+
+	return out
+}
+
+// finishes reports an outcome that may be a merge or a close, whose thread GitHub may bring
+// back once it tells of it: one the user made in the app, or one the inbox saw, or that left
+// its lists, which a merge does.
+func (k OutcomeKind) finishes() bool {
+	switch k {
+	case OutcomeMerged, OutcomeClosed, OutcomeSeenClosed, OutcomeUnlisted:
+		return true
+	case OutcomeReviewed, OutcomeDismissed, OutcomeRestored, OutcomeUnassigned, OutcomeUnrequested:
+		return false
+	default:
+		return false
+	}
 }
 
 // recordOutcomes records outcomes, as Settle does, at now, in one transaction. A restore waits for

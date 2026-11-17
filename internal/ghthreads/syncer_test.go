@@ -84,6 +84,10 @@ func (p *fakePasser) runPass(_ context.Context, req passRequest) error {
 
 func (p *fakePasser) takeNudge() (passRequest, bool) { return p.nudges.take() }
 
+func (p *fakePasser) takeFollowUp() (passRequest, bool) { return p.nudges.takeFollowUp(time.Now()) }
+
+func (p *fakePasser) untilFollowUp() (time.Duration, bool) { return p.nudges.untilFollowUp(time.Now()) }
+
 func (p *fakePasser) woken() <-chan struct{} { return p.nudges.wake }
 
 func (p *fakePasser) rulesChanged() { p.nudges.add(nil, nil, true) }
