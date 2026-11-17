@@ -600,7 +600,8 @@ changing the package, and keep the section and its summary in step.
   (`close`: offered only when `viewerCanClose` says so, always confirmed, run only from the menu,
   `menuOnly`, never with a default reply) are never the button either, and every try of a close
   reads the head first (`FetchMergeState`). Line comments are checked against the cached diff
-  (`hunks.go`) before anything is sent; text that goes with a merge or a close is posted as a
+  (`hunks.go`) before anything is sent (and `Fitter`, never bound, keeps of a routine's review
+  only the line comments the diff shows, counting the rest); text that goes with a merge or a close is posted as a
   COMMENT review (never an approval) only once GitHub would act, and never twice: anything that
   fails after it is `commented_not_merged` or `commented_not_closed` (`failedAfterComment`). It
   owns `review_diffs` and `review_diff_files`, a bounded cache pruned in the transaction that
@@ -920,7 +921,22 @@ changing the package, and keep the section and its summary in step.
   profiles resting (`Job.Resting`), and core's runner works through the step's chain, its own
   profile then each fallback, passing over a fallback that can't run in the background here
   (Codex, until its headless half lands), and waits until the soonest reset (`Result.RetryAt`)
-  with none left (`fallback.go`). A routine with any other step still runs in Dry run. Its
+  with none left (`fallback.go`). Merge it and Post the agent's review (`merge.go`,
+  `postreview.go`) are GitHub writes of their own over the same `GitHubActions` (core's
+  `adapters_followups.go`, through the review sheet's `Refresh` and `Act`, each a run,
+  paced as the GitHub step's): Merge it is pinned to the commit its Wait for the checks
+  passed on, turns auto-merge back on only when it was on at the match, else merges
+  (`merge_now`) only as the sheet's fresh offer says GitHub would, waits `review_required`
+  for the user when GitHub wants an approving review, and never merges an outside
+  contributor's pull request or one whose agent's commits changed workflow, agent, or tooling
+  files; Post the agent's review posts a read-only agent's report's `review` at the commit it
+  read, its line comments fitted to the cached diff (`review.Fitter`), as a comment, or as
+  its verdict, approving only with Allow approving on a member's or trusted bot's fully
+  checked pull request with no sensitive file that no routine pushed to (the pure
+  `reviewEvent`), else as a comment saying why. In Ask first both ask again once reached,
+  showing what the run came to (`stepRun.OK`, `PostAsComment`). A guard test fails if the
+  adapter names `merge_bypass`, a close, approving workflow runs, or the combined approve and
+  merge. Its
   `PromptFollower`, never bound, tells
   the prompt library which routines name each prompt and follows a renamed one. The user's
   own reversal of what a routine did (told through the outcomes, `Outcome.Reversed`), and an Undo, leave the routine

@@ -207,11 +207,13 @@ func Steps() []Step {
 		},
 		{
 			Kind: StepMerge, Label: "Merge it", Dispatcher: DispatchMerge, AsksFirst: true, Kinds: prOnly(),
-			Help: "Once the checks passed, turns auto-merge back on if it was on, else merges when GitHub allows.",
+			Offered: true,
+			Help:    "Once the checks passed, turns auto-merge back on if it was on, else merges when GitHub allows.",
 		},
 		{
 			Kind: StepPostReview, Label: "Post the agent's review", Dispatcher: DispatchReview, AsksFirst: true,
-			Kinds: prOnly(), Help: "Posts what a read-only agent step wrote, as a comment or as its verdict.",
+			Kinds: prOnly(), Offered: true,
+			Help: "Posts what a read-only agent step wrote, as a comment or as its verdict.",
 		},
 		{
 			Kind: StepTellMe, Label: "Tell me", Dispatcher: DispatchNotices, Local: true, Kinds: both(), Offered: true,

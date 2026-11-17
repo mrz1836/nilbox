@@ -740,6 +740,10 @@ func runEnd(end agentrun.End) autopilot.RunEnd {
 		out.Commit = strings.ToLower(rep.PushedCommit)
 	}
 
+	if rep := o.Report; rep != nil {
+		out.Review = agentReview(rep.Review)
+	}
+
 	out.Outcome = runOutcome(o.Status)
 
 	switch out.Outcome {
@@ -909,6 +913,25 @@ func agentLogsFor(prefs *prefsstore.Store) func(context.Context) time.Duration {
 
 		return time.Duration(c.LogDays) * 24 * time.Hour
 	}
+}
+
+// agentReview is the review a run's report held, in the engine's words; nil for none.
+func agentReview(rv *agentrun.Review) *autopilot.AgentReview {
+	if rv == nil {
+		return nil
+	}
+
+	out := &autopilot.AgentReview{
+		Verdict: autopilot.ReviewVerdict(rv.Verdict), Body: rv.Body, Comments: make([]autopilot.ReviewLine, 0, len(rv.Comments)),
+	}
+
+	for _, c := range rv.Comments {
+		out.Comments = append(out.Comments, autopilot.ReviewLine{
+			Path: c.Path, Line: c.Line, StartLine: c.StartLine, Side: c.Side, Body: c.Body,
+		})
+	}
+
+	return out
 }
 
 // usageLimit is the usage limit that refused a run, in the engine's words; nil for none.

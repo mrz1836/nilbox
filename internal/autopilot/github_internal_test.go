@@ -85,12 +85,27 @@ func TestATryIsAMatchHoweverManyRunsItStarts(t *testing.T) {
 // errBroken is a send that failed after GitHub may have taken it.
 var errBroken = errors.New("broken")
 
-// fakeActions are the sheets' services as the GitHub dispatcher reaches them.
+// fakeActions are the sheets' services as the GitHub dispatcher, Merge it, and Post the
+// agent's review reach them.
 type fakeActions struct {
-	sent  []GitHubSend
-	got   GitHubSent
-	err   error
-	marks int
+	sent    []GitHubSend
+	merges  []MergeSend
+	reviews []ReviewSend
+	got     GitHubSent
+	err     error
+	marks   int
+}
+
+func (f *fakeActions) Merge(_ context.Context, req MergeSend) (GitHubSent, error) {
+	f.merges = append(f.merges, req)
+
+	return f.got, f.err
+}
+
+func (f *fakeActions) PostReview(_ context.Context, req ReviewSend) (GitHubSent, error) {
+	f.reviews = append(f.reviews, req)
+
+	return f.got, f.err
 }
 
 func (f *fakeActions) Read(context.Context, ItemRef) error { return nil }

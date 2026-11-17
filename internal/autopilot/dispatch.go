@@ -101,6 +101,11 @@ type Job struct {
 	// Resting are the agents' profiles out of usage now, which an agent step's start
 	// passes over for the next of its chain (fallback.go).
 	Resting []Resting
+
+	// AutoMerge has a Merge it turn auto-merge back on rather than merge now (merge.go),
+	// and Review is the review a Post the agent's review posts (postreview.go).
+	AutoMerge bool
+	Review    *ReviewPost
 }
 
 // RunRequest is the agent step of a job, as its runner launches it, and Preview plans it.
@@ -327,6 +332,9 @@ type RunEnd struct {
 	// Limit is the usage limit that refused a run out of usage (RunOutOfUsage), nil for
 	// any other end.
 	Limit *UsageLimit
+
+	// Review is the review a read-only run's report held, nil for none.
+	Review *AgentReview
 }
 
 // RunOutcome is how a run ended.

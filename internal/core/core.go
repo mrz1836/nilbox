@@ -789,7 +789,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		ready: readiness, agents: agents, background: background, signals: signals, transfer: transfer,
 		profiles: routineAgents, scripts: repoScripts,
 		github: githubSteps{
-			review: reviewSheet, issues: issueSheet, threads: ghThreads, prompts: promptStore,
+			review: reviewSheet, issues: issueSheet, threads: ghThreads, prompts: promptStore, changes: inboxStore,
 			replies: replyFiller{store: promptStore, source: previews},
 		},
 	}, logger)

@@ -139,6 +139,16 @@ export interface ActivityPage {
 }
 
 /**
+ * AgentReview is the review a read-only agent's report held: its verdict, its text, and its
+ * line comments, which Post the agent's review posts.
+ */
+export interface AgentReview {
+    "verdict": ReviewVerdict;
+    "body": string;
+    "comments": ReviewLine[] | null;
+}
+
+/**
  * Arrives says what bringing in one of a bundle's prompts would do.
  */
 export type Arrives = "new" | "same" | "differs";
@@ -220,7 +230,7 @@ export const BlankKind = {
 /**
  * Blocker is what an open match waits on.
  */
-export type Blocker = "ask" | "hold" | "warning" | "no_clone" | "dirty_worktree" | "catch_up" | "interrupted" | "outside_contributor" | "backlog" | "script_asks" | "not_ready" | "missing_tool" | "cross_repository" | "slot" | "cap_runs" | "cap_actions" | "cap_spend" | "active_hours" | "paused" | "busy_worktree" | "github_budget" | "writes_held" | "provider_outage" | "settling" | "wait" | "out_of_usage" | "signed_out" | "starting";
+export type Blocker = "ask" | "hold" | "warning" | "no_clone" | "dirty_worktree" | "catch_up" | "interrupted" | "outside_contributor" | "backlog" | "script_asks" | "review_required" | "not_ready" | "missing_tool" | "cross_repository" | "slot" | "cap_runs" | "cap_actions" | "cap_spend" | "active_hours" | "paused" | "busy_worktree" | "github_budget" | "writes_held" | "provider_outage" | "settling" | "wait" | "out_of_usage" | "signed_out" | "starting";
 
 /**
  * The values of Blocker, by the names of their Go constants.
@@ -244,6 +254,12 @@ export const Blocker = {
      * alone, every time.
      */
     BlockScriptAsks: "script_asks",
+
+    /**
+     * BlockReviewRequired is a Merge it GitHub holds for an approving review, which only a
+     * person gives: the user approves it, then lets the merge go.
+     */
+    BlockReviewRequired: "review_required",
 
     /**
      * What a blocked match waits on this Mac for.
@@ -891,6 +907,28 @@ export interface MatchStep {
      * and for any other step.
      */
     "verdict": Verdict;
+
+    /**
+     * Review is the review a read-only agent step wrote, which a Post the agent's review
+     * after it posts, nil for none; PostAs is how the user chose to post it, "" for the
+     * step's own way.
+     */
+    "review": AgentReview | null;
+    "postAs": string;
+
+    /**
+     * ReviewAs is how a Post the agent's review posts it, as a comment or as its verdict,
+     * and AllowApprove whether that verdict may approve; Merge says what a Merge it does
+     * ("Merges it (squash)."). Each is empty for any other step.
+     */
+    "reviewAs": catalog$0.ReviewAs;
+    "allowApprove": boolean;
+    "merge": string;
+
+    /**
+     * AutoMerge reports a Merge it that turns auto-merge back on rather than merging now.
+     */
+    "autoMerge": boolean;
 }
 
 /**
@@ -1284,6 +1322,35 @@ export const RefKind = {
     RefPrompt: "prompt",
     RefProfile: "profile",
     RefAgent: "agent",
+} as const;
+
+/**
+ * ReviewLine is one of a review's line comments: a line of a file's diff, or a range
+ * ending at it (StartLine), on a side ("LEFT", the base's; "RIGHT" or "", the head's).
+ */
+export interface ReviewLine {
+    "path": string;
+    "line": number;
+    "startLine": number;
+    "side": string;
+    "body": string;
+}
+
+/**
+ * ReviewVerdict is what a read-only agent's review says of a pull request.
+ */
+export type ReviewVerdict = "approve" | "request_changes" | "comment";
+
+/**
+ * The values of ReviewVerdict, by the names of their Go constants.
+ */
+export const ReviewVerdict = {
+    /**
+     * The verdicts of an agent's review, as its report spells them.
+     */
+    ReviewApprove: "approve",
+    ReviewRequestChanges: "request_changes",
+    ReviewComment: "comment",
 } as const;
 
 /**

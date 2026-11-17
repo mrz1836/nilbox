@@ -219,6 +219,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     autopilotNeedsYou: () => Promise.resolve([]),
     approveMatches: (ids) =>
       Promise.resolve((ids ?? []).map((id) => autopilotMatch({ id, state: 'queued', approved: true, closedAt: null }))),
+    postReviewAsComment: (id) =>
+      Promise.resolve([autopilotMatch({ id, state: 'queued', approved: true, closedAt: null })]),
     skipMatch: (id) => Promise.resolve(autopilotMatch({ id, state: 'dismissed', reason: 'you_skipped' })),
     getAutopilotReadiness: () => Promise.resolve(readiness()),
     checkAutopilotReadiness: () => Promise.resolve(readiness()),

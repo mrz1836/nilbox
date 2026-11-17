@@ -90,6 +90,43 @@ func (s *Service) Approve(ctx context.Context, ids []int64) ([]Match, error) {
 	return s.matchesByID(ctx, ids)
 }
 
+// PostAsComment gives the user's OK to the match id, waiting at a Post the agent's review,
+// to post the agent's review as a comment whatever its verdict, and returns it as it is now.
+// A match at any other step is refused.
+func (s *Service) PostAsComment(ctx context.Context, id int64) ([]Match, error) {
+	e, err := s.engineOrErr()
+	if err != nil {
+		return []Match{}, err
+	}
+
+	err = e.do(ctx, func(ctx context.Context) error {
+		m, getErr := e.ledger.get(ctx, id)
+		if getErr != nil {
+			return uierr.New("That match is gone.", getErr)
+		}
+
+		if int(m.Step) >= len(m.steps) || m.steps[m.Step].Step.PostReview == nil || !m.state().Open() {
+			return uierr.New("It isn't about to post an agent's review.", ErrNoMatch)
+		}
+
+		m.steps[m.Step].PostAs = PostAsComment
+		e.save(ctx, m)
+
+		if approveErr := e.approve(ctx, id); approveErr != nil {
+			return approveErr
+		}
+
+		e.Wake()
+
+		return nil
+	})
+	if err != nil {
+		return []Match{}, err
+	}
+
+	return s.matchesByID(ctx, []int64{id})
+}
+
 // approve gives the user's OK to the match id: one that waits starts once the limits let
 // it, and one queued or blocked keeps the OK for when it goes on. Any other is left as it
 // is.
@@ -99,13 +136,19 @@ func (e *Engine) approve(ctx context.Context, id int64) error {
 		return uierr.New("That match is gone.", err)
 	}
 
+	stepOK := int(m.Step) < len(m.steps) && followsRun(m.steps[m.Step].Step) && !m.steps[m.Step].OK
+
 	switch {
 	case m.state() == StateWaiting:
 		confirmHold(m)
 		acceptWarnings(m)
 		m.set(StateQueued, "", "")
-	case m.Approved || m.state() != StateQueued && m.state() != StateBlocked:
+	case (m.Approved && !stepOK) || m.state() != StateQueued && m.state() != StateBlocked:
 		return nil
+	}
+
+	if stepOK {
+		m.steps[m.Step].OK = true
 	}
 
 	m.Approved = true

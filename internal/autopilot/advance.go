@@ -71,7 +71,7 @@ func (p *pass) advance(ctx context.Context, r *routineRun, m *match) {
 			return
 		}
 
-		if ended(sr) || p.skipStep(m, sr) {
+		if ended(sr) || p.skipStep(m, sr) || p.noReview(ctx, m, sr) {
 			m.Step++
 
 			continue
@@ -376,12 +376,13 @@ func (e *Engine) requeue(ctx context.Context, id int64, b Blocker, words string)
 // waits, or closes. A manual run counts toward no cap or try, and keeps to the active
 // hours of no routine, but waits for a free slot and the daily cap like any other.
 func (p *pass) gate(r *routineRun, m *match, sr *stepRun, info catalog.Step) verdict {
-	agent, github := info.Kind == catalog.StepAgent, info.Kind == catalog.StepGitHub
+	agent, github := info.Kind == catalog.StepAgent, writesGitHub(info)
 	id := store.Deref(m.ItemID)
 
 	for _, check := range []func() verdict{
+		func() verdict { return p.mergeRules(id, sr) },
 		func() verdict { return p.scriptAsks(sr) },
-		func() verdict { return p.askFirst(r, m) },
+		func() verdict { return p.askFirst(r, m, sr) },
 		func() verdict { return p.held(r, m) },
 		func() verdict { return p.limits(r, m, id, agent, github) },
 		func() verdict { return p.room(r, sr, agent, github) },
@@ -458,9 +459,15 @@ func (p *pass) pace() verdict {
 
 // askFirst holds a start for the user's OK: a routine that asks first, and an Autopilot
 // routine's start after a long gap.
-func (p *pass) askFirst(r *routineRun, m *match) verdict {
+func (p *pass) askFirst(r *routineRun, m *match, sr *stepRun) verdict {
 	switch {
-	case m.Manual || m.Approved:
+	case m.Manual:
+		return verdict{}
+	case r.mode == autopilotprefs.ModeAsk && followsRun(sr.Step) && !sr.OK:
+		// Merging, and posting what an agent wrote, are decided on what the run came to:
+		// an Ask first routine asks again, showing it, whatever its OK to start.
+		return wait(BlockAsk, followWords(sr.Step))
+	case m.Approved:
 		return verdict{}
 	case r.mode == autopilotprefs.ModeAsk:
 		return wait(BlockAsk, "Waiting for your OK.")
@@ -579,6 +586,26 @@ func (p *pass) itemRules(m *match, id int64, sr *stepRun, agent bool) verdict {
 
 	if p.counts.activeItems[id] {
 		return wait(BlockBusyWorktree, "Something else runs on it; it starts once that ends.")
+	}
+
+	return verdict{}
+}
+
+// writesGitHub reports a step the app's own GitHub write sends: a GitHub step, Merge it,
+// and Post the agent's review, each paced and capped as a GitHub action.
+func writesGitHub(info catalog.Step) bool {
+	return info.Dispatcher == catalog.DispatchGitHub && !info.Local || info.Dispatcher == catalog.DispatchMerge ||
+		info.Dispatcher == catalog.DispatchReview
+}
+
+// mergeRules closes a Merge it on an outside contributor's pull request, which no routine
+// ever merges, whatever its org or repository allows agents.
+func (p *pass) mergeRules(id int64, sr *stepRun) verdict {
+	if f, ok := p.facts[id]; ok && sr.Step.Merge != nil && outsideContributor(f) {
+		return verdict{
+			closeAs: StateClosed, reason: ReasonNotOffered,
+			words: "Merge it never merges an outside contributor's pull request.",
+		}
 	}
 
 	return verdict{}
@@ -763,13 +790,7 @@ func (p *pass) start(ctx context.Context, r *routineRun, m *match, sr *stepRun, 
 		params.Agent, params.Preset = sr.Step.Agent.AgentID(), string(sr.Step.Agent.Tools())
 	}
 
-	if sr.Action < len(sr.Step.GitHub) && len(sr.Step.GitHub) > 0 {
-		// Each action is a run of its own, pinned to the head the read right before it
-		// found, which this cycle decided the match on.
-		params.GithubAction = string(sr.Step.GitHub[sr.Action].Kind())
-		job.Head = p.headNow(m)
-		params.HeadBefore = job.Head
-	}
+	p.pin(ctx, m, sr, &job, &params)
 
 	sr.Status = stepRunning
 	if sr.Started == nil {
@@ -804,6 +825,24 @@ func (p *pass) start(ctx context.Context, r *routineRun, m *match, sr *stepRun, 
 	p.cycle.Starts++
 	p.counts.started(r.id(), store.Deref(m.ItemID), runner, job, m.Manual)
 	p.e.dispatch(ctx, m.ID, job.RunID, info.Dispatcher, job)
+}
+
+// pin pins a GitHub write's run to its head, in job and in the run's record: each of a
+// GitHub step's actions is a run of its own, pinned to the head the read right before it
+// found, which this cycle decided the match on; Merge it and Post the agent's review to the
+// commit their run's checks passed on, or the agent read (followUp).
+func (p *pass) pin(ctx context.Context, m *match, sr *stepRun, job *Job, params *queries.InsertRunParams) {
+	if sr.Action < len(sr.Step.GitHub) && len(sr.Step.GitHub) > 0 {
+		params.GithubAction = string(sr.Step.GitHub[sr.Action].Kind())
+		job.Head = p.headNow(m)
+		params.HeadBefore = job.Head
+
+		return
+	}
+
+	if head, ok := p.followUp(ctx, m, sr, job); ok {
+		params.HeadBefore = head
+	}
 }
 
 // mustSteps decodes stored steps, empty when they can't be.
@@ -1338,10 +1377,7 @@ func (e *Engine) moveOn(m *match, index int64, end RunEnd, forItem Reason, now t
 
 		m.set(StateQueued, "", "")
 	case RunDone:
-		sr.Status, sr.Outcome, sr.Note = stepDone, string(catalog.OutcomeNotPushed), end.Summary
-		if end.Commit != "" {
-			sr.Outcome = string(catalog.OutcomePushed)
-		}
+		ranTo(sr, end)
 
 		m.Step = index + 1
 
@@ -1353,6 +1389,20 @@ func (e *Engine) moveOn(m *match, index int64, end RunEnd, forItem Reason, now t
 	// reads.
 	if sr.Step.Agent == nil {
 		sr.Outcome = ""
+	}
+}
+
+// ranTo records on sr that its run ended done as end says: its outcome is whether it
+// pushed, and a read-only agent's is its review's verdict, its review kept for the Post
+// the agent's review after it.
+func ranTo(sr *stepRun, end RunEnd) {
+	sr.Status, sr.Outcome, sr.Note = stepDone, string(catalog.OutcomeNotPushed), end.Summary
+	if end.Commit != "" {
+		sr.Outcome = string(catalog.OutcomePushed)
+	}
+
+	if sr.Step.Agent != nil && sr.Step.Agent.ReadOnly() {
+		sr.Review, sr.Outcome = end.Review, string(reviewOutcome(end.Review))
 	}
 }
 

@@ -900,6 +900,7 @@ func unreachedBound() map[string]string {
 		"integrations.Service.Trash":        "moves a copy of a tool through Finder; its result is built as List's",
 		"autopilot.Service.Approve":         "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
 		"autopilot.Service.ApproveBacklog":  "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
+		"autopilot.Service.PostAsComment":   "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
 		"autopilot.Service.TryAgain":        "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
 		"autopilot.Service.Skip":            "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
 		"autopilot.Service.RunNow":          "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",

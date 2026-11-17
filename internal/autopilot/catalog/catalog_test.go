@@ -174,12 +174,13 @@ func TestEveryStepNamesItsDispatcher(t *testing.T) {
 
 // builtDispatchers are the parts whose dispatchers this build has: the inbox's triage, the
 // notices (Notify me and Tell me), the agent's, which runs it in the background or the
-// user's terminal, the app's own GitHub writes, the user's own scripts, and the engine's own
-// follow of an agent's push.
+// user's terminal, the app's own GitHub writes, the user's own scripts, the engine's own
+// follow of an agent's push, and the two writes that follow a run: Merge it and Post the
+// agent's review.
 func builtDispatchers() []catalog.Dispatcher {
 	return []catalog.Dispatcher{
 		catalog.DispatchTriage, catalog.DispatchNotices, catalog.DispatchAgent, catalog.DispatchGitHub,
-		catalog.DispatchScripts, catalog.DispatchVerify,
+		catalog.DispatchScripts, catalog.DispatchVerify, catalog.DispatchMerge, catalog.DispatchReview,
 	}
 }
 

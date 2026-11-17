@@ -29,6 +29,7 @@ import {
   effectVerb,
   elsewhereText,
   filters,
+  followUpOf,
   inActivity,
   inChunks,
   itemText,
@@ -43,6 +44,7 @@ import {
   notReadyNames,
   notReadyText,
   readyOf,
+  reviewPostLabel,
   reasonChips,
   routineStatus,
   runLabel,
@@ -319,6 +321,12 @@ describe('chipOf', () => {
               actions: [],
               sent: 0,
               verdict: '',
+              review: null,
+              postAs: '',
+              reviewAs: '',
+              allowApprove: false,
+              merge: '',
+              autoMerge: false,
               startedAt: null,
               endedAt: null,
             },
@@ -351,10 +359,11 @@ const everyState: Readonly<Record<AutopilotState, true>> = {
   baseline: true,
 }
 
-// verified is a match whose agent pushed 4f2a9c1 and whose Wait for the checks reached
-// verdict, saying note, with Tell me after it.
-function verified(verdict: AutopilotMatch['steps'][number]['verdict'], note: string): AutopilotMatch {
-  const step = (kind: AutopilotMatch['steps'][number]['kind'], extra = {}) => ({
+type MatchStep = AutopilotMatch['steps'][number]
+
+// step is a match's step of kind, done, with extra over it.
+function step(kind: MatchStep['kind'], extra: Partial<MatchStep> = {}): MatchStep {
+  return {
     kind,
     label: kind,
     status: 'done',
@@ -363,12 +372,22 @@ function verified(verdict: AutopilotMatch['steps'][number]['verdict'], note: str
     runId: 0,
     actions: [],
     sent: 0,
-    verdict: '' as const,
+    verdict: '',
+    review: null,
+    postAs: '',
+    reviewAs: '',
+    allowApprove: false,
+    merge: '',
+    autoMerge: false,
     startedAt: null,
     endedAt: null,
     ...extra,
-  })
+  }
+}
 
+// verified is a match whose agent pushed 4f2a9c1 and whose Wait for the checks reached
+// verdict, saying note, with Tell me after it.
+function verified(verdict: MatchStep['verdict'], note: string): AutopilotMatch {
   return autopilotMatch({
     routine: 'Heal Dependabot',
     effects: [],
@@ -388,6 +407,70 @@ describe('the verdicts', () => {
     expect(chipOf(verified('no_push', 'No push: nothing to do.')).label).toBe('No push')
     expect(chipOf(verified('unknown', 'Unknown: …')).label).toBe('Checks unknown')
     expect(chipOf(bare('skipped', 'tries'))).toEqual({ label: 'Gave up', tone: 'danger' })
+  })
+
+  it('chips what a step after the run sent, over the verdict', () => {
+    const fixed = verified('fixed', 'Fixed: checks pass on 4f2a9c1.')
+    const merged = (autoMerge: boolean): AutopilotMatch => ({
+      ...fixed,
+      steps: [...fixed.steps, step('merge', { autoMerge })],
+    })
+
+    expect(chipOf(merged(false))).toEqual({ label: 'Merged', tone: 'accent' })
+    expect(chipOf(merged(true)).label).toBe('Auto-merge on')
+
+    const posted = (outcome: string): AutopilotMatch => ({
+      ...fixed,
+      steps: [step('postReview', { outcome })],
+    })
+
+    expect(chipOf(posted('approve')).label).toBe('Approved')
+    expect(chipOf(posted('requestChanges')).label).toBe('Changes requested')
+    expect(chipOf(posted('')).label).toBe('Reviewed')
+  })
+
+  it('says what a step after the run would do, for its card', () => {
+    const base = verified('fixed', 'Fixed: checks pass on 4f2a9c1.')
+    const merge = {
+      ...base,
+      step: 3,
+      steps: [...base.steps, step('merge', { status: '', merge: 'Merges it.' })],
+    }
+
+    expect(followUpOf(merge)).toEqual({ kind: 'merge', does: 'Merges it.', verdict: 'Fixed: checks pass on 4f2a9c1.' })
+    expect(followUpOf(base), 'a match at no such step').toBeUndefined()
+
+    const review = {
+      verdict: 'approve' as const,
+      body: 'LGTM',
+      comments: [{ path: 'a.go', line: 1, startLine: 0, side: '', body: 'x' }],
+    }
+    const post = (reviewAs: 'verdict' | 'comment', allowApprove: boolean, postAs = '') => ({
+      ...base,
+      step: 1,
+      steps: [step('agent', { review }), step('postReview', { status: '', reviewAs, allowApprove, postAs })],
+    })
+
+    const f = followUpOf(post('verdict', true))
+    expect(f).toEqual({
+      kind: 'review',
+      verdict: 'approve',
+      body: 'LGTM',
+      comments: 1,
+      allowApprove: true,
+      asComment: false,
+    })
+
+    const label = (m: AutopilotMatch) => {
+      const got = followUpOf(m)
+
+      return got?.kind === 'review' ? reviewPostLabel(got) : ''
+    }
+
+    expect(label(post('verdict', true))).toBe('Post approval')
+    expect(label(post('verdict', false))).toBe('Post as comment')
+    expect(label(post('comment', false))).toBe('Post as comment')
+    expect(label(post('verdict', true, 'comment'))).toBe('Post as comment')
   })
 
   it('puts the verdict on the sheet’s line, and that the checks are being read', () => {
@@ -571,6 +654,12 @@ describe('the results', () => {
         actions: [],
         sent: 0,
         verdict: '',
+        review: null,
+        postAs: '',
+        reviewAs: '',
+        allowApprove: false,
+        merge: '',
+        autoMerge: false,
         startedAt: null,
         endedAt: null,
       },

@@ -2146,7 +2146,7 @@
       "kinds": [
         "pr"
       ],
-      "offered": false
+      "offered": true
     },
     {
       "kind": "postReview",
@@ -2159,7 +2159,7 @@
       "kinds": [
         "pr"
       ],
-      "offered": false
+      "offered": true
     },
     {
       "kind": "tellMe",

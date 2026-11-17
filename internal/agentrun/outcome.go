@@ -17,13 +17,28 @@ import (
 
 // ReportSchema is the JSON schema of the report every background run returns, on one line,
 // as the agent's structured output: how it came out, a summary, whether it pushed and
-// which commit, and whether a person is needed. The agent's report is shown as the agent's;
-// the app's own verdict comes only from GitHub.
+// which commit, whether a person is needed, and, for a run that reviews a pull request, its
+// review: a verdict, its text, and its line comments, which the app itself posts as the
+// routine's Post the agent's review says, never the agent. The agent's report is shown as
+// the agent's; the app's own verdict comes only from GitHub.
 const ReportSchema = `{"type":"object","required":["outcome","summary","pushed","needsPerson"],` +
 	`"properties":{"outcome":{"enum":["fixed","nothing_to_do","partial","blocked","failed"]},` +
 	`"summary":{"type":"string","maxLength":2000},"pushed":{"type":"boolean"},` +
 	`"pushedCommit":{"type":"string","pattern":"^[0-9a-f]{40}$"},"needsPerson":{"type":"boolean"},` +
-	`"reason":{"type":"string","maxLength":500}}}`
+	`"reason":{"type":"string","maxLength":500},` +
+	`"review":{"type":"object","required":["verdict","body"],"properties":{` +
+	`"verdict":{"enum":["approve","request_changes","comment"]},"body":{"type":"string","maxLength":20000},` +
+	`"comments":{"type":"array","maxItems":50,"items":{"type":"object","required":["path","line","body"],` +
+	`"properties":{"path":{"type":"string"},"line":{"type":"integer","minimum":1},` +
+	`"startLine":{"type":"integer","minimum":1},"side":{"enum":["LEFT","RIGHT"]},` +
+	`"body":{"type":"string","maxLength":4000}}}}}}}}`
+
+// The caps on a report's review, past which it is cut.
+const (
+	maxReviewBody     = 20000
+	maxReviewComments = 50
+	maxCommentBody    = 4000
+)
 
 // UnattendedNote is the system note every background run gets beside its prompt: nobody
 // watches it, so it asks no one, works in its worktree alone, and leaves every decision
@@ -87,6 +102,27 @@ type Report struct {
 	PushedCommit string `json:"pushedCommit"`
 	NeedsPerson  bool   `json:"needsPerson"`
 	Reason       string `json:"reason"`
+
+	// Review is its review of the pull request, nil when it wrote none.
+	Review *Review `json:"review,omitempty"`
+}
+
+// Review is the review a run wrote of a pull request: its verdict ("approve",
+// "request_changes", or "comment"), its text, and its line comments.
+type Review struct {
+	Verdict  string          `json:"verdict"`
+	Body     string          `json:"body"`
+	Comments []ReviewComment `json:"comments,omitempty"`
+}
+
+// ReviewComment is one of a review's line comments: a line of a file's diff, or a range
+// ending at it, on a side ("LEFT" is the base version, "RIGHT", or "", the head's).
+type ReviewComment struct {
+	Path      string `json:"path"`
+	Line      int    `json:"line"`
+	StartLine int    `json:"startLine,omitempty"`
+	Side      string `json:"side,omitempty"`
+	Body      string `json:"body"`
 }
 
 // Status is how a run came out, as the app judges it from the agent's result line and
@@ -296,8 +332,42 @@ func parseReport(raw json.RawMessage) *Report {
 
 	r.Summary, _ = cut(r.Summary, 2000)
 	r.Reason, _ = cut(r.Reason, 500)
+	r.Review = keptReview(r.Review)
 
 	return &r
+}
+
+// keptReview is a report's review held to its schema: one with a verdict it doesn't know,
+// or with no text and no line comment, is none; its text and comments are cut to their caps.
+func keptReview(rv *Review) *Review {
+	if rv == nil {
+		return nil
+	}
+
+	switch rv.Verdict {
+	case "approve", "request_changes", "comment":
+	default:
+		return nil
+	}
+
+	rv.Body, _ = cut(strings.TrimSpace(rv.Body), maxReviewBody)
+
+	kept := make([]ReviewComment, 0, min(len(rv.Comments), maxReviewComments))
+
+	for _, c := range rv.Comments {
+		c.Body, _ = cut(strings.TrimSpace(c.Body), maxCommentBody)
+		if len(kept) < maxReviewComments && c.Path != "" && c.Line > 0 && c.Body != "" {
+			kept = append(kept, c)
+		}
+	}
+
+	rv.Comments = kept
+
+	if rv.Body == "" && len(kept) == 0 {
+		return nil
+	}
+
+	return rv
 }
 
 // noReport says a run gave no report, with the last of its narration.

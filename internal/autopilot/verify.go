@@ -458,6 +458,7 @@ func (p *pass) applyVerdict(ctx context.Context, r *routineRun, m *match, sr *st
 	words := p.verdictWords(r, m, res)
 
 	sr.Status, sr.Outcome, sr.Verdict, sr.Note, sr.Ended = stepDone, string(res.outcome), res.verdict, words, new(p.now)
+	sr.Commit = res.commit
 	m.Step++
 
 	m.set(StateQueued, "", "")

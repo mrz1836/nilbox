@@ -35,6 +35,10 @@ type githubSteps struct {
 	threads *ghthreads.Service
 	prompts *prompts.Store
 	replies replyFiller
+
+	// changes reads what agent runs changed on an item, which no Merge it follows into
+	// workflow, agent, or tooling files; nil reads nothing.
+	changes agentChanges
 }
 
 // ErrNotACommentReply is a GitHub step's reply that isn't a comment's: one written for an

@@ -271,6 +271,15 @@ export function NeedsYou(): $CancellablePromise<$models.Match[] | null> {
 }
 
 /**
+ * PostAsComment gives the user's OK to the match id, waiting at a Post the agent's review,
+ * to post the agent's review as a comment whatever its verdict, and returns it as it is now.
+ * A match at any other step is refused.
+ */
+export function PostAsComment(id: number): $CancellablePromise<$models.Match[] | null> {
+    return $Call.ByID(1548172358, id);
+}
+
+/**
  * PreviewActions says what the draft d's GitHub actions would send to the item itemID,
  * built and not sent: each GitHub step's actions in order, with the exact comment or what
  * it does to the labels, and Mark the GitHub notification done, each marked with why it

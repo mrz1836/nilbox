@@ -166,9 +166,15 @@ func TestTheGalleryPutsWhatThisMacSuggestsFirst(t *testing.T) {
 	assert.Empty(t, flagship.Needs, "this build runs each of its steps, Wait for the checks included")
 	assert.Empty(t, flagship.NeedsWords)
 
-	heal := byKey["heal-dependabot-then-merge"]
-	assert.Equal(t, []string{"“Merge it”"}, heal.Needs, "it waits for Merge it alone")
-	assert.NotEmpty(t, heal.NeedsWords, "and says so in words")
+	for _, key := range []string{"heal-dependabot-then-merge", "review-members", "fix-failing-checks-on-my-prs"} {
+		assert.Empty(t, byKey[key].Needs, "%s: this build runs Wait for the checks, Merge it, and Post the agent's review", key)
+		assert.Empty(t, byKey[key].NeedsWords, key)
+	}
+
+	for _, tmpl := range got {
+		assert.Empty(t, tmpl.Needs, "%s: this build runs every step the gallery uses", tmpl.Key)
+	}
+
 	assert.Equal(t, []autopilot.Blank{{
 		Kind: autopilot.BlankWhere, Label: "Where", Help: "Your account, and the orgs, users, or repositories to watch too.",
 	}}, flagship.Blanks, "the flagship asks one thing")

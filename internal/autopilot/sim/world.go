@@ -64,6 +64,11 @@ type Item struct {
 	// Conflicts has a pull request conflict with its base branch.
 	Conflicts bool
 
+	// AutoMerge has a pull request's auto-merge on, and Files are the files it changes,
+	// which a check of its files lists; nil has the check fail, as one never asked.
+	AutoMerge bool
+	Files     []string
+
 	// Watched puts it in the routines' search, Listed in the user's Authored list, and
 	// ReviewRequested and Assigned in those lists.
 	Watched         bool
@@ -423,14 +428,37 @@ func (w *World) FetchItems(ctx context.Context, tok github.Token, ids []string, 
 	return out, nil
 }
 
-// FetchPullHead is never asked.
-func (w *World) FetchPullHead(context.Context, github.Token, item.Ref) (*github.PullHead, error) {
-	return nil, errNotAsked
+// FetchPullHead answers with a pull request's head, as a check of its files reads it
+// first; one with no Files set is never asked.
+func (w *World) FetchPullHead(_ context.Context, _ github.Token, ref item.Ref) (*github.PullHead, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	it, ok := w.items[ref.Number]
+	if !ok || it.Files == nil {
+		return nil, errNotAsked
+	}
+
+	return &github.PullHead{Head: it.Head, ChangedFiles: len(it.Files), State: "open"}, nil
 }
 
-// FetchChangedFiles is never asked.
-func (w *World) FetchChangedFiles(context.Context, github.Token, item.Ref, string) (*github.ChangedFiles, error) {
-	return nil, errNotAsked
+// FetchChangedFiles lists a pull request's Files at its head, every one; one with none set
+// is never asked.
+func (w *World) FetchChangedFiles(_ context.Context, _ github.Token, ref item.Ref, _ string) (*github.ChangedFiles, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	it, ok := w.items[ref.Number]
+	if !ok || it.Files == nil {
+		return nil, errNotAsked
+	}
+
+	out := &github.ChangedFiles{Head: it.Head, Total: len(it.Files), Complete: true}
+	for _, f := range it.Files {
+		out.Files = append(out.Files, github.ChangedFile{Path: f, Status: "modified"})
+	}
+
+	return out, nil
 }
 
 // FetchRateLimits answers with budgets to spare.
@@ -656,6 +684,10 @@ func (w *World) details(it *Item, repo bool) github.ItemDetails {
 
 		if it.Conflicts {
 			d.Mergeable, d.MergeState = "CONFLICTING", github.MergeStateDirty
+		}
+
+		if it.AutoMerge {
+			d.AutoMerge = github.AutoMerge{Method: "SQUASH"}
 		}
 	}
 

@@ -51,6 +51,16 @@ type GitHubActions interface {
 	// Preview says what an action would send to the item, built and not sent: the exact
 	// comment, or the labels.
 	Preview(ctx context.Context, it ItemRef, a spec.GitHubAction) (string, error)
+
+	// Merge merges a pull request, or turns its auto-merge back on, through the review
+	// sheet, only as its Decide, on the read right before, offers it and only at req.Head:
+	// never past the rules, never one an agent's commits changed workflow, agent, or tooling
+	// files in, and one GitHub holds for an approving review waits (GitHubNeedsReview).
+	Merge(ctx context.Context, req MergeSend) (GitHubSent, error)
+
+	// PostReview posts a review of a pull request through the review sheet, at req.Head,
+	// with only the line comments its diff shows.
+	PostReview(ctx context.Context, req ReviewSend) (GitHubSent, error)
 }
 
 // GitHubSend is one GitHub action to send.
@@ -95,6 +105,10 @@ const (
 	// GitHubHeld is an action the write gate refused before anything was sent; Words says
 	// why and RetryIn when the next may go.
 	GitHubHeld GitHubOutcome = "held"
+
+	// GitHubNeedsReview is a merge GitHub holds for an approving review, which only a
+	// person gives: nothing was sent, and it waits for the user.
+	GitHubNeedsReview GitHubOutcome = "needs_review"
 )
 
 // GitHubSent is how a GitHub action went.
@@ -166,6 +180,12 @@ func resultOf(got GitHubSent) (Result, error) {
 		return Result{PushedSince: true, Summary: cmp.Or(got.Words, "It couldn't be read, so nothing was sent.")}, nil
 	case GitHubHeld:
 		return Result{Held: cmp.Or(got.Words, "GitHub actions are held for now."), RetryIn: got.RetryIn}, nil
+	case GitHubNeedsReview:
+		return Result{
+			Wait: BlockReviewRequired,
+			WaitWords: cmp.Or(got.Words, "GitHub wants an approving review before it merges this: approve it, "+
+				"then let the merge go."),
+		}, nil
 	}
 
 	return Result{}, fmt.Errorf("%w: %q", errNoAction, got.Outcome)

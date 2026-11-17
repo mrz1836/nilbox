@@ -395,8 +395,9 @@ export type AutopilotMatching = NonNullLists<autopilot.Matching>
 // A step, and a run, has '' for a verdict until a Wait for the checks reaches one, and
 // for every step but that wait.
 export type AutopilotVerdict = autopilot.Verdict
-export type AutopilotMatchStep = Omit<NonNullLists<autopilot.MatchStep>, 'verdict'> & {
+export type AutopilotMatchStep = Omit<NonNullLists<autopilot.MatchStep>, 'verdict' | 'reviewAs'> & {
   verdict: autopilot.Verdict | ''
+  reviewAs: autopilotcatalog.ReviewAs | ''
 }
 export type AutopilotRun = Omit<NonNullLists<autopilot.Run>, 'verdict'> & { verdict: autopilot.Verdict | '' }
 export type AutopilotMatch = Omit<NonNullLists<autopilot.Match>, 'blockedBy' | 'reason' | 'steps' | 'runs'> & {
@@ -1266,6 +1267,11 @@ export const tryRoutineAgain = autopilotService.TryAgain as (
 // nothing.
 export const autopilotNeedsYou = autopilotService.NeedsYou as () => CancellablePromise<AutopilotMatch[]>
 export const approveMatches = autopilotService.Approve as (ids: number[] | null) => CancellablePromise<AutopilotMatch[]>
+// postReviewAsComment gives the OK to a match waiting at Post the agent's review, posting the
+// review as a comment whatever its verdict.
+export const postReviewAsComment = autopilotService.PostAsComment as (
+  id: number,
+) => CancellablePromise<AutopilotMatch[]>
 export const skipMatch = autopilotService.Skip as (id: number) => CancellablePromise<AutopilotMatch>
 export const getAutopilotReadiness = autopilotService.Readiness as () => CancellablePromise<AutopilotReadiness>
 export const checkAutopilotReadiness = autopilotService.CheckReadiness as () => CancellablePromise<AutopilotReadiness>
