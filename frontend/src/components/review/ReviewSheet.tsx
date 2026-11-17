@@ -34,6 +34,7 @@ import { TabPanel, Tabs } from '../Tabs'
 import { WorkLine } from '../WorkLine'
 import { ActionProgress } from './ActionProgress'
 import { AgentVerdict } from './AgentVerdict'
+import { BehindBase } from './BehindBase'
 import { CommitList } from './CommitList'
 import { DiffView, fileAnchor, type Reveal } from './DiffView'
 import { FileList } from './FileList'
@@ -102,9 +103,15 @@ export function selectedAction(review: Review, chosen: ReviewAction): ReviewActi
 }
 
 // keepsDraft reports an outcome that leaves the draft for another try: an action refused
-// for a push, or one that changed nothing the draft was for.
+// for a push, or one that changed nothing the draft was for, as a branch brought up to date
+// or the user's review asked for again, which the draft is still to answer.
 function keepsDraft(result: ReviewResult): boolean {
-  return result.outcome === 'pushed_since' || result.outcome === 'branch_updating' || result.outcome === 'asked_bot'
+  return (
+    result.outcome === 'pushed_since' ||
+    result.outcome === 'branch_updating' ||
+    result.outcome === 'asked_bot' ||
+    result.outcome === 'review_rerequested'
+  )
 }
 
 // Notice is what the sheet says of one pull request after an action on it: an action
@@ -475,8 +482,13 @@ export function ReviewSheet({
               onShow={() => {
                 jumpTo('commits', commitsSinceAnchor)
               }}
+              busy={act.pending}
+              onRerequest={() => {
+                run('rerequest_review')
+              }}
             />
           )}
+          {review !== null && <BehindBase review={review} busy={act.pending} onRun={run} />}
           {review !== null && (
             <HeldRuns
               review={review}

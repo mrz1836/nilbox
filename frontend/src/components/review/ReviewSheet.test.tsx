@@ -27,6 +27,8 @@ import {
   reviewFile,
   reviewResult,
   reviewTimeline,
+  rerequestOffer,
+  updateBranchOffer,
   worktree,
   yourReview,
 } from '../../test/fixtures'
@@ -1652,6 +1654,13 @@ describe('selectedAction', () => {
     expect(selectedAction(review({ offers: [closeOffer()], primary: 'close' }), 'close')).toBe('')
   })
 
+  it('never keeps asking for your review again, which runs only from the menu or the strip', () => {
+    const again = review({ offers: [offer(), rerequestOffer()], primary: 'approve' })
+
+    expect(selectedAction(again, 'rerequest_review')).toBe('approve')
+    expect(selectedAction(review({ offers: [rerequestOffer()], primary: '' }), 'rerequest_review')).toBe('')
+  })
+
   it('never keeps approving held runs, which runs only from the menu or the bar', () => {
     expect(selectedAction(held(), 'approve_runs')).toBe('approve_merge')
     expect(selectedAction(review({ offers: [approveRunsOffer()], primary: '' }), 'approve_runs')).toBe('')
@@ -1952,6 +1961,64 @@ describe('ReviewSheet commits', () => {
     expect(await screen.findByText('The branch was rewritten since you requested changes')).toBeInTheDocument()
   })
 
+  it('asks for your review again from the strip, keeping the draft, and is never the button', async () => {
+    platform.refreshReview.mockResolvedValue(
+      withCommits({
+        reviewRequested: false,
+        offers: [offer({ action: 'comment', label: 'Comment' }), rerequestOffer()],
+        primary: 'comment',
+      }),
+    )
+    platform.actOnReview.mockResolvedValue(
+      reviewResult({ outcome: 'review_rerequested', message: 'Re-requested your review of acme-org/example-repo#7' }),
+    )
+    const onDone = vi.fn()
+    render(<Harness onDone={onDone} />)
+
+    expect(await screen.findByText('2 commits since you requested changes')).toBeInTheDocument()
+    expect(await actionButton('Comment')).toBeInTheDocument()
+    const box = screen.getByRole('textbox', { name: 'Your review' })
+    await userEvent.clear(box)
+    await userEvent.type(box, 'Still to say.')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Re-request my review' }))
+
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'review_rerequested' }), expect.anything())
+    })
+    expect(platform.actOnReview).toHaveBeenCalledTimes(1)
+    expect(platform.actOnReview).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'rerequest_review', body: '', comments: [], accept: false }),
+    )
+    expect(screen.getByRole('textbox', { name: 'Your review' })).toHaveValue('Still to say.')
+  })
+
+  it('says why it can’t ask for your review again, in place of the button', async () => {
+    platform.refreshReview.mockResolvedValue(
+      withCommits({
+        offers: [
+          offer({ action: 'comment', label: 'Comment' }),
+          rerequestOffer({ enabled: false, reason: 'GitHub already asks you to review it again.' }),
+        ],
+        primary: 'comment',
+      }),
+    )
+    render(<Harness />)
+
+    expect(await screen.findByText('GitHub already asks you to review it again.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Re-request my review' })).not.toBeInTheDocument()
+  })
+
+  it('offers no re-request after an approval', async () => {
+    platform.refreshReview.mockResolvedValue(
+      withCommits({ yourReview: yourReview({ state: 'APPROVED', commit: a, count: 2 }) }),
+    )
+    render(<Harness />)
+
+    expect(await screen.findByText('2 commits since you approved')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Re-request my review' })).not.toBeInTheDocument()
+  })
+
   it('says nothing of a review at the head, or once the pull request is closed', async () => {
     platform.refreshReview.mockResolvedValue(
       withCommits({ yourReview: yourReview({ commit: c, since: '', count: 0 }) }),
@@ -1967,6 +2034,142 @@ describe('ReviewSheet commits', () => {
 
     expect(await screen.findByRole('tab', { name: 'Commits 3' })).toBeInTheDocument()
     expect(screen.queryByText('2 commits since you requested changes')).not.toBeInTheDocument()
+  })
+})
+
+describe('ReviewSheet behind its base', () => {
+  // strip is the sheet's strip that says the branch is behind its base.
+  function strip() {
+    return screen.findByRole('region', { name: 'Behind its base' })
+  }
+
+  it('counts the commits behind, and updates the branch from the strip, keeping the draft', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({ behind: true, behindBy: 12, offers: [...review().offers, updateBranchOffer()] }),
+    )
+    platform.actOnReview.mockResolvedValue(
+      reviewResult({ outcome: 'branch_updating', message: 'Updating the branch of acme-org/example-repo#7' }),
+    )
+    const onDone = vi.fn()
+    render(<Harness onDone={onDone} />)
+
+    const bar = await strip()
+    expect(within(bar).getByText('12 commits behind main')).toBeInTheDocument()
+    expect(bar.className, 'being behind holds nothing back here: it only says so').not.toContain('text-warning')
+    expect(await actionButton('Approve & squash-merge')).toBeInTheDocument()
+
+    await userEvent.click(within(bar).getByRole('button', { name: 'Update branch' }))
+
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'branch_updating' }), expect.anything())
+    })
+    expect(platform.actOnReview).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'update_branch', body: '', comments: [], accept: false }),
+    )
+  })
+
+  it('says it is behind without a count, in amber while the rules hold the merge back for it', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        behind: true,
+        behindBy: 0,
+        readiness: { state: 'behind', sentence: 'Behind main', needs: [] },
+        offers: [offer({ action: 'comment', label: 'Comment' }), updateBranchOffer()],
+        primary: 'update_branch',
+      }),
+    )
+    render(<Harness />)
+
+    const bar = await strip()
+    expect(within(bar).getByText('Behind main')).toBeInTheDocument()
+    expect(bar.className).toContain('text-warning')
+  })
+
+  it('asks Dependabot to rebase its own pull request', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        author: 'dependabot',
+        isBot: true,
+        behind: true,
+        behindBy: 3,
+        offers: [
+          offer({ action: 'comment', label: 'Comment' }),
+          offer({ action: 'rebase_bot', label: 'Ask Dependabot to rebase', reviews: false }),
+          updateBranchOffer({ confirm: true, warnings: ['Dependabot stops rebasing it.'] }),
+        ],
+        primary: 'comment',
+      }),
+    )
+    platform.actOnReview.mockResolvedValue(reviewResult({ outcome: 'asked_bot', message: 'Asked Dependabot' }))
+    render(<Harness />)
+
+    const bar = await strip()
+    expect(within(bar).queryByRole('button', { name: /Update branch/ })).not.toBeInTheDocument()
+    await userEvent.click(within(bar).getByRole('button', { name: 'Ask Dependabot to rebase' }))
+
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(expect.objectContaining({ action: 'rebase_bot' }))
+    })
+  })
+
+  it('asks first when the update has warnings to accept', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        behind: true,
+        behindBy: 2,
+        offers: [...review().offers, updateBranchOffer({ confirm: true, warnings: ['Careful.'] })],
+      }),
+    )
+    render(<Harness />)
+
+    await userEvent.click(within(await strip()).getByRole('button', { name: 'Update branch…' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Update the branch of #7 with main?' })
+    expect(platform.actOnReview).not.toHaveBeenCalled()
+
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'I’ve looked, update anyway' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Update branch' }))
+
+    await waitFor(() => {
+      expect(platform.actOnReview).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'update_branch', accept: true }),
+      )
+    })
+  })
+
+  it('says why the user can’t update it, in place of the button', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        behind: true,
+        behindBy: 5,
+        offers: [
+          ...review().offers,
+          updateBranchOffer({ enabled: false, reason: 'Your account can’t update this branch.' }),
+        ],
+      }),
+    )
+    render(<Harness />)
+
+    const bar = await strip()
+    expect(within(bar).getByText('Your account can’t update this branch.')).toBeInTheDocument()
+    expect(within(bar).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('shows nothing for a branch up to date, or once the pull request is closed', async () => {
+    platform.refreshReview.mockResolvedValue(review())
+    const { unmount } = render(<Harness />)
+
+    expect(await actionButton('Approve & squash-merge')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Behind its base' })).not.toBeInTheDocument()
+    unmount()
+
+    platform.refreshReview.mockResolvedValue(
+      review({ state: 'MERGED', behind: false, behindBy: 4, offers: [updateBranchOffer()] }),
+    )
+    render(<Harness />)
+
+    expect(await screen.findByRole('tab', { name: 'Files 1' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Behind its base' })).not.toBeInTheDocument()
   })
 })
 
