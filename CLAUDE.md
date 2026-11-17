@@ -567,7 +567,11 @@ changing the package, and keep the section and its summary in step.
   pull request out of Review requested once GitHub no longer asks the user, by name or
   through a team, stamped like the inbox's own edits (`review_left_at`), so a lagging search
   keeps it out until it moves. `LastWords` reads a session's whole last message from the
-  agent's own files, on demand, for the review sheet. Each record keeps what its launch
+  agent's own files, on demand, for the review sheet, and `Usage` its token counts, for the
+  sessions panel (a `UsageReader` per agent: Claude Code's transcript, each assistant
+  message's usage once, read incrementally to 64 MB; Codex's last rollout token count; a
+  background run's session its run's own, through `RunTokens`, which core adapts over
+  Autopilot's ledger), never the network. Each record keeps what its launch
   reported (the permissions it started with, what it did to the item's worktree, and what it
   worked around), which the card's sessions panel shows in place of a line on the row after
   the launch, and `ShowFolder` shows a session's folder in Finder through core's `open -R`
@@ -883,8 +887,19 @@ changing the package, and keep the section and its summary in step.
   and is no try), paced at `ActionsPerMinute` and `ActionsPerHour` under the write gate, a
   match one try however many runs it starts; a reply is a comment's alone, never an
   approval's (`LibraryPrompt.ReplyFor`, checked in `Describe`, `Save`, and before each start,
-  `promptHold`); a guard test fails if the adapter names any other sheet action. A routine
-  with any other step still runs in Dry run. Its `PromptFollower`, never bound, tells
+  `promptHold`); a guard test fails if the adapter names any other sheet action. Run one of my
+  scripts runs one of the user's own Repo scripts, by its ID, in the item's clone, in the app,
+  through the scripts `Runner` core registers (`EngineConfig.Scripts`, `adapters_scriptsteps.go`
+  over `scripts.Routines`, the same run Repo scripts' Run works out), recorded as a run under
+  runner `script`, with a GitHub action's limits and no agent's slot; a script set to ask
+  before each run waits `script_asks` every time, whatever the mode, until `Approve` confirms
+  it as the user saw it (`ScriptKey`), which the runner checks once more as it starts; the
+  bound `MyScripts` lists what a step picks from. On a schedule fires on the tick once its
+  time of day comes, once a day by the clock's own location; a digest schedule's Notify me
+  steps of one cycle are one notice per routine (`digest.go`, grouped by where each item
+  stands). The bound `RunOnMatches` runs a saved routine now on what its Test offered
+  (`TestItem.RunsNow`), each approved, and `Stats` is a routine's last seven days, the dollars
+  an estimate. A routine with any other step still runs in Dry run. Its `PromptFollower`, never bound, tells
   the prompt library which routines name each prompt and follows a renamed one. The user's
   own reversal of what a routine did (told through the outcomes, `Outcome.Reversed`), and an Undo, leave the routine
   hands off the item until Let it act again. The bound Service's ledger actions (`Approve`,
@@ -1242,6 +1257,11 @@ changing the package, and keep the section and its summary in step.
   (bound `Save`, `Delete`, `Duplicate`, `Move`, and `RepoNames`); they need no trust and run
   exactly as written in the login shell with `Variables()`, a run is refused when its script
   was saved again as it started, and Run again refuses one set to ask first (`ErrAsksFirst`).
+  `Routines` (its own type, never bound) is how Autopilot's Run one of my scripts reads them
+  (`Mine`, each with its look and where it shows) and runs one (`Run`: the spec `Run` works
+  out, always in the app, refused when the script was saved otherwise since the routine
+  checked it, its end told back once recorded, with whether the user, its time limit, or the
+  quit ended it); Ask before running is Autopilot's to honor there, as the window's is here.
   `BranchStatus` reads the clone's own refs and one `ls-remote` of the followed branch (never a
   fetch, and another host's origin only on the user's click). **Pull** (`pull.go`, `KindPull`)
   is offered only when behind and runs under the clone's lock: its one argv is held to an exact

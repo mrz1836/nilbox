@@ -117,8 +117,9 @@ func (e *Engine) approve(ctx context.Context, id int64) error {
 }
 
 // confirmHold records the user's OK of the hold m's step waits on, exactly as it was shown
-// (its Key: the head commit for a file hold, the worktree and its files for a dirty one),
-// so the next start goes ahead past it, and past nothing else.
+// (its Key: the head commit for a file hold, the worktree and its files for a dirty one,
+// the script as it is for one that asks before each run), so the next start goes ahead
+// past it, and past nothing else.
 func confirmHold(m *match) {
 	if int(m.Step) >= len(m.steps) {
 		return
@@ -129,7 +130,7 @@ func confirmHold(m *match) {
 		return
 	}
 
-	if b := Blocker(m.BlockedBy); b == BlockHold || b == BlockDirty {
+	if b := Blocker(m.BlockedBy); b == BlockHold || b == BlockDirty || b == BlockScriptAsks {
 		sr.Confirmed = append(sr.Confirmed, sr.Hold.Key)
 	}
 }
@@ -460,35 +461,40 @@ func (s *Service) StopRun(ctx context.Context, id int64) error {
 		return err
 	}
 
-	if e.runner == nil {
-		return uierr.New("There's no run to stop.", ErrNoRunner)
-	}
-
 	run, err := e.ledger.q.GetRun(ctx, id)
 	if err != nil || run.Status == runEnded {
 		return uierr.New("That run isn't going.", errors.Join(ErrNoRun, err))
 	}
 
-	if err = e.runner.Stop(ctx, id); err != nil {
+	runner := e.runnerFor(run.Runner)
+	if runner == nil {
+		return uierr.New("There's no run to stop.", ErrNoRunner)
+	}
+
+	if err = runner.Stop(ctx, id); err != nil {
 		return uierr.New("The run couldn't be stopped.", err)
 	}
 
 	return nil
 }
 
-// StopAll stops every agent run at once, through the runner, and leaves it open for later
-// starts.
+// StopAll stops every agent run and every script run at once, through their runners, and
+// leaves them open for later starts.
 func (s *Service) StopAll(ctx context.Context) error {
 	e, err := s.engineOrErr()
 	if err != nil {
 		return err
 	}
 
-	if e.runner == nil {
-		return nil
+	var errs []error
+
+	for _, runner := range []Runner{e.runner, e.scripts} {
+		if runner != nil {
+			errs = append(errs, runner.StopAll(ctx))
+		}
 	}
 
-	if err = e.runner.StopAll(ctx); err != nil {
+	if err = errors.Join(errs...); err != nil {
 		return uierr.New("The runs couldn't be stopped.", err)
 	}
 

@@ -335,6 +335,7 @@ export function RoutineBuilder({
         }}
         preview={ready && sendsToGitHub(spec) ? draft : undefined}
         pinned={pinned}
+        saved={!isNew && !dirty}
       />
       <footer className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-background py-3">
         <p

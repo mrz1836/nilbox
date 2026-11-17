@@ -776,6 +776,18 @@ moved on from the commit `Before` read is pulled. Core registers the `Verifier`
 restart with Stop held again and that same `Finish`. Run again pulls the same branch, its
 `Before` checking everything afresh.
 
+**A routine's run of one of the user's scripts.** `Routines` (`routines.go`, its own type,
+never bound, since a `RoutineRun` holds a function) is how Autopilot's Run one of my scripts
+reaches the user's own scripts: `Mine` lists them, each with its look (the hash a run's
+`Before` compares, of its name, command, place, and Ask before running) and where it shows,
+in words; `Run` works out the very spec `Run` does for one of them in a clone, with the place
+always the app, whatever the script says, refuses it when its look isn't the one the routine
+checked (`ErrChanged`), and sets its `Finish` (which keeps how the run ended, the user's Stop,
+its time limit, or the quit) and its `Recorded`, which tells the routine the outcome once it is
+recorded (`RoutineEnd`). Ask before running, which the window asks of the user for `Run`, is
+Autopilot's to ask before it calls this one (**Schedules, the digest, the script step, and a
+routine's week**, under `internal/autopilot`).
+
 ## internal/inbox
 
 These notes cover what the inbox does for Autopilot: the routines' searches, which each
@@ -1049,8 +1061,9 @@ builder renders what it lists. Its parts:
 - the operators per type (`Ops`, with arity and negation; a list of choices takes only the
   set operators, `Takes`);
 - the steps (`Steps`: each with the `Dispatcher` that runs it, triage, notices, github,
-  agent, verify, merging, or review, whether it runs at once (`Local`) or follows the
-  routine's mode (`AsksFirst`), and `Offered`, false until its dispatcher is built);
+  agent, scripts, verify, merging, or review, whether it runs at once (`Local`) or follows
+  the routine's mode (`AsksFirst`), and `Offered`, false until its dispatcher is built);
+- a schedule's styles (`ScheduleStyles`: each match on its own, or one digest);
 - the Only if outcomes, the tools presets (`MayPush`, `ReadOnly`), the agent step's
   settings (a budget in tokens among them, `budgetTokens`), the other steps' whole-number
   settings (`StepSettings`: `snooze.days`, `waitForChecks.settleMinutes`, and
@@ -1118,7 +1131,9 @@ on or off switch, the name, and the account are its row's, never the spec's. An 
 a limit left out takes its default (a nil pointer), so the builder can tell a value set
 from one inherited. Format version 1 holds every step kind (notify, pin, snooze, dismiss,
 restore, markDone, github, agent, waitForChecks, merge, postReview, tellMe), so a later
-build adds the code that runs a step, never a format change; `TestSchemaGolden` pins every
+build adds the code that runs a step, never a format change, but one: Run one of my scripts
+(`script`, the user's script by its ID and the name it was picked under) came later, as a key
+an older build refuses, so it reads such a routine as broken; `TestSchemaGolden` pins every
 key and every closed set of values.
 
 - `Decode` is strict: it walks the document beside the `Spec` type and holds every
@@ -2243,6 +2258,98 @@ that asks first, and its last `GraduateAfter` (5) answered real matches since
 each a clean approval (`cleanApproval`: approved, done as ran, no step failed, no agent that
 pushed nothing, no checks still failing). `DeclineGraduate` stamps `graduate_declined_at`, so
 the count starts again; nothing changes a mode but the user's `SetMode`.
+
+### Schedules, the digest, the script step, and a routine's week
+
+What the user sees is in `docs/desktop.md`'s [Building a routine](desktop.md#building-a-routine)
+and [Testing a routine](desktop.md#testing-a-routine).
+
+**Schedules.** On a schedule (`catalog.EventSchedule`, `spec.Schedule`) is a state the
+evaluator decides from the moment it is given, as every trigger is: it holds from the
+schedule's time of day, in that moment's own location, to the end of a day it is due (every
+day, a weekday, or the week's day), under the fire key `schedule:<local date>`. So it needs
+nothing of its own in the engine: the 1-minute tick runs a cycle, which reaches the time; a
+time the Mac slept through holds when it wakes (the sim's `Sleep` jumps with no tick, then the
+first cycle fires it), and only that day; daylight saving and a new time zone keep the time of
+day (`time.Date` in the clock's location; the sim's `Clock.Travel`), and a clock set back after
+it fired finds the day's key recorded. The scenarios in `sim/schedule_test.go` hold each case.
+`Schedule.Style` (`catalog.ScheduleStyles`: `each`, written as none, or `digest`) says how
+it tells of what it matched; `spec.Validate` holds a digest's Notify me to the first step, so
+the matches a time makes, which run their first step in the cycle that records them, tell
+together.
+
+**The digest** (`digest.go`). As a cycle ends, `tellNotices` takes out the Notify me jobs of a
+digest routine's matches (`pass.digests`; a manual run's tells on its own) and hands each
+routine's as one job carrying a `Digest` to the notices dispatcher (`dispatchDigest`: one
+`Dispatch`, its answer applied to each match, so each step is done once the notice is told).
+`digestOf` is pure: it puts each item in the first group that holds of it (a pull request
+failing, in conflict, with changes requested, behind, with checks running, a draft, approved,
+else waiting for review; an issue quiet a week or more, else open; a value not known yet passes
+on), counts the groups in that order, lists the items so, and names them by kind and, when one
+bot opened all, by it. The notice (`digestNotice`) is an alert about no item, headed by the
+routine, *3 Dependabot pull requests need you*, *2 failing, 1 waiting for review: acme-org/web
+#88, …* (five named, the rest counted), keyed by the routine, when it was made, and a hash of
+its matches, so a digest told again after a quit is told once and a later one is its own.
+
+**Run one of my scripts** (`scripts.go`, `catalog.StepScript`, `spec.ScriptStep`: the
+script's ID, and the name it was picked under, for the sentence and an export). It is an
+asks-first step of the scripts part (`catalog.DispatchScripts`), recorded as a run under
+runner `script` (migration `0016_autopilot_script_runs` makes `autopilot_runs` again with that
+runner in its check, copying every row) and handed to `EngineConfig.Scripts`, a `Runner`, as
+an agent's is: Dispatch starts it and returns Running, and its end comes through `RunEnded`;
+the engine routes a run's `Alive`, a Stop, and Stop all by its runner (`runnerFor`). Its limits
+are a GitHub action's: the tries, the routine's runs a day, Pause, the active hours, an outside
+contributor's item waiting for the user, and one run per item; it takes no agent's slot and
+counts toward neither the agents' caps nor the GitHub actions' (`isAgentRunner`). The user's
+own scripts reach the engine and the builder through `MyScripts` (core's `myScripts`, over
+`scripts.Routines.Mine`), which the bound `MyScripts` lists, and which `Save` and `Describe`
+check a step's ID against (`scriptProblems`). **Ask before running** is the engine's to honor,
+since Repo scripts' Run leaves it to its window: the gate's first check (`scriptAsks`) holds a
+script step whose script asks until the step's `Confirmed` holds `ScriptKey(id, look)`, the
+script as the user saw it (its look hashes its name, command, place, and the setting), whatever
+the mode, a manual run's and an approved match's too, waiting `script_asks` with the hold's key
+on the step, which `Approve` confirms (`confirmHold`); a script edited since asks again.
+Core's runner (`adapters_scriptsteps.go`, `scriptSteps`) checks it once more as it starts
+(`ScriptAsks`), finds the item's clone as a launch does (`launcher.CloneTarget`), and runs it
+through `scripts.Routines.Run`, the same spec Repo scripts' Run works out, always in the app,
+refusing a script saved otherwise since its check (`ErrChanged`), its end told back from the
+run engine's `Recorded` with how it ended (`RoutineEnd`, from its `Finish`: the user's Stop, its
+time limit, the app's quit, which interrupts it). A busy clone waits queued, Scripts turned off
+or a script that can't run waits not ready, no clone waits for the user, and a script gone or
+not showing in the clone fails the step. A step names its script by its ID and the name it was
+picked under: a script saved under another name waits not ready, and `Save` and `Describe` say
+so (`renamedWords`), since an ID a routine brought from another Mac (an export, a backup) may
+name another script here; the builder offers it to be picked again. After a restart, `Alive` reads the run engine's record
+of the run's `script_run_id` and tells the engine an end it didn't hear.
+
+**Run on the matches now** (`runon.go`). The bound `RunOnMatches(id, items)` is a command on the
+loop: for each item the saved routine matches now and would run on (`TestItem.RunsNow`: no
+record of its occurrence, a record that closed before it ran, or a baseline), it records the
+routine's own match for that occurrence, approved, or opens that record again approved, so the
+routine never runs on the occurrence twice and an Ask first routine doesn't ask again; every
+other limit still holds it. A routine that is off, broken, or another account's is refused,
+and so is a list longer than a test's.
+
+**A routine's week** (`stats.go`). The bound `Stats(id)` reads the routine's runs started in
+the last seven days with their matches' steps (`ListRoutineWeekRuns`) and counts, in Go
+(`weekStats`), its agents' runs and its scripts', the fixes (an agent's run whose verdict
+passed, or whose match's Wait for the checks after its pushed step passed, once per match),
+merges, reviews posted, and GitHub actions GitHub took (each by the kind of the step its run
+ran), and what the runs reported spending: the dollars, how many runs reported one, and how
+many of those an estimate (`cost_estimated`, which a subscription's sign-in reports as the
+API's price; the window says *about* for every figure), and the tokens. A run that never
+started counts nowhere. A run in the terminal reports neither, and its session's tokens are
+the session panel's (`internal/sessions`' `Usage`, from the agent's own files). A background
+run's session reads its run's instead: `Usage` asks its `RunTokens` (core's
+`backgroundTokens`, over `Engine.BackgroundTokens`, by the run engine's run through the
+index `0016` adds on `script_run_id`), which the runner keeps current (`Engine.RunUsage`),
+never the transcript, and marks them `FromRun`.
+
+**The cycle's reads.** A cycle reads what the ledger keeps of every routine it runs in four
+reads (`readRoutines`: matches, items left alone, resets of the tries, baselines), indexes each
+routine's last closed match by item once (`lastClosed`, which the evaluator's history reads),
+and keeps its own state only when it changed beyond the last cycle (`keepCycle`).
+`BenchmarkEngineCycle` measures it ([performance.md](performance.md#the-engines-cycle)).
 
 ### The Autopilot tab
 

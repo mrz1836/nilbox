@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
@@ -132,4 +133,27 @@ func (f terminalFocuser) Focus(ctx context.Context, id, tty string) error {
 	default:
 		return err
 	}
+}
+
+// backgroundTokens reads a background run's tokens, for its session's panel, from
+// Autopilot's ledger, which its runner keeps current as the run goes. It implements
+// sessions.RunTokens.
+type backgroundTokens struct {
+	engine interface{ Built() *autopilot.Engine }
+}
+
+// RunTokens returns the tokens the background run that started the run engine's run runID
+// reported so far; false before the engine is built, or for a run it doesn't record.
+func (b backgroundTokens) RunTokens(ctx context.Context, runID int64) (sessions.Usage, bool, error) {
+	e := b.engine.Built()
+	if e == nil {
+		return sessions.Usage{}, false, nil
+	}
+
+	u, ok, err := e.BackgroundTokens(ctx, runID)
+	if err != nil || !ok {
+		return sessions.Usage{}, false, err
+	}
+
+	return sessions.Usage{Input: u.TokensIn, Output: u.TokensOut, CacheRead: u.CacheRead}, true, nil
 }

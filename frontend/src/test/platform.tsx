@@ -76,9 +76,11 @@ import {
   resolution,
   review,
   reviewResult,
+  myScript,
   routine,
   routineImportPreview,
   routineReady,
+  routineStats,
   routineSuggestions,
   routineTest,
   runPreview,
@@ -245,6 +247,26 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     previewRoutineImport: () => Promise.resolve(routineImportPreview()),
     importRoutines: () => Promise.resolve({ routines: ['Triage bugs'], prompts: ['Triage'] }),
     addStarterPrompt: (key) => Promise.resolve(prompt({ id: 21, starterKey: key })),
+    // The user has one script, Lint; Run on the matches now runs on every item it is given;
+    // and a routine's week holds nothing, unless a test says otherwise.
+    autopilotMyScripts: () => Promise.resolve([myScript()]),
+    runOnMatches: (id, items) =>
+      Promise.resolve({
+        matches: (items ?? []).map((itemId, i) =>
+          autopilotMatch({
+            id: 50 + i,
+            routineId: id,
+            item: { ...autopilotMatch().item, id: itemId },
+            approved: true,
+            state: 'queued',
+            reason: '',
+            closedAt: null,
+          }),
+        ),
+        skipped: 0,
+        words: `Running on ${String((items ?? []).length)} items.`,
+      }),
+    routineStats: () => Promise.resolve(routineStats()),
     itemsByID: () => Promise.resolve([]),
 
     getInboxSnapshot: inbox,
@@ -287,6 +309,17 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     showSessionFolder: done,
     forgetSession: done,
     sessionLastWords: () => Promise.resolve({ text: 'The change looks good.', partial: false }),
+    sessionUsage: () =>
+      Promise.resolve({
+        known: false,
+        fromRun: false,
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: 0,
+        partial: false,
+      }),
 
     openReview: () => Promise.resolve(review()),
     refreshReview: () => Promise.resolve(review()),

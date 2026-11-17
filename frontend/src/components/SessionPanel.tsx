@@ -1,14 +1,16 @@
 import { useRef, useState } from 'react'
 
 import { agentName } from '../lib/launch'
-import { isLive, setupWords, sinceWhen, stateLabel, terminalName } from '../lib/sessions'
+import { isLive, setupWords, sinceWhen, stateLabel, terminalName, usageWords } from '../lib/sessions'
 import { formatAgo, formatFull } from '../lib/time'
 import { useMutation } from '../lib/useMutation'
+import { useQuery } from '../lib/useQuery'
 import {
   copyText,
   focusSession,
   forgetSession,
   resumeSession,
+  sessionUsage,
   showSessionFolder,
   type AgentInfo,
   type AgentSession,
@@ -82,6 +84,14 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
   const actions = { focus, resume, folder, copy, forget }
   const terminal = terminalName(session)
   const setup = setupWords(session)
+  // usage is how many tokens it used, as the agent's own files report them, or a run in
+  // the background's record, read again each time it changes state; a session in the
+  // terminal the agent hasn't named yet has no files.
+  const usage = useQuery(() => sessionUsage(session.id), [session.id, session.stateAt], {
+    enabled: session.agentSessionId !== '' || session.runId !== 0,
+    log: 'Could not read a session’s token counts',
+  })
+  const tokens = usageWords(usage.data)
   // copied is whether the ID was just copied; it clears on the next copy.
   const [copied, setCopied] = useState(false)
   // last is the button pressed last. Only its outcome shows, so one that works clears
@@ -171,6 +181,11 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
       </div>
       <StateLine session={session} />
       {setup !== '' && <p className="truncate text-[0.6875rem] text-muted">{setup}</p>}
+      {tokens !== null && (
+        <p className="truncate text-[0.6875rem] text-muted" title={tokens.title}>
+          {tokens.text}
+        </p>
+      )}
       <p className="truncate font-mono text-[0.6875rem] text-muted" title={session.dir}>
         {session.dir}
       </p>
@@ -275,9 +290,10 @@ export interface SessionPanelProps {
 }
 
 // SessionPanel lists an item's agent sessions, newest first: each one's agent, profile,
-// and prompt, what it is doing and for how long, the permissions it started with, the
-// folder it runs in and what its launch did to the item's worktree, what the launch
-// worked around, what the agent last said, and buttons to show its terminal, resume it
+// and prompt, what it is doing and for how long, the permissions it started with, how many
+// tokens it used where the agent's own files say, the folder it runs in and what its
+// launch did to the item's worktree, what the launch worked around, what the agent last
+// said, and buttons to show its terminal, resume it
 // once it ended, show its folder in Finder, copy its ID, and remove it once it ended.
 export function SessionPanel({ sessions, agents }: SessionPanelProps) {
   return (

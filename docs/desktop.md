@@ -2585,6 +2585,15 @@ it reads as. Below them:
   list. This is where an item that is in no inbox list shows up, such as a Dependabot pull
   request a routine's search finds.
 - **Activity** is that routine's own lines, as below.
+- **This week** counts what its runs did in the last seven days: its agents' runs, the fixes
+  among them (a push whose checks then passed), merges, reviews posted, GitHub actions GitHub
+  took, and its scripts' runs, then what they spent, *about $1.20, as 2 runs estimated it ·
+  1.2M tokens, 380K of them read from the cache*. The dollars are always *about*: an agent
+  signed in with a subscription (Claude Max, say) reports what the same work would cost
+  through the API, an estimate, and one with an API key what it was charged (*as 3 runs
+  reported it, 2 by estimate* for both), while the tokens are what each run's stream
+  reported, the real measure. A run in your terminal reports neither; the item's
+  [session panel](#following-a-session) counts its session's tokens.
 
 **Activity** lists what the routines did, under a heading for each day, newest first:
 
@@ -2650,7 +2659,16 @@ you have.
   test, and says so once the searches changed since.
 - **WHEN** is its one trigger, with the trigger's own options at their defaults until you set
   them: wait until every check has finished, how long they settle, the first commit too, how
-  many comments, how many quiet days, which label, or a schedule.
+  many comments, how many quiet days, which label, or a schedule. **On a schedule** fires at a
+  time of day by your Mac's own clock (**Every day**, **Every weekday**, or **Every week** on a
+  day), on the minute's tick that reaches it, once a day: a time missed while the Mac slept
+  runs once it wakes, the same day, never for a day gone by, and a change of the clock
+  (daylight saving, setting it, a new time zone) keeps the time of day and never fires twice
+  in one day. It tells you **For each match**, each item's Notify me on its own, or **Once,
+  with the list**: one digest that counts what it matched by where each stands, *3 Dependabot
+  pull requests need you · 2 failing, 1 waiting for review: acme-org/web #88, …*, its other
+  steps still running on each item. A digest needs Notify me as its first step; an item that
+  joins the watch later the same day gets a digest of its own.
 - **IF** is its conditions, **All** or **Any** of them, each a field (grouped by Item,
   Repository, Pull request, Checks, Files, Dependency update, History), how it compares, and its
   value or values, with **+ Add a condition** and **+ Add a group** (one level deep). A field's
@@ -2671,6 +2689,18 @@ you have.
   (one of your library's comment replies that fits the items; never an approval's, such as
   *LGTM*, or a request for changes', since the step only comments), and **Add or remove
   labels**, with the labels to add and to take off.
+- **Run one of my scripts** runs one of your own [Repo scripts](#repo-scripts), which it names
+  by picking it (its command, and where it shows, on the step's line), in the item's clone,
+  in the app, exactly as Repo scripts runs it, wherever the script itself runs. It follows the
+  routine's mode, as a GitHub action does, with the routine's tries and runs a day, and takes
+  no agent's slot. A script set to **Ask before running** waits for your OK every time it
+  would run, on Autopilot too (*"Lint" asks before each run: run it?*), and your OK is for the
+  script as you saw it: one you edited since asks again. A script that doesn't show in the
+  item's clone, or that you deleted, fails its step and says so; with no clone, or Scripts
+  turned off, the match waits. A script you renamed since you picked it waits for you to pick
+  it again (*The script picked as "Lint" is now "Lint all": pick it again in the routine.*),
+  so a routine from another Mac, or from a backup, never runs another script that happens to
+  have the same ID here. **Stop** stops it, as in Scripts → Runs.
 - **The agent step** names its **Prompt** (a library prompt for the items' kind, or the item's
   own default prompt; **Edit in Prompts** opens the Prompts tab), **Where** it runs (**In my
   terminal**, which a new agent step starts with; **In the background** is a problem this
@@ -2731,6 +2761,16 @@ GitHub API budget is low, a test reads nothing new and says so. For a routine th
 anything, a matching row's **Preview ▸** shows exactly what each action would send that item,
 built and not sent: the comment (*@dependabot rebase*, or your reply filled in for it), or the
 labels it adds and takes off, or why it can't be built for it.
+
+**Run on the matches now…**, once a saved routine's test found items it would run on now (one
+it has no record of, one whose record closed before it ran, or one it took as already matching
+when you chose only what changes from now on), asks first with the list, *Run Weekday nudge on
+3 items now?*, then runs on exactly those, each with your OK, so an Ask first routine doesn't
+ask again; Pause, its tries and runs a day, a free slot, the daily cap, this Mac's readiness,
+and the holds still hold each, and a script that asks before each run still asks. Each is the
+routine's own match for what it matches now, so it never runs on that again. It is offered
+for the routine as saved, and runs only while it is on; in Dry run, each records what it would
+do.
 
 **Preview ▸** on an item of a routine with an agent step shows the exact launch it would make
 there, built and not started: the agent, profile, model, and effort it resolves to and where
@@ -3083,7 +3123,7 @@ Notifications**, all on by default, and the **Autopilot** type on the
 
 | Kind | Switch | When |
 |---|---|---|
-| Autopilot alert | **Routine alerts** | A routine's **Notify me** or **Tell me** step runs; headed by the routine's name |
+| Autopilot alert | **Routine alerts** | A routine's **Notify me** or **Tell me** step runs; headed by the routine's name. A schedule's digest is one alert for what it matched at its time, about no one item, which opens the routine |
 | Autopilot problem | **Autopilot problems** | A routine can't run: its search fails, it won't load, or this Mac lacks something it needs. You hear of each problem once, as it starts |
 | Needs your OK | **Needs your OK** | A routine's match waits for you: Ask first, a hold, no clone, a dirty worktree, a catch-up, a GitHub action's warnings, an outside contributor's item, a first pass's backlog; its banner opens the match's card |
 | Agent finished | **Agents finishing** | A routine's coding agent in the background ends, done or failed, with what it cost; never one you stopped |
@@ -4269,8 +4309,9 @@ stays on the card for a day.
 
 **The panel.** Click the tag for every session of the item, newest first: its agent, profile,
 and prompt, what it is doing and since when, the permissions it started with and where it runs
-(**full access · new worktree**, or **in the clone**), the folder, anything its launch worked
-around, and the start of what the agent last said. Each has its actions:
+(**full access · new worktree**, or **in the clone**), how many tokens it used, the folder,
+anything its launch worked around, and the start of what the agent last said. Each has its
+actions:
 
 - **Show in terminal** brings forward the tab the session runs in, found by its terminal
   device (`ps -o tty=`). iTerm2 uses the Automation permission you gave at the first launch;
@@ -4317,6 +4358,19 @@ never the terminal:
   never that it waits for you, and says why. When the daemon can't be reached, the session is linked through the first
   line of the rollout file Codex writes, and the card shows **Status unavailable** while it
   runs.
+
+**Its tokens.** The panel says how many tokens each session used, such as **1.2M tokens · 840K
+cached**, with every count (in, out, read from the cache, written to it) in its tooltip, read
+from the agent's own files on this Mac when the panel opens and again each time the session
+changes state, never from the network. Claude Code's come from the session's transcript: each
+assistant message's usage, counted once though Claude Code writes a line per part of a message,
+read only as far as the file grew since the last read, and at most its first 64 MB (past that,
+the panel says **at least**). Codex's come from the last token count in the end of its rollout
+file, the thread's running total. An agent's run in the background (**⚡ in the background**)
+counts what its run reported instead, as Autopilot records it while the run goes, its writes
+to the cache within what went in. A session the agent hasn't named yet, or whose files report
+no usage, shows none. These are the agent's own counts, not a bill: a subscription's sign-in
+spends its plan's usage, and nothing here turns tokens into dollars.
 
 Whether a session still runs comes from its process, checked against the agent so a process ID
 macOS has since given another program never keeps a session alive: Claude Code must list the

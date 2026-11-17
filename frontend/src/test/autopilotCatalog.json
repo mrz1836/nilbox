@@ -2109,6 +2109,20 @@
       "offered": true
     },
     {
+      "kind": "script",
+      "label": "Run one of my scripts",
+      "help": "Runs one of your own Repo scripts in the item's clone, in the app, as Repo scripts runs it. A script set to ask before running waits for your OK each time.",
+      "dispatcher": "scripts",
+      "local": false,
+      "asksFirst": true,
+      "undo": false,
+      "kinds": [
+        "pr",
+        "issue"
+      ],
+      "offered": true
+    },
+    {
       "kind": "waitForChecks",
       "label": "Wait for the checks",
       "help": "Follows the checks on the agent's pushed commit until every one has finished and settled.",
@@ -2591,6 +2605,18 @@
         "unit": "hours"
       },
       "choices": []
+    }
+  ],
+  "scheduleStyles": [
+    {
+      "id": "each",
+      "label": "For each match",
+      "help": "Runs its steps on each item that matches at the time, and tells you of each on its own."
+    },
+    {
+      "id": "digest",
+      "label": "Once, with the list",
+      "help": "Runs its steps on each item that matches at the time, and tells you once, with one digest that lists them: “5 pull requests need you: 3 failing, 2 conflicting”. Notify me comes first."
     }
   ]
 }

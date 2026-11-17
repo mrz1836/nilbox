@@ -214,6 +214,9 @@ type Catalog struct {
 	AgentSettings []Setting        `json:"agentSettings"`
 	Limits        []Setting        `json:"limits"`
 	StepSettings  []Setting        `json:"stepSettings"`
+
+	// ScheduleStyles are On a schedule's styles: each match on its own, or one digest.
+	ScheduleStyles []ScheduleStyleInfo `json:"scheduleStyles"`
 }
 
 // All returns the whole catalog, with every list empty rather than nil, so the window
@@ -223,6 +226,7 @@ func All() Catalog {
 		Triggers: Triggers(), Groups: Groups(), Fields: Fields(), Ops: Ops(), Lists: ListSources(), Steps: Steps(),
 		GitHubActions: GitHubActions(), Outcomes: Outcomes(), Presets: Presets(), Places: Places(),
 		AgentSettings: AgentSettings(), Limits: Limits(), StepSettings: StepSettings(),
+		ScheduleStyles: ScheduleStyles(),
 	}
 
 	for i := range c.Triggers {

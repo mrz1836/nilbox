@@ -648,6 +648,7 @@ export type SensitiveScope = sensitive.Scope
 
 export type AgentSession = NonNullLists<sessions.Session>
 export type SessionWords = NonNullLists<sessions.Words>
+export type SessionUsage = NonNullLists<sessions.Usage>
 export type SessionsSnapshot = NonNullLists<sessions.Snapshot>
 export type SessionState = sessions.State
 export type SessionWorktreeAction = sessions.WorktreeAction
@@ -775,6 +776,9 @@ export const {
   List: listSessions,
   Focus: focusSession,
   LastWords: sessionLastWords,
+  // Usage reads how many tokens a session used from the agent's own files on this Mac:
+  // known false while they report none.
+  Usage: sessionUsage,
   ShowFolder: showSessionFolder,
   Forget: forgetSession,
 } = narrow(sessions.Service)
@@ -1273,6 +1277,22 @@ export const draftReadiness = autopilotService.DraftReadiness as (
 ) => CancellablePromise<AutopilotRoutineReady>
 export const declineGraduate = autopilotService.DeclineGraduate as (id: number) => CancellablePromise<AutopilotRoutine>
 export const { AddStarter: addStarterPrompt } = narrow(prompts.Service)
+
+// Schedules, the script step, and a routine's week. MyScripts lists the user's own Repo
+// scripts, which Run one of my scripts picks from, each with whether it asks before each
+// run. RunOnMatches runs a saved routine now on the items a Test offered it on (runsNow),
+// once the user confirmed the list, each with the user's OK, and says what it did. Stats
+// is what a routine's runs did over the last seven days, its This week: the dollars an
+// estimate, which a subscription's sign-in reports as what the API would charge.
+export type AutopilotMyScript = NonNullLists<autopilot.MyScript>
+export type AutopilotRanOn = Omit<NonNullLists<autopilot.RanOn>, 'matches'> & { matches: AutopilotMatch[] }
+export type AutopilotStats = NonNullLists<autopilot.RoutineStats>
+export type AutopilotScheduleStyle = autopilotcatalog.ScheduleStyle
+export const { MyScripts: autopilotMyScripts, Stats: routineStats } = autopilotService
+export const runOnMatches = autopilotService.RunOnMatches as (
+  id: number,
+  items: number[] | null,
+) => CancellablePromise<AutopilotRanOn>
 
 // The notification history. MarkAllRead marks every entry read (Mark all done), and
 // MarkRead and MarkUnread the entries with the ids given; opening the history marks

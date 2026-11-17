@@ -28,6 +28,7 @@ export type {
     ReplyAction,
     ReviewStep,
     Schedule,
+    ScriptStep,
     SnoozeStep,
     Source,
     Spec,

@@ -158,6 +158,97 @@ describe('SessionTag', () => {
     )
   })
 
+  it('says how many tokens each session used, where the agent’s own files say, read again as it changes', async () => {
+    const user = userEvent.setup()
+    const counts = { input: 18, output: 245, cacheRead: 840_000, cacheWrite: 1500 }
+    const read = { known: true, fromRun: false, ...counts, total: 841_763, partial: false }
+
+    platform.sessionUsage.mockImplementation((id) =>
+      Promise.resolve(
+        id === 'long'
+          ? { ...read, total: 1_234_567, partial: true }
+          : id === 'none'
+            ? {
+                known: false,
+                fromRun: false,
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+                partial: false,
+              }
+            : read,
+      ),
+    )
+
+    const sessions = [
+      agentSession({ id: 'read' }),
+      agentSession({ id: 'long' }),
+      agentSession({ id: 'none' }),
+      agentSession({ id: 'unnamed', agentSessionId: '' }),
+    ]
+    const { rerender } = renderTag(sessions)
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+
+    const [counted = document.body, partial = document.body, unknown = document.body, unnamed = document.body] =
+      entries(4)
+
+    const line = await within(counted).findByText('841.8K tokens · 840K cached')
+    expect(line).toHaveAttribute(
+      'title',
+      '841,763 tokens: 18 in, 245 out, 840,000 read from the cache, 1,500 written to it, as the agent’s own files on this Mac report them.',
+    )
+    expect(await within(partial).findByText('at least 1.2M tokens · 840K cached')).toHaveAttribute(
+      'title',
+      expect.stringContaining('too long to read whole'),
+    )
+    expect(unknown).not.toHaveTextContent('tokens')
+    expect(unnamed).not.toHaveTextContent('tokens')
+    // A session the agent hasn't named yet has no files to read.
+    expect(platform.sessionUsage).not.toHaveBeenCalledWith('unnamed')
+    expect(platform.sessionUsage).toHaveBeenCalledTimes(3)
+
+    rerender(
+      <SessionTag
+        sessions={[
+          agentSession({ id: 'read', state: 'working', stateAt: '2026-06-15T12:00:00Z' }),
+          ...sessions.slice(1),
+        ]}
+        agents={agents()}
+      />,
+    )
+
+    await vi.waitFor(() => {
+      expect(platform.sessionUsage).toHaveBeenCalledTimes(4)
+    })
+    expect(platform.sessionUsage).toHaveBeenLastCalledWith('read')
+  })
+
+  it('counts a background run’s tokens as its run reported them, before the agent names it', async () => {
+    const user = userEvent.setup()
+    platform.sessionUsage.mockResolvedValue({
+      known: true,
+      fromRun: true,
+      input: 1200,
+      output: 30,
+      cacheRead: 9000,
+      cacheWrite: 0,
+      total: 10_230,
+      partial: false,
+    })
+
+    renderTag([agentSession({ id: 'run', agentSessionId: '', runId: 4 })])
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+
+    const [run = document.body] = entries(1)
+    expect(await within(run).findByText('10.2K tokens · 9K cached')).toHaveAttribute(
+      'title',
+      expect.stringContaining('as its run reported them'),
+    )
+    expect(platform.sessionUsage).toHaveBeenCalledWith('run')
+  })
+
   it('shows a session’s folder in Finder, and says why it couldn’t', async () => {
     const user = userEvent.setup()
     const ended = agentSession({ id: 'older', state: 'ended', endedAt: '2026-06-15T10:00:00Z', canFocus: false })

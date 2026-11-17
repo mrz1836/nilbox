@@ -206,6 +206,28 @@ func (q *Queries) EndRun(ctx context.Context, arg EndRunParams) (int64, error) {
 	return result.RowsAffected()
 }
 
+const getBackgroundRunTokens = `-- name: GetBackgroundRunTokens :one
+SELECT tokens_in, tokens_out, cache_read_tokens FROM autopilot_runs
+WHERE script_run_id = ?1 AND runner = 'background'
+ORDER BY id DESC
+LIMIT 1
+`
+
+type GetBackgroundRunTokensRow struct {
+	TokensIn        int64
+	TokensOut       int64
+	CacheReadTokens int64
+}
+
+// GetBackgroundRunTokens returns the tokens an agent's run in the background reported so
+// far, by the run engine's run it started: what its session's panel counts.
+func (q *Queries) GetBackgroundRunTokens(ctx context.Context, scriptRunID int64) (GetBackgroundRunTokensRow, error) {
+	row := q.db.QueryRowContext(ctx, getBackgroundRunTokens, scriptRunID)
+	var i GetBackgroundRunTokensRow
+	err := row.Scan(&i.TokensIn, &i.TokensOut, &i.CacheReadTokens)
+	return i, err
+}
+
 const getMatch = `-- name: GetMatch :one
 SELECT id, routine_id, item_id, account_login, repo_owner, repo_name, kind, number, title, url, fire_key, dry_run, manual, state, blocked_by, reason, detail, trace, steps, step, spec_hash, head_oid, auto_merge_at_match, approved, attempt, created_at, updated_at, decided_at, closed_at FROM autopilot_matches WHERE id = ?1
 `
@@ -249,7 +271,7 @@ func (q *Queries) GetMatch(ctx context.Context, id int64) (AutopilotMatch, error
 }
 
 const getRun = `-- name: GetRun :one
-SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at, cost_estimated FROM autopilot_runs WHERE id = ?1
+SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, cost_estimated, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at FROM autopilot_runs WHERE id = ?1
 `
 
 // GetRun returns one run, or sql.ErrNoRows.
@@ -290,6 +312,7 @@ func (q *Queries) GetRun(ctx context.Context, id int64) (AutopilotRun, error) {
 		&i.BudgetReserved,
 		&i.BudgetUnit,
 		&i.Cost,
+		&i.CostEstimated,
 		&i.TokensIn,
 		&i.TokensOut,
 		&i.CacheReadTokens,
@@ -304,7 +327,31 @@ func (q *Queries) GetRun(ctx context.Context, id int64) (AutopilotRun, error) {
 		&i.FinishedAt,
 		&i.VerifiedAt,
 		&i.UpdatedAt,
-		&i.CostEstimated,
+	)
+	return i, err
+}
+
+const getRunScript = `-- name: GetRunScript :one
+SELECT id, script_run_id, status, outcome FROM autopilot_runs WHERE id = ?1
+`
+
+type GetRunScriptRow struct {
+	ID          int64
+	ScriptRunID int64
+	Status      string
+	Outcome     string
+}
+
+// GetRunScript returns the run engine's run a run started, 0 for none yet, and how the run
+// is recorded: the runs a script step's runner stops and reads the end of.
+func (q *Queries) GetRunScript(ctx context.Context, id int64) (GetRunScriptRow, error) {
+	row := q.db.QueryRowContext(ctx, getRunScript, id)
+	var i GetRunScriptRow
+	err := row.Scan(
+		&i.ID,
+		&i.ScriptRunID,
+		&i.Status,
+		&i.Outcome,
 	)
 	return i, err
 }
@@ -519,7 +566,7 @@ func (q *Queries) InsertRun(ctx context.Context, arg InsertRunParams) (int64, er
 }
 
 const listActiveRuns = `-- name: ListActiveRuns :many
-SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at, cost_estimated FROM autopilot_runs WHERE status IN ('starting', 'running', 'stopping') ORDER BY id
+SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, cost_estimated, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at FROM autopilot_runs WHERE status IN ('starting', 'running', 'stopping') ORDER BY id
 `
 
 // ListActiveRuns returns the runs starting, running, or stopping, oldest first.
@@ -566,6 +613,7 @@ func (q *Queries) ListActiveRuns(ctx context.Context) ([]AutopilotRun, error) {
 			&i.BudgetReserved,
 			&i.BudgetUnit,
 			&i.Cost,
+			&i.CostEstimated,
 			&i.TokensIn,
 			&i.TokensOut,
 			&i.CacheReadTokens,
@@ -580,8 +628,43 @@ func (q *Queries) ListActiveRuns(ctx context.Context) ([]AutopilotRun, error) {
 			&i.FinishedAt,
 			&i.VerifiedAt,
 			&i.UpdatedAt,
-			&i.CostEstimated,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActiveScriptRuns = `-- name: ListActiveScriptRuns :many
+SELECT id, script_run_id FROM autopilot_runs
+WHERE runner = 'script' AND status IN ('starting', 'running', 'stopping')
+ORDER BY id
+`
+
+type ListActiveScriptRunsRow struct {
+	ID          int64
+	ScriptRunID int64
+}
+
+// ListActiveScriptRuns returns the script steps' runs starting, running, or stopping, with
+// the run engine's run each started: what Stop all stops.
+func (q *Queries) ListActiveScriptRuns(ctx context.Context) ([]ListActiveScriptRunsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveScriptRuns)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveScriptRunsRow{}
+	for rows.Next() {
+		var i ListActiveScriptRunsRow
+		if err := rows.Scan(&i.ID, &i.ScriptRunID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -955,7 +1038,7 @@ func (q *Queries) ListMatchHeads(ctx context.Context, ids []int64) ([]ListMatchH
 }
 
 const listMatchRuns = `-- name: ListMatchRuns :many
-SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at, cost_estimated FROM autopilot_runs WHERE match_id IN (/*SLICE:ids*/?) ORDER BY id
+SELECT id, match_id, routine_id, item_id, repo_owner, repo_name, kind, number, title, url, step, runner, agent, github_action, script_run_id, session_id, agent_session_id, status, outcome, verdict, profile, model, effort, preset, clone_path, worktree, head_before, run_commit, head_after, display_command, budget_reserved, budget_unit, cost, cost_estimated, tokens_in, tokens_out, cache_read_tokens, turns, summary, error, manual, counted, log_cleared, queued_at, started_at, finished_at, verified_at, updated_at FROM autopilot_runs WHERE match_id IN (/*SLICE:ids*/?) ORDER BY id
 `
 
 // ListMatchRuns returns the runs of the matches among ids, oldest first.
@@ -1012,6 +1095,7 @@ func (q *Queries) ListMatchRuns(ctx context.Context, ids []int64) ([]AutopilotRu
 			&i.BudgetReserved,
 			&i.BudgetUnit,
 			&i.Cost,
+			&i.CostEstimated,
 			&i.TokensIn,
 			&i.TokensOut,
 			&i.CacheReadTokens,
@@ -1026,7 +1110,6 @@ func (q *Queries) ListMatchRuns(ctx context.Context, ids []int64) ([]AutopilotRu
 			&i.FinishedAt,
 			&i.VerifiedAt,
 			&i.UpdatedAt,
-			&i.CostEstimated,
 		); err != nil {
 			return nil, err
 		}
@@ -1495,6 +1578,278 @@ func (q *Queries) ListRoutineNames(ctx context.Context) ([]ListRoutineNamesRow, 
 	for rows.Next() {
 		var i ListRoutineNamesRow
 		if err := rows.Scan(&i.ID, &i.Name, &i.DeletedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoutineWeekRuns = `-- name: ListRoutineWeekRuns :many
+SELECT r.id, r.match_id, r.step, r.runner, r.github_action, r.status, r.outcome, r.verdict, r.manual,
+       r.cost, r.cost_estimated, r.tokens_in, r.tokens_out, r.cache_read_tokens, r.started_at,
+       m.steps AS match_steps
+FROM autopilot_runs AS r
+JOIN autopilot_matches AS m ON m.id = r.match_id
+WHERE r.routine_id = ?1 AND r.started_at >= ?2
+ORDER BY r.id
+`
+
+type ListRoutineWeekRunsParams struct {
+	RoutineID int64
+	Since     *time.Time
+}
+
+type ListRoutineWeekRunsRow struct {
+	ID              int64
+	MatchID         int64
+	Step            int64
+	Runner          string
+	GithubAction    string
+	Status          string
+	Outcome         string
+	Verdict         string
+	Manual          bool
+	Cost            *float64
+	CostEstimated   bool
+	TokensIn        int64
+	TokensOut       int64
+	CacheReadTokens int64
+	StartedAt       *time.Time
+	MatchSteps      string
+}
+
+// ListRoutineWeekRuns returns a routine's runs started since a moment, each with its step
+// and its match's steps, which say what kind of step it ran and how the match went on:
+// what its week's stats count.
+func (q *Queries) ListRoutineWeekRuns(ctx context.Context, arg ListRoutineWeekRunsParams) ([]ListRoutineWeekRunsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRoutineWeekRuns, arg.RoutineID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRoutineWeekRunsRow{}
+	for rows.Next() {
+		var i ListRoutineWeekRunsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.MatchID,
+			&i.Step,
+			&i.Runner,
+			&i.GithubAction,
+			&i.Status,
+			&i.Outcome,
+			&i.Verdict,
+			&i.Manual,
+			&i.Cost,
+			&i.CostEstimated,
+			&i.TokensIn,
+			&i.TokensOut,
+			&i.CacheReadTokens,
+			&i.StartedAt,
+			&i.MatchSteps,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoutinesBaselines = `-- name: ListRoutinesBaselines :many
+SELECT routine_id, item_id, state, first_seen_at FROM autopilot_baselines WHERE routine_id IN (/*SLICE:ids*/?)
+`
+
+type ListRoutinesBaselinesRow struct {
+	RoutineID   int64
+	ItemID      int64
+	State       string
+	FirstSeenAt time.Time
+}
+
+// ListRoutinesBaselines is ListBaselines for each of the routines among ids, in one read.
+func (q *Queries) ListRoutinesBaselines(ctx context.Context, ids []int64) ([]ListRoutinesBaselinesRow, error) {
+	query := listRoutinesBaselines
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRoutinesBaselinesRow{}
+	for rows.Next() {
+		var i ListRoutinesBaselinesRow
+		if err := rows.Scan(
+			&i.RoutineID,
+			&i.ItemID,
+			&i.State,
+			&i.FirstSeenAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoutinesHandsOff = `-- name: ListRoutinesHandsOff :many
+SELECT routine_id, item_id FROM autopilot_hands_off WHERE routine_id IN (/*SLICE:ids*/?)
+`
+
+type ListRoutinesHandsOffRow struct {
+	RoutineID int64
+	ItemID    int64
+}
+
+// ListRoutinesHandsOff is ListHandsOff for each of the routines among ids, in one read.
+func (q *Queries) ListRoutinesHandsOff(ctx context.Context, ids []int64) ([]ListRoutinesHandsOffRow, error) {
+	query := listRoutinesHandsOff
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRoutinesHandsOffRow{}
+	for rows.Next() {
+		var i ListRoutinesHandsOffRow
+		if err := rows.Scan(&i.RoutineID, &i.ItemID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoutinesMatchKeys = `-- name: ListRoutinesMatchKeys :many
+SELECT routine_id, id, item_id, fire_key, dry_run, state, reason, attempt, step, steps FROM autopilot_matches
+WHERE routine_id IN (/*SLICE:ids*/?) AND item_id IS NOT NULL
+`
+
+type ListRoutinesMatchKeysRow struct {
+	RoutineID int64
+	ID        int64
+	ItemID    *int64
+	FireKey   string
+	DryRun    bool
+	State     string
+	Reason    string
+	Attempt   int64
+	Step      int64
+	Steps     string
+}
+
+// ListRoutinesMatchKeys is ListRoutineMatchKeys for each of the routines among ids, in one
+// read, as a cycle reads every routine it runs.
+func (q *Queries) ListRoutinesMatchKeys(ctx context.Context, ids []int64) ([]ListRoutinesMatchKeysRow, error) {
+	query := listRoutinesMatchKeys
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRoutinesMatchKeysRow{}
+	for rows.Next() {
+		var i ListRoutinesMatchKeysRow
+		if err := rows.Scan(
+			&i.RoutineID,
+			&i.ID,
+			&i.ItemID,
+			&i.FireKey,
+			&i.DryRun,
+			&i.State,
+			&i.Reason,
+			&i.Attempt,
+			&i.Step,
+			&i.Steps,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRoutinesTries = `-- name: ListRoutinesTries :many
+SELECT routine_id, item_id, reset_at FROM autopilot_tries WHERE routine_id IN (/*SLICE:ids*/?)
+`
+
+// ListRoutinesTries is ListTries for each of the routines among ids, in one read.
+func (q *Queries) ListRoutinesTries(ctx context.Context, ids []int64) ([]AutopilotTry, error) {
+	query := listRoutinesTries
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AutopilotTry{}
+	for rows.Next() {
+		var i AutopilotTry
+		if err := rows.Scan(&i.RoutineID, &i.ItemID, &i.ResetAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

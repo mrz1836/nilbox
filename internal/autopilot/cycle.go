@@ -3,6 +3,7 @@ package autopilot
 import (
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -62,8 +63,15 @@ type routineRun struct {
 	// when Try again last reset each item's tries, and seen what it first saw of each.
 	matches  map[matchKey]queries.ListRoutineMatchKeysRow
 	handsOff map[int64]bool
-	reset    map[int64]time.Time
-	seen     map[int64]baseline
+
+	// lastClosed is, by item, the last of its matches that closed, as they were read.
+	lastClosed map[int64]queries.ListRoutineMatchKeysRow
+
+	// read reports what the ledger keeps of it read already, with the cycle's other
+	// routines' (readRoutines).
+	read  bool
+	reset map[int64]time.Time
+	seen  map[int64]baseline
 
 	// fresh reports that its searches were each read since it last changed, and
 	// firstPass a first pass after it changed, which caps what it queues.
@@ -114,6 +122,11 @@ type pass struct {
 	// may run on outside contributors' items.
 	ready   readySnapshot
 	outside OutsideIndex
+
+	// scripts are the user's own scripts by ID, read once a cycle when a routine runs one,
+	// and scriptsFailed reports a read that failed (scriptsOf).
+	scripts       map[int64]MyScript
+	scriptsFailed bool
 }
 
 // cycle runs one cycle: it reads what the routines watch, evaluates each routine on its
@@ -157,7 +170,7 @@ func (e *Engine) cycle(ctx context.Context) {
 // window.
 func (e *Engine) finishCycle(ctx context.Context, c *Cycle) {
 	e.state.LastCycle = c
-	e.saveState(ctx)
+	e.keepCycle(ctx)
 	e.tellWaits(ctx)
 
 	e.setStatus(func(s *EngineStatus) {
@@ -178,6 +191,27 @@ func (e *Engine) finishCycle(ctx context.Context, c *Cycle) {
 	}
 
 	e.notify()
+}
+
+// keepCycle keeps the engine's state once a cycle ran, when it changed, the last cycle
+// aside, or the last cycle kept is a tick old: a steady cycle writes nothing, so it adds
+// no write to every tick, and leaves the database's pages cached for the next.
+func (e *Engine) keepCycle(ctx context.Context) {
+	rest := e.state
+	rest.LastCycle = nil
+
+	key, err := store.EncodeJSON(rest)
+	if err == nil && key == e.keptKey && e.clock.Now().Sub(e.keptAt) < e.tick {
+		return
+	}
+
+	if err = writeEngineState(ctx, e.prefs, e.state); err != nil {
+		e.logger.WarnContext(ctx, "could not save Autopilot's engine state", "error", err)
+
+		return
+	}
+
+	e.keptKey, e.keptAt = key, e.clock.Now()
 }
 
 // prime reports whether the engine has seen a refresh that carried its searches since it
@@ -237,6 +271,10 @@ func (p *pass) run(ctx context.Context) error {
 	p.watchGaps()
 	p.cycle.CatchUp = len(p.e.state.CatchingUp) > 0
 
+	if err := p.readRoutines(ctx); err != nil {
+		return err
+	}
+
 	open, err := p.e.ledger.open(ctx)
 	if err != nil {
 		return err
@@ -245,6 +283,8 @@ func (p *pass) run(ctx context.Context) error {
 	if err = p.read(ctx, open); err != nil {
 		return err
 	}
+
+	p.scriptsOf(ctx)
 
 	for _, r := range p.routines {
 		if err = p.evaluate(ctx, r); err != nil {
@@ -509,13 +549,20 @@ func (p *pass) readWatched(ctx context.Context) ([]int64, error) {
 }
 
 // readRoutine reads what the ledger keeps of r: its matches, the items it leaves alone,
-// its resets of the tries, and what it first saw of each item.
+// its resets of the tries, and what it first saw of each item; nothing again when the
+// cycle read it with the others (readRoutines).
 func (p *pass) readRoutine(ctx context.Context, r *routineRun) error {
+	if r.read {
+		return nil
+	}
+
 	var err error
 
 	if r.matches, err = p.e.ledger.keys(ctx, r.id()); err != nil {
 		return err
 	}
+
+	r.lastClosed = lastClosed(r.matches)
 
 	if r.handsOff, err = p.e.ledger.handsOff(ctx, r.id()); err != nil {
 		return err
@@ -528,6 +575,83 @@ func (p *pass) readRoutine(ctx context.Context, r *routineRun) error {
 	r.seen, err = p.e.ledger.baselines(ctx, r.id())
 
 	return err
+}
+
+// readRoutines reads what the ledger keeps of every routine the cycle runs in four reads,
+// rather than four for each routine: every read of SQLite takes and lets go of its locks,
+// which a cycle of many routines would otherwise do many times over.
+func (p *pass) readRoutines(ctx context.Context) error {
+	if len(p.routines) == 0 {
+		return nil
+	}
+
+	ids := make([]int64, 0, len(p.routines))
+	for _, r := range p.routines {
+		ids = append(ids, r.id())
+		r.matches, r.handsOff = map[matchKey]queries.ListRoutineMatchKeysRow{}, map[int64]bool{}
+		r.reset, r.seen = map[int64]time.Time{}, map[int64]baseline{}
+	}
+
+	q := p.e.ledger.q
+
+	keys, err := q.ListRoutinesMatchKeys(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("read the routines' matches: %w", err)
+	}
+
+	for _, k := range keys {
+		p.byID[k.RoutineID].matches[matchKey{item: store.Deref(k.ItemID), fire: k.FireKey, dryRun: k.DryRun}] = queries.ListRoutineMatchKeysRow{
+			ID: k.ID, ItemID: k.ItemID, FireKey: k.FireKey, DryRun: k.DryRun, State: k.State, Reason: k.Reason,
+			Attempt: k.Attempt, Step: k.Step, Steps: k.Steps,
+		}
+	}
+
+	if err = p.readRoutineRest(ctx, ids); err != nil {
+		return err
+	}
+
+	for _, r := range p.routines {
+		r.lastClosed, r.read = lastClosed(r.matches), true
+	}
+
+	return nil
+}
+
+// readRoutineRest reads the rest of what the ledger keeps of the routines among ids: the
+// items each leaves alone, its resets of the tries, and what it first saw of each item.
+func (p *pass) readRoutineRest(ctx context.Context, ids []int64) error {
+	q := p.e.ledger.q
+
+	off, err := q.ListRoutinesHandsOff(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("read the items the routines leave alone: %w", err)
+	}
+
+	for _, h := range off {
+		p.byID[h.RoutineID].handsOff[h.ItemID] = true
+	}
+
+	tries, err := q.ListRoutinesTries(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("read the routines' tries: %w", err)
+	}
+
+	for _, t := range tries {
+		p.byID[t.RoutineID].reset[t.ItemID] = t.ResetAt
+	}
+
+	seen, err := q.ListRoutinesBaselines(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("read what the routines saw first: %w", err)
+	}
+
+	for _, b := range seen {
+		if got, decodeErr := store.DecodeJSON[baseline](b.State); decodeErr == nil {
+			p.byID[b.RoutineID].seen[b.ItemID] = got
+		}
+	}
+
+	return nil
 }
 
 // evaluate decides the routine r on each item it watches, recording what it first sees
@@ -588,7 +712,7 @@ func (p *pass) waitsForSearches(ctx context.Context, r *routineRun) bool {
 func (p *pass) decideAll(r *routineRun) {
 	for _, id := range r.watched {
 		if f, ok := p.facts[id]; ok && !r.handsOff[id] {
-			r.decided[id] = eval.Evaluate(r.spec, f, p.historyOf(r, id, ""), p.now)
+			r.decided[id] = eval.Evaluate(r.spec, f, p.historyOf(r, id), p.now)
 		}
 	}
 }
@@ -601,7 +725,7 @@ func (p *pass) evaluateItem(ctx context.Context, r *routineRun, id int64, fromNo
 		return nil, nil //nolint:nilnil // an item not stored, or left alone, makes no match
 	}
 
-	d := eval.Evaluate(r.spec, f, p.historyOf(r, id, ""), p.now)
+	d := eval.Evaluate(r.spec, f, p.historyOf(r, id), p.now)
 	r.decided[id] = d
 
 	if err := p.see(ctx, r, f, d); err != nil {
@@ -644,35 +768,41 @@ func hasGitHubStep(sp spec.Spec) bool {
 	return slices.ContainsFunc(sp.Steps, func(st spec.Step) bool { return st.Kind() == catalog.StepGitHub })
 }
 
-// historyOf returns what the ledger knows of r and the item, for the evaluator; manual
-// is a click's token, "" for none.
-func (p *pass) historyOf(r *routineRun, id int64, manual string) eval.History {
+// historyOf returns what the ledger knows of r and the item, for the evaluator.
+func (p *pass) historyOf(r *routineRun, id int64) eval.History {
 	b, seen := r.seen[id]
-	h := history(r.id(), p.runs[id], b, seen, r.reset[id], p.lastOutcome(r, id))
-	h.Manual = manual
 
-	return h
+	return history(r.id(), p.runs[id], b, seen, r.reset[id], p.lastOutcome(r, id))
 }
 
-// lastOutcome says how r's last closed match on the item ended.
+// lastOutcome says how r's last closed match on the item ended, as r's matches were read
+// as the cycle began (lastClosed).
 func (p *pass) lastOutcome(r *routineRun, id int64) string {
-	var last *queries.ListRoutineMatchKeysRow
-
-	for k, row := range r.matches {
-		if k.item != id || k.dryRun || State(row.State).Open() || State(row.State) == StateBaseline {
-			continue
-		}
-
-		if last == nil || row.ID > last.ID {
-			last = &row
-		}
-	}
-
-	if last == nil {
+	last, ok := r.lastClosed[id]
+	if !ok {
 		return ""
 	}
 
 	return outcomeWord(State(last.State), Reason(last.Reason))
+}
+
+// lastClosed returns, by item, the last of matches that closed, a Dry run's and a
+// baseline's apart: what a routine's history says it last did there, found in one pass
+// rather than once per item.
+func lastClosed(matches map[matchKey]queries.ListRoutineMatchKeysRow) map[int64]queries.ListRoutineMatchKeysRow {
+	out := map[int64]queries.ListRoutineMatchKeysRow{}
+
+	for k, row := range matches {
+		if k.dryRun || State(row.State).Open() || State(row.State) == StateBaseline {
+			continue
+		}
+
+		if last, ok := out[k.item]; !ok || row.ID > last.ID {
+			out[k.item] = row
+		}
+	}
+
+	return out
 }
 
 // outcomeWord says how a match closed, as the catalog's outcome choices name it.

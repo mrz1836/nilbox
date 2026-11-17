@@ -10,10 +10,12 @@ import type {
   AutopilotImportPreview,
   AutopilotItemDraft,
   AutopilotTemplate,
+  AutopilotMyScript,
   AutopilotReadiness,
   AutopilotReadyCheck,
   AutopilotRoutineReady,
   AutopilotRunPreview,
+  AutopilotStats,
   AutopilotSuggestions,
   AutopilotTestItem,
   AutopilotTestResult,
@@ -377,6 +379,41 @@ export function testItem(overrides: Partial<AutopilotTestItem> = {}): AutopilotT
     leftAlone: false,
     record: '',
     listed: true,
+    runsNow: false,
+    ...overrides,
+  }
+}
+
+// myScript is one of the user's own Repo scripts, Lint, which doesn't ask before each run.
+export function myScript(overrides: Partial<AutopilotMyScript> = {}): AutopilotMyScript {
+  return {
+    id: 7,
+    name: 'Lint',
+    command: 'magex lint',
+    asks: false,
+    look: 'v1',
+    shows: 'every clone',
+    ...overrides,
+  }
+}
+
+// routineStats is a routine's week with nothing run.
+export function routineStats(overrides: Partial<AutopilotStats> = {}): AutopilotStats {
+  return {
+    since: '2026-06-08T12:00:00Z',
+    runs: 0,
+    scripts: 0,
+    fixes: 0,
+    merges: 0,
+    reviews: 0,
+    actions: 0,
+    costUsd: null,
+    costed: 0,
+    estimated: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    cacheRead: 0,
+    counted: 0,
     ...overrides,
   }
 }

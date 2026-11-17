@@ -120,7 +120,9 @@ func (s *Service) loadDraft(ctx context.Context, sp spec.Spec) (spec.Spec, []spe
 		return normal, nil, uierr.New("The routine can't be read: "+textutil.Sentence(err.Error()), err)
 	}
 
-	return loaded, append(s.offers.placeProblems(loaded), s.promptProblems(ctx, loaded)...), nil
+	problems := append(s.offers.placeProblems(loaded), s.promptProblems(ctx, loaded)...)
+
+	return loaded, append(problems, s.scriptProblems(ctx, loaded)...), nil
 }
 
 // promptProblems returns the problems of the prompts sp's steps name: one the library

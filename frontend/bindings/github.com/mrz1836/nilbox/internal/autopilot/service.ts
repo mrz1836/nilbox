@@ -252,6 +252,14 @@ export function Matching(d: $models.Draft): $CancellablePromise<$models.Matching
 }
 
 /**
+ * MyScripts returns the user's own Repo scripts, which a routine's Run one of my scripts
+ * picks from, in the user's order. It reads the database alone, and the list is never nil.
+ */
+export function MyScripts(): $CancellablePromise<$models.MyScript[] | null> {
+    return $Call.ByID(1767096511);
+}
+
+/**
  * NeedsYou returns the open matches that haven't started, real ones alone, newest first,
  * for Activity's Needs you and Queued: those waiting for the user's decision (waiting),
  * those that can't start until something on this Mac is fixed (blocked), and those that
@@ -342,6 +350,16 @@ export function RunNow(id: number, itemID: number, anyway: boolean): $Cancellabl
 }
 
 /**
+ * RunOnMatches runs the routine id now on each of items that it would run on now (see the
+ * notes at the top of this file), and returns what it did. The routine must be saved,
+ * loading, on, and of the account signed in; in Dry run, each records what it would have
+ * done.
+ */
+export function RunOnMatches(id: number, items: number[] | null): $CancellablePromise<$models.RanOn> {
+    return $Call.ByID(3729041046, id, items);
+}
+
+/**
  * RunsToday counts today's runs, those that never started left out.
  */
 export function RunsToday(): $CancellablePromise<$models.RunsToday> {
@@ -384,8 +402,16 @@ export function Skip(id: number): $CancellablePromise<$models.Match> {
 }
 
 /**
- * StopAll stops every agent run at once, through the runner, and leaves it open for later
- * starts.
+ * Stats returns what the routine id's runs did over the last seven days, for its This week.
+ * It reads the database alone.
+ */
+export function Stats(id: number): $CancellablePromise<$models.RoutineStats> {
+    return $Call.ByID(1915146638, id);
+}
+
+/**
+ * StopAll stops every agent run and every script run at once, through their runners, and
+ * leaves them open for later starts.
  */
 export function StopAll(): $CancellablePromise<void> {
     return $Call.ByID(2226077470);

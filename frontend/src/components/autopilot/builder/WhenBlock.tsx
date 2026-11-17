@@ -1,7 +1,7 @@
 import { useId } from 'react'
 
 import { defaultSchedule, newTrigger, omit, problemsAt, watchKinds } from '../../../lib/routineBuilder'
-import type { AutopilotEvent, AutopilotSpec, AutopilotTrigger } from '../../../platform'
+import type { AutopilotEvent, AutopilotScheduleStyle, AutopilotSpec, AutopilotTrigger } from '../../../platform'
 import { fieldClass } from '../../controls'
 import { Block, Notes, NumberField, type BuilderKit } from './parts'
 
@@ -24,6 +24,19 @@ const dayLabels = {
   sat: 'Saturday',
   sun: 'Sunday',
 } as const
+
+// ScheduleNote says what a schedule's style does: each match told on its own, or one digest
+// with the list, and when a time the Mac slept through runs.
+function ScheduleNote({ kit, style }: { kit: BuilderKit; style: AutopilotScheduleStyle | undefined }) {
+  const chosen = kit.catalog.scheduleStyles.find((s) => s.id === (style ?? 'each'))
+
+  return (
+    <p className="text-xs text-muted">
+      {chosen === undefined ? '' : `${chosen.help} `}A time missed while this Mac slept runs once it wakes, the same
+      day.
+    </p>
+  )
+}
 
 export interface WhenBlockProps {
   kit: BuilderKit
@@ -205,6 +218,29 @@ export function WhenBlock({ kit, spec, onChange }: WhenBlockProps) {
                 }}
                 className={`${fieldClass} py-1`}
               />
+              <label htmlFor={`${optionId}-style`} className="sr-only">
+                How it tells you
+              </label>
+              <select
+                id={`${optionId}-style`}
+                value={schedule.style ?? 'each'}
+                onChange={(e) => {
+                  const style = e.target.value as AutopilotScheduleStyle
+
+                  // Each match is the default, written as none.
+                  onChange({
+                    ...trigger,
+                    schedule: style === 'each' ? omit(schedule, 'style') : { ...schedule, style },
+                  })
+                }}
+                className={`${fieldClass} py-1`}
+              >
+                {kit.catalog.scheduleStyles.map((s) => (
+                  <option key={s.id} value={s.id} title={s.help}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
             </span>
           )
         })}
@@ -214,6 +250,7 @@ export function WhenBlock({ kit, spec, onChange }: WhenBlockProps) {
           Fires when the item {info.help}, once per {info.oncePer}.
         </p>
       )}
+      {trigger.event === 'schedule' && <ScheduleNote kit={kit} style={trigger.schedule?.style} />}
       <Notes problems={problemsAt(kit.problems, 'trigger')} />
     </Block>
   )

@@ -84,6 +84,15 @@ type Config struct {
 	// Watcher's does of a session in the terminal. Optional.
 	Rereader Rereader
 
+	// Usage reads each agent's sessions' token counts, for Usage; an agent with none
+	// reports none.
+	Usage map[agent.ID]UsageReader
+
+	// RunTokens reads what a background run's session used, as its run reported it, for
+	// Usage, in place of the agent's own files. Optional: without it such a session
+	// reports none.
+	RunTokens RunTokens
+
 	Clock  clock.Clock
 	Logger *slog.Logger
 }
@@ -98,6 +107,8 @@ type Service struct {
 	home    string
 	events  event.Sink
 	words   map[agent.ID]WordsReader
+	usage   map[agent.ID]UsageReader
+	tokens  RunTokens
 	clock   clock.Clock
 	logger  *slog.Logger
 }
@@ -106,8 +117,8 @@ type Service struct {
 func NewService(cfg Config) *Service {
 	return &Service{
 		store: cfg.Store, toggle: cfg.Switch, focuser: cfg.Focuser, ps: cfg.PS, reveal: cfg.Reveal, home: cfg.Home,
-		events: event.Or(cfg.Events), words: wordsReaders(cfg.Words), clock: clock.Or(cfg.Clock),
-		logger: logging.Or(cfg.Logger),
+		events: event.Or(cfg.Events), words: wordsReaders(cfg.Words), usage: usageReaders(cfg.Usage),
+		tokens: cfg.RunTokens, clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
 	}
 }
 

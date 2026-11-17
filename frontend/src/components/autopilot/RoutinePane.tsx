@@ -6,6 +6,7 @@ import { captionClass, primaryButtonClass, quietButtonClass, Segmented, Switch }
 import { MoreIcon, RoutineIcon } from '../icons'
 import { MenuButton } from '../Menu'
 import { graduateText, routineMenu, Status, type RoutineActions } from './RoutineList'
+import { WeekStats } from './WeekStats'
 
 export interface RoutinePaneProps {
   routine: AutopilotRoutine
@@ -143,6 +144,20 @@ export function RoutinePane({
         </h3>
         {activity}
       </section>
+      <section aria-labelledby={`${id}-week`} className="flex flex-col gap-2">
+        <h3 id={`${id}-week`} className={captionClass}>
+          This week
+        </h3>
+        <WeekStats routineID={r.id} version={weekVersion(r)} />
+      </section>
     </div>
   )
+}
+
+// weekVersion changes whenever what the routine did may have, so its week is read again:
+// its figures, which every match it records moves.
+function weekVersion(r: AutopilotRoutine): string {
+  const f = r.figures
+
+  return [String(f.today), String(f.waiting), f.lastAt ?? '', r.updatedAt].join('|')
 }

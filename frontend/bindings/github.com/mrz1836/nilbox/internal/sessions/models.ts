@@ -171,6 +171,38 @@ export const State = {
 } as const;
 
 /**
+ * Usage is how many tokens an agent session used, read on demand for the session panel:
+ * as the agent's own files on this Mac report them, or, for a background run's session,
+ * as its run reported them. The four parts add up to Total: Input is the input not read
+ * from the cache, CacheRead what was, CacheWrite what was written to it, and Output what
+ * the agent wrote, its reasoning included. A run reports what it wrote to the cache within
+ * Input, so its CacheWrite is 0.
+ */
+export interface Usage {
+    /**
+     * Known reports counts read; false, every count is 0.
+     */
+    "known": boolean;
+
+    /**
+     * FromRun reports counts a background run reported, which its record keeps, rather
+     * than the agent's files.
+     */
+    "fromRun": boolean;
+    "input": number;
+    "output": number;
+    "cacheRead": number;
+    "cacheWrite": number;
+    "total": number;
+
+    /**
+     * Partial reports counts read from only part of the files, which were too long to
+     * read whole: the session used at least that many.
+     */
+    "partial": boolean;
+}
+
+/**
  * Words is what an agent session last said, read in full on demand.
  */
 export interface Words {

@@ -39,6 +39,7 @@ spec.Step
   merge: *spec.MergeStep
   postReview: *spec.ReviewStep
   tellMe: *spec.TellStep
+  script: *spec.ScriptStep
   onlyIf: catalog.Outcome
 spec.Limits
   oncePer: catalog.OncePer
@@ -60,6 +61,7 @@ spec.Schedule
   every: catalog.Every
   at: string
   on: catalog.Weekday
+  style: catalog.ScheduleStyle
 spec.Clause
   field: catalog.FieldID
   op: catalog.Op
@@ -100,6 +102,9 @@ spec.ReviewStep
   allowApprove: bool
 spec.TellStep
   when: catalog.TellWhen
+spec.ScriptStep
+  id: int64
+  name: string
 spec.ActiveHours
   days: []catalog.Weekday
   from: string
@@ -289,6 +294,10 @@ schedule.on, activeHours.days
   sat
   sun
 
+schedule.style
+  each
+  digest
+
 search.involving
   assigned
   reviewRequested
@@ -319,6 +328,7 @@ step kinds
   markDone (github)
   github (github)
   agent (agent)
+  script (scripts)
   waitForChecks (verify)
   merge (merging)
   postReview (review)

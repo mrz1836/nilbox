@@ -799,6 +799,9 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 
 			return page, nil
 		},
+		"autopilot.Service.MyScripts": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Autopilot.MyScripts(ctx)
+		},
 	}
 }
 
@@ -880,6 +883,7 @@ func unreachedBound() map[string]string {
 		"autopilot.Service.TryAgain":        "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
 		"autopilot.Service.Skip":            "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
 		"autopilot.Service.RunNow":          "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
+		"autopilot.Service.RunOnMatches":    "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
 		"autopilot.Service.Undo":            "applied by the engine's loop, which runs as deferred work; its result starts its lists empty",
 		"autopilot.Service.PreviewRun":      "plans a launch in a stored item's clone, which the tests do not have; nonNilPreview fills its lists",
 		"inbox.Service.Refresh":             "reads GitHub; its snapshot is built as Snapshot's",

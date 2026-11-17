@@ -558,7 +558,8 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	rereads := inbox.NewRereads(inboxSvc, logger)
 
 	registry := terminal.DefaultRegistry(runner)
-	follow := followSessions(pool, prefs, opts, logger, runner, registry, agentRunners, rereads)
+	follow := followSessions(pool, prefs, opts, logger, runner, registry, agentRunners, rereads,
+		backgroundTokens{engine: engine})
 	followed.watcher = follow.watcher
 
 	// clones is the app's one set of clone locks: every job that changes a clone takes
@@ -785,7 +786,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		inbox: inboxStore, service: inboxRoutines, prompts: promptStore, file: info.kept.routinesFile,
 		costs: watchCosts{inbox: inboxRoutines, every: refreshEvery(prefs, settings.RefreshInbox, logger), budget: budgetSvc},
 		ready: readiness, agents: agents, background: background, signals: signals, transfer: transfer,
-		profiles: routineAgents,
+		profiles: routineAgents, scripts: repoScripts,
 		github: githubSteps{
 			review: reviewSheet, issues: issueSheet, threads: ghThreads, prompts: promptStore,
 			replies: replyFiller{store: promptStore, source: previews},
@@ -802,6 +803,8 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		lock: opts.Paths.AutopilotLock, events: opts.Events, logger: logger, service: routines, notices: dispatcher,
 		agents: agents, ready: readiness, defaults: defaultsStore,
 		prefs: autopilotPrefs{prefs: prefsstore.New(pool, opts.Clock)}, background: background,
+		// A routine's Run one of my scripts runs through Repo scripts' own run, in the app.
+		scripts: repoScripts, history: scriptRuns, waker: engine,
 	})
 	routinePromptUses := routinePrompts{follower: autopilot.NewPromptFollower(routines), logger: logger}
 
@@ -1024,10 +1027,12 @@ type following struct {
 // followSessions builds what follows the agent sessions over the database: an observer
 // per agent, each through the agent's own supported interface, the user's master switch,
 // the session banners, rereader, which reads a session's item again once it stops
-// working, and the terminal drivers that bring a session's tab forward.
+// working, the terminal drivers that bring a session's tab forward, and tokens, which
+// reads a background run's tokens from its run's record.
 func followSessions(
 	pool *sql.DB, prefs *settings.Service, opts Options, logger *slog.Logger, runner execpath.Runner,
 	registry terminal.Registry, agentRunners func([]string) execpath.Runner, rereader sessions.Rereader,
+	tokens sessions.RunTokens,
 ) following {
 	search := execpath.Search{Home: opts.Home}
 	store := sessions.NewStore(pool)
@@ -1062,6 +1067,10 @@ func followSessions(
 		Words: map[agent.ID]sessions.WordsReader{
 			agent.Claude: claude.Words{Home: opts.Home}, agent.Codex: codex.Words{Home: opts.Home},
 		},
+		Usage: map[agent.ID]sessions.UsageReader{
+			agent.Claude: claude.NewUsage(opts.Home), agent.Codex: codex.Usage{Home: opts.Home},
+		},
+		RunTokens: tokens,
 	}
 
 	return following{ledger: sessions.NewLedger(cfg), watcher: watcher, service: sessions.NewService(cfg)}

@@ -220,7 +220,7 @@ export const BlankKind = {
 /**
  * Blocker is what an open match waits on.
  */
-export type Blocker = "ask" | "hold" | "warning" | "no_clone" | "dirty_worktree" | "catch_up" | "interrupted" | "outside_contributor" | "backlog" | "not_ready" | "missing_tool" | "cross_repository" | "slot" | "cap_runs" | "cap_actions" | "cap_spend" | "active_hours" | "paused" | "busy_worktree" | "github_budget" | "writes_held" | "provider_outage" | "settling" | "wait" | "signed_out" | "starting";
+export type Blocker = "ask" | "hold" | "warning" | "no_clone" | "dirty_worktree" | "catch_up" | "interrupted" | "outside_contributor" | "backlog" | "script_asks" | "not_ready" | "missing_tool" | "cross_repository" | "slot" | "cap_runs" | "cap_actions" | "cap_spend" | "active_hours" | "paused" | "busy_worktree" | "github_budget" | "writes_held" | "provider_outage" | "settling" | "wait" | "signed_out" | "starting";
 
 /**
  * The values of Blocker, by the names of their Go constants.
@@ -238,6 +238,12 @@ export const Blocker = {
     BlockInterrupted: "interrupted",
     BlockOutside: "outside_contributor",
     BlockBacklog: "backlog",
+
+    /**
+     * BlockScriptAsks is a script set to ask before each run, which runs on the user's OK
+     * alone, every time.
+     */
+    BlockScriptAsks: "script_asks",
 
     /**
      * What a blocked match waits on this Mac for.
@@ -942,6 +948,35 @@ export interface MissingRef {
 }
 
 /**
+ * MyScript is one of the user's own Repo scripts, as a routine runs it.
+ */
+export interface MyScript {
+    /**
+     * ID names it on this Mac; Name and Command are as the user saved them.
+     */
+    "id": number;
+    "name": string;
+    "command": string;
+
+    /**
+     * Asks reports one set to ask before each run: a routine runs it only once the user
+     * says so, each time.
+     */
+    "asks": boolean;
+
+    /**
+     * Look names it as it is now, so an OK is for exactly the script the user saw.
+     */
+    "look": string;
+
+    /**
+     * Shows says which clones it shows in, and so runs in: "every clone", "Go
+     * repositories", or the repositories it names.
+     */
+    "shows": string;
+}
+
+/**
  * Need is one thing a routine needs on this Mac.
  */
 export interface Need {
@@ -1064,6 +1099,18 @@ export const ProblemKind = {
 export interface PromptArrival {
     "nickname": string;
     "arrives": Arrives;
+}
+
+/**
+ * RanOn is what Run on the matches now did: the matches it set on their way, and how many of
+ * the items it was given it left out, since they no longer match, the routine has a record
+ * of their occurrence that it ran, or it leaves them alone, with Words saying so for a
+ * toast.
+ */
+export interface RanOn {
+    "matches": Match[] | null;
+    "skipped": number;
+    "words": string;
 }
 
 /**
@@ -1337,6 +1384,51 @@ export interface RoutineReady {
     "ready": boolean;
     "problems": ReadyCheck[] | null;
     "warnings": ReadyCheck[] | null;
+}
+
+/**
+ * RoutineStats is what a routine's runs did since Since.
+ */
+export interface RoutineStats {
+    /**
+     * Since is when the week began: seven days before now.
+     */
+    "since": string;
+
+    /**
+     * Runs counts its agents' runs, and Scripts its scripts' runs.
+     */
+    "runs": number;
+    "scripts": number;
+
+    /**
+     * Fixes counts its matches whose agent pushed and whose checks then passed; Merges its
+     * Merge it steps that merged; Reviews its agents' reviews posted; and Actions the
+     * GitHub actions GitHub took.
+     */
+    "fixes": number;
+    "merges": number;
+    "reviews": number;
+    "actions": number;
+
+    /**
+     * CostUSD is what the runs that reported a cost said they spent, in dollars, nil while
+     * none reported one; Costed is how many did, and Estimated how many of those reported
+     * the agent's estimate of what the API would have charged, as one signed in with the
+     * user's plan does.
+     */
+    "costUsd": number | null;
+    "costed": number;
+    "estimated": number;
+
+    /**
+     * TokensIn, TokensOut, and CacheRead are the runs' tokens, as their streams reported
+     * them, and Counted how many runs reported any.
+     */
+    "tokensIn": number;
+    "tokensOut": number;
+    "cacheRead": number;
+    "counted": number;
 }
 
 /**
@@ -1636,6 +1728,14 @@ export interface TestItem {
      * Listed reports an item in one of the inbox lists, where triage shows.
      */
     "listed": boolean;
+
+    /**
+     * RunsNow reports an item Run on the matches now would run on: it matches, the routine
+     * doesn't leave it alone, and the routine has no record of its occurrence but one that
+     * closed before it ran, or that already matched when the user chose only what changes
+     * from now on. A new routine runs on nothing until it is saved.
+     */
+    "runsNow": boolean;
 }
 
 /**

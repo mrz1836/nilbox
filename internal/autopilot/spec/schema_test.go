@@ -94,6 +94,7 @@ func enums() map[string][]string {
 	}
 
 	out["schedule.on, activeHours.days"] = each(catalog.Weekdays(), func(d catalog.Weekday) string { return string(d) })
+	out["schedule.style"] = each(catalog.ScheduleStyles(), func(s catalog.ScheduleStyleInfo) string { return string(s.ID) })
 	out["source.lists"] = each(catalog.ListSources(), func(l catalog.ListSourceInfo) string { return string(l.ID) })
 	out["search.involving"] = each(watch.Involvings(), func(i watch.Involving) string { return string(i) })
 	out["search.state"] = each(watch.States(), func(s watch.State) string { return string(s) })

@@ -109,6 +109,23 @@ func (v *validator) schedule(s Schedule) {
 	if !clockTime.MatchString(s.At) {
 		v.add(PartTrigger, "schedule.at", `write the time as "HH:MM", such as "08:00"`)
 	}
+
+	if _, ok := catalog.ScheduleStyleByID(s.Style); !ok {
+		v.add(PartTrigger, "schedule.style", `pick "each" or "digest"`)
+	}
+}
+
+// digest holds a digest's Notify me to the first step: the matches made at one time run
+// their first step together, so the digest that tells of them is one notice, which a step
+// before it, done for each item on its own, would split.
+func (v *validator) digest(t Trigger, steps []Step) {
+	if !t.Schedule.Digest() || len(steps) == 0 {
+		return
+	}
+
+	if steps[0].Notify == nil {
+		v.add(PartTrigger, "schedule.style", "a digest tells you once with the list: make Notify me the first step")
+	}
 }
 
 // inRange holds a number that is set to min..max.

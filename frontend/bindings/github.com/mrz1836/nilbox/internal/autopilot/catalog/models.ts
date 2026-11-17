@@ -49,6 +49,11 @@ export interface Catalog {
     "agentSettings": Setting[] | null;
     "limits": Setting[] | null;
     "stepSettings": Setting[] | null;
+
+    /**
+     * ScheduleStyles are On a schedule's styles: each match on its own, or one digest.
+     */
+    "scheduleStyles": ScheduleStyleInfo[] | null;
 }
 
 /**
@@ -102,7 +107,7 @@ export const Cost = {
  * Dispatcher names the part of the engine that runs a kind of step. Each is built on
  * its own; until it is, its steps are listed but not Offered.
  */
-export type Dispatcher = "triage" | "notices" | "github" | "agent" | "verify" | "merging" | "review";
+export type Dispatcher = "triage" | "notices" | "github" | "agent" | "verify" | "merging" | "review" | "scripts";
 
 /**
  * The values of Dispatcher, by the names of their Go constants.
@@ -145,6 +150,12 @@ export const Dispatcher = {
      * DispatchReview posts a read-only agent's review.
      */
     DispatchReview: "review",
+
+    /**
+     * DispatchScripts runs one of the user's own Repo scripts, in the app, in the item's
+     * clone, through Repo scripts' own run.
+     */
+    DispatchScripts: "scripts",
 } as const;
 
 /**
@@ -855,6 +866,42 @@ export const ReviewAs = {
 } as const;
 
 /**
+ * ScheduleStyle is how a routine On a schedule tells of the items it matches at its time:
+ * each match on its own, or once, with the list. Either way its steps run on each item it
+ * matches, and the ledger records each match apart.
+ */
+export type ScheduleStyle = "each" | "digest";
+
+/**
+ * The values of ScheduleStyle, by the names of their Go constants.
+ */
+export const ScheduleStyle = {
+    /**
+     * The styles of a schedule.
+     *
+     * ScheduleEach tells of each match on its own: each item's Notify me is its own
+     * notice, gathered into one banner past three as any burst is. The default.
+     */
+    ScheduleEach: "each",
+
+    /**
+     * ScheduleDigest tells of the matches once, with the list: the Notify me of every item
+     * that matches at one time is one notice, a digest that counts them by where each
+     * stands, "5 pull requests need you: 3 failing, 2 conflicting", and lists them.
+     */
+    ScheduleDigest: "digest",
+} as const;
+
+/**
+ * ScheduleStyleInfo describes a style of schedule for the builder.
+ */
+export interface ScheduleStyleInfo {
+    "id": ScheduleStyle;
+    "label": string;
+    "help": string;
+}
+
+/**
  * Setting describes one of a step's or the limits' settings for the builder.
  */
 export interface Setting {
@@ -933,7 +980,7 @@ export interface Step {
 /**
  * StepKind is one kind of step a routine's Then runs, as the spec spells its key.
  */
-export type StepKind = "notify" | "pin" | "snooze" | "dismiss" | "restore" | "markDone" | "github" | "agent" | "waitForChecks" | "merge" | "postReview" | "tellMe";
+export type StepKind = "notify" | "pin" | "snooze" | "dismiss" | "restore" | "markDone" | "github" | "agent" | "waitForChecks" | "merge" | "postReview" | "tellMe" | "script";
 
 /**
  * The values of StepKind, by the names of their Go constants.
@@ -954,6 +1001,11 @@ export const StepKind = {
     StepMerge: "merge",
     StepPostReview: "postReview",
     StepTellMe: "tellMe",
+
+    /**
+     * StepScript runs one of the user's own Repo scripts in the item's clone.
+     */
+    StepScript: "script",
 } as const;
 
 /**
