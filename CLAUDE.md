@@ -314,9 +314,8 @@ changing the package, and keep the section and its summary in step.
   (`Shell.WindowClosing`, the pure `CloseOf`): it goes through while the shell stops, hides
   the window while the icon shows or while Autopilot has a routine on (none counts while
   Autopilot (beta) is off) or an agent working (`HidesOnClose`, from Autopilot's state as the
-  shell last read it; the window says so once, `event.KeptRunning`), and
-  otherwise keeps the window and quits the normal way, so `ShouldQuit` asks in it while
-  runs go (the last window's close never quits by itself:
+  shell last read it), and otherwise keeps the window and quits the normal way, so
+  `ShouldQuit` asks in it while runs go (the last window's close never quits by itself:
   `ApplicationShouldTerminateAfterLastWindowClosed` stays off, since AppKit asks it as the
   window hides too), runs the
   scheduler, the checks follower (`inbox.ChecksFollower`: the listed pull requests whose
@@ -941,8 +940,9 @@ changing the package, and keep the section and its summary in step.
   the prompt library which routines name each prompt and follows a renamed one. The user's
   own reversal of what a routine did (told through the outcomes, `Outcome.Reversed`), and an Undo, leave the routine
   hands off the item until Let it act again. The bound Service's ledger actions (`Approve`,
-  `Skip`, `RunNow`, with Run anyway for an item it doesn't match, `TryAgain`, `LetActAgain`,
-  `Undo`, `ClearHistory`) are commands it
+  `Skip`, `RunNow`, with Run anyway for an item it doesn't match, which the window offers
+  from its refusal's code, `RefusalNoMatch`, as `update.RefusalError`'s, `TryAgain`,
+  `LetActAgain`, `Undo`, `ClearHistory`) are commands it
   applies; `StopRun` and `StopAll` go straight to the runner; `NeedsYou` (the open matches not
   started, each with what it waits on and a hold's `Hold`, for Activity's Needs you),
   `Activity` (with each day's
