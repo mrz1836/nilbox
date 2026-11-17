@@ -603,8 +603,26 @@ func (e *Engine) register(cfg EngineConfig) {
 		e.dispatchers[catalog.DispatchTriage] = triageDispatcher{e: e}
 	}
 
-	if _, own := e.dispatchers[catalog.DispatchGitHub]; e.svc.github != nil && !own {
-		e.dispatchers[catalog.DispatchGitHub] = NewGitHub(e.svc.github)
+	e.registerWrites()
+}
+
+// registerWrites registers the dispatchers that send the app's own GitHub writes over the
+// Service's GitHubActions, unless the config names its own: the GitHub step, and Merge it
+// and Post the agent's review, which go through the review sheet as it does (merge.go,
+// postreview.go).
+func (e *Engine) registerWrites() {
+	if e.svc.github == nil {
+		return
+	}
+
+	for d, disp := range map[catalog.Dispatcher]Dispatcher{
+		catalog.DispatchGitHub: NewGitHub(e.svc.github),
+		catalog.DispatchMerge:  mergeDispatcher{actions: e.svc.github},
+		catalog.DispatchReview: reviewDispatcher{actions: e.svc.github},
+	} {
+		if _, own := e.dispatchers[d]; !own {
+			e.dispatchers[d] = disp
+		}
 	}
 }
 

@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
     ClearHistory: vi.fn(),
     Approve: vi.fn(),
     ApproveBacklog: vi.fn(),
+    PostAsComment: vi.fn(),
     Skip: vi.fn(),
     PreviewActions: vi.fn(),
     Catalog: vi.fn(),
@@ -355,6 +356,7 @@ describe('Autopilot’s calls', () => {
       [() => platform.clearAutopilotHistory(), mocks.autopilot.ClearHistory, []],
       [() => platform.approveMatches([5]), mocks.autopilot.Approve, [[5]]],
       [() => platform.approveAutopilotBacklog(3), mocks.autopilot.ApproveBacklog, [3]],
+      [() => platform.postReviewAsComment(5), mocks.autopilot.PostAsComment, [5]],
       [() => platform.skipMatch(5), mocks.autopilot.Skip, [5]],
       [
         () => platform.previewAutopilotActions({ id: 3, name: 'Rebase', mode: 'ask', spec: routineSpec() }, 9),

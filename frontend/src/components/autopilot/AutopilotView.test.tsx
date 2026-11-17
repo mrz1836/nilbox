@@ -1526,6 +1526,94 @@ describe('Needs you', () => {
     expect(await screen.findByText('Snooze passing bot PRs sends it once your limits let it.')).toBeInTheDocument()
   })
 
+  it('asks to merge a fix whose checks passed, showing the verdict, and opens the sheet for a review GitHub wants', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    const steps = [
+      githubStep({ kind: 'agent', label: 'Run a coding agent', status: 'done', outcome: 'pushed', actions: [] }),
+      githubStep({
+        kind: 'waitForChecks',
+        label: 'Wait for the checks',
+        status: 'done',
+        outcome: 'passed',
+        verdict: 'fixed',
+        note: 'Fixed: checks pass on 4f2a9c1.',
+        actions: [],
+      }),
+      githubStep({ kind: 'merge', label: 'Merge it', merge: 'Merges it (squash).', actions: [] }),
+    ]
+    platform.autopilotNeedsYou.mockResolvedValue([
+      open(30, 'waiting', 'ask', 'Its checks passed: waiting for your OK to merge it.', { steps, step: 2 }),
+      open(31, 'waiting', 'review_required', 'GitHub wants an approving review before it merges this.', {
+        steps,
+        step: 2,
+        item: itemRef({ id: 2, number: 9 }),
+      }),
+    ])
+    renderTab()
+
+    const needs = await needsYouSection()
+    const ask = within(needs.getByRole('listitem', { name: /example-repo #7/ }))
+
+    expect(ask.getByText('Fixed: checks pass on 4f2a9c1.')).toBeInTheDocument()
+    expect(ask.getByText('Merges it (squash).')).toBeInTheDocument()
+    expect(ask.queryByRole('button', { name: 'Approve and merge…' })).not.toBeInTheDocument()
+
+    await userEvent.click(ask.getByRole('button', { name: 'Merge' }))
+    expect(platform.approveMatches).toHaveBeenCalledWith([30])
+
+    const review = within(needs.getByRole('listitem', { name: /example-repo #9/ }))
+    await userEvent.click(review.getByRole('button', { name: 'Approve and merge…' }))
+    await waitFor(() => {
+      expect(platform.routineWatching).toHaveBeenCalled()
+    })
+    expect(platform.approveMatches).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the agent’s review, and posts it, as a comment, or skips it for the sheet', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    const review = { verdict: 'approve' as const, body: 'Looks good to me.', comments: [] }
+    platform.autopilotNeedsYou.mockResolvedValue([
+      open(32, 'waiting', 'ask', 'The agent’s review is ready: waiting for your OK to post it.', {
+        steps: [
+          githubStep({
+            kind: 'agent',
+            label: 'Run a coding agent',
+            status: 'done',
+            outcome: 'approve',
+            review,
+            actions: [],
+          }),
+          githubStep({
+            kind: 'postReview',
+            label: 'Post the agent’s review',
+            reviewAs: 'verdict',
+            allowApprove: true,
+            actions: [],
+          }),
+        ],
+        step: 1,
+      }),
+    ])
+    renderTab()
+
+    const card = within((await needsYouSection()).getByRole('listitem', { name: /example-repo #7/ }))
+
+    expect(card.getByText('Looks good to me.')).toBeInTheDocument()
+    expect(card.getByText(/Approves/)).toBeInTheDocument()
+
+    await userEvent.click(card.getByRole('button', { name: 'Post approval' }))
+    expect(platform.approveMatches).toHaveBeenCalledWith([32])
+
+    await userEvent.click(card.getByRole('button', { name: 'Post as comment' }))
+    expect(platform.postReviewAsComment).toHaveBeenCalledWith(32)
+
+    await userEvent.click(card.getByRole('button', { name: 'Edit in the sheet' }))
+    expect(platform.skipMatch).toHaveBeenCalledWith(32)
+    await waitFor(() => {
+      expect(platform.routineWatching).toHaveBeenCalled()
+    })
+  })
+
   it('gathers a routine’s backlog in one card, whose Run on them lets every one go', async () => {
     platform.listRoutines.mockResolvedValue(routines())
     const rebase = { steps: [githubStep()], step: 0 }

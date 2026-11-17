@@ -40,6 +40,25 @@ type GitHub struct {
 
 	// before runs as each send reaches the sheet, before it decides (OnSend).
 	before func(req autopilot.GitHubSend)
+
+	// merges are the merges GitHub took, mergesTried every one asked, reviews the reviews
+	// posted, and needsReview the items whose merge GitHub holds for an approving review.
+	merges      []autopilot.MergeSend
+	mergesTried []autopilot.MergeSend
+	reviews     []autopilot.ReviewSend
+	needsReview map[int]bool
+
+	// beforeFollow runs as each merge or review reaches the sheet (OnFollowUp).
+	beforeFollow func(number int)
+}
+
+// OnFollowUp runs fn as each merge or review reaches the sheet, before it decides: what
+// changes on GitHub between the read and the write.
+func (g *GitHub) OnFollowUp(fn func(number int)) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.beforeFollow = fn
 }
 
 // OnSend runs fn as each send reaches the sheet, before the sheet decides it: what
@@ -224,6 +243,131 @@ func (g *GitHub) Marked() []int {
 	defer g.mu.Unlock()
 
 	return slices.Clone(g.marks)
+}
+
+// NeedsReview has GitHub hold the item number's merge for an approving review, or no
+// longer for false.
+func (g *GitHub) NeedsReview(number int, needs bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.needsReview == nil {
+		g.needsReview = map[int]bool{}
+	}
+
+	g.needsReview[number] = needs
+}
+
+// Merge merges the pull request in the World, or records auto-merge turned back on, as the
+// review sheet would: only while it is open at req.Head, and not while GitHub holds it for
+// an approving review.
+func (g *GitHub) Merge(_ context.Context, req autopilot.MergeSend) (autopilot.GitHubSent, error) {
+	g.mu.Lock()
+	g.mergesTried = append(g.mergesTried, req)
+	g.mu.Unlock()
+
+	got, open := g.pinned(req.Item.Number, req.Head, req.Accept)
+	if !open {
+		return got, nil
+	}
+
+	g.mu.Lock()
+	needs := g.needsReview[req.Item.Number]
+	g.mu.Unlock()
+
+	if needs {
+		return autopilot.GitHubSent{Outcome: autopilot.GitHubNeedsReview}, nil
+	}
+
+	g.mu.Lock()
+	g.merges = append(g.merges, req)
+	g.mu.Unlock()
+
+	if req.AutoMerge {
+		return autopilot.GitHubSent{Outcome: autopilot.GitHubSentIt, Words: "Turned auto-merge back on."}, nil
+	}
+
+	g.sim.World.Merge(req.Item.Number)
+
+	return autopilot.GitHubSent{Outcome: autopilot.GitHubSentIt, Words: "Merged."}, nil
+}
+
+// PostReview records the review, as the review sheet would post it: only while the pull
+// request is open at req.Head.
+func (g *GitHub) PostReview(_ context.Context, req autopilot.ReviewSend) (autopilot.GitHubSent, error) {
+	got, open := g.pinned(req.Item.Number, req.Head, req.Accept)
+	if !open {
+		return got, nil
+	}
+
+	g.mu.Lock()
+	g.reviews = append(g.reviews, req)
+	g.mu.Unlock()
+
+	return autopilot.GitHubSent{Outcome: autopilot.GitHubSentIt, Words: "Posted the review."}, nil
+}
+
+// Merges returns the merges GitHub took, auto-merge turned back on included, in order, and
+// MergesTried every merge asked.
+func (g *GitHub) Merges() []autopilot.MergeSend {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	return slices.Clone(g.merges)
+}
+
+// MergesTried returns every merge asked of the sheet, in order.
+func (g *GitHub) MergesTried() []autopilot.MergeSend {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	return slices.Clone(g.mergesTried)
+}
+
+// Reviews returns the reviews posted, in order.
+func (g *GitHub) Reviews() []autopilot.ReviewSend {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	return slices.Clone(g.reviews)
+}
+
+// pinned decides a merge or a review as the sheet would before sending it: one on an item
+// not open, or pushed to since head, is no longer offered, and one with warnings the user
+// didn't accept waits; it reports whether it may go.
+func (g *GitHub) pinned(number int, head, accept string) (autopilot.GitHubSent, bool) {
+	g.mu.Lock()
+	before := g.beforeFollow
+	g.mu.Unlock()
+
+	if before != nil {
+		before(number)
+	}
+
+	w := g.sim.World
+
+	w.mu.Lock()
+	it, ok := w.items[number]
+
+	var now, state string
+	if ok {
+		now, state = it.Head, it.State
+	}
+	w.mu.Unlock()
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	switch {
+	case !ok || state != github.StateOpen:
+		return autopilot.GitHubSent{Outcome: autopilot.GitHubNotOffered, Words: "It's no longer open."}, false
+	case !strings.EqualFold(now, head):
+		return autopilot.GitHubSent{Outcome: autopilot.GitHubNotOffered, Words: "It was pushed to since."}, false
+	case g.warnings[number] != "" && accept != g.warnings[number]:
+		return autopilot.GitHubSent{Outcome: autopilot.GitHubWarning, Words: g.warnings[number]}, false
+	}
+
+	return autopilot.GitHubSent{}, true
 }
 
 // decide is how the sheet's own rules take req, as the World stands.

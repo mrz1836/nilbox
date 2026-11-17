@@ -2,10 +2,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import {
   backlogText,
+  followUpOf,
   githubAheadText,
   githubGoLabel,
   itemText,
   needsYou,
+  reviewPostLabel,
+  reviewVerdictLabels,
   runLabel,
   skipLabel,
   type Backlog,
@@ -19,6 +22,7 @@ import {
   approveMatches,
   cloneRepo,
   cloneTarget,
+  postReviewAsComment,
   skipMatch,
   type AutopilotItemRef,
   type AutopilotMatch,
@@ -57,6 +61,132 @@ interface CardProps extends Pick<NeedsYouSectionProps, 'agentFor' | 'onOpen' | '
   highlighted: boolean
   // children are the card's own buttons, before Skip and Open.
   actions: (run: (what: () => Promise<string>) => void, pending: boolean) => ReactNode
+}
+
+// FollowUpDetails shows what a match waiting at a step that follows a run comes to: for
+// Merge it, the verdict on the checks and what the merge does; for Post the agent's review,
+// the review's verdict, its text, and its line comments. Any other match shows nothing.
+function FollowUpDetails({ match: m }: { match: AutopilotMatch }) {
+  const f = followUpOf(m)
+
+  if (f === undefined) {
+    return null
+  }
+
+  if (f.kind === 'merge') {
+    return (
+      <div className="flex flex-col gap-0.5 text-xs text-muted">
+        {f.verdict !== '' && <p className="text-text">{f.verdict}</p>}
+        <p>
+          Next on GitHub: <span className="text-text">{f.does}</span>
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1 rounded-md border border-border bg-raised/40 px-3 py-2 text-xs">
+      <p className="font-medium text-text">
+        The agent’s review · {reviewVerdictLabels[f.verdict]}
+        {f.comments > 0 && (
+          <span className="font-normal text-muted"> · {counted(f.comments, 'line comment', 'line comments')}</span>
+        )}
+      </p>
+      {f.body !== '' && <p className="line-clamp-6 whitespace-pre-wrap text-text">{f.body}</p>}
+    </div>
+  )
+}
+
+interface FollowUpActionsProps {
+  match: AutopilotMatch
+  run: (what: () => Promise<string>) => void
+  pending: boolean
+  onOpen: NeedsYouSectionProps['onOpen']
+}
+
+// FollowUpActions are the buttons of a match waiting at a step that follows a run: Merge
+// (once GitHub holds it for an approving review, also Approve and merge…, which opens the
+// sheet, where only the user approves); or Post approval, Post as comment, and Edit in the
+// sheet, which skips it, so the user posts their own from the sheet.
+function FollowUpActions({ match: m, run, pending, onOpen }: FollowUpActionsProps) {
+  const f = followUpOf(m)
+
+  if (f === undefined) {
+    return null
+  }
+
+  if (f.kind === 'merge') {
+    return (
+      <>
+        {m.blockedBy === 'review_required' && (
+          <button
+            type="button"
+            onClick={() => {
+              onOpen(m.item, m.routineId)
+            }}
+            className={buttonClass}
+          >
+            Approve and merge…
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            run(() => approveMatches([m.id]).then(() => `${m.routine} merges it once GitHub says it can.`))
+          }}
+          className={primaryButtonClass}
+        >
+          Merge
+        </button>
+      </>
+    )
+  }
+
+  const label = reviewPostLabel(f)
+
+  return (
+    <>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => {
+          run(() => approveMatches([m.id]).then(() => `${m.routine} posts the review once your limits let it.`))
+        }}
+        className={primaryButtonClass}
+      >
+        {label}
+      </button>
+      {label !== 'Post as comment' && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            run(() => postReviewAsComment(m.id).then(() => `${m.routine} posts it as a comment.`))
+          }}
+          className={buttonClass}
+        >
+          Post as comment
+        </button>
+      )}
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => {
+          run(() =>
+            skipMatch(m.id).then(() => {
+              onOpen(m.item, m.routineId)
+
+              return 'Skipped: the sheet shows the agent’s notes to start your own review from.'
+            }),
+          )
+        }}
+        className={quietButtonClass}
+      >
+        Edit in the sheet
+      </button>
+    </>
+  )
 }
 
 // Card is one match that needs the user: the item, the routine, what it waits on, a
@@ -104,6 +234,8 @@ function Card({ match: m, highlighted, agentFor, actions, onOpen, onToast, onCha
           Next on GitHub: <span className="text-text">{next}</span>
         </p>
       )}
+      <FollowUpDetails match={m} />
+
       {held !== null && (m.blockedBy === 'hold' || m.blockedBy === 'dirty_worktree') && (
         <div className="flex flex-col gap-1.5 rounded-md border border-warning/40 bg-warning/5 px-3 py-2 text-xs text-muted">
           <p className="font-medium text-text">{holdTitle(held)}</p>
@@ -339,7 +471,9 @@ export function NeedsYouSection({
                     highlighted={marked?.matchId === m.id}
                     {...shared}
                     actions={(run, pending) =>
-                      m.blockedBy === 'no_clone' ? (
+                      followUpOf(m) !== undefined && m.blockedBy !== 'warning' ? (
+                        <FollowUpActions match={m} run={run} pending={pending} onOpen={onOpen} />
+                      ) : m.blockedBy === 'no_clone' ? (
                         <button
                           type="button"
                           disabled={pending}

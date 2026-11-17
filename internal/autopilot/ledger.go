@@ -112,6 +112,10 @@ const (
 	// BlockScriptAsks is a script set to ask before each run, which runs on the user's OK
 	// alone, every time.
 	BlockScriptAsks Blocker = "script_asks"
+
+	// BlockReviewRequired is a Merge it GitHub holds for an approving review, which only a
+	// person gives: the user approves it, then lets the merge go.
+	BlockReviewRequired Blocker = "review_required"
 )
 
 // What a blocked match waits on this Mac for.
@@ -152,7 +156,7 @@ func stateOf(b Blocker) State {
 	switch {
 	case slices.Contains([]Blocker{
 		BlockAsk, BlockHold, BlockWarning, BlockNoClone, BlockDirty, BlockCatchUp, BlockInterrupted, BlockOutside,
-		BlockBacklog, BlockScriptAsks,
+		BlockBacklog, BlockScriptAsks, BlockReviewRequired,
 	}, b):
 		return StateWaiting
 	case slices.Contains([]Blocker{BlockNotReady, BlockMissingTool, BlockCrossRepo}, b):
@@ -258,10 +262,22 @@ type stepRun struct {
 	Hold      *Hold    `json:"hold,omitempty"`
 	Confirmed []string `json:"confirmed,omitempty"`
 
-	// Verdict is what a Wait for the checks found of the agent's run, once it did, and
-	// Seen when it first saw the run's commit as the pull request's head.
+	// Verdict is what a Wait for the checks found of the agent's run, once it did, Seen
+	// when it first saw the run's commit as the pull request's head, and Commit the commit
+	// its verdict is on, which a Merge it after it is pinned to.
 	Verdict Verdict    `json:"verdict,omitempty"`
 	Seen    *time.Time `json:"seen,omitempty"`
+	Commit  string     `json:"commit,omitempty"`
+
+	// Review is the review a read-only agent step's report held, which a Post the agent's
+	// review after it posts, and PostAs the user's choice of how a Post the agent's review
+	// waiting for their OK posts it (PostAsComment), "" for the step's own.
+	Review *AgentReview `json:"review,omitempty"`
+	PostAs string       `json:"postAs,omitempty"`
+
+	// OK records the user's OK for this step itself: a step that follows a run (Merge it,
+	// Post the agent's review) asks for its own in Ask first, showing what the run came to.
+	OK bool `json:"ok,omitempty"`
 }
 
 // match is a ledger row, with its steps and trace read, and the row as stored, so a

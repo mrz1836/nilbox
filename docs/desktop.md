@@ -2492,11 +2492,12 @@ restore the item ([by a routine](#snooze-dismiss-and-pin-by-a-routine)), tell yo
 (**Notify me** and **Tell me**), send the few changes to GitHub the review and issue sheets
 already send ([what Autopilot may change on GitHub](#what-autopilot-may-change-on-github)),
 start a coding agent on it in your terminal ([agents in your terminal](#agents-in-your-terminal))
-or in the background ([agents in the background](#agents-in-the-background)), and wait for the
-checks on what that agent pushed ([closing the loop](#closing-the-loop-wait-for-the-checks)).
-A routine with a step this version can't take yet (**Merge it**, say) runs only in Dry run, and
-says so. Each routine acts once per occurrence (once per head commit, say), across
-refreshes and restarts, and in its mode:
+or in the background ([agents in the background](#agents-in-the-background)), wait for the
+checks on what that agent pushed ([closing the loop](#closing-the-loop-wait-for-the-checks)),
+and then, if you add the step, merge the fix or post the agent's review
+([merge it and post the agent's review](#merge-it-and-post-the-agents-review)). Each routine
+acts once per occurrence (once per head commit, say), across refreshes and restarts, and in
+its mode:
 
 | Mode | On a match |
 |---|---|
@@ -2634,7 +2635,10 @@ card and its Watching row alike, saying what the newest of the routines' matches
 step; what it last sent GitHub (**⚡ Asked rebase**, **⚡ Updated branch**, **⚡ Commented**,
 **⚡ Labeled**, **⚡ Marked done**); what the checks on its agent's push came to (**⚡ Fixed**,
 **⚡ Still failing**, **⚡ Overtaken**, and the rest of
-[the verdicts](#closing-the-loop-wait-for-the-checks)); one that waits or works says so
+[the verdicts](#closing-the-loop-wait-for-the-checks)); what a step after the run sent
+(**⚡ Merged**, **⚡ Auto-merge on**, **⚡ Approved**, **⚡ Changes requested**,
+**⚡ Reviewed**, from [Merge it and Post the agent's review](#merge-it-and-post-the-agents-review));
+one that waits or works says so
 (**⚡ Needs you**, **⚡ Working**, **⚡ Checking**), and one that ended
 without acting says why, each reason in words of its own (**⚡ Gave up**, **⚡ You skipped it**,
 **⚡ Skipped: an outside contributor's**, **⚡ Left alone**). Click it for the item's history
@@ -3040,6 +3044,52 @@ pushed, unless its trigger says **Also on commits a routine pushed**. While an a
 the item, a new head waits to be told apart until its run ends and records what it pushed;
 someone else's push then fires it as before.
 
+### Merge it and Post the agent's review
+
+Two steps act on what a run came to, and only if you add them. Both are pull requests' alone,
+go through the review sheet (read from GitHub right before, one point, and sent only as the
+sheet offers it then, at the [pace](#what-autopilot-may-change-on-github) of the GitHub
+actions, counting toward **GitHub actions a day**), and are pinned to a commit: a push since
+sends nothing. In Ask first, each asks again once it is reached, showing what the run came to,
+whatever your OK to start the routine.
+
+**Merge it** comes after a **Wait for the checks** (*only if the checks passed*, as **+ Add a
+step** sets it), and merges only the commit the checks passed on.
+
+- **How:** *auto-merge if it was on, else when GitHub allows* (where it starts) turns GitHub's
+  auto-merge back on when it was on as the routine matched, as a push to the branch turns it
+  off; else, and with *when GitHub allows*, it merges at once, but only when GitHub says it
+  would merge now. **Method:** the repository's own, a merge commit, squash, or rebase.
+- It never merges past branch protection or as an admin. When GitHub holds the merge for an
+  approving review, it waits in [Needs you](#needs-you) (*GitHub wants an approving review
+  before it merges this: approve it, then let the merge go.*) with **Approve and merge…**,
+  which opens the review sheet for you to approve, and **Merge**, which tries again.
+- It never merges where the agent's commits changed workflow, agent, or tooling files, or
+  where not every file they changed could be checked, *Its agent's commits changed workflow
+  files, so it isn't merged: a person reviews those.*, nor an outside contributor's pull
+  request.
+
+**Post the agent's review** comes after an agent step in **Read only**, and posts what the
+agent wrote in its report (its verdict, its text, and its line comments) at the commit the
+agent read.
+
+- **As a comment** posts it as a review that only comments, whatever its verdict. **As its
+  verdict** posts a request for changes as one, and an approval only with **Allow approving**
+  ticked (off where it starts).
+- A routine approves only a member's or a trusted bot's pull request, only when every file was
+  checked and none is [sensitive](#sensitive-files), and never one a routine pushed to: an
+  approval held back posts as a comment, saying why (*Posted as a comment: a routine never
+  approves a pull request a routine pushed to.*).
+- Each line comment is checked against the diff, as the sheet's are: one on a line the diff
+  doesn't show is left out, and counted. An agent that wrote no review skips the step.
+- An outside contributor's pull request waits for your OK in every mode, as a GitHub action
+  does.
+
+The ⚡ chip then says what went (**⚡ Merged**, **⚡ Auto-merge on**, **⚡ Approved**,
+**⚡ Changes requested**, **⚡ Reviewed**). Nothing lets an agent merge, approve, or close
+anything itself: these steps are the app's own writes, with the guards above in Go whatever
+the routine says.
+
 ### Needs you
 
 Activity's **Needs you**, above the history, holds what a routine can't do without you:
@@ -3054,7 +3104,13 @@ Activity's **Needs you**, above the history, holds what a routine can't do witho
   (*Next on GitHub: Ask Dependabot to rebase*), and its button says what you let go: **Send
   it** (Ask first, a catch-up, or an outside contributor's item), **Send anyway** for one its
   sheet offers with warnings, which the card shows and the button accepts exactly, or **Send
-  it again** for one the app quit while sending.
+  it again** for one the app quit while sending. A
+  [Merge it](#merge-it-and-post-the-agents-review)'s card shows the verdict on the checks and
+  what it would do (*Next on GitHub: Merges it (squash).*), with **Merge**; a Post the agent's
+  review's shows the agent's review (its verdict, its text, and how many line comments), with
+  **Post approval** or **Post request for changes** for its verdict, **Post as comment**, and
+  **Edit in the sheet**, which skips it and opens the review sheet, where the agent's notes
+  start your own review.
 - **Matched at once:** a routine's first pass that matched more than it takes on by itself, as
   one card naming the first few items, with **Run on them**, which lets every one go at
   Autopilot's pace, and **Skip them**.
@@ -3148,7 +3204,10 @@ queues at most 25 of what it matches; past that it queues none, and they wait fo
 backlog (**Matched at once**, in [Needs you](#needs-you)), whose **Run on them** sends them all
 at the pace above. A GitHub action never merges,
 approves, requests changes, closes, or approves workflow runs, and a test fails the build if one
-could reach any of them. A reply that approves (*LGTM*,
+could reach any of them: merging and posting a review are steps of their own, each opt-in
+and behind its own guards ([Merge it and Post the agent's
+review](#merge-it-and-post-the-agents-review)), which never close anything, approve workflow
+runs, or merge past GitHub's rules. A reply that approves (*LGTM*,
 *Update OK*) or requests changes is refused where the routine is built and again right before
 each action; one your library changed since holds the action back (**⚡ Can't start yet**) and
 says why, reading nothing from GitHub.
@@ -3303,7 +3362,9 @@ each start, the item's own agent and profile are checked again.
 **What Autopilot never does.** It never changes a routine's mode on its own. A local step never
 replaces what you set aside yourself, and has **Undo**. Dry run changes nothing. It changes on
 GitHub only the [five things](#what-autopilot-may-change-on-github) the sheets already change,
-and never closes anything, approves workflow runs, or merges past GitHub's rules. Nothing it
+and merges or posts an agent's review only through the opt-in
+[steps that follow a run](#merge-it-and-post-the-agents-review), inside GitHub's own rules; it
+never closes anything, approves workflow runs, or merges past GitHub's rules. Nothing it
 reads or decides leaves your Mac: it reads
 and writes GitHub through the app's own API calls, as the inbox and the sheets do.
 

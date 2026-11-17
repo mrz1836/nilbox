@@ -110,6 +110,22 @@ type MatchStep struct {
 	// Verdict is what a Wait for the checks found of the agent's run, "" before it did
 	// and for any other step.
 	Verdict Verdict `json:"verdict"`
+
+	// Review is the review a read-only agent step wrote, which a Post the agent's review
+	// after it posts, nil for none; PostAs is how the user chose to post it, "" for the
+	// step's own way.
+	Review *AgentReview `json:"review"`
+	PostAs string       `json:"postAs"`
+
+	// ReviewAs is how a Post the agent's review posts it, as a comment or as its verdict,
+	// and AllowApprove whether that verdict may approve; Merge says what a Merge it does
+	// ("Merges it (squash)."). Each is empty for any other step.
+	ReviewAs     catalog.ReviewAs `json:"reviewAs"`
+	AllowApprove bool             `json:"allowApprove"`
+	Merge        string           `json:"merge"`
+
+	// AutoMerge reports a Merge it that turns auto-merge back on rather than merging now.
+	AutoMerge bool `json:"autoMerge"`
 }
 
 // Run is one run a match started: an agent's, or a GitHub action the app sent.
@@ -570,7 +586,13 @@ func matchView(m *match, routine string) Match {
 	}
 
 	for i := range m.steps {
-		v.Steps = append(v.Steps, stepView(&m.steps[i]))
+		step := stepView(&m.steps[i])
+		if st := m.steps[i].Step.Merge; st != nil {
+			step.AutoMerge = autoMergeBack(m, st.How)
+			step.Merge = mergeWords(step.AutoMerge, st.Method)
+		}
+
+		v.Steps = append(v.Steps, step)
 	}
 
 	if b := Blocker(m.BlockedBy); (b == BlockHold || b == BlockDirty) && int(m.Step) < len(m.steps) {
@@ -600,10 +622,23 @@ func stepView(sr *stepRun) MatchStep {
 		sent = len(actions)
 	}
 
-	return MatchStep{
+	out := MatchStep{
 		Kind: kind, Label: info.Label, Status: sr.Status, Outcome: sr.Outcome, Note: sr.Note, RunID: sr.RunID,
 		StartedAt: sr.Started, EndedAt: sr.Ended, Actions: actions, Sent: sent, Verdict: sr.Verdict,
+		PostAs: sr.PostAs,
 	}
+
+	if sr.Review != nil {
+		rv := *sr.Review
+		rv.Comments = nonNil(rv.Comments)
+		out.Review = &rv
+	}
+
+	if st := sr.Step.PostReview; st != nil {
+		out.ReviewAs, out.AllowApprove = st.As, st.As == catalog.ReviewAsVerdict && st.AllowApprove
+	}
+
+	return out
 }
 
 // defaultWords says where a match is when nothing more was said.

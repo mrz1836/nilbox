@@ -60,7 +60,10 @@ sheet stays open after it, with the draft, and reads again (`ReadAgain`) at once
 three seconds apart up to four more times, until fewer runs are held and a check is
 running; each read rewrites the card, which the checks follower then keeps current. Each step is reported as an
 `event.ReviewProgress`, which the sheet shows while the user waits. Line comments are checked
-against the cached diff (`hunks.go`) before anything is sent. `Decide` marks every offer with
+against the cached diff (`hunks.go`) before anything is sent; a routine's Post the agent's
+review first keeps only those the diff shows (`Fitter.Fit`, never bound, the same
+`checkComment` over the cache alone, counting the rest), so its review never fails whole on a
+line GitHub would refuse. `Decide` marks every offer with
 what its text goes with (`Offer.Reviews`, `Offer.CommentsFirst`, and `Offer.CommentBlocked`,
 why GitHub can't take the comment now), and `Act` and the window both go by those marks. A
 merge with no review of its own (`merge_now`, `merge_bypass`, `auto_merge`) posts the
@@ -1768,6 +1771,57 @@ What the user sees is in `docs/desktop.md`'s *Closing the loop: Wait for the che
   passed a fallback over) with `RetryAt`, the soonest rest's end, and the engine holds the
   match until then (`heldBack.until`) without reading the item. Readiness marks what only a
   fallback needs (`Need.Fallback`), which is only ever a warning.
+
+### Merge it and Post the agent's review
+
+What the user sees is in `docs/desktop.md`'s *Merge it and Post the agent's review*.
+
+- **The seam.** Both are GitHub writes of their own (`catalog.DispatchMerge`,
+  `DispatchReview`), registered beside the GitHub step over the same `GitHubActions`
+  (`registerWrites`), so each is its own `autopilot_runs` row (`runner = github`), recorded
+  before it is sent, paced by `pace` and the GitHub actions a day, and never sent twice on its
+  own (`writesGitHub`). The dispatcher's `ReadItem` is the sheet's read, and the job carries
+  the commit it is pinned to (`followUp`): for Merge it, `mergeHead`, the commit the step's
+  Wait for the checks passed on (`stepRun.Commit`, which `applyVerdict` records), and
+  `Job.AutoMerge`, whether to turn auto-merge back on (`autoMergeBack`: `MergeHow` says so,
+  and it was on as the routine matched, `autopilot_matches.auto_merge_at_match`); for Post the agent's review, `agentReviewOf`, the review
+  the read-only agent's report held (`agentrun.Report.Review`, kept to `ReportSchema`'s
+  `review` object, carried on `RunEnd.Review` into the agent step's `stepRun.Review`) and the
+  commit its run started at, and `Job.Review`, what `reviewEvent` decided to post. A run whose
+  agent wrote no review skips the step (`noReview`).
+- **The guards in Go,** whatever the spec says. `mergeRules`, first in the gate, closes a
+  Merge it on an outside contributor's pull request (`not_offered`); a review on one waits
+  `outside_contributor`, as a GitHub action does. `reviewEvent` is pure: a comment unless the
+  step posts its verdict and the user didn't ask for a comment (`stepRun.PostAs`,
+  `Service.PostAsComment`); an approval only with `AllowApprove`, a member's or a trusted
+  bot's pull request (`guardOf`, from `FieldTrust`), every file checked and none sensitive
+  (`FieldSensitive`, known and not partial), and no routine's run that recorded a commit
+  there (`pushedTo`); else it posts as a comment, saying which guard held it.
+- **Core** (`internal/core/adapters_followups.go`, `githubSteps.Merge` and `PostReview`):
+  each reads through the review sheet (`Refresh`, serving the read just made), then decides
+  on it with the pure `mergeDecision` or `reviewDecision`: a head other than the pinned one
+  is not offered; auto-merge already on is nothing; a merge the sheet won't send but would
+  approve and merge (`waitsOnReview`) is `GitHubNeedsReview`, which waits
+  `review_required` for the user, never approving; and anything else goes only as the sheet
+  offers it now (`pullOffer`, warnings only the user accepted). A merge first asks the inbox
+  what the agent's commits at that head changed (`agentChanges.AgentChanged`, the fence's
+  check): a sensitive group, or a check not complete, merges nothing. A review's line
+  comments are fitted to the cached diff (`review.Fitter`, never bound: the sheet's own
+  check of each against its hunks, `checkComment`, the rest left out and counted, so a review
+  never fails whole on a line GitHub would refuse). Then the sheet's `Act` sends it under
+  the inbox's `Actor` and the write gate: only `merge_now` (`mergeMethodOf`, the step's
+  method) or `auto_merge`, and only `comment`, `request_changes`, or `approve`;
+  `TestMergeAndReviewReachNoForbiddenAction` parses the adapter and fails on
+  `merge_bypass`, `approve_auto_merge`, a close, approving workflow runs, or sending
+  `approve_merge`, whose offer it only reads.
+- **Ask first** (`askFirst`): both steps ask again once reached (`followsRun`, the wait's
+  words from `followWords`), whatever the routine's OK to start, and `Approve` records the
+  OK on the step (`stepRun.OK`), so the card shows what the run came to. The window's card
+  reads it from `MatchStep` (`Merge`, the merge's words; `AutoMerge`; `Review`, `ReviewAs`,
+  `AllowApprove`, `PostAs`).
+- **Stats** count a sent merge as `Merges` and a posted review as `Reviews`, by the step's
+  kind, never as a GitHub action, and the review's run ends with the event it posted as its
+  step's outcome (`approve`, `requestChanges`), which the ⚡ chip reads.
 
 ### Agents in the terminal, readiness, and Needs your OK
 

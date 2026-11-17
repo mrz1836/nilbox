@@ -288,6 +288,30 @@ export function sheetLine(m: AutopilotMatch | undefined): SheetLine | undefined 
   return { routine: m.routine, words: step.note, tone: verdictChips[step.verdict].tone }
 }
 
+// followedChip is what a match that ran says of a step after its run that went: "Merged",
+// "Auto-merge on", or the review it posted ("Approved", "Changes requested", "Reviewed");
+// undefined when none did.
+function followedChip(m: AutopilotMatch): Chip | undefined {
+  const st = m.steps.findLast((s) => (s.kind === 'merge' || s.kind === 'postReview') && s.status === 'done')
+
+  if (st === undefined) {
+    return undefined
+  }
+
+  if (st.kind === 'merge') {
+    return { label: st.autoMerge ? 'Auto-merge on' : 'Merged', tone: 'accent' }
+  }
+
+  switch (st.outcome) {
+    case 'approve':
+      return { label: 'Approved', tone: 'accent' }
+    case 'requestChanges':
+      return { label: 'Changes requested', tone: 'accent' }
+    default:
+      return { label: 'Reviewed', tone: 'accent' }
+  }
+}
+
 // verdictChips are what a match that ran says of the checks on its agent's push, by the
 // verdict its Wait for the checks reached: a record over the generated union, so a verdict
 // added in Go fails to compile until it is worded here.
@@ -343,6 +367,12 @@ export function chipOf(m: AutopilotMatch): Chip {
         : reasonChips[m.reason]
     case 'done':
       break
+  }
+
+  // What a step after the run sent says the most: the merge, or the review posted.
+  const followed = followedChip(m)
+  if (followed !== undefined) {
+    return followed
   }
 
   // A fix whose push was checked says what its checks found.
@@ -434,6 +464,74 @@ export function githubAhead(
   }
 
   return { actions: st.actions.slice(st.sent), sent: st.sent }
+}
+
+// FollowUp is what a match waiting at a step that follows a run shows on its card: for Merge
+// it, what it does and the verdict on the checks it follows; for Post the agent's review,
+// the review, how it posts, and whether it may approve.
+export type FollowUp =
+  | { kind: 'merge'; does: string; verdict: string }
+  | {
+      kind: 'review'
+      verdict: 'approve' | 'request_changes' | 'comment'
+      body: string
+      comments: number
+      allowApprove: boolean
+      asComment: boolean
+    }
+
+// followUpOf is what m's card shows of the step that follows a run it waits at, undefined
+// for a match at any other step.
+export function followUpOf(m: Pick<AutopilotMatch, 'steps' | 'step'>): FollowUp | undefined {
+  const st = m.steps.at(m.step)
+
+  if (st?.kind === 'merge') {
+    const wait = m.steps.slice(0, m.step).findLast((s) => s.kind === 'waitForChecks')
+
+    return { kind: 'merge', does: st.merge, verdict: wait?.note ?? '' }
+  }
+
+  if (st?.kind !== 'postReview') {
+    return undefined
+  }
+
+  const review = m.steps.slice(0, m.step).findLast((s) => s.kind === 'agent')?.review
+  if (review === undefined || review === null) {
+    return undefined
+  }
+
+  return {
+    kind: 'review',
+    verdict: review.verdict,
+    body: review.body,
+    comments: review.comments.length,
+    allowApprove: st.allowApprove,
+    asComment: st.postAs === 'comment' || st.reviewAs !== 'verdict',
+  }
+}
+
+// reviewVerdictLabels name an agent review's verdicts.
+export const reviewVerdictLabels: Readonly<Record<'approve' | 'request_changes' | 'comment', string>> = {
+  approve: 'Approves',
+  request_changes: 'Requests changes',
+  comment: 'Comments',
+}
+
+// reviewPostLabel is what the button that posts a waiting review as its step says: an
+// approval when it may approve, a request for changes, or a comment.
+export function reviewPostLabel(f: Extract<FollowUp, { kind: 'review' }>): string {
+  if (f.asComment) {
+    return 'Post as comment'
+  }
+
+  switch (f.verdict) {
+    case 'approve':
+      return f.allowApprove ? 'Post approval' : 'Post as comment'
+    case 'request_changes':
+      return 'Post request for changes'
+    case 'comment':
+      return 'Post as comment'
+  }
 }
 
 // githubAheadText says what a match waiting on a GitHub step would send next: "Ask
