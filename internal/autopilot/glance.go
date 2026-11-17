@@ -105,7 +105,7 @@ func (s *Service) Glance(ctx context.Context) (Glance, error) {
 	}
 
 	for _, r := range runs {
-		if r.Runner != "github" {
+		if isAgentRunner(r.Runner) {
 			out.Working = append(out.Working, workingRun(r, names[r.RoutineID]))
 		}
 	}

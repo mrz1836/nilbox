@@ -7,9 +7,11 @@ import type {
   InboxItem,
   SessionState,
   SessionsSnapshot,
+  SessionUsage,
   SessionWorktreeAction,
   TerminalID,
 } from '../platform'
+import { counted, formatCount } from './format'
 import { itemKey } from './itemWorktrees'
 import { terminalNames } from './terminals'
 
@@ -182,4 +184,51 @@ export function setupWords(s: AgentSession): string {
 // build doesn't know.
 export function terminalName(s: AgentSession): string {
   return Object.hasOwn(terminalNames, s.terminal) ? terminalNames[s.terminal as TerminalID] : ''
+}
+
+const compactCounts = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 })
+
+// compactCount writes a count short, as the user's locale does: "840", "12K", "1.2M".
+export function compactCount(n: number): string {
+  return compactCounts.format(n)
+}
+
+// UsageWords is a session's token counts as its entry says them: a short line, and every
+// count in full for its title.
+export interface UsageWords {
+  text: string
+  title: string
+}
+
+// usageWords says how many tokens a session used, "1.2M tokens · 840K cached", or "at
+// least" that many when its files were too long to read whole; null while it reports
+// none. Its title gives every count in full and where they come from: the agent's own
+// files, or, for a run in the background, what its run reported, which counts what it
+// wrote to the cache within its input.
+export function usageWords(u: SessionUsage | undefined): UsageWords | null {
+  if (u === undefined || !u.known || u.total <= 0) {
+    return null
+  }
+
+  const total = `${u.partial ? 'at least ' : ''}${compactCount(u.total)} ${u.total === 1 ? 'token' : 'tokens'}`
+  const cached = u.cacheRead > 0 ? ` · ${compactCount(u.cacheRead)} cached` : ''
+  const parts = u.fromRun
+    ? [
+        `${formatCount(u.input)} in, cache writes included`,
+        `${formatCount(u.output)} out`,
+        `${formatCount(u.cacheRead)} read from the cache, as its run reported them`,
+      ]
+    : [
+        `${formatCount(u.input)} in`,
+        `${formatCount(u.output)} out`,
+        `${formatCount(u.cacheRead)} read from the cache`,
+        `${formatCount(u.cacheWrite)} written to it, as the agent’s own files on this Mac report them`,
+      ]
+
+  return {
+    text: total + cached,
+    title: `${counted(u.total, 'token', 'tokens')}: ${parts.join(', ')}${
+      u.partial ? '. Its files were too long to read whole, so it used at least this many' : ''
+    }.`,
+  }
 }

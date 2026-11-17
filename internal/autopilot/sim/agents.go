@@ -222,9 +222,39 @@ func prKinds() []item.Kind {
 	return []item.Kind{item.KindPR}
 }
 
+// MyScripts is the fake of the user's own Repo scripts, which a scenario saves and edits.
+type MyScripts struct {
+	mu   sync.Mutex
+	list []autopilot.MyScript
+}
+
+// Set saves the user's scripts as list, as the user saving or editing them does.
+func (m *MyScripts) Set(list ...autopilot.MyScript) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.list = slices.Clone(list)
+}
+
+// MyScripts returns the user's scripts.
+func (m *MyScripts) MyScripts(context.Context) ([]autopilot.MyScript, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return slices.Clone(m.list), nil
+}
+
 // config adds the fakes a scenario set to the Service's and the engine's configs; one not
 // set is left out, so a scenario that sets none runs as before.
 func (s *Sim) config(svc *autopilot.Config, eng *autopilot.EngineConfig) {
+	if s.MyScripts != nil {
+		svc.MyScripts = s.MyScripts
+	}
+
+	if s.Scripts != nil {
+		eng.Scripts = s.Scripts
+	}
+
 	if s.Ready != nil {
 		svc.Readiness = s.Ready
 	}

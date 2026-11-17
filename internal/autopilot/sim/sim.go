@@ -72,6 +72,18 @@ func (c *Clock) Set(at time.Time) {
 	c.loc.Store(at.Location())
 }
 
+// Turn sets the clock d on, or back for a negative d, at once, as the user setting the
+// Mac's clock does: the engine's ticks go on as they did.
+func (c *Clock) Turn(d time.Duration) {
+	c.jump(d)
+}
+
+// Travel has the clock tell local time in loc from now on, the moment unchanged, as a Mac
+// does when its time zone changes.
+func (c *Clock) Travel(loc *time.Location) {
+	c.loc.Store(loc)
+}
+
 // jump moves the clock on by d, with no tick between.
 func (c *Clock) jump(d time.Duration) {
 	c.offset.Add(int64(d))
@@ -120,6 +132,11 @@ type Sim struct {
 	Holds   *Holds
 	Outside *Outside
 	Library *Library
+
+	// Scripts runs the script steps, as Runner runs the agents', and MyScripts are the
+	// user's own scripts they pick from; each is left out of the app while nil.
+	Scripts   *Runner
+	MyScripts *MyScripts
 
 	// Events hears what this copy's engine tells the window (autopilot:updated).
 	Events *testutil.Events
@@ -233,6 +250,10 @@ func (s *Sim) Begin() {
 	s.Engine = autopilot.NewEngine(s.Service, eng)
 	fan.engine.Store(s.Engine)
 	s.Runner.attach(s.Engine)
+
+	if s.Scripts != nil {
+		s.Scripts.attach(s.Engine)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 

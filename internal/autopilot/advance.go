@@ -208,13 +208,20 @@ func (p *pass) runLocal(ctx context.Context, r *routineRun, m *match, sr *stepRu
 
 // tellNotices hands the cycle's notices to the notices dispatcher, each on a worker, as a
 // burst when there are more than one, or when any comes from a routine catching up: those
-// are gathered, so more than three at once show as one banner.
+// are gathered, so more than three at once show as one banner. A scheduled routine's
+// Notify me steps that tell once with the list are one digest per routine (digests).
 func (p *pass) tellNotices(ctx context.Context) {
-	burst := len(p.notices) > 1 || slices.ContainsFunc(p.notices, func(j Job) bool { return j.Burst })
+	jobs, digests := p.digests(p.notices)
+	burst := len(jobs)+len(digests) > 1 || slices.ContainsFunc(jobs, func(j Job) bool { return j.Burst })
 
-	for _, job := range p.notices {
+	for _, job := range jobs {
 		job.Burst = burst
 		p.e.dispatch(ctx, job.MatchID, 0, catalog.DispatchNotices, job)
+	}
+
+	for _, dj := range digests {
+		dj.job.Burst = burst
+		p.e.dispatchDigest(ctx, dj)
 	}
 
 	p.notices = nil
@@ -371,6 +378,7 @@ func (p *pass) gate(r *routineRun, m *match, sr *stepRun, info catalog.Step) ver
 	id := store.Deref(m.ItemID)
 
 	for _, check := range []func() verdict{
+		func() verdict { return p.scriptAsks(sr) },
 		func() verdict { return p.askFirst(r, m) },
 		func() verdict { return p.held(r, m) },
 		func() verdict { return p.limits(r, m, id, agent, github) },
@@ -500,7 +508,7 @@ func (p *pass) firstTry(r *routineRun, id int64, first bool) verdict {
 		return verdict{}
 	}
 
-	h := p.historyOf(r, id, "")
+	h := p.historyOf(r, id)
 	lim := r.spec.Limits
 
 	switch {
@@ -721,11 +729,14 @@ func (p *pass) headNow(m *match) string {
 	return m.HeadOID
 }
 
-// runnerOf names who runs a step: an agent in the background or the terminal, or the
-// app's own GitHub write.
+// runnerOf names who runs a step: an agent in the background or the terminal, one of the
+// user's scripts, or the app's own GitHub write.
 func runnerOf(st spec.Step) string {
-	if st.Agent != nil {
+	switch {
+	case st.Agent != nil:
 		return string(st.Agent.Place())
+	case st.Script != nil:
+		return runnerScript
 	}
 
 	return runnerGitHub
@@ -1241,6 +1252,12 @@ func (e *Engine) moveOn(m *match, index int64, end RunEnd, forItem Reason, now t
 		m.set(StateQueued, "", "")
 		e.verifyNext(m, now)
 	}
+
+	// Whether it pushed is an agent's outcome alone: a script's says nothing a later step
+	// reads.
+	if sr.Step.Agent == nil {
+		sr.Outcome = ""
+	}
 }
 
 // verifyNext moves a match whose next step to run follows the checks straight to
@@ -1309,9 +1326,15 @@ func (p *pass) watchActive(ctx context.Context, m *match, watched map[int64]bool
 		return
 	}
 
+	p.stopRuns(ctx, m, reason)
+}
+
+// stopRuns stops the runs m's steps have going, an agent's or a script's, each through
+// its own runner, because its item is done with, as reason says.
+func (p *pass) stopRuns(ctx context.Context, m *match, reason Reason) {
 	for _, sr := range m.steps {
-		if sr.Status == stepRunning && sr.RunID != 0 && sr.Step.Agent != nil {
-			p.e.stopFor(ctx, sr.RunID, reason)
+		if sr.Status == stepRunning && sr.RunID != 0 && (sr.Step.Agent != nil || sr.Step.Script != nil) {
+			p.e.stopFor(ctx, p.e.runnerFor(runnerOf(sr.Step)), sr.RunID, reason)
 		}
 	}
 }
@@ -1332,11 +1355,11 @@ type stopAsk struct {
 	failedAt time.Time
 }
 
-// stopFor stops a run because its item is done with, once at a time: a stop that fails
-// leaves the run going, and a cycle a tick later or more stops it again. Its reason is
-// kept, so a run that ends stopped anyway closes its match for it.
-func (e *Engine) stopFor(ctx context.Context, runID int64, reason Reason) {
-	if e.runner == nil {
+// stopFor stops a run because its item is done with, through runner, its own, once at a
+// time: a stop that fails leaves the run going, and a cycle a tick later or more stops it
+// again. Its reason is kept, so a run that ends stopped anyway closes its match for it.
+func (e *Engine) stopFor(ctx context.Context, runner Runner, runID int64, reason Reason) {
+	if runner == nil {
 		return
 	}
 
@@ -1348,7 +1371,7 @@ func (e *Engine) stopFor(ctx context.Context, runID int64, reason Reason) {
 	e.setRunStatus(ctx, runID, runRunning, runStopping)
 
 	e.goWork(ctx, func(ctx context.Context) {
-		err := e.runner.Stop(ctx, runID)
+		err := runner.Stop(ctx, runID)
 		if err == nil || ctx.Err() != nil {
 			return
 		}
@@ -1596,14 +1619,16 @@ func (e *Engine) moveByRecord(m *match, run queries.AutopilotRun) {
 // its runner never started is gone all the same: its launch may have opened the terminal
 // before a quit or a crash cut it off, so it is never started again on its own.
 func (e *Engine) alive(ctx context.Context, run queries.AutopilotRun) Liveness {
+	runner := e.runnerFor(run.Runner)
+
 	switch {
 	case run.Runner == runnerGitHub:
 		return LiveUnknown
-	case e.runner == nil:
+	case runner == nil:
 		return LiveGone
 	}
 
-	live, err := e.runner.Alive(ctx, run.ID)
+	live, err := runner.Alive(ctx, run.ID)
 
 	switch {
 	case err != nil:
@@ -1691,13 +1716,14 @@ func (d *dayCounts) add(r queries.ListRunsSinceRow, day time.Time) {
 	d.addSpend(r, active, today)
 }
 
-// going counts a run still going: its item busy, and an agent's slot taken.
+// going counts a run still going: its item busy, and, for an agent's, an agent's slot
+// taken.
 func (d *dayCounts) going(r queries.ListRunsSinceRow) {
 	if r.ItemID != nil {
 		d.activeItems[*r.ItemID] = true
 	}
 
-	if r.Runner != runnerGitHub {
+	if isAgentRunner(r.Runner) {
 		d.activeAgents++
 	}
 }
@@ -1715,7 +1741,8 @@ func (d *dayCounts) paced(at time.Time) {
 }
 
 // countRun counts a run of the match matchID toward the day's counts: its routine's, once
-// for the match, and the agents' or the GitHub actions', once for each run.
+// for the match, and the agents' or the GitHub actions', once for each run; a script's
+// counts toward its routine's alone.
 func (d *dayCounts) countRun(routineID, matchID int64, runner string) {
 	if d.counted[routineID] == nil {
 		d.counted[routineID] = map[int64]bool{}
@@ -1726,9 +1753,10 @@ func (d *dayCounts) countRun(routineID, matchID int64, runner string) {
 		d.routineRuns[routineID]++
 	}
 
-	if runner == runnerGitHub {
+	switch {
+	case runner == runnerGitHub:
 		d.actions++
-	} else {
+	case isAgentRunner(runner):
 		d.agentRuns++
 	}
 }
@@ -1762,9 +1790,10 @@ func (d *dayCounts) addSpend(r queries.ListRunsSinceRow, active, today bool) {
 func (d *dayCounts) started(routineID, itemID int64, runner string, job Job, manual bool) {
 	d.activeItems[itemID] = true
 
-	if runner != runnerGitHub {
+	switch {
+	case isAgentRunner(runner):
 		d.activeAgents++
-	} else {
+	case runner == runnerGitHub:
 		d.paced(d.now)
 	}
 

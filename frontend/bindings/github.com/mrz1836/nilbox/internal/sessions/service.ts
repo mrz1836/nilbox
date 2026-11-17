@@ -55,3 +55,13 @@ export function List(): $CancellablePromise<$models.Snapshot> {
 export function ShowFolder(id: string): $CancellablePromise<void> {
     return $Call.ByID(744357778, id);
 }
+
+/**
+ * Usage returns how many tokens the session with id used: a background run's as its run
+ * reported them, any other's read from the agent's own files. Known false, with no error,
+ * for a session the agent hasn't named yet, an agent with no reader, a run that reported
+ * none, or files that report none.
+ */
+export function Usage(id: string): $CancellablePromise<$models.Usage> {
+    return $Call.ByID(3023627382, id);
+}

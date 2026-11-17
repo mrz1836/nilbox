@@ -19,6 +19,9 @@ const (
 	StepMerge         StepKind = "merge"
 	StepPostReview    StepKind = "postReview"
 	StepTellMe        StepKind = "tellMe"
+
+	// StepScript runs one of the user's own Repo scripts in the item's clone.
+	StepScript StepKind = "script"
 )
 
 // Dispatcher names the part of the engine that runs a kind of step. Each is built on
@@ -48,12 +51,17 @@ const (
 
 	// DispatchReview posts a read-only agent's review.
 	DispatchReview Dispatcher = "review"
+
+	// DispatchScripts runs one of the user's own Repo scripts, in the app, in the item's
+	// clone, through Repo scripts' own run.
+	DispatchScripts Dispatcher = "scripts"
 )
 
 // Dispatchers returns every dispatcher.
 func Dispatchers() []Dispatcher {
 	return []Dispatcher{
 		DispatchTriage, DispatchNotices, DispatchGitHub, DispatchAgent, DispatchVerify, DispatchMerge, DispatchReview,
+		DispatchScripts,
 	}
 }
 
@@ -190,6 +198,7 @@ func Steps() []Step {
 			Kind: StepAgent, Label: "Run a coding agent", Dispatcher: DispatchAgent, AsksFirst: true, Kinds: both(),
 			Offered: true, Help: "Starts the routine's agent on the item with a library prompt.",
 		},
+		scriptStep(),
 		{
 			Kind: StepWaitForChecks, Label: "Wait for the checks", Dispatcher: DispatchVerify, Kinds: prOnly(),
 			Help: "Follows the checks on the agent's pushed commit until every one has finished and settled.",
@@ -206,6 +215,16 @@ func Steps() []Step {
 			Kind: StepTellMe, Label: "Tell me", Dispatcher: DispatchNotices, Local: true, Kinds: both(), Offered: true,
 			Help: "A notice when the routine reaches this step, with what happened.",
 		},
+	}
+}
+
+// scriptStep is Run one of my scripts, in an entry of its own.
+func scriptStep() Step {
+	return Step{
+		Kind: StepScript, Label: "Run one of my scripts", Dispatcher: DispatchScripts, AsksFirst: true, Kinds: both(),
+		Offered: true,
+		Help: "Runs one of your own Repo scripts in the item's clone, in the app, as Repo scripts runs it. A script " +
+			"set to ask before running waits for your OK each time.",
 	}
 }
 

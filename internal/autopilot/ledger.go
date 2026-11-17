@@ -108,6 +108,10 @@ const (
 	BlockInterrupted Blocker = "interrupted"
 	BlockOutside     Blocker = "outside_contributor"
 	BlockBacklog     Blocker = "backlog"
+
+	// BlockScriptAsks is a script set to ask before each run, which runs on the user's OK
+	// alone, every time.
+	BlockScriptAsks Blocker = "script_asks"
 )
 
 // What a blocked match waits on this Mac for.
@@ -144,7 +148,7 @@ func stateOf(b Blocker) State {
 	switch {
 	case slices.Contains([]Blocker{
 		BlockAsk, BlockHold, BlockWarning, BlockNoClone, BlockDirty, BlockCatchUp, BlockInterrupted, BlockOutside,
-		BlockBacklog,
+		BlockBacklog, BlockScriptAsks,
 	}, b):
 		return StateWaiting
 	case slices.Contains([]Blocker{BlockNotReady, BlockMissingTool, BlockCrossRepo}, b):

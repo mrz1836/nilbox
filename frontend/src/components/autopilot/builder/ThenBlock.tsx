@@ -19,6 +19,7 @@ import { MenuButton, type MenuItem } from '../../Menu'
 import { AgentStepBlock, type AgentKit } from './AgentStepBlock'
 import { GitHubStepBlock } from './GitHubStepBlock'
 import { Block, Notes, NumberField, type BuilderKit } from './parts'
+import { ScriptStepBlock } from './ScriptStepBlock'
 
 export interface ThenBlockProps {
   kit: BuilderKit
@@ -410,6 +411,18 @@ function StepSettings({ kit, step, onChange, id, n }: StepSettingsProps) {
           </label>
         )}
       </>
+    )
+  }
+
+  if (step.script !== undefined && step.script !== null) {
+    return (
+      <ScriptStepBlock
+        n={n}
+        step={step.script}
+        onChange={(script) => {
+          onChange({ ...step, script })
+        }}
+      />
     )
   }
 

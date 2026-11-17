@@ -191,7 +191,13 @@ func schedulePhrase(t Trigger, it items) string {
 		catalog.EveryWeek: "every " + weekdayName(t.Schedule.On),
 	}[t.Schedule.Every]
 
-	return every + " at " + t.Schedule.At + ", for " + it.all()
+	if t.Schedule.Digest() {
+		every += " at " + t.Schedule.At + ", once with the list"
+	} else {
+		every += " at " + t.Schedule.At
+	}
+
+	return every + ", for " + it.all()
 }
 
 // weekdayName names a day of the week.

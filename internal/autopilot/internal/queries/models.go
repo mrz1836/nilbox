@@ -109,6 +109,7 @@ type AutopilotRun struct {
 	BudgetReserved  float64
 	BudgetUnit      string
 	Cost            *float64
+	CostEstimated   bool
 	TokensIn        int64
 	TokensOut       int64
 	CacheReadTokens int64
@@ -123,5 +124,10 @@ type AutopilotRun struct {
 	FinishedAt      *time.Time
 	VerifiedAt      *time.Time
 	UpdatedAt       time.Time
-	CostEstimated   bool
+}
+
+type AutopilotTry struct {
+	RoutineID int64
+	ItemID    int64
+	ResetAt   time.Time
 }

@@ -219,6 +219,10 @@ type EngineConfig struct {
 	Runner      Runner
 	Dispatchers map[catalog.Dispatcher]Dispatcher
 
+	// Scripts runs the script steps (Run one of my scripts), as Runner runs the agents';
+	// nil runs none.
+	Scripts Runner
+
 	// Triage is the inbox's own triage, which runs the triage steps (Pin, Snooze,
 	// Dismiss, Restore), each recorded as an effect, unless Dispatchers names a dispatcher
 	// of its own for them, and through which Undo puts an item back; nil runs none.
@@ -263,6 +267,7 @@ type Engine struct {
 	prefs       *prefs.Store
 	lock        *Lock
 	runner      Runner
+	scripts     Runner
 	dispatchers map[catalog.Dispatcher]Dispatcher
 	triage      Triage
 	holds       Holds
@@ -326,6 +331,11 @@ type Engine struct {
 	// glanced is Autopilot at a glance as this copy last read it on a tick while another
 	// copy held the engine, nil before it did (followElsewhere).
 	glanced *Glance
+
+	// keptKey is the engine's state as a cycle last kept it, the last cycle aside, and
+	// keptAt when (keepCycle).
+	keptKey string
+	keptAt  time.Time
 
 	// statesAsked are the items whose states a worker reads now; runnerClosed reports a
 	// runner that refused a start as it closed, so no agent starts until the next start;
@@ -407,9 +417,9 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 
 	e := &Engine{
 		svc: svc, items: cfg.Items, ledger: newLedger(svc.store.db, svc.clock), prefs: prefs.New(svc.store.db, svc.clock),
-		lock: lock, runner: cfg.Runner, dispatchers: maps.Clone(cfg.Dispatchers), triage: cfg.Triage, holds: cfg.Holds,
-		outside: cfg.Outside, problems: cfg.Problems, needsYou: cfg.NeedsYou, waits: map[int64]bool{}, finished: cfg.Finished,
-		views: cfg.Views, runLogs: cfg.RunLogs,
+		lock: lock, runner: cfg.Runner, scripts: cfg.Scripts, dispatchers: maps.Clone(cfg.Dispatchers), triage: cfg.Triage,
+		holds: cfg.Holds, outside: cfg.Outside, problems: cfg.Problems, needsYou: cfg.NeedsYou, waits: map[int64]bool{},
+		finished: cfg.Finished, views: cfg.Views, runLogs: cfg.RunLogs,
 		events: event.Or(cfg.Events), clock: svc.clock, logger: logging.Or(svc.logger), tick: tick,
 		since: svc.clock.Now().Truncate(time.Second), wake: make(chan struct{}, 1), cmds: make(chan command),
 		mail: mailbox{signal: make(chan struct{}, 1)}, closed: make(chan struct{}),
@@ -569,6 +579,10 @@ func (e *Engine) register(cfg EngineConfig) {
 
 	if cfg.Runner != nil {
 		e.dispatchers[catalog.DispatchAgent] = cfg.Runner
+	}
+
+	if cfg.Scripts != nil {
+		e.dispatchers[catalog.DispatchScripts] = cfg.Scripts
 	}
 
 	if _, own := e.dispatchers[catalog.DispatchTriage]; cfg.Triage != nil && !own {

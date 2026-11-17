@@ -4,6 +4,7 @@ import { FIXED_NOW } from '../test/clock'
 import { agentSession, item, sessionsSnapshot } from '../test/fixtures'
 import {
   cardSession,
+  compactCount,
   isLive,
   itemSessions,
   needsYou,
@@ -12,6 +13,7 @@ import {
   sinceWhen,
   stateDot,
   stateLabel,
+  usageWords,
 } from './sessions'
 
 describe('sessions', () => {
@@ -66,5 +68,45 @@ describe('sessions', () => {
   it('counts a session’s state from when it came to it, or when it ended', () => {
     expect(sinceWhen(agentSession())).toBe('2026-06-15T11:59:00Z')
     expect(sinceWhen(agentSession({ state: 'ended', endedAt: '2026-06-15T11:59:30Z' }))).toBe('2026-06-15T11:59:30Z')
+  })
+
+  it('words a session’s tokens short, every count in full in its title, and nothing it can’t count', () => {
+    const none = {
+      known: false,
+      fromRun: false,
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
+      partial: false,
+    }
+
+    expect(usageWords(undefined)).toBeNull()
+    expect(usageWords(none)).toBeNull()
+    expect(usageWords({ ...none, known: true })).toBeNull()
+
+    const one = usageWords({ ...none, known: true, output: 1, total: 1 })
+    expect(one?.text).toBe('1 token')
+    expect(one?.title).toBe(
+      '1 token: 0 in, 1 out, 0 read from the cache, 0 written to it, as the agent’s own files on this Mac report them.',
+    )
+    expect(usageWords({ ...none, known: true, input: 12_400, total: 12_400 })?.text).toBe('12.4K tokens')
+
+    const run = usageWords({
+      ...none,
+      known: true,
+      fromRun: true,
+      input: 1200,
+      output: 30,
+      cacheRead: 9000,
+      total: 10_230,
+    })
+    expect(run?.text).toBe('10.2K tokens · 9K cached')
+    expect(run?.title).toBe(
+      '10,230 tokens: 1,200 in, cache writes included, 30 out, 9,000 read from the cache, as its run reported them.',
+    )
+    expect(compactCount(840)).toBe('840')
+    expect(compactCount(2_500_000)).toBe('2.5M')
   })
 })

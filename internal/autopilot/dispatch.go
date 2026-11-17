@@ -86,6 +86,10 @@ type Job struct {
 	// or a catch-up's), which the notices gather into one banner past three.
 	Burst bool
 
+	// Digest, for a Notify me a scheduled routine tells once with the list, is that list:
+	// the step is one notice for every match it holds. nil for any other step.
+	Digest *Digest
+
 	// Trigger is the routine's trigger, which an agent's prompt names (.Trigger).
 	Trigger catalog.Event
 
@@ -214,7 +218,7 @@ type Hold struct {
 }
 
 // Launched is what an agent's launch started: its session, as the sessions ledger records
-// it, and what it runs with.
+// it, and what it runs with; or, for a script step, the run engine's run of the script.
 type Launched struct {
 	SessionID string
 	Agent     string
@@ -225,8 +229,9 @@ type Launched struct {
 	Worktree  string
 	Command   string
 
-	// ScriptRunID is the run in the run engine's history, for a run in the background;
-	// 0 for one in the terminal, which the run engine never runs.
+	// ScriptRunID is the run in the run engine's history: for an agent's run in the
+	// background, or a script step's run of one of the user's scripts, which its runner stops
+	// and reads the end of; 0 for one in the terminal, which the run engine never runs.
 	ScriptRunID int64
 }
 

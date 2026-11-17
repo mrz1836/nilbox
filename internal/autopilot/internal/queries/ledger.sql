@@ -35,6 +35,12 @@ ORDER BY id;
 SELECT id, item_id, fire_key, dry_run, state, reason, attempt, step, steps FROM autopilot_matches
 WHERE routine_id = sqlc.arg(routine_id) AND item_id IS NOT NULL;
 
+-- name: ListRoutinesMatchKeys :many
+-- ListRoutinesMatchKeys is ListRoutineMatchKeys for each of the routines among ids, in one
+-- read, as a cycle reads every routine it runs.
+SELECT routine_id, id, item_id, fire_key, dry_run, state, reason, attempt, step, steps FROM autopilot_matches
+WHERE routine_id IN (sqlc.slice(ids)) AND item_id IS NOT NULL;
+
 -- name: ListItemMatches :many
 -- ListItemMatches returns an item's matches, newest first.
 SELECT * FROM autopilot_matches
@@ -228,6 +234,38 @@ UPDATE autopilot_runs SET
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id) AND status <> 'ended';
 
+-- name: GetRunScript :one
+-- GetRunScript returns the run engine's run a run started, 0 for none yet, and how the run
+-- is recorded: the runs a script step's runner stops and reads the end of.
+SELECT id, script_run_id, status, outcome FROM autopilot_runs WHERE id = sqlc.arg(id);
+
+-- name: GetBackgroundRunTokens :one
+-- GetBackgroundRunTokens returns the tokens an agent's run in the background reported so
+-- far, by the run engine's run it started: what its session's panel counts.
+SELECT tokens_in, tokens_out, cache_read_tokens FROM autopilot_runs
+WHERE script_run_id = sqlc.arg(script_run_id) AND runner = 'background'
+ORDER BY id DESC
+LIMIT 1;
+
+-- name: ListActiveScriptRuns :many
+-- ListActiveScriptRuns returns the script steps' runs starting, running, or stopping, with
+-- the run engine's run each started: what Stop all stops.
+SELECT id, script_run_id FROM autopilot_runs
+WHERE runner = 'script' AND status IN ('starting', 'running', 'stopping')
+ORDER BY id;
+
+-- name: ListRoutineWeekRuns :many
+-- ListRoutineWeekRuns returns a routine's runs started since a moment, each with its step
+-- and its match's steps, which say what kind of step it ran and how the match went on:
+-- what its week's stats count.
+SELECT r.id, r.match_id, r.step, r.runner, r.github_action, r.status, r.outcome, r.verdict, r.manual,
+       r.cost, r.cost_estimated, r.tokens_in, r.tokens_out, r.cache_read_tokens, r.started_at,
+       m.steps AS match_steps
+FROM autopilot_runs AS r
+JOIN autopilot_matches AS m ON m.id = r.match_id
+WHERE r.routine_id = sqlc.arg(routine_id) AND r.started_at >= sqlc.arg(since)
+ORDER BY r.id;
+
 -- name: EndRun :execrows
 -- EndRun records how a run ended, while it is not ended yet.
 UPDATE autopilot_runs SET
@@ -290,6 +328,10 @@ ORDER BY id;
 -- ListTries returns when Try again last reset each of a routine's counts.
 SELECT item_id, reset_at FROM autopilot_tries WHERE routine_id = sqlc.arg(routine_id);
 
+-- name: ListRoutinesTries :many
+-- ListRoutinesTries is ListTries for each of the routines among ids, in one read.
+SELECT routine_id, item_id, reset_at FROM autopilot_tries WHERE routine_id IN (sqlc.slice(ids));
+
 -- name: UpsertTries :exec
 -- UpsertTries records that Try again reset a routine's count of tries on an item.
 INSERT INTO autopilot_tries (routine_id, item_id, reset_at)
@@ -299,6 +341,10 @@ ON CONFLICT (routine_id, item_id) DO UPDATE SET reset_at = excluded.reset_at;
 -- name: ListBaselines :many
 -- ListBaselines returns what a routine saw of each item when it first saw it, and since.
 SELECT item_id, state, first_seen_at FROM autopilot_baselines WHERE routine_id = sqlc.arg(routine_id);
+
+-- name: ListRoutinesBaselines :many
+-- ListRoutinesBaselines is ListBaselines for each of the routines among ids, in one read.
+SELECT routine_id, item_id, state, first_seen_at FROM autopilot_baselines WHERE routine_id IN (sqlc.slice(ids));
 
 -- name: InsertBaseline :exec
 -- InsertBaseline records what a routine first saw of an item, unless it saw it before.
@@ -314,6 +360,10 @@ WHERE routine_id = sqlc.arg(routine_id) AND item_id = sqlc.arg(item_id);
 -- name: ListHandsOff :many
 -- ListHandsOff returns the items a routine leaves alone.
 SELECT item_id, since, why FROM autopilot_hands_off WHERE routine_id = sqlc.arg(routine_id);
+
+-- name: ListRoutinesHandsOff :many
+-- ListRoutinesHandsOff is ListHandsOff for each of the routines among ids, in one read.
+SELECT routine_id, item_id FROM autopilot_hands_off WHERE routine_id IN (sqlc.slice(ids));
 
 -- name: InsertHandsOff :exec
 -- InsertHandsOff has a routine leave an item alone from now on.

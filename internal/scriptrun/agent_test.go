@@ -28,34 +28,29 @@ func (h *harness) agentSpec(run testutil.FakeRun) Spec {
 	return spec
 }
 
-// endings records how each run ended, as its Finish saw it.
+// endings records how its one run ended, as its Finish saw it. It keys nothing by the
+// run's ID, which Start returns only after the run's own goroutine may have finished it.
 type endings struct {
 	mu  sync.Mutex
-	got map[int64]Ending
+	got Ending
 }
 
-// finish returns a Finish that records the run id's ending and keeps the engine's outcome.
-func (e *endings) finish(id *int64) func(context.Context, Ending, Outcome) Outcome {
-	return func(_ context.Context, end Ending, out Outcome) Outcome {
-		e.mu.Lock()
-		defer e.mu.Unlock()
-
-		if e.got == nil {
-			e.got = map[int64]Ending{}
-		}
-
-		e.got[*id] = end
-
-		return out
-	}
-}
-
-// of returns how the run id ended.
-func (e *endings) of(id int64) Ending {
+// finish is a Finish that records the run's ending and keeps the engine's outcome.
+func (e *endings) finish(_ context.Context, end Ending, out Outcome) Outcome {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	return e.got[id]
+	e.got = end
+
+	return out
+}
+
+// ending returns how the run ended.
+func (e *endings) ending() Ending {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	return e.got
 }
 
 func TestStopKindStopsEveryAgentRunAndNoScriptRun(t *testing.T) {
@@ -357,20 +352,17 @@ func TestOverStopsWhatIsLeftOfARunWithoutCountingItStopped(t *testing.T) {
 	h := newHarness(t)
 	out := &collector{}
 
-	var (
-		id   int64
-		ends endings
-	)
+	var ends endings
 
 	spec := h.agentSpec(testutil.FakeRun{Stdout: "result\n", Sleep: time.Minute})
 	spec.Output = out
 	spec.Over = func() bool { return strings.Contains(out.String(), "result") }
-	spec.Finish = ends.finish(&id)
+	spec.Finish = ends.finish
 
-	id = h.start(spec)
+	id := h.start(spec)
 	h.ended(id)
 
-	end := ends.of(id)
+	end := ends.ending()
 	assert.False(t, end.Stopped, "the run ended by itself, its output said")
 	assert.False(t, end.Killed, "SIGINT ended it")
 }
@@ -380,18 +372,15 @@ func TestEndingSaysTheGroupWasKilled(t *testing.T) {
 
 	h := newHarness(t)
 
-	var (
-		id   int64
-		ends endings
-	)
+	var ends endings
 
 	ready := filepath.Join(t.TempDir(), "ready")
 	spec := h.agentSpec(testutil.FakeRun{
 		IgnoreSignals: true, Sleep: time.Minute, Files: []testutil.FakeFile{{Path: ready}},
 	})
-	spec.Finish = ends.finish(&id)
+	spec.Finish = ends.finish
 
-	id = h.start(spec)
+	id := h.start(spec)
 
 	require.Eventually(t, func() bool {
 		_, err := os.Stat(ready)
@@ -401,7 +390,7 @@ func TestEndingSaysTheGroupWasKilled(t *testing.T) {
 	require.NoError(t, h.s.Stop(t.Context(), id))
 
 	h.ended(id)
-	assert.True(t, ends.of(id).Killed, "only SIGKILL ended it")
+	assert.True(t, ends.ending().Killed, "only SIGKILL ended it")
 }
 
 func TestTheRunsPageLeavesTheAgentsRunsOut(t *testing.T) {

@@ -58,7 +58,8 @@ func (b before) then(kind catalog.StepKind, st Step) before {
 	case catalog.StepWaitForChecks:
 		b.wait, b.waitOnPush = true, st.OnlyIf == catalog.OutcomePushed
 	case catalog.StepNotify, catalog.StepPin, catalog.StepSnooze, catalog.StepDismiss, catalog.StepRestore,
-		catalog.StepMarkDone, catalog.StepGitHub, catalog.StepMerge, catalog.StepPostReview, catalog.StepTellMe:
+		catalog.StepMarkDone, catalog.StepGitHub, catalog.StepMerge, catalog.StepPostReview, catalog.StepTellMe,
+		catalog.StepScript:
 	}
 
 	return b
@@ -199,6 +200,7 @@ func (v *validator) stepSettings(field string, kind catalog.StepKind, st Step) {
 		catalog.StepMerge:         func() { v.merge(field+".merge", *st.Merge) },
 		catalog.StepPostReview:    func() { v.review(field+".postReview", *st.PostReview) },
 		catalog.StepTellMe:        func() { v.tell(field+".tellMe", *st.TellMe) },
+		catalog.StepScript:        func() { v.script(field+".script", *st.Script) },
 	}
 
 	if check, ok := checks[kind]; ok {
@@ -404,6 +406,20 @@ func (v *validator) tell(field string, t TellStep) {
 	case "", catalog.TellReached, catalog.TellVerdict:
 	default:
 		v.add(PartSteps, field+".when", `say "reached" or "verdict"`)
+	}
+}
+
+// script checks Run one of my scripts: a script, by its ID, with the name it was picked
+// under.
+func (v *validator) script(field string, s ScriptStep) {
+	if s.ID <= 0 {
+		v.add(PartSteps, field+".id", "pick one of your scripts")
+
+		return
+	}
+
+	if msg := checkText(s.Name, MaxTextRunes); msg != "" {
+		v.add(PartSteps, field+".name", "the script's name: %s", msg)
 	}
 }
 

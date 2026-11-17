@@ -201,6 +201,7 @@ const stepKinds: readonly AutopilotStepKind[] = [
   'markDone',
   'github',
   'agent',
+  'script',
   'waitForChecks',
   'merge',
   'postReview',
@@ -417,6 +418,9 @@ export function newStep(
       return { notify: {} }
     case 'github':
       return { github: [] }
+    case 'script':
+      // The step's block picks one of the user's scripts; until then it names none.
+      return { script: { id: 0, name: '' } }
     default:
       return { [kind]: {} }
   }

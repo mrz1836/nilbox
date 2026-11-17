@@ -117,6 +117,14 @@ func (n notices) Dispatch(ctx context.Context, job Job) (Result, error) {
 		return Result{}, errNoSink
 	}
 
+	if job.Digest != nil {
+		if err := n.sink.Notice(ctx, digestNotice(job)); err != nil {
+			return Result{}, err
+		}
+
+		return Result{Summary: digestSummary(*job.Digest)}, nil
+	}
+
 	notice := alertOf(job)
 
 	if err := n.sink.Notice(ctx, notice); err != nil {

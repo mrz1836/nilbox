@@ -117,6 +117,15 @@ type Schedule struct {
 
 	// On is the day of a weekly schedule.
 	On catalog.Weekday `json:"on,omitempty"`
+
+	// Style is how it tells of what it matches at its time: each match on its own, or
+	// once, with the list (catalog.ScheduleDigest); "" is each match.
+	Style catalog.ScheduleStyle `json:"style,omitempty"`
+}
+
+// Digest reports a schedule that tells of its matches once, with the list.
+func (s *Schedule) Digest() bool {
+	return s != nil && s.Style == catalog.ScheduleDigest
 }
 
 // Match is how a list of conditions combines.
@@ -172,6 +181,7 @@ type Step struct {
 	Merge         *MergeStep     `json:"merge,omitempty"`
 	PostReview    *ReviewStep    `json:"postReview,omitempty"`
 	TellMe        *TellStep      `json:"tellMe,omitempty"`
+	Script        *ScriptStep    `json:"script,omitempty"`
 
 	// OnlyIf runs the step only when an earlier step ended so; a step whose Only if
 	// doesn't hold is skipped, and the routine goes on.
@@ -337,6 +347,17 @@ type ReviewStep struct {
 	AllowApprove bool `json:"allowApprove,omitempty"`
 }
 
+// ScriptStep is Run one of my scripts: one of the user's own Repo scripts, run in the
+// item's clone, in the app, as Repo scripts runs it, honoring its Ask before running.
+type ScriptStep struct {
+	// ID is the script's, as Repo scripts keeps it on this Mac: what runs.
+	ID int64 `json:"id"`
+
+	// Name is the script's name as it was picked, which the sentence and an export show;
+	// the script that runs is the one with ID, under whatever name it has now.
+	Name string `json:"name"`
+}
+
 // TellStep is Tell me.
 type TellStep struct {
 	// When is what it says; "" is catalog.TellReached.
@@ -397,6 +418,7 @@ func (s Step) Kinds() []catalog.StepKind {
 		{catalog.StepMarkDone, s.MarkDone != nil},
 		{catalog.StepGitHub, s.GitHub != nil},
 		{catalog.StepAgent, s.Agent != nil},
+		{catalog.StepScript, s.Script != nil},
 		{catalog.StepWaitForChecks, s.WaitForChecks != nil},
 		{catalog.StepMerge, s.Merge != nil},
 		{catalog.StepPostReview, s.PostReview != nil},

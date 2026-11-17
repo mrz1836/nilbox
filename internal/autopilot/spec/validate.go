@@ -112,7 +112,8 @@ func (e *ValidationError) Unwrap() error {
 //     the pass it follows is on the agent's own commit, and only if the checks passed;
 //   - Post the agent's review only after a read-only agent step;
 //   - Allow approving only when the review is posted as its verdict;
-//   - only a notice after an agent step in the terminal, whose end the app can't see.
+//   - only a notice after an agent step in the terminal, whose end the app can't see;
+//   - a schedule's digest only with Notify me as the first step.
 func Validate(s Spec) error {
 	v := &validator{}
 
@@ -125,6 +126,7 @@ func Validate(s Spec) error {
 	v.trigger(s.Trigger, kinds)
 	v.conditions(s.Conditions, kinds)
 	v.steps(s.Steps, kinds)
+	v.digest(s.Trigger, s.Steps)
 	v.limits(s.Limits)
 	v.requires(s.Requires)
 

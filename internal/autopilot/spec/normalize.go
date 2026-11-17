@@ -61,6 +61,12 @@ func normalizeTrigger(t Trigger) Trigger {
 	if t.Schedule != nil {
 		sched := *t.Schedule
 		sched.At = strings.TrimSpace(sched.At)
+
+		// Each match is the default, written as none, so a schedule has one form.
+		if sched.Style = catalog.ScheduleStyle(strings.TrimSpace(string(sched.Style))); sched.Style == catalog.ScheduleEach {
+			sched.Style = ""
+		}
+
 		t.Schedule = &sched
 	}
 
@@ -160,6 +166,10 @@ func normalizeStep(s Step) Step {
 	if s.Agent != nil {
 		a := normalizeAgent(*s.Agent)
 		out.Agent = &a
+	}
+
+	if s.Script != nil {
+		out.Script = &ScriptStep{ID: s.Script.ID, Name: strings.TrimSpace(s.Script.Name)}
 	}
 
 	return out

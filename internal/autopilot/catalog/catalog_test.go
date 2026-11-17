@@ -173,10 +173,13 @@ func TestEveryStepNamesItsDispatcher(t *testing.T) {
 }
 
 // builtDispatchers are the parts whose dispatchers this build has: the inbox's triage, the
-// notices (Notify me and Tell me), the agent's, which runs it in the user's terminal, and
-// the app's own GitHub writes.
+// notices (Notify me and Tell me), the agent's, which runs it in the user's terminal, the
+// app's own GitHub writes, and the user's own scripts.
 func builtDispatchers() []catalog.Dispatcher {
-	return []catalog.Dispatcher{catalog.DispatchTriage, catalog.DispatchNotices, catalog.DispatchAgent, catalog.DispatchGitHub}
+	return []catalog.Dispatcher{
+		catalog.DispatchTriage, catalog.DispatchNotices, catalog.DispatchAgent, catalog.DispatchGitHub,
+		catalog.DispatchScripts,
+	}
 }
 
 // TestTheAgentRunsWhereThisBuildCanRunIt holds the places an agent step can run to the
@@ -252,7 +255,34 @@ func TestTheLocalStepsAreTheInboxsOwn(t *testing.T) {
 		catalog.StepNotify, catalog.StepPin, catalog.StepSnooze, catalog.StepDismiss, catalog.StepRestore,
 		catalog.StepMarkDone, catalog.StepTellMe,
 	}, local)
-	assert.Equal(t, []catalog.StepKind{catalog.StepGitHub, catalog.StepAgent, catalog.StepMerge, catalog.StepPostReview}, asks)
+	assert.Equal(t, []catalog.StepKind{
+		catalog.StepGitHub, catalog.StepAgent, catalog.StepScript, catalog.StepMerge, catalog.StepPostReview,
+	}, asks)
+}
+
+func TestTheScheduleStylesStartWithEachMatch(t *testing.T) {
+	t.Parallel()
+
+	styles := catalog.ScheduleStyles()
+	require.Len(t, styles, 2)
+	assert.Equal(t, catalog.ScheduleEach, styles[0].ID, "the default comes first")
+	assert.Equal(t, catalog.ScheduleDigest, styles[1].ID)
+
+	for _, s := range styles {
+		assert.NotEmpty(t, s.Label, s.ID)
+		assert.NotEmpty(t, s.Help, s.ID)
+
+		got, ok := catalog.ScheduleStyleByID(s.ID)
+		assert.True(t, ok, s.ID)
+		assert.Equal(t, s, got)
+	}
+
+	got, ok := catalog.ScheduleStyleByID("")
+	assert.True(t, ok, "no style is each match's")
+	assert.Equal(t, catalog.ScheduleEach, got.ID)
+
+	_, ok = catalog.ScheduleStyleByID("weekly")
+	assert.False(t, ok)
 }
 
 func TestFields(t *testing.T) {

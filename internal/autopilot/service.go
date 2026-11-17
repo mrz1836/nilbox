@@ -175,7 +175,7 @@ func (s *Service) save(ctx context.Context, d Draft) (Routine, error) {
 	}
 
 	problems := append(s.offers.placeProblems(saving.spec), s.promptProblems(ctx, saving.spec)...)
-	if len(problems) > 0 {
+	if problems = append(problems, s.scriptProblems(ctx, saving.spec)...); len(problems) > 0 {
 		v := &spec.ValidationError{Problems: problems}
 
 		return Routine{}, uierr.New(textutil.Sentence("The routine isn't valid yet: "+problems[0].Message),

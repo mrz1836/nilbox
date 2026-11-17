@@ -123,3 +123,12 @@ func TestSessionsKnowEveryWorktreeActionTheLauncherTakes(t *testing.T) {
 		assert.True(t, sessions.WorktreeAction(a).Valid(), a)
 	}
 }
+
+func TestABackgroundRunsTokensWaitForTheEngine(t *testing.T) {
+	t.Parallel()
+
+	got, ok, err := backgroundTokens{engine: &engineWaker{}}.RunTokens(t.Context(), 7)
+	require.NoError(t, err)
+	assert.False(t, ok, "no engine, no run recorded")
+	assert.Equal(t, sessions.Usage{}, got)
+}

@@ -211,6 +211,7 @@ func stepPhrase(st Step, names PromptNames) string {
 		catalog.StepMarkDone:      func() string { return "mark its GitHub notification done" },
 		catalog.StepGitHub:        func() string { return githubPhrase(st.GitHub, names) },
 		catalog.StepAgent:         func() string { return agentPhrase(*st.Agent, names) },
+		catalog.StepScript:        func() string { return fmt.Sprintf("run my script %q", st.Script.Name) },
 		catalog.StepWaitForChecks: func() string { return "wait for the checks" },
 		catalog.StepMerge:         func() string { return mergePhrase(*st.Merge) },
 		catalog.StepPostReview:    func() string { return reviewPhrase(*st.PostReview) },

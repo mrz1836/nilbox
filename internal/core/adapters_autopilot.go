@@ -25,6 +25,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/periodic"
 	prefsstore "github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/scripts"
 )
 
 // autopilotDeps are what Autopilot's service is built over: the inbox's store, whose last
@@ -52,6 +54,9 @@ type autopilotDeps struct {
 	signals  *templateSignals
 	transfer *routinePromptTransfer
 	profiles *routineProfiles
+
+	// scripts are the user's own Repo scripts, which a script step picks from.
+	scripts *scripts.Service
 }
 
 // newAutopilot builds Autopilot's service over pool and deps.
@@ -84,6 +89,10 @@ func newAutopilot(pool *sql.DB, opts Options, deps autopilotDeps, logger *slog.L
 	}
 
 	cfg.App = opts.Version
+
+	if deps.scripts != nil {
+		cfg.MyScripts = myScripts{routines: scripts.NewRoutines(deps.scripts)}
+	}
 
 	return autopilot.NewService(cfg)
 }
@@ -388,6 +397,12 @@ type autopilotEngine struct {
 	// terminal to the terminal's runner; it also keeps what the window reads of the runs,
 	// and clears their logs.
 	background *backgroundAgents
+
+	// scripts runs the script steps, in the app, through Repo scripts' own run, which
+	// history stops and reads; waker is where their ends go, once the engine is built.
+	scripts *scripts.Service
+	history *scriptrun.Service
+	waker   *engineWaker
 }
 
 // newAutopilotEngine builds the engine that runs the routines. Each part registers its own
@@ -431,6 +446,10 @@ func newAutopilotEngine(deps autopilotEngine) *autopilot.Engine {
 
 	if deps.defaults != nil {
 		cfg.Outside = outsideRules{defaults: deps.defaults}
+	}
+
+	if deps.scripts != nil && deps.history != nil && deps.agents.launch != nil {
+		cfg.Scripts = newScriptSteps(deps.scripts, deps.agents.launch, deps.history, deps.waker)
 	}
 
 	return autopilot.NewEngine(deps.service, cfg)
@@ -578,6 +597,15 @@ func (a engineItems) WatchNow(ctx context.Context) error {
 // tells it of the items it stored, and of what it saw happen to items.
 type engineWaker struct {
 	engine *autopilot.Engine
+}
+
+// Built returns the engine, nil until it is built.
+func (w *engineWaker) Built() *autopilot.Engine {
+	if w == nil {
+		return nil
+	}
+
+	return w.engine
 }
 
 // ItemsChanged wakes the engine, once there is one.

@@ -133,6 +133,10 @@ type Config struct {
 	// routine's steps name against; nil checks none.
 	Library Library
 
+	// MyScripts reads the user's own Repo scripts, which Run one of my scripts picks from
+	// and runs; nil reads none.
+	MyScripts MyScripts
+
 	// File is the copy of the routines kept beside the database, written again after
 	// every change; nil keeps none.
 	File *File
@@ -190,17 +194,18 @@ type Config struct {
 
 // Service keeps the routines, and is the window's face of Autopilot.
 type Service struct {
-	store    routineStore
-	prefs    Prefs
-	accounts Accounts
-	names    Names
-	library  Library
-	file     *File
-	items    Items
-	costs    Costs
-	github   GitHubActions
-	clock    clock.Clock
-	logger   *slog.Logger
+	store     routineStore
+	prefs     Prefs
+	accounts  Accounts
+	names     Names
+	library   Library
+	myScripts MyScripts
+	file      *File
+	items     Items
+	costs     Costs
+	github    GitHubActions
+	clock     clock.Clock
+	logger    *slog.Logger
 
 	// watches holds the snapshot of the routines' searches the inbox reads (watches.go),
 	// and tests the searches a test read lately (test.go).
@@ -236,7 +241,8 @@ func NewService(cfg Config) *Service {
 
 	return &Service{
 		store: newRoutineStore(cfg.Pool, clk), prefs: cfg.Prefs, accounts: cfg.Accounts, names: cfg.Names,
-		library: cfg.Library, file: cfg.File, items: cfg.Items, costs: cfg.Costs, github: cfg.GitHub, clock: clk,
+		library: cfg.Library, myScripts: cfg.MyScripts, file: cfg.File, items: cfg.Items, costs: cfg.Costs,
+		github: cfg.GitHub, clock: clk,
 		logger:  logging.Or(cfg.Logger),
 		watches: watchSet{build: make(chan struct{}, 1)}, tests: testCache{read: map[string]cachedSearch{}},
 		offers: offers, ready: newReadiness(cfg.Readiness, offers), previews: cfg.Previews,

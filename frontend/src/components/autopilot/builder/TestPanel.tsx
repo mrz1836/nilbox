@@ -19,6 +19,7 @@ import { buttonClass, captionClass, quietButtonClass } from '../../controls'
 import { ChevronDownIcon, ChevronRightIcon, RefreshIcon } from '../../icons'
 import { Spinner } from '../../Spinner'
 import { ResultMark, TraceList } from '../Trace'
+import { RunOnMatches } from './RunOnMatches'
 
 export interface TestPanelProps {
   // result is the last test of the draft, undefined before one answered; stale reports one
@@ -43,6 +44,8 @@ export interface TestPanelProps {
   // pinned is the item a routine was made from, with what the draft decides about it from
   // what is stored: it shows at the top before a test, and first in one.
   pinned?: Pinned | undefined
+  // saved reports the draft is the routine as saved, which Run on the matches now runs.
+  saved?: boolean
 }
 
 // Pinned is an item Test shows at the top, with what the draft decides about it now.
@@ -176,6 +179,7 @@ export function TestPanel({
   onTest,
   preview,
   pinned,
+  saved = false,
 }: TestPanelProps) {
   const agent = draft.spec.steps.some((st) => st.agent != null)
   const sample = previewed(result)
@@ -245,6 +249,7 @@ export function TestPanel({
         </ul>
       )}
       {agent && ready && sample !== undefined && <RunPreview key={sample.id} draft={draft} item={sample} />}
+      <RunOnMatches result={result} draft={draft} saved={saved} stale={stale || testing} mode={mode} />
     </section>
   )
 }

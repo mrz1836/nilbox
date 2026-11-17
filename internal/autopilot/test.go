@@ -12,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/eval"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
+	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilot/watch"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -284,6 +285,12 @@ type TestItem struct {
 
 	// Listed reports an item in one of the inbox lists, where triage shows.
 	Listed bool `json:"listed"`
+
+	// RunsNow reports an item Run on the matches now would run on: it matches, the routine
+	// doesn't leave it alone, and the routine has no record of its occurrence but one that
+	// closed before it ran, or that already matched when the user chose only what changes
+	// from now on. A new routine runs on nothing until it is saved.
+	RunsNow bool `json:"runsNow"`
 }
 
 // testCache keeps the searches tests read, by query, for testFor.
@@ -426,19 +433,28 @@ func (s *Service) markRecords(ctx context.Context, id int64, items []TestItem) e
 		return uierr.New("The routine's history couldn't be read.", err)
 	}
 
-	for i, it := range items {
-		if it.FireKey == "" {
-			continue
-		}
-
-		if row, ok := keys[matchKey{item: it.ID, fire: it.FireKey}]; ok && !reopensRow(row) {
-			items[i].Record = recordWords(State(row.State), Reason(row.Reason))
-		} else if _, ok := keys[matchKey{item: it.ID, fire: it.FireKey, dryRun: true}]; ok {
-			items[i].Record = "Dry run recorded what it would do."
-		}
+	for i := range items {
+		markRecord(&items[i], keys)
 	}
 
 	return nil
+}
+
+// markRecord says, of it, what keys, a routine's matches, hold of the occurrence it fires
+// for now, and whether Run on the matches now would run on it.
+func markRecord(it *TestItem, keys map[matchKey]queries.ListRoutineMatchKeysRow) {
+	if it.FireKey == "" {
+		return
+	}
+
+	row, recorded := keys[matchKey{item: it.ID, fire: it.FireKey}]
+	it.RunsNow = it.Match == eval.Yes && !it.LeftAlone && (!recorded || runsNow(row))
+
+	if recorded && !reopensRow(row) {
+		it.Record = recordWords(State(row.State), Reason(row.Reason))
+	} else if _, ok := keys[matchKey{item: it.ID, fire: it.FireKey, dryRun: true}]; ok {
+		it.Record = "Dry run recorded what it would do."
+	}
 }
 
 // recordWords says what a routine's record of an occurrence holds, as a test's row shows

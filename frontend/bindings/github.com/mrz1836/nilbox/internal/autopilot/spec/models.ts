@@ -430,6 +430,29 @@ export interface Schedule {
      * On is the day of a weekly schedule.
      */
     "on"?: catalog$0.Weekday;
+
+    /**
+     * Style is how it tells of what it matches at its time: each match on its own, or
+     * once, with the list (catalog.ScheduleDigest); "" is each match.
+     */
+    "style"?: catalog$0.ScheduleStyle;
+}
+
+/**
+ * ScriptStep is Run one of my scripts: one of the user's own Repo scripts, run in the
+ * item's clone, in the app, as Repo scripts runs it, honoring its Ask before running.
+ */
+export interface ScriptStep {
+    /**
+     * ID is the script's, as Repo scripts keeps it on this Mac: what runs.
+     */
+    "id": number;
+
+    /**
+     * Name is the script's name as it was picked, which the sentence and an export show;
+     * the script that runs is the one with ID, under whatever name it has now.
+     */
+    "name": string;
 }
 
 /**
@@ -520,6 +543,7 @@ export interface Step {
     "merge"?: MergeStep | null;
     "postReview"?: ReviewStep | null;
     "tellMe"?: TellStep | null;
+    "script"?: ScriptStep | null;
 
     /**
      * OnlyIf runs the step only when an earlier step ended so; a step whose Only if

@@ -20,6 +20,8 @@ numbers with the `magex measure:*` targets.
 | API budget with five routine searches | < 2% in all | 1.20–1.68% | Met: 4 to 7 points a refresh, by how many items the searches watch (see [Routine searches](#routine-searches)) |
 | The searches' cost to the inbox's store | No regression beyond the noise | 2.90 s → 2.98 s, 2.82 s → 2.65 s | Met: the searches go out once the inbox is stored, so nothing shares GitHub's time with the inbox query; sent beside it, a busy org's five had added 0.3 s to the median (see below) |
 | The watch pass, after the inbox's store | < 1 s of the app's own work, steady | 26 ms | Met: 26 ms of the app's own work for 300 watched items; GitHub's time for the searches and the changed items' details, 3.3–7.1 s after the store, is waited on by nothing |
+| Autopilot's evaluation, 20 routines over 500 items | < 20 ms | 22 ms | Near it, on a machine building four other branches at the time (12 ms when the routines core landed): every routine decided on every item, the regex and path patterns included (see [The engine's cycle](#the-engines-cycle)) |
+| Autopilot's steady cycle, 20 routines over 500 items | < 20 ms | 40 ms | Over: the evaluation is half of it, and reading what the ledger holds of each routine (3,500 matches, 10,000 baselines) the rest; 200 ms before this measurement found a scan of every match for every item, now an index |
 
 Measured on an Apple Silicon Mac (M1 Max, 32 GB memory) running macOS 15.8, over its regular
 network connection. The first numbers were taken on the build host, a second Mac (M4 Pro,
@@ -445,6 +447,41 @@ changed ones leave, or one request when none changed, so they never add more; at
 | The first refresh after adding the org's five | 3 + 5 + 20, once | | |
 
 Both stay under the 2% target for all of the app's GraphQL spend.
+
+### The engine's cycle
+
+**What is measured.** One cycle of Autopilot's engine (`internal/autopilot`, `cycle.go`), the
+work each 1-minute tick and each wake does: the routines and what the ledger keeps of each read
+from SQLite, every routine decided on every item it watches, what changed written, and the
+cycle recorded. 20 routines over 500 pull requests, the shape the plan sets the target for:
+the template gallery's routines, repeated to 20, in Dry run, every one watching every item, a
+Dependabot update whose checks failed. The first cycle records what each would do on each
+(3,500 matches) and what each first saw of each (10,000 baselines); a steady cycle, which every
+tick after it runs, finds every occurrence recorded and writes nothing. The inbox's own read of
+the items' facts is measured apart (`BenchmarkRefreshCycle`), so the benchmark hands them over
+ready.
+
+**How.** `go test ./internal/autopilot -run '^$' -bench BenchmarkEngine -benchtime 30x`, over a
+real database (`testutil.DB`): `BenchmarkEngineCycle` times the steady cycle,
+`BenchmarkEngineFirstCycle` the first. The evaluation alone, with two routines whose regex and
+path patterns run on every item beside the gallery's, is `BenchmarkEvaluateACycle` in
+`internal/autopilot/eval`. Measured on the M1 Max (2026-11-16) while four other branches built
+and tested on it, so the numbers are high rather than low.
+
+**Results.** The evaluation takes 22 ms (22.1 to 22.8 ms over three runs; 12 ms when the
+routines core landed, on a quiet machine). A steady cycle takes 40 ms (39.3 to 39.9 ms): the
+evaluation, then the reads of the ledger, which a profile shows spending their time in SQLite's
+page reads of every match each routine has recorded. Measuring it found the cycle at 200 ms: the
+history the evaluator reads (each routine's last outcome on the item) scanned every match of the
+routine for every item it decided, 1.75 million rows a cycle; it is now one index built as the
+cycle reads the routine. The cycle also reads every routine's matches, baselines, resets, and
+items left alone in four reads rather than four a routine, and keeps its own state only when it
+changed. The first cycle takes 1.1 to 1.5 s, writing its 13,500 rows one at a time; it runs once,
+after the routines are switched on.
+
+**What next.** The steady cycle reads every match each routine ever recorded, which grows with
+the history Autopilot keeps (90 days): keeping the ledger's keys in memory between cycles,
+which the engine as the ledger's only writer can, would take the reads out of the cycle.
 
 <br>
 
