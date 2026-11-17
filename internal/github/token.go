@@ -16,7 +16,7 @@
 // prints as [redacted] in every format, and every error that leaves this package is
 // scrubbed of the token text.
 //
-// The inbox comes from one batched GraphQL request (three aliased searches plus the
+// The inbox comes from one batched GraphQL request (four aliased searches plus the
 // query's rate-limit cost); the REST rate-limit endpoint fills in the remaining budgets.
 package github
 

@@ -193,6 +193,11 @@ const (
 	// GitHub takes a team's request off for every member or for none, so the user cannot
 	// take themselves off it.
 	ReviewRequestTeam ReviewRequest = "team"
+
+	// ReviewRequestPushed is a pull request in the list only because its author pushed to
+	// it since the user requested changes, without asking again: there is no request to
+	// take oneself off.
+	ReviewRequestPushed ReviewRequest = "pushed"
 )
 
 // Details is what an item's inbox card shows beyond its title. The pull request fields
@@ -230,6 +235,12 @@ type Details struct {
 
 	// FetchedAt is when the details were read, as RFC 3339.
 	FetchedAt string `json:"fetchedAt"`
+
+	// PushedSinceReview reports a pull request whose author pushed since the user requested
+	// changes: the user's standing verdict requests changes at a commit other than its head,
+	// and the user hasn't reviewed it from the inbox since it last moved. Whichever list it
+	// is in, its card says so.
+	PushedSinceReview bool `json:"pushedSinceReview"`
 }
 
 // Label is one label on an item.
@@ -439,7 +450,8 @@ func accountFromPrefs(prefs map[string]string) Account {
 // addItems places each row in the one list it belongs to, deciding each item's trust, and
 // whether its files are checked, with scope, how it asks viewer, the signed-in account, to
 // review it, and which of rules applies to its repository. The lists partition the rows:
-// one that asks for the user's review is in ReviewRequested, whatever else it is, and one
+// one that asks for the user's review, or was pushed to since the user requested changes,
+// is in ReviewRequested, whatever else it is, and one
 // the user opened or is assigned is otherwise in Yours, so no item is in both. Each list
 // then holds the items pinned themselves first, as rows has them, then those pinned with
 // their repository or org, then the rest, each in rows' order.
@@ -449,7 +461,7 @@ func (s *Snapshot) addItems(rows []itemRow, scope fileScope, viewer string, rule
 		item.RepoRule, _ = rules.For(repo.Name{Owner: r.RepoOwner, Repo: r.RepoName})
 
 		switch {
-		case r.ReasonReviewRequested:
+		case r.ReasonReviewRequested || r.ReasonPushed:
 			s.ReviewRequested.Items = append(s.ReviewRequested.Items, item)
 		case r.ReasonAuthored || r.ReasonAssigned:
 			s.Yours.Items = append(s.Yours.Items, item)
@@ -518,6 +530,16 @@ type itemRow struct {
 	ReasonReviewRequested bool
 	ReasonAuthored        bool
 	ReasonAssigned        bool
+
+	// ReasonPushed reports a pull request listed because its author pushed to it since the
+	// user requested changes, and ViewerReviewState and ViewerReviewCommit are the user's
+	// verdict as the last whole refresh read it, "" with none. ReviewLeftAt is when the user
+	// last took it out of Review requested from the inbox, nil when they haven't since it
+	// moved.
+	ReasonPushed       bool
+	ViewerReviewState  string
+	ViewerReviewCommit string
+	ReviewLeftAt       *time.Time
 
 	// HasDetails reports whether a refresh has read the item's details.
 	HasDetails       bool
@@ -597,7 +619,8 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		RepoOwner: r.RepoOwner, RepoName: r.RepoName, AuthorLogin: r.AuthorLogin, AuthorType: r.AuthorType,
 		AuthorAssociation: r.AuthorAssociation, IsCrossRepository: r.IsCrossRepository, IsDraft: r.IsDraft,
 		HeadRef: r.HeadRef, ItemUpdatedAt: r.ItemUpdatedAt, ReasonReviewRequested: r.ReasonReviewRequested,
-		ReasonAuthored: r.ReasonAuthored, ReasonAssigned: r.ReasonAssigned,
+		ReasonAuthored: r.ReasonAuthored, ReasonAssigned: r.ReasonAssigned, ReasonPushed: r.ReasonPushed,
+		ViewerReviewState: r.ViewerReviewState, ViewerReviewCommit: r.ViewerReviewCommit, ReviewLeftAt: r.ReviewLeftAt,
 
 		HasDetails: r.DetailsItemID != nil, Labels: labels, Projects: projects,
 		Comments: int(store.Deref(r.Comments)), Additions: int(store.Deref(r.Additions)),
@@ -669,9 +692,14 @@ func (r *itemRow) opened(viewer string) bool {
 // reviewRequest says how the row asks viewer to review it: by name, or only through
 // teams, when it is in the Review requested list. A row whose requests are not known, or
 // that names neither viewer nor a team, as GitHub's search can still list it for a while
-// after a change, counts as asking by name, and the edit's answer says otherwise.
+// after a change, counts as asking by name, and the edit's answer says otherwise. One in
+// the list only because it was pushed to since the user requested changes asks nothing.
 func (r *itemRow) reviewRequest(viewer string) ReviewRequest {
-	if !r.ReasonReviewRequested {
+	switch {
+	case r.ReasonReviewRequested:
+	case r.ReasonPushed:
+		return ReviewRequestPushed
+	default:
 		return ReviewRequestNone
 	}
 
@@ -774,6 +802,23 @@ func (r *itemRow) details() *Details {
 		SubIssues: r.SubIssues,
 		AutoMerge: r.AutoMerge,
 		FetchedAt: formatOptionalTime(r.DetailsFetchedAt),
+
+		PushedSinceReview: r.pushedSinceReview(),
+	}
+}
+
+// pushedSinceReview reports a pull request whose author pushed since the user requested
+// changes (see Details.PushedSinceReview): the user's verdict requests changes at a commit
+// other than the head its details read, and the user's own review from the inbox, which
+// stamps ReviewLeftAt, isn't since it last moved.
+func (r *itemRow) pushedSinceReview() bool {
+	switch {
+	case r.Kind != item.KindPR || r.ViewerReviewState != github.ReviewStateChangesRequested:
+		return false
+	case r.ViewerReviewCommit == "" || r.HeadOID == "" || strings.EqualFold(r.ViewerReviewCommit, r.HeadOID):
+		return false
+	default:
+		return r.ReviewLeftAt == nil || r.ItemUpdatedAt.After(*r.ReviewLeftAt)
 	}
 }
 

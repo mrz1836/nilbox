@@ -266,7 +266,7 @@ func (s *Store) Record(ctx context.Context, now time.Time, arrivals []inbox.Arri
 			row, err := q.InsertNotification(ctx, queries.InsertNotificationParams{
 				Kind: a.Kind, CreatedAt: now, ItemID: new(a.ItemID), ItemKind: string(a.ItemKind), RepoOwner: a.RepoOwner,
 				RepoName: a.RepoName, Number: int64(a.Number), Title: a.Title, URL: a.URL, Author: a.Author,
-				Detail: WakeDetail(a.Woke),
+				Detail: ArrivalDetail(a),
 			})
 			if err != nil {
 				return err

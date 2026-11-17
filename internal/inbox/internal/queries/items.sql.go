@@ -30,13 +30,14 @@ func (q *Queries) ClearArrivalStamps(ctx context.Context, accountID int64) error
 
 const clearReasons = `-- name: ClearReasons :exec
 UPDATE items
-SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0
+SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0, reason_reviewed = 0, reason_pushed = 0,
+    viewer_review_state = '', viewer_review_commit = ''
 WHERE account_id = ?
 `
 
 // ClearReasons takes every item of the account with account_id out of the inbox, clearing
-// the three searches' flags.
-// The rows stay, since local state may reference them.
+// the four searches' flags, the one derived from the fourth (reason_pushed), and the user's
+// verdict it read. The rows stay, since local state may reference them.
 func (q *Queries) ClearReasons(ctx context.Context, accountID int64) error {
 	_, err := q.db.ExecContext(ctx, clearReasons, accountID)
 	return err
@@ -109,7 +110,7 @@ func (q *Queries) GetCheckItem(ctx context.Context, id int64) (GetCheckItemRow, 
 const getEditItem = `-- name: GetEditItem :one
 SELECT
     i.id, i.account_id, i.kind, i.number, i.node_id, i.item_updated_at, i.reason_review_requested,
-    i.reason_authored, i.reason_assigned, r.owner AS repo_owner, r.name AS repo_name, a.login AS account_login,
+    i.reason_authored, i.reason_assigned, i.reason_pushed, r.owner AS repo_owner, r.name AS repo_name, a.login AS account_login,
     d.head_oid, d.base_ref, CAST(EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id) AS BOOLEAN) AS watched
 FROM items i
 JOIN repos r ON r.id = i.repo_id
@@ -128,6 +129,7 @@ type GetEditItemRow struct {
 	ReasonReviewRequested bool
 	ReasonAuthored        bool
 	ReasonAssigned        bool
+	ReasonPushed          bool
 	RepoOwner             string
 	RepoName              string
 	AccountLogin          string
@@ -153,6 +155,7 @@ func (q *Queries) GetEditItem(ctx context.Context, id int64) (GetEditItemRow, er
 		&i.ReasonReviewRequested,
 		&i.ReasonAuthored,
 		&i.ReasonAssigned,
+		&i.ReasonPushed,
 		&i.RepoOwner,
 		&i.RepoName,
 		&i.AccountLogin,
@@ -247,7 +250,7 @@ const getReviewItem = `-- name: GetReviewItem :one
 SELECT
     i.id, i.kind, i.number, i.node_id, i.title, i.url, i.author_login, i.author_type, i.author_association,
     i.is_cross_repository, i.is_draft, i.head_ref, i.item_created_at, i.item_updated_at,
-    i.reason_review_requested, i.reason_authored, i.reason_assigned,
+    i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
     r.owner AS repo_owner, r.name AS repo_name, r.default_branch, r.viewer_permission, r.viewer_merge_method,
     r.merge_commit_allowed, r.squash_merge_allowed, r.rebase_merge_allowed, r.auto_merge_allowed,
     r.delete_branch_on_merge, r.allow_update_branch, a.login AS account_login,
@@ -280,6 +283,7 @@ type GetReviewItemRow struct {
 	ReasonReviewRequested bool
 	ReasonAuthored        bool
 	ReasonAssigned        bool
+	ReasonPushed          bool
 	RepoOwner             string
 	RepoName              string
 	DefaultBranch         string
@@ -345,6 +349,7 @@ func (q *Queries) GetReviewItem(ctx context.Context, id int64) (GetReviewItemRow
 		&i.ReasonReviewRequested,
 		&i.ReasonAuthored,
 		&i.ReasonAssigned,
+		&i.ReasonPushed,
 		&i.RepoOwner,
 		&i.RepoName,
 		&i.DefaultBranch,
@@ -461,7 +466,8 @@ func (q *Queries) LeaveAssigned(ctx context.Context, arg LeaveAssignedParams) er
 }
 
 const leaveReview = `-- name: LeaveReview :exec
-UPDATE items SET reason_review_requested = 0, review_left_at = ?, review_requested_at = NULL WHERE id = ?
+UPDATE items SET reason_review_requested = 0, reason_pushed = 0, review_left_at = ?, review_requested_at = NULL
+WHERE id = ?
 `
 
 type LeaveReviewParams struct {
@@ -470,8 +476,9 @@ type LeaveReviewParams struct {
 }
 
 // LeaveReview takes the item with id out of the review-requested list after the user took
-// themselves off its requested reviewers, stamped with the item's updated_at on GitHub
-// after the edit (see UpsertItem).
+// themselves off its requested reviewers, or reviewed it, whether it asked or was pushed to
+// since the user requested changes, stamped with the item's updated_at on GitHub after the
+// edit (see UpsertItem).
 func (q *Queries) LeaveReview(ctx context.Context, arg LeaveReviewParams) error {
 	_, err := q.db.ExecContext(ctx, leaveReview, arg.ReviewLeftAt, arg.ID)
 	return err
@@ -481,7 +488,8 @@ const listItems = `-- name: ListItems :many
 SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
-    i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned,
+    i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
+    i.viewer_review_state, i.viewer_review_commit, i.review_left_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals,
@@ -496,7 +504,7 @@ LEFT JOIN item_details d ON d.item_id = i.id
 LEFT JOIN item_files f ON f.item_id = i.id
 LEFT JOIN item_local_state ls ON ls.item_id = i.id
 WHERE i.account_id = ?
-  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
 ORDER BY ls.pinned_at IS NULL, ls.pinned_at DESC, i.item_updated_at DESC, i.id DESC
 `
 
@@ -518,6 +526,10 @@ type ListItemsRow struct {
 	ReasonReviewRequested bool
 	ReasonAuthored        bool
 	ReasonAssigned        bool
+	ReasonPushed          bool
+	ViewerReviewState     string
+	ViewerReviewCommit    string
+	ReviewLeftAt          *time.Time
 	DetailsItemID         *int64
 	Labels                *string
 	Projects              *string
@@ -592,6 +604,10 @@ func (q *Queries) ListItems(ctx context.Context, accountID int64) ([]ListItemsRo
 			&i.ReasonReviewRequested,
 			&i.ReasonAuthored,
 			&i.ReasonAssigned,
+			&i.ReasonPushed,
+			&i.ViewerReviewState,
+			&i.ViewerReviewCommit,
+			&i.ReviewLeftAt,
 			&i.DetailsItemID,
 			&i.Labels,
 			&i.Projects,
@@ -650,7 +666,8 @@ const listItemsByID = `-- name: ListItemsByID :many
 SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
-    i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned,
+    i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
+    i.viewer_review_state, i.viewer_review_commit, i.review_left_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals,
@@ -691,6 +708,10 @@ type ListItemsByIDRow struct {
 	ReasonReviewRequested bool
 	ReasonAuthored        bool
 	ReasonAssigned        bool
+	ReasonPushed          bool
+	ViewerReviewState     string
+	ViewerReviewCommit    string
+	ReviewLeftAt          *time.Time
 	DetailsItemID         *int64
 	Labels                *string
 	Projects              *string
@@ -775,6 +796,10 @@ func (q *Queries) ListItemsByID(ctx context.Context, arg ListItemsByIDParams) ([
 			&i.ReasonReviewRequested,
 			&i.ReasonAuthored,
 			&i.ReasonAssigned,
+			&i.ReasonPushed,
+			&i.ViewerReviewState,
+			&i.ViewerReviewCommit,
+			&i.ReviewLeftAt,
 			&i.DetailsItemID,
 			&i.Labels,
 			&i.Projects,
@@ -942,10 +967,10 @@ func (q *Queries) ListLaunchItems(ctx context.Context, ids []int64) ([]ListLaunc
 
 const listListed = `-- name: ListListed :many
 SELECT i.id, i.node_id, i.kind, i.number, r.owner AS repo_owner, r.name AS repo_name,
-    i.reason_review_requested, i.reason_authored, i.reason_assigned
+    i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed
 FROM items i
 JOIN repos r ON r.id = i.repo_id
-WHERE i.account_id = ? AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+WHERE i.account_id = ? AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
 `
 
 type ListListedRow struct {
@@ -958,6 +983,7 @@ type ListListedRow struct {
 	ReasonReviewRequested bool
 	ReasonAuthored        bool
 	ReasonAssigned        bool
+	ReasonPushed          bool
 }
 
 // ListListed returns every listed item of the account with account_id, with the lists it
@@ -981,6 +1007,7 @@ func (q *Queries) ListListed(ctx context.Context, accountID int64) ([]ListListed
 			&i.ReasonReviewRequested,
 			&i.ReasonAuthored,
 			&i.ReasonAssigned,
+			&i.ReasonPushed,
 		); err != nil {
 			return nil, err
 		}
@@ -996,18 +1023,20 @@ func (q *Queries) ListListed(ctx context.Context, accountID int64) ([]ListListed
 }
 
 const listListedFlags = `-- name: ListListedFlags :many
-SELECT id, reason_review_requested, reason_assigned FROM items
-WHERE account_id = ? AND (reason_review_requested = 1 OR reason_assigned = 1)
+SELECT id, reason_review_requested, reason_assigned, reason_pushed FROM items
+WHERE account_id = ? AND (reason_review_requested = 1 OR reason_assigned = 1 OR reason_pushed = 1)
 `
 
 type ListListedFlagsRow struct {
 	ID                    int64
 	ReasonReviewRequested bool
 	ReasonAssigned        bool
+	ReasonPushed          bool
 }
 
 // ListListedFlags returns which items of the account with account_id are in the
-// review-requested and the assigned lists, before a refresh rewrites the flags.
+// review-requested list (asking, or pushed to since the user requested changes) and the
+// assigned list, before a refresh rewrites the flags.
 func (q *Queries) ListListedFlags(ctx context.Context, accountID int64) ([]ListListedFlagsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listListedFlags, accountID)
 	if err != nil {
@@ -1017,7 +1046,12 @@ func (q *Queries) ListListedFlags(ctx context.Context, accountID int64) ([]ListL
 	items := []ListListedFlagsRow{}
 	for rows.Next() {
 		var i ListListedFlagsRow
-		if err := rows.Scan(&i.ID, &i.ReasonReviewRequested, &i.ReasonAssigned); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.ReasonReviewRequested,
+			&i.ReasonAssigned,
+			&i.ReasonPushed,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1037,7 +1071,7 @@ FROM items i
 JOIN accounts a ON a.id = i.account_id
 WHERE a.login = ?
   AND i.node_id <> ''
-  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
 ORDER BY i.item_updated_at DESC, i.id DESC
 `
 
@@ -1068,7 +1102,7 @@ func (q *Queries) ListListedNodeIDs(ctx context.Context, login string) ([]string
 
 const listOpenPullsInRepo = `-- name: ListOpenPullsInRepo :many
 SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
-    CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 AS BOOLEAN) AS listed,
+    CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1 AS BOOLEAN) AS listed,
     CAST(CAST(?1 AS BOOLEAN) = 1
       AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed
 FROM items i
@@ -1085,7 +1119,7 @@ WHERE a.login = ?2
   AND i.state NOT IN ('CLOSED', 'MERGED')
   AND (d.fetched_at < ?6 OR d.mergeable = 'UNKNOWN')
   AND (
-    ((i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+    ((i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
       AND l.dismissed_at IS NULL
       AND (l.snoozed_until IS NULL OR l.snoozed_until <= ?7))
     OR (CAST(?1 AS BOOLEAN) = 1
@@ -1181,7 +1215,7 @@ func (q *Queries) ListOpenPullsInRepo(ctx context.Context, arg ListOpenPullsInRe
 
 const listRunningChecks = `-- name: ListRunningChecks :many
 SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
-    CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 AS BOOLEAN) AS listed,
+    CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1 AS BOOLEAN) AS listed,
     CAST(CAST(?1 AS BOOLEAN) = 1
       AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed
 FROM items i
@@ -1196,7 +1230,7 @@ WHERE a.login = ?2
   AND d.checks_state IN ('PENDING', 'EXPECTED')
   AND d.fetched_at < ?3
   AND (
-    ((i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+    ((i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
       AND l.dismissed_at IS NULL
       AND (l.snoozed_until IS NULL OR l.snoozed_until <= ?4))
     OR (CAST(?1 AS BOOLEAN) = 1
@@ -1333,9 +1367,28 @@ func (q *Queries) ListWatchedItems(ctx context.Context, arg ListWatchedItemsPara
 	return items, nil
 }
 
+const noteViewerReview = `-- name: NoteViewerReview :exec
+UPDATE items SET viewer_review_state = ?, viewer_review_commit = ? WHERE id = ?
+`
+
+type NoteViewerReviewParams struct {
+	ViewerReviewState  string
+	ViewerReviewCommit string
+	ID                 int64
+}
+
+// NoteViewerReview records the user's own verdict on the item with id, as a review they
+// just left from the inbox: state (APPROVED or CHANGES_REQUESTED) at commit, so its card
+// reads it before the next whole refresh does.
+func (q *Queries) NoteViewerReview(ctx context.Context, arg NoteViewerReviewParams) error {
+	_, err := q.db.ExecContext(ctx, noteViewerReview, arg.ViewerReviewState, arg.ViewerReviewCommit, arg.ID)
+	return err
+}
+
 const pruneItems = `-- name: PruneItems :execrows
 DELETE FROM items
 WHERE reason_review_requested = 0 AND reason_authored = 0 AND reason_assigned = 0
+  AND reason_reviewed = 0 AND reason_pushed = 0
   AND fetched_at < ?1
   AND NOT EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = items.id)
   AND NOT EXISTS (SELECT 1 FROM item_local_state l WHERE l.item_id = items.id)
@@ -1372,7 +1425,7 @@ func (q *Queries) PruneItems(ctx context.Context, arg PruneItemsParams) (int64, 
 
 const unlistItem = `-- name: UnlistItem :exec
 UPDATE items SET
-    reason_review_requested = 0, reason_authored = 0, reason_assigned = 0,
+    reason_review_requested = 0, reason_authored = 0, reason_assigned = 0, reason_reviewed = 0, reason_pushed = 0,
     review_requested_at = NULL, assigned_at = NULL,
     state = CASE WHEN CAST(?1 AS TEXT) = '' OR state = 'MERGED' THEN state ELSE CAST(?1 AS TEXT) END,
     closed_at = CASE WHEN CAST(?1 AS TEXT) = '' OR state = 'MERGED' THEN closed_at ELSE ?2 END,
@@ -1467,8 +1520,9 @@ const upsertItem = `-- name: UpsertItem :one
 INSERT INTO items (
     account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_association,
     is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at,
-    reason_review_requested, reason_authored, reason_assigned, fetched_at, state, review_requested_at, assigned_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    reason_review_requested, reason_authored, reason_assigned, fetched_at, state, review_requested_at, assigned_at,
+    reason_reviewed, reason_pushed, viewer_review_state, viewer_review_commit
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     node_id = excluded.node_id,
     title = excluded.title,
@@ -1486,6 +1540,13 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
         ELSE excluded.reason_review_requested
     END,
     reason_authored = excluded.reason_authored,
+    reason_reviewed = excluded.reason_reviewed,
+    reason_pushed = CASE
+        WHEN items.review_left_at IS NOT NULL AND excluded.item_updated_at <= items.review_left_at THEN 0
+        ELSE excluded.reason_pushed
+    END,
+    viewer_review_state = excluded.viewer_review_state,
+    viewer_review_commit = excluded.viewer_review_commit,
     reason_assigned = CASE
         WHEN items.assign_left_at IS NOT NULL AND excluded.item_updated_at <= items.assign_left_at THEN 0
         ELSE excluded.reason_assigned
@@ -1511,7 +1572,7 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     state = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.state ELSE excluded.state END,
     closed_at = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.closed_at ELSE NULL END,
     fetched_at = excluded.fetched_at
-RETURNING id, reason_review_requested, reason_assigned
+RETURNING id, reason_review_requested, reason_assigned, reason_pushed
 `
 
 type UpsertItemParams struct {
@@ -1537,21 +1598,28 @@ type UpsertItemParams struct {
 	State                 string
 	ReviewRequestedAt     *time.Time
 	AssignedAt            *time.Time
+	ReasonReviewed        bool
+	ReasonPushed          bool
+	ViewerReviewState     string
+	ViewerReviewCommit    string
 }
 
 type UpsertItemRow struct {
 	ID                    int64
 	ReasonReviewRequested bool
 	ReasonAssigned        bool
+	ReasonPushed          bool
 }
 
 // UpsertItem stores what GitHub says about an item, with the lists that returned it, and
-// returns its id and the two lists the user can leave as stored. An item already stored
-// for the same account, repository, kind, and number has every column but those four
-// rewritten, with one exception: a list the user left from the inbox (assign_left_at,
-// review_left_at) stays left while the item has not moved since, since GitHub's search
+// returns its id and the three lists the user can leave as stored. An item already stored
+// for the same account, repository, kind, and number has every column but those rewritten,
+// with one exception: a list the user left from the inbox (assign_left_at, review_left_at,
+// the latter for Review requested whether it asked or was pushed to since the user
+// requested changes) stays left while the item has not moved since, since GitHub's search
 // index trails the edit; once the item moves past the stamp, the search is believed and the
-// stamp cleared. The item's state is rewritten when the search said it (a state not empty),
+// stamp cleared. reason_reviewed, reason_pushed, and the user's verdict come from the
+// fourth search (see 0017_pushed_since_review). The item's state is rewritten when the search said it (a state not empty),
 // but never over a merge, which nothing comes back from; and review_requested_at and
 // assigned_at keep when the item first arrived in each list while it stays in it, stamped
 // with fetched_at when it arrives; ClearArrivalStamps clears them once it leaves.
@@ -1579,8 +1647,17 @@ func (q *Queries) UpsertItem(ctx context.Context, arg UpsertItemParams) (UpsertI
 		arg.State,
 		arg.ReviewRequestedAt,
 		arg.AssignedAt,
+		arg.ReasonReviewed,
+		arg.ReasonPushed,
+		arg.ViewerReviewState,
+		arg.ViewerReviewCommit,
 	)
 	var i UpsertItemRow
-	err := row.Scan(&i.ID, &i.ReasonReviewRequested, &i.ReasonAssigned)
+	err := row.Scan(
+		&i.ID,
+		&i.ReasonReviewRequested,
+		&i.ReasonAssigned,
+		&i.ReasonPushed,
+	)
 	return i, err
 }

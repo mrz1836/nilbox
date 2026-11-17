@@ -1102,6 +1102,27 @@ describe('InboxView triage', () => {
     expect(review.getByRole('tab', { name: 'Snoozed' })).toBeInTheDocument()
   })
 
+  it('lists a pull request pushed to since you requested changes in Review requested, with its tag', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({
+        reviewRequested: list([
+          {
+            ...fresh,
+            reviewRequest: 'pushed',
+            details: details({ pushedSinceReview: true }),
+          },
+        ]),
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const review = await section('Review requested')
+    expect(review.getByText('Pushed since your review')).toHaveAttribute(
+      'title',
+      'The author pushed since you requested changes',
+    )
+  })
+
   it('says what new activity brought an item back early', async () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({

@@ -17,7 +17,8 @@ import (
 // for a review and was assigned in the same refresh arrives once, for the review.
 const (
 	// ArrivalReviewRequested is a pull request that newly asks for the user's review,
-	// including a review requested again after the user reviewed it.
+	// including a review requested again after the user reviewed it, or that its author
+	// pushed to since the user requested changes (Arrival.Pushed).
 	ArrivalReviewRequested = "review_requested"
 
 	// ArrivalAssigned is an issue or pull request newly assigned to the user by someone
@@ -59,6 +60,10 @@ type Arrival struct {
 
 	// Woke is the new activity that ended a snooze, for ArrivalWoke.
 	Woke snooze.Reasons
+
+	// Pushed reports an ArrivalReviewRequested that asks for no review: its author pushed
+	// to it since the user requested changes.
+	Pushed bool
 }
 
 // ArrivalSink is told about the items that newly need the user, after the refresh that
@@ -67,20 +72,22 @@ type ArrivalSink interface {
 	Arrived(ctx context.Context, arrivals []Arrival)
 }
 
-// listedFlags are the items in the review-requested and assigned lists before a refresh:
-// an item in neither may be in the map, as false.
+// listedFlags are the items in the review-requested and assigned lists before a refresh,
+// one pushed to since the user requested changes counting as in Review requested: an item
+// in neither may be in the map, as false.
 type listedFlags struct {
 	reviewRequested map[int64]bool
 	assigned        map[int64]bool
 }
 
-// set records the lists the item with id was in.
-func (f *listedFlags) set(id int64, reviewRequested, assigned bool) {
+// set records the lists the item with id was in: Review requested when it asked or was
+// pushed to since the user requested changes, and Assigned.
+func (f *listedFlags) set(id int64, reviewRequested, pushed, assigned bool) {
 	if f.reviewRequested == nil {
 		f.reviewRequested, f.assigned = make(map[int64]bool), make(map[int64]bool)
 	}
 
-	f.reviewRequested[id], f.assigned[id] = reviewRequested, assigned
+	f.reviewRequested[id], f.assigned[id] = reviewRequested || pushed, assigned
 }
 
 // arrivalWatch is what a refresh needs to tell arrivals: the lists as they were, when the
@@ -132,7 +139,7 @@ func (w *writer) readListed(ctx context.Context, status map[string]string, inbox
 		}
 
 		for _, r := range rows {
-			before.flags.set(r.ID, r.ReasonReviewRequested, r.ReasonAssigned)
+			before.flags.set(r.ID, r.ReasonReviewRequested, r.ReasonPushed, r.ReasonAssigned)
 		}
 
 		before.rows = rows
@@ -150,7 +157,7 @@ func (w *writer) readListed(ctx context.Context, status map[string]string, inbox
 	}
 
 	for _, r := range rows {
-		before.flags.set(r.ID, r.ReasonReviewRequested, r.ReasonAssigned)
+		before.flags.set(r.ID, r.ReasonReviewRequested, r.ReasonPushed, r.ReasonAssigned)
 	}
 
 	return before, nil
@@ -185,12 +192,14 @@ func lastRefresh(status map[string]string) (time.Time, bool) {
 //
 // A list GitHub truncated (it matched more than it returned) can gain an item only
 // because another left, so an item of a truncated list counts only when it moved since
-// the last refresh.
+// the last refresh. So does one pushed to since the user requested changes and asking
+// nothing, so the pull requests an upgrade finds pushed to long ago arrive in no burst.
 func (watch *arrivalWatch) newKind(s savedEntry) string {
 	e := s.entry
+	requested := e.reviewRequested || e.pushed
 
 	switch {
-	case e.reviewRequested && !watch.before.reviewRequested[s.id] && watch.moved(e.item, watch.reviewTruncated):
+	case requested && !watch.before.reviewRequested[s.id] && watch.moved(e.item, watch.reviewTruncated || !e.reviewRequested):
 		return ArrivalReviewRequested
 	case e.assigned && !watch.before.assigned[s.id] && watch.moved(e.item, watch.assignedTruncated) &&
 		e.item.AuthorLogin != watch.viewer:
@@ -226,6 +235,7 @@ func (l *arrivalList) add(kind string, s savedEntry, woke snooze.Reasons) {
 	l.items = append(l.items, Arrival{
 		Kind: kind, ItemID: s.id, ItemKind: it.Ref().Kind, RepoOwner: it.RepoOwner, RepoName: it.RepoName,
 		Number: it.Number, Title: it.Title, URL: it.URL, Author: it.AuthorLogin, Woke: woke,
+		Pushed: kind == ArrivalReviewRequested && s.entry.pushed && !s.entry.reviewRequested,
 	})
 }
 

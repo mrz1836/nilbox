@@ -180,6 +180,8 @@ func (w *writer) saveItem(ctx context.Context, repoID int64, e *entry) error {
 		ReasonReviewRequested: e.reviewRequested, ReasonAuthored: e.authored, ReasonAssigned: e.assigned,
 		FetchedAt: w.now, State: it.State,
 		ReviewRequestedAt: stampIf(e.reviewRequested, w.now), AssignedAt: stampIf(e.assigned, w.now),
+		ReasonReviewed: e.reviewed, ReasonPushed: e.pushed, ViewerReviewState: verdictState(e.verdict),
+		ViewerReviewCommit: verdictCommit(e.verdict),
 	})
 	if err != nil {
 		return fmt.Errorf("save the item %s: %w", it.Ref(), err)
@@ -188,7 +190,7 @@ func (w *writer) saveItem(ctx context.Context, repoID int64, e *entry) error {
 	// A list the user left from the inbox stays left while GitHub's search catches up, so
 	// the entry takes the lists as stored, and the item does not arrive in one again.
 	id := stored.ID
-	e.reviewRequested, e.assigned = stored.ReasonReviewRequested, stored.ReasonAssigned
+	e.reviewRequested, e.assigned, e.pushed = stored.ReasonReviewRequested, stored.ReasonAssigned, stored.ReasonPushed
 	w.saved = append(w.saved, savedEntry{id: id, entry: e})
 
 	if err = w.saveDetails(ctx, id, it); err != nil {
@@ -196,6 +198,24 @@ func (w *writer) saveItem(ctx context.Context, repoID int64, e *entry) error {
 	}
 
 	return w.saveFiles(ctx, id, it)
+}
+
+// verdictState and verdictCommit are the user's verdict as an item row keeps it, "" for
+// none.
+func verdictState(v *github.Verdict) string {
+	if v == nil {
+		return ""
+	}
+
+	return v.State
+}
+
+func verdictCommit(v *github.Verdict) string {
+	if v == nil {
+		return ""
+	}
+
+	return v.Commit
 }
 
 // saveDetails stores an item's details when this refresh read them, unless the item is

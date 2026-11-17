@@ -112,6 +112,8 @@ func TestFetchInboxSingleBatchedRequest(t *testing.T) {
 			`reviewRequested: search(query: "is:pr is:open archived:false review-requested:@me"`,
 			`authored: search(query: "is:pr is:open archived:false author:@me"`,
 			`assigned: search(query: "is:open archived:false assignee:@me"`,
+			`reviewed: search(query: "is:pr is:open archived:false reviewed-by:@me -author:@me sort:updated-desc"`,
+			"... on PullRequest { headRefOid opinions: latestOpinionatedReviews(first: 50)",
 			"repository { ...RepoFields }",
 			"fragment RepoFields on Repository",
 			"rateLimit { cost remaining resetAt limit used }",
@@ -144,6 +146,28 @@ func TestFetchInboxSingleBatchedRequest(t *testing.T) {
 	assert.Len(t, inbox.Authored.Items, 2)
 	assert.Equal(t, 2, inbox.Assigned.IssueCount)
 	assert.Len(t, inbox.Assigned.Items, 2, "null nodes are skipped")
+
+	assert.Equal(t, 2, inbox.Reviewed.IssueCount)
+	require.Len(t, inbox.Reviewed.Items, 2, "null nodes are skipped")
+
+	pushed := inbox.Reviewed.Items[0]
+	assert.Equal(t, 31, pushed.Number)
+	assert.Equal(t, strings.Repeat("3", 40), pushed.HeadOID)
+	assert.Equal(t, &Verdict{
+		State: ReviewStateChangesRequested, Commit: strings.Repeat("2", 40),
+		SubmittedAt: time.Date(2026, 1, 4, 9, 0, 0, 0, time.UTC),
+		URL:         "https://github.com/acme-org/example-repo/pull/31#pullrequestreview-1",
+	}, pushed.Verdict, "the viewer's own, not another reviewer's later approval")
+	assert.True(t, pushed.PushedSinceChanges())
+
+	approved := inbox.Reviewed.Items[1]
+	assert.Equal(t, ReviewStateApproved, approved.Verdict.State)
+	assert.False(t, approved.PushedSinceChanges(), "an approval, however old, is no request for changes")
+
+	for _, it := range inbox.ReviewRequested.Items {
+		assert.Nil(t, it.Verdict, "the other searches read no verdict")
+		assert.Empty(t, it.HeadOID)
+	}
 
 	assert.Equal(t, QueryRate{
 		Cost: 1, Limit: 5000, Remaining: 4999, Used: 1,
@@ -629,6 +653,42 @@ func TestAPIMessageAddsGitHubsErrors(t *testing.T) {
 			t.Parallel()
 
 			assert.Equal(t, tt.want, apiMessage([]byte(tt.body)))
+		})
+	}
+}
+
+func TestPushedSinceChanges(t *testing.T) {
+	t.Parallel()
+
+	head, earlier := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	changes := func(commit string) *Verdict { return &Verdict{State: ReviewStateChangesRequested, Commit: commit} }
+
+	tests := []struct {
+		name string
+		item Item
+		want bool
+	}{
+		{name: "changes requested on an earlier commit", item: Item{IsPR: true, HeadOID: head, Verdict: changes(earlier)}, want: true},
+		{name: "changes requested on the head", item: Item{IsPR: true, HeadOID: head, Verdict: changes(head)}},
+		{
+			name: "the head's SHA in another case",
+			item: Item{IsPR: true, HeadOID: strings.ToUpper(head), Verdict: changes(head)},
+		},
+		{name: "no verdict", item: Item{IsPR: true, HeadOID: head}},
+		{
+			name: "an approval",
+			item: Item{IsPR: true, HeadOID: head, Verdict: &Verdict{State: ReviewStateApproved, Commit: earlier}},
+		},
+		{name: "a verdict on no known commit", item: Item{IsPR: true, HeadOID: head, Verdict: changes("")}},
+		{name: "no head read", item: Item{IsPR: true, Verdict: changes(earlier)}},
+		{name: "an issue", item: Item{HeadOID: head, Verdict: changes(earlier)}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, tt.item.PushedSinceChanges())
 		})
 	}
 }

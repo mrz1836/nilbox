@@ -35,7 +35,7 @@ export const inboxHint = 'Matches titles, repos, #numbers, branches, authors, la
 // fixedValues are the values of the keys whose every value is known ahead, which a filter
 // names exactly. is:open matches every item, as the inbox holds only open ones.
 const fixedValues: Readonly<Record<string, ReadonlySet<string>>> = {
-  is: new Set(['pr', 'issue', 'draft', 'pinned', 'conflict', 'open']),
+  is: new Set(['pr', 'issue', 'draft', 'pinned', 'conflict', 'pushed', 'open']),
   checks: new Set(['failing', 'awaiting', 'passing', 'pending']),
   review: new Set(['approved', 'changes_requested', 'required']),
 }
@@ -72,6 +72,7 @@ function flags(item: InboxItem): string[] {
     ...(item.isDraft ? ['draft'] : []),
     ...(isPinned(item) ? ['pinned'] : []),
     ...(item.details?.mergeable === 'CONFLICTING' ? ['conflict'] : []),
+    ...(item.details?.pushedSinceReview === true ? ['pushed'] : []),
   ]
 }
 

@@ -658,7 +658,7 @@ func readsOf(it github.WatchItem, st *queries.ListWatchBaselineRow, now time.Tim
 
 // inAList reports whether what is stored of an item has it in an inbox list.
 func inAList(st *queries.ListWatchBaselineRow) bool {
-	return st.ReasonReviewRequested || st.ReasonAuthored || st.ReasonAssigned
+	return st.ReasonReviewRequested || st.ReasonAuthored || st.ReasonAssigned || st.ReasonPushed
 }
 
 // storedAfter reports whether an item's card or details were stored after since.
@@ -733,7 +733,7 @@ func unwatchedSince(before, now *queries.ListWatchBaselineRow) bool {
 func storedSince(a, b *queries.ListWatchBaselineRow) bool {
 	return !a.FetchedAt.Equal(b.FetchedAt) || !sameStamp(a.DetailsFetchedAt, b.DetailsFetchedAt) || a.State != b.State ||
 		a.ReasonReviewRequested != b.ReasonReviewRequested || a.ReasonAuthored != b.ReasonAuthored ||
-		a.ReasonAssigned != b.ReasonAssigned
+		a.ReasonAssigned != b.ReasonAssigned || a.ReasonPushed != b.ReasonPushed
 }
 
 // sameStamp reports whether two optional times are both missing or equal.

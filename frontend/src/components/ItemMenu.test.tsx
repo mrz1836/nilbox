@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { TriageTab } from '../lib/triage'
 import type { AutopilotRoutine, InboxItem, RepoRules } from '../platform'
 import { at } from '../test/clock'
-import { autopilotMatch, explanation, item, routine, routineSpec } from '../test/fixtures'
+import { autopilotMatch, details, explanation, item, routine, routineSpec } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { AutopilotMenuContext, useRoutineMenu } from './autopilot/RoutineMenu'
 import { teamsText, type EditActions } from './ItemMenu'
@@ -368,6 +368,14 @@ describe('ItemMenu', () => {
     })
 
     expect(row).not.toHaveAttribute('aria-busy')
+  })
+
+  it('offers no way off a pull request in Review requested only because it was pushed to since', async () => {
+    renderRow(item({ reviewRequest: 'pushed', details: details({ pushedSinceReview: true }) }))
+
+    const menu = await openMenu()
+
+    expect(menu.queryByRole('menuitem', { name: 'Remove me as reviewer' })).not.toBeInTheDocument()
   })
 
   it('says why a review asked of a team cannot be taken off one member', async () => {

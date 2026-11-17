@@ -57,6 +57,7 @@ const required = item({
   repo: 'other-org/tools',
   author: 'octo-user',
   details: details({
+    pushedSinceReview: true,
     labels: [{ name: 'bugfix', color: '' }],
     checks: { state: 'SUCCESS', passed: 4, failed: 0, pending: 0, skipped: 0, awaiting: 0 },
     reviews: { decision: 'REVIEW_REQUIRED', reviewers: 2, reviewed: 0, approvals: 0, changesRequested: 0 },
@@ -152,6 +153,8 @@ describe('filterInbox', () => {
     ['is:draft', [2]],
     ['is:pinned', [2]],
     ['is:conflict', [2]],
+    ['is:pushed', [3]],
+    ['-is:pushed is:pr', [1, 2, 4, 7, 8]],
     ['is:open', [1, 2, 3, 4, 5, 6, 7, 8]],
     ['is:pr is:draft', [2]],
     ['is:pr,issue -is:pr', [5, 6]],
@@ -275,6 +278,7 @@ describe('inboxSuggestions', () => {
       'conflict',
       'draft',
       'pinned',
+      'pushed',
     ])
     expect(inboxSuggestions(items, 'author:@me is:', 14, 'me-user').options.map((o) => o.label)).toEqual([
       'conflict',

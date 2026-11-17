@@ -409,10 +409,12 @@ links to its full write-up in the [Desktop Guide](docs/desktop.md).
 <summary><strong>One inbox, every repository</strong>: your reviews, pull requests, and assignments</summary>
 <br/>
 
-- **Two lists**, read by three GitHub searches across every repository your account can see:
-  **Review requested** (open pull requests that ask for your review) and **Yours** (your open
-  pull requests, and the open issues and pull requests assigned to you). Each item shows once,
-  in Review requested while it asks for your review, whatever else it is, so the two lists add up
+- **Two lists**, read by four GitHub searches across every repository your account can see:
+  **Review requested** (open pull requests that ask for your review, and those whose author
+  pushed since you requested changes without asking again, tagged **Pushed since your review**)
+  and **Yours** (your open pull requests, and the open issues and pull requests assigned to
+  you). Each item shows once, in Review requested while it asks for your review or was pushed to
+  since you requested changes, whatever else it is, so the two lists add up
   to the Inbox tab's count; the card says **you** for your own and carries an **Assigned** chip
   when it is assigned to you. Each search reads up to 100 items, with **N of M** when GitHub
   matched more, and a list with nothing in it, set aside included, hides. Archived repositories,
@@ -449,7 +451,7 @@ More in [Inbox cards](docs/desktop.md#inbox-cards).
   worktrees, or the settings.
 - **Words and keys:** every word must appear (`"a phrase"` matches as one, `-word` leaves out),
   and keys narrow by what an item has: `is:pr`, `is:issue`, `is:draft`, `is:pinned` (pinned
-  itself, or with its repository or org), `is:conflict`, `repo:`, `org:`, `author:@me`, `label:`,
+  itself, or with its repository or org), `is:conflict`, `is:pushed`, `repo:`, `org:`, `author:@me`, `label:`,
   `status:`, `project:`, `checks:failing`, and `review:approved`, among others. `-key:value` leaves out, `key:a,b`
   means either, and `#123` finds an item by its number.
 - **Suggestions with counts** as you type, each counted among what the rest of your query already
@@ -1181,7 +1183,7 @@ More in [The window](docs/desktop.md#the-window).
 |-------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Desktop shell** | [Wails v3](https://wails.io): a Go backend in the native macOS webview. Everything but the window is plain Go, built and tested on Linux without CGO                                            |
 | **Frontend**      | React, TypeScript, Vite, and Tailwind, reaching Go only through generated bindings                                                                                                              |
-| **GitHub access** | Your [GitHub CLI](https://cli.github.com) token, held in memory only, for up to ten minutes. One GraphQL request carries all three searches; card details load by node ID in concurrent batches |
+| **GitHub access** | Your [GitHub CLI](https://cli.github.com) token, held in memory only, for up to ten minutes. One GraphQL request carries all four searches; card details load by node ID in concurrent batches |
 | **API budget**    | A 43-item inbox refreshed every five minutes spends 1.2% of the hourly GraphQL budget; running checks cost one request every 45 seconds, and only while they run                                |
 | **Storage**       | SQLite through a pure-Go driver, with sqlc-generated queries and forward-only, checksummed migrations, each after a backup                                                                      |
 | **Agents**        | The Claude Code and Codex CLIs you already use, with your own profiles. Nilbox never stores model credentials and never reads an agent's sign-in                                                |

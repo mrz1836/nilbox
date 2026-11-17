@@ -1514,7 +1514,20 @@ button, the API budget gauge, and your profile picture. Drag the bar to move the
 the filter gives way first.
 
 **Tab counts.** **Inbox** counts the items in your lists, leaving out what is snoozed or
-dismissed. Each item is in one list, so the two lists' counts add up to it. **Notifications** counts what is unread: the app's own notifications, the bell's, and,
+dismissed. Each item is in one list, so the two lists' counts add up to it.
+
+**Pushed since your review.** Submitting a review takes your review request off a pull
+request, so one whose author pushed after you requested changes, without asking you again,
+would leave your inbox. A fourth search finds the open pull requests you reviewed, each with
+your own standing verdict and its head commit, at no extra cost: when your verdict requested
+changes at a commit other than the head, the pull request is in **Review requested**, tagged
+**Pushed since your review**, and arrives with a banner once, when the push is new. Nilbox
+writes nothing to GitHub for it: it never dismisses or requests a review. **Remove me as
+reviewer** isn't offered, since there is no request to take yourself off; reviewing it again
+from the [review sheet](#reviewing-a-pull-request) takes it out at once, and so does the
+author asking you again (it then reads as an ordinary request, still tagged). Any move of the
+head counts: a push, a rebase, or **Update branch**. Its [review sheet's](#reviewing-a-pull-request)
+**Commits** tab shows the commits since. **Notifications** counts what is unread: the app's own notifications, the bell's, and,
 while Nilbox reads them, your [GitHub notifications](#github-notifications); hover it for each,
 as **3 unread in Nilbox · 12 unread on GitHub**. **Autopilot** counts the agents its routines
 have working, with an amber dot while something waits for you and a red dot while a routine is
@@ -1726,7 +1739,7 @@ matches item 123, and a bare `123` matches it too.
 
 | Page | Keys |
 |---|---|
-| Inbox | `is:pr`, `is:issue`, `is:draft`, `is:pinned` (pinned itself, or with its repository or org), `is:conflict` (`is:open` matches everything); `repo:`, `org:`, `author:` (with `@me` for you), `label:`, `status:` (project status), `project:`; `checks:failing`, `checks:awaiting` (workflow runs held for a maintainer's approval), `checks:passing`, `checks:pending`; `review:approved`, `review:changes_requested`, `review:required` |
+| Inbox | `is:pr`, `is:issue`, `is:draft`, `is:pinned` (pinned itself, or with its repository or org), `is:conflict`, `is:pushed` (pushed since you requested changes) (`is:open` matches everything); `repo:`, `org:`, `author:` (with `@me` for you), `label:`, `status:` (project status), `project:`; `checks:failing`, `checks:awaiting` (workflow runs held for a maintainer's approval), `checks:passing`, `checks:pending`; `review:approved`, `review:changes_requested`, `review:required` |
 | Notifications | `repo:` (`owner/name`), `type:` (on the Nilbox tab `review`, `assigned`, `snooze`, `release`, `run`; on the GitHub tab `pr`, `issue`, `release`, `actions`, `other`), `is:unread`, `is:read`; on the GitHub tab also `is:open`, `is:merged`, `is:closed` (the item's state), and `reason:` (GitHub's reason, such as `mention` or `review_requested`) |
 | Worktrees | `repo:`, `branch:`, `agent:`; `is:dirty`, `is:locked`, `is:in-use`, `is:finished`, `is:review` (needs a look), `is:pr`, `is:issue`, `is:open`, `is:merged`, `is:closed` |
 | Settings | Words only |
@@ -1780,7 +1793,8 @@ is cleared whenever you leave Settings.
 Each pull request or issue in the inbox is a card three lines high:
 
 1. Its title, with a **Draft** tag on a draft pull request, a **Conflicts** tag when it has
-   merge conflicts with its base branch, and an **Auto-merge · squash** tag (or merge commit, or
+   merge conflicts with its base branch, a **Pushed since your review** tag when its author
+   pushed after you requested changes, and an **Auto-merge · squash** tag (or merge commit, or
    rebase) when GitHub will merge it on its own once its requirements are met. A long title is cut
    short; hover it for all of it. Clicking a pull request's title opens it in the [review
    sheet](#reviewing-a-pull-request), and an issue's in the [issue sheet](#reading-an-issue);
@@ -1825,7 +1839,7 @@ the list back. A hidden label is only left off the cards, before the first three
 it never takes a visible label's place or counts in the **+N**; the [filter](#filtering)
 (`label:size/XL`), the issue sheet's labels, Autopilot, and the prompts' variables still see it.
 
-**Archived repositories are left out.** Each of the inbox's three searches asks GitHub for
+**Archived repositories are left out.** Each of the inbox's four searches asks GitHub for
 `archived:false`, so an archived repository's pull requests and issues never appear, never
 count toward a list's total, and never cost a details request. The inbox query also reports
 each item's repository, so an item whose repository was archived after GitHub indexed it is
@@ -2397,7 +2411,9 @@ never lost.
 acme-org/api#212 (squash)**, **Commented and merged acme-org/api#212 (squash)**, or **Approved
 acme-org/api#212 · auto-merge is on**. A review takes the
 pull request out of **Review requested** (into **Yours**, when you opened it or are assigned to
-it), and a merge or a close out of the inbox, at once, with no extra request.
+it), and a merge or a close out of the inbox, at once, with no extra request. That includes a
+pull request there only because its author pushed since you requested changes: approving it,
+or requesting changes again, clears its **Pushed since your review** tag too.
 
 **Line comments.** Click a line number in the diff to comment on that line; shift-click another
 in the same part of the diff for a range. **Suggest a change** (on the new version only) starts
@@ -3659,7 +3675,7 @@ a service you watch as the status check finds it:
 
 | Kind | When |
 |---|---|
-| Review requested | A pull request newly asks for your review, including when it asks again after you reviewed it |
+| Review requested | A pull request newly asks for your review, including when it asks again after you reviewed it, or its author pushed to it since you requested changes without asking again (the banner says **Pushed since you requested changes**) |
 | Assigned to you | An issue or pull request someone else opened is newly assigned to you |
 | Back from snooze | New activity ends a snooze early under your [wake rules](#waking-a-snooze-early); it says what was new |
 | Released | A release you started reaches GitHub; it names the version and the commit it tagged |

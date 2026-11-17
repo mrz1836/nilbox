@@ -52,7 +52,7 @@ UPDATE repos SET local_path = ?, updated_at = ? WHERE id = ?;
 SELECT r.owner, r.name, COUNT(i.id) AS items
 FROM repos r
 LEFT JOIN items i ON i.repo_id = r.id
-  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1
+  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1
     OR EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id))
 WHERE r.is_archived = 0
 GROUP BY r.id

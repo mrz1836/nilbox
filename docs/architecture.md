@@ -826,17 +826,40 @@ routine's week**, under `internal/autopilot`).
 ## internal/inbox
 
 These notes cover what the inbox does for Autopilot: the routines' searches, which each
-refresh reads after the inbox's own three searches, and the reads Autopilot makes through it.
+refresh reads after the inbox's own four searches, and the reads Autopilot makes through it.
 The inbox's own refresh, triage, edits, and the review sheet's Actor are described in the
 package's doc comments.
 
-**Two lists from three searches.** The refresh reads three searches (review requested,
+**Two lists from four searches.** The refresh reads three searches (review requested,
 authored, assigned) and stores each one's flag on the item (`reason_review_requested`,
 `reason_authored`, `reason_assigned`), and `inbox.beyond.*` keeps what each matched past its
-page. The snapshot alone partitions them (`addItems`): an item that asks for the user's review
-is in `ReviewRequested`, whatever else it is, and one the user opened or is assigned is
-otherwise in `Yours`, with `Item.Authored` and `Item.Assigned` saying which, so no item is in
-both and the lists' counts add up to `NeedsYou`. `Yours.Total` adds both searches' counts
+page. A fourth (`reviewed`: `reviewed-by:@me -author:@me`, the most recently updated first)
+lists nothing by itself: submitting a review takes the user's request off a pull request, so
+one its author pushed to without asking again would leave the inbox for good. It returns each
+pull request with its head commit and the user's own verdict (`github.Verdict`, from
+`latestOpinionatedReviews`), which costs the query no point (measured in November 2026). It
+stores `reason_reviewed` (the raw match) and, when the verdict requested changes at a commit
+other than the head (`github.Item.PushedSinceChanges`, any head move: a push, a rebase, or
+Update branch), `reason_pushed`, which lists the pull request in Review requested; it doesn't
+ask GitHub for `review:changes_requested`, which matches the overall decision, someone
+else's request included. Each row keeps the verdict (`viewer_review_state`,
+`viewer_review_commit`), so the card says **Pushed since your review** in any list
+(`Details.PushedSinceReview`, also while `review_left_at` holds it back). A pull request the
+fourth search returns alone and not pushed to is in no list: its details are never read
+(`nodeIDs`, `fileTargets`), and no file check runs. `UpsertItem` gates `reason_pushed` by
+`review_left_at` as it gates the request, so a review the user leaves from the inbox
+(`recordReview`: `LeaveReview`, and `NoteViewerReview`, the new verdict at the head they
+saw) takes it out at once and a refresh whose search trails it keeps it out until the pull
+request moves. A single read reads no verdict, so it leaves `reason_pushed` to the next whole
+refresh. A pull request newly pushed to arrives as `ArrivalReviewRequested` with
+`Arrival.Pushed` only when it moved since the last refresh, so the first refresh after an
+upgrade tells no burst. `RemoveReviewRequest` still refuses one with no request
+(`ReviewRequestPushed`). Autopilot's facts and searches keep GitHub's own three lists. The
+snapshot alone partitions them (`addItems`): an item that asks for the user's review, or was
+pushed to since the user requested changes, is in `ReviewRequested`, whatever else it is,
+and one the user opened or is assigned is otherwise in `Yours`, with `Item.Authored` and
+`Item.Assigned` saying which, so no item is in both and the lists' counts add up to
+`NeedsYou`. `Yours.Total` adds both searches' counts
 past their pages, an upper bound once either was cut. The window keys its sections by the
 list (`settings.ListKey`); `settings.AdoptSections` carried the former Authored and Assigned
 lists' window keys over to Yours once, and an older backup's inbox order is read the same way

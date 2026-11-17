@@ -223,6 +223,20 @@ describe('ItemRow', () => {
     expect(held.querySelector('[data-checks-running]')).not.toBeInTheDocument()
   })
 
+  it('tags a pull request pushed to since you requested changes', () => {
+    renderRow(item({ reviewRequest: 'pushed', details: details({ pushedSinceReview: true }) }))
+
+    const tag = screen.getByText('Pushed since your review')
+    expect(tag).toHaveClass('text-accent')
+    expect(tag).toHaveAttribute('title', 'The author pushed since you requested changes')
+  })
+
+  it('tags nothing when nothing was pushed since your review', () => {
+    renderRow(item({ details: details() }))
+
+    expect(screen.queryByText('Pushed since your review')).not.toBeInTheDocument()
+  })
+
   it('tags a draft and mutes its icon', () => {
     renderRow(item({ isDraft: true, details: details() }))
 

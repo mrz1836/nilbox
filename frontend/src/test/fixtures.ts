@@ -1017,6 +1017,7 @@ export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
     reviews: { decision: 'APPROVED', reviewers: 2, reviewed: 1, approvals: 1, changesRequested: 0 },
     autoMerge: '',
     fetchedAt: '2026-06-15T11:59:00Z',
+    pushedSinceReview: false,
     ...overrides,
   }
 }
