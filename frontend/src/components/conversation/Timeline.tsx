@@ -4,6 +4,7 @@ import { counted } from '../../lib/format'
 import { earlierCount, entryAnchor, newSince, rowKey, timelineRows, type TimelineRow } from '../../lib/timeline'
 import type { ConversationOrder, TimelinePage } from '../../platform'
 import { buttonClass, Segmented, type SegmentOption } from '../controls'
+import { Divider as LineDivider } from '../Divider'
 import { ErrorBanner } from '../ErrorBanner'
 import { Spinner } from '../Spinner'
 import { TimelineEntry } from './TimelineEntry'
@@ -142,16 +143,9 @@ interface TimelineRowItemProps {
 // begins, its arrow pointing to the new.
 function NewDivider({ dividerRef, above }: { dividerRef: RefObject<HTMLLIElement | null>; above: boolean }) {
   return (
-    <li
-      ref={dividerRef}
-      role="separator"
-      aria-label="New since your last visit"
-      className="flex items-center gap-2 text-xs font-medium text-accent"
-    >
-      <span aria-hidden="true" className="h-px flex-1 bg-accent/60" />
+    <LineDivider label="New since your last visit" dividerRef={dividerRef}>
       {above ? 'New ↑' : 'New'}
-      <span aria-hidden="true" className="h-px flex-1 bg-accent/60" />
-    </li>
+    </LineDivider>
   )
 }
 

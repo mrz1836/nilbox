@@ -191,6 +191,16 @@ export function CommentIcon(props: IconProps) {
   )
 }
 
+// CommitIcon stands for a pull request's commits: a commit on its line.
+export function CommitIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="3.5" />
+      <path d="M3.5 12h5M15.5 12h5" />
+    </Icon>
+  )
+}
+
 // TerminalIcon stands for opening a session in the terminal.
 export function TerminalIcon(props: IconProps) {
   return (

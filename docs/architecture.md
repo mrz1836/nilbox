@@ -105,7 +105,26 @@ old is served again only while the card shows no activity since it (`recent`), s
 comment always shows. `Open` starts a visit as the issue sheet's does: `review_diffs.seen_at`
 holds GitHub's `updatedAt` of the read it shows, which only `Open` moves
 (`Review.LastSeenAt`). `Earlier` reads the conversation's page before a cursor
-(`FetchTimeline`) through the inbox's `PeekPull`, and stores it nowhere. The summary lists
+(`FetchTimeline`) through the inbox's `PeekPull`, and stores it nowhere. The commits stay out
+of the conversation: the same read lists the newest hundred (`commitList: commits(last:
+100)`, each with its headline, its committed time, and its one author, never the authors'
+list, which costs points) and every reviewer's latest verdict (`latestOpinionatedReviews`,
+each with `viewerDidAuthor`), from which `github.Verdict` keeps the user's own: the latest
+that approved or requested changes, which a later review that only comments, as a reply to a
+line comment, doesn't hide as it hides `viewerLatestReview`. The whole read still costs one
+point (measured in November 2026 on a pull request of 515 commits and 2,752 timeline items);
+beside the inbox card's details the verdicts would cost a point more per batch of 25, so
+the card never reads them. The cache keeps both (`pullContext.Commits`, each headline cut to
+200 runes, never cut by `fitContext`; `Opinion`), and an older build's cache reads with none.
+`yourReview` works out what happened since the user's verdict by where its commit is among
+the commits, never by their dates, which a rebase keeps: found, the commits after it were
+pushed since (`SincePushed`, with the count); missing from every commit, the branch was
+rewritten (`SinceRewritten`); missing from the newest hundred only, it was rewritten when a
+force push in the conversation follows the review, and is further back otherwise
+(`SinceBeyond`); with no commits read, nothing is said. Commits from Update branch count as
+pushed since (labelling them would need each commit's `parents`, a connection that costs
+points). The sheet shows them in its Commits tab, the third, and says so above the tabs
+(`SinceYourReview`) while the pull request is open. The summary lists
 each reviewer's latest review without its text, which is in the conversation, then who the
 card says the pull request still asks to review (`withRequests`, from `review_users` and
 `review_teams`, no request), above the checks, which show every failing one and fold the

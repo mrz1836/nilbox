@@ -626,6 +626,7 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 		AutoMerge: MergeMethod(pull.AutoMerge), Head: pull.HeadOID, Files: []File{}, Checks: []Check{}, Unrun: []Unrun{},
 		Reviews: []ReviewEntry{}, Closes: []Closing{}, TotalFiles: pull.ChangedFiles, Stale: true,
 		OpenedAt: stamp(pull.CreatedAt), Reactions: []timeline.Reaction{}, Timeline: timeline.Page{Items: []timeline.Entry{}},
+		CommitList: []Commit{},
 	}
 
 	if u, ok := bump.Parse(pull.Title); ok && r.IsBot {
@@ -660,6 +661,13 @@ func (r *Review) fill(c *cached, matcher *sensitive.Matcher) {
 	r.Checks = textutil.NonNil(pc.Checks)
 	r.Unrun = textutil.NonNil(pc.Unrun)
 	r.Closes, r.MoreCloses = textutil.NonNil(pc.Closes), max(pc.CloseCount-len(pc.Closes), 0)
+	r.CommitList = commitsOf(pc.Commits, r.URL)
+	r.EarlierCommits = max(pc.CommitTotal-len(pc.Commits), 0)
+	r.YourReview = yourReview(pc.Opinion, pc.Commits, pc.CommitTotal, pc.Timeline)
+
+	if pc.CommitTotal > 0 {
+		r.Commits = pc.CommitTotal
+	}
 
 	if pc.BaseRef != "" {
 		r.BaseRef = pc.BaseRef

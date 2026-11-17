@@ -11,6 +11,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/review/internal/queries"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/timeline"
 )
 
@@ -109,6 +110,31 @@ type pullContext struct {
 	Timeline []timeline.Entry `json:"timeline"`
 	Total    int              `json:"total"`
 	Before   string           `json:"before"`
+
+	// Commits are the newest commits, oldest first, each headline cut to headlineRunes with
+	// an ellipsis, and
+	// CommitTotal how many the pull request has; none in a context an older build cached,
+	// until the sheet reads it again. fitContext never cuts them: a hundred headlines stay
+	// far below its size.
+	Commits     []contextCommit `json:"commits"`
+	CommitTotal int             `json:"commitTotal"`
+
+	// Opinion is the viewer's own standing review, the latest that approved the pull
+	// request or requested changes, nil when there is none, and in a context an older
+	// build cached, until the sheet reads it again.
+	Opinion *contextReview `json:"opinion"`
+}
+
+// headlineRunes is the most of a commit's headline the cache keeps.
+const headlineRunes = 200
+
+// contextCommit is one of the pull request's commits, as the cache keeps it.
+type contextCommit struct {
+	OID         string    `json:"oid"`
+	Headline    string    `json:"headline"`
+	CommittedAt time.Time `json:"committedAt"`
+	Author      string    `json:"author"`
+	AuthorName  string    `json:"authorName"`
 }
 
 // contextReview is one reviewer's latest review, as the cache keeps it. Its text is in the
@@ -160,6 +186,19 @@ func contextOf(r *github.PullReview, viewer string) pullContext {
 		c.Checks = append(c.Checks, Check{
 			Name: ch.Name, Workflow: ch.Workflow, State: ch.State, Outcome: ch.Outcome, URL: ch.URL, Required: ch.Required,
 		})
+	}
+
+	c.Commits, c.CommitTotal = make([]contextCommit, 0, len(r.Commits)), r.CommitTotal
+
+	for _, cm := range r.Commits {
+		c.Commits = append(c.Commits, contextCommit{
+			OID: cm.OID, Headline: textutil.Truncate(cm.Headline, headlineRunes), CommittedAt: cm.CommittedAt,
+			Author: cm.Author, AuthorName: cm.AuthorName,
+		})
+	}
+
+	if v := r.Verdict; v != nil {
+		c.Opinion = &contextReview{State: v.State, URL: v.URL, Commit: v.Commit, SubmittedAt: v.SubmittedAt}
 	}
 
 	return c

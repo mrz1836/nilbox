@@ -187,6 +187,59 @@
                     "oid": "2222222222222222222222222222222222222222"
                 }
             },
+            "opinions": {
+                "nodes": [
+                    {
+                        "state": "APPROVED",
+                        "url": "https://github.com/acme-org/example-repo/pull/94#pullrequestreview-2",
+                        "submittedAt": "2026-11-09T17:05:00Z",
+                        "viewerDidAuthor": false,
+                        "commit": {
+                            "oid": "1111111111111111111111111111111111111111"
+                        }
+                    },
+                    null,
+                    {
+                        "state": "CHANGES_REQUESTED",
+                        "url": "https://github.com/acme-org/example-repo/pull/94#pullrequestreview-0",
+                        "submittedAt": "2026-11-09T16:58:00Z",
+                        "viewerDidAuthor": true,
+                        "commit": {
+                            "oid": "2222222222222222222222222222222222222222"
+                        }
+                    }
+                ]
+            },
+            "commitList": {
+                "totalCount": 3,
+                "nodes": [
+                    {
+                        "commit": {
+                            "oid": "2222222222222222222222222222222222222222",
+                            "messageHeadline": "Bump github/codeql-action from 4.39.1 to 4.39.2",
+                            "committedDate": "2026-11-09T16:52:00Z",
+                            "author": {
+                                "name": "dependabot[bot]",
+                                "user": null
+                            }
+                        }
+                    },
+                    null,
+                    {
+                        "commit": {
+                            "oid": "1111111111111111111111111111111111111111",
+                            "messageHeadline": "Bump github/codeql-action from 4.39.2 to 4.39.3",
+                            "committedDate": "2026-11-09T17:01:00Z",
+                            "author": {
+                                "name": "Octo Contributor",
+                                "user": {
+                                    "login": "octo-contributor"
+                                }
+                            }
+                        }
+                    }
+                ]
+            },
             "pendingReviews": {
                 "totalCount": 1
             },
