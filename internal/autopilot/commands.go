@@ -254,7 +254,9 @@ func (s *Service) matchByID(ctx context.Context, id int64) (Match, error) {
 // doesn't match), on any item of a kind it acts on. It counts toward no daily cap or try,
 // needs no OK, and keeps to the routine's mode, so a Dry run records what it would have
 // done. Every limit that keeps a start from happening still holds it, as for any match:
-// the outside contributor rule, this Mac's readiness, the item read fresh, the holds.
+// the outside contributor rule, this Mac's readiness, the item read fresh, the holds. On
+// an item the routine doesn't match, without anyway, it is refused with RefusalNoMatch,
+// whose code tells the window to offer Run anyway.
 func (s *Service) RunNow(ctx context.Context, id, itemID int64, anyway bool) (Match, error) {
 	e, err := s.engineOrErr()
 	if err != nil {
@@ -305,7 +307,7 @@ func (e *Engine) runNow(ctx context.Context, id, itemID int64, anyway bool) (int
 	switch {
 	case d.Match == eval.Yes:
 	case !anyway:
-		return 0, uierr.New(textutil.Sentence("It doesn't match it: "+firstNo(d)), ErrNoMatch)
+		return 0, newRefusal(RefusalNoMatch, uierr.New(textutil.Sentence("It doesn't match it: "+firstNo(d)), ErrNoMatch))
 	case !slices.Contains(actsOn(l.spec), all[0].Item.Kind):
 		return 0, uierr.New(fmt.Sprintf("It acts only on %s.", kindsWords(actsOn(l.spec))), ErrNoMatch)
 	default:

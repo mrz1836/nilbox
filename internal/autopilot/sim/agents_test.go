@@ -1,6 +1,9 @@
 package sim_test
 
 import (
+	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -13,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/sim"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // ready returns a simulation whose Mac lacks what missing names, with one watched pull
@@ -376,6 +380,8 @@ func TestRunAnywayRunsARoutineOnAnItemItDoesntMatch(t *testing.T) {
 
 		_, err := s.Service.RunNow(t.Context(), r.ID, id, false)
 		require.ErrorIs(t, err, autopilot.ErrNoMatch, "its title names no security fix, so it doesn't match")
+		assert.JSONEq(t, `{"code":"noMatch"}`, refusalDetail(t, err), "the window offers Run anyway from the code")
+		assert.True(t, strings.HasPrefix(uierr.Message(err), "It doesn't match it: "), "with why, in words: %q", uierr.Message(err))
 
 		m, err := s.Service.RunNow(t.Context(), r.ID, id, true)
 		require.NoError(t, err)
@@ -385,5 +391,24 @@ func TestRunAnywayRunsARoutineOnAnItemItDoesntMatch(t *testing.T) {
 		s.Settle()
 
 		assert.Len(t, s.Runner.Started(), 1, "Run anyway starts it, through every limit a start has")
+
+		_, err = s.Service.Skip(t.Context(), m.ID+100)
+		require.ErrorIs(t, err, autopilot.ErrNoMatch, "a match that is gone")
+
+		_, coded := errors.AsType[*autopilot.RefusalError](err)
+		assert.False(t, coded, "only a routine that doesn't match the item offers Run anyway")
 	})
+}
+
+// refusalDetail is the detail the window gets beside err, as JSON: a RefusalError's code.
+func refusalDetail(t *testing.T, err error) string {
+	t.Helper()
+
+	refused, ok := errors.AsType[*autopilot.RefusalError](err)
+	require.True(t, ok, "a coded refusal")
+
+	detail, jsonErr := json.Marshal(refused.Detail())
+	require.NoError(t, jsonErr)
+
+	return string(detail)
 }

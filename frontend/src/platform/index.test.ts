@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => ({
     ApproveBacklog: vi.fn(),
     PostAsComment: vi.fn(),
     Skip: vi.fn(),
+    RunNow: vi.fn(),
     PreviewActions: vi.fn(),
     Catalog: vi.fn(),
     Suggest: vi.fn(),
@@ -411,6 +412,62 @@ describe('Autopilot’s calls', () => {
       await expect(call()).resolves.toBe('answer')
       expect(binding).toHaveBeenCalledExactlyOnceWith(...args)
     }
+  })
+})
+
+describe('runRoutineNow', () => {
+  function refused(cause: unknown): Error {
+    return new Error('no such match', { cause })
+  }
+
+  it('runs the routine on the item, and resolves with the match it recorded', async () => {
+    mocks.autopilot.RunNow.mockResolvedValue({ id: 40, words: 'It starts as soon as a slot frees.' })
+
+    await expect(platform.runRoutineNow(3, 1, false)).resolves.toEqual({
+      ran: true,
+      match: { id: 40, words: 'It starts as soon as a slot frees.' },
+    })
+    expect(mocks.autopilot.RunNow).toHaveBeenCalledExactlyOnceWith(3, 1, false)
+  })
+
+  it('resolves refused, with why, when the routine doesn’t match the item, by its code alone', async () => {
+    mocks.autopilot.RunNow.mockRejectedValueOnce(
+      refused({ message: 'It doesn’t match it: checks pass.', detail: { code: 'noMatch' } }),
+    )
+
+    await expect(platform.runRoutineNow(3, 1, false)).resolves.toEqual({
+      ran: false,
+      notMatching: 'It doesn’t match it: checks pass.',
+    })
+  })
+
+  it('rejects with any other failure', async () => {
+    const failures = [
+      new Error('plain'),
+      'not an error',
+      refused(null),
+      refused({ message: 'The item isn’t stored on this Mac.' }),
+      refused({ message: 'odd', detail: 'a string' }),
+      refused({ message: 'odd', detail: { code: 'settling' } }),
+      refused({ message: 'odd', detail: { code: 7 } }),
+      // Words alone are never read as the refusal.
+      refused({ message: 'It doesn’t match it: checks pass.' }),
+    ]
+
+    for (const failure of failures) {
+      mocks.autopilot.RunNow.mockRejectedValueOnce(failure)
+
+      await expect(platform.runRoutineNow(3, 1, true)).rejects.toBe(failure)
+    }
+  })
+
+  it('cancels the bound call when the caller cancels', async () => {
+    const cancelled = vi.fn()
+    mocks.autopilot.RunNow.mockReturnValue(new CancellablePromise<unknown>(() => undefined, cancelled))
+
+    await platform.runRoutineNow(3, 1, false).cancel()
+
+    expect(cancelled).toHaveBeenCalledOnce()
   })
 })
 
