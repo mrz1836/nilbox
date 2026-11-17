@@ -25,6 +25,9 @@ func reasonFlagDecisions() map[string]string {
 		"ListListedFlags":   "none: arrivals are the lists' alone",
 		"ListListed":        "none: outcomes are the lists' alone",
 
+		// What suggests Autopilot's templates: "in your inbox" is the lists alone.
+		"CountBotPullRequests": "none: it counts the lists' pull requests alone",
+
 		// The writes of a whole refresh and of the user's edits.
 		"ClearReasons":        "none: the watch pass's own upsert leaves the flags alone",
 		"UpsertItem":          "none: the inbox's searches set the flags; a watched item's are left off",

@@ -38,9 +38,16 @@
 // engine runs. The routines and their history stay as they are, and come back as they were
 // once it is on again.
 //
+// Easy mode makes routines a few clicks away: the template gallery (gallery.go), a routine
+// filled in from an item (fromitem.go), why a routine didn't run (why.go), export and
+// import with the prompts a routine names (transfer.go), and the suggestion to put a
+// routine that asks first on Autopilot once it has earned it (graduate.go), which never
+// changes a mode itself.
+//
 // The package reaches the rest of the app only through the narrow interfaces it declares
 // (Prefs, Accounts, Names, Library, Items, Costs, EngineItems, Triage, the dispatchers,
-// Holds, and ProblemSink), which core adapts; it never imports the inbox,
+// Holds, ProblemSink, Signals, PromptTransfer, and Profiles), which core adapts; it never
+// imports the inbox,
 // the sheets, the launcher, the worktrees, the sessions, the runs, the notifications, the
 // settings, the desktop shell, or core.
 package autopilot
@@ -158,6 +165,21 @@ type Config struct {
 	// Dispatchers name one.
 	GitHub GitHubActions
 
+	// Signals says what this Mac already knows that suggests a template (gallery.go); nil
+	// suggests none.
+	Signals Signals
+
+	// Transfer carries the text of the prompts an export names, and brings it in on an
+	// import (transfer.go); nil exports no prompt text and imports none.
+	Transfer PromptTransfer
+
+	// Profiles lists the agents' profiles on this Mac, which an import maps a routine's
+	// profiles to; nil lists none, so an import maps every profile a routine names.
+	Profiles Profiles
+
+	// App is the version an export records as the one that wrote it.
+	App string
+
 	// Clock stamps the routines. Nil is the system clock.
 	Clock clock.Clock
 
@@ -198,6 +220,13 @@ type Service struct {
 	// previews plans an agent step for Preview.
 	ready    *readiness
 	previews Previewer
+
+	// signals suggests templates, transfer carries an export's prompts, and profiles lists
+	// the profiles an import maps a routine's to.
+	signals  Signals
+	transfer PromptTransfer
+	profiles Profiles
+	app      string
 }
 
 // NewService returns a Service over cfg.
@@ -211,6 +240,7 @@ func NewService(cfg Config) *Service {
 		logger:  logging.Or(cfg.Logger),
 		watches: watchSet{build: make(chan struct{}, 1)}, tests: testCache{read: map[string]cachedSearch{}},
 		offers: offers, ready: newReadiness(cfg.Readiness, offers), previews: cfg.Previews,
+		signals: cfg.Signals, transfer: cfg.Transfer, profiles: cfg.Profiles, app: cfg.App,
 	}
 }
 

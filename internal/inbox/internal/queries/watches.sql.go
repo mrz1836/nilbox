@@ -11,6 +11,38 @@ import (
 	"time"
 )
 
+const countBotPullRequests = `-- name: CountBotPullRequests :one
+SELECT
+    CAST(COALESCE(SUM(CASE WHEN lower(i.author_login) IN ('dependabot', 'dependabot[bot]') THEN 1 ELSE 0 END), 0)
+        AS INTEGER) AS dependabot,
+    CAST(COALESCE(SUM(CASE WHEN i.author_type = 'Bot' AND (i.reason_review_requested = 1 OR i.reason_assigned = 1)
+        THEN 1 ELSE 0 END), 0) AS INTEGER) AS bots
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+WHERE a.login = ?1 AND i.kind = 'pr' AND i.item_created_at >= ?2
+    AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+`
+
+type CountBotPullRequestsParams struct {
+	Login string
+	Since time.Time
+}
+
+type CountBotPullRequestsRow struct {
+	Dependabot int64
+	Bots       int64
+}
+
+// CountBotPullRequests counts the pull requests in the inbox lists of the account with
+// login that were opened since since: those Dependabot opened, and those any bot opened in
+// the Review requested and Assigned lists. They suggest Autopilot's templates.
+func (q *Queries) CountBotPullRequests(ctx context.Context, arg CountBotPullRequestsParams) (CountBotPullRequestsRow, error) {
+	row := q.db.QueryRowContext(ctx, countBotPullRequests, arg.Login, arg.Since)
+	var i CountBotPullRequestsRow
+	err := row.Scan(&i.Dependabot, &i.Bots)
+	return i, err
+}
+
 const deleteItemWatches = `-- name: DeleteItemWatches :exec
 DELETE FROM item_watches WHERE item_id = ?
 `

@@ -1,0 +1,44 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "search": {
+                    "kind": "pr",
+                    "authors": [
+                        "app/dependabot"
+                    ],
+                    "where": [
+                        "@me"
+                    ]
+                }
+            }
+        ]
+    },
+    "trigger": {
+        "event": "checks_failed"
+    },
+    "conditions": {
+        "match": "all",
+        "of": [
+            {
+                "field": "checks.failedNames",
+                "op": "anyContains",
+                "values": [
+                    "security",
+                    "codeql",
+                    "govulncheck",
+                    "gitleaks",
+                    "nancy",
+                    "osv"
+                ]
+            }
+        ]
+    },
+    "steps": [
+        {
+            "notify": {}
+        }
+    ],
+    "limits": {}
+}

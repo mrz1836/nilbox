@@ -1272,6 +1272,62 @@ func (q *Queries) ListPrunableMatches(ctx context.Context, cutoff *time.Time) ([
 	return items, nil
 }
 
+const listRoutineAsked = `-- name: ListRoutineAsked :many
+SELECT id, state, reason, approved, steps, closed_at FROM autopilot_matches
+WHERE routine_id = ?1 AND dry_run = 0 AND manual = 0 AND closed_at IS NOT NULL
+    AND closed_at > ?2 AND (approved = 1 OR state = 'dismissed')
+ORDER BY closed_at DESC, id DESC
+LIMIT ?3
+`
+
+type ListRoutineAskedParams struct {
+	RoutineID int64
+	Since     *time.Time
+	RowLimit  int64
+}
+
+type ListRoutineAskedRow struct {
+	ID       int64
+	State    string
+	Reason   string
+	Approved bool
+	Steps    string
+	ClosedAt *time.Time
+}
+
+// ListRoutineAsked returns a routine's real matches the user answered, approved or skipped,
+// that closed after since, newest first: what graduating counts its clean approvals in a
+// row from.
+func (q *Queries) ListRoutineAsked(ctx context.Context, arg ListRoutineAskedParams) ([]ListRoutineAskedRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRoutineAsked, arg.RoutineID, arg.Since, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRoutineAskedRow{}
+	for rows.Next() {
+		var i ListRoutineAskedRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.State,
+			&i.Reason,
+			&i.Approved,
+			&i.Steps,
+			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRoutineFigures = `-- name: ListRoutineFigures :many
 SELECT
     routine_id,

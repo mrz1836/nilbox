@@ -1,0 +1,1 @@
+When a pull request in your account and acme-org out of draft appears, if the author is a member, no sensitive file changed, and the lines changed are under 400, run "Review" in the background, read only, then post its verdict. Once per commit, at most 2 tries per pull request.

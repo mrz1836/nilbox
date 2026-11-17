@@ -1,0 +1,51 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "lists": [
+                    "authored"
+                ]
+            }
+        ]
+    },
+    "trigger": {
+        "event": "checks_failed",
+        "waitForChecks": true
+    },
+    "conditions": {
+        "match": "all",
+        "of": [
+            {
+                "field": "pr.draft",
+                "op": "isNo"
+            }
+        ]
+    },
+    "steps": [
+        {
+            "agent": {
+                "prompt": {
+                    "starter": "fix-checks"
+                },
+                "where": "background",
+                "fence": {
+                    "tools": "editTestPush"
+                }
+            }
+        },
+        {
+            "waitForChecks": {},
+            "onlyIf": "pushed"
+        },
+        {
+            "tellMe": {
+                "when": "verdict"
+            }
+        }
+    ],
+    "limits": {
+        "oncePer": "headCommit",
+        "triesPerItem": 2
+    }
+}

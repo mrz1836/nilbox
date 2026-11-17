@@ -214,3 +214,17 @@ SELECT checks FROM item_checks WHERE checks <> '[]';
 -- MarkSearchStale marks stale every row of the search with watch_key, which failed: they
 -- are kept, so their items don't look as if they left the watch.
 UPDATE item_watches SET stale = 1 WHERE watch_key = ?;
+
+-- name: CountBotPullRequests :one
+-- CountBotPullRequests counts the pull requests in the inbox lists of the account with
+-- login that were opened since since: those Dependabot opened, and those any bot opened in
+-- the Review requested and Assigned lists. They suggest Autopilot's templates.
+SELECT
+    CAST(COALESCE(SUM(CASE WHEN lower(i.author_login) IN ('dependabot', 'dependabot[bot]') THEN 1 ELSE 0 END), 0)
+        AS INTEGER) AS dependabot,
+    CAST(COALESCE(SUM(CASE WHEN i.author_type = 'Bot' AND (i.reason_review_requested = 1 OR i.reason_assigned = 1)
+        THEN 1 ELSE 0 END), 0) AS INTEGER) AS bots
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+WHERE a.login = sqlc.arg(login) AND i.kind = 'pr' AND i.item_created_at >= sqlc.arg(since)
+    AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1);

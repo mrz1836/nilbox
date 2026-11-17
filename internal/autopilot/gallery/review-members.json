@@ -1,0 +1,63 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "search": {
+                    "kind": "pr",
+                    "where": [
+                        "@me"
+                    ],
+                    "state": [
+                        "ready"
+                    ]
+                }
+            }
+        ]
+    },
+    "trigger": {
+        "event": "appears"
+    },
+    "conditions": {
+        "match": "all",
+        "of": [
+            {
+                "field": "item.trust",
+                "op": "oneOf",
+                "values": [
+                    "member"
+                ]
+            },
+            {
+                "field": "files.sensitive",
+                "op": "isEmpty"
+            },
+            {
+                "field": "pr.lines",
+                "op": "lt",
+                "value": "400"
+            }
+        ]
+    },
+    "steps": [
+        {
+            "agent": {
+                "prompt": {
+                    "starter": "review-pr"
+                },
+                "where": "background",
+                "fence": {
+                    "tools": "readOnly"
+                }
+            }
+        },
+        {
+            "postReview": {
+                "as": "verdict"
+            }
+        }
+    ],
+    "limits": {
+        "oncePer": "headCommit"
+    }
+}

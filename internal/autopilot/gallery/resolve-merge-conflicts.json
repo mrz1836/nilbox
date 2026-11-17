@@ -1,0 +1,40 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "lists": [
+                    "authored"
+                ]
+            }
+        ]
+    },
+    "trigger": {
+        "event": "merge_conflicts"
+    },
+    "conditions": {
+        "match": "all",
+        "of": [
+            {
+                "field": "pr.draft",
+                "op": "isNo"
+            }
+        ]
+    },
+    "steps": [
+        {
+            "agent": {
+                "prompt": {
+                    "starter": "resolve-conflicts"
+                },
+                "where": "background",
+                "fence": {
+                    "tools": "editTestPush"
+                }
+            }
+        }
+    ],
+    "limits": {
+        "oncePer": "headCommit"
+    }
+}

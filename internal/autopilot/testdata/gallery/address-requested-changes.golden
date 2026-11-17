@@ -1,0 +1,1 @@
+When changes are requested on pull requests in your Authored list, run "Address review" in your terminal. Once per commit, at most 2 tries per pull request.

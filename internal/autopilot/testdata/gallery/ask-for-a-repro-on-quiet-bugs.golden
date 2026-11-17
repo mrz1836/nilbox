@@ -1,0 +1,1 @@
+When an issue assigned to you goes quiet for 14 days, if the labels include bug and the labels don't include needs-repro, comment your "Needs repro" reply and add the needs-repro label. At most 2 tries per issue.

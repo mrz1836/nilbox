@@ -1,0 +1,1 @@
+When a pull request by Dependabot in your account and acme-org has merge conflicts, ask Dependabot to rebase. Once per commit, at most 2 tries per pull request.

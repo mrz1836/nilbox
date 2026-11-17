@@ -34,6 +34,13 @@ func (s *Service) List(ctx context.Context) ([]Routine, error) {
 	for _, row := range rows {
 		r := routineOf(row, v)
 		r.Figures = figures[row.ID]
+
+		if s.store.q != nil {
+			if r.Figures.Graduate, err = s.graduates(ctx, s.ledger(), r, row.GraduateDeclinedAt); err != nil {
+				return nil, err
+			}
+		}
+
 		out = append(out, r)
 	}
 

@@ -1,0 +1,1 @@
+When checks fail on pull requests in your Authored list, once every check has settled, if it isn't a draft, run "Fix checks" in the background; if it pushed, wait for the checks, then tell me how it went. Once per commit, at most 2 tries per pull request.
