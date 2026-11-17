@@ -210,7 +210,15 @@ dismissal, taking themselves off), a merge's or a close's state as GitHub answer
 its queued clears (kept), then nudges the `Syncer`, which runs a pass on those items at
 once, listing first only when the mirror is older than the poll interval (a minute at
 least, `MinNudgeListing`); an item the inbox saw close or leave its lists has its state
-checked. A pass reads the account's threads, moments, and clears once (`decideInputs`),
+checked. An item merged or closed, or that left the lists (`OutcomeKind.finishes`), is also
+followed up (`nudges.follow`): GitHub tells of the merge or close a little after it, and of
+what follows it (a bot's comment), and each brings a thread already marked done back, so the
+`Syncer` runs a nudged run deciding the threads about the items followed up every
+`FollowUpEvery` (2 minutes) until `FollowUpFor` (10 minutes) after the inbox told of each
+(`takeFollowUp`, `untilFollowUp`, a timer of its own in the `Syncer`'s sleep). Each lists,
+since the mirror is older than the poll interval by then, conditionally, so a page that
+didn't change costs nothing; a thread that came back has its state checked again and clears
+at once. A pass reads the account's threads, moments, and clears once (`decideInputs`),
 and again only what a step changed: the threads once a state check stored an answer, and
 the clears inside the transaction that queues, since a click may have queued or kept one
 meanwhile; a send reads its one item's moments. After its listing and state checks, a

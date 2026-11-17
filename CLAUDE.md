@@ -736,6 +736,10 @@ changing the package, and keep the section and its summary in step.
   own waits the Undo hold; a pass queues at most `FirstCap` or `Cap` (else the count is a
   `Backlog`), checks at most `MaxCommentChecks` latest comments (`FetchLatestComment`), and
   sends one at a time through the client's chore lane, each checked again first (`sendOne`).
+  An item the inbox told of merged or closed, or that left its lists, is followed up for
+  `FollowUpFor` (10 minutes): a nudged run every `FollowUpEvery` (2 minutes) lists and clears
+  its thread again when GitHub's own notice of the merge, or what follows it, brings the thread
+  back.
   Clearing turned off skips every queued clear but the user's own, and reading turned off skips
   them all. `Clear` and `ClearItem` clear by hand, never a thread that isn't a pull request's or
   an issue's (`ClearItemThreads`, which says how many it queued, is Autopilot's Mark the GitHub
