@@ -434,6 +434,15 @@ func TestReconcileFollowsAnOrphanAgainAndJudgesTheEnded(t *testing.T) {
 		pids[f.Dir] = f.PID
 	}
 
+	// The fake answers SIGINT only once it is ready, and it writes its first lines after
+	// that: a signal sent sooner ends it with no result, as a real agent killed at its start
+	// would be, so the one that is to finish is signaled only once its lines are read.
+	require.Eventually(t, func() bool {
+		page, err := r.runner.Events(t.Context(), exited.RunID, 0)
+
+		return err == nil && len(page.Events) > 0
+	}, waitFor, 10*time.Millisecond, "the run that is to finish wrote its first lines")
+
 	// The app quits, letting the runs finish: each keeps to a budget of its own.
 	r.engine.LetFinish(true)
 	r.engine.StopAll()

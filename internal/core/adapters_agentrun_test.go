@@ -286,6 +286,14 @@ func TestABackgroundRunRestartsCleanly(t *testing.T) {
 
 	t.Cleanup(func() { _ = syscall.Kill(-pid, syscall.SIGKILL) })
 
+	// The fake answers SIGINT only once it is ready, and it writes its first lines after
+	// that: a signal sent sooner ends it with no result, which is no fault of the run.
+	require.Eventually(t, func() bool {
+		page, readErr := r.agents.Events(t.Context(), 11, 0)
+
+		return readErr == nil && len(page.Events) > 0
+	}, waitAgent, 10*time.Millisecond, "the agent wrote its first lines")
+
 	// The app quits, letting the run finish: its agent keeps to its own budget.
 	r.runs.LetFinish(true)
 	r.runs.StopAll()
