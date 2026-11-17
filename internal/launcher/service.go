@@ -683,8 +683,8 @@ func (s *Service) plan(ctx context.Context, req LaunchRequest, mode planMode, re
 	p, err := s.place(ctx, w, row, res, Request{
 		Item: row.item(w.policy), Agent: res.Agent.ID, Profile: effectiveProfile(profile, res),
 		FullAccessOverride: override, SessionName: sessionName(prompt.Nickname, row),
-		SessionID: ref.id, ResumeID: ref.resume, Fast: res.Fast.Value, UseAPIKey: w.settings.APIKeys[res.Agent.ID],
-		Fence: ref.fence,
+		SessionID: ref.id, ResumeID: ref.resume, TakeOver: ref.takeOver, Fast: res.Fast.Value,
+		UseAPIKey: w.settings.APIKeys[res.Agent.ID], Fence: ref.fence,
 	})
 	if err != nil {
 		return planned{}, err

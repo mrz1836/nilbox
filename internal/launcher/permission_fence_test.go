@@ -94,8 +94,11 @@ func TestAFenceItsAgentCantKeepIsRefused(t *testing.T) {
 	p := fullProfile()
 	p.Agent, p.PermissionMode = agent.Codex, ""
 
-	_, err := resolvePermission(lookupAgent(t, agent.Codex), true, false, p, &Fence{Preset: fence.EditTest, RunDir: testRunDir()})
-	require.ErrorIs(t, err, ErrFenceNotKept)
+	_, err := resolvePermission(lookupAgent(t, agent.Codex), true, false, p, &Fence{Preset: fence.GitHubTasks, RunDir: testRunDir()})
+	require.ErrorIs(t, err, ErrFenceNotKept, "Codex can't keep GitHub tasks only")
+
+	_, err = resolvePermission(lookupAgent(t, agent.Codex), true, false, p, &Fence{Preset: fence.EditTest, RunDir: testRunDir()})
+	require.NoError(t, err, "but keeps Edit and test")
 
 	_, err = resolvePermission(lookupAgent(t, agent.Claude), true, false, fullProfile(), &Fence{Preset: fence.EditTest})
 	require.ErrorIs(t, err, ErrFenceNotKept, "a fence needs its run's folder")

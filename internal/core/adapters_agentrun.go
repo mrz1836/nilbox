@@ -36,6 +36,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/sessions"
+	"github.com/mrz1836/nilbox/internal/sessions/observe/codex"
 	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -794,7 +795,7 @@ type runSessions struct {
 // Started records a run's session, working.
 func (s runSessions) Started(ctx context.Context, ss agentrun.StartedSession) error {
 	return s.ledger.Start(ctx, sessions.Record{
-		ID: ss.ID, AgentSessionID: ss.ID, Agent: ss.Agent, Profile: ss.Profile, ConfigDir: ss.ConfigDir,
+		ID: ss.ID, AgentSessionID: ss.AgentSessionID, Agent: ss.Agent, Profile: ss.Profile, ConfigDir: ss.ConfigDir,
 		Prompt: ss.Prompt, PromptHead: ss.PromptHead, ItemID: ss.ItemID, Owner: ss.Repo.Owner, Name: ss.Repo.Repo,
 		Kind: ss.Kind, Number: ss.Number, Title: ss.Title, URL: ss.URL, Dir: ss.Dir, ClonePath: ss.Clone,
 		Worktree: ss.Worktree, WorktreeAction: sessions.WorktreeAction(ss.WorktreeAction), Permission: ss.Permission,
@@ -804,7 +805,9 @@ func (s runSessions) Started(ctx context.Context, ss agentrun.StartedSession) er
 
 // State records what a run says of its session.
 func (s runSessions) State(ctx context.Context, id string, u agentrun.SessionUpdate) error {
-	return s.ledger.RunState(ctx, id, sessions.RunUpdate{State: sessions.State(u.State), LastMessage: u.LastMessage})
+	return s.ledger.RunState(ctx, id, sessions.RunUpdate{
+		State: sessions.State(u.State), LastMessage: u.LastMessage, AgentSessionID: u.AgentSessionID,
+	})
 }
 
 // runEvents tells the window a run's events changed, at most every runEventsEvery for a
@@ -863,6 +866,32 @@ func caffeinate() string {
 	return caffeinatePath
 }
 
+// runLimits reads which usage limit refused a background run, and when it resets, from the
+// agent's own record of it (agentrun.LimitReader): Codex's rollout of the thread, whose
+// token counts carry the plan's windows; Claude Code's stream says so itself.
+type runLimits struct {
+	codex codex.Limits
+}
+
+// Limit reads the limit a Codex thread's rollout last recorded.
+func (l runLimits) Limit(_ context.Context, id agent.ID, configDir, agentSessionID string) (agentrun.Limit, bool) {
+	if id != agent.Codex || agentSessionID == "" {
+		return agentrun.Limit{}, false
+	}
+
+	got, ok := l.codex.Limit(configDir, agentSessionID)
+	if !ok {
+		return agentrun.Limit{}, false
+	}
+
+	status := "allowed"
+	if got.Reached {
+		status = "rejected"
+	}
+
+	return agentrun.Limit{Status: status, Type: got.Window, ResetsAt: got.ResetsAt}, true
+}
+
 // agentRunnerDeps are what the background runner is built over.
 type agentRunnerDeps struct {
 	runs    *scriptrun.Engine
@@ -896,6 +925,7 @@ func newAgentRunner(pool *sql.DB, opts Options, deps agentRunnerDeps, logger *sl
 		},
 		Caffeinate: caffeinate(),
 		Sweeper:    agentrun.ProcSweeper{Lister: procs.System{Run: deps.runner}, Logger: logger},
+		Limits:     runLimits{codex: codex.Limits{Home: opts.Home}},
 		Clock:      opts.Clock, Logger: logger,
 	})
 }

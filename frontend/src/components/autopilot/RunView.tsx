@@ -229,6 +229,7 @@ function Ending({ view, ending }: { view: AutopilotRunView; ending: AutopilotRun
     ending.durationMs > 0 ? formatDuration(ending.durationMs) : '',
     ending.commit === '' ? '' : `on ${shortCommit(ending.commit)}`,
     ending.changed.length > 0 ? `changed ${counted(ending.changed.length, 'file', 'files')}` : '',
+    ending.refused > 0 ? `its fence refused ${counted(ending.refused, 'call', 'calls')}` : '',
   ].filter((f) => f !== '')
 
   return (

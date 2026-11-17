@@ -91,6 +91,12 @@ export interface Ending {
      * Todos are its todo list as it last wrote it.
      */
     "todos": Todo[] | null;
+
+    /**
+     * Refused counts the calls its fence's hook refused, which an agent's own stream may
+     * never show.
+     */
+    "refused": number;
 }
 
 /**

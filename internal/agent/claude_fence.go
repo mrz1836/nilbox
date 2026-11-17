@@ -60,15 +60,33 @@ const (
 // it, and the floor raised when the flag is newer.
 const claudeFenceFloor = "2.1.319"
 
-// FenceFloor returns the oldest version of the agent that keeps every tools preset, or ""
-// for an agent that keeps none.
+// FenceFloor returns the oldest version of the agent whose flags every tools preset it
+// keeps uses, or "" for an agent that keeps none.
 func FenceFloor(id ID) string {
-	if ok, _ := KeepsPreset(id, fence.ReadOnly); !ok {
+	s, err := specFor(id)
+	if err != nil {
 		return ""
 	}
 
-	return claudeFenceFloor
+	keeper, ok := s.(fenceKeeper)
+	if !ok {
+		return ""
+	}
+
+	return keeper.fenceFloor()
 }
+
+// keeps: Claude Code keeps every tools preset (S4).
+func (claude) keeps(fence.Preset) (bool, string) { return true, "" }
+
+// fenceSpec: Claude Code reads files with its own tools.
+func (claude) fenceSpec(s fence.Spec) fence.Spec { return s }
+
+// fenceFloor is claudeFenceFloor.
+func (claude) fenceFloor() string { return claudeFenceFloor }
+
+// fenceNote: Claude Code's sandbox keeps to the fence's folders and hosts.
+func (claude) fenceNote(built fence.Fence) string { return built.AgentNote() }
 
 // claudeFenceReviewed lists every flag a fence's argv passes Claude Code and every key
 // its settings write, as checked against claudeFenceFloor. A test fails when a preset

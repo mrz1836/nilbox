@@ -58,6 +58,7 @@ describe('AutopilotSection', () => {
     expect(screen.getByRole('combobox', { name: 'Agent runs a day' })).toHaveValue('20')
     expect(screen.getByRole('combobox', { name: 'GitHub actions a day' })).toHaveValue('50')
     expect(screen.getByRole('combobox', { name: 'Daily cap' })).toHaveValue('off')
+    expect(screen.getByText(/so they can’t count Codex’s runs, which report none/)).toBeInTheDocument()
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument()
     expect(screen.getByRole('switch', { name: 'Keep the Mac awake while agents work' })).not.toBeChecked()
     expect(

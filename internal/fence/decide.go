@@ -49,15 +49,17 @@ func commandTools() []string { return []string{toolBash, "Monitor", "PowerShell"
 // writeTools are the tools that write a file.
 func writeTools() []string { return []string{"Edit", "Write", "MultiEdit", "NotebookEdit"} }
 
-// readTools are the tools that read files.
-func readTools() []string { return []string{"Read", "Grep", "Glob", "LS", "NotebookRead"} }
+// readTools are the tools that read files: Claude Code's, and Codex's view_image.
+func readTools() []string {
+	return []string{"Read", "Grep", "Glob", "LS", "NotebookRead", "view_image"}
+}
 
 // networkToolNames are the tools that reach the network, and the ones that start work
 // elsewhere or later, beyond the run: none is ever let through.
 func networkToolNames() []string {
 	return []string{
 		"WebFetch", "WebSearch", "RemoteTrigger", "CronCreate", "CronDelete", "ScheduleWakeup", "EnterWorktree",
-		"ExitWorktree",
+		"ExitWorktree", "web_search",
 	}
 }
 
@@ -81,13 +83,20 @@ func Decide(p Policy, c Call, fs FS) Verdict {
 		return Verdict{}
 	}
 
+	return p.decideTool(c, dir, fs)
+}
+
+// decideTool decides a call by its tool.
+func (p Policy) decideTool(c Call, dir string, fs FS) Verdict {
 	switch {
 	case slices.Contains(commandTools(), c.Tool):
-		if !p.Preset.RunsCommands() {
+		if !p.Preset.RunsCommands() && !p.ShellReads {
 			return deny("%s runs no commands", p.Preset.Label())
 		}
 
 		return p.decideCommand(c.Command, dir, fs)
+	case c.Tool == toolApplyPatch:
+		return p.decidePatch(c.Command, dir, fs)
 	case slices.Contains(writeTools(), c.Tool):
 		return p.decideWrite(c.Path, dir, fs)
 	case slices.Contains(readTools(), c.Tool):
@@ -228,7 +237,7 @@ func (p Policy) decideSimple(c simple, s script, line, dir string, fs FS) Verdic
 	}
 
 	for _, r := range c.redirects {
-		if v := p.pathVerdict(r.target.text, dir, fs, r.writes()); v.Deny {
+		if v := p.redirectVerdict(r, dir, fs); v.Deny {
 			return v
 		}
 	}
@@ -250,6 +259,16 @@ func (p Policy) decideSimple(c simple, s script, line, dir string, fs FS) Verdic
 	return p.decideProgram(c, s, line, dir, fs)
 }
 
+// redirectVerdict decides a redirection: under Read only, none that writes but to
+// /dev/null; else the path it names.
+func (p Policy) redirectVerdict(r redirect, dir string, fs FS) Verdict {
+	if p.Preset == ReadOnly && r.writes() && r.target.text != "/dev/null" {
+		return deny("%s writes nothing: %s isn't allowed", p.Preset.Label(), r.op)
+	}
+
+	return p.pathVerdict(r.target.text, dir, fs, r.writes())
+}
+
 // decideProgram decides a simple command by its program.
 func (p Policy) decideProgram(c simple, s script, line, dir string, fs FS) Verdict {
 	words := texts(c.words)
@@ -263,13 +282,8 @@ func (p Policy) decideProgram(c simple, s script, line, dir string, fs FS) Verdi
 		return v
 	}
 
-	switch {
-	case name == "git":
-		return p.decideGit(words, line, dir, fs)
-	case name == "gh":
-		return p.decideGH(words, s, dir, fs)
-	case p.Preset == GitHubTasks:
-		return deny("GitHub tasks runs only gh and git's reads, not %s", name)
+	if v, decided := p.programVerdict(name, words, s, line, dir, fs); decided {
+		return v
 	}
 
 	if v := p.decideInner(words, line, dir, fs); v.Deny {
@@ -277,6 +291,27 @@ func (p Policy) decideProgram(c simple, s script, line, dir string, fs FS) Verdi
 	}
 
 	return p.argsVerdict(c, name, dir, fs)
+}
+
+// programVerdict decides a command its program settles alone: git, gh, a patch, and what
+// GitHub tasks and Read only don't run. It reports whether it decided.
+func (p Policy) programVerdict(name string, words []string, s script, line, dir string, fs FS) (Verdict, bool) {
+	switch {
+	case name == "git":
+		return p.decideGit(words, line, dir, fs), true
+	case name == "gh":
+		return p.decideGH(words, s, dir, fs), true
+	case name == toolApplyPatch || name == toolApplyAlias:
+		return p.decidePatch(strings.Join(words[1:], "\n"), dir, fs), true
+	case p.Preset == GitHubTasks:
+		return deny("GitHub tasks runs only gh and git's reads, not %s", name), true
+	case p.Preset == ReadOnly:
+		v := readOnlyVerdict(name, words[1:])
+
+		return v, v.Deny
+	default:
+		return Verdict{}, false
+	}
 }
 
 // hardRule is a program no preset runs, or runs with an option the fence can't see past.
@@ -527,4 +562,44 @@ func (p Policy) isItem(arg string) bool {
 // digits reports a string of ASCII digits.
 func digits(s string) bool {
 	return s != "" && strings.Trim(s, "0123456789") == ""
+}
+
+// readOnlyVerdict refuses, under Read only, a command that does more than read: a program
+// that isn't one of shellReaders, find with an action that runs or writes, and sed in
+// place. It holds an agent that reads through its shell (Policy.ShellReads), whose own
+// read-only sandbox refuses every write besides.
+func readOnlyVerdict(name string, args []string) Verdict {
+	if !slices.Contains(shellReaders(), name) {
+		return deny("%s runs only commands that read, not %s", ReadOnly.Label(), name)
+	}
+
+	switch {
+	case name == "find" && findActs(args):
+		return deny("%s runs find only to list: its actions that run or write aren't allowed", ReadOnly.Label())
+	case name == "sed" && slices.ContainsFunc(args, sedInPlace):
+		return deny("%s writes nothing: sed -i isn't allowed", ReadOnly.Label())
+	default:
+		return Verdict{}
+	}
+}
+
+// findActs reports find given an action that runs a command or writes.
+func findActs(args []string) bool {
+	acts := []string{"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"}
+
+	return slices.ContainsFunc(args, func(a string) bool {
+		return slices.ContainsFunc(acts, func(f string) bool { return a == f || strings.HasPrefix(a, f+"=") })
+	})
+}
+
+// sedInPlace reports sed's option that edits its files in place, alone or among others.
+func sedInPlace(a string) bool {
+	switch {
+	case a == "--in-place" || strings.HasPrefix(a, "--in-place="):
+		return true
+	case len(a) > 1 && a[0] == '-' && a[1] != '-':
+		return strings.ContainsRune(a[1:], 'i')
+	default:
+		return false
+	}
 }

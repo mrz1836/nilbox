@@ -412,10 +412,23 @@ func (b *Backgrounds) Fenced(bp BackgroundPlan, in FenceIn) (BackgroundPlan, age
 		return BackgroundPlan{}, agent.FencedRun{}, err
 	}
 
+	files, err := agent.HeadlessFiles(bp.Plan.Agent, from.bg.schema)
+	if err != nil {
+		return BackgroundPlan{}, agent.FencedRun{}, err
+	}
+
+	run.Files = append(run.Files, files...)
+
 	bg := from.bg
 	bg.note = strings.TrimSpace(bg.note + "\n\n" + run.Note)
 	req := from.req
 	req.Dir = in.Worktree
+
+	if req.Fence != nil {
+		worked := *req.Fence
+		worked.Policy, worked.Hook = &run.Fence.Policy, in.Program
+		req.Fence = &worked
+	}
 
 	plan, err := BuildBackground(req, bg)
 	if err != nil {
@@ -430,11 +443,17 @@ func (b *Backgrounds) Fenced(bp BackgroundPlan, in FenceIn) (BackgroundPlan, age
 
 // Trust marks a background run's worktree, and its clone, trusted in the agent's config
 // the run reads, as a launch does its folder: the agent would otherwise stop at its
-// workspace trust question, which no one answers.
+// workspace trust question, which no one answers. An agent whose background run reads no
+// trust (agent.Headless.ReadsTrust: Codex, which leaves the user's config unread) is never
+// trusted there, so a branch's own config never loads, then or when the run is taken over.
 func (b *Backgrounds) Trust(ctx context.Context, bp BackgroundPlan) error {
 	a, err := agent.Lookup(bp.Plan.Agent)
 	if err != nil {
 		return err
+	}
+
+	if !a.Background.ReadsTrust {
+		return nil
 	}
 
 	return b.s.trustDir(ctx, planned{plan: bp.Plan, clone: bp.Clone, res: Resolution{Agent: a}})

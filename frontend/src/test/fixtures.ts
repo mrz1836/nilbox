@@ -834,6 +834,7 @@ export function runEnding(overrides: Partial<AutopilotRunEnding> = {}): Autopilo
     commit: '4f2a9c1000000000000000000000000000000000',
     changed: ['package.json', 'pnpm-lock.yaml'],
     todos: [],
+    refused: 0,
     ...overrides,
   }
 }
@@ -1060,6 +1061,22 @@ export function claudeAgent(overrides: Partial<Agent> = {}): Agent {
     keyEnv: ['ANTHROPIC_API_KEY'],
     loginArgs: ['auth', 'login'],
     statusPart: 'claude.code',
+    background: {
+      background: true,
+      budget: true,
+      cost: true,
+      usage: true,
+      usageLive: true,
+      structured: true,
+      resume: true,
+      readsTrust: true,
+      minVersion: '2.1.319',
+      presets: (['readOnly', 'githubTasks', 'editTest', 'editTestPush', 'profile'] as const).map((preset) => ({
+        preset,
+        kept: true,
+        why: '',
+      })),
+    },
     ...overrides,
   }
 }
@@ -1107,9 +1124,30 @@ export function codexAgent(overrides: Partial<Agent> = {}): Agent {
     keyEnv: ['OPENAI_API_KEY', 'CODEX_API_KEY'],
     loginArgs: ['login'],
     statusPart: 'openai.codex-cli',
+    background: {
+      background: true,
+      budget: false,
+      cost: false,
+      usage: true,
+      usageLive: false,
+      structured: true,
+      resume: true,
+      readsTrust: false,
+      minVersion: '0.163.0',
+      presets: (['readOnly', 'githubTasks', 'editTest', 'editTestPush', 'profile'] as const).map((preset) => ({
+        preset,
+        kept: preset !== 'githubTasks',
+        why: preset === 'githubTasks' ? codexGitHubTasksWhy : '',
+      })),
+    },
     ...overrides,
   }
 }
+
+// codexGitHubTasksWhy is why Codex keeps no GitHub tasks only, as its spec says it.
+export const codexGitHubTasksWhy =
+  "Codex can't keep GitHub tasks only: its sandbox cuts gh off from GitHub and its sign-in, and outside a " +
+  "sandbox nothing but the fence's hook would hold the run in."
 
 // agents are both coding agents, installed.
 export function agents(): AgentInfo[] {

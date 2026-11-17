@@ -14,6 +14,7 @@ import type {
 import {
   agents,
   autopilotCatalog,
+  codexGitHubTasksWhy,
   described,
   profile,
   prompts,
@@ -902,6 +903,31 @@ describe('the agent step', () => {
     expect(spec().steps[0]?.agent?.fence).toEqual({ tools: 'readOnly' })
     await user.click(then.getByRole('button', { name: 'Reset the tools' }))
     expect(spec().steps[0]?.agent).not.toHaveProperty('fence')
+  })
+
+  it('offers only the tools its own agent can keep, and says why of the rest', async () => {
+    const user = userEvent.setup()
+    renderBuilder({ spec: agentOnly({ agent: 'codex', prompt: { itemDefault: true } }) })
+
+    const then = block('Then')
+    const tasks = within(then.getByRole('combobox', { name: 'Tools' })).getByRole('option', {
+      name: 'GitHub tasks only (not for Codex)',
+    })
+
+    expect(tasks).toBeDisabled()
+    expect(tasks).toHaveAttribute('title', codexGitHubTasksWhy)
+
+    await user.selectOptions(then.getByRole('combobox', { name: 'Tools' }), 'editTest')
+    expect(spec().steps[0]?.agent?.fence).toEqual({ tools: 'editTest' })
+  })
+
+  it('offers every tools preset to a step that inherits its agent, checked as it starts', () => {
+    renderBuilder({ spec: agentOnly({ agent: 'inherit', prompt: { itemDefault: true } }) })
+
+    const then = block('Then')
+    const tools = within(then.getByRole('combobox', { name: 'Tools' })).getAllByRole('option')
+
+    expect(tools.every((o) => !(o as HTMLOptionElement).disabled)).toBe(true)
   })
 
   it('shows what is wrong inside it, and its warnings', async () => {

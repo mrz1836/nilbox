@@ -144,6 +144,11 @@ type Policy struct {
 
 	// Canary is the sandbox check, for a sandboxed preset; nil otherwise.
 	Canary *Canary `json:"canary,omitempty"`
+
+	// ShellReads reports an agent with no file tools of its own, which reads through its
+	// shell (Codex): under Read only, its commands that only read run, held besides by
+	// its own read-only sandbox.
+	ShellReads bool `json:"shellReads,omitempty"`
 }
 
 // Sandbox is what the agent's own sandbox holds a sandboxed run's commands to.
@@ -211,6 +216,10 @@ type Spec struct {
 
 	// Env is the run's environment, read for the tools' cache folders.
 	Env map[string]string
+
+	// ShellReads reports an agent that reads through its shell (Policy.ShellReads), as
+	// its spec sets it.
+	ShellReads bool
 }
 
 // Build works a run's fence out from its spec.
@@ -241,7 +250,7 @@ func Build(s Spec) (Fence, error) {
 func policyFor(s Spec) (Policy, error) {
 	p := Policy{
 		Version: PolicyVersion, Preset: s.Preset, Worktree: paths.Resolved(s.Worktree), Home: filepath.Clean(s.Home),
-		Repo: s.Repo, Number: s.Number, GitDirs: gitDirsFor(s),
+		Repo: s.Repo, Number: s.Number, GitDirs: gitDirsFor(s), ShellReads: s.ShellReads,
 	}
 
 	if given := filepath.Clean(s.Worktree); given != p.Worktree {

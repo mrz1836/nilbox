@@ -1,0 +1,53 @@
+# The argv and files a Codex background run gets under this tools preset. Rewrite with
+# go test ./internal/agent -run TestCodexFenceGoldens -update
+
+argv:
+  "exec"
+  "--json"
+  "--ignore-user-config"
+  "--ignore-rules"
+  "--model"
+  "gpt-6-sol"
+  "--config"
+  "model_reasoning_effort=\"low\""
+  "--sandbox"
+  "workspace-write"
+  "--config"
+  "approval_policy=\"never\""
+  "--config"
+  "sandbox_workspace_write.writable_roots=[\"/Users/example/projects/example-repo/.git/worktrees/pr-12\",\"/Users/example/projects/example-repo/.git/objects\",\"/Users/example/projects/example-repo/.git/refs\",\"/Users/example/projects/example-repo/.git/logs\"]"
+  "--config"
+  "sandbox_workspace_write.exclude_slash_tmp=true"
+  "--config"
+  "web_search=\"disabled\""
+  "--dangerously-bypass-hook-trust"
+  "--config"
+  "hooks.PreToolUse=[{hooks=[{type=\"command\",command=\"'/Applications/App.app/Contents/MacOS/App' '--fence-hook-v1=/Users/example/Library/Application Support/App/agent-runs/00000000-0000-4000-8000-000000000012'\",timeout=30}]}]"
+  "--output-schema"
+  "/Users/example/Library/Application Support/App/agent-runs/00000000-0000-4000-8000-000000000012/report-schema.json"
+  "--config"
+  "developer_instructions=\"You run unattended.\\n\\nYour tools are fenced: The profile's own permissions. The one push allowed is `git push origin HEAD:refs/heads/dependabot/go_modules/golang.org/x/net-0.33.0`, exactly as written.\""
+  "--"
+  "-"
+
+settings.json:
+{
+  "flags": [
+    "--sandbox",
+    "workspace-write",
+    "--config",
+    "approval_policy=\"never\"",
+    "--config",
+    "sandbox_workspace_write.writable_roots=[\"/Users/example/projects/example-repo/.git/worktrees/pr-12\",\"/Users/example/projects/example-repo/.git/objects\",\"/Users/example/projects/example-repo/.git/refs\",\"/Users/example/projects/example-repo/.git/logs\"]",
+    "--config",
+    "sandbox_workspace_write.exclude_slash_tmp=true",
+    "--config",
+    "web_search=\"disabled\"",
+    "--dangerously-bypass-hook-trust",
+    "--config",
+    "hooks.PreToolUse=[{hooks=[{type=\"command\",command=\"'/Applications/App.app/Contents/MacOS/App' '--fence-hook-v1=/Users/example/Library/Application Support/App/agent-runs/00000000-0000-4000-8000-000000000012'\",timeout=30}]}]"
+  ]
+}
+
+report-schema.json:
+{"additionalProperties":false,"properties":{"needsPerson":{"type":"boolean"},"outcome":{"enum":["fixed","nothing_to_do","partial","blocked","failed"],"type":"string"},"pushed":{"type":"boolean"},"pushedCommit":{"pattern":"^[0-9a-f]{40}$","type":["string","null"]},"reason":{"maxLength":500,"type":["string","null"]},"summary":{"maxLength":2000,"type":"string"}},"required":["needsPerson","outcome","pushed","pushedCommit","reason","summary"],"type":"object"}

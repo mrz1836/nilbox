@@ -176,6 +176,10 @@ type Intent struct {
 
 	// Dir is the worktree it works in, whose changes the run view's Diff reads.
 	Dir string `json:"dir,omitempty"`
+
+	// ConfigDir is the agent profile's config folder, "" for the default profile's, where
+	// a LimitReader finds the agent's own record of the run.
+	ConfigDir string `json:"configDir,omitempty"`
 }
 
 // intentOf returns the plan's intent.
@@ -183,5 +187,6 @@ func intentOf(p Plan) Intent {
 	return Intent{
 		RunID: p.RunID, MatchID: p.MatchID, RoutineID: p.RoutineID, Agent: p.Agent, SessionID: p.SessionID,
 		HeadBefore: p.HeadBefore, Fence: p.Fence, ItemID: p.Session.ItemID, Folder: p.Folder, Dir: p.Dir,
+		ConfigDir: p.Session.ConfigDir,
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/fence"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/sensitive"
@@ -248,11 +249,13 @@ func newSessionID() string {
 
 // sessionRef is the session a launch starts or resumes: id is minted for a new one, and
 // resume is the agent's ID of the one it resumes; fence is the fence a background run's
-// conversation resumes under, taken over, or nil.
+// conversation resumes under, taken over, or nil, and takeOver reports a background run's
+// conversation resumed in the terminal, whatever its access.
 type sessionRef struct {
-	id     string
-	resume string
-	fence  *Fence
+	id       string
+	resume   string
+	fence    *Fence
+	takeOver bool
 }
 
 // Resume reopens an ended session in the terminal chosen in settings: the agent picks
@@ -275,7 +278,7 @@ func (s *Service) Resume(ctx context.Context, req ResumeRequest) (LaunchResult, 
 		ItemID: prev.ItemID, Agent: prev.Agent, Profile: prev.Profile, Worktree: new(prev.Worktree != ""),
 		Alongside: req.Alongside,
 	}
-	ref := sessionRef{id: s.newID(), resume: prev.AgentSessionID, fence: fenced}
+	ref := sessionRef{id: s.newID(), resume: prev.AgentSessionID, fence: fenced, takeOver: prev.RunID != 0}
 
 	p, err := s.plan(ctx, launch, planResume, ref)
 	if errors.Is(err, item.ErrNotFound) {
@@ -386,7 +389,15 @@ func resumeFence(prev ResumableSession, access ResumeAccess) (*Fence, error) {
 		return nil, gone
 	}
 
-	return &Fence{Preset: prev.Fence.Preset, RunDir: prev.Fence.RunDir, TakenOver: true}, nil
+	out := &Fence{Preset: prev.Fence.Preset, RunDir: prev.Fence.RunDir, TakenOver: true}
+
+	// The policy gives an agent that names its sandbox on the command line (Codex) the
+	// folders its commands may write; one that keeps them in its settings needs none.
+	if policy, policyErr := fence.ReadPolicy(prev.Fence.RunDir); policyErr == nil && policy.Preset == prev.Fence.Preset {
+		out.Policy = &policy
+	}
+
+	return out, nil
 }
 
 // fenceAccess reports whether prev resumes under its run's fence for access: a background
@@ -505,10 +516,14 @@ func resumable(prev ResumableSession) error {
 
 // start trusts the session's folder, writes its files, opens them in the terminal, and
 // records the session: the worktree's latest session and the ledger's new one, which
-// resumedFrom names the session it resumes, or is "".
+// resumedFrom names the session it resumes, or is "". A background run taken over under
+// its fence trusts nothing for an agent whose run read no trust (agent.Headless.ReadsTrust):
+// the agent asks the user, who answers now, rather than load a branch's own config unasked.
 func (s *Service) start(ctx context.Context, p planned, ref sessionRef, resumedFrom string) (LaunchResult, error) {
-	if err := s.trustDir(ctx, p); err != nil {
-		return LaunchResult{}, err
+	if ref.fence == nil || p.res.Agent.Background.ReadsTrust {
+		if err := s.trustDir(ctx, p); err != nil {
+			return LaunchResult{}, err
+		}
 	}
 
 	now := s.clock.Now()

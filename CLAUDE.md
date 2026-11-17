@@ -254,13 +254,17 @@ changing the package, and keep the section and its summary in step.
   Codex) with its command, config variable and markers, effort levels, models, permission
   modes, reserved flags, and how a launch's options become its flags, a background run's
   fence included (`AccessFence`, which `claude_fence.go` turns into Claude Code's preset flags
-  and `--settings`; `CheckFenced`, the flags no background run's extras set; Codex keeps no
-  preset yet, `KeepsPreset`), its version, sign-in, and
+  and `--settings`, and `codex_fence.go` into Codex's sandbox, writable folders, and `-c`
+  fence hook; `CheckFenced`, the flags no background run's extras set; `KeepsPreset`, each
+  spec's own: Codex keeps every preset but GitHub tasks only), its version, sign-in, and
   login commands with their parsers (`ParseVersion`, `ParseSignIn`, which keep no email), the
   API key variables a launch unsets unless the user's setting lets a key through (`KeyEnv`),
   and the status page part it depends on (`StatusPart`), and its headless half for a run
-  in the background (`HeadlessArgs` around the fence's own flags, `HeadlessEnv`, and the
-  version whose flags it needs, the fence's floor), so adding an agent adds a spec and the launcher,
+  in the background (`HeadlessArgs` around the fence's own flags, `HeadlessEnv`, `HeadlessFiles`
+  for a schema read from a file in its strict form, `StrictSchema`, `Headless` with what it can
+  do there, which `Agent.Background` shows the builder, and the version whose flags it needs,
+  the fence's floor: Codex's `codex exec --ignore-user-config --ignore-rules`, so no branch's or
+  user's Codex config, MCP server, or hook loads, and its Take over `codex resume <thread>`), so adding an agent adds a spec and the launcher,
   profiles, and editors read the rest from it (`TestOnlyTheAgentsHomesSpellTheirFlags` fails
   on an agent's flag or program name spelled anywhere else but its parsers and observers); `internal/procs` lists
   the running processes' working directories (`lsof` on macOS, `/proc` on Linux), which tell
@@ -1024,8 +1028,13 @@ changing the package, and keep the section and its summary in step.
   (`adapters_takeover.go`: `Engine.TakeOver`, which closes the match as `taken_over` with no
   notice, then `Runner.Stop` and `Runner.Wait`). The quit's Let them finish
   (`scriptrun.Service.LetThemFinish`) lets a run that keeps to its own budget outlive the quit,
-  as a confirmed restart to update does (`update.Runs.LetFinish`); the profile fallback
-  (`Outcome.Limit`) is a later phase's. It never imports
+  as a confirmed restart to update does (`update.Runs.LetFinish`); an out-of-usage end carries
+  its limit (`Outcome.Limit`) for the profile fallback. Claude Code and Codex both run here,
+  each through its own parser (`parserFor`: `claude.go`, `codex.go`, whose `thread.started`
+  links the run's session to the thread Codex picks, `SessionUpdate.AgentSessionID`); a
+  `LimitReader` (core's `runLimits` over Codex's rollout) says which limit refused a run and
+  when it resets, and the fence hook's own log of refusals (`fence.ReadDenials`) is counted in
+  the outcome (`Outcome.Refused`), since Codex's stream never shows one. It never imports
   Autopilot, the launcher, the desktop, the sessions, the worktrees, or notify (the repoguard
   boundary test).
   Full design: [docs/architecture.md](docs/architecture.md#agents-in-the-background)
@@ -1054,8 +1063,12 @@ changing the package, and keep the section and its summary in step.
   worktree, in git's folders, or of an agent, workflow, or tooling file (`internal/sensitive`'s
   own patterns), no network tool, no gh merge, review, close, release, or API call, no shell
   handed a command line, nothing private read, no AI co-author trailer, and for a sandboxed
-  run no command before its sandbox check has held. `RunHook` is the hook mode `cmd/nilbox`
-  runs first; `CheckChanged` checks what a run's commits changed. It is a leaf that imports
+  run no command before its sandbox check has held; Codex's patches are decided by each file
+  they write (`PatchFiles`), and an agent that reads through its shell runs only reading
+  commands under Read only (`ShellReads`). `RunHook` is the hook mode `cmd/nilbox` runs first,
+  Claude Code's and Codex's PreToolUse protocol alike, which writes nothing but its refusals
+  into the run's folder (`LogDenial`, `denials.jsonl`); `CheckChanged` checks what a run's
+  commits changed. It is a leaf that imports
   only `sensitive`, `paths`, and `textutil`, and starts no process.
   Full design: [docs/architecture.md](docs/architecture.md#internalfence)
 - `internal/integrations/` finds the tools the app drives, mage-x's magex and go-pre-commit,

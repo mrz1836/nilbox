@@ -144,6 +144,12 @@ export interface AgentInfo {
     "statusPart": string;
 
     /**
+     * Background is what the agent can do in the background, for the routine builder: its
+     * headless capabilities, and each tools preset it keeps, or why not.
+     */
+    "background": agent$0.Background;
+
+    /**
      * Installed reports that the agent's program was found.
      */
     "installed": boolean;

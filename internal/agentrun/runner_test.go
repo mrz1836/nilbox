@@ -48,6 +48,7 @@ type rig struct {
 	runner   *Runner
 	sessions *fakeSessions
 	sweeper  *fakeSweeper
+	limits   LimitReader
 
 	mu     sync.Mutex
 	ends   map[int64]End
@@ -77,7 +78,7 @@ func (r *rig) build() (*scriptrun.Engine, *scriptrun.Service, *Runner) {
 	})
 	service := scriptrun.NewService(engine)
 	runner := New(Config{
-		Engine: engine, Runs: service, Sessions: r.sessions, Sweeper: r.sweeper,
+		Engine: engine, Runs: service, Sessions: r.sessions, Sweeper: r.sweeper, Limits: r.limits,
 		Ended: func(_ context.Context, end End) {
 			r.mu.Lock()
 			defer r.mu.Unlock()
@@ -93,15 +94,22 @@ func (r *rig) build() (*scriptrun.Engine, *scriptrun.Service, *Runner) {
 func (r *rig) plan(run testutil.FakeRun) Plan {
 	r.t.Helper()
 
-	path, env := testutil.FakeTool(r.t, "claude", run)
+	return r.planFor(agent.Claude, run)
+}
+
+// planFor returns a background run of a fake agent id playing run in a fresh worktree.
+func (r *rig) planFor(id agent.ID, run testutil.FakeRun) Plan {
+	r.t.Helper()
+
+	path, env := testutil.FakeTool(r.t, string(id), run)
 	sid := uuid.NewString()
 
 	return Plan{
 		RunID: r.nextID.Add(1), MatchID: 1, RoutineID: 1, Title: "Review · acme-org/sdk #12", Source: "autopilot:1",
-		Agent: agent.Claude, SessionID: sid, Repo: repo.Name{Owner: "acme-org", Repo: "sdk"}, Dir: testutil.RealTempDir(r.t),
+		Agent: id, SessionID: sid, Repo: repo.Name{Owner: "acme-org", Repo: "sdk"}, Dir: testutil.RealTempDir(r.t),
 		Argv: []string{path}, Env: append(os.Environ(), env), Folder: FolderFor(r.folders, sid), Prompt: "Review it.",
 		Fence:   Fence{Preset: "readOnly", Timeout: 30 * time.Second, BudgetUSD: 0.5, ReadOnly: true},
-		Session: Session{Agent: agent.Claude, Prompt: "Review", ItemID: 12, Kind: item.KindPR, Number: 12},
+		Session: Session{Agent: id, Prompt: "Review", ItemID: 12, Kind: item.KindPR, Number: 12},
 	}
 }
 
@@ -567,6 +575,7 @@ type fakeSessions struct {
 	mu      sync.Mutex
 	started []StartedSession
 	states  map[string][]SessionState
+	links   map[string]string
 }
 
 func (f *fakeSessions) Started(_ context.Context, s StartedSession) error {
@@ -575,6 +584,7 @@ func (f *fakeSessions) Started(_ context.Context, s StartedSession) error {
 
 	f.started = append(f.started, s)
 	f.states[s.ID] = append(f.states[s.ID], SessionWorking)
+	f.link(s.ID, s.AgentSessionID)
 
 	return nil
 }
@@ -583,9 +593,33 @@ func (f *fakeSessions) State(_ context.Context, id string, u SessionUpdate) erro
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.states[id] = append(f.states[id], u.State)
+	f.link(id, u.AgentSessionID)
+
+	if states := f.states[id]; len(states) == 0 || states[len(states)-1] != u.State {
+		f.states[id] = append(states, u.State)
+	}
 
 	return nil
+}
+
+// link links the session id to the agent's own ID of its conversation, once, as the ledger
+// does. The caller holds mu.
+func (f *fakeSessions) link(id, agentSession string) {
+	if f.links == nil {
+		f.links = map[string]string{}
+	}
+
+	if agentSession != "" && f.links[id] == "" {
+		f.links[id] = agentSession
+	}
+}
+
+// linked returns the agent's own ID the session id was linked to, or "".
+func (f *fakeSessions) linked(id string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.links[id]
 }
 
 // of returns what the session was told, in order.

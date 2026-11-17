@@ -196,6 +196,11 @@ type Outcome struct {
 	// held, leaked, or unchecked, none for a run with no sandbox, and "" for one whose
 	// policy couldn't be read.
 	Sandbox fence.SandboxState `json:"sandbox,omitempty"`
+
+	// Refused counts the calls its fence hook refused, as the hook's log in the run's folder
+	// keeps them (an agent's stream may show none), and Refusals are the last of them.
+	Refused  int            `json:"refused"`
+	Refusals []fence.Denial `json:"refusals"`
 }
 
 // leakedWords says a run's sandbox didn't hold.
