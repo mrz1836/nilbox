@@ -14,6 +14,7 @@ import (
 	"os"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/fence"
 )
 
 // Build metadata, injected at build time via -ldflags (see .mage.yaml).
@@ -26,6 +27,12 @@ var (
 )
 
 func main() {
+	// A fenced agent run's hook is this binary run again, as the desktop build's is: it
+	// decides one tool call against the run's policy and exits, opening nothing.
+	if code, ok := fence.RunHook(os.Args[1:], os.Stdin, os.Stderr); ok {
+		os.Exit(code)
+	}
+
 	os.Exit(exitStatus(run(os.Stdout), os.Stderr))
 }
 

@@ -129,6 +129,8 @@ func claudeAccess(a Access) []string {
 		return []string{claudePermissionMode, claudePlanMode}
 	case AccessPlanAllowFull:
 		return []string{claudePermissionMode, claudePlanMode, claudeAllowSkip}
+	case AccessFence:
+		return claudeFenceArgs(a.Fence)
 	case AccessDefault:
 		return nil
 	default:

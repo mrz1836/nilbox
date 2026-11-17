@@ -30,10 +30,14 @@ const (
 	AccessPlanAllowFull AccessKind = "plan-allow-full"
 )
 
-// Access is a launch's permissions: a kind, and for AccessMode, the mode.
+// Access is a launch's permissions: a kind, for AccessMode the mode, and for AccessFence
+// the fence.
 type Access struct {
 	Kind AccessKind
 	Mode string
+
+	// Fence is a background run's tools preset, for AccessFence alone.
+	Fence *Fence
 }
 
 // ErrInvalidPermissionMode is returned for a permission mode the agent does not accept.
@@ -100,7 +104,30 @@ func Args(id ID, o Options) ([]string, error) {
 		return nil, err
 	}
 
+	if err = checkFencedOptions(id, o); err != nil {
+		return nil, err
+	}
+
 	return s.args(o), nil
+}
+
+// ErrFencedDirs is returned for a fenced run given extra directories: its file tools stay
+// in its worktree.
+var ErrFencedDirs = errors.New("a fenced run takes no extra directories: its file tools stay in its worktree")
+
+// checkFencedOptions refuses, for a fenced run, extra directories and an extra argument
+// that sets what the fence sets or would loosen it, so no argv of a fenced run is wider
+// than its fence, whoever built its options.
+func checkFencedOptions(id ID, o Options) error {
+	if o.Access.Kind != AccessFence {
+		return nil
+	}
+
+	if len(o.AddDirs) > 0 {
+		return ErrFencedDirs
+	}
+
+	return CheckFenced(id, o.Extra)
 }
 
 // ErrInvalidSessionID is returned for a session ID that is not a UUID, or for a launch
@@ -154,6 +181,8 @@ func validateAccess(id ID, a Access) error {
 		}
 
 		return fmt.Errorf("%w %q", ErrInvalidPermissionMode, a.Mode)
+	case AccessFence:
+		return validateFence(id, a.Fence)
 	default:
 		return fmt.Errorf("%w %q", ErrInvalidAccess, a.Kind)
 	}

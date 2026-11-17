@@ -57,6 +57,12 @@ func boundaries() []boundary {
 			why:       "worktrees reads its settings and GitHub's answers through its own SettingsReader and GitHub interfaces",
 		},
 		{
+			pkg:       "internal/agent",
+			forbidden: append(slices.Clone(noService), "internal/launcher", "internal/scriptrun", "internal/autopilot"),
+			why: "agent is the pure registry of the coding agents: each spec turns a launch's options, a fenced run's " +
+				"included, into its own flags, and reads no service",
+		},
+		{
 			pkg:       "internal/launcher",
 			forbidden: []string{"internal/inbox", "internal/github", settings},
 			why:       "the launcher reads items, file checks, and settings through its ItemStore, FileChecker, and SettingsReader interfaces",
@@ -322,6 +328,10 @@ func leaves() []leaf {
 		pkg: "internal/autopilotprefs", allowed: []string{"internal/prefs/prefval"},
 		why: "autopilotprefs declares Autopilot's settings for settings to write and Autopilot to read, so it " +
 			"imports only prefval and the standard library",
+	}, leaf{
+		pkg: "internal/fence", allowed: []string{"internal/sensitive", "internal/paths", "internal/textutil"},
+		why: "fence is the agent-independent fence policy, and its hook mode runs before the app opens anything, so " +
+			"it imports only sensitive's patterns, paths' readers, textutil's quoting, and the standard library",
 	})
 }
 

@@ -49,6 +49,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/desktop"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/fence"
 	"github.com/mrz1836/nilbox/internal/ghthreads"
 	"github.com/mrz1836/nilbox/internal/hooks"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -103,6 +104,13 @@ func main() {
 	// replaces has quit: it does that here and exits, before anything reads the arguments
 	// or opens the data that app may still hold.
 	updater.HandleHelperMode()
+
+	// A fenced agent run's hook is this binary run again, before each of the agent's tool
+	// calls: it decides the call against the run's policy and exits, before anything reads
+	// a setting, opens the data, starts logging, or touches the window.
+	if code, ok := fence.RunHook(os.Args[1:], os.Stdin, os.Stderr); ok {
+		os.Exit(code)
+	}
 
 	os.Exit(run(os.Args[1:], os.Stdout))
 }

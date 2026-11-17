@@ -159,7 +159,11 @@ changing the package, and keep the section and its summary in step.
   Linux, which a run outside a `.app` bundle, as `magex app:dev`'s, skips), with the sandbox's
   `--data-dir` when it ran on one. `main()` runs the desktop runtime's
   `updater.HandleHelperMode()` first, since an update's helper is this binary run again,
-  before anything opens the data. A rehearsal build (`main.flavor=rehearsal`, `magex
+  before anything opens the data, and then, in both builds, `fence.RunHook`: a fenced agent
+  run's hook is this binary run again with `--fence-hook-v1=<run folder>`, which decides one
+  tool call against the run's policy and exits, reading no setting, opening no data, logging
+  nothing, and touching no window (`hookmode_test.go` runs the test binary's own `main` so).
+  A rehearsal build (`main.flavor=rehearsal`, `magex
   app:rehearse`) always runs on its own data directory beside the user's
   (`appdata.ResolveRehearsal`, named `brand.RehearsalDataDirName`, or `brand.RehearsalSlug`
   on Linux, as the user's is named), whatever `--data-dir`
@@ -248,7 +252,10 @@ changing the package, and keep the section and its summary in step.
   `internal/item` name repositories, pull requests and issues, and their worktrees;
   `internal/agent` is the backend registry of the coding agents, one spec each (Claude Code,
   Codex) with its command, config variable and markers, effort levels, models, permission
-  modes, reserved flags, and how a launch's options become its flags, its version, sign-in, and
+  modes, reserved flags, and how a launch's options become its flags, a background run's
+  fence included (`AccessFence`, which `claude_fence.go` turns into Claude Code's preset flags
+  and `--settings`; `CheckFenced`, the flags no background run's extras set; Codex keeps no
+  preset yet, `KeepsPreset`), its version, sign-in, and
   login commands with their parsers (`ParseVersion`, `ParseSignIn`, which keep no email), the
   API key variables a launch unsets unless the user's setting lets a key through (`KeyEnv`),
   and the status page part it depends on (`StatusPart`), so adding an agent adds
@@ -404,7 +411,14 @@ changing the package, and keep the section and its summary in step.
   only then).
   Full design: [docs/architecture.md](docs/architecture.md#internalinbox)
 - `internal/launcher/` resolves a launch (the agent first, then that agent's profile, model,
-  and flags), plans it, and writes its files; `internal/launcher/terminal/` renders the launch
+  and flags), plans it, and writes its files. `resolvePermission` alone chooses a launch's
+  access, a background run's fence (`Request.Fence`) included, below the trust rule: an
+  untrusted item without the override runs Read only, a fixed preset brings its own mode
+  whatever the profile says, and a fenced plan takes none of the profile's extra directories.
+  Its `FileChecker` is core's `agentFiles`: the inbox's file check with what agent runs'
+  commits changed merged in (`fence.MergeChanged`, the inbox's `item_agent_changes`), so a
+  run that wrote an agent file holds the next launch on its item at that head as
+  `HoldAgentFiles`, whoever opened it. `internal/launcher/terminal/` renders the launch
   script, which only changes into the folder and runs the agent, and opens it in the user's
   terminal app, one driver per terminal and OS. `terminal.WriteScript` writes every script the
   app opens in a terminal into the launch folder, a session's and a followed run's alike (named
@@ -925,6 +939,21 @@ changing the package, and keep the section and its summary in step.
   routine search, and starts nothing (`Engine.Enabled`, which every start's `dispatch` asks);
   the routines and their history stay as they are.
   Full design: [docs/architecture.md](docs/architecture.md#internalautopilot)
+- `internal/fence/` keeps an unattended agent run inside its routine's tools preset (`Preset`:
+  Read only, GitHub tasks only, Edit and test, Edit test and push, The profile's own),
+  whichever agent runs it. `Build` works a run's `Fence` out (the `Policy` its hook enforces,
+  and for the edit presets the `Sandbox`: writes kept to the worktree, its git folders, and the
+  tools' caches, the network to GitHub and the package registries), refusing a fork's pull
+  request for a push (`ErrCrossRepository`), a branch or remote that isn't plain, and an extra
+  command that would loosen a hard line. `Decide` is the one pure policy every agent's hook
+  feeds: exactly one push, `git push <remote> HEAD:refs/heads/<branch>`, no edit outside the
+  worktree, in git's folders, or of an agent, workflow, or tooling file (`internal/sensitive`'s
+  own patterns), no network tool, no gh merge, review, close, release, or API call, no shell
+  handed a command line, nothing private read, no AI co-author trailer, and for a sandboxed
+  run no command before its sandbox check has held. `RunHook` is the hook mode `cmd/nilbox`
+  runs first; `CheckChanged` checks what a run's commits changed. It is a leaf that imports
+  only `sensitive`, `paths`, and `textutil`, and starts no process.
+  Full design: [docs/architecture.md](docs/architecture.md#internalfence)
 - `internal/integrations/` finds the tools the app drives, mage-x's magex and go-pre-commit,
   each one a `Definition` (its binary, releases, version parser, quiet environment, minimum
   version, and the release that brought each upstream `Feature`). Detection looks on the login

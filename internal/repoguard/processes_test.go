@@ -109,7 +109,8 @@ func TestNoGoInstall(t *testing.T) {
 func TestNoSudo(t *testing.T) {
 	t.Parallel()
 
-	assert.Empty(t, productionMatches(t, sudo()), "the app never runs anything with sudo")
+	// The fence names sudo among the programs it never lets an agent run.
+	assert.Empty(t, productionMatches(t, sudo(), fenceVocabularyFiles()...), "the app never runs anything with sudo")
 }
 
 func TestOnlyExecpathStartsProcesses(t *testing.T) {

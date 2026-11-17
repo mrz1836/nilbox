@@ -594,6 +594,11 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Logger:   logger,
 	})
 
+	// A launch's file check is the inbox's, with what agent runs changed on the item.
+	launchChecks := agentFiles{
+		files: launchFiles{Service: inboxSvc, routines: inbox.NewRoutines(inboxSvc)}, changes: inboxStore,
+	}
+
 	launch := launcher.NewService(launcher.Config{
 		Items:     launchItems{Store: inboxStore},
 		Settings:  settingsView[launcher.LaunchSettings]{settings: prefs, part: launchSettings},
@@ -611,7 +616,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Sessions:  workLog,
 		Ledger:    sessionLedger{ledger: follow.ledger},
 		Trust:     trusters(opts.Home, logger),
-		Files:     launchFiles{Service: inboxSvc, routines: inbox.NewRoutines(inboxSvc)},
+		Files:     launchChecks,
 		Reader:    locations,
 		Logger:    logger,
 	})
