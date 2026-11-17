@@ -649,7 +649,7 @@ func (s *Service) fetch(ctx context.Context, tok github.Token, listed []string, 
 func dropArchived(inbox *github.Inbox) []github.Item {
 	var dropped []github.Item
 
-	for _, list := range []*github.SearchResult{&inbox.ReviewRequested, &inbox.Authored, &inbox.Assigned} {
+	for _, list := range []*github.SearchResult{&inbox.ReviewRequested, &inbox.Authored, &inbox.Assigned, &inbox.Reviewed} {
 		listed := len(list.Items)
 		kept := list.Items[:0]
 
@@ -680,7 +680,7 @@ func dropArchived(inbox *github.Inbox) []github.Item {
 func dropClosed(inbox *github.Inbox) []github.Item {
 	var dropped []github.Item
 
-	for _, list := range []*github.SearchResult{&inbox.ReviewRequested, &inbox.Authored, &inbox.Assigned} {
+	for _, list := range []*github.SearchResult{&inbox.ReviewRequested, &inbox.Authored, &inbox.Assigned, &inbox.Reviewed} {
 		listed := len(list.Items)
 
 		for _, it := range list.Items {
@@ -906,15 +906,30 @@ type entry struct {
 	reviewRequested bool
 	authored        bool
 	assigned        bool
+
+	// reviewed reports a pull request the fourth search returned, which the user reviewed
+	// and didn't open, and pushed one of them pushed to since the user's verdict requested
+	// changes (github.Item.PushedSinceChanges), which lists it in Review requested. verdict
+	// is the user's own, nil with none.
+	reviewed bool
+	pushed   bool
+	verdict  *github.Verdict
 }
 
-// mergeLists combines the three lists, one entry per item, in first-seen order.
+// listed reports an entry the lists hold: one the first three searches returned, or one
+// pushed to since the user requested changes. A pull request the fourth search returned
+// alone, and not pushed to, is stored but in no list.
+func (e *entry) listed() bool {
+	return e.reviewRequested || e.authored || e.assigned || e.pushed
+}
+
+// mergeLists combines the four searches, one entry per item, in first-seen order.
 func mergeLists(inbox *github.Inbox) []*entry {
 	var order []*entry
 
 	byKey := make(map[string]*entry)
 
-	add := func(items []github.Item, mark func(*entry)) {
+	add := func(items []github.Item, mark func(*entry, github.Item)) {
 		for _, it := range items {
 			key := it.Ref().Key()
 
@@ -925,13 +940,18 @@ func mergeLists(inbox *github.Inbox) []*entry {
 				order = append(order, e)
 			}
 
-			mark(e)
+			mark(e, it)
 		}
 	}
 
-	add(inbox.ReviewRequested.Items, func(e *entry) { e.reviewRequested = true })
-	add(inbox.Authored.Items, func(e *entry) { e.authored = true })
-	add(inbox.Assigned.Items, func(e *entry) { e.assigned = true })
+	add(inbox.ReviewRequested.Items, func(e *entry, _ github.Item) { e.reviewRequested = true })
+	add(inbox.Authored.Items, func(e *entry, _ github.Item) { e.authored = true })
+	add(inbox.Assigned.Items, func(e *entry, _ github.Item) { e.assigned = true })
+
+	// The other searches read no head or verdict, so the fourth's own item decides.
+	add(inbox.Reviewed.Items, func(e *entry, it github.Item) {
+		e.reviewed, e.verdict, e.pushed = true, it.Verdict, it.PushedSinceChanges()
+	})
 
 	return order
 }
@@ -954,14 +974,16 @@ func newIDs(ids, known []string) []string {
 	return out
 }
 
-// nodeIDs lists the node IDs of the inbox's items, each once, in first-seen order.
+// nodeIDs lists the node IDs of the inbox's listed items, each once, in first-seen order:
+// a pull request the fourth search returned alone, and not pushed to, is in no list, and
+// its details are never read.
 func nodeIDs(inbox *github.Inbox) []string {
 	entries := mergeLists(inbox)
 	ids := make([]string, 0, len(entries))
 	seen := make(map[string]bool, len(entries))
 
 	for _, e := range entries {
-		if id := e.item.NodeID; id != "" && !seen[id] {
+		if id := e.item.NodeID; id != "" && e.listed() && !seen[id] {
 			seen[id] = true
 			ids = append(ids, id)
 		}

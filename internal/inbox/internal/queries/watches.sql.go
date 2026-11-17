@@ -15,12 +15,12 @@ const countBotPullRequests = `-- name: CountBotPullRequests :one
 SELECT
     CAST(COALESCE(SUM(CASE WHEN lower(i.author_login) IN ('dependabot', 'dependabot[bot]') THEN 1 ELSE 0 END), 0)
         AS INTEGER) AS dependabot,
-    CAST(COALESCE(SUM(CASE WHEN i.author_type = 'Bot' AND (i.reason_review_requested = 1 OR i.reason_assigned = 1)
+    CAST(COALESCE(SUM(CASE WHEN i.author_type = 'Bot' AND (i.reason_review_requested = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
         THEN 1 ELSE 0 END), 0) AS INTEGER) AS bots
 FROM items i
 JOIN accounts a ON a.id = i.account_id
 WHERE a.login = ?1 AND i.kind = 'pr' AND i.item_created_at >= ?2
-    AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+    AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
 `
 
 type CountBotPullRequestsParams struct {
@@ -518,7 +518,8 @@ func (q *Queries) ListOwners(ctx context.Context) ([]ListOwnersRow, error) {
 
 const listWatchBaseline = `-- name: ListWatchBaseline :many
 SELECT
-    i.id, i.node_id, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.item_updated_at,
+    i.id, i.node_id, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
+    i.item_updated_at,
     i.is_draft, i.state, i.fetched_at,
     CAST(EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id) AS BOOLEAN) AS watched,
     d.item_id AS details_item_id, d.head_oid, d.checks_state, d.base_ref, d.merge_state, d.mergeable,
@@ -539,6 +540,7 @@ type ListWatchBaselineRow struct {
 	ReasonReviewRequested bool
 	ReasonAuthored        bool
 	ReasonAssigned        bool
+	ReasonPushed          bool
 	ItemUpdatedAt         time.Time
 	IsDraft               bool
 	State                 string
@@ -585,6 +587,7 @@ func (q *Queries) ListWatchBaseline(ctx context.Context, arg ListWatchBaselinePa
 			&i.ReasonReviewRequested,
 			&i.ReasonAuthored,
 			&i.ReasonAssigned,
+			&i.ReasonPushed,
 			&i.ItemUpdatedAt,
 			&i.IsDraft,
 			&i.State,

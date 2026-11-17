@@ -354,6 +354,147 @@
                 }
             ]
         },
+        "reviewed": {
+            "issueCount": 2,
+            "nodes": [
+                {
+                    "__typename": "PullRequest",
+                    "author": {
+                        "__typename": "User",
+                        "login": "octo-other"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "createdAt": "2026-01-03T11:00:00Z",
+                    "headRefName": "patch-1",
+                    "headRefOid": "3333333333333333333333333333333333333333",
+                    "id": "PR_fakeNodeId31",
+                    "isCrossRepository": true,
+                    "isDraft": false,
+                    "number": 31,
+                    "opinions": {
+                        "nodes": [
+                            {
+                                "commit": {
+                                    "oid": "3333333333333333333333333333333333333333"
+                                },
+                                "state": "APPROVED",
+                                "submittedAt": "2026-01-05T09:00:00Z",
+                                "url": "https://github.com/acme-org/example-repo/pull/31#pullrequestreview-2",
+                                "viewerDidAuthor": false
+                            },
+                            {
+                                "commit": {
+                                    "oid": "2222222222222222222222222222222222222222"
+                                },
+                                "state": "CHANGES_REQUESTED",
+                                "submittedAt": "2026-01-04T09:00:00Z",
+                                "url": "https://github.com/acme-org/example-repo/pull/31#pullrequestreview-1",
+                                "viewerDidAuthor": true
+                            }
+                        ]
+                    },
+                    "repository": {
+                        "allowUpdateBranch": true,
+                        "archivedAt": null,
+                        "autoMergeAllowed": true,
+                        "defaultBranchRef": {
+                            "name": "main"
+                        },
+                        "deleteBranchOnMerge": true,
+                        "description": "An example repository",
+                        "id": "R_fakeRepoExample",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": false,
+                        "name": "example-repo",
+                        "owner": {
+                            "login": "acme-org"
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2026-01-05T08:00:00Z",
+                        "rebaseMergeAllowed": false,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "SQUASH",
+                        "viewerPermission": "ADMIN",
+                        "visibility": "PUBLIC"
+                    },
+                    "title": "Retry the flaky fetch",
+                    "updatedAt": "2026-01-05T15:00:00Z",
+                    "url": "https://github.com/acme-org/example-repo/pull/31"
+                },
+                null,
+                {
+                    "__typename": "PullRequest",
+                    "author": {
+                        "__typename": "User",
+                        "login": "octo-other"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "createdAt": "2026-01-03T11:00:00Z",
+                    "headRefName": "patch-1",
+                    "headRefOid": "4444444444444444444444444444444444444444",
+                    "id": "PR_fakeNodeId32",
+                    "isCrossRepository": true,
+                    "isDraft": false,
+                    "number": 32,
+                    "opinions": {
+                        "nodes": [
+                            {
+                                "commit": {
+                                    "oid": "1111111111111111111111111111111111111111"
+                                },
+                                "state": "APPROVED",
+                                "submittedAt": "2026-01-04T10:00:00Z",
+                                "url": "https://github.com/acme-org/example-repo/pull/32#pullrequestreview-3",
+                                "viewerDidAuthor": true
+                            }
+                        ]
+                    },
+                    "repository": {
+                        "allowUpdateBranch": true,
+                        "archivedAt": null,
+                        "autoMergeAllowed": true,
+                        "defaultBranchRef": {
+                            "name": "main"
+                        },
+                        "deleteBranchOnMerge": true,
+                        "description": "An example repository",
+                        "id": "R_fakeRepoExample",
+                        "isArchived": false,
+                        "isDisabled": false,
+                        "isFork": false,
+                        "isLocked": false,
+                        "lockReason": null,
+                        "mergeCommitAllowed": false,
+                        "name": "example-repo",
+                        "owner": {
+                            "login": "acme-org"
+                        },
+                        "parent": null,
+                        "primaryLanguage": {
+                            "color": "#00ADD8",
+                            "name": "Go"
+                        },
+                        "pushedAt": "2026-01-05T08:00:00Z",
+                        "rebaseMergeAllowed": false,
+                        "squashMergeAllowed": true,
+                        "viewerDefaultMergeMethod": "SQUASH",
+                        "viewerPermission": "ADMIN",
+                        "visibility": "PUBLIC"
+                    },
+                    "title": "Document the cache",
+                    "updatedAt": "2026-01-05T15:00:00Z",
+                    "url": "https://github.com/acme-org/example-repo/pull/32"
+                }
+            ]
+        },
         "viewer": {
             "avatarUrl": "https://avatars.githubusercontent.com/u/101?v=4&s=128",
             "login": "octo-user",

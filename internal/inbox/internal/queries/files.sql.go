@@ -53,6 +53,7 @@ const pruneFiles = `-- name: PruneFiles :exec
 DELETE FROM item_files WHERE item_id IN (
     SELECT id FROM items
     WHERE account_id = ? AND reason_review_requested = 0 AND reason_authored = 0 AND reason_assigned = 0
+      AND reason_pushed = 0
       AND NOT EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = items.id)
 )
 `

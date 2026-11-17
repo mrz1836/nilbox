@@ -7,6 +7,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
 	"github.com/mrz1836/nilbox/internal/textutil"
@@ -245,6 +246,21 @@ func TestBanner() Banner {
 		Body:   brand.Name + " will tell you here when something new needs you.",
 		Thread: "test",
 	}
+}
+
+// PushedDetail is the detail of a pull request that arrives in Review requested because its
+// author pushed to it since the user requested changes.
+const PushedDetail = "Pushed since you requested changes"
+
+// ArrivalDetail is the line an arrival's entry and banner add under its title: what ended a
+// snooze early (WakeDetail), or that a pull request was pushed to since the user requested
+// changes, or "".
+func ArrivalDetail(a inbox.Arrival) string {
+	if a.Pushed {
+		return PushedDetail
+	}
+
+	return WakeDetail(a.Woke)
 }
 
 // WakeDetail says what ended a snooze early, most decisive first, as the inbox card does:

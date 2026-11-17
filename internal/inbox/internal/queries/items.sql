@@ -1,27 +1,31 @@
 -- name: ClearReasons :exec
 -- ClearReasons takes every item of the account with account_id out of the inbox, clearing
--- the three searches' flags.
--- The rows stay, since local state may reference them.
+-- the four searches' flags, the one derived from the fourth (reason_pushed), and the user's
+-- verdict it read. The rows stay, since local state may reference them.
 UPDATE items
-SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0
+SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0, reason_reviewed = 0, reason_pushed = 0,
+    viewer_review_state = '', viewer_review_commit = ''
 WHERE account_id = ?;
 
 -- name: UpsertItem :one
 -- UpsertItem stores what GitHub says about an item, with the lists that returned it, and
--- returns its id and the two lists the user can leave as stored. An item already stored
--- for the same account, repository, kind, and number has every column but those four
--- rewritten, with one exception: a list the user left from the inbox (assign_left_at,
--- review_left_at) stays left while the item has not moved since, since GitHub's search
+-- returns its id and the three lists the user can leave as stored. An item already stored
+-- for the same account, repository, kind, and number has every column but those rewritten,
+-- with one exception: a list the user left from the inbox (assign_left_at, review_left_at,
+-- the latter for Review requested whether it asked or was pushed to since the user
+-- requested changes) stays left while the item has not moved since, since GitHub's search
 -- index trails the edit; once the item moves past the stamp, the search is believed and the
--- stamp cleared. The item's state is rewritten when the search said it (a state not empty),
+-- stamp cleared. reason_reviewed, reason_pushed, and the user's verdict come from the
+-- fourth search (see 0017_pushed_since_review). The item's state is rewritten when the search said it (a state not empty),
 -- but never over a merge, which nothing comes back from; and review_requested_at and
 -- assigned_at keep when the item first arrived in each list while it stays in it, stamped
 -- with fetched_at when it arrives; ClearArrivalStamps clears them once it leaves.
 INSERT INTO items (
     account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_association,
     is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at,
-    reason_review_requested, reason_authored, reason_assigned, fetched_at, state, review_requested_at, assigned_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    reason_review_requested, reason_authored, reason_assigned, fetched_at, state, review_requested_at, assigned_at,
+    reason_reviewed, reason_pushed, viewer_review_state, viewer_review_commit
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     node_id = excluded.node_id,
     title = excluded.title,
@@ -39,6 +43,13 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
         ELSE excluded.reason_review_requested
     END,
     reason_authored = excluded.reason_authored,
+    reason_reviewed = excluded.reason_reviewed,
+    reason_pushed = CASE
+        WHEN items.review_left_at IS NOT NULL AND excluded.item_updated_at <= items.review_left_at THEN 0
+        ELSE excluded.reason_pushed
+    END,
+    viewer_review_state = excluded.viewer_review_state,
+    viewer_review_commit = excluded.viewer_review_commit,
     reason_assigned = CASE
         WHEN items.assign_left_at IS NOT NULL AND excluded.item_updated_at <= items.assign_left_at THEN 0
         ELSE excluded.reason_assigned
@@ -64,7 +75,7 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     state = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.state ELSE excluded.state END,
     closed_at = CASE WHEN excluded.state = '' OR items.state = 'MERGED' THEN items.closed_at ELSE NULL END,
     fetched_at = excluded.fetched_at
-RETURNING id, reason_review_requested, reason_assigned;
+RETURNING id, reason_review_requested, reason_assigned, reason_pushed;
 
 -- name: ClearArrivalStamps :exec
 -- ClearArrivalStamps forgets when the items of the account with account_id arrived in
@@ -105,7 +116,7 @@ WHERE id = sqlc.arg(id);
 -- read said (a state not empty), but never over a merge. The row stays, since local state
 -- may reference it. The times it arrived in Review requested and Assigned go with the lists.
 UPDATE items SET
-    reason_review_requested = 0, reason_authored = 0, reason_assigned = 0,
+    reason_review_requested = 0, reason_authored = 0, reason_assigned = 0, reason_reviewed = 0, reason_pushed = 0,
     review_requested_at = NULL, assigned_at = NULL,
     state = CASE WHEN CAST(sqlc.arg(state) AS TEXT) = '' OR state = 'MERGED' THEN state ELSE CAST(sqlc.arg(state) AS TEXT) END,
     closed_at = CASE WHEN CAST(sqlc.arg(state) AS TEXT) = '' OR state = 'MERGED' THEN closed_at ELSE sqlc.narg(closed_at) END,
@@ -131,23 +142,24 @@ FROM items i
 JOIN accounts a ON a.id = i.account_id
 WHERE a.login = ?
   AND i.node_id <> ''
-  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
 ORDER BY i.item_updated_at DESC, i.id DESC;
 
 -- name: ListListedFlags :many
 -- ListListedFlags returns which items of the account with account_id are in the
--- review-requested and the assigned lists, before a refresh rewrites the flags.
-SELECT id, reason_review_requested, reason_assigned FROM items
-WHERE account_id = ? AND (reason_review_requested = 1 OR reason_assigned = 1);
+-- review-requested list (asking, or pushed to since the user requested changes) and the
+-- assigned list, before a refresh rewrites the flags.
+SELECT id, reason_review_requested, reason_assigned, reason_pushed FROM items
+WHERE account_id = ? AND (reason_review_requested = 1 OR reason_assigned = 1 OR reason_pushed = 1);
 
 -- name: ListListed :many
 -- ListListed returns every listed item of the account with account_id, with the lists it
 -- is in, its node ID, kind, number, and repository, before a refresh rewrites the flags.
 SELECT i.id, i.node_id, i.kind, i.number, r.owner AS repo_owner, r.name AS repo_name,
-    i.reason_review_requested, i.reason_authored, i.reason_assigned
+    i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed
 FROM items i
 JOIN repos r ON r.id = i.repo_id
-WHERE i.account_id = ? AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1);
+WHERE i.account_id = ? AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1);
 
 -- name: ListItems :many
 -- ListItems returns every listed item of the account with account_id, with its
@@ -158,7 +170,8 @@ WHERE i.account_id = ? AND (i.reason_review_requested = 1 OR i.reason_authored =
 SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
-    i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned,
+    i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
+    i.viewer_review_state, i.viewer_review_commit, i.review_left_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals,
@@ -173,7 +186,7 @@ LEFT JOIN item_details d ON d.item_id = i.id
 LEFT JOIN item_files f ON f.item_id = i.id
 LEFT JOIN item_local_state ls ON ls.item_id = i.id
 WHERE i.account_id = ?
-  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
 ORDER BY ls.pinned_at IS NULL, ls.pinned_at DESC, i.item_updated_at DESC, i.id DESC;
 
 -- name: GetCheckItem :one
@@ -216,7 +229,7 @@ ORDER BY i.id;
 -- its details (NULL otherwise). It returns sql.ErrNoRows when no item has id.
 SELECT
     i.id, i.account_id, i.kind, i.number, i.node_id, i.item_updated_at, i.reason_review_requested,
-    i.reason_authored, i.reason_assigned, r.owner AS repo_owner, r.name AS repo_name, a.login AS account_login,
+    i.reason_authored, i.reason_assigned, i.reason_pushed, r.owner AS repo_owner, r.name AS repo_name, a.login AS account_login,
     d.head_oid, d.base_ref, CAST(EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id) AS BOOLEAN) AS watched
 FROM items i
 JOIN repos r ON r.id = i.repo_id
@@ -234,7 +247,7 @@ WHERE i.id = ?;
 SELECT
     i.id, i.kind, i.number, i.node_id, i.title, i.url, i.author_login, i.author_type, i.author_association,
     i.is_cross_repository, i.is_draft, i.head_ref, i.item_created_at, i.item_updated_at,
-    i.reason_review_requested, i.reason_authored, i.reason_assigned,
+    i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
     r.owner AS repo_owner, r.name AS repo_name, r.default_branch, r.viewer_permission, r.viewer_merge_method,
     r.merge_commit_allowed, r.squash_merge_allowed, r.rebase_merge_allowed, r.auto_merge_allowed,
     r.delete_branch_on_merge, r.allow_update_branch, a.login AS account_login,
@@ -276,9 +289,17 @@ UPDATE items SET reason_assigned = 0, assign_left_at = ?, assigned_at = NULL WHE
 
 -- name: LeaveReview :exec
 -- LeaveReview takes the item with id out of the review-requested list after the user took
--- themselves off its requested reviewers, stamped with the item's updated_at on GitHub
--- after the edit (see UpsertItem).
-UPDATE items SET reason_review_requested = 0, review_left_at = ?, review_requested_at = NULL WHERE id = ?;
+-- themselves off its requested reviewers, or reviewed it, whether it asked or was pushed to
+-- since the user requested changes, stamped with the item's updated_at on GitHub after the
+-- edit (see UpsertItem).
+UPDATE items SET reason_review_requested = 0, reason_pushed = 0, review_left_at = ?, review_requested_at = NULL
+WHERE id = ?;
+
+-- name: NoteViewerReview :exec
+-- NoteViewerReview records the user's own verdict on the item with id, as a review they
+-- just left from the inbox: state (APPROVED or CHANGES_REQUESTED) at commit, so its card
+-- reads it before the next whole refresh does.
+UPDATE items SET viewer_review_state = ?, viewer_review_commit = ? WHERE id = ?;
 
 -- name: LeaveAnsweredReview :exec
 -- LeaveAnsweredReview takes the item with id out of the review-requested list after a read
@@ -303,7 +324,7 @@ WHERE id = ? AND reason_review_requested = 1;
 -- the prefs name, and takes the first of the rest, so it reads them all; they are listed and
 -- watched items, a few hundred at most.
 SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
-    CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 AS BOOLEAN) AS listed,
+    CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1 AS BOOLEAN) AS listed,
     CAST(CAST(sqlc.arg(watched) AS BOOLEAN) = 1
       AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed
 FROM items i
@@ -318,7 +339,7 @@ WHERE a.login = sqlc.arg(login)
   AND d.checks_state IN ('PENDING', 'EXPECTED')
   AND d.fetched_at < sqlc.arg(read_before)
   AND (
-    ((i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+    ((i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
       AND l.dismissed_at IS NULL
       AND (l.snoozed_until IS NULL OR l.snoozed_until <= sqlc.arg(now)))
     OR (CAST(sqlc.arg(watched) AS BOOLEAN) = 1
@@ -339,7 +360,7 @@ ORDER BY d.fetched_at, i.id;
 -- repository or org, which only the prefs name. bases comes last, so the parameters before
 -- it keep their numbers however long it is; it is never empty.
 SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
-    CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 AS BOOLEAN) AS listed,
+    CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1 AS BOOLEAN) AS listed,
     CAST(CAST(sqlc.arg(watched) AS BOOLEAN) = 1
       AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed
 FROM items i
@@ -356,7 +377,7 @@ WHERE a.login = sqlc.arg(login)
   AND i.state NOT IN ('CLOSED', 'MERGED')
   AND (d.fetched_at < sqlc.arg(read_before) OR d.mergeable = 'UNKNOWN')
   AND (
-    ((i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1)
+    ((i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
       AND l.dismissed_at IS NULL
       AND (l.snoozed_until IS NULL OR l.snoozed_until <= sqlc.arg(now)))
     OR (CAST(sqlc.arg(watched) AS BOOLEAN) = 1
@@ -373,7 +394,8 @@ ORDER BY d.fetched_at, i.id;
 SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
-    i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned,
+    i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
+    i.viewer_review_state, i.viewer_review_commit, i.review_left_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals,
@@ -413,6 +435,7 @@ ORDER BY i.item_updated_at DESC, i.id DESC;
 -- never empty. Their details, file checks, and checks go with them.
 DELETE FROM items
 WHERE reason_review_requested = 0 AND reason_authored = 0 AND reason_assigned = 0
+  AND reason_reviewed = 0 AND reason_pushed = 0
   AND fetched_at < sqlc.arg(cutoff)
   AND NOT EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = items.id)
   AND NOT EXISTS (SELECT 1 FROM item_local_state l WHERE l.item_id = items.id)

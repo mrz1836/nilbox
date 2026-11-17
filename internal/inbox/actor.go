@@ -537,7 +537,7 @@ func (s *Service) targetRow(ctx context.Context, id int64, kind item.Kind, liste
 	switch {
 	case item.Kind(row.Kind) != kind || row.NodeID == "":
 		return editRow{}, fmt.Errorf("%w (id %d)", notKind, id)
-	case listed && !row.ReasonReviewRequested && !row.ReasonAuthored && !row.ReasonAssigned && !row.Watched:
+	case listed && !inTheInbox(row):
 		return editRow{}, uierr.New(fmt.Sprintf("%s is no longer in your inbox.", refOfRow(row)),
 			fmt.Errorf("%w (id %d)", notKind, id))
 	default:
@@ -569,31 +569,34 @@ func (s *Service) shownItem(ctx context.Context, id int64) (queries.GetEditItemR
 	return row, nil
 }
 
+// inTheInbox reports a row in one of the lists, or one a routine's search watches.
+func inTheInbox(row editRow) bool {
+	return row.ReasonReviewRequested || row.ReasonAuthored || row.ReasonAssigned || row.ReasonPushed || row.Watched
+}
+
 // pullTargetOfRow converts a GetEditItem row of a pull request.
 func pullTargetOfRow(row editRow) PullTarget {
 	return PullTarget{
 		ID:     row.ID,
 		Ref:    refOfRow(row),
 		NodeID: row.NodeID, Login: row.AccountLogin, Head: store.Deref(row.HeadOID), UpdatedAt: row.ItemUpdatedAt.UTC(),
-		ReviewRequested: row.ReasonReviewRequested, Authored: row.ReasonAuthored, Assigned: row.ReasonAssigned,
+		ReviewRequested: row.ReasonReviewRequested || row.ReasonPushed, Authored: row.ReasonAuthored,
+		Assigned: row.ReasonAssigned,
 	}
 }
 
 // recordActed records what an action made happen on the item row is: a review takes it
-// out of the Review requested list, stamped as an edit is (see UpsertItem), and a merge or
+// out of the Review requested list, stamped as an edit is (see UpsertItem), whether it
+// asked or was pushed to since the user requested changes, and one that approves or
+// requests changes is the user's verdict at the head they saw (see recordReview); a merge or
 // a close takes it out of every list, as an item write numbered now, after GitHub's answer,
 // so a refresh that was fetching applies it again. A merge has the repository's other
 // open pull requests on its base read again (see noteMerged).
 func (s *Service) recordActed(ctx context.Context, row editRow, acted Acted) error {
 	target := pullTargetOfRow(row)
 
-	if acted.Reviewed && target.ReviewRequested {
-		stamp := later(acted.ReviewedAt.UTC(), target.UpdatedAt)
-
-		err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
-			return s.q.WithTx(tx).LeaveReview(ctx, queries.LeaveReviewParams{ReviewLeftAt: &stamp, ID: target.ID})
-		})
-		if err != nil {
+	if acted.Reviewed {
+		if err := s.recordReview(ctx, target, acted); err != nil {
 			return fmt.Errorf("record the review: %w", err)
 		}
 	}
@@ -623,6 +626,45 @@ func (s *Service) recordEnded(ctx context.Context, row editRow, acted Acted) err
 	}
 
 	return nil
+}
+
+// recordReview records a review acted left on target, in one transaction: out of Review
+// requested when it was in it, and, when it approves or requests changes, the user's
+// verdict at the head they saw (NoteViewerReview), so the card stops saying it was pushed
+// to since at once, before the next whole refresh reads the verdict.
+func (s *Service) recordReview(ctx context.Context, target PullTarget, acted Acted) error {
+	stamp := later(acted.ReviewedAt.UTC(), target.UpdatedAt)
+
+	return store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		q := s.q.WithTx(tx)
+
+		if target.ReviewRequested {
+			if err := q.LeaveReview(ctx, queries.LeaveReviewParams{ReviewLeftAt: &stamp, ID: target.ID}); err != nil {
+				return err
+			}
+		}
+
+		if state := verdictOf(acted.ReviewEvent); state != "" && target.Head != "" {
+			return q.NoteViewerReview(ctx, queries.NoteViewerReviewParams{
+				ViewerReviewState: state, ViewerReviewCommit: target.Head, ID: target.ID,
+			})
+		}
+
+		return nil
+	})
+}
+
+// verdictOf is the verdict a review's event leaves: APPROVED or CHANGES_REQUESTED, or ""
+// for a review that only comments.
+func verdictOf(event string) string {
+	switch event {
+	case github.ReviewApprove:
+		return github.ReviewStateApproved
+	case github.ReviewRequestChanges:
+		return github.ReviewStateChangesRequested
+	default:
+		return ""
+	}
 }
 
 // readFiles returns the file check a read serves: the files it listed, when the item's

@@ -24,7 +24,8 @@ export const notificationKinds: readonly KindDescription[] = [
     kind: 'review_requested',
     title: 'Review requested',
     label: 'Review requests',
-    description: 'A pull request asks for your review, including when it asks again.',
+    description:
+      'A pull request asks for your review, including when it asks again, or its author pushed since you requested changes.',
   },
   {
     kind: 'assigned',

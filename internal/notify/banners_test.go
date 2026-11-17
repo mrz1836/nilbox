@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	"github.com/mrz1836/nilbox/internal/snooze"
 )
@@ -193,6 +194,17 @@ func TestTheTestBannerNamesTheApp(t *testing.T) {
 	b := TestBanner()
 	assert.Equal(t, brand.Slug+"-test", b.ID)
 	assert.Contains(t, b.Body, brand.Name)
+}
+
+func TestArrivalDetail(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "Pushed since you requested changes",
+		ArrivalDetail(inbox.Arrival{Kind: inbox.ArrivalReviewRequested, Pushed: true}))
+	assert.Empty(t, ArrivalDetail(inbox.Arrival{Kind: inbox.ArrivalReviewRequested}), "an ordinary review request")
+	assert.Equal(t, "approved", ArrivalDetail(inbox.Arrival{
+		Kind: inbox.ArrivalWoke, Woke: snooze.Reasons{Review: snooze.ReviewApproved},
+	}))
 }
 
 func TestWakeDetail(t *testing.T) {

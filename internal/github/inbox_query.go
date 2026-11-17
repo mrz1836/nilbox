@@ -1,6 +1,6 @@
 package github
 
-// inboxQuery is the one GraphQL request behind an inbox refresh: the viewer, three aliased
+// inboxQuery is the one GraphQL request behind an inbox refresh: the viewer, four aliased
 // searches, and the query's own rate-limit cost. Each search returns the total match
 // count and up to 100 items with the fields the trust rule needs (the author's type and
 // authorAssociation, and isCrossRepository for pull requests). __typename tells pull
@@ -15,6 +15,14 @@ package github
 // viewer's name, profile URL, and avatar URL, they cost no extra points: GitHub prices
 // lists, and a repository is a single object. The avatar is asked for at 128 pixels,
 // enough for a sharp picture at menu size on a Retina display.
+//
+// The fourth search (reviewed) is no list of its own: it finds the open pull requests the
+// viewer reviewed and didn't open, each with its head commit and the reviewers' verdicts
+// (opinionsField), so the inbox can tell one pushed to since the viewer requested changes
+// (Inbox.Reviewed). It costs no point more: measured in November 2026, the query cost one
+// point with it as without. It doesn't ask GitHub for review:changes_requested, which
+// matches the pull request's overall review decision, someone else's request included,
+// rather than the viewer's own: the viewer's verdict decides.
 const inboxQuery = `query Inbox {
   viewer { login name url avatarUrl(size: 128) }
   reviewRequested: search(query: "is:pr is:open archived:false review-requested:@me", type: ISSUE, first: 100) {
@@ -28,6 +36,10 @@ const inboxQuery = `query Inbox {
   assigned: search(query: "is:open archived:false assignee:@me", type: ISSUE, first: 100) {
     issueCount
     nodes { ...ItemFields }
+  }
+  reviewed: search(query: "is:pr is:open archived:false reviewed-by:@me -author:@me sort:updated-desc", type: ISSUE, first: 100) {
+    issueCount
+    nodes { ...ItemFields ... on PullRequest { headRefOid ` + opinionsField + ` } }
   }
   rateLimit { cost remaining resetAt limit used }
 }

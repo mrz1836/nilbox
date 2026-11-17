@@ -291,7 +291,7 @@ func (w *writer) refreshOutcomes(inbox *github.Inbox, closed, archived []github.
 	wasClosed, wasArchived, listed := keysOf(closed), keysOf(archived), w.savedListed()
 	cut := cutShort{
 		reviewRequested: truncated(inbox.ReviewRequested), authored: truncated(inbox.Authored),
-		assigned: truncated(inbox.Assigned),
+		assigned: truncated(inbox.Assigned), reviewed: truncated(inbox.Reviewed),
 	}
 
 	var seen, unlisted []Outcome
@@ -341,7 +341,7 @@ func (w *writer) savedListed() map[int64]bool {
 	listed := make(map[int64]bool, len(w.saved))
 
 	for _, s := range w.saved {
-		if e := s.entry; e.reviewRequested || e.authored || e.assigned {
+		if s.entry.listed() {
 			listed[s.id] = true
 		}
 	}
@@ -355,13 +355,15 @@ type cutShort struct {
 	reviewRequested bool
 	authored        bool
 	assigned        bool
+	reviewed        bool
 }
 
 // mayHold reports whether an item a refresh did not return may still be in one of the
-// lists it was in, past the page GitHub returned.
+// lists it was in, past the page GitHub returned: one pushed to since the user requested
+// changes, past the fourth search's.
 func (c cutShort) mayHold(r listedRow) bool {
 	return (r.ReasonReviewRequested && c.reviewRequested) || (r.ReasonAuthored && c.authored) ||
-		(r.ReasonAssigned && c.assigned)
+		(r.ReasonAssigned && c.assigned) || (r.ReasonPushed && c.reviewed)
 }
 
 // truncated reports a list GitHub matched more items for than it returned.

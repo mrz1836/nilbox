@@ -125,7 +125,8 @@ func (s *Service) checkFiles(
 
 // fileTargets picks the pull requests a refresh checks, in inbox order, leaving out those of
 // a repository or org rules mutes: their details still come with the refresh, so a card in
-// the Muted tab is whole, but nothing more is asked of GitHub for them.
+// the Muted tab is whole, but nothing more is asked of GitHub for them. A pull request the
+// fourth search returned that is in no list is never checked: no details are read of it.
 func fileTargets(scope fileScope, got refreshed, stored []filesStored, rules reporules.Rules) []fileTarget {
 	last := make(map[string]filesStored, len(stored))
 	for _, st := range stored {
@@ -135,7 +136,7 @@ func fileTargets(scope fileScope, got refreshed, stored []filesStored, rules rep
 	var targets []fileTarget
 
 	for _, e := range mergeLists(got.inbox) {
-		if rules.IsMuted(repo.Name{Owner: e.item.RepoOwner, Repo: e.item.RepoName}) {
+		if !e.listed() || rules.IsMuted(repo.Name{Owner: e.item.RepoOwner, Repo: e.item.RepoName}) {
 			continue
 		}
 

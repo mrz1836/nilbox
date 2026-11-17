@@ -558,6 +558,12 @@ type Inbox struct {
 	Authored        SearchResult
 	Assigned        SearchResult
 
+	// Reviewed are the open pull requests the viewer reviewed and didn't open, the most
+	// recently updated first, each with its head commit and the viewer's own verdict. It is
+	// never a list by itself: the inbox lists one only when it was pushed to since the
+	// viewer requested changes.
+	Reviewed SearchResult
+
 	// RateLimit is the GraphQL budget after this query, including its cost.
 	RateLimit QueryRate
 
@@ -626,6 +632,20 @@ type Item struct {
 
 	// Repo describes the item's repository.
 	Repo Repository
+
+	// HeadOID is a pull request's head commit, and Verdict the viewer's own standing review
+	// of it, nil with none: the reviewed search reads both (as the review sheet's read
+	// does), and the other searches neither, so both are zero for an item they read.
+	HeadOID string
+	Verdict *Verdict
+}
+
+// PushedSinceChanges reports a pull request the viewer requested changes of at a commit
+// other than its head: one pushed to since, a rebase or an Update branch included.
+func (i Item) PushedSinceChanges() bool {
+	v := i.Verdict
+
+	return i.IsPR && v.ChangesRequested() && v.Commit != "" && i.HeadOID != "" && !strings.EqualFold(v.Commit, i.HeadOID)
 }
 
 // Ref names the item: its repository, number, and kind.
@@ -827,6 +847,7 @@ type graphQLData struct {
 	ReviewRequested graphQLSearch    `json:"reviewRequested"`
 	Authored        graphQLSearch    `json:"authored"`
 	Assigned        graphQLSearch    `json:"assigned"`
+	Reviewed        graphQLSearch    `json:"reviewed"`
 	RateLimit       graphQLRateLimit `json:"rateLimit"`
 }
 
@@ -842,6 +863,7 @@ func (d *graphQLData) inbox() *Inbox {
 		ReviewRequested: d.ReviewRequested.result(),
 		Authored:        d.Authored.result(),
 		Assigned:        d.Assigned.result(),
+		Reviewed:        d.Reviewed.result(),
 		RateLimit:       d.RateLimit.queryRate(),
 	}
 }
@@ -982,6 +1004,8 @@ type graphQLNode struct {
 	IsCrossRepository bool               `json:"isCrossRepository"`
 	Author            *graphQLActor      `json:"author"`
 	Repository        *graphQLRepository `json:"repository"`
+	HeadRefOID        string             `json:"headRefOid"`
+	Opinions          graphQLOpinions    `json:"opinions"`
 }
 
 // item converts a pull request or issue node; ok is false for anything else.
@@ -1013,6 +1037,8 @@ func (n *graphQLNode) item() (Item, bool) {
 		item.IsDraft = n.IsDraft
 		item.HeadRef = n.HeadRefName
 		item.IsCrossRepository = n.IsCrossRepository
+		item.HeadOID = n.HeadRefOID
+		item.Verdict = n.Opinions.verdict()
 	} else {
 		item.State = n.IssueState
 	}

@@ -111,6 +111,14 @@ export interface Details {
      * FetchedAt is when the details were read, as RFC 3339.
      */
     "fetchedAt": string;
+
+    /**
+     * PushedSinceReview reports a pull request whose author pushed since the user requested
+     * changes: the user's standing verdict requests changes at a commit other than its head,
+     * and the user hasn't reviewed it from the inbox since it last moved. Whichever list it
+     * is in, its card says so.
+     */
+    "pushedSinceReview": boolean;
 }
 
 /**
@@ -371,7 +379,7 @@ export interface RateGauge {
 /**
  * ReviewRequest says how a pull request asks the signed-in user to review it.
  */
-export type ReviewRequest = "none" | "you" | "team";
+export type ReviewRequest = "none" | "you" | "team" | "pushed";
 
 /**
  * The values of ReviewRequest, by the names of their Go constants.
@@ -395,6 +403,13 @@ export const ReviewRequest = {
      * take themselves off it.
      */
     ReviewRequestTeam: "team",
+
+    /**
+     * ReviewRequestPushed is a pull request in the list only because its author pushed to
+     * it since the user requested changes, without asking again: there is no request to
+     * take oneself off.
+     */
+    ReviewRequestPushed: "pushed",
 } as const;
 
 /**

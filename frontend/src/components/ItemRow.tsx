@@ -462,6 +462,11 @@ export const ItemRow = memo(function ItemRow({
               Conflicts
             </span>
           )}
+          {item.details?.pushedSinceReview === true && (
+            <span title="The author pushed since you requested changes" className={`${tagClass} text-accent`}>
+              Pushed since your review
+            </span>
+          )}
         </div>
         <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted">
           <span className="truncate">
