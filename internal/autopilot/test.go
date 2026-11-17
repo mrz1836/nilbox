@@ -12,7 +12,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/eval"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
-	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilot/watch"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -442,7 +441,7 @@ func (s *Service) markRecords(ctx context.Context, id int64, items []TestItem) e
 
 // markRecord says, of it, what keys, a routine's matches, hold of the occurrence it fires
 // for now, and whether Run on the matches now would run on it.
-func markRecord(it *TestItem, keys map[matchKey]queries.ListRoutineMatchKeysRow) {
+func markRecord(it *TestItem, keys map[matchKey]keyRow) {
 	if it.FireKey == "" {
 		return
 	}
@@ -451,7 +450,7 @@ func markRecord(it *TestItem, keys map[matchKey]queries.ListRoutineMatchKeysRow)
 	it.RunsNow = it.Match == eval.Yes && !it.LeftAlone && (!recorded || runsNow(row))
 
 	if recorded && !reopensRow(row) {
-		it.Record = recordWords(State(row.State), Reason(row.Reason))
+		it.Record = recordWords(row.State, row.Reason)
 	} else if _, ok := keys[matchKey{item: it.ID, fire: it.FireKey, dryRun: true}]; ok {
 		it.Record = "Dry run recorded what it would do."
 	}

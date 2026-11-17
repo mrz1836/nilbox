@@ -144,6 +144,11 @@ type Sim struct {
 	// Logs hears what the app logs.
 	Logs *testutil.Logs
 
+	// drift hears every difference between the ledger's keys an engine keeps in memory and
+	// the database, which every engine of the simulation, a copy's too, compares after each
+	// cycle, command, tick, and worker's result it applies; the simulation fails on any.
+	drift *drift
+
 	// The app, as built by Start; a crash and a restart build it again over the same
 	// database, world, runner, and settings.
 	Inbox    *inbox.Service
@@ -167,7 +172,7 @@ func New(t *testing.T) *Sim {
 	s := &Sim{
 		t: t, DB: testutil.DB(t), Clock: clk, World: NewWorld(clk), Runner: NewRunner(),
 		Settings: &Settings{cfg: cfg}, Lock: filepath.Join(t.TempDir(), "autopilot.lock"),
-		Logs: &testutil.Logs{}, Notices: &Notices{}, Events: &testutil.Events{},
+		Logs: &testutil.Logs{}, Notices: &Notices{}, Events: &testutil.Events{}, drift: &drift{},
 	}
 	s.Triage, s.GitHub = &Triage{sim: s}, newGitHub(s)
 
@@ -176,9 +181,50 @@ func New(t *testing.T) *Sim {
 	// while another goroutine waits on a mutex the waiting one holds.
 	s.DB.SetMaxOpenConns(1)
 
+	// Cleanups run last first: the app stops, then the keys' comparisons are read.
+	t.Cleanup(func() { s.drift.check(t) })
 	t.Cleanup(s.Stop)
 
 	return s
+}
+
+// drift gathers what the engines' comparisons of their keys in memory with the ledger
+// found (Sim.drift).
+type drift struct {
+	mu       sync.Mutex
+	compared int
+	found    []string
+}
+
+// add hears one comparison.
+func (d *drift) add(err error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.compared++
+
+	if err != nil {
+		d.found = append(d.found, err.Error())
+	}
+}
+
+// check fails t on any difference found.
+func (d *drift) check(t *testing.T) {
+	t.Helper()
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	require.Empty(t, d.found, "the engine's keys in memory drifted from the ledger")
+}
+
+// Compared returns how many times the engines compared their keys in memory with the
+// ledger, every one of which found them alike, or the simulation fails.
+func (s *Sim) Compared() int {
+	s.drift.mu.Lock()
+	defer s.drift.mu.Unlock()
+
+	return s.drift.compared
 }
 
 // Copy returns a second copy of the app on the same data folder: the same database,
@@ -187,7 +233,7 @@ func (s *Sim) Copy() *Sim {
 	other := &Sim{
 		t: s.t, DB: s.DB, Clock: s.Clock, World: s.World, Runner: NewRunner(),
 		Settings: s.Settings, Lock: s.Lock, Logs: s.Logs, Notices: &Notices{},
-		Events: &testutil.Events{},
+		Events: &testutil.Events{}, drift: s.drift,
 	}
 	other.Triage, other.GitHub = &Triage{sim: other}, newGitHub(other)
 
@@ -240,6 +286,7 @@ func (s *Sim) Begin() {
 		Items: items, Lock: autopilot.NewLock(s.Lock), Runner: s.Runner, Triage: s.Triage,
 		Dispatchers: map[catalog.Dispatcher]autopilot.Dispatcher{catalog.DispatchNotices: autopilot.NewNotices(s.Notices)},
 		Problems:    autopilot.NewProblemNotices(s.Notices), Finished: s.Notices, Checks: s.Notices, Events: s.Events,
+		CheckLedger: s.drift.add,
 	}
 	s.config(&svc, &eng)
 

@@ -261,6 +261,12 @@ type EngineConfig struct {
 
 	// Tick is the loop's tick; 0 is DefaultTick.
 	Tick time.Duration
+
+	// CheckLedger, when set, has the engine compare the ledger's keys it keeps in memory
+	// (ledgerindex.go) with the database after every cycle, command, tick, and worker's
+	// result it applies while it holds the lock, and hand it what differs, nil for nothing:
+	// how the simulator holds them to the ledger. Nil, as in the app, compares nothing.
+	CheckLedger func(drift error)
 }
 
 // Engine runs the routines (see the notes at the top of this file).
@@ -286,6 +292,7 @@ type Engine struct {
 	clock        clock.Clock
 	logger       *slog.Logger
 	tick         time.Duration
+	checkLedger  func(drift error)
 
 	// since is when the engine was built: its first cycle waits for a refresh that
 	// stored after it.
@@ -441,9 +448,10 @@ func NewEngine(svc *Service, cfg EngineConfig) *Engine {
 		stateReads: map[int64]time.Time{}, statesAsked: map[int64]bool{},
 		checksRead: map[int64]time.Time{}, gone: map[int64]sighting{}, unsaved: map[int64]RunEnd{},
 		heldBack: map[int64]heldBack{}, takenOver: map[int64]bool{},
-		ending: map[int64]int{},
+		ending: map[int64]int{}, checkLedger: cfg.CheckLedger,
 	}
 
+	e.ledger.index = newLedgerIndex()
 	e.register(cfg)
 
 	svc.engine = e
@@ -575,12 +583,30 @@ func (e *Engine) Run(ctx context.Context) {
 
 		if e.Enabled() && e.holding() && !time.Now().Before(e.holdOff) {
 			e.safeCycle(ctx)
+			e.compareLedger(ctx)
 		}
 
 		if !e.await(ctx, tick.C) {
 			return
 		}
+
+		e.compareLedger(ctx)
 	}
+}
+
+// compareLedger hands CheckLedger how the ledger's keys in memory differ from the
+// database, while this copy holds the engine; without CheckLedger it does nothing.
+func (e *Engine) compareLedger(ctx context.Context) {
+	if e.checkLedger == nil || !e.holding() || ctx.Err() != nil {
+		return
+	}
+
+	err := e.ledger.index.diff(ctx, e.ledger.q)
+	if ctx.Err() != nil {
+		return
+	}
+
+	e.checkLedger(err)
 }
 
 // register sets up the engine's dispatchers: cfg's own, the runner for the agent steps,
@@ -846,6 +872,10 @@ func (e *Engine) takeLock(ctx context.Context) {
 	if err != nil {
 		e.logger.WarnContext(ctx, "could not read Autopilot's engine state", "error", err)
 	}
+
+	// Another copy of the app may have written the ledger while it held the engine, so its
+	// keys in memory are built again before their next use.
+	e.ledger.index.invalidate()
 
 	e.state = st
 	e.primed = false

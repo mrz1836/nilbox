@@ -53,6 +53,28 @@ func (q *Queries) ClearRunSummaries(ctx context.Context, ids []int64) error {
 	return err
 }
 
+const countLedgerKeys = `-- name: CountLedgerKeys :one
+SELECT
+    CAST((SELECT COUNT(*) FROM autopilot_matches WHERE item_id IS NOT NULL) AS INTEGER) AS matches,
+    CAST((SELECT COUNT(*) FROM autopilot_baselines) AS INTEGER) AS baselines
+`
+
+type CountLedgerKeysRow struct {
+	Matches   int64
+	Baselines int64
+}
+
+// CountLedgerKeys counts the matches with an item and the baselines, which the engine's keys
+// in memory hold one each of: counts that differ say something besides the engine deleted
+// rows, as the inbox's prune of an old item takes its baselines with it and leaves its
+// matches without it.
+func (q *Queries) CountLedgerKeys(ctx context.Context) (CountLedgerKeysRow, error) {
+	row := q.db.QueryRowContext(ctx, countLedgerKeys)
+	var i CountLedgerKeysRow
+	err := row.Scan(&i.Matches, &i.Baselines)
+	return i, err
+}
+
 const deleteDeletedRoutinesHandsOff = `-- name: DeleteDeletedRoutinesHandsOff :exec
 DELETE FROM autopilot_hands_off
 WHERE routine_id IN (SELECT id FROM autopilot_routines WHERE deleted_at IS NOT NULL)
@@ -64,16 +86,20 @@ func (q *Queries) DeleteDeletedRoutinesHandsOff(ctx context.Context) error {
 	return err
 }
 
-const deleteDeletedRoutinesState = `-- name: DeleteDeletedRoutinesState :exec
+const deleteDeletedRoutinesState = `-- name: DeleteDeletedRoutinesState :execrows
 DELETE FROM autopilot_baselines
 WHERE routine_id IN (SELECT id FROM autopilot_routines WHERE deleted_at IS NOT NULL)
 `
 
-// DeleteDeletedRoutinesState forgets what deleted routines kept of their items: their
-// baselines, their tries, and the items they left alone.
-func (q *Queries) DeleteDeletedRoutinesState(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteDeletedRoutinesState)
-	return err
+// DeleteDeletedRoutinesState forgets what deleted routines first saw of their items, their
+// baselines, and says how many it forgot; DeleteDeletedRoutinesTries and
+// DeleteDeletedRoutinesHandsOff forget the rest of what they kept.
+func (q *Queries) DeleteDeletedRoutinesState(ctx context.Context) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteDeletedRoutinesState)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deleteDeletedRoutinesTries = `-- name: DeleteDeletedRoutinesTries :exec
@@ -419,7 +445,7 @@ func (q *Queries) GetRunScript(ctx context.Context, id int64) (GetRunScriptRow, 
 	return i, err
 }
 
-const insertBaseline = `-- name: InsertBaseline :exec
+const insertBaseline = `-- name: InsertBaseline :execrows
 INSERT INTO autopilot_baselines (routine_id, item_id, state, first_seen_at, updated_at)
 VALUES (?1, ?2, ?3, ?4, ?4)
 ON CONFLICT (routine_id, item_id) DO NOTHING
@@ -432,15 +458,19 @@ type InsertBaselineParams struct {
 	FirstSeenAt time.Time
 }
 
-// InsertBaseline records what a routine first saw of an item, unless it saw it before.
-func (q *Queries) InsertBaseline(ctx context.Context, arg InsertBaselineParams) error {
-	_, err := q.db.ExecContext(ctx, insertBaseline,
+// InsertBaseline records what a routine first saw of an item, unless it saw it before, and
+// says whether it did.
+func (q *Queries) InsertBaseline(ctx context.Context, arg InsertBaselineParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertBaseline,
 		arg.RoutineID,
 		arg.ItemID,
 		arg.State,
 		arg.FirstSeenAt,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const insertHandsOff = `-- name: InsertHandsOff :exec
@@ -728,6 +758,40 @@ func (q *Queries) ListActiveScriptRuns(ctx context.Context) ([]ListActiveScriptR
 	for rows.Next() {
 		var i ListActiveScriptRunsRow
 		if err := rows.Scan(&i.ID, &i.ScriptRunID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllBaselines = `-- name: ListAllBaselines :many
+SELECT routine_id, item_id, state FROM autopilot_baselines
+`
+
+type ListAllBaselinesRow struct {
+	RoutineID int64
+	ItemID    int64
+	State     string
+}
+
+// ListAllBaselines is ListBaselines for every routine, in one read, as ListMatchKeys is.
+func (q *Queries) ListAllBaselines(ctx context.Context) ([]ListAllBaselinesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllBaselines)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAllBaselinesRow{}
+	for rows.Next() {
+		var i ListAllBaselinesRow
+		if err := rows.Scan(&i.RoutineID, &i.ItemID, &i.State); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1087,6 +1151,60 @@ func (q *Queries) ListMatchHeads(ctx context.Context, ids []int64) ([]ListMatchH
 	for rows.Next() {
 		var i ListMatchHeadsRow
 		if err := rows.Scan(&i.ID, &i.DryRun, &i.ClosedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMatchKeys = `-- name: ListMatchKeys :many
+SELECT routine_id, id, item_id, fire_key, dry_run, state, reason, attempt, step, steps FROM autopilot_matches
+WHERE item_id IS NOT NULL
+`
+
+type ListMatchKeysRow struct {
+	RoutineID int64
+	ID        int64
+	ItemID    *int64
+	FireKey   string
+	DryRun    bool
+	State     string
+	Reason    string
+	Attempt   int64
+	Step      int64
+	Steps     string
+}
+
+// ListMatchKeys is ListRoutineMatchKeys for every routine, in one read: the ledger's keys the
+// engine keeps in memory between its cycles, built again from here when it takes the lock.
+func (q *Queries) ListMatchKeys(ctx context.Context) ([]ListMatchKeysRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMatchKeys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMatchKeysRow{}
+	for rows.Next() {
+		var i ListMatchKeysRow
+		if err := rows.Scan(
+			&i.RoutineID,
+			&i.ID,
+			&i.ItemID,
+			&i.FireKey,
+			&i.DryRun,
+			&i.State,
+			&i.Reason,
+			&i.Attempt,
+			&i.Step,
+			&i.Steps,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1731,56 +1849,6 @@ func (q *Queries) ListRoutineWeekRuns(ctx context.Context, arg ListRoutineWeekRu
 	return items, nil
 }
 
-const listRoutinesBaselines = `-- name: ListRoutinesBaselines :many
-SELECT routine_id, item_id, state, first_seen_at FROM autopilot_baselines WHERE routine_id IN (/*SLICE:ids*/?)
-`
-
-type ListRoutinesBaselinesRow struct {
-	RoutineID   int64
-	ItemID      int64
-	State       string
-	FirstSeenAt time.Time
-}
-
-// ListRoutinesBaselines is ListBaselines for each of the routines among ids, in one read.
-func (q *Queries) ListRoutinesBaselines(ctx context.Context, ids []int64) ([]ListRoutinesBaselinesRow, error) {
-	query := listRoutinesBaselines
-	var queryParams []interface{}
-	if len(ids) > 0 {
-		for _, v := range ids {
-			queryParams = append(queryParams, v)
-		}
-		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
-	} else {
-		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
-	}
-	rows, err := q.db.QueryContext(ctx, query, queryParams...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListRoutinesBaselinesRow{}
-	for rows.Next() {
-		var i ListRoutinesBaselinesRow
-		if err := rows.Scan(
-			&i.RoutineID,
-			&i.ItemID,
-			&i.State,
-			&i.FirstSeenAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listRoutinesHandsOff = `-- name: ListRoutinesHandsOff :many
 SELECT routine_id, item_id FROM autopilot_hands_off WHERE routine_id IN (/*SLICE:ids*/?)
 `
@@ -1811,70 +1879,6 @@ func (q *Queries) ListRoutinesHandsOff(ctx context.Context, ids []int64) ([]List
 	for rows.Next() {
 		var i ListRoutinesHandsOffRow
 		if err := rows.Scan(&i.RoutineID, &i.ItemID); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listRoutinesMatchKeys = `-- name: ListRoutinesMatchKeys :many
-SELECT routine_id, id, item_id, fire_key, dry_run, state, reason, attempt, step, steps FROM autopilot_matches
-WHERE routine_id IN (/*SLICE:ids*/?) AND item_id IS NOT NULL
-`
-
-type ListRoutinesMatchKeysRow struct {
-	RoutineID int64
-	ID        int64
-	ItemID    *int64
-	FireKey   string
-	DryRun    bool
-	State     string
-	Reason    string
-	Attempt   int64
-	Step      int64
-	Steps     string
-}
-
-// ListRoutinesMatchKeys is ListRoutineMatchKeys for each of the routines among ids, in one
-// read, as a cycle reads every routine it runs.
-func (q *Queries) ListRoutinesMatchKeys(ctx context.Context, ids []int64) ([]ListRoutinesMatchKeysRow, error) {
-	query := listRoutinesMatchKeys
-	var queryParams []interface{}
-	if len(ids) > 0 {
-		for _, v := range ids {
-			queryParams = append(queryParams, v)
-		}
-		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
-	} else {
-		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
-	}
-	rows, err := q.db.QueryContext(ctx, query, queryParams...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListRoutinesMatchKeysRow{}
-	for rows.Next() {
-		var i ListRoutinesMatchKeysRow
-		if err := rows.Scan(
-			&i.RoutineID,
-			&i.ID,
-			&i.ItemID,
-			&i.FireKey,
-			&i.DryRun,
-			&i.State,
-			&i.Reason,
-			&i.Attempt,
-			&i.Step,
-			&i.Steps,
-		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -2294,7 +2298,7 @@ func (q *Queries) SetRunVerdict(ctx context.Context, arg SetRunVerdictParams) (i
 	return result.RowsAffected()
 }
 
-const updateBaseline = `-- name: UpdateBaseline :exec
+const updateBaseline = `-- name: UpdateBaseline :execrows
 UPDATE autopilot_baselines SET state = ?1, updated_at = ?2
 WHERE routine_id = ?3 AND item_id = ?4
 `
@@ -2306,15 +2310,18 @@ type UpdateBaselineParams struct {
 	ItemID    int64
 }
 
-// UpdateBaseline records what a routine last counted of an item.
-func (q *Queries) UpdateBaseline(ctx context.Context, arg UpdateBaselineParams) error {
-	_, err := q.db.ExecContext(ctx, updateBaseline,
+// UpdateBaseline records what a routine last counted of an item, and says whether it did.
+func (q *Queries) UpdateBaseline(ctx context.Context, arg UpdateBaselineParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateBaseline,
 		arg.State,
 		arg.UpdatedAt,
 		arg.RoutineID,
 		arg.ItemID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateMatch = `-- name: UpdateMatch :execrows

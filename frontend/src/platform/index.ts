@@ -1325,10 +1325,16 @@ export const explainRoutine = autopilotService.Explain as (
 
 // A GitHub step's own OKs. Approve, for a GitHub action offered with warnings, accepts
 // exactly the warnings shown; ApproveBacklog is Run on them, for every match of a routine
-// waiting as a backlog over its first pass's cap. PreviewActions says what a draft's GitHub
-// actions would send to an item, built and not sent: the exact comment, or the labels.
+// waiting as a backlog over its first pass's cap, and SkipBacklog is Skip them, for the
+// matches the backlog's card showed, at once, leaving any recorded since. PreviewActions says
+// what a draft's GitHub actions would send to an item, built and not sent: the exact
+// comment, or the labels.
 export const approveAutopilotBacklog = autopilotService.ApproveBacklog as (
   routineID: number,
+) => CancellablePromise<AutopilotMatch[]>
+export const skipAutopilotBacklog = autopilotService.SkipBacklog as (
+  routineID: number,
+  ids: number[],
 ) => CancellablePromise<AutopilotMatch[]>
 export const previewAutopilotActions = autopilotService.PreviewActions as (
   d: AutopilotDraft,

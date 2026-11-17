@@ -20,8 +20,8 @@ numbers with the `magex measure:*` targets.
 | API budget with five routine searches | < 2% in all | 1.20–1.68% | Met: 4 to 7 points a refresh, by how many items the searches watch (see [Routine searches](#routine-searches)) |
 | The searches' cost to the inbox's store | No regression beyond the noise | 2.90 s → 2.98 s, 2.82 s → 2.65 s | Met: the searches go out once the inbox is stored, so nothing shares GitHub's time with the inbox query; sent beside it, a busy org's five had added 0.3 s to the median (see below) |
 | The watch pass, after the inbox's store | < 1 s of the app's own work, steady | 26 ms | Met: 26 ms of the app's own work for 300 watched items; GitHub's time for the searches and the changed items' details, 3.3–7.1 s after the store, is waited on by nothing |
-| Autopilot's evaluation, 20 routines over 500 items | < 20 ms | 22 ms | Near it, on a machine building four other branches at the time (12 ms when the routines core landed): every routine decided on every item, the regex and path patterns included (see [The engine's cycle](#the-engines-cycle)) |
-| Autopilot's steady cycle, 20 routines over 500 items | < 20 ms | 40 ms | Over: the evaluation is half of it, and reading what the ledger holds of each routine (3,500 matches, 10,000 baselines) the rest; 200 ms before this measurement found a scan of every match for every item, now an index |
+| Autopilot's evaluation, 20 routines over 500 items | < 20 ms | 14 ms | Met: 13.6–13.8 ms on a machine running other branches' builds and tests (22 ms under heavier load, 12 ms when the routines core landed): every routine decided on every item, the regex and path patterns included (see [The engine's cycle](#the-engines-cycle)) |
+| Autopilot's steady cycle, 20 routines over 500 items | < 20 ms | 18 ms | Met: 17.5–18.3 ms on that loaded machine, 40.1–41.8 ms before the engine kept the ledger's keys (3,500 matches, 10,000 baselines) in memory; nearly all of what is left is the evaluation |
 
 Measured on an Apple Silicon Mac (M1 Max, 32 GB memory) running macOS 15.8, over its regular
 network connection. The first numbers were taken on the build host, a second Mac (M4 Pro,
@@ -463,25 +463,43 @@ ready.
 
 **How.** `go test ./internal/autopilot -run '^$' -bench BenchmarkEngine -benchtime 30x`, over a
 real database (`testutil.DB`): `BenchmarkEngineCycle` times the steady cycle,
-`BenchmarkEngineFirstCycle` the first. The evaluation alone, with two routines whose regex and
-path patterns run on every item beside the gallery's, is `BenchmarkEvaluateACycle` in
-`internal/autopilot/eval`. Measured on the M1 Max (2026-11-16) while four other branches built
-and tested on it, so the numbers are high rather than low.
+`BenchmarkEngineFirstCycle` the first. `BenchmarkLedgerKeys` times building the ledger's keys in
+memory from the database (`BenchmarkLedgerKeysBuild`) and the one read a steady cycle makes of
+them (`BenchmarkLedgerKeysCheck`). The evaluation alone, with two routines whose regex and path
+patterns run on every item beside the gallery's, is `BenchmarkEvaluateACycle` in
+`internal/autopilot/eval`. Measured on the M1 Max (2026-11-17) while other branches built and
+tested on it (a load average of about 30), the steady cycle before and after the change run one
+after the other, so the numbers are high rather than low.
 
-**Results.** The evaluation takes 22 ms (22.1 to 22.8 ms over three runs; 12 ms when the
-routines core landed, on a quiet machine). A steady cycle takes 40 ms (39.3 to 39.9 ms): the
-evaluation, then the reads of the ledger, which a profile shows spending their time in SQLite's
-page reads of every match each routine has recorded. Measuring it found the cycle at 200 ms: the
-history the evaluator reads (each routine's last outcome on the item) scanned every match of the
-routine for every item it decided, 1.75 million rows a cycle; it is now one index built as the
-cycle reads the routine. The cycle also reads every routine's matches, baselines, resets, and
-items left alone in four reads rather than four a routine, and keeps its own state only when it
-changed. The first cycle takes 1.1 to 1.5 s, writing its 13,500 rows one at a time; it runs once,
+**Results.** The evaluation takes 14 ms (13.6 to 13.8 ms over three runs; 22 ms under the
+heavier load of the first measurement, 12 ms when the routines core landed, on a quiet
+machine). A steady cycle takes 18 ms (17.5 to 18.3 ms over three runs), under the 20 ms target;
+it took 40 ms (40.1 to 41.8 ms on the same machine just before) while it read every match and
+baseline each routine had recorded, which a profile showed spending their time in SQLite's page
+reads. Now a profile finds the evaluation is nearly all of a steady cycle. The first cycle
+takes 1.2 s (1.16 to 1.18 s, unchanged), writing its 13,500 rows one at a time; it runs once,
 after the routines are switched on.
 
-**What next.** The steady cycle reads every match each routine ever recorded, which grows with
-the history Autopilot keeps (90 days): keeping the ledger's keys in memory between cycles,
-which the engine as the ledger's only writer can, would take the reads out of the cycle.
+**The ledger's keys in memory.** The engine is the ledger's only writer, so it keeps what a
+cycle needs of it between cycles (`internal/autopilot/ledgerindex.go`): each routine's matches
+by occurrence (their state, why they closed, and whether they started a step) and what it
+first saw of each item. Every write of the engine's notes what it wrote where it writes it (the
+ledger's `insert`, `update`, and `saveBaseline`, a transaction's notes applied only once it
+commits, and the prune's deletions), and a guard test holds those writes to those functions.
+The keys are built from the database when the engine takes the lock, as another copy of the
+app may have written the ledger while it held it, in 18 ms (17.7 to 18.3 ms) over the first
+cycle's 13,500 rows. A steady cycle reads one count of the rows instead (0.08 ms): what deletes
+them besides the engine (the inbox's prune of an old item, which takes its baselines with it
+and leaves its matches without it) only deletes, so counts that differ from the keys' have them
+built again before the cycle uses them. The items each routine leaves alone, which another copy
+records too, and its resets of the tries, a few rows each, are still read every cycle. The
+simulator compares the keys with the database after every cycle, command, tick, and worker's
+result of every scenario, and fails on any difference.
+
+**What next.** The evaluation is now the cycle: every decision phrases each condition it checks
+for its trace (`spec.Phrase`, about a fifth of the evaluation in a profile), though a steady
+cycle keeps no trace and words only the match it closes, so phrasing a trace only when it is
+kept or shown would take most of that out.
 
 <br>
 

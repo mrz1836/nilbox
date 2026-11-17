@@ -852,8 +852,12 @@ changing the package, and keep the section and its summary in step.
   (`autopilot_matches`, one row per routine, item, fire key, and Dry run, open or closed,
   every change a compare-and-set; `autopilot_runs`, with the one-active-run index;
   `autopilot_tries`, `autopilot_baselines`, `autopilot_hands_off`, `autopilot_effects`; its
-  state in `autopilot.engine`), woken by the inbox, the settings, the outcomes, a 1-minute
-  tick, and the window's commands, doing everything slow on workers; it runs only while
+  state in `autopilot.engine`), keeping the ledger's keys in memory between cycles
+  (`ledgerindex.go`: each routine's matches by occurrence and its baselines, noted where it
+  writes them, a transaction's once it commits, and built again when it takes the lock or a
+  count of the rows differs, as the inbox's prune of an item deletes some; the simulator holds
+  them to the database after every cycle), woken by the inbox, the settings, the outcomes, a
+  1-minute tick, and the window's commands, doing everything slow on workers; it runs only while
   Autopilot (beta) is on (`Engine.Enabled`, which the loop follows on every wake: off, it takes
   no lock, runs no cycle, refuses every command with `ErrOff`, and the snapshot of the
   searches is empty, as `Test` is refused; turned on, it starts as a start does; turned off,
@@ -940,9 +944,11 @@ changing the package, and keep the section and its summary in step.
   the prompt library which routines name each prompt and follows a renamed one. The user's
   own reversal of what a routine did (told through the outcomes, `Outcome.Reversed`), and an Undo, leave the routine
   hands off the item until Let it act again. The bound Service's ledger actions (`Approve`,
-  `Skip`, `RunNow`, with Run anyway for an item it doesn't match, which the window offers
-  from its refusal's code, `RefusalNoMatch`, as `update.RefusalError`'s, `TryAgain`,
-  `LetActAgain`, `Undo`, `ClearHistory`) are commands it
+  `Skip`, `ApproveBacklog` and `SkipBacklog` (a backlog card's Run on them and Skip them, the
+  skip one transaction over the matches the card showed), `RunNow`, with Run anyway for an
+  item it doesn't match, which the window offers from its refusal's code, `RefusalNoMatch`,
+  as `update.RefusalError`'s, `TryAgain`, `LetActAgain`, `Undo`, `ClearHistory`) are commands
+  it
   applies; `StopRun` and `StopAll` go straight to the runner; `NeedsYou` (the open matches not
   started, each with what it waits on and a hold's `Hold`, for Activity's Needs you),
   `Activity` (with each day's

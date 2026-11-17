@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -371,4 +372,73 @@ func (e *Engine) approveBacklog(ctx context.Context, id int64) ([]int64, error) 
 	}
 
 	return ids, nil
+}
+
+// SkipBacklog closes as skipped by the user the matches among ids, those the routine id's
+// backlog card showed (Skip them), that still wait as its backlog, and returns them as they
+// are now. It is one command and one transaction, each match's close a compare-and-set on
+// what the card showed: a match the card didn't show, recorded since, still waits, and one
+// let go or closed meanwhile is left as it is. Nothing is skipped when one of them can't
+// be.
+func (s *Service) SkipBacklog(ctx context.Context, id int64, ids []int64) ([]Match, error) {
+	e, err := s.engineOrErr()
+	if err != nil {
+		return []Match{}, err
+	}
+
+	var skipped []int64
+
+	err = e.do(ctx, func(ctx context.Context) error {
+		var skipErr error
+
+		skipped, skipErr = e.skipBacklog(ctx, id, ids)
+
+		return skipErr
+	})
+	if err != nil {
+		return []Match{}, err
+	}
+
+	return s.matchesByID(ctx, skipped)
+}
+
+// skipBacklog closes, in one transaction, each of the matches among ids that still waits
+// as the routine id's backlog as skipped by the user, and returns them; when one can't be,
+// none is.
+func (e *Engine) skipBacklog(ctx context.Context, id int64, ids []int64) ([]int64, error) {
+	now := e.clock.Now()
+
+	var skipped []int64
+
+	err := e.ledger.inTx(ctx, func(q *queries.Queries) error {
+		skipped = []int64{}
+
+		for _, matchID := range union(ids, nil) {
+			m, err := e.ledger.getIn(ctx, q, matchID)
+
+			switch {
+			case errors.Is(err, ErrNoMatch):
+				continue
+			case err != nil:
+				return err
+			case m.RoutineID != id || m.state() != StateWaiting || Blocker(m.BlockedBy) != BlockBacklog:
+				continue
+			}
+
+			m.close(StateDismissed, ReasonYouSkipped, "You skipped it.", now)
+
+			if err = e.saveIn(ctx, q, m); err != nil {
+				return err
+			}
+
+			skipped = append(skipped, m.ID)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, uierr.New("The backlog couldn't be skipped.", err)
+	}
+
+	return skipped, nil
 }

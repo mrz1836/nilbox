@@ -194,6 +194,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     undoAutopilot: (ids) => Promise.resolve({ putBack: ids ?? [], left: [], skipped: [], words: 'Put back 1 item.' }),
     tryRoutineAgain: () => Promise.resolve([]),
     approveAutopilotBacklog: () => Promise.resolve([]),
+    skipAutopilotBacklog: (_routineId, ids) =>
+      Promise.resolve(ids.map((id) => autopilotMatch({ id, state: 'dismissed', reason: 'you_skipped' }))),
     previewAutopilotActions: () => Promise.resolve([]),
     letRoutineActAgain: done,
     clearAutopilotHistory: () => Promise.resolve({ removed: 4, kept: 1 }),
