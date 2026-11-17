@@ -1838,6 +1838,23 @@ item and read again on every refresh, since checks finish without the item itsel
 A card whose details no refresh has read yet, right after updating the app for instance, says
 so.
 
+**Watching a refresh.** Every whole refresh shows the same way, whoever started it: the app's
+start, the timer, **Refresh**, or the menu bar. The **Refresh** button turns its arrows and
+reads **Refreshing…** (it can't be clicked again until the refresh ends), and in place of
+**Last refreshed** the toolbar says what the refresh is doing: **Asking GitHub…**, then
+**Reading 3 of 8 new items…** while it reads the details of the items new since the last
+refresh, then **Checking files: 2 of 5…** while it checks the changed files of the pull
+requests whose files are checked, the last two with a thin bar of how far along they are. A
+hairline glides along the top of the lists meanwhile, and the **Inbox** tab turns a small
+spinner beside its count, so a refresh shows from any page. The lists stay as they were until
+the refresh lands. The inbox's very first refresh, when nothing is stored yet, shows **Filling
+your inbox from GitHub…** with what it brings (review requests, your pull requests,
+assignments, checks and reviews) above the two lists' outlines, which the real lists replace
+once it lands; a first refresh that fails shows its error and **Not refreshed yet** instead.
+An empty inbox throws its [party](#inbox-nil) only once the refresh the window opened on has
+ended, so a stored empty inbox doesn't celebrate while the app's start still reads GitHub. The
+menu bar shows no refresh under way.
+
 **Refreshing one card.** Hover a card and click the circular arrow, left of the snooze clock, to
 read that item alone from GitHub, for one point, rather than refreshing the whole inbox. A pull
 request you just merged, or an issue you just closed, leaves the inbox at once, and a toast

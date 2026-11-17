@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 import type { ItemKind } from '../../platform'
+import { GitHubReading } from '../GitHubReading'
 import { IssueIcon, PullRequestIcon } from '../icons'
 
 // sweep staggers a placeholder's highlight by its place, so the sweep travels down them.
@@ -29,9 +30,6 @@ const readings: Readonly<Record<ItemKind, Reading>> = {
   },
 }
 
-// countAfter is how many seconds a read runs before the banner counts them.
-const countAfter = 3
-
 export interface ReadingBannerProps {
   // target names the item, as in "acme-org/api#212", or is '' when nothing names it yet.
   target: string
@@ -40,56 +38,16 @@ export interface ReadingBannerProps {
 }
 
 // ReadingBanner says the sheet is reading an item from GitHub for the first time, and what
-// that read brings: an accent ring pulses out from the item's icon, each part to come
-// carries a pulsing mark, and once the read has run a few seconds it counts them, so a
-// slow GitHub reads as slow rather than stuck. It is a named region, not a live one: the
-// header already announces that GitHub is being checked.
+// that read brings (see GitHubReading).
 export function ReadingBanner({ target, kind = 'pr' }: ReadingBannerProps) {
-  const [seconds, setSeconds] = useState(0)
   const { icon, noun, coming } = readings[kind]
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setSeconds((s) => s + 1)
-    }, 1000)
-
-    return () => {
-      clearInterval(timer)
-    }
-  }, [])
-
   return (
-    <section
-      aria-label="Reading from GitHub"
-      className="flex items-start gap-3 rounded-md border border-border bg-raised/50 p-3"
-    >
-      <span aria-hidden="true" className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center">
-        <span className="absolute inset-0 rounded-full bg-accent/25 motion-safe:animate-ping" />
-        <span className="relative flex size-8 items-center justify-center rounded-full bg-accent/15">{icon}</span>
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-medium">
-          <span>Reading {target === '' ? noun : <span className="font-mono">{target}</span>} from GitHub…</span>
-          {seconds >= countAfter && (
-            <span aria-hidden="true" className="text-xs font-normal text-muted tabular-nums">
-              {seconds}s
-            </span>
-          )}
-        </p>
-        <ul aria-label="Coming from GitHub" className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-          {coming.map((part, i) => (
-            <li key={part} className="flex items-center gap-1.5">
-              <span
-                aria-hidden="true"
-                className="size-1.5 rounded-full bg-accent motion-safe:animate-pulse"
-                style={{ animationDelay: `${String(i * 250)}ms` }}
-              />
-              {part}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </section>
+    <GitHubReading
+      icon={icon}
+      heading={<>Reading {target === '' ? noun : <span className="font-mono">{target}</span>} from GitHub…</>}
+      coming={coming}
+    />
   )
 }
 

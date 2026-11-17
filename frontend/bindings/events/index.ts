@@ -39,6 +39,11 @@ export const GhthreadsUpdated = "ghthreads:updated";
 export const HooksUpdated = "hooks:updated";
 
 /**
+ * Name of the custom event "inbox:progress".
+ */
+export const InboxProgress = "inbox:progress";
+
+/**
  * Name of the custom event "inbox:reveal".
  */
 export const InboxReveal = "inbox:reveal";

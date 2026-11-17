@@ -429,9 +429,10 @@ links to its full write-up in the [Desktop Guide](docs/desktop.md).
 - **Click a title** to review a pull request, or read an issue, in the app; **⌘-click** it, or
   click the **↗** beside it, to open it on GitHub.
 - **Always current:** a refresh on start and every five minutes, **Refresh** whenever you like,
-  and a card's own circular arrow to read that one item for one API point. Pull requests whose
-  checks are running are read again every 45 seconds, all in one request, until their checks end.
-  **Settings → Refreshing** sets both intervals.
+  and a card's own circular arrow to read that one item for one API point. Every refresh shows
+  as it runs, whoever started it, with what it is doing (**Reading 3 of 8 new items…**). Pull
+  requests whose checks are running are read again every 45 seconds, all in one request, until
+  their checks end. **Settings → Refreshing** sets both intervals.
 - **Counts you can trust:** each item is in one list, so the lists' counts add up to the Inbox
   tab's, and a list you collapse stays collapsed across launches.
 

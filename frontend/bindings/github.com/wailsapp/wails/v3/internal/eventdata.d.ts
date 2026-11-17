@@ -18,6 +18,7 @@ declare module "@wailsio/runtime" {
             "budget:updated": event$0.BudgetUpdated;
             "ghthreads:updated": event$0.GHThreadsUpdated;
             "hooks:updated": event$0.HooksUpdated;
+            "inbox:progress": event$0.InboxProgress;
             "inbox:reveal": event$0.RevealItem;
             "inbox:updated": event$0.InboxUpdated;
             "issue:progress": event$0.IssueProgress;

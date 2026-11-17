@@ -2309,6 +2309,7 @@ export function snapshot(overrides: Partial<InboxSnapshot> = {}): InboxSnapshot 
     lastError: '',
     scopeWarning: '',
     projectAccess: 'on',
+    refreshing: false,
     ...overrides,
   }
 }

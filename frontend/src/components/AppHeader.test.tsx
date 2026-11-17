@@ -329,6 +329,20 @@ describe('AppHeader', () => {
     expect(prompts).not.toHaveAttribute('title')
   })
 
+  it('turns a small spinner beside the inbox count while a refresh runs, from any page', () => {
+    renderHeader({ view: 'worktrees', inboxCount: 3, inboxRefreshing: true })
+
+    const inbox = screen.getByRole('button', { name: 'Inbox' })
+    expect(within(inbox).getByTestId('inbox-refreshing')).toHaveAttribute('title', 'Refreshing from GitHub…')
+    expect(inbox).toHaveTextContent('Inbox3')
+  })
+
+  it('shows no spinner on the Inbox tab while no refresh runs', () => {
+    renderHeader({ inboxCount: 3 })
+
+    expect(screen.queryByTestId('inbox-refreshing')).not.toBeInTheDocument()
+  })
+
   it('marks the worktree count when some are done on GitHub but still on disk', () => {
     renderHeader({ inboxCount: 1, worktreeCount: 4, worktreeAttention: 2 })
 

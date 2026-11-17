@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -95,7 +96,9 @@ type fileTarget struct {
 // whose head commit moved since their last check (or whose last check failed), up to
 // maxFileChecks of them, a few at a time. It returns each one's outcome by node ID. A
 // check that fails is an outcome, not an error: the refresh stores it and goes on.
-func (s *Service) checkFiles(ctx context.Context, tok github.Token, got refreshed) (map[string]fileCheck, error) {
+func (s *Service) checkFiles(
+	ctx context.Context, tok github.Token, got refreshed, tracker *refreshProgress,
+) (map[string]fileCheck, error) {
 	status, err := readStatus(ctx, s.prefs)
 	if err != nil {
 		return nil, err
@@ -115,7 +118,9 @@ func (s *Service) checkFiles(ctx context.Context, tok github.Token, got refreshe
 		return map[string]fileCheck{}, nil
 	}
 
-	return s.runFileChecks(ctx, tok, targets)
+	tracker.Start(event.InboxCheckingFiles, len(targets))
+
+	return s.runFileChecks(ctx, tok, targets, tracker)
 }
 
 // fileTargets picks the pull requests a refresh checks, in inbox order, leaving out those of
@@ -168,7 +173,9 @@ func (f fileScope) due(it github.Item, head string, last map[string]filesStored)
 
 // runFileChecks checks targets a few at a time, within fileCheckTimeout. It fails only
 // when ctx itself ends.
-func (s *Service) runFileChecks(ctx context.Context, tok github.Token, targets []fileTarget) (map[string]fileCheck, error) {
+func (s *Service) runFileChecks(
+	ctx context.Context, tok github.Token, targets []fileTarget, tracker *refreshProgress,
+) (map[string]fileCheck, error) {
 	checkCtx, cancel := context.WithTimeout(ctx, fileCheckTimeout)
 	defer cancel()
 
@@ -182,6 +189,8 @@ func (s *Service) runFileChecks(ctx context.Context, tok github.Token, targets [
 		g.Go(func() error {
 			files, err := s.client.FetchChangedFiles(checkCtx, tok, t.ref, t.head)
 			outcomes[i] = fileCheck{files: files, err: err}
+
+			tracker.Add(1)
 
 			return nil
 		})
@@ -586,5 +595,5 @@ func (s *Service) checkUpdatedFiles(
 		return map[string]fileCheck{}, nil
 	}
 
-	return s.runFileChecks(ctx, tok, []fileTarget{t})
+	return s.runFileChecks(ctx, tok, []fileTarget{t}, nil)
 }

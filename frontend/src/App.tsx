@@ -1193,6 +1193,7 @@ export function App() {
           serviceStatus={serviceStatus}
           onServiceStatusSettings={openServiceStatusSettings}
           inboxCount={triaged?.count ?? 0}
+          inboxRefreshing={inbox.refreshing}
           worktreeCount={sweeps.count}
           worktreeAttention={sweeps.attention}
           scripts={scriptsShown ? scriptsBadge(scriptRuns.runs, integrations.tools) : null}

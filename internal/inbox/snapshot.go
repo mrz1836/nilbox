@@ -53,6 +53,12 @@ type Snapshot struct {
 	// ProjectAccess says whether the last refresh could read the projects each issue is
 	// in, which needs the token's optional read:project scope.
 	ProjectAccess ProjectAccess `json:"projectAccess"`
+
+	// Refreshing reports that a whole refresh is under way as the snapshot is read,
+	// whoever started it: the window shows it until a snapshot says it ended. It is the
+	// Service's own state, never kept with a snapshot; the InboxUpdated that ends a refresh
+	// always brings one with it false.
+	Refreshing bool `json:"refreshing"`
 }
 
 // Account is the signed-in GitHub account.
@@ -343,18 +349,26 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 
 		if keyOf(stored) == seen.settings {
-			return *seen.snap, nil
+			return s.withRefreshing(*seen.snap), nil
 		}
 	}
 
 	snap, settings, err := s.buildSnapshot(ctx)
 	if err != nil {
-		return snap, err
+		return s.withRefreshing(snap), err
 	}
 
 	s.snapshots.keep(seen, snap, settings)
 
-	return snap, nil
+	return s.withRefreshing(snap), nil
+}
+
+// withRefreshing returns snap, a copy, saying whether a whole refresh runs now. The
+// snapshot kept is never changed, so a refresh's start or end needs no new one.
+func (s *Service) withRefreshing(snap Snapshot) Snapshot {
+	snap.Refreshing = s.refreshing.Load()
+
+	return snap
 }
 
 // buildSnapshot reads the stored inbox, and returns it with the settings it was built

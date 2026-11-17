@@ -816,6 +816,15 @@ lists' window keys over to Yours once, and an older backup's inbox order is read
 (`adoptFormerOrder`). Autopilot's sources and conditions keep the three reasons
 (`catalog.ListSource`), worded as reasons rather than lists.
 
+**A refresh the window can watch.** `runRefresh` sets `Service.refreshing`, which every
+snapshot read reports (`Snapshot.Refreshing`, set on the copy returned, never on the one kept),
+and tells its phases as `event.InboxProgress` through a `progress.Tracker` (the search; the
+details of the items new since the last refresh, counted per answered batch through
+`github.DetailOptions.Progress`; the file checks, counted per pull request), whoever started
+it. It tells no `InboxUpdated` as it starts, so the engine's wake on that stays as it was, and
+it ends the tracker and clears the flag before the `changed()` that ends it, on success and
+failure, so the update's snapshot says it ended and no progress follows it.
+
 **The searches, after the refresh's store.** `Config.Watches` (`WatchSource`) gives the
 searches of the enabled routines of the account signed in, each key once (none while Autopilot
 (beta) is off, when no copy holds the watches either: `WatchHolder`), from the snapshot

@@ -24,6 +24,9 @@ const (
 	// NameRevealItem is RevealItem's name.
 	NameRevealItem = "inbox:reveal"
 
+	// NameInboxProgress is InboxProgress's name.
+	NameInboxProgress = "inbox:progress"
+
 	// NameWorktreesUpdated is WorktreesUpdated's name.
 	NameWorktreesUpdated = "worktrees:updated"
 
@@ -175,6 +178,7 @@ func Or(s Sink) Sink {
 func WindowEvents() []WindowEvent {
 	return []WindowEvent{
 		InboxUpdated{},
+		InboxProgress{},
 		RevealItem{},
 		WorktreesUpdated{},
 		NotificationsUpdated{},
@@ -207,6 +211,40 @@ type InboxUpdated struct{}
 func (InboxUpdated) Name() string { return NameInboxUpdated }
 
 func (InboxUpdated) window() {}
+
+// InboxPhase is how far a refresh of the inbox has got.
+type InboxPhase string
+
+// The phases of a refresh of the inbox, in order.
+const (
+	// InboxSearching is GitHub being asked for the inbox's searches, and for the details
+	// of the items already listed beside them. It counts nothing.
+	InboxSearching InboxPhase = "search"
+
+	// InboxReadingDetails is the details of the items new since the last refresh being
+	// read, counted.
+	InboxReadingDetails InboxPhase = "details"
+
+	// InboxCheckingFiles is the changed files of the pull requests whose files are checked
+	// being read, counted.
+	InboxCheckingFiles InboxPhase = "files"
+)
+
+// InboxProgress says how far a whole refresh of the inbox has got, while it runs: its
+// phase, and how many of the phase's items are done. It comes a few times a second at most,
+// whoever started the refresh; the InboxUpdated that ends it follows, with the snapshot no
+// longer refreshing. It is never told as an InboxUpdated, so what wakes on that, as
+// Autopilot's engine does, doesn't wake when a refresh starts.
+type InboxProgress struct {
+	Phase InboxPhase `json:"phase"`
+	Done  int        `json:"done"`
+	Total int        `json:"total"`
+}
+
+// Name returns NameInboxProgress.
+func (InboxProgress) Name() string { return NameInboxProgress }
+
+func (InboxProgress) window() {}
 
 // RevealItem asks for the window to come forward with an item in view, for a click on
 // the item in the menu bar or on its notification, or with the run a notification is about

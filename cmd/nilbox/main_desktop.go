@@ -447,6 +447,7 @@ func registerEvents() {
 	application.RegisterEvent[event.ScriptRunProgress](event.NameScriptRunProgress)
 	application.RegisterEvent[event.QuitRequested](event.NameQuitRequested)
 	application.RegisterEvent[event.ReleasesUpdated](event.NameReleasesUpdated)
+	application.RegisterEvent[event.InboxProgress](event.NameInboxProgress)
 	application.RegisterEvent[event.ReleasesProgress](event.NameReleasesProgress)
 	application.RegisterEvent[event.HooksUpdated](event.NameHooksUpdated)
 	application.RegisterEvent[event.WorktreesProgress](event.NameWorktreesProgress)

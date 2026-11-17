@@ -282,7 +282,8 @@ changing the package, and keep the section and its summary in step.
   `internal/progress`, and `internal/textutil` hold the clock (and `clock.Sleep`, the shared
   wait that ends with its context), the interval runner, one call per key at a time, `~`
   paths, a long read's progress told to the window a few times a second (the Release page's
-  list and the window's worktrees listing, `event.WorktreesProgress`), and text helpers,
+  list, the window's worktrees listing, `event.WorktreesProgress`, and every whole refresh of
+  the inbox, `event.InboxProgress`, beside `inbox.Snapshot.Refreshing`), and text helpers,
   among them the app's one POSIX shell quoting: `textutil.ShellQuote`, which always quotes,
   for every word of a script the app writes, of the ssh command it hands git, and for the
   program of Repo scripts' chain line unless it is a path from `/`, and

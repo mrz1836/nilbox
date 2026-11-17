@@ -42,6 +42,7 @@ func TestWindowEventsGoOnToThePage(t *testing.T) {
 
 	assert.Equal(t, []event.WindowEvent{
 		event.InboxUpdated{},
+		event.InboxProgress{},
 		event.WorktreesUpdated{},
 		event.NotificationsUpdated{},
 		event.BudgetUpdated{},

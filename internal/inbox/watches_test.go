@@ -17,7 +17,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
-	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // The routine searches the watch tests send.
@@ -1664,7 +1663,7 @@ func (failingKeep) KeptItems(context.Context) ([]int64, error) {
 }
 
 // inboxUpdates counts the inbox changes events heard.
-func inboxUpdates(events *testutil.Events) int {
+func inboxUpdates(events *inboxEvents) int {
 	n := 0
 
 	for _, e := range events.All() {

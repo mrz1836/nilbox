@@ -184,10 +184,19 @@ func (c *fakeClient) FetchDetails(
 
 	c.gotTokens = append(c.gotTokens, tok.Reveal())
 	c.detailsIDs = append(c.detailsIDs, ids)
-	c.detailsOpts = append(c.detailsOpts, opts)
+
+	// What it was asked is recorded without the count it tells, which it tells as the real
+	// client does, once its one request is answered.
+	recorded := opts
+	recorded.Progress = nil
+	c.detailsOpts = append(c.detailsOpts, recorded)
 
 	if c.detailsErr != nil {
 		return nil, github.Redact(c.detailsErr, tok)
+	}
+
+	if opts.Progress != nil {
+		defer opts.Progress(len(ids))
 	}
 
 	if c.watchDetailsErr != nil && opts.Repository {
@@ -427,8 +436,31 @@ type harness struct {
 	tokens *fakeTokens
 	client *fakeClient
 	clock  *testutil.Clock
-	events *testutil.Events
+	events *inboxEvents
 	logs   *testutil.Logs
+}
+
+// inboxEvents records what the inbox tells: its updates and its other events in order, as
+// testutil.Events does, and the refreshes' progress apart, in progress, so a test that
+// counts what changed counts the changes alone; every event is in all too, in order.
+type inboxEvents struct {
+	testutil.Events
+
+	progress testutil.Events
+	all      testutil.Events
+}
+
+// Emit records e with its kind.
+func (e *inboxEvents) Emit(ev event.Event) {
+	e.all.Emit(ev)
+
+	if _, ok := ev.(event.InboxProgress); ok {
+		e.progress.Emit(ev)
+
+		return
+	}
+
+	e.Events.Emit(ev)
 }
 
 // newHarness opens a fresh database and a Service over it.
@@ -443,7 +475,7 @@ func newHarness(t *testing.T) *harness {
 		tokens: &fakeTokens{},
 		client: &fakeClient{limits: restLimits(), avatar: fakeAvatar()},
 		clock:  testutil.NewClock(time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)),
-		events: &testutil.Events{},
+		events: &inboxEvents{},
 		logs:   &testutil.Logs{},
 	}
 

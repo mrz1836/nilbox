@@ -63,6 +63,49 @@ export interface HooksUpdated {
 }
 
 /**
+ * InboxPhase is how far a refresh of the inbox has got.
+ */
+export type InboxPhase = "search" | "details" | "files";
+
+/**
+ * The values of InboxPhase, by the names of their Go constants.
+ */
+export const InboxPhase = {
+    /**
+     * The phases of a refresh of the inbox, in order.
+     *
+     * InboxSearching is GitHub being asked for the inbox's searches, and for the details
+     * of the items already listed beside them. It counts nothing.
+     */
+    InboxSearching: "search",
+
+    /**
+     * InboxReadingDetails is the details of the items new since the last refresh being
+     * read, counted.
+     */
+    InboxReadingDetails: "details",
+
+    /**
+     * InboxCheckingFiles is the changed files of the pull requests whose files are checked
+     * being read, counted.
+     */
+    InboxCheckingFiles: "files",
+} as const;
+
+/**
+ * InboxProgress says how far a whole refresh of the inbox has got, while it runs: its
+ * phase, and how many of the phase's items are done. It comes a few times a second at most,
+ * whoever started the refresh; the InboxUpdated that ends it follows, with the snapshot no
+ * longer refreshing. It is never told as an InboxUpdated, so what wakes on that, as
+ * Autopilot's engine does, doesn't wake when a refresh starts.
+ */
+export interface InboxProgress {
+    "phase": InboxPhase;
+    "done": number;
+    "total": number;
+}
+
+/**
  * InboxUpdated says the stored inbox, or the status of its last refresh, changed: the
  * window reads the inbox again, and the menu bar redraws.
  */

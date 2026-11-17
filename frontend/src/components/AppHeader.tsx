@@ -16,6 +16,7 @@ import { Logo } from './Logo'
 import { NotificationsMenu } from './NotificationsMenu'
 import { SearchField, type SearchFieldProps } from './SearchField'
 import { ServiceStatusMenu } from './ServiceStatusMenu'
+import { Spinner } from './Spinner'
 
 // View is the page the window shows. Settings is opened from the account menu (or ⌘,)
 // rather than from a tab.
@@ -49,6 +50,9 @@ export interface AppHeaderProps {
   onServiceStatusSettings?: () => void
   // inboxCount is how many items are in the inbox; the Inbox tab shows it when it is not 0.
   inboxCount?: number
+  // inboxRefreshing is set while a whole refresh of the inbox runs, whoever started it;
+  // the Inbox tab shows a small spinner beside its count, so a refresh shows from any page.
+  inboxRefreshing?: boolean
   // worktreeCount is how many linked worktrees are on disk, and worktreeAttention how many
   // of them are done on GitHub. The Worktrees tab shows the count when it is not 0, marked
   // when some are done.
@@ -253,6 +257,11 @@ export function AppHeader(props: AppHeaderProps) {
             >
               {label}
               {id === 'autopilot' && <BetaBadge />}
+              {id === 'inbox' && props.inboxRefreshing === true && (
+                <span data-testid="inbox-refreshing" title="Refreshing from GitHub…" className="flex">
+                  <Spinner className="size-3" />
+                </span>
+              )}
               {/* The pill sits one step above the tab: raised on the bar, border on a
                   hovered or active tab. */}
               {badged && (

@@ -387,7 +387,8 @@ describe('InboxView', () => {
       expect(screen.queryByText('Loading the inbox…')).not.toBeInTheDocument()
     })
     expect(screen.queryByRole('region')).not.toBeInTheDocument()
-    expect(platform.on).toHaveBeenCalledExactlyOnceWith('inbox:updated', expect.any(Function))
+    expect(listening('inbox:updated')).toBe(1)
+    expect(listening('inbox:progress')).toBe(1)
 
     act(() => {
       emit('inbox:updated')
@@ -399,6 +400,7 @@ describe('InboxView', () => {
     expect(listening('inbox:updated')).toBe(1)
     unmount()
     expect(listening('inbox:updated')).toBe(0)
+    expect(listening('inbox:progress')).toBe(0)
   })
 
   it('brings the ages up to date every minute', async () => {
@@ -2570,5 +2572,142 @@ describe('InboxView triage in the sheets', () => {
     expect(platform.setRepoRule).toHaveBeenCalledExactlyOnceWith('acme-org/api', '')
     expect(await within(sheet).findByRole('group', { name: 'Notification' })).toBeInTheDocument()
     expect(screen.getByRole('dialog', { name: 'Retry the upload' }), 'the org still mutes it').toBe(sheet)
+  })
+})
+
+describe('InboxView while a refresh runs', () => {
+  const refreshed = '2026-06-15T11:55:00Z'
+
+  it('shows a refresh it didn’t start, with how far it has got', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([item()]) }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByText('5m ago')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
+    expect(screen.queryByTestId('inbox-loading-bar')).not.toBeInTheDocument()
+
+    // The timer's refresh starts: its progress says so, and a read says it runs.
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([item()]), refreshing: true }),
+    )
+    act(() => {
+      emit('inbox:progress', { phase: 'search', done: 0, total: 0 })
+    })
+
+    const button = screen.getByRole('button', { name: 'Refreshing…' })
+    expect(button).toBeDisabled()
+    expect(button.querySelector('svg')).toHaveClass('motion-safe:animate-spin')
+    expect(screen.getByText('Asking GitHub…')).toBeInTheDocument()
+    expect(screen.queryByText('5m ago'), 'the status takes the time’s place').not.toBeInTheDocument()
+    expect(screen.getByTestId('inbox-loading-bar')).toHaveClass('loading-bar')
+    // The lists stay as they were while it runs.
+    expect(screen.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
+
+    act(() => {
+      emit('inbox:progress', { phase: 'details', done: 3, total: 8 })
+    })
+
+    const status = screen.getByText('Reading 3 of 8 new items…').closest('[role="status"]')
+    expect(status?.querySelector('[style]')).toHaveStyle({ width: '38%' })
+
+    act(() => {
+      emit('inbox:progress', { phase: 'files', done: 2, total: 5 })
+    })
+    expect(screen.getByText('Checking files: 2 of 5…')).toBeInTheDocument()
+
+    // It ends: the update brings a snapshot that says so.
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: FIXED_NOW.toISOString(), reviewRequested: list([item()]) }),
+    )
+    act(() => {
+      emit('inbox:updated')
+    })
+
+    expect(await screen.findByRole('button', { name: 'Refresh' })).toBeEnabled()
+    expect(screen.getByText('just now')).toBeInTheDocument()
+    expect(screen.queryByTestId('inbox-loading-bar')).not.toBeInTheDocument()
+  })
+
+  it('shows a refresh the window opened on, before it says how far it has got', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([item()]), refreshing: true }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByText('Refreshing from GitHub…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled()
+  })
+
+  it('fills the inbox the first time with a banner and the lists’ shells', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ refreshing: true }))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const banner = await screen.findByRole('region', { name: 'Reading from GitHub' })
+    expect(banner).toHaveTextContent('Filling your inbox from GitHub…')
+    expect(within(banner).getByRole('list', { name: 'Coming from GitHub' })).toHaveTextContent(
+      /Review requests.*Your pull requests.*Assignments.*Checks and reviews/,
+    )
+
+    const shells = screen.getByTestId('inbox-skeleton')
+    expect(shells).toHaveTextContent(/Review requested.*Yours/)
+    expect(shells.querySelectorAll('.skeleton').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Not refreshed yet')).not.toBeInTheDocument()
+    expect(screen.queryByText('Loading the inbox…')).not.toBeInTheDocument()
+
+    // The first refresh lands, and the real lists replace the shells.
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: FIXED_NOW.toISOString(), yours: list([item({ title: 'Fresh from GitHub' })]) }),
+    )
+    act(() => {
+      emit('inbox:updated')
+    })
+
+    expect(await screen.findByRole('button', { name: 'Fresh from GitHub' })).toBeInTheDocument()
+    expect(screen.queryByTestId('inbox-skeleton')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Reading from GitHub' })).not.toBeInTheDocument()
+  })
+
+  it('falls back to the error and “Not refreshed yet” when the first refresh fails', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ refreshing: true }))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByTestId('inbox-skeleton')).toBeInTheDocument()
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastError: 'the network is down' }))
+    act(() => {
+      emit('inbox:updated')
+    })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('the network is down')
+    expect(screen.getByText('Not refreshed yet')).toBeInTheDocument()
+    expect(screen.queryByTestId('inbox-skeleton')).not.toBeInTheDocument()
+  })
+
+  it('throws no party for a stored empty inbox until the refresh it opened on ends', async () => {
+    const party = () => screen.queryByRole('region', { name: 'inbox == nil' })
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, refreshing: true }))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByText('Refreshing from GitHub…')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('Loading the inbox…')).not.toBeInTheDocument()
+    })
+    expect(party()).not.toBeInTheDocument()
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: FIXED_NOW.toISOString() }))
+    act(() => {
+      emit('inbox:updated')
+    })
+
+    expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
+
+    // A later refresh leaves the party where it is.
+    act(() => {
+      emit('inbox:progress', { phase: 'search', done: 0, total: 0 })
+    })
+    expect(party()).toBeInTheDocument()
   })
 })

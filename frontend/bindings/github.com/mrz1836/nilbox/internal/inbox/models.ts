@@ -459,6 +459,14 @@ export interface Snapshot {
      * in, which needs the token's optional read:project scope.
      */
     "projectAccess": ProjectAccess;
+
+    /**
+     * Refreshing reports that a whole refresh is under way as the snapshot is read,
+     * whoever started it: the window shows it until a snapshot says it ended. It is the
+     * Service's own state, never kept with a snapshot; the InboxUpdated that ends a refresh
+     * always brings one with it false.
+     */
+    "refreshing": boolean;
 }
 
 /**

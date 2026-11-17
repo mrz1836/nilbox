@@ -163,6 +163,48 @@ func TestFetchDetailsBatchesTheIDsSideBySide(t *testing.T) {
 	assert.Equal(t, 4960, details.RateLimit.Remaining, "the budget is the lowest reading, the latest")
 }
 
+func TestFetchDetailsTellsEachAnsweredBatch(t *testing.T) {
+	t.Parallel()
+
+	ids := make([]string, 60)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("I_fakeNodeId%d", i)
+	}
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		req := readDetailsRequest(t, r)
+
+		nodes := make([]string, 0, len(req.Variables.IDs))
+		for _, id := range req.Variables.IDs {
+			nodes = append(nodes, fmt.Sprintf(`{"__typename":"Issue","id":%q,"comments":{"totalCount":1},"labels":{"nodes":[]}}`, id))
+		}
+
+		_, _ = fmt.Fprintf(w, `{"data":{"nodes":[%s],"rateLimit":{"cost":1,"limit":5000,"remaining":4990,"used":10,"resetAt":"2026-01-10T13:00:00Z"}}}`,
+			strings.Join(nodes, ","))
+	})
+
+	var (
+		mu   sync.Mutex
+		told []int
+	)
+
+	_, err := client.FetchDetails(t.Context(), NewToken(fakeToken), ids, DetailOptions{Progress: func(n int) {
+		mu.Lock()
+		defer mu.Unlock()
+
+		told = append(told, n)
+	}})
+	require.NoError(t, err)
+
+	sum := 0
+	for _, n := range told {
+		sum += n
+	}
+
+	assert.Len(t, told, len(detailsBatches(ids)), "once a batch")
+	assert.Equal(t, len(ids), sum, "every item read is counted once")
+}
+
 func TestDetailsBatches(t *testing.T) {
 	t.Parallel()
 

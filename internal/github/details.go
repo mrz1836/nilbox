@@ -216,6 +216,12 @@ type DetailOptions struct {
 	// Partial has FetchDetails return what the batches that succeeded read, with the error
 	// of those that failed, rather than nothing.
 	Partial bool
+
+	// Progress, when set, is told after each of FetchDetails' requests is answered, with
+	// how many IDs it asked about, so a caller can count the items read as they come. The
+	// requests run side by side, so it may be called from several goroutines at once. Only
+	// FetchDetails tells it.
+	Progress func(n int)
 }
 
 // Details is what FetchDetails learned.
@@ -466,6 +472,9 @@ func (c *Client) fetchDetails(ctx context.Context, tok Token, ids []string, opts
 	for i, batch := range batches {
 		g.Go(func() error {
 			answers[i], errs[i] = c.fetchDetailsBatch(gctx, tok, batch, opts)
+			if errs[i] == nil && opts.Progress != nil {
+				opts.Progress(len(batch))
+			}
 
 			return errs[i]
 		})
