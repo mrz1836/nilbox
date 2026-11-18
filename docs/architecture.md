@@ -82,14 +82,31 @@ and the move dialog offer is one pure rule (`offerOf` in `frontend/src/lib/updat
 The window tells a refusal it answers on its
 own (the last update still finishing, a restart finishing after a held quit, which it
 waits out quietly, and an update that failed to install for good, which it offers only the
-release page for) by the `update.RefusalError` code in its detail, never by its words. The startup dialog for data
-a newer build saved offers the newest backup this build opens (`desktop.RestoreOffer`,
-`FindRestore`; Escape quits, and no key puts the backup back, since the runtime's macOS
-alert gives a button Return or Escape, never both), puts it back on a click
-(`desktop.PutBack`, `store.RestoreBackup`, a failure worded by `desktop.PutBackFailure`
-with what to do), and opens the app again from `PostShutdown` through
-`desktop.RelaunchArgs`, as a reset does, the `open -n` bounded to five seconds
-(`relaunchWithin`, which every reopen from `PostShutdown` shares, `openAgain`).
+release page for) by the `update.RefusalError` code in its detail, never by its words. A
+failure that stops the start shows on a bare app (`failStartup`, `startup_desktop.go`: no
+window, no services, no database), whose dialogs `desktop.Startup` runs off the main thread
+over `startupUI` (each a native alert, `Ask` waiting for its click; `alertButtons` maps
+`desktop.Failure.Buttons`, Quit rightmost, the first action taking Return and Quit Escape,
+since the runtime's macOS alert gives a button one or the other, never both). For data a
+newer build saved (`store.ErrNewerSchema`), `newerData` asks `core.BareUpdate` for the
+update that runs without the database (`update.Bare`, below) and offers its `Way`
+(`desktop.StartupFailure` with a `desktop.Newer`): Update and Reopen for a release that
+updates where it runs, `Bare.Latest` then `Bare.Update` through a `newInstaller` over the bare
+app's own `app.Updater`, with `desktop.Updating` shown over it (Stop and Quit, Escape alone)
+and `desktop.NoNewerRelease` or `desktop.UpdateFailed` (Try Again) shown over that when it
+doesn't install; the README's install command (`desktop.InstallCommand`, which a test holds
+to the README's, for `~/Applications` when the app is there or would move there,
+`desktop.NewerCommands`) for a release that can't update where it runs; and the build command
+for a build from source (`cd <clone> && git pull && magex app:run`, the clone the one whose
+`bin/` holds the bundle, beside a `.git`), which never reads anything. A Copy shows the
+dialog again, saying so (`Failure.Copied`). `startupUI.Quit` quits, and exits should a modal
+alert hold the quit: an update's helper waits for the process to exit, and the bare app holds
+nothing open. The dialog also offers the newest backup this build opens
+(`desktop.RestoreOffer`, `FindRestore`; no key puts it back), offered still after an update
+that didn't help, puts it back on a click (`desktop.PutBack`, `store.RestoreBackup`, a
+failure worded by `desktop.PutBackFailure` with what to do), and opens the app again from
+`PostShutdown` through `desktop.RelaunchArgs`, as a reset does, the `open -n` bounded to five
+seconds (`relaunchWithin`, which every reopen from `PostShutdown` shares, `openAgain`).
 A build that updates attaches the engine's `Mover` too (`desktop.Mover`, over
 `execpath.Exec`): it copies the bundle with `ditto --noqtn` (`desktop.CopyArgs`), takes the
 quarantine mark ditto still copies off every file of the copy, in Go (`move_darwin.go`;
@@ -208,7 +225,9 @@ that is not a database or is damaged, a schema the migrations did not create, or
 build disagrees with is renamed, with its `-wal` and `-shm` files, to
 `<path>.broken-<UTC stamp>` once no other process has it open; a fresh database starts in its
 place, and `Opened.Reset` reaches the window as a notice. A database from a newer build is
-refused with `store.ErrNewerSchema` and left untouched. Any other failure (a lock, a
+refused with `store.ErrNewerSchema` and left untouched, and the startup dialog offers this
+build's way forward without opening it again (an update through `update.Bare`, or the command
+that installs or builds a newer build; see [cmd/nilbox](#cmdnilbox)). Any other failure (a lock, a
 permission, a full disk, a failed migration) is a plain error, and nothing is moved. A reset
 the user asked for (Settings → About, or `magex app:reset`, each writing
 `appdata.RequestReset`'s request) is carried out by the next start, in core's `openData`,
@@ -2345,6 +2364,27 @@ a temporary file beside the database before it sets the database aside and renam
 copy into place, putting the database back when the rename fails; with no database there,
 it removes a `-wal` or `-shm` left behind first. Every open removes the copies a restore
 cut short left (`.<db>.restore-<digits>.tmp`, regular files five minutes old or more).
+
+`Bare` is the update the startup dialog runs when a newer build saved the data
+(`store.ErrNewerSchema`), before anything opens the database and without it: core builds it
+(`core.BareUpdate`) over the same feed and key `updateSource` gives the engine (a GitHub
+client of its own, for the release downloads alone), the update cache, and the bundle, with
+`BareConfig` holding nothing the database keeps. Its `Way` is the engine's rule (`trust`,
+which `resolve` shares) and `Location`: `WayUpdate` for a build that updates where it runs,
+`WaySource` for a build from source, and `WayInstall` for any other. `Latest` is a check
+(`readLatest`, which `Engine.latest` shares: the manifest within `ManifestLimit`, `accept`,
+newer than the running version), and `Update` checks the manifest again, takes the cache's
+copy of the zip when it is that release's and checks out (`Cache.check`) or else downloads it
+(`Cache.Put`, within `DownloadLimit`), checks the zip again (`checkZip`), and has the
+`Installer` stage it and restart, inside which the process exits; a failure before the
+restart removes the staging folder (`removeStaging`) and is worded as the engine's
+(`downloadWords`, its restart's sentences). It reads and writes no `update.*` key, takes no
+backup, records no `update.pendingInstall` (the new version's start reads no outcome, so it
+says nothing of the update), honors no `update.mode` (it runs on the user's click alone), and
+in a build from source, or where the app can't replace itself, reads nothing (`ErrOff`,
+`ErrLocation`). The manifest names no schema, and `Parse` refuses a field the format lacks, so
+adding one would strand every shipped build: a newer release that can't open the data shows
+the same dialog, whose check then finds nothing newer.
 
 ## internal/updateprefs
 

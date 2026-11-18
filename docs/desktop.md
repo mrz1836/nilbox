@@ -379,7 +379,9 @@ banner and the move dialog offer it.
 release's manifest, `https://github.com/mrz1836/nilbox/releases/latest/download/manifest-darwin.json`,
 and, once a newer version checks out, its zip, from the URL of that release's tag. Each sends
 nothing but the request for that file: no token, no cookie, and nothing of yours, and neither
-spends API budget. A rehearsal build reads its releases from a folder and sends nothing.
+spends API budget. **Update and Reopen**, in the dialog shown when a newer version saved your
+data (*Data a newer version saved*, below), sends the same two, on your click alone. A
+rehearsal build reads its releases from a folder and sends nothing.
 
 **Firewalls.** Updates need `github.com`, which redirects each download to
 `release-assets.githubusercontent.com` (and, for some releases,
@@ -415,20 +417,54 @@ A rehearsal build keeps its own data because the update opens the new version wi
 arguments: a `--data-dir` would not survive the swap, and the new version would open on your
 data.
 
-**Going back to an older version.** A version can't open data a newer version has migrated: it
-says *Nilbox needs an update* and quits. When a backup it can open is beside the database (one
-whose name ends `-v<schema>`, or `-v<schema>-<n>`, with a schema it has; a copy renamed to end
-otherwise, such as `-v4-copy`, is never offered), the dialog also offers **Use my data from
-Nov 14, 3:02 PM**, the newest such backup. That sets the newer database aside as
-`nilbox.db.broken-<stamp>` (with its `-wal` and `-shm`, kept until you remove it), copies the
-backup into its place, and opens the app again on it. What changed since the backup won't be
-there; the newer data stays beside it, and **Restore from a backup** on the Prompts page can
-bring its prompts back. While the backup is offered, Escape quits and Return does nothing, so
-no key puts the backup back by accident; without it, Return quits. If the backup can't be put
-back, the dialog says what to do: when another copy of Nilbox still has the data open, nothing
-was changed, so quit that copy and open Nilbox again; when the newer data was set aside but the
-backup couldn't take its place (rare), no data is in place, and the dialog names the set-aside
-file and its folder, to rename it `nilbox.db` before opening Nilbox again.
+**Data a newer version saved.** A version can't open data a newer version has migrated, as
+after running a build from source and then the release again. It says *Nilbox needs an update*,
+and that your data is safe and untouched, and offers the way forward its build has. Nothing on
+this path opens, migrates, or changes the database: the newer version opens it as it is.
+
+- **A release in an Applications folder** offers **Update and Reopen** (Return) and **Quit**
+  (Escape). A click reads the latest release's manifest; when it is newer than the running
+  version, the app downloads its zip, checks it exactly as an update does (the pinned key, the
+  zip's size and SHA-512, again before staging it), stages it beside itself, and quits, and the
+  update's helper swaps it in and opens it, as **Restart to update** does. *Updating Nilbox…*
+  shows meanwhile, with **Stop and Quit** (Escape alone, so a second Return never stops it).
+  The same two GETs as a check, on your click alone, whatever **When a new version is out**
+  says (the setting lives in the database it can't open). What a normal restart does around
+  the install it skips: no backup (the database isn't touched), and no note for the new
+  version to read, so it shows no *Updated* toast. A download or install that fails says why,
+  in words, with **Try Again**, **Copy Install Command**, and **Quit**; nothing was installed,
+  and the download is kept only once it checked out. The manifest doesn't say which data a
+  release opens, so when the newer release can't open it either, that release shows this
+  dialog again, and its **Update and Reopen** finds nothing newer.
+- **When no published release is newer** than the running version, it says so plainly: *No
+  published release can open this data yet; it was saved by a newer build, likely one built
+  from source.* It shows the way forward: build Nilbox from source on the latest master
+  (`git pull && magex app:run`, in your clone), or, once a newer release is out, **Update and
+  Reopen** or the README's install command, with **Copy Build Command**, **Copy Install
+  Command**, and **Quit**.
+- **A release that can't update itself where it runs** (outside an Applications folder, or with
+  updates off) offers **Copy Install Command**: the README's install command, for
+  `~/Applications` when that's where the app is (or would move to), to paste into Terminal
+  once you quit.
+- **A build from source** never downloads anything. It says the data is newer than this build
+  and offers **Copy Command**: `cd <clone> && git pull && magex app:run`, with the clone the
+  build runs from when it's in the clone's `bin/` (else `git pull && magex app:run`).
+
+A **Copy** button shows the dialog again, saying the command was copied (or, when the clipboard
+refused it, where the README holds it). When a backup this version can open is beside the
+database (one whose name ends `-v<schema>`, or `-v<schema>-<n>`, with a schema it has; a copy
+renamed to end otherwise, such as `-v4-copy`, is never offered), the dialog also offers **Use my
+data from Nov 14, 3:02 PM**, the newest such backup, and keeps offering it after an update that
+didn't help. That sets the newer database aside as `nilbox.db.broken-<stamp>` (with its `-wal`
+and `-shm`, kept until you remove it), copies the backup into its place, and opens the app again
+on it. What changed since the backup won't be there; the newer data stays beside it, and
+**Restore from a backup** on the Prompts page can bring its prompts back. No key ever puts the
+backup back: Return takes the dialog's way forward and Escape quits (with nothing else to
+offer, Escape quits and Return does nothing; with nothing at all, Return quits). If the backup
+can't be put back, the dialog says what to do: when another copy of Nilbox still has the data
+open, nothing was changed, so quit that copy and open Nilbox again; when the newer data was set
+aside but the backup couldn't take its place (rare), no data is in place, and the dialog names
+the set-aside file and its folder, to rename it `nilbox.db` before opening Nilbox again.
 
 **Troubleshooting.**
 
@@ -874,8 +910,10 @@ Your prompts and launch defaults come back on their own: they are read out of th
 set aside, or from `prompts.json` and `launch-defaults.json` when that fails, before the
 starters are added. The set-aside file is kept
 until you delete it, and **Restore from a backup** on the Prompts page can read it again. A
-database saved by a newer version of the app is left as it is: a dialog asks you to update,
-and the app quits. A database another process has open, such as an older copy of the app
+database saved by a newer version of the app is left as it is: a dialog offers to update (a
+release in Applications downloads and installs the latest one, and opens it), or gives the
+command that installs or builds a newer one ([Data a newer version saved](#updates), under
+Updates). A database another process has open, such as an older copy of the app
 that is still running, or one that can't be written, is never moved. Like anything else that
 stops the app from starting, it is shown in an error dialog, which says what to do where that
 is known, and the app quits once you dismiss it.
