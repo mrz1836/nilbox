@@ -561,6 +561,13 @@ export interface Settings {
     "refreshChoices": RefreshChoices;
 
     /**
+     * WatchPushes watches the branches of the inbox's pull requests in the user's clones,
+     * so one pushed from this Mac is read again from GitHub at once rather than at the next
+     * refresh (see the pushwatch package).
+     */
+    "watchPushes": boolean;
+
+    /**
      * ServiceStatus is what the service status check watches: which providers' status
      * pages are on, and which of each one's parts count (see the statusprefs package).
      */

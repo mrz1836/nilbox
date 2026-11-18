@@ -1255,6 +1255,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
       notifications: [60, 120, 300, 600, 900, 1800, 3600],
       serviceStatus: [0, 300, 600, 900, 1800, 3600],
     },
+    watchPushes: true,
     serviceStatus: statusWatch(),
     statusProviders: statusProviders(),
     updateMode: 'download',

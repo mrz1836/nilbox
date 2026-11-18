@@ -270,7 +270,7 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 		Workers:  workers,
 		Deferred: []desktop.Worker{
 			c.Deferred, c.ToolFinder, c.Runs, c.ReleaseFollower, c.ServiceStatusChecker, c.UpdateWorker,
-			c.AutopilotEngine,
+			c.AutopilotEngine, c.PushWatcher,
 		},
 		Updates:        c.Updates,
 		Autopilot:      c.ShellAutopilot,

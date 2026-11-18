@@ -297,6 +297,11 @@ type Settings struct {
 	Refresh        RefreshIntervals `json:"refresh"`
 	RefreshChoices RefreshChoices   `json:"refreshChoices"`
 
+	// WatchPushes watches the branches of the inbox's pull requests in the user's clones,
+	// so one pushed from this Mac is read again from GitHub at once rather than at the next
+	// refresh (see the pushwatch package).
+	WatchPushes bool `json:"watchPushes"`
+
 	// ServiceStatus is what the service status check watches: which providers' status
 	// pages are on, and which of each one's parts count (see the statusprefs package).
 	ServiceStatus statusprefs.Config `json:"serviceStatus"`
@@ -823,6 +828,7 @@ func fromStored(stored map[string]string) Settings {
 		GitHubNotifications:  threadrules.Decode(stored),
 		Refresh:              decodeRefreshIntervals(stored),
 		RefreshChoices:       refreshChoices(),
+		WatchPushes:          prefval.Bool(stored[KeyWatchPushes], DefaultWatchPushes),
 		ServiceStatus:        statusprefs.Decode(stored),
 		StatusProviders:      statusprefs.Catalog(),
 		UpdateMode:           updateprefs.Decode(stored[updateprefs.KeyMode]),
@@ -945,7 +951,7 @@ func settingKeys() []string {
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments, snooze.PrefWakeReady,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
-		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus, updateprefs.KeyMode,
+		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus, KeyWatchPushes, updateprefs.KeyMode,
 		KeyHiddenLabels, KeyCardAvatars, KeyCardDensity, KeyCardUnread, KeyIgnoredWorkflows,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
 		append(append(append(integrationprefs.Keys(), threadrules.Keys()...), statusprefs.Keys()...),

@@ -1654,6 +1654,22 @@ often the [service status](#the-window) check runs (off, or every 5 minutes to e
 minutes by default; it costs no budget). A change applies at once: a refresh already due under the new interval starts
 straight away, and otherwise the next waits the new interval from the last one's end.
 
+**Pushes from this Mac.** Push to one of your inbox's pull requests from a clone on this Mac,
+whatever runs the push (a terminal, an editor, an agent), and its card catches up within
+seconds, for a point, rather than at the next refresh. Git runs nothing after a push, but a push
+that lands moves the clone's own copy of the branch on origin (`refs/remotes/origin/<branch>`).
+Every 3 seconds the app looks at that file for each open pull request whose branch is in its own
+repository, in each clone whose origin is that repository, a stat each. Once the branch moves to
+a commit GitHub hasn't shown for the pull request, the app reads the pull request again 2 seconds
+later, once GitHub has taken the push in, and again after 10 and 30 seconds while GitHub still
+shows the old head. A fetch that brings someone else's push catches the card up the same way. The
+app reads only the files git keeps, runs git only to read a clone's origin (once, and again when
+the clone's config changes) and the branches of a clone that keeps its refs in reftable, and
+installs nothing: no hook, no setting. It doesn't see a push from another machine or made on
+GitHub, a push to a URL rather than to origin, a fork's branch, or a pull request dismissed,
+snoozed, or in a muted repository; the refresh brings those. **Settings → Refreshing → Notice pushes from this Mac** turns
+it off.
+
 **Changes on GitHub.** The panel also counts the [edits](#the-item-menu-and-edits-on-github)
 Nilbox made on GitHub for you in the last hour, says how it paces them, and, while GitHub has
 asked it to pause, when the pause ends.

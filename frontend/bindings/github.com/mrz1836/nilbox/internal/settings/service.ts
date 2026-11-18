@@ -778,6 +778,16 @@ export function SetUpdateMode(mode: updateprefs$0.Mode): $CancellablePromise<$mo
 }
 
 /**
+ * SetWatchPushes stores whether the app watches the branches of the inbox's pull requests
+ * in the user's clones, and returns the settings with it. While it is off, no clone is
+ * looked at, and a push reaches its card at the next refresh. Once it is stored, an
+ * event.IntervalsChanged is emitted, so the watch starts or stops at once.
+ */
+export function SetWatchPushes(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(826300164, on);
+}
+
+/**
  * SetWindowSize stores the size the window opens at, which takes effect at the next
  * launch: MinWindowWidth by MinWindowHeight up to MaxWindowWidth by MaxWindowHeight. It
  * returns the settings with it.
@@ -829,4 +839,13 @@ export function TextSize(): $CancellablePromise<$models.TextSize> {
  */
 export function Theme(): $CancellablePromise<$models.Theme> {
     return $Call.ByID(2166540932);
+}
+
+/**
+ * WatchPushes returns whether the app watches the branches of the inbox's pull requests
+ * in the user's clones: the stored setting, or DefaultWatchPushes when none is stored or
+ * it cannot be read.
+ */
+export function WatchPushes(): $CancellablePromise<boolean> {
+    return $Call.ByID(1149234698);
 }

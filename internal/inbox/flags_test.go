@@ -46,6 +46,7 @@ func reasonFlagDecisions() map[string]string {
 		"ListRepoCounts":      "counts watched items too, so a repository only watched can have launch defaults",
 		"ListRunningChecks":   "adds the watched pull requests a routine follows, muted or not; a pushed one is listed",
 		"ListOpenPullsInRepo": "adds the watched pull requests a routine follows, as ListRunningChecks does; a pushed one is listed",
+		"ListPushTargets":     "none: the push watch follows the lists' pull requests alone, a pushed one among them",
 		"GetEditItem":         "accepts a watched item (watched), so its sheet acts from the Watching list; pushed reads as requested",
 
 		// The reads for the routines.

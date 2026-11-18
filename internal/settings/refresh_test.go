@@ -142,3 +142,53 @@ func TestTheServiceStatusIsCheckedEveryHalfHourByDefault(t *testing.T) {
 	assert.Equal(t, []int{0, 300, 600, 900, 1800, 3600}, refreshChoices().ServiceStatus, "off, or 5 minutes to an hour")
 	assert.Equal(t, "refresh.serviceStatus", KeyRefreshServiceStatus)
 }
+
+func TestWatchPushes(t *testing.T) {
+	t.Parallel()
+
+	svc, db, _ := newTestService(t)
+
+	on, err := svc.WatchPushes(t.Context())
+	require.NoError(t, err)
+	assert.True(t, on, "on by default")
+
+	require.NoError(t, testutil.ErrOf(svc.SetWatchPushes(t.Context(), false)))
+
+	on, err = svc.WatchPushes(t.Context())
+	require.NoError(t, err)
+	assert.False(t, on)
+
+	setPref(t, db, KeyWatchPushes, "maybe")
+
+	on, err = svc.WatchPushes(t.Context())
+	require.NoError(t, err)
+	assert.True(t, on, "a value that cannot be read is the default")
+
+	require.NoError(t, db.Close())
+
+	on, err = svc.WatchPushes(t.Context())
+	require.Error(t, err)
+	assert.Equal(t, DefaultWatchPushes, on)
+}
+
+func TestSetWatchPushesWakesWhatRefreshes(t *testing.T) {
+	t.Parallel()
+
+	_, db, home := newTestService(t)
+	events := &testutil.Events{}
+	svc := serviceOver(t, db, home, WithEvents(events))
+
+	got, err := svc.SetWatchPushes(t.Context(), false)
+	require.NoError(t, err)
+	assert.False(t, got.WatchPushes, "the settings come back with it")
+
+	require.NoError(t, testutil.ErrOf(svc.SetWatchPushes(t.Context(), true)))
+	assert.Equal(t, []event.Event{event.IntervalsChanged{}, event.IntervalsChanged{}}, events.All(),
+		"the watch starts or stops at once")
+
+	require.NoError(t, db.Close())
+
+	_, err = svc.SetWatchPushes(t.Context(), false)
+	require.Error(t, err)
+	assert.Len(t, events.All(), 2, "nothing is said of a switch that was not stored")
+}

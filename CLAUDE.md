@@ -283,6 +283,8 @@ bytes).
 
 - [`internal/localrepos`](docs/architecture.md#internallocalrepos): finds the user's clones in
   the clone root and the other repository locations.
+- [`internal/pushwatch`](docs/architecture.md#internalpushwatch): notices a push made on this
+  Mac to an inbox pull request, from its branch's ref in the clones, and has it read again.
 - [`internal/worktrees`](docs/architecture.md#internalworktrees): makes the app's worktrees (one
   per item per clone), records them in `worklog`, and removes them and their branches safely.
 - [`internal/gitread`](docs/architecture.md#internalgitread): the allowlisted read-only git, and

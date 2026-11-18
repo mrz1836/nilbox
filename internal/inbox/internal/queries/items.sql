@@ -453,6 +453,31 @@ WHERE a.login = sqlc.arg(login)
   AND (CAST(sqlc.arg(any_base) AS BOOLEAN) = 1 OR d.base_ref IN (sqlc.slice(bases)))
 ORDER BY d.fetched_at, i.id;
 
+-- name: ListPushTargets :many
+-- ListPushTargets returns the open pull requests of the account with login whose branch the
+-- push watch follows in the user's clones: the listed ones, neither dismissed nor snoozed at
+-- now, whose head branch is in their own repository (a fork's branch is in no clone of the
+-- repository), each with its repository's owner and name, its head branch, and its head
+-- commit as the details last read it, NULL before they did. The ones the user opened come
+-- first, then the most recently active, so a cap keeps those a push most likely moves. The
+-- watch leaves out the ones of a muted repository or org, which only the prefs name.
+SELECT i.id, r.owner AS repo_owner, r.name AS repo_name, i.head_ref, d.head_oid
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+JOIN repos r ON r.id = i.repo_id
+LEFT JOIN item_details d ON d.item_id = i.id
+LEFT JOIN item_local_state l ON l.item_id = i.id
+WHERE a.login = sqlc.arg(login)
+  AND i.kind = 'pr'
+  AND i.node_id <> ''
+  AND i.is_cross_repository = 0
+  AND i.head_ref <> ''
+  AND i.state NOT IN ('CLOSED', 'MERGED')
+  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
+  AND l.dismissed_at IS NULL
+  AND (l.snoozed_until IS NULL OR l.snoozed_until <= sqlc.arg(now))
+ORDER BY i.reason_authored DESC, i.item_updated_at DESC, i.id DESC;
+
 -- name: ListItemsByID :many
 -- ListItemsByID returns the stored items of the account with account_id among ids, listed
 -- or not, as ListItems reads each one, newest activity first: the rows a routine's Watching

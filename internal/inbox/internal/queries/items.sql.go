@@ -1293,6 +1293,74 @@ func (q *Queries) ListOpenPullsInRepo(ctx context.Context, arg ListOpenPullsInRe
 	return items, nil
 }
 
+const listPushTargets = `-- name: ListPushTargets :many
+SELECT i.id, r.owner AS repo_owner, r.name AS repo_name, i.head_ref, d.head_oid
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+JOIN repos r ON r.id = i.repo_id
+LEFT JOIN item_details d ON d.item_id = i.id
+LEFT JOIN item_local_state l ON l.item_id = i.id
+WHERE a.login = ?1
+  AND i.kind = 'pr'
+  AND i.node_id <> ''
+  AND i.is_cross_repository = 0
+  AND i.head_ref <> ''
+  AND i.state NOT IN ('CLOSED', 'MERGED')
+  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
+  AND l.dismissed_at IS NULL
+  AND (l.snoozed_until IS NULL OR l.snoozed_until <= ?2)
+ORDER BY i.reason_authored DESC, i.item_updated_at DESC, i.id DESC
+`
+
+type ListPushTargetsParams struct {
+	Login string
+	Now   *time.Time
+}
+
+type ListPushTargetsRow struct {
+	ID        int64
+	RepoOwner string
+	RepoName  string
+	HeadRef   string
+	HeadOID   *string
+}
+
+// ListPushTargets returns the open pull requests of the account with login whose branch the
+// push watch follows in the user's clones: the listed ones, neither dismissed nor snoozed at
+// now, whose head branch is in their own repository (a fork's branch is in no clone of the
+// repository), each with its repository's owner and name, its head branch, and its head
+// commit as the details last read it, NULL before they did. The ones the user opened come
+// first, then the most recently active, so a cap keeps those a push most likely moves. The
+// watch leaves out the ones of a muted repository or org, which only the prefs name.
+func (q *Queries) ListPushTargets(ctx context.Context, arg ListPushTargetsParams) ([]ListPushTargetsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPushTargets, arg.Login, arg.Now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPushTargetsRow{}
+	for rows.Next() {
+		var i ListPushTargetsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RepoOwner,
+			&i.RepoName,
+			&i.HeadRef,
+			&i.HeadOID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRunningChecks = `-- name: ListRunningChecks :many
 SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
     CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1 AS BOOLEAN) AS listed,

@@ -145,6 +145,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetDefaultAgent": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetDefaultAgent(ctx, agent.Codex)
 		},
+		"settings.Service.SetWatchPushes": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetWatchPushes(ctx, false)
+		},
 		"settings.Service.SetFollowSessions": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetFollowSessions(ctx, false)
 		},
