@@ -42,6 +42,36 @@ import * as threadrules$0 from "../threadrules/models.js";
 import * as updateprefs$0 from "../updateprefs/models.js";
 
 /**
+ * CardDensity is how much room each of the inbox's cards takes. Both densities show the
+ * same next step, from the same rules.
+ */
+export type CardDensity = "comfortable" | "compact";
+
+/**
+ * The values of CardDensity, by the names of their Go constants.
+ */
+export const CardDensity = {
+    /**
+     * The cards' densities.
+     *
+     * CardComfortable shows each card on two lines, with the state track, and the agent's
+     * slot beside the next step.
+     */
+    CardComfortable: "comfortable",
+
+    /**
+     * CardCompact shows each card on one line, a column per question, with the triage and
+     * the agent's slot on hover.
+     */
+    CardCompact: "compact",
+
+    /**
+     * DefaultCardDensity is the density of a fresh database.
+     */
+    DefaultCardDensity: "comfortable",
+} as const;
+
+/**
  * ConversationOrder is the order the issue sheet and the review sheet list a conversation's
  * entries in, under its description.
  */
@@ -486,6 +516,11 @@ export interface Settings {
      * CardAvatars shows each author's picture on the inbox's cards (see KeyCardAvatars).
      */
     "cardAvatars": boolean;
+
+    /**
+     * CardDensity is how much room each of the inbox's cards takes (see KeyCardDensity).
+     */
+    "cardDensity": CardDensity;
 
     /**
      * MergeMethod is how the review sheet merges a pull request.

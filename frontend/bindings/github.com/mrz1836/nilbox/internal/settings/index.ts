@@ -7,6 +7,7 @@ export {
 };
 
 export {
+    CardDensity,
     ConversationOrder,
     ListKey,
     ListKind,
