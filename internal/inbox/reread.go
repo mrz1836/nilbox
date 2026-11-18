@@ -17,10 +17,11 @@ const rereadJob = "read an item a session worked on again"
 
 // Rereads reads again, one at a time, the items whose agent sessions stopped working, as
 // a desktop worker: the agent may have reviewed, commented, or pushed, so the card catches
-// up as soon as the session stops, not at the next whole refresh. Each read is
+// up as soon as the session stops, not at the next whole refresh. The push watch asks it
+// too, for a pull request whose branch a push on this Mac moved. Each read is
 // RefreshItem's, one GraphQL point, so a pull request the agent reviewed leaves Review
 // requested at once. Items asked for again before their read starts are read once. It
-// isn't bound: only the sessions' Watcher asks it, through core.
+// isn't bound: only the sessions' Watcher and the push watch ask it, through core.
 type Rereads struct {
 	read   func(ctx context.Context, id int64) error
 	logger *slog.Logger

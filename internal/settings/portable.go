@@ -67,6 +67,7 @@ type Portable struct {
 	BannersOff          *[]notifyprefs.Kind  `json:"bannersOff,omitempty"`
 	GitHubNotifications *PortableThreadRules `json:"githubNotifications,omitempty"`
 	Refresh             map[RefreshKind]int  `json:"refresh,omitempty"`
+	WatchPushes         *bool                `json:"watchPushes,omitempty"`
 	ServiceStatus       *PortableStatus      `json:"serviceStatus,omitempty"`
 	MergeMethod         *MergeMethod         `json:"mergeMethod,omitempty"`
 	Theme               *Theme               `json:"theme,omitempty"`
@@ -197,6 +198,7 @@ func portableOf(set Settings) Portable {
 			RefreshReleaseChecks: set.Refresh.ReleaseChecks, RefreshWorktrees: set.Refresh.Worktrees,
 			RefreshNotifications: set.Refresh.Notifications, RefreshServiceStatus: set.Refresh.ServiceStatus,
 		},
+		WatchPushes:   &set.WatchPushes,
 		ServiceStatus: &PortableStatus{Off: &off, Parts: &picked},
 		MergeMethod:   &set.MergeMethod, Theme: &set.Theme, TextSize: &set.TextSize, ToastSeconds: &set.ToastSeconds,
 		InboxOrder: &set.InboxOrder, HiddenLabels: &set.HiddenLabels, CardAvatars: &set.CardAvatars,
@@ -468,6 +470,9 @@ func (s *Service) portableFields() []portableField {
 			show: func(p Portable) string { return seconds(p.Refresh[kind]) },
 		})
 	}
+
+	fields = append(fields, boolField("Notice pushes from this Mac", tellsIntervals, KeyWatchPushes,
+		func(p Portable) *bool { return p.WatchPushes }))
 
 	fields = append(fields, statusFields()...)
 

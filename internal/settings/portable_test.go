@@ -97,6 +97,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetRefreshInterval(ctx, RefreshInbox, 600) },
 		func() (Settings, error) { return svc.SetRefreshInterval(ctx, RefreshReleaseChecks, 120) },
 		func() (Settings, error) { return svc.SetRefreshInterval(ctx, RefreshServiceStatus, 600) },
+		func() (Settings, error) { return svc.SetWatchPushes(ctx, false) },
 		func() (Settings, error) { return svc.SetStatusProvider(ctx, statusprefs.ProviderOpenAI, false) },
 		func() (Settings, error) { return svc.SetStatusPart(ctx, "claude.ai", true) },
 		func() (Settings, error) { return svc.SetStatusPart(ctx, "github.actions", false) },
@@ -353,6 +354,33 @@ func TestAnnounceTellsEachChangeOnce(t *testing.T) {
 	require.NoError(t, err)
 	again.Announce(t.Context(), plan)
 	assert.Zero(t, quiet.Count(), "an import that changes nothing tells nothing")
+}
+
+func TestABackupCarriesTheWatchForPushes(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	db := testutil.DB(t)
+	svc := serviceOver(t, db, t.TempDir(), WithEvents(events))
+
+	set, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	require.NotNil(t, portableOf(set).WatchPushes)
+	assert.True(t, *portableOf(set).WatchPushes, "a backup holds the switch, on by default")
+
+	off := false
+	part := NewBackupPart(svc)
+
+	plan, err := part.PlanPortable(t.Context(), Portable{WatchPushes: &off})
+	require.NoError(t, err)
+
+	applyPlan(t, part, db, plan)
+	part.Announce(t.Context(), plan)
+	assert.Equal(t, []event.Event{event.IntervalsChanged{}}, events.All(), "the watch stops at once")
+
+	on, err := svc.WatchPushes(t.Context())
+	require.NoError(t, err)
+	assert.False(t, on)
 }
 
 func TestPlanReposMergesAndReplaces(t *testing.T) {

@@ -438,6 +438,11 @@ links to its full write-up in the [Desktop Guide](docs/desktop.md).
   as it runs, whoever started it, with what it is doing (**Reading 3 of 8 new items…**). Pull
   requests whose checks are running are read again every 45 seconds, all in one request, until
   their checks end. **Settings → Refreshing** sets both intervals.
+- **Your pushes show at once:** push to one of your pull requests from a clone on this Mac (a
+  terminal, an editor, or an agent) and its card catches up within seconds, for one API point.
+  The app notices the push in the files git keeps for the branch, so nothing is installed in a
+  clone and GitHub is asked nothing until a branch moves; **Notice pushes from this Mac** in
+  **Settings → Refreshing** turns it off.
 - **Counts you can trust:** each item is in one list, so the lists' counts add up to the Inbox
   tab's, and a list you collapse stays collapsed across launches.
 

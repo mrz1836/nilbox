@@ -62,6 +62,7 @@
       "serviceStatus": 1800,
       "worktrees": 300
     },
+    "watchPushes": true,
     "serviceStatus": {
       "off": [],
       "parts": [

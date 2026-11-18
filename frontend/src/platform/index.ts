@@ -951,6 +951,7 @@ export const {
   SetScriptsSectionOpen: setScriptsSectionOpen,
   SetShowRuns: setShowRuns,
   SetRefreshInterval: setRefreshInterval,
+  SetWatchPushes: setWatchPushes,
   SetStatusProvider: setStatusProvider,
   SetStatusPart: setStatusPart,
   SetGitHubNotificationSwitch: setGitHubNotificationSwitch,

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 )
 
 // RefreshKind names one of the things the app reads again on its own, on a timer.
@@ -62,6 +63,14 @@ const (
 	DefaultRefreshNotifications = 300
 	DefaultRefreshServiceStatus = 1800
 )
+
+// KeyWatchPushes is whether the app watches the branches of the inbox's pull requests in
+// the user's clones, so one pushed from this Mac is read again at once.
+const KeyWatchPushes = "refresh.watchPushes"
+
+// DefaultWatchPushes is on: watching costs a few file checks every few seconds and no
+// GitHub request until a pull request's branch moves.
+const DefaultWatchPushes = true
 
 // ErrInvalidRefresh is returned for a refresh kind, or an interval, that isn't one of the
 // choices.
@@ -200,6 +209,33 @@ func (s *Service) SetRefreshInterval(ctx context.Context, kind RefreshKind, seco
 	}
 
 	saved, err := s.save(ctx, setMany(values, ""))
+	if err != nil {
+		return saved, err
+	}
+
+	s.events.Emit(event.IntervalsChanged{})
+
+	return saved, nil
+}
+
+// WatchPushes returns whether the app watches the branches of the inbox's pull requests
+// in the user's clones: the stored setting, or DefaultWatchPushes when none is stored or
+// it cannot be read.
+func (s *Service) WatchPushes(ctx context.Context) (bool, error) {
+	stored, _, err := s.prefs.Get(ctx, KeyWatchPushes)
+	if err != nil {
+		return DefaultWatchPushes, fmt.Errorf("read whether to watch for pushes: %w", err)
+	}
+
+	return prefval.Bool(stored, DefaultWatchPushes), nil
+}
+
+// SetWatchPushes stores whether the app watches the branches of the inbox's pull requests
+// in the user's clones, and returns the settings with it. While it is off, no clone is
+// looked at, and a push reaches its card at the next refresh. Once it is stored, an
+// event.IntervalsChanged is emitted, so the watch starts or stops at once.
+func (s *Service) SetWatchPushes(ctx context.Context, on bool) (Settings, error) {
+	saved, err := s.save(ctx, setting(KeyWatchPushes, prefval.EncodeBool(on)))
 	if err != nil {
 		return saved, err
 	}

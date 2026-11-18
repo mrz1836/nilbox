@@ -26,6 +26,7 @@ export is a section of the file; one you leave unticked is absent.
     "defaultProfiles": {"claude": "default", "codex": "default"},
     "theme": "dark",
     "refresh": {"inbox": 300, "checks": 45, "releaseChecks": 45, "worktrees": 300, "notifications": 300, "serviceStatus": 1800},
+    "watchPushes": true,
     "serviceStatus": {"off": [], "parts": ["github.pulls", "github.actions", "claude.api", "claude.code", "openai.codex-cli"]}
   },
   "repositories": {
@@ -113,6 +114,7 @@ is each entry left out.
 | `menuBar`, `bannersOff` | The menu bar icon, and the kinds of notification whose banners are off. |
 | `githubNotifications` | The GitHub notification rules: `read`, `auto`, `action`, `triggersOff`, `watching`, `botActivity`. |
 | `refresh` | How often, in seconds, the app reads `inbox`, `checks` (the pull requests' running checks), `releaseChecks` (the Release page's running checks), `worktrees`, and `notifications` again, and how often it checks `serviceStatus` (the status pages of the services you watch); `0` turns either checks follow, or the status check, off. A file from an older version names the status check `githubStatus`, which is read as `serviceStatus` unless the file holds that too. |
+| `watchPushes` | *Notice pushes from this Mac*: whether the app watches the branches of the inbox's pull requests in your clones, so one you push to is read again at once (`true`, the default). |
 | `serviceStatus` | What the service status check watches: `off`, the status pages turned off (`github`, `claude`, `openai`), and `parts`, every part watched, across the services, by the app's own names for them (such as `github.pulls`, `claude.api`, or `openai.codex-cli`). `parts` is the whole list: a part it leaves out is unticked. A name this version doesn't know is left out of an import, with a note. |
 | `mergeMethod`, `theme`, `textSize`, `toastSeconds` | Reviewing and appearance. |
 | `inboxOrder` | Which inbox lists (`reviewRequested`, `yours`) sort by project status (`statusSorted`), the order of the statuses (`statusOrder`), and which show one kind of item (`kinds`). A file from an older version names the former `authored` and `assigned` lists: `assigned`'s sort and kind are read as `yours`'s, unless the file gives `yours` a kind of its own, and `authored`'s are dropped. |

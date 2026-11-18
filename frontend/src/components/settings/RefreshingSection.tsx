@@ -1,8 +1,8 @@
 import { useId, useState } from 'react'
 
 import { useSettingsSave } from '../../lib/useSettingsSave'
-import { setRefreshInterval, type Settings } from '../../platform'
-import { Group, Note, SectionIntro, SettingRow } from './rows'
+import { setRefreshInterval, setWatchPushes, type Settings } from '../../platform'
+import { Group, Note, SectionIntro, SettingRow, SwitchRow } from './rows'
 import type { SectionProps } from './types'
 
 // IntervalKind is one of the intervals the settings hold, as Settings → Refreshing and
@@ -79,13 +79,14 @@ export function everyWords(seconds: number): string {
 // RefreshingSection holds how often the app reads the inbox, the running checks, the
 // Release page's running checks, the worktrees, and the GitHub notifications again on its
 // own, each a select of the intervals Go offers, saved as soon as it is chosen; what reads
-// them again works its next wait out from the new interval at once. How often the status
+// them again works its next wait out from the new interval at once. Below them, the switch
+// that has a pull request pushed to from this Mac read again at once. How often the status
 // pages are checked is in Settings → Service status.
 export function RefreshingSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save, error } = useSettingsSave(stored, onSaved)
-  // changed is the interval changed last, beside which a refusal shows.
-  const [changed, setChanged] = useState<IntervalKind>('inbox')
+  // changed is the setting changed last, beside which a refusal shows.
+  const [changed, setChanged] = useState<IntervalKind | 'watchPushes'>('inbox')
 
   const choose = (kind: IntervalKind, seconds: number) => {
     setChanged(kind)
@@ -93,6 +94,11 @@ export function RefreshingSection({ settings: stored, onSaved }: SectionProps) {
     const refresh: Settings['refresh'] = { ...settings.refresh, [kind]: seconds }
 
     void save({ refresh }, () => setRefreshInterval(kind, seconds))
+  }
+
+  const watch = (watchPushes: boolean) => {
+    setChanged('watchPushes')
+    void save({ watchPushes }, () => setWatchPushes(watchPushes))
   }
 
   return (
@@ -134,6 +140,20 @@ export function RefreshingSection({ settings: stored, onSaved }: SectionProps) {
         })}
       </Group>
       <Note>A change applies at once: a refresh already due under the new interval starts straight away.</Note>
+      <SectionIntro title="Pushes from this Mac">
+        A pull request you push to from a clone on this Mac, from a terminal, an editor, or an agent, catches up within
+        seconds rather than at the next refresh.
+      </SectionIntro>
+      <Group>
+        <SwitchRow
+          label="Notice pushes from this Mac"
+          controlId={`${id}-watch-pushes`}
+          description="Watches the branch of each open pull request in your inbox in your clones, and reads the pull request again, about a point, once a push or a fetch moves it to a commit GitHub hadn’t shown. It only looks at the files git keeps for branches: nothing in a clone changes, and nothing is asked of GitHub while no branch moves."
+          error={changed === 'watchPushes' ? error : ''}
+          checked={settings.watchPushes}
+          onChange={watch}
+        />
+      </Group>
     </div>
   )
 }

@@ -98,7 +98,7 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   refreshing: {
     label: 'Refreshing',
     description:
-      'How often the app reads the inbox, the running checks, the Release page’s running checks, the worktrees, and the GitHub notifications again on its own.',
+      'How often the app reads the inbox, the running checks, the Release page’s running checks, the worktrees, and the GitHub notifications again on its own, and whether a push from this Mac is read at once.',
   },
   status: {
     label: 'Service status',
@@ -431,6 +431,11 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Release checks', keywords: ['Release page', 'CI', 'checks', 'default branch', 'follow', 'interval'] },
     { label: 'Worktrees', keywords: ['sweep', 'cleanup', 'interval'] },
     { label: 'GitHub notifications', keywords: ['notifications', 'GitHub inbox', 'poll interval', 'interval'] },
+    { label: 'Pushes from this Mac', keywords: ['git push', 'push', 'commit', 'branch', 'clone', 'local', 'instant'] },
+    {
+      label: 'Notice pushes from this Mac',
+      keywords: ['git push', 'push', 'fetch', 'commit', 'branch', 'clone', 'watch', 'pull request', 'stale'],
+    },
   ],
   // How often, then one card per status page, by the provider's name, the backend's
   // catalog: each card's parts are found by the words for its provider.

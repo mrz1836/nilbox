@@ -439,8 +439,9 @@ func (IntegrationsChanged) Name() string { return NameIntegrationsChanged }
 
 // IntervalsChanged says the user changed how often the app reads something again on its
 // own (the inbox, the running checks, the Release page's running checks, the worktrees,
-// the GitHub notifications, the status pages), and it was stored. It stays in Go: core wakes what reads them
-// again, which works its next wait out from the new interval.
+// the GitHub notifications, the status pages), or turned the watch for pushes on or off,
+// and it was stored. It stays in Go: core wakes what reads them again, which works its
+// next wait out from the new interval, and the push watch, which reads its switch again.
 type IntervalsChanged struct{}
 
 // Name returns NameIntervalsChanged.

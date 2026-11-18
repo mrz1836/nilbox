@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -120,6 +120,36 @@ describe('RefreshingSection', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
     expect(screen.getByRole('combobox', { name: 'Worktrees' })).toHaveValue('300')
+  })
+
+  it('turns noticing pushes from this Mac off and on, on by default', async () => {
+    const { onSaved } = renderSection()
+
+    const watch = screen.getByRole('switch', { name: 'Notice pushes from this Mac' })
+    expect(watch).toBeChecked()
+    expect(watch).toHaveAccessibleDescription(/nothing in a clone changes, and nothing is asked of GitHub/)
+
+    await userEvent.click(watch)
+
+    expect(platform.setWatchPushes).toHaveBeenCalledExactlyOnceWith(false)
+    expect(onSaved).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ watchPushes: false }))
+    expect(platform.setRefreshInterval).not.toHaveBeenCalled()
+  })
+
+  it('says why the switch was refused, beside it alone', async () => {
+    platform.setWatchPushes.mockRejectedValueOnce(new Error('database is locked'))
+    renderSection(settings({ watchPushes: false }))
+
+    const watch = screen.getByRole('switch', { name: 'Notice pushes from this Mac' })
+    await userEvent.click(watch)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
+    // The switch goes back to what is stored once the refused save's transition ends.
+    await waitFor(() => {
+      expect(watch).not.toBeChecked()
+    })
+    expect(watch).toHaveAccessibleDescription(/database is locked/)
+    expect(screen.getByRole('combobox', { name: 'Inbox' })).not.toHaveAccessibleDescription(/database is locked/)
   })
 
   it('words every interval', () => {

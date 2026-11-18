@@ -126,6 +126,7 @@ func TestPrefDefaults(t *testing.T) {
 		},
 		Refresh:         DefaultRefreshIntervals(),
 		RefreshChoices:  refreshChoices(),
+		WatchPushes:     true,
 		ServiceStatus:   statusprefs.Defaults(),
 		StatusProviders: statusprefs.Catalog(),
 		UpdateMode:      updateprefs.ModeDownload,
@@ -249,6 +250,7 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetNotificationBanner(t.Context(), notifyprefs.KindWoke, false)))
 	require.NoError(t, testutil.ErrOf(svc.SetNotificationBanner(t.Context(), notifyprefs.KindSessionNeedsYou, true)))
 	require.NoError(t, testutil.ErrOf(svc.SetFollowSessions(t.Context(), false)))
+	require.NoError(t, testutil.ErrOf(svc.SetWatchPushes(t.Context(), false)))
 	require.NoError(t, testutil.ErrOf(svc.SetBranchRules(t.Context(), branchrules.Rules{Own: true, Protected: []string{"develop"}})))
 	require.NoError(t, testutil.ErrOf(svc.SetTextSize(t.Context(), TextSizeLarger)))
 	require.NoError(t, testutil.ErrOf(svc.SetToastSeconds(t.Context(), 30)))
@@ -325,6 +327,7 @@ func TestSettersPersist(t *testing.T) {
 		},
 		Refresh:         DefaultRefreshIntervals(),
 		RefreshChoices:  refreshChoices(),
+		WatchPushes:     false,
 		ServiceStatus:   statusprefs.Defaults(),
 		StatusProviders: statusprefs.Catalog(),
 		UpdateMode:      updateprefs.ModeOff,
@@ -713,6 +716,10 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"follow sessions", func() (Settings, error) { return svc.SetFollowSessions(ctx, false) },
 			func(s Settings) any { return s.FollowSessions }, false,
+		},
+		{
+			"watch pushes", func() (Settings, error) { return svc.SetWatchPushes(ctx, false) },
+			func(s Settings) any { return s.WatchPushes }, false,
 		},
 		{
 			"codex effort", func() (Settings, error) { return svc.SetCodexEffort(ctx, true) },

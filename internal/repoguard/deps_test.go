@@ -90,6 +90,13 @@ func boundaries() []boundary {
 				"interfaces, and never reaches GitHub: the inbox reads a session's item again, through core",
 		},
 		{
+			pkg:       "internal/pushwatch",
+			forbidden: append(slices.Clone(noService), "internal/worktrees", "internal/sessions", "internal/desktop"),
+			why: "pushwatch reads the pull requests, the clones, and the switch through its own Targets, Clones, " +
+				"Origins, and Switch interfaces, stores nothing, and never reaches GitHub: the inbox reads a pull " +
+				"request again, through core",
+		},
+		{
 			pkg:       "internal/desktop",
 			forbidden: []string{"internal/core", "internal/setup"},
 			why: "the shell reaches the services through the interfaces it declares, and hears whether the setup " +

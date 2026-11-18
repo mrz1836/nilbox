@@ -48,6 +48,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
+	"github.com/mrz1836/nilbox/internal/pushwatch"
 	"github.com/mrz1836/nilbox/internal/release"
 	"github.com/mrz1836/nilbox/internal/review"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
@@ -219,10 +220,17 @@ type Core struct {
 	MergeFollower *inbox.MergeFollower
 
 	// Rereads reads again, one at a time, the item of each agent session that stops
-	// working, as the Watcher asks (one GraphQL point each), so a pull request the agent
-	// reviewed leaves Review requested at once; the desktop shell runs it with the other
-	// work. It is not bound.
+	// working, as the Watcher asks, and each pull request a push on this Mac moved, as the
+	// PushWatcher asks (one GraphQL point each), so a pull request the agent reviewed leaves
+	// Review requested at once; the desktop shell runs it with the other work. It is not
+	// bound.
 	Rereads *inbox.Rereads
+
+	// PushWatcher follows, while Settings → Refreshing's switch is on, the branches of the
+	// inbox's pull requests in the user's clones, and hands Rereads a pull request whose
+	// branch a push or a fetch moved to a commit GitHub hadn't reported for it; the desktop
+	// shell runs it with the deferred work. It is not bound.
+	PushWatcher *pushwatch.Watcher
 
 	// GHThreadsSyncer reads the user's GitHub notifications into GHThreads' mirror on
 	// start, then as often as the notifications' refresh setting says, never sooner than
@@ -541,13 +549,16 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// The agent sessions record what came of their items on GitHub; they are followed
 	// once the inbox is built, below.
 	sessionNotes := &sessionOutcomes{logger: logger}
+	// The push watch hears every change to the inbox, so it watches a pull request newly
+	// listed at once; it is built once the inbox is, below.
+	pushes := &pushWaker{}
 
 	inboxSvc := inbox.NewService(inbox.Config{
 		Pool:     pool,
 		Tokens:   tokens,
 		Client:   client,
 		Clock:    opts.Clock,
-		Events:   engineOnInbox{sink: opts.Events, engine: engine},
+		Events:   pushesOnInbox{sink: engineOnInbox{sink: opts.Events, engine: engine}, pushes: pushes},
 		Arrivals: dispatcher,
 		Outcomes: outcomesFanOut{
 			threads: ghThreadOutcomes{settler: ghthreads.NewSettler(ghThreads)}, engine: engine, sessions: sessionNotes,
@@ -586,6 +597,13 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// worktree creation's fetches and checkouts.
 	shellGit := gitread.New(gitread.Config{
 		Env: func() []string { env, _ := shellEnv.Env(); return env }, Runner: toolRunners,
+	})
+
+	// A push made on this Mac to a pull request the inbox lists has it read again at once,
+	// through the same Rereads, rather than at the next refresh.
+	pushes.watcher = newPushWatcher(pushWatchDeps{
+		settings: prefs, store: inboxStore, rereads: rereads, runner: runner, git: shellGit, locations: locations,
+		home: opts.Home, logger: logger,
 	})
 
 	// The routines' agents run in the background through the launcher's own background
@@ -750,7 +768,9 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Clock: opts.Clock, Events: opts.Events, Logger: logger,
 	})
 	serviceStatusChecker := svcstatus.NewChecker(serviceStatus)
-	followed.intervals = []waker{scheduler, checksFollower, releaseChecks, sweeper, ghThreadsSyncer, serviceStatusChecker}
+	followed.intervals = []waker{
+		scheduler, checksFollower, releaseChecks, sweeper, ghThreadsSyncer, serviceStatusChecker, pushes.watcher,
+	}
 	// A status page turned on or off, or a part ticked, reaches the check at once.
 	followed.statusRules = serviceStatusChecker
 
@@ -874,6 +894,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		ChecksFollower:        checksFollower,
 		MergeFollower:         inbox.NewMergeFollower(inboxSvc, logger),
 		Rereads:               rereads,
+		PushWatcher:           pushes.watcher,
 		Sweeper:               sweeper,
 		Timing:                recorder,
 		ShellEnv:              shellEnv,
