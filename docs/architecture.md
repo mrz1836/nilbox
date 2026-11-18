@@ -1206,8 +1206,8 @@ a person named after its app; a bot with no URL is skipped. It owns `avatars`, o
 lower-cased key, at most `MaxLogins` (100) people and bots together a call, downloaded at most
 four at a time, each once until it is a week old and shown again, a failed one (a refused URL
 included) not tried again for 30 minutes, and bounded (30 days unused, 2,000 rows, 16 MiB),
-pruned in the transaction that writes. The window gets them as data: URLs (`PersonAvatar`,
-`frontend/src/lib/pictures.ts`), so it loads nothing remote itself.
+pruned in the transaction that writes. The window gets them as data: URLs (`PersonAvatar` and
+`card/CardAvatar`, `frontend/src/lib/pictures.ts`), so it loads nothing remote itself.
 
 ## internal/bump
 
@@ -4275,3 +4275,17 @@ column. A stretched toggle, the button right after the title (`absolute inset-0 
 titled element sits above it (`relative z-10`, and `z-20` while one of their panels is open),
 which keeps `jsx-a11y` strict without a disable comment. The peek reads only what the card
 has, so it costs no request.
+`card/CardAvatar` shows the author's picture through `Avatar.tsx`'s `Picture` (a circle, or
+with `shape="square"` a bot's rounded square), whose stand-in, the initials or the bot mark,
+shows until the picture decodes and when it fails. The pictures come from
+`CardPicturesContext`, which App provides around the inbox alone (the Watching list's cards
+keep their initials) from `useCardPictures` (`lib/pictures.ts`): keyed by the sorted authors
+of every inbox item (people by login, bots by login and `authorAvatarUrl`), it asks the bound
+avatars service's `PicturesFor` in requests of at most 25 authors, all at once, and merges each
+answer as it lands, so a slow download holds back only its own; different authors cancel the
+requests under way, and with Settings → Cards' Author pictures off, or before the settings
+load, nothing is asked. Only `CardAvatar` reads the context, never `ItemRow`, so a picture
+landing renders no row (the render check holds it). The cards' settings reach them as
+`CardPrefs` (`lib/cardPrefs.ts`) through `CardPrefsContext`, which App builds from the
+settings' primitives and provides around every page, so a settings save that leaves them as
+they were renders no card.

@@ -267,9 +267,9 @@ with `go run` at the version `go.mod` pins.
   refresh times out: `/Applications/Nilbox.app/Contents/MacOS/nilbox` for a release (under
   `~/Applications` if you installed it there), and `bin/Nilbox Dev.app/Contents/MacOS/nilbox` for
   a build from source. Blocking `avatars.githubusercontent.com` only swaps profile pictures (yours,
-  and those of the people an issue shows) for initials, and blocking the status pages
-  (`www.githubstatus.com`, `status.claude.com`, and `status.openai.com`) only leaves the service
-  status check saying it couldn't reach them. Updates need `github.com`, which redirects each
+  the inbox cards' authors', and those of the people an issue shows) for initials, and blocking
+  the status pages (`www.githubstatus.com`, `status.claude.com`, and `status.openai.com`) only
+  leaves the service status check saying it couldn't reach them. Updates need `github.com`, which redirects each
   download to `release-assets.githubusercontent.com` (and, for some releases,
   `objects.githubusercontent.com`); blocking them only means a check or a download fails.
 - **Updates:** a check is one GET of the latest release's `manifest-darwin.json` from
@@ -1195,8 +1195,9 @@ More in [The window](docs/desktop.md#the-window).
 <br>
 
 > **Your data stays on your Mac.** Nilbox's own requests go only to GitHub: `api.github.com`,
-> `avatars.githubusercontent.com` for profile pictures (yours, and, by login, those of the people an
-> issue you open shows, each kept and downloaded again at most weekly), and `github.com` and
+> `avatars.githubusercontent.com` for profile pictures (yours; by login, those of the people an
+> issue you open shows and of the inbox cards' authors; and a bot author's from the address GitHub
+> gives for it; each kept and downloaded again at most weekly), and `github.com` and
 > GitHub's release download hosts for public releases: a tool's, when you install or update it,
 > and, in a release of Nilbox, its own update check, which reads the latest release's manifest and
 > downloads a newer version's zip. Those downloads carry no token and nothing of yours. The one
