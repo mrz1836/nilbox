@@ -23,6 +23,11 @@
 // read their settings through their own narrow interfaces rather than the settings
 // package.
 //
+// The guide guards keep the project guide, CLAUDE.md, under a size cap, since coding
+// agents load it whole into every session, so a package's design goes in its section of
+// docs/architecture.md; and they check that every link into those notes names one of its
+// headings.
+//
 // One guard is personal: a contributor can list their own private names (employers,
 // clients, private organizations and repositories) in the clone's git directory, at
 // .git/info/private-terms, and the guard fails wherever one appears in a file, the branch
