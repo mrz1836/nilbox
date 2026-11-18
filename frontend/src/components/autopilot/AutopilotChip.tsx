@@ -103,7 +103,7 @@ function HistoryEntry({ match, onShow, onUndone }: HistoryEntryProps) {
       {match.words !== '' && <p className="text-xs text-muted">{match.words}</p>}
       {match.effects.map((effect) => (
         <p key={effect.id} className="flex items-center gap-2 text-xs text-muted">
-          <span>
+          <span className="min-w-0">
             {effectVerb(effect.action)} · {effectState(effect)}
           </span>
           {effect.canUndo && (
@@ -117,7 +117,7 @@ function HistoryEntry({ match, onShow, onUndone }: HistoryEntryProps) {
                   }
                 })
               }}
-              className={`${quietButtonClass} ml-auto`}
+              className={`${quietButtonClass} ml-auto shrink-0`}
             >
               Undo
             </button>
@@ -195,7 +195,9 @@ export interface AutopilotChipProps {
 // AutopilotChip marks an item a routine touched, on its card's second line: "⚡ Snoozed",
 // "⚡ Would run", what the newest of the routines' matches on it says (chipOf); in a list
 // narrower than 48rem, the ⚡ alone. It opens the item's history with the routines in a
-// panel. An item no routine touched shows nothing.
+// panel, which wraps its own text: the card's line, which it opens in, doesn't wrap, and
+// that would carry into the panel and run its sentences past its edge. The panel is never
+// wider than the window. An item no routine touched shows nothing.
 export function AutopilotChip({ item, align = 'left' }: AutopilotChipProps) {
   const id = useId()
   const rows = use(AutopilotRowsContext)
@@ -232,10 +234,10 @@ export function AutopilotChip({ item, align = 'left' }: AutopilotChipProps) {
         id={id}
         role="dialog"
         aria-label="Autopilot history"
-        className="z-20 flex max-h-[calc(100vh-8rem)] w-[24rem] flex-col gap-1 overflow-y-auto p-3 text-left shadow-black/25"
+        className="z-20 flex max-h-[calc(100vh-8rem)] w-[24rem] max-w-[calc(100vw-2rem)] flex-col gap-1 overflow-y-auto p-3 text-left break-words whitespace-normal shadow-black/25"
       >
         <p className="flex items-center gap-1.5 text-xs font-semibold text-text">
-          <AutopilotIcon className="size-3.5 text-accent" />
+          <AutopilotIcon className="size-3.5 shrink-0 text-accent" />
           What the routines did with it
         </p>
         <ItemHistory
