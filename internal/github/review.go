@@ -177,8 +177,9 @@ func (c *Client) UpdateBranch(ctx context.Context, tok Token, ref item.Ref, expe
 // with one REST request (POST /repos/{owner}/{repo}/actions/runs/{run_id}/approve). It
 // takes write access to the repository. GitHub documents it for a public fork's first-time
 // contributor, and may refuse a run its other approval settings hold, which is worded
-// (approveError) with what GitHub says. A run takes no head: the caller approves only the
-// runs it read on the head the user saw.
+// (approveError) with what GitHub says; a refusal for what the run is, not a fork pull
+// request's own run nor one the Actions bot queued, is ErrRunNotApprovable. A run takes no
+// head: the caller approves only the runs it read on the head the user saw.
 func (c *Client) ApproveWorkflowRun(ctx context.Context, tok Token, name repo.Name, runID int64) error {
 	return Redact(c.approveWorkflowRun(ctx, tok, name, runID), tok)
 }
@@ -476,15 +477,47 @@ func (r workflowRun) String() string {
 	return "workflow run " + strconv.FormatInt(r.id, 10) + " of " + r.repo.String()
 }
 
+// ErrRunNotApprovable reports a workflow run GitHub refused to approve through its API for
+// what the run is: neither a fork pull request's own run nor one the Actions bot queued, as
+// a run a review started in the base repository. GitHub takes its approval only on its site.
+var ErrRunNotApprovable = errors.New("GitHub takes the workflow run's approval only on its site")
+
 // approveError gives a refused approval of run a message the user can act on, keeping err's
 // chain (refusedAs): a run GitHub can't find was deleted or run again, and one it won't
 // approve says why in GitHub's words, or, when GitHub says nothing, what an approval takes.
+// A refusal for what the run is also wraps ErrRunNotApprovable.
 func approveError(run workflowRun, err error) error {
+	if refusedForKind(err) {
+		err = fmt.Errorf("%w: %w", ErrRunNotApprovable, err)
+	}
+
 	return refusedAs(run, err, refusal{
 		missed: "it wasn't approved; it may have been deleted or run again",
 		verb:   "approve",
 		unsaid: "approving takes write access to the repository, and works only on a run waiting for approval",
 	})
+}
+
+// runKindRefusal is what GitHub's refusal of an approval for what the run is says, as in
+// "This run is not from a fork pull request or queued by the Actions bot."
+const runKindRefusal = "fork pull request"
+
+// refusedForKind reports GitHub's refusal of an approval for what the run is. GitHub's
+// answer carries no code of its own for it, only the status of any refusal (403 or 422)
+// and its message, so the message tells it apart by the words runKindRefusal; a rate limit
+// never does.
+func refusedForKind(err error) bool {
+	status, ok := errors.AsType[*StatusError](err)
+	if !ok || rateLimited(status) {
+		return false
+	}
+
+	switch status.StatusCode {
+	case http.StatusForbidden, http.StatusUnprocessableEntity:
+		return strings.Contains(strings.ToLower(status.Message), runKindRefusal)
+	default:
+		return false
+	}
 }
 
 // addComment checks the comment, sends it, and reads GitHub's answer.

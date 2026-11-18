@@ -1,6 +1,7 @@
 package github
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -101,6 +102,9 @@ func TestApproveWorkflowRunRefusals(t *testing.T) {
 		headers map[string]string
 		words   string
 		hold    time.Duration
+
+		// kind reports a refusal for what the run is (ErrRunNotApprovable).
+		kind bool
 	}{
 		{
 			name: "forbidden", status: http.StatusForbidden, body: `{"message":"Resource not accessible by integration"}`,
@@ -124,6 +128,21 @@ func TestApproveWorkflowRunRefusals(t *testing.T) {
 			name: "slowed down", status: http.StatusForbidden, body: `{"message":"You have exceeded a secondary rate limit"}`,
 			headers: map[string]string{"Retry-After": "90"}, hold: 90 * time.Second, words: "GitHub is limiting how fast",
 		},
+		{
+			name: "not a fork's run", status: http.StatusForbidden,
+			body:  `{"message":"This run is not from a fork pull request or queued by the Actions bot.","status":"403"}`,
+			words: refused + "This run is not from a fork pull request or queued by the Actions bot.", kind: true,
+		},
+		{
+			name: "not a fork's run, unprocessable", status: http.StatusUnprocessableEntity,
+			body:  `{"message":"This run is not from a fork pull request or queued by the Actions bot."}`,
+			words: refused + "This run is not from a fork pull request or queued by the Actions bot.", kind: true,
+		},
+		{
+			name: "not found, naming a fork", status: http.StatusNotFound,
+			body:  `{"message":"No fork pull request run found"}`,
+			words: "GitHub could not find workflow run 7 of acme-org/example-repo",
+		},
 	}
 
 	for _, tt := range tests {
@@ -138,12 +157,62 @@ func TestApproveWorkflowRunRefusals(t *testing.T) {
 			require.ErrorIs(t, err, ErrUnexpectedStatus)
 			require.NotErrorIs(t, err, ErrPushedSince, "an approval is pinned to nothing")
 			require.NotErrorIs(t, err, ErrNotMergeable, "an approval is no merge")
+			assert.Equal(t, tt.kind, errors.Is(err, ErrRunNotApprovable), "a refusal for what the run is")
 			assert.True(t, strings.HasPrefix(uierrText(err), tt.words), uierrText(err))
 			assert.NotContains(t, err.Error(), fakeToken, "the token is redacted")
 
 			if tt.hold > 0 {
 				assert.Equal(t, []time.Duration{tt.hold}, gate.held)
 			}
+		})
+	}
+}
+
+func TestSuiteHoldTellsTheRunsTheUserCanApprove(t *testing.T) {
+	t.Parallel()
+
+	// held is a check suite whose workflow run ended ACTION_REQUIRED, started by event and
+	// created by creator ("" for none read).
+	held := func(event, creator string) *graphQLSuite {
+		s := &graphQLSuite{Conclusion: SuiteAwaitsApproval, WorkflowRun: &graphQLSuiteRun{DatabaseID: 44, Event: event}}
+
+		if creator != "" {
+			s.Creator = &graphQLActor{Login: creator}
+		}
+
+		return s
+	}
+
+	waiting := held("pull_request", "octo-contributor")
+	waiting.Conclusion = "" // a run waiting on an environment's reviewers hasn't ended
+
+	appSuite := held("pull_request", "octo-contributor")
+	appSuite.WorkflowRun = nil
+
+	tests := []struct {
+		name  string
+		suite *graphQLSuite
+		fork  bool
+		want  suiteHold
+	}{
+		{name: "a fork pull request's own run", suite: held("pull_request", "octo-contributor"), fork: true, want: holdApprovable},
+		{name: "the Actions bot's run", suite: held("pull_request", "github-actions[bot]"), want: holdApprovable},
+		{name: "the Actions bot's dispatch", suite: held("workflow_dispatch", "GitHub-Actions[bot]"), want: holdApprovable},
+		{name: "a review's run on a fork's pull request", suite: held("pull_request_review", "octo-user"), fork: true, want: holdOnGitHub},
+		{name: "a workflow_run's run in the base repository", suite: held("workflow_run", "octo-user"), fork: true, want: holdOnGitHub},
+		{name: "a pull request's run from the same repository", suite: held("pull_request", "octo-contributor"), want: holdOnGitHub},
+		{name: "another bot's run", suite: held("pull_request", "dependabot[bot]"), want: holdOnGitHub},
+		{name: "a run with no event read", suite: held("", ""), fork: true, want: holdOnGitHub},
+		{name: "a run waiting on an environment's reviewers", suite: waiting, fork: true, want: holdNone},
+		{name: "an app's suite with no run", suite: appSuite, fork: true, want: holdNone},
+		{name: "no suite", fork: true, want: holdNone},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, tt.suite.hold(tt.fork))
 		})
 	}
 }

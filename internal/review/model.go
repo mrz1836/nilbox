@@ -168,6 +168,12 @@ const (
 	// refused one after approving others, some; Reason then says why.
 	OutcomeRunsApproved Outcome = "runs_approved"
 
+	// OutcomeRunsOnGitHub is an approval of the held workflow runs that GitHub made none
+	// of, refusing each for what the run is (github.ErrRunNotApprovable): it approves them
+	// only on its site, and the sheet shows them as waiting there from then on. Nothing
+	// changed on GitHub, and it is no error.
+	OutcomeRunsOnGitHub Outcome = "runs_on_github"
+
 	// OutcomePushedSince is an action refused, or never sent, because the pull request was
 	// pushed to since the sheet read it.
 	OutcomePushedSince Outcome = "pushed_since"
@@ -427,6 +433,12 @@ type Check struct {
 type Unrun struct {
 	Name     string `json:"name"`
 	Approval bool   `json:"approval"`
+
+	// OnGitHub reports a run waiting for approval that GitHub approves only on its site,
+	// never through the sheet: one it holds for another reason than a fork pull request's
+	// own run or the Actions bot's (github.UnrunSuite.OnGitHub), or one it refused to
+	// approve from the sheet for what it is while the app runs (Service remembers it).
+	OnGitHub bool `json:"onGitHub"`
 
 	// RunID is the GitHub Actions run's ID, which an approval names, and URL its page; 0
 	// and "" for another app's suite, and in a context an older build cached, until the

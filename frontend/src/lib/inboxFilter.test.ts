@@ -28,7 +28,7 @@ const cache = item({
       { name: 'enhancement', color: '' },
       { name: 'good first issue', color: '' },
     ],
-    checks: { state: 'FAILURE', passed: 3, failed: 1, pending: 0, skipped: 0, awaiting: 0 },
+    checks: { state: 'FAILURE', passed: 3, failed: 1, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
     reviews: { decision: 'APPROVED', reviewers: 1, reviewed: 1, approvals: 1, changesRequested: 0 },
   }),
 })
@@ -45,7 +45,7 @@ const draft = item({
   details: details({
     labels: [{ name: 'bug', color: '' }],
     mergeable: 'CONFLICTING',
-    checks: { state: 'PENDING', passed: 0, failed: 0, pending: 2, skipped: 0, awaiting: 0 },
+    checks: { state: 'PENDING', passed: 0, failed: 0, pending: 2, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
     reviews: { decision: 'CHANGES_REQUESTED', reviewers: 1, reviewed: 1, approvals: 0, changesRequested: 1 },
   }),
 })
@@ -59,7 +59,7 @@ const required = item({
   details: details({
     pushedSinceReview: true,
     labels: [{ name: 'bugfix', color: '' }],
-    checks: { state: 'SUCCESS', passed: 4, failed: 0, pending: 0, skipped: 0, awaiting: 0 },
+    checks: { state: 'SUCCESS', passed: 4, failed: 0, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
     reviews: { decision: 'REVIEW_REQUIRED', reviewers: 2, reviewed: 0, approvals: 0, changesRequested: 0 },
   }),
 })
@@ -73,7 +73,7 @@ const waiting = item({
   details: details({
     labels: [],
     // A fork's runs, held for approval before any check ran.
-    checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 2 },
+    checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 2, awaitingOnGitHub: 0 },
     reviews: { decision: '', reviewers: 0, reviewed: 0, approvals: 0, changesRequested: 0 },
   }),
 })

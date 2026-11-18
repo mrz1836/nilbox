@@ -104,7 +104,7 @@ export function guideItem(now: Date): InboxItem {
       changedFiles: 5,
       commits: 2,
       mergeable: 'MERGEABLE',
-      checks: { state: 'SUCCESS', passed: 22, failed: 0, pending: 0, skipped: 0, awaiting: 0 },
+      checks: { state: 'SUCCESS', passed: 22, failed: 0, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
       reviews: { decision: 'CHANGES_REQUESTED', reviewers: 1, reviewed: 1, approvals: 0, changesRequested: 1 },
       autoMerge: '',
       fetchedAt: ago(now, 2),

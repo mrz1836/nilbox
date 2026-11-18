@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strconv"
 	"testing"
@@ -1027,6 +1028,115 @@ func TestApprovingHeldRunsOfAPullRequestPushedSinceSendsNothing(t *testing.T) {
 	assert.Equal(t, OutcomePushedSince, res.Outcome, "the runs read belong to another head than the one the user saw")
 	assert.Zero(t, h.github.called(callApprove))
 	assert.Zero(t, h.inbox.acts)
+}
+
+func TestRunsHeldForApprovalOnGitHubAreNeverApproved(t *testing.T) {
+	t.Parallel()
+
+	// A run a review started in the base repository waits for approval on GitHub, beside
+	// the fork's own run, which the sheet approves alone.
+	h := newHarness(t)
+	h.github.review = pullReview(headA, github.MergeStateUnstable)
+	h.github.review.Unrun = []github.UnrunSuite{
+		{
+			Name: "Workflow 101", Conclusion: github.SuiteAwaitsApproval, RunID: 101,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/101",
+		},
+		{
+			Name: "Auto-merge Trigger", Conclusion: github.SuiteAwaitsApproval, RunID: 102, OnGitHub: true,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/102",
+		},
+	}
+	r := h.refreshed(t)
+
+	assert.Contains(t, r.Unrun, Unrun{
+		Name: "Auto-merge Trigger", Approval: true, OnGitHub: true, RunID: 102,
+		URL: "https://github.com/acme-org/example-repo/actions/runs/102",
+	})
+
+	res := h.act(t, ActRequest{Action: ActionApproveRuns, Accept: true})
+	assert.Equal(t, OutcomeRunsApproved, res.Outcome)
+	assert.Equal(t, "Approved 1 workflow run on acme-org/example-repo#7", res.Message)
+	assert.Equal(t, []string{"acme-org/example-repo:101"}, h.github.approved, "the run held on GitHub is never sent")
+
+	// With only it held, nothing is offered, and an approval asked for anyway sends nothing.
+	h = newHarness(t)
+	h.github.review = pullReview(headA, github.MergeStateUnstable)
+	h.github.review.Unrun = []github.UnrunSuite{
+		{Name: "Auto-merge Trigger", Conclusion: github.SuiteAwaitsApproval, RunID: 102, OnGitHub: true},
+	}
+	r = h.refreshed(t)
+
+	assert.False(t, slices.ContainsFunc(r.Offers, func(o Offer) bool { return o.Action == ActionApproveRuns }))
+
+	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionApproveRuns, Head: headA, Accept: true})
+	require.ErrorIs(t, err, ErrNotOffered)
+	assert.Zero(t, h.github.called(callApprove))
+}
+
+// notApprovable is GitHub's refusal of an approval of run for what the run is, as the client
+// gives it.
+func notApprovable(run int64) error {
+	return uierr.New("GitHub wouldn't approve workflow run "+strconv.FormatInt(run, 10)+" of acme-org/example-repo: "+
+		"This run is not from a fork pull request or queued by the Actions bot.",
+		fmt.Errorf("%w: approve: %w", github.ErrRunNotApprovable, errGateShut))
+}
+
+func TestARunGitHubWontApproveFromTheSheetIsRemembered(t *testing.T) {
+	t.Parallel()
+
+	h := heldRunsHarness(t, 101)
+	h.github.approveErrs = map[int64]error{101: notApprovable(101)}
+
+	res := h.act(t, ActRequest{Action: ActionApproveRuns, Accept: true})
+	assert.Equal(t, OutcomeRunsOnGitHub, res.Outcome, "a refusal for what the run is is no error")
+	assert.Equal(t, "Workflow 101 can only be approved on GitHub", res.Message)
+	assert.Empty(t, res.Reason)
+	assert.Equal(t, []string{"Workflow 101 can only be approved on GitHub"}, res.Steps)
+	assert.Equal(t, 1, h.github.called(callApprove), "it is never tried again")
+
+	// The sheet, read again, shows it waiting for approval on GitHub, and offers nothing.
+	r := h.refreshed(t)
+	i := slices.IndexFunc(r.Unrun, func(u Unrun) bool { return u.RunID == 101 })
+	require.GreaterOrEqual(t, i, 0)
+	assert.True(t, r.Unrun[i].OnGitHub, "remembered over the read, which still counts it approvable")
+	assert.False(t, slices.ContainsFunc(r.Offers, func(o Offer) bool { return o.Action == ActionApproveRuns }),
+		"a second click is not offered")
+
+	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionApproveRuns, Head: headA, Accept: true})
+	require.ErrorIs(t, err, ErrNotOffered)
+	assert.Equal(t, 1, h.github.called(callApprove), "nothing more is sent")
+}
+
+func TestApprovingHeldRunsGoesOnPastOneGitHubWontApprove(t *testing.T) {
+	t.Parallel()
+
+	h := heldRunsHarness(t, 101, 102, 103)
+	h.github.approveErrs = map[int64]error{102: notApprovable(102)}
+
+	res := h.act(t, ActRequest{Action: ActionApproveRuns, Accept: true})
+	assert.Equal(t, OutcomeRunsApproved, res.Outcome)
+	assert.Equal(t, "Approved 2 workflow runs on acme-org/example-repo#7; 1 can only be approved on GitHub", res.Message)
+	assert.Empty(t, res.Reason)
+	assert.Equal(t, []string{
+		"Approved Workflow 101", "Workflow 102 can only be approved on GitHub", "Approved Workflow 103",
+	}, res.Steps)
+	assert.Equal(t, []string{"acme-org/example-repo:101", "acme-org/example-repo:103"}, h.github.approved)
+	assert.Equal(t, 3, h.github.called(callApprove), "each run once")
+}
+
+func TestARetriedTokenNeverSendsARunGitHubWontApproveAgain(t *testing.T) {
+	t.Parallel()
+
+	h := heldRunsHarness(t, 101, 102)
+	h.github.approveErrs = map[int64]error{101: notApprovable(101)}
+	h.github.approveOnce = map[int64]error{102: badCredentials()}
+
+	res := h.act(t, ActRequest{Action: ActionApproveRuns, Accept: true})
+	assert.Equal(t, OutcomeRunsApproved, res.Outcome)
+	assert.Equal(t, []string{"acme-org/example-repo:102"}, h.github.approved)
+	assert.Equal(t, 3, h.github.called(callApprove), "101 once, then 102 with each token")
+	assert.Equal(t, 2, h.inbox.tries)
 }
 
 func TestApprovingHeldRunsWithoutTheirIDsWaits(t *testing.T) {

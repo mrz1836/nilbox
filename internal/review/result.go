@@ -65,14 +65,31 @@ func (a *action) notMergedMessage(ref string) string {
 }
 
 // runsMessage says how many of the held workflow runs GitHub approved, and, when it refused
-// the rest, why.
+// the rest, why: a short note of those it approves only on its site, or its own words.
 func (a *action) runsMessage(ref string) string {
-	approved, held := len(a.approvedRuns), len(a.runs)
-	if approved == held || a.reason == "" {
+	approved, held, onGitHub := len(a.approvedRuns), len(a.runs), len(a.onGitHub)
+
+	switch {
+	case approved == 0:
+		return onGitHubNote(a.onGitHub)
+	case approved < held && a.reason != "":
+		return fmt.Sprintf("Approved %d of %d workflow runs on %s; GitHub refused the rest: %s", approved, held, ref,
+			a.reason)
+	case onGitHub > 0:
+		return fmt.Sprintf("Approved %s on %s; %d can only be approved on GitHub",
+			textutil.Counted(approved, "workflow run", "workflow runs"), ref, onGitHub)
+	default:
 		return "Approved " + textutil.Counted(approved, "workflow run", "workflow runs") + " on " + ref
 	}
+}
 
-	return fmt.Sprintf("Approved %d of %d workflow runs on %s; GitHub refused the rest: %s", approved, held, ref, a.reason)
+// onGitHubNote says that the runs can only be approved on GitHub, naming the one run.
+func onGitHubNote(runs []Unrun) string {
+	if len(runs) == 1 && runs[0].Name != "" {
+		return runs[0].Name + " can only be approved on GitHub"
+	}
+
+	return textutil.Counted(len(runs), "workflow run", "workflow runs") + " can only be approved on GitHub"
 }
 
 // closedMessage says what a close came to, with the comment it posted first, if any.

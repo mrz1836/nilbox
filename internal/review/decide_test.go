@@ -365,6 +365,15 @@ func TestDecideSaysWhatKeepsAMergeFromPassing(t *testing.T) {
 		assert.Equal(t, c.sentence, readiness(f).Sentence)
 		assert.Equal(t, c.warning, unstableWarning(f))
 	}
+
+	// A run GitHub approves only on its site is held all the same, and said to wait there.
+	f := facts(github.MergeStateUnstable)
+	f.AwaitingApproval, f.OnGitHub = 3, 1
+
+	assert.Equal(t, "Ready to merge · 3 workflow runs awaiting approval", readiness(f).Sentence)
+	assert.Equal(t, "2 workflow runs are waiting for a maintainer's approval to run, as a fork's runs do. 1 workflow "+
+		"run is waiting for approval on GitHub. No check shows them, and every check that ran passed: GitHub merges "+
+		"it as it is.", unstableWarning(f))
 }
 
 func TestDecideWarnsBeforeARiskyMerge(t *testing.T) {
@@ -1195,6 +1204,24 @@ func TestDecideOffersToApproveHeldRuns(t *testing.T) {
 			facts: func() Facts {
 				f := holding(github.MergeStateUnstable, 2)
 				f.Sensitive, f.ChangesWorkflows = []string{"Workflows"}, true
+
+				return f
+			},
+		},
+		{
+			name: "held only for approval on GitHub",
+			facts: func() Facts {
+				f := holding(github.MergeStateUnstable, 0)
+				f.AwaitingApproval, f.OnGitHub = 2, 2
+
+				return f
+			},
+		},
+		{
+			name: "held for approval here and on GitHub", offered: true, enabled: true,
+			facts: func() Facts {
+				f := holding(github.MergeStateUnstable, 1)
+				f.AwaitingApproval, f.OnGitHub = 3, 2
 
 				return f
 			},

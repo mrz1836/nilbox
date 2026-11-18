@@ -576,8 +576,8 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
 - **Workflow runs waiting for approval:** the runs GitHub holds until a maintainer approves them,
   as it does a fork's, show on the card as held rather than as passed checks, and the sheet names
   them in a bar with **Approve workflows to run**, which asks first when the pull request changes
-  workflow files. The sheet stays open until their checks start, and each run links to GitHub in
-  case GitHub won't let the sheet approve it.
+  workflow files. The sheet stays open until their checks start. Runs GitHub approves only on its
+  own site, such as one a review started, are listed apart with **Open on GitHub** and no button.
 - **Line comments and suggestions** on the diff, checked against it before GitHub sees them, and a
   draft per pull request that survives closing the sheet.
 - **Your replies, your agent's verdict:** your [review replies](docs/desktop.md#review-replies)

@@ -45,8 +45,12 @@ function session(state: AgentSession['state'], overrides: Partial<AgentSession> 
   return agentSession({ state, ...overrides })
 }
 
-const failing = { checks: { state: 'FAILURE', passed: 13, failed: 1, pending: 0, skipped: 0, awaiting: 0 } }
-const running = { checks: { state: 'PENDING', passed: 9, failed: 0, pending: 5, skipped: 0, awaiting: 0 } }
+const failing = {
+  checks: { state: 'FAILURE', passed: 13, failed: 1, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
+}
+const running = {
+  checks: { state: 'PENDING', passed: 9, failed: 0, pending: 5, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
+}
 const changes = {
   reviews: { decision: 'CHANGES_REQUESTED', reviewers: 2, reviewed: 1, approvals: 0, changesRequested: 1 },
 }
@@ -204,13 +208,43 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
   // 6: workflow runs wait for the user's approval.
   [
     '6 runs held',
-    input({ item: asked({}, { checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 2 } }) }),
+    input({
+      item: asked(
+        {},
+        { checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 2, awaitingOnGitHub: 0 } },
+      ),
+    }),
     { rule: 'runs_held', edge: 'urgent', text: '2 runs await your approval', icon: 'clock', primary: 'review' },
   ],
   [
     '6 one run held',
-    input({ item: asked({}, { checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 1 } }) }),
+    input({
+      item: asked(
+        {},
+        { checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 1, awaitingOnGitHub: 0 } },
+      ),
+    }),
     { rule: 'runs_held', edge: 'urgent', text: '1 run awaits your approval', icon: 'clock', primary: 'review' },
+  ],
+  [
+    '6 counts only the runs the user can approve',
+    input({
+      item: asked(
+        {},
+        { checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 1, awaitingOnGitHub: 2 } },
+      ),
+    }),
+    { rule: 'runs_held', edge: 'urgent', text: '1 run awaits your approval', icon: 'clock', primary: 'review' },
+  ],
+  [
+    '6 not for runs held only for approval on GitHub',
+    input({
+      item: asked(
+        {},
+        { checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 2 } },
+      ),
+    }),
+    { rule: 'review', edge: 'yours', text: 'Your review', primary: 'review' },
   ],
 
   // 7: the user's pull request conflicts with its base.
@@ -246,14 +280,22 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
   [
     '8 checks failing, none counted',
     input({
-      item: mine({}, { checks: { state: 'ERROR', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 0 } }),
+      item: mine(
+        {},
+        { checks: { state: 'ERROR', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 } },
+      ),
     }),
     { rule: 'checks_failing', edge: 'blocked', text: 'Checks failing', primary: 'open', situation: 'checks_failing' },
   ],
   [
     '8 one of one check failing',
     input({
-      item: mine({}, { checks: { state: 'FAILURE', passed: 0, failed: 1, pending: 0, skipped: 0, awaiting: 0 } }),
+      item: mine(
+        {},
+        {
+          checks: { state: 'FAILURE', passed: 0, failed: 1, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
+        },
+      ),
     }),
     {
       rule: 'checks_failing',
@@ -348,7 +390,12 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
   [
     '13 a review with one check still running',
     input({
-      item: asked({}, { checks: { state: 'PENDING', passed: 16, failed: 0, pending: 1, skipped: 0, awaiting: 0 } }),
+      item: asked(
+        {},
+        {
+          checks: { state: 'PENDING', passed: 16, failed: 0, pending: 1, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
+        },
+      ),
     }),
     { rule: 'review', edge: 'yours', text: 'Your review', detail: '1 check still running', primary: 'review' },
   ],
@@ -411,7 +458,12 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
   ],
   [
     '15 ready to merge without checks',
-    input({ item: mine({}, { checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 0 } }) }),
+    input({
+      item: mine(
+        {},
+        { checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 } },
+      ),
+    }),
     { rule: 'ready', edge: 'ready', text: 'Approved · ready to merge', primary: 'merge' },
   ],
   [
@@ -516,7 +568,12 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
   [
     '18 checks running, none counted yet',
     input({
-      item: mine({}, { checks: { state: 'PENDING', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 0 } }),
+      item: mine(
+        {},
+        {
+          checks: { state: 'PENDING', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
+        },
+      ),
     }),
     { rule: 'checks_running', edge: 'waiting', text: 'Checks running', primary: 'open', quiet: true },
   ],
@@ -625,7 +682,10 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     input({
       item: asked(
         {},
-        { pushedSinceReview: true, checks: { state: '', passed: 3, failed: 0, pending: 0, skipped: 0, awaiting: 2 } },
+        {
+          pushedSinceReview: true,
+          checks: { state: '', passed: 3, failed: 0, pending: 0, skipped: 0, awaiting: 2, awaitingOnGitHub: 0 },
+        },
       ),
     }),
     { rule: 'runs_held', edge: 'urgent', text: '2 runs await your approval', icon: 'clock', primary: 'review' },

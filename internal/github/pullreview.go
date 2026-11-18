@@ -16,7 +16,8 @@ import (
 // (close it included), the viewer's own latest review and pending reviews, auto-merge, each
 // reviewer's latest review, the head commit's checks, each with whether it is required, its
 // check suites, which name the workflow runs that ended without a check (as a fork's runs
-// waiting for approval do) with each run's ID and page, the issues the pull request closes
+// waiting for approval do) with each run's ID and page, and, through DetailFields, its event
+// and who created its suite (suiteHold), the issues the pull request closes
 // once it merges, and the newest page of its conversation: its comments, its reviews, each
 // with its first line comments, and its events (PullTimelineFields).
 //
@@ -198,9 +199,9 @@ type PullReview struct {
 	Checks []Check
 
 	// Unrun are the head commit's check suites, of its first 50, that ended without any
-	// check among Checks and without passing: a fork's workflow runs waiting for a
-	// maintainer's approval, and runs that failed to start. GitHub counts them in the merge
-	// state (UNSTABLE) though no check shows them.
+	// check among Checks and without passing: workflow runs waiting for a maintainer's
+	// approval, as a fork's runs do, and runs that failed to start. GitHub counts them in
+	// the merge state (UNSTABLE) though no check shows them.
 	Unrun []UnrunSuite
 
 	// Closes are the first ten issues the pull request closes once it merges, the ones its
@@ -312,6 +313,11 @@ type UnrunSuite struct {
 	// ApproveWorkflowRun does), and URL its page; 0 and "" for another app's suite.
 	RunID int64
 	URL   string
+
+	// OnGitHub reports a run waiting for approval whose approval GitHub takes only on its
+	// site, never through ApproveWorkflowRun: one held for another reason than a fork pull
+	// request's own run or the Actions bot's (suiteHold, Checks.AwaitingOnGitHub).
+	OnGitHub bool
 }
 
 // SuiteAwaitsApproval is the conclusion of a suite whose run waits for a maintainer's
@@ -471,6 +477,9 @@ func (c *Client) fetchMergeState(ctx context.Context, tok Token, id string) (*Me
 // reviewNode is the ReviewFields part of a pull review answer. GitHub's nulls decode to
 // zero values.
 type reviewNode struct {
+	// IsCrossRepository is DetailFields', read here too for the suites that ended without a
+	// check (unrun).
+	IsCrossRepository        bool      `json:"isCrossRepository"`
 	Body                     string    `json:"body"`
 	LastEditedAt             time.Time `json:"lastEditedAt"`
 	BaseRefName              string    `json:"baseRefName"`
@@ -567,20 +576,27 @@ type graphQLCheck struct {
 }
 
 // graphQLSuite is one of the head commit's check suites. The details query asks only for
-// its conclusion and its run's ID; the rest decode to zero values there.
+// its conclusion, its creator, and its run's ID and event; the rest decode to zero values
+// there.
 type graphQLSuite struct {
-	ID         string `json:"id"`
-	Conclusion string `json:"conclusion"`
+	ID         string        `json:"id"`
+	Conclusion string        `json:"conclusion"`
+	Creator    *graphQLActor `json:"creator"`
 	App        *struct {
 		Name string `json:"name"`
 	} `json:"app"`
-	WorkflowRun *struct {
-		DatabaseID int64  `json:"databaseId"`
-		URL        string `json:"url"`
-		Workflow   *struct {
-			Name string `json:"name"`
-		} `json:"workflow"`
-	} `json:"workflowRun"`
+	WorkflowRun *graphQLSuiteRun `json:"workflowRun"`
+}
+
+// graphQLSuiteRun is a check suite's GitHub Actions workflow run: its ID, the event that
+// started it, its page, and its workflow.
+type graphQLSuiteRun struct {
+	DatabaseID int64  `json:"databaseId"`
+	Event      string `json:"event"`
+	URL        string `json:"url"`
+	Workflow   *struct {
+		Name string `json:"name"`
+	} `json:"workflow"`
 }
 
 // runID is the suite's workflow run's ID, 0 for a nil suite or one without a run.
@@ -597,6 +613,52 @@ func (s *graphQLSuite) runID() int64 {
 // which has no workflow run, so it is never counted here as well as among failed checks.
 func (s *graphQLSuite) heldRun() bool {
 	return s != nil && s.Conclusion == SuiteAwaitsApproval && s.runID() > 0
+}
+
+// suiteHold is whether a check suite's workflow run waits for approval, and where.
+type suiteHold int
+
+const (
+	// holdNone is a suite whose run doesn't wait for approval, or that has no run: one that
+	// ran, is still running, or waits on a deployment environment's reviewers, which ends
+	// it in no conclusion while its job's check counts as running.
+	holdNone suiteHold = iota
+
+	// holdApprovable is a held run GitHub takes the approval of through its API.
+	holdApprovable
+
+	// holdOnGitHub is a held run whose approval GitHub refuses through its API, which waits
+	// for approval on GitHub.
+	holdOnGitHub
+)
+
+// eventPullRequest is the event of a pull request's own workflow runs, the only ones that
+// run on a fork's head; a review's, a comment's, a pull_request_target's, or a
+// workflow_run's run in the base repository.
+const eventPullRequest = "pull_request"
+
+// actionsBot is the login GitHub gives the Actions bot as a check suite's creator, as it
+// gives any bot's ("dependabot[bot]").
+const actionsBot = "github-actions[bot]"
+
+// hold says whether the suite's workflow run waits for approval (heldRun) and, on a pull
+// request from a fork (fork) or not, whether GitHub takes the approval through its API,
+// which it does only for "a fork pull request" or a run "queued by the Actions bot", in its
+// own words: a run of the pull_request event on a fork's pull request, or one whose suite
+// the Actions bot created. It refuses any other, as a run a review (pull_request_review)
+// started in the base repository, even on a fork's pull request (as GitHub refused one in
+// November 2026), and such a run waits for approval on GitHub.
+func (s *graphQLSuite) hold(fork bool) suiteHold {
+	switch {
+	case !s.heldRun():
+		return holdNone
+	case fork && s.WorkflowRun.Event == eventPullRequest:
+		return holdApprovable
+	case s.Creator != nil && strings.EqualFold(s.Creator.Login, actionsBot):
+		return holdApprovable
+	default:
+		return holdOnGitHub
+	}
 }
 
 // name is the workflow that ran the suite, or else its app, or "".
@@ -626,7 +688,9 @@ func (n *reviewNode) unrun() []UnrunSuite {
 			continue
 		}
 
-		suite := UnrunSuite{Name: s.name(), Conclusion: s.Conclusion, RunID: s.runID()}
+		suite := UnrunSuite{
+			Name: s.name(), Conclusion: s.Conclusion, RunID: s.runID(), OnGitHub: s.hold(n.IsCrossRepository) == holdOnGitHub,
+		}
 		if suite.RunID > 0 {
 			suite.URL = s.WorkflowRun.URL
 		}

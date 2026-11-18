@@ -155,10 +155,35 @@ describe('ReviewSummary', () => {
       <ReviewSummary
         review={review({
           unrun: [
-            { name: 'PR Management', approval: true, runId: 106, url: 'https://example.test/runs/106' },
-            { name: 'Auto-merge Trigger', approval: true, runId: 107, url: 'https://example.test/runs/107' },
-            { name: 'Auto-merge Trigger', approval: true, runId: 108, url: 'https://example.test/runs/108' },
-            { name: 'Auto-merge Trigger', approval: false, runId: 0, url: '' },
+            {
+              name: 'PR Management',
+              approval: true,
+              onGitHub: false,
+              runId: 106,
+              url: 'https://example.test/runs/106',
+            },
+            {
+              name: 'Auto-merge Trigger',
+              approval: true,
+              onGitHub: false,
+              runId: 107,
+              url: 'https://example.test/runs/107',
+            },
+            {
+              name: 'Auto-merge Trigger',
+              approval: true,
+              onGitHub: false,
+              runId: 108,
+              url: 'https://example.test/runs/108',
+            },
+            { name: 'Auto-merge Trigger', approval: false, onGitHub: false, runId: 0, url: '' },
+            {
+              name: 'Review Trigger',
+              approval: true,
+              onGitHub: true,
+              runId: 109,
+              url: 'https://example.test/runs/109',
+            },
           ],
         })}
         item={undefined}
@@ -172,12 +197,13 @@ describe('ReviewSummary', () => {
         .map((li) => li.textContent),
     ).toEqual([
       '3 workflow runs awaiting approval: PR Management, Auto-merge Trigger',
+      '1 workflow run waiting for approval on GitHub: Review Trigger',
       '1 workflow run that didn’t start: Auto-merge Trigger',
     ])
 
     rerender(
       <ReviewSummary
-        review={review({ checks: [], unrun: [{ name: '', approval: false, runId: 0, url: '' }] })}
+        review={review({ checks: [], unrun: [{ name: '', approval: false, onGitHub: false, runId: 0, url: '' }] })}
         item={undefined}
       />,
     )
@@ -195,10 +221,22 @@ describe('ReviewSummary', () => {
       <ReviewSummary
         review={review({
           unrun: [
-            { name: 'PR Management', approval: true, runId: 106, url: 'https://example.test/runs/106' },
-            { name: 'Auto-merge Trigger', approval: true, runId: 0, url: '' },
-            { name: 'Auto-merge Trigger', approval: true, runId: 108, url: 'https://example.test/runs/108' },
-            { name: 'Example CI', approval: false, runId: 0, url: '' },
+            {
+              name: 'PR Management',
+              approval: true,
+              onGitHub: false,
+              runId: 106,
+              url: 'https://example.test/runs/106',
+            },
+            { name: 'Auto-merge Trigger', approval: true, onGitHub: false, runId: 0, url: '' },
+            {
+              name: 'Auto-merge Trigger',
+              approval: true,
+              onGitHub: false,
+              runId: 108,
+              url: 'https://example.test/runs/108',
+            },
+            { name: 'Example CI', approval: false, onGitHub: false, runId: 0, url: '' },
           ],
         })}
         item={undefined}

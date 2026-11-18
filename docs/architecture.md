@@ -166,8 +166,9 @@ scheduler, the checks follower (`inbox.ChecksFollower`: the listed pull requests
 checks were running, but a muted repository's, and those a routine's search follows, 50 a
 round at most, the listed first, read 25 to a request side by side through
 `(*github.Client).FetchItems`, and nothing while none runs; a pull request whose workflow
-runs GitHub holds for approval, `item_details.checks_awaiting`, which its card marks held
-in place of the rollup's state, isn't running, and waits for the whole refresh), the
+runs GitHub holds for approval, `item_details.checks_awaiting` and
+`checks_awaiting_on_github`, which its card marks held in place of the rollup's state,
+isn't running, and waits for the whole refresh), the
 merge follower (`inbox.MergeFollower`: a few seconds after each merge the inbox learns of,
 its own through the Actor or one a read finds, the repository's other open pull requests on
 the branch merged into, read again as the checks follower reads its own, and again while
@@ -379,6 +380,20 @@ sent for (`github.WithPurpose`: the inbox's refresh, the routines' searches, the
 follower, or Autopilot's own reads), and the `Tracker` splits each budget's spend by it
 (`Reading.Purposes`, which add up to `Spent`); the budget menu says Autopilot's share in one
 line, only once it spent something.
+
+**Held workflow runs.** GitHub's approve endpoint (`POST .../actions/runs/{id}/approve`,
+`ApproveWorkflowRun`) takes only "a fork pull request" or a run "queued by the Actions bot", in
+its own words, and refuses any other run it holds, as one a review (`pull_request_review`)
+started in the base repository, even on a fork's pull request. The details fragment reads, of
+each head commit suite, its creator's login and its run's event, and the pull request's
+`isCrossRepository`, none of which costs a point (measured in November 2026), and `suiteHold`
+tells the held runs (suites that ended `ACTION_REQUIRED` with a run) apart: a `pull_request` run
+on a fork's pull request, or one whose suite `github-actions[bot]` created, is approvable
+(`Checks.Awaiting`); any other waits for approval on GitHub (`Checks.AwaitingOnGitHub`,
+`UnrunSuite.OnGitHub`). A run waiting on a deployment environment's reviewers hasn't ended, so
+it is neither: its job's check counts as running. A refusal for what the run is still comes back
+as a 403 or 422 like any other, with no code of its own, so `approveError` tells it by GitHub's
+message ("fork pull request") and wraps `ErrRunNotApprovable`, keeping GitHub's words.
 
 ## internal/inbox
 
@@ -678,6 +693,16 @@ The rows that hang off an item by its id go with it, by their foreign keys' casc
 details, file check, and check names, and the review sheet's `review_diffs` (with
 `review_diff_files`) and the issue sheet's `issue_views`, which are only caches and are read
 again on the next visit. (An item with watch rows or local state is never pruned.)
+
+**Held workflow runs** (migration `0023_checks_awaiting_on_github`). A details read stores
+the runs GitHub holds for approval apart (`github.Checks`): `item_details.checks_awaiting`
+counts those the user can approve from the review sheet, and `checks_awaiting_on_github` those
+GitHub approves only on its site; the snapshot's `Checks.Awaiting` and `AwaitingOnGitHub` carry
+them to the card, whose **{n} run(s) await your approval** (rule 6) counts the first alone, while
+its track marks both held and says the second as **{n} workflow run(s) waiting for approval on
+GitHub**. A routine's facts count both (`checks.awaitingApproval`), since either way the checks
+haven't all run. A row stored before the migration counts every held run as approvable until
+the next whole refresh reads its details again.
 
 **The reads for Autopilot.** The bound Service adds only `ItemsByID`, the rows of a routine's
 Watching list (listed and watched items alike, as a snapshot shows them). Everything else is
@@ -1065,7 +1090,17 @@ beneath its checks, each a link to its run. Runs awaiting approval are approved 
 `approve_runs` ("Approve workflows to run"), offered in a bar under the sheet's header and
 in the menu, never the button: held back until the sheet read every one's run ID (a cache
 an older build kept has none), for a user with write access, and asking first, with a
-warning, when the pull request changes workflow files. `Act` approves the runs the cache
+warning, when the pull request changes workflow files. A run GitHub approves only on its site
+(`Unrun.OnGitHub`, from `github.UnrunSuite.OnGitHub`; see internal/github) is never offered
+(`Facts.OnGitHub`): the bar lists it apart as waiting for approval on GitHub, with **Open on
+GitHub** (the run's page, or the pull request's checks for several) and no button, and an
+approval names only the others. Should GitHub still refuse one for what it is
+(`github.ErrRunNotApprovable`), `Act` remembers its run ID for as long as the app runs
+(`Service.onGitHub`, in memory, never stored; `markOnGitHub` applies it to every cache the
+sheet loads, over any read since), never sends it again, and goes on with the rest; with none
+approved, the result is `runs_on_github` with a short note ("Auto-merge Trigger can only be
+approved on GitHub"), not an error, and the sheet reads again to list it there. `Act`
+approves the runs the cache
 read at the head the user saw (`loadAct` refuses another head as `pushed_since`), one REST
 `POST .../actions/runs/{id}/approve` each (`(*github.Client).ApproveWorkflowRun`, through
 `edit`), never one twice across the token retry; once GitHub approved any, a refusal of the

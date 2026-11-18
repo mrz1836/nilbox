@@ -1606,20 +1606,28 @@ func TestRefreshStoresTheRunsHeldForApproval(t *testing.T) {
 	h := newHarness(t)
 	h.client.inbox = fetched([]github.Item{pr(1, "OWNER", false)}, nil, nil)
 
-	// The rollup reads SUCCESS while a fork's workflow runs wait for a maintainer.
+	// The rollup reads SUCCESS while a fork's workflow runs wait for a maintainer, and one a
+	// review started in the base repository waits for approval on GitHub.
 	held := prDetails()
-	held.Checks = github.Checks{State: "SUCCESS", Passed: 1, Awaiting: 4}
+	held.Checks = github.Checks{State: "SUCCESS", Passed: 1, Awaiting: 4, AwaitingOnGitHub: 1}
 	h.client.details = map[string]github.ItemDetails{nodeID(1): held}
 
 	snap := h.refresh(t)
 
 	first := itemByNumber(t, snap.ReviewRequested, 1)
 	require.NotNil(t, first.Details)
-	assert.Equal(t, Checks{State: "SUCCESS", Passed: 1, Awaiting: 4}, first.Details.Checks)
+	assert.Equal(t, Checks{State: "SUCCESS", Passed: 1, Awaiting: 4, AwaitingOnGitHub: 1}, first.Details.Checks,
+		"the runs the user can approve apart from those approved on GitHub")
 
 	stored, err := NewStore(h.pool, h.clock).ReviewItem(t.Context(), first.ID)
 	require.NoError(t, err)
 	assert.Equal(t, 4, stored.ChecksAwaiting, "the review sheet reads the count too")
+
+	rows, err := NewStore(h.pool, h.clock).FactsRows(t.Context(), []int64{first.ID})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.NotNil(t, rows[0].Details)
+	assert.Equal(t, 5, rows[0].Details.ChecksAwaiting, "a routine counts every held run as checks not all run")
 
 	// Approved: the runs started, and the count is replaced with the rest.
 	running := prDetails()

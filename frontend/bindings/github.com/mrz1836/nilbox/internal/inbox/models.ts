@@ -58,10 +58,17 @@ export interface Checks {
     "skipped": number;
 
     /**
-     * Awaiting counts the workflow runs held until a maintainer approves them, which State
-     * and the other counts leave out (github.Checks.Awaiting).
+     * Awaiting counts the workflow runs held until a maintainer approves them whose
+     * approval GitHub takes from the app (the review sheet's Approve workflows to run),
+     * which State and the other counts leave out (github.Checks.Awaiting).
      */
     "awaiting": number;
+
+    /**
+     * AwaitingOnGitHub counts the held runs GitHub approves only on its site, which State
+     * and the other counts leave out too (github.Checks.AwaitingOnGitHub).
+     */
+    "awaitingOnGitHub": number;
 }
 
 /**

@@ -28,6 +28,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/bump"
@@ -107,7 +108,8 @@ type StoredPull struct {
 	ChecksSkipped  int
 	ReviewDecision string
 
-	// ChecksAwaiting counts the workflow runs held for a maintainer's approval.
+	// ChecksAwaiting counts the workflow runs held for a maintainer's approval that GitHub
+	// takes from the app (Checks.Awaiting).
 	ChecksAwaiting int
 
 	Reviewers        int
@@ -255,6 +257,13 @@ type Service struct {
 
 	// refreshes reads each pull request once at a time.
 	refreshes flight.Group[Review]
+
+	// onGitHub holds the workflow runs GitHub refused to approve from the sheet for what
+	// they are (github.ErrRunNotApprovable), by run ID, which GitHub numbers across every
+	// repository: from then on, while the app runs, the sheet shows each as waiting for
+	// approval on GitHub and never offers to approve it again. Nothing stores it.
+	onGitHub   map[int64]bool
+	onGitHubMu sync.Mutex
 }
 
 // NewService returns a Service over cfg.
@@ -262,7 +271,7 @@ func NewService(cfg Config) *Service {
 	return &Service{
 		inbox: cfg.Inbox, github: cfg.GitHub, settings: cfg.Settings, replies: cfg.Replies,
 		cache: newCacheStore(cfg.Pool), events: event.Or(cfg.Events), merges: cfg.Merges,
-		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
+		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), onGitHub: map[int64]bool{},
 	}
 }
 
@@ -381,6 +390,33 @@ func (s *Service) FillReply(ctx context.Context, itemID, replyID int64) (string,
 	return s.replies.Fill(ctx, replyID, itemID)
 }
 
+// rememberOnGitHub remembers the workflow run with runID, which GitHub refused to approve
+// from the sheet for what it is, as one it approves only on its site.
+func (s *Service) rememberOnGitHub(runID int64) {
+	s.onGitHubMu.Lock()
+	defer s.onGitHubMu.Unlock()
+
+	s.onGitHub[runID] = true
+}
+
+// markOnGitHub marks the held runs of the cache c that GitHub refused to approve from the
+// sheet (rememberOnGitHub) as waiting for approval on GitHub, whatever the read that cached
+// them made of them. c may be nil.
+func (s *Service) markOnGitHub(c *cached) {
+	if c == nil {
+		return
+	}
+
+	s.onGitHubMu.Lock()
+	defer s.onGitHubMu.Unlock()
+
+	for i, u := range c.context.Unrun {
+		if u.Approval && s.onGitHub[u.RunID] {
+			c.context.Unrun[i].OnGitHub = true
+		}
+	}
+}
+
 // refresh reads the pull request with id, skipping one read recently unless force is set,
 // and returns it as Open builds it.
 func (s *Service) refresh(ctx context.Context, id int64, force bool) (Review, error) {
@@ -410,6 +446,8 @@ func (s *Service) open(ctx context.Context, id, budget int64, visit bool) (Revie
 	if c != nil {
 		s.stampUse(ctx, id, c, visit)
 	}
+
+	s.markOnGitHub(c)
 
 	cfg, err := s.settings.Sensitive(ctx)
 	if err != nil {
@@ -816,11 +854,14 @@ func factsOf(pull StoredPull, c *cached, r Review) Facts {
 }
 
 // countUnrun counts the workflow runs that ended without a check into f: those awaiting
-// approval, those of them an approval can name (a run ID read), and those that failed to
-// start.
+// approval, those of them GitHub approves only on its site, those an approval can name (a
+// run ID read, and approved from the sheet), and those that failed to start.
 func (f *Facts) countUnrun(unrun []Unrun) {
 	for _, u := range unrun {
 		switch {
+		case u.Approval && u.OnGitHub:
+			f.AwaitingApproval++
+			f.OnGitHub++
 		case u.Approval && u.RunID > 0:
 			f.AwaitingApproval++
 			f.Approvable++

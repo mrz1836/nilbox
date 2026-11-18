@@ -277,7 +277,8 @@ type ReviewItem struct {
 	ChecksSkipped  int
 	ReviewDecision string
 
-	// ChecksAwaiting counts the workflow runs held for a maintainer's approval.
+	// ChecksAwaiting counts the workflow runs held for a maintainer's approval that GitHub
+	// takes from the app (Checks.Awaiting).
 	ChecksAwaiting int
 
 	Reviewers        int

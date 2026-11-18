@@ -223,8 +223,9 @@ SELECT
     r.is_fork, r.allow_update_branch, r.language, r.local_path,
     ls.snoozed_until, ls.dismissed_at, ls.pinned_at,
     d.item_id AS details_item_id, d.head_oid, d.base_ref, d.mergeable, d.merge_state, d.review_decision,
-    d.checks_state, d.checks_passed, d.checks_failed, d.checks_pending, d.checks_awaiting, d.additions,
-    d.deletions, d.changed_files, d.commits, d.comments, d.labels, d.approvals, d.changes_requested,
+    d.checks_state, d.checks_passed, d.checks_failed, d.checks_pending, d.checks_awaiting,
+    d.checks_awaiting_on_github, d.additions, d.deletions, d.changed_files, d.commits, d.comments, d.labels,
+    d.approvals, d.changes_requested,
     d.review_users, d.auto_merge_method, d.fetched_at AS details_fetched_at,
     f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.files, f.complete AS files_complete,
     f.error AS files_error,
@@ -240,68 +241,69 @@ ORDER BY i.id
 `
 
 type ListFactsRowsRow struct {
-	ID                    int64
-	Kind                  string
-	Number                int64
-	Title                 string
-	URL                   string
-	AuthorLogin           string
-	AuthorType            string
-	AuthorAssociation     string
-	IsDraft               bool
-	HeadRef               string
-	IsCrossRepository     bool
-	ItemCreatedAt         time.Time
-	ItemUpdatedAt         time.Time
-	ReasonReviewRequested bool
-	ReasonAuthored        bool
-	ReasonAssigned        bool
-	ReviewRequestedAt     *time.Time
-	AssignedAt            *time.Time
-	State                 string
-	RepoOwner             string
-	RepoName              string
-	RepoFetchedAt         *time.Time
-	Visibility            string
-	ViewerPermission      string
-	IsFork                bool
-	AllowUpdateBranch     bool
-	Language              string
-	LocalPath             string
-	SnoozedUntil          *time.Time
-	DismissedAt           *time.Time
-	PinnedAt              *time.Time
-	DetailsItemID         *int64
-	HeadOID               *string
-	BaseRef               *string
-	Mergeable             *string
-	MergeState            *string
-	ReviewDecision        *string
-	ChecksState           *string
-	ChecksPassed          *int64
-	ChecksFailed          *int64
-	ChecksPending         *int64
-	ChecksAwaiting        *int64
-	Additions             *int64
-	Deletions             *int64
-	ChangedFiles          *int64
-	Commits               *int64
-	Comments              *int64
-	Labels                *string
-	Approvals             *int64
-	ChangesRequested      *int64
-	ReviewUsers           *string
-	AutoMergeMethod       *string
-	DetailsFetchedAt      *time.Time
-	FilesItemID           *int64
-	FilesHeadOID          *string
-	Files                 *string
-	FilesComplete         *bool
-	FilesError            *string
-	ChecksItemID          *int64
-	ChecksHeadOID         *string
-	Checks                *string
-	ChecksComplete        *bool
+	ID                     int64
+	Kind                   string
+	Number                 int64
+	Title                  string
+	URL                    string
+	AuthorLogin            string
+	AuthorType             string
+	AuthorAssociation      string
+	IsDraft                bool
+	HeadRef                string
+	IsCrossRepository      bool
+	ItemCreatedAt          time.Time
+	ItemUpdatedAt          time.Time
+	ReasonReviewRequested  bool
+	ReasonAuthored         bool
+	ReasonAssigned         bool
+	ReviewRequestedAt      *time.Time
+	AssignedAt             *time.Time
+	State                  string
+	RepoOwner              string
+	RepoName               string
+	RepoFetchedAt          *time.Time
+	Visibility             string
+	ViewerPermission       string
+	IsFork                 bool
+	AllowUpdateBranch      bool
+	Language               string
+	LocalPath              string
+	SnoozedUntil           *time.Time
+	DismissedAt            *time.Time
+	PinnedAt               *time.Time
+	DetailsItemID          *int64
+	HeadOID                *string
+	BaseRef                *string
+	Mergeable              *string
+	MergeState             *string
+	ReviewDecision         *string
+	ChecksState            *string
+	ChecksPassed           *int64
+	ChecksFailed           *int64
+	ChecksPending          *int64
+	ChecksAwaiting         *int64
+	ChecksAwaitingOnGithub *int64
+	Additions              *int64
+	Deletions              *int64
+	ChangedFiles           *int64
+	Commits                *int64
+	Comments               *int64
+	Labels                 *string
+	Approvals              *int64
+	ChangesRequested       *int64
+	ReviewUsers            *string
+	AutoMergeMethod        *string
+	DetailsFetchedAt       *time.Time
+	FilesItemID            *int64
+	FilesHeadOID           *string
+	Files                  *string
+	FilesComplete          *bool
+	FilesError             *string
+	ChecksItemID           *int64
+	ChecksHeadOID          *string
+	Checks                 *string
+	ChecksComplete         *bool
 }
 
 // ListFactsRows returns what a routine's facts are built from for each stored item among
@@ -370,6 +372,7 @@ func (q *Queries) ListFactsRows(ctx context.Context, ids []int64) ([]ListFactsRo
 			&i.ChecksFailed,
 			&i.ChecksPending,
 			&i.ChecksAwaiting,
+			&i.ChecksAwaitingOnGithub,
 			&i.Additions,
 			&i.Deletions,
 			&i.ChangedFiles,

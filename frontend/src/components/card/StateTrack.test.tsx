@@ -50,7 +50,7 @@ function shown(step: Element): string {
 }
 
 const checks = (c: Partial<ItemDetails['checks']>): Partial<ItemDetails> => ({
-  checks: { state: 'SUCCESS', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 0, ...c },
+  checks: { state: 'SUCCESS', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0, ...c },
 })
 const reviews = (r: Partial<ItemDetails['reviews']>): Partial<ItemDetails> => ({
   reviews: { decision: '', reviewers: 0, reviewed: 0, approvals: 0, changesRequested: 0, ...r },
@@ -60,7 +60,18 @@ describe('StateTrack', () => {
   it.each([
     ['passed', checks({ passed: 12 }), CheckIcon, 'Checks: 12 passed'],
     ['failed', checks({ state: 'FAILURE', passed: 13, failed: 1 }), XIcon, 'Checks: 13 passed, 1 failing'],
-    ['awaiting', checks({ state: '', awaiting: 2 }), ClockIcon, 'Checks: 2 workflow runs awaiting approval'],
+    [
+      'awaiting',
+      checks({ state: '', awaiting: 2, awaitingOnGitHub: 0 }),
+      ClockIcon,
+      'Checks: 2 workflow runs awaiting approval',
+    ],
+    [
+      'awaiting',
+      checks({ state: '', awaitingOnGitHub: 1 }),
+      ClockIcon,
+      'Checks: 1 workflow run waiting for approval on GitHub',
+    ],
     ['none', checks({ state: '' }), null, 'No checks on the latest commit'],
   ])('shows the checks %s', (state, d, icon, sentence) => {
     const { container, checks: step } = renderTrack(d)
@@ -71,7 +82,7 @@ describe('StateTrack', () => {
   })
 
   it('marks held runs and running checks, the running ones with a moving dot', () => {
-    const { checks: held } = renderTrack(checks({ state: '', awaiting: 1 }))
+    const { checks: held } = renderTrack(checks({ state: '', awaiting: 1, awaitingOnGitHub: 0 }))
     expect(held.querySelector('[data-checks-held]')).not.toBeNull()
     expect(held.querySelector('[data-moving]')).toBeNull()
 

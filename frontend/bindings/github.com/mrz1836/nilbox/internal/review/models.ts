@@ -431,7 +431,7 @@ export interface Offer {
 /**
  * Outcome is what an action came to.
  */
-export type Outcome = "reviewed" | "merged" | "auto_merge" | "approved_not_merged" | "commented_not_merged" | "closed" | "commented_not_closed" | "branch_updating" | "asked_bot" | "runs_approved" | "pushed_since" | "review_rerequested";
+export type Outcome = "reviewed" | "merged" | "auto_merge" | "approved_not_merged" | "commented_not_merged" | "closed" | "commented_not_closed" | "branch_updating" | "asked_bot" | "runs_approved" | "runs_on_github" | "pushed_since" | "review_rerequested";
 
 /**
  * The values of Outcome, by the names of their Go constants.
@@ -493,6 +493,14 @@ export const Outcome = {
      * refused one after approving others, some; Reason then says why.
      */
     OutcomeRunsApproved: "runs_approved",
+
+    /**
+     * OutcomeRunsOnGitHub is an approval of the held workflow runs that GitHub made none
+     * of, refusing each for what the run is (github.ErrRunNotApprovable): it approves them
+     * only on its site, and the sheet shows them as waiting there from then on. Nothing
+     * changed on GitHub, and it is no error.
+     */
+    OutcomeRunsOnGitHub: "runs_on_github",
 
     /**
      * OutcomePushedSince is an action refused, or never sent, because the pull request was
@@ -944,6 +952,14 @@ export const Since = {
 export interface Unrun {
     "name": string;
     "approval": boolean;
+
+    /**
+     * OnGitHub reports a run waiting for approval that GitHub approves only on its site,
+     * never through the sheet: one it holds for another reason than a fork pull request's
+     * own run or the Actions bot's (github.UnrunSuite.OnGitHub), or one it refused to
+     * approve from the sheet for what it is while the app runs (Service remembers it).
+     */
+    "onGitHub": boolean;
 
     /**
      * RunID is the GitHub Actions run's ID, which an approval names, and URL its page; 0

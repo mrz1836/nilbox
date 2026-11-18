@@ -206,11 +206,12 @@ export function RunNames({ runs }: { runs: readonly ReviewUnrun[] }) {
 
 // Unrun names the head commit's workflow runs that ended without a check and without
 // passing, which GitHub counts as not passing though no check shows them: those waiting for
-// a maintainer's approval, as a fork's runs do, and those that failed to start, each
-// workflow named once, as a link to its run.
+// a maintainer's approval, as a fork's runs do, those waiting for one GitHub takes only on
+// its site, and those that failed to start, each workflow named once, as a link to its run.
 function Unrun({ unrun }: { unrun: readonly ReviewUnrun[] }) {
   const lines = [
-    { runs: unrun.filter((u) => u.approval), words: 'awaiting approval' },
+    { runs: unrun.filter((u) => u.approval && !u.onGitHub), words: 'awaiting approval' },
+    { runs: unrun.filter((u) => u.approval && u.onGitHub), words: 'waiting for approval on GitHub' },
     { runs: unrun.filter((u) => !u.approval), words: 'that didn’t start' },
   ].filter((l) => l.runs.length > 0)
 

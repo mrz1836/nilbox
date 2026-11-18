@@ -75,9 +75,12 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 			Commits:      3,
 			HeadOID:      "1111111111111111111111111111111111111111",
 			Mergeable:    "MERGEABLE",
-			// The rollup reads SUCCESS while two workflow runs wait for approval. An app's
-			// suite that ended ACTION_REQUIRED has no run, and is the app's failed check.
-			Checks: Checks{State: "SUCCESS", Passed: 15, Skipped: 15, Awaiting: 2},
+			// The rollup reads SUCCESS while two workflow runs wait for approval: the fork's
+			// own, which the user can approve, and one a review started in the base
+			// repository, which waits for approval on GitHub. An app's suite that ended
+			// ACTION_REQUIRED has no run, and is the app's failed check; a run with no
+			// conclusion yet waits for nothing.
+			Checks: Checks{State: "SUCCESS", Passed: 15, Skipped: 15, Awaiting: 1, AwaitingOnGitHub: 1},
 			// Asked: octo-user, the team, and octo-approver again. Reviewed and not asked
 			// again: octo-second and octo-commenter. The author's own reply, the
 			// dismissed, the pending, and the ghost reviews do not count.

@@ -2271,7 +2271,7 @@ clearing on: it marks a notification done, or read, when the work behind it is f
 | Turn on auto-merge | The review sheet, after you confirm | 1 GraphQL point |
 | Update branch | The review sheet | 1 REST point |
 | Ask Dependabot to rebase (a `@dependabot rebase` comment) | The review sheet | 1 REST point |
-| Approve workflows to run | The review sheet's bar or menu, after you confirm when it changes workflow files | 1 REST point per run, then up to 5 GraphQL points to read it again until their checks start |
+| Approve workflows to run | The review sheet's bar or menu, after you confirm when it changes workflow files | 1 REST point per run, then up to 5 GraphQL points to read it again until their checks start (1 when GitHub approves none, taking them only on its site) |
 | Close pull request | The review sheet's menu, after you confirm | 1 GraphQL point to check nothing was pushed, then 1 REST point (1 more for your comment) |
 | Comment on an issue | The issue sheet | 1 REST point |
 | Close an issue as completed, or as not planned | The issue sheet, after you confirm | 1 GraphQL point to check for new comments, then 1 REST point (1 more for your comment) |
@@ -2466,9 +2466,20 @@ header, each a link to its run on GitHub, with **Approve workflows to run**. It 
 Nilbox read on the commit you saw, one REST request each, and asks first when the pull request
 changes workflow files, since the runs use its versions of them. The sheet then stays open, with
 your draft, and reads the pull request again until the runs' checks start (at most five reads, a
-few seconds apart), which also moves the card to running checks. GitHub documents the approval for
-a first-time contributor's fork; when it refuses one held under another of its approval settings,
-the bar shows what GitHub said, and the run's link is where to approve it by hand.
+few seconds apart), which also moves the card to running checks.
+
+**Runs only GitHub can approve.** GitHub takes an approval from an app only for a fork's own runs
+(those a push to the pull request started) and for runs the Actions bot queued; any other run it
+holds, such as one a review started in the base repository, waits for approval on GitHub. Nilbox
+tells them apart from what it already reads, with no request of its own: the card's **{n} runs
+await your approval** counts only the runs you can approve, a pull request holding only the
+others gets none, and its track still shows the clock, saying **Checks: 1 workflow run waiting
+for approval on GitHub**. The sheet's bar lists those runs apart, as waiting for approval on
+GitHub, with **Open on GitHub** (the run, or the pull request's checks when there are several)
+and no button. Should GitHub still refuse an approval for what the run is, the bar says so in a
+short note (**Auto-merge Trigger can only be approved on GitHub**), lists the run as waiting on
+GitHub until Nilbox quits, and never sends it again. Any other refusal shows what GitHub said, and
+the run's link is where to approve it by hand.
 
 **Your text goes with a merge.** Merge, Merge past the rules, and Merge when ready post the text
 in **Your review**, and any line comments, as a comment before they merge, so the pull request
