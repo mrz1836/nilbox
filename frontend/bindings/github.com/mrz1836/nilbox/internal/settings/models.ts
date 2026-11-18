@@ -523,6 +523,12 @@ export interface Settings {
     "cardDensity": CardDensity;
 
     /**
+     * CardUnread shows a dot on the inbox's cards with activity the user hasn't seen, and
+     * Mark as read and Mark as unread (see KeyCardUnread).
+     */
+    "cardUnread": boolean;
+
+    /**
      * MergeMethod is how the review sheet merges a pull request.
      */
     "mergeMethod": MergeMethod;

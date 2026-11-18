@@ -152,6 +152,14 @@ export interface Item {
     "updatedAt": string;
 
     /**
+     * Unread reports activity on the item the user hasn't seen: it arrived after the
+     * account's first load and was never marked seen, or its last activity is later than
+     * the activity it was marked seen at (see MarkSeen and MarkUnseen). The window marks an
+     * item as it opens it, and shows the dot while the cards' unread setting is on.
+     */
+    "unread": boolean;
+
+    /**
      * Trust is the item's trust class (see the trust package): "member" for the
      * repository's owner, org members, and collaborators, "bot" for a trusted bot, and
      * "outside" for everyone else, every untrusted bot, and every fork.
