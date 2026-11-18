@@ -19,6 +19,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
+	"github.com/mrz1836/nilbox/internal/avatars"
 	"github.com/mrz1836/nilbox/internal/backup"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -544,6 +545,14 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"issues.Service.Avatars": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			// No logins asks nothing of the avatar host.
 			return c.Issues.Avatars(ctx, nil)
+		},
+		"avatars.Service.Pictures": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			// No logins asks nothing of the avatar host.
+			return c.Avatars.Pictures(ctx, nil)
+		},
+		"avatars.Service.PicturesFor": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			// No people and a bot with no URL ask nothing of the avatar host.
+			return c.Avatars.PicturesFor(ctx, nil, []avatars.Bot{{Login: "dependabot"}})
 		},
 		"review.Service.Replies": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Review.Replies(ctx, review.ReplyApprove)
