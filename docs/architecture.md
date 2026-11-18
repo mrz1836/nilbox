@@ -4289,3 +4289,16 @@ landing renders no row (the render check holds it). The cards' settings reach th
 `CardPrefs` (`lib/cardPrefs.ts`) through `CardPrefsContext`, which App builds from the
 settings' primitives and provides around every page, so a settings save that leaves them as
 they were renders no card.
+Its `density` (Settings → Cards' Density, `cards.density`) picks the card: `ItemRow` reads
+it and, compact, renders `card/CompactRow` from the same step, session, and clock reads, so
+one set of rules drives both. A compact card is one 2.375rem grid row (`data-density` gives
+`index.css` its `contain-intrinsic-size`) of a column per question: the edge, `KindMark`, the
+repository, the title with its number, label dots, and pin, `CardStory` as a chip,
+`RiskIcon`, `MiniTrack` (the track's steps as dots, from the same `trackOf`) or an issue's
+`IssueTrack`, `SizeGrade` or `IssueGrade`, the age, and `CardActions`' compact go button.
+Its hover row, placed absolutely over every column but the go button's, holds the triage,
+the agent's slot (`LaunchControls`' `column`, which `ItemRow`'s `slot` hands either card),
+Show details, and the menu, shown by opacity alone so the slot's dialogs keep their state.
+The stretched toggle, the peek, the outcome, and the busy note are the comfortable card's,
+and `card/CardParts` holds the parts both share (the edge's colors, `FilterText`,
+`PinGlyph`, `TriageTag`). The render check runs in both densities with the same bounds.
