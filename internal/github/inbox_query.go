@@ -48,7 +48,10 @@ const inboxQuery = `query Inbox {
 // itemFieldsFragment is what the inbox reads about a pull request or issue itself. The
 // item query spreads it too, on a single node. The two states are aliased because a pull
 // request's and an issue's are different enum types, which GitHub will not merge under
-// one name.
+// one name. A bot author's picture URL comes with it (Item.AuthorAvatarURL), since the
+// avatar host answers a bot's login with a generated pattern rather than its app's
+// picture; it is an object's field, so it costs no point. A person's picture is fetched by
+// login, so a person's URL is never asked for.
 const itemFieldsFragment = `
 fragment ItemFields on SearchResultItem {
   __typename
@@ -56,14 +59,14 @@ fragment ItemFields on SearchResultItem {
     id number title url createdAt updatedAt isDraft headRefName
     prState: state
     authorAssociation isCrossRepository
-    author { __typename login }
+    author { __typename login ... on Bot { avatarUrl(size: 40) } }
     repository { ...RepoFields }
   }
   ... on Issue {
     id number title url createdAt updatedAt
     issueState: state
     authorAssociation
-    author { __typename login }
+    author { __typename login ... on Bot { avatarUrl(size: 40) } }
     repository { ...RepoFields }
   }
 }

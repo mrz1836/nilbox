@@ -261,6 +261,7 @@
                     "__typename": "PullRequest",
                     "author": {
                         "__typename": "Bot",
+                        "avatarUrl": "https://avatars.githubusercontent.com/in/102?s=40&v=4",
                         "login": "dependabot"
                     },
                     "authorAssociation": "NONE",

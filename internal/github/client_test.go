@@ -187,11 +187,14 @@ func TestFetchInboxParsesTrustFields(t *testing.T) {
 	assert.Equal(t, "fork-contributor", fork.AuthorLogin)
 
 	assert.Equal(t, "User", fork.AuthorType)
+	assert.Empty(t, fork.AuthorAvatarURL, "a person's picture is fetched by login")
 
 	bot := items[15]
 	assert.Equal(t, "NONE", bot.AuthorAssociation)
 	assert.Equal(t, "dependabot", bot.AuthorLogin, "GraphQL names a bot by its app's slug")
 	assert.Equal(t, "Bot", bot.AuthorType)
+	assert.Equal(t, "https://avatars.githubusercontent.com/in/102?s=40&v=4", bot.AuthorAvatarURL,
+		"a bot's picture is its app's, by the URL GitHub gives")
 	assert.False(t, bot.IsCrossRepository)
 
 	firstTimer := items[18]
@@ -222,6 +225,28 @@ func TestFetchInboxParsesTrustFields(t *testing.T) {
 	assert.Equal(t, "MEMBER", issue.AuthorAssociation)
 	assert.False(t, issue.IsCrossRepository)
 	assert.Equal(t, "other-repo", issue.RepoName)
+}
+
+func TestTheParseKeepsAnAuthorsPictureURLForABotAlone(t *testing.T) {
+	t.Parallel()
+
+	const node = `{"__typename": "PullRequest", "id": "PR_fakeNodeId7", "number": 7,
+		"repository": {"name": "example-repo", "owner": {"login": "acme-org"}},
+		"author": {"__typename": %q, "login": "contributor-a", "avatarUrl": "https://avatars.githubusercontent.com/u/101?v=4"}}`
+
+	for typeName, want := range map[string]string{
+		"Bot":       "https://avatars.githubusercontent.com/u/101?v=4",
+		"User":      "",
+		"Mannequin": "",
+	} {
+		var n graphQLNode
+		require.NoError(t, json.Unmarshal(fmt.Appendf(nil, node, typeName), &n))
+
+		item, ok := n.item()
+		require.True(t, ok)
+		assert.Equal(t, typeName, item.AuthorType)
+		assert.Equal(t, want, item.AuthorAvatarURL, "%s: only a bot's URL is kept, even when one is sent", typeName)
+	}
 }
 
 func TestFetchInboxParsesRepositories(t *testing.T) {
