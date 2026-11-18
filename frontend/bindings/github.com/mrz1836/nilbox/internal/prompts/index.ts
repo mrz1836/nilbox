@@ -35,6 +35,7 @@ export type {
     Input,
     Prompt,
     ReplyDefaults,
+    SlotPlace,
     Usage,
     Variable
 } from "./models.js";

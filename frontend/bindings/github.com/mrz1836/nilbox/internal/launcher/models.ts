@@ -228,6 +228,14 @@ export interface ItemResolution {
     "warnings": string[] | null;
 
     /**
+     * Situations are the prompt a launch on a pull request would start with in each
+     * situation it can be in, in the order the settings list them, each as a launch for
+     * that situation with no choice of its own would resolve it; empty for an issue. They
+     * only name the prompt: a launch for a situation resolves its other settings itself.
+     */
+    "situations": SituationChoice[] | null;
+
+    /**
      * Problem says why the item cannot be launched as it stands, or "".
      */
     "problem": string;
@@ -257,6 +265,15 @@ export interface LaunchRequest {
      * PromptID is the prompt to fill in; 0 keeps the resolved prompt.
      */
     "promptId": number;
+
+    /**
+     * Situation is the situation of a pull request the launch is for, which picks the
+     * prompt resolved when PromptID is 0, and so the settings it brings: the launch
+     * defaults' prompt for the situation, and with none set, the pull request's own.
+     * SituationNone is the item's own prompt; an issue's situation is ignored, and one this
+     * build doesn't know is refused.
+     */
+    "situation": Situation;
 
     /**
      * Model and Effort replace the resolved model and effort level; "" asks for the
@@ -511,6 +528,14 @@ export interface Resolution {
      * a profile that no longer exists.
      */
     "warnings": string[] | null;
+
+    /**
+     * Situations are the prompt a launch on a pull request would start with in each
+     * situation it can be in, in the order the settings list them, each as a launch for
+     * that situation with no choice of its own would resolve it; empty for an issue. They
+     * only name the prompt: a launch for a situation resolves its other settings itself.
+     */
+    "situations": SituationChoice[] | null;
 }
 
 /**
@@ -620,6 +645,55 @@ export interface Setting {
     "source": Source;
     "inherited": string;
     "inheritedSource": Source;
+}
+
+/**
+ * Situation is the situation a pull request is in that a launch is made for, as the
+ * inbox's card names it: its prompt is then the launch defaults' prompt for that situation,
+ * the repository's, else its org's, else the app's, and with none of them the pull
+ * request's own. Each has the name of its prompts.DefaultSlot.
+ */
+export type Situation = "" | "checks_failing" | "conflicts" | "changes_requested" | "rereview";
+
+/**
+ * The values of Situation, by the names of their Go constants.
+ */
+export const Situation = {
+    /**
+     * The situations a pull request can be in.
+     *
+     * SituationNone is a launch for no situation: the item's own prompt.
+     */
+    SituationNone: "",
+
+    /**
+     * SituationChecksFailing is a pull request whose checks fail.
+     */
+    SituationChecksFailing: "checks_failing",
+
+    /**
+     * SituationConflicts is a pull request that conflicts with its base.
+     */
+    SituationConflicts: "conflicts",
+
+    /**
+     * SituationChangesRequested is a pull request a reviewer asked to change.
+     */
+    SituationChangesRequested: "changes_requested",
+
+    /**
+     * SituationRereview is a pull request the user is asked to review again.
+     */
+    SituationRereview: "rereview",
+} as const;
+
+/**
+ * SituationChoice is the prompt a launch for a situation would start with, as Resolve
+ * resolves it with no choice of the launch's own.
+ */
+export interface SituationChoice {
+    "situation": Situation;
+    "prompt": PromptChoice;
 }
 
 /**

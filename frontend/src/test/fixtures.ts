@@ -1620,7 +1620,16 @@ export function prompt(overrides: Partial<Prompt> = {}): Prompt {
     extraFlags: {},
     starterKey: 'review-pr',
     modified: false,
-    usage: { defaults: ['pr'], orgs: [], repos: [], kinds: ['pr'], replies: [], routines: [] },
+    usage: {
+      defaults: ['pr'],
+      slots: [],
+      orgs: [],
+      repos: [],
+      slotPlaces: [],
+      kinds: ['pr'],
+      replies: [],
+      routines: [],
+    },
     createdAt: '2026-06-01T09:00:00Z',
     updatedAt: '2026-06-15T09:00:00Z',
     ...overrides,
@@ -1744,6 +1753,10 @@ export function defaultPrompts(overrides: Partial<DefaultPrompts> = {}): Default
   return {
     pr: 1,
     issue: 4,
+    checksFailing: 0,
+    conflicts: 0,
+    changesRequested: 0,
+    rereview: 0,
     replies: { approve: 0, approveBots: 0, requestChanges: 0, comment: 0 },
     ...overrides,
   }
@@ -1757,7 +1770,7 @@ export function prompts(): Prompt[] {
       name: 'Fix a pull request’s failing checks',
       nickname: 'Fix checks',
       starterKey: 'fix-checks',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [], routines: [] },
+      usage: { defaults: [], slots: [], orgs: [], repos: [], slotPlaces: [], kinds: [], replies: [], routines: [] },
     }),
     prompt({
       id: 2,
@@ -1767,7 +1780,16 @@ export function prompts(): Prompt[] {
       effort: 'low',
       worktree: false,
       starterKey: 'quick-look',
-      usage: { defaults: [], orgs: ['acme-org'], repos: ['acme-org/api'], kinds: ['pr'], replies: [], routines: [] },
+      usage: {
+        defaults: [],
+        slots: [],
+        orgs: ['acme-org'],
+        repos: ['acme-org/api'],
+        slotPlaces: [],
+        kinds: ['pr'],
+        replies: [],
+        routines: [],
+      },
     }),
     prompt(),
     prompt({
@@ -1777,7 +1799,16 @@ export function prompts(): Prompt[] {
       appliesTo: 'issue',
       body: 'Work on issue #{{.Number}}\n',
       starterKey: 'work-on-issue',
-      usage: { defaults: ['issue'], orgs: [], repos: [], kinds: ['issue'], replies: [], routines: [] },
+      usage: {
+        defaults: ['issue'],
+        slots: [],
+        orgs: [],
+        repos: [],
+        slotPlaces: [],
+        kinds: ['issue'],
+        replies: [],
+        routines: [],
+      },
     }),
     prompt({
       id: 5,
@@ -1786,7 +1817,7 @@ export function prompts(): Prompt[] {
       appliesTo: 'any',
       body: 'Explain {{.URL}}\n',
       starterKey: '',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [], routines: [] },
+      usage: { defaults: [], slots: [], orgs: [], repos: [], slotPlaces: [], kinds: [], replies: [], routines: [] },
     }),
   ]
 }
@@ -1855,6 +1886,7 @@ export function resolution(overrides: Partial<Resolution> = {}): Resolution {
     fast: { value: false, source: 'agent', inherited: false, inheritedSource: 'agent' },
     extraArgs: [],
     warnings: [],
+    situations: [],
     ...overrides,
   }
 }
@@ -1871,6 +1903,10 @@ export function launchDefaults(overrides: Partial<LaunchDefaults> = {}): LaunchD
     profiles: { claude: 'work' },
     prPromptId: null,
     issuePromptId: null,
+    checksPromptId: null,
+    conflictsPromptId: null,
+    changesPromptId: null,
+    rereviewPromptId: null,
     models: {},
     effort: '',
     planMode: null,
@@ -3054,7 +3090,16 @@ export function replyPrompt(overrides: Partial<Prompt> = {}): Prompt {
     purpose: 'reply',
     replyAction: 'approve',
     starterKey: 'lgtm',
-    usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['approve'], routines: [] },
+    usage: {
+      defaults: [],
+      slots: [],
+      orgs: [],
+      repos: [],
+      slotPlaces: [],
+      kinds: [],
+      replies: ['approve'],
+      routines: [],
+    },
     ...overrides,
   })
 }
@@ -3071,7 +3116,16 @@ export function replyPrompts(): Prompt[] {
       nickname: 'Update OK',
       body: 'Update looks fine.\n',
       starterKey: 'update-ok',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['approve_bots'], routines: [] },
+      usage: {
+        defaults: [],
+        slots: [],
+        orgs: [],
+        repos: [],
+        slotPlaces: [],
+        kinds: [],
+        replies: ['approve_bots'],
+        routines: [],
+      },
     }),
     replyPrompt({
       id: 23,
@@ -3080,7 +3134,7 @@ export function replyPrompts(): Prompt[] {
       body: 'Thanks, @{{.Author}}. A few things to change first:\n\n- \n',
       replyAction: 'request_changes',
       starterKey: 'needs-changes',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [], routines: [] },
+      usage: { defaults: [], slots: [], orgs: [], repos: [], slotPlaces: [], kinds: [], replies: [], routines: [] },
     }),
     replyPrompt({
       id: 24,
@@ -3089,7 +3143,7 @@ export function replyPrompts(): Prompt[] {
       body: 'A question before I approve, @{{.Author}}:\n\n',
       replyAction: 'comment',
       starterKey: '',
-      usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: [], routines: [] },
+      usage: { defaults: [], slots: [], orgs: [], repos: [], slotPlaces: [], kinds: [], replies: [], routines: [] },
     }),
   ]
 }

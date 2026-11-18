@@ -20,7 +20,16 @@ import {
   usageSummary,
 } from './launch'
 
-const noUsage: PromptUsage = { defaults: [], orgs: [], repos: [], kinds: [], replies: [], routines: [] }
+const noUsage: PromptUsage = {
+  defaults: [],
+  slots: [],
+  orgs: [],
+  repos: [],
+  slotPlaces: [],
+  kinds: [],
+  replies: [],
+  routines: [],
+}
 
 describe('labels', () => {
   it('names where a setting came from', () => {

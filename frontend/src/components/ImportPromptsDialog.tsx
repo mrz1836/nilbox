@@ -107,6 +107,14 @@ function outcomeText(e: ImportEntry): string {
   }
 }
 
+// situationDefaults are a situation's default slot's field in BundleDefaults, and its words.
+const situationDefaults = {
+  checks_failing: { field: 'checksFailing', text: 'the default prompt when checks fail' },
+  conflicts: { field: 'conflicts', text: 'the default prompt when it has conflicts' },
+  changes_requested: { field: 'changesRequested', text: 'the default prompt when changes are requested' },
+  rereview: { field: 'rereview', text: 'the default prompt when you’re asked to review again' },
+} as const
+
 // slotText names what a default is the default for, as in "the default prompt for pull
 // requests" or "the default reply for approvals".
 function slotText(slot: DefaultSlot): string {
@@ -115,6 +123,11 @@ function slotText(slot: DefaultSlot): string {
       return 'the default prompt for pull requests'
     case 'issue':
       return 'the default prompt for issues'
+    case 'checks_failing':
+    case 'conflicts':
+    case 'changes_requested':
+    case 'rereview':
+      return situationDefaults[slot].text
     default:
       return `the default reply for ${replySlotPlaces[slot]}`
   }
@@ -136,10 +149,19 @@ function chosenDefaults(offers: readonly DefaultOffer[], entries: readonly Impor
   for (const offer of offers) {
     const nickname = entries[offer.entry]?.prompt.nickname ?? ''
 
-    if (offer.slot === 'pr' || offer.slot === 'issue') {
-      out[offer.slot] = nickname
-    } else {
-      out.replies = { ...out.replies, [offer.slot]: nickname }
+    switch (offer.slot) {
+      case 'pr':
+      case 'issue':
+        out[offer.slot] = nickname
+        break
+      case 'checks_failing':
+      case 'conflicts':
+      case 'changes_requested':
+      case 'rereview':
+        out[situationDefaults[offer.slot].field] = nickname
+        break
+      default:
+        out.replies = { ...out.replies, [offer.slot]: nickname }
     }
   }
 

@@ -147,6 +147,16 @@ export function SetReplyDefault(slot: $models.ReplySlot, id: number): $Cancellab
 }
 
 /**
+ * SetSlotDefault makes the prompt with id the app's default for the situation slot names,
+ * or, with id 0, leaves the situation with none, so a pull request in it launches with the
+ * prompt it would have anyway. The prompt must be an agent prompt that applies to pull
+ * requests.
+ */
+export function SetSlotDefault(slot: $models.DefaultSlot, id: number): $CancellablePromise<void> {
+    return $Call.ByID(2129509286, slot, id);
+}
+
+/**
  * Update saves changes to a prompt. A prompt that is a default for a kind must keep
  * applying to that kind.
  */

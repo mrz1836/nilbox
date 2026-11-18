@@ -32,6 +32,17 @@ export interface Defaults {
     "issuePromptId": number | null;
 
     /**
+     * ChecksPromptID, ConflictsPromptID, ChangesPromptID, and RereviewPromptID are the
+     * default prompt for a pull request whose checks fail, that conflicts with its base,
+     * that a reviewer asked to change, and that the user is asked to review again; nil
+     * inherits.
+     */
+    "checksPromptId": number | null;
+    "conflictsPromptId": number | null;
+    "changesPromptId": number | null;
+    "rereviewPromptId": number | null;
+
+    /**
      * Models is each agent's model; an agent with no entry inherits.
      */
     "models": { [_ in agent$0.ID]?: string } | null;
@@ -77,6 +88,15 @@ export interface Input {
     "profiles": { [_ in agent$0.ID]?: string } | null;
     "prPromptId": number | null;
     "issuePromptId": number | null;
+
+    /**
+     * ChecksPromptID, ConflictsPromptID, ChangesPromptID, and RereviewPromptID are the
+     * default prompt for each situation a pull request can be in; nil inherits.
+     */
+    "checksPromptId": number | null;
+    "conflictsPromptId": number | null;
+    "changesPromptId": number | null;
+    "rereviewPromptId": number | null;
     "models": { [_ in agent$0.ID]?: string } | null;
     "effort": string;
     "planMode": boolean | null;

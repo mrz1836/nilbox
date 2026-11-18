@@ -1033,11 +1033,29 @@ describe('PromptsView review replies', () => {
           replyPrompt({ ...updateOk }),
           replyPrompt({
             ...needsChanges,
-            usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['request_changes'], routines: [] },
+            usage: {
+              defaults: [],
+              slots: [],
+              orgs: [],
+              repos: [],
+              slotPlaces: [],
+              kinds: [],
+              replies: ['request_changes'],
+              routines: [],
+            },
           }),
           replyPrompt({
             ...question,
-            usage: { defaults: [], orgs: [], repos: [], kinds: [], replies: ['comment'], routines: [] },
+            usage: {
+              defaults: [],
+              slots: [],
+              orgs: [],
+              repos: [],
+              slotPlaces: [],
+              kinds: [],
+              replies: ['comment'],
+              routines: [],
+            },
           }),
         ]}
       />,
