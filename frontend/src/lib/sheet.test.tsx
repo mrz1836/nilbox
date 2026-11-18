@@ -5,7 +5,21 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { item } from '../test/fixtures'
 import { emit, listening } from '../test/platform'
-import { movesOnTo, placeIn, stepTo, useActionProgress, useSheetKeys, withStep, type SheetKeys } from './sheet'
+import {
+  cameBy,
+  endedState,
+  endedText,
+  movesOnTo,
+  placeIn,
+  stepPast,
+  stepTo,
+  useActionProgress,
+  useEnded,
+  useSheetKeys,
+  withStep,
+  type EndedItem,
+  type SheetKeys,
+} from './sheet'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -47,6 +61,132 @@ describe('movesOnTo', () => {
     expect(movesOnTo(siblings, 1, api)?.id).toBe(2)
     expect(movesOnTo(siblings, 3, api)?.id).toBe(4)
     expect(movesOnTo([first, third], 3, api)).toBeUndefined()
+  })
+})
+
+describe('cameBy', () => {
+  const siblings = [item({ id: 1 }), item({ id: 2 }), item({ id: 3 })]
+
+  it('says the way a step went, with the cards it went through', () => {
+    expect(cameBy(siblings, 1, 2)).toEqual({ way: 'next', cards: [1, 2, 3] })
+    expect(cameBy(siblings, 3, 1)).toEqual({ way: 'prev', cards: [1, 2, 3] })
+    expect(cameBy(siblings, 9, 2), 'from a card the list no longer shows').toMatchObject({ way: 'next' })
+  })
+})
+
+describe('stepPast', () => {
+  const cards = [1, 2, 3, 4]
+  const all = () => true
+
+  it('steps past the card the way the sheet came, else back the other way', () => {
+    expect(stepPast({ way: 'next', cards }, 2, all)).toEqual({ to: 3, came: { way: 'next', cards: [1, 3, 4] } })
+    expect(stepPast({ way: 'prev', cards }, 3, all)).toEqual({ to: 2, came: { way: 'prev', cards: [1, 2, 4] } })
+    expect(stepPast({ way: 'next', cards }, 4, all)?.to, 'at the end').toBe(3)
+    expect(stepPast({ way: 'prev', cards }, 1, all)?.to, 'at the start').toBe(2)
+  })
+
+  it('never steps back to a card it stepped past, though the list still holds it', () => {
+    // #2 and #4 both ended, and the list, not yet read again, still holds both.
+    const past = stepPast({ way: 'next', cards }, 2, all)
+    expect(past?.to).toBe(3)
+
+    const on = stepPast({ way: 'next', cards: past?.came.cards ?? [] }, 4, all)
+    expect(on, 'back to #3, not #2').toEqual({ to: 3, came: { way: 'next', cards: [1, 3] } })
+  })
+
+  it('skips the cards the list no longer holds, and closes once none is left', () => {
+    const held = (id: number) => id !== 3
+
+    expect(stepPast({ way: 'next', cards }, 2, held)?.to).toBe(4)
+    expect(stepPast({ way: 'prev', cards }, 4, held)?.to).toBe(2)
+    expect(
+      stepPast({ way: 'next', cards }, 2, (id) => id === 2),
+      'only the card itself',
+    ).toBeUndefined()
+    expect(stepPast({ way: 'next', cards }, 9, all), 'a card the sheet didn’t step through').toBeUndefined()
+    expect(stepPast(null, 2, all), 'a card the sheet opened on').toBeUndefined()
+  })
+})
+
+describe('endedState', () => {
+  it('says a merge or a close, and nothing while open', () => {
+    expect(endedState('MERGED')).toBe('merged')
+    expect(endedState('CLOSED')).toBe('closed')
+    expect(endedState('OPEN')).toBe('')
+    expect(endedState('')).toBe('')
+  })
+})
+
+describe('endedText', () => {
+  it('names the item and what became of it', () => {
+    const ended: EndedItem = {
+      id: 1,
+      repo: 'acme-org/example-repo',
+      number: 7,
+      title: 'Add the widget cache',
+      url: 'https://github.com/acme-org/example-repo/pull/7',
+      state: 'merged',
+    }
+
+    expect(endedText(ended)).toBe('acme-org/example-repo#7 was merged')
+    expect(endedText({ ...ended, number: 12, state: 'closed' })).toBe('acme-org/example-repo#12 was closed')
+  })
+})
+
+describe('useEnded', () => {
+  const shown = {
+    id: 1,
+    repo: 'acme-org/example-repo',
+    number: 7,
+    title: 'Add the widget cache',
+    url: 'https://github.com/acme-org/example-repo/pull/7',
+    state: 'OPEN',
+  }
+
+  it('tells once a read finds the item merged or closed, once, and waits while held', () => {
+    const onEnded = vi.fn<(ended: EndedItem) => void>()
+    const initialProps: { at: typeof shown | null; hold: boolean } = { at: shown, hold: false }
+    const { rerender } = renderHook(
+      ({ at, hold }) => {
+        useEnded(at, hold, onEnded)
+      },
+      { initialProps },
+    )
+
+    rerender({ at: null, hold: false })
+    expect(onEnded, 'nothing read, or open').not.toHaveBeenCalled()
+
+    rerender({ at: { ...shown, state: 'MERGED' }, hold: true })
+    expect(onEnded, 'held').not.toHaveBeenCalled()
+
+    rerender({ at: { ...shown, state: 'MERGED' }, hold: false })
+    expect(onEnded).toHaveBeenCalledExactlyOnceWith({
+      id: 1,
+      repo: 'acme-org/example-repo',
+      number: 7,
+      title: 'Add the widget cache',
+      url: 'https://github.com/acme-org/example-repo/pull/7',
+      state: 'merged',
+    })
+
+    rerender({ at: { ...shown, state: 'MERGED', title: 'Renamed' }, hold: false })
+    expect(onEnded, 'told once').toHaveBeenCalledOnce()
+
+    rerender({ at: { ...shown, id: 2, number: 8, state: 'CLOSED' }, hold: false })
+    expect(onEnded).toHaveBeenLastCalledWith(expect.objectContaining({ id: 2, state: 'closed' }))
+  })
+
+  it('needs no one to hear it', () => {
+    const { rerender } = renderHook(
+      ({ at }) => {
+        useEnded(at, false, undefined)
+      },
+      { initialProps: { at: shown } },
+    )
+
+    expect(() => {
+      rerender({ at: { ...shown, state: 'CLOSED' } })
+    }).not.toThrow()
   })
 })
 

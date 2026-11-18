@@ -83,6 +83,27 @@ function Harness({ onDone = vi.fn(), onClose = vi.fn(), ...props }: HarnessProps
   )
 }
 
+// closedIssue is issue 12 as a read finds it once someone closed it.
+function closedIssue() {
+  return issue({
+    state: 'CLOSED',
+    stateReason: 'COMPLETED',
+    offers: [],
+    primary: '',
+    standing: { state: 'closed', sentence: 'Closed as completed by octo-other', at: '', opened: false },
+  })
+}
+
+// closedSince is what the sheet hands on of issue 12, closed since the inbox read it.
+const closedSince = {
+  id: 1,
+  repo: 'acme-org/example-repo',
+  number: 12,
+  title: 'Parser drops the trailing newline',
+  url: 'https://github.com/acme-org/example-repo/issues/12',
+  state: 'closed',
+}
+
 // sheet is the issue sheet's dialog.
 function sheet() {
   return screen.getByRole('dialog', { name: 'Parser drops the trailing newline' })
@@ -482,8 +503,12 @@ describe('IssueSheet', () => {
         steps: [],
       }),
     )
+    // The read that follows finds it closed, which the sheet hands on only once its notice
+    // is answered, so the text stays in reach.
+    platform.readIssueAgain.mockResolvedValue(closedIssue())
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    const onEnded = vi.fn()
+    render(<Harness onDone={onDone} onEnded={onEnded} />)
 
     await write('Fixed in #14.')
     await choose('Close as completed')
@@ -501,6 +526,30 @@ describe('IssueSheet', () => {
     ).toBeInTheDocument()
     expect(onDone).not.toHaveBeenCalled()
     expect(screen.getByRole('textbox', { name: 'Your comment' })).toHaveValue('Fixed in #14.')
+    expect(await screen.findByText('Closed as completed by octo-other')).toBeInTheDocument()
+    expect(onEnded).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reload' }))
+    await waitFor(() => {
+      expect(onEnded).toHaveBeenCalledExactlyOnceWith(closedSince)
+    })
+  })
+
+  it('hands on an issue a read finds closed, once, and shows an open one as before', async () => {
+    platform.refreshIssue.mockResolvedValue(closedIssue())
+    const onEnded = vi.fn()
+    const { unmount } = render(<Harness onEnded={onEnded} />)
+
+    await waitFor(() => {
+      expect(onEnded).toHaveBeenCalledExactlyOnceWith(closedSince)
+    })
+    unmount()
+
+    platform.refreshIssue.mockResolvedValue(issue())
+    render(<Harness onEnded={onEnded} />)
+
+    expect(await actionButton('Comment')).toBeInTheDocument()
+    expect(onEnded).toHaveBeenCalledOnce()
   })
 
   it('says why an action failed, only on the issue it ran on', async () => {

@@ -1,10 +1,19 @@
 import { attempt } from '../lib/call'
 import { ownRule } from '../lib/repoRules'
+import { endedText, type EndedItem } from '../lib/sheet'
 import { formatWhen } from '../lib/time'
 import { findItem, isDismissed, type TriageTab } from '../lib/triage'
 import type { InboxState } from '../lib/useInbox'
 import { useClock } from '../lib/useNow'
-import { copyText, setRepoRule, type InboxItem, type RepoRule, type RepoRules, type Settings } from '../platform'
+import {
+  copyText,
+  openExternal,
+  setRepoRule,
+  type InboxItem,
+  type RepoRule,
+  type RepoRules,
+  type Settings,
+} from '../platform'
 import { teamsText, type EditActions } from './ItemMenu'
 import type { ToastMessage } from './Toast'
 import type { TriageActions } from './TriageControls'
@@ -67,6 +76,9 @@ export interface ItemActions {
   // closes. The user asked for none of it, so a failure goes to the console, the items
   // back as they were.
   seen: (ids: readonly number[]) => void
+  // ended says what became of an item its sheet found merged or closed on GitHub since the
+  // inbox last read it, as the sheet moves on from it, and offers it on GitHub.
+  ended: (item: EndedItem) => void
 }
 
 // useItemActions builds what the rows of a list of items do with them: the inbox's own
@@ -316,5 +328,19 @@ export function useItemActions({
     })
   }
 
-  return { triage, edits, dismissIt, snoozeIt, restoreIt, changeRule, unassignOn, seen }
+  const ended = (item: EndedItem) => {
+    showToast({
+      text: endedText(item),
+      detail: item.title,
+      action: {
+        label: 'Open on GitHub',
+        onClick: () => {
+          closeToast()
+          openExternal(item.url)
+        },
+      },
+    })
+  }
+
+  return { triage, edits, dismissIt, snoozeIt, restoreIt, changeRule, unassignOn, seen, ended }
 }

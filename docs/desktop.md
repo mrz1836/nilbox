@@ -2409,6 +2409,16 @@ reads. When the inbox has seen a push the sheet hasn't, it says so and offers **
 after a push, GitHub can still be working out whether the pull request can merge (**Checking
 whether it can merge**); the sheet then asks again, up to twice, two seconds apart.
 
+**Merged or closed since the last refresh.** A card can stay in the inbox until the next refresh
+after its pull request was merged or closed on GitHub. When the sheet's read finds that, the
+sheet doesn't show it as if it were open: opened on it, the sheet closes; stepped to it with
+**←** or **→**, it steps past it the same way, or back to the card you came from when it was the
+last; reached by a link, it goes back to the sheet the link was in. A toast says what became of
+it, as in **acme-org/api#12 was merged**, with **Open on GitHub**, and the card leaves the inbox
+at once: that read already stored it, so finding out costs no request more. While an action you
+started runs, or the sheet shows what one left (as **pushed to since you opened it**), it stays
+open, saying **No longer open**.
+
 **One button.** The action button runs the action that fits the pull request, and says exactly
 what it does, as in **Approve & squash-merge**:
 
@@ -2694,6 +2704,12 @@ twice.
 While an action runs, the sheet ticks off each step GitHub finishes and takes no input; then it
 closes, and a toast says what came of it. **Unassign me** closes the sheet with its toast once
 GitHub takes you off, or says in the sheet why it couldn't.
+
+**Closed since the last refresh.** An issue someone closed on GitHub after the inbox last read
+it gives way as a [merged or closed pull request](#reviewing-a-pull-request) does: the sheet's
+read finds it closed, the sheet closes or steps past it, the toast says **acme-org/api#12 was
+closed** with **Open on GitHub**, and the card leaves the inbox. When someone closed it first
+while your close was on its way, the sheet stays, keeping your text, until you answer its notice.
 
 **Drafts** are kept per issue for the session, as the review sheet's are: your text and your
 chosen action, cleared once the action succeeds, but not when a new comment stopped a close.

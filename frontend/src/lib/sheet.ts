@@ -4,6 +4,7 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 
 import { on, type InboxItem } from '../platform'
+import { refText } from './format'
 import { isTyping } from './keys'
 import { isTopmost } from './useModalDialog'
 
@@ -46,6 +47,119 @@ export function movesOnTo(
   const stays = (card: InboxItem) => card.id !== id && !leaves(card)
 
   return siblings.slice(at + 1).find(stays) ?? siblings.slice(0, at).findLast(stays)
+}
+
+// StepWay is the way a sheet stepped to the card it shows: to the card after the one it
+// showed, or before it.
+export type StepWay = 'next' | 'prev'
+
+// Came is how a sheet came to the card it shows by a step through its cards: the way it
+// went, and the cards it stepped through then, by ID, in the order the list showed them.
+// A card found merged or closed as it shows is stepped past the same way (stepPast).
+export interface Came {
+  way: StepWay
+  cards: readonly number[]
+}
+
+// cameBy is the step from the card with from to the card with to, among siblings.
+export function cameBy(siblings: readonly InboxItem[], from: number, to: number): Came {
+  const cards = siblings.map((s) => s.id)
+
+  return { way: cards.indexOf(to) < cards.indexOf(from) ? 'prev' : 'next', cards }
+}
+
+// Past is a step past a card a sheet found merged or closed: the card it steps to, and how
+// it came to that one, the same way, through the same cards but the one stepped past.
+export interface Past {
+  to: number
+  came: Came
+}
+
+// stepPast is the step past the card with id, which a sheet came to by came and found
+// merged or closed: to the nearest card the way it came that the list still holds (held),
+// else the nearest the other way; undefined when the list holds no other, or the sheet
+// opened on the card (came is null), either of which closes the sheet. The read that found
+// it took it out of the list already, so came's cards, not the list's, say where it was.
+// The step leaves it out of the cards it came through, so a list that still holds it, not
+// yet read again, never has the sheet step back to it, nor between two such cards for good.
+export function stepPast(came: Came | null, id: number, held: (id: number) => boolean): Past | undefined {
+  const at = came === null ? -1 : came.cards.indexOf(id)
+
+  if (came === null || at < 0) {
+    return undefined
+  }
+
+  const stays = (card: number) => card !== id && held(card)
+  const after = came.cards.slice(at + 1).find(stays)
+  const before = came.cards.slice(0, at).findLast(stays)
+  const to = came.way === 'next' ? (after ?? before) : (before ?? after)
+
+  return to === undefined ? undefined : { to, came: { way: came.way, cards: came.cards.filter((c) => c !== id) } }
+}
+
+// EndedState is what became of an item a sheet found no longer open as it read it, since
+// the inbox last did: merged, or closed.
+export type EndedState = 'merged' | 'closed'
+
+// EndedItem is an item a sheet found merged or closed on GitHub, as its read names it. That
+// read took it out of the inbox's lists already, as any read of a single item does.
+export interface EndedItem {
+  id: number
+  repo: string
+  number: number
+  title: string
+  url: string
+  state: EndedState
+}
+
+// endedState is what became of an item GitHub says is in state (OPEN, MERGED, or CLOSED),
+// or '' while it is open.
+export function endedState(state: string): EndedState | '' {
+  switch (state) {
+    case 'MERGED':
+      return 'merged'
+    case 'CLOSED':
+      return 'closed'
+    default:
+      return ''
+  }
+}
+
+// endedText says what became of an ended item, as "acme-org/api#12 was merged".
+export function endedText(ended: EndedItem): string {
+  return `${refText(ended)} was ${ended.state}`
+}
+
+// Shown is what a sheet shows of its item, as its latest read found it: enough to name it
+// and say whether it is still open.
+interface Shown {
+  id: number
+  repo: string
+  number: number
+  title: string
+  url: string
+  state: string
+}
+
+// useEnded hands onEnded the item a sheet shows once a read of it finds it merged or
+// closed on GitHub: for a card the inbox lists, which holds open items alone, since its
+// last refresh. It waits while hold is set: an action under way, whose outcome the sheet
+// reports itself, or what one left for the user to read (its notice). It tells once per
+// item and state, so a host that leaves the sheet where it is is never told again.
+export function useEnded(shown: Shown | null, hold: boolean, onEnded: ((ended: EndedItem) => void) | undefined): void {
+  const state = shown === null || hold ? '' : endedState(shown.state)
+  const id = shown?.id ?? 0
+  const tell = useEffectEvent((as: EndedState) => {
+    if (shown !== null) {
+      onEnded?.({ id: shown.id, repo: shown.repo, number: shown.number, title: shown.title, url: shown.url, state: as })
+    }
+  })
+
+  useEffect(() => {
+    if (state !== '') {
+      tell(state)
+    }
+  }, [state, id])
 }
 
 // SheetStep is a step to the card before or after the one a sheet shows: the title of the

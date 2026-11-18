@@ -13,7 +13,16 @@ import { useIssueDrafts } from '../lib/issueDrafts'
 import { useReviewDrafts } from '../lib/reviewDrafts'
 import { ClockContext } from '../lib/useNow'
 import { useTriage } from '../lib/useTriage'
-import type { AfterMerge, InboxItem, InboxSnapshot, ListKey, RepoRules, ReviewResult, Settings } from '../platform'
+import type {
+  AfterMerge,
+  InboxItem,
+  InboxSnapshot,
+  Issue,
+  ListKey,
+  RepoRules,
+  ReviewResult,
+  Settings,
+} from '../platform'
 import { clockAt, FIXED_NOW, fixedNow, fromNow } from '../test/clock'
 import {
   afterMerge,
@@ -2967,5 +2976,197 @@ describe('InboxView while a refresh runs', () => {
       emit('inbox:progress', { phase: 'search', done: 0, total: 0 })
     })
     expect(party()).toBeInTheDocument()
+  })
+})
+
+describe('InboxView sheets of items merged or closed since the last refresh', () => {
+  // Three pull requests and an issue, all open as the last refresh read them.
+  const cache = item({ id: 1, title: 'Add the widget cache' })
+  const parser = item({
+    id: 2,
+    number: 8,
+    title: 'Fix the parser',
+    url: 'https://github.com/acme-org/example-repo/pull/8',
+  })
+  const docs = item({
+    id: 3,
+    number: 9,
+    title: 'Add the widget docs',
+    url: 'https://github.com/acme-org/example-repo/pull/9',
+  })
+  const newline = item({
+    id: 4,
+    kind: 'issue',
+    number: 12,
+    title: 'Parser drops the trailing newline',
+    url: 'https://github.com/acme-org/example-repo/issues/12',
+    assigned: true,
+  })
+
+  // backend answers as the backend does over the cards in Yours: Open from what the sheet
+  // read before, which knows nothing newer, and a refresh, the sheet's one read of GitHub,
+  // that finds the cards in ended merged or closed. As an item's own read does, that read
+  // stores what it found, which takes the card out of the inbox, and tells the window so,
+  // before it answers. links adds to an issue's reads the issues it links to.
+  function backend(
+    cards: readonly InboxItem[],
+    ended: ReadonlyMap<number, 'MERGED' | 'CLOSED'>,
+    links: (id: number) => Partial<Issue> = () => ({}),
+  ) {
+    let stored = cards
+
+    platform.getInboxSnapshot.mockImplementation(() => Promise.resolve(snapshot({ yours: list([...stored]) })))
+
+    const named = (id: number) => {
+      const c = cards.find((card) => card.id === id) ?? cache
+
+      return { id, repo: c.repo, number: c.number, title: c.title, url: c.url }
+    }
+    const read = (id: number) => {
+      const state = ended.get(id)
+
+      if (state === undefined) {
+        return 'OPEN'
+      }
+
+      stored = stored.filter((c) => c.id !== id)
+      emit('inbox:updated')
+
+      return state
+    }
+
+    platform.openReview.mockImplementation((id) => Promise.resolve(review(named(id))))
+    platform.refreshReview.mockImplementation((id) => {
+      const state = read(id)
+
+      return Promise.resolve(review({ ...named(id), state, ...(state === 'OPEN' ? {} : { offers: [], primary: '' }) }))
+    })
+    platform.openIssue.mockImplementation((id) => Promise.resolve(issue({ ...named(id), ...links(id) })))
+    platform.refreshIssue.mockImplementation((id) =>
+      Promise.resolve(issue({ ...named(id), ...links(id), state: read(id) })),
+    )
+  }
+
+  // toast is the toast showing, in the sheet or over the inbox.
+  function toast() {
+    return screen.findByRole('group', { name: 'Notification' })
+  }
+
+  it('closes the sheet of a pull request merged since, says so, and the card leaves the list', async () => {
+    backend([cache, parser], new Map([[1, 'MERGED']]))
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    const yours = await section('Yours')
+    await userEvent.click(yours.getByRole('button', { name: 'Add the widget cache' }))
+
+    const said = await toast()
+    expect(said).toHaveTextContent('acme-org/example-repo#7 was merged · Add the widget cache')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(yours.queryByRole('button', { name: 'Add the widget cache' })).not.toBeInTheDocument()
+    })
+    expect(yours.getByRole('button', { name: 'Fix the parser' })).toBeInTheDocument()
+
+    // The sheet's one read said so, and stored it: nothing more is asked of GitHub.
+    expect(platform.refreshReview).toHaveBeenCalledExactlyOnceWith(1)
+    expect(platform.readReviewAgain).not.toHaveBeenCalled()
+    expect(platform.refreshItem).not.toHaveBeenCalled()
+    expect(platform.refreshInbox).not.toHaveBeenCalled()
+    // Marked read as it opened and as the sheet left it, as any card a sheet shows.
+    await waitFor(() => {
+      expect(platform.markItemsSeen).toHaveBeenCalledTimes(2)
+    })
+    expect(platform.markItemsSeen).toHaveBeenLastCalledWith([1])
+
+    await userEvent.click(within(said).getByRole('button', { name: 'Open on GitHub' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
+    expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
+
+    // An open one opens as it always did.
+    await userEvent.click(yours.getByRole('button', { name: 'Fix the parser' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Fix the parser' })
+    expect(await within(sheet).findByText('1 of 1 in Yours')).toBeInTheDocument()
+    expect(await within(sheet).findByRole('button', { name: /squash-merge/ })).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Notification' })).not.toBeInTheDocument()
+  })
+
+  it('closes the sheet of a pull request or an issue closed since, and says so', async () => {
+    backend(
+      [cache, newline],
+      new Map([
+        [1, 'CLOSED'],
+        [4, 'CLOSED'],
+      ]),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    const yours = await section('Yours')
+    await userEvent.click(yours.getByRole('button', { name: 'Add the widget cache' }))
+    expect(await toast()).toHaveTextContent('acme-org/example-repo#7 was closed · Add the widget cache')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await userEvent.click(yours.getByRole('button', { name: 'Parser drops the trailing newline' }))
+    await waitFor(async () => {
+      expect(await toast()).toHaveTextContent('acme-org/example-repo#12 was closed · Parser drops the trailing newline')
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.refreshIssue).toHaveBeenCalledExactlyOnceWith(4)
+    await waitFor(() => {
+      expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
+    })
+  })
+
+  it('steps past a card merged or closed since, the way it stepped, and says so', async () => {
+    backend(
+      [cache, parser, docs, newline],
+      new Map([
+        [2, 'MERGED'],
+        [4, 'CLOSED'],
+      ]),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click((await section('Yours')).getByRole('button', { name: 'Add the widget docs' }))
+    expect(await screen.findByText('3 of 4 in Yours')).toBeInTheDocument()
+
+    // Back onto #8, merged: on past it, to the card before it.
+    await userEvent.click(screen.getByRole('button', { name: 'Previous' }))
+    expect(await toast()).toHaveTextContent('acme-org/example-repo#8 was merged · Fix the parser')
+    expect(await screen.findByRole('dialog', { name: 'Add the widget cache' })).toBeInTheDocument()
+    expect(await screen.findByText('1 of 3 in Yours')).toBeInTheDocument()
+
+    // On through #9 to #12, closed and the last: back the other way, to #9.
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByRole('dialog', { name: 'Add the widget docs' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await waitFor(async () => {
+      expect(await toast()).toHaveTextContent('acme-org/example-repo#12 was closed · Parser drops the trailing newline')
+    })
+    expect(await screen.findByRole('dialog', { name: 'Add the widget docs' })).toBeInTheDocument()
+    expect(await screen.findByText('2 of 2 in Yours')).toBeInTheDocument()
+    expect(platform.refreshIssue).toHaveBeenCalledExactlyOnceWith(4)
+  })
+
+  it('steps back to the sheet a link to an issue closed since was followed from', async () => {
+    const crash = { ...newline, id: 2 }
+    const bug = item({
+      id: 5,
+      kind: 'issue',
+      number: 3,
+      title: 'Parser bug',
+      url: 'https://github.com/acme-org/example-repo/issues/3',
+      assigned: true,
+    })
+    backend([crash, bug], new Map([[5, 'CLOSED']]), (id) => (id === crash.id ? { parent: issueRef() } : {}))
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Parser drops the trailing newline' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
+    const partOf = await within(sheet).findByRole('region', { name: 'Part of' })
+    await userEvent.click(within(partOf).getByRole('button', { name: '#3 Parser bug' }))
+
+    expect(await toast()).toHaveTextContent('acme-org/example-repo#3 was closed · Parser bug')
+    expect(await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })).toBe(sheet)
+    expect(within(sheet).queryByRole('button', { name: /^Back to/ })).not.toBeInTheDocument()
   })
 })
