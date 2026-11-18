@@ -118,6 +118,17 @@ async function openSettingsFromMenu() {
   await screen.findByRole('navigation', { name: 'Settings sections' })
 }
 
+// chooseCardDensity picks a density in Settings → Cards, as a person would, and closes the
+// settings.
+async function chooseCardDensity(density: 'Comfortable' | 'Compact') {
+  await openSettingsFromMenu()
+  await userEvent.click(screen.getByRole('button', { name: 'Cards' }))
+  await userEvent.click(
+    within(screen.getByRole('radiogroup', { name: 'Density' })).getByRole('radio', { name: density }),
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
+}
+
 describe('App', () => {
   it('shows the product name in the toolbar and the tagline under About', async () => {
     await renderApp()
@@ -1156,6 +1167,52 @@ describe('App’s card pictures', () => {
     })
     expect(platform.cardPictures).toHaveBeenCalledOnce()
   })
+
+  it('asks for no picture while the cards are compact, in batches once they are comfortable, and cancels them as they turn compact', async () => {
+    platform.getSettings.mockImplementation(() => stored({ cardDensity: 'compact' }))
+    platform.setCardDensity.mockImplementation((cardDensity: CardDensity) => stored({ cardDensity }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list(authored()) }))
+    // Each request waits for the test, and can be cancelled.
+    const answers: ((got: Record<string, string>) => void)[] = []
+    const cancels: ReturnType<typeof vi.fn>[] = []
+    platform.cardPictures.mockImplementation(() => {
+      const cancel = vi.fn()
+      cancels.push(cancel)
+
+      return Object.assign(
+        new Promise<Record<string, string>>((answer) => {
+          answers.push(answer)
+        }),
+        { cancel },
+      )
+    })
+    await renderApp()
+    await screen.findByText('Bump the cache')
+
+    expect(platform.cardPictures).not.toHaveBeenCalled()
+
+    await chooseCardDensity('Comfortable')
+
+    await waitFor(() => {
+      expect(platform.cardPictures).toHaveBeenCalledTimes(3)
+    })
+    await act(async () => {
+      answers[0]?.({ 'person-00': picture('00') })
+      await Promise.resolve()
+    })
+    await waitFor(() => {
+      expect(pictureOn(1)).toHaveAttribute('src', picture('00'))
+    })
+
+    await chooseCardDensity('Compact')
+
+    await waitFor(() => {
+      expect(cancels[2]).toHaveBeenCalledOnce()
+    })
+    expect(cancels[1]).toHaveBeenCalledOnce()
+    expect(pictureOn(1)).toBeNull()
+    expect(platform.cardPictures).toHaveBeenCalledTimes(3)
+  })
 })
 
 describe('App’s card density', () => {
@@ -1167,23 +1224,14 @@ describe('App’s card density', () => {
     const card = () => document.querySelector('[data-item-id="1"]')
     expect(card()).not.toHaveAttribute('data-density')
 
-    const choose = async (density: string) => {
-      await openSettingsFromMenu()
-      await userEvent.click(screen.getByRole('button', { name: 'Cards' }))
-      await userEvent.click(
-        within(screen.getByRole('radiogroup', { name: 'Density' })).getByRole('radio', { name: density }),
-      )
-      await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
-    }
-
-    await choose('Compact')
+    await chooseCardDensity('Compact')
 
     await waitFor(() => {
       expect(card()).toHaveAttribute('data-density', 'compact')
     })
     expect(platform.setCardDensity).toHaveBeenCalledExactlyOnceWith('compact')
 
-    await choose('Comfortable')
+    await chooseCardDensity('Comfortable')
 
     await waitFor(() => {
       expect(card()).not.toHaveAttribute('data-density')

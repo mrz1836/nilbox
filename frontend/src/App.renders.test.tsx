@@ -246,10 +246,10 @@ describe.each(densities)('App rendering, %s cards', (density) => {
     expect(mountedRows()).toBe(rows)
     expect(cardsAre(density)).toBe(true)
 
-    // The authors' pictures landing renders the avatars that show them, and no row; a
-    // compact card shows no avatar.
+    // The authors' pictures landing renders the avatars that show them, and no row. A
+    // compact card shows no avatar, so none is asked for.
     await waitFor(() => {
-      expect(platform.cardPictures).toHaveBeenCalledOnce()
+      expect(platform.cardPictures).toHaveBeenCalledTimes(density === 'comfortable' ? 1 : 0)
     }, wait)
     const pictures = await measure(async () => {
       act(() => {

@@ -1906,8 +1906,8 @@ own. A person's picture is downloaded by their login and a bot's from the addres
 for it with the item, since the picture host answers a bot's login with a generated pattern;
 both without your token and kept in the database, each downloaded again at most once a week,
 and a failed one not tried again for 30 minutes. Turned off, the cards show initials and the
-bot mark, and nothing is downloaded for them. A routine's Watching list shows initials and the
-bot mark alone.
+bot mark, and nothing is downloaded for them; with the cards compact, which show no picture,
+nothing is downloaded either. A routine's Watching list shows initials and the bot mark alone.
 
 **Hidden labels.** **Settings → Cards** lists the labels the cards leave out, in every
 repository: `size/*` to start with, since each card already shows its own size grade, so

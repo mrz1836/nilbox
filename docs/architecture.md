@@ -4283,8 +4283,9 @@ keep their initials) from `useCardPictures` (`lib/pictures.ts`): keyed by the so
 of every inbox item (people by login, bots by login and `authorAvatarUrl`), it asks the bound
 avatars service's `PicturesFor` in requests of at most 25 authors, all at once, and merges each
 answer as it lands, so a slow download holds back only its own; different authors cancel the
-requests under way, and with Settings → Cards' Author pictures off, or before the settings
-load, nothing is asked. Only `CardAvatar` reads the context, never `ItemRow`, so a picture
+requests under way, and with Settings → Cards' Author pictures off, with its Density
+compact (a compact card shows no avatar; turning compact cancels the requests under way), or
+before the settings load, nothing is asked. Only `CardAvatar` reads the context, never `ItemRow`, so a picture
 landing renders no row (the render check holds it). The cards' settings reach them as
 `CardPrefs` (`lib/cardPrefs.ts`) through `CardPrefsContext`, which App builds from the
 settings' primitives and provides around every page, so a settings save that leaves them as
