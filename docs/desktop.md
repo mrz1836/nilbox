@@ -1521,16 +1521,17 @@ dismissed. Each item is in one list, so the two lists' counts add up to it.
 request, so one whose author pushed after you requested changes, without asking you again,
 would leave your inbox. A fourth search finds the open pull requests you reviewed, each with
 your own standing verdict and its head commit, at no extra cost: when your verdict requested
-changes at a commit other than the head, the pull request is in **Review requested**, tagged
-**Pushed since your review**, and arrives with a banner once, when the push is new. Nilbox
+changes at a commit other than the head, the pull request is in **Review requested**, its
+card's story **Re-review** and its track's review step ↻, and arrives with a banner once, when
+the push is new. Nilbox
 writes nothing to GitHub for it unless you click **Re-request my review** in its review sheet,
 and it never dismisses a review. **Remove me as reviewer** isn't offered, since there is no
 request to take yourself off; reviewing it again from the
 [review sheet](#reviewing-a-pull-request) takes it out at once. The author asking you again,
 or you asking GitHub for your own review again with **Re-request my review**, makes it an
-ordinary request, whose tag then reads **Review re-requested**; the re-request does so at once,
-with no extra read. The tag goes by who the pull request asks to review, as its details last
-read it, so a refresh whose search hasn't caught up with the request keeps it. Any move of
+ordinary request, whose story then reads **Review re-requested**; the re-request does so at
+once, with no extra read. The story goes by who the pull request asks to review, as its details
+last read it, so a refresh whose search hasn't caught up with the request keeps it. Any move of
 the head by someone else counts: a push, a rebase, or someone else's **Update branch**.
 Commits you pushed yourself never do, such as a merge of its base you pushed to fix its checks:
 the author still owes the changes, so the pull request stays out of Review requested, untagged,
@@ -1623,8 +1624,8 @@ GraphQL budget and how many items it tracked, and what that comes to in an hour 
 set in **Settings → Refreshing** (every five minutes by default), as a share of the budget. Each refresh reads every tracked item, so more
 items, or issues read with their [project fields](#issue-projects), cost more.
 
-**Checks that are running.** A pull request whose checks were still running (a yellow count
-with a pulsing dot, such as 12/18) when the inbox last read it is read again every 45 seconds, so its card shows
+**Checks that are running.** A pull request whose checks were still running (a moving dot on
+its card's track) when the inbox last read it is read again every 45 seconds, so its card shows
 the checks end about as soon as GitHub's own page does, rather than at the next whole refresh.
 They are read 25 to a request, the requests side by side, about one point each, at most 50 a
 round (your own cards first, then those a routine follows), and none is read while no checks
@@ -1635,7 +1636,7 @@ as its checks end, passed or failed, and a dismissed or snoozed one isn't read a
 conflicts, or put it behind, and GitHub works that out again only once asked. So about ten
 seconds after Nilbox learns of a merge (yours from the review sheet, an Autopilot routine's, or
 one a read of the inbox finds, as an auto-merge), it reads the repository's other open pull
-requests on the same branch again, 25 to a request, and their cards show **Conflicts** without
+requests on the same branch again, 25 to a request, and their cards show their conflicts without
 waiting for the next whole refresh. While GitHub is still working one
 out, it reads that one again 30 seconds later, three rounds at most. A pull request read since
 the merge, dismissed, snoozed, or in a muted repository is left alone. It costs about a point
@@ -1801,55 +1802,85 @@ is cleared whenever you leave Settings.
 
 ## Inbox cards
 
-Each pull request or issue in the inbox is a card three lines high:
+Each pull request or issue in the inbox is a card two lines high, built to answer three
+questions at a glance: where it stands, what changed, and what to do next.
 
-1. Its title, with a **Draft** tag on a draft pull request, a **Conflicts** tag when it has
-   merge conflicts with its base branch, a **Pushed since your review** tag when its author
-   pushed after you requested changes (**Review re-requested** once GitHub asks for your review
-   again), and an **Auto-merge · squash** tag (or merge commit, or
-   rebase) when GitHub will merge it on its own once its requirements are met. A long title is cut
-   short; hover it for all of it. Clicking a pull request's title opens it in the [review
-   sheet](#reviewing-a-pull-request), and an issue's in the [issue sheet](#reading-an-issue);
-   **⌘-click** it, or click the small **↗** beside it, to open it on GitHub instead.
-2. The repository and number, the author (**you** for your own; hover it for your login, and
-   it still filters by the login), how long ago it last changed, an **Assigned** chip when the
-   item is assigned to you (in either list, since a pull request asking for your review stays in
-   **Review requested** when it is assigned to you too), and a tag when the
-   [trust rule](#outside-contributors) says so: **bot** for a trusted bot, **untrusted bot**,
-   or **outside contributor**. A pull request whose files are checked then shows its
-   [sensitive files](#sensitive-files) chip. An item with a worktree, as the
-   [Worktrees view](#the-worktrees-view) last listed it, is tagged with it, as in **worktree · 2
-   changes · Codex 3h ago**, or **worktree · in use** while a session runs in it; hover the tag
-   for the worktree's path. The inbox never lists the worktrees itself. An item with an agent
-   session running, or one that ended in the last day, is tagged with what it is doing, as in
-   **Claude · needs approval · 2m**; click it for the item's sessions (see
-   [Following a session](#following-a-session)). The card says nothing of your
-   [notifications on GitHub](#github-notifications): the toolbar's GitHub button lists them.
-3. Its details, in a fixed order. Each detail before the projects and labels keeps the same
-   width on every card, sized for the longest value a card should meet, so the details line up
-   from card to card. Hover any of them for the whole sentence, which is also what a screen
-   reader reads.
+- **The edge.** A bar down the card's left side says whose move it is: amber when something
+  waits on you right now (an agent asking for approval, a routine asking for your OK, workflow
+  runs held for you), red when it is stuck (conflicts, failing checks, an agent that failed),
+  your accent when it is yours to do, green when it is ready to merge, blue while an agent or a
+  routine works on it, and grey while it waits on others. In the Snoozed, Dismissed, and Muted
+  tabs it has none.
+- **Who and what.** The author's initials on a color their login picks (a rounded square with
+  a bot's mark for a bot, an accent ring for your own), with the pull request or issue mark at
+  its corner, grey for a draft.
+- **Line 1:** the title, after a pin when the item is pinned (hover the pin for who pinned it:
+  you, a routine, or a rule for its repository or org) and **Draft** before a draft's title,
+  then up to two labels in their GitHub colors and **+N** for the rest, which give way before
+  the title does. A long title is cut short; hover it for all of it. Clicking a pull request's
+  title opens it in the [review sheet](#reviewing-a-pull-request), and an issue's in the
+  [issue sheet](#reading-an-issue); **⌘-click** it, or click the small **↗** beside it, to open
+  it on GitHub instead.
+- **Line 2:** the story, one sentence in the edge's color that says why the card is here, such
+  as **Your review · checks failing**, **Re-review · back early: 1 new commit**, **2 of 14
+  checks failing**, **Approved · ready to merge**, **Claude needs approval**, or **Merges when
+  green · squash**; in the Snoozed and Dismissed tabs, when it comes back or when it was
+  dismissed. Then the byline: the repository and number, the author (**you** for your own;
+  hover it for your login, and it still filters by the login), why it is yours (**via
+  @team** for a review asked of a team, **assigned** when it is assigned to you, in either
+  list), and how long ago it last changed. Then, only when there is something to say, one
+  risk chip for who opened it and the [sensitive files](#sensitive-files) it changes (such as
+  **Outside · Workflows**, or **Untrusted bot · Not all files checked**; click it for the
+  files), the routine's ⚡ chip, and a worktree chip when the item's worktree, as the
+  [Worktrees view](#the-worktrees-view) last listed it, has uncommitted changes or a session
+  running in it (hover it for the worktree's path). The card says nothing of your
+  [notifications on GitHub](#github-notifications): the toolbar's GitHub button lists them.
+- **Where it stands.** A pull request's track: its checks, its review, and whether it can
+  merge, each a circle with a tick, a cross, a clock for runs held for approval, a moving dot
+  while checks run, ↻ once its author pushed since you asked for changes, a warning for
+  conflicts, a bolt for auto-merge, or a ring while there is nothing yet to say. Under it, the
+  comments when there are any, the size grade, and a five-cell bar of the lines added
+  against those removed. An issue shows its status in its first project, that project's
+  priority or size, and its sub-issues done out of all of them; nothing when it has none of
+  these. A screen reader reads each step's sentence.
+- **What to do.** One button for your next move, colored like the edge (and filled while the
+  pointer is on the card) when it is yours to make, quiet when it isn't: **Review**,
+  **Re-review**, **Read**, **Open**, **Merge** (which opens the review sheet, whose own
+  button then merges), **Decide** (a routine's Needs you, in the Autopilot tab), **Show
+  terminal** or **Watch** (an agent waiting on you), **What happened** (an agent that failed
+  today), or **Unsnooze**, **Restore**, or **Unmute** in the tabs an item is set aside in.
+  Beside it, the agent's: **✦ Claude** to [open a session](#launch-defaults), with its lock
+  when the item [launches read-only](#outside-contributors), and the arrow for the launch
+  options; or, once a session runs, its live state (see
+  [Following a session](#following-a-session)).
 
-| Detail | What it shows | Color |
-|---|---|---|
-| Checks | The latest commit's checks that passed, out of those that ran. Skipped checks count toward neither. | Green when all passed, yellow while any still run, red when any failed |
-| Reviews | Reviewers who have reviewed, out of everyone asked or who reviewed. The author's own replies don't count, and a reviewer asked again owes a new review. | Green once approved, red when changes were requested |
-| Comments | The conversation's comments, review comments included | None |
-| Size | XS (10 or fewer changed lines), S (50 or fewer), M (200 or fewer), L (500 or fewer), or XL (more than 500), the same scale as the `size/*` labels; then the lines added and removed, the files, and the commits | Added lines green, removed lines red |
-| Sub-issues | On an issue with sub-issues, how many are done out of all of them, with a small bar | Green once all are done |
-| Projects | On an issue, the first GitHub project it is in, its status there, and its priority and size, then how many more projects. Click it to open the project. See [Issue projects](#issue-projects). | The status and fields in their project colors |
-| Labels | The first three labels with their GitHub colors, then how many more, leaving out the labels you hid (the size labels, to start with, since the size grade already shows them); see **Settings → Cards** | None |
+**Hover a card** for its triage over the track: **Show details**, refresh it, snooze it,
+dismiss it, pin or unpin it, and the menu of everything else. They stay while the card is busy
+with GitHub.
 
-An issue shows its comments, its sub-issues, its projects, and its labels. Sub-issue progress
-needs no extra scope, so it shows for every issue that has sub-issues.
+**Show details.** Click a card's empty space, or **Show details**, to open it in place, under
+its two lines, with everything the card leaves out, read from what the inbox already has, so it
+costs no request: where it stands (the checks as a bar with their counts, the review, the
+merge, or an issue's projects and sub-issues), the change (lines added and removed, files,
+commits, the head branch and whether it comes from a fork, and the sensitive files by
+category), and what is around it (the agent session and how it started, what the routines did
+with it, why it is here, and every label). Its buttons repeat your next move, offer **Review**
+or **Read** when that move doesn't open the item, open the agent's launch options, and snooze,
+dismiss, pin, or open it on GitHub. Click again to close it.
+
+**A narrow window.** The cards follow their list's width rather than the window's: below about
+1,000 pixels the action column narrows, then the labels and the size go, then the agent
+button shows its spark alone and a live session its dot, then the track goes too, with the
+repository's org.
 
 **Hidden labels.** **Settings → Cards** lists the labels the cards leave out, in every
 repository: `size/*` to start with, since each card already shows its own size grade, so
 `size/XL` would only repeat it. Add a label, or a pattern: `*` matches anything, `/` included,
 as in `size/*`, `?` any one character, and case doesn't matter. **Restore the defaults** puts
-the list back. A hidden label is only left off the cards, before the first three are taken, so
-it never takes a visible label's place or counts in the **+N**; the [filter](#filtering)
-(`label:size/XL`), the issue sheet's labels, Autopilot, and the prompts' variables still see it.
+the list back. A hidden label is only left off the cards, before the first two are taken, so
+it never takes a visible label's place or counts in the **+N**; a card's details, the
+[filter](#filtering) (`label:size/XL`), the issue sheet's labels, Autopilot, and the prompts'
+variables still see it.
 
 **Archived repositories are left out.** Each of the inbox's four searches asks GitHub for
 `archived:false`, so an archived repository's pull requests and issues never appear, never
@@ -1909,10 +1940,11 @@ end its snooze. Which lists it is in waits for the next whole refresh, since onl
 can tell. The last-refreshed time and the error line above the lists belong to whole
 refreshes; a card refresh that fails says why in a toast.
 
-**Opening a session.** The **Open in Claude** button on the right of a card (**Open in Codex**
-when the item's settings choose Codex) starts a session with the item's [resolved launch
-settings](#launch-defaults) in one click. The arrow beside it names the prompt and profile those
-settings choose, as in **Review · default**, and opens the launch menu:
+**Opening a session.** **✦ Claude** beside a card's next step (**Open in Claude** to a screen
+reader, and **✦ Codex** when the item's settings choose Codex) starts a session with the item's
+[resolved launch settings](#launch-defaults) in one click. The arrow beside it, named for the
+prompt and profile those settings choose (**Launch options: Review · default**), opens the
+launch menu, as does **✦ Claude…** in the card's details:
 
 - **Agent:** a switch between Claude and Codex at the top, the one the settings choose marked
   with where it comes from. An agent whose program isn't installed is shown disabled, with why.
@@ -1944,26 +1976,25 @@ A choice applies to the next launch only; afterwards every choice returns to the
 settings. The arrow shows a dot while any choice differs from them, and picking the default
 again clears the choice. Choosing another agent, prompt, or profile resolves the settings again,
 so each default shown is the one that would really apply, such as a prompt's own model. A
-launch that starts adds nothing below the card: the card's session tag follows the session,
+launch that starts adds nothing below the card: the card's agent button follows the session,
 and its panel says what it started with. Only a failure, or what a launch worked around (a
 worktree started from the last fetched copy of the default branch, say), shows below the
-card. An item no prompt applies to shows **No prompt** and
-says why. A card whose item already has a worktree says so, with its uncommitted changes and
-the agent and time of its latest session.
+card. An item no prompt applies to marks the arrow with a warning, and its launch options say
+**No prompt** and why. A card whose item's worktree has uncommitted changes, or a session
+running in it, says so.
 
 ### Issue projects
 
-An issue's card names the GitHub project it is in, such as **Roadmap**, with the issue's
-**Status** there as a pill in the color the project gives it, such as **In progress** in
-yellow. Beside it, the issue's priority and size show as outlined pills in their option
-colors, such as **High** and **XL**: the first field named like *Priority* (or *Prio*) and
-the first named like *Size* (or *Effort*), whatever their order in the project. Hover the
-project for every field it has a value in, such as **Estimate**, **Phase**, a date, or an
-iteration, and click it to open the project on GitHub. An issue in more than one project
-shows the first, in GitHub's order, then **+N**; hover the count for the others and their
-statuses. A closed project, and an item archived from its project, are left out, and the
-first five projects an issue is in are read. A project whose Status field was renamed or
-deleted shows its name alone. Pull requests show no projects.
+An issue's card shows its **Status** in the first GitHub project it is in, in GitHub's order,
+as a pill in the color the project gives it, such as **In progress** in yellow, which is also
+the card's story. Under it, the issue's priority shows as an outlined pill in its option color,
+such as **High**: the first field named like *Priority* (or *Prio*), else the first named like
+*Size* (or *Effort*), whatever their order in the project. The card's details name every
+project the issue is in, such as **Roadmap**, with its status, priority, and size; hover one
+for every field it has a value in, such as **Estimate**, **Phase**, a date, or an iteration,
+and click it to open the project on GitHub. A closed project, and an item archived from its
+project, are left out, and the first five projects an issue is in are read. A project whose
+Status field was renamed or deleted shows its name alone. Pull requests show no projects.
 
 **Sorting by status.** A list whose issues are in projects, **Yours** in practice, has a
 **Recent | Status** toggle at the right of its header. **Recent** is the usual order: pinned
@@ -2035,8 +2066,8 @@ on its own tab.
   length (**3d**), to snooze it for your default length; the arrow beside it offers 1 day, 2
   days, 3 days, 1 week, 2 weeks, or 30 days, each with the time the item comes back. The
   item waits in the **Snoozed** tab, soonest back first, then returns to its list on its own at
-  the same time of day, even across a change of the clocks. For a day after that, its card
-  says **Back from snooze**. New activity can bring it back sooner; see below.
+  the same time of day, even across a change of the clocks. For a day after that, its card's
+  story says **back from snooze**. New activity can bring it back sooner; see below.
 - **Dismiss** (the archive box) sets an item aside until you bring it back. It waits in the
   **Dismissed** tab, most recently dismissed first, however much it changes on GitHub.
 - **Unsnooze** and **Restore**, on the cards in those tabs, put an item back in its list right
@@ -2113,9 +2144,10 @@ out bot noise. Counts are measured from the moment you snoozed, so three comment
 refreshes reach **3+**. A pull request turned into a draft never wakes a snooze, and a draft
 snoozed before this rule existed still wakes when it's marked ready.
 
-An item woken early comes back to its lists with a tag saying what was new, most decisive
-first, such as **Back early: approved, 2 new commits**, **Back early: changes requested,
-force-pushed**, or **Back early: marked ready for review**. Hover the tag for when it woke. Only the activity that met a rule is named.
+An item woken early comes back to its lists with its card's story saying what was new, most
+decisive first, such as **back early: approved, 2 new commits**, **back early: changes
+requested, force-pushed**, or **back early: marked ready for review**. Only the activity that
+met a rule is named.
 Dismissed items never wake, and a snooze that has ended is not woken again; snoozing an item
 again starts a fresh record.
 
@@ -2191,7 +2223,7 @@ where you left it. Nilbox counts it as no longer assigned to you, or no longer a
 review, until the item changes on GitHub again: if someone assigns you again, or asks for your
 review again, it comes back, with its notification, as usual. An item that no longer asks for
 your review moves to **Yours** when you opened it or are assigned to it, and an item you are
-no longer assigned to stays there while you opened it, without its **Assigned** chip; with
+no longer assigned to stays there while you opened it, without **assigned** in its byline; with
 nothing else keeping it, it leaves the inbox.
 
 **Whose account.** An edit goes out only with the token of the account whose inbox you see. If
@@ -2446,14 +2478,14 @@ acme-org/api#212 · auto-merge is on**. A review takes the
 pull request out of **Review requested** (into **Yours**, when you opened it or are assigned to
 it), and a merge or a close out of the inbox, at once, with no extra request. That includes a
 pull request there only because its author pushed since you requested changes: approving it,
-or requesting changes again, clears its **Pushed since your review** tag too.
+or requesting changes again, ends its **Re-review** too.
 
 **Re-request my review.** Once a pull request's author pushed since you requested changes, the
 strip under the sheet's header that says how many commits came since offers **Re-request my
 review** beside **Show commits**, and so does the action menu, at its foot. It asks GitHub to
 request your review again, once, as GitHub's own re-request does, and puts the pull request back
-in **Review requested** at once, as an ordinary request, its card tagged **Review re-requested**
-in place of **Pushed since your review**.
+in **Review requested** at once, as an ordinary request, its card's story **Review
+re-requested** in place of **Re-review**.
 It dismisses nothing: your request for changes stands until your next review replaces it. It is
 never the button and sends none of your text, so the draft stays for that review. It isn't
 offered after an approval, with nothing pushed since, or on your own pull request; it can't run
@@ -4293,9 +4325,9 @@ Everything else is untrusted: other people, bots not on the list, and every pull
 from a fork. The rule applies to issues as well, because the agent reads an issue body the
 same way it reads a pull request.
 
-Each card shows who opened it: a trusted bot's carries a quiet **bot** tag, a bot not on the
-list an **untrusted bot** tag, and anyone else outside the project an **outside contributor**
-tag. Untrusted items launch planning only, whatever the profile says, without the option to
+Each card shows who opened it: a bot's has a rounded square with a bot's mark in place of
+initials, one not on the list an **Untrusted bot** chip besides, and anyone else outside the
+project an **Outside contributor** chip; an untrusted item's agent button carries a lock. Untrusted items launch planning only, whatever the profile says, without the option to
 switch to full access later: Claude Code in plan mode, and Codex in a read-only sandbox that asks
 before anything else, since Codex has no plan mode.
 
@@ -4726,9 +4758,17 @@ once the session starts, the app finds its thread among the ones Codex lists for
 folder, created after the launch, preferring the one whose first message is the prompt the
 launch sent.
 
-**On the card.** A tag beside the worktree's names the agent, what its newest running session
-is doing, and for how long, such as **Claude · needs approval · 2m**. A session that ended
-stays on the card for a day.
+**On the card.** The agent's button beside the card's next step follows the newest running
+session, or one that ended in the last day: while it starts or works, a pill with a slowly
+moving border, such as **Claude working 2m**, that opens the item's sessions, with **Show in
+terminal** (or **Watch**, for a routine's run in the background) beside it; waiting on you,
+the card's story says so (**Claude needs approval · Bash: go test**) and its next step is
+**Show terminal**, breathing, or **Watch**; its turn done, **Claude’s done · 2m**, which shows
+its terminal; ended, **✦ Findings · 2m**, which opens the item's sheet, where the agent's
+verdict shows what it last said; failed today, the next step is **What happened**, which opens
+the sessions. While an agent works, the card's story says **Claude is on it**, and your own
+next step stays beside it, quiet. The [Worktrees view](#the-worktrees-view) shows the session
+as a tag beside the worktree's, such as **Claude · needs approval · 2m**.
 
 | State | What it means |
 |---|---|
@@ -4741,7 +4781,7 @@ stays on the card for a day.
 | Status unavailable | The session runs, but the agent couldn't be asked how it is |
 | Ended | The agent quit |
 
-**The panel.** Click the tag for every session of the item, newest first: its agent, profile,
+**The panel.** Click the pill for every session of the item, newest first: its agent, profile,
 and prompt, what it is doing and since when, the permissions it started with and where it runs
 (**full access · new worktree**, or **in the clone**), what came of the item on GitHub while it
 ran, how many tokens it used, the folder, anything its launch worked around, and the start of
@@ -4765,7 +4805,7 @@ what the agent last said. Each has its actions:
   record: Resume is no longer offered for it, and resuming it outside the app is no longer
   followed. The conversation itself stays in the agent's own files, so copy its ID first if you
   may want it. A session still running, or one that failed or whose status is unavailable,
-  can't be removed. The card's tag then shows the next session that ended within the day, or
+  can't be removed. The card then follows the next session that ended within the day, or
   none.
 
 **How it is read.** The app asks each agent through the interface it supports for this, and
