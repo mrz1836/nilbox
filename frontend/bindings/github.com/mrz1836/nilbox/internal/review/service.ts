@@ -108,7 +108,9 @@ export function ReadAgain(id: number): $CancellablePromise<$models.Review> {
  * Refresh reads the pull request with id from GitHub, stores it, and returns it: one
  * GraphQL request, and its files only when it was pushed to since the sheet listed them.
  * A pull request read in the last 20 seconds is not read again, unless its card shows
- * activity since. Two refreshes of one pull request never run side by side.
+ * activity since. Two refreshes of one pull request never run side by side. One the read
+ * finds merged or closed is returned as read this once, its State saying which, and the
+ * sheet forgets it.
  */
 export function Refresh(id: number): $CancellablePromise<$models.Review> {
     return $Call.ByID(457723099, id);

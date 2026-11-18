@@ -180,9 +180,70 @@ func TestRefreshOfAPullRequestNoLongerOpenDropsItsCache(t *testing.T) {
 	h.github.review = merged
 
 	r := h.refreshed(t)
-	assert.True(t, r.Stale)
-	assert.Empty(t, r.Files, "the cache of a merged pull request is dropped")
+	assert.Equal(t, github.StateMerged, r.State, "the read says what became of it")
+	assert.Empty(t, r.Files, "a pull request no longer open is never listed again")
+	assert.Equal(t, 2, h.github.called(callReview))
 	assert.Equal(t, 1, h.github.called(callDiff))
+
+	c, err := h.svc.cache.load(t.Context(), pullID, 0)
+	require.NoError(t, err)
+	assert.Nil(t, c, "the cache of a merged pull request is dropped")
+
+	r, err = h.svc.Open(t.Context(), pullID)
+	require.NoError(t, err)
+	assert.True(t, r.Stale, "Open has nothing read to show")
+}
+
+func TestRefreshSaysAPullRequestEndedSinceTheInboxReadIt(t *testing.T) {
+	t.Parallel()
+
+	for _, state := range []string{github.StateMerged, github.StateClosed} {
+		t.Run(state, func(t *testing.T) {
+			t.Parallel()
+
+			// The inbox still lists it as open: merged or closed since its last refresh, and
+			// never read by the sheet.
+			h := newHarness(t)
+			ended := pullReview(headA, github.MergeStateClean)
+			ended.Update.Item.State = state
+			ended.Update.Details.ChangedFiles = 2
+			h.github.review = ended
+
+			r := h.refreshed(t)
+			assert.Equal(t, state, r.State, "a merge or a close, not an error")
+			assert.Equal(t, ReadyClosed, r.Readiness.State)
+			assert.Equal(t, ActionNone, r.Primary)
+			assert.Empty(t, r.Offers, "nothing to do on a pull request no longer open")
+			assert.Equal(t, "2026-11-09T17:00:00Z", r.FetchedAt, "shown as read")
+			assert.Contains(t, r.Body, "Adds a cache.")
+			assert.Equal(t, 2, r.TotalFiles)
+			assert.Empty(t, r.Files)
+
+			assert.Equal(t, 1, h.github.called(callReview), "the one read says so")
+			assert.Zero(t, h.github.called(callDiff), "and no file is listed")
+			require.Len(t, h.inbox.read, 1)
+			assert.Equal(t, state, h.inbox.read[0].Update.Item.State, "the inbox stores what the read found")
+			assert.Nil(t, h.inbox.read[0].Files)
+
+			// The cache keeps nothing of it, so a refresh at once reads GitHub again.
+			r = h.refreshed(t)
+			assert.Equal(t, state, r.State)
+			assert.Equal(t, 2, h.github.called(callReview))
+		})
+	}
+}
+
+func TestRefreshOfAPullRequestGitHubCantFindShowsTheCard(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.github.review = &github.PullReview{}
+
+	r := h.refreshed(t)
+	assert.Equal(t, github.StateOpen, r.State, "nothing read to say otherwise")
+	assert.Empty(t, r.FetchedAt)
+	assert.Equal(t, 1, h.github.called(callReview))
+	assert.Zero(t, h.github.called(callDiff))
 }
 
 func TestRefreshFailures(t *testing.T) {

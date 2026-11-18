@@ -1143,7 +1143,15 @@ review the same way, and closes with one REST `PATCH` (`(*github.Client).ClosePu
 refusals `closeError` words as a close, never as a merge or a push). A comment that fails
 closes nothing, and anything that fails after it is `commented_not_closed`, decided in one
 place (`failedAfterComment`). A merge or a close takes the pull request out of every list
-(`Acted.Merged`, `Acted.Closed`) and drops its cache. It owns `review_diffs` and
+(`Acted.Merged`, `Acted.Closed`) and drops its cache. So does a read that finds one merged or
+closed, as a card still listed can be until the next refresh: the inbox's `ReadPull` stores
+its state from the answer, which takes it out of the lists and tells the window, and `Refresh`
+(and `ReadAgain`) returns it built from that read alone (`endedRead`: its context, with no
+files, since a pull request no longer open is never listed), its `State` saying `MERGED` or
+`CLOSED`, as the issue sheet returns a closed issue. The window learns it from the read it
+makes on every opening, with no request more (built from the card alone, with no cache, it
+would read as open, and the window would read it twice more for a merge state GitHub never
+works out). A read GitHub can't resolve still returns the card. It owns `review_diffs` and
 `review_diff_files`, a bounded cache of the diffs it read (per pull request, in all, and by
 age), pruned in the same transaction that writes. The one read of the pull request
 (`FetchPullReview`, one point, measured) brings its conversation too: the newest hundred
