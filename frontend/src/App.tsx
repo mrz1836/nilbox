@@ -838,13 +838,14 @@ export function App() {
   // pattern holds a line break: the settings refuse a control character in one.
   const hiddenKey = (config.settings?.hiddenLabels ?? defaultHiddenLabels).join('\n')
   const hideLabels = labelMatcher(hiddenKey.split('\n'))
-  // cardAvatars and cardDensity are Settings → Cards' Author pictures and Density, a fresh
-  // install's until the settings load. cardPrefs are built from such primitives alone, so a
-  // save of the settings that leaves the cards' as they were makes no new value, and
-  // renders no card.
+  // cardAvatars, cardDensity, and cardUnread are Settings → Cards' Author pictures,
+  // Density, and Unread dots, a fresh install's until the settings load. cardPrefs are
+  // built from such primitives alone, so a save of the settings that leaves the cards' as
+  // they were makes no new value, and renders no card.
   const cardAvatars = config.settings?.cardAvatars ?? defaultCardPrefs.avatars
   const cardDensity = config.settings?.cardDensity ?? defaultCardPrefs.density
-  const cardPrefs: CardPrefs = { avatars: cardAvatars, density: cardDensity }
+  const cardUnread = config.settings?.cardUnread ?? defaultCardPrefs.unread
+  const cardPrefs: CardPrefs = { avatars: cardAvatars, density: cardDensity, unread: cardUnread }
   // cardPictures are the pictures of the inbox's authors, asked for once the settings load
   // and only while they say to show them on comfortable cards, so a user who turned them off,
   // or whose cards are compact and show no avatar, has none asked for; turning compact

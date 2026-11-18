@@ -10,7 +10,8 @@ import { ArchiveIcon, AutopilotIcon, ClockIcon, PinIcon } from '../icons'
 import { pinnedTarget } from '../TriageControls'
 
 // The parts both of a card's densities share: the edge's color, the repository and author
-// that filter the inbox, the pin before the title, and the story of a set-aside card.
+// that filter the inbox, the pin and the unread dot beside the title, and the story of a
+// set-aside card.
 
 // tagClass is a status tag: weight and color mark it, with no pill around it.
 export const tagClass = 'shrink-0 text-[0.6875rem] leading-4 font-medium'
@@ -150,6 +151,17 @@ export function PinGlyph({ item, rules }: { item: InboxItem; rules: RepoRules | 
   return (
     <span role="img" aria-label={label} title={title} className="relative z-10 inline-flex shrink-0 text-accent">
       <PinIcon filled className="size-3.5" />
+    </span>
+  )
+}
+
+// UnreadDot marks a card with activity the user hasn't seen since they last opened it,
+// while Settings → Cards' Unread dots is on.
+export function UnreadDot() {
+  return (
+    <span data-unread title="New since you last opened it" className="relative z-10 inline-flex shrink-0">
+      <span aria-hidden="true" className="block size-1.75 rounded-full bg-info ring-3 ring-info/20" />
+      <span className="sr-only">Unread</span>
     </span>
   )
 }
