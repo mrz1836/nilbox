@@ -137,7 +137,7 @@ func (r launchItemRow) subject(policy trust.Policy) subject {
 func (r launchItemRow) unresolved(a agent.Agent) Resolution {
 	return Resolution{
 		ItemID: r.ID, Kind: r.Kind, Owner: r.Owner, Repo: r.repo().String(), Agent: a,
-		AgentInherited: a.ID, ExtraArgs: []string{}, Warnings: []string{},
+		AgentInherited: a.ID, ExtraArgs: []string{}, Warnings: []string{}, Situations: []SituationChoice{},
 	}
 }
 
