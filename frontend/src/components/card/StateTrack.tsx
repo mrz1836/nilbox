@@ -26,6 +26,9 @@ const looks: Readonly<Record<Look, string>> = {
 
 const iconClass = 'size-2.5 [stroke-width:2.4]'
 
+// stepClass is a step's circle, before its look.
+const stepClass = 'relative grid size-4.75 shrink-0 place-items-center rounded-full border-[1.5px]'
+
 // TrackStep is one step of the track: how it looks, what it shows inside (nothing for a
 // ring), and the sentence that says it. state names what it stands for, which data-state
 // carries.
@@ -171,7 +174,7 @@ export function StateTrack({ item }: { item: InboxItem }) {
   const { shown, sentence } = trackOf(item)
 
   return (
-    <div className="relative flex items-center gap-2.75">
+    <div data-guide="track" className="relative flex items-center gap-2.75">
       <span aria-hidden="true" className="absolute inset-x-2.5 top-1/2 h-px -translate-y-1/2 bg-border" />
       {shown.map((step, i) => (
         <span
@@ -179,13 +182,37 @@ export function StateTrack({ item }: { item: InboxItem }) {
           aria-hidden="true"
           data-step={names[i]}
           data-state={step.state}
-          className={`relative grid size-4.75 shrink-0 place-items-center rounded-full border-[1.5px] ${looks[step.look]}`}
+          className={`${stepClass} ${looks[step.look]}`}
         >
           {step.icon}
         </span>
       ))}
       <span className="sr-only">{sentence}</span>
     </div>
+  )
+}
+
+// KeyLook is a look the card guide's key explains: every one a step of the track takes but
+// the dotted ring of nothing to say yet, and auto-merge's bolt.
+export type KeyLook = 'ok' | 'bad' | 'rereview' | 'running' | 'held' | 'waiting'
+
+// keyIcons are what a step of each look the key explains shows inside its circle.
+const keyIcons: Readonly<Record<KeyLook, ReactNode>> = {
+  ok: <CheckIcon className={iconClass} />,
+  bad: <XIcon className={iconClass} />,
+  rereview: <RereviewIcon className={iconClass} />,
+  running: <StatusDot color="bg-warning" ping />,
+  held: <ClockIcon className={iconClass} />,
+  waiting: null,
+}
+
+// TrackSymbol is one of the track's symbols alone, as the card guide's key explains it: a
+// step's circle in its look, with what such a step shows inside.
+export function TrackSymbol({ look }: { look: KeyLook }) {
+  return (
+    <span aria-hidden="true" className={`${stepClass} ${looks[look]}`}>
+      {keyIcons[look]}
+    </span>
   )
 }
 

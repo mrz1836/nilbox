@@ -121,14 +121,19 @@ export function RiskChip({ item, onFilesSettings }: RiskChipProps) {
 
   if (check === null) {
     return (
-      <span title={title} data-tone={tone} className={`relative z-10 shrink-0 ${chipClass} ${tones[tone]}`}>
+      <span
+        title={title}
+        data-tone={tone}
+        data-guide="risk"
+        className={`relative z-10 shrink-0 ${chipClass} ${tones[tone]}`}
+      >
         {content}
       </span>
     )
   }
 
   return (
-    <span className="relative z-10 inline-flex min-w-0 shrink-0 has-[[aria-expanded=true]]:z-20">
+    <span data-guide="risk" className="relative z-10 inline-flex min-w-0 shrink-0 has-[[aria-expanded=true]]:z-20">
       <button
         ref={triggerRef}
         type="button"
