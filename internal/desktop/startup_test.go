@@ -15,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/desktop"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/update"
 )
 
 var errFakeStartup = errors.New("create data directory: the disk is full")
@@ -59,11 +60,14 @@ func TestAStartupFailureSaysWhatHappened(t *testing.T) {
 	t.Run("a database from a newer build", func(t *testing.T) {
 		t.Parallel()
 
-		got := desktop.StartupFailure(fmt.Errorf("open database: %w", store.ErrNewerSchema))
+		got := desktop.StartupFailure(fmt.Errorf("open database: %w", store.ErrNewerSchema),
+			desktop.Newer{Way: update.WayUpdate})
 
 		assert.Equal(t, brand.Name+" needs an update", got.Title)
-		assert.Equal(t, "The data was saved by a newer version of "+brand.Name+"; update "+brand.Name+" to open it.",
-			got.Message)
+		assert.True(t, strings.HasPrefix(got.Message, "The data was saved by a newer version of "+brand.Name+
+			" than this one."), got.Message)
+		assert.Contains(t, got.Message, "Your data is safe and untouched")
+		assert.Equal(t, []string{"Update and Reopen", quitLabel}, buttonLabels(got))
 	})
 
 	t.Run("a database another copy holds", func(t *testing.T) {
@@ -72,7 +76,7 @@ func TestAStartupFailureSaysWhatHappened(t *testing.T) {
 		err := lockedDatabaseError(t)
 		require.True(t, store.IsBusy(err), "the fixture is a lock: %v", err)
 
-		got := desktop.StartupFailure(err)
+		got := desktop.StartupFailure(err, desktop.Newer{})
 
 		assert.Equal(t, couldNotStart, got.Title)
 		assert.True(t, strings.HasPrefix(got.Message, "Another copy of "+brand.Name+" may still be running"), got.Message)
@@ -83,7 +87,7 @@ func TestAStartupFailureSaysWhatHappened(t *testing.T) {
 		t.Parallel()
 
 		err := fmt.Errorf("create data directory: %w", &fs.PathError{Op: "mkdir", Path: "data", Err: fs.ErrPermission})
-		got := desktop.StartupFailure(err)
+		got := desktop.StartupFailure(err, desktop.Newer{})
 
 		assert.Equal(t, couldNotStart, got.Title)
 		assert.True(t, strings.HasPrefix(got.Message, brand.Name+" isn't allowed to read or write its data."), got.Message)
@@ -94,8 +98,10 @@ func TestAStartupFailureSaysWhatHappened(t *testing.T) {
 	t.Run("anything else", func(t *testing.T) {
 		t.Parallel()
 
-		got := desktop.StartupFailure(errFakeStartup)
+		got := desktop.StartupFailure(errFakeStartup, desktop.Newer{Way: update.WayUpdate})
 
 		assert.Equal(t, desktop.Failure{Title: couldNotStart, Message: "Create data directory: the disk is full."}, got)
+		assert.Equal(t, []desktop.Button{{Label: quitLabel, Choice: desktop.ChoiceQuit, Default: true}}, got.Buttons(),
+			"Quit alone, which takes Return")
 	})
 }

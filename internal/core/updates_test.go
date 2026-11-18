@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
 	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -288,4 +290,123 @@ func TestAutopilotChangedWakesTheEngineAndTellsTheShell(t *testing.T) {
 
 	(&followSwitch{sink: events}).Emit(event.AutopilotChanged{})
 	assert.Len(t, events.All(), 2, "with no engine to wake, as in a copy that doesn't hold it, they still hear it")
+}
+
+// dataFiles reads every file under root but the updates folder: each one's path, relative
+// to root, and its contents' SHA-256.
+func dataFiles(t *testing.T, root, updates string) map[string]string {
+	t.Helper()
+
+	out := map[string]string{}
+
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return err
+		case path == updates:
+			return filepath.SkipDir
+		case d.IsDir():
+			return nil
+		}
+
+		body, readErr := os.ReadFile(path) //nolint:gosec // the test's own data folder
+		if readErr != nil {
+			return readErr
+		}
+
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return relErr
+		}
+
+		sum := sha256.Sum256(body)
+		out[rel] = hex.EncodeToString(sum[:])
+
+		return nil
+	})
+	require.NoError(t, err)
+
+	return out
+}
+
+// The update the startup dialog runs, when a newer build saved the data, finds, downloads,
+// checks, and installs the release without opening the database: every file of the data
+// folder but the updates' is as it was, the database's own -wal and -shm included, and no
+// backup is taken.
+func TestTheBareUpdateLeavesTheNewerDataUntouched(t *testing.T) {
+	t.Parallel()
+
+	opts := testOptions(t)
+
+	c, err := Bootstrap(t.Context(), opts)
+	require.NoError(t, err)
+
+	_, err = c.DB.ExecContext(t.Context(), `INSERT INTO schema_migrations (version, name, checksum, applied_at)
+VALUES (9999, 'from_the_future', 'abc', '2026-01-01T00:00:00Z')`)
+	require.NoError(t, err)
+	require.NoError(t, c.Close())
+
+	_, err = Bootstrap(t.Context(), opts)
+	require.ErrorIs(t, err, store.ErrNewerSchema)
+
+	private := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{7}, ed25519.SeedSize))
+	feed := t.TempDir()
+	zip := []byte("the zipped bundle")
+	sum := sha512.Sum512(zip)
+
+	m, err := update.Sign(update.Manifest{
+		Version: "0.3.0", Platform: update.Platform, File: update.FileName(update.Platform, "0.3.0"),
+		Size: int64(len(zip)), SHA512: hex.EncodeToString(sum[:]),
+	}, private)
+	require.NoError(t, err)
+
+	body, err := update.Encode(m)
+	require.NoError(t, err)
+	testutil.WriteFile(t, filepath.Join(feed, update.ManifestName), string(body))
+	testutil.WriteFile(t, filepath.Join(feed, m.File), string(zip))
+
+	opts.Flavor, opts.Release, opts.UpdateFeed = update.FlavorRehearsal, "0.2.0", feed
+	opts.UpdateKey = update.EncodeKey(update.PublicKeyOf(private))
+	opts.Bundle = filepath.Join(opts.Home, "Applications", brand.Name+".app")
+	require.NoError(t, os.MkdirAll(opts.Bundle, 0o700))
+
+	before := dataFiles(t, opts.Paths.Root, opts.Paths.Updates)
+	require.Contains(t, before, filepath.Base(opts.Paths.DB))
+
+	backups, err := store.Snapshots(opts.Paths.DB)
+	require.NoError(t, err)
+
+	bare := BareUpdate(opts)
+	require.Equal(t, update.WayUpdate, bare.Way())
+
+	latest, found, err := bare.Latest(t.Context())
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, m, latest)
+
+	installer := &stagedInstall{}
+	require.ErrorIs(t, bare.Update(t.Context(), latest, installer), errStaged)
+	assert.Equal(t, "0.3.0", installer.version, "the release was downloaded, checked, and staged")
+	assert.FileExists(t, filepath.Join(opts.Paths.Updates, "0.3.0", m.File))
+
+	assert.Equal(t, before, dataFiles(t, opts.Paths.Root, opts.Paths.Updates), "the data is as it was")
+
+	after, err := store.Snapshots(opts.Paths.DB)
+	require.NoError(t, err)
+	assert.Equal(t, backups, after, "no backup, and nothing set aside")
+}
+
+// A build from source never reads the releases, even when it can't open the data: its
+// bare update offers the way of a build from source.
+func TestABuildFromSourcesBareUpdateReadsNothing(t *testing.T) {
+	t.Parallel()
+
+	opts := testOptions(t)
+	opts.Release = "0.2.0"
+
+	bare := BareUpdate(opts)
+	assert.Equal(t, update.WaySource, bare.Way())
+
+	_, _, err := bare.Latest(t.Context())
+	require.ErrorIs(t, err, update.ErrOff, "refused before anything is read")
 }

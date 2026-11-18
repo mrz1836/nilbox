@@ -389,8 +389,12 @@ func NewEngine(cfg Config) *Engine {
 // trusts cfg.Key. Each needs a feed, the store of its memory, and a release's version to
 // compare a newer one with.
 func resolve(cfg Config) (Flavor, ed25519.PublicKey, string) {
-	flavor, key := cfg.Flavor, cfg.Key
+	return trust(cfg.Flavor, cfg.Current, cfg.Key, cfg.Feed != nil && cfg.Memory != nil && cfg.Cache != "")
+}
 
+// trust is resolve's rule for a build of flavor running current, handed key, and sourced
+// when it has everything it reads its releases from and keeps them in.
+func trust(flavor Flavor, current, key string, sourced bool) (Flavor, ed25519.PublicKey, string) {
 	switch flavor {
 	case FlavorRelease:
 		key = ReleaseKey
@@ -401,11 +405,11 @@ func resolve(cfg Config) (Flavor, ed25519.PublicKey, string) {
 		return FlavorSource, nil, offInSource
 	}
 
-	if !ValidVersion(cfg.Current) {
+	if !ValidVersion(current) {
 		return flavor, nil, "Updates are off: this build's version isn't a release's."
 	}
 
-	if cfg.Feed == nil || cfg.Memory == nil || cfg.Cache == "" {
+	if !sourced {
 		return flavor, nil, "Updates are off: this build has nowhere to read them from."
 	}
 

@@ -232,6 +232,10 @@ and restarts into it. **Settings → About → When a new version is out** choos
 tell me* (the default), *Just tell me*, or *Don't check*, and the menu bar's **Check for
 Updates…** checks at once ([how updates work](docs/desktop.md#updates)).
 
+Opened on data a newer version saved (after running a build from source, say), Nilbox leaves the
+data untouched and offers **Update and Reopen**, which installs the latest release and opens it;
+when no release is newer yet, it says so and gives the command to build from source.
+
 <br>
 
 ### Build from source
@@ -282,7 +286,9 @@ with `go run` at the version `go.mod` pins. Every other `magex` command is liste
   `github.com`, and a newer version's zip is one more. Neither sends a token, a cookie, or
   anything of yours, or spends API budget. The zip is checked against the key built into the app,
   and waits in `updates/<version>/` in the data folder until you restart. Before installing it,
-  the app backs up the database beside it as `nilbox.db.backup-<stamp>-v<schema>`.
+  the app backs up the database beside it as `nilbox.db.backup-<stamp>-v<schema>`. On data a
+  newer version saved, **Update and Reopen** makes the same two GETs, on your click alone, and
+  never opens the database.
 - **Data:** everything lives in `~/Library/Application Support/Nilbox`, readable only by you. The
   database is `nilbox.db` (SQLite, WAL mode), and a copy is saved before each schema migration
   and each update (the three newest are kept). Your prompts and launch defaults are also kept in
@@ -1221,7 +1227,8 @@ More in [The window](docs/desktop.md#the-window).
 > gives for it; each kept and downloaded again at most weekly), and `github.com` and
 > GitHub's release download hosts for public releases: a tool's, when you install or update it,
 > and, in a release of Nilbox, its own update check, which reads the latest release's manifest and
-> downloads a newer version's zip. Those downloads carry no token and nothing of yours. The one
+> downloads a newer version's zip (the same two when you click **Update and Reopen** on data a
+> newer version saved). Those downloads carry no token and nothing of yours. The one
 > exception is the service status check, which reads the status pages of the services you watch
 > (`www.githubstatus.com`, `status.claude.com`, and `status.openai.com`), each sent only the
 > request for its summary. Nilbox reads from GitHub, and changes something there only when you ask:
