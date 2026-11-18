@@ -13,6 +13,7 @@ import {
   agents,
   approveRunsOffer,
   closeOffer,
+  heldOnGitHub,
   heldRun,
   issueComment,
   item,
@@ -1625,6 +1626,75 @@ describe('ReviewSheet with workflow runs held for approval', () => {
       expect(platform.actOnReview).toHaveBeenCalledWith(expect.objectContaining({ action: 'approve_runs' }))
     })
     expect(await actionButton('Approve & squash-merge')).toBeInTheDocument()
+  })
+
+  it('lists the runs GitHub approves only on its site apart, with a link there and no button of their own', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        unrun: [heldRun('GoFortress', 101), heldOnGitHub('Auto-merge Trigger', 103)],
+        offers: [...review().offers, approveRunsOffer()],
+      }),
+    )
+    render(<Harness />)
+
+    const bar = await runsBar()
+    expect(bar).toHaveTextContent('1 workflow run is waiting for approval: GoFortress')
+    expect(bar).toHaveTextContent('1 workflow run is waiting for approval on GitHub: Auto-merge Trigger')
+    expect(within(bar).getAllByRole('button', { name: 'Approve workflows to run' })).toHaveLength(1)
+
+    await userEvent.click(within(bar).getByRole('button', { name: 'Open on GitHub' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/actions/runs/103')
+  })
+
+  it('offers only the way to GitHub when every held run waits for approval there', async () => {
+    // GitHub's API approves neither run, so the sheet offers no approval at all.
+    platform.refreshReview.mockResolvedValue(
+      review({ unrun: [heldOnGitHub('Auto-merge Trigger', 103), heldOnGitHub('PR Management', 104)] }),
+    )
+    render(<Harness />)
+
+    const bar = await runsBar()
+    expect(bar).toHaveTextContent(
+      '2 workflow runs are waiting for approval on GitHub: Auto-merge Trigger, PR Management',
+    )
+    expect(bar).not.toHaveTextContent('waiting for approval:')
+    expect(within(bar).queryByRole('button', { name: 'Approve workflows to run' })).not.toBeInTheDocument()
+
+    await userEvent.click(within(bar).getByRole('button', { name: 'Open on GitHub' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7/checks')
+  })
+
+  it('says in a note when GitHub approves a run only on its site, and lists it there from then on', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({ unrun: [heldRun('Auto-merge Trigger', 103)], offers: [...review().offers, approveRunsOffer()] }),
+    )
+    // The sheet's service remembers the refusal, so the read after it lists the run as
+    // waiting on GitHub, and offers nothing.
+    platform.readReviewAgain.mockResolvedValue(review({ unrun: [heldOnGitHub('Auto-merge Trigger', 103)] }))
+    platform.actOnReview.mockResolvedValue(
+      reviewResult({
+        outcome: 'runs_on_github',
+        message: 'Auto-merge Trigger can only be approved on GitHub',
+        steps: ['Auto-merge Trigger can only be approved on GitHub'],
+        leftReview: false,
+      }),
+    )
+    const onDone = vi.fn()
+    render(<Harness onDone={onDone} />)
+
+    const bar = await runsBar()
+    await userEvent.click(within(bar).getByRole('button', { name: 'Approve workflows to run' }))
+
+    expect(await within(bar).findByRole('status')).toHaveTextContent(
+      /^Auto-merge Trigger can only be approved on GitHub\.$/,
+    )
+    await waitFor(() => {
+      expect(bar).toHaveTextContent('1 workflow run is waiting for approval on GitHub: Auto-merge Trigger')
+    })
+    expect(platform.readReviewAgain).toHaveBeenCalledOnce()
+    expect(within(bar).queryByRole('button', { name: 'Approve workflows to run' })).not.toBeInTheDocument()
+    expect(within(bar).queryByRole('alert')).not.toBeInTheDocument()
+    expect(onDone).not.toHaveBeenCalled()
   })
 
   it('shows no bar on a pull request no longer open', async () => {

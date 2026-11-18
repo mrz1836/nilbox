@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 
 import { counted } from '../../lib/format'
+import { approvableRuns } from '../../lib/useReview'
 import type { Review, ReviewOffer } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { WarningsToAccept } from './WarningsToAccept'
@@ -49,7 +50,7 @@ function actionText(
         accept: 'I’ve looked, close anyway',
       }
     case 'approve_runs': {
-      const held = review.unrun.filter((u) => u.approval)
+      const held = approvableRuns(review)
 
       return {
         title: `Approve ${counted(held.length, 'workflow run', 'workflow runs')} on ${pull}?`,

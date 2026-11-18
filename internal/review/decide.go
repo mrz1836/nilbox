@@ -99,8 +99,11 @@ type Facts struct {
 	AwaitingApproval int
 	NotStarted       int
 
-	// Approvable counts the runs awaiting approval whose run ID the sheet read, which an
-	// approval names; fewer than AwaitingApproval in a cache an older build kept.
+	// OnGitHub counts the runs awaiting approval that GitHub approves only on its site
+	// (Unrun.OnGitHub), which the sheet never offers to approve, and Approvable the others
+	// whose run ID the sheet read, which an approval names; fewer than AwaitingApproval -
+	// OnGitHub in a cache an older build kept.
+	OnGitHub   int
 	Approvable int
 
 	// Sensitive names the sensitive categories of danger level the pull request changes,
@@ -184,8 +187,9 @@ func (d decider) offers() []Offer {
 	out = append(out, d.updateBranch())
 
 	// GitHub holds a fork's workflow runs until a maintainer approves them, and an
-	// approval is what starts its checks, whatever else the pull request waits on.
-	if f.AwaitingApproval > 0 {
+	// approval is what starts its checks, whatever else the pull request waits on. Runs it
+	// approves only on its site are never offered.
+	if f.AwaitingApproval > f.OnGitHub {
 		out = append(out, d.approveRuns())
 	}
 
@@ -253,9 +257,10 @@ func (d decider) rerequest() Offer {
 const workflowsWarning = "It changes workflow files, and these runs would use its versions of them."
 
 // approveRuns offers to approve the workflow runs GitHub holds for a maintainer's
-// approval: once the sheet read every one's run ID, for a user with write access. It runs
-// on click, but asks first when the pull request changes workflow files, which the runs
-// would use. It is never the sheet's button, and sends no text.
+// approval, but those it approves only on its site: once the sheet read every one's run ID,
+// for a user with write access. It runs on click, but asks first when the pull request
+// changes workflow files, which the runs would use. It is never the sheet's button, and
+// sends no text.
 func (d decider) approveRuns() Offer {
 	f := d.f
 	o := Offer{Action: ActionApproveRuns, Label: "Approve workflows to run", Warnings: []string{}}
@@ -265,7 +270,7 @@ func (d decider) approveRuns() Offer {
 	}
 
 	switch {
-	case f.MergeState == "" || f.Approvable < f.AwaitingApproval:
+	case f.MergeState == "" || f.Approvable < f.AwaitingApproval-f.OnGitHub:
 		o.Reason = "Wait for it to load from GitHub."
 	case !f.CanWrite:
 		o.Reason = "Only people with write access to the repository can approve its workflow runs."
@@ -782,9 +787,14 @@ func unstableWarning(f Facts) string {
 
 	checksPass := len(says) == 0
 
-	if n := f.AwaitingApproval; n > 0 {
+	if n := f.AwaitingApproval - f.OnGitHub; n > 0 {
 		says = append(says, textutil.Counted(n, "workflow run is", "workflow runs are")+
 			" waiting for a maintainer's approval to run, as a fork's runs do.")
+	}
+
+	if n := f.OnGitHub; n > 0 {
+		says = append(says, textutil.Counted(n, "workflow run is", "workflow runs are")+
+			" waiting for approval on GitHub.")
 	}
 
 	if n := f.NotStarted; n > 0 {

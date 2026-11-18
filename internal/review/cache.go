@@ -178,8 +178,9 @@ func contextOf(r *github.PullReview, viewer string) pullContext {
 	}
 
 	for _, s := range r.Unrun {
+		approval := s.Conclusion == github.SuiteAwaitsApproval
 		c.Unrun = append(c.Unrun, Unrun{
-			Name: s.Name, Approval: s.Conclusion == github.SuiteAwaitsApproval, RunID: s.RunID, URL: s.URL,
+			Name: s.Name, Approval: approval, OnGitHub: approval && s.OnGitHub, RunID: s.RunID, URL: s.URL,
 		})
 	}
 

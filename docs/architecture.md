@@ -1090,7 +1090,17 @@ beneath its checks, each a link to its run. Runs awaiting approval are approved 
 `approve_runs` ("Approve workflows to run"), offered in a bar under the sheet's header and
 in the menu, never the button: held back until the sheet read every one's run ID (a cache
 an older build kept has none), for a user with write access, and asking first, with a
-warning, when the pull request changes workflow files. `Act` approves the runs the cache
+warning, when the pull request changes workflow files. A run GitHub approves only on its site
+(`Unrun.OnGitHub`, from `github.UnrunSuite.OnGitHub`; see internal/github) is never offered
+(`Facts.OnGitHub`): the bar lists it apart as waiting for approval on GitHub, with **Open on
+GitHub** (the run's page, or the pull request's checks for several) and no button, and an
+approval names only the others. Should GitHub still refuse one for what it is
+(`github.ErrRunNotApprovable`), `Act` remembers its run ID for as long as the app runs
+(`Service.onGitHub`, in memory, never stored; `markOnGitHub` applies it to every cache the
+sheet loads, over any read since), never sends it again, and goes on with the rest; with none
+approved, the result is `runs_on_github` with a short note ("Auto-merge Trigger can only be
+approved on GitHub"), not an error, and the sheet reads again to list it there. `Act`
+approves the runs the cache
 read at the head the user saw (`loadAct` refuses another head as `pushed_since`), one REST
 `POST .../actions/runs/{id}/approve` each (`(*github.Client).ApproveWorkflowRun`, through
 `edit`), never one twice across the token retry; once GitHub approved any, a refusal of the

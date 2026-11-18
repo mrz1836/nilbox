@@ -150,6 +150,8 @@ func (s *Service) loadAct(ctx context.Context, req ActRequest) (StoredPull, *cac
 		return StoredPull{}, nil, err
 	}
 
+	s.markOnGitHub(c)
+
 	switch {
 	case c == nil:
 		return StoredPull{}, nil, uierr.New("Wait for the pull request to load from GitHub, then try again.",
@@ -200,14 +202,16 @@ func (s *Service) prepare(ctx context.Context, req ActRequest, plan Plan, c *cac
 	return a, nil
 }
 
-// heldRuns are the cached runs awaiting approval that an approval can name. The cache holds
-// what the sheet read at the head the user saw (loadAct refuses any other), so approving
-// them is pinned to the commit the user reviewed without reading GitHub again.
+// heldRuns are the cached runs awaiting approval that an approval can name, but those
+// GitHub approves only on its site. The cache holds what the sheet read at the head the
+// user saw (loadAct refuses any other), so approving them is pinned to the commit the user
+// reviewed without reading GitHub again.
 func heldRuns(unrun []Unrun) []Unrun {
 	out := []Unrun{}
 
 	for _, u := range unrun {
-		if u.Approval && u.RunID > 0 && !slices.ContainsFunc(out, func(o Unrun) bool { return o.RunID == u.RunID }) {
+		if u.Approval && !u.OnGitHub && u.RunID > 0 &&
+			!slices.ContainsFunc(out, func(o Unrun) bool { return o.RunID == u.RunID }) {
 			out = append(out, u)
 		}
 	}
@@ -346,10 +350,12 @@ type action struct {
 	// bypassing reports a merge going past the branch's rules, as the user chose.
 	bypassing bool
 
-	// runs are the held workflow runs an approval names, and approvedRuns the IDs of those
-	// GitHub approved so far, which a retry skips.
+	// runs are the held workflow runs an approval names, approvedRuns the IDs of those
+	// GitHub approved so far, and onGitHub those it refused to approve for what they are,
+	// approved only on its site; a retry skips both.
 	runs         []Unrun
 	approvedRuns []int64
+	onGitHub     []Unrun
 
 	// What GitHub made happen.
 	reviewed *github.SubmittedReview
@@ -429,10 +435,11 @@ func (a *action) failedAfterComment(ctx context.Context, s *Service, err error) 
 
 // failedAfterApproval turns an error that came after GitHub approved some of the held runs
 // into the action's result, so the sheet hears those were approved and follows them. With
-// every run approved, the error came from the inbox's own bookkeeping, and is only logged;
-// otherwise GitHub refused the rest, and the error's words are the result's reason.
+// every run approved, or refused for what it is, the error came from the inbox's own
+// bookkeeping, and is only logged; otherwise GitHub refused the rest, and the error's words
+// are the result's reason.
 func (a *action) failedAfterApproval(ctx context.Context, s *Service, err error) {
-	if len(a.approvedRuns) == len(a.runs) {
+	if len(a.approvedRuns)+len(a.onGitHub) == len(a.runs) {
 		s.logger.WarnContext(ctx, "an action's step failed after GitHub answered it", "outcome", a.outcome, "error", err)
 
 		return
@@ -608,29 +615,45 @@ func (a *action) updateBranch(ctx context.Context, s *Service, tok github.Token)
 }
 
 // approveRuns approves each held run, one request each, in the order the sheet listed them.
-// A run an earlier try approved is skipped, so the inbox's retry with a fresh token never
-// approves one twice. The first refusal stops it and is returned; Act makes it the result's
-// reason once any run was approved.
+// A run an earlier try approved, or GitHub refused for what it is, is skipped, so the
+// inbox's retry with a fresh token never sends one twice. A refusal for what the run is
+// (github.ErrRunNotApprovable) is remembered (Service.rememberOnGitHub), never tried again,
+// and the rest go on; with none approved, the action comes to OutcomeRunsOnGitHub. Any other
+// refusal stops it and is returned; Act makes it the result's reason once any run was
+// approved.
 func (a *action) approveRuns(ctx context.Context, s *Service, tok github.Token) error {
 	if len(a.runs) == 0 {
 		return uierr.New("No workflow run is waiting for approval.", fmt.Errorf("%w: no held runs", ErrNotOffered))
 	}
 
 	for _, run := range a.runs {
-		if slices.Contains(a.approvedRuns, run.RunID) {
+		if slices.Contains(a.approvedRuns, run.RunID) || slices.Contains(a.onGitHub, run) {
 			continue
 		}
 
 		name := cmp.Or(run.Name, "the workflow run")
 		a.step(s, "Approving "+name)
 
-		if err := s.github.ApproveWorkflowRun(ctx, tok, a.ref.Repo, run.RunID); err != nil {
+		err := s.github.ApproveWorkflowRun(ctx, tok, a.ref.Repo, run.RunID)
+
+		switch {
+		case errors.Is(err, github.ErrRunNotApprovable):
+			s.rememberOnGitHub(run.RunID)
+			a.onGitHub = append(a.onGitHub, run)
+			a.steps = append(a.steps, name+" can only be approved on GitHub")
+
+			continue
+		case err != nil:
 			return err
 		}
 
 		a.approvedRuns = append(a.approvedRuns, run.RunID)
 		a.outcome = OutcomeRunsApproved
 		a.steps = append(a.steps, "Approved "+name)
+	}
+
+	if len(a.approvedRuns) == 0 {
+		a.outcome = OutcomeRunsOnGitHub
 	}
 
 	return nil

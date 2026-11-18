@@ -150,7 +150,8 @@ function ConversationSkeleton() {
 // Escape closes it. It closes after an action, which the inbox's toast reports, except when
 // the pull request was pushed to since, when it stays open, with the draft, to reload, and
 // after it approved the workflow runs GitHub held, when it stays open, with the draft, and
-// reads again until their checks start (HeldRuns says so).
+// reads again until their checks start (HeldRuns says so), or GitHub took the approval of
+// none of them, approving them only on its site, when it stays open and reads again.
 export function ReviewSheet({
   id,
   item,
@@ -275,6 +276,16 @@ export function ReviewSheet({
       // each read rewrites the inbox card too.
       setApproved({ id, message: result.data.message })
       loaded.followRuns(heldRuns(r))
+
+      return
+    }
+
+    if (result.data.outcome === 'runs_on_github') {
+      // GitHub approved none of them: it takes their approval only on its site. The sheet
+      // stays open, with the draft, says so in a note, and reads again, which lists them as
+      // waiting for approval on GitHub.
+      setApproved({ id, message: result.data.message })
+      loaded.reload()
 
       return
     }

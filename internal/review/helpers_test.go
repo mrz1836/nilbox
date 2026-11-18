@@ -50,17 +50,26 @@ func TestFactsCountTheWorkflowRunsThatRanNoCheck(t *testing.T) {
 			URL: "https://github.com/acme-org/example-repo/actions/runs/106",
 		},
 		{Name: "Auto-merge Trigger", Conclusion: github.SuiteAwaitsApproval},
-		{Name: "Auto-merge Trigger", Conclusion: "FAILURE", RunID: 107},
+		{Name: "Auto-merge Trigger", Conclusion: "FAILURE", RunID: 107, OnGitHub: true},
+		{
+			Name: "Review Trigger", Conclusion: github.SuiteAwaitsApproval, RunID: 108, OnGitHub: true,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/108",
+		},
 	}}, octoUser)}
 
 	assert.Equal(t, []Unrun{
 		{Name: "PR Management", Approval: true, RunID: 106, URL: "https://github.com/acme-org/example-repo/actions/runs/106"},
 		{Name: "Auto-merge Trigger", Approval: true},
 		{Name: "Auto-merge Trigger", RunID: 107},
-	}, c.context.Unrun)
+		{
+			Name: "Review Trigger", Approval: true, OnGitHub: true, RunID: 108,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/108",
+		},
+	}, c.context.Unrun, "only a run waiting for approval waits for it on GitHub")
 
 	f := factsOf(storedPull(), c, Review{BaseRef: "main", State: github.StateOpen})
-	assert.Equal(t, 2, f.AwaitingApproval)
+	assert.Equal(t, 3, f.AwaitingApproval)
+	assert.Equal(t, 1, f.OnGitHub, "the run a review started waits for approval on GitHub")
 	assert.Equal(t, 1, f.Approvable, "a run held without its ID, as an older build cached it, can't be approved yet")
 	assert.Equal(t, 1, f.NotStarted)
 	assert.Zero(t, f.Failing, "none of them is a check")
@@ -165,6 +174,7 @@ func TestTheCacheKeepsEachHeldRunsIDAndPage(t *testing.T) {
 	h := newHarness(t)
 	unrun := []Unrun{
 		{Name: "CI", Approval: true, RunID: 30433642, URL: "https://github.com/acme-org/example-repo/actions/runs/30433642"},
+		{Name: "Auto-merge Trigger", Approval: true, OnGitHub: true, RunID: 30433643},
 		{Name: "Example CI"},
 	}
 	pc := pullContext{Head: headA, State: github.StateOpen, MergeState: github.MergeStateUnstable, Unrun: unrun}

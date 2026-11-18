@@ -12,6 +12,7 @@ import {
   reviewPatches,
   type Review,
   type ReviewFilePatch,
+  type ReviewUnrun,
 } from '../platform'
 import { attempt } from './call'
 import { useQuery } from './useQuery'
@@ -74,9 +75,19 @@ interface Follow extends Retries {
   held: number
 }
 
-// heldRuns counts a pull request's workflow runs waiting for approval.
+// approvableRuns are a pull request's workflow runs waiting for an approval the sheet can
+// give, and onGitHubRuns those waiting for one GitHub takes only on its site.
+export function approvableRuns(review: Review): ReviewUnrun[] {
+  return review.unrun.filter((u) => u.approval && !u.onGitHub)
+}
+
+export function onGitHubRuns(review: Review): ReviewUnrun[] {
+  return review.unrun.filter((u) => u.approval && u.onGitHub)
+}
+
+// heldRuns counts a pull request's workflow runs waiting for an approval the sheet can give.
 export function heldRuns(review: Review): number {
-  return review.unrun.filter((u) => u.approval).length
+  return approvableRuns(review).length
 }
 
 // runsStarted reports a pull request whose approved workflow runs have started: fewer wait

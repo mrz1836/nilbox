@@ -2683,7 +2683,19 @@ export function approveRunsOffer(overrides: Partial<ReviewOffer> = {}): ReviewOf
 // heldRun is a fork's workflow run named name, with the ID id, which GitHub holds for a
 // maintainer's approval.
 export function heldRun(name: string, id: number): ReviewUnrun {
-  return { name, approval: true, runId: id, url: `https://github.com/acme-org/example-repo/actions/runs/${String(id)}` }
+  return {
+    name,
+    approval: true,
+    onGitHub: false,
+    runId: id,
+    url: `https://github.com/acme-org/example-repo/actions/runs/${String(id)}`,
+  }
+}
+
+// heldOnGitHub is a workflow run named name, with the ID id, waiting for an approval GitHub
+// takes only on its site, as a run a review started in the base repository does.
+export function heldOnGitHub(name: string, id: number): ReviewUnrun {
+  return { ...heldRun(name, id), onGitHub: true }
 }
 
 // review is pull request #7 as the review sheet shows it, read from GitHub: ready to
