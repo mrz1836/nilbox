@@ -65,3 +65,30 @@ export function SizeGlyph({ item }: { item: InboxItem }) {
     </div>
   )
 }
+
+// gradeClass is a compact card's size box.
+export const gradeClass =
+  'block truncate rounded border border-border px-0.5 text-center text-[0.625rem] leading-3.75 font-bold text-muted'
+
+// SizeGrade is a compact card's size: a pull request's grade in a small box, with the
+// size's sentence for a screen reader, or a dash while the details load.
+export function SizeGrade({ item }: { item: InboxItem }) {
+  const d = item.details
+
+  if (d === null) {
+    return (
+      <span aria-hidden="true" className={gradeClass}>
+        –
+      </span>
+    )
+  }
+
+  const { additions, deletions, changedFiles, commits } = d
+
+  return (
+    <span className={gradeClass}>
+      <span aria-hidden="true">{sizeOf(additions + deletions)}</span>
+      <span className="sr-only">{sizeText(additions, deletions, changedFiles, commits)}</span>
+    </span>
+  )
+}

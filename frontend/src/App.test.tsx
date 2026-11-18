@@ -12,6 +12,7 @@ import type {
   TextSize,
   InboxItem,
   PictureBot,
+  CardDensity,
 } from './platform'
 import {
   afterMerge,
@@ -115,6 +116,17 @@ async function openSettingsFromMenu() {
   await userEvent.click(await screen.findByRole('button', { name: 'Account: octo-user' }))
   await userEvent.click(screen.getByRole('menuitem', { name: /Settings/ }))
   await screen.findByRole('navigation', { name: 'Settings sections' })
+}
+
+// chooseCardDensity picks a density in Settings → Cards, as a person would, and closes the
+// settings.
+async function chooseCardDensity(density: 'Comfortable' | 'Compact') {
+  await openSettingsFromMenu()
+  await userEvent.click(screen.getByRole('button', { name: 'Cards' }))
+  await userEvent.click(
+    within(screen.getByRole('radiogroup', { name: 'Density' })).getByRole('radio', { name: density }),
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
 }
 
 describe('App', () => {
@@ -1154,6 +1166,103 @@ describe('App’s card pictures', () => {
       expect(pictureOn(1)).toBeNull()
     })
     expect(platform.cardPictures).toHaveBeenCalledOnce()
+  })
+
+  // cancellable makes every request for the cards' pictures wait for the test, and lists
+  // each one's answer and its cancel.
+  function cancellable() {
+    const answers: ((got: Record<string, string>) => void)[] = []
+    const cancels: ReturnType<typeof vi.fn>[] = []
+
+    platform.cardPictures.mockImplementation(() => {
+      const cancel = vi.fn()
+      cancels.push(cancel)
+
+      return Object.assign(
+        new Promise<Record<string, string>>((answer) => {
+          answers.push(answer)
+        }),
+        { cancel },
+      )
+    })
+
+    return { answers, cancels }
+  }
+
+  // someAuthored are 26 of authored's items, 25 people's and dependabot's: two requests.
+  const someAuthored = () => authored().slice(34)
+
+  // slow is the time a test that renders some authored cards and visits Settings may take
+  // on a busy runner, under coverage.
+  const slow = { timeout: 15_000 }
+
+  it('asks for no picture while the cards are compact, and in batches once they are comfortable', slow, async () => {
+    platform.getSettings.mockImplementation(() => stored({ cardDensity: 'compact' }))
+    platform.setCardDensity.mockImplementation((cardDensity: CardDensity) => stored({ cardDensity }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list(someAuthored()) }))
+    const { answers } = cancellable()
+    await renderApp()
+    await screen.findByText('Bump the cache')
+
+    expect(platform.cardPictures).not.toHaveBeenCalled()
+
+    await chooseCardDensity('Comfortable')
+
+    await waitFor(() => {
+      expect(platform.cardPictures).toHaveBeenCalledTimes(2)
+    })
+    await act(async () => {
+      for (const answer of answers) {
+        answer({ 'person-34': picture('34') })
+      }
+      await Promise.resolve()
+    })
+    await waitFor(() => {
+      expect(pictureOn(35)).toHaveAttribute('src', picture('34'))
+    })
+  })
+
+  it('cancels the requests under way as the cards turn compact, and asks nothing more', slow, async () => {
+    platform.setCardDensity.mockImplementation((cardDensity: CardDensity) => stored({ cardDensity }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list(someAuthored()) }))
+    const { cancels } = cancellable()
+    await renderApp()
+    await screen.findByText('Bump the cache')
+    await waitFor(() => {
+      expect(platform.cardPictures).toHaveBeenCalledTimes(2)
+    })
+
+    await chooseCardDensity('Compact')
+
+    await waitFor(() => {
+      expect(cancels[1]).toHaveBeenCalledOnce()
+    })
+    expect(cancels[0]).toHaveBeenCalledOnce()
+    expect(platform.cardPictures).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('App’s card density', () => {
+  it('shows the cards on one line once Settings → Cards says Compact, and on two again after', async () => {
+    platform.setCardDensity.mockImplementation((cardDensity: CardDensity) => stored({ cardDensity }))
+    await renderApp()
+    await screen.findByRole('button', { name: 'Launch options: Review · work' })
+
+    const card = () => document.querySelector('[data-item-id="1"]')
+    expect(card()).not.toHaveAttribute('data-density')
+
+    await chooseCardDensity('Compact')
+
+    await waitFor(() => {
+      expect(card()).toHaveAttribute('data-density', 'compact')
+    })
+    expect(platform.setCardDensity).toHaveBeenCalledExactlyOnceWith('compact')
+
+    await chooseCardDensity('Comfortable')
+
+    await waitFor(() => {
+      expect(card()).not.toHaveAttribute('data-density')
+    })
   })
 })
 

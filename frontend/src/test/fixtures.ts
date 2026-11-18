@@ -1230,6 +1230,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     hiddenLabels: ['size/*'],
     defaultHiddenLabels: ['size/*'],
     cardAvatars: true,
+    cardDensity: 'comfortable',
     mergeMethod: 'repo',
     integrations: integrationsConfig(),
     githubNotifications: {

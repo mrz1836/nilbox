@@ -838,14 +838,21 @@ export function App() {
   // pattern holds a line break: the settings refuse a control character in one.
   const hiddenKey = (config.settings?.hiddenLabels ?? defaultHiddenLabels).join('\n')
   const hideLabels = labelMatcher(hiddenKey.split('\n'))
-  // cardAvatars is Settings → Cards' Author pictures, a fresh install's until the settings
-  // load. cardPrefs are built from such primitives alone, so a save of the settings that
-  // leaves the cards' as they were makes no new value, and renders no card.
+  // cardAvatars and cardDensity are Settings → Cards' Author pictures and Density, a fresh
+  // install's until the settings load. cardPrefs are built from such primitives alone, so a
+  // save of the settings that leaves the cards' as they were makes no new value, and
+  // renders no card.
   const cardAvatars = config.settings?.cardAvatars ?? defaultCardPrefs.avatars
-  const cardPrefs: CardPrefs = { avatars: cardAvatars }
+  const cardDensity = config.settings?.cardDensity ?? defaultCardPrefs.density
+  const cardPrefs: CardPrefs = { avatars: cardAvatars, density: cardDensity }
   // cardPictures are the pictures of the inbox's authors, asked for once the settings load
-  // and only while they say to show them, so a user who turned them off has none asked for.
-  const cardPictures = useCardPictures(config.items, config.settings !== null && cardAvatars)
+  // and only while they say to show them on comfortable cards, so a user who turned them off,
+  // or whose cards are compact and show no avatar, has none asked for; turning compact
+  // cancels the requests under way.
+  const cardPictures = useCardPictures(
+    config.items,
+    config.settings !== null && cardAvatars && cardDensity === 'comfortable',
+  )
   // routineMenu is what every item's ⋯ menu offers of Autopilot, while it is on, and the
   // dialogs and toasts its choices show.
   const routineMenu = useRoutineMenu(autopilot.routines, toastSeconds, (item) => {

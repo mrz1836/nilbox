@@ -1805,7 +1805,8 @@ is cleared whenever you leave Settings.
 ## Inbox cards
 
 Each pull request or issue in the inbox is a card two lines high, built to answer three
-questions at a glance: where it stands, what changed, and what to do next.
+questions at a glance: where it stands, what changed, and what to do next. **Settings →
+Cards** can make every card one line instead (**Compact cards**, below).
 
 - **The edge.** A bar down the card's left side says whose move it is: amber when something
   waits on you right now (an agent asking for approval, a routine asking for your OK, workflow
@@ -1880,6 +1881,24 @@ dismiss, pin, or open it on GitHub. Click again to close it.
 button shows its spark alone and a live session its dot, then the track goes too, with the
 repository's org.
 
+**Compact cards.** **Settings → Cards** → **Density** chooses how much room each card
+takes, in both lists and a routine's Watching list: **Comfortable** (to start with) is the
+two-line card above, and **Compact** fits about three times as many, one line each, a column
+per question so you can read down each one. From the left: the edge; the pull request or
+issue mark (grey for a draft); the repository, its org dimmed; the title and number, the
+labels as up to six dots in their colors (hover them for their names; hidden labels stay
+hidden), and the pin; the story as a chip tinted with the edge's color; the risk as its
+shield alone (hover it for who opened it and the sensitive files); the track as three dots,
+filled for a tick, a cross, or ↻, half-filled for runs held, pinging while checks run,
+dashed while a step waits and dotted with nothing yet to say (hover them for the three
+sentences), or for an issue a ring of its sub-issues done, else a dot in its project
+status's color; the size grade, or an issue's priority or size; how long ago it last
+changed; and your next move as words in the edge's color, filled while the pointer is on the
+card. Hover a compact card for its triage, the agent's button, **Show details**, and the
+menu, just left of your next move. Click its empty space, or **Show details**, for the same
+details as a comfortable card. In a list narrower than about 900 pixels the repository and
+the size go, and below about 770 the story and the age.
+
 **Author pictures.** **Settings → Cards** turns the authors' pictures off and on (on to start
 with). The inbox asks for the pictures of its authors as it loads, 25 to a request, all at once,
 and each card's shows as soon as its request comes back, so a slow download holds back only its
@@ -1887,8 +1906,8 @@ own. A person's picture is downloaded by their login and a bot's from the addres
 for it with the item, since the picture host answers a bot's login with a generated pattern;
 both without your token and kept in the database, each downloaded again at most once a week,
 and a failed one not tried again for 30 minutes. Turned off, the cards show initials and the
-bot mark, and nothing is downloaded for them. A routine's Watching list shows initials and the
-bot mark alone.
+bot mark, and nothing is downloaded for them; with the cards compact, which show no picture,
+nothing is downloaded either. A routine's Watching list shows initials and the bot mark alone.
 
 **Hidden labels.** **Settings → Cards** lists the labels the cards leave out, in every
 repository: `size/*` to start with, since each card already shows its own size grade, so

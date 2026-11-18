@@ -37,12 +37,18 @@ export function initialsOf(login: string): string {
   return initials.toUpperCase()
 }
 
-// KindBadge tells a pull request from an issue at the avatar's corner: green while open,
-// muted for a draft.
-function KindBadge({ item }: { item: InboxItem }) {
+// kindOf names what kind of item a card is, and the color its mark takes: green while
+// open, muted for a draft.
+function kindOf(item: InboxItem): { isPR: boolean; label: string; color: string } {
   const isPR = item.kind === 'pr'
   const label = isPR ? (item.isDraft ? 'Draft pull request' : 'Pull request') : 'Issue'
-  const color = isPR && item.isDraft ? 'text-muted' : 'text-success'
+
+  return { isPR, label, color: isPR && item.isDraft ? 'text-muted' : 'text-success' }
+}
+
+// KindBadge tells a pull request from an issue at the avatar's corner.
+function KindBadge({ item }: { item: InboxItem }) {
+  const { isPR, label, color } = kindOf(item)
 
   return (
     <span
@@ -52,6 +58,18 @@ function KindBadge({ item }: { item: InboxItem }) {
       className={`absolute -right-1 -bottom-1 z-10 grid size-4 place-items-center rounded-full bg-surface ${color}`}
     >
       {isPR ? <PullRequestIcon className="size-3" /> : <IssueIcon className="size-3" />}
+    </span>
+  )
+}
+
+// KindMark tells a pull request from an issue in a compact card's own column, where it
+// stands in for the avatar: the same mark and words as the avatar's badge.
+export function KindMark({ item }: { item: InboxItem }) {
+  const { isPR, label, color } = kindOf(item)
+
+  return (
+    <span role="img" aria-label={label} title={label} className={`relative z-10 grid place-items-center ${color}`}>
+      {isPR ? <PullRequestIcon className="size-3.5" /> : <IssueIcon className="size-3.5" />}
     </span>
   )
 }

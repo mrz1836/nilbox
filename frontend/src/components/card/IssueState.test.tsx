@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { ItemDetails } from '../../platform'
 import { details, item, project } from '../../test/fixtures'
-import { IssueState } from './IssueState'
+import { IssueGrade, IssueState, IssueTrack } from './IssueState'
 
 function renderState(d: Partial<ItemDetails> | null) {
   return render(<IssueState item={item({ kind: 'issue', details: d === null ? null : details(d) })} />)
@@ -68,6 +68,79 @@ describe('IssueState', () => {
     expect(container).toBeEmptyDOMElement()
 
     rerender(<IssueState item={item({ kind: 'issue', details: null })} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('IssueTrack', () => {
+  function renderTrack(d: Partial<ItemDetails> | null) {
+    return render(<IssueTrack item={item({ kind: 'issue', details: d === null ? null : details(d) })} />)
+  }
+
+  it('rings the sub-issues, and says them with the project’s status', () => {
+    renderTrack({ projects: [project()], subIssues: { total: 5, completed: 3 } })
+
+    const ring = screen.getByRole('img', { name: 'Roadmap: In progress · 3 of 5 sub-issues done (60%)' })
+    expect(ring).toHaveAttribute('title', 'Roadmap: In progress · 3 of 5 sub-issues done (60%)')
+    expect(ring).toHaveClass('relative', 'z-10')
+    expect(ring.querySelector('svg')).not.toBeNull()
+  })
+
+  it('rings the sub-issues of an issue in no project', () => {
+    renderTrack({ subIssues: { total: 2, completed: 2 } })
+
+    expect(screen.getByRole('img', { name: '2 of 2 sub-issues done (100%)' })).toBeInTheDocument()
+  })
+
+  it('shows a dot in the status’s color without sub-issues, muted when the status has none', () => {
+    const { container, rerender } = renderTrack({ projects: [project()] })
+
+    expect(screen.getByRole('img', { name: 'Roadmap: In progress' })).toBeInTheDocument()
+    expect(container.querySelector('[data-status-dot]')).toHaveStyle({ backgroundColor: '#bf8700' })
+
+    rerender(
+      <IssueTrack item={item({ kind: 'issue', details: details({ projects: [project({ statusColor: '' })] }) })} />,
+    )
+    expect(container.querySelector('[data-status-dot]')).toHaveClass('bg-muted')
+  })
+
+  it('shows nothing without a status or sub-issues, or while the details load', () => {
+    const { container, rerender } = renderTrack({ projects: [project({ status: '' })] })
+
+    expect(container).toBeEmptyDOMElement()
+
+    rerender(<IssueTrack item={item({ kind: 'issue' })} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('IssueGrade', () => {
+  it('shows the first project’s first featured field, named in its tooltip', () => {
+    render(
+      <IssueGrade
+        item={item({
+          kind: 'issue',
+          details: details({ projects: [project({ fields: [{ name: 'Priority', value: 'P1', color: '' }] })] }),
+        })}
+      />,
+    )
+
+    const grade = screen.getByTitle('Priority: P1')
+    expect(grade).toHaveTextContent('Priority P1')
+    expect(grade).toHaveClass('relative', 'z-10')
+  })
+
+  it('shows nothing without a featured field, a project, or the details', () => {
+    const { container, rerender } = render(
+      <IssueGrade item={item({ kind: 'issue', details: details({ projects: [project()] }) })} />,
+    )
+
+    expect(container).toBeEmptyDOMElement()
+
+    rerender(<IssueGrade item={item({ kind: 'issue', details: details() })} />)
+    expect(container).toBeEmptyDOMElement()
+
+    rerender(<IssueGrade item={item({ kind: 'issue' })} />)
     expect(container).toBeEmptyDOMElement()
   })
 })

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import type { ItemDetails } from '../../platform'
 import { details, item } from '../../test/fixtures'
 import { AutopilotIcon, CheckIcon, ClockIcon, ConflictIcon, RereviewIcon, XIcon } from '../icons'
-import { StateTrack } from './StateTrack'
+import { MiniTrack, StateTrack } from './StateTrack'
 
 // shapes describes the shapes an svg draws, each by its tag and attributes, to tell one
 // icon from another, or '' for none.
@@ -191,5 +191,47 @@ describe('StateTrack', () => {
       expect(s).toHaveClass('border-dotted')
     }
     expect(container.querySelector('.sr-only')).toHaveTextContent('Checks, review, and merge: not read yet')
+  })
+})
+
+describe('MiniTrack', () => {
+  // dots renders the mini track of a pull request with d's details, and returns each
+  // dot's state and classes, with the track.
+  function dots(d: Partial<ItemDetails>) {
+    const { container } = render(<MiniTrack item={item({ details: details(d) })} />)
+    const track = container.firstElementChild as HTMLElement
+    const steps = [...track.querySelectorAll('[data-step]')]
+
+    return { track, steps }
+  }
+
+  it('says the three steps in one tooltip, each a small dot', () => {
+    const { track, steps } = dots({})
+
+    expect(track).toHaveAttribute('role', 'img')
+    expect(track).toHaveClass('relative', 'z-10')
+    expect(track).toHaveAttribute('title', track.getAttribute('aria-label'))
+    expect(track.getAttribute('title')).toMatch(/^Checks: .*\. Reviews: .*\. No conflicts\.$/)
+    expect(steps.map((s) => s.getAttribute('data-step'))).toEqual(['checks', 'review', 'merge'])
+    for (const step of steps) {
+      expect(step).toHaveAttribute('aria-hidden', 'true')
+      expect(step).toHaveClass('size-2.25')
+    }
+  })
+
+  it('fills a cross, rings auto-merge in the success color, and dashes a review still waiting', () => {
+    const { steps } = dots({
+      checks: { ...details().checks, failed: 1 },
+      reviews: { ...details().reviews, decision: 'REVIEW_REQUIRED', approvals: 0, reviewed: 0 },
+      autoMerge: 'SQUASH',
+    })
+    const [checks, review, merge] = steps
+
+    expect(checks).toHaveClass('border-danger', 'bg-danger')
+    expect(review).toHaveAttribute('data-state', 'waiting')
+    expect(review).toHaveClass('border-dashed')
+    expect(merge).toHaveAttribute('data-state', 'auto')
+    expect(merge).toHaveClass('border-success')
+    expect(merge).not.toHaveClass('bg-success')
   })
 })

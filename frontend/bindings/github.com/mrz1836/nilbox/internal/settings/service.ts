@@ -302,6 +302,15 @@ export function SetCardAvatars(on: boolean): $CancellablePromise<$models.Setting
 }
 
 /**
+ * SetCardDensity stores how much room the inbox's cards take, CardComfortable or
+ * CardCompact, and returns the settings with it. A density that is not one of the choices
+ * is refused, and nothing is stored.
+ */
+export function SetCardDensity(density: $models.CardDensity): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2393271189, density);
+}
+
+/**
  * SetClaudeAPIKey stores whether an API key in the environment may sign Claude Code in,
  * and returns the settings with it. Off, launches remove the key, so Claude Code runs on
  * the profile's own sign-in.

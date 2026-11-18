@@ -1,9 +1,9 @@
 import { startTransition, useActionState, useId, useState } from 'react'
 
 import { useSettingsSave } from '../../lib/useSettingsSave'
-import { setCardAvatars, setHiddenLabels } from '../../platform'
-import { quietButtonClass } from '../controls'
-import { Group, Note, SectionIntro, SwitchRow } from './rows'
+import { setCardAvatars, setCardDensity, setHiddenLabels, type CardDensity } from '../../platform'
+import { quietButtonClass, Segmented } from '../controls'
+import { ChoiceRow, Group, joinIds, Note, SectionIntro, SwitchRow } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
 
@@ -16,15 +16,22 @@ interface Refusal {
 
 const noRefusal: Refusal = { draft: '', message: '' }
 
-// CardsSection is the settings page's Cards section: whether the inbox's cards show their
-// authors' pictures, and the labels they leave out, such as the size labels a card's own
-// size grade already shows. Each change is stored as it is made; Restore the defaults puts
-// the list back as a fresh install has it.
+// densities are the cards' densities, in the order the Density row offers them.
+const densities: readonly { value: CardDensity; label: string }[] = [
+  { value: 'comfortable', label: 'Comfortable' },
+  { value: 'compact', label: 'Compact' },
+]
+
+// CardsSection is the settings page's Cards section: how much room the inbox's cards
+// take, whether they show their authors' pictures, and the labels they leave out, such as
+// the size labels a card's own size grade already shows. Each change is stored as it is
+// made; Restore the defaults puts the list back as a fresh install has it.
 export function CardsSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
-  // picturesError is why the last change of Author pictures was refused; a refused hidden
-  // label shows its own.
+  // densityError and picturesError are why the last change of Density and of Author
+  // pictures was refused; a refused hidden label shows its own.
+  const [densityError, setDensityError] = useState('')
   const [picturesError, setPicturesError] = useState('')
   const [draft, setDraft] = useState('')
   // invalid is why the draft cannot be added, found before asking the backend.
@@ -77,6 +84,14 @@ export function CardsSection({ settings: stored, onSaved }: SectionProps) {
     })
   }
 
+  const chooseDensity = async (density: CardDensity) => {
+    setDensityError('')
+
+    const result = await save({ cardDensity: density }, () => setCardDensity(density))
+
+    setDensityError(result.ok ? '' : result.error)
+  }
+
   const switchPictures = async (on: boolean) => {
     setPicturesError('')
 
@@ -88,6 +103,22 @@ export function CardsSection({ settings: stored, onSaved }: SectionProps) {
   return (
     <div className="flex flex-col gap-8">
       <Group>
+        <ChoiceRow
+          label="Density"
+          description="Comfortable shows two lines per card, with the state track and the agent beside your next step. Compact fits about three times as many, one line each. Both lists follow it."
+          error={densityError}
+          errorId={`${id}-density-error`}
+        >
+          <Segmented
+            label="Density"
+            value={settings.cardDensity}
+            options={densities}
+            describedBy={joinIds(densityError !== '' && `${id}-density-error`)}
+            onChange={(density) => {
+              void chooseDensity(density)
+            }}
+          />
+        </ChoiceRow>
         <SwitchRow
           label="Author pictures"
           controlId={`${id}-pictures`}

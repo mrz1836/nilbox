@@ -432,6 +432,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
       stored({ inboxOrder: { statusSorted: [], statusOrder: statusOrder ?? [], kinds: {} } }),
     setHiddenLabels: (hiddenLabels) => stored({ hiddenLabels: hiddenLabels ?? [] }),
     setCardAvatars: (cardAvatars) => stored({ cardAvatars }),
+    setCardDensity: (cardDensity) => stored({ cardDensity }),
     setWindowSize: (windowSize) => stored({ windowSize }),
     setBranchRules: (branches) => stored({ branches: { ...branches, protected: branches.protected ?? [] } }),
     setRepoRule: (target, rule) => stored({ repoRules: withRepoRule(settings().repoRules, target, rule) }),

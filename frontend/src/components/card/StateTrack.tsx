@@ -141,6 +141,25 @@ function ring(sentence: string): TrackStep {
 
 const names = ['checks', 'review', 'merge'] as const
 
+// trackOf is a pull request's three steps, and the sentence that says them all. A draft's
+// review and merge are dotted rings; while the details load, all three are, and the
+// sentence says they aren't read yet.
+function trackOf(item: InboxItem): { shown: TrackStep[]; sentence: string } {
+  const d = item.details
+  const steps =
+    d === null
+      ? null
+      : item.isDraft
+        ? [checksStep(d), ring(reviewStepText(d)), ring(mergeStepText(d))]
+        : [checksStep(d), reviewStep(d), mergeStep(d)]
+
+  return {
+    shown: steps ?? names.map(() => ring('')),
+    sentence:
+      steps === null ? 'Checks, review, and merge: not read yet' : `${steps.map((s) => s.sentence).join('. ')}.`,
+  }
+}
+
 // StateTrack is where a pull request stands, as three steps in a row joined by a line:
 // its checks, its review, and whether it can merge, each a circle with a mark in its
 // color when it says something, and a ring when there is nothing yet to say. A draft shows
@@ -149,16 +168,7 @@ const names = ['checks', 'review', 'merge'] as const
 // triage buttons cover it while the pointer is on the card: the peek has the numbers, and
 // a screen reader reads each step's sentence.
 export function StateTrack({ item }: { item: InboxItem }) {
-  const d = item.details
-  const steps =
-    d === null
-      ? null
-      : item.isDraft
-        ? [checksStep(d), ring(reviewStepText(d)), ring(mergeStepText(d))]
-        : [checksStep(d), reviewStep(d), mergeStep(d)]
-  const shown = steps ?? names.map(() => ring(''))
-  const sentence =
-    steps === null ? 'Checks, review, and merge: not read yet' : `${steps.map((s) => s.sentence).join('. ')}.`
+  const { shown, sentence } = trackOf(item)
 
   return (
     <div className="relative flex items-center gap-2.75">
@@ -176,5 +186,50 @@ export function StateTrack({ item }: { item: InboxItem }) {
       ))}
       <span className="sr-only">{sentence}</span>
     </div>
+  )
+}
+
+// miniLooks are each look's dot in a compact card's track, spelled out in full so Tailwind
+// finds them: filled for a tick, a cross, or a re-review; half-filled for runs held; a ring
+// for running checks, with a ping swelling out of it; dashed while waiting, dotted with
+// nothing to say; and a ring in the success color for auto-merge.
+const miniLooks: Readonly<Record<Look, string>> = {
+  ok: 'border-success bg-success',
+  bad: 'border-danger bg-danger',
+  rereview: 'border-accent bg-accent',
+  held: 'border-warning bg-warning/45',
+  running: 'border-warning',
+  waiting: 'border-dashed border-muted opacity-80',
+  none: 'border-dotted border-muted opacity-35',
+  auto: 'border-success',
+}
+
+// MiniTrack is a compact card's track: the same three steps as StateTrack, each a small
+// dot, with the three sentences in its one tooltip and for a screen reader.
+export function MiniTrack({ item }: { item: InboxItem }) {
+  const { shown, sentence } = trackOf(item)
+
+  return (
+    <span
+      role="img"
+      aria-label={sentence}
+      title={sentence}
+      className="relative z-10 inline-flex items-center justify-end gap-1.25"
+    >
+      {shown.map((step, i) => (
+        <span
+          key={names[i]}
+          aria-hidden="true"
+          data-step={names[i]}
+          data-state={step.state}
+          data-moving={step.look === 'running' || undefined}
+          className={`relative block size-2.25 shrink-0 rounded-full border-[1.5px] ${miniLooks[step.look]}`}
+        >
+          {step.look === 'running' && (
+            <span className="absolute -inset-[1.5px] rounded-full bg-warning [animation-duration:1.7s] motion-safe:animate-ping" />
+          )}
+        </span>
+      ))}
+    </span>
   )
 }
