@@ -183,7 +183,8 @@ func (w *writer) saveItem(ctx context.Context, repoID int64, e *entry) error {
 	stored, err := w.q.UpsertItem(ctx, queries.UpsertItemParams{
 		AccountID: w.accountID, RepoID: repoID, Kind: string(it.Ref().Kind), Number: int64(it.Number),
 		NodeID: it.NodeID, Title: it.Title, URL: it.URL, AuthorLogin: it.AuthorLogin, AuthorType: it.AuthorType,
-		AuthorAssociation: it.AuthorAssociation, IsCrossRepository: it.IsCrossRepository, IsDraft: it.IsDraft,
+		AuthorAvatarURL: it.AuthorAvatarURL, AuthorAssociation: it.AuthorAssociation,
+		IsCrossRepository: it.IsCrossRepository, IsDraft: it.IsDraft,
 		HeadRef: it.HeadRef, ItemCreatedAt: it.CreatedAt.UTC(), ItemUpdatedAt: it.UpdatedAt.UTC(),
 		ReasonReviewRequested: e.reviewRequested, ReasonAuthored: e.authored, ReasonAssigned: e.assigned,
 		FetchedAt: w.now, State: it.State,
