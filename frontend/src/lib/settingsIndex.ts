@@ -279,7 +279,7 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
   cards: [
     {
       label: 'Density',
-      keywords: ['comfortable', 'compact', 'dense', 'one line', 'two lines', 'rows', 'card size', 'more on screen'],
+      keywords: ['comfortable', 'compact', 'dense', 'one line', 'two lines', 'rows', 'more on screen'],
     },
     {
       label: 'Author pictures',
