@@ -87,28 +87,33 @@ One click to hand any pull request or issue to a coding agent.
        📚&nbsp;<a href="#-documentation"><code>Documentation</code></a>
     </td>
     <td align="center">
-       🔐&nbsp;<a href="#-security"><code>Security</code></a>
+       🧰&nbsp;<a href="#-development"><code>Development</code></a>
     </td>
   </tr>
   <tr>
+    <td align="center">
+       🔐&nbsp;<a href="#-security"><code>Security</code></a>
+    </td>
     <td align="center">
       🛠️&nbsp;<a href="#-code-standards"><code>Code&nbsp;Standards</code></a>
     </td>
     <td align="center">
       🧪&nbsp;<a href="#-examples--tests"><code>Examples&nbsp;&&nbsp;Tests</code></a>
     </td>
+  </tr>
+  <tr>
     <td align="center">
       🤖&nbsp;<a href="#-ai-usage--assistant-guidelines"><code>AI&nbsp;Usage</code></a>
     </td>
-  </tr>
-  <tr>
     <td align="center">
        🤝&nbsp;<a href="#-contributing"><code>Contributing</code></a>
     </td>
     <td align="center">
        👥&nbsp;<a href="#-maintainers"><code>Maintainers</code></a>
     </td>
-    <td align="center">
+  </tr>
+  <tr>
+    <td align="center" colspan="3">
        ⚖️&nbsp;<a href="#-license"><code>License</code></a>
     </td>
   </tr>
@@ -251,7 +256,8 @@ since both would sync and write the same database: quit one before you open the 
 
 A build from source never updates itself: to update it, pull, then run `magex app:run` again.
 `magex app:open` reopens the build as it is. The Wails CLI is never installed: the build runs it
-with `go run` at the version `go.mod` pins.
+with `go run` at the version `go.mod` pins. Every other `magex` command is listed under
+[Development](#-development).
 
 <details>
 <summary><strong>Signing, firewalls, and where your data lives</strong></summary>
@@ -1242,6 +1248,182 @@ View the full documentation for Nilbox:
 
 <br/>
 
+## 🧰 Development
+
+Nilbox builds, checks, and runs through [MAGE-X](https://github.com/mrz1836/mage-x), a Go build
+tool whose `magex` command runs every target below: install it with
+`go install github.com/mrz1836/mage-x/cmd/magex@latest`, and `magex -l` lists them all.
+
+```bash
+magex frontend:install   # once per clone: the frontend dependencies, as the lockfile pins them
+magex app:run            # build "bin/Nilbox Dev.app" and open it: the one command after a change
+magex app:dev            # run the app against the Vite dev server, with hot reload
+magex test               # run the Go tests
+```
+
+Before you open a pull request, run [the gate](CLAUDE.md#the-gate) (below). The
+[Desktop Guide](docs/desktop.md#build-targets) has every target in full, and how to build and
+run the app.
+
+<details>
+<summary><strong>Set up a clone</strong>: the build tools, the git hooks, and the frontend dependencies</summary>
+<br/>
+
+Install the [MAGE-X](https://github.com/mrz1836/mage-x) build tool and the
+[go-pre-commit](https://github.com/mrz1836/go-pre-commit) hooks
+([install guide](.github/tech-conventions/pre-commit.md)), then the frontend toolchain:
+
+```bash
+go install github.com/mrz1836/mage-x/cmd/magex@latest   # build tool
+go-pre-commit install                                   # git hooks, run from the repo root
+npm install -g pnpm@12.19.0                             # once, at the version frontend/package.json pins
+magex frontend:install                                  # frontend dependencies, exactly as the lockfile pins them
+```
+
+Node must be version 26 (`frontend/.nvmrc`). Full prerequisites are in the
+[Desktop Guide](docs/desktop.md#prerequisites).
+
+</details>
+
+<details>
+<summary><strong>The gate</strong>: what every change passes, in order</summary>
+<br/>
+
+```bash
+magex format:fix
+magex lint
+magex test:race
+go-pre-commit run --all-files
+magex frontend:gate   # format, lint, typecheck, tests, and the compiled render check
+magex db:check        # the generated queries are current and every query prepares
+magex app:check       # macOS, for a change to the desktop shell, the bound services, or the frontend
+```
+
+No CI check runs on macOS, so `magex app:check` runs only on your Mac.
+
+</details>
+
+<details>
+<summary><strong>Run and build the app</strong>: Nilbox Dev, a build from source (macOS)</summary>
+<br/>
+
+| Command           | What it does                                                                                                                          |
+|-------------------|---------------------------------------------------------------------------------------------------------------------------------------|
+| `magex app:run`   | Build `bin/Nilbox Dev.app`, quit the Nilbox Dev already running, and open the new build                                               |
+| `magex app:dev`   | Run the app against the Vite dev server, with hot reload; `fresh=true` runs it on a sandbox data folder, so the first-run setup shows |
+| `magex app:build` | Build `bin/Nilbox Dev.app` from source, signed ad hoc for this Mac                                                                    |
+| `magex app:open`  | Open the last build as it is, building it first when it's missing                                                                     |
+| `magex app:fresh` | Open the build on a fresh sandbox data folder, your prompts and launch defaults copied in; `app:run` goes back to your own data       |
+| `magex app:reset` | Start Nilbox Dev over on your own data, as Settings → About → Reset does                                                              |
+
+</details>
+
+<details>
+<summary><strong>Desktop checks and bindings</strong>: the desktop-tagged code the Go gate leaves out</summary>
+<br/>
+
+| Command                   | What it does                                                                                     |
+|---------------------------|--------------------------------------------------------------------------------------------------|
+| `magex app:check`         | Every desktop check: `app:bindingsCheck`, `app:lint`, `app:test`, and `app:build` (macOS)        |
+| `magex app:bindings`      | Regenerate the TypeScript bindings in `frontend/bindings` after a bound service changes          |
+| `magex app:bindingsCheck` | Fail when the committed bindings differ from what the services generate                          |
+| `magex app:lint`          | Lint the desktop-tagged Go code, which `magex lint` leaves out                                   |
+| `magex app:test`          | Run the desktop-tagged tests, which run the desktop runtime itself; `magex test` leaves them out |
+
+</details>
+
+<details>
+<summary><strong>Go builds and tests</strong>: mage-x's own targets, as this project uses them</summary>
+<br/>
+
+| Command                  | What it does                                                                                    |
+|--------------------------|-------------------------------------------------------------------------------------------------|
+| `magex build`            | Build the headless binary, without the window                                                   |
+| `magex test`             | Run the Go tests                                                                                |
+| `magex test:race`        | Run them with the race detector, as the gate does                                               |
+| `magex test:coverage`    | Run them and write a coverage report                                                            |
+| `magex test:integration` | Run the tests of the real magex and go-pre-commit (the `integration` tag), which the gate skips |
+| `magex test:fuzz`        | Run the fuzz tests; `time=<duration>` sets how long                                             |
+| `magex lint`             | Run golangci-lint                                                                               |
+| `magex format:fix`       | Format the code                                                                                 |
+| `magex deps:update`      | Update the Go dependencies, linters, and related tools                                          |
+| `magex update:install`   | Update magex itself to its latest release                                                       |
+
+</details>
+
+<details>
+<summary><strong>Frontend</strong>: install, build, and check the React window</summary>
+<br/>
+
+| Command                  | What it does                                                                                                                                            |
+|--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `magex frontend:install` | Install the frontend dependencies exactly as `pnpm-lock.yaml` pins them                                                                                 |
+| `magex frontend:build`   | Type-check the frontend and build it into `frontend/dist`                                                                                               |
+| `magex frontend:gate`    | The frontend gate: frozen-lockfile install, format check, lint, typecheck, tests with coverage, and the compiled render check; CI runs this same target |
+
+The Vite dev server runs with the app, under `magex app:dev`.
+
+</details>
+
+<details>
+<summary><strong>Database</strong>: the typed queries sqlc generates</summary>
+<br/>
+
+| Command             | What it does                                                                                             |
+|---------------------|----------------------------------------------------------------------------------------------------------|
+| `magex db:generate` | Regenerate the typed queries after changing a query file or a migration; commit them with the change     |
+| `magex db:check`    | Fail when the generated queries are stale or a query does not prepare against the schema; CI runs it too |
+
+</details>
+
+<details>
+<summary><strong>Brand</strong>: the theme, <code>Info.plist</code>, and the icons, from <code>internal/brand</code></summary>
+<br/>
+
+| Command                | What it does                                                                                                                                                           |
+|------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `magex brand:generate` | Regenerate the theme tokens, the frontend brand constants, `build/darwin/Info.plist`, and the icon artwork from `internal/brand`                                       |
+| `magex brand:icons`    | Render the icon artwork into the bundle's icon set, the Dock icon, and the menu bar icon, after changing the mark or the artwork (macOS; needs `brew install librsvg`) |
+
+</details>
+
+<details>
+<summary><strong>Measure</strong>: the numbers in the performance notes (macOS)</summary>
+<br/>
+
+| Command                 | What it does                                                                                           |
+|-------------------------|--------------------------------------------------------------------------------------------------------|
+| `magex measure:size`    | The size of the app binary and of the whole bundle                                                     |
+| `magex measure:startup` | Time to the first frame on screen, over six launches                                                   |
+| `magex measure:refresh` | Five live, read-only inbox refreshes and the API budget they imply; `searches=N` adds routine searches |
+| `magex measure:launch`  | One real launch in iTerm2, timed until the agent runs in the clone; `agent=codex` times Codex          |
+| `magex measure:all`     | Every measurement: size, startup, refresh, and launch                                                  |
+
+The method and every run are in [docs/performance.md](docs/performance.md).
+
+</details>
+
+<details>
+<summary><strong>Release builds</strong>: for maintainers</summary>
+<br/>
+
+| Command                  | What it does                                                                                                                                           |
+|--------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `magex version:bump`     | Tag and push the next version (`bump=patch push=true branch=master`), which starts the release workflow                                                |
+| `magex app:package`      | Build a release into `bin/release/<version>/`: the signed universal bundle, its zip, the disk image, checksums, and the signed update manifest (macOS) |
+| `magex app:buildRelease` | The first half of `app:package`, which needs no secret: the unsigned universal bundle (macOS)                                                          |
+| `magex app:signRelease`  | The second half: sign the bundle `app:buildRelease` built (`bundle=<path>`) and build the release's other files (macOS)                                |
+| `magex app:verify`       | Check a release's update manifest and zip as the app will (`dir=<folder>`)                                                                             |
+| `magex app:keygen`       | Make the release key (`out=<folder>`, outside the repository) and print its public half to pin                                                         |
+| `magex app:rehearse`     | Build a pair of rehearsal builds to try an update end to end on this Mac (`case=normal`, `tampered`, or `broken`; macOS)                               |
+
+Each one's settings and environment are in the
+[Desktop Guide](docs/desktop.md#packaging-a-release).
+
+</details>
+
+<br/>
+
 ## 🔐 Security
 
 ### Important Disclaimer
@@ -1284,62 +1466,6 @@ For security issues, see our [Security Policy](.github/SECURITY.md) or contact:
 <br/>
 
 ### Additional Documentation & Repository Management
-
-<details>
-<summary><strong><code>Development Setup (Getting Started)</code></strong></summary>
-<br/>
-
-Install the [MAGE-X](https://github.com/mrz1836/mage-x) build tool and the
-[go-pre-commit](https://github.com/mrz1836/go-pre-commit) hooks
-([install guide](.github/tech-conventions/pre-commit.md)), then the frontend toolchain:
-
-```bash
-go install github.com/mrz1836/mage-x/cmd/magex@latest   # build tool
-go-pre-commit install                                   # git hooks, run from the repo root
-npm install -g pnpm@12.19.0                             # once, at the version frontend/package.json pins
-magex frontend:install                                  # frontend dependencies, exactly as the lockfile pins them
-```
-
-Node must be version 26 (`frontend/.nvmrc`). Full prerequisites are in the
-[Desktop Guide](docs/desktop.md#prerequisites).
-
-</details>
-
-<details>
-<summary><strong><code>Build Commands</code></strong></summary>
-<br/>
-
-View all build commands:
-
-```bash
-magex help
-```
-
-Common commands:
-
-```bash
-magex build          # build the headless binary
-magex app:dev        # run the desktop app with a hot-reloading frontend
-magex app:build      # build the macOS app bundle, "bin/Nilbox Dev.app"
-magex app:open       # open the last build as it is, building it first when it's missing
-magex app:run        # build the app, quit the running Nilbox Dev, and open the new build
-magex test           # run the Go test suite
-magex lint           # run golangci-lint
-magex format:fix     # format the code
-magex frontend:gate  # format check, lint, typecheck, and test the frontend
-magex db:generate    # regenerate the typed queries after changing a query or migration
-```
-
-Before opening a pull request, run the full gate:
-
-```bash
-magex format:fix && magex lint && magex test:race && go-pre-commit run --all-files
-magex frontend:gate
-magex db:check       # the generated queries are current and every query prepares
-magex app:check      # macOS: bindings drift check, desktop lint, desktop tests, and bundle build
-```
-
-</details>
 
 <details>
 <summary><strong><code>Project Layout</code></strong></summary>
