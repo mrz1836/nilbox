@@ -51,6 +51,8 @@ function triageActions(): TriageActions {
     repoRules: { pinned: [], muted: [] },
     onRepoRule: vi.fn(),
     onRepoRuleSettings: vi.fn(),
+    onMarkRead: vi.fn(),
+    onMarkUnread: vi.fn(),
   }
 }
 
@@ -548,8 +550,9 @@ describe('CompactRow', () => {
   it('filters by its repository, and opens its title in its sheet or, with ⌘, on GitHub', async () => {
     const onFilterBy = vi.fn()
     const onOpen = vi.fn()
+    const triage = triageActions()
     const it = asked()
-    mountCompact(it, { onFilterBy, onOpen, tab: 'inbox' })
+    mountCompact(it, { onFilterBy, onOpen, tab: 'inbox', triage })
 
     await userEvent.click(screen.getByRole('button', { name: 'Filter by repository acme-org/example-repo' }))
     expect(onFilterBy).toHaveBeenCalledExactlyOnceWith('repo', 'acme-org/example-repo')
@@ -560,10 +563,12 @@ describe('CompactRow', () => {
     expect(onOpen).toHaveBeenCalledExactlyOnceWith(it, 'inbox')
 
     const user = userEvent.setup()
+    expect(triage.onMarkRead, 'the sheet marks it').not.toHaveBeenCalled()
     await user.keyboard('{Meta>}')
     await user.click(title)
     await user.keyboard('{/Meta}')
     expect(platform.openExternal).toHaveBeenCalledWith(it.url)
+    expect(triage.onMarkRead, 'opening it on GitHub sees it').toHaveBeenCalledExactlyOnceWith(it)
   })
 
   it('opens an issue’s title on GitHub without a sheet', async () => {

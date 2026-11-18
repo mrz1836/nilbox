@@ -3,7 +3,7 @@ import { use } from 'react'
 import { orgOf, ownRule } from '../lib/repoRules'
 import { leaving, workWords, type RowWork, type StartWork } from '../lib/rowWork'
 import { isPinnedItself, type TriageTab } from '../lib/triage'
-import { openExternal, type InboxItem } from '../platform'
+import type { InboxItem } from '../platform'
 import { AutopilotMenuContext, type AutopilotMenu } from './autopilot/RoutineMenu'
 import {
   ArchiveIcon,
@@ -27,7 +27,7 @@ import {
   UnassignIcon,
 } from './icons'
 import { MenuButton, type MenuItem } from './Menu'
-import { ghostClass, hoverClass, mutedTarget, snoozeItems, type TriageActions } from './TriageControls'
+import { ghostClass, hoverClass, mutedTarget, openOnGitHub, snoozeItems, type TriageActions } from './TriageControls'
 
 // EditActions are what a row's menu does beyond triage: copy the item's link, and the
 // edits it makes on GitHub. The inbox shares one set across every row.
@@ -344,7 +344,7 @@ export function ItemMenu({ item, tab, triage, edits, work, start }: ItemMenuProp
       label: 'Open on GitHub',
       icon: <ExternalIcon className={iconClass} />,
       onSelect: () => {
-        openExternal(item.url)
+        openOnGitHub(item, triage)
       },
     },
     {

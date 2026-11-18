@@ -13,7 +13,7 @@ import {
   type TriageTab,
 } from '../lib/triage'
 import { useClock, useNowAs } from '../lib/useNow'
-import type { InboxItem, RepoRule, RepoRules } from '../platform'
+import { openExternal, type InboxItem, type RepoRule, type RepoRules } from '../platform'
 import {
   ArchiveIcon,
   ChevronDownIcon,
@@ -50,6 +50,18 @@ export interface TriageActions {
   repoRules: RepoRules
   onRepoRule: (target: string, rule: RepoRule) => void
   onRepoRuleSettings: () => void
+  // onMarkRead marks an item read, as opening it on GitHub does too, and onMarkUnread
+  // marks it unread, each on this Mac alone; each shows at once and reports its own
+  // failure.
+  onMarkRead: (item: InboxItem) => void
+  onMarkUnread: (item: InboxItem) => void
+}
+
+// openOnGitHub opens an item on GitHub from its card, which counts as seeing it: the item
+// is marked read, whatever Settings → Cards' Unread dots says.
+export function openOnGitHub(item: InboxItem, triage: TriageActions | undefined): void {
+  openExternal(item.url)
+  triage?.onMarkRead(item)
 }
 
 // mutedTarget is the target whose rule mutes an item: its repository's own, or its org's,

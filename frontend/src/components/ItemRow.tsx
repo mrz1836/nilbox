@@ -11,7 +11,6 @@ import { formatAge, formatAgo } from '../lib/time'
 import { isBackFromSnooze, isPinned, type TriageTab } from '../lib/triage'
 import { useNowAs } from '../lib/useNow'
 import {
-  openExternal,
   type AgentInfo,
   type InboxItem,
   type ItemResolution,
@@ -41,7 +40,7 @@ import { LabelChip } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
 import { RelativeTime } from './RelativeTime'
 import { Spinner } from './Spinner'
-import { ghostClass, hoverClass, mutedTarget, TriageControls, type TriageActions } from './TriageControls'
+import { ghostClass, hoverClass, mutedTarget, openOnGitHub, TriageControls, type TriageActions } from './TriageControls'
 
 // LaunchOptions are what every row's launch controls share: the coding agents, profiles,
 // and prompts to choose from, and the saved launch defaults. Each row's own resolved
@@ -508,7 +507,7 @@ export const ItemRow = memo(function ItemRow({
               if (opens && !e.metaKey) {
                 onOpen(item, tab)
               } else {
-                openExternal(item.url)
+                openOnGitHub(item, triage)
               }
             }}
             className="relative z-10 min-w-[8ch] truncate text-left text-sm font-semibold text-text hover:text-accent hover:underline"
@@ -533,7 +532,7 @@ export const ItemRow = memo(function ItemRow({
               aria-label="Open on GitHub"
               title="Open on GitHub"
               onClick={() => {
-                openExternal(item.url)
+                openOnGitHub(item, triage)
               }}
               className="relative z-10 shrink-0 rounded-sm text-muted/70 opacity-0 transition-opacity group-hover:opacity-100 hover:text-accent focus-visible:opacity-100"
             >

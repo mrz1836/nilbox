@@ -432,26 +432,6 @@ export function InboxView({
       preloadSheets()
     }
   }, [sheets])
-  // openedItem is the item last opened in its sheet, or 0 while none is, so each opening
-  // is heard once: the page shown again (Activity), or an effect run twice, opens nothing
-  // anew, and never undoes a Mark unread made since.
-  const openedItem = useRef(0)
-  const itemOpened = useEffectEvent((id: number) => {
-    onItemOpened?.(id)
-  })
-  const viewingId = viewing === null || !sheets ? 0 : viewing.id
-
-  useEffect(() => {
-    if (viewingId === openedItem.current) {
-      return
-    }
-
-    openedItem.current = viewingId
-
-    if (viewingId > 0) {
-      itemOpened(viewingId)
-    }
-  }, [viewingId])
   // shown is the snapshot the lists show, for the menu's review to find an item's list in
   // when it is chosen, without a new action for every snapshot.
   const shown = useRef(snapshot)
@@ -535,7 +515,7 @@ export function InboxView({
 
   // What every row's controls and menu do, and the triage a sheet's header makes, each said
   // in a toast.
-  const { triage, edits, dismissIt, snoozeIt, restoreIt, changeRule, unassignOn } = useItemActions({
+  const { triage, edits, dismissIt, snoozeIt, restoreIt, changeRule, unassignOn, seen } = useItemActions({
     inbox,
     snoozeDays,
     onSnoozeSettings,
@@ -546,6 +526,33 @@ export function InboxView({
     closeToast,
     onOpen: sheets ? openFromMenu : undefined,
   })
+
+  // openedItem is the item last opened in its sheet, or 0 while none is, so each opening
+  // is heard once: the page shown again (Activity), or an effect run twice, opens nothing
+  // anew, and never undoes a Mark unread made since.
+  const openedItem = useRef(0)
+  // sheetMoved hears the sheet move from the item it showed to the one it shows, either 0
+  // for none: both are marked read, the one left catching what the sheet read while open
+  // and what the user did in it.
+  const sheetMoved = useEffectEvent((left: number, opened: number) => {
+    seen([left, opened].filter((id) => id > 0))
+
+    if (opened > 0) {
+      onItemOpened?.(opened)
+    }
+  })
+  const viewingId = viewing === null || !sheets ? 0 : viewing.id
+
+  useEffect(() => {
+    const left = openedItem.current
+
+    if (viewingId === left) {
+      return
+    }
+
+    openedItem.current = viewingId
+    sheetMoved(left, viewingId)
+  }, [viewingId])
 
   const viewed = viewing === null || snapshot === null ? undefined : findItem(snapshot, viewing.id)
   // A sheet steps through the cards of its list and tab as the list shows them, pull

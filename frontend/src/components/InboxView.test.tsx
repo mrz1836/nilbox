@@ -142,6 +142,16 @@ function Inbox({
   )
 }
 
+// storing answers a call that changes the stored inbox with after, which every later read
+// of the inbox answers too, as the backend's store does: a seen mark reads the inbox back.
+function storing(after: InboxSnapshot) {
+  return () => {
+    platform.getInboxSnapshot.mockResolvedValue(after)
+
+    return Promise.resolve(after)
+  }
+}
+
 // section waits for one inbox list and returns the queries scoped to it.
 async function section(title: string) {
   return within(await screen.findByRole('region', { name: title }))
@@ -1767,7 +1777,7 @@ describe('InboxView edits on GitHub', () => {
 
   it('unassigns the user on GitHub, and confirms once the item has left the list', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([assignedIssue]) }))
-    platform.unassignItem.mockResolvedValue(snapshot())
+    platform.unassignItem.mockImplementation(storing(snapshot()))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const assigned = await section('Yours')
@@ -1777,6 +1787,8 @@ describe('InboxView edits on GitHub', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Unassigned you on GitHub · Fix the flaky test')
     expect(assigned.queryByRole('button', { name: 'Fix the flaky test' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+    // What the edit did on GitHub is the user's own, so it counts as seen.
+    expect(platform.markItemsSeen).toHaveBeenCalledExactlyOnceWith([5])
   })
 
   it('says why an edit failed, and leaves the item where it was', async () => {
@@ -1792,11 +1804,12 @@ describe('InboxView edits on GitHub', () => {
     )
     expect(assigned.getByRole('button', { name: 'Fix the flaky test' })).toBeInTheDocument()
     expect(assigned.getByRole('button', { name: 'More actions' })).toHaveAttribute('title', 'More actions')
+    expect(platform.markItemsSeen, 'GitHub made no change').not.toHaveBeenCalled()
   })
 
   it('takes the user off a pull request’s reviewers', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([asked]) }))
-    platform.removeReviewRequest.mockResolvedValue(snapshot())
+    platform.removeReviewRequest.mockImplementation(storing(snapshot()))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
@@ -1805,12 +1818,13 @@ describe('InboxView edits on GitHub', () => {
     expect(platform.removeReviewRequest).toHaveBeenCalledWith(6)
     expect(await screen.findByRole('status')).toHaveTextContent('Removed you as a reviewer on GitHub · Tune the cache')
     expect(review.queryByRole('button', { name: 'Tune the cache' })).not.toBeInTheDocument()
+    expect(platform.markItemsSeen).toHaveBeenCalledExactlyOnceWith([6])
   })
 
   it('says which team a pull request still asks once the user is off it', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([asked]) }))
-    platform.removeReviewRequest.mockResolvedValue(
-      snapshot({ reviewRequested: list([{ ...asked, reviewRequest: 'team' }]) }),
+    platform.removeReviewRequest.mockImplementation(
+      storing(snapshot({ reviewRequested: list([{ ...asked, reviewRequest: 'team' }]) })),
     )
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -2209,6 +2223,68 @@ describe('InboxView review sheet', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('marks a card read as its sheet opens on it, and again as the sheet steps away from it or closes', async () => {
+    // The stored inbox, which the marks change, as the backend's store does.
+    let cards = [
+      item({ id: 1, unread: true }),
+      item({ id: 2, number: 8, title: 'Second', unread: true }),
+      item({ id: 3, number: 9, title: 'Third', unread: true }),
+    ]
+    platform.getInboxSnapshot.mockImplementation(() => Promise.resolve(snapshot({ reviewRequested: list(cards) })))
+    platform.markItemsSeen.mockImplementation((ids) => {
+      cards = cards.map((c) => (ids?.includes(c.id) === true ? { ...c, unread: false } : c))
+
+      return Promise.resolve()
+    })
+    const titleOf = (id: number) => cards.find((c) => c.id === id)?.title ?? ''
+    platform.openReview.mockImplementation((id) => Promise.resolve(review({ id, title: titleOf(id) })))
+    platform.refreshReview.mockImplementation((id) => Promise.resolve(review({ id, title: titleOf(id) })))
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    const requested = await section('Review requested')
+    expect(requested.getAllByTitle('New since you last opened it')).toHaveLength(3)
+
+    await userEvent.click(requested.getByRole('button', { name: 'Add the widget cache' }))
+    expect(await screen.findByText('1 of 3 in Review requested')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(platform.markItemsSeen).toHaveBeenCalledExactlyOnceWith([1])
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByRole('heading', { name: 'Second' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(platform.markItemsSeen, 'the one left and the one opened').toHaveBeenLastCalledWith([1, 2])
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() => {
+      expect(platform.markItemsSeen, 'the one it closed on').toHaveBeenLastCalledWith([2])
+    })
+    expect(platform.markItemsSeen).toHaveBeenCalledTimes(3)
+
+    await waitFor(() => {
+      expect(requested.getAllByTitle('New since you last opened it')).toHaveLength(1)
+    })
+    expect(within(requested.getAllByRole('listitem')[2] as HTMLElement).getByText('Unread')).toBeInTheDocument()
+  })
+
+  it('writes a sheet’s failed mark to the console, and leaves the card as it was', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item({ id: 1, unread: true })]) }))
+    platform.markItemsSeen.mockRejectedValue(new Error('database is locked'))
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    const yours = await section('Yours')
+    await userEvent.click(yours.getByRole('button', { name: 'Add the widget cache' }))
+    await screen.findByRole('dialog', { name: 'Add the widget cache' })
+
+    await waitFor(() => {
+      expect(logged).toHaveBeenCalledWith('could not mark the items read:', 'database is locked')
+    })
+    expect(yours.getByTitle('New since you last opened it')).toBeInTheDocument()
+  })
+
   it('steps through the cards as the list shows them, the filter’s matches alone', async () => {
     const cards = [
       item({ id: 1 }),
@@ -2523,10 +2599,10 @@ describe('InboxView triage in the sheets', () => {
 
   it('snoozes the card from its sheet, moves on to the next, and keeps Undo in reach', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([parser, crash]) }))
-    platform.snoozeItem.mockResolvedValue(
-      snapshot({ yours: list([{ ...parser, snoozedUntil: '2026-06-18T12:00:00Z' }, crash]) }),
+    platform.snoozeItem.mockImplementation(
+      storing(snapshot({ yours: list([{ ...parser, snoozedUntil: '2026-06-18T12:00:00Z' }, crash]) })),
     )
-    platform.restoreItem.mockResolvedValue(snapshot({ yours: list([parser, crash]) }))
+    platform.restoreItem.mockImplementation(storing(snapshot({ yours: list([parser, crash]) })))
     readsOf([parser, crash])
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
 

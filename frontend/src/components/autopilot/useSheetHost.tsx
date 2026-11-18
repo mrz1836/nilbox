@@ -143,7 +143,7 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
     onClose?.()
   }
 
-  const { triage, edits } = useItemActions({
+  const { triage, edits, seen } = useItemActions({
     inbox: kit.inbox,
     snoozeDays: kit.snoozeDays,
     onSnoozeSettings: kit.onSnoozeSettings,
@@ -156,20 +156,24 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
     listed: false,
   })
 
-  // An item opened in its sheet is heard once per opening, as the inbox's are.
+  // An item opened in its sheet is heard once per opening, as the inbox's are, and marked
+  // read, as is the one the sheet steps away from or closes on.
   const opened = useRef(0)
-  const itemOpened = useEffectEvent((id: number) => {
-    kit.onItemOpened(id)
+  const sheetMoved = useEffectEvent((left: number, now: number) => {
+    seen([left, now].filter((id) => id > 0))
+
+    if (now > 0) {
+      kit.onItemOpened(now)
+    }
   })
   const viewingId = viewing?.id ?? 0
 
   useEffect(() => {
-    if (viewingId !== opened.current) {
-      opened.current = viewingId
+    const left = opened.current
 
-      if (viewingId > 0) {
-        itemOpened(viewingId)
-      }
+    if (viewingId !== left) {
+      opened.current = viewingId
+      sheetMoved(left, viewingId)
     }
   }, [viewingId])
 

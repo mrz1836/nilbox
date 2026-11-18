@@ -29,6 +29,8 @@ function triageActions(repoRules: RepoRules = { pinned: [], muted: [] }): Triage
     repoRules,
     onRepoRule: vi.fn(),
     onRepoRuleSettings: vi.fn(),
+    onMarkRead: vi.fn(),
+    onMarkUnread: vi.fn(),
   }
 }
 
@@ -89,13 +91,14 @@ describe('ItemMenu', () => {
 
   it('opens the item on GitHub, or copies its link', async () => {
     const it = item({ url: 'https://github.com/acme-org/example-repo/pull/7' })
-    const { edits } = renderRow(it)
+    const { triage, edits } = renderRow(it)
 
     await openMenu()
     expect(names(screen.getByRole('menu'))).toEqual(['Open on GitHub', 'Copy link', 'Inbox actions'])
 
     await userEvent.click(screen.getByRole('menuitem', { name: 'Open on GitHub' }))
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
+    expect(triage.onMarkRead, 'opening it on GitHub sees it').toHaveBeenCalledExactlyOnceWith(it)
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'More actions' })).toHaveFocus()
 

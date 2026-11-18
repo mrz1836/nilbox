@@ -221,6 +221,8 @@ describe('CardPeek', () => {
         repoRules: { pinned: ['acme-org'], muted: [] },
         onRepoRule: vi.fn(),
         onRepoRuleSettings: vi.fn(),
+        onMarkRead: vi.fn(),
+        onMarkUnread: vi.fn(),
       },
     })
 

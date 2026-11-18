@@ -5,13 +5,13 @@ import type { Step } from '../../lib/nextStep'
 import { leaving, workWords, type RowWork, type StartWork } from '../../lib/rowWork'
 import { formatAge } from '../../lib/time'
 import { isPinned, type TriageTab } from '../../lib/triage'
-import { openExternal, type AgentInfo, type AgentSession, type InboxItem, type Label } from '../../platform'
+import type { AgentInfo, AgentSession, InboxItem, Label } from '../../platform'
 import { Highlight } from '../Highlight'
 import { ChevronDownIcon } from '../icons'
 import { ItemMenu, type EditActions } from '../ItemMenu'
 import { RelativeTime } from '../RelativeTime'
 import { Spinner } from '../Spinner'
-import { ghostClass, hoverClass, TriageControls, type TriageActions } from '../TriageControls'
+import { ghostClass, hoverClass, openOnGitHub, TriageControls, type TriageActions } from '../TriageControls'
 import { CardActions, compactOutcomeClass } from './CardActions'
 import { KindMark } from './CardAvatar'
 import { edgeBar, FilterText, PinGlyph, TriageTag, UnreadDot } from './CardParts'
@@ -215,7 +215,7 @@ export function CompactRow({
             if (opens && !e.metaKey) {
               onOpen(item, tab)
             } else {
-              openExternal(item.url)
+              openOnGitHub(item, triage)
             }
           }}
           className="relative z-10 min-w-[6ch] truncate text-left text-[0.8125rem] font-medium text-text hover:text-accent hover:underline"

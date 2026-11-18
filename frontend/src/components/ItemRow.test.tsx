@@ -53,6 +53,8 @@ function triageActions(repoRules: RepoRules = { pinned: [], muted: [] }): Triage
     repoRules,
     onRepoRule: vi.fn(),
     onRepoRuleSettings: vi.fn(),
+    onMarkRead: vi.fn(),
+    onMarkUnread: vi.fn(),
   }
 }
 
@@ -948,9 +950,10 @@ describe('ItemRow open', () => {
     const onOpen = vi.fn()
     const user = userEvent.setup()
     const pull = item()
+    const triage = triageActions()
     render(
       <ul>
-        <ItemRow item={pull} launch={null} tab="dismissed" onOpen={onOpen} />
+        <ItemRow item={pull} launch={null} tab="dismissed" triage={triage} onOpen={onOpen} />
       </ul>,
     )
 
@@ -960,14 +963,18 @@ describe('ItemRow open', () => {
     await user.click(title)
     expect(onOpen).toHaveBeenCalledExactlyOnceWith(pull, 'dismissed')
     expect(platform.openExternal).not.toHaveBeenCalled()
+    expect(triage.onMarkRead, 'the sheet marks it').not.toHaveBeenCalled()
 
+    // Opening it on GitHub sees it, by ⌘-click or by the mark beside the title.
     await user.keyboard('{Meta>}')
     await user.click(screen.getByRole('button', { name: 'Add the widget cache' }))
     await user.keyboard('{/Meta}')
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
+    expect(triage.onMarkRead).toHaveBeenCalledExactlyOnceWith(pull)
 
     await user.click(screen.getByRole('button', { name: 'Open on GitHub' }))
     expect(platform.openExternal).toHaveBeenCalledTimes(2)
+    expect(triage.onMarkRead).toHaveBeenCalledTimes(2)
   })
 
   it('opens an issue in the issue sheet from its title', async () => {

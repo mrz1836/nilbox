@@ -15,7 +15,7 @@ import { ArchiveIcon, AutopilotIcon, ClockIcon, ExternalIcon, PinIcon } from '..
 import { LabelChip, ProgressBar, ProjectLink } from '../ItemSignals'
 import { RelativeTime } from '../RelativeTime'
 import { SensitiveFilesGroup } from '../SensitiveFiles'
-import type { TriageActions } from '../TriageControls'
+import { openOnGitHub, type TriageActions } from '../TriageControls'
 import { PrimaryVerb } from './CardActions'
 import { mergeStepText, reviewStepText } from './StateTrack'
 
@@ -427,7 +427,7 @@ export function CardPeek({
           type="button"
           title="Open on GitHub"
           onClick={() => {
-            openExternal(item.url)
+            openOnGitHub(item, triage)
           }}
           className={buttonClass}
         >
