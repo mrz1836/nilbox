@@ -76,9 +76,10 @@ function stored(change: Partial<Settings> = {}): Promise<Settings> {
 // The views App loads apart from its first paint are imported once before the tests, so no
 // test pays a view's cold, instrumented import inside the second a findBy waits: on a busy
 // runner, the first test to open Settings otherwise ran out of that second, whichever test
-// it was.
+// it was, and so did the first to open the Autopilot tab.
 beforeAll(async () => {
   await Promise.all([
+    import('./components/autopilot/AutopilotView'),
     import('./components/notifications/NotificationsView'),
     import('./components/PromptsView'),
     import('./components/scripts/ScriptsView'),
