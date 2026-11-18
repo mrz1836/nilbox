@@ -728,3 +728,13 @@ export function ConflictIcon(props: IconProps) {
     </Icon>
   )
 }
+
+// LockIcon marks a launch that starts read-only.
+export function LockIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="5.5" y="10.5" width="13" height="9.5" rx="2" />
+      <path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" />
+    </Icon>
+  )
+}
