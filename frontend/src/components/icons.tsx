@@ -569,6 +569,16 @@ export function InfoIcon(props: IconProps) {
   )
 }
 
+// HelpIcon stands for a guide to what the window shows: a question mark in a circle.
+export function HelpIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8.25" />
+      <path d="M9.75 9.75a2.25 2.25 0 1 1 3.4 1.93c-.68.4-1.15.93-1.15 1.7v.37M12 16.25v.25" />
+    </Icon>
+  )
+}
+
 // TagIcon stands for a release: the version tag it pushes.
 export function TagIcon(props: IconProps) {
   return (

@@ -290,6 +290,21 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
       keywords: ['unread', 'read', 'new', 'seen', 'blue dot', 'mark as read', 'mark as unread', 'activity'],
     },
     {
+      label: 'How to read a card',
+      keywords: [
+        'card guide',
+        'guide',
+        'legend',
+        'key',
+        'help',
+        'colors',
+        'symbols',
+        'edge',
+        'track',
+        'show the guide',
+      ],
+    },
+    {
       label: 'Hidden labels',
       keywords: ['labels', 'size/*', 'size labels', 'hide', 'chips', 'card labels', 'patterns', 'restore the defaults'],
     },

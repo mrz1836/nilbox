@@ -80,6 +80,7 @@ beforeAll(async () => {
     import('./components/scripts/ScriptsView'),
     import('./components/SettingsView'),
     import('./components/WorktreesView'),
+    import('./components/card/CardGuideDialog'),
   ])
 })
 
@@ -1263,6 +1264,34 @@ describe('App’s card density', () => {
     await waitFor(() => {
       expect(card()).not.toHaveAttribute('data-density')
     })
+  })
+})
+
+describe('App’s card guide', () => {
+  it('opens the card guide from the inbox and from Settings → Cards, giving focus back as it closes', async () => {
+    await renderApp()
+
+    const fromInbox = await screen.findByRole('button', { name: 'How to read a card' })
+    await userEvent.click(fromInbox)
+
+    const guide = await screen.findByRole('dialog', { name: 'How to read a card' })
+    expect(guide.querySelector('[inert] li[data-item-id]')).not.toBeNull()
+
+    await userEvent.keyboard('{Escape}')
+
+    expect(screen.queryByRole('dialog', { name: 'How to read a card' })).not.toBeInTheDocument()
+    expect(fromInbox).toHaveFocus()
+
+    await openSettingsFromMenu()
+    await userEvent.click(screen.getByRole('button', { name: 'Cards' }))
+    const fromSettings = screen.getByRole('button', { name: 'Show the guide' })
+    await userEvent.click(fromSettings)
+
+    await screen.findByRole('dialog', { name: 'How to read a card' })
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(screen.queryByRole('dialog', { name: 'How to read a card' })).not.toBeInTheDocument()
+    expect(fromSettings).toHaveFocus()
   })
 })
 

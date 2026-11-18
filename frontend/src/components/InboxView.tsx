@@ -44,7 +44,7 @@ import {
   type Worktree,
 } from '../platform'
 import { ErrorBanner } from './ErrorBanner'
-import { RefreshIcon } from './icons'
+import { HelpIcon, RefreshIcon } from './icons'
 import { InboxFilling } from './InboxFilling'
 import { InboxNil } from './InboxNil'
 import { LinksContext, type Links } from './ItemLink'
@@ -151,6 +151,9 @@ export interface InboxViewProps {
   // onItemOpened hears each item opened in its sheet, once per opening, however it was
   // opened: the window marks the item's notifications read.
   onItemOpened?: ((itemId: number) => void) | undefined
+  // onShowCardGuide opens the card guide, from the "How to read a card" button beside the
+  // last-refreshed time; without it the inbox offers no way to.
+  onShowCardGuide?: (() => void) | undefined
 }
 
 // SheetDrafts are the drafts of both sheets over the inbox: the review sheet's and the issue
@@ -243,8 +246,9 @@ function firstMessage(...messages: string[]): string {
   return messages.find((m) => m !== '') ?? ''
 }
 
-// InboxView shows the inbox lists across the full width, with a refresh control and the
-// time of the last refresh; only a list that holds something, in any of its tabs, shows.
+// InboxView shows the inbox lists across the full width, with a refresh control, the
+// time of the last refresh, and the card guide's button beside it; only a list that holds
+// something, in any of its tabs, shows.
 // Each list has tabs for what was snoozed or dismissed from it and collapses from its
 // header, and each triage action is confirmed by a toast with an Undo. When every list is
 // empty, the inbox throws a party in their place (InboxNil), above any list that still
@@ -288,6 +292,7 @@ export function InboxView({
   conversationOrder = 'oldest',
   onConversationOrder,
   onItemOpened,
+  onShowCardGuide,
 }: InboxViewProps) {
   const { snapshot, loadError, refreshError, refreshing, progress, caughtUp, refresh } = inbox
   const { order, setStatusSort, setStatusOrder, setListKind } = inboxOrder
@@ -727,6 +732,17 @@ export function InboxView({
               </>
             )}
           </span>
+        )}
+        {onShowCardGuide !== undefined && (
+          <button
+            type="button"
+            aria-label="How to read a card"
+            title="How to read a card"
+            onClick={onShowCardGuide}
+            className="inline-flex size-6.5 shrink-0 items-center justify-center rounded-md border border-border text-muted transition-colors hover:bg-raised hover:text-text"
+          >
+            <HelpIcon className="size-3.5" />
+          </button>
         )}
         {refreshing && (
           <div

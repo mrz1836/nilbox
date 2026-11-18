@@ -2,7 +2,7 @@ import { startTransition, useActionState, useId, useState } from 'react'
 
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import { setCardAvatars, setCardDensity, setCardUnread, setHiddenLabels, type CardDensity } from '../../platform'
-import { quietButtonClass, Segmented } from '../controls'
+import { buttonClass, quietButtonClass, Segmented } from '../controls'
 import { ChoiceRow, Group, joinIds, Note, SectionIntro, SwitchRow } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
@@ -22,12 +22,17 @@ const densities: readonly { value: CardDensity; label: string }[] = [
   { value: 'compact', label: 'Compact' },
 ]
 
+export interface CardsSectionProps extends SectionProps {
+  // onShowCardGuide opens the card guide; without it the section doesn't offer it.
+  onShowCardGuide?: (() => void) | undefined
+}
+
 // CardsSection is the settings page's Cards section: how much room the inbox's cards
 // take, whether they show their authors' pictures and a dot for what is new since the user
-// last opened them, and the labels they leave out, such as the size labels a card's own
-// size grade already shows. Each change is stored as it is
-// made; Restore the defaults puts the list back as a fresh install has it.
-export function CardsSection({ settings: stored, onSaved }: SectionProps) {
+// last opened them, the card guide, and the labels they leave out, such as the size labels
+// a card's own size grade already shows. Each change is stored as it is made; Restore the
+// defaults puts the list back as a fresh install has it.
+export function CardsSection({ settings: stored, onSaved, onShowCardGuide }: CardsSectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
   // densityError, picturesError, and unreadError are why the last change of Density, of
@@ -149,6 +154,16 @@ export function CardsSection({ settings: stored, onSaved }: SectionProps) {
             void switchUnread(on)
           }}
         />
+        {onShowCardGuide !== undefined && (
+          <ChoiceRow
+            label="How to read a card"
+            description="A sample card with its parts numbered, and a key to its colors and symbols."
+          >
+            <button type="button" onClick={onShowCardGuide} className={`${buttonClass} shrink-0`}>
+              Show the guide
+            </button>
+          </ChoiceRow>
+        )}
       </Group>
       <section aria-labelledby={`${id}-hidden`} className="flex flex-col gap-3">
         <SectionIntro
