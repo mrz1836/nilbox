@@ -329,7 +329,7 @@ describe('CompactRow', () => {
 
     const go = within(row).getByRole('button', { name: 'Review' })
     expect(go).toHaveAttribute('data-verb', 'review')
-    expect(go).toHaveClass('text-accent', 'group-hover:bg-accent', 'group-hover:text-white')
+    expect(go).toHaveClass('text-accent', 'card-lit:bg-accent', 'card-lit:text-white')
     expect(go).not.toHaveClass('border')
     expect(go.querySelector('svg')).toBeNull()
 
@@ -343,7 +343,7 @@ describe('CompactRow', () => {
     const row = mountCompact(asked(), { sessions: [session] })
 
     const go = within(row).getByRole('button', { name: 'Show terminal' })
-    expect(go).toHaveClass('text-warning', 'group-hover:bg-warning')
+    expect(go).toHaveClass('text-warning', 'card-lit:bg-warning')
     expect(go).not.toHaveAttribute('data-moving')
     expect(go).not.toHaveClass('motion-safe:animate-breathe')
 
@@ -362,7 +362,7 @@ describe('CompactRow', () => {
     const row = mountCompact(asked(), { triage: triageActions(), edits })
 
     const hover = row.querySelector('[data-hover-row]') as HTMLElement
-    expect(hover).toHaveClass('opacity-0', 'group-hover:opacity-100', 'group-focus-within:opacity-100')
+    expect(hover).toHaveClass('opacity-0', 'card-lit:opacity-100')
     expect(hover).toHaveClass('absolute', 'col-[1/-2]', 'row-[1/2]', 'right-0')
     // The triage, the agent's slot, Show details, then the menu.
     expect(
@@ -588,7 +588,7 @@ describe('CompactRow', () => {
     })
 
     expect(screen.getByTitle(/^Snoozed until/)).toHaveTextContent(/^Back /)
-    expect(screen.getByRole('button', { name: 'Unsnooze' })).toHaveClass('text-muted', 'group-hover:bg-raised')
+    expect(screen.getByRole('button', { name: 'Unsnooze' })).toHaveClass('text-muted', 'card-lit:bg-raised')
   })
 
   it('fades the card under a note while an edit will likely take it out of the list', async () => {

@@ -115,18 +115,18 @@ describe('CardActions', () => {
 
     const merge = screen.getByRole('button', { name: 'Merge' })
     expect(merge.querySelector('svg')).not.toBeNull()
-    expect(merge).toHaveClass('border-success/45', 'text-success', 'group-hover:bg-success')
+    expect(merge).toHaveClass('border-success/45', 'text-success', 'card-lit:bg-success')
   })
 
-  it('outlines a loud primary in its edge’s color, filling it while the pointer or focus is on the card', () => {
+  it('outlines a loud primary in its edge’s color, filling it while the card is lit', () => {
     renderActions(step('review'))
 
     expect(screen.getByRole('button', { name: 'Review' })).toHaveClass(
       'border-accent/45',
       'text-accent',
-      'group-hover:bg-accent',
-      'group-hover:text-white',
-      'group-focus-within:bg-accent',
+      'card-lit:border-transparent',
+      'card-lit:bg-accent',
+      'card-lit:text-white',
     )
   })
 
@@ -134,7 +134,7 @@ describe('CardActions', () => {
     renderActions(step('open', { edge: 'waiting', quiet: true }))
 
     const open = screen.getByRole('button', { name: 'Open' })
-    expect(open).toHaveClass('border-border', 'text-text', 'group-hover:bg-raised')
+    expect(open).toHaveClass('border-border', 'text-text', 'card-lit:bg-raised')
     expect(open).not.toHaveClass('text-muted')
   })
 
@@ -274,19 +274,19 @@ describe('CardActions', () => {
 })
 
 describe('CardActions, compact', () => {
-  it('draws the go button as its words in the edge’s tone, filled while the pointer or focus is on the card', () => {
+  it('draws the go button as its words in the edge’s tone, filled while the card is lit', () => {
     renderActions(step('merge', { edge: 'ready' }), { props: { compact: true } })
 
     const merge = screen.getByRole('button', { name: 'Merge' })
     expect(merge.querySelector('svg')).toBeNull()
-    expect(merge).toHaveClass('h-6.5', 'text-success', 'group-hover:bg-success', 'group-focus-within:bg-success')
+    expect(merge).toHaveClass('h-6.5', 'text-success', 'card-lit:bg-success', 'card-lit:text-surface')
     expect(merge).not.toHaveClass('border')
   })
 
   it('mutes a quiet go button, filling it with the raised color', () => {
     renderActions(step('open', { edge: 'yours', quiet: true }), { props: { compact: true } })
 
-    expect(screen.getByRole('button', { name: 'Open' })).toHaveClass('text-muted', 'group-hover:bg-raised')
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveClass('text-muted', 'card-lit:bg-raised')
   })
 
   it('draws an agent’s verbs as words in their tone, Decide and the bring-backs too', async () => {
@@ -298,7 +298,7 @@ describe('CardActions, compact', () => {
     })
 
     const watch = screen.getByRole('button', { name: 'Watch' })
-    expect(watch).toHaveClass('text-warning', 'group-hover:bg-warning')
+    expect(watch).toHaveClass('text-warning', 'card-lit:bg-warning')
     await userEvent.click(watch)
     expect(onWatch).toHaveBeenCalledExactlyOnceWith(session.id)
   })

@@ -22,6 +22,7 @@ import {
   situationChoices,
   worktree,
 } from '../test/fixtures'
+import { clipper, shownAway } from '../test/cardLit'
 import { platform } from '../test/platform'
 import { AutopilotRowsContext, type AutopilotRows } from './autopilot/AutopilotChip'
 import type { EditActions } from './ItemMenu'
@@ -355,6 +356,36 @@ describe('ItemRow chips', () => {
     expect(onFilesSettings).toHaveBeenCalledOnce()
   })
 
+  it('opens the risk chip’s panel whole, over the triage, which its second line doesn’t clip', async () => {
+    const row = mountCard(asked({ trusted: false, trust: 'outside', files: fileCheck() }), {
+      triage: triageActions(),
+      edits: editActions(),
+    })
+    const chip = screen.getByRole('button', { name: 'Outside · Agent config · Workflows' })
+
+    // Closed, the second line clips at the card's edge.
+    expect(clipper(chip, row)).not.toBeNull()
+
+    await userEvent.click(chip)
+
+    const panel = screen.getByRole('dialog', { name: 'Sensitive files' })
+    expect(clipper(panel, row)).toBeNull()
+    expect(within(panel).getByRole('button', { name: 'Check now' })).toBeEnabled()
+    // The chips rise over the triage (z-20) while the panel is open, and the panel itself
+    // leaves the card rendered in full (index.css).
+    expect(panel.closest('[class~="has-[[aria-expanded=true]]:z-30"]')).toHaveClass('relative', 'z-10')
+    expect(row.querySelector('[data-triage]')).toHaveClass('z-20')
+    expect(row.matches(':has([aria-expanded="true"])')).toBe(true)
+  })
+
+  it('gives an item whose files weren’t checked a chip with no panel to open', () => {
+    mountCard(asked({ trusted: false, trust: 'outside', files: null }))
+
+    const words = screen.getByText('Outside contributor')
+    expect(words.closest('button')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Outside/ })).not.toBeInTheDocument()
+  })
+
   it('gives a trusted bot its square and no chip', () => {
     mountCard(asked({ author: 'dependabot', trust: 'bot', trusted: true, authorIsBot: true }))
 
@@ -530,6 +561,16 @@ describe('ItemRow agent', () => {
     mountCard(asked())
 
     expect(screen.getByRole('button', { name: 'Launch options: Review · default' })).toBeInTheDocument()
+  })
+
+  it('draws the focus ring of each half of its launch inside that half, within the control’s border', () => {
+    mountCard(asked())
+
+    const launch = screen.getByRole('button', { name: 'Open in Claude' })
+    const options = screen.getByRole('button', { name: 'Launch options: Review · default' })
+    expect(launch.parentElement).toHaveClass('rounded-lg', 'border')
+    expect(launch).toHaveClass('rounded-l-lg', 'focus-visible:-outline-offset-2')
+    expect(options).toHaveClass('rounded-r-lg', 'focus-visible:-outline-offset-2')
   })
 
   it('waits for an item’s launch settings to resolve', () => {
@@ -852,14 +893,14 @@ describe('ItemRow peek', () => {
 })
 
 describe('ItemRow triage', () => {
-  it('hides the triage until the pointer or focus is on the card, over the state column', () => {
+  it('hides the triage until the card is lit, over the state column', () => {
     const row = mountCard(asked(), { triage: triageActions(), edits: editActions() })
 
     const triage = row.querySelector('[data-triage]')
-    expect(triage).toHaveClass('opacity-0', 'group-hover:opacity-100', 'group-focus-within:opacity-100')
+    expect(triage).toHaveClass('opacity-0', 'card-lit:opacity-100')
     expect(triage).toHaveClass('col-[4/5]', 'row-[1/2]', '@max-xl:col-[3/4]')
     expect(within(triage as HTMLElement).getByRole('button', { name: 'More actions' })).toBeInTheDocument()
-    expect(row.querySelector('[data-state-column]')).toHaveClass('group-hover:opacity-0', '@max-xl:hidden')
+    expect(row.querySelector('[data-state-column]')).toHaveClass('card-lit:opacity-0', '@max-xl:hidden')
     expect(row.querySelector('[data-state-column]')).not.toHaveClass('opacity-0')
   })
 
@@ -912,6 +953,131 @@ describe('ItemRow triage', () => {
     })
 
     expect(row).not.toHaveAttribute('aria-busy')
+  })
+})
+
+describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) => {
+  // mountLit renders an item's card in the density, after a button the keyboard can start
+  // from, and returns the row.
+  function mountLit(it: InboxItem, props: Partial<ItemRowProps> = {}): HTMLElement {
+    render(
+      <CardPrefsContext value={{ ...defaultCardPrefs, density }}>
+        <button type="button">Before</button>
+        <ul>
+          <ItemRow item={it} launch={launch} resolution={itemResolution()} {...props} />
+        </ul>
+      </CardPrefsContext>,
+    )
+
+    return screen.getByRole('listitem')
+  }
+
+  it('lights only while the pointer is on the card, whatever a click focused in it', async () => {
+    const user = userEvent.setup()
+    const triage = triageActions()
+    const onOpen = vi.fn()
+    const row = mountLit(asked(), { triage, edits: editActions(), onOpen })
+    const { stretched, chevron } = toggles(row)
+    const title = within(row).getAllByRole('button')[0] as HTMLElement
+
+    expect(row.querySelector('[class*="group-focus-within:"]')).toBeNull()
+
+    // A click leaves focus on what it pressed, as WebKit does on the stretched toggle and
+    // jsdom on any button, but none of it lights the card once the pointer moves on.
+    for (const target of [
+      stretched,
+      stretched,
+      chevron,
+      chevron,
+      title,
+      within(row).getByRole('button', { name: 'Review' }),
+      within(row).getByRole('button', { name: 'Dismiss' }),
+      within(row).getByRole('button', { name: 'Pin to top' }),
+    ]) {
+      await user.click(target)
+      await user.unhover(target)
+
+      expect(target).toHaveFocus()
+      expect(shownAway(row)).toBe(false)
+    }
+
+    expect(stretched).toHaveAttribute('aria-expanded', 'false')
+    expect(onOpen).toHaveBeenCalledTimes(2)
+    expect(triage.onDismiss).toHaveBeenCalledOnce()
+  })
+
+  it('lights as the keyboard moves focus into the card, through to Show details', async () => {
+    const user = userEvent.setup()
+    const row = mountLit(asked(), { triage: triageActions(), edits: editActions() })
+    const { chevron } = toggles(row)
+
+    // jsdom rings focus that Tab moved while the key is down, and remembers the last
+    // ringed element, so each Tab is looked at before its key comes up.
+    const tab = async () => {
+      await user.keyboard('{Tab>}')
+      const lit = shownAway(row)
+      await user.keyboard('{/Tab}')
+
+      return lit
+    }
+
+    await user.click(screen.getByRole('button', { name: 'Before' }))
+    expect(await tab()).toBe(true)
+    expect(row.contains(document.activeElement)).toBe(true)
+
+    while (document.activeElement !== chevron) {
+      expect(await tab()).toBe(true)
+    }
+  })
+
+  it('gives the ▾ focus back unringed after a pointer closes the launch options, ringed after Escape', async () => {
+    const user = userEvent.setup()
+    const row = mountLit(asked(), { triage: triageActions(), edits: editActions() })
+    const options = within(row).getByRole('button', { name: /^Launch options/ })
+
+    await user.click(options)
+    expect(shownAway(row)).toBe(true)
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()
+    expect(options).toHaveFocus()
+    expect(options.matches(':focus-visible')).toBe(false)
+    expect(shownAway(row)).toBe(false)
+
+    await user.click(options)
+    await user.keyboard('{Escape}')
+
+    expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()
+    expect(options).toHaveFocus()
+    expect(options.matches(':focus-visible')).toBe(true)
+    expect(shownAway(row)).toBe(true)
+  })
+
+  it('gives a menu’s button focus back unringed after a pointer picks from it', async () => {
+    const user = userEvent.setup()
+    const triage = triageActions()
+    const edits = editActions()
+    const row = mountLit(asked(), { triage, edits })
+
+    const snooze = within(row).getByRole('button', { name: 'Snooze for…' })
+    await user.click(snooze)
+    // The menu stays lit while it is open, wherever the pointer goes.
+    expect(shownAway(row)).toBe(true)
+    await user.click(screen.getByRole('menuitem', { name: /^1 week/ }))
+
+    expect(triage.onSnooze).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), 7)
+    expect(snooze).toHaveFocus()
+    expect(snooze.matches(':focus-visible')).toBe(false)
+    expect(shownAway(row)).toBe(false)
+
+    const more = within(row).getByRole('button', { name: 'More actions' })
+    await user.click(more)
+    await user.click(screen.getByRole('menuitem', { name: 'Copy link' }))
+
+    expect(edits.onCopyLink).toHaveBeenCalledOnce()
+    expect(more).toHaveFocus()
+    expect(more.matches(':focus-visible')).toBe(false)
+    expect(shownAway(row)).toBe(false)
   })
 })
 

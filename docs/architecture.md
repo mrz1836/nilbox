@@ -4301,8 +4301,20 @@ column's grid area, both lines named, over the end of the body once a narrow lis
 column. A stretched toggle, the button right after the title (`absolute inset-0 z-0`,
 `tabIndex` -1), opens `card/CardPeek` on a click of empty space; every control and every
 titled element sits above it (`relative z-10`, and `z-20` while one of their panels is open),
-which keeps `jsx-a11y` strict without a disable comment. The peek reads only what the card
-has, so it costs no request.
+which keeps `jsx-a11y` strict without a disable comment. The second line clips at the card's
+edge, except while a chip's panel is open (its chips then `z-30`, over the triage) or
+keyboard focus is in it, so the risk chip's and the ⚡ chip's panels show whole. The peek
+reads only what the card has, so it costs no request.
+The triage, the state column's fade, the primary's fill, and a compact card's hover row
+follow `index.css`'s `card-lit` variant: the pointer on the card, keyboard focus in it
+(`:focus-visible`, so the focus a click leaves on the stretched toggle doesn't count), or a
+menu or panel it opened open (`[aria-haspopup][aria-expanded=true]`), besides the busy
+card's own. A menu, panel, or dialog closing gives focus back to its button through
+`lib/focusBack.ts` (`usePopover`, `useModalDialog`): ringed after a key, and after a pointer
+with `focusVisible: false` (WebKit from Safari 18.4), so no ring is left behind and the card
+goes dark once the pointer leaves. The halves of a split control (the agent's launch and its
+▾, Snooze and its ▾) draw their focus rings inside themselves (`-outline-offset-2`), each
+following its own shape within the control's border.
 `card/CardAvatar` shows the author's picture through `Avatar.tsx`'s `Picture` (a circle, or
 with `shape="square"` a bot's rounded square), whose stand-in, the initials or the bot mark,
 shows until the picture decodes and when it fails. The pictures come from

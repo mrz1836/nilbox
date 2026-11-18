@@ -857,7 +857,7 @@ describe('InboxView triage', () => {
     // accent color.
     const mark = review.getByRole('img', { name: 'Pinned to the top of the list' })
     expect(mark.closest('li')).toBe(unpin.closest('li'))
-    expect(unpin.parentElement).toHaveClass('opacity-0', 'group-hover:opacity-100')
+    expect(unpin.parentElement).toHaveClass('opacity-0', 'card-lit:opacity-100')
     expect(unpin).toHaveClass('text-accent')
     expect(unpin).not.toHaveClass('text-muted')
     expect(unpin).toHaveAttribute('title', 'Pinned to the top of the list: click to unpin')

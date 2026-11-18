@@ -41,13 +41,13 @@ function cardTriage(it: InboxItem, tab: TriageTab, work: RowWork = null) {
   return actions
 }
 
-// hidden reports a control shown only while the pointer or focus is on the card.
+// hidden reports a control shown only while the card is lit (card-lit in index.css).
 function hidden(el: HTMLElement): boolean {
-  return el.closest('.opacity-0.group-hover\\:opacity-100') !== null
+  return el.closest('.opacity-0.card-lit\\:opacity-100') !== null
 }
 
 describe('TriageControls, card mode', () => {
-  it('shows Refresh, Snooze, Dismiss, and Pin only while the pointer or focus is on the card', () => {
+  it('shows Refresh, Snooze, Dismiss, and Pin only while the card is lit', () => {
     cardTriage(item(), 'inbox')
 
     for (const name of ['Refresh from GitHub', 'Snooze for 3 days', 'Dismiss', 'Pin to top']) {
@@ -55,7 +55,7 @@ describe('TriageControls, card mode', () => {
     }
   })
 
-  it('shows a pinned item’s Unpin only on hover too, since the card marks a pinned item itself', async () => {
+  it('shows a pinned item’s Unpin only while lit too, since the card marks a pinned item itself', async () => {
     const actions = cardTriage(pinned, 'inbox')
 
     const unpin = screen.getByRole('button', { name: 'Unpin' })
@@ -63,6 +63,19 @@ describe('TriageControls, card mode', () => {
 
     await userEvent.click(unpin)
     expect(actions.onUnpin).toHaveBeenCalledExactlyOnceWith(pinned)
+  })
+
+  it('draws the focus ring of each half of the Snooze split inside that half', () => {
+    cardTriage(item(), 'inbox')
+
+    expect(screen.getByRole('button', { name: 'Snooze for 3 days' })).toHaveClass(
+      'rounded-r-none',
+      'focus-visible:-outline-offset-2',
+    )
+    expect(screen.getByRole('button', { name: 'Snooze for…' })).toHaveClass(
+      'rounded-l-none',
+      'focus-visible:-outline-offset-2',
+    )
   })
 
   it('keeps every button shown while the card works with GitHub', () => {

@@ -470,9 +470,10 @@ export function LaunchControls({
   const optionsTitle = 'Prompt, profile, and options for this launch'
 
   // showOptions opens the launch options. The desktop's WebKit focuses no button on a
-  // click. Focusing this one first makes it where the dialog gives focus back as it closes.
+  // click. Focusing this one first makes it where the dialog gives focus back as it closes;
+  // a pointer clicked it (a key finds it focused already), so it shows no focus ring.
   const showOptions = (e: MouseEvent<HTMLButtonElement>) => {
-    e.currentTarget.focus()
+    e.currentTarget.focus({ focusVisible: false })
     setOpen(true)
   }
 
@@ -538,8 +539,10 @@ export function LaunchControls({
   )
 
   // cardOptions is the card's ▾, the launch options: on its own, or closing the launch's
-  // split control (joined). It carries the dot of a choice changed for this launch, and
-  // the alert of a prompt that can't resolve, as the split button's arrow does.
+  // split control (joined), its focus ring then drawn inside it, so the ring follows its
+  // rounded end within the control's border. It carries the dot of a choice changed for
+  // this launch, and the alert of a prompt that can't resolve, as the split button's arrow
+  // does.
   const cardOptions = (joined: boolean) => (
     <button
       type="button"
@@ -552,7 +555,7 @@ export function LaunchControls({
       aria-expanded={open}
       aria-controls={open ? id : undefined}
       onClick={showOptions}
-      className={`inline-flex items-center gap-1 px-1.75 text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 aria-expanded:bg-raised ${joined ? 'rounded-r-lg border-l border-border' : 'h-7.5 rounded-lg border border-border'}`}
+      className={`inline-flex items-center gap-1 px-1.75 text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 aria-expanded:bg-raised ${joined ? 'rounded-r-lg border-l border-border focus-visible:-outline-offset-2' : 'h-7.5 rounded-lg border border-border'}`}
     >
       {changed && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />}
       {problem !== '' && <AlertIcon className="size-3 shrink-0 text-warning" />}
@@ -575,7 +578,8 @@ export function LaunchControls({
 
     if (session === null) {
       // Until the agent is known, the launch names "the agent", so it never shares the
-      // name Open with the card's primary beside it.
+      // name Open with the card's primary beside it. Its focus ring, as the ▾'s, is drawn
+      // inside it, following its rounded start within the control's border.
       return (
         <div className="inline-flex h-7.5 items-stretch rounded-lg border border-border text-[0.8125rem]">
           <button
@@ -586,7 +590,7 @@ export function LaunchControls({
               agentName === '' ? 'Open in the agent' : nickname === '' ? openLabel : `${openLabel}: ${nickname}`
             }
             title={launchTitle}
-            className="inline-flex items-center gap-1.5 rounded-l-lg pr-1.75 pl-2.25 font-semibold text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+            className="inline-flex items-center gap-1.5 rounded-l-lg pr-1.75 pl-2.25 font-semibold text-text transition-colors hover:bg-raised focus-visible:-outline-offset-2 disabled:opacity-60 disabled:hover:bg-transparent"
           >
             <SparkIcon className="size-3.5 shrink-0 text-accent" />
             <span className="@max-3xl:sr-only">
