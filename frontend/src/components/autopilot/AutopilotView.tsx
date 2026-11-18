@@ -976,12 +976,14 @@ export default function AutopilotView({
   if (empty && !making && chosen === undefined && selected !== TEMPLATES) {
     return (
       <div className="flex h-full justify-center overflow-y-auto p-8">
-        <div className="flex w-full max-w-2xl flex-col gap-5">
+        <div className="flex w-full max-w-3xl flex-col gap-6">
+          {/* The intro keeps to a reading width, its lines balanced, so a sentence never
+              leaves a word or two alone on its last line. */}
           <div className="flex flex-col items-center gap-3 text-center">
             <AutopilotIcon className="size-8 text-accent" />
             <h2 className="text-lg font-semibold">Autopilot</h2>
             {introText.map((sentence) => (
-              <p key={sentence} className="text-sm text-muted">
+              <p key={sentence} className="max-w-2xl text-sm leading-relaxed text-balance text-muted">
                 {sentence}
               </p>
             ))}
