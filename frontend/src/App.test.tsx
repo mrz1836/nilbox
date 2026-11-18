@@ -1103,7 +1103,12 @@ describe('App’s card pictures', () => {
     return document.querySelector(`[data-item-id="${String(id)}"] img`)
   }
 
-  it('asks for 60 authors’ pictures in three requests at once, and shows each one’s as it lands', async () => {
+  // slow is the time a test that renders the authored cards, all 60 or some of them and
+  // Settings, may take on a busy runner, under coverage: the work is the rendering, so its
+  // time is the only knob.
+  const slow = { timeout: 15_000 }
+
+  it('asks for 60 authors’ pictures in three requests at once, and shows each one’s as it lands', slow, async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list(authored()) }))
     const held = hold()
     await renderApp()
@@ -1197,10 +1202,6 @@ describe('App’s card pictures', () => {
 
   // someAuthored are 26 of authored's items, 25 people's and dependabot's: two requests.
   const someAuthored = () => authored().slice(34)
-
-  // slow is the time a test that renders some authored cards and visits Settings may take
-  // on a busy runner, under coverage.
-  const slow = { timeout: 15_000 }
 
   it('asks for no picture while the cards are compact, and in batches once they are comfortable', slow, async () => {
     platform.getSettings.mockImplementation(() => stored({ cardDensity: 'compact' }))

@@ -150,7 +150,11 @@ function terminalOnly() {
   return { ...c, places: c.places.map((p) => (p.id === 'background' ? { ...p, offered: false } : p)) }
 }
 
-describe('the routine builder', () => {
+// The builder's own tests type and click through whole blocks of it, and each keystroke
+// renders the builder again: the heaviest make well over a hundred, which on a busy machine,
+// under coverage, ran past the default five seconds. The work is the tests' own, so their
+// time is the only knob.
+describe('the routine builder', { timeout: 15_000 }, () => {
   it('renders a routine from the catalog, top to bottom in the order it runs, with its sentence and its cost', async () => {
     platform.describeRoutine.mockResolvedValue(
       described({
