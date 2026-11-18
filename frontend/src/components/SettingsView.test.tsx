@@ -9,6 +9,7 @@ import type { Theme } from '../lib/theme'
 import type {
   Account,
   AgentInfo,
+  DefaultPrompts,
   LaunchDefaults,
   NotificationKind,
   Profile,
@@ -69,6 +70,7 @@ interface Options {
   who?: Account | null
   access?: ProjectAccess
   defaults?: LaunchDefaults[]
+  appPrompts?: DefaultPrompts | null
   theme?: Theme
   onThemeChange?: (theme: Theme) => Promise<Result<void>>
 }
@@ -81,6 +83,7 @@ function renderSettings({
   who = account(),
   access = 'on',
   defaults = [],
+  appPrompts = defaultPrompts(),
   theme = 'system',
   onThemeChange = vi.fn(() => Promise.resolve<Result<void>>({ ok: true, data: undefined })),
 }: Options = {}) {
@@ -95,7 +98,7 @@ function renderSettings({
       agents={coding}
       profiles={profiles}
       prompts={prompts()}
-      defaultPrompts={defaultPrompts()}
+      defaultPrompts={appPrompts}
       launchDefaults={defaults}
       account={who}
       projectAccess={access}
@@ -1238,6 +1241,69 @@ describe('SettingsView launch defaults', () => {
     expect(screen.getByRole('combobox', { name: 'Prompt for pull requests' })).toHaveAccessibleDescription(
       /Edit prompts on the Prompts tab\.$/,
     )
+  })
+
+  it('sets the app’s prompt for each situation a pull request can be in', async () => {
+    const { onLaunchChanged } = renderSettings({ appPrompts: defaultPrompts({ checksFailing: 3, rereview: 2 }) })
+
+    await openSection('Launching')
+
+    const checks = screen.getByRole('combobox', { name: 'Prompt when checks fail' })
+
+    expect(checks).toHaveValue('3')
+    expect(
+      within(checks)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['Same as pull requests', 'Fix checks', 'Quick look', 'Review', 'Explain'])
+    expect(checks).toHaveAccessibleDescription(
+      'What the agent button asks on your pull request whose checks fail, unless an org or repository chooses another.',
+    )
+    expect(screen.getByRole('combobox', { name: 'Prompt when it has conflicts' })).toHaveValue('0')
+    expect(screen.getByRole('combobox', { name: 'Prompt when changes are requested' })).toHaveValue('0')
+    expect(screen.getByRole('combobox', { name: 'Prompt when you’re asked to review again' })).toHaveValue('2')
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Prompt when it has conflicts' }), '1')
+
+    expect(platform.setSlotDefault).toHaveBeenCalledExactlyOnceWith('conflicts', 1)
+    await waitFor(() => {
+      expect(onLaunchChanged).toHaveBeenCalledOnce()
+    })
+
+    // Same as pull requests clears the situation's prompt.
+    await userEvent.selectOptions(checks, 'Same as pull requests')
+
+    expect(platform.setSlotDefault).toHaveBeenLastCalledWith('checks_failing', 0)
+  })
+
+  it('waits for the app’s default prompts before offering them', async () => {
+    renderSettings({ appPrompts: null })
+
+    await openSection('Launching')
+
+    for (const name of [
+      'Prompt for pull requests',
+      'Prompt for issues',
+      'Prompt when checks fail',
+      'Prompt when you’re asked to review again',
+    ]) {
+      expect(screen.getByRole('combobox', { name })).toBeDisabled()
+    }
+    expect(screen.getByRole('combobox', { name: 'Prompt when checks fail' })).toHaveValue('0')
+  })
+
+  it('shows why a situation’s prompt was refused, under its row', async () => {
+    platform.setSlotDefault.mockRejectedValue(new Error('“Explain” can’t be the default when changes are requested'))
+    const { onLaunchChanged } = renderSettings()
+
+    await openSection('Launching')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Prompt when changes are requested' }), '5')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('can’t be the default when changes are requested')
+    expect(screen.getByRole('combobox', { name: 'Prompt when changes are requested' })).toHaveAccessibleDescription(
+      /chooses another\. “Explain” can’t be the default when changes are requested$/,
+    )
+    expect(onLaunchChanged).not.toHaveBeenCalled()
   })
 
   it('lists the org and repository launch defaults under Repositories', async () => {

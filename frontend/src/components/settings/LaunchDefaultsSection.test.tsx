@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { LaunchDefaults } from '../../platform'
+import type { DefaultPrompts, LaunchDefaults } from '../../platform'
 import { agents, autopilotOff, defaultPrompts, launchDefaults, profile, prompts, settings } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { LaunchDefaultsSection } from './LaunchDefaultsSection'
@@ -20,7 +20,11 @@ function nth(list: HTMLElement[], i: number): HTMLElement {
   return el
 }
 
-function renderSection(stored: LaunchDefaults[] = [], onChanged = vi.fn(() => Promise.resolve())) {
+function renderSection(
+  stored: LaunchDefaults[] = [],
+  onChanged = vi.fn(() => Promise.resolve()),
+  app: DefaultPrompts = defaultPrompts(),
+) {
   render(
     <LaunchDefaultsSection
       settings={settings({ worktreeDefault: true })}
@@ -32,7 +36,7 @@ function renderSection(stored: LaunchDefaults[] = [], onChanged = vi.fn(() => Pr
         profile({ agent: 'codex', name: 'alt' }),
       ]}
       prompts={prompts()}
-      defaultPrompts={defaultPrompts()}
+      defaultPrompts={app}
       launchDefaults={stored}
       onChanged={onChanged}
     />,
@@ -152,6 +156,72 @@ describe('LaunchDefaultsSection', () => {
     expect(form.getByText('Inherits off (org)')).toBeInTheDocument()
   })
 
+  it('shows what each situation’s prompt inherits: the org’s, else the app’s, else the pull request’s', async () => {
+    const { onChanged } = renderSection(
+      [launchDefaults({ conflictsPromptId: 2 })],
+      undefined,
+      defaultPrompts({ checksFailing: 3, conflicts: 3 }),
+    )
+
+    // The org's own list names its prompt for the situation it sets.
+    expect(screen.getByText('Quick look when it has conflicts')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
+
+    const org = within(screen.getByRole('form', { name: 'Launch defaults for acme-org' }))
+    const inherits = (field: string) =>
+      within(org.getByRole('combobox', { name: field })).getAllByRole('option')[0]?.textContent
+
+    expect(org.getByRole('combobox', { name: 'Prompt when it has conflicts' })).toHaveValue('2')
+    expect(inherits('Prompt when it has conflicts')).toBe('Inherit · Fix checks (app)')
+    expect(inherits('Prompt when checks fail')).toBe('Inherit · Fix checks (app)')
+    expect(inherits('Prompt when changes are requested')).toBe('Inherit · same as pull requests')
+
+    await userEvent.click(org.getByRole('button', { name: 'Cancel' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add defaults' }))
+
+    const form = within(screen.getByRole('form', { name: 'New launch defaults' }))
+    await userEvent.type(form.getByRole('combobox', { name: 'Defaults for' }), 'acme-org/api')
+
+    const repoInherits = (field: string) =>
+      within(form.getByRole('combobox', { name: field })).getAllByRole('option')[0]?.textContent
+
+    expect(repoInherits('Prompt when checks fail')).toBe('Inherit · Fix checks (app)')
+    expect(repoInherits('Prompt when it has conflicts')).toBe('Inherit · Quick look (org)')
+    expect(repoInherits('Prompt when changes are requested')).toBe('Inherit · same as pull requests')
+    expect(repoInherits('Prompt when you’re asked to review again')).toBe('Inherit · same as pull requests')
+    // Each offers the prompts for pull requests.
+    expect(
+      within(form.getByRole('combobox', { name: 'Prompt when you’re asked to review again' }))
+        .getAllByRole('option')
+        .slice(1)
+        .map((o) => o.textContent),
+    ).toEqual(['Fix checks', 'Quick look', 'Review', 'Explain'])
+
+    await userEvent.selectOptions(form.getByRole('combobox', { name: 'Prompt when you’re asked to review again' }), '2')
+    await userEvent.selectOptions(form.getByRole('combobox', { name: 'Prompt when checks fail' }), '1')
+    await userEvent.selectOptions(form.getByRole('combobox', { name: 'Prompt when checks fail' }), '0')
+    await waitFor(() => {
+      expect(platform.checkLaunchDefaults).toHaveBeenLastCalledWith(
+        expect.objectContaining({ name: 'api', rereviewPromptId: 2 }),
+      )
+    })
+    await userEvent.click(form.getByRole('button', { name: 'Save defaults' }))
+
+    expect(platform.saveLaunchDefaults).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        owner: 'acme-org',
+        name: 'api',
+        prPromptId: null,
+        checksPromptId: null,
+        conflictsPromptId: null,
+        changesPromptId: null,
+        rereviewPromptId: 2,
+      }),
+    )
+    expect(onChanged).toHaveBeenCalledOnce()
+  })
+
   it('chooses the agent, and puts an agent’s profile back to inherit', async () => {
     renderSection([launchDefaults({ agent: 'codex', issuePromptId: 4 })])
 
@@ -214,6 +284,7 @@ describe('LaunchDefaultsSection', () => {
       { field: 'profiles.claude', message: 'No profile named gone.' },
       { field: 'prPromptId', message: 'That prompt is for issues.' },
       { field: 'issuePromptId', message: 'That prompt was deleted.' },
+      { field: 'checksPromptId', message: 'That prompt is a reply.' },
       { field: 'effort', message: 'Effort must be one of the levels.' },
     ])
     renderSection([])
@@ -231,6 +302,10 @@ describe('LaunchDefaultsSection', () => {
     expect(form.getByRole('combobox', { name: 'Prompt for issues' })).toHaveAccessibleDescription(
       'That prompt was deleted.',
     )
+    expect(form.getByRole('combobox', { name: 'Prompt when checks fail' })).toHaveAccessibleDescription(
+      'That prompt is a reply.',
+    )
+    expect(form.getByRole('combobox', { name: 'Prompt when it has conflicts' })).not.toHaveAccessibleDescription()
     expect(form.getByRole('combobox', { name: 'Effort' })).toHaveAccessibleDescription(
       'Effort must be one of the levels.',
     )

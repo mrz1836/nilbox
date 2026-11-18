@@ -10,6 +10,8 @@ import {
   perAgentEntries,
   pinSummary,
   promptApplies,
+  situationInfo,
+  situations,
 } from '../../lib/launch'
 import { defaultsInput, emptyDefaults, findDefaults, targetHint } from '../../lib/launchChoices'
 import { useDebouncedQuery, useQuery } from '../../lib/useQuery'
@@ -117,6 +119,15 @@ function summary(
     out.push(`${nickname(d.issuePromptId)} for issues`)
   }
 
+  for (const situation of situations) {
+    const { when, field } = situationInfo[situation]
+    const id = d[field]
+
+    if (id !== null) {
+      out.push(`${nickname(id)} ${when}`)
+    }
+  }
+
   const pins = pinSummary(d, agents)
 
   if (autopilotOn && d.autopilotOutside === 'on') {
@@ -130,7 +141,8 @@ function summary(
 
 // LaunchDefaultsSection lists the launch defaults saved for orgs and repositories, and
 // edits them: the coding agent, each agent's profile, model, and extra flags, the default
-// prompt for each kind, and the effort, plan mode, and worktree. An org's defaults apply to
+// prompt for each kind and for each situation a pull request can be in, and the effort,
+// plan mode, and worktree. An org's defaults apply to
 // each of its repositories; a repository's own win over them. Every value left on Inherit
 // shows what it inherits.
 export function LaunchDefaultsSection({
@@ -397,6 +409,24 @@ function DefaultsEditor({
         org?.issuePromptId != null
           ? `${promptName(org.issuePromptId)} (org)`
           : `${promptName(defaultPrompts?.issue)} (app)`,
+      // A situation's prompt is the org's, else the app's, else, with neither, the pull
+      // request's own.
+      situations: Object.fromEntries(
+        situations.map((situation) => {
+          const { app, field } = situationInfo[situation]
+          const own = org?.[field]
+          const appId = defaultPrompts?.[app] ?? 0
+
+          return [
+            situation,
+            own != null
+              ? `${promptName(own)} (org)`
+              : appId !== 0
+                ? `${promptName(appId)} (app)`
+                : 'same as pull requests',
+          ]
+        }),
+      ),
       models: perAgent((k) =>
         org?.models[k] !== undefined ? `${modelLabel(org.models[k], modelChoices(agents, k))} (org)` : 'the profile’s',
       ),
@@ -579,6 +609,33 @@ function DefaultsEditor({
             ))}
           </select>
         </Field>
+        {situations.map((situation) => {
+          const { when, field } = situationInfo[situation]
+          const error = errors[field]
+
+          return (
+            <Field key={situation} label={`Prompt ${when}`} controlId={`${id}-${situation}`} error={error}>
+              <select
+                id={`${id}-${situation}`}
+                value={input[field] ?? 0}
+                aria-describedby={describedBy(`${id}-${situation}`, error, false)}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+
+                  set({ [field]: v === 0 ? null : v })
+                }}
+                className={`${fieldClass} w-full`}
+              >
+                <option value={0}>Inherit · {inherited.situations[situation]}</option>
+                {prPrompts.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nickname}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )
+        })}
         <LaunchOverrideFields
           id={id}
           agents={agents}

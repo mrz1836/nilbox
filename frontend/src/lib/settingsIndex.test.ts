@@ -117,6 +117,27 @@ describe('matchSettings', () => {
     expect(match?.isMatch('notifications', 'Review requests')).toBe(false)
   })
 
+  it('finds the prompt for each situation a pull request can be in, in Launching', () => {
+    const labels = [
+      'Prompt when checks fail',
+      'Prompt when it has conflicts',
+      'Prompt when changes are requested',
+      'Prompt when you’re asked to review again',
+    ]
+
+    expect(settingsIndex.launching.map((e) => e.label)).toEqual(expect.arrayContaining(labels))
+
+    const match = matchSettings('situation prompt')
+
+    expect(found('situation prompt')).toEqual([['launching', 4]])
+
+    for (const label of labels) {
+      expect(match?.isMatch('launching', label)).toBe(true)
+    }
+
+    expect(matchSettings('Re-review')?.isMatch('launching', 'Prompt when you’re asked to review again')).toBe(true)
+  })
+
   it('finds the product by name in About', () => {
     expect(matchSettings(brand.name)?.isMatch('about', 'Version')).toBe(true)
   })
