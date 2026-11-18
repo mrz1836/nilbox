@@ -190,7 +190,11 @@ describe('AutopilotSection', () => {
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Agents at once' }), '3')
 
     expect(await screen.findByText('Choose from 1 to 3 agents at once.')).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: 'Agents at once' })).toHaveValue('2')
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Agents at once' })).toHaveValue('2')
+    })
     expect(screen.getByRole('combobox', { name: 'Agents at once' })).toHaveAccessibleDescription(
       /Choose from 1 to 3 agents at once\./,
     )

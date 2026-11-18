@@ -489,7 +489,11 @@ describe('SettingsView', () => {
     expect(onSaved).not.toHaveBeenCalled()
     const sizes = screen.getByRole('radiogroup', { name: 'Text size' })
     expect(sizes).toHaveAccessibleDescription('unknown text size')
-    expect(within(sizes).getByRole('radio', { name: '100%' })).toBeChecked()
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(within(sizes).getByRole('radio', { name: '100%' })).toBeChecked()
+    })
   })
 
   it('offers the themes, with the chosen one checked', async () => {

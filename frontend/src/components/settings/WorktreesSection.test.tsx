@@ -77,7 +77,11 @@ describe('WorktreesSection', () => {
     expect(screen.getByRole('switch', { name: 'Delete the worktree’s own branch' })).toHaveAccessibleDescription(
       /made for it\. .* database is locked$/,
     )
-    expect(screen.getByRole('switch', { name: 'Delete the worktree’s own branch' })).toBeChecked()
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(screen.getByRole('switch', { name: 'Delete the worktree’s own branch' })).toBeChecked()
+    })
   })
 
   it('protects another branch pattern', async () => {

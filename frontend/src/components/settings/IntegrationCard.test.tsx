@@ -288,7 +288,11 @@ describe('IntegrationCard', () => {
     await userEvent.click(toggle)
 
     expect(await card.findByRole('alert')).toHaveTextContent('database is locked')
-    expect(toggle).toBeChecked()
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(toggle).toBeChecked()
+    })
     expect(toggle).toHaveAccessibleDescription(/two clicks\. database is locked$/)
     expect(card.getByText('On · found automatically')).toBeInTheDocument()
     expect(onSaved).not.toHaveBeenCalled()
@@ -794,7 +798,11 @@ describe('IntegrationCard turning a missing tool on', () => {
 
     expect(await card.findByRole('alert')).toHaveTextContent('database is locked')
     expect(toggle).toHaveAccessibleDescription(/database is locked$/)
-    expect(toggle).not.toBeChecked()
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(toggle).not.toBeChecked()
+    })
     expect(platform.installIntegration).not.toHaveBeenCalled()
   })
 
