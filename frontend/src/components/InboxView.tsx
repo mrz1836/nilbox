@@ -13,7 +13,7 @@ import type { ReviewDrafts } from '../lib/reviewDrafts'
 import { ruleFor, withRepoRule } from '../lib/repoRules'
 import { holdPlace } from '../lib/scroll'
 import { noSessions, sessionsOf } from '../lib/sessions'
-import { movesOnTo } from '../lib/sheet'
+import { cameBy, movesOnTo, stepPast, type Came, type EndedItem } from '../lib/sheet'
 import { formatAgo } from '../lib/time'
 import {
   byList,
@@ -184,6 +184,10 @@ interface Viewing {
   // card in the sheet in place of the control it was taken with, so the sheet moves focus
   // into itself again.
   refocus: number
+  // came is the step through the list's cards the sheet came to the card by, or null when
+  // it opened on it, as from a card, its menu, or a link: a card found merged or closed as
+  // it shows is stepped past the way the sheet came (stepPast).
+  came: Came | null
 }
 
 // Back is the sheet a link was followed from: where it was, with no step back of its own,
@@ -450,7 +454,7 @@ export function InboxView({
   // keep their identity.
   const [openIn] = useState(() => {
     const open = (list: ListKey) => (item: InboxItem, tab: TriageTab) => {
-      setViewing({ id: item.id, kind: item.kind, list, tab, arrow: '', back: null, refocus: 0 })
+      setViewing({ id: item.id, kind: item.kind, list, tab, arrow: '', back: null, refocus: 0, came: null })
     }
 
     return byList(open)
@@ -466,6 +470,7 @@ export function InboxView({
       arrow: '',
       back: null,
       refocus: 0,
+      came: null,
     })
   })
 
@@ -520,7 +525,7 @@ export function InboxView({
 
   // What every row's controls and menu do, and the triage a sheet's header makes, each said
   // in a toast.
-  const { triage, edits, dismissIt, snoozeIt, restoreIt, changeRule, unassignOn, seen } = useItemActions({
+  const { triage, edits, dismissIt, snoozeIt, restoreIt, changeRule, unassignOn, seen, ended } = useItemActions({
     inbox,
     snoozeDays,
     onSnoozeSettings,
@@ -582,6 +587,7 @@ export function InboxView({
     id,
     kind: siblings.find((s) => s.id === id)?.kind ?? from.kind,
     arrow: focusedArrow(),
+    came: cameBy(siblings, from.id, id),
   })
 
   // step moves a sheet to the card with id.
@@ -616,6 +622,7 @@ export function InboxView({
             ? null
             : { to: { ...viewing, arrow: '', back: null }, label: refText(viewed), title: viewed.title },
         refocus: viewing.refocus + 1,
+        came: null,
       })
     },
   }
@@ -631,6 +638,26 @@ export function InboxView({
             }
           },
         }
+
+  // endedHere moves the sheet on from a card a read of it found merged or closed since the
+  // inbox's last refresh, which that read took out of the inbox already (the item's own
+  // read, which stores what it found and tells the window): past it, the way the sheet
+  // stepped to it, else back to the sheet a link to it was followed from, else, opened on
+  // it, the sheet closes. Each marks it read as any move does, and the toast says what
+  // became of it.
+  const endedHere = (from: Viewing, gone: EndedItem) => {
+    const past = stepPast(from.came, gone.id, (id) => siblings.some((s) => s.id === id))
+
+    if (past !== undefined) {
+      setViewing({ ...toCard(from, past.to), came: past.came })
+    } else if (from.back !== null) {
+      setViewing({ ...from.back.to, refocus: from.refocus + 1 })
+    } else {
+      setViewing(null)
+    }
+
+    ended(gone)
+  }
 
   // unassignHere takes the user off an issue from its sheet: the sheet closes and the toast
   // says so once GitHub made it, and it hears why when it couldn't.
@@ -870,6 +897,9 @@ export function InboxView({
                   offerRelease(r, toastCount.current)
                 }
               }}
+              onEnded={(gone) => {
+                endedHere(viewing, gone)
+              }}
               onFilesSettings={onFilesSettings}
               onManageReplies={onManageReplies}
               initialFocus={initialFocus}
@@ -899,6 +929,9 @@ export function InboxView({
               onDone={(result, is) => {
                 setViewing(null)
                 showToast({ text: result.message, detail: is.title, tone: issueTone(result) })
+              }}
+              onEnded={(gone) => {
+                endedHere(viewing, gone)
               }}
               onUnassign={unassignHere}
               onManageReplies={onManageReplies}

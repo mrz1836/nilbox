@@ -5,7 +5,15 @@ import { refText } from '../../lib/format'
 import { changedSince, closeNote, issueHeldBack, keepsDraft, selectedIssueAction, standingTone } from '../../lib/issues'
 import type { IssueDraft, IssueDrafts } from '../../lib/issueDrafts'
 import { pictureLogins, PicturesContext, usePictures } from '../../lib/pictures'
-import { placeIn, stepTo, useActionProgress, useSheetKeys, type SheetBack } from '../../lib/sheet'
+import {
+  placeIn,
+  stepTo,
+  useActionProgress,
+  useEnded,
+  useSheetKeys,
+  type EndedItem,
+  type SheetBack,
+} from '../../lib/sheet'
 import { toneDot, toneText } from '../../lib/signals'
 import { quoteInto } from '../../lib/timeline'
 import { formatAgo } from '../../lib/time'
@@ -64,6 +72,10 @@ export interface IssueSheetProps {
   onClose: () => void
   // onDone hears an action's outcome, once the sheet closes for it.
   onDone: (result: IssueResult, issue: Issue) => void
+  // onEnded hears a read find the issue closed on GitHub since the inbox last read it
+  // (useEnded), for the host to move the sheet on from it; without it, the sheet shows it
+  // as read.
+  onEnded?: ((ended: EndedItem) => void) | undefined
   // onUnassign takes the user off the issue on GitHub, and resolves with why it couldn't,
   // or '' once it did, when the inbox closes the sheet; without it the sheet doesn't offer
   // it.
@@ -112,7 +124,10 @@ function StandingLine({ standing }: { standing: IssueStanding }) {
 // beside it, the latest agent's verdict, and the comment to send. ← and → step through its
 // list while the user isn't typing, ⌘↩ runs the button's action, and Escape closes it. It
 // closes after an action, which the inbox's toast reports, except when someone commented
-// since the user opened it, when it stays open, with the draft, and reads it again.
+// since the user opened it, when it stays open, with the draft, and reads it again. An
+// issue a read finds closed since the inbox read it goes to onEnded, which moves the sheet
+// on, unless the sheet is showing what an action left, as the text a close someone made
+// first kept from being posted.
 export function IssueSheet({
   id,
   item,
@@ -128,6 +143,7 @@ export function IssueSheet({
   onNavigate,
   onClose,
   onDone,
+  onEnded,
   onUnassign,
   onManageReplies,
   initialFocus,
@@ -264,6 +280,10 @@ export function IssueSheet({
   // While an action runs, the sheet waits for it: it neither closes nor moves on, so the
   // outcome is never lost.
   const working = progress !== null
+
+  // A read that finds the issue closed since the inbox read it hands it to the host, which
+  // moves on from it, unless an action runs or left its notice here.
+  useEnded(issue, working || noticeHere !== '', onEnded)
 
   const close = () => {
     if (!working) {

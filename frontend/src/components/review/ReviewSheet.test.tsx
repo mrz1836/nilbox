@@ -2296,3 +2296,92 @@ describe('ReviewSheet conversation order', () => {
     expect(platform.openReview).not.toHaveBeenCalledWith(2)
   })
 })
+
+describe('ReviewSheet of a pull request no longer open', () => {
+  // merged is what the sheet hands on of #7, merged since the inbox read it.
+  const merged = {
+    id: 1,
+    repo: 'acme-org/example-repo',
+    number: 7,
+    title: 'Add the widget cache',
+    url: 'https://github.com/acme-org/example-repo/pull/7',
+    state: 'merged',
+  }
+
+  // ended is #7 as a read finds it once it merged or closed.
+  const ended = (state: 'MERGED' | 'CLOSED') =>
+    review({ state, offers: [], primary: '', readiness: { state: 'closed', sentence: 'No longer open', needs: [] } })
+
+  it('hands on a pull request a read finds merged or closed, once', async () => {
+    platform.refreshReview.mockResolvedValue(ended('MERGED'))
+    const onEnded = vi.fn()
+    const { unmount } = render(<Harness onEnded={onEnded} />)
+
+    await waitFor(() => {
+      expect(onEnded).toHaveBeenCalledExactlyOnceWith(merged)
+    })
+    unmount()
+
+    platform.refreshReview.mockResolvedValue(ended('CLOSED'))
+    render(<Harness onEnded={onEnded} />)
+
+    await waitFor(() => {
+      expect(onEnded).toHaveBeenLastCalledWith({ ...merged, state: 'closed' })
+    })
+    expect(onEnded).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows a read that failed on an open pull request as its error, and hands nothing on', async () => {
+    platform.refreshReview.mockRejectedValue(new Error('GitHub is not answering.'))
+    platform.openReview.mockResolvedValue(
+      review({ files: [reviewFile(), reviewFile({ path: 'big.go', patch: '', patchState: 'omitted' })] }),
+    )
+    platform.reviewPatches.mockRejectedValue(
+      new Error('This pull request changed since the sheet read it. Reload it to see the new diff.'),
+    )
+    const onEnded = vi.fn()
+    render(<Harness onEnded={onEnded} />)
+
+    expect(await screen.findByText('GitHub is not answering.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show the diff' }))
+    expect(
+      await screen.findByText('This pull request changed since the sheet read it. Reload it to see the new diff.'),
+    ).toBeInTheDocument()
+    expect(sheet()).toBeInTheDocument()
+    expect(onEnded).not.toHaveBeenCalled()
+
+    // A read that finds what the failure came from, a merge, hands it on.
+    platform.readReviewAgain.mockResolvedValue(ended('MERGED'))
+    await userEvent.click(screen.getByRole('button', { name: 'Read it from GitHub again' }))
+    await waitFor(() => {
+      expect(onEnded).toHaveBeenCalledExactlyOnceWith(merged)
+    })
+    expect(platform.readReviewAgain).toHaveBeenCalledOnce()
+  })
+
+  it('stays with what an action left, though a read since finds it merged', async () => {
+    platform.actOnReview.mockResolvedValue(
+      reviewResult({ outcome: 'pushed_since', message: 'acme-org/example-repo#7 was pushed to since you opened it.' }),
+    )
+    platform.readReviewAgain.mockResolvedValue(ended('MERGED'))
+    const onEnded = vi.fn()
+    render(<Harness onEnded={onEnded} />)
+
+    await choose('Approve')
+    await userEvent.click(await actionButton('Approve'))
+
+    expect(await screen.findByText('acme-org/example-repo#7 was pushed to since you opened it.')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(platform.readReviewAgain).toHaveBeenCalledOnce()
+    })
+    expect(await screen.findByText('No longer open')).toBeInTheDocument()
+    expect(onEnded).not.toHaveBeenCalled()
+
+    // Once its notice is answered, the sheet hands it on.
+    await userEvent.click(screen.getByRole('button', { name: 'Reload' }))
+    await waitFor(() => {
+      expect(onEnded).toHaveBeenCalledExactlyOnceWith(merged)
+    })
+  })
+})

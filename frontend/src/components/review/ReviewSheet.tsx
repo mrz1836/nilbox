@@ -4,7 +4,15 @@ import { commitsSinceAnchor } from '../../lib/commits'
 import { refText } from '../../lib/format'
 import { PicturesContext, reviewPictureLogins, usePictures } from '../../lib/pictures'
 import type { ReviewDrafts } from '../../lib/reviewDrafts'
-import { placeIn, stepTo, useActionProgress, useSheetKeys, type SheetBack } from '../../lib/sheet'
+import {
+  placeIn,
+  stepTo,
+  useActionProgress,
+  useEnded,
+  useSheetKeys,
+  type EndedItem,
+  type SheetBack,
+} from '../../lib/sheet'
 import { commentCount, entryAnchor, quoteInto } from '../../lib/timeline'
 import { useMutation } from '../../lib/useMutation'
 import { heldRuns, useReview } from '../../lib/useReview'
@@ -75,6 +83,10 @@ export interface ReviewSheetProps {
   onClose: () => void
   // onDone hears an action's outcome, once the sheet closes for it.
   onDone: (result: ReviewResult, review: Review) => void
+  // onEnded hears a read find the pull request merged or closed on GitHub since the inbox
+  // last read it (useEnded), for the host to move the sheet on from it; without it, the
+  // sheet shows it as read.
+  onEnded?: ((ended: EndedItem) => void) | undefined
   onFilesSettings?: (() => void) | undefined
   onManageReplies?: (() => void) | undefined
   // initialFocus selects the control focus starts on as the sheet opens (see Sheet), and
@@ -151,7 +163,9 @@ function ConversationSkeleton() {
 // the pull request was pushed to since, when it stays open, with the draft, to reload, and
 // after it approved the workflow runs GitHub held, when it stays open, with the draft, and
 // reads again until their checks start (HeldRuns says so), or GitHub took the approval of
-// none of them, approving them only on its site, when it stays open and reads again.
+// none of them, approving them only on its site, when it stays open and reads again. A
+// pull request a read finds merged or closed since the inbox read it goes to onEnded,
+// which moves the sheet on, so it never shows one that is no longer open as if it were.
 export function ReviewSheet({
   id,
   item,
@@ -169,6 +183,7 @@ export function ReviewSheet({
   onNavigate,
   onClose,
   onDone,
+  onEnded,
   onFilesSettings,
   onManageReplies,
   initialFocus,
@@ -422,6 +437,10 @@ export function ReviewSheet({
   // While an action runs, the sheet waits for it: it neither closes nor moves on, so the
   // outcome is never lost.
   const working = progress !== null
+
+  // A read that finds the pull request merged or closed since the inbox read it hands it to
+  // the host, which moves on from it, unless an action runs or left its notice here.
+  useEnded(review, working || pushedHere !== '' || approvedHere !== '', onEnded)
 
   const close = () => {
     if (!working) {

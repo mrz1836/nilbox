@@ -287,7 +287,9 @@ func (s *Service) Open(ctx context.Context, id int64) (Review, error) {
 // Refresh reads the pull request with id from GitHub, stores it, and returns it: one
 // GraphQL request, and its files only when it was pushed to since the sheet listed them.
 // A pull request read in the last 20 seconds is not read again, unless its card shows
-// activity since. Two refreshes of one pull request never run side by side.
+// activity since. Two refreshes of one pull request never run side by side. One the read
+// finds merged or closed is returned as read this once, its State saying which, and the
+// sheet forgets it.
 func (s *Service) Refresh(ctx context.Context, id int64) (Review, error) {
 	return s.refresh(ctx, id, false)
 }
@@ -418,11 +420,17 @@ func (s *Service) markOnGitHub(c *cached) {
 }
 
 // refresh reads the pull request with id, skipping one read recently unless force is set,
-// and returns it as Open builds it.
+// and returns it as Open builds it, or, when the read found it merged or closed, as the
+// read found it (ended).
 func (s *Service) refresh(ctx context.Context, id int64, force bool) (Review, error) {
 	return s.refreshes.Do(ctx, strconv.FormatInt(id, 10), func(ctx context.Context) (Review, error) {
-		if err := s.read(ctx, id, force); err != nil {
+		ended, err := s.read(ctx, id, force)
+		if err != nil {
 			return Review{}, err
+		}
+
+		if ended != nil {
+			return s.ended(ctx, id, ended)
 		}
 
 		return s.open(ctx, id, openPatchBytes, false)
@@ -449,6 +457,23 @@ func (s *Service) open(ctx context.Context, id, budget int64, visit bool) (Revie
 
 	s.markOnGitHub(c)
 
+	return s.built(ctx, pull, c)
+}
+
+// ended builds the sheet of the pull request with id from read, the read that found it
+// merged or closed, which the cache no longer holds: its State says which, so the window
+// learns it from the read it asked for, with no request more.
+func (s *Service) ended(ctx context.Context, id int64, read *cached) (Review, error) {
+	pull, err := s.pull(ctx, id)
+	if err != nil {
+		return Review{}, err
+	}
+
+	return s.built(ctx, pull, read)
+}
+
+// built makes the sheet from the stored pull request and c, judged by the settings.
+func (s *Service) built(ctx context.Context, pull StoredPull, c *cached) (Review, error) {
 	cfg, err := s.settings.Sensitive(ctx)
 	if err != nil {
 		return Review{}, err
@@ -510,20 +535,21 @@ func (s *Service) pull(ctx context.Context, id int64) (StoredPull, error) {
 // card, and stores the rest in the cache. A context read in the last refreshAfter, of the
 // head the inbox knows, whose card shows no activity since, is not read again, unless
 // GitHub was still working out whether it can merge (the sheet reads again for the answer)
-// or force is set.
-func (s *Service) read(ctx context.Context, id int64, force bool) error {
+// or force is set. It returns what a read that found the pull request merged or closed
+// read (endedRead), which the cache drops, and nil for any other.
+func (s *Service) read(ctx context.Context, id int64, force bool) (*cached, error) {
 	c, err := s.cache.load(ctx, id, 0)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	pull, err := s.pull(ctx, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if !force && recent(pull, c, s.now()) {
-		return nil
+		return nil, nil //nolint:nilnil // a read skipped found nothing ended
 	}
 
 	var got struct {
@@ -542,10 +568,37 @@ func (s *Service) read(ctx context.Context, id int64, force bool) error {
 		return PullRead{Update: &review.Update, Files: changedFiles(diff, c, review)}, nil
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return s.store(ctx, id, pull.Viewer, got.review, got.diff)
+	if err = s.store(ctx, id, pull.Viewer, got.review, got.diff); err != nil {
+		return nil, err
+	}
+
+	return endedRead(got.review, c, pull.Viewer, s.now()), nil
+}
+
+// endedRead is what review, a read of a pull request, found when it found it merged or
+// closed, for the sheet to show this once, since the cache drops it (store): the context
+// it read, of viewer, the signed-in account, as of now, with the visit c started (the
+// cache before the read, nil when there was none). No files: a pull request no longer
+// open is never listed again (fetch). It is nil for a read that found the pull request
+// open, or that GitHub can't find any more.
+func endedRead(review *github.PullReview, c *cached, viewer string, now time.Time) *cached {
+	if review == nil || !review.Update.Found || !review.Update.Item.Closed() {
+		return nil
+	}
+
+	read := &cached{
+		head: review.Update.Details.HeadOID, total: review.Update.Details.ChangedFiles,
+		context: contextOf(review, viewer), contextAt: now,
+	}
+
+	if c != nil {
+		read.seenAt = c.seenAt
+	}
+
+	return read
 }
 
 // recent reports that the cache c of pull holds a read recent enough to serve at now: of

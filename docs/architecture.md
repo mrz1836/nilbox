@@ -1143,7 +1143,15 @@ review the same way, and closes with one REST `PATCH` (`(*github.Client).ClosePu
 refusals `closeError` words as a close, never as a merge or a push). A comment that fails
 closes nothing, and anything that fails after it is `commented_not_closed`, decided in one
 place (`failedAfterComment`). A merge or a close takes the pull request out of every list
-(`Acted.Merged`, `Acted.Closed`) and drops its cache. It owns `review_diffs` and
+(`Acted.Merged`, `Acted.Closed`) and drops its cache. So does a read that finds one merged or
+closed, as a card still listed can be until the next refresh: the inbox's `ReadPull` stores
+its state from the answer, which takes it out of the lists and tells the window, and `Refresh`
+(and `ReadAgain`) returns it built from that read alone (`endedRead`: its context, with no
+files, since a pull request no longer open is never listed), its `State` saying `MERGED` or
+`CLOSED`, as the issue sheet returns a closed issue. The window learns it from the read it
+makes on every opening, with no request more (built from the card alone, with no cache, it
+would read as open, and the window would read it twice more for a merge state GitHub never
+works out). A read GitHub can't resolve still returns the card. It owns `review_diffs` and
 `review_diff_files`, a bounded cache of the diffs it read (per pull request, in all, and by
 age), pruned in the same transaction that writes. The one read of the pull request
 (`FetchPullReview`, one point, measured) brings its conversation too: the newest hundred
@@ -1213,7 +1221,9 @@ skew). `Refresh` reads the issue (one GraphQL point, `FetchIssueView`) unless a 
 seconds old matches the card's activity, `ReadAgain` whenever the user asks, one read per
 issue at a time (`flight.Group`), through the inbox's `Actor` (`ReadIssue`), which rewrites
 the card from the same answer and under whose lock the cache is written; a read that finds
-the issue closed or gone is returned once, built from the read, and the cache dropped.
+the issue closed or gone is returned once, built from the read, and the cache dropped. One
+found closed (its `State`) is how the window learns an issue was closed since the inbox's last
+refresh, which closes its sheet (see frontend); one gone shows as gone in the sheet.
 `Earlier` reads the timeline's page before a cursor (`FetchTimeline`, the review sheet's
 query too) through `PeekIssue`, and stores it nowhere. Every action goes through `ActIssue` and tells each step as an
 `event.IssueProgress`. A close is pinned to the comments the user saw (the earlier of the
@@ -4273,6 +4283,17 @@ each kept mounted in an `Activity` while another shows; the tab is the window's 
 (`ui.reviewTab`, which a backup never holds), and so is the order both sheets list a
 conversation in (`ui.conversationOrder`, oldest or newest first, under the description),
 which the inbox shares between them.
+Neither sheet shows an item a read of it finds merged or closed on GitHub, as a card can be
+until the inbox's next refresh: `useEnded` (`lib/sheet.ts`) hands it to the sheet's `onEnded`
+once the read's `state` says so, unless an action runs or the sheet shows the notice one left
+(the review sheet's pushed to since or runs approved, the issue sheet's, as the text a close
+someone made first kept from being posted). Its host, `InboxView` or `useSheetHost`, moves on
+as for any move: past the card the way the sheet stepped to it (`Came`, the way and the cards
+it stepped through, `stepPast`, which goes the other way when none is left that way, since the
+read took the card out of the list already), else, in the inbox, back to the sheet a link to it
+was followed from, else closed; `useItemActions`' `ended` says so in a toast ("acme-org/api#12
+was merged", with Open on GitHub). The read stored the item and told the window, so the card
+leaves the list with no request more, and the move marks it read as any does.
 `components/notifications/` is the Notifications page (`NotificationsView`, loaded on its
 first visit), whose tabs are the app's own history (`AppNotificationsTab`) and the user's
 GitHub notifications (`GitHubNotificationsTab`, with the Cleared view, `ClearedList`), each

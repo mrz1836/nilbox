@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState, type React
 import { issueTone } from '../../lib/issues'
 import { worktreeOf } from '../../lib/itemWorktrees'
 import { sessionsOf } from '../../lib/sessions'
+import { cameBy, stepPast, type Came, type EndedItem } from '../../lib/sheet'
 import { isDismissed, isMuted, isSnoozed, type TriageTab } from '../../lib/triage'
 import type { InboxState } from '../../lib/useInbox'
 import { useNowAs } from '../../lib/useNow'
@@ -72,10 +73,13 @@ function tabFor(item: InboxItem, now: Date): TriageTab {
 }
 
 // Viewing is the item a sheet shows, and its kind, which keeps the sheet as it is should
-// the item leave the list.
+// the item leave the list, and the step through the list the sheet came to it by, or null
+// when it opened on it: an item found merged or closed as it shows is stepped past the way
+// the sheet came (stepPast).
 interface Viewing {
   id: number
   kind: ItemKind
+  came: Came | null
 }
 
 // SheetHost is what a list of items does with them: the rows' triage and edits, each
@@ -135,7 +139,7 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
   }
 
   const open = (item: InboxItem) => {
-    setViewing({ id: item.id, kind: item.kind })
+    setViewing({ id: item.id, kind: item.kind, came: null })
   }
 
   const close = () => {
@@ -143,7 +147,7 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
     onClose?.()
   }
 
-  const { triage, edits, seen } = useItemActions({
+  const { triage, edits, seen, ended } = useItemActions({
     inbox: kit.inbox,
     snoozeDays: kit.snoozeDays,
     onSnoozeSettings: kit.onSnoozeSettings,
@@ -182,8 +186,27 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
   const seconds = kit.toastSeconds ?? defaultToastSeconds
   const sheetToast = <Toast toast={toast} seconds={seconds} onClose={closeToast} />
   const sheetTriage = viewed === undefined ? null : <SheetTriage item={viewed} tab={tabOf(viewed)} actions={triage} />
+  const kindOf = (id: number, was: ItemKind) => items.find((i) => i.id === id)?.kind ?? was
   const navigate = (id: number) => {
-    setViewing((was) => ({ id, kind: items.find((i) => i.id === id)?.kind ?? was?.kind ?? 'pr' }))
+    setViewing((was) => ({
+      id,
+      kind: kindOf(id, was?.kind ?? 'pr'),
+      came: was === null ? null : cameBy(items, was.id, id),
+    }))
+  }
+  // endedHere moves the sheet on from an item a read of it found merged or closed since the
+  // inbox last read it, as the inbox's sheets do: past it, the way the sheet stepped to it,
+  // or, opened on it, the sheet closes; the toast says what became of it.
+  const endedHere = (from: Viewing, gone: EndedItem) => {
+    const past = stepPast(from.came, gone.id, (id) => items.some((i) => i.id === id))
+
+    if (past === undefined) {
+      close()
+    } else {
+      setViewing({ id: past.to, kind: kindOf(past.to, from.kind), came: past.came })
+    }
+
+    ended(gone)
   }
   const done = (message: string, title: string, tone: 'success' | 'warning') => {
     close()
@@ -213,6 +236,9 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
             onDone={(result, r) => {
               done(result.message, r.title, resultTone(result))
             }}
+            onEnded={(gone) => {
+              endedHere(viewing, gone)
+            }}
             onFilesSettings={kit.onFilesSettings}
             onManageReplies={kit.onManageReplies}
             triage={sheetTriage}
@@ -236,6 +262,9 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
             onClose={close}
             onDone={(result, issue) => {
               done(result.message, issue.title, issueTone(result))
+            }}
+            onEnded={(gone) => {
+              endedHere(viewing, gone)
             }}
             onManageReplies={kit.onManageReplies}
             triage={sheetTriage}

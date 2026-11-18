@@ -21,6 +21,7 @@ import {
   itemRef,
   profile,
   prompts,
+  review as pullReview,
   routine,
   settings,
 } from '../../test/fixtures'
@@ -823,6 +824,67 @@ describe('WatchingList', () => {
       expect(screen.queryByTitle('New since you last opened it'), 'the rows read again').not.toBeInTheDocument()
     })
     expect(platform.markItemsSeen).toHaveBeenCalledTimes(3)
+  })
+
+  it('steps past watched items a read finds merged or closed, and closes the sheet opened on one', async () => {
+    // A pull request merged and an issue closed since, side by side, which the list, not
+    // read again here, keeps holding.
+    const watched = [
+      item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' }),
+      item({
+        id: 4,
+        number: 10,
+        title: 'The widget forgets its place',
+        url: 'https://github.com/acme-org/example-repo/pull/10',
+      }),
+      item({ id: 6, kind: 'issue', number: 11, title: 'The widget forgets its color' }),
+    ]
+    const named = (id: number) => {
+      const w = watched.find((c) => c.id === id) ?? item()
+
+      return { id, number: w.number, title: w.title, url: w.url }
+    }
+
+    platform.routineWatching.mockResolvedValue([2, 4, 6])
+    platform.itemsByID.mockResolvedValue(watched)
+    platform.openIssue.mockImplementation((id) => Promise.resolve(issue(named(id))))
+    platform.refreshIssue.mockImplementation((id) =>
+      Promise.resolve(issue({ ...named(id), state: id === 6 ? 'CLOSED' : 'OPEN' })),
+    )
+    platform.openReview.mockImplementation((id) => Promise.resolve(pullReview(named(id))))
+    platform.refreshReview.mockImplementation((id) =>
+      Promise.resolve(pullReview({ ...named(id), state: 'MERGED', offers: [], primary: '' })),
+    )
+    render(<Watching />, { wrapper: rows })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'The widget forgets its size' }))
+    expect(await screen.findByRole('dialog', { name: 'The widget forgets its size' })).toBeInTheDocument()
+
+    // On to #10, merged, past it to #11, closed and the last, and back to #9, never to #10.
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await waitFor(async () => {
+      expect(await screen.findByRole('group', { name: 'Notification' })).toHaveTextContent(
+        'acme-org/example-repo#11 was closed · The widget forgets its color',
+      )
+    })
+    expect(await screen.findByRole('dialog', { name: 'The widget forgets its size' })).toBeInTheDocument()
+    expect(platform.refreshReview).toHaveBeenCalledExactlyOnceWith(4)
+    expect(platform.refreshIssue).toHaveBeenCalledWith(6)
+
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'The widget forgets its place' }))
+    await waitFor(() => {
+      expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+    expect(screen.getByRole('group', { name: 'Notification' })).toHaveTextContent(
+      'acme-org/example-repo#10 was merged · The widget forgets its place',
+    )
   })
 
   it('dismisses a watched row through the inbox’s own triage, and reads the rows again as the inbox changes', async () => {
