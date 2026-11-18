@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"io"
@@ -286,10 +287,18 @@ func (e *Engine) check(ctx context.Context) (Manifest, bool, error) {
 // there is none, or none newer. reached reports that the releases answered, a manifest
 // refused included.
 func (e *Engine) latest(ctx context.Context) (m Manifest, found, reached bool, err error) {
+	return readLatest(ctx, e.feed, e.key, e.current)
+}
+
+// readLatest is latest, reading feed's latest release with key the build trusts, and
+// current its version: what a check and the bare update (Bare.Latest) share.
+func readLatest(
+	ctx context.Context, feed Feed, key ed25519.PublicKey, current string,
+) (m Manifest, found, reached bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, ManifestLimit)
 	defer cancel()
 
-	data, err := e.feed.Manifest(ctx)
+	data, err := feed.Manifest(ctx)
 	if errors.Is(err, ErrNoRelease) {
 		return Manifest{}, false, true, nil
 	}
@@ -303,11 +312,11 @@ func (e *Engine) latest(ctx context.Context) (m Manifest, found, reached bool, e
 		return Manifest{}, false, true, uierr.New("The latest release's update manifest can't be read.", err)
 	}
 
-	if err = accept(m, e.key); err != nil {
+	if err = accept(m, key); err != nil {
 		return Manifest{}, false, true, uierr.New("The latest release's update didn't check out, so it wasn't used.", err)
 	}
 
-	return m, newer(m.Version, e.current), true, nil
+	return m, newer(m.Version, current), true, nil
 }
 
 // needsDownload reports whether m isn't the update downloaded already.

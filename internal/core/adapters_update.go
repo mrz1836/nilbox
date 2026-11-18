@@ -49,6 +49,20 @@ func newUpdates(pool *sql.DB, opts Options, deps updateDeps, logger *slog.Logger
 	return engine, update.NewWorker(engine)
 }
 
+// BareUpdate builds the update the startup dialog runs when a newer build saved the data
+// this one can't open (update.Bare), before anything opens the database and without it:
+// the feed and the key opts' flavor trusts, as newUpdates hands the engine, a GitHub
+// client of its own for the release downloads alone (no token, no budget), the update
+// cache in the data folder, and the bundle it replaces.
+func BareUpdate(opts Options) *update.Bare {
+	flavor, feed, key := updateSource(opts, github.NewClient(opts.Version))
+
+	return update.NewBare(update.BareConfig{
+		Flavor: flavor, Current: opts.Release, Feed: feed, Key: key, Cache: opts.Paths.Updates,
+		Bundle: opts.Bundle, Home: opts.Home, RehearsalFolder: rehearsalFolder(opts), Logger: opts.Logger,
+	})
+}
+
 // updateSource is what a build of opts' flavor reads its releases from, and the key it
 // hands the engine: a release reads GitHub's latest release and trusts update.ReleaseKey
 // alone, whatever opts.UpdateFeed and opts.UpdateKey say; a rehearsal reads the folder
