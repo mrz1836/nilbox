@@ -851,8 +851,9 @@ func (q *Queries) UpsertWatch(ctx context.Context, arg UpsertWatchParams) error 
 const upsertWatchedItem = `-- name: UpsertWatchedItem :one
 INSERT INTO items (
     account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_association,
-    is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at, fetched_at, state, closed_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at, fetched_at, state, closed_at,
+    seen_activity_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     node_id = excluded.node_id,
     title = excluded.title,
@@ -890,13 +891,16 @@ type UpsertWatchedItemParams struct {
 	FetchedAt         time.Time
 	State             string
 	ClosedAt          *time.Time
+	SeenActivityAt    *time.Time
 }
 
 // UpsertWatchedItem stores what a routine's search says about an item, and returns its id.
 // A new item is in no list; one already stored for the same account, repository, kind,
 // and number has what GitHub says rewritten, its state included but over a merge, which
 // nothing comes back from, and keeps its lists, the times it arrived in them, and the
-// lists the user left, which only the inbox's own searches and reads change.
+// lists the user left, which only the inbox's own searches and reads change. A new item
+// counts as seen at its activity (seen_activity_at), since a watched item isn't news; one
+// already stored keeps what the user last saw.
 func (q *Queries) UpsertWatchedItem(ctx context.Context, arg UpsertWatchedItemParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, upsertWatchedItem,
 		arg.AccountID,
@@ -917,6 +921,7 @@ func (q *Queries) UpsertWatchedItem(ctx context.Context, arg UpsertWatchedItemPa
 		arg.FetchedAt,
 		arg.State,
 		arg.ClosedAt,
+		arg.SeenActivityAt,
 	)
 	var id int64
 	err := row.Scan(&id)
