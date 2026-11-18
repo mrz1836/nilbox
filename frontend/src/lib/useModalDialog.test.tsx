@@ -213,6 +213,24 @@ describe('nextFocus', () => {
     dialog.remove()
   })
 
+  it('passes over the controls of an inert part, which take no focus', () => {
+    const dialog = document.createElement('dialog')
+    const close = document.createElement('button')
+    const sample = document.createElement('div')
+    const inside = document.createElement('button')
+    sample.setAttribute('inert', '')
+    sample.append(inside)
+    dialog.append(close, sample)
+    dialog.setAttribute('open', '')
+    document.body.append(dialog)
+
+    close.focus()
+    expect(nextFocus(dialog, false)).toBe(close)
+    expect(nextFocus(dialog, true)).toBe(close)
+
+    dialog.remove()
+  })
+
   it('knows the topmost open dialog', () => {
     const a = document.createElement('dialog')
     const b = document.createElement('dialog')
