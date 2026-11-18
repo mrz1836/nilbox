@@ -252,6 +252,7 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     trust: 'member',
     trusted: true,
     authorIsBot: false,
+    authorAvatarUrl: '',
     isCrossRepository: false,
     authorAssociation: 'OWNER',
     branch: 'widget-cache',
@@ -1228,6 +1229,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     inboxOrder: { statusSorted: [], statusOrder: [], kinds: {} },
     hiddenLabels: ['size/*'],
     defaultHiddenLabels: ['size/*'],
+    cardAvatars: true,
     mergeMethod: 'repo',
     integrations: integrationsConfig(),
     githubNotifications: {

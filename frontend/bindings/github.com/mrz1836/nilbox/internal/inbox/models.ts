@@ -167,6 +167,13 @@ export interface Item {
      * AuthorIsBot reports whether GitHub reports the author as a bot.
      */
     "authorIsBot": boolean;
+
+    /**
+     * AuthorAvatarURL is a bot author's picture, on the avatar host, as GitHub gave it,
+     * for the window to ask the avatars service for; "" for a person, whose picture is
+     * asked for by login, and for a bot no read has brought one for yet.
+     */
+    "authorAvatarUrl": string;
     "isCrossRepository": boolean;
     "authorAssociation": string;
 

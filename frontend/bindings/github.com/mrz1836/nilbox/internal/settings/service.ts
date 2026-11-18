@@ -294,6 +294,14 @@ export function SetBranchRules(rules: branchrules$0.Rules): $CancellablePromise<
 }
 
 /**
+ * SetCardAvatars stores whether the inbox's cards show the authors' pictures, and returns
+ * the settings with it.
+ */
+export function SetCardAvatars(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(4040168019, on);
+}
+
+/**
  * SetClaudeAPIKey stores whether an API key in the environment may sign Claude Code in,
  * and returns the settings with it. Off, launches remove the key, so Claude Code runs on
  * the profile's own sign-in.
