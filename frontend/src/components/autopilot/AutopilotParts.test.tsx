@@ -15,6 +15,7 @@ import {
   activityPage,
   agents,
   autopilotMatch,
+  details,
   issue,
   item,
   itemRef,
@@ -797,6 +798,23 @@ describe('WatchingList', () => {
     })
 
     expect(await screen.findByRole('button', { name: 'Restore' })).toBeInTheDocument()
+  })
+
+  it('shows each watched item as the inbox’s card, with where its routine stands', async () => {
+    platform.routineWatching.mockResolvedValue([1])
+    platform.itemsByID.mockResolvedValue([item({ reviewRequest: 'you', details: details() })])
+    platform.latestAutopilotMatches.mockResolvedValue([autopilotMatch({ state: 'waiting', reason: '' })])
+    render(<Watching />, { wrapper: rows })
+
+    const list = await screen.findByRole('list', { name: 'Watching' })
+    expect(list).toHaveClass('@container')
+
+    const row = within(list).getByRole('listitem')
+    await waitFor(() => {
+      expect(row).toHaveAttribute('data-rule', 'autopilot_needs_you')
+    })
+    expect(within(row).getByText('Snooze passing bot PRs wants your OK')).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Decide' })).toBeInTheDocument()
   })
 
   it('marks the row Activity asked for once, hands the ask back, and never opens GitHub itself', async () => {

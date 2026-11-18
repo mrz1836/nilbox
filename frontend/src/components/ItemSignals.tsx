@@ -1,24 +1,9 @@
-import { use, type ReactNode } from 'react'
+import { projectText, featuredFields, projectTooltip } from '../lib/projects'
+import { openExternal, type Label, type Project, type ProjectField } from '../platform'
+import { ProjectIcon } from './icons'
 
-import { counted, formatCount } from '../lib/format'
-import { HiddenLabelsContext } from '../lib/labels'
-import { featuredFields, projectText, projectTooltip, subIssuesText } from '../lib/projects'
-import {
-  checksSignal,
-  reviewsSignal,
-  sizeOf,
-  sizeText,
-  toneText,
-  type ChecksKind,
-  type ReviewsKind,
-  type Signal,
-} from '../lib/signals'
-import { openExternal, type InboxItem, type Label, type Project, type ProjectField, type SubIssues } from '../platform'
-import { CheckIcon, ClockIcon, CommentIcon, EyeIcon, ProjectIcon, RingIcon, XIcon } from './icons'
-import { StatusDot } from './StatusDot'
-
-// shownLabels is how many labels a card shows before folding the rest into "+N".
-const shownLabels = 3
+// The parts a card, a sheet, and a conversation share to show a label, an issue's
+// project and its status there, and how far something is along.
 
 // statusTint is how strongly a project status's color tints its pill: an alpha byte
 // appended to its "#rrggbb", light enough that the ink on it keeps its contrast in both
@@ -28,84 +13,8 @@ const fieldEdge = 'b3'
 
 const iconClass = 'size-3.5 shrink-0'
 
-// columns is the width each value takes on every card, whatever it says, so the values
-// line up from card to card. Each fits the longest value a card should meet, measured in
-// the line's own font: a ch is one digit, since the line uses tabular figures. A longer
-// value still shows in full; it pushes the rest of its line along instead of overlapping.
-// Labels close the line and take what they need.
-const columns = {
-  checks: 'min-w-[8ch]', // "No checks", the longest; fractions up to "999/999"
-  reviews: 'min-w-[4.5ch]', // up to "99/99"
-  comments: 'min-w-[3ch]', // up to "999"
-  size: 'min-w-[4ch]', // "XS", the widest grade, with its border, in the badge's smaller font
-  added: 'min-w-[6.5ch]', // up to "+99,999"
-  removed: 'min-w-[6.5ch]', // up to "−99,999"
-  files: 'min-w-[6.6ch]', // up to "999 files"
-  commits: 'min-w-[10ch]', // up to "999 commits"
-} as const
-
-// checkIcons mark the checks: running ones with the dot a working session has, a ring
-// swelling out of it in the warning colour (StatusDot), held in an icon's box so the
-// columns line up; workflow runs held for a maintainer's approval with a clock; the rest
-// with a still icon.
-const checkIcons: Readonly<Record<ChecksKind, ReactNode>> = {
-  passed: <CheckIcon className={iconClass} />,
-  failed: <XIcon className={iconClass} />,
-  awaiting: (
-    <span data-checks-held className={`inline-flex items-center justify-center ${iconClass}`}>
-      <ClockIcon className={iconClass} />
-    </span>
-  ),
-  pending: (
-    <span data-checks-running className={`inline-flex items-center justify-center ${iconClass}`}>
-      <StatusDot color="bg-warning" ping />
-    </span>
-  ),
-  none: <RingIcon className={iconClass} />,
-}
-
-const reviewIcons: Readonly<Record<ReviewsKind, ReactNode>> = {
-  approved: <CheckIcon className={iconClass} />,
-  changes: <XIcon className={iconClass} />,
-  waiting: <EyeIcon className={iconClass} />,
-}
-
-interface SlotProps {
-  // long says the signal in full: the tooltip, and what a screen reader reads.
-  long: string
-  className?: string
-  children: ReactNode
-}
-
-// Slot is one signal: an icon and a short form, with the full sentence for a tooltip and
-// for screen readers. Each value in it sits in its column (see columns).
-function Slot({ long, className = '', children }: SlotProps) {
-  return (
-    <li title={long} className={`inline-flex shrink-0 items-center gap-1 ${className}`}>
-      <span aria-hidden="true" className="inline-flex items-center gap-1">
-        {children}
-      </span>
-      <span className="sr-only">{long}</span>
-    </li>
-  )
-}
-
-function SignalSlot<K extends string>({
-  signal,
-  icon,
-  column,
-}: {
-  signal: Signal<K>
-  icon: ReactNode
-  column: string
-}) {
-  return (
-    <Slot long={signal.long} className={toneText[signal.tone]}>
-      {icon}
-      <span className={column}>{signal.short}</span>
-    </Slot>
-  )
-}
+// FilterBy adds a filter to the inbox's query, or takes it away.
+type FilterBy = (key: string, value: string) => void
 
 // chipClass is a label chip's shape; a chip that filters is a button of the same shape.
 const chipClass =
@@ -144,39 +53,9 @@ export function LabelChip({ label, onFilterBy }: { label: Label; onFilterBy?: Fi
   )
 }
 
-// Labels shows the first few labels as chips with their GitHub color, and the count of
-// the rest, named in its tooltip.
-function Labels({ labels: all, onFilterBy }: { labels: Label[]; onFilterBy: FilterBy | undefined }) {
-  // The labels the user hid (Settings → Cards) are left out before the first few are taken,
-  // so a hidden one never takes a visible one's place or counts in the +N.
-  const hidden = use(HiddenLabelsContext)
-  const labels = all.filter((label) => !hidden(label.name))
-
-  if (labels.length === 0) {
-    return null
-  }
-
-  const rest = labels.slice(shownLabels)
-
-  return (
-    <li className="flex min-w-0 items-center gap-1 overflow-hidden">
-      <span className="sr-only">Labels:</span>
-      {labels.slice(0, shownLabels).map((label) => (
-        <LabelChip key={label.name} label={label} onFilterBy={onFilterBy} />
-      ))}
-      {rest.length > 0 && (
-        <span title={rest.map((label) => label.name).join(', ')} className="shrink-0 text-[0.6875rem]">
-          +{rest.length}
-          <span className="sr-only"> more: {rest.map((label) => label.name).join(', ')}</span>
-        </span>
-      )}
-    </li>
-  )
-}
-
 // FieldPill is one of a project's featured fields, such as Priority High, outlined in the
 // option's color, as a project board draws it.
-function FieldPill({ field }: { field: ProjectField }) {
+export function FieldPill({ field }: { field: ProjectField }) {
   return (
     <span
       className={`inline-flex max-w-24 shrink-0 items-center rounded-full border px-1.5 text-[0.6875rem] leading-4 font-medium text-text ${field.color === '' ? 'border-border' : ''}`}
@@ -187,9 +66,27 @@ function FieldPill({ field }: { field: ProjectField }) {
   )
 }
 
+// StatusPill is an issue's status in a project, such as In progress, as a pill tinted
+// with the status's color and a dot of it.
+export function StatusPill({ project }: { project: Project }) {
+  return (
+    <span
+      className={`inline-flex max-w-36 shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[0.6875rem] font-medium text-text ${project.statusColor === '' ? 'bg-raised' : ''}`}
+      style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor + statusTint }}
+    >
+      <span
+        aria-hidden="true"
+        className={`size-1.5 shrink-0 rounded-full ${project.statusColor === '' ? 'bg-muted' : ''}`}
+        style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor }}
+      />
+      <span className="truncate">{project.status}</span>
+    </span>
+  )
+}
+
 // ProjectLink names the project an issue is in, with its status there as a pill in the
-// status's color and its featured fields (see featuredFields) as outlined pills, and
-// opens the project on GitHub. Its tooltip lists every field.
+// status's color (StatusPill) and its featured fields (see featuredFields) as outlined
+// pills, and opens the project on GitHub. Its tooltip lists every field.
 export function ProjectLink({ project }: { project: Project }) {
   const where = projectText(project)
   const featured = featuredFields(project)
@@ -207,19 +104,7 @@ export function ProjectLink({ project }: { project: Project }) {
     >
       <ProjectIcon className={iconClass} />
       <span className="max-w-40 min-w-0 truncate group-hover/project:underline">{project.title}</span>
-      {project.status !== '' && (
-        <span
-          className={`inline-flex max-w-36 shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[0.6875rem] font-medium text-text ${project.statusColor === '' ? 'bg-raised' : ''}`}
-          style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor + statusTint }}
-        >
-          <span
-            aria-hidden="true"
-            className={`size-1.5 shrink-0 rounded-full ${project.statusColor === '' ? 'bg-muted' : ''}`}
-            style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor }}
-          />
-          <span className="truncate">{project.status}</span>
-        </span>
-      )}
+      {project.status !== '' && <StatusPill project={project} />}
       {featured.map((field) => (
         <FieldPill key={field.name} field={field} />
       ))}
@@ -245,109 +130,5 @@ export function ProgressBar({ done, total, className = 'w-10' }: ProgressBarProp
         style={{ width: `${String(total > 0 ? Math.min(done / total, 1) * 100 : 0)}%` }}
       />
     </span>
-  )
-}
-
-// SubIssueProgress shows how many of an issue's sub-issues are done, as a count and a
-// small bar, green once all are.
-function SubIssueProgress({ subIssues }: { subIssues: SubIssues }) {
-  const { total, completed } = subIssues
-
-  if (total === 0) {
-    return null
-  }
-
-  const done = completed === total
-
-  return (
-    <Slot long={`Sub-issues: ${subIssuesText(subIssues)}`} className={done ? 'text-success' : ''}>
-      <ProgressBar done={completed} total={total} />
-      <span>
-        {formatCount(completed)}/{formatCount(total)}
-      </span>
-    </Slot>
-  )
-}
-
-// Projects shows the first project an issue is in, and the count of the rest, named in
-// its tooltip with their statuses. An issue is rarely in more than one.
-function Projects({ projects }: { projects: Project[] }) {
-  const [first, ...rest] = projects
-
-  if (first === undefined) {
-    return null
-  }
-
-  const others = rest.map(projectText)
-
-  return (
-    <li className="flex min-w-0 items-center gap-1">
-      <span className="sr-only">Projects:</span>
-      <ProjectLink project={first} />
-      {rest.length > 0 && (
-        <span title={others.join('\n')} className="shrink-0 text-[0.6875rem]">
-          +{rest.length}
-          <span className="sr-only"> more: {others.join(', ')}</span>
-        </span>
-      )}
-    </li>
-  )
-}
-
-// FilterBy adds a filter to the inbox's query, or takes it away.
-type FilterBy = (key: string, value: string) => void
-
-export interface ItemSignalsProps {
-  item: InboxItem
-  // onFilterBy makes each label chip filter the inbox by its label when clicked.
-  onFilterBy?: FilterBy | undefined
-}
-
-// ItemSignals is the card's line of facts about an item. For a pull request: its checks,
-// its reviews, its comments, and its size (lines added and removed, files, commits);
-// for an issue, its comments, how far along its sub-issues are, and the GitHub projects it
-// is in, with its status and featured fields in each.
-// Labels close the line. Every value before the projects and labels keeps a fixed width,
-// so the values line up from card to card.
-export function ItemSignals({ item, onFilterBy }: ItemSignalsProps) {
-  const details = item.details
-
-  if (details === null) {
-    return <p className="mt-1.5 text-xs text-muted">Details arrive with the next refresh.</p>
-  }
-
-  const isPR = item.kind === 'pr'
-  const { additions, deletions, changedFiles, commits } = details
-  const checks = checksSignal(details.checks)
-  const reviews = reviewsSignal(details.reviews)
-
-  return (
-    <ul
-      aria-label="Details"
-      className="mt-1.5 flex min-w-0 items-center gap-x-3 overflow-hidden text-xs whitespace-nowrap text-muted tabular-nums"
-    >
-      {isPR && <SignalSlot signal={checks} icon={checkIcons[checks.kind]} column={columns.checks} />}
-      {isPR && <SignalSlot signal={reviews} icon={reviewIcons[reviews.kind]} column={columns.reviews} />}
-      <Slot long={counted(details.comments, 'comment', 'comments')}>
-        <CommentIcon className={iconClass} />
-        <span className={columns.comments}>{formatCount(details.comments)}</span>
-      </Slot>
-      {isPR && (
-        <Slot long={sizeText(additions, deletions, changedFiles, commits)}>
-          <span
-            className={`${columns.size} rounded border border-border px-1 text-center text-[0.625rem] leading-4 font-semibold text-text`}
-          >
-            {sizeOf(additions + deletions)}
-          </span>
-          <span className={`${columns.added} text-success`}>+{formatCount(additions)}</span>
-          <span className={`${columns.removed} text-danger`}>−{formatCount(deletions)}</span>
-          <span className={columns.files}>{counted(changedFiles, 'file', 'files')}</span>
-          <span className={columns.commits}>{counted(commits, 'commit', 'commits')}</span>
-        </Slot>
-      )}
-      {!isPR && <SubIssueProgress subIssues={details.subIssues} />}
-      {!isPR && <Projects projects={details.projects} />}
-      <Labels labels={details.labels} onFilterBy={onFilterBy} />
-    </ul>
   )
 }

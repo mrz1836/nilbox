@@ -25,6 +25,25 @@
   --animate-moon-in: moon-in 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
   --animate-display-in: display-in 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
 
+  /* A card's live agent pill: a bright stretch of its border runs slowly round it (see
+     .border-run). A card's Show terminal button, an agent waiting on the user, breathes: a
+     soft ring of its own color swells out of it and back. Both run only without reduced
+     motion (motion-safe:), and their elements carry data-moving. */
+  --animate-border-run: border-run 2.6s linear infinite;
+  --animate-breathe: breathe 2.2s ease-in-out infinite;
+
+  @keyframes border-run {
+    to {
+      --border-angle: 360deg;
+    }
+  }
+
+  @keyframes breathe {
+    50% {
+      box-shadow: 0 0 0 0.25rem color-mix(in oklab, currentColor 18%, transparent);
+    }
+  }
+
   @keyframes sun-in {
     from {
       opacity: 0.4;
@@ -67,6 +86,14 @@
       transform: translateY(0) scale(1);
     }
   }
+}
+
+/* The angle a .border-run pill's bright stretch starts from, registered so it can be
+   animated. */
+@property --border-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
 }
 
 /* A theme switch cross-fades the whole window, as a view transition that lib/theme.ts
@@ -119,13 +146,14 @@
 @layer components {
   /* An inbox row off screen skips rendering until it scrolls near, so a long list costs
      little more than the rows in view. Until a row has been laid out once it holds a
-     typical row's height, so the scrollbar stays steady; after that it holds its own.
+     typical row's height, so the scrollbar stays steady; after that it holds its own: a
+     Signal card's two lines and its padding measure 65 to 70px at the default text size.
      The containment this brings clips anything drawn outside the row, so a row with a
-     menu or panel open (its button aria-expanded) renders in full. WebKit before Safari
-     18 ignores both rules. */
+     menu or panel open (its button aria-expanded), or its peek, renders in full. WebKit
+     before Safari 18 ignores both rules. */
   .item-row {
     content-visibility: auto;
-    contain-intrinsic-size: auto 5.25rem;
+    contain-intrinsic-size: auto 4.125rem;
   }
 
   .item-row:has([aria-expanded='true']) {
@@ -154,6 +182,20 @@
     filter: blur(1px);
     pointer-events: none;
     user-select: none;
+  }
+
+  /* A card's live agent pill draws its border as a conic sweep of its own color over its
+     tint, so the bright stretch can run round it as animate-border-run turns the angle.
+     With reduced motion the stretch holds still. */
+  .border-run {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(
+          color-mix(in oklab, currentColor 12%, var(--color-surface)),
+          color-mix(in oklab, currentColor 12%, var(--color-surface))
+        )
+        padding-box,
+      conic-gradient(from var(--border-angle), transparent 0 62%, currentColor 82%, transparent 92%) border-box;
   }
 
   /* A row of the Notifications page off screen skips rendering too, so a history of a

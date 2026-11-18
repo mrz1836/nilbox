@@ -3822,9 +3822,12 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   1), and starts again from the newest page.
 - **`AutopilotRowsContext`** (`AutopilotChip.tsx`) carries the routines' names and the chips
   to every row, App's around the inbox and the tab, and the Watching list's own chips around
-  its rows, so a memo'd `ItemRow` renders again only in its chip and its marks
-  (`TriageTag`'s *Snoozed by ⚡ ...*) when Autopilot changes. The chip reads `ItemHistory`
-  only as its panel opens.
+  its rows. `ItemRow` never reads it: each list (`ListSection`, `WatchingList`) hands every
+  row a plain `autopilot` string, `rowAutopilot` of the item's match (`"needs:<routine>"`,
+  `"working:<routine>"`, or `''`), which the card's next step reads, so a memo'd `ItemRow`
+  renders again only when that string changes, and otherwise only in the parts that read the
+  context themselves: the chip, its marks (*Snoozed by ⚡ ...*, the pin's routine), **Decide**,
+  and the open peek. The chip reads `ItemHistory` only as its panel opens.
 - **`WatchingList`** reads `Watching`, then the inbox's `ItemsByID` a chunk at a time
   (`readItems`, again on `inbox:updated`), and renders the inbox's own `ItemRow`s, with the
   review and issue sheets over the list through `useSheetHost` (`useSheetHost.tsx`: the
@@ -4198,3 +4201,28 @@ font size, which only rem follows, and the shell passes the stored size in the p
 (`internal/desktop.PageURL`) so the first frame is already at it. A repoguard test fails
 on px text. Only chrome lined up with the native window, such as the toolbar's height and
 its inset beside the window controls, and hairlines stay in px.
+
+**The inbox cards.** `ItemRow` (a `memo` export, which the render check counts) is a Signal
+card: a grid of the edge, `card/CardAvatar`, the two-line body, the state column, and the
+action column, its widths the `--card-state` and `--card-actions` properties on the row,
+which `@max-*` container variants narrow against the list's `@container` (`ListSection`'s and
+`WatchingList`'s `<ul>`). `lib/nextStep.ts` is the pure function that decides what a card puts
+first, the first matching rule winning: its edge, its story (`card/CardStory`), its primary
+verb, whether that is quiet, and the situation that will pick the agent button's prompt
+(`LaunchControls` takes it, and reads nothing of it yet); the row passes it every
+input, and the three that depend on the time (the card's session, whether a failed one is
+fresh, back from a snooze) come from `useNowAs` as primitives, so a clock tick renders no row.
+The state column is `card/StateTrack` over `card/SizeGlyph` for a pull request, or
+`card/IssueState`, without tooltips (the numbers are in the peek and the screen-reader
+sentence), and `card/RiskChip` is the one chip for trust and sensitive files.
+`card/CardActions` renders the primary and frames `LaunchControls`' `card` variant, which
+follows the card's session (`cardSession`) and keeps its hold, take-over, and clone dialogs
+mounted; its `column` and `peek` render props keep its outcome a direct child of the row, so it
+spans `col-[3/-1]`, and hand the peek its way to the launch options. The triage
+(`TriageControls`' `card` mode, Show details, `ItemMenu`) is absolutely placed in the state
+column's grid area, both lines named, over the end of the body once a narrow list drops the
+column. A stretched toggle, the button right after the title (`absolute inset-0 z-0`,
+`tabIndex` -1), opens `card/CardPeek` on a click of empty space; every control and every
+titled element sits above it (`relative z-10`, and `z-20` while one of their panels is open),
+which keeps `jsx-a11y` strict without a disable comment. The peek reads only what the card
+has, so it costs no request.

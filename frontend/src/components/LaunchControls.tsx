@@ -1,8 +1,10 @@
-import { useId, useState } from 'react'
+import { useId, useState, type MouseEvent, type ReactNode } from 'react'
 
 import { attempt } from '../lib/call'
 import { agentName as agentLabel } from '../lib/launch'
-import { stateLabel } from '../lib/sessions'
+import type { Situation } from '../lib/nextStep'
+import { sinceWhen, stateLabel, stateText } from '../lib/sessions'
+import { formatAge } from '../lib/time'
 import {
   defaultsInput,
   emptyDefaults,
@@ -27,6 +29,7 @@ import {
   focusSession,
   launch,
   linkClone,
+  openExternal,
   removeLaunchDefaults,
   resolveLaunch,
   saveLaunchDefaults,
@@ -49,10 +52,13 @@ import {
 import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
 import { TakeOverDialog } from './autopilot/TakeOverDialog'
 import { ConfirmDialog } from './ConfirmDialog'
-import { AlertIcon, AutopilotIcon, ChevronDownIcon, TerminalIcon } from './icons'
+import { AlertIcon, AutopilotIcon, ChevronDownIcon, LockIcon, SparkIcon, TerminalIcon } from './icons'
 import { LaunchDialog } from './LaunchDialog'
 import { LaunchHoldDialog } from './LaunchHoldDialog'
 import { LaunchMenu } from './LaunchMenu'
+import { RelativeTime } from './RelativeTime'
+import { SessionDot } from './SessionDot'
+import { SessionsButton } from './SessionTag'
 
 export interface LaunchControlsProps {
   item: InboxItem
@@ -72,11 +78,38 @@ export interface LaunchControlsProps {
   // repository location.
   onSettingsSaved: (settings: Settings) => void
   // running is the item's newest session still running, if any: the button then brings
-  // its terminal tab forward instead, and a launch from the menu asks first.
+  // its terminal tab forward instead, and a launch from the menu asks first. In the card
+  // variant it is the card's session (cardSession): the newest still running, else one
+  // that ended in the last day.
   running?: AgentSession | null | undefined
+  // sessionFresh reports, for the card variant, that a failed card session failed under a
+  // day ago, as the card reads it from the clock. A failed session that isn't fresh is no
+  // session to the slot, which offers a fresh launch again; fresh by default.
+  sessionFresh?: boolean
   // initial are the choices every launch from here starts with, such as the worktree on
   // for a launch from the Worktrees view; none by default.
   initial?: Partial<Choices>
+  // variant is how the launch shows: the split button (split, the default), or a Signal
+  // card's agent slot (card), which follows the card's session.
+  variant?: 'split' | 'card'
+  // situation is the card's situation (nextStep), which picks the launch default's prompt
+  // the card's agent button runs. Nothing reads it yet: the situation prompts come next.
+  situation?: Situation
+  // outcomeClass places the launch's outcome in the grid it renders into: by default under
+  // the row's content, to its right edge.
+  outcomeClass?: string
+  // sessions are the item's sessions, newest first, which the card variant's pills open in
+  // the sessions panel.
+  sessions?: readonly AgentSession[] | undefined
+  // onOpen opens the item in its sheet, where the agent's verdict shows what it last said:
+  // the card variant's Findings pill does. Without it, Findings opens the item on GitHub.
+  onOpen?: (() => void) | undefined
+  // column frames the card variant's agent slot in the card's action column (CardActions,
+  // its primary before the slot); without it the slot stands alone.
+  column?: ((agent: ReactNode) => ReactNode) | undefined
+  // peek renders the card's peek (CardPeek), while it is open, after the action column,
+  // handing it the agent's button that opens the launch options.
+  peek?: ((launch: ReactNode) => ReactNode) | undefined
 }
 
 // LaunchState is where the row's launch stands. A launch that finds no local clone ends
@@ -149,6 +182,13 @@ export function LaunchControls({
   onSettingsSaved,
   initial,
   running = null,
+  sessionFresh = true,
+  variant = 'split',
+  outcomeClass = 'col-[2/-1] mt-1.5',
+  sessions,
+  onOpen,
+  column,
+  peek,
 }: LaunchControlsProps) {
   // start is the choices a launch starts from, and goes back to after it.
   const start: Choices = { ...noChoices, ...initial }
@@ -405,164 +445,309 @@ export function LaunchControls({
   const profileName = choices.profile === '' ? (base?.profile.value ?? '') : choices.profile
   const chip = problem !== '' ? 'No prompt' : base === null ? '…' : `${promptName} · ${profileName}`
 
-  return (
-    <>
-      <div className="self-center">
-        <div className="inline-flex items-stretch rounded-md border border-border bg-surface text-[0.8125rem]">
-          {running === null ? (
+  const launchTitle =
+    problem !== '' ? problem : base === null ? openLabel : `${openLabel} with “${promptName}” as ${profileName}`
+  const optionsLabel = `Launch options: ${chip}${changed ? ', changed for this launch' : ''}`
+  const optionsTitle = 'Prompt, profile, and options for this launch'
+
+  // showOptions opens the launch options. The desktop's WebKit focuses no button on a
+  // click. Focusing this one first makes it where the dialog gives focus back as it closes.
+  const showOptions = (e: MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.focus()
+    setOpen(true)
+  }
+
+  const dialog = open && (
+    <LaunchDialog id={id} title={openLabel} item={item} onClose={close}>
+      {base === null ? (
+        <div className="flex flex-col gap-2 p-3.5 text-sm">
+          <p className="flex items-start gap-2 text-warning">
+            <AlertIcon className="mt-0.5 size-4 shrink-0" />
+            {problem !== '' ? problem : 'Loading the launch settings…'}
+          </p>
+          {problem !== '' && (
             <button
               type="button"
-              disabled={busy || base === null}
-              onClick={launchNow}
-              title={
-                problem !== ''
-                  ? problem
-                  : base === null
-                    ? openLabel
-                    : `${openLabel} with “${promptName}” as ${profileName}`
-              }
-              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+              onClick={() => {
+                close()
+                onManagePrompts()
+              }}
+              className="self-start text-sm font-medium text-accent hover:underline"
             >
-              <TerminalIcon className="size-3.5 text-accent" />
+              Open the Prompts page
+            </button>
+          )}
+        </div>
+      ) : (
+        <LaunchMenu
+          item={item}
+          resolved={base}
+          choices={choices}
+          onChoices={(next) => {
+            setChoices(next)
+            setStatus(null)
+            setSaved(null)
+          }}
+          agents={agents}
+          profiles={profiles}
+          prompts={prompts}
+          agentName={agentName}
+          onLaunch={launchNow}
+          busy={busy}
+          onSave={(scope) => {
+            void save(scope)
+          }}
+          saving={saver.pending || undoer.pending}
+          status={status}
+          onUndo={
+            saved === null
+              ? null
+              : () => {
+                  void undo()
+                }
+          }
+          resolveError={resolveError}
+          onManagePrompts={() => {
+            close()
+            onManagePrompts()
+          }}
+          onCancel={close}
+        />
+      )}
+    </LaunchDialog>
+  )
+
+  // cardOptions is the card's ▾, the launch options: on its own, or closing the launch's
+  // split control (joined). It carries the dot of a choice changed for this launch, and
+  // the alert of a prompt that can't resolve, as the split button's arrow does.
+  const cardOptions = (joined: boolean) => (
+    <button
+      type="button"
+      // While a launch or a clone runs, the options wait with the button beside them, so
+      // nothing starts a second launch.
+      disabled={busy || resolution === null}
+      aria-label={optionsLabel}
+      title={optionsTitle}
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      aria-controls={open ? id : undefined}
+      onClick={showOptions}
+      className={`inline-flex items-center gap-1 px-1.75 text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 aria-expanded:bg-raised ${joined ? 'rounded-r-lg border-l border-border' : 'h-7.5 rounded-lg border border-border'}`}
+    >
+      {changed && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />}
+      {problem !== '' && <AlertIcon className="size-3 shrink-0 text-warning" />}
+      <ChevronDownIcon className="size-3 shrink-0" />
+    </button>
+  )
+
+  // cardSlot is the card's agent slot, by the card's session: with none, the launch, as one
+  // split control (the agent's name, and the options); while one starts or works, a pill
+  // with its state and age that opens the item's sessions, its border running slowly
+  // round, and beside it Show in terminal, or Watch for a background run; once its turn is
+  // done, a pill that shows its terminal; once it ended, a pill that opens what it found,
+  // the item's sheet, or the run's view for a background run. Waiting on the user or
+  // failed today, the card's primary is the way in, and the slot has only the options; a
+  // session that failed longer ago leaves the card to the item's own move, and the slot to
+  // a fresh launch.
+  const cardSlot = () => {
+    const session = running?.state === 'failed' && !sessionFresh ? null : running
+
+    if (session === null) {
+      // Until the agent is known, the launch names "the agent", so it never shares the
+      // name Open with the card's primary beside it.
+      return (
+        <div className="inline-flex h-7.5 items-stretch rounded-lg border border-border text-[0.8125rem]">
+          <button
+            type="button"
+            disabled={busy || base === null}
+            onClick={launchNow}
+            aria-label={agentName === '' ? 'Open in the agent' : openLabel}
+            title={launchTitle}
+            className="inline-flex items-center gap-1.5 rounded-l-lg pr-1.75 pl-2.25 font-semibold text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+          >
+            <SparkIcon className="size-3.5 shrink-0 text-accent" />
+            <span className="@max-3xl:sr-only">
               {state.kind === 'launching' || state.kind === 'linking'
                 ? 'Opening…'
                 : state.kind === 'cloning'
                   ? 'Cloning…'
-                  : openLabel}
-            </button>
-          ) : running.runId !== 0 ? (
-            <button
-              type="button"
-              disabled={busy || watch === undefined}
-              onClick={() => {
-                watch?.(running.id)
-              }}
-              title={`${agentLabel(agents, running.agent)} ${stateLabel(running.state)} in the background, for Autopilot: watch it, stop it, or take it over from its run.`}
-              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
-            >
-              <AutopilotIcon className="size-3.5 text-accent" />
-              {state.kind === 'launching' ? 'Opening…' : 'Watch'}
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={busy || !running.canFocus}
-              onClick={() => {
-                void showTerminal(running.id)
-              }}
-              title={
-                running.canFocus
-                  ? `${agentLabel(agents, running.agent)} ${stateLabel(running.state)}: show its terminal tab. To start another session, use the launch options.`
-                  : `${agentLabel(agents, running.agent)} is starting; its terminal tab can be shown once it has started.`
-              }
-              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
-            >
-              <TerminalIcon className="size-3.5 text-accent" />
-              {state.kind === 'launching' ? 'Opening…' : 'Show in terminal'}
-            </button>
-          )}
-          <button
-            type="button"
-            // While a launch or a clone runs, the options wait with the button beside them,
-            // so nothing starts a second launch.
-            disabled={busy || resolution === null}
-            aria-label={`Launch options: ${chip}${changed ? ', changed for this launch' : ''}`}
-            title="Prompt, profile, and options for this launch"
-            aria-haspopup="dialog"
-            aria-expanded={open}
-            aria-controls={open ? id : undefined}
-            onClick={(e) => {
-              // The desktop's WebKit focuses no button on a click. Focusing this one first
-              // makes it where the dialog gives focus back as it closes.
-              e.currentTarget.focus()
-              setOpen(true)
-            }}
-            className="inline-flex max-w-52 items-center gap-1 rounded-r-md border-l border-border px-2 text-xs text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised"
-          >
-            {changed && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />}
-            {problem !== '' && <AlertIcon className="size-3 shrink-0 text-warning" />}
-            <span className={`truncate ${changed ? 'font-medium text-text' : ''}`}>{chip}</span>
-            <ChevronDownIcon className="size-3 shrink-0" />
-          </button>
-        </div>
-        {open && (
-          <LaunchDialog id={id} title={openLabel} item={item} onClose={close}>
-            {base === null ? (
-              <div className="flex flex-col gap-2 p-3.5 text-sm">
-                <p className="flex items-start gap-2 text-warning">
-                  <AlertIcon className="mt-0.5 size-4 shrink-0" />
-                  {problem !== '' ? problem : 'Loading the launch settings…'}
-                </p>
-                {problem !== '' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      close()
-                      onManagePrompts()
-                    }}
-                    className="self-start text-sm font-medium text-accent hover:underline"
-                  >
-                    Open the Prompts page
-                  </button>
-                )}
-              </div>
-            ) : (
-              <LaunchMenu
-                item={item}
-                resolved={base}
-                choices={choices}
-                onChoices={(next) => {
-                  setChoices(next)
-                  setStatus(null)
-                  setSaved(null)
-                }}
-                agents={agents}
-                profiles={profiles}
-                prompts={prompts}
-                agentName={agentName}
-                onLaunch={launchNow}
-                busy={busy}
-                onSave={(scope) => {
-                  void save(scope)
-                }}
-                saving={saver.pending || undoer.pending}
-                status={status}
-                onUndo={
-                  saved === null
-                    ? null
-                    : () => {
-                        void undo()
-                      }
-                }
-                resolveError={resolveError}
-                onManagePrompts={() => {
-                  close()
-                  onManagePrompts()
-                }}
-                onCancel={close}
-              />
+                  : agentName === ''
+                    ? 'Agent'
+                    : agentName}
+            </span>
+            {untrusted && (
+              <span title="Launches read-only: an outside contributor’s" className="inline-flex">
+                <LockIcon className="size-3 shrink-0 text-warning" />
+              </span>
             )}
-          </LaunchDialog>
-        )}
-      </div>
+          </button>
+          {cardOptions(true)}
+        </div>
+      )
+    }
+
+    const name = agentLabel(agents, session.agent)
+    const label = stateLabel(session.state)
+    const since = sinceWhen(session)
+    const pill = 'inline-flex h-7.5 items-center gap-1.75 rounded-lg px-2.5 text-[0.8125rem] font-semibold'
+    const done = `${pill} border border-success/30 bg-success/11 text-success transition-colors hover:bg-success/18`
+    // age is how long the session has been as it is, after a dot when dotted; a list
+    // narrower than 48rem leaves it out.
+    const age = (dotted: boolean) =>
+      since !== '' && (
+        <>
+          {' '}
+          <span className="shrink-0 @max-3xl:hidden">
+            {dotted && '· '}
+            <RelativeTime iso={since} show={formatAge} className="font-medium text-muted tabular-nums" />
+          </span>
+        </>
+      )
+
+    switch (session.state) {
+      case 'starting':
+      case 'working':
+      case 'unknown':
+        return (
+          <>
+            <SessionsButton
+              sessions={sessions ?? [session]}
+              agents={agents}
+              align="right"
+              moving
+              shrinks
+              label={`${name} session: ${label}. Show the item's sessions`}
+              title={session.detail === '' ? `${name} ${label}` : `${name} ${label}: ${session.detail}`}
+              className={`${pill} border-run max-w-full min-w-0 ${stateText[session.state]} motion-safe:animate-border-run`}
+            >
+              <SessionDot state={session.state} />
+              <span data-pill-label className="truncate">
+                {name} {label}
+              </span>
+              {age(false)}
+            </SessionsButton>
+            {session.runId !== 0 ? (
+              <button
+                type="button"
+                aria-label="Watch"
+                disabled={busy || watch === undefined}
+                onClick={() => {
+                  watch?.(session.id)
+                }}
+                title={`${name} ${label} in the background, for Autopilot: watch it, stop it, or take it over from its run.`}
+                className="inline-flex size-7.5 items-center justify-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 disabled:hover:bg-transparent"
+              >
+                <AutopilotIcon className="size-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                aria-label="Show in terminal"
+                disabled={busy || !session.canFocus}
+                onClick={() => {
+                  void showTerminal(session.id)
+                }}
+                title={
+                  session.canFocus
+                    ? `${name} ${label}: show its terminal tab. To start another session, use the launch options.`
+                    : `${name} is starting; its terminal tab can be shown once it has started.`
+                }
+                className="inline-flex size-7.5 items-center justify-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 disabled:hover:bg-transparent"
+              >
+                <TerminalIcon className="size-3.5" />
+              </button>
+            )}
+          </>
+        )
+      case 'idle':
+        return (
+          <>
+            {session.canFocus ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  void showTerminal(session.id)
+                }}
+                title={`${name}’s turn is done: show its terminal tab`}
+                className={done}
+              >
+                <SessionDot state={session.state} />
+                <span data-pill-label>{name}’s done</span>
+                {age(true)}
+              </button>
+            ) : (
+              <SessionsButton
+                sessions={sessions ?? [session]}
+                agents={agents}
+                align="right"
+                title={`${name}’s turn is done`}
+                className={done}
+              >
+                <SessionDot state={session.state} />
+                <span data-pill-label>{name}’s done</span>
+                {age(true)}
+              </SessionsButton>
+            )}
+            {cardOptions(false)}
+          </>
+        )
+      case 'ended': {
+        const background = session.runId !== 0 && watch !== undefined
+
+        return (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                if (background) {
+                  watch(session.id)
+                } else if (onOpen === undefined) {
+                  openExternal(item.url)
+                } else {
+                  onOpen()
+                }
+              }}
+              title={`${name}’s session ended: read what it found`}
+              className={done}
+            >
+              <SparkIcon className="size-3.5 shrink-0" />
+              <span data-pill-label>Findings</span>
+              {age(true)}
+            </button>
+            {cardOptions(false)}
+          </>
+        )
+      }
+      case 'needs_approval':
+      case 'needs_input':
+      case 'failed':
+        return cardOptions(false)
+    }
+  }
+
+  // outcomes say how the last launch went, in the grid the controls render into
+  // (outcomeClass), with the dialogs a launch can open.
+  const outcomes = (
+    <>
       {state.kind === 'launched' && state.result.notice !== '' && (
-        <p role="status" className="col-[2/-1] mt-1.5 flex items-start gap-1.5 text-xs text-warning">
+        <p role="status" className={`${outcomeClass} flex items-start gap-1.5 text-xs text-warning`}>
           <AlertIcon className="mt-0.5 size-3.5 shrink-0" />
           <span>{state.result.notice}</span>
         </p>
       )}
       {state.kind === 'failed' && (
-        <p role="alert" className="col-[2/-1] mt-1.5 text-xs text-danger">
+        <p role="alert" className={`${outcomeClass} text-xs text-danger`}>
           {state.message}
         </p>
       )}
       {state.kind === 'cloning' && (
-        <p role="status" className="col-[2/-1] mt-1.5 truncate text-xs text-muted">
+        <p role="status" className={`${outcomeClass} truncate text-xs text-muted`}>
           {`Cloning ${state.target.repo} into ${state.target.dir}…`}
         </p>
       )}
       {state.kind === 'noClone' && (
-        <div className="col-[2/-1] mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+        <div className={`${outcomeClass} flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs`}>
           <p role="alert" className="text-warning">
             {state.target.taken
               ? `${noCloneOf(state.target)}, and ${state.target.dir} already exists, so it can’t be cloned there.`
@@ -607,12 +792,13 @@ export function LaunchControls({
         </div>
       )}
       {state.kind === 'linking' && (
-        <p role="status" className="col-[2/-1] mt-1.5 truncate text-xs text-muted">
+        <p role="status" className={`${outcomeClass} truncate text-xs text-muted`}>
           {`Adding your clone of ${state.target.repo}…`}
         </p>
       )}
       {state.kind === 'addLocation' && (
         <AddLocation
+          className={outcomeClass}
           linked={state.linked}
           onAdd={(folder) => {
             void addThenLaunch([folder], state.target, state.request)
@@ -688,9 +874,123 @@ export function LaunchControls({
       )}
     </>
   )
+
+  if (variant === 'card') {
+    // The slot narrows only as far as a working pill's words let it, beside a primary
+    // that leaves the pill too little of the action column.
+    const slot = (
+      <span className="inline-flex min-w-0 items-center gap-1">
+        {cardSlot()}
+        {dialog}
+      </span>
+    )
+
+    // peekLaunch is the peek's way to the launch options: the agent's name, opening the
+    // same dialog as the slot's arrow.
+    const peekLaunch = (
+      <button
+        type="button"
+        disabled={busy || resolution === null}
+        title={optionsTitle}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        onClick={showOptions}
+        className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 aria-expanded:bg-raised"
+      >
+        <SparkIcon className="size-3.5 shrink-0 text-accent" />
+        {agentName === '' ? 'Launch' : agentName}…
+      </button>
+    )
+
+    return (
+      <>
+        {column === undefined ? slot : column(slot)}
+        {peek?.(peekLaunch)}
+        {outcomes}
+      </>
+    )
+  }
+
+  return (
+    <>
+      <div className="self-center">
+        <div className="inline-flex items-stretch rounded-md border border-border bg-surface text-[0.8125rem]">
+          {running === null ? (
+            <button
+              type="button"
+              disabled={busy || base === null}
+              onClick={launchNow}
+              title={launchTitle}
+              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+            >
+              <TerminalIcon className="size-3.5 text-accent" />
+              {state.kind === 'launching' || state.kind === 'linking'
+                ? 'Opening…'
+                : state.kind === 'cloning'
+                  ? 'Cloning…'
+                  : openLabel}
+            </button>
+          ) : running.runId !== 0 ? (
+            <button
+              type="button"
+              disabled={busy || watch === undefined}
+              onClick={() => {
+                watch?.(running.id)
+              }}
+              title={`${agentLabel(agents, running.agent)} ${stateLabel(running.state)} in the background, for Autopilot: watch it, stop it, or take it over from its run.`}
+              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+            >
+              <AutopilotIcon className="size-3.5 text-accent" />
+              {state.kind === 'launching' ? 'Opening…' : 'Watch'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={busy || !running.canFocus}
+              onClick={() => {
+                void showTerminal(running.id)
+              }}
+              title={
+                running.canFocus
+                  ? `${agentLabel(agents, running.agent)} ${stateLabel(running.state)}: show its terminal tab. To start another session, use the launch options.`
+                  : `${agentLabel(agents, running.agent)} is starting; its terminal tab can be shown once it has started.`
+              }
+              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+            >
+              <TerminalIcon className="size-3.5 text-accent" />
+              {state.kind === 'launching' ? 'Opening…' : 'Show in terminal'}
+            </button>
+          )}
+          <button
+            type="button"
+            // While a launch or a clone runs, the options wait with the button beside them,
+            // so nothing starts a second launch.
+            disabled={busy || resolution === null}
+            aria-label={optionsLabel}
+            title={optionsTitle}
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            aria-controls={open ? id : undefined}
+            onClick={showOptions}
+            className="inline-flex max-w-52 items-center gap-1 rounded-r-md border-l border-border px-2 text-xs text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised"
+          >
+            {changed && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />}
+            {problem !== '' && <AlertIcon className="size-3 shrink-0 text-warning" />}
+            <span className={`truncate ${changed ? 'font-medium text-text' : ''}`}>{chip}</span>
+            <ChevronDownIcon className="size-3 shrink-0" />
+          </button>
+        </div>
+        {dialog}
+      </div>
+      {outcomes}
+    </>
+  )
 }
 
 interface AddLocationProps {
+  // className places it in the grid the launch controls render into.
+  className: string
   linked: LinkedClone
   // onAdd adds the folder as a repository location: the clone's own, or the one that
   // holds it.
@@ -701,12 +1001,12 @@ interface AddLocationProps {
 // AddLocation asks, for a clone found in a folder that holds other clones, whether to add
 // that folder as a repository location, which brings its other clones in too, or only the
 // clone.
-function AddLocation({ linked, onAdd, onCancel }: AddLocationProps) {
+function AddLocation({ className, linked, onAdd, onCancel }: AddLocationProps) {
   const { parent } = linked.location
   const others = `${String(parent.clones)} other ${parent.clones === 1 ? 'clone' : 'clones'}`
 
   return (
-    <div className="col-[2/-1] mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+    <div className={`${className} flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs`}>
       <p role="status" className="text-text">
         {`${linked.dir} is a clone. Its folder, ${parent.path}, holds ${others}.`}
       </p>

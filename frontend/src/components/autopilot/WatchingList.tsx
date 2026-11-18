@@ -1,6 +1,6 @@
 import { use, useEffect, useEffectEvent, useRef, useState } from 'react'
 
-import { inChunks } from '../../lib/autopilot'
+import { inChunks, rowAutopilot } from '../../lib/autopilot'
 import { all, andThen } from '../../lib/call'
 import { worktreeOf } from '../../lib/itemWorktrees'
 import { sessionsOf } from '../../lib/sessions'
@@ -35,9 +35,9 @@ export interface WatchingListProps {
 // WatchingList is a routine's Watching list: the items its watch finds now (those in the
 // inbox with the reasons it names and those its searches return, as the last refresh read
 // them), newest activity first, as the inbox's own rows, with their signals, launch button,
-// ⚡ chip, and ⋯ menu. A row's sheet opens on a click and steps through the list. This is
-// where an item that isn't in the inbox shows up. The tab keys it by routine, so a list
-// shows only its own routine's rows.
+// ⚡ chip, and ⋯ menu, narrowing with the list (@container). A row's sheet opens on a click
+// and steps through the list. This is where an item that isn't in the inbox shows up. The
+// tab keys it by routine, so a list shows only its own routine's rows.
 export function WatchingList({ routineId, kit, highlight, onHighlighted }: WatchingListProps) {
   const rows = use(AutopilotRowsContext)
   const ids = useQuery(() => routineWatching(routineId), [routineId])
@@ -130,7 +130,7 @@ export function WatchingList({ routineId, kit, highlight, onHighlighted }: Watch
         </p>
       ) : (
         <AutopilotRowsContext value={{ names: rows?.names ?? new Map(), chips, onShow: rows?.onShow }}>
-          <ul ref={listRef} aria-label="Watching" className="rounded-lg border border-border bg-surface">
+          <ul ref={listRef} aria-label="Watching" className="@container rounded-lg border border-border bg-surface">
             {list.map((item) => (
               <ItemRow
                 key={item.id}
@@ -145,6 +145,7 @@ export function WatchingList({ routineId, kit, highlight, onHighlighted }: Watch
                 onFilesSettings={kit.onFilesSettings}
                 highlighted={item.id === marked}
                 onOpen={host.open}
+                autopilot={rowAutopilot(chips.get(item.id))}
               />
             ))}
           </ul>

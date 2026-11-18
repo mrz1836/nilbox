@@ -1,19 +1,32 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Profiler, type ComponentType, type ReactNode } from 'react'
+import { Profiler, type ReactNode } from 'react'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { ItemRowProps } from './components/ItemRow'
 import { triageList } from './lib/triage'
-import type { InboxItem, InboxSnapshot, ListKey } from './platform'
+import type { AutopilotMatch, AutopilotState, InboxItem, InboxSnapshot, ListKey } from './platform'
 import { FIXED_NOW, fromNow } from './test/clock'
-import { details, fileCheck, githubThreads, item, list, notification, rate, snapshot } from './test/fixtures'
+import {
+  autopilotMatch,
+  details,
+  fileCheck,
+  githubThreads,
+  item,
+  itemRef,
+  list,
+  notification,
+  rate,
+  settings,
+  snapshot,
+} from './test/fixtures'
 import { emit, platform, renderApp } from './test/platform'
 
 // The render profile: a 300-item inbox, and how much of it renders again for a minute
 // tick, a background update that changes one item, a GitHub notifications update and an
 // update of the app's own notifications, which the cards don't show, collapsing a list, leaving the inbox and coming back, and
-// filtering it and clearing the filter. It runs twice. In the unit tests the components run as written,
+// filtering it and clearing the filter; then, with Autopilot on, an Autopilot update that
+// changes where a routine stands on one item. It runs twice. In the unit tests the components run as written,
 // where the bounds below hold however much a parent renders again. `pnpm test:renders`
 // (vitest.renders.config.ts) runs it through the React Compiler, as the build ships, where
 // the tighter bounds hold, and prints what it measured.
@@ -26,10 +39,13 @@ const compiled = import.meta.env.REACT_COMPILER === '1'
 const counts = vi.hoisted(() => ({ rows: 0, mounts: 0, commits: 0, ms: 0 }))
 
 // ItemRow is wrapped, memo and all, so every render and every mount of a row is counted.
+// The counted row calls the unwrapped row as a function, so the row's own hooks (a clock
+// read through useNowAs, a context) belong to the counted component: a row that renders
+// again from one of them is counted too, not only one its list renders again.
 vi.mock('./components/ItemRow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./components/ItemRow')>()
-  const { createElement, memo, useState } = await import('react')
-  const Row = (actual.ItemRow as unknown as { type: ComponentType<ItemRowProps> }).type
+  const { memo, useState } = await import('react')
+  const Row = (actual.ItemRow as unknown as { type: (props: ItemRowProps) => ReactNode }).type
 
   // counted records a render of a row. The count is kept outside React on purpose: it is
   // how often React renders the row.
@@ -43,7 +59,7 @@ vi.mock('./components/ItemRow', async (importOriginal) => {
     })
     counted()
 
-    return createElement(Row, props)
+    return Row(props)
   }
 
   return { ...actual, ItemRow: memo(CountedRow) }
@@ -336,4 +352,51 @@ describe('App rendering', () => {
       console.warn(['render profile (rows rendered / rows mounted / commits / ms rendering):', ...steps].join('\n'))
     }
   })
+
+  // match is a routine's newest match on item id, in state.
+  function match(id: number, state: AutopilotState): AutopilotMatch {
+    return autopilotMatch({ id, item: itemRef({ id }), state, reason: '', steps: [], effects: [] })
+  }
+
+  it(
+    'renders again, for an Autopilot update, only the cards whose routine’s standing changed',
+    { timeout: 60_000 },
+    async () => {
+      setUp()
+      answerThreads(0)
+      platform.getSettings.mockResolvedValue(settings({ autopilot: { ...settings().autopilot, enabled: true } }))
+      let matches = [match(1, 'waiting'), match(2, 'done')]
+      platform.latestAutopilotMatches.mockImplementation(() => Promise.resolve(structuredClone(matches)))
+      const rows = shown('reviewRequested') + shown('yours')
+      // rule is the rule item id's card shows.
+      const rule = (id: number) => document.querySelector(`[data-item-id="${String(id)}"]`)?.getAttribute('data-rule')
+
+      await renderApp({ now: () => new Date(), wrapper: Profiled })
+      await screen.findByText('Item 1', {}, wait)
+      await waitFor(() => {
+        expect(rule(1)).toBe('autopilot_needs_you')
+      }, wait)
+
+      // Item 2's chip changes, but not where its routine stands; item 3's routine starts work.
+      matches = [match(1, 'waiting'), match(2, 'closed'), match(3, 'running')]
+      const update = await measure(async () => {
+        act(() => {
+          emit('autopilot:updated')
+        })
+        await waitFor(() => {
+          expect(rule(3)).toBe('agent_working')
+        }, wait)
+      })
+
+      expect(rule(2)).toBe('waiting')
+      expect(update.mounts).toBe(0)
+      expect(update.rows).toBeLessThanOrEqual(compiled ? 1 : 2 * rows)
+
+      if (compiled) {
+        console.warn(
+          `render profile, Autopilot update (rows rendered / rows mounted / commits / ms rendering): ${String(update.rows)} / ${String(update.mounts)} / ${String(update.commits)} / ${String(update.ms)}`,
+        )
+      }
+    },
+  )
 })

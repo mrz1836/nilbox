@@ -62,7 +62,7 @@ export function mutedTarget(item: InboxItem, rules: RepoRules): string {
 }
 
 // pinnedTarget is the target whose rule pins an item, as mutedTarget finds a mute's.
-function pinnedTarget(item: InboxItem, rules: RepoRules): string {
+export function pinnedTarget(item: InboxItem, rules: RepoRules): string {
   const applied = ruleFor(rules, item.repo)
 
   return applied.rule === 'pinned' ? applied.target : item.repo
@@ -77,6 +77,10 @@ export interface TriageControlsProps {
   // Refresh button shares them with the row's menu.
   work: RowWork
   start: StartWork
+  // mode is where the controls sit: a row of today's inbox (row, the default), or the
+  // triage group a Signal card shows over its state column while the pointer is on it
+  // (card), whose primary button already brings a set-aside item back.
+  mode?: 'row' | 'card'
 }
 
 // hoverClass shows a row's quiet controls while the pointer is on the row or focus is in
@@ -241,10 +245,48 @@ function DismissButton({ item, actions }: { item: InboxItem; actions: TriageActi
   )
 }
 
+// BringBackAction is how a set-aside tab brings an item back: the button's words, its
+// accessible name, its tooltip, and what it does.
+export interface BringBackAction {
+  label: string
+  name: string
+  title: string
+  run: () => void
+}
+
+// bringBack is the action of the tab an item is set aside in: Unsnooze or Restore, which
+// put it back in the list, or, in the Muted tab, Unmute, which unmutes the repository or
+// org that mutes it.
+export function bringBack(item: InboxItem, tab: Exclude<TriageTab, 'inbox'>, actions: TriageActions): BringBackAction {
+  if (tab === 'muted') {
+    const target = mutedTarget(item, actions.repoRules)
+
+    return {
+      label: 'Unmute',
+      name: `Unmute ${target}`,
+      title: `Unmute ${target}: its items go back to the lists`,
+      run: () => {
+        actions.onRepoRule(target, '')
+      },
+    }
+  }
+
+  const snoozed = tab === 'snoozed'
+  const label = snoozed ? 'Unsnooze' : 'Restore'
+
+  return {
+    label,
+    name: label,
+    title: snoozed ? 'End the snooze and put it back in the list now' : 'Put it back in the list',
+    run: () => {
+      actions.onRestore(item)
+    },
+  }
+}
+
 // BringBack is the one button of the tabs an item is set aside in, always shown, since
-// bringing items back is what those tabs are for: Unsnooze or Restore, which put it back in
-// the list, or, in the Muted tab, Unmute, which unmutes the repository or org that mutes it.
-// A pinned item's pin sits beside it.
+// bringing items back is what those tabs are for (bringBack). A pinned item's pin sits
+// beside it.
 function BringBack({
   item,
   tab,
@@ -254,42 +296,19 @@ function BringBack({
   tab: Exclude<TriageTab, 'inbox'>
   actions: TriageActions
 }) {
-  if (tab === 'muted') {
-    const target = mutedTarget(item, actions.repoRules)
-
-    return (
-      <div className="flex items-center gap-0.5 self-center">
-        <button
-          type="button"
-          aria-label={`Unmute ${target}`}
-          title={`Unmute ${target}: its items go back to the lists`}
-          onClick={() => {
-            actions.onRepoRule(target, '')
-          }}
-          className={ghostClass}
-        >
-          <MuteIcon className="size-3.5" />
-          Unmute
-        </button>
-        {isPinned(item) && <PinButton item={item} actions={actions} />}
-      </div>
-    )
-  }
-
-  const snoozed = tab === 'snoozed'
+  const action = bringBack(item, tab, actions)
 
   return (
     <div className="flex items-center gap-0.5 self-center">
       <button
         type="button"
-        title={snoozed ? 'End the snooze and put it back in the list now' : 'Put it back in the list'}
-        onClick={() => {
-          actions.onRestore(item)
-        }}
+        aria-label={tab === 'muted' ? action.name : undefined}
+        title={action.title}
+        onClick={action.run}
         className={ghostClass}
       >
-        <ResetIcon className="size-3.5" />
-        {snoozed ? 'Unsnooze' : 'Restore'}
+        {tab === 'muted' ? <MuteIcon className="size-3.5" /> : <ResetIcon className="size-3.5" />}
+        {action.label}
       </button>
       {isPinned(item) && <PinButton item={item} actions={actions} />}
     </div>
@@ -301,10 +320,24 @@ function BringBack({
 // one click, with the arrow for another), Dismiss, and Pin, shown while the pointer is on
 // the row or focus is in it, so the cards stay clean, and while a refresh runs. A pinned
 // item's pin is always shown, filled, and unpins it. In the Snoozed, Dismissed, and Muted
-// tabs they are the one button that brings it back (BringBack).
-export function TriageControls({ item, tab, actions, work, start }: TriageControlsProps) {
+// tabs they are the one button that brings it back (BringBack). In a card's mode every
+// button shows only while the pointer or focus is on the card, a pinned item's pin too,
+// since the card marks a pinned item before its title, and an item pinned only with its
+// repository or org has no pin here at all: the card's mark says so, and a card doesn't
+// unpin a repository. In the set-aside tabs the card's primary brings the item back, so
+// its triage is Pin or Unpin alone.
+export function TriageControls({ item, tab, actions, work, start, mode = 'row' }: TriageControlsProps) {
+  const hover = hoverClass(work)
+  const card = mode === 'card'
+  // pin is the pin button, but none on a card for an item pinned only by a rule.
+  const pin = card && isPinned(item) && !isPinnedItself(item) ? null : <PinButton item={item} actions={actions} />
+
   if (tab !== 'inbox') {
-    return <BringBack item={item} tab={tab} actions={actions} />
+    return card ? (
+      pin !== null && <div className={`${hover} self-center`}>{pin}</div>
+    ) : (
+      <BringBack item={item} tab={tab} actions={actions} />
+    )
   }
 
   const refreshing = work === 'refresh'
@@ -312,8 +345,6 @@ export function TriageControls({ item, tab, actions, work, start }: TriageContro
   const refresh = () => {
     start('refresh', () => actions.onRefresh(item))
   }
-
-  const hover = hoverClass(work)
 
   return (
     <div className="flex items-center gap-0.5 self-center">
@@ -331,10 +362,9 @@ export function TriageControls({ item, tab, actions, work, start }: TriageContro
         <SnoozeSplit item={item} actions={actions} />
         <DismissButton item={item} actions={actions} />
       </div>
-      {/* A pinned item's pin shows without hovering, to mark it and unpin it. */}
-      <div className={isPinned(item) ? 'flex' : hover}>
-        <PinButton item={item} actions={actions} />
-      </div>
+      {/* A pinned item's pin shows without hovering, to mark it and unpin it, except on a
+          card, whose title line marks it. */}
+      {pin !== null && <div className={isPinned(item) && !card ? 'flex' : hover}>{pin}</div>}
     </div>
   )
 }

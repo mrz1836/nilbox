@@ -145,8 +145,8 @@ describe('App', () => {
 
     await renderApp()
 
-    const tag = await screen.findByRole('button', { name: /Claude session: working/ })
-    expect(tag).toHaveTextContent('Claude · working')
+    const pill = await screen.findByRole('button', { name: /Claude session: working/ })
+    expect(pill).toHaveTextContent(/^Claude working/)
     expect(platform.listWorktrees).not.toHaveBeenCalled()
 
     platform.listSessions.mockResolvedValue(sessionsSnapshot([agentSession()]))
@@ -154,7 +154,8 @@ describe('App', () => {
       emit('sessions:updated')
     })
 
-    expect(await screen.findByRole('button', { name: /Claude session: needs approval/ })).toBeInTheDocument()
+    const terminal = await screen.findByRole('button', { name: 'Show terminal' })
+    expect(terminal.closest('li')).toHaveAttribute('data-rule', 'session_needs_you')
   })
 
   it('switches between the inbox and the worktrees view', async () => {
@@ -384,7 +385,7 @@ describe('App', () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([outside]) }))
     await renderApp()
 
-    await userEvent.click(await screen.findByRole('button', { name: /^Changes sensitive files/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Outside · Agent config · Workflows' }))
     await userEvent.click(screen.getByRole('button', { name: 'What counts as sensitive' }))
 
     expect(screen.getByRole('region', { name: 'Sensitive files' })).toBeInTheDocument()
@@ -460,7 +461,7 @@ describe('App', () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([bot]) }))
     await renderApp()
 
-    expect(await screen.findByText('untrusted bot')).toBeInTheDocument()
+    expect(await screen.findByText('Untrusted bot')).toBeInTheDocument()
 
     await openSettingsFromMenu()
     await userEvent.click(screen.getByRole('button', { name: 'Trust' }))
@@ -474,8 +475,10 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Trust bot' }))
     await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
 
-    expect(await screen.findByText('bot')).toBeInTheDocument()
-    expect(screen.queryByText('untrusted bot')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('Untrusted bot')).not.toBeInTheDocument()
+    })
+    expect(document.querySelector('[data-avatar="bot"]')).toBeInTheDocument()
   })
 
   it('opens the Prompts page and keeps it while switching tabs', async () => {
@@ -631,6 +634,8 @@ describe('App', () => {
                 agent: 'codex',
                 lastLaunchedAt: '2026-06-15T09:00:00Z',
                 launches: 1,
+                dirty: true,
+                dirtyCount: 2,
               }),
               worktree({
                 path: '/home/user/projects/example-repo/.claude/worktrees/pr-8',
@@ -668,9 +673,7 @@ describe('App', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
 
-    expect(await screen.findByTitle('~/projects/example-repo/.claude/worktrees/pr-7')).toHaveTextContent(
-      /^worktree · Codex \S+ ago$/,
-    )
+    expect(await screen.findByTitle('~/projects/example-repo/.claude/worktrees/pr-7')).toHaveTextContent(/^2 changes$/)
   })
 
   it('shows a running session’s terminal from its card and its worktree, rather than starting another', async () => {
