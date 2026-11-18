@@ -95,6 +95,11 @@ type LaunchItem struct {
 	IsCrossRepository bool
 	IsDraft           bool
 
+	// ViewerReviewCommit is the commit the user's standing verdict on a pull request, an
+	// approval or a request for changes, was left on, as the inbox last read it; "" with
+	// none.
+	ViewerReviewCommit string
+
 	// RepoID, Owner, and Name are the item's repository.
 	RepoID int64
 	Owner  string
@@ -173,7 +178,7 @@ func launchItemOf(r queries.ListLaunchItemsRow) (LaunchItem, error) {
 	return LaunchItem{
 		ID: r.ID, Kind: item.Kind(r.Kind), Number: int(r.Number), URL: r.URL, Title: r.Title, HeadRef: r.HeadRef,
 		AuthorLogin: r.AuthorLogin, AuthorType: r.AuthorType, AuthorAssociation: r.AuthorAssociation,
-		IsCrossRepository: r.IsCrossRepository, IsDraft: r.IsDraft,
+		IsCrossRepository: r.IsCrossRepository, IsDraft: r.IsDraft, ViewerReviewCommit: r.ViewerReviewCommit,
 		RepoID: r.RepoID, Owner: r.Owner, Name: r.Name, LocalPath: r.LocalPath, DefaultBranch: r.DefaultBranch,
 		Labels: labels, Additions: int(store.Deref(r.Additions)), Deletions: int(store.Deref(r.Deletions)),
 		ChangedFiles: int(store.Deref(r.ChangedFiles)), Commits: int(store.Deref(r.Commits)),

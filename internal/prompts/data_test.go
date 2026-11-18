@@ -2,6 +2,7 @@ package prompts
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -80,6 +81,42 @@ func TestValues(t *testing.T) {
 	assert.Equal(t, "true", got["IsPR"])
 	assert.Equal(t, "false", got["WorktreeOnPRHead"])
 	assert.Equal(t, "pr-7", got["Worktree"])
+}
+
+func TestReviewedCommitIsOnlyEverACommit(t *testing.T) {
+	t.Parallel()
+
+	const full = "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d"
+
+	sha256 := full + "0123456789abcdef01234567"
+
+	for stored, want := range map[string]string{
+		full:                     full,
+		strings.ToUpper(full):    full,
+		sha256:                   sha256,
+		"9e8d7c6":                "9e8d7c6",
+		"9e8d7c":                 "",
+		sha256 + "0":             "",
+		"9e8d7c6b5a4f3e2d1c0b9a": "9e8d7c6b5a4f3e2d1c0b9a",
+		"main":                   "",
+		"x;$(id)":                "",
+		"":                       "",
+	} {
+		assert.Equal(t, want, CommitID(stored), "%q", stored)
+
+		d := Sample(item.KindPR)
+		d.ReviewedCommit = stored
+		assert.Equal(t, want, d.sanitized().ReviewedCommit, "sanitized %q", stored)
+	}
+
+	pr := Sample(item.KindPR)
+	assert.Equal(t, sampleReviewedCommit, pr.ReviewedCommit, "the sample pull request was reviewed before")
+	assert.Equal(t, sampleReviewedCommit, pr.Values()["ReviewedCommit"])
+	assert.Empty(t, Sample(item.KindIssue).ReviewedCommit, "an issue has none")
+
+	reviewed := Variables()[slices.IndexFunc(Variables(), func(v Variable) bool { return v.Name == "ReviewedCommit" })]
+	assert.True(t, reviewed.PROnly)
+	assert.Equal(t, groupPR, reviewed.Group)
 }
 
 func TestAppliesToCovers(t *testing.T) {

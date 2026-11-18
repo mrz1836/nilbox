@@ -43,6 +43,10 @@ type StoredItem struct {
 	IsCrossRepository bool
 	IsDraft           bool
 
+	// ViewerReviewCommit is the commit the user's standing verdict on a pull request was
+	// left on, as the inbox last read it; "" with none.
+	ViewerReviewCommit string
+
 	// RepoID, Owner, and Name are the item's repository.
 	RepoID int64
 	Owner  string
@@ -171,6 +175,7 @@ func (r launchItemRow) promptData(policy trust.Policy, profile, viewer string, c
 	if isPR {
 		d.IsDraft, d.Branch, d.HasConflicts = r.IsDraft, r.HeadRef, r.Mergeable == "CONFLICTING"
 		d.HeadCommit = strings.ToLower(r.HeadOID)
+		d.ReviewedCommit = prompts.CommitID(r.ViewerReviewCommit)
 		d.Checks, d.Review = checksWord(r.ChecksState), reviewWord(r.ReviewDecision)
 		d.Additions, d.Deletions, d.ChangedFiles, d.Commits = r.Additions, r.Deletions, r.ChangedFiles, r.Commits
 		d.FailedChecks = strings.Join(r.FailedChecks, ", ")

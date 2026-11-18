@@ -318,7 +318,7 @@ func sampleVariants(kind item.Kind) []Data {
 	if flipped.IsPR {
 		flipped.Dependency, flipped.FromVersion, flipped.ToVersion, flipped.UpdateType = "golang.org/x/net", "0.30.0",
 			"0.31.0", "minor"
-		flipped.FailedChecks, flipped.Remote, flipped.HeadCommit = "CodeQL / Analyze", "", ""
+		flipped.FailedChecks, flipped.Remote, flipped.HeadCommit, flipped.ReviewedCommit = "CodeQL / Analyze", "", "", ""
 	}
 
 	flipped.SensitiveFiles = ".github/workflows/ci.yml (Workflows)"
