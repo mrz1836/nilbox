@@ -573,6 +573,29 @@ describe('ItemRow agent', () => {
     expect(options).toHaveClass('rounded-r-lg', 'border', 'border-l-0', 'focus-visible:-outline-offset-2')
   })
 
+  it('keeps a done session’s pill on one line beside Review, its age cut first, the ▾ attached at the slot’s end', () => {
+    const idle = agentSession({ state: 'idle', detail: '', stateAt: '2026-06-15T12:00:00Z' })
+    const row = mountCard(asked(), { sessions: [idle] })
+
+    expect(within(row).getByRole('button', { name: 'Review' })).toBeInTheDocument()
+    const pill = within(row).getByRole('button', { name: 'Claude’s done · just now' })
+
+    // One line that truncates at its end: nowrap, clipped, with an ellipsis, the age last.
+    const words = pill.querySelector('[data-pill-label]') as HTMLElement
+    expect(words).toHaveTextContent(/^Claude’s done · just now$/)
+    expect(words).toHaveClass('min-w-0', 'truncate')
+    expect(words.lastElementChild).toHaveTextContent('· just now')
+    // The pill narrows within its border; its dot and the ▾ keep their width.
+    expect(pill).toHaveClass('min-w-0', 'border')
+    expect(pill.querySelector('[data-moving], span[aria-hidden="true"]')).toHaveClass('shrink-0')
+
+    const options = within(row).getByRole('button', { name: /^Launch options/ })
+    expect(options).toHaveClass('shrink-0', 'rounded-r-lg', 'border-l-0')
+    expect(options.parentElement).toBe(pill.parentElement)
+    expect(options.parentElement?.lastElementChild).toBe(options)
+    expect(options.closest('[data-agent-slot]')).toHaveClass('justify-end')
+  })
+
   it('starts every card’s primary, and ends every card’s ▾, at the same place', () => {
     const failed = agentSession({ state: 'failed', stateAt: '2026-06-15T11:00:00Z', detail: '' })
     const ended = agentSession({ state: 'ended', endedAt: '2026-06-15T11:59:00Z', canFocus: false })
