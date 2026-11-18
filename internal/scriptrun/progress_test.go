@@ -306,11 +306,20 @@ func TestProgressIsToldWhenItChanges(t *testing.T) {
 
 	h.waitProgress(id, Progress{Step: "one", Working: "two"})
 
+	// The window reads the progress from the kind's reader as soon as the follower feeds it
+	// the lines, and the follower tells Progressed only after that, so Progressed is waited
+	// for rather than taken to have heard by then.
+	require.Eventually(t, func() bool {
+		counts.mu.Lock()
+		defer counts.mu.Unlock()
+
+		return counts.progressed >= 1
+	}, wait, poll, "Progressed hears the new step")
+
 	counts.mu.Lock()
 	told, starts, ids := counts.progressed, counts.changed, slices.Clone(counts.ids)
 	counts.mu.Unlock()
 
-	assert.GreaterOrEqual(t, told, 1, "Progressed hears the new step")
 	assert.Equal(t, slices.Repeat([]int64{id}, told), ids, "with the run's ID")
 	assert.LessOrEqual(t, told, 2, "once per change it read, at most")
 	assert.Equal(t, 1, starts, "Changed hears only that the run started")
