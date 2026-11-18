@@ -230,7 +230,10 @@ database back when the copy fails.
 GitHub can't give back. `prompts.LibraryFile` rewrites `prompts.json` beside the database
 after every change to the library, and `launchdefaults.File` rewrites
 `launch-defaults.json` after every change to the launch defaults or the library, since it
-names prompts by nickname. At startup, when the library is new, `prompts.Restore` brings it
+names prompts by nickname: each row's six default prompts, the kinds' and the situations'
+(`launchdefaults.Kept`, the four situations' left out when they inherit, so an older copy
+inherits them), which `promptsOf` lists once for the copy, a restore, and a backup's
+import. At startup, when the library is new, `prompts.Restore` brings it
 back before `Seed` runs, from the database set aside or else from `prompts.json`, and core
 (`internal/core/kept.go`) restores the launch defaults from the same place, matched to the
 restored prompts. Core writes each copy at startup only when it is missing or the data was
@@ -258,7 +261,12 @@ request can be in (`prompts.DefaultSlot`'s `checks_failing`, `conflicts`, `chang
 and `rereview`, the prefs `prompts.default.<slot>`) once, from the library's copy of the
 slot's starter when it has one, and records the slot in `prompts.seededSlots` either way, so a
 slot the user cleared, or whose starter they deleted, stays as they left it; unlike a kind's, a
-situation's default never falls back to another prompt. A starter's command names a value a repository, a clone's config, or an
+situation's default never falls back to another prompt. The record travels with the library
+like `prompts.seeded`: a whole library's `prompts.Bundle` carries it as `slotsSeeded`
+(`prompts.json`, an export, a backup's prompts section), `snapshotRecords` reads it and the
+four situations' prefs out of a database set aside, and `prompts.Restore` stores it, so a reset
+or a restore never fills a cleared slot again, while a library restored from a file without
+it, as an older build's, has each slot filled once. A starter's command names a value a repository, a clone's config, or an
 author chose only when it is plain (`.BranchIsPlain`, `.RemoteIsPlain`, worked out from the
 raw value in `Data.sanitized`, since sanitizing can hide characters), and then through the
 `shellquote` template function (`TestStarterCommandsAreInert`). The file format is `prompts.Bundle`, specified in

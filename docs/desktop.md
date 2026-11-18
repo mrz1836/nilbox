@@ -4193,7 +4193,8 @@ them in more than one place and brings them back on its own when it can.
   set aside, the app reads the prompts out of the database set aside, whatever version of the
   app wrote it, and stores them in the fresh one before adding any starter. When that file
   can't be read, it uses `prompts.json`. Your edits, your own prompts, the defaults for pull
-  requests and issues, and the starters you deleted (which stay deleted) all come back, and the
+  requests and issues, the prompt for each situation a pull request can be in (one you cleared
+  stays cleared), and the starters you deleted (which stay deleted) all come back, and the
   window says so. When the database is missing altogether, as on a new Mac where you copied only
   `prompts.json`, the library comes back from `prompts.json` the same way.
 - **The copy is never overwritten by a loss.** At startup the app writes `prompts.json` only when

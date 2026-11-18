@@ -23,9 +23,11 @@ setting a prompt has, and you can edit one by hand.
   "defaults": {
     "pr": "Review",
     "issue": "Work on it",
+    "checksFailing": "Fix checks",
     "replies": {"approve": "LGTM", "approve_bots": "Update OK"}
   },
   "startersAdded": ["review-pr", "work-on-issue", "quick-look", "fix-checks", "reply-lgtm", "reply-update-ok"],
+  "slotsSeeded": ["checks_failing", "conflicts", "changes_requested", "rereview"],
   "prompts": [
     {
       "name": "Look for security problems",
@@ -59,6 +61,7 @@ setting a prompt has, and you can edit one by hand.
 | `app` | The version of the app that wrote it. Informational only. |
 | `defaults` | The app's default prompt for pull requests (`pr`) and issues (`issue`), each by nickname among the file's prompts, or `""`; its prompt for a pull request whose checks fail (`checksFailing`), that conflicts with its base (`conflicts`), that a reviewer asked to change (`changesRequested`), and that you're asked to review again (`rereview`), each by nickname and left out when none of the file's prompts is it (an older file has none); and `replies`, the default [review replies](desktop.md#review-replies) by slot (`approve`, `approve_bots`, `request_changes`, `comment`), each by nickname. A slot whose default is none of the file's prompts is left out, as is `replies` when none is. |
 | `startersAdded` | The starter prompts the library had been given, by key. Restoring a library from the file keeps a starter you deleted from coming back. Only a whole-library file fills it in. |
+| `slotsSeeded` | The situations (`checks_failing`, `conflicts`, `changes_requested`, `rereview`) whose prompt the library had already set up, which it does once, on the situation's starter when it has one. Restoring a library from the file keeps a situation's prompt you cleared from coming back. Only a whole-library file fills it in, and it is left out when empty; a library restored from a file without it, as an older one, gives each situation its starter once. |
 | `prompts` | The prompts, at most 1,000. |
 
 Each prompt:
@@ -107,8 +110,9 @@ Each prompt:
   Each change is shown before you import.
 - **The file's defaults are offered, never taken unasked.** An import lists each of the file's
   `defaults` that would change your library's (the default prompt for pull requests or for
-  issues, or one of the default replies), but only where its prompt fits the slot: an agent
-  prompt that applies to that kind of item, or a reply for that review that applies to pull
+  issues, the prompt for one of a pull request's situations, or one of the default replies),
+  but only where its prompt fits the slot: an agent prompt that applies to that kind of item
+  (to pull requests, for a situation), or a reply for that review that applies to pull
   requests. Each has a box, ticked to start with, and says what it replaces. A default follows
   its prompt through the import, to the free nickname a prompt is renamed to, or to the prompt
   your library already holds when it is left out as already there. A default whose prompt you
