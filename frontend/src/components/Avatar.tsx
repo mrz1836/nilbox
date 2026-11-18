@@ -21,31 +21,63 @@ const glyphs: Readonly<Record<AvatarSize, string>> = {
   lg: 'size-7',
 }
 
-// Picture is a round profile picture from src, a data: URL, or, without one or should it
-// fail to decode, what stands in for it.
-function Picture({ src, size, children }: { src: string; size: AvatarSize; children: ReactNode }) {
-  // failed is the picture that could not be shown, so a new picture gets a fresh try.
+// PictureShape is a picture's outline: a circle for a person, a rounded square for a bot.
+type PictureShape = 'circle' | 'square'
+
+const outlines: Readonly<Record<PictureShape, string>> = {
+  circle: 'rounded-full',
+  square: 'rounded-lg',
+}
+
+interface PictureProps {
+  // src is the picture, a data: URL, or '' while there is none.
+  src: string
+  // className is the picture's own classes: its size, and any ring.
+  className: string
+  shape?: PictureShape
+  // children is what stands in for the picture.
+  children: ReactNode
+}
+
+// Picture is a profile picture from src, a data: URL, in a circle, or a rounded square for a
+// bot. What stands in for it shows until it decodes, and instead of it when there is none or
+// it fails to decode; meanwhile it waits hidden, so it never shows as an empty box.
+export function Picture({ src, className, shape = 'circle', children }: PictureProps) {
+  // decoded is the picture that decoded, and failed the one that could not, so a new
+  // picture waits for its own decoding and gets a fresh try.
+  const [decoded, setDecoded] = useState('')
   const [failed, setFailed] = useState('')
-  const box = `${boxes[size]} shrink-0 rounded-full`
+  const loading = src !== '' && src !== failed
+  const shown = loading && src === decoded
 
-  if (src !== '' && src !== failed) {
-    return (
-      <img
-        src={src}
-        alt=""
-        draggable={false}
-        onError={() => {
-          setFailed(src)
-        }}
-        className={`${box} bg-raised object-cover`}
-      />
-    )
-  }
+  return (
+    <>
+      {!shown && children}
+      {loading && (
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          hidden={!shown}
+          onLoad={() => {
+            setDecoded(src)
+          }}
+          onError={() => {
+            setFailed(src)
+          }}
+          className={`${className} shrink-0 ${outlines[shape]} bg-raised object-cover`}
+        />
+      )}
+    </>
+  )
+}
 
+// Initial is what stands in for a person's picture: a letter, or a glyph, in a circle.
+function Initial({ size, children }: { size: AvatarSize; children: ReactNode }) {
   return (
     <span
       aria-hidden="true"
-      className={`${box} inline-flex items-center justify-center bg-raised font-semibold text-muted`}
+      className={`${boxes[size]} inline-flex shrink-0 items-center justify-center rounded-full bg-raised font-semibold text-muted`}
     >
       {children}
     </span>
@@ -66,12 +98,14 @@ function initial(account: Account): string {
 }
 
 // Avatar shows the account's cached profile picture. Without one (not downloaded yet,
-// or it failed to decode) it shows the account's initial, and before there is an
-// account, a person glyph. It is decorative; the control around it names the account.
+// not decoded yet, or it failed to decode) it shows the account's initial, and before
+// there is an account, a person glyph. It is decorative; the control around it names the account.
 export function Avatar({ account, size }: AvatarProps) {
   return (
-    <Picture src={account?.avatar ?? ''} size={size}>
-      {account === null || account.login === '' ? <PersonIcon className={glyphs[size]} /> : initial(account)}
+    <Picture src={account?.avatar ?? ''} className={boxes[size]}>
+      <Initial size={size}>
+        {account === null || account.login === '' ? <PersonIcon className={glyphs[size]} /> : initial(account)}
+      </Initial>
     </Picture>
   )
 }
@@ -82,8 +116,10 @@ export function Avatar({ account, size }: AvatarProps) {
 // is decorative; the name beside it says who.
 export function PersonAvatar({ login, size = 'xs' }: { login: string; size?: AvatarSize }) {
   return (
-    <Picture src={usePicture(login)} size={size}>
-      {login === '' ? <PersonIcon className={glyphs[size]} /> : login.charAt(0).toUpperCase()}
+    <Picture src={usePicture(login)} className={boxes[size]}>
+      <Initial size={size}>
+        {login === '' ? <PersonIcon className={glyphs[size]} /> : login.charAt(0).toUpperCase()}
+      </Initial>
     </Picture>
   )
 }

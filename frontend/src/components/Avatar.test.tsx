@@ -19,6 +19,19 @@ describe('Avatar', () => {
     expect(picture(container)).toHaveClass('size-9')
   })
 
+  it('shows the initial until the picture decodes', () => {
+    const { container } = render(<Avatar account={account({ name: 'octo user' })} size="md" />)
+
+    // jsdom never decodes an image, so the load a decoded picture raises is sent by hand.
+    expect(picture(container)).not.toBeVisible()
+    expect(screen.getByText('O')).toHaveClass('size-9', 'rounded-full')
+
+    fireEvent.load(picture(container) as HTMLImageElement)
+    expect(picture(container)).toBeVisible()
+    expect(picture(container)).toHaveClass('rounded-full')
+    expect(screen.queryByText('O')).not.toBeInTheDocument()
+  })
+
   it("falls back to the name's initial when the picture cannot be shown", () => {
     const { container, rerender } = render(<Avatar account={account({ name: '  octo user' })} size="sm" />)
 
