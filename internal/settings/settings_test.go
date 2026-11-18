@@ -102,6 +102,7 @@ func TestPrefDefaults(t *testing.T) {
 		HiddenLabels:        DefaultHiddenLabels(),
 		DefaultHiddenLabels: DefaultHiddenLabels(),
 		CardAvatars:         true,
+		CardDensity:         CardComfortable,
 		MergeMethod:         DefaultMergeMethod,
 		ReviewTab:           DefaultReviewTab,
 		NotificationsTab:    DefaultNotificationsTab,
@@ -264,6 +265,7 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetUpdateMode(t.Context(), updateprefs.ModeOff)))
 	require.NoError(t, testutil.ErrOf(svc.SetAutopilotAgentsAtOnce(t.Context(), 1)))
 	require.NoError(t, testutil.ErrOf(svc.SetCardAvatars(t.Context(), false)))
+	require.NoError(t, testutil.ErrOf(svc.SetCardDensity(t.Context(), CardCompact)))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -294,6 +296,7 @@ func TestSettersPersist(t *testing.T) {
 		HiddenLabels:        DefaultHiddenLabels(),
 		DefaultHiddenLabels: DefaultHiddenLabels(),
 		CardAvatars:         false,
+		CardDensity:         CardCompact,
 		MergeMethod:         DefaultMergeMethod,
 		ReviewTab:           DefaultReviewTab,
 		NotificationsTab:    DefaultNotificationsTab,
@@ -623,6 +626,10 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"card avatars", func() (Settings, error) { return svc.SetCardAvatars(ctx, false) },
 			func(s Settings) any { return s.CardAvatars }, false,
+		},
+		{
+			"card density", func() (Settings, error) { return svc.SetCardDensity(ctx, CardCompact) },
+			func(s Settings) any { return s.CardDensity }, CardCompact,
 		},
 		{
 			"worktree cleanup", func() (Settings, error) { return svc.SetWorktreeAutoCleanup(ctx, false) },

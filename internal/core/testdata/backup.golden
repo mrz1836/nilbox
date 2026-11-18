@@ -90,6 +90,7 @@
       "size/*"
     ],
     "cardAvatars": true,
+    "cardDensity": "comfortable",
     "integrations": {
       "switches": {
         "go-pre-commit": "auto",

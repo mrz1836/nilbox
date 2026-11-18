@@ -75,6 +75,7 @@ type Portable struct {
 	InboxOrder          *InboxOrder          `json:"inboxOrder,omitempty"`
 	HiddenLabels        *[]string            `json:"hiddenLabels,omitempty"`
 	CardAvatars         *bool                `json:"cardAvatars,omitempty"`
+	CardDensity         *CardDensity         `json:"cardDensity,omitempty"`
 	Integrations        *PortableIntegration `json:"integrations,omitempty"`
 	UpdateMode          *updateprefs.Mode    `json:"updateMode,omitempty"`
 	Autopilot           *PortableAutopilot   `json:"autopilot,omitempty"`
@@ -197,6 +198,7 @@ func portableOf(set Settings) Portable {
 		ServiceStatus: &PortableStatus{Off: &off, Parts: &picked},
 		MergeMethod:   &set.MergeMethod, Theme: &set.Theme, TextSize: &set.TextSize, ToastSeconds: &set.ToastSeconds,
 		InboxOrder: &set.InboxOrder, HiddenLabels: &set.HiddenLabels, CardAvatars: &set.CardAvatars,
+		CardDensity: &set.CardDensity,
 		Integrations: &PortableIntegration{
 			Switches: maps.Clone(ig.Switches), Paths: maps.Clone(ig.Paths), RunsIn: &ig.RunsIn,
 			OfferAfterMerge: &ig.OfferAfterMerge, MagexTargets: &ig.ScriptSources.MagexTargets,
@@ -488,6 +490,9 @@ func (s *Service) portableFields() []portableField {
 				return checkHiddenLabels(patterns)
 			}, nil),
 		boolField("Author pictures", tellsNothing, KeyCardAvatars, func(p Portable) *bool { return p.CardAvatars }),
+		pointerField("Card density", tellsNothing, func(p Portable) *CardDensity { return p.CardDensity },
+			func(_ context.Context, d CardDensity) (map[string]string, error) { return checkCardDensity(d) },
+			func(d CardDensity) string { return string(d) }),
 		pointerField("When a new version is out", tellsUpdates, func(p Portable) *updateprefs.Mode { return p.UpdateMode },
 			func(_ context.Context, m updateprefs.Mode) (map[string]string, error) { return checkUpdateMode(m) },
 			func(m updateprefs.Mode) string { return string(m) }),
