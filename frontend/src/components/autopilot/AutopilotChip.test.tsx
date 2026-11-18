@@ -7,6 +7,7 @@ import type { AutopilotMatch, AutopilotTarget, InboxItem } from '../../platform'
 import { at } from '../../test/clock'
 import { autopilotEffect, autopilotMatch, dryRunMatch, item } from '../../test/fixtures'
 import { platform } from '../../test/platform'
+import { expectWraps } from '../../test/wrap'
 import { ItemRow } from '../ItemRow'
 import { AutopilotChip, AutopilotRowsContext } from './AutopilotChip'
 
@@ -103,6 +104,40 @@ describe('AutopilotChip', () => {
       createdAt: '2026-06-15T11:30:00Z',
       activity: false,
     })
+  })
+
+  it('wraps its sentences, opened from a card’s line that does not wrap', async () => {
+    const words =
+      'It snoozed the pull request until its checks pass again, since the routine waits for a green run before it asks anyone to review.'
+    const match = autopilotMatch({ words })
+    platform.autopilotItemHistory.mockResolvedValue({ itemId: 1, matches: [match], open: 0 })
+    platform.undoAutopilot.mockRejectedValue(
+      new Error('Autopilot hasn’t started yet, so the change can’t be taken back; try again in a moment, once it has.'),
+    )
+    renderRow(item(), new Map([[1, match]]))
+
+    await userEvent.click(screen.getByRole('button', { name: /^Autopilot:/ }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Autopilot history' })
+    const panel = within(dialog)
+    const entry = within(await panel.findByRole('listitem'))
+    const undo = entry.getByRole('button', { name: 'Undo' })
+
+    await userEvent.click(undo)
+    const alert = await panel.findByRole('alert')
+
+    expect(alert).toHaveTextContent(/so the change can’t be taken back/)
+    expect(dialog.parentElement?.closest('.whitespace-nowrap')).not.toBeNull()
+    expect(dialog).toHaveClass('whitespace-normal', 'break-words', 'w-[24rem]', 'max-w-[calc(100vw-2rem)]')
+    for (const element of [
+      panel.getByText('What the routines did with it'),
+      panel.getByText(words),
+      entry.getByText('Snoozed · Still there'),
+      alert,
+    ]) {
+      expectWraps(element, dialog)
+    }
+    expect(undo).toHaveClass('shrink-0')
   })
 })
 
