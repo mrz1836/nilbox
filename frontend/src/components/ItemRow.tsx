@@ -20,6 +20,7 @@ import {
   type Worktree,
 } from '../platform'
 import { AutopilotChip, useMarkedBy, useRoutineName } from './autopilot/AutopilotChip'
+import { trustTitle } from './card/RiskChip'
 import { Highlight } from './Highlight'
 import { ArchiveIcon, AutopilotIcon, ClockIcon, ExternalIcon, IssueIcon, PinIcon, PullRequestIcon } from './icons'
 import { ItemMenu, type EditActions } from './ItemMenu'
@@ -165,23 +166,9 @@ export function TrustTag({ item }: { item: InboxItem }) {
     return null
   }
 
-  if (item.authorIsBot) {
-    return (
-      <span
-        title="A bot that isn't trusted, so launches start in plan or read-only mode. Add it to your trusted bots in Settings → Trust."
-        className={`${tagClass} text-warning`}
-      >
-        untrusted bot
-      </span>
-    )
-  }
-
   return (
-    <span
-      title="Launches in plan or read-only mode unless you lift the restriction"
-      className={`${tagClass} text-warning`}
-    >
-      outside contributor
+    <span title={trustTitle(item)} className={`${tagClass} text-warning`}>
+      {item.authorIsBot ? 'untrusted bot' : 'outside contributor'}
     </span>
   )
 }

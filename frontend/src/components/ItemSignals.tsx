@@ -176,7 +176,7 @@ function Labels({ labels: all, onFilterBy }: { labels: Label[]; onFilterBy: Filt
 
 // FieldPill is one of a project's featured fields, such as Priority High, outlined in the
 // option's color, as a project board draws it.
-function FieldPill({ field }: { field: ProjectField }) {
+export function FieldPill({ field }: { field: ProjectField }) {
   return (
     <span
       className={`inline-flex max-w-24 shrink-0 items-center rounded-full border px-1.5 text-[0.6875rem] leading-4 font-medium text-text ${field.color === '' ? 'border-border' : ''}`}
@@ -187,9 +187,27 @@ function FieldPill({ field }: { field: ProjectField }) {
   )
 }
 
+// StatusPill is an issue's status in a project, such as In progress, as a pill tinted
+// with the status's color and a dot of it.
+export function StatusPill({ project }: { project: Project }) {
+  return (
+    <span
+      className={`inline-flex max-w-36 shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[0.6875rem] font-medium text-text ${project.statusColor === '' ? 'bg-raised' : ''}`}
+      style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor + statusTint }}
+    >
+      <span
+        aria-hidden="true"
+        className={`size-1.5 shrink-0 rounded-full ${project.statusColor === '' ? 'bg-muted' : ''}`}
+        style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor }}
+      />
+      <span className="truncate">{project.status}</span>
+    </span>
+  )
+}
+
 // ProjectLink names the project an issue is in, with its status there as a pill in the
-// status's color and its featured fields (see featuredFields) as outlined pills, and
-// opens the project on GitHub. Its tooltip lists every field.
+// status's color (StatusPill) and its featured fields (see featuredFields) as outlined
+// pills, and opens the project on GitHub. Its tooltip lists every field.
 export function ProjectLink({ project }: { project: Project }) {
   const where = projectText(project)
   const featured = featuredFields(project)
@@ -207,19 +225,7 @@ export function ProjectLink({ project }: { project: Project }) {
     >
       <ProjectIcon className={iconClass} />
       <span className="max-w-40 min-w-0 truncate group-hover/project:underline">{project.title}</span>
-      {project.status !== '' && (
-        <span
-          className={`inline-flex max-w-36 shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[0.6875rem] font-medium text-text ${project.statusColor === '' ? 'bg-raised' : ''}`}
-          style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor + statusTint }}
-        >
-          <span
-            aria-hidden="true"
-            className={`size-1.5 shrink-0 rounded-full ${project.statusColor === '' ? 'bg-muted' : ''}`}
-            style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor }}
-          />
-          <span className="truncate">{project.status}</span>
-        </span>
-      )}
+      {project.status !== '' && <StatusPill project={project} />}
       {featured.map((field) => (
         <FieldPill key={field.name} field={field} />
       ))}

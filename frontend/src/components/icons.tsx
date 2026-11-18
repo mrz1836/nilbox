@@ -665,3 +665,66 @@ export function FolderIcon(props: IconProps) {
     </Icon>
   )
 }
+
+// MergeIcon stands for merging a pull request: a branch joining its trunk.
+export function MergeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="6" cy="5.5" r="2.25" />
+      <circle cx="6" cy="18.5" r="2.25" />
+      <circle cx="18" cy="12" r="2.25" />
+      <path d="M6 7.75v8.5M6 7.75c0 2.5 2 4.25 4.5 4.25h5.25" />
+    </Icon>
+  )
+}
+
+// BotIcon stands for a bot, in place of a person's face: a robot's head.
+export function BotIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="5" y="8" width="14" height="11" rx="2.5" />
+      <path d="M12 8V5M9.5 12.75v1.5M14.5 12.75v1.5M3 12.5v2.5M21 12.5v2.5" />
+      <circle cx="12" cy="4" r="1" fill="currentColor" stroke="none" />
+    </Icon>
+  )
+}
+
+// HandIcon stands for an agent waiting on the user: a raised hand.
+export function HandIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12M11 11.5V5a1.5 1.5 0 0 1 3 0v6.5M14 11.5V6.5a1.5 1.5 0 0 1 3 0V14a6 6 0 0 1-6 6h-.5a6 6 0 0 1-4.6-2.15L4.6 15.1a1.5 1.5 0 0 1 2.3-1.9L8 14.5" />
+    </Icon>
+  )
+}
+
+// SparkIcon stands for a coding agent's version of a move: a four-pointed spark.
+export function SparkIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3.5l1.9 6.6 6.6 1.9-6.6 1.9L12 20.5l-1.9-6.6L3.5 12l6.6-1.9z" />
+    </Icon>
+  )
+}
+
+// RereviewIcon stands for a review to make again, since the author pushed: two arrows
+// turning back on each other.
+export function RereviewIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4.5 12a7.5 7.5 0 0 1 13.2-4.9M19.5 4.5V8H16M19.5 12a7.5 7.5 0 0 1-13.2 4.9M4.5 19.5V16H8" />
+    </Icon>
+  )
+}
+
+// ConflictIcon stands for a merge conflict: two branches meeting at a bar across them.
+export function ConflictIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="6" cy="5.5" r="2.25" />
+      <circle cx="18" cy="5.5" r="2.25" />
+      <circle cx="12" cy="18.5" r="2.25" />
+      <path d="M6 7.75c0 3 6 3.5 6 8.5M18 7.75c0 3-6 3.5-6 8.5M8 12.5h8" />
+    </Icon>
+  )
+}

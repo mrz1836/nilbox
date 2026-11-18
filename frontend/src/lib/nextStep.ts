@@ -111,6 +111,12 @@ export interface StepInput {
 // mergeMethodWords name auto-merge's method.
 const mergeMethodWords: Readonly<Record<string, string>> = { SQUASH: 'squash', MERGE: 'merge commit', REBASE: 'rebase' }
 
+// mergeMethodText names the method a pull request's auto-merge merges with: "squash",
+// "merge commit", or "rebase", or one this build doesn't know as GitHub spells it.
+export function mergeMethodText(method: string): string {
+  return mergeMethodWords[method] ?? method.toLowerCase()
+}
+
 // story builds a story outside the triage tabs.
 function story(text: string, detail: string, icon: StoryIcon): Story {
   return { text, detail, icon, triage: false }
@@ -257,9 +263,7 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   }
 
   if (d.autoMerge !== '') {
-    const method = mergeMethodWords[d.autoMerge] ?? d.autoMerge.toLowerCase()
-
-    return step('auto_merge', 'waiting', woken('Merges when green', method, 'bolt'), 'open', true)
+    return step('auto_merge', 'waiting', woken('Merges when green', mergeMethodText(d.autoMerge), 'bolt'), 'open', true)
   }
 
   if (item.assigned && !item.authored) {

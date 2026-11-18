@@ -6,7 +6,7 @@ import { shortCommit } from '../lib/git'
 import { changeText, changeTone, filesChip, levelDot, sensitiveCount, type FilesChip } from '../lib/sensitive'
 import { toneText } from '../lib/signals'
 import { useMutation } from '../lib/useMutation'
-import { usePopover } from '../lib/usePopover'
+import { usePopover, type Popover } from '../lib/usePopover'
 import { checkItemFiles, openExternal, type FileCheck, type SensitiveFile, type SensitiveGroup } from '../platform'
 import { quietButtonClass } from './controls'
 import { ExternalIcon, RefreshIcon, ShieldAlertIcon, ShieldCheckIcon } from './icons'
@@ -102,19 +102,25 @@ function summary(check: FileCheck): string {
   }
 }
 
-// SensitiveFiles is a pull request's sensitive-file chip: the categories of the sensitive
-// files it changes, or that its files were checked and none is, or that they could not
-// all be checked. It opens a panel listing each file by category, each opening its diff
-// on GitHub, with a button to check the files again now.
-export function SensitiveFiles({ itemId, check, onSettings }: SensitiveFilesProps) {
-  const id = useId()
-  // The panel opens upward when it fits better above the chip, and keeps within the area it
-  // scrolls in, scrolling inside itself when the files run longer.
-  const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ placement: 'fit' })
-  const { open, toggle, triggerRef } = popover
+export interface SensitiveFilesPanelProps {
+  // itemId is the pull request the check is for, for checking it again.
+  itemId: number
+  check: FileCheck
+  // onSettings opens Settings → Sensitive files; without it, the panel names the page.
+  onSettings?: (() => void) | undefined
+  // popover is the state of the button that opens the panel, and id the panel's id, which
+  // the button's aria-controls names while it is open.
+  popover: Popover<HTMLButtonElement, HTMLDivElement>
+  id: string
+}
+
+// SensitiveFilesPanel lists a pull request's sensitive files by category, each opening its
+// diff on GitHub, with a button to check the files again now, in the panel a chip opens:
+// the sensitive-file chip's own, or the card's risk chip (card/RiskChip). The check it
+// runs outlasts the panel's closing.
+export function SensitiveFilesPanel({ itemId, check, onSettings, popover, id }: SensitiveFilesPanelProps) {
   const checker = useMutation(() => checkItemFiles(itemId))
 
-  const chip = filesChip(check)
   const groups = check.groups
   const agent = groups.some((g) => g.category === 'agent')
   const unchecked = !check.complete && check.status !== 'failed' && check.status !== 'pending'
@@ -125,6 +131,81 @@ export function SensitiveFiles({ itemId, check, onSettings }: SensitiveFilesProp
   const checkNow = () => {
     void checker.run()
   }
+
+  return (
+    <PopoverPanel
+      state={popover}
+      align="left"
+      id={id}
+      role="dialog"
+      aria-label="Sensitive files"
+      className="z-20 flex max-h-[calc(100vh-8rem)] w-[26rem] flex-col gap-3 overflow-y-auto p-3.5 text-left shadow-black/25"
+    >
+      <div>
+        <h3 className="text-sm font-semibold text-text">Sensitive files</h3>
+        {check.head !== '' && (
+          <p className="mt-0.5 text-[0.6875rem] text-muted">
+            At commit <span className="font-mono">{shortCommit(check.head)}</span>
+            {check.checkedAt !== '' && (
+              <>
+                {' · checked '}
+                <RelativeTime iso={check.checkedAt} show={formatAgo} />
+              </>
+            )}
+          </p>
+        )}
+      </div>
+      <p className={`text-xs leading-relaxed ${check.status === 'failed' ? 'text-warning' : 'text-muted'}`}>
+        {summary(check)}
+      </p>
+      {groups.map((group) => (
+        <GroupSection key={group.category} group={group} />
+      ))}
+      {unchecked && (
+        <p role="note" className="text-xs leading-relaxed text-warning">
+          GitHub listed {formatCount(check.checked)} of {counted(check.total, 'changed file', 'changed files')}, so the
+          rest weren’t checked. Review them on GitHub.
+        </p>
+      )}
+      {agent && (
+        <p className="rounded-md border border-danger/30 bg-danger/8 px-2.5 py-2 text-xs leading-relaxed text-text">
+          Opening a session on it asks first: hooks in agent settings run commands on your Mac as soon as a session
+          starts, even in plan or read-only mode.
+        </p>
+      )}
+      <div className="flex items-center justify-between gap-3 border-t border-border pt-2.5">
+        <button type="button" disabled={checking} onClick={checkNow} className={quietButtonClass}>
+          <RefreshIcon className={`size-3.5 ${checking ? 'motion-safe:animate-spin' : ''}`} />
+          {checking ? 'Checking…' : 'Check now'}
+        </button>
+        {onSettings === undefined ? (
+          <span className="text-[0.6875rem] text-muted">Settings → Sensitive files</span>
+        ) : (
+          <button type="button" onClick={onSettings} className={quietButtonClass}>
+            What counts as sensitive
+          </button>
+        )}
+      </div>
+      {error !== '' && (
+        <p role="alert" className="-mt-1.5 text-xs text-danger">
+          {error}
+        </p>
+      )}
+    </PopoverPanel>
+  )
+}
+
+// SensitiveFiles is a pull request's sensitive-file chip: the categories of the sensitive
+// files it changes, or that its files were checked and none is, or that they could not
+// all be checked. It opens a panel listing each file by category (SensitiveFilesPanel).
+export function SensitiveFiles({ itemId, check, onSettings }: SensitiveFilesProps) {
+  const id = useId()
+  // The panel opens upward when it fits better above the chip, and keeps within the area it
+  // scrolls in, scrolling inside itself when the files run longer.
+  const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ placement: 'fit' })
+  const { open, toggle, triggerRef } = popover
+
+  const chip = filesChip(check)
 
   const icon =
     chip.icon === 'alert' ? (
@@ -149,65 +230,7 @@ export function SensitiveFiles({ itemId, check, onSettings }: SensitiveFilesProp
         {icon}
         {chip.short !== '' && <span className="truncate">{chip.short}</span>}
       </button>
-      <PopoverPanel
-        state={popover}
-        align="left"
-        id={id}
-        role="dialog"
-        aria-label="Sensitive files"
-        className="z-20 flex max-h-[calc(100vh-8rem)] w-[26rem] flex-col gap-3 overflow-y-auto p-3.5 text-left shadow-black/25"
-      >
-        <div>
-          <h3 className="text-sm font-semibold text-text">Sensitive files</h3>
-          {check.head !== '' && (
-            <p className="mt-0.5 text-[0.6875rem] text-muted">
-              At commit <span className="font-mono">{shortCommit(check.head)}</span>
-              {check.checkedAt !== '' && (
-                <>
-                  {' · checked '}
-                  <RelativeTime iso={check.checkedAt} show={formatAgo} />
-                </>
-              )}
-            </p>
-          )}
-        </div>
-        <p className={`text-xs leading-relaxed ${check.status === 'failed' ? 'text-warning' : 'text-muted'}`}>
-          {summary(check)}
-        </p>
-        {groups.map((group) => (
-          <GroupSection key={group.category} group={group} />
-        ))}
-        {unchecked && (
-          <p role="note" className="text-xs leading-relaxed text-warning">
-            GitHub listed {formatCount(check.checked)} of {counted(check.total, 'changed file', 'changed files')}, so
-            the rest weren’t checked. Review them on GitHub.
-          </p>
-        )}
-        {agent && (
-          <p className="rounded-md border border-danger/30 bg-danger/8 px-2.5 py-2 text-xs leading-relaxed text-text">
-            Opening a session on it asks first: hooks in agent settings run commands on your Mac as soon as a session
-            starts, even in plan or read-only mode.
-          </p>
-        )}
-        <div className="flex items-center justify-between gap-3 border-t border-border pt-2.5">
-          <button type="button" disabled={checking} onClick={checkNow} className={quietButtonClass}>
-            <RefreshIcon className={`size-3.5 ${checking ? 'motion-safe:animate-spin' : ''}`} />
-            {checking ? 'Checking…' : 'Check now'}
-          </button>
-          {onSettings === undefined ? (
-            <span className="text-[0.6875rem] text-muted">Settings → Sensitive files</span>
-          ) : (
-            <button type="button" onClick={onSettings} className={quietButtonClass}>
-              What counts as sensitive
-            </button>
-          )}
-        </div>
-        {error !== '' && (
-          <p role="alert" className="-mt-1.5 text-xs text-danger">
-            {error}
-          </p>
-        )}
-      </PopoverPanel>
+      <SensitiveFilesPanel itemId={itemId} check={check} onSettings={onSettings} popover={popover} id={id} />
     </span>
   )
 }
