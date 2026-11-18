@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Profiler, type ComponentType, type ReactNode } from 'react'
+import { Profiler, type ReactNode } from 'react'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { ItemRowProps } from './components/ItemRow'
@@ -26,10 +26,13 @@ const compiled = import.meta.env.REACT_COMPILER === '1'
 const counts = vi.hoisted(() => ({ rows: 0, mounts: 0, commits: 0, ms: 0 }))
 
 // ItemRow is wrapped, memo and all, so every render and every mount of a row is counted.
+// The counted row calls the unwrapped row as a function, so the row's own hooks (a clock
+// read through useNowAs, a context) belong to the counted component: a row that renders
+// again from one of them is counted too, not only one its list renders again.
 vi.mock('./components/ItemRow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./components/ItemRow')>()
-  const { createElement, memo, useState } = await import('react')
-  const Row = (actual.ItemRow as unknown as { type: ComponentType<ItemRowProps> }).type
+  const { memo, useState } = await import('react')
+  const Row = (actual.ItemRow as unknown as { type: (props: ItemRowProps) => ReactNode }).type
 
   // counted records a render of a row. The count is kept outside React on purpose: it is
   // how often React renders the row.
@@ -43,7 +46,7 @@ vi.mock('./components/ItemRow', async (importOriginal) => {
     })
     counted()
 
-    return createElement(Row, props)
+    return Row(props)
   }
 
   return { ...actual, ItemRow: memo(CountedRow) }
