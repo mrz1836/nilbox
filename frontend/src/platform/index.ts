@@ -16,6 +16,7 @@ import type * as autopiloteval from '../../bindings/github.com/mrz1836/nilbox/in
 import type * as autopilotspec from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/spec'
 import type * as autopilotwatch from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/watch'
 import * as autopilotprefs from '../../bindings/github.com/mrz1836/nilbox/internal/autopilotprefs'
+import * as avatars from '../../bindings/github.com/mrz1836/nilbox/internal/avatars'
 import type * as runevent from '../../bindings/github.com/mrz1836/nilbox/internal/agentrun/runevent'
 import * as backup from '../../bindings/github.com/mrz1836/nilbox/internal/backup'
 import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
@@ -642,6 +643,9 @@ export type IssueOutcome = issues.Outcome
 export type IssuePerson = NonNullLists<issues.Person>
 export type IssueProject = NonNullLists<issues.Project>
 export type IssueCandidate = NonNullLists<issues.Candidate>
+// PictureBot is a bot whose picture a card asks for: its login without "[bot]", as the
+// inbox names it, and the picture's URL the inbox stored with its item.
+export type PictureBot = NonNullLists<avatars.Bot>
 export type IssueEditRequest = NonNullLists<issues.EditRequest>
 export type IssueRepoLabel = NonNullLists<issues.RepoLabel>
 export type IssueRepoLabels = NonNullLists<issues.RepoLabels>
@@ -843,6 +847,10 @@ export const {
   Avatars: issueAvatars,
 } = narrow(issues.Service)
 
+// The inbox cards' pictures: people's by login, and bots' by the URL GitHub gave for each,
+// answered as data: URLs keyed by the login, and a bot's by its login with "[bot]" after it.
+export const { PicturesFor: cardPictures } = narrow(avatars.Service)
+
 export const {
   List: listPrompts,
   Create: createPrompt,
@@ -917,6 +925,7 @@ export const {
   SetListKind: setListKind,
   SetStatusOrder: setStatusOrder,
   SetHiddenLabels: setHiddenLabels,
+  SetCardAvatars: setCardAvatars,
   SetBranchRules: setBranchRules,
   SetRepoRule: setRepoRule,
   SetMergeMethod: setMergeMethod,
