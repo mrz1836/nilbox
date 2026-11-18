@@ -1,13 +1,19 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
+import { CardPicturesContext, type Pictures } from '../../lib/pictures'
 import type { InboxItem } from '../../platform'
-import { item } from '../../test/fixtures'
+import { avatarDataURL, item } from '../../test/fixtures'
 import { CardAvatar, faceOf, initialsOf } from './CardAvatar'
 
-function renderAvatar(overrides: Partial<InboxItem> = {}) {
-  return render(<CardAvatar item={item(overrides)} />)
+function renderAvatar(overrides: Partial<InboxItem> = {}, pictures?: Pictures) {
+  const avatar = <CardAvatar item={item(overrides)} />
+
+  return render(pictures === undefined ? avatar : <CardPicturesContext value={pictures}>{avatar}</CardPicturesContext>)
 }
+
+// botPicture is a stand-in for a bot's picture, another than a person's.
+const botPicture = 'data:image/png;base64,Ym90'
 
 describe('initialsOf', () => {
   it.each([
@@ -53,13 +59,65 @@ describe('CardAvatar', () => {
     expect(container.querySelector('[data-avatar="initials"]')).toBeNull()
   })
 
-  it('rings the user’s own items in the accent color', () => {
-    const { container, rerender } = renderAvatar({ authored: true })
+  it('rings the user’s own items in the accent color, picture and all', () => {
+    const { container, rerender } = renderAvatar({ authored: true }, { 'octo-user': avatarDataURL })
 
     expect(container.querySelector('[data-avatar]')).toHaveClass('ring-2', 'ring-accent')
+    expect(container.querySelector('img')).toHaveClass('ring-2', 'ring-accent')
 
     rerender(<CardAvatar item={item()} />)
     expect(container.querySelector('[data-avatar]')).not.toHaveClass('ring-2')
+  })
+
+  // jsdom never decodes an image, so a test sends the load, or the error, by hand.
+  it('shows a person’s picture in a circle once it decodes, the initials until then and should it fail', () => {
+    const { container } = renderAvatar({ author: 'contributor-a' }, { 'contributor-a': avatarDataURL })
+
+    const img = container.querySelector('img')
+    expect(img).toHaveAttribute('src', avatarDataURL)
+    expect(img).toHaveAttribute('alt', '')
+    expect(img).not.toBeVisible()
+    expect(container.querySelector('[data-avatar="initials"]')).toHaveTextContent('CA')
+
+    fireEvent.load(img as HTMLImageElement)
+    expect(img).toBeVisible()
+    expect(img).toHaveClass('size-7', 'rounded-full')
+    expect(container.querySelector('[data-avatar]')).toBeNull()
+    expect(screen.getByRole('img', { name: 'Pull request' })).toBeInTheDocument()
+
+    const { container: broken } = renderAvatar({ author: 'contributor-b' }, { 'contributor-b': avatarDataURL })
+    fireEvent.error(broken.querySelector('img') as HTMLImageElement)
+    expect(broken.querySelector('img')).toBeNull()
+    expect(broken.querySelector('[data-avatar="initials"]')).toHaveTextContent('CB')
+  })
+
+  it('shows a bot’s picture in a rounded square, by its login with [bot], and the bot mark until it decodes', () => {
+    const { container } = renderAvatar(
+      { author: 'dependabot', authorIsBot: true },
+      { dependabot: avatarDataURL, 'dependabot[bot]': botPicture },
+    )
+
+    const img = container.querySelector('img')
+    expect(img, 'never a person’s picture of the same name').toHaveAttribute('src', botPicture)
+    expect(container.querySelector('[data-avatar="bot"]')).toBeInTheDocument()
+
+    fireEvent.load(img as HTMLImageElement)
+    expect(img).toHaveClass('size-7', 'rounded-lg')
+    expect(container.querySelector('[data-avatar="bot"]')).toBeNull()
+  })
+
+  it('shows initials and the bot mark with no picture for the author', () => {
+    const { container } = renderAvatar({ author: 'contributor-a' }, { 'contributor-b': avatarDataURL })
+
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.querySelector('[data-avatar="initials"]')).toHaveTextContent('CA')
+
+    const { container: botAvatar } = renderAvatar(
+      { author: 'dependabot', authorIsBot: true },
+      { dependabot: avatarDataURL },
+    )
+    expect(botAvatar.querySelector('img'), 'a person’s picture is never a bot’s').toBeNull()
+    expect(botAvatar.querySelector('[data-avatar="bot"]')).toBeInTheDocument()
   })
 
   it.each([

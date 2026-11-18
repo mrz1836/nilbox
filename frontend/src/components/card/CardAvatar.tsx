@@ -1,4 +1,8 @@
+import { use } from 'react'
+
+import { cardPictureKey, CardPicturesContext } from '../../lib/pictures'
 import type { InboxItem } from '../../platform'
+import { Picture } from '../Avatar'
 import { BotIcon, IssueIcon, PullRequestIcon } from '../icons'
 
 // faces are the backings an author's initials can sit on, each from the theme's tokens,
@@ -52,32 +56,37 @@ function KindBadge({ item }: { item: InboxItem }) {
   )
 }
 
-// CardAvatar is who opened a card's item, with what kind of item it is: a circle with the
-// author's initials on a color their login picks, or a rounded square with the bot mark
-// for a bot, and a kind badge at its corner. The user's own items get an accent ring. It
-// is not a button: the byline names the author.
+// CardAvatar is who opened a card's item, with what kind of item it is: the author's
+// picture (CardPicturesContext), in a circle for a person and a rounded square for a bot,
+// and until it decodes, or when there is none, the author's initials on a color their login
+// picks, or the bot mark; and a kind badge at its corner. The user's own items get an
+// accent ring. It is not a button: the byline names the author.
 export function CardAvatar({ item }: { item: InboxItem }) {
+  const bot = item.authorIsBot
+  const picture = use(CardPicturesContext)[cardPictureKey(item.author, bot)] ?? ''
   const ring = item.authored ? 'ring-2 ring-accent' : ''
 
   return (
     <span className="relative inline-flex size-7 shrink-0">
-      {item.authorIsBot ? (
-        <span
-          aria-hidden="true"
-          data-avatar="bot"
-          className={`grid size-7 place-items-center rounded-lg bg-info/18 text-info ${ring}`}
-        >
-          <BotIcon className="size-4" />
-        </span>
-      ) : (
-        <span
-          aria-hidden="true"
-          data-avatar="initials"
-          className={`grid size-7 place-items-center rounded-full text-[0.6875rem] font-semibold ${faceOf(item.author)} ${ring}`}
-        >
-          {initialsOf(item.author)}
-        </span>
-      )}
+      <Picture src={picture} className={`size-7 ${ring}`} shape={bot ? 'square' : 'circle'}>
+        {bot ? (
+          <span
+            aria-hidden="true"
+            data-avatar="bot"
+            className={`grid size-7 place-items-center rounded-lg bg-info/18 text-info ${ring}`}
+          >
+            <BotIcon className="size-4" />
+          </span>
+        ) : (
+          <span
+            aria-hidden="true"
+            data-avatar="initials"
+            className={`grid size-7 place-items-center rounded-full text-[0.6875rem] font-semibold ${faceOf(item.author)} ${ring}`}
+          >
+            {initialsOf(item.author)}
+          </span>
+        )}
+      </Picture>
       <KindBadge item={item} />
     </span>
   )
