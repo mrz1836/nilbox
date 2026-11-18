@@ -4552,7 +4552,10 @@ asks GitHub once, as `Refresh`, in the round after it, `readFloor` (20 seconds, 
 sheet closes or steps on, and not while the reads after an approval run. Only a rebuild's answer
 asks, never a read's: a read that fails is not made again until the card moves on, and the card's
 changes during a read (`useQuery` cancels a request whose inputs change, so none is made while
-one is under way) build the sheet once after it, which asks for one more read at most.
+one is under way) build the sheet once after it, which asks for one more read at most. The
+window's own `focus` event (the browser's, as the setup's GitHub step uses, so no Go event) asks
+once more, as `Refresh`, while the sheet's last read is older than `oldAfter` or it never read
+it, but never while a read or a rebuild is under way, nor while the reads after an approval run.
 Its `density` (Settings → Cards' Density, `cards.density`) picks the card: `ItemRow` reads
 it and, compact, renders `card/CompactRow` from the same step, session, and clock reads, so
 one set of rules drives both. A compact card is one 2.375rem grid row (`data-density` gives

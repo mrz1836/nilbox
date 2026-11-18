@@ -2447,7 +2447,9 @@ conversation catch up. It never reads within 20 seconds of its last read (it wai
 never on a timer, and one read at a time: however often the card changes while one runs, at most
 one more follows it. A card that changed nothing about the checks or the head (a new label, a
 review request) costs nothing, a read that fails isn't made again until the card moves on, and a
-closed sheet reads nothing: the inbox's refresh never reads a sheet's checks list for you.
+closed sheet reads nothing: the inbox's refresh never reads a sheet's checks list for you. Coming
+back to Nilbox's window with a sheet open reads it once more too, for a point, when its last read
+is more than five minutes old; within five minutes, or while a read is under way, it asks nothing.
 
 **Merged or closed since the last refresh.** A card can stay in the inbox until the next refresh
 after its pull request was merged or closed on GitHub. When the sheet's read finds that, the

@@ -430,6 +430,75 @@ describe('useReview', () => {
     })
   })
 
+  describe('when the window comes back to the front', () => {
+    // focus brings the window back to the front.
+    async function focus() {
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'))
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      await settle()
+    }
+
+    // open opens #7, last read at 11:59, on a clock standing at now, and lets its first read
+    // answer.
+    async function open(now: Date) {
+      const view = renderHook(() => useReview(1), { wrapper: at(now) })
+
+      await settle()
+      expect(platform.refreshReview).toHaveBeenCalledOnce()
+
+      return view
+    }
+
+    it('reads once when the last read is more than five minutes old', async () => {
+      vi.useFakeTimers()
+      await open(new Date(Date.parse('2026-06-15T11:59:00Z') + oldAfter))
+
+      await focus()
+      expect(platform.refreshReview, 'one read, as Refresh').toHaveBeenCalledTimes(2)
+      expect(platform.readReviewAgain).not.toHaveBeenCalled()
+
+      await wait(10 * readFloor)
+      expect(platform.refreshReview, 'and no more').toHaveBeenCalledTimes(2)
+    })
+
+    it('reads nothing within five minutes of the last read', async () => {
+      vi.useFakeTimers()
+      await open(new Date(Date.parse('2026-06-15T11:59:00Z') + oldAfter - 1000))
+
+      await focus()
+      await focus()
+      expect(platform.refreshReview).toHaveBeenCalledOnce()
+    })
+
+    it('reads nothing while a read is under way, nor once the sheet is closed', async () => {
+      vi.useFakeTimers()
+      let answer: (r: ReturnType<typeof review>) => void = () => undefined
+      platform.refreshReview.mockReturnValueOnce(
+        new Promise((resolve) => {
+          answer = resolve
+        }),
+      )
+      const { result, unmount } = renderHook(() => useReview(1), { wrapper: at(new Date('2026-06-15T13:00:00Z')) })
+
+      await settle()
+      expect(result.current.checking).toBe(true)
+      await focus()
+      expect(platform.refreshReview, 'the read under way brings it up to date').toHaveBeenCalledOnce()
+
+      await act(async () => {
+        answer(review())
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      await settle()
+      unmount()
+
+      await focus()
+      expect(platform.refreshReview, 'a closed sheet reads nothing').toHaveBeenCalledOnce()
+    })
+  })
+
   it('keys the card on what the inbox stores of it', () => {
     const card = item({ details: details() })
 

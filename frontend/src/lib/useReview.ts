@@ -4,9 +4,10 @@
 // follows changes while it is open, or the inbox stores something new of the pull request
 // (its card changes), it builds the sheet again from what it read and what the inbox read
 // since (Rebuild), asking GitHub nothing, and reads GitHub once more (Refresh) only when that
-// finds the checks, the held runs, or the head moved since the sheet's own read.
+// finds the checks, the held runs, or the head moved since the sheet's own read, or when the
+// window comes back to the front more than five minutes after it.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 
 import {
   openReview,
@@ -119,7 +120,8 @@ export function runsStarted(review: Review, held: number): boolean {
 
 // oldAfter is how old the sheet's own read of a pull request grows, with nothing newer in the
 // inbox, before what it read of the checks, the held runs, and the conversation is marked
-// while it reads them again: the inbox's own refresh, five minutes.
+// while it reads them again, and before the window coming back to the front reads it again:
+// the inbox's own refresh, five minutes.
 export const oldAfter = 5 * 60_000
 
 // ListMark is how the sheet marks what it read of the checks, the held runs, and the
@@ -309,6 +311,32 @@ export function useReview(id: number, settingsKey = '', card = ''): ReviewState 
       clearTimeout(timer)
     }
   }, [movedOn, lastRead, id, clock])
+
+  // The window coming back to the front reads the pull request once (Refresh) when the sheet's
+  // last read from GitHub is older than oldAfter, or it never read it, but not while a read
+  // or a rebuild is under way, which brings the sheet up to date anyway, nor while the reads
+  // after an approval run. A focus within oldAfter of the last read asks nothing.
+  const focused = useEffectEvent(() => {
+    const last = Date.parse(review?.fetchedAt ?? '')
+
+    if (refreshed.pending || following || clock.read().getTime() - last < oldAfter) {
+      return
+    }
+
+    setRound((r) => ({ id, n: r.id === id ? r.n + 1 : 0, force: false, rebuild: false }))
+  })
+
+  useEffect(() => {
+    const onFocus = () => {
+      focused()
+    }
+
+    window.addEventListener('focus', onFocus)
+
+    return () => {
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [])
 
   return {
     review,

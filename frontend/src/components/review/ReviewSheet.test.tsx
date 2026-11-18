@@ -2701,6 +2701,38 @@ describe('ReviewSheet that stays current', () => {
     expect(screen.getByRole('list', { name: 'Checks' }).parentElement).not.toHaveClass('opacity-60')
   })
 
+  it('reads once when the window comes back five minutes after the last read', async () => {
+    let answer: (r: Review) => void = () => undefined
+    platform.refreshReview.mockResolvedValueOnce(review({ fetchedAt: '2026-06-15T11:50:00Z' })).mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve
+      }),
+    )
+    render(<Harness />)
+
+    await waitFor(() => {
+      expect(platform.refreshReview).toHaveBeenCalledOnce()
+    })
+    expect(await screen.findByRole('list', { name: 'Checks' })).toBeInTheDocument()
+    expect(screen.queryByText(/^Reading checks…/)).not.toBeInTheDocument()
+
+    act(() => {
+      window.dispatchEvent(new Event('focus'))
+    })
+
+    expect(await screen.findByText(/^Reading checks…/)).toHaveTextContent('Reading checks… · read 10m ago')
+    expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+
+    act(() => {
+      answer(review())
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText(/as read|^Reading/)).not.toBeInTheDocument()
+    })
+    expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+  })
+
   it('marks an older copy with its age beside a read that failed', async () => {
     platform.openReview.mockResolvedValue(review({ fetchedAt: '2026-06-15T11:00:00Z' }))
     platform.refreshReview.mockRejectedValue(new Error('GitHub is not answering.'))
