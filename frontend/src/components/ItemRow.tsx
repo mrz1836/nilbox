@@ -542,12 +542,14 @@ export const ItemRow = memo(function ItemRow({
           )}
           {item.details !== null && <CardLabels labels={item.details.labels} onFilterBy={onFilterBy} />}
         </div>
-        <div className="mt-1 flex min-w-0 items-center gap-2 overflow-hidden text-xs whitespace-nowrap text-muted">
+        {/* The second line clips at the card's edge, but not while a chip's panel is open
+            or keyboard focus is in it, so the panel and the focus ring show whole. */}
+        <div className="mt-1 flex min-w-0 items-center gap-2 overflow-hidden text-xs whitespace-nowrap text-muted has-[:focus-visible]:overflow-visible has-[[aria-expanded=true]]:overflow-visible">
           <CardStory story={step.story} edge={step.edge}>
             <TriageTag item={item} tab={tab} />
           </CardStory>
           <Byline item={item} onFilterBy={onFilterBy} />
-          <span className="relative z-10 inline-flex shrink-0 items-center gap-1.5 empty:hidden has-[[aria-expanded=true]]:z-20">
+          <span className="relative z-10 inline-flex shrink-0 items-center gap-1.5 empty:hidden has-[[aria-expanded=true]]:z-30">
             <RiskChip item={item} onFilesSettings={onFilesSettings} />
             <CardChips chips={chips} />
           </span>

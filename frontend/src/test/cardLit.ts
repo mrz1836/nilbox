@@ -22,3 +22,22 @@ export function shownAway(row: HTMLElement): boolean {
     (has('group-focus-within:opacity-100') && row.matches(':focus-within'))
   )
 }
+
+// clipper is the nearest element between el and row that clips el, by its classes: one that
+// hides its overflow, unless it shows it while a panel it holds is open or keyboard focus
+// is in it, and that is so. It is null when nothing clips el.
+export function clipper(el: HTMLElement, row: HTMLElement): HTMLElement | null {
+  for (let node = el.parentElement; node !== null && node !== row; node = node.parentElement) {
+    const has = (name: string) => node.classList.contains(name)
+    const hides = has('overflow-hidden') || has('truncate')
+    const shows =
+      (has('has-[[aria-expanded=true]]:overflow-visible') && node.matches(':has([aria-expanded="true"])')) ||
+      (has('has-[:focus-visible]:overflow-visible') && node.matches(':has(:focus-visible)'))
+
+    if (hides && !shows) {
+      return node
+    }
+  }
+
+  return null
+}

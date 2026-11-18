@@ -22,7 +22,7 @@ import {
   situationChoices,
   worktree,
 } from '../test/fixtures'
-import { shownAway } from '../test/cardLit'
+import { clipper, shownAway } from '../test/cardLit'
 import { platform } from '../test/platform'
 import { AutopilotRowsContext, type AutopilotRows } from './autopilot/AutopilotChip'
 import type { EditActions } from './ItemMenu'
@@ -354,6 +354,36 @@ describe('ItemRow chips', () => {
     await userEvent.click(screen.getByRole('button', { name: 'What counts as sensitive' }))
 
     expect(onFilesSettings).toHaveBeenCalledOnce()
+  })
+
+  it('opens the risk chip’s panel whole, over the triage, which its second line doesn’t clip', async () => {
+    const row = mountCard(asked({ trusted: false, trust: 'outside', files: fileCheck() }), {
+      triage: triageActions(),
+      edits: editActions(),
+    })
+    const chip = screen.getByRole('button', { name: 'Outside · Agent config · Workflows' })
+
+    // Closed, the second line clips at the card's edge.
+    expect(clipper(chip, row)).not.toBeNull()
+
+    await userEvent.click(chip)
+
+    const panel = screen.getByRole('dialog', { name: 'Sensitive files' })
+    expect(clipper(panel, row)).toBeNull()
+    expect(within(panel).getByRole('button', { name: 'Check now' })).toBeEnabled()
+    // The chips rise over the triage (z-20) while the panel is open, and the panel itself
+    // leaves the card rendered in full (index.css).
+    expect(panel.closest('[class~="has-[[aria-expanded=true]]:z-30"]')).toHaveClass('relative', 'z-10')
+    expect(row.querySelector('[data-triage]')).toHaveClass('z-20')
+    expect(row.matches(':has([aria-expanded="true"])')).toBe(true)
+  })
+
+  it('gives an item whose files weren’t checked a chip with no panel to open', () => {
+    mountCard(asked({ trusted: false, trust: 'outside', files: null }))
+
+    const words = screen.getByText('Outside contributor')
+    expect(words.closest('button')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Outside/ })).not.toBeInTheDocument()
   })
 
   it('gives a trusted bot its square and no chip', () => {
