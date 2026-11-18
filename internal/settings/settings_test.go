@@ -104,6 +104,7 @@ func TestPrefDefaults(t *testing.T) {
 		CardAvatars:         true,
 		CardDensity:         CardComfortable,
 		CardUnread:          true,
+		IgnoredWorkflows:    []string{},
 		MergeMethod:         DefaultMergeMethod,
 		ReviewTab:           DefaultReviewTab,
 		NotificationsTab:    DefaultNotificationsTab,
@@ -268,6 +269,7 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetCardAvatars(t.Context(), false)))
 	require.NoError(t, testutil.ErrOf(svc.SetCardDensity(t.Context(), CardCompact)))
 	require.NoError(t, testutil.ErrOf(svc.SetCardUnread(t.Context(), false)))
+	require.NoError(t, testutil.ErrOf(svc.SetIgnoredWorkflows(t.Context(), []string{"Auto-merge Trigger"})))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -300,6 +302,7 @@ func TestSettersPersist(t *testing.T) {
 		CardAvatars:         false,
 		CardDensity:         CardCompact,
 		CardUnread:          false,
+		IgnoredWorkflows:    []string{"Auto-merge Trigger"},
 		MergeMethod:         DefaultMergeMethod,
 		ReviewTab:           DefaultReviewTab,
 		NotificationsTab:    DefaultNotificationsTab,
@@ -637,6 +640,11 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"card unread", func() (Settings, error) { return svc.SetCardUnread(ctx, false) },
 			func(s Settings) any { return s.CardUnread }, false,
+		},
+		{
+			"ignored workflows", func() (Settings, error) { return svc.SetIgnoredWorkflows(ctx, []string{"Auto-merge Trigger"}) },
+			func(s Settings) any { return s.IgnoredWorkflows },
+			[]string{"Auto-merge Trigger"},
 		},
 		{
 			"worktree cleanup", func() (Settings, error) { return svc.SetWorktreeAutoCleanup(ctx, false) },

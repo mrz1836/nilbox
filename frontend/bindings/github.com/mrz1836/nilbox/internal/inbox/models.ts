@@ -60,13 +60,16 @@ export interface Checks {
     /**
      * Awaiting counts the workflow runs held until a maintainer approves them whose
      * approval GitHub takes from the app (the review sheet's Approve workflows to run),
-     * which State and the other counts leave out (github.Checks.Awaiting).
+     * which State and the other counts leave out (github.Checks.Awaiting), but those of a
+     * workflow the user ignores (heldruns.Ignored).
      */
     "awaiting": number;
 
     /**
      * AwaitingOnGitHub counts the held runs GitHub approves only on its site, which State
-     * and the other counts leave out too (github.Checks.AwaitingOnGitHub).
+     * and the other counts leave out too (github.Checks.AwaitingOnGitHub), only while GitHub
+     * reports the merge blocked, when one may be what blocks it, and never those of a
+     * workflow the user ignores (heldruns.Ignored).
      */
     "awaitingOnGitHub": number;
 }

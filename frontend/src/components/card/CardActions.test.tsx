@@ -281,7 +281,7 @@ describe('CardActions', () => {
       'relative',
       'z-10',
       'grid',
-      'grid-cols-[var(--card-primary)_minmax(0,1fr)]',
+      'grid-cols-[minmax(var(--card-primary),max-content)_minmax(0,1fr)]',
     )
   })
 })

@@ -112,6 +112,9 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetCardDensity(ctx, CardCompact) },
 		func() (Settings, error) { return svc.SetCardUnread(ctx, false) },
 		func() (Settings, error) {
+			return svc.SetIgnoredWorkflows(ctx, []string{"Auto-merge Trigger", "Deploy Preview"})
+		},
+		func() (Settings, error) {
 			return svc.SetIntegrationEnabled(ctx, integrationprefs.Scripts, integrationprefs.SwitchOff)
 		},
 		func() (Settings, error) { return svc.SetIntegrationPath(ctx, integrationprefs.MageX, magex) },

@@ -443,6 +443,16 @@ export function SetHiddenLabels(patterns: string[] | null): $CancellablePromise<
 }
 
 /**
+ * SetIgnoredWorkflows stores the names of the workflows whose held runs never count, in
+ * order, and returns the settings with them. Each is trimmed, and blank ones and exact
+ * repeats are left out; an empty list ignores none. A list that holds too many names, one
+ * too long, or one with a control character is refused, and nothing is stored.
+ */
+export function SetIgnoredWorkflows(names: string[] | null): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(486542413, names);
+}
+
+/**
  * SetIntegrationEnabled stores how the user set an integration's switch, automatic, on,
  * or off, and returns the settings with it. Once it is stored, an
  * event.IntegrationsChanged is emitted, so the window hears that the tools' list changed.

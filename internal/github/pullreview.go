@@ -576,8 +576,8 @@ type graphQLCheck struct {
 }
 
 // graphQLSuite is one of the head commit's check suites. The details query asks only for
-// its conclusion, its creator, and its run's ID and event; the rest decode to zero values
-// there.
+// its conclusion, its creator, and its run's ID, event, and workflow's name; the rest decode
+// to zero values there.
 type graphQLSuite struct {
 	ID         string        `json:"id"`
 	Conclusion string        `json:"conclusion"`
@@ -661,10 +661,19 @@ func (s *graphQLSuite) hold(fork bool) suiteHold {
 	}
 }
 
+// workflowName is the name of the workflow whose run the suite is, or "".
+func (s *graphQLSuite) workflowName() string {
+	if w := s.WorkflowRun; w != nil && w.Workflow != nil {
+		return w.Workflow.Name
+	}
+
+	return ""
+}
+
 // name is the workflow that ran the suite, or else its app, or "".
 func (s *graphQLSuite) name() string {
-	if w := s.WorkflowRun; w != nil && w.Workflow != nil && w.Workflow.Name != "" {
-		return w.Workflow.Name
+	if name := s.workflowName(); name != "" {
+		return name
 	}
 
 	if s.App != nil {

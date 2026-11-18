@@ -759,11 +759,11 @@ describe('ItemRow agent', () => {
       const name = primaries[i] ?? ''
       // The primary's slot is the first of the column's two, as wide as the longest
       // primary, the primary at its start.
-      expect(row).toHaveClass('[--card-primary:8.5rem]', '@max-3xl:[--card-primary:auto]')
+      expect(row).toHaveClass('[--card-primary:5.625rem]', '@max-3xl:[--card-primary:auto]')
       const primary = within(row).getByRole('button', { name })
       const slot = primary.closest('[data-primary-slot]') as HTMLElement
       expect(slot).toHaveClass('justify-start')
-      expect(slot.parentElement).toHaveClass('grid-cols-[var(--card-primary)_minmax(0,1fr)]')
+      expect(slot.parentElement).toHaveClass('grid-cols-[minmax(var(--card-primary),max-content)_minmax(0,1fr)]')
       expect(slot.parentElement?.firstElementChild).toBe(slot)
 
       // The agent's slot is the rest, its control at its end, the ▾ last.
@@ -773,6 +773,78 @@ describe('ItemRow agent', () => {
       expect(agent.parentElement?.lastElementChild).toBe(agent)
       expect(Array.from(agent.querySelectorAll('button')).at(-1)).toBe(options)
     })
+  })
+
+  it('fits the agent’s common pills whole beside a common primary at full width', () => {
+    // Text widths, in px, of the system font WebKit draws system-ui with on macOS (SF Pro
+    // Text) at the card's 0.8125rem: semibold for words, medium tabular figures for an age,
+    // as AppKit's NSFont measured them in November 2026. "59m" is the widest age a card
+    // shows before it turns to hours.
+    const text: Readonly<Record<string, number>> = {
+      'Claude’s done': 89.55,
+      'Codex’s done': 85.49,
+      'Claude working': 97.89,
+      'Codex working': 93.83,
+      Findings: 53.68,
+      'Re-review': 63.75,
+      ' ': 3.39,
+      '· ': 7.59,
+      '59m': 28.16,
+      '23h': 24.41,
+      Review: 44.85,
+      Open: 33.7,
+      Merge: 40.04,
+      Read: 31.77,
+      Decide: 43.84,
+      Watch: 39.87,
+      Unsnooze: 62.62,
+      Restore: 48.76,
+      Unmute: 49.77,
+    }
+    const words = (...parts: string[]) => parts.reduce((sum, part) => sum + (text[part] ?? Number.NaN), 0)
+    // The chrome of each part, in px, from its classes: a pill's border, px-2.5, its mark
+    // (a size-2 dot, or a size-3.5 spark), and gap-1.75; the launch's border, pl-2.25 and
+    // pr-1.75, its spark, gap-1.5, and its size-3 lock; the terminal button's w-7.5; the ▾'s
+    // px-1.75, size-3 chevron, and right border; a primary's border and px-2.75, and Merge's
+    // size-3.5 icon and gap-1.5.
+    const dotPill = 2 + 20 + 8 + 7
+    const sparkPill = 2 + 20 + 14 + 7
+    const options = 14 + 12 + 1
+    const pills: Readonly<Record<string, number>> = {
+      'Claude’s done · 59m': dotPill + words('Claude’s done', ' ', '· ', '59m') + options,
+      'Codex’s done · 59m': dotPill + words('Codex’s done', ' ', '· ', '59m') + options,
+      '✦ Findings · 23h': sparkPill + words('Findings', ' ', '· ', '23h') + options,
+      'Claude working · 59m': dotPill + words('Claude working', ' ', '· ', '59m') + 30 + options,
+      'Codex working · 59m': dotPill + words('Codex working', ' ', '· ', '59m') + 30 + options,
+      '✦ Re-review 🔒': 2 + 9 + 7 + 14 + 6 + words('Re-review') + 6 + 12 + options,
+    }
+    const primaries = ['Review', 'Re-review', 'Open', 'Read', 'Decide', 'Watch', 'Unsnooze', 'Restore', 'Unmute']
+      .map((verb) => [verb, 2 + 22 + words(verb)] as const)
+      .concat([['Merge', 2 + 22 + 14 + 6 + words('Merge')]])
+
+    const row = mountCard(asked())
+    const rem = (prop: string) => {
+      const found = [...row.classList].find((c) => c.startsWith(`[--card-${prop}:`))
+      const value = /:([\d.]+)rem\]$/.exec(found ?? '')?.[1]
+
+      return Number(value) * 16
+    }
+    const column = row.querySelector('[data-primary-slot]')?.parentElement
+    expect(column).toHaveClass('gap-x-1.5')
+
+    const primarySlot = rem('primary')
+    const agentSlot = rem('actions') - primarySlot - 6
+
+    // Each that doesn't fit is named.
+    expect(primaries.filter(([, width]) => !(width <= primarySlot)).map(([verb]) => verb)).toEqual([])
+    expect(
+      Object.entries(pills)
+        .filter(([, width]) => !(width <= agentSlot))
+        .map(([pill]) => pill),
+    ).toEqual([])
+
+    // The column is no wider than its widest pill beside its widest common primary needs.
+    expect(rem('actions')).toBeLessThanOrEqual(Math.max(...Object.values(pills)) + 6 + primarySlot + 8)
   })
 
   it('waits for an item’s launch settings to resolve', () => {

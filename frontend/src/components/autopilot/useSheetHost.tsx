@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react'
 
+import type { IgnoredWorkflows } from '../../lib/ignoredWorkflows'
 import { issueTone } from '../../lib/issues'
 import { worktreeOf } from '../../lib/itemWorktrees'
 import { sessionsOf } from '../../lib/sessions'
@@ -54,6 +55,9 @@ export interface RowsKit {
   onSettingsSaved: (settings: Settings) => void
   // onItemOpened hears each item opened in its sheet, as the inbox's do.
   onItemOpened: (itemId: number) => void
+  // ignoring is Settings → Reviewing's Ignored workflows, which the review sheet names and
+  // adds to; without it, the sheet offers to ignore none.
+  ignoring?: IgnoredWorkflows | null | undefined
 }
 
 // noRules are the rules until the settings load.
@@ -243,6 +247,8 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
             onManageReplies={kit.onManageReplies}
             triage={sheetTriage}
             toast={sheetToast}
+            onToast={showToast}
+            ignoring={kit.ignoring}
           />
         )}
         {viewing !== null && viewing.kind === 'issue' && (

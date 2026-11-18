@@ -92,6 +92,7 @@
     "cardAvatars": true,
     "cardDensity": "comfortable",
     "cardUnread": true,
+    "ignoredWorkflows": [],
     "integrations": {
       "switches": {
         "go-pre-commit": "auto",

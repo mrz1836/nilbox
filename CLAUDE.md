@@ -248,6 +248,8 @@ bytes).
   Yours, triage, the checks and merge followers, and the routines' watched searches.
 - [`internal/reporules`](docs/architecture.md#internalreporules): pinned and muted repositories
   and orgs.
+- [`internal/heldruns`](docs/architecture.md#internalheldruns): which held workflow runs count
+  toward where a pull request stands, and the Ignored workflows setting.
 - [`internal/threadrules`](docs/architecture.md#internalthreadrules): the rules for clearing
   GitHub notifications.
 - [`internal/ghthreads`](docs/architecture.md#internalghthreads): mirrors the user's GitHub
@@ -369,8 +371,8 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
 - **Prefs.** `internal/prefs` owns the `prefs` table. Any package reads any key, but each key has
   exactly one writer: settings writes the user's settings, including the rule keys that the trust,
   snooze, sensitive, notifyprefs, branchrules, reporules, integrationprefs, threadrules,
-  statusprefs, updateprefs, and autopilotprefs packages declare (`update.mode` and the
-  `autopilot.*` settings among them); inbox
+  statusprefs, updateprefs, autopilotprefs, and heldruns packages declare (`update.mode`,
+  the `autopilot.*` settings, and `checks.ignoredWorkflows` among them); inbox
   writes `inbox.*`; prompts writes `prompts.*`; setup writes `setup.*`; update writes its state,
   the other `update.*` keys (the package doc has the full list); Autopilot's engine writes its
   own state, `autopilot.engine`, never a setting. Settings and

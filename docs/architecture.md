@@ -390,8 +390,11 @@ each head commit suite, its creator's login and its run's event, and the pull re
 tells the held runs (suites that ended `ACTION_REQUIRED` with a run) apart: a `pull_request` run
 on a fork's pull request, or one whose suite `github-actions[bot]` created, is approvable
 (`Checks.Awaiting`); any other waits for approval on GitHub (`Checks.AwaitingOnGitHub`,
-`UnrunSuite.OnGitHub`). A run waiting on a deployment environment's reviewers hasn't ended, so
-it is neither: its job's check counts as running. A refusal for what the run is still comes back
+`UnrunSuite.OnGitHub`). The fragment reads each run's workflow's name too (`workflowRun {
+workflow { name } }`, one object, which GitHub's point formula never counts), and
+`Checks.Held` lists the held runs with it, for the ignored workflows (internal/heldruns). A
+run waiting on a deployment environment's reviewers hasn't ended, so it is neither: its job's
+check counts as running. A refusal for what the run is still comes back
 as a 403 or 422 like any other, with no code of its own, so `approveError` tells it by GitHub's
 message ("fork pull request") and wraps `ErrRunNotApprovable`, keeping GitHub's words.
 
@@ -699,15 +702,26 @@ details, file check, and check names, and the review sheet's `review_diffs` (wit
 `review_diff_files`) and the issue sheet's `issue_views`, which are only caches and are read
 again on the next visit. (An item with watch rows or local state is never pruned.)
 
-**Held workflow runs** (migration `0023_checks_awaiting_on_github`). A details read stores
-the runs GitHub holds for approval apart (`github.Checks`): `item_details.checks_awaiting`
-counts those the user can approve from the review sheet, and `checks_awaiting_on_github` those
-GitHub approves only on its site; the snapshot's `Checks.Awaiting` and `AwaitingOnGitHub` carry
-them to the card, whose **{n} run(s) await your approval** (rule 6) counts the first alone, while
-its track marks both held and says the second as **{n} workflow run(s) waiting for approval on
-GitHub**. A routine's facts count both (`checks.awaitingApproval`), since either way the checks
-haven't all run. A row stored before the migration counts every held run as approvable until
-the next whole refresh reads its details again.
+**Held workflow runs** (migrations `0023_checks_awaiting_on_github` and `0024_checks_held`). A
+details read stores the runs GitHub holds for approval apart (`github.Checks`):
+`item_details.checks_awaiting` counts those the user can approve from the review sheet,
+`checks_awaiting_on_github` those GitHub approves only on its site, and `checks_held` lists
+each with its workflow's name. The snapshot counts them again as each card is built, with
+`heldruns.Count` over the held runs, the stored `merge_state`, and **Ignored workflows**
+(`checks.ignoredWorkflows`, in the snapshot cache's `settingsKey`, so a change of the list
+builds the next snapshot again from what is stored and asks GitHub nothing; the window reads
+it again as it saves the settings, `inboxKey`): a run of an ignored workflow never counts, and
+one held on GitHub counts only while GitHub reports the merge `BLOCKED`. The snapshot's
+`Checks.Awaiting` and `AwaitingOnGitHub` carry what counts to the card, whose **{n} run(s)
+await your approval** (rule 6) counts the first alone, while its track marks both held and
+says the second as **{n} workflow run(s) waiting for approval on GitHub**; a run that doesn't
+count is in neither, so its checks read as they are, its worst detail and rule 15 never see
+it, and a fork's approved pull request whose only held run is one a review started reads
+**Approved · ready to merge**. A routine's facts count every held run
+(`checks.awaitingApproval`), ignored or not, since either way the checks haven't all run. A
+row stored before 0023 counts every held run as approvable, and one stored before 0024 has
+no names, so its runs match no ignored workflow, until the next whole refresh reads its
+details again.
 
 **The reads for Autopilot.** The bound Service adds only `ItemsByID`, the rows of a routine's
 Watching list (listed and watched items alike, as a snapshot shows them). Everything else is
@@ -821,6 +835,21 @@ pinned themselves, and a muted one's are in each list's Muted tab, never `NeedsY
 out of the menu bar's count), told in no arrival, followed by no checks follower, and
 given no file check by a refresh, though their details still come with it. It is a leaf:
 it imports only `internal/repo` and `prefval`.
+
+## internal/heldruns
+
+`internal/heldruns/` decides which of a pull request's workflow runs that GitHub holds for
+approval count toward where it stands, and declares **Ignored workflows**
+(`checks.ignoredWorkflows`, a list of workflow names, matched whole and case-sensitively),
+which settings alone writes (`SetIgnoredWorkflows`, in `Portable`) and the inbox and the
+review sheet read. `Ignored` is the one rule: a run of a named workflow never counts,
+whichever kind it is and whatever GitHub reports, and a run GitHub approves only on its
+site (`github.HeldRun.OnGitHub`) doesn't count either, unless GitHub reports the merge
+`BLOCKED`, when it may be what blocks it and counts again (the safety net, from the
+`mergeStateStatus` the details and the sheet's read already carry, no request more). Every
+other held run counts. `Count` counts a card's, and `Unnamed` stands in runs of no name for
+details stored before the names were, which match no ignored workflow. It is a leaf: it
+imports only `prefval`.
 
 ## internal/threadrules
 
@@ -1099,7 +1128,16 @@ warning, when the pull request changes workflow files. A run GitHub approves onl
 (`Unrun.OnGitHub`, from `github.UnrunSuite.OnGitHub`; see internal/github) is never offered
 (`Facts.OnGitHub`): the bar lists it apart as waiting for approval on GitHub, with **Open on
 GitHub** (the run's page, or the pull request's checks for several) and no button, and an
-approval names only the others. Should GitHub still refuse one for what it is
+approval names only the others. A held run that doesn't count (`Unrun.Ignored`, marked as the sheet is built,
+by `Open`, `Refresh`, `Rebuild`, and `Act` alike, from `heldruns.Ignored` with the settings'
+ignored workflows and the merge state the sheet read) is left out of the readiness (an
+UNSTABLE pull request whose only unpassing statuses are such runs reads **Ready to merge**),
+never offered to approve nor named by an approval, and not in the bar: the checks list names
+it quietly, a line a run (**{workflow} · held on GitHub** or **· held for approval**), with
+Open on GitHub, and Ignore this workflow while it isn't named. A merge's warning still says
+every held run, since GitHub still counts it. `Rebuild` builds the sheet again from the
+cache, with no request and no new visit, which the window asks for when the list changes
+while the sheet is open. Should GitHub still refuse one for what it is
 (`github.ErrRunNotApprovable`), `Act` remembers its run ID for as long as the app runs
 (`Service.onGitHub`, in memory, never stored; `markOnGitHub` applies it to every cache the
 sheet loads, over any read since), never sends it again, and goes on with the rest; with none
@@ -4356,9 +4394,12 @@ sentence), and `card/RiskChip` is the one chip for trust and sensitive files.
 `card/CardActions` renders the primary and frames `LaunchControls`' `card` variant, which
 follows the card's session (`cardSession`) and keeps its hold, take-over, and clone dialogs
 mounted. The action column is two slots, so the controls line up down the list: the
-primary's, as wide as the longest primary (`--card-primary`, 8.5rem for Show terminal; the
-primary's own width below `@3xl`), the primary at its start, and the agent's, the rest of the
-column, its control at its end. That control is one split control in every session state,
+primary's, as wide as the longest common primary (`--card-primary`, 5.625rem for Re-review;
+a longer one, Show terminal or What happened, comes only beside the agent's ▾ and widens it,
+`minmax(var(--card-primary), max-content)`; the primary's own width below `@3xl`), the
+primary at its start, and the agent's, the rest of the column (`--card-actions`, 20.75rem at
+full width, so its 14.75rem fits the common pills whole, "Claude working · 59m" with its
+terminal button the widest; 16.875rem below `@5xl`), its control at its end. That control is one split control in every session state,
 closed by the ▾: the launch, or a session's pill (and, while one works, Show in terminal or
 Watch), the first part narrowing and cutting its words short, its age first, while the
 marks and the ▾ keep their width, so nothing runs past a border. Its `column` and `peek`
@@ -4406,7 +4447,12 @@ before the settings load, nothing is asked. Only `CardAvatar` reads the context,
 landing renders no row (the render check holds it). The cards' settings reach them as
 `CardPrefs` (`lib/cardPrefs.ts`) through `CardPrefsContext`, which App builds from the
 settings' primitives and provides around every page, so a settings save that leaves them as
-they were renders no card.
+they were renders no card. App hands the review sheet Settings → Reviewing's Ignored
+workflows as `ignoring` (`IgnoredWorkflows`, `lib/ignoredWorkflows.ts`), through `InboxView`
+and the Autopilot tab's `RowsKit` (null until the settings load, so nothing offers to ignore),
+whose `save` stores a list through the window's settings queue and reads the inbox again; the sheet's **Ignore this workflow** saves, raises the host's toast
+(`onToast`) with Undo, and `useReview` builds the sheet again with `Rebuild` once no read is
+under way, so neither asks GitHub anything.
 Its `density` (Settings → Cards' Density, `cards.density`) picks the card: `ItemRow` reads
 it and, compact, renders `card/CompactRow` from the same step, session, and clock reads, so
 one set of rules drives both. A compact card is one 2.375rem grid row (`data-density` gives

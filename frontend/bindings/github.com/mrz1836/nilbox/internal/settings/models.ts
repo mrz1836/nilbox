@@ -529,6 +529,13 @@ export interface Settings {
     "cardUnread": boolean;
 
     /**
+     * IgnoredWorkflows are the names of the workflows whose held runs never count toward
+     * where a pull request stands (see KeyIgnoredWorkflows), in the order they were added,
+     * never nil.
+     */
+    "ignoredWorkflows": string[] | null;
+
+    /**
      * MergeMethod is how the review sheet merges a pull request.
      */
     "mergeMethod": MergeMethod;

@@ -1051,7 +1051,7 @@ func TestRunsHeldForApprovalOnGitHubAreNeverApproved(t *testing.T) {
 
 	assert.Contains(t, r.Unrun, Unrun{
 		Name: "Auto-merge Trigger", Approval: true, OnGitHub: true, RunID: 102,
-		URL: "https://github.com/acme-org/example-repo/actions/runs/102",
+		URL: "https://github.com/acme-org/example-repo/actions/runs/102", Ignored: true,
 	})
 
 	res := h.act(t, ActRequest{Action: ActionApproveRuns, Accept: true})

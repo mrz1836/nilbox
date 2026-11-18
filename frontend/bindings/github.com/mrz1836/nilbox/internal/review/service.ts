@@ -105,6 +105,15 @@ export function ReadAgain(id: number): $CancellablePromise<$models.Review> {
 }
 
 /**
+ * Rebuild builds the sheet of the pull request with id again from what it read before, as
+ * Refresh returns it, with no request and no new visit: the sheet asks for it when a setting
+ * it follows changed while it is open, as the workflows whose held runs never count.
+ */
+export function Rebuild(id: number): $CancellablePromise<$models.Review> {
+    return $Call.ByID(2529083239, id);
+}
+
+/**
  * Refresh reads the pull request with id from GitHub, stores it, and returns it: one
  * GraphQL request, and its files only when it was pushed to since the sheet listed them.
  * A pull request read in the last 20 seconds is not read again, unless its card shows

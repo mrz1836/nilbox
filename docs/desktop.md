@@ -2496,15 +2496,31 @@ few seconds apart), which also moves the card to running checks.
 **Runs only GitHub can approve.** GitHub takes an approval from an app only for a fork's own runs
 (those a push to the pull request started) and for runs the Actions bot queued; any other run it
 holds, such as one a review started in the base repository, waits for approval on GitHub. Nilbox
-tells them apart from what it already reads, with no request of its own: the card's **{n} runs
-await your approval** counts only the runs you can approve, a pull request holding only the
-others gets none, and its track still shows the clock, saying **Checks: 1 workflow run waiting
-for approval on GitHub**. The sheet's bar lists those runs apart, as waiting for approval on
-GitHub, with **Open on GitHub** (the run, or the pull request's checks when there are several)
-and no button. Should GitHub still refuse an approval for what the run is, the bar says so in a
-short note (**Auto-merge Trigger can only be approved on GitHub**), lists the run as waiting on
-GitHub until Nilbox quits, and never sends it again. Any other refusal shows what GitHub said, and
-the run's link is where to approve it by hand.
+tells them apart from what it already reads, with no request of its own, and such a run doesn't
+count toward where the pull request stands: often it never runs at all, as a workflow a review
+starts on every fork's pull request. Its card reads its checks as they are (23 passed, a tick),
+so an approved, mergeable pull request reads **Approved · ready to merge** with **Merge**; the
+sheet's readiness says **Ready to merge** without **· 1 workflow run awaiting approval**, the bar
+leaves it out, and the checks list names it quietly, a line a run: **Auto-merge Trigger · held
+on GitHub · Open on GitHub**. The merge's confirmation still says it, since GitHub still counts
+it. **Unless GitHub reports the merge blocked**: then the run may be what blocks it, so it counts
+again, the card shows the clock on its track and **Checks: 1 workflow run waiting for approval
+on GitHub** rather than ready, and the bar lists it, as waiting for approval on GitHub, with
+**Open on GitHub** (the run, or the pull request's checks when there are several), no button,
+and **GitHub reports the merge blocked, so it may be what holds it back**. Should GitHub still
+refuse an approval for what the run is, the bar says so in a short note (**Auto-merge Trigger
+can only be approved on GitHub**), counts the run as held on GitHub until Nilbox quits, and
+never sends it again. Any other refusal shows what GitHub said, and the run's link is where to
+approve it by hand.
+
+**Ignored workflows.** Each held run's line, in the bar or the checks list, offers **Ignore this
+workflow** (**Ignore {name}** for each of several), which adds its workflow's name to **Settings →
+Reviewing → Ignored workflows**, with a toast that can undo it. A run of an ignored workflow never
+counts, whichever kind it is, even when GitHub reports the merge blocked: the card counts without
+it at once, from what Nilbox already stored, with no request, the sheet names it quietly with
+**· ignored**, and it is never offered to approve (approve it on GitHub). Settings lists the names,
+each with a button that counts it again, and takes one typed in; a name matches a workflow's whole
+name, case and all.
 
 **Your text goes with a merge.** Merge, Merge past the rules, and Merge when ready post the text
 in **Your review**, and any line comments, as a comment before they merge, so the pull request

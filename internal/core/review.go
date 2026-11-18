@@ -85,6 +85,11 @@ func (r reviewSettings) Sensitive(ctx context.Context) (sensitive.Config, error)
 	return settingsPart(ctx, r.settings, func(s settings.Settings) sensitive.Config { return s.SensitiveFiles })
 }
 
+// IgnoredWorkflows returns the workflows whose held runs never count.
+func (r reviewSettings) IgnoredWorkflows(ctx context.Context) ([]string, error) {
+	return settingsPart(ctx, r.settings, func(s settings.Settings) []string { return s.IgnoredWorkflows })
+}
+
 // reviewReplies hands the review sheet the review replies of the prompt library that apply
 // to pull requests, filled in with what a launch on the pull request would fill a prompt
 // with.

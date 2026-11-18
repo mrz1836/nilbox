@@ -968,6 +968,16 @@ export interface Unrun {
      */
     "runId": number;
     "url": string;
+
+    /**
+     * Ignored reports a run waiting for approval that doesn't count toward where the pull
+     * request stands (heldruns.Ignored): one of a workflow the user ignores, or one GitHub
+     * approves only on its site while GitHub doesn't report the merge blocked. The sheet
+     * names it quietly beneath its checks, never offers to approve it, and leaves it out of
+     * the readiness. It is worked out as the sheet is built, from the settings then; the
+     * cache never holds it set.
+     */
+    "ignored": boolean;
 }
 
 /**

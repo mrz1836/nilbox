@@ -3,9 +3,9 @@ import { approvableRuns, onGitHubRuns } from '../../lib/useReview'
 import { openExternal, type Review, type ReviewUnrun } from '../../platform'
 import { buttonClass, quietButtonClass } from '../controls'
 import { ExternalIcon } from '../icons'
-import { RunNames } from './ReviewSummary'
+import { IgnoreWorkflows, RunNames, type IgnoreProps } from './ReviewSummary'
 
-export interface HeldRunsProps {
+export interface HeldRunsProps extends IgnoreProps {
   review: Review
   // notice is what the sheet's approval of the runs came to, as GitHub answered it, or ''.
   notice: string
@@ -21,13 +21,15 @@ export interface HeldRunsProps {
 // HeldRuns is the bar under the sheet's header while GitHub holds an open pull request's
 // workflow runs for a maintainer's approval, as it does a fork's: it names them, each a
 // link to its run's page on GitHub, beside the button that approves them, or why the user
-// can't. Runs GitHub approves only on its site (a run a review started in the base
-// repository, say) are named apart, as waiting for approval on GitHub, with a link there
-// and no button. Once the sheet approved them, it says what GitHub made of it while the
-// sheet waits for their checks to start, and names any run still held. GitHub otherwise
-// counts the runs as not passing though no check shows them, and the inbox's card can read
-// as passed.
-export function HeldRuns({ review, notice, following, error, busy, onApprove }: HeldRunsProps) {
+// can't, and offers to ignore their workflows. Runs GitHub approves only on its site (a run
+// a review started in the base repository, say) show here only while GitHub reports the
+// merge blocked, when they may be what blocks it: named apart, as waiting for approval on
+// GitHub, with a link there and no button. Runs that don't count (ignoredRuns) never show
+// here; the checks list names them quietly. Once the sheet approved them, it says what
+// GitHub made of it while the sheet waits for their checks to start, and names any run
+// still held. GitHub otherwise counts the runs as not passing though no check shows them,
+// and the inbox's card can read as passed.
+export function HeldRuns({ review, notice, following, error, busy, onApprove, ignored, onIgnore }: HeldRunsProps) {
   const held = following ? [] : approvableRuns(review)
   const elsewhere = following ? [] : onGitHubRuns(review)
   const offer = review.offers.find((o) => o.action === 'approve_runs')
@@ -55,7 +57,8 @@ export function HeldRuns({ review, notice, following, error, busy, onApprove }: 
             {notice === '' ? ' waiting for approval: ' : ' still waiting for approval: '}
             <span className="text-muted">
               <RunNames runs={held} />
-            </span>
+            </span>{' '}
+            <IgnoreWorkflows runs={held} ignored={ignored} onIgnore={onIgnore} />
           </p>
         )}
         {elsewhere.length > 0 && (
@@ -74,6 +77,12 @@ export function HeldRuns({ review, notice, following, error, busy, onApprove }: 
             >
               <ExternalIcon className="size-3" /> Open on GitHub
             </button>
+            <IgnoreWorkflows runs={elsewhere} ignored={ignored} onIgnore={onIgnore} />
+          </p>
+        )}
+        {elsewhere.length > 0 && (
+          <p className="text-xs">
+            GitHub reports the merge blocked, so {elsewhere.length === 1 ? 'it' : 'they'} may be what holds it back.
           </p>
         )}
         {error !== '' && (

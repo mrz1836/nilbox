@@ -115,7 +115,8 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   },
   reviewing: {
     label: 'Reviewing',
-    description: 'How the review sheet merges a pull request, and where its replies are kept.',
+    description:
+      'How the review sheet merges a pull request, the workflows whose held runs never count, and where its replies are kept.',
   },
   autopilot: {
     label: 'Autopilot',
@@ -313,6 +314,19 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     {
       label: 'Merge method',
       keywords: ['squash', 'merge commit', 'rebase', 'approve and merge', 'merge button', 'review sheet'],
+    },
+    {
+      label: 'Ignored workflows',
+      keywords: [
+        'held runs',
+        'workflow runs',
+        'awaiting approval',
+        'approve workflows',
+        'held on GitHub',
+        'ignore',
+        'checks',
+        'fork',
+      ],
     },
     {
       label: 'Review replies',

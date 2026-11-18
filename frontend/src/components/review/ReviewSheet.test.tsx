@@ -3,15 +3,17 @@ import userEvent from '@testing-library/user-event'
 import { Activity, useState, type ReactElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { Result } from '../../lib/call'
 import { useReviewDrafts } from '../../lib/reviewDrafts'
 import { approvalWait } from '../../lib/useReview'
 import { isTopmost } from '../../lib/useModalDialog'
-import type { InboxItem, ReviewResult } from '../../platform'
+import type { InboxItem, ReviewResult, Settings } from '../../platform'
 import { at } from '../../test/clock'
 import {
   agentSession,
   agents,
   approveRunsOffer,
+  blockedOnGitHub,
   closeOffer,
   heldOnGitHub,
   heldRun,
@@ -29,6 +31,7 @@ import {
   reviewResult,
   reviewTimeline,
   rerequestOffer,
+  settings,
   updateBranchOffer,
   worktree,
   yourReview,
@@ -1663,9 +1666,11 @@ describe('ReviewSheet with workflow runs held for approval', () => {
   })
 
   it('lists the runs GitHub approves only on its site apart, with a link there and no button of their own', async () => {
+    // GitHub reports the merge blocked, so the run held on GitHub counts, as its likely
+    // blocker.
     platform.refreshReview.mockResolvedValue(
       review({
-        unrun: [heldRun('GoFortress', 101), heldOnGitHub('Auto-merge Trigger', 103)],
+        unrun: [heldRun('GoFortress', 101), blockedOnGitHub('Auto-merge Trigger', 103)],
         offers: [...review().offers, approveRunsOffer()],
       }),
     )
@@ -1674,6 +1679,7 @@ describe('ReviewSheet with workflow runs held for approval', () => {
     const bar = await runsBar()
     expect(bar).toHaveTextContent('1 workflow run is waiting for approval: GoFortress')
     expect(bar).toHaveTextContent('1 workflow run is waiting for approval on GitHub: Auto-merge Trigger')
+    expect(bar).toHaveTextContent('GitHub reports the merge blocked, so it may be what holds it back.')
     expect(within(bar).getAllByRole('button', { name: 'Approve workflows to run' })).toHaveLength(1)
 
     await userEvent.click(within(bar).getByRole('button', { name: 'Open on GitHub' }))
@@ -1683,7 +1689,7 @@ describe('ReviewSheet with workflow runs held for approval', () => {
   it('offers only the way to GitHub when every held run waits for approval there', async () => {
     // GitHub's API approves neither run, so the sheet offers no approval at all.
     platform.refreshReview.mockResolvedValue(
-      review({ unrun: [heldOnGitHub('Auto-merge Trigger', 103), heldOnGitHub('PR Management', 104)] }),
+      review({ unrun: [blockedOnGitHub('Auto-merge Trigger', 103), blockedOnGitHub('PR Management', 104)] }),
     )
     render(<Harness />)
 
@@ -1691,6 +1697,7 @@ describe('ReviewSheet with workflow runs held for approval', () => {
     expect(bar).toHaveTextContent(
       '2 workflow runs are waiting for approval on GitHub: Auto-merge Trigger, PR Management',
     )
+    expect(bar).toHaveTextContent('GitHub reports the merge blocked, so they may be what holds it back.')
     expect(bar).not.toHaveTextContent('waiting for approval:')
     expect(within(bar).queryByRole('button', { name: 'Approve workflows to run' })).not.toBeInTheDocument()
 
@@ -1722,9 +1729,12 @@ describe('ReviewSheet with workflow runs held for approval', () => {
     expect(await within(bar).findByRole('status')).toHaveTextContent(
       /^Auto-merge Trigger can only be approved on GitHub\.$/,
     )
-    await waitFor(() => {
-      expect(bar).toHaveTextContent('1 workflow run is waiting for approval on GitHub: Auto-merge Trigger')
-    })
+    // GitHub doesn't report the merge blocked, so the run no longer counts: the checks list
+    // names it quietly.
+    expect(await screen.findByRole('list', { name: 'Workflow runs that don’t count' })).toHaveTextContent(
+      'Auto-merge Trigger · held on GitHub · Open on GitHub',
+    )
+    expect(bar).not.toHaveTextContent('waiting for approval on GitHub')
     expect(platform.readReviewAgain).toHaveBeenCalledOnce()
     expect(within(bar).queryByRole('button', { name: 'Approve workflows to run' })).not.toBeInTheDocument()
     expect(within(bar).queryByRole('alert')).not.toBeInTheDocument()
@@ -1740,6 +1750,190 @@ describe('ReviewSheet with workflow runs held for approval', () => {
     await waitFor(() => {
       expect(screen.queryByRole('region', { name: 'Workflow runs awaiting approval' })).not.toBeInTheDocument()
     })
+  })
+})
+
+// IgnoringHarness is the sheet with the window's ignored workflows, kept as App keeps them:
+// save stores a list, and the sheet sees it once stored.
+function IgnoringHarness({
+  initial = [],
+  save,
+  ...props
+}: HarnessProps & { initial?: string[]; save: (names: string[]) => Promise<Result<Settings>> }) {
+  const [names, setNames] = useState(initial)
+
+  return (
+    <Harness
+      {...props}
+      ignoring={{
+        names,
+        save: async (next) => {
+          const result = await save(next)
+
+          if (result.ok) {
+            setNames(result.data.ignoredWorkflows)
+          }
+
+          return result
+        },
+      }}
+    />
+  )
+}
+
+// stores is a save of the ignored workflows the backend takes.
+function stores() {
+  return vi.fn((names: string[]) =>
+    Promise.resolve<Result<Settings>>({ ok: true, data: settings({ ignoredWorkflows: names }) }),
+  )
+}
+
+// quietRuns is the checks list's lines of the held runs that don't count.
+function quietRuns() {
+  return screen.findByRole('list', { name: 'Workflow runs that don’t count' })
+}
+
+describe('ReviewSheet with held runs that don’t count', () => {
+  it('reads as ready to merge, with no bar, and names a run held on GitHub quietly under the checks', async () => {
+    // The owner's case: 23 checks passed on a fork's pull request, and the run a review
+    // started, which GitHub holds and approves only on its site.
+    platform.refreshReview.mockResolvedValue(review({ unrun: [heldOnGitHub('Auto-merge Trigger', 103)] }))
+    render(<Harness />)
+
+    const quiet = await quietRuns()
+    expect(within(quiet).getByRole('listitem')).toHaveTextContent(
+      /^Auto-merge Trigger · held on GitHub · Open on GitHub$/,
+    )
+    expect(within(sheet()).getByText('Ready to merge')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Workflow runs awaiting approval' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Workflow runs with no check' })).not.toBeInTheDocument()
+
+    await userEvent.click(within(quiet).getByRole('button', { name: 'Open on GitHub' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/actions/runs/103')
+  })
+
+  it('keeps the bar while GitHub reports the merge blocked', async () => {
+    platform.refreshReview.mockResolvedValue(review({ unrun: [blockedOnGitHub('Auto-merge Trigger', 103)] }))
+    render(<IgnoringHarness save={stores()} />)
+
+    const bar = await runsBar()
+    expect(bar).toHaveTextContent('1 workflow run is waiting for approval on GitHub: Auto-merge Trigger')
+    expect(bar).toHaveTextContent('GitHub reports the merge blocked, so it may be what holds it back.')
+    expect(within(bar).getByRole('button', { name: 'Ignore this workflow' })).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Workflow runs that don’t count' })).not.toBeInTheDocument()
+  })
+
+  it('ignores a held run’s workflow, builds the sheet again from what it read, and undoes it', async () => {
+    const save = stores()
+    const onToast = vi.fn()
+    const held = heldOnGitHub('Auto-merge Trigger', 103)
+
+    platform.refreshReview.mockResolvedValue(review({ unrun: [held] }))
+    platform.rebuildReview.mockResolvedValue(review({ unrun: [held] }))
+    render(<IgnoringHarness save={save} onToast={onToast} />)
+
+    await userEvent.click(within(await quietRuns()).getByRole('button', { name: 'Ignore this workflow' }))
+
+    expect(save).toHaveBeenCalledWith(['Auto-merge Trigger'])
+    await waitFor(() => {
+      expect(platform.rebuildReview).toHaveBeenCalledWith(1)
+    })
+    expect(within(await quietRuns()).getByRole('listitem')).toHaveTextContent(
+      /^Auto-merge Trigger · held on GitHub · Open on GitHub · ignored$/,
+    )
+    expect(platform.readReviewAgain).not.toHaveBeenCalled()
+
+    expect(onToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'Ignoring Auto-merge Trigger',
+        detail: 'Its held runs no longer count. Settings → Reviewing lists it.',
+        tone: 'success',
+      }),
+    )
+
+    const [[toast]] = onToast.mock.calls as [[{ undo: () => void }]]
+
+    act(() => {
+      toast.undo()
+    })
+    expect(save).toHaveBeenLastCalledWith([])
+    await waitFor(() => {
+      expect(platform.rebuildReview).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('ignores a run the user could approve from the bar, which then names it quietly', async () => {
+    const save = stores()
+    const preview = heldRun('Deploy Preview', 101)
+
+    platform.refreshReview.mockResolvedValue(
+      review({
+        unrun: [preview],
+        offers: [...review().offers, approveRunsOffer()],
+        readiness: { state: 'unstable', sentence: 'Ready to merge · 1 workflow run awaiting approval', needs: [] },
+      }),
+    )
+    platform.rebuildReview.mockResolvedValue(review({ unrun: [{ ...preview, ignored: true }] }))
+    render(<IgnoringHarness save={save} />)
+
+    const bar = await runsBar()
+    await userEvent.click(within(bar).getByRole('button', { name: 'Ignore this workflow' }))
+
+    expect(save).toHaveBeenCalledWith(['Deploy Preview'])
+    expect(within(await quietRuns()).getByRole('listitem')).toHaveTextContent(
+      /^Deploy Preview · held for approval · Open on GitHub · ignored$/,
+    )
+    expect(screen.queryByRole('region', { name: 'Workflow runs awaiting approval' })).not.toBeInTheDocument()
+    expect(within(sheet()).getByText('Ready to merge')).toBeInTheDocument()
+  })
+
+  it('names each workflow to ignore when the bar holds several, leaving out those already ignored', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({
+        unrun: [heldRun('Deploy Preview', 101), heldRun('Lint', 102), heldRun('Lint', 104)],
+        offers: [...review().offers, approveRunsOffer()],
+      }),
+    )
+    const { unmount } = render(<IgnoringHarness save={stores()} />)
+
+    const ignoreButtons = async () =>
+      within(await runsBar())
+        .getAllByRole('button', { name: /^Ignore/ })
+        .map((b) => b.textContent)
+
+    expect(await ignoreButtons()).toEqual(['Ignore Deploy Preview', 'Ignore Lint'])
+
+    unmount()
+    render(<IgnoringHarness save={stores()} initial={['Lint']} />)
+
+    expect(await ignoreButtons()).toEqual(['Ignore this workflow'])
+  })
+
+  it('says when the ignored workflows can’t be stored', async () => {
+    const onToast = vi.fn()
+
+    platform.refreshReview.mockResolvedValue(review({ unrun: [heldOnGitHub('Auto-merge Trigger', 103)] }))
+    render(
+      <IgnoringHarness save={() => Promise.resolve({ ok: false, error: 'database is locked' })} onToast={onToast} />,
+    )
+
+    await userEvent.click(within(await quietRuns()).getByRole('button', { name: 'Ignore this workflow' }))
+
+    await waitFor(() => {
+      expect(onToast).toHaveBeenCalledWith({
+        text: 'Couldn’t ignore Auto-merge Trigger',
+        detail: 'database is locked',
+        tone: 'error',
+      })
+    })
+    expect(platform.rebuildReview).not.toHaveBeenCalled()
+  })
+
+  it('offers to ignore nothing outside the window', async () => {
+    platform.refreshReview.mockResolvedValue(review({ unrun: [heldOnGitHub('Auto-merge Trigger', 103)] }))
+    render(<Harness />)
+
+    expect(within(await quietRuns()).queryByRole('button', { name: /^Ignore/ })).not.toBeInTheDocument()
   })
 })
 

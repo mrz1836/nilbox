@@ -172,7 +172,10 @@
                                             },
                                             "workflowRun": {
                                                 "databaseId": 203,
-                                                "event": "pull_request_review"
+                                                "event": "pull_request_review",
+                                                "workflow": {
+                                                    "name": "Auto-merge Trigger"
+                                                }
                                             }
                                         },
                                         {

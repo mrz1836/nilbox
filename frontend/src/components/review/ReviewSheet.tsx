@@ -2,6 +2,7 @@ import { Activity, useId, useLayoutEffect, useRef, useState, type ReactNode } fr
 
 import { commitsSinceAnchor } from '../../lib/commits'
 import { refText } from '../../lib/format'
+import { ignoreKey, type IgnoredWorkflows } from '../../lib/ignoredWorkflows'
 import { PicturesContext, reviewPictureLogins, usePictures } from '../../lib/pictures'
 import type { ReviewDrafts } from '../../lib/reviewDrafts'
 import {
@@ -39,6 +40,7 @@ import { CommentIcon, CommitIcon, DocumentIcon } from '../icons'
 import type { LaunchOptions } from '../ItemRow'
 import { Sheet } from '../Sheet'
 import { TabPanel, Tabs } from '../Tabs'
+import type { ToastMessage } from '../Toast'
 import { WorkLine } from '../WorkLine'
 import { ActionProgress } from './ActionProgress'
 import { AgentVerdict } from './AgentVerdict'
@@ -96,9 +98,14 @@ export interface ReviewSheetProps {
   // back returns to the sheet a link was followed from, or is null.
   back?: SheetBack | null
   // triage is the card's triage, in the header, and toast the inbox's toast, which shows in
-  // the sheet while it is open, since the page behind it can't be reached.
+  // the sheet while it is open, since the page behind it can't be reached; onToast raises
+  // it, as Ignore this workflow does with its Undo.
   triage?: ReactNode
   toast?: ReactNode
+  onToast?: ((message: Omit<ToastMessage, 'id'>) => void) | undefined
+  // ignoring is Settings → Reviewing's Ignored workflows, which the held runs' lines name and
+  // add to; without it, they offer to ignore none.
+  ignoring?: IgnoredWorkflows | null | undefined
 }
 
 // selectedAction is the action the sheet's button runs: the one the user chose, while the
@@ -191,10 +198,12 @@ export function ReviewSheet({
   back = null,
   triage,
   toast,
+  onToast,
+  ignoring = null,
 }: ReviewSheetProps) {
   const titleId = useId()
   const tabsId = useId()
-  const loaded = useReview(id)
+  const loaded = useReview(id, ignoreKey(ignoring?.names))
   const review = loaded.review
   const pictures = usePictures(review === null ? [] : reviewPictureLogins(review))
   const draft = drafts.get(id)
@@ -311,6 +320,31 @@ export function ReviewSheet({
 
     onDone(result.data, r)
   }
+
+  // ignoreWorkflow adds a workflow to the ignored workflows, after which its held runs no
+  // longer count, on the card and here (useReview builds the sheet again), and the toast
+  // offers to undo it.
+  const ignoreWorkflow =
+    ignoring === null
+      ? undefined
+      : (name: string) => {
+          void ignoring.save([...ignoring.names, name]).then((result) => {
+            if (!result.ok) {
+              onToast?.({ text: `Couldn’t ignore ${name}`, detail: result.error, tone: 'error' })
+
+              return
+            }
+
+            onToast?.({
+              text: `Ignoring ${name}`,
+              detail: 'Its held runs no longer count. Settings → Reviewing lists it.',
+              tone: 'success',
+              undo: () => {
+                void ignoring.save(result.data.ignoredWorkflows.filter((n) => n !== name))
+              },
+            })
+          })
+        }
 
   const run = (action: ReviewAction) => {
     if (review === null) {
@@ -529,6 +563,8 @@ export function ReviewSheet({
               onApprove={() => {
                 run('approve_runs')
               }}
+              ignored={ignoring?.names}
+              onIgnore={ignoreWorkflow}
             />
           )}
           {loaded.patchError !== '' && <ErrorBanner>{loaded.patchError}</ErrorBanner>}
@@ -714,6 +750,8 @@ export function ReviewSheet({
                         item={item}
                         onFilesSettings={onFilesSettings}
                         onShowReview={showReview}
+                        ignored={ignoring?.names}
+                        onIgnore={ignoreWorkflow}
                       />
                     )}
                     <AgentVerdict

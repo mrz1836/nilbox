@@ -3,6 +3,7 @@ package inbox
 import (
 	"sync/atomic"
 
+	"github.com/mrz1836/nilbox/internal/heldruns"
 	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/trust"
@@ -10,10 +11,12 @@ import (
 
 // settingsKey is the settings a snapshot depends on beside the inbox's own tables, as
 // stored: the trusted bots, which decide each item's trust, the sensitive-file settings,
-// which decide whose files are checked and what each check points out, and the pinned and
+// which decide whose files are checked and what each check points out, the pinned and
 // muted repositories and orgs, which decide each item's repository rule and its place in
-// its lists. The settings package writes them, so the inbox reads them back to tell
-// whether a snapshot or a compiled scope still holds.
+// its lists, and the ignored workflows, which decide which held runs each card counts. The
+// settings package writes them, so the inbox reads them back to tell whether a snapshot or
+// a compiled scope still holds: a change to any of them builds the next snapshot again from
+// what is stored, asking GitHub nothing.
 type settingsKey struct {
 	bots       string
 	botsStored bool
@@ -22,12 +25,14 @@ type settingsKey struct {
 	patterns   string
 	pinned     string
 	muted      string
+	ignored    string
 }
 
 // settingsPrefs are the prefs keys a settingsKey is read from.
 func settingsPrefs() []string {
-	return append([]string{trust.PrefBots, sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns},
-		reporules.Keys()...)
+	return append([]string{
+		trust.PrefBots, sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, heldruns.KeyIgnoredWorkflows,
+	}, reporules.Keys()...)
 }
 
 // keyOf reads the settingsKey from stored prefs that include settingsPrefs.
@@ -37,7 +42,7 @@ func keyOf(stored map[string]string) settingsKey {
 	return settingsKey{
 		bots: bots, botsStored: botsStored, scope: stored[sensitive.PrefScope], off: stored[sensitive.PrefOff],
 		patterns: stored[sensitive.PrefPatterns], pinned: stored[reporules.PrefPinned],
-		muted: stored[reporules.PrefMuted],
+		muted: stored[reporules.PrefMuted], ignored: stored[heldruns.KeyIgnoredWorkflows],
 	}
 }
 

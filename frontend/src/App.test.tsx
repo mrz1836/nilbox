@@ -53,6 +53,10 @@ import {
   activityPage,
   avatarDataURL,
   routine,
+  details,
+  heldOnGitHub,
+  heldRun,
+  review,
 } from './test/fixtures'
 import { emit, listening, mocks, platform, renderApp } from './test/platform'
 
@@ -1321,6 +1325,88 @@ describe('App’s unread dots', () => {
     await waitFor(() => {
       expect(platform.markItemsSeen).toHaveBeenCalledExactlyOnceWith([1])
     })
+  })
+})
+
+describe('App’s held workflow runs', () => {
+  // approvedByYou is the owner's case: a fork's pull request assigned to the user, who
+  // approved it, with 23 checks passed and held runs counted as the backend counts them.
+  const approvedByYou = (awaiting: number) =>
+    item({
+      assigned: true,
+      author: 'contributor-a',
+      reviewRequest: 'none',
+      isCrossRepository: true,
+      details: details({
+        viewerVerdict: 'approved',
+        checks: { state: 'SUCCESS', passed: 23, failed: 0, pending: 0, skipped: 0, awaiting, awaitingOnGitHub: 0 },
+      }),
+    })
+  const card = () => document.querySelector('[data-item-id="1"]')
+  const sheetOf = () => screen.findByRole('dialog', { name: 'Add the widget cache' })
+
+  it('reads as approved and ready to merge when its only held run is held on GitHub, and the sheet names it quietly', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([approvedByYou(0)]) }))
+    platform.refreshReview.mockResolvedValue(review({ unrun: [heldOnGitHub('Auto-merge Trigger', 103)] }))
+    await renderApp()
+
+    await screen.findByRole('region', { name: 'Yours' })
+    await waitFor(() => {
+      expect(card()).toHaveAttribute('data-rule', 'ready')
+    })
+    expect(card()).toHaveTextContent('Approved · ready to merge')
+    expect(within(card() as HTMLElement).getByRole('button', { name: 'Merge' })).toBeInTheDocument()
+    expect(
+      [...(card()?.querySelectorAll('[data-step]') ?? [])].map(
+        (s) => `${s.getAttribute('data-step') ?? ''}:${s.getAttribute('data-state') ?? ''}`,
+      ),
+    ).toEqual(['checks:passed', 'review:approved', 'merge:mergeable'])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add the widget cache' }))
+    const sheet = await sheetOf()
+
+    expect(await within(sheet).findByRole('list', { name: 'Workflow runs that don’t count' })).toHaveTextContent(
+      'Auto-merge Trigger · held on GitHub · Open on GitHub Ignore this workflow',
+    )
+    expect(within(sheet).getByText('Ready to merge')).toBeInTheDocument()
+    expect(within(sheet).queryByRole('region', { name: 'Workflow runs awaiting approval' })).not.toBeInTheDocument()
+  })
+
+  it('ignores a held run’s workflow from the sheet, and the card counts without it', async () => {
+    const preview = heldRun('Deploy Preview', 101)
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([approvedByYou(1)]) }))
+    platform.refreshReview.mockResolvedValue(review({ unrun: [preview] }))
+    platform.rebuildReview.mockResolvedValue(review({ unrun: [{ ...preview, ignored: true }] }))
+    platform.setIgnoredWorkflows.mockImplementation((names: string[] | null) =>
+      stored({ ignoredWorkflows: names ?? [] }),
+    )
+    await renderApp()
+
+    await screen.findByRole('region', { name: 'Yours' })
+    await waitFor(() => {
+      expect(card()).toHaveAttribute('data-rule', 'runs_held')
+    })
+    expect(card()).toHaveTextContent('1 run awaits your approval')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add the widget cache' }))
+    const sheet = await sheetOf()
+    const bar = await within(sheet).findByRole('region', { name: 'Workflow runs awaiting approval' })
+
+    // The backend counts without it once the list holds it.
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([approvedByYou(0)]) }))
+    await userEvent.click(within(bar).getByRole('button', { name: 'Ignore this workflow' }))
+
+    expect(platform.setIgnoredWorkflows).toHaveBeenCalledExactlyOnceWith(['Deploy Preview'])
+    expect(await within(sheet).findByText('Ignoring Deploy Preview')).toBeInTheDocument()
+    expect(await within(sheet).findByRole('list', { name: 'Workflow runs that don’t count' })).toHaveTextContent(
+      'Deploy Preview · held for approval · Open on GitHub · ignored',
+    )
+    await waitFor(() => {
+      expect(card()).toHaveAttribute('data-rule', 'ready')
+    })
+    expect(card()).toHaveTextContent('Approved · ready to merge')
+    expect(platform.readReviewAgain).not.toHaveBeenCalled()
   })
 })
 

@@ -1609,15 +1609,28 @@ func TestRefreshStoresTheRunsHeldForApproval(t *testing.T) {
 	// The rollup reads SUCCESS while a fork's workflow runs wait for a maintainer, and one a
 	// review started in the base repository waits for approval on GitHub.
 	held := prDetails()
-	held.Checks = github.Checks{State: "SUCCESS", Passed: 1, Awaiting: 4, AwaitingOnGitHub: 1}
+	held.Checks = github.Checks{
+		State: "SUCCESS", Passed: 1, Awaiting: 4, AwaitingOnGitHub: 1,
+		Held: []github.HeldRun{
+			{Workflow: "CI"},
+			{Workflow: "Lint"},
+			{Workflow: "Docs"},
+			{Workflow: "Deploy Preview"},
+			{Workflow: "Auto-merge Trigger", OnGitHub: true},
+		},
+	}
 	h.client.details = map[string]github.ItemDetails{nodeID(1): held}
 
 	snap := h.refresh(t)
 
 	first := itemByNumber(t, snap.ReviewRequested, 1)
 	require.NotNil(t, first.Details)
-	assert.Equal(t, Checks{State: "SUCCESS", Passed: 1, Awaiting: 4, AwaitingOnGitHub: 1}, first.Details.Checks,
-		"the runs the user can approve apart from those approved on GitHub")
+	assert.Equal(t, Checks{State: "SUCCESS", Passed: 1, Awaiting: 4}, first.Details.Checks,
+		"the runs the user can approve count, and the one approved on GitHub doesn't")
+	assert.JSONEq(t, `[{"workflow":"CI","onGitHub":false},{"workflow":"Lint","onGitHub":false},`+
+		`{"workflow":"Docs","onGitHub":false},{"workflow":"Deploy Preview","onGitHub":false},`+
+		`{"workflow":"Auto-merge Trigger","onGitHub":true}]`,
+		h.column(t, `SELECT checks_held FROM item_details`)[0], "each held run is stored with its workflow")
 
 	stored, err := NewStore(h.pool, h.clock).ReviewItem(t.Context(), first.ID)
 	require.NoError(t, err)

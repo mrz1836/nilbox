@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 
+import type { IgnoredWorkflows } from '../lib/ignoredWorkflows'
 import { attempt } from '../lib/call'
 import { refText } from '../lib/format'
 import type { InboxFilter } from '../lib/inboxFilter'
@@ -154,6 +155,9 @@ export interface InboxViewProps {
   // onShowCardGuide opens the card guide, from the "How to read a card" button beside the
   // last-refreshed time; without it the inbox offers no way to.
   onShowCardGuide?: (() => void) | undefined
+  // ignoring is Settings → Reviewing's Ignored workflows, which the review sheet names and
+  // adds to; without it, the sheet offers to ignore none.
+  ignoring?: IgnoredWorkflows | null | undefined
 }
 
 // SheetDrafts are the drafts of both sheets over the inbox: the review sheet's and the issue
@@ -297,6 +301,7 @@ export function InboxView({
   onConversationOrder,
   onItemOpened,
   onShowCardGuide,
+  ignoring = null,
 }: InboxViewProps) {
   const { snapshot, loadError, refreshError, refreshing, progress, caughtUp, refresh } = inbox
   const { order, setStatusSort, setStatusOrder, setListKind } = inboxOrder
@@ -907,6 +912,8 @@ export function InboxView({
               back={back}
               triage={sheetTriageButtons}
               toast={sheetToast}
+              onToast={showToast}
+              ignoring={ignoring}
             />
           )}
           {viewing !== null && sheets && viewing.kind === 'issue' && (
