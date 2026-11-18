@@ -89,6 +89,7 @@
     "hiddenLabels": [
       "size/*"
     ],
+    "cardAvatars": true,
     "integrations": {
       "switches": {
         "go-pre-commit": "auto",

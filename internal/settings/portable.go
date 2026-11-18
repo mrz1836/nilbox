@@ -74,6 +74,7 @@ type Portable struct {
 	ToastSeconds        *int                 `json:"toastSeconds,omitempty"`
 	InboxOrder          *InboxOrder          `json:"inboxOrder,omitempty"`
 	HiddenLabels        *[]string            `json:"hiddenLabels,omitempty"`
+	CardAvatars         *bool                `json:"cardAvatars,omitempty"`
 	Integrations        *PortableIntegration `json:"integrations,omitempty"`
 	UpdateMode          *updateprefs.Mode    `json:"updateMode,omitempty"`
 	Autopilot           *PortableAutopilot   `json:"autopilot,omitempty"`
@@ -195,7 +196,7 @@ func portableOf(set Settings) Portable {
 		},
 		ServiceStatus: &PortableStatus{Off: &off, Parts: &picked},
 		MergeMethod:   &set.MergeMethod, Theme: &set.Theme, TextSize: &set.TextSize, ToastSeconds: &set.ToastSeconds,
-		InboxOrder: &set.InboxOrder, HiddenLabels: &set.HiddenLabels,
+		InboxOrder: &set.InboxOrder, HiddenLabels: &set.HiddenLabels, CardAvatars: &set.CardAvatars,
 		Integrations: &PortableIntegration{
 			Switches: maps.Clone(ig.Switches), Paths: maps.Clone(ig.Paths), RunsIn: &ig.RunsIn,
 			OfferAfterMerge: &ig.OfferAfterMerge, MagexTargets: &ig.ScriptSources.MagexTargets,
@@ -486,6 +487,7 @@ func (s *Service) portableFields() []portableField {
 			func(_ context.Context, patterns []string) (map[string]string, error) {
 				return checkHiddenLabels(patterns)
 			}, nil),
+		boolField("Author pictures", tellsNothing, KeyCardAvatars, func(p Portable) *bool { return p.CardAvatars }),
 		pointerField("When a new version is out", tellsUpdates, func(p Portable) *updateprefs.Mode { return p.UpdateMode },
 			func(_ context.Context, m updateprefs.Mode) (map[string]string, error) { return checkUpdateMode(m) },
 			func(m updateprefs.Mode) string { return string(m) }),

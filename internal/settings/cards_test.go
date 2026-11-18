@@ -1,0 +1,63 @@
+package settings
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/prefs"
+)
+
+func TestSetCardAvatarsStoresAndReadsBack(t *testing.T) {
+	t.Parallel()
+
+	svc, db, _ := newTestService(t)
+	ctx := t.Context()
+
+	got, err := svc.Get(ctx)
+	require.NoError(t, err)
+	assert.True(t, got.CardAvatars, "the cards show the authors' pictures until turned off")
+
+	got, err = svc.SetCardAvatars(ctx, false)
+	require.NoError(t, err)
+	assert.False(t, got.CardAvatars)
+
+	stored, ok, err := prefs.New(db, nil).Get(ctx, KeyCardAvatars)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, "false", stored)
+
+	again, err := svc.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, got, again, "the setter returns the settings as stored")
+
+	got, err = svc.SetCardAvatars(ctx, true)
+	require.NoError(t, err)
+	assert.True(t, got.CardAvatars)
+
+	// A value no build stores reads as the default.
+	setPref(t, db, KeyCardAvatars, "sometimes")
+
+	got, err = svc.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, DefaultCardAvatars, got.CardAvatars)
+}
+
+func TestSetCardAvatarsThatCannotWriteStoresNothing(t *testing.T) {
+	t.Parallel()
+
+	svc, db, _ := newTestService(t)
+	ctx := t.Context()
+
+	_, err := db.ExecContext(ctx, refusePrefs)
+	require.NoError(t, err)
+
+	got, err := svc.SetCardAvatars(ctx, false)
+	require.ErrorContains(t, err, KeyCardAvatars)
+	assert.Equal(t, Settings{}, got)
+
+	stored, err := svc.Get(ctx)
+	require.NoError(t, err)
+	assert.True(t, stored.CardAvatars)
+}

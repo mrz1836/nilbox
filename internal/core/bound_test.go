@@ -117,6 +117,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetHiddenLabels": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetHiddenLabels(ctx, nil)
 		},
+		"settings.Service.SetCardAvatars": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetCardAvatars(ctx, false)
+		},
 		"settings.Service.SetTerminal": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetTerminal(ctx, settings.TerminalApp)
 		},

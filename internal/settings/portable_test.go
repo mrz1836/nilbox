@@ -108,6 +108,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetListKind(ctx, ListReviewRequested, ListKindIssues) },
 		func() (Settings, error) { return svc.SetStatusOrder(ctx, []string{"In progress", "Blocked"}) },
 		func() (Settings, error) { return svc.SetHiddenLabels(ctx, []string{"size/*", "wontfix"}) },
+		func() (Settings, error) { return svc.SetCardAvatars(ctx, false) },
 		func() (Settings, error) {
 			return svc.SetIntegrationEnabled(ctx, integrationprefs.Scripts, integrationprefs.SwitchOff)
 		},
