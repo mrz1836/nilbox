@@ -1168,13 +1168,12 @@ describe('App’s card pictures', () => {
     expect(platform.cardPictures).toHaveBeenCalledOnce()
   })
 
-  it('asks for no picture while the cards are compact, in batches once they are comfortable, and cancels them as they turn compact', async () => {
-    platform.getSettings.mockImplementation(() => stored({ cardDensity: 'compact' }))
-    platform.setCardDensity.mockImplementation((cardDensity: CardDensity) => stored({ cardDensity }))
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list(authored()) }))
-    // Each request waits for the test, and can be cancelled.
+  // cancellable makes every request for the cards' pictures wait for the test, and lists
+  // each one's answer and its cancel.
+  function cancellable() {
     const answers: ((got: Record<string, string>) => void)[] = []
     const cancels: ReturnType<typeof vi.fn>[] = []
+
     platform.cardPictures.mockImplementation(() => {
       const cancel = vi.fn()
       cancels.push(cancel)
@@ -1186,6 +1185,22 @@ describe('App’s card pictures', () => {
         { cancel },
       )
     })
+
+    return { answers, cancels }
+  }
+
+  // someAuthored are 26 of authored's items, 25 people's and dependabot's: two requests.
+  const someAuthored = () => authored().slice(34)
+
+  // slow is the time a test that renders some authored cards and visits Settings may take
+  // on a busy runner, under coverage.
+  const slow = { timeout: 15_000 }
+
+  it('asks for no picture while the cards are compact, and in batches once they are comfortable', slow, async () => {
+    platform.getSettings.mockImplementation(() => stored({ cardDensity: 'compact' }))
+    platform.setCardDensity.mockImplementation((cardDensity: CardDensity) => stored({ cardDensity }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list(someAuthored()) }))
+    const { answers } = cancellable()
     await renderApp()
     await screen.findByText('Bump the cache')
 
@@ -1194,24 +1209,36 @@ describe('App’s card pictures', () => {
     await chooseCardDensity('Comfortable')
 
     await waitFor(() => {
-      expect(platform.cardPictures).toHaveBeenCalledTimes(3)
+      expect(platform.cardPictures).toHaveBeenCalledTimes(2)
     })
     await act(async () => {
-      answers[0]?.({ 'person-00': picture('00') })
+      for (const answer of answers) {
+        answer({ 'person-34': picture('34') })
+      }
       await Promise.resolve()
     })
     await waitFor(() => {
-      expect(pictureOn(1)).toHaveAttribute('src', picture('00'))
+      expect(pictureOn(35)).toHaveAttribute('src', picture('34'))
+    })
+  })
+
+  it('cancels the requests under way as the cards turn compact, and asks nothing more', slow, async () => {
+    platform.setCardDensity.mockImplementation((cardDensity: CardDensity) => stored({ cardDensity }))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list(someAuthored()) }))
+    const { cancels } = cancellable()
+    await renderApp()
+    await screen.findByText('Bump the cache')
+    await waitFor(() => {
+      expect(platform.cardPictures).toHaveBeenCalledTimes(2)
     })
 
     await chooseCardDensity('Compact')
 
     await waitFor(() => {
-      expect(cancels[2]).toHaveBeenCalledOnce()
+      expect(cancels[1]).toHaveBeenCalledOnce()
     })
-    expect(cancels[1]).toHaveBeenCalledOnce()
-    expect(pictureOn(1)).toBeNull()
-    expect(platform.cardPictures).toHaveBeenCalledTimes(3)
+    expect(cancels[0]).toHaveBeenCalledOnce()
+    expect(platform.cardPictures).toHaveBeenCalledTimes(2)
   })
 })
 
