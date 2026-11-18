@@ -5,7 +5,7 @@ import type { Edge, Story } from '../../lib/nextStep'
 import { CardStory } from './CardStory'
 
 function story(overrides: Partial<Story> = {}): Story {
-  return { text: 'Re-review', detail: '', icon: 'dot', triage: false, ...overrides }
+  return { text: 'Re-review', detail: '', icon: 'dot', triage: false, state: '', ...overrides }
 }
 
 describe('CardStory', () => {
@@ -60,6 +60,39 @@ describe('CardStory', () => {
     )
 
     expect(screen.getByText('Back Mon 9:00')).toBeInTheDocument()
+  })
+
+  it('follows a triage story’s tag with where the item stands, muted', () => {
+    const { container } = render(
+      <div>
+        <CardStory story={story({ text: '', triage: true, state: 'Waiting on the author' })} edge="none">
+          <span>Back Mon 9:00</span>
+        </CardStory>
+      </div>,
+    )
+
+    const line = container.firstElementChild
+    expect(line).toHaveTextContent(/^Back Mon 9:00·Waiting on the author$/)
+    expect(line?.children).toHaveLength(2)
+    const state = line?.lastElementChild
+    expect(state).toHaveAttribute('data-story-state')
+    expect(state).toHaveClass('text-muted', 'font-medium', 'shrink-0')
+    expect(state?.firstElementChild).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('follows a compact card’s triage tag with where the item stands, in a chip that cuts it short', () => {
+    const { container } = render(
+      <CardStory story={story({ text: '', triage: true, state: 'Waiting on the author' })} edge="none" chip>
+        <span>Back Mon 9:00</span>
+      </CardStory>,
+    )
+
+    const chip = container.firstElementChild
+    expect(chip).toHaveAttribute('data-story-chip')
+    expect(chip).toHaveClass('max-w-60', 'min-w-0')
+    expect(chip?.className).not.toMatch(/\bbg-/)
+    expect(chip).toHaveTextContent(/^Back Mon 9:00·Waiting on the author$/)
+    expect(chip?.querySelector('[data-story-state]')).toHaveClass('text-muted', 'truncate', 'min-w-0')
   })
 
   it('draws a compact card’s story as a chip tinted with its edge, cutting its words short', () => {

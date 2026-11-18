@@ -28,7 +28,7 @@ vi.mock('../../platform', () => import('../../test/platform').then((fake) => fak
 const open: Step = {
   rule: 'waiting',
   edge: 'waiting',
-  story: { text: 'Approved', detail: '', icon: 'dot', triage: false },
+  story: { text: 'Approved', detail: '', icon: 'dot', triage: false, state: '' },
   primary: 'open',
   quiet: true,
   situation: '',

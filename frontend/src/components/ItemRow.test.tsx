@@ -562,6 +562,43 @@ describe('ItemRow tabs', () => {
     expect(triage.onRestore).toHaveBeenCalledWith(it)
   })
 
+  it('says where a snoozed item stands after when it comes back, muted', () => {
+    const row = mountCard(
+      item({
+        assigned: true,
+        author: 'contributor-a',
+        snoozedUntil: '2026-06-16T18:45:00Z',
+        details: details({ viewerVerdict: 'changes', mergeable: 'CONFLICTING' }),
+      }),
+      { tab: 'snoozed', triage: triageActions() },
+    )
+
+    expect(row).toHaveAttribute('data-rule', 'snoozed')
+    expect(row.querySelector('[data-edge]')).toHaveClass('bg-transparent')
+    const line = body(row).lastElementChild
+    expect(line).toHaveTextContent(
+      /^Back tomorrow, .+·Waiting on the author·acme-org\/example-repo #7 · contributor-a · assigned · 3h$/,
+    )
+    const state = line?.querySelector('[data-story-state]')
+    expect(state?.previousElementSibling).toHaveAttribute('title', expect.stringMatching(/^Snoozed until/))
+    expect(state).toHaveClass('text-muted')
+    expect(screen.getByRole('button', { name: 'Unsnooze' })).toHaveClass('border-border', 'text-text')
+  })
+
+  it('says where a dismissed item stands after when it was dismissed', () => {
+    const row = mountCard(
+      item({
+        authored: true,
+        dismissedAt: '2026-06-15T10:00:00Z',
+        details: details({ checks: { ...details().checks, passed: 10, failed: 2 } }),
+      }),
+      { tab: 'dismissed', triage: triageActions() },
+    )
+
+    expect(row).toHaveAttribute('data-rule', 'dismissed')
+    expect(body(row).lastElementChild).toHaveTextContent(/^Dismissed 2h ago·2 of 12 checks failing·/)
+  })
+
   it('says when a dismissed item was dismissed, and restores it', async () => {
     const it = item({ dismissedAt: '2026-06-15T10:00:00Z' })
     const triage = inTab(it, 'dismissed')

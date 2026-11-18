@@ -4320,7 +4320,8 @@ generated `launcher.Situation`) that picks the agent button's prompt. A pull req
 else opened whose user's own verdict (`Details.viewerVerdict`) requests changes waits on its
 author (`awaiting_author`, quiet, no situation) until the author pushes, and then asks for a
 re-review (`rereview`) before the rules for the user's own pull request can call it theirs to
-fix. The row passes it every
+fix. In the Snoozed and Dismissed tabs the story is the triage tag, then its `state`, muted:
+the lead rules 1 to 19 give the item in its list. The row passes it every
 input, and the three that depend on the time (the card's session, whether a failed one is
 fresh, back from a snooze) come from `useNowAs` as primitives, so a clock tick renders no row.
 The state column is `card/StateTrack` over `card/SizeGlyph` for a pull request, or

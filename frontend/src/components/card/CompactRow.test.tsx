@@ -591,6 +591,24 @@ describe('CompactRow', () => {
     expect(screen.getByRole('button', { name: 'Unsnooze' })).toHaveClass('text-muted', 'card-lit:bg-raised')
   })
 
+  it('says where a snoozed item stands after when it comes back, in the story chip', () => {
+    const row = mountCompact(
+      item({
+        assigned: true,
+        author: 'contributor-a',
+        snoozedUntil: '2026-06-16T18:45:00Z',
+        details: details({ viewerVerdict: 'changes', mergeable: 'CONFLICTING' }),
+      }),
+      { tab: 'snoozed', triage: triageActions() },
+    )
+
+    const chip = row.querySelector('[data-story-chip]')
+    expect(chip).toHaveTextContent(/^Back tomorrow, .+·Waiting on the author$/)
+    expect(chip?.firstElementChild).toHaveAttribute('title', expect.stringMatching(/^Snoozed until/))
+    expect(chip?.querySelector('[data-story-state]')).toHaveClass('text-muted', 'truncate')
+    expect(chip?.className).not.toMatch(/\bbg-/)
+  })
+
   it('fades the card under a note while an edit will likely take it out of the list', async () => {
     let finish: () => void = () => undefined
     const edits = {

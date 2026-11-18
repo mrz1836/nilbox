@@ -62,12 +62,15 @@ export type Rule =
 
 // Story is the card's one sentence: its lead, in the edge's color, and a muted detail after
 // " · ", '' for none. In the Snoozed and Dismissed tabs it is triage: the card shows when
-// the item comes back, or when it was dismissed, instead.
+// the item comes back, or when it was dismissed, instead, then state, muted: the lead the
+// item's own story would have outside those tabs, so the card still says where it stands.
+// state is '' everywhere else.
 export interface Story {
   text: string
   detail: string
   icon: StoryIcon
   triage: boolean
+  state: string
 }
 
 // Step is what a card puts first. quiet makes the primary a quiet button, outlined in the
@@ -129,7 +132,7 @@ export function mergeMethodText(method: string): string {
 
 // story builds a story outside the triage tabs.
 function story(text: string, detail: string, icon: StoryIcon): Story {
-  return { text, detail, icon, triage: false }
+  return { text, detail, icon, triage: false, state: '' }
 }
 
 // wakeText says the item is back from a snooze: what ended it early, if anything did.
@@ -311,35 +314,10 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   return step('waiting', 'waiting', woken(text, '', 'dot'), 'open', true)
 }
 
-// nextStep works out what a card puts first: the tabs an item is set aside in, then what
-// waits on the user now, then an agent or a routine at work, which keeps the item's own
-// move as a quiet primary, then what the item itself asks for.
-export function nextStep(input: StepInput): Step {
-  const { tab, session, sessionFresh, autopilot, agent, mutedTarget } = input
-  const none = { edge: 'none', quiet: true, situation: '' } as const
-
-  // T1 to T3. The tabs an item is set aside in, whose primary brings it back.
-  if (tab === 'snoozed') {
-    return {
-      ...none,
-      rule: 'snoozed',
-      story: { text: '', detail: '', icon: 'clock', triage: true },
-      primary: 'unsnooze',
-    }
-  }
-
-  if (tab === 'dismissed') {
-    return {
-      ...none,
-      rule: 'dismissed',
-      story: { text: '', detail: '', icon: 'archive', triage: true },
-      primary: 'restore',
-    }
-  }
-
-  if (tab === 'muted') {
-    return { ...none, rule: 'muted', story: story(`Muted with ${mutedTarget}`, '', 'dot'), primary: 'unmute' }
-  }
+// liveStep is the step rules 1 to 19 give, wherever the item is: what waits on the user
+// now, then an agent or a routine at work, then what the item itself asks for.
+function liveStep(input: StepInput): Step {
+  const { session, sessionFresh, autopilot, agent } = input
 
   // 1. An agent waits for the user.
   if (session !== null && needsYou(session.state)) {
@@ -398,4 +376,39 @@ export function nextStep(input: StepInput): Step {
   }
 
   return itemStep(input)
+}
+
+// nextStep works out what a card puts first: the tabs an item is set aside in, then what
+// waits on the user now, then an agent or a routine at work, which keeps the item's own
+// move as a quiet primary, then what the item itself asks for.
+export function nextStep(input: StepInput): Step {
+  const { tab, mutedTarget } = input
+  const none = { edge: 'none', quiet: true, situation: '' } as const
+
+  // T1 and T2. The Snoozed and Dismissed tabs, whose primary brings the item back: the
+  // card says when it comes back, or when it was dismissed, then where it stands, the
+  // lead its own story (rules 1 to 19) would have in its list.
+  if (tab === 'snoozed' || tab === 'dismissed') {
+    const snoozed = tab === 'snoozed'
+
+    return {
+      ...none,
+      rule: tab,
+      story: {
+        text: '',
+        detail: '',
+        icon: snoozed ? 'clock' : 'archive',
+        triage: true,
+        state: liveStep(input).story.text,
+      },
+      primary: snoozed ? 'unsnooze' : 'restore',
+    }
+  }
+
+  // T3. The Muted tab, whose primary unmutes the item's repository or org.
+  if (tab === 'muted') {
+    return { ...none, rule: 'muted', story: story(`Muted with ${mutedTarget}`, '', 'dot'), primary: 'unmute' }
+  }
+
+  return liveStep(input)
 }

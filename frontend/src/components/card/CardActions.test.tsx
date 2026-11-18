@@ -39,7 +39,7 @@ function step(primary: Verb, overrides: Partial<Step> = {}): Step {
   return {
     rule: 'review',
     edge: 'yours',
-    story: { text: 'Your review', detail: '', icon: 'dot', triage: false },
+    story: { text: 'Your review', detail: '', icon: 'dot', triage: false, state: '' },
     primary,
     quiet: false,
     situation: '',

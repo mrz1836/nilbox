@@ -74,10 +74,11 @@ interface Want {
   quiet?: boolean
   situation?: Step['situation']
   triage?: boolean
+  state?: string
 }
 
-// step is the step a case wants, its story's detail and icon, quiet, situation, and
-// triage defaulting to none, a dot, loud, the kind's own, and no.
+// step is the step a case wants, its story's detail and icon, quiet, situation, triage,
+// and state defaulting to none, a dot, loud, the kind's own, no, and none.
 function step(want: Want): Step {
   return {
     rule: want.rule,
@@ -87,6 +88,7 @@ function step(want: Want): Step {
       detail: want.detail ?? '',
       icon: want.icon ?? 'dot',
       triage: want.triage ?? false,
+      state: want.state ?? '',
     },
     primary: want.primary,
     quiet: want.quiet ?? false,
@@ -99,12 +101,58 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
   [
     'T1 snoozed',
     input({ tab: 'snoozed', item: asked() }),
-    { rule: 'snoozed', edge: 'none', text: '', icon: 'clock', triage: true, primary: 'unsnooze', quiet: true },
+    {
+      rule: 'snoozed',
+      edge: 'none',
+      text: '',
+      icon: 'clock',
+      triage: true,
+      state: 'Your review',
+      primary: 'unsnooze',
+      quiet: true,
+    },
+  ],
+  [
+    'T1 snoozed, while an agent waits for the user',
+    input({ tab: 'snoozed', item: mine({}, failing), session: session('needs_input') }),
+    {
+      rule: 'snoozed',
+      edge: 'none',
+      text: '',
+      icon: 'clock',
+      triage: true,
+      state: 'Claude needs input',
+      primary: 'unsnooze',
+      quiet: true,
+    },
   ],
   [
     'T2 dismissed',
     input({ tab: 'dismissed', item: mine({}, failing) }),
-    { rule: 'dismissed', edge: 'none', text: '', icon: 'archive', triage: true, primary: 'restore', quiet: true },
+    {
+      rule: 'dismissed',
+      edge: 'none',
+      text: '',
+      icon: 'archive',
+      triage: true,
+      state: '1 of 14 checks failing',
+      primary: 'restore',
+      quiet: true,
+    },
+  ],
+  [
+    'T2 dismissed, its details still unread',
+    input({ tab: 'dismissed', item: item({ reviewRequest: 'you' }) }),
+    {
+      rule: 'dismissed',
+      edge: 'none',
+      text: '',
+      icon: 'archive',
+      triage: true,
+      state: 'Reading details…',
+      primary: 'restore',
+      quiet: true,
+    },
   ],
   [
     'T3 muted',
@@ -1093,6 +1141,26 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
       detail: 'conflicts with its base',
       primary: 'rereview',
       situation: 'rereview',
+    },
+  ],
+  [
+    'the same pull request, not pushed to, snoozed',
+    input({
+      tab: 'snoozed',
+      item: pr(
+        { assigned: true, author: 'contributor-a', snoozedUntil: '2026-06-16T18:45:00Z' },
+        { ...changes, viewerVerdict: 'changes', mergeable: 'CONFLICTING' },
+      ),
+    }),
+    {
+      rule: 'snoozed',
+      edge: 'none',
+      text: '',
+      icon: 'clock',
+      triage: true,
+      state: 'Waiting on the author',
+      primary: 'unsnooze',
+      quiet: true,
     },
   ],
   [
