@@ -3,14 +3,18 @@ package core
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -134,6 +138,84 @@ func (f terminalFocuser) Focus(ctx context.Context, id, tty string) error {
 		return uierr.New("This terminal can't show a session's tab.", err)
 	default:
 		return err
+	}
+}
+
+// sessionOutcomes records on the agent sessions what the inbox learned came of their items
+// on GitHub (inbox.OutcomeSink): a review of the user's that decided, a merge, or a close,
+// each at GitHub's time for it, through sessions.Ledger.NoteGitHub. The inbox is built
+// before the sessions are followed, so ledger is set once they are; until then, and for
+// any other outcome, it records nothing. A failure is logged: what it records is only
+// what the panel says.
+type sessionOutcomes struct {
+	ledger *sessions.Ledger
+	logger *slog.Logger
+}
+
+// Settle records what outcomes say came of their items on GitHub.
+func (s *sessionOutcomes) Settle(ctx context.Context, outcomes []inbox.Outcome) {
+	if s == nil || s.ledger == nil {
+		return
+	}
+
+	notes := gitHubNotes(outcomes)
+	if len(notes) == 0 {
+		return
+	}
+
+	if err := s.ledger.NoteGitHub(ctx, notes); err != nil {
+		logging.Or(s.logger).WarnContext(ctx, "could not record on the sessions what came of their items", "error", err)
+	}
+}
+
+// gitHubNotes is what outcomes say came of their items on GitHub, in the sessions' words.
+func gitHubNotes(outcomes []inbox.Outcome) []sessions.GitHubNote {
+	notes := make([]sessions.GitHubNote, 0, len(outcomes))
+
+	for _, o := range outcomes {
+		if ev := gitHubEventOf(o); ev != sessions.GitHubNone && !o.GitHub.At.IsZero() {
+			notes = append(notes, sessions.GitHubNote{Ref: o.Ref, Event: ev, Commit: o.GitHub.Commit, At: o.GitHub.At})
+		}
+	}
+
+	return notes
+}
+
+// gitHubEventOf is the event an outcome tells of: a review that decided, a merge, or a
+// close, by what GitHub said; none for any other outcome.
+func gitHubEventOf(o inbox.Outcome) sessions.GitHubEvent {
+	if o.Kind == inbox.OutcomeReviewed {
+		return verdictEvent(o.GitHub.State)
+	}
+
+	if o.Kind == inbox.OutcomeMerged || o.Kind == inbox.OutcomeClosed || o.Kind == inbox.OutcomeSeenClosed {
+		return endEvent(o.GitHub.State)
+	}
+
+	return sessions.GitHubNone
+}
+
+// verdictEvent is the event a review's verdict state is, none for any other.
+func verdictEvent(state string) sessions.GitHubEvent {
+	switch state {
+	case github.ReviewStateApproved:
+		return sessions.GitHubApproved
+	case github.ReviewStateChangesRequested:
+		return sessions.GitHubChangesRequested
+	default:
+		return sessions.GitHubNone
+	}
+}
+
+// endEvent is the event an item's closed state is, none for an open one.
+func endEvent(state string) sessions.GitHubEvent {
+	switch state {
+	case github.StateMerged:
+		return sessions.GitHubMerged
+	case github.StateClosed:
+		return sessions.GitHubClosed
+	default:
+		return sessions.GitHubNone
 	}
 }
 

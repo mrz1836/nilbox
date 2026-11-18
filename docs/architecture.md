@@ -1249,7 +1249,15 @@ background run's session its run's own, through `RunTokens`, which core adapts o
 Autopilot's ledger), never the network. Each record keeps what its launch
 reported (the permissions it started with, what it did to the item's worktree, and what it
 worked around), which the card's sessions panel shows in place of a line on the row after
-the launch, and `ShowFolder` shows a session's folder in Finder through core's `open -R`
+the launch, and what came of its item on GitHub while it ran (`GitHubEvent`: approved,
+changes requested, merged, or closed, with the review's commit and GitHub's time; migration
+`0019_session_github_event`). That comes from the inbox's outcomes, never a request:
+core's `sessionOutcomes`, the third sink of `outcomesFanOut`, late-bound once the sessions
+are followed, turns each `inbox.Outcome` whose `GitHubFact` says a decided review, a merge,
+or a close into a `GitHubNote` for `Ledger.NoteGitHub` (Go-only), which records it
+(`NoteGitHubEvent`) on the item's sessions that ran at its time, launched by then and not
+ended before, give or take `noteSkew` (10 s), keeping a later event over an earlier one, and
+emits `event.SessionsUpdated` once when any changed. `ShowFolder` shows a session's folder in Finder through core's `open -R`
 Revealer. The bound `Forget` deletes an ended session's record on the user's click (the
 panel's ×), refusing one still running (`ErrLive`; failed and unknown count as running) and
 counting one already gone as done, and emits `event.SessionsUpdated`; the prune is

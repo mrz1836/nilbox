@@ -7,6 +7,7 @@ export {
 };
 
 export {
+    GitHubEvent,
     State,
     WorktreeAction
 } from "./models.js";

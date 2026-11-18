@@ -21,7 +21,8 @@ import (
 // recordingSink records every call it is told, and the state of the context it was told
 // with, and fails the test when it is told while the inbox holds its store lock or any
 // item's lock. then, when set, runs after each call is recorded, as a sink that calls the
-// inbox back would.
+// inbox back would. calls holds each outcome without what it came to on GitHub (its
+// GitHub fact), which the facts' own tests read from facts.
 type recordingSink struct {
 	t    *testing.T
 	svc  *Service
@@ -29,6 +30,7 @@ type recordingSink struct {
 
 	mu      sync.Mutex
 	calls   [][]Outcome
+	facts   []Outcome
 	ctxErrs []error
 }
 
@@ -44,8 +46,14 @@ func (r *recordingSink) Settle(ctx context.Context, outcomes []Outcome) {
 		r.t.Errorf("the sink was told while the inbox held the lock of items %v", held)
 	}
 
+	stripped := slices.Clone(outcomes)
+	for i := range stripped {
+		stripped[i].GitHub = GitHubFact{}
+	}
+
 	r.mu.Lock()
-	r.calls = append(r.calls, slices.Clone(outcomes))
+	r.calls = append(r.calls, stripped)
+	r.facts = append(r.facts, outcomes...)
 	r.ctxErrs = append(r.ctxErrs, ctx.Err())
 	then := r.then
 	r.mu.Unlock()
@@ -69,6 +77,15 @@ func (r *recordingSink) told() [][]Outcome {
 	defer r.mu.Unlock()
 
 	return slices.Clone(r.calls)
+}
+
+// withFacts returns every outcome told so far, in order, whatever call told it, each with
+// its GitHub fact.
+func (r *recordingSink) withFacts() []Outcome {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return slices.Clone(r.facts)
 }
 
 // all returns every outcome told so far, in order, whatever call told it.
@@ -706,4 +723,96 @@ func TestOutcomesSinkSeesEmptyCallsNever(t *testing.T) {
 
 	assert.Empty(t, sink.told())
 	assert.Empty(t, sink.all())
+}
+
+func TestOutcomesCarryWhatTheItemCameToOnGitHub(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the user's own review from the inbox", func(t *testing.T) {
+		t.Parallel()
+
+		h, id := pushedHarness(t)
+		sink := h.telling(t)
+		reviewedAt := h.clock.Now().Add(-time.Second)
+
+		_, err := NewActor(h.svc).Act(t.Context(), id, acting(Acted{
+			Reviewed: true, ReviewEvent: github.ReviewRequestChanges, ReviewedAt: reviewedAt,
+		}))
+		require.NoError(t, err)
+		assert.Equal(t, []GitHubFact{{State: github.ReviewStateChangesRequested, Commit: headNow, At: reviewedAt.UTC()}},
+			factsOf(sink.withFacts()), "the verdict at the head the user saw")
+	})
+
+	t.Run("the user's own merge from the inbox", func(t *testing.T) {
+		t.Parallel()
+
+		h, id := itemHarness(t)
+		sink := h.telling(t)
+
+		_, err := NewActor(h.svc).Act(t.Context(), id, acting(Acted{Merged: true}))
+		require.NoError(t, err)
+		assert.Equal(t, []GitHubFact{{State: github.StateMerged, At: h.clock.Now()}}, factsOf(sink.withFacts()))
+	})
+
+	t.Run("a read that finds a pull request merged", func(t *testing.T) {
+		t.Parallel()
+
+		h, id := itemHarness(t)
+		sink := h.telling(t)
+
+		mergedAt := h.clock.Now().Add(-3 * time.Minute)
+		merged := closedAs(pr(1, "OWNER", false), github.StateMerged)
+		merged.ClosedAt = mergedAt
+		h.client.items = map[string]*github.ItemUpdate{nodeID(1): {
+			Found: true, Item: merged, Details: prDetails(), RateLimit: itemRate(),
+		}}
+
+		_, err := h.svc.RefreshItem(t.Context(), id)
+		require.NoError(t, err)
+		assert.Equal(t, []GitHubFact{{State: github.StateMerged, At: mergedAt}}, factsOf(sink.withFacts()),
+			"merged, at GitHub's time for it")
+	})
+
+	t.Run("a whole refresh that finds a pull request closed", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		sink := h.telling(t)
+		a := pr(1, "OWNER", false)
+		h.seed(t, []github.Item{a}, nil, nil)
+		h.tick()
+
+		h.seed(t, []github.Item{closedAs(a, github.StateClosed)}, nil, nil)
+
+		assert.Equal(t, []GitHubFact{{State: github.StateClosed, At: h.clock.Now()}}, factsOf(sink.withFacts()),
+			"closed, at the refresh's time when GitHub didn't say")
+	})
+
+	t.Run("a read that finds an approval an agent left", func(t *testing.T) {
+		t.Parallel()
+
+		h, id := pushedHarness(t)
+		sink := h.telling(t)
+		h.svc.viewers.Remember(github.NewToken(fakeToken), octoUser)
+
+		approvedAt := h.clock.Now().Add(-time.Minute)
+		h.client.items = map[string]*github.ItemUpdate{
+			nodeID(5): readOf(h, verdict(github.ReviewStateApproved, headNow, approvedAt)),
+		}
+
+		_, err := h.svc.RefreshItem(t.Context(), id)
+		require.NoError(t, err)
+		assert.Equal(t, []GitHubFact{{State: github.ReviewStateApproved, Commit: headNow, At: approvedAt}},
+			factsOf(sink.withFacts()))
+	})
+}
+
+// factsOf returns each outcome's GitHub fact, in order.
+func factsOf(outcomes []Outcome) []GitHubFact {
+	out := make([]GitHubFact, 0, len(outcomes))
+	for _, o := range outcomes {
+		out = append(out, o.GitHub)
+	}
+
+	return out
 }

@@ -4743,9 +4743,9 @@ stays on the card for a day.
 
 **The panel.** Click the tag for every session of the item, newest first: its agent, profile,
 and prompt, what it is doing and since when, the permissions it started with and where it runs
-(**full access · new worktree**, or **in the clone**), how many tokens it used, the folder,
-anything its launch worked around, and the start of what the agent last said. Each has its
-actions:
+(**full access · new worktree**, or **in the clone**), what came of the item on GitHub while it
+ran, how many tokens it used, the folder, anything its launch worked around, and the start of
+what the agent last said. Each has its actions:
 
 - **Show in terminal** brings forward the tab the session runs in, found by its terminal
   device (`ps -o tty=`). iTerm2 uses the Automation permission you gave at the first launch;
@@ -4792,6 +4792,15 @@ never the terminal:
   never that it waits for you, and says why. When the daemon can't be reached, the session is linked through the first
   line of the rollout file Codex writes, and the card shows **Status unavailable** while it
   runs.
+
+**What came of it on GitHub.** The panel says the newest of what happened to the item on GitHub
+while a session ran: **On GitHub: Approved at abc1234 · 2m ago**, **Changes requested at …**,
+**Merged**, or **Closed**. It comes from what Nilbox reads anyway (the read of the item after a
+session stops working, a card's or the review sheet's refresh, the whole refresh) and costs no
+request of its own. It counts what happened between the session's launch and its end, by
+GitHub's time, give or take a few seconds, and never says who did it: the agent with `gh`, or
+you in your browser or in Nilbox. A review counts only when it approves or requests changes,
+and only one made within two hours of when Nilbox sees it.
 
 **Its tokens.** The panel says how many tokens each session used, such as **1.2M tokens · 840K
 cached**, with every count (in, out, read from the cache, written to it) in its tooltip, read

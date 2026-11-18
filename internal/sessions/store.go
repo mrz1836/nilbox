@@ -110,6 +110,14 @@ type Record struct {
 	// session in the user's terminal. Its state comes from its run (RunState), and the
 	// Watcher leaves it alone.
 	RunID int64
+
+	// GitHubEvent is the newest thing that came of the item on GitHub while the session
+	// ran, as the inbox learned it (Ledger.NoteGitHub), GitHubEventCommit the commit a
+	// review was left on, and GitHubEventAt GitHub's time for it; GitHubNone, "", and zero
+	// before any.
+	GitHubEvent       GitHubEvent
+	GitHubEventCommit string
+	GitHubEventAt     time.Time
 }
 
 // Repo is the item's repository as "owner/name".
@@ -127,6 +135,7 @@ func (r Record) Session(home string) Session {
 		StateAt: stamp(r.StateAt), LastMessage: r.LastMessage, LaunchedAt: stamp(r.LaunchedAt),
 		EndedAt: stamp(r.EndedAt), CanFocus: r.State.Live() && r.PID > 0 && r.RunID == 0,
 		CanResume: !r.State.Live() && r.AgentSessionID != "", RunID: r.RunID,
+		GitHubEvent: r.GitHubEvent, GitHubEventCommit: r.GitHubEventCommit, GitHubEventAt: stamp(r.GitHubEventAt),
 	}
 }
 
@@ -414,6 +423,44 @@ func (s *Store) SetRunState(ctx context.Context, id string, u RunUpdate, now tim
 	return change, changed, nil
 }
 
+// GitHubNote is something that came of an item on GitHub, as the inbox learned it: the
+// item, the event, the commit a review was left on ("" for none), and GitHub's time for it.
+type GitHubNote struct {
+	Ref    item.Ref
+	Event  GitHubEvent
+	Commit string
+	At     time.Time
+}
+
+// noteSkew is how far GitHub's time for an event and the Mac's for a session's launch and
+// end may stand apart, so an event a session's agent caused just after it launched, or
+// just before it ended, is still the session's, while one made a while before the launch
+// is not.
+const noteSkew = 10 * time.Second
+
+// NoteGitHub records n on the sessions of its item that ran at n.At: launched by then and
+// not ended before, give or take noteSkew. A session holding a later event keeps it. It
+// reports whether it changed any session; a note with no event or no time changes none.
+func (s *Store) NoteGitHub(ctx context.Context, n GitHubNote) (bool, error) {
+	if n.Event == GitHubNone || !n.Event.Valid() || n.At.IsZero() || !n.Ref.Kind.Valid() {
+		return false, nil
+	}
+
+	at := n.At.UTC()
+	since := at.Add(-noteSkew)
+
+	rows, err := s.q.NoteGitHubEvent(ctx, queries.NoteGitHubEventParams{
+		GithubEvent: string(n.Event), GithubEventCommit: n.Commit, GithubEventAt: &at,
+		Owner: n.Ref.Repo.Owner, Name: n.Ref.Repo.Repo, Kind: string(n.Ref.Kind), Number: int64(n.Ref.Number),
+		Upto: at.Add(noteSkew), Since: &since,
+	})
+	if err != nil {
+		return false, fmt.Errorf("record what came of %s on its sessions: %w", n.Ref, err)
+	}
+
+	return rows > 0, nil
+}
+
 // setRunState stores through q what a background run says of its session id (SetRunState).
 func setRunState(ctx context.Context, q *queries.Queries, id string, u RunUpdate, now time.Time) (Change, bool, error) {
 	row, err := q.GetSession(ctx, id)
@@ -597,6 +644,7 @@ func fromRow(row queries.AgentSession) Record {
 		Worktree: row.Worktree, WorktreeAction: WorktreeAction(row.WorktreeAction), Permission: row.Permission,
 		Notice: row.LaunchNotice, PID: int(row.Pid), State: State(row.State), Detail: row.StateDetail,
 		LastMessage: row.LastMessage, LaunchedAt: row.LaunchedAt, StateAt: row.StateAt, RunID: row.RunID,
+		GitHubEvent: GitHubEvent(row.GithubEvent), GitHubEventCommit: row.GithubEventCommit,
 	}
 
 	if !r.State.Valid() {
@@ -605,6 +653,14 @@ func fromRow(row queries.AgentSession) Record {
 
 	if !r.WorktreeAction.Valid() {
 		r.WorktreeAction = WorktreeNone
+	}
+
+	if !r.GitHubEvent.Valid() {
+		r.GitHubEvent, r.GitHubEventCommit = GitHubNone, ""
+	}
+
+	if row.GithubEventAt != nil && r.GitHubEvent != GitHubNone {
+		r.GitHubEventAt = *row.GithubEventAt
 	}
 
 	if row.LinkedAt != nil {

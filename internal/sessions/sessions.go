@@ -130,6 +130,35 @@ func (a WorktreeAction) Valid() bool {
 	return slices.Contains([]WorktreeAction{WorktreeNone, WorktreeResume, WorktreeAdopt, WorktreeAttach, WorktreeCreate}, a)
 }
 
+// GitHubEvent is what came of a session's item on GitHub while the session ran, as the
+// inbox learned it from the reads it makes anyway: the newest of a review of the user's
+// that decided, a merge, or a close. It says nothing of who did it: the agent with gh, the
+// user in a browser, or the user from the app.
+type GitHubEvent string
+
+// What came of a session's item on GitHub.
+const (
+	// GitHubNone is nothing learned yet.
+	GitHubNone GitHubEvent = ""
+
+	// GitHubApproved is a review of the user's that approved the pull request.
+	GitHubApproved GitHubEvent = "approved"
+
+	// GitHubChangesRequested is a review of the user's that requested changes.
+	GitHubChangesRequested GitHubEvent = "changes_requested"
+
+	// GitHubMerged is the pull request merged.
+	GitHubMerged GitHubEvent = "merged"
+
+	// GitHubClosed is the pull request or issue closed without a merge.
+	GitHubClosed GitHubEvent = "closed"
+)
+
+// Valid reports whether e is one of the events, GitHubNone included.
+func (e GitHubEvent) Valid() bool {
+	return slices.Contains([]GitHubEvent{GitHubNone, GitHubApproved, GitHubChangesRequested, GitHubMerged, GitHubClosed}, e)
+}
+
 // Session is one session as the window shows it. Every field is a plain value.
 type Session struct {
 	// ID is the app's own ID of the session.
@@ -195,6 +224,13 @@ type Session struct {
 	// RunID is the run of an agent working in the background, whose session this is, or 0
 	// for a session in the terminal: it has no terminal to show, and stops from Autopilot.
 	RunID int64 `json:"runId"`
+
+	// GitHubEvent is the newest thing that came of the item on GitHub while it ran, as the
+	// inbox learned it, or "": GitHubEventCommit is the commit a review was left on, or "",
+	// and GitHubEventAt GitHub's time for it, as RFC 3339, or "".
+	GitHubEvent       GitHubEvent `json:"githubEvent"`
+	GitHubEventCommit string      `json:"githubEventCommit"`
+	GitHubEventAt     string      `json:"githubEventAt"`
 }
 
 // Snapshot is the sessions the window shows: every one still running, and the others

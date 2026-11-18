@@ -647,9 +647,13 @@ func (w *engineWaker) Wake() {
 // triage took back of a routine's, which leaves the routine hands off the item, so it is
 // told first: it records that at once, never waiting on the mirror, whose record can wait
 // on a clear on its way to GitHub.
+//
+// The agent sessions hear last what came of their items on GitHub (sessionOutcomes), which
+// only the sessions panel reads.
 type outcomesFanOut struct {
-	threads inbox.OutcomeSink
-	engine  engineOutcomes
+	threads  inbox.OutcomeSink
+	engine   engineOutcomes
+	sessions inbox.OutcomeSink
 }
 
 // engineOutcomes is how the fan-out tells Autopilot's engine; *engineWaker is it.
@@ -657,7 +661,7 @@ type engineOutcomes interface {
 	Outcomes(ctx context.Context, outcomes []autopilot.Outcome)
 }
 
-// Settle tells the engine, then the mirror.
+// Settle tells the engine, then the mirror, then the sessions.
 func (o outcomesFanOut) Settle(ctx context.Context, outcomes []inbox.Outcome) {
 	if o.engine != nil {
 		o.engine.Outcomes(ctx, toEngineOutcomes(outcomes))
@@ -665,6 +669,10 @@ func (o outcomesFanOut) Settle(ctx context.Context, outcomes []inbox.Outcome) {
 
 	if o.threads != nil {
 		o.threads.Settle(ctx, outcomes)
+	}
+
+	if o.sessions != nil {
+		o.sessions.Settle(ctx, outcomes)
 	}
 }
 

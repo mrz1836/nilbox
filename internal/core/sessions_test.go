@@ -9,9 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -122,6 +125,78 @@ func TestSessionsKnowEveryWorktreeActionTheLauncherTakes(t *testing.T) {
 	} {
 		assert.True(t, sessions.WorktreeAction(a).Valid(), a)
 	}
+}
+
+func TestSessionOutcomesMapsEachKind(t *testing.T) {
+	t.Parallel()
+
+	ref := item.Ref{Repo: repo.Name{Owner: boundOwner, Repo: boundRepo}, Number: 12, Kind: item.KindPR}
+	at := time.Date(2026, 11, 9, 5, 41, 0, 0, time.UTC)
+	fact := func(state, commit string) inbox.GitHubFact {
+		return inbox.GitHubFact{State: state, Commit: commit, At: at}
+	}
+
+	got := gitHubNotes([]inbox.Outcome{
+		{Kind: inbox.OutcomeReviewed, Ref: ref, GitHub: fact(github.ReviewStateApproved, "abc1234")},
+		{Kind: inbox.OutcomeReviewed, Ref: ref, GitHub: fact(github.ReviewStateChangesRequested, "def5678")},
+		{Kind: inbox.OutcomeMerged, Ref: ref, GitHub: fact(github.StateMerged, "")},
+		{Kind: inbox.OutcomeClosed, Ref: ref, GitHub: fact(github.StateClosed, "")},
+		{Kind: inbox.OutcomeSeenClosed, Ref: ref, GitHub: fact(github.StateMerged, "")},
+		{Kind: inbox.OutcomeSeenClosed, Ref: ref, GitHub: fact(github.StateClosed, "")},
+
+		// Nothing that came of the item on GitHub, or a fact with no time.
+		{Kind: inbox.OutcomeDismissed, Ref: ref},
+		{Kind: inbox.OutcomeUnlisted, Ref: ref},
+		{Kind: inbox.OutcomeReviewed, Ref: ref, GitHub: inbox.GitHubFact{State: github.ReviewStateApproved}},
+		{Kind: inbox.OutcomeSeenClosed, Ref: ref, GitHub: fact(github.StateOpen, "")},
+	})
+
+	note := func(ev sessions.GitHubEvent, commit string) sessions.GitHubNote {
+		return sessions.GitHubNote{Ref: ref, Event: ev, Commit: commit, At: at}
+	}
+
+	assert.Equal(t, []sessions.GitHubNote{
+		note(sessions.GitHubApproved, "abc1234"),
+		note(sessions.GitHubChangesRequested, "def5678"),
+		note(sessions.GitHubMerged, ""),
+		note(sessions.GitHubClosed, ""),
+		note(sessions.GitHubMerged, ""),
+		note(sessions.GitHubClosed, ""),
+	}, got)
+}
+
+func TestSessionOutcomesRecordOnTheSessionsOnceFollowed(t *testing.T) {
+	t.Parallel()
+
+	store := sessions.NewStore(testutil.DB(t))
+	events := &testutil.Events{}
+	at := time.Date(2026, 11, 9, 5, 11, 0, 0, time.UTC)
+	require.NoError(t, store.Insert(t.Context(), sessions.Record{
+		ID: "s1", AgentSessionID: "s1", Agent: agent.Claude, Owner: boundOwner, Name: boundRepo, Kind: item.KindPR,
+		Number: 12, Dir: "/srv/wt/example-repo/pr-12", LaunchedAt: at,
+	}))
+
+	outcome := inbox.Outcome{
+		Kind: inbox.OutcomeReviewed,
+		Ref:  item.Ref{Repo: repo.Name{Owner: boundOwner, Repo: boundRepo}, Number: 12, Kind: item.KindPR},
+		GitHub: inbox.GitHubFact{
+			State: github.ReviewStateApproved, Commit: "abc1234", At: at.Add(time.Minute),
+		},
+	}
+
+	// The inbox may tell before the sessions are followed.
+	notes := &sessionOutcomes{}
+	notes.Settle(t.Context(), []inbox.Outcome{outcome})
+	(*sessionOutcomes)(nil).Settle(t.Context(), []inbox.Outcome{outcome})
+
+	notes.ledger = sessions.NewLedger(sessions.Config{Store: store, Events: events})
+	notes.Settle(t.Context(), []inbox.Outcome{outcome})
+
+	got, err := store.Get(t.Context(), "s1")
+	require.NoError(t, err)
+	assert.Equal(t, sessions.GitHubApproved, got.GitHubEvent)
+	assert.Equal(t, "abc1234", got.GitHubEventCommit)
+	assert.Equal(t, 1, events.Count())
 }
 
 func TestABackgroundRunsTokensWaitForTheEngine(t *testing.T) {

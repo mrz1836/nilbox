@@ -537,6 +537,9 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// ledger refers to; it is built once its service is, below.
 	engine := &engineWaker{}
 	followed.autopilot = engine
+	// The agent sessions record what came of their items on GitHub; they are followed
+	// once the inbox is built, below.
+	sessionNotes := &sessionOutcomes{logger: logger}
 
 	inboxSvc := inbox.NewService(inbox.Config{
 		Pool:     pool,
@@ -545,9 +548,11 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Clock:    opts.Clock,
 		Events:   engineOnInbox{sink: opts.Events, engine: engine},
 		Arrivals: dispatcher,
-		Outcomes: outcomesFanOut{threads: ghThreadOutcomes{settler: ghthreads.NewSettler(ghThreads)}, engine: engine},
-		Usage:    tracker,
-		Watches:  watchSource,
+		Outcomes: outcomesFanOut{
+			threads: ghThreadOutcomes{settler: ghthreads.NewSettler(ghThreads)}, engine: engine, sessions: sessionNotes,
+		},
+		Usage:   tracker,
+		Watches: watchSource,
 		Changed: func(ids []int64) {
 			events.Emit(event.InboxItemsChanged{IDs: ids})
 			engine.ItemsChanged(ids)
@@ -568,6 +573,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	follow := followSessions(pool, prefs, opts, logger, runner, registry, agentRunners, rereads,
 		backgroundTokens{engine: engine})
 	followed.watcher = follow.watcher
+	sessionNotes.ledger = follow.ledger
 
 	// clones is the app's one set of clone locks: every job that changes a clone takes
 	// its clone's, so a worktree is never made or removed while a run is using it.

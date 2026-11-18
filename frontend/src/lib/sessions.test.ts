@@ -5,6 +5,8 @@ import { agentSession, item, sessionsSnapshot } from '../test/fixtures'
 import {
   cardSession,
   compactCount,
+  githubEventTone,
+  githubEventWords,
   isLive,
   itemSessions,
   needsYou,
@@ -17,6 +19,28 @@ import {
 } from './sessions'
 
 describe('sessions', () => {
+  it('words what came of a session’s item on GitHub, never who did it', () => {
+    const at = '2026-06-15T11:58:00Z'
+    const commit = 'abc1234def5678abc1234def5678abc1234def56'
+    const words = (githubEvent: '' | 'approved' | 'changes_requested' | 'merged' | 'closed', more = {}) =>
+      githubEventWords(agentSession({ githubEvent, githubEventCommit: commit, githubEventAt: at, ...more }))
+
+    expect(words('approved')).toBe('Approved at abc1234')
+    expect(words('changes_requested')).toBe('Changes requested at abc1234')
+    expect(words('approved', { githubEventCommit: '' })).toBe('Approved')
+    expect(words('merged')).toBe('Merged')
+    expect(words('closed')).toBe('Closed')
+    expect(words('')).toBe('')
+    // No time is nothing learned.
+    expect(words('approved', { githubEventAt: '' })).toBe('')
+    expect(githubEventWords(agentSession({ githubEvent: 'example-event' as 'merged', githubEventAt: at }))).toBe('')
+
+    expect(githubEventTone(agentSession({ githubEvent: 'approved' }))).toBe('text-success')
+    expect(githubEventTone(agentSession({ githubEvent: 'merged' }))).toBe('text-success')
+    expect(githubEventTone(agentSession({ githubEvent: 'changes_requested' }))).toBe('text-warning')
+    expect(githubEventTone(agentSession({ githubEvent: 'closed' }))).toBe('text-muted')
+  })
+
   it('keys each item’s sessions, newest first, ignoring case', () => {
     const newer = agentSession({ id: 'b', repo: 'Acme-Org/Example-Repo' })
     const older = agentSession({ id: 'a' })

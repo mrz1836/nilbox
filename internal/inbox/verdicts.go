@@ -60,7 +60,12 @@ func reviewedOutcome(v *github.Verdict, login string, ref item.Ref) []Outcome {
 		return nil
 	}
 
-	return []Outcome{{Kind: OutcomeReviewed, Login: login, Ref: ref, At: verdictAt(v)}}
+	at := verdictAt(v)
+
+	return []Outcome{{
+		Kind: OutcomeReviewed, Login: login, Ref: ref, At: at,
+		GitHub: GitHubFact{State: v.State, Commit: v.Commit, At: at},
+	}}
 }
 
 // readReviewSeen reads, before a whole refresh stores reviewed (the fourth search's pull

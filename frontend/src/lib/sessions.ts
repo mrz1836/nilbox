@@ -180,6 +180,47 @@ export function setupWords(s: AgentSession): string {
   return [s.permission, whereWords(s)].filter((part) => part !== '').join(' · ')
 }
 
+// githubEventNames word what came of a session's item on GitHub while it ran.
+const githubEventNames: Readonly<Record<AgentSession['githubEvent'], string>> = {
+  '': '',
+  approved: 'Approved',
+  changes_requested: 'Changes requested',
+  merged: 'Merged',
+  closed: 'Closed',
+}
+
+// shortCommit is the length a commit is shown at, as GitHub shows one.
+const shortCommit = 7
+
+// githubEventWords says what came of a session's item on GitHub while it ran, as the
+// inbox learned it: "Approved at abc1234", "Merged", or '' when nothing did (or this build
+// doesn't know the event). It never says who did it: the agent, or the user in a browser or
+// the app.
+export function githubEventWords(s: AgentSession): string {
+  const name = Object.hasOwn(githubEventNames, s.githubEvent) ? githubEventNames[s.githubEvent] : ''
+  if (name === '' || s.githubEventAt === '') {
+    return ''
+  }
+
+  const decided = s.githubEvent === 'approved' || s.githubEvent === 'changes_requested'
+
+  return decided && s.githubEventCommit !== '' ? `${name} at ${s.githubEventCommit.slice(0, shortCommit)}` : name
+}
+
+// githubEventTone is the color what came of a session's item reads in: a success for an
+// approval or a merge, a warning for changes requested, and muted for a close.
+export function githubEventTone(s: AgentSession): string {
+  switch (s.githubEvent) {
+    case 'approved':
+    case 'merged':
+      return 'text-success'
+    case 'changes_requested':
+      return 'text-warning'
+    default:
+      return 'text-muted'
+  }
+}
+
 // terminalName names the terminal app a session runs in, "iTerm2", or '' for one this
 // build doesn't know.
 export function terminalName(s: AgentSession): string {
