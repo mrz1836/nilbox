@@ -7,7 +7,7 @@ import type { Result } from '../../lib/call'
 import { useReviewDrafts } from '../../lib/reviewDrafts'
 import { approvalWait } from '../../lib/useReview'
 import { isTopmost } from '../../lib/useModalDialog'
-import type { InboxItem, ReviewResult, Settings } from '../../platform'
+import type { InboxItem, Review, ReviewResult, Settings } from '../../platform'
 import { at } from '../../test/clock'
 import {
   agentSession,
@@ -15,6 +15,7 @@ import {
   approveRunsOffer,
   blockedOnGitHub,
   closeOffer,
+  details,
   heldOnGitHub,
   heldRun,
   issueComment,
@@ -2577,5 +2578,78 @@ describe('ReviewSheet of a pull request no longer open', () => {
     await waitFor(() => {
       expect(onEnded).toHaveBeenCalledExactlyOnceWith(merged)
     })
+  })
+})
+
+describe('ReviewSheet that stays current', () => {
+  // running is #7's one check, still running as the sheet last read it.
+  const running = { name: 'test', workflow: 'CI', state: 'IN_PROGRESS', outcome: 'pending', url: '', required: true }
+
+  // card is #7's inbox card, its details read at fetchedAt.
+  const card = (fetchedAt: string) => item({ id: 1, details: details({ fetchedAt }) })
+
+  // passed is #7 as the sheet builds it once the inbox read its check passed since the
+  // sheet listed it running, an hour ago.
+  const passed = review({
+    fetchedAt: '2026-06-15T11:00:00Z',
+    checks: [running],
+    counts: { state: 'SUCCESS', passed: 1, failed: 0, pending: 0, skipped: 0, at: '2026-06-15T12:00:00Z', newer: true },
+    moved: true,
+  })
+
+  it('takes the inbox’s newer checks from the card’s change, asking GitHub nothing', async () => {
+    platform.refreshReview.mockResolvedValue(
+      review({ checks: [running], counts: { ...review().counts, state: 'PENDING', passed: 0, pending: 1 } }),
+    )
+    platform.rebuildReview.mockResolvedValue(passed)
+    const { rerender } = render(<Harness item={card('2026-06-15T11:59:00Z')} />)
+
+    expect(await screen.findByText('1 check · 1 running')).toBeInTheDocument()
+    expect(platform.rebuildReview).not.toHaveBeenCalled()
+
+    rerender(<Harness item={card('2026-06-15T12:00:00Z')} />)
+
+    expect(await screen.findByText(/^Checks as read/)).toHaveTextContent('Checks as read 1h ago')
+    expect(screen.getByText('1 check').tagName).toBe('SUMMARY')
+    expect(platform.rebuildReview).toHaveBeenCalledExactlyOnceWith(1)
+    expect(platform.refreshReview).toHaveBeenCalledOnce()
+  })
+
+  it('marks what an older copy holds as being read until GitHub answers', async () => {
+    let answer: (r: Review) => void = () => undefined
+    platform.openReview.mockResolvedValue({ ...passed, unrun: [heldRun('Deploy Preview', 101)] })
+    platform.refreshReview.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve
+      }),
+    )
+    render(<Harness />)
+
+    expect(await screen.findByText(/^Reading checks…/)).toHaveTextContent('Reading checks… · read 1h ago')
+    expect(screen.getByText('1 check').tagName).toBe('SUMMARY')
+    expect(screen.getByRole('list', { name: 'Checks' }).closest('.opacity-60')).not.toBeNull()
+    expect(screen.getByText(/^Reading held runs…/)).toHaveTextContent('Reading held runs… · read 1h ago')
+    expect(screen.getByText(/^Reading the conversation…/)).toBeInTheDocument()
+
+    act(() => {
+      answer(review())
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText(/^Reading checks…/)).not.toBeInTheDocument()
+    })
+    expect(screen.queryByText(/as read|^Reading/)).not.toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Checks' })).not.toHaveClass('opacity-60')
+    expect(screen.getByRole('list', { name: 'Checks' }).parentElement).not.toHaveClass('opacity-60')
+  })
+
+  it('marks an older copy with its age beside a read that failed', async () => {
+    platform.openReview.mockResolvedValue(review({ fetchedAt: '2026-06-15T11:00:00Z' }))
+    platform.refreshReview.mockRejectedValue(new Error('GitHub is not answering.'))
+    render(<Harness />)
+
+    expect(await screen.findByText('GitHub is not answering.')).toBeInTheDocument()
+    expect(screen.getByText(/^Checks as read/)).toHaveTextContent('Checks as read 1h ago')
+    expect(screen.getByText(/^The conversation as read/)).toBeInTheDocument()
   })
 })

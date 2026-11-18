@@ -1,8 +1,9 @@
 import { counted } from '../../lib/format'
-import { approvableRuns, onGitHubRuns } from '../../lib/useReview'
+import { approvableRuns, onGitHubRuns, type ListMark } from '../../lib/useReview'
 import { openExternal, type Review, type ReviewUnrun } from '../../platform'
 import { buttonClass, quietButtonClass } from '../controls'
 import { ExternalIcon } from '../icons'
+import { ReadAge } from './ReviewLoading'
 import { IgnoreWorkflows, RunNames, type IgnoreProps } from './ReviewSummary'
 
 export interface HeldRunsProps extends IgnoreProps {
@@ -16,6 +17,9 @@ export interface HeldRunsProps extends IgnoreProps {
   error: string
   busy: boolean
   onApprove: () => void
+  // mark is how the runs the sheet read stand against what it shows around them (listMark):
+  // current, unless given.
+  mark?: ListMark
 }
 
 // HeldRuns is the bar under the sheet's header while GitHub holds an open pull request's
@@ -28,8 +32,19 @@ export interface HeldRunsProps extends IgnoreProps {
 // here; the checks list names them quietly. Once the sheet approved them, it says what
 // GitHub made of it while the sheet waits for their checks to start, and names any run
 // still held. GitHub otherwise counts the runs as not passing though no check shows them,
-// and the inbox's card can read as passed.
-export function HeldRuns({ review, notice, following, error, busy, onApprove, ignored, onIgnore }: HeldRunsProps) {
+// and the inbox's card can read as passed. Runs read before the inbox's newer counts say
+// when they were read (ReadAge), faded while the sheet reads them again.
+export function HeldRuns({
+  review,
+  notice,
+  following,
+  error,
+  busy,
+  onApprove,
+  ignored,
+  onIgnore,
+  mark = 'current',
+}: HeldRunsProps) {
   const held = following ? [] : approvableRuns(review)
   const elsewhere = following ? [] : onGitHubRuns(review)
   const offer = review.offers.find((o) => o.action === 'approve_runs')
@@ -85,6 +100,7 @@ export function HeldRuns({ review, notice, following, error, busy, onApprove, ig
             GitHub reports the merge blocked, so {elsewhere.length === 1 ? 'it' : 'they'} may be what holds it back.
           </p>
         )}
+        {held.length + elsewhere.length > 0 && <ReadAge mark={mark} fetchedAt={review.fetchedAt} what="held runs" />}
         {error !== '' && (
           <p role="alert" className="text-danger">
             {error}

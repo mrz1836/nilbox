@@ -608,6 +608,7 @@ export type ReviewActRequest = NonNullLists<review.ActRequest>
 export type ReviewChange = NonNullLists<review.Change>
 export type ReviewClosing = NonNullLists<review.Closing>
 export type ReviewCheck = NonNullLists<review.Check>
+export type ReviewCheckCounts = review.CheckCounts
 export type ReviewCommit = NonNullLists<review.Commit>
 export type YourReview = NonNullLists<review.YourReview>
 export type ReviewSince = review.Since

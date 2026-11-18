@@ -96,6 +96,12 @@ type pullContext struct {
 	Reviews []contextReview `json:"reviews"`
 	Checks  []Check         `json:"checks"`
 
+	// Counts is what the read's own rollup counted of the head commit's checks, over every
+	// one, where Checks holds the first hundred, and of the workflow runs GitHub holds for
+	// approval: the counts the inbox's card took from the same answer. Nil in a context an
+	// older build cached, until the sheet reads it again.
+	Counts *contextCounts `json:"counts,omitempty"`
+
 	// Unrun are the workflow runs that ended without a check and without passing; none in a
 	// context an older build cached, until the sheet reads it again.
 	Unrun []Unrun `json:"unrun"`
@@ -140,6 +146,45 @@ func (c pullContext) behind() bool {
 	return open && (c.CanUpdateBranch || c.MergeState == github.MergeStateBehind || c.BehindBy > 0)
 }
 
+// contextCounts counts a head commit's checks by where they count, and the workflow runs
+// GitHub holds for approval, as a read's rollup and check suites report them (github.Checks).
+type contextCounts struct {
+	State            string `json:"state"`
+	Passed           int    `json:"passed"`
+	Failed           int    `json:"failed"`
+	Pending          int    `json:"pending"`
+	Skipped          int    `json:"skipped"`
+	Awaiting         int    `json:"awaiting"`
+	AwaitingOnGitHub int    `json:"awaitingOnGitHub"`
+}
+
+// countsOf keeps what a read counted of the head commit's checks.
+func countsOf(c github.Checks) *contextCounts {
+	return &contextCounts{
+		State: c.State, Passed: c.Passed, Failed: c.Failed, Pending: c.Pending, Skipped: c.Skipped,
+		Awaiting: c.Awaiting, AwaitingOnGitHub: c.AwaitingOnGitHub,
+	}
+}
+
+// total counts every check counted; 0 for nil.
+func (c *contextCounts) total() int {
+	if c == nil {
+		return 0
+	}
+
+	return c.Passed + c.Failed + c.Pending + c.Skipped
+}
+
+// matches reports that the inbox's details of pull count the same checks and held runs, in
+// the same state, as c: nothing about them moved between the two reads. Nil, counted by
+// an older build's read of none, matches nothing.
+func (c *contextCounts) matches(pull StoredPull) bool {
+	return c != nil && *c == contextCounts{
+		State: pull.ChecksState, Passed: pull.ChecksPassed, Failed: pull.ChecksFailed, Pending: pull.ChecksPending,
+		Skipped: pull.ChecksSkipped, Awaiting: pull.ChecksAwaiting, AwaitingOnGitHub: pull.ChecksAwaitingOnGitHub,
+	}
+}
+
 // headlineRunes is the most of a commit's headline the cache keeps.
 const headlineRunes = 200
 
@@ -176,6 +221,8 @@ func contextOf(r *github.PullReview, viewer string) pullContext {
 		Unrun: make([]Unrun, 0, len(r.Unrun)), Closes: make([]Closing, 0, len(r.Closes)), CloseCount: r.CloseCount,
 		Timeline: timeline.Entries(r.Timeline.Items, viewer), Total: r.Timeline.Total, Before: r.Timeline.Before,
 	}
+
+	c.Counts = countsOf(r.Update.Details.Checks)
 
 	for _, s := range r.Unrun {
 		approval := s.Conclusion == github.SuiteAwaitsApproval
@@ -235,6 +282,10 @@ type cached struct {
 	// seenAt is GitHub's time of the newest activity in the read the sheet showed when it
 	// last opened the pull request, "" before then.
 	seenAt string
+
+	// ignored are the workflows whose held runs never count, as the settings named them when
+	// the sheet was built (markIgnored); nothing stores them.
+	ignored []string
 
 	files []cachedFile
 }

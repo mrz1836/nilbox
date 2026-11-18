@@ -5,8 +5,11 @@
 // ask for the user's own review again, or close it.
 //
 // Open shows what the sheet read before, from its own cache, with no request, and starts a
-// visit, which tells what is new; Refresh reads the pull request again with one GraphQL
-// request, its conversation included, and its files only when it was pushed to since;
+// visit, which tells what is new; every build takes from the inbox's card what it read
+// since, its check counts, merge state, and held runs among them (inboxNewer), and says
+// when the checks moved past what the sheet read (Review.Moved); Refresh reads the pull
+// request again with one GraphQL request, its conversation included, and its files only
+// when it was pushed to since;
 // Earlier reads an earlier page of the conversation. Every action is pinned to the head commit the user saw, goes through
 // the inbox's Actor (the item's lock and the account check) and the GitHub client's write
 // gate, and is decided again (decide.go) before anything is sent. A merge never goes around
@@ -110,8 +113,17 @@ type StoredPull struct {
 	ReviewDecision string
 
 	// ChecksAwaiting counts the workflow runs held for a maintainer's approval that GitHub
-	// takes from the app (Checks.Awaiting).
-	ChecksAwaiting int
+	// takes from the app (Checks.Awaiting), and ChecksAwaitingOnGitHub those it takes only
+	// on its site (Checks.AwaitingOnGitHub), as GitHub reported them.
+	ChecksAwaiting         int
+	ChecksAwaitingOnGitHub int
+
+	// HeldRuns are the held runs both count, each with its workflow's name, or none.
+	HeldRuns []heldruns.Run
+
+	// MergeState is GitHub's mergeStateStatus as the inbox's details read it, "" before
+	// they did.
+	MergeState string
 
 	Reviewers        int
 	Reviewed         int
@@ -430,7 +442,8 @@ func (s *Service) markOnGitHub(c *cached) {
 
 // markIgnored marks the held runs of the cache c that don't count toward where the pull
 // request stands (heldruns.Ignored), with the workflows the settings ignore and the merge
-// state the cache read. c may be nil.
+// state the cache read, and keeps those workflows with c, for the held runs of a newer read
+// of the inbox's (inboxNewer). c may be nil.
 func (s *Service) markIgnored(ctx context.Context, c *cached) error {
 	if c == nil {
 		return nil
@@ -440,6 +453,8 @@ func (s *Service) markIgnored(ctx context.Context, c *cached) error {
 	if err != nil {
 		return err
 	}
+
+	c.ignored = ignored
 
 	for i, u := range c.context.Unrun {
 		c.context.Unrun[i].Ignored = u.Approval &&
@@ -637,10 +652,13 @@ func endedRead(review *github.PullReview, c *cached, viewer string, now time.Tim
 
 // recent reports that the cache c of pull holds a read recent enough to serve at now: of
 // the head the inbox knows, under refreshAfter old, with the card showing no activity since
-// (a comment the read doesn't have would never show), and with the merge state worked out.
+// (a comment the read doesn't have would never show), with the merge state worked out, and
+// with the card's checks and held runs counted as the read counted them. A check that ends
+// moves no activity, so a card the checks follower rewrote with checks ended since is read
+// again, however recently the sheet read it.
 func recent(pull StoredPull, c *cached, now time.Time) bool {
 	if c == nil || !strings.EqualFold(c.head, pull.HeadOID) || now.Sub(c.contextAt) >= refreshAfter ||
-		c.context.MergeState == github.MergeStateUnknown {
+		c.context.MergeState == github.MergeStateUnknown || (pull.HasDetails && !c.context.Counts.matches(pull)) {
 		return false
 	}
 
@@ -769,6 +787,19 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 
 	if c != nil {
 		r.fill(c, matcher, pull.Viewer)
+	}
+
+	r.Counts, r.MoreChecks = shownCounts(pull, c), 0
+
+	if !r.Counts.Newer && c != nil {
+		r.MoreChecks = max(c.context.Counts.total()-len(r.Checks), 0)
+	}
+
+	// The inbox read it since the sheet did: auto-merge is as it read it, and whatever moved
+	// of the checks is the next read's.
+	if inboxNewer(pull, c) {
+		r.AutoMerge = MergeMethod(pull.AutoMerge)
+		r.Moved = !strings.EqualFold(c.head, pull.HeadOID) || !c.context.Counts.matches(pull)
 	}
 
 	r.Change = changeOf(r.Files, r.Bump != nil)
@@ -925,10 +956,16 @@ func factsOf(pull StoredPull, c *cached, r Review) Facts {
 		f.ChangesWorkflows = f.ChangesWorkflows || (workflows != "" && file.Category == workflows)
 	}
 
-	if c == nil {
-		return f
+	if c != nil {
+		f.fromCache(pull, c)
 	}
 
+	return f
+}
+
+// fromCache takes into f what the cache c read of pull, and then what the inbox read of it
+// since, when it did (inboxNewer).
+func (f *Facts) fromCache(pull StoredPull, c *cached) {
 	pc := c.context
 	f.PendingReview, f.MergeState, f.MergeQueue = pc.PendingReviews > 0, pc.MergeState, pc.MergeQueue
 	f.CanUpdateBranch, f.CanAutoMerge = pc.CanUpdateBranch, pc.CanAutoMerge && pull.AutoMergeAllowed
@@ -937,7 +974,91 @@ func factsOf(pull StoredPull, c *cached, r Review) Facts {
 	f.countChecks(pc.Checks)
 	f.countUnrun(pc.Unrun)
 
-	return f
+	if inboxNewer(pull, c) {
+		f.fromInbox(pull, c)
+	}
+}
+
+// inboxNewer reports that the inbox read the details of pull after the sheet last read it
+// into c, as its refresh and its checks follower do while the sheet stays open or closed:
+// their merge state, checks, and held runs are newer than the cache's. A cache whose read
+// time is unknown (expire) is never older.
+func inboxNewer(pull StoredPull, c *cached) bool {
+	return c != nil && pull.HasDetails && !c.contextAt.IsZero() && pull.DetailsAt.After(c.contextAt)
+}
+
+// shownCounts are the check counts the sheet shows of pull: the inbox's while they are newer
+// than the cache c, or the sheet never read the pull request, else what the cache's read
+// counted, none from an older build's.
+func shownCounts(pull StoredPull, c *cached) CheckCounts {
+	if inboxNewer(pull, c) || (c == nil && pull.HasDetails) {
+		return CheckCounts{
+			State: pull.ChecksState, Passed: pull.ChecksPassed, Failed: pull.ChecksFailed, Pending: pull.ChecksPending,
+			Skipped: pull.ChecksSkipped, At: stamp(pull.DetailsAt), Newer: true,
+		}
+	}
+
+	if c == nil || c.context.Counts == nil {
+		return CheckCounts{}
+	}
+
+	n := c.context.Counts
+
+	return CheckCounts{
+		State: n.State, Passed: n.Passed, Failed: n.Failed, Pending: n.Pending, Skipped: n.Skipped, At: stamp(c.contextAt),
+	}
+}
+
+// fromInbox takes into f what the inbox's details of pull, newer than the cache c, say
+// about where the pull request stands: GitHub's merge state, unless it was still working
+// it out, the checks failing and running, and the held runs. The inbox counts no check as
+// required, so the required ones are none while the merge state says nothing required
+// holds the merge (CLEAN, HAS_HOOKS, or UNSTABLE), and otherwise the list's, at most as
+// many as fail or run now. An approval names the runs the cache read, so it waits for a
+// read while the inbox holds runs the cache doesn't, and a run that failed to start on
+// another head than the inbox's says nothing of this one.
+func (f *Facts) fromInbox(pull StoredPull, c *cached) {
+	if pull.MergeState != "" && pull.MergeState != github.MergeStateUnknown {
+		f.MergeState = pull.MergeState
+	}
+
+	f.Failing, f.Pending = pull.ChecksFailed, pull.ChecksPending
+
+	if github.Mergeable(f.MergeState) || f.MergeState == github.MergeStateUnstable {
+		f.RequiredFailing, f.RequiredPending = 0, 0
+	} else {
+		f.RequiredFailing, f.RequiredPending = min(f.RequiredFailing, f.Failing), min(f.RequiredPending, f.Pending)
+	}
+
+	f.countHeld(pull.HeldRuns, c.ignored)
+
+	if !strings.EqualFold(c.head, pull.HeadOID) {
+		f.NotStarted = 0
+	}
+}
+
+// countHeld counts into f, in place of the runs the cache read, the held runs of a newer
+// read, as countUnrun does, those of the workflows ignored named not counting. Approvable
+// stays the runs the cache read, at most as many as an approval asks for now.
+func (f *Facts) countHeld(runs []heldruns.Run, ignored []string) {
+	read := f.Approvable
+	f.AwaitingApproval, f.OnGitHub, f.Ignored, f.IgnoredApprovable = len(runs), 0, 0, 0
+
+	for _, run := range runs {
+		left := heldruns.Ignored(run, f.MergeState, ignored)
+		if left {
+			f.Ignored++
+		}
+
+		switch {
+		case run.OnGitHub:
+			f.OnGitHub++
+		case left:
+			f.IgnoredApprovable++
+		}
+	}
+
+	f.Approvable = min(read, approvalAsked(*f))
 }
 
 // countUnrun counts the workflow runs that ended without a check into f: those awaiting

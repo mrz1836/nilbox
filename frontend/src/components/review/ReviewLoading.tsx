@@ -1,8 +1,44 @@
 import type { ReactNode } from 'react'
 
+import { capitalize, formatAgo } from '../../lib/time'
+import type { ListMark } from '../../lib/useReview'
 import type { ItemKind } from '../../platform'
 import { GitHubReading } from '../GitHubReading'
 import { IssueIcon, PullRequestIcon } from '../icons'
+import { RelativeTime } from '../RelativeTime'
+
+export interface ReadAgeProps {
+  // mark is how the sheet marks what it read (listMark), fetchedAt when it read it, and what
+  // names what it read, as in "checks".
+  mark: ListMark
+  fetchedAt: string
+  what: string
+}
+
+// ReadAge says, quietly, that what the sheet read of a pull request is older than what it
+// shows around it: being read from GitHub again, as in "Reading checks… · read 14m ago", or as
+// read then, as in "Checks as read 14m ago". It says nothing of what is current.
+export function ReadAge({ mark, fetchedAt, what }: ReadAgeProps) {
+  if (mark === 'current') {
+    return null
+  }
+
+  const age = <RelativeTime iso={fetchedAt} show={formatAgo} />
+
+  return (
+    <p className="text-xs text-muted">
+      {mark === 'reading' ? (
+        <>
+          Reading {what}… · read {age}
+        </>
+      ) : (
+        <>
+          {capitalize(what)} as read {age}
+        </>
+      )}
+    </p>
+  )
+}
 
 // sweep staggers a placeholder's highlight by its place, so the sweep travels down them.
 function sweep(i: number): { animationDelay: string } {

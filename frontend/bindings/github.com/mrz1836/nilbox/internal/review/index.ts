@@ -24,6 +24,7 @@ export type {
     ActRequest,
     Change,
     Check,
+    CheckCounts,
     Closing,
     Commit,
     File,

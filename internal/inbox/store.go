@@ -11,6 +11,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/heldruns"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prefs"
@@ -278,8 +279,18 @@ type ReviewItem struct {
 	ReviewDecision string
 
 	// ChecksAwaiting counts the workflow runs held for a maintainer's approval that GitHub
-	// takes from the app (Checks.Awaiting).
-	ChecksAwaiting int
+	// takes from the app (Checks.Awaiting), and ChecksAwaitingOnGitHub those it takes only
+	// on its site (Checks.AwaitingOnGitHub), as GitHub reported them, before any is left
+	// out for a workflow the user ignores.
+	ChecksAwaiting         int
+	ChecksAwaitingOnGitHub int
+
+	// HeldRuns are the held runs both count, each with its workflow's name, runs of no name
+	// standing in for details stored before the names were (heldruns.Unnamed).
+	HeldRuns []heldruns.Run
+
+	// MergeState is GitHub's mergeStateStatus as the details read it, "" before they did.
+	MergeState string
 
 	Reviewers        int
 	Reviewed         int
@@ -312,17 +323,9 @@ func (s *Store) ReviewItem(ctx context.Context, id int64) (ReviewItem, error) {
 		return ReviewItem{}, fmt.Errorf("read the item: %w", err)
 	}
 
-	labels := []string{}
-
-	if r.Labels != nil {
-		stored, decodeErr := store.DecodeJSON[[]storedLabel](*r.Labels)
-		if decodeErr != nil {
-			return ReviewItem{}, fmt.Errorf("the labels of item %d: %w", r.ID, decodeErr)
-		}
-
-		for _, l := range stored {
-			labels = append(labels, l.Name)
-		}
+	labels, err := reviewLabels(r)
+	if err != nil {
+		return ReviewItem{}, err
 	}
 
 	users, err := decodeColumn[string](r.ReviewUsers)
@@ -334,6 +337,13 @@ func (s *Store) ReviewItem(ctx context.Context, id int64) (ReviewItem, error) {
 	if err != nil {
 		return ReviewItem{}, fmt.Errorf("the review requests of item %d: %w", r.ID, err)
 	}
+
+	held, err := decodeColumn[heldruns.Run](r.ChecksHeld)
+	if err != nil {
+		return ReviewItem{}, fmt.Errorf("the held workflow runs of item %d: %w", r.ID, err)
+	}
+
+	awaiting, onGitHub := int(store.Deref(r.ChecksAwaiting)), int(store.Deref(r.ChecksAwaitingOnGithub))
 
 	return ReviewItem{
 		ID: r.ID, Kind: item.Kind(r.Kind), Number: int(r.Number), NodeID: r.NodeID, Title: r.Title, URL: r.URL,
@@ -353,12 +363,34 @@ func (s *Store) ReviewItem(ctx context.Context, id int64) (ReviewItem, error) {
 		Mergeable: store.Deref(r.Mergeable), ChecksState: store.Deref(r.ChecksState),
 		ChecksPassed: int(store.Deref(r.ChecksPassed)), ChecksFailed: int(store.Deref(r.ChecksFailed)),
 		ChecksPending: int(store.Deref(r.ChecksPending)), ChecksSkipped: int(store.Deref(r.ChecksSkipped)),
-		ChecksAwaiting: int(store.Deref(r.ChecksAwaiting)), ReviewDecision: store.Deref(r.ReviewDecision), Reviewers: int(store.Deref(r.Reviewers)),
-		Reviewed: int(store.Deref(r.Reviewed)), Approvals: int(store.Deref(r.Approvals)),
+		ChecksAwaiting: awaiting, ChecksAwaitingOnGitHub: onGitHub, HeldRuns: heldruns.Unnamed(held, awaiting, onGitHub),
+		MergeState: store.Deref(r.MergeState), ReviewDecision: store.Deref(r.ReviewDecision),
+		Reviewers: int(store.Deref(r.Reviewers)), Reviewed: int(store.Deref(r.Reviewed)), Approvals: int(store.Deref(r.Approvals)),
 		ChangesRequested: int(store.Deref(r.ChangesRequested)), HeadOID: store.Deref(r.HeadOID),
 		AutoMerge: store.Deref(r.AutoMergeMethod), DetailsAt: store.Deref(r.DetailsFetchedAt).UTC(),
 		ReviewUsers: textutil.NonNil(users), ReviewTeams: textutil.NonNil(teams),
 	}, nil
+}
+
+// reviewLabels names the labels of the stored pull request r, in GitHub's order; none
+// before a refresh read its details.
+func reviewLabels(r queries.GetReviewItemRow) ([]string, error) {
+	labels := []string{}
+
+	if r.Labels == nil {
+		return labels, nil
+	}
+
+	stored, err := store.DecodeJSON[[]storedLabel](*r.Labels)
+	if err != nil {
+		return nil, fmt.Errorf("the labels of item %d: %w", r.ID, err)
+	}
+
+	for _, l := range stored {
+		labels = append(labels, l.Name)
+	}
+
+	return labels, nil
 }
 
 // IssueItem is a stored issue as the issue sheet shows it before asking GitHub: the item,

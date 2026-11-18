@@ -304,6 +304,19 @@ type Review struct {
 
 	Checks []Check `json:"checks"`
 
+	// Counts counts the head commit's checks by where they count, as the newest read of
+	// them says: the sheet's own, or the inbox's when it read the pull request since, or the
+	// sheet never did (Counts.Newer). MoreChecks is how many checks the sheet's read counted
+	// past the ones Checks lists, the first hundred, which GitHub lists; 0 while the counts
+	// are the inbox's.
+	Counts     CheckCounts `json:"counts"`
+	MoreChecks int         `json:"moreChecks"`
+
+	// Moved reports that the inbox read the pull request since the sheet did, and found its
+	// head, its checks, or its held runs moved: what the sheet read of them (Checks, Unrun,
+	// and the conversation) is behind, and a read brings it up to date.
+	Moved bool `json:"moved"`
+
 	// Reviews are the summary's list of reviewers: each reviewer's latest review, whose text
 	// is in Timeline, then who the pull request still asks to review and hasn't (Requested).
 	Reviews []ReviewEntry `json:"reviews"`
@@ -424,6 +437,27 @@ type Check struct {
 
 	URL      string `json:"url"`
 	Required bool   `json:"required"`
+}
+
+// CheckCounts counts a pull request's checks on its head commit by where they count, as
+// GitHub's rollup counts them, over every check.
+type CheckCounts struct {
+	// State is GitHub's overall result: SUCCESS, FAILURE, ERROR, PENDING, or EXPECTED; ""
+	// with no checks.
+	State   string `json:"state"`
+	Passed  int    `json:"passed"`
+	Failed  int    `json:"failed"`
+	Pending int    `json:"pending"`
+	Skipped int    `json:"skipped"`
+
+	// At is when they were read, as RFC 3339, or "" when no read counted them, as in a cache
+	// an older build kept, whose list alone counts its checks.
+	At string `json:"at"`
+
+	// Newer reports counts the inbox read after the sheet last read the pull request
+	// (Review.FetchedAt), or before it ever did: the checks list, the held runs, and the
+	// conversation the sheet shows are older than they are.
+	Newer bool `json:"newer"`
 }
 
 // Unrun is a workflow run on the head commit that ended without any check and without

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/heldruns"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -349,6 +350,32 @@ func TestStoreReadsAReviewItem(t *testing.T) {
 
 	_, err = NewStore(h.pool, h.clock).ReviewItem(t.Context(), 9999)
 	require.ErrorIs(t, err, item.ErrNotFound)
+}
+
+func TestAReviewItemCarriesTheMergeStateAndTheHeldRuns(t *testing.T) {
+	t.Parallel()
+
+	h, id := itemHarness(t)
+	h.exec(t, `UPDATE item_details SET merge_state = 'UNSTABLE', checks_awaiting = 2, checks_awaiting_on_github = 1,
+		checks_held = '[{"workflow":"Deploy Preview","onGitHub":false},{"workflow":"Auto-merge Trigger","onGitHub":true}]'`)
+
+	got, err := NewStore(h.pool, h.clock).ReviewItem(t.Context(), id)
+	require.NoError(t, err)
+
+	assert.Equal(t, "UNSTABLE", got.MergeState, "the review sheet's readiness follows a newer merge state")
+	assert.Equal(t, 2, got.ChecksAwaiting)
+	assert.Equal(t, 1, got.ChecksAwaitingOnGitHub)
+	assert.Equal(t, []heldruns.Run{
+		{Workflow: "Deploy Preview"}, {Workflow: "Auto-merge Trigger", OnGitHub: true}, {},
+	}, got.HeldRuns, "every run counted is listed, one of no name standing in for the one not named")
+
+	h.exec(t, `DELETE FROM item_details`)
+
+	got, err = NewStore(h.pool, h.clock).ReviewItem(t.Context(), id)
+	require.NoError(t, err)
+	assert.False(t, got.HasDetails)
+	assert.Empty(t, got.MergeState)
+	assert.Equal(t, []heldruns.Run{}, got.HeldRuns, "no details hold no runs")
 }
 
 func TestTheCardShowsAutoMerge(t *testing.T) {

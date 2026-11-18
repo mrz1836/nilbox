@@ -5,8 +5,16 @@ import { refText } from '../../lib/format'
 import { workflowsOf } from '../../lib/ignoredWorkflows'
 import { issueLook } from '../../lib/issues'
 import { toneDot, toneText, type Tone } from '../../lib/signals'
-import { ignoredRuns } from '../../lib/useReview'
-import type { InboxItem, ReadyState, Review, ReviewCheck, ReviewEntry, ReviewUnrun } from '../../platform'
+import { ignoredRuns, type ListMark } from '../../lib/useReview'
+import type {
+  InboxItem,
+  ReadyState,
+  Review,
+  ReviewCheck,
+  ReviewCheckCounts,
+  ReviewEntry,
+  ReviewUnrun,
+} from '../../platform'
 import { openExternal } from '../../platform'
 import { PersonAvatar } from '../Avatar'
 import { chipClass, quietButtonClass } from '../controls'
@@ -14,6 +22,7 @@ import { ExternalIcon } from '../icons'
 import { ItemLink } from '../ItemLink'
 import { SensitiveFiles } from '../SensitiveFiles'
 import { StatusDot } from '../StatusDot'
+import { ReadAge } from './ReviewLoading'
 
 export interface ReviewSummaryProps extends IgnoreProps {
   review: Review
@@ -23,6 +32,9 @@ export interface ReviewSummaryProps extends IgnoreProps {
   // onShowReview shows the review with url in the conversation; without it, or for one the
   // sheet holds none of, a reviewer opens their review on GitHub.
   onShowReview?: ((url: string) => void) | undefined
+  // mark is how the checks the sheet listed stand against what it shows of them (listMark):
+  // current, unless given.
+  mark?: ListMark
 }
 
 // readyTone is each readiness's color.
@@ -90,19 +102,39 @@ function CheckDot({ outcome }: { outcome: string }) {
   return <StatusDot color={toneDot[checkTone(outcome)]} ping={outcome === runningOutcome} />
 }
 
-// checksSummary sums up the checks: how many there are and how many fail, as in "12 checks ·
-// 1 failing", and how many run, as in "2 running", or '' while none does, which the summary
-// marks with a running check's dot.
-export function checksSummary(checks: readonly ReviewCheck[]): { counts: string; running: string } {
-  const failing = checks.filter((c) => c.outcome === 'failed').length
-  const pending = checks.filter((c) => c.outcome === runningOutcome).length
-  const parts = [counted(checks.length, 'check', 'checks')]
+// ChecksSummary sums up checks: how many there are and how many fail, as in "12 checks · 1
+// failing", and how many run, as in "2 running", or '' while none does, which the summary
+// marks with a running check's dot; total counts them.
+interface ChecksSummary {
+  counts: string
+  running: string
+  total: number
+}
+
+// summaryOf sums up total checks, failing and pending of them.
+function summaryOf(total: number, failing: number, pending: number): ChecksSummary {
+  const parts = [counted(total, 'check', 'checks')]
 
   if (failing > 0) {
     parts.push(`${String(failing)} failing`)
   }
 
-  return { counts: parts.join(' · '), running: pending > 0 ? `${String(pending)} running` : '' }
+  return { counts: parts.join(' · '), running: pending > 0 ? `${String(pending)} running` : '', total }
+}
+
+// checksSummary sums up a list of checks.
+export function checksSummary(checks: readonly ReviewCheck[]): ChecksSummary {
+  return summaryOf(
+    checks.length,
+    checks.filter((c) => c.outcome === 'failed').length,
+    checks.filter((c) => c.outcome === runningOutcome).length,
+  )
+}
+
+// countsSummary sums up the checks GitHub's rollup counted, as the inbox read them since the
+// sheet listed them.
+export function countsSummary(counts: ReviewCheckCounts): ChecksSummary {
+  return summaryOf(counts.passed + counts.failed + counts.pending + counts.skipped, counts.failed, counts.pending)
 }
 
 // BumpChip says what a dependency update changes: the dependency and its versions, and how
@@ -341,14 +373,19 @@ function requiredFirst(checks: readonly ReviewCheck[]): ReviewCheck[] {
 // change, always fold. The list starts open, and folds away under its count, which marks
 // the checks running with their dot, so a folded list still shows CI at work. Beneath it,
 // the workflow runs that never ran a check and aren't passing (Unrun), and the held runs
-// that don't count (Ignored).
-function Checks({ review, ignored, onIgnore }: IgnoreProps & { review: Review }) {
-  const { checks, unrun } = review
+// that don't count (Ignored). The count is the inbox's while it read the checks since the
+// sheet listed them (counts.newer), and then the list says when the sheet listed it, faded
+// while it is read again (mark); a list cut short says how many more GitHub lists.
+function Checks({ review, mark, ignored, onIgnore }: IgnoreProps & { review: Review; mark: ListMark }) {
+  const { checks, unrun, counts } = review
+  const summary = counts.newer ? countsSummary(counts) : checksSummary(checks)
+  const age = <ReadAge mark={mark} fetchedAt={review.fetchedAt} what="checks" />
 
-  if (checks.length === 0) {
+  if (checks.length === 0 && summary.total === 0) {
     return (
       <>
         <p className="text-xs text-muted">No checks on this commit.</p>
+        {age}
         <Unrun unrun={unrun} />
         <Ignored review={review} ignored={ignored} onIgnore={onIgnore} />
       </>
@@ -362,7 +399,6 @@ function Checks({ review, ignored, onIgnore }: IgnoreProps & { review: Review })
   const showRunning = failing.length + running.length <= openChecks
   const showPassed = showRunning && failing.length + running.length + passed.length <= openChecks
   const open = [...failing, ...(showRunning ? running : []), ...(showPassed ? passed : [])]
-  const summary = checksSummary(checks)
 
   return (
     <details open className="text-xs">
@@ -375,12 +411,31 @@ function Checks({ review, ignored, onIgnore }: IgnoreProps & { review: Review })
           </>
         )}
       </summary>
-      {open.length > 0 && <CheckList checks={open} label="Checks" />}
-      {!showRunning && running.length > 0 && <CheckGroup checks={running} outcome={runningOutcome} words="running" />}
-      {!showPassed && passed.length > 0 && <CheckGroup checks={passed} outcome="passed" words="passed" />}
-      {skipped.length > 0 && <CheckGroup checks={skipped} outcome="skipped" words="skipped" />}
-      <Unrun unrun={unrun} />
-      <Ignored review={review} ignored={ignored} onIgnore={onIgnore} />
+      {age}
+      {checks.length === 0 && review.fetchedAt === '' && <p className="text-muted">Not read from GitHub yet.</p>}
+      <div className={mark === 'reading' ? 'opacity-60' : undefined}>
+        {open.length > 0 && <CheckList checks={open} label="Checks" />}
+        {!showRunning && running.length > 0 && <CheckGroup checks={running} outcome={runningOutcome} words="running" />}
+        {!showPassed && passed.length > 0 && <CheckGroup checks={passed} outcome="passed" words="passed" />}
+        {skipped.length > 0 && <CheckGroup checks={skipped} outcome="skipped" words="skipped" />}
+        {review.moreChecks > 0 && (
+          <p className="mt-1 text-muted">
+            {counted(review.moreChecks, 'more check', 'more checks')} on GitHub ·{' '}
+            <button
+              type="button"
+              onClick={() => {
+                openExternal(`${review.url}/checks`)
+              }}
+              className={quietButtonClass}
+            >
+              <ExternalIcon className="size-3" />
+              Open on GitHub
+            </button>
+          </p>
+        )}
+        <Unrun unrun={unrun} />
+        <Ignored review={review} ignored={ignored} onIgnore={onIgnore} />
+      </div>
     </details>
   )
 }
@@ -501,7 +556,15 @@ export function Readiness({ review }: { review: Review }) {
 // and its checks, with the held runs that don't count, whose workflows it offers to ignore.
 // The reviewers come before the checks, so however many checks run, who reviewed and who
 // still has to stays in view.
-export function ReviewSummary({ review, item, onFilesSettings, onShowReview, ignored, onIgnore }: ReviewSummaryProps) {
+export function ReviewSummary({
+  review,
+  item,
+  onFilesSettings,
+  onShowReview,
+  ignored,
+  onIgnore,
+  mark = 'current',
+}: ReviewSummaryProps) {
   const { change } = review
 
   return (
@@ -514,7 +577,7 @@ export function ReviewSummary({ review, item, onFilesSettings, onShowReview, ign
       </div>
       <Closes review={review} />
       <Reviewers reviews={review.reviews} onShow={onShowReview} />
-      <Checks review={review} ignored={ignored} onIgnore={onIgnore} />
+      <Checks review={review} mark={mark} ignored={ignored} onIgnore={onIgnore} />
     </section>
   )
 }
