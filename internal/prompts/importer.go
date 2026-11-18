@@ -600,7 +600,10 @@ func readSnapshot(ctx context.Context, path string) (Bundle, map[int64]string, e
 		return Bundle{}, nil, err
 	}
 
-	b := Bundle{Format: BundleFormat, Version: BundleVersion, StartersAdded: []string{}, Prompts: []BundlePrompt{}}
+	b := Bundle{
+		Format: BundleFormat, Version: BundleVersion, StartersAdded: []string{}, SlotsSeeded: []string{},
+		Prompts: []BundlePrompt{},
+	}
 	nicknames := map[int64]string{}
 
 	for _, row := range rows {
@@ -622,17 +625,22 @@ func readSnapshot(ctx context.Context, path string) (Bundle, map[int64]string, e
 
 	// The library's own records come back too where the backup has them; the prompts come
 	// back without them.
-	b.Defaults, b.StartersAdded = snapshotRecords(ctx, snap.DB(), nicknames)
+	b.Defaults, b.StartersAdded, b.SlotsSeeded = snapshotRecords(ctx, snap.DB(), nicknames)
 
 	return b, nicknames, nil
 }
 
-// snapshotRecords reads a backup's default prompts and default replies, by the nicknames
-// of the prompts with those IDs, and the starters it had added. A backup without them, or
-// whose prefs can't be read, has none.
-func snapshotRecords(ctx context.Context, db *sql.DB, nicknames map[int64]string) (BundleDefaults, []string) {
-	keys := make([]string, 0, 3+len(ReplySlots()))
-	keys = append(keys, prefSeeded, prefDefaultPR, prefDefaultIssue)
+// snapshotRecords reads a backup's default prompts, its situations' prompts, and its
+// default replies, by the nicknames of the prompts with those IDs, the starters it had
+// added, and the situations' slots it had filled. A backup without them, as an older
+// build's, or whose prefs can't be read, has none.
+func snapshotRecords(ctx context.Context, db *sql.DB, nicknames map[int64]string) (BundleDefaults, []string, []string) {
+	keys := make([]string, 0, 4+len(situationSlots())+len(ReplySlots()))
+	keys = append(keys, prefSeeded, prefSeededSlots, prefDefaultPR, prefDefaultIssue)
+
+	for _, slot := range situationSlots() {
+		keys = append(keys, situationPrefKey(slot))
+	}
 
 	for _, slot := range ReplySlots() {
 		keys = append(keys, replyPrefKey(slot))
@@ -640,15 +648,14 @@ func snapshotRecords(ctx context.Context, db *sql.DB, nicknames map[int64]string
 
 	values, err := prefs.New(db, nil).GetMany(ctx, keys...)
 	if err != nil {
-		return BundleDefaults{}, []string{}
-	}
-
-	added, decodeErr := store.DecodeJSON[[]string](values[prefSeeded])
-	if decodeErr != nil || added == nil {
-		added = []string{}
+		return BundleDefaults{}, []string{}, []string{}
 	}
 
 	defaults := BundleDefaults{PR: nicknames[idText(values[prefDefaultPR])], Issue: nicknames[idText(values[prefDefaultIssue])]}
+
+	for _, slot := range situationSlots() {
+		defaults.Set(slot, nicknames[idText(values[situationPrefKey(slot)])])
+	}
 
 	for _, slot := range ReplySlots() {
 		if nickname := nicknames[idText(values[replyPrefKey(slot)])]; nickname != "" {
@@ -656,7 +663,18 @@ func snapshotRecords(ctx context.Context, db *sql.DB, nicknames map[int64]string
 		}
 	}
 
-	return defaults, added
+	return defaults, snapshotList(values[prefSeeded]), snapshotList(values[prefSeededSlots])
+}
+
+// snapshotList reads a list a backup's prefs keep as JSON; a missing or unreadable one is
+// empty.
+func snapshotList(stored string) []string {
+	list, err := store.DecodeJSON[[]string](stored)
+	if err != nil || list == nil {
+		return []string{}
+	}
+
+	return list
 }
 
 // snapshotSettings reads a backed-up prompt's models and extra arguments: the per-agent

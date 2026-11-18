@@ -48,9 +48,9 @@ func Seed(ctx context.Context, s *Store) error {
 // cleared, or whose starter they deleted, is left as they left it, and a pull request in
 // that situation launches with the prompt it would have anyway.
 func seedSlots(ctx context.Context, st *Store) error {
-	filled, _, err := st.prefs.GetList(ctx, prefSeededSlots)
+	filled, err := st.seededSlots(ctx)
 	if err != nil {
-		return fmt.Errorf("read the situations' prompts filled: %w", err)
+		return err
 	}
 
 	var fill []DefaultSlot
@@ -78,7 +78,7 @@ func seedSlots(ctx context.Context, st *Store) error {
 		filled = append(filled, string(slot))
 	}
 
-	return st.prefs.SetList(ctx, prefSeededSlots, filled)
+	return st.setSeededSlots(ctx, filled)
 }
 
 // fillSlot makes the library's copy of slot's starter the slot's default, when lib holds

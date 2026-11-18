@@ -213,8 +213,12 @@ func TestBootstrapBringsThePromptsBackFromTheLibraryFile(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, c.Prompts.SetDefault(t.Context(), "issue", mine.ID))
 
-	_, err = c.LaunchDefaults.Save(t.Context(), launchdefaults.Input{Owner: "acme-org", IssuePromptID: &mine.ID, Effort: "high"})
+	fix := libraryByNickname(t, c)["Fix checks"]
+	_, err = c.LaunchDefaults.Save(t.Context(), launchdefaults.Input{
+		Owner: "acme-org", IssuePromptID: &mine.ID, ConflictsPromptID: &fix.ID, Effort: "high",
+	})
 	require.NoError(t, err)
+	require.NoError(t, c.Prompts.SetSlotDefault(t.Context(), prompts.DefaultSlotChecksFailing, 0))
 
 	// Renaming the prompt rewrites the launch defaults' copy, which names it by nickname.
 	in := prompts.Input{Name: mine.Name, Nickname: "Triage it", AppliesTo: mine.AppliesTo, Body: mine.Body}
@@ -243,10 +247,13 @@ func TestBootstrapBringsThePromptsBackFromTheLibraryFile(t *testing.T) {
 	defaults, err := again.Prompts.Defaults(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, lib["Triage it"].ID, defaults.Issue)
+	assert.Zero(t, defaults.ChecksFailing, "a situation the user cleared isn't filled again")
+	assert.Equal(t, lib["Re-review"].ID, defaults.Rereview)
 
 	org := launchDefaultsByTarget(t, again)["acme-org"]
 	require.NotNil(t, org.IssuePromptID, "the renamed prompt is still the org's default")
 	assert.Equal(t, lib["Triage it"].ID, *org.IssuePromptID)
+	assert.Equal(t, new(lib["Fix checks"].ID), org.ConflictsPromptID, "and a situation's prompt comes back too")
 	assert.Equal(t, "high", org.Effort)
 }
 

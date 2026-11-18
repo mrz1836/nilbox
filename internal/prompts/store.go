@@ -460,6 +460,43 @@ func (s *Store) seeded(ctx context.Context) ([]string, error) {
 	return keys, nil
 }
 
+// seededSlots reads the situations' slots already filled once.
+func (s *Store) seededSlots(ctx context.Context) ([]string, error) {
+	slots, _, err := s.prefs.GetList(ctx, prefSeededSlots)
+	if err != nil {
+		return nil, fmt.Errorf("read the situations' prompts filled: %w", err)
+	}
+
+	return slots, nil
+}
+
+// setSeededSlots records slots as the situations' slots already filled once.
+func (s *Store) setSeededSlots(ctx context.Context, slots []string) error {
+	return s.prefs.SetList(ctx, prefSeededSlots, slots)
+}
+
+// records are what a whole library keeps of its own history, which travels with it in a
+// prompt file: the starters it was given, and the situations' slots it filled once.
+type records struct {
+	startersAdded []string
+	slotsSeeded   []string
+}
+
+// records reads the starters the library was given and the situations' slots it filled.
+func (s *Store) records(ctx context.Context) (records, error) {
+	added, err := s.seeded(ctx)
+	if err != nil {
+		return records{}, err
+	}
+
+	slots, err := s.seededSlots(ctx)
+	if err != nil {
+		return records{}, err
+	}
+
+	return records{startersAdded: added, slotsSeeded: slots}, nil
+}
+
 // libraryExists reports whether the library was ever started: a starter was added to it
 // once, or it holds a prompt. A database created moments ago holds a library that does
 // not exist yet, as does one whose library was lost.

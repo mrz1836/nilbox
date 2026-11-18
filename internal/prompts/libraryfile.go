@@ -48,12 +48,12 @@ func (f *LibraryFile) Save(ctx context.Context, st *Store) error {
 		return err
 	}
 
-	added, err := st.seeded(ctx)
+	kept, err := st.records(ctx)
 	if err != nil {
 		return err
 	}
 
-	data, err := EncodeBundle(newBundle(lib, added, nil, f.clock.Now(), f.app))
+	data, err := EncodeBundle(newBundle(lib, kept, nil, f.clock.Now(), f.app))
 	if err != nil {
 		return err
 	}
@@ -90,9 +90,10 @@ type Restored struct {
 // aside, damaged, or deleted, and before Seed adds the starters. It reads the database
 // set aside at startup when there is one (setAside is "" when there is not), and
 // otherwise the library file (nil for none), and adds every prompt in it, with the
-// app's default prompts and the record of the starters already added, so a starter the
-// user deleted stays deleted. A source it cannot read is skipped for the next, and named
-// in the error; nothing is restored when neither can be read.
+// app's default prompts and the records of the starters already added and the
+// situations' slots already filled, so a starter the user deleted stays deleted and a
+// slot they cleared stays cleared. A source it cannot read is skipped for the next, and
+// named in the error; nothing is restored when neither can be read.
 func Restore(ctx context.Context, st *Store, setAside string, file *LibraryFile) (Restored, error) {
 	exists, err := st.libraryExists(ctx)
 	if err != nil || exists {
@@ -132,8 +133,9 @@ func Restore(ctx context.Context, st *Store, setAside string, file *LibraryFile)
 }
 
 // restoreBundle adds every prompt in b to the new library st holds, with b's default
-// prompts and its record of the starters added, all of it or, when a write fails,
-// none. from is the file b was read from.
+// prompts and its records of the starters added and the situations' slots filled, all of
+// it or, when a write fails, none. A file without the slots filled, as an older build's,
+// leaves Seed to fill each slot once. from is the file b was read from.
 func restoreBundle(ctx context.Context, st *Store, b Bundle, from string) (Restored, error) {
 	var ids map[string]int64
 
@@ -148,6 +150,10 @@ func restoreBundle(ctx context.Context, st *Store, b Bundle, from string) (Resto
 		}
 
 		if err = tx.setSeeded(ctx, added); err != nil {
+			return err
+		}
+
+		if err = tx.setSeededSlots(ctx, appendUniqueAll(nil, b.SlotsSeeded)); err != nil {
 			return err
 		}
 

@@ -46,6 +46,7 @@ func FuzzDecodeBundle(f *testing.F) {
 		assert.LessOrEqual(t, b.Version, BundleVersion)
 		assert.LessOrEqual(t, len(b.Prompts), maxBundlePrompts)
 		assert.NotNil(t, b.StartersAdded)
+		assert.NotNil(t, b.SlotsSeeded)
 		assert.NotNil(t, b.Prompts)
 
 		written, err := EncodeBundle(b)

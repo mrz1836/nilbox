@@ -61,6 +61,7 @@ var (
 //	  "app": "v0.4.0",
 //	  "defaults": {"pr": "Review", "issue": "Work on it", "replies": {"approve": "LGTM"}},
 //	  "startersAdded": ["review-pr", "work-on-issue"],
+//	  "slotsSeeded": ["checks_failing", "conflicts"],
 //	  "prompts": [{"name": "Review a pull request", "nickname": "Review", ...}]
 //	}
 type Bundle struct {
@@ -84,6 +85,12 @@ type Bundle struct {
 	// restored from the file keeps a starter the user deleted from coming back. It is
 	// empty in a file of chosen prompts.
 	StartersAdded []string `json:"startersAdded"`
+
+	// SlotsSeeded lists the situations' slots a whole library had filled once (see
+	// seedSlots), so a library restored from the file keeps a slot the user cleared from
+	// being filled again. It is left out of a file of chosen prompts, and of one an older
+	// build wrote.
+	SlotsSeeded []string `json:"slotsSeeded,omitempty"`
 
 	// Prompts are the prompts.
 	Prompts []BundlePrompt `json:"prompts"`
@@ -156,20 +163,22 @@ type BundlePrompt struct {
 }
 
 // newBundle returns the prompts in lib with ids, or every prompt when ids is empty, as a
-// Bundle written at now by the app version app. startersAdded goes in only with the
-// whole library.
-func newBundle(lib Library, startersAdded []string, ids []int64, now time.Time, app string) Bundle {
+// Bundle written at now by the app version app. The library's records go in only with
+// the whole library.
+func newBundle(lib Library, kept records, ids []int64, now time.Time, app string) Bundle {
 	b := Bundle{
 		Format:        BundleFormat,
 		Version:       BundleVersion,
 		ExportedAt:    clock.Format(now),
 		App:           app,
 		StartersAdded: []string{},
+		SlotsSeeded:   []string{},
 		Prompts:       []BundlePrompt{},
 	}
 
 	if len(ids) == 0 {
-		b.StartersAdded = slices.Clone(textutil.NonNil(startersAdded))
+		b.StartersAdded = slices.Clone(textutil.NonNil(kept.startersAdded))
+		b.SlotsSeeded = slices.Clone(textutil.NonNil(kept.slotsSeeded))
 	}
 
 	for _, p := range lib.Prompts {
@@ -314,6 +323,7 @@ func DecodeBundle(data []byte) (Bundle, error) {
 	}
 
 	b.StartersAdded = textutil.NonNil(b.StartersAdded)
+	b.SlotsSeeded = textutil.NonNil(b.SlotsSeeded)
 	b.Prompts = textutil.NonNil(b.Prompts)
 
 	return b, nil

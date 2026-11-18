@@ -2,6 +2,7 @@ package prompts
 
 import (
 	"database/sql"
+	"path/filepath"
 	"strconv"
 	"testing"
 
@@ -410,6 +411,84 @@ func TestABackupCarriesTheSituationsDefaults(t *testing.T) {
 
 	want[DefaultSlotRereview] = ""
 	assert.Equal(t, want, situationDefaults(t, replaced))
+}
+
+func TestRestoreFromTheLibraryFileKeepsASituationTheUserCleared(t *testing.T) {
+	t.Parallel()
+
+	s, _, dir := keeping(t)
+	ctx := t.Context()
+
+	require.NoError(t, s.SetSlotDefault(ctx, DefaultSlotChecksFailing, 0))
+	require.NoError(t, s.SetSlotDefault(ctx, DefaultSlotConflicts, byNickname(t, s, "Quick look").ID))
+
+	restored, db := empty(t, nil)
+
+	_, err := Restore(ctx, restored.store, "", NewLibraryFile(filepath.Join(dir, "prompts.json"), "", nil))
+	require.NoError(t, err)
+	require.NoError(t, Seed(ctx, restored.store))
+
+	want := startersOfSituations()
+	want[DefaultSlotChecksFailing], want[DefaultSlotConflicts] = "", "Quick look"
+	assert.Equal(t, want, situationDefaults(t, restored), "the cleared slot isn't filled again")
+	assert.Equal(t, `["checks_failing","conflicts","changes_requested","rereview"]`,
+		situationPrefs(t, db)[prefSeededSlots])
+}
+
+func TestRestoreFromTheDatabaseSetAsideKeepsTheSituations(t *testing.T) {
+	t.Parallel()
+
+	old := filepath.Join(t.TempDir(), "old.db")
+	oldDB := testutil.DBAt(t, old)
+	oldStore := NewStore(oldDB, nil)
+	require.NoError(t, Seed(t.Context(), oldStore))
+
+	oldService := NewService(Config{Store: oldStore})
+	ctx := t.Context()
+	require.NoError(t, oldService.SetSlotDefault(ctx, DefaultSlotRereview, 0))
+	require.NoError(t, oldService.SetSlotDefault(ctx, DefaultSlotChangesRequested, byNickname(t, oldService, "Fix checks").ID))
+	require.NoError(t, oldDB.Close())
+
+	b, err := readSnapshotBundle(ctx, old)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"checks_failing", "conflicts", "changes_requested", "rereview"}, b.SlotsSeeded)
+
+	s, _ := empty(t, nil)
+	_, err = Restore(ctx, s.store, old, nil)
+	require.NoError(t, err)
+	require.NoError(t, Seed(ctx, s.store))
+
+	want := startersOfSituations()
+	want[DefaultSlotChangesRequested], want[DefaultSlotRereview] = "Fix checks", ""
+	assert.Equal(t, want, situationDefaults(t, s), "a reset brings the situations back as the user left them")
+}
+
+func TestRestoreFromAnOlderFileFillsEachSituationOnce(t *testing.T) {
+	t.Parallel()
+
+	from, _ := seeded(t, nil)
+
+	b, err := NewBackupPart(from).Bundle(t.Context())
+	require.NoError(t, err)
+
+	// A file an older build wrote names no situation's default and no slot filled.
+	b.SlotsSeeded = nil
+	for _, slot := range situationSlots() {
+		b.Defaults.Set(slot, "")
+	}
+
+	s, db := empty(t, nil)
+	_, err = Restore(t.Context(), s.store, "", NewLibraryFile(writeBundle(t, b), "", nil))
+	require.NoError(t, err)
+
+	for _, slot := range situationSlots() {
+		assert.Empty(t, situationDefaults(t, s)[slot], "the file names none")
+	}
+
+	require.NoError(t, Seed(t.Context(), s.store))
+	assert.Equal(t, startersOfSituations(), situationDefaults(t, s), "each slot is filled once, on its starter")
+	assert.Equal(t, `["checks_failing","conflicts","changes_requested","rereview"]`,
+		situationPrefs(t, db)[prefSeededSlots])
 }
 
 // changed lists a plan's items that change something, as "<change> <label>".

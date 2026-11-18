@@ -166,6 +166,12 @@
       "rerun-failed-jobs",
       "reply-needs-repro"
     ],
+    "slotsSeeded": [
+      "checks_failing",
+      "conflicts",
+      "changes_requested",
+      "rereview"
+    ],
     "prompts": [
       {
         "name": "Address a review's requested changes",

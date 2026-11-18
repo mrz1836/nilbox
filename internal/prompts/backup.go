@@ -47,7 +47,8 @@ func (s DefaultSlot) Label() string {
 }
 
 // Bundle returns the whole library in portable form, as Export writes it: every prompt and
-// reply, the defaults, and the record of the starters it was given.
+// reply, the defaults, and the records of the starters it was given and the situations'
+// slots it filled.
 func (bp *BackupPart) Bundle(ctx context.Context) (Bundle, error) {
 	s := bp.s
 
@@ -56,12 +57,12 @@ func (bp *BackupPart) Bundle(ctx context.Context) (Bundle, error) {
 		return Bundle{}, err
 	}
 
-	added, err := s.store.seeded(ctx)
+	kept, err := s.store.records(ctx)
 	if err != nil {
 		return Bundle{}, err
 	}
 
-	return newBundle(lib, added, nil, s.clock.Now(), s.app), nil
+	return newBundle(lib, kept, nil, s.clock.Now(), s.app), nil
 }
 
 // BackupPlan is what applying a backup's prompt library does, as PlanBackup works it out.
