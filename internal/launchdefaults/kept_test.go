@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -265,7 +266,7 @@ func TestReadSnapshotReadsAnOlderSchema(t *testing.T) {
 	assert.Equal(t, []launchdefaults.Kept{{
 		Owner: acme, Profiles: claude("work"), PRPrompt: "Review", Models: claude(opusModel), Effort: "xhigh",
 		Worktree: new(true), ExtraArgs: map[agent.ID][]string{},
-	}}, got, "an older backup's settings were Claude's")
+	}}, got, "an older backup's settings were Claude's, and its situations, which it had no columns for, inherit")
 
 	_, err = launchdefaults.ReadSnapshot(t.Context(), filepath.Join(t.TempDir(), "missing.db"), nil)
 	require.ErrorIs(t, err, os.ErrNotExist)
@@ -298,8 +299,11 @@ func TestReadSnapshotReadsThePerAgentSchema(t *testing.T) {
 
 	h := newHarness(t)
 
+	ids := h.ids(t)
+
 	_, err := h.svc.Save(t.Context(), launchdefaults.Input{
 		Owner: acme, Agent: agent.Codex, Profiles: map[agent.ID]string{agent.Codex: profileAlt}, PRPromptID: &h.review,
+		ChecksPromptID: new(ids["Fix checks"]), RereviewPromptID: new(ids["Re-review"]),
 		Models: map[agent.ID]string{agent.Codex: "gpt-6-sol"}, ExtraFlags: map[agent.ID]string{agent.Codex: "--search"},
 	})
 	require.NoError(t, err)
@@ -309,8 +313,10 @@ func TestReadSnapshotReadsThePerAgentSchema(t *testing.T) {
 	require.NoError(t, err)
 
 	got, err := launchdefaults.ReadSnapshot(t.Context(), backup, func(id int64) string {
-		if id == h.review {
-			return "Review"
+		for nickname, known := range ids {
+			if known == id {
+				return nickname
+			}
 		}
 
 		return ""
@@ -318,6 +324,113 @@ func TestReadSnapshotReadsThePerAgentSchema(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []launchdefaults.Kept{{
 		Owner: acme, Agent: agent.Codex, Profiles: map[agent.ID]string{agent.Codex: profileAlt}, PRPrompt: "Review",
+		ChecksPrompt: "Fix checks", RereviewPrompt: "Re-review",
 		Models: map[agent.ID]string{agent.Codex: "gpt-6-sol"}, ExtraArgs: map[agent.ID][]string{agent.Codex: {"--search"}},
 	}}, got)
+}
+
+// ids returns the ID of each prompt in the harness's library, by nickname.
+func (h *harness) ids(t *testing.T) map[string]int64 {
+	t.Helper()
+
+	all, err := h.library.All(t.Context())
+	require.NoError(t, err)
+
+	out := map[string]int64{}
+	for _, p := range all {
+		out[p.Nickname] = p.ID
+	}
+
+	return out
+}
+
+// finder finds a prompt in ids by nickname, as a restore does.
+func finder(ids map[string]int64) func(nickname string) (int64, bool) {
+	return func(nickname string) (int64, bool) {
+		id, ok := ids[nickname]
+
+		return id, ok
+	}
+}
+
+// situationIDs returns d's default prompt for each situation, in the settings' order.
+func situationIDs(d launchdefaults.Defaults) []*int64 {
+	return []*int64{d.ChecksPromptID, d.ConflictsPromptID, d.ChangesPromptID, d.RereviewPromptID}
+}
+
+func TestTheCopyKeepsTheSituationsPrompts(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	path := keptPath(t)
+	ids := h.ids(t)
+	svc := h.keeping(path, nil)
+
+	_, err := svc.Save(t.Context(), launchdefaults.Input{
+		Owner: acme, ChecksPromptID: new(ids["Fix checks"]), ConflictsPromptID: new(ids["Resolve conflicts"]),
+		ChangesPromptID: new(ids["Address review"]), RereviewPromptID: new(ids["Re-review"]),
+	})
+	require.NoError(t, err)
+	_, err = svc.Save(t.Context(), launchdefaults.Input{Owner: acme, Name: exampleRepo, PRPromptID: &h.review})
+	require.NoError(t, err)
+
+	kept := load(t, path)
+	assert.Equal(t, []launchdefaults.Kept{
+		{
+			Owner: acme, ChecksPrompt: "Fix checks", ConflictsPrompt: "Resolve conflicts", ChangesPrompt: "Address review",
+			RereviewPrompt: "Re-review", Profiles: map[agent.ID]string{}, Models: map[agent.ID]string{},
+			ExtraArgs: map[agent.ID][]string{},
+		},
+		{
+			Owner: acme, Name: exampleRepo, PRPrompt: "Review", Profiles: map[agent.ID]string{},
+			Models: map[agent.ID]string{}, ExtraArgs: map[agent.ID][]string{},
+		},
+	}, kept, "each situation's prompt is named by nickname")
+
+	data, err := os.ReadFile(path) //nolint:gosec // a file the test wrote
+	require.NoError(t, err)
+	assert.Equal(t, 1, strings.Count(string(data), `"checksPrompt"`), "a row that inherits leaves them out")
+
+	// Brought back into a database that lost them, each names its prompt there.
+	other := newHarness(t)
+	there := other.ids(t)
+
+	n, err := launchdefaults.Restore(t.Context(), other.store, kept, finder(there))
+	require.NoError(t, err)
+	assert.Equal(t, 2, n)
+
+	all, err := other.svc.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, all, 2)
+	assert.Equal(t, []*int64{
+		new(there["Fix checks"]), new(there["Resolve conflicts"]), new(there["Address review"]), new(there["Re-review"]),
+	}, situationIDs(all[0]))
+	assert.Equal(t, []*int64{nil, nil, nil, nil}, situationIDs(all[1]))
+}
+
+func TestAnOlderCopyWithoutTheSituationsPromptsInherits(t *testing.T) {
+	t.Parallel()
+
+	path := keptPath(t)
+	testutil.WriteFile(t, path, `{"format": "`+launchdefaults.KeptFormat+`", "version": 2, "defaults": [
+		{"owner": "acme-org", "name": "", "agent": "", "profiles": {}, "prPrompt": "Review", "issuePrompt": "",
+		 "models": {}, "effort": "", "planMode": null, "worktree": null, "extraArgs": {}}
+	]}`)
+
+	kept := load(t, path)
+	assert.Equal(t, []launchdefaults.Kept{{
+		Owner: acme, PRPrompt: "Review", Profiles: map[agent.ID]string{}, Models: map[agent.ID]string{},
+		ExtraArgs: map[agent.ID][]string{},
+	}}, kept)
+
+	h := newHarness(t)
+
+	_, err := launchdefaults.Restore(t.Context(), h.store, kept, h.promptID)
+	require.NoError(t, err)
+
+	all, err := h.svc.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, all, 1)
+	assert.Equal(t, &h.review, all[0].PRPromptID)
+	assert.Equal(t, []*int64{nil, nil, nil, nil}, situationIDs(all[0]), "each situation inherits")
 }

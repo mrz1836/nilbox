@@ -296,7 +296,7 @@ func slotPlacesWords(places []SlotPlace) string {
 	case 0:
 		return ""
 	case 1:
-		return places[0].target() + "'s prompt " + places[0].Slot.when()
+		return places[0].target() + "'s prompt " + places[0].Slot.When()
 	default:
 		return fmt.Sprintf("a situation's prompt in %d places", len(places))
 	}

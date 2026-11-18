@@ -119,7 +119,7 @@ func (p *BackupPlan) planRow(raw Kept, known Known, seen map[string]bool) (Kept,
 	k.PRPrompt = resolvePrompt(&p.Plan, k, k.PRPrompt, item.KindPR, known)
 	k.IssuePrompt = resolvePrompt(&p.Plan, k, k.IssuePrompt, item.KindIssue, known)
 
-	switch _, sets := restorableWith(k, promptMark(k.PRPrompt), promptMark(k.IssuePrompt)); {
+	switch _, sets := restorableWith(k, promptIDs{pr: promptMark(k.PRPrompt), issue: promptMark(k.IssuePrompt)}); {
 	case seen[keyOf(k)]:
 		p.AddNote(fmt.Sprintf("The file holds the launch defaults for %s twice; the first was imported.", k.target()))
 
@@ -189,7 +189,7 @@ func applyRow(ctx context.Context, st *Store, k Kept, find PromptFinder) error {
 		return err
 	}
 
-	in, sets := restorableWith(k, pr, issue)
+	in, sets := restorableWith(k, promptIDs{pr: pr, issue: issue})
 	if sets {
 		_, err = st.save(ctx, in.input, in.checked)
 

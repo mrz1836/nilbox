@@ -40,7 +40,7 @@ func (s DefaultSlot) Label() string {
 	case DefaultSlotComment:
 		return "Default comment reply"
 	case DefaultSlotChecksFailing, DefaultSlotConflicts, DefaultSlotChangesRequested, DefaultSlotRereview:
-		return "Default prompt " + s.when()
+		return "Default prompt " + s.When()
 	default:
 		return "Default"
 	}

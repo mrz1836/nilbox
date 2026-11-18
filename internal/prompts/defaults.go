@@ -50,6 +50,26 @@ func situationSlots() []DefaultSlot {
 	}
 }
 
+// When names a situation's slot in a sentence, as in "when checks fail"; "" for every
+// other slot.
+func (s DefaultSlot) When() string {
+	switch s {
+	case DefaultSlotChecksFailing:
+		return "when checks fail"
+	case DefaultSlotConflicts:
+		return "when it has conflicts"
+	case DefaultSlotChangesRequested:
+		return "when changes are requested"
+	case DefaultSlotRereview:
+		return "when you're asked to review again"
+	case DefaultSlotPR, DefaultSlotIssue, DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges,
+		DefaultSlotComment:
+		return ""
+	default:
+		return ""
+	}
+}
+
 // kind returns the kind of item slot is the app's default prompt for, and whether it is
 // one. A situation's slot is not: it is a pull request's prompt only in its situation.
 func (s DefaultSlot) kind() (item.Kind, bool) {
@@ -69,32 +89,12 @@ func (s DefaultSlot) kind() (item.Kind, bool) {
 // situation reports whether slot is the default prompt of a situation a pull request can
 // be in.
 func (s DefaultSlot) situation() bool {
-	return s.when() != ""
-}
-
-// when names a situation's slot in a sentence, as in "when checks fail"; "" for every
-// other slot.
-func (s DefaultSlot) when() string {
-	switch s {
-	case DefaultSlotChecksFailing:
-		return "when checks fail"
-	case DefaultSlotConflicts:
-		return "when it has conflicts"
-	case DefaultSlotChangesRequested:
-		return "when changes are requested"
-	case DefaultSlotRereview:
-		return "when you're asked to review again"
-	case DefaultSlotPR, DefaultSlotIssue, DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges,
-		DefaultSlotComment:
-		return ""
-	default:
-		return ""
-	}
+	return s.When() != ""
 }
 
 // describe names a situation's slot in a sentence, as in "the default when checks fail".
 func (s DefaultSlot) describe() string {
-	return "the default " + s.when()
+	return "the default " + s.When()
 }
 
 // starter is the key of the starter a situation's slot starts on, and "" for every other
