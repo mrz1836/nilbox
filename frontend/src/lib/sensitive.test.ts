@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { SensitiveGroup } from '../platform'
 import { agentGroup, fileCheck, workflowsGroup } from '../test/fixtures'
-import { changeText, changeTone, filesChip, sensitiveCount } from './sensitive'
+import { changeText, changeTone, changeWords, filesChip, sensitiveCount } from './sensitive'
 
 describe('filesChip', () => {
   it('names the categories of the sensitive files, red when any runs', () => {
@@ -87,6 +87,17 @@ describe('changes', () => {
     expect(changeText({ ...file, change: 'copied', previousPath: 'b' })).toBe('copied from b')
     expect(changeText({ ...file, change: 'copied' })).toBe('copied')
     expect(changeText({ ...file, change: 'changed' })).toBe('changed')
+  })
+
+  it('keeps where a moved file came from apart from the words', () => {
+    const file = { path: 'a', previousPath: '', change: 'added', pattern: '', url: '' }
+
+    expect(changeWords(file)).toEqual({ words: 'added', from: '' })
+    expect(changeWords({ ...file, previousPath: 'b' })).toEqual({ words: 'added', from: '' })
+    expect(changeWords({ ...file, change: 'renamed', previousPath: 'b' })).toEqual({ words: 'moved from', from: 'b' })
+    expect(changeWords({ ...file, change: 'renamed', previousPath: 'a' })).toEqual({ words: 'renamed', from: '' })
+    expect(changeWords({ ...file, change: 'copied', previousPath: 'b' })).toEqual({ words: 'copied from', from: 'b' })
+    expect(changeWords({ ...file, change: 'unknown', previousPath: 'b' })).toEqual({ words: 'changed', from: '' })
   })
 
   it('colors additions, removals, and moves', () => {

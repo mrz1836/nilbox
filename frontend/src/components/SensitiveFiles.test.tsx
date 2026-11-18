@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { FileCheck } from '../platform'
 import { at } from '../test/clock'
-import { agentGroup, fileCheck } from '../test/fixtures'
+import { agentGroup, fileCheck, workflowsGroup } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { SensitiveFiles } from './SensitiveFiles'
 
@@ -18,6 +18,19 @@ async function openPanel(name: RegExp) {
   await userEvent.click(screen.getByRole('button', { name }))
 
   return within(screen.getByRole('dialog', { name: 'Sensitive files' }))
+}
+
+// noWrap are the classes that keep text on one line, or cut it short there.
+const noWrap = ['whitespace-nowrap', 'whitespace-pre', 'text-nowrap', 'truncate', 'text-ellipsis']
+
+// expectWraps fails when the element, or anything between it and the panel, keeps its text
+// on one line.
+function expectWraps(element: HTMLElement, panel: HTMLElement) {
+  for (let node: HTMLElement | null = element; node !== null && node !== panel; node = node.parentElement) {
+    for (const name of noWrap) {
+      expect(node).not.toHaveClass(name)
+    }
+  }
 }
 
 beforeEach(() => {
@@ -48,7 +61,9 @@ describe('SensitiveFiles', () => {
     expect(agent.getByText('added')).toBeInTheDocument()
 
     const workflows = within(panel.getByRole('region', { name: 'Workflows and CI' }))
-    expect(workflows.getByText('moved from .github/workflows/codeql.yml')).toBeInTheDocument()
+    expect(workflows.getByTitle('moved from .github/workflows/codeql.yml')).toHaveTextContent(
+      'moved from .github/workflows/codeql.yml',
+    )
 
     await userEvent.click(workflows.getByRole('button', { name: /docs\/old-codeql\.yml/ }))
     expect(platform.openExternal).toHaveBeenCalledWith(
@@ -65,8 +80,80 @@ describe('SensitiveFiles', () => {
 
     const panel = await openPanel(/^Changes sensitive files/)
 
-    expect(panel.getByText('.claude/settings.json').tagName).toBe('SPAN')
+    const path = panel.getByTitle('.claude/settings.json')
+    expect(path.tagName).toBe('SPAN')
+    expect(path).toHaveTextContent('.claude/settings.json')
     expect(panel.queryByRole('button', { name: /\.claude\/settings\.json/ })).not.toBeInTheDocument()
+  })
+
+  it('wraps its sentences, even opened from a line that does not wrap', async () => {
+    const workflows = workflowsGroup({
+      description:
+        'Run on CI with the repository’s token and secrets once merged, and some run on the pull request itself.',
+    })
+    render(
+      <div className="whitespace-nowrap">
+        <SensitiveFiles itemId={7} check={fileCheck({ groups: [agentGroup(), workflows], complete: false })} />
+      </div>,
+      { wrapper: at() },
+    )
+
+    const panel = await openPanel(/^Changes sensitive files/)
+    const dialog = screen.getByRole('dialog', { name: 'Sensitive files' })
+
+    expect(dialog).toHaveClass('whitespace-normal', 'break-words', 'w-[26rem]', 'max-w-[calc(100vw-2rem)]')
+    for (const element of [
+      panel.getByText('At commit', { exact: false }),
+      panel.getByText(/deserve a close look before you review or open a session/),
+      panel.getByText(/once merged, and some run on the pull request itself/),
+      panel.getByText(/coding agents load/),
+      panel.getByRole('heading', { name: /Workflows and CI/ }),
+      panel.getByRole('note'),
+      panel.getByText(/Opening a session on it asks first/),
+      panel.getByText('Settings → Sensitive files'),
+    ]) {
+      expectWraps(element, dialog)
+    }
+  })
+
+  it('keeps how a long path changed whole, its folders giving way first', async () => {
+    const path = '.github/workflows/provenance-qualification-of-every-release-artifact.yml'
+    const added = { path, previousPath: '', change: 'added', pattern: '.github/workflows/', url: 'https://x.test/a' }
+    const moved = {
+      path: 'docs/retired-workflows/provenance-qualification.yml',
+      previousPath: '.github/workflows/provenance-qualification-of-every-nightly-build.yml',
+      change: 'renamed',
+      pattern: '.github/workflows/',
+      url: '',
+    }
+    renderChip(fileCheck({ groups: [workflowsGroup({ files: [added, moved] })] }))
+
+    const panel = await openPanel(/^Changes sensitive files/)
+
+    const change = panel.getByTitle('added')
+    const words = within(change).getByText('added')
+    expect(change).toHaveClass('shrink-0')
+    expect(words).toHaveClass('shrink-0', 'whitespace-nowrap')
+    for (const name of ['truncate', 'text-ellipsis', 'min-w-0']) {
+      expect(change).not.toHaveClass(name)
+      expect(words).not.toHaveClass(name)
+    }
+
+    const link = panel.getByRole('button', { name: path })
+    expect(link).toHaveAttribute('title', `Open the diff of ${path} on GitHub`)
+    expect(within(link).getByText('.github/workflows/')).toHaveClass('min-w-0', 'truncate')
+    expect(within(link).getByText('provenance-qualification-of-every-release-artifact.yml')).toHaveClass(
+      'max-w-full',
+      'shrink-0',
+      'truncate',
+    )
+
+    expect(panel.getByTitle(moved.path)).toHaveTextContent(moved.path)
+    const from = panel.getByTitle(`moved from ${moved.previousPath}`)
+    expect(from).toHaveClass('shrink-0', 'max-w-1/2')
+    expect(from).toHaveTextContent(`moved from ${moved.previousPath}`)
+    expect(within(from).getByText('moved from')).toHaveClass('shrink-0', 'whitespace-nowrap')
+    expect(within(from).getByText('.github/workflows/')).toHaveClass('min-w-0', 'truncate')
   })
 
   it('says when GitHub listed only some of the files', async () => {
