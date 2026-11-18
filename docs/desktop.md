@@ -2513,6 +2513,15 @@ can only be approved on GitHub**), counts the run as held on GitHub until Nilbox
 never sends it again. Any other refusal shows what GitHub said, and the run's link is where to
 approve it by hand.
 
+**Ignored workflows.** Each held run's line, in the bar or the checks list, offers **Ignore this
+workflow** (**Ignore {name}** for each of several), which adds its workflow's name to **Settings →
+Reviewing → Ignored workflows**, with a toast that can undo it. A run of an ignored workflow never
+counts, whichever kind it is, even when GitHub reports the merge blocked: the card counts without
+it at once, from what Nilbox already stored, with no request, the sheet names it quietly with
+**· ignored**, and it is never offered to approve (approve it on GitHub). Settings lists the names,
+each with a button that counts it again, and takes one typed in; a name matches a workflow's whole
+name, case and all.
+
 **Your text goes with a merge.** Merge, Merge past the rules, and Merge when ready post the text
 in **Your review**, and any line comments, as a comment before they merge, so the pull request
 shows it was reviewed, your own included, where GitHub takes a comment but never your approval.

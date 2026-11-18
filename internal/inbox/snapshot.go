@@ -13,6 +13,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/heldruns"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -358,13 +359,14 @@ type Checks struct {
 
 	// Awaiting counts the workflow runs held until a maintainer approves them whose
 	// approval GitHub takes from the app (the review sheet's Approve workflows to run),
-	// which State and the other counts leave out (github.Checks.Awaiting).
+	// which State and the other counts leave out (github.Checks.Awaiting), but those of a
+	// workflow the user ignores (heldruns.Ignored).
 	Awaiting int `json:"awaiting"`
 
 	// AwaitingOnGitHub counts the held runs GitHub approves only on its site, which State
 	// and the other counts leave out too (github.Checks.AwaitingOnGitHub), only while GitHub
-	// reports the merge blocked, when one may be what blocks it: otherwise one waits on
-	// something the app can't do, and often never runs at all.
+	// reports the merge blocked, when one may be what blocks it, and never those of a
+	// workflow the user ignores (heldruns.Ignored).
 	AwaitingOnGitHub int `json:"awaitingOnGitHub"`
 }
 
@@ -465,7 +467,8 @@ func (s *Service) buildSnapshot(ctx context.Context) (Snapshot, settingsKey, err
 		return Snapshot{}, settingsKey{}, err
 	}
 
-	snap.addItems(rows, s.scopes.scope(status), status[prefViewer], reporules.Decode(status))
+	snap.addItems(rows, s.scopes.scope(status), status[prefViewer], reporules.Decode(status),
+		heldruns.Decode(status[heldruns.KeyIgnoredWorkflows]))
 	snap.applyTotals(status)
 
 	if snap.Rate, err = loadRates(ctx, s.q, accountID); err != nil {
@@ -511,15 +514,16 @@ func accountFromPrefs(prefs map[string]string) Account {
 
 // addItems places each row in the one list it belongs to, deciding each item's trust, and
 // whether its files are checked, with scope, how it asks viewer, the signed-in account, to
-// review it, and which of rules applies to its repository. The lists partition the rows:
+// review it, which of rules applies to its repository, and which of its held runs count,
+// with ignored the workflows the user ignores. The lists partition the rows:
 // one that asks for the user's review, or was pushed to since the user requested changes,
 // is in ReviewRequested, whatever else it is, and one
 // the user opened or is assigned is otherwise in Yours, so no item is in both. Each list
 // then holds the items pinned themselves first, as rows has them, then those pinned with
 // their repository or org, then the rest, each in rows' order.
-func (s *Snapshot) addItems(rows []itemRow, scope fileScope, viewer string, rules reporules.Rules) {
+func (s *Snapshot) addItems(rows []itemRow, scope fileScope, viewer string, rules reporules.Rules, ignored []string) {
 	for _, r := range rows {
-		item := r.item(scope, viewer)
+		item := r.item(scope, viewer, ignored)
 		item.RepoRule, _ = rules.For(repo.Name{Owner: r.RepoOwner, Repo: r.RepoName})
 
 		switch {
@@ -627,7 +631,10 @@ type itemRow struct {
 	ChecksAwaitingOnGitHub int
 	ReviewDecision         string
 
-	// MergeState is GitHub's mergeStateStatus as the details read it, "" before they did.
+	// HeldRuns are the held runs ChecksAwaiting and ChecksAwaitingOnGitHub count, each with
+	// its workflow's name: none in a row stored before the names were (Unnamed). MergeState
+	// is GitHub's mergeStateStatus as the details read it, "" before they did.
+	HeldRuns   []heldruns.Run
 	MergeState string
 
 	Reviewers        int
@@ -678,6 +685,11 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		return itemRow{}, fmt.Errorf("read the requested teams of item %d: %w", r.ID, err)
 	}
 
+	held, err := decodeColumn[heldruns.Run](r.ChecksHeld)
+	if err != nil {
+		return itemRow{}, fmt.Errorf("read the held workflow runs of item %d: %w", r.ID, err)
+	}
+
 	stored, err := filesColumns{
 		itemID: r.FilesItemID, head: r.FilesHeadOID, total: r.FilesTotal, files: r.Files,
 		complete: r.FilesComplete, err: r.FilesError, checkedAt: r.FilesCheckedAt,
@@ -704,8 +716,8 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		ChecksFailed: int(store.Deref(r.ChecksFailed)), ChecksPending: int(store.Deref(r.ChecksPending)),
 		ChecksSkipped: int(store.Deref(r.ChecksSkipped)), ChecksAwaiting: int(store.Deref(r.ChecksAwaiting)),
 		ChecksAwaitingOnGitHub: int(store.Deref(r.ChecksAwaitingOnGithub)),
-		MergeState:             store.Deref(r.MergeState),
-		ReviewDecision:         store.Deref(r.ReviewDecision), Reviewers: int(store.Deref(r.Reviewers)),
+		HeldRuns:               held, MergeState: store.Deref(r.MergeState),
+		ReviewDecision: store.Deref(r.ReviewDecision), Reviewers: int(store.Deref(r.Reviewers)),
 		Reviewed:  int(store.Deref(r.Reviewed)),
 		Approvals: int(store.Deref(r.Approvals)), ChangesRequested: int(store.Deref(r.ChangesRequested)),
 		DetailsFetchedAt: r.DetailsFetchedAt, HeadOID: store.Deref(r.HeadOID), AutoMerge: store.Deref(r.AutoMergeMethod),
@@ -722,8 +734,9 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 }
 
 // item converts a row to its DTO, deciding its trust, and whether its files are
-// checked, with scope, and how it asks viewer to review it.
-func (r *itemRow) item(scope fileScope, viewer string) Item {
+// checked, with scope, how it asks viewer to review it, and which of its held runs count,
+// with ignored the workflows the user ignores.
+func (r *itemRow) item(scope fileScope, viewer string, ignored []string) Item {
 	isPR := r.Kind == item.KindPR
 	author := trust.Author{Login: r.AuthorLogin, Type: r.AuthorType, Association: r.AuthorAssociation}
 	class := scope.policy.Classify(author, isPR, r.IsCrossRepository)
@@ -746,7 +759,7 @@ func (r *itemRow) item(scope fileScope, viewer string) Item {
 		AuthorAssociation: r.AuthorAssociation,
 		Branch:            r.HeadRef,
 		IsDraft:           r.IsDraft,
-		Details:           r.details(viewer),
+		Details:           r.details(viewer, ignored),
 		Files:             r.checkedFiles(scope, isPR, author),
 		DismissedAt:       formatOptionalTime(r.DismissedAt),
 		SnoozedUntil:      formatOptionalTime(r.SnoozedUntil),
@@ -851,9 +864,9 @@ func decodeReasons(raw *string) *snooze.Reasons {
 }
 
 // details converts the row's details, or nil when no refresh has read them, telling whether
-// the pull request asks viewer to review it again after a push, and counting a held run GitHub
-// approves only on its site only while GitHub reports the merge blocked.
-func (r *itemRow) details(viewer string) *Details {
+// the pull request asks viewer to review it again after a push, and counting its held runs
+// as heldruns.Count does with ignored, the workflows the user ignores.
+func (r *itemRow) details(viewer string, ignored []string) *Details {
 	if !r.HasDetails {
 		return nil
 	}
@@ -875,10 +888,8 @@ func (r *itemRow) details(viewer string) *Details {
 		verdict = viewerVerdict(r.ViewerReviewState)
 	}
 
-	onGitHub := 0
-	if r.MergeState == github.MergeStateBlocked {
-		onGitHub = r.ChecksAwaitingOnGitHub
-	}
+	held := heldruns.Unnamed(r.HeldRuns, r.ChecksAwaiting, r.ChecksAwaitingOnGitHub)
+	awaiting, onGitHub := heldruns.Count(held, r.MergeState, ignored)
 
 	return &Details{
 		Labels:       labels,
@@ -891,7 +902,7 @@ func (r *itemRow) details(viewer string) *Details {
 		Mergeable:    r.Mergeable,
 		Checks: Checks{
 			State: r.ChecksState, Passed: r.ChecksPassed, Failed: r.ChecksFailed,
-			Pending: r.ChecksPending, Skipped: r.ChecksSkipped, Awaiting: r.ChecksAwaiting, AwaitingOnGitHub: onGitHub,
+			Pending: r.ChecksPending, Skipped: r.ChecksSkipped, Awaiting: awaiting, AwaitingOnGitHub: onGitHub,
 		},
 		Reviews: Reviews{
 			Decision: r.ReviewDecision, Reviewers: r.Reviewers, Reviewed: r.Reviewed,

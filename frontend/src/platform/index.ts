@@ -831,6 +831,9 @@ export const {
   Open: openReview,
   Refresh: refreshReview,
   ReadAgain: readReviewAgain,
+  // Rebuild builds the sheet again from what it read before, asking GitHub nothing and
+  // starting no visit: after a change to a setting it follows, as Ignored workflows.
+  Rebuild: rebuildReview,
   Patches: reviewPatches,
   Earlier: reviewEarlier,
   Act: actOnReview,
@@ -933,6 +936,7 @@ export const {
   SetCardAvatars: setCardAvatars,
   SetCardDensity: setCardDensity,
   SetCardUnread: setCardUnread,
+  SetIgnoredWorkflows: setIgnoredWorkflows,
   SetBranchRules: setBranchRules,
   SetRepoRule: setRepoRule,
   SetMergeMethod: setMergeMethod,

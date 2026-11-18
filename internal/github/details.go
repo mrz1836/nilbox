@@ -46,13 +46,15 @@ const MaxReviewRequests = 50
 // The counts per check state come without listing the checks themselves, and review
 // requests and latest reviews come with their logins so a reviewer is counted once. The
 // head commit's check suites come with only their conclusions, who created each, and their
-// runs' IDs and events, for the workflow runs GitHub holds for a maintainer's approval,
-// which the rollup leaves out, and whether GitHub takes their approval through its API
-// (suiteHold, with the pull request's isCrossRepository): they cost one point more per batch
-// of 50 (measured in November 2026: 2 points without them, 3 with), and the creator, the
-// event, and isCrossRepository nothing more (measured in November 2026: a batch of 25 cost
-// one point with them and without). The head commit's SHA tells a snooze when a pull
-// request was pushed, force-pushes included.
+// runs' IDs, events, and workflows' names, for the workflow runs GitHub holds for a
+// maintainer's approval, which the rollup leaves out, whether GitHub takes their approval
+// through its API (suiteHold, with the pull request's isCrossRepository), and which
+// workflow each is of, which the user can name to ignore (internal/heldruns): they cost one
+// point more per batch of 50 (measured in November 2026: 2 points without them, 3 with),
+// and the creator, the event, and isCrossRepository nothing more (measured in November
+// 2026: a batch of 25 cost one point with them and without). A run's workflow is one object,
+// no connection, which GitHub's point formula never counts. The head commit's SHA tells a
+// snooze when a pull request was pushed, force-pushes included.
 // The fields are a fragment the item query spreads too, so a card refreshed on its own
 // reads exactly what a whole refresh reads. A pull request's base branch and merge state
 // (mergeStateStatus: BEHIND, DIRTY, CLEAN, ...) are scalars, which cost no points, but
@@ -136,7 +138,11 @@ fragment DetailFields on Node {
     }
     headSuites: commits(last: 1) {
       nodes {
-        commit { checkSuites(first: 50) { nodes { conclusion creator { login } workflowRun { databaseId event } } } }
+        commit {
+          checkSuites(first: 50) {
+            nodes { conclusion creator { login } workflowRun { databaseId event workflow { name } } }
+          }
+        }
       }
     }
   }
@@ -397,6 +403,17 @@ type Checks struct {
 	// such as a run a review started in the base repository: they wait for approval on
 	// GitHub, and GitHub leaves them out of State and the other counts too.
 	AwaitingOnGitHub int
+
+	// Held are the held runs Awaiting and AwaitingOnGitHub count, each with its workflow's
+	// name, in GitHub's order; nil when none is held.
+	Held []HeldRun
+}
+
+// HeldRun is a workflow run GitHub holds for approval: its workflow's name, "" when GitHub
+// gave none, and whether GitHub takes its approval only on its site (Checks.AwaitingOnGitHub).
+type HeldRun struct {
+	Workflow string
+	OnGitHub bool
 }
 
 // Reviews counts who was asked to review a pull request and who has.
@@ -982,7 +999,15 @@ func (r *graphQLRollup) checks() Checks {
 // takes their approval through its API.
 func (n *detailsNode) checks() Checks {
 	c := n.StatusCheckRollup.checks()
-	c.Awaiting, c.AwaitingOnGitHub = n.HeadSuites.awaiting(n.IsCrossRepository)
+	c.Held = n.HeadSuites.held(n.IsCrossRepository)
+
+	for _, r := range c.Held {
+		if r.OnGitHub {
+			c.AwaitingOnGitHub++
+		} else {
+			c.Awaiting++
+		}
+	}
 
 	return c
 }
@@ -1012,21 +1037,23 @@ func (h graphQLHeadSuites) suites() []*graphQLSuite {
 	return nil
 }
 
-// awaiting counts the suites whose workflow run waits for approval, those GitHub takes the
-// approval of through its API (approvable) and those it takes only on its site (onGitHub),
-// of a pull request from a fork or not (suiteHold).
-func (h graphQLHeadSuites) awaiting(fork bool) (approvable, onGitHub int) {
+// held lists the suites whose workflow run waits for approval, each with its workflow's
+// name and whether GitHub takes the approval only on its site rather than through its API,
+// of a pull request from a fork or not (suiteHold), or nil when none waits.
+func (h graphQLHeadSuites) held(fork bool) []HeldRun {
+	var out []HeldRun
+
 	for _, s := range h.suites() {
 		switch s.hold(fork) {
 		case holdApprovable:
-			approvable++
+			out = append(out, HeldRun{Workflow: s.workflowName()})
 		case holdOnGitHub:
-			onGitHub++
+			out = append(out, HeldRun{Workflow: s.workflowName(), OnGitHub: true})
 		case holdNone:
 		}
 	}
 
-	return approvable, onGitHub
+	return out
 }
 
 // outcome is where a check state is counted.

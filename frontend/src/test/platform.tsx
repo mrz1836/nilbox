@@ -333,6 +333,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     openReview: () => Promise.resolve(review()),
     refreshReview: () => Promise.resolve(review()),
     readReviewAgain: () => Promise.resolve(review()),
+    rebuildReview: () => Promise.resolve(review()),
     reviewPatches: (_id, _head, paths) =>
       Promise.resolve((paths ?? []).map((path) => ({ path, patch: '@@ -1 +1 @@\n-a\n+b', patchState: '' as const }))),
     reviewEarlier: () => Promise.resolve({ items: [], total: 0, before: '' }),
@@ -436,6 +437,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setCardAvatars: (cardAvatars) => stored({ cardAvatars }),
     setCardDensity: (cardDensity) => stored({ cardDensity }),
     setCardUnread: (cardUnread) => stored({ cardUnread }),
+    setIgnoredWorkflows: (ignoredWorkflows) => stored({ ignoredWorkflows: ignoredWorkflows ?? [] }),
     setWindowSize: (windowSize) => stored({ windowSize }),
     setBranchRules: (branches) => stored({ branches: { ...branches, protected: branches.protected ?? [] } }),
     setRepoRule: (target, rule) => stored({ repoRules: withRepoRule(settings().repoRules, target, rule) }),

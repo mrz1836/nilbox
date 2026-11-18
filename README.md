@@ -578,7 +578,8 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
   them in a bar with **Approve workflows to run**, which asks first when the pull request changes
   workflow files. The sheet stays open until their checks start. Runs GitHub approves only on its
   own site, such as one a review started, don't count toward where the pull request stands unless
-  GitHub reports the merge blocked; the sheet names them quietly with **Open on GitHub**.
+  GitHub reports the merge blocked; the sheet names them quietly with **Open on GitHub**. Runs of
+  workflows you ignore (**Ignore this workflow**, or Settings → Reviewing) never count.
 - **Line comments and suggestions** on the diff, checked against it before GitHub sees them, and a
   draft per pull request that survives closing the sheet.
 - **Your replies, your agent's verdict:** your [review replies](docs/desktop.md#review-replies)

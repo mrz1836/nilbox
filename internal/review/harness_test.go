@@ -565,9 +565,36 @@ func (g *fakeGitHub) requests() []string {
 
 // fakeSettings is the settings the sheet follows.
 type fakeSettings struct {
-	pref MethodPref
-	cfg  sensitive.Config
-	err  error
+	pref    MethodPref
+	cfg     sensitive.Config
+	ignored *ignoredWorkflows
+	err     error
+}
+
+// ignoredWorkflows is the workflows whose held runs never count, which a test changes while
+// the sheet is open.
+type ignoredWorkflows struct {
+	mu    sync.Mutex
+	names []string
+}
+
+// set replaces the names.
+func (w *ignoredWorkflows) set(names ...string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.names = names
+}
+
+func (s fakeSettings) IgnoredWorkflows(context.Context) ([]string, error) {
+	if s.ignored == nil {
+		return nil, s.err
+	}
+
+	s.ignored.mu.Lock()
+	defer s.ignored.mu.Unlock()
+
+	return slices.Clone(s.ignored.names), s.err
 }
 
 func (s fakeSettings) MergeMethod(context.Context) (MethodPref, error) {
@@ -611,6 +638,9 @@ type harness struct {
 	events *testutil.Events
 	logs   *testutil.Logs
 	merges *fakeMerges
+
+	// ignored is the workflows whose held runs never count, as the settings say.
+	ignored *ignoredWorkflows
 }
 
 // newHarness returns a harness whose GitHub answers with review and diff at headA.
@@ -624,10 +654,10 @@ func newHarness(t *testing.T) *harness {
 		db: db, inbox: &fakeInbox{pull: storedPull()}, clock: testutil.NewClock(testNow), events: &testutil.Events{},
 		github: &fakeGitHub{review: pullReview(headA, github.MergeStateClean), diff: pullDiff(headA)},
 		logs:   &testutil.Logs{},
-		merges: &fakeMerges{},
+		merges: &fakeMerges{}, ignored: &ignoredWorkflows{},
 	}
 
-	h.svc = h.service(fakeSettings{}, fakeReplies{})
+	h.svc = h.service(fakeSettings{ignored: h.ignored}, fakeReplies{})
 
 	return h
 }

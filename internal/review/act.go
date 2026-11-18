@@ -151,7 +151,10 @@ func (s *Service) loadAct(ctx context.Context, req ActRequest) (StoredPull, *cac
 	}
 
 	s.markOnGitHub(c)
-	markIgnored(c)
+
+	if err = s.markIgnored(ctx, c); err != nil {
+		return StoredPull{}, nil, err
+	}
 
 	switch {
 	case c == nil:
@@ -204,14 +207,14 @@ func (s *Service) prepare(ctx context.Context, req ActRequest, plan Plan, c *cac
 }
 
 // heldRuns are the cached runs awaiting approval that an approval can name, but those
-// GitHub approves only on its site. The cache holds what the sheet read at the head the
-// user saw (loadAct refuses any other), so approving them is pinned to the commit the user
-// reviewed without reading GitHub again.
+// GitHub approves only on its site and those that don't count (Unrun.Ignored). The cache
+// holds what the sheet read at the head the user saw (loadAct refuses any other), so
+// approving them is pinned to the commit the user reviewed without reading GitHub again.
 func heldRuns(unrun []Unrun) []Unrun {
 	out := []Unrun{}
 
 	for _, u := range unrun {
-		if u.Approval && !u.OnGitHub && u.RunID > 0 &&
+		if u.Approval && !u.OnGitHub && !u.Ignored && u.RunID > 0 &&
 			!slices.ContainsFunc(out, func(o Unrun) bool { return o.RunID == u.RunID }) {
 			out = append(out, u)
 		}

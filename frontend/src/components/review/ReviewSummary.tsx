@@ -2,6 +2,7 @@ import { Fragment } from 'react'
 
 import { counted } from '../../lib/format'
 import { refText } from '../../lib/format'
+import { workflowsOf } from '../../lib/ignoredWorkflows'
 import { issueLook } from '../../lib/issues'
 import { toneDot, toneText, type Tone } from '../../lib/signals'
 import { ignoredRuns } from '../../lib/useReview'
@@ -14,7 +15,7 @@ import { ItemLink } from '../ItemLink'
 import { SensitiveFiles } from '../SensitiveFiles'
 import { StatusDot } from '../StatusDot'
 
-export interface ReviewSummaryProps {
+export interface ReviewSummaryProps extends IgnoreProps {
   review: Review
   // item is the inbox card, whose sensitive-file check the summary shows.
   item: InboxItem | undefined
@@ -206,6 +207,37 @@ export function RunNames({ runs }: { runs: readonly ReviewUnrun[] }) {
   ))
 }
 
+export interface IgnoreProps {
+  // ignored are the workflows the user ignores, and onIgnore adds one to them; without
+  // onIgnore, nothing offers to.
+  ignored?: readonly string[] | undefined
+  onIgnore?: ((workflow: string) => void) | undefined
+}
+
+// IgnoreWorkflows offers to ignore each workflow of runs the user doesn't ignore yet: Ignore
+// this workflow for one, or Ignore {name} for each of several.
+export function IgnoreWorkflows({ runs, ignored = [], onIgnore }: IgnoreProps & { runs: readonly ReviewUnrun[] }) {
+  const names = workflowsOf(runs, ignored)
+
+  if (onIgnore === undefined || names.length === 0) {
+    return null
+  }
+
+  return names.map((name) => (
+    <button
+      key={name}
+      type="button"
+      title={`Never count ${name}’s held runs toward where a pull request stands`}
+      onClick={() => {
+        onIgnore(name)
+      }}
+      className={quietButtonClass}
+    >
+      {names.length === 1 ? 'Ignore this workflow' : `Ignore ${name}`}
+    </button>
+  ))
+}
+
 // Unrun names the head commit's workflow runs that ended without a check and without
 // passing, which GitHub counts as not passing though no check shows them: those waiting for
 // a maintainer's approval, as a fork's runs do, those waiting for one GitHub takes only on
@@ -238,10 +270,10 @@ function Unrun({ unrun }: { unrun: readonly ReviewUnrun[] }) {
 }
 
 // Ignored names quietly, a line a run, the held runs that don't count toward where the pull
-// request stands (the backend's ignored), as those GitHub approves only on its site while
-// GitHub doesn't report the merge blocked. Each opens its run on GitHub, where it can be
-// approved.
-function Ignored({ review }: { review: Review }) {
+// request stands (the backend's ignored): those GitHub approves only on its site, and those
+// of a workflow the user ignores. Each opens its run on GitHub, where it can be approved,
+// and offers to ignore its workflow, or says it is ignored.
+function Ignored({ review, ignored = [], onIgnore }: IgnoreProps & { review: Review }) {
   const runs = ignoredRuns(review)
 
   if (runs.length === 0) {
@@ -263,6 +295,14 @@ function Ignored({ review }: { review: Review }) {
             <ExternalIcon className="size-3" />
             Open on GitHub
           </button>
+          {ignored.includes(u.name) ? (
+            ' · ignored'
+          ) : (
+            <>
+              {' '}
+              <IgnoreWorkflows runs={[u]} ignored={ignored} onIgnore={onIgnore} />
+            </>
+          )}
         </li>
       ))}
     </ul>
@@ -302,7 +342,7 @@ function requiredFirst(checks: readonly ReviewCheck[]): ReviewCheck[] {
 // the checks running with their dot, so a folded list still shows CI at work. Beneath it,
 // the workflow runs that never ran a check and aren't passing (Unrun), and the held runs
 // that don't count (Ignored).
-function Checks({ review }: { review: Review }) {
+function Checks({ review, ignored, onIgnore }: IgnoreProps & { review: Review }) {
   const { checks, unrun } = review
 
   if (checks.length === 0) {
@@ -310,7 +350,7 @@ function Checks({ review }: { review: Review }) {
       <>
         <p className="text-xs text-muted">No checks on this commit.</p>
         <Unrun unrun={unrun} />
-        <Ignored review={review} />
+        <Ignored review={review} ignored={ignored} onIgnore={onIgnore} />
       </>
     )
   }
@@ -340,7 +380,7 @@ function Checks({ review }: { review: Review }) {
       {!showPassed && passed.length > 0 && <CheckGroup checks={passed} outcome="passed" words="passed" />}
       {skipped.length > 0 && <CheckGroup checks={skipped} outcome="skipped" words="skipped" />}
       <Unrun unrun={unrun} />
-      <Ignored review={review} />
+      <Ignored review={review} ignored={ignored} onIgnore={onIgnore} />
     </details>
   )
 }
@@ -458,10 +498,10 @@ export function Readiness({ review }: { review: Review }) {
 
 // ReviewSummary sums up a pull request in a few lines: what kind of change it is and where,
 // what a dependency update bumps, its sensitive files, the issues it closes, its reviewers,
-// and its checks, with the held runs that don't count.
+// and its checks, with the held runs that don't count, whose workflows it offers to ignore.
 // The reviewers come before the checks, so however many checks run, who reviewed and who
 // still has to stays in view.
-export function ReviewSummary({ review, item, onFilesSettings, onShowReview }: ReviewSummaryProps) {
+export function ReviewSummary({ review, item, onFilesSettings, onShowReview, ignored, onIgnore }: ReviewSummaryProps) {
   const { change } = review
 
   return (
@@ -474,7 +514,7 @@ export function ReviewSummary({ review, item, onFilesSettings, onShowReview }: R
       </div>
       <Closes review={review} />
       <Reviewers reviews={review.reviews} onShow={onShowReview} />
-      <Checks review={review} />
+      <Checks review={review} ignored={ignored} onIgnore={onIgnore} />
     </section>
   )
 }

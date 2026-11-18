@@ -60,6 +60,7 @@ import { useServiceStatus } from './lib/useServiceStatus'
 import { useSessions } from './lib/useSessions'
 import { defaultHiddenLabels, HiddenLabelsContext, labelMatcher } from './lib/labels'
 import { CardPrefsContext, defaultCardPrefs, type CardPrefs } from './lib/cardPrefs'
+import type { IgnoredWorkflows } from './lib/ignoredWorkflows'
 import { CardPicturesContext, useCardPictures } from './lib/pictures'
 import { agentName } from './lib/launch'
 import { offersProjects } from './lib/projects'
@@ -94,6 +95,7 @@ import {
   on,
   openExternal,
   setNotificationsTab,
+  setIgnoredWorkflows,
   setProjectsTipDismissed,
   setReviewTab,
   setConversationOrder,
@@ -151,10 +153,10 @@ function PageLoading() {
 }
 
 // inboxKey is the part of the settings the stored inbox shows (internal/inbox's
-// settingsKey): the trusted bots decide each card's trust, and the sensitive-file
-// settings what each card points out.
+// settingsKey): the trusted bots decide each card's trust, the sensitive-file settings what
+// each card points out, and the ignored workflows which held runs each card counts.
 function inboxKey(settings: Settings): string {
-  return JSON.stringify([settings.trustedBots, settings.sensitiveFiles])
+  return JSON.stringify([settings.trustedBots, settings.sensitiveFiles, settings.ignoredWorkflows])
 }
 
 // cleanedToast tells what an automatic sweep cleaned up, in the background: it waits for a
@@ -995,6 +997,26 @@ export function App() {
     }
   }
 
+  // ignoredWorkflows is Settings → Reviewing's Ignored workflows, which the review sheet
+  // names and adds to, through the window's settings queue; null until the settings load. A
+  // save reads the inbox again, whatever the list was, so the cards count with it.
+  const ignoredWorkflows: IgnoredWorkflows | null =
+    config.settings === null
+      ? null
+      : {
+          names: config.settings.ignoredWorkflows,
+          save: async (names) => {
+            const result = await attempt(settingsQueue(() => setIgnoredWorkflows(names)))
+
+            if (result.ok) {
+              setSettings(result.data)
+              reloadInbox()
+            }
+
+            return result
+          },
+        }
+
   const openPrompts = () => {
     changeView('prompts')
   }
@@ -1080,6 +1102,7 @@ export function App() {
     onManageReplies: openPrompts,
     onSettingsSaved: setSettings,
     onItemOpened: notifications.markItemRead,
+    ignoring: ignoredWorkflows,
   }
   // watchSession opens the run view of the agent's background run a session is, as its
   // panel's and its launch button's Watch do; a session that is no run of Autopilot's any
@@ -1307,6 +1330,7 @@ export function App() {
                           }}
                           onItemOpened={notifications.markItemRead}
                           onShowCardGuide={showCardGuide}
+                          ignoring={ignoredWorkflows}
                         />
                       </CardPicturesContext>
                     </Activity>

@@ -36,6 +36,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/flight"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/heldruns"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -200,11 +201,12 @@ type GitHub interface {
 	RequestReview(ctx context.Context, tok github.Token, ref item.Ref, login string) (*github.Edited, error)
 }
 
-// Settings reads the settings the sheet follows: how to merge, and which files are
-// sensitive.
+// Settings reads the settings the sheet follows: how to merge, which files are sensitive,
+// and the workflows whose held runs never count (heldruns.KeyIgnoredWorkflows).
 type Settings interface {
 	MergeMethod(ctx context.Context) (MethodPref, error)
 	Sensitive(ctx context.Context) (sensitive.Config, error)
+	IgnoredWorkflows(ctx context.Context) ([]string, error)
 }
 
 // Replies reads the review replies of the prompt library, and fills one in for a pull
@@ -299,6 +301,13 @@ func (s *Service) Refresh(ctx context.Context, id int64) (Review, error) {
 // under way for the pull request is joined rather than run beside it.
 func (s *Service) ReadAgain(ctx context.Context, id int64) (Review, error) {
 	return s.refresh(ctx, id, true)
+}
+
+// Rebuild builds the sheet of the pull request with id again from what it read before, as
+// Refresh returns it, with no request and no new visit: the sheet asks for it when a setting
+// it follows changed while it is open, as the workflows whose held runs never count.
+func (s *Service) Rebuild(ctx context.Context, id int64) (Review, error) {
+	return s.open(ctx, id, openPatchBytes, false)
 }
 
 // Patches returns the diffs of the files at paths of the pull request with id, as the
@@ -420,16 +429,24 @@ func (s *Service) markOnGitHub(c *cached) {
 }
 
 // markIgnored marks the held runs of the cache c that don't count toward where the pull
-// request stands: those GitHub approves only on its site, unless the merge state the cache
-// read is BLOCKED, when one may be what blocks it. c may be nil.
-func markIgnored(c *cached) {
+// request stands (heldruns.Ignored), with the workflows the settings ignore and the merge
+// state the cache read. c may be nil.
+func (s *Service) markIgnored(ctx context.Context, c *cached) error {
 	if c == nil {
-		return
+		return nil
+	}
+
+	ignored, err := s.settings.IgnoredWorkflows(ctx)
+	if err != nil {
+		return err
 	}
 
 	for i, u := range c.context.Unrun {
-		c.context.Unrun[i].Ignored = u.Approval && u.OnGitHub && c.context.MergeState != github.MergeStateBlocked
+		c.context.Unrun[i].Ignored = u.Approval &&
+			heldruns.Ignored(heldruns.Run{Workflow: u.Name, OnGitHub: u.OnGitHub}, c.context.MergeState, ignored)
 	}
+
+	return nil
 }
 
 // refresh reads the pull request with id, skipping one read recently unless force is set,
@@ -469,7 +486,10 @@ func (s *Service) open(ctx context.Context, id, budget int64, visit bool) (Revie
 	}
 
 	s.markOnGitHub(c)
-	markIgnored(c)
+
+	if err = s.markIgnored(ctx, c); err != nil {
+		return Review{}, err
+	}
 
 	return s.built(ctx, pull, c)
 }
@@ -921,9 +941,9 @@ func factsOf(pull StoredPull, c *cached, r Review) Facts {
 }
 
 // countUnrun counts the workflow runs that ended without a check into f: those awaiting
-// approval, those of them GitHub approves only on its site, those that don't count
-// (Ignored), those an approval can name (a run ID read, and approved from the sheet), and
-// those that failed to start.
+// approval, those of them GitHub approves only on its site, those that don't count (Ignored)
+// and of them those the sheet could otherwise approve, those an approval can name (a run ID
+// read, approved from the sheet, and not ignored), and those that failed to start.
 func (f *Facts) countUnrun(unrun []Unrun) {
 	for _, u := range unrun {
 		if !u.Approval {
@@ -941,6 +961,8 @@ func (f *Facts) countUnrun(unrun []Unrun) {
 		switch {
 		case u.OnGitHub:
 			f.OnGitHub++
+		case u.Ignored:
+			f.IgnoredApprovable++
 		case u.RunID > 0:
 			f.Approvable++
 		}

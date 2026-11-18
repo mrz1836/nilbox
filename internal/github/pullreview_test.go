@@ -164,6 +164,8 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 		"and one the Actions bot queued can be approved")
 	assert.Equal(t, 1, review.Update.Details.Checks.Awaiting, "the card counts the run the user can approve")
 	assert.Equal(t, 1, review.Update.Details.Checks.AwaitingOnGitHub, "and the one approved on GitHub")
+	assert.Equal(t, []HeldRun{{Workflow: "PR Management", OnGitHub: true}, {Workflow: "Docs"}},
+		review.Update.Details.Checks.Held, "each with its workflow's name, which the card's ignored workflows match")
 
 	observed := rates.all()
 	require.NotEmpty(t, observed)
@@ -208,8 +210,10 @@ func TestFetchPullReviewReadsHeldRunsWithoutARollup(t *testing.T) {
 			URL: "https://github.com/acme-org/example-repo/actions/runs/111",
 		},
 	}, review.Unrun, "with no check run, no suite ran one")
-	assert.Equal(t, Checks{Awaiting: 1, AwaitingOnGitHub: 1}, review.Update.Details.Checks,
-		"the card has no rollup, and the held runs")
+	assert.Equal(t, Checks{
+		Awaiting: 1, AwaitingOnGitHub: 1,
+		Held: []HeldRun{{Workflow: "PR Management", OnGitHub: true}, {Workflow: "Docs"}},
+	}, review.Update.Details.Checks, "the card has no rollup, and the held runs")
 }
 
 func TestFetchPullReviewWithoutACompare(t *testing.T) {

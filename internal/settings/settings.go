@@ -5,8 +5,8 @@
 // complete set of settings. Setters validate their value before storing it and reject
 // anything unknown with a sentinel error. Settings writes every key it declares, and the
 // keys the trust, snooze, sensitive, notifyprefs, branchrules, reporules,
-// integrationprefs, threadrules, statusprefs, updateprefs, and autopilotprefs packages
-// declare and decode; see the prefs package for which package writes the others.
+// integrationprefs, threadrules, statusprefs, updateprefs, autopilotprefs, and heldruns
+// packages declare and decode; see the prefs package for which package writes the others.
 package settings
 
 import (
@@ -26,6 +26,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/heldruns"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
@@ -273,6 +274,11 @@ type Settings struct {
 	// CardUnread shows a dot on the inbox's cards with activity the user hasn't seen, and
 	// Mark as read and Mark as unread (see KeyCardUnread).
 	CardUnread bool `json:"cardUnread"`
+
+	// IgnoredWorkflows are the names of the workflows whose held runs never count toward
+	// where a pull request stands (see KeyIgnoredWorkflows), in the order they were added,
+	// never nil.
+	IgnoredWorkflows []string `json:"ignoredWorkflows"`
 
 	// MergeMethod is how the review sheet merges a pull request.
 	MergeMethod MergeMethod `json:"mergeMethod"`
@@ -811,6 +817,7 @@ func fromStored(stored map[string]string) Settings {
 		CardAvatars:          prefval.Bool(stored[KeyCardAvatars], DefaultCardAvatars),
 		CardDensity:          cardDensities().decode(stored[KeyCardDensity]),
 		CardUnread:           prefval.Bool(stored[KeyCardUnread], DefaultCardUnread),
+		IgnoredWorkflows:     heldruns.Decode(stored[KeyIgnoredWorkflows]),
 		MergeMethod:          mergeMethods().decode(stored[KeyMergeMethod]),
 		Integrations:         integrationprefs.Decode(stored),
 		GitHubNotifications:  threadrules.Decode(stored),
@@ -939,7 +946,7 @@ func settingKeys() []string {
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus, updateprefs.KeyMode,
-		KeyHiddenLabels, KeyCardAvatars, KeyCardDensity, KeyCardUnread,
+		KeyHiddenLabels, KeyCardAvatars, KeyCardDensity, KeyCardUnread, KeyIgnoredWorkflows,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
 		append(append(append(integrationprefs.Keys(), threadrules.Keys()...), statusprefs.Keys()...),
 			autopilotprefs.Keys()...)...)...)

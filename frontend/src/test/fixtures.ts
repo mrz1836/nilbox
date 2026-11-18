@@ -1234,6 +1234,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     cardAvatars: true,
     cardDensity: 'comfortable',
     cardUnread: true,
+    ignoredWorkflows: [],
     mergeMethod: 'repo',
     integrations: integrationsConfig(),
     githubNotifications: {

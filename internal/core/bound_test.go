@@ -124,6 +124,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetCardDensity": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetCardDensity(ctx, settings.CardCompact)
 		},
+		"settings.Service.SetIgnoredWorkflows": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetIgnoredWorkflows(ctx, nil)
+		},
 		"settings.Service.SetCardUnread": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetCardUnread(ctx, false)
 		},
@@ -528,6 +531,13 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		},
 		"review.Service.Open": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
 			got, err := c.Review.Open(ctx, ids.item)
+			require.NotEmpty(t, got.Files)
+			require.NotEmpty(t, got.Timeline.Items)
+
+			return got, err
+		},
+		"review.Service.Rebuild": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			got, err := c.Review.Rebuild(ctx, ids.item)
 			require.NotEmpty(t, got.Files)
 			require.NotEmpty(t, got.Timeline.Items)
 

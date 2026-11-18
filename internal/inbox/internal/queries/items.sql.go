@@ -546,8 +546,8 @@ SELECT
     i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url, i.seen_activity_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
-    d.checks_pending, d.checks_skipped, d.checks_awaiting, d.checks_awaiting_on_github, d.merge_state,
-    d.review_decision,
+    d.checks_pending, d.checks_skipped, d.checks_awaiting, d.checks_awaiting_on_github, d.checks_held,
+    d.merge_state, d.review_decision,
     d.reviewers, d.reviewed, d.approvals, d.changes_requested, d.sub_issues_total, d.sub_issues_completed,
     d.fetched_at AS details_fetched_at, d.head_oid, d.review_users, d.review_teams, d.auto_merge_method,
     f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.total AS files_total, f.files,
@@ -603,6 +603,7 @@ type ListItemsRow struct {
 	ChecksSkipped          *int64
 	ChecksAwaiting         *int64
 	ChecksAwaitingOnGithub *int64
+	ChecksHeld             *string
 	MergeState             *string
 	ReviewDecision         *string
 	Reviewers              *int64
@@ -686,6 +687,7 @@ func (q *Queries) ListItems(ctx context.Context, accountID int64) ([]ListItemsRo
 			&i.ChecksSkipped,
 			&i.ChecksAwaiting,
 			&i.ChecksAwaitingOnGithub,
+			&i.ChecksHeld,
 			&i.MergeState,
 			&i.ReviewDecision,
 			&i.Reviewers,
@@ -734,8 +736,8 @@ SELECT
     i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url, i.seen_activity_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
-    d.checks_pending, d.checks_skipped, d.checks_awaiting, d.checks_awaiting_on_github, d.merge_state,
-    d.review_decision,
+    d.checks_pending, d.checks_skipped, d.checks_awaiting, d.checks_awaiting_on_github, d.checks_held,
+    d.merge_state, d.review_decision,
     d.reviewers, d.reviewed, d.approvals, d.changes_requested, d.sub_issues_total, d.sub_issues_completed,
     d.fetched_at AS details_fetched_at, d.head_oid, d.review_users, d.review_teams, d.auto_merge_method,
     f.item_id AS files_item_id, f.head_oid AS files_head_oid, f.total AS files_total, f.files,
@@ -795,6 +797,7 @@ type ListItemsByIDRow struct {
 	ChecksSkipped          *int64
 	ChecksAwaiting         *int64
 	ChecksAwaitingOnGithub *int64
+	ChecksHeld             *string
 	MergeState             *string
 	ReviewDecision         *string
 	Reviewers              *int64
@@ -887,6 +890,7 @@ func (q *Queries) ListItemsByID(ctx context.Context, arg ListItemsByIDParams) ([
 			&i.ChecksSkipped,
 			&i.ChecksAwaiting,
 			&i.ChecksAwaitingOnGithub,
+			&i.ChecksHeld,
 			&i.MergeState,
 			&i.ReviewDecision,
 			&i.Reviewers,

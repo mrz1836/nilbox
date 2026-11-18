@@ -1,12 +1,15 @@
 // useReview loads the review sheet's pull request: at once from what the sheet read
 // before (Open, which asks GitHub nothing), then from GitHub (Refresh), and the diffs
-// Open left out and the conversation's earlier pages, on demand.
+// Open left out and the conversation's earlier pages, on demand. When a setting the sheet
+// follows changes while it is open, it builds the sheet again from what it read (Rebuild),
+// asking GitHub nothing.
 
 import { useEffect, useState } from 'react'
 
 import {
   openReview,
   readReviewAgain,
+  rebuildReview,
   refreshReview,
   reviewEarlier,
   reviewPatches,
@@ -120,22 +123,50 @@ function withPatches(review: Review, patches: Patches): Review {
   }
 }
 
+// Round is a read asked for after the first, for one pull request: force marks one the user
+// asked for, which reads GitHub however recently the pull request was read, and rebuild one
+// that builds the sheet again from what it read, asking GitHub nothing.
+interface Round {
+  id: number
+  n: number
+  force: boolean
+  rebuild: boolean
+}
+
 // useReview loads the pull request with id. An answer about another pull request, from
-// before the sheet stepped to this one, is never shown.
-export function useReview(id: number): ReviewState {
+// before the sheet stepped to this one, is never shown. settingsKey is the settings the sheet
+// is built with that can change while it is open, as one value (the ignored workflows'
+// ignoreKey): a change builds it again.
+export function useReview(id: number, settingsKey = ''): ReviewState {
   const opened = useQuery(() => openReview(id), [id])
-  // round counts the reads asked for after the first, for one pull request; force marks
-  // one the user asked for, which reads GitHub however recently the pull request was read.
-  // Stepping to another pull request starts its rounds afresh, so a reload asked for on one
-  // never forces the reads of the next.
-  const [round, setRound] = useState({ id, n: 0, force: false })
+  // round counts the reads asked for after the first, for one pull request. Stepping to
+  // another pull request starts its rounds afresh, so a reload asked for on one never forces
+  // the reads of the next.
+  const [round, setRound] = useState<Round>({ id, n: 0, force: false, rebuild: false })
+  // built is the settings the sheet of the pull request was last asked for with.
+  const [built, setBuilt] = useState({ id, key: settingsKey })
 
   if (round.id !== id) {
-    setRound({ id, n: 0, force: false })
+    setRound({ id, n: 0, force: false, rebuild: false })
+  }
+
+  if (built.id !== id) {
+    setBuilt({ id, key: settingsKey })
   }
 
   const force = round.id === id && round.force
-  const refreshed = useQuery(() => (force ? readReviewAgain(id) : refreshReview(id)), [id, round.n])
+  const rebuild = round.id === id && round.rebuild
+  const refreshed = useQuery(
+    () => (rebuild ? rebuildReview(id) : force ? readReviewAgain(id) : refreshReview(id)),
+    [id, round.n],
+  )
+
+  // A change of the settings builds the sheet again once no read is under way: one under
+  // way builds it with the settings as they are when it answers, and is never cut short.
+  if (built.id === id && built.key !== settingsKey && !refreshed.pending) {
+    setBuilt({ id, key: settingsKey })
+    setRound((r) => ({ id, n: r.id === id ? r.n + 1 : 0, force: false, rebuild: true }))
+  }
   const [patches, setPatches] = useState(noPatches)
   const [loading, setLoading] = useState<ReadonlySet<string>>(new Set())
   const [patchError, setPatchError] = useState('')
@@ -173,7 +204,7 @@ export function useReview(id: number): ReviewState {
 
     const timer = setTimeout(() => {
       setFollow({ id, count: follows + 1, held })
-      setRound((r) => ({ id, n: r.n + 1, force: true }))
+      setRound((r) => ({ id, n: r.n + 1, force: true, rebuild: false }))
     }, approvalWait)
 
     return () => {
@@ -188,7 +219,7 @@ export function useReview(id: number): ReviewState {
 
     const timer = setTimeout(() => {
       setRetries({ id, count: tries + 1 })
-      setRound((r) => ({ id, n: r.n + 1, force: false }))
+      setRound((r) => ({ id, n: r.n + 1, force: false, rebuild: false }))
     }, unknownWait)
 
     return () => {
@@ -202,16 +233,17 @@ export function useReview(id: number): ReviewState {
     loadEarlier: conversation.loadEarlier,
     loadingEarlier: conversation.loadingEarlier,
     earlierError: conversation.earlierError,
-    checking: refreshed.pending,
+    // A rebuild asks GitHub nothing, so the sheet says nothing of reading.
+    checking: refreshed.pending && !rebuild,
     error: refreshed.error === '' ? opened.error : refreshed.error,
     reload: () => {
       // A read the user asked for ends a follow of approved runs: they read it themselves.
       setFollow(null)
-      setRound((r) => ({ id, n: r.n + 1, force: true }))
+      setRound((r) => ({ id, n: r.n + 1, force: true, rebuild: false }))
     },
     followRuns: (heldNow) => {
       setFollow({ id, count: 0, held: heldNow })
-      setRound((r) => ({ id, n: r.n + 1, force: true }))
+      setRound((r) => ({ id, n: r.n + 1, force: true, rebuild: false }))
     },
     following,
     loading,

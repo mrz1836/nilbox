@@ -159,6 +159,14 @@ func boundaries() []boundary {
 				"the mirror",
 		},
 		{
+			pkg: "internal/heldruns",
+			forbidden: append(slices.Clone(noService),
+				"internal/review", "internal/event", "internal/clock", "internal/autopilot"),
+			why: "heldruns declares the ignored workflows' settings key, which settings writes, and decides which " +
+				"held workflow runs count from it and what it is given alone; it knows no store, service, or the " +
+				"inbox and the review sheet that obey it, and by convention it imports only prefval",
+		},
+		{
 			pkg:       "internal/updateprefs",
 			forbidden: append(slices.Clone(noService), "internal/update", "internal/notify", "internal/event"),
 			why: "updateprefs declares the update setting's key and choices, which settings writes and the " +

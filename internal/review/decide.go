@@ -101,14 +101,16 @@ type Facts struct {
 
 	// OnGitHub counts the runs awaiting approval that GitHub approves only on its site
 	// (Unrun.OnGitHub), which the sheet never offers to approve, and Approvable the others
-	// whose run ID the sheet read, which an approval names; fewer than AwaitingApproval -
-	// OnGitHub in a cache an older build kept.
+	// whose run ID the sheet read and that count, which an approval names; fewer than
+	// approvalAsked in a cache an older build kept.
 	OnGitHub   int
 	Approvable int
 
 	// Ignored counts the runs awaiting approval that don't count toward where the pull
-	// request stands (Unrun.Ignored), which the readiness leaves out.
-	Ignored int
+	// request stands (Unrun.Ignored), which the readiness leaves out, and IgnoredApprovable
+	// those of them that aren't OnGitHub, which the sheet doesn't offer to approve either.
+	Ignored           int
+	IgnoredApprovable int
 
 	// Sensitive names the sensitive categories of danger level the pull request changes,
 	// as in "Workflows", and ChangesWorkflows reports that the workflows category is among
@@ -192,8 +194,9 @@ func (d decider) offers() []Offer {
 
 	// GitHub holds a fork's workflow runs until a maintainer approves them, and an
 	// approval is what starts its checks, whatever else the pull request waits on. Runs it
-	// approves only on its site are never offered.
-	if f.AwaitingApproval > f.OnGitHub {
+	// approves only on its site, and those of a workflow the user ignores, are never
+	// offered.
+	if approvalAsked(f) > 0 {
 		out = append(out, d.approveRuns())
 	}
 
@@ -260,11 +263,17 @@ func (d decider) rerequest() Offer {
 // changes workflow files.
 const workflowsWarning = "It changes workflow files, and these runs would use its versions of them."
 
+// approvalAsked counts the runs awaiting an approval the sheet can give: all of them but
+// those GitHub approves only on its site and those that don't count.
+func approvalAsked(f Facts) int {
+	return f.AwaitingApproval - f.OnGitHub - f.IgnoredApprovable
+}
+
 // approveRuns offers to approve the workflow runs GitHub holds for a maintainer's
-// approval, but those it approves only on its site: once the sheet read every one's run ID,
-// for a user with write access. It runs on click, but asks first when the pull request
-// changes workflow files, which the runs would use. It is never the sheet's button, and
-// sends no text.
+// approval, but those it approves only on its site and those that don't count: once the
+// sheet read every one's run ID, for a user with write access. It runs on click, but asks
+// first when the pull request changes workflow files, which the runs would use. It is never
+// the sheet's button, and sends no text.
 func (d decider) approveRuns() Offer {
 	f := d.f
 	o := Offer{Action: ActionApproveRuns, Label: "Approve workflows to run", Warnings: []string{}}
@@ -274,7 +283,7 @@ func (d decider) approveRuns() Offer {
 	}
 
 	switch {
-	case f.MergeState == "" || f.Approvable < f.AwaitingApproval-f.OnGitHub:
+	case f.MergeState == "" || f.Approvable < approvalAsked(f):
 		o.Reason = "Wait for it to load from GitHub."
 	case !f.CanWrite:
 		o.Reason = "Only people with write access to the repository can approve its workflow runs."

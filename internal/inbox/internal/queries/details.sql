@@ -5,10 +5,10 @@ INSERT INTO item_details (
     item_id, labels, projects, comments, additions, deletions, changed_files, commits, head_oid, base_ref, mergeable,
     merge_state,
     checks_state, checks_passed, checks_failed, checks_pending, checks_skipped, checks_awaiting,
-    checks_awaiting_on_github,
+    checks_awaiting_on_github, checks_held,
     review_decision, reviewers, reviewed, approvals, changes_requested, sub_issues_total, sub_issues_completed,
     review_users, review_teams, auto_merge_method, auto_merge_at, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (item_id) DO UPDATE SET
     labels = excluded.labels,
     projects = excluded.projects,
@@ -28,6 +28,7 @@ ON CONFLICT (item_id) DO UPDATE SET
     checks_skipped = excluded.checks_skipped,
     checks_awaiting = excluded.checks_awaiting,
     checks_awaiting_on_github = excluded.checks_awaiting_on_github,
+    checks_held = excluded.checks_held,
     review_decision = excluded.review_decision,
     reviewers = excluded.reviewers,
     reviewed = excluded.reviewed,

@@ -55,6 +55,7 @@ import {
   routine,
   details,
   heldOnGitHub,
+  heldRun,
   review,
 } from './test/fixtures'
 import { emit, listening, mocks, platform, renderApp } from './test/platform'
@@ -1365,10 +1366,47 @@ describe('App’s held workflow runs', () => {
     const sheet = await sheetOf()
 
     expect(await within(sheet).findByRole('list', { name: 'Workflow runs that don’t count' })).toHaveTextContent(
-      /^Auto-merge Trigger · held on GitHub · Open on GitHub$/,
+      'Auto-merge Trigger · held on GitHub · Open on GitHub Ignore this workflow',
     )
     expect(within(sheet).getByText('Ready to merge')).toBeInTheDocument()
     expect(within(sheet).queryByRole('region', { name: 'Workflow runs awaiting approval' })).not.toBeInTheDocument()
+  })
+
+  it('ignores a held run’s workflow from the sheet, and the card counts without it', async () => {
+    const preview = heldRun('Deploy Preview', 101)
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([approvedByYou(1)]) }))
+    platform.refreshReview.mockResolvedValue(review({ unrun: [preview] }))
+    platform.rebuildReview.mockResolvedValue(review({ unrun: [{ ...preview, ignored: true }] }))
+    platform.setIgnoredWorkflows.mockImplementation((names: string[] | null) =>
+      stored({ ignoredWorkflows: names ?? [] }),
+    )
+    await renderApp()
+
+    await screen.findByRole('region', { name: 'Yours' })
+    await waitFor(() => {
+      expect(card()).toHaveAttribute('data-rule', 'runs_held')
+    })
+    expect(card()).toHaveTextContent('1 run awaits your approval')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add the widget cache' }))
+    const sheet = await sheetOf()
+    const bar = await within(sheet).findByRole('region', { name: 'Workflow runs awaiting approval' })
+
+    // The backend counts without it once the list holds it.
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([approvedByYou(0)]) }))
+    await userEvent.click(within(bar).getByRole('button', { name: 'Ignore this workflow' }))
+
+    expect(platform.setIgnoredWorkflows).toHaveBeenCalledExactlyOnceWith(['Deploy Preview'])
+    expect(await within(sheet).findByText('Ignoring Deploy Preview')).toBeInTheDocument()
+    expect(await within(sheet).findByRole('list', { name: 'Workflow runs that don’t count' })).toHaveTextContent(
+      'Deploy Preview · held for approval · Open on GitHub · ignored',
+    )
+    await waitFor(() => {
+      expect(card()).toHaveAttribute('data-rule', 'ready')
+    })
+    expect(card()).toHaveTextContent('Approved · ready to merge')
+    expect(platform.readReviewAgain).not.toHaveBeenCalled()
   })
 })
 

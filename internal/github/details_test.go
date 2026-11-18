@@ -79,8 +79,12 @@ func TestFetchDetailsReadsEachItem(t *testing.T) {
 			// own, which the user can approve, and one a review started in the base
 			// repository, which waits for approval on GitHub. An app's suite that ended
 			// ACTION_REQUIRED has no run, and is the app's failed check; a run with no
-			// conclusion yet waits for nothing.
-			Checks: Checks{State: "SUCCESS", Passed: 15, Skipped: 15, Awaiting: 1, AwaitingOnGitHub: 1},
+			// conclusion yet waits for nothing. Each held run comes with its workflow's name,
+			// "" when GitHub gave none.
+			Checks: Checks{
+				State: "SUCCESS", Passed: 15, Skipped: 15, Awaiting: 1, AwaitingOnGitHub: 1,
+				Held: []HeldRun{{}, {Workflow: "Auto-merge Trigger", OnGitHub: true}},
+			},
 			// Asked: octo-user, the team, and octo-approver again. Reviewed and not asked
 			// again: octo-second and octo-commenter. The author's own reply, the
 			// dismissed, the pending, and the ghost reviews do not count.

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/heldruns"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/reporules"
@@ -350,6 +351,16 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		return queries.UpsertDetailsParams{}, err
 	}
 
+	held := make([]heldruns.Run, 0, len(d.Checks.Held))
+	for _, r := range d.Checks.Held {
+		held = append(held, heldruns.Run(r))
+	}
+
+	encodedHeld, err := store.EncodeJSON(held)
+	if err != nil {
+		return queries.UpsertDetailsParams{}, err
+	}
+
 	return queries.UpsertDetailsParams{
 		ItemID:                 itemID,
 		Labels:                 encodedLabels,
@@ -370,6 +381,7 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		ChecksSkipped:          int64(d.Checks.Skipped),
 		ChecksAwaiting:         int64(max(d.Checks.Awaiting, 0)),
 		ChecksAwaitingOnGithub: int64(max(d.Checks.AwaitingOnGitHub, 0)),
+		ChecksHeld:             encodedHeld,
 		ReviewDecision:         d.Reviews.Decision,
 		Reviewers:              int64(d.Reviews.Reviewers),
 		Reviewed:               int64(d.Reviews.Reviewed),
@@ -467,6 +479,7 @@ func readStatus(ctx context.Context, p *prefs.Store) (map[string]string, error) 
 		prefBeyondReviewRequested, prefBeyondAuthored, prefBeyondAssigned,
 		prefLastRefreshAt, prefLastError, prefScopeWarning, prefProjects, trust.PrefBots,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, reporules.PrefPinned, reporules.PrefMuted,
+		heldruns.KeyIgnoredWorkflows,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("read the inbox status: %w", err)
