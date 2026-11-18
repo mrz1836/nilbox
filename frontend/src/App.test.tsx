@@ -1266,6 +1266,35 @@ describe('App’s card density', () => {
   })
 })
 
+describe('App’s unread dots', () => {
+  // dot is the unread dot on the inbox's card, if it shows one.
+  const dot = () => document.querySelector('[data-item-id="1"] [data-unread]')
+
+  it('hides the dots once Settings → Cards turns them off, and still marks what the user opens', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([item({ unread: true })]) }))
+    platform.setCardUnread.mockImplementation((cardUnread: boolean) => stored({ cardUnread }))
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+    expect(dot()).toHaveAttribute('title', 'New since you last opened it')
+
+    await openSettingsFromMenu()
+    await userEvent.click(screen.getByRole('button', { name: 'Cards' }))
+    await userEvent.click(screen.getByRole('switch', { name: 'Unread dots' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
+
+    expect(platform.setCardUnread).toHaveBeenCalledExactlyOnceWith(false)
+    await waitFor(() => {
+      expect(dot()).toBeNull()
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add the widget cache' }))
+    await screen.findByRole('dialog', { name: 'Add the widget cache' })
+    await waitFor(() => {
+      expect(platform.markItemsSeen).toHaveBeenCalledExactlyOnceWith([1])
+    })
+  })
+})
+
 describe('App’s GitHub notifications', () => {
   // unread are two unread notifications: one about the inbox's pull request #7, one about
   // #9, which the inbox doesn't list.

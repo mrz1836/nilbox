@@ -1,7 +1,7 @@
 import { startTransition, useActionState, useId, useState } from 'react'
 
 import { useSettingsSave } from '../../lib/useSettingsSave'
-import { setCardAvatars, setCardDensity, setHiddenLabels, type CardDensity } from '../../platform'
+import { setCardAvatars, setCardDensity, setCardUnread, setHiddenLabels, type CardDensity } from '../../platform'
 import { quietButtonClass, Segmented } from '../controls'
 import { ChoiceRow, Group, joinIds, Note, SectionIntro, SwitchRow } from './rows'
 import { StringListEditor } from './StringListEditor'
@@ -23,16 +23,18 @@ const densities: readonly { value: CardDensity; label: string }[] = [
 ]
 
 // CardsSection is the settings page's Cards section: how much room the inbox's cards
-// take, whether they show their authors' pictures, and the labels they leave out, such as
-// the size labels a card's own size grade already shows. Each change is stored as it is
+// take, whether they show their authors' pictures and a dot for what is new since the user
+// last opened them, and the labels they leave out, such as the size labels a card's own
+// size grade already shows. Each change is stored as it is
 // made; Restore the defaults puts the list back as a fresh install has it.
 export function CardsSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
-  // densityError and picturesError are why the last change of Density and of Author
-  // pictures was refused; a refused hidden label shows its own.
+  // densityError, picturesError, and unreadError are why the last change of Density, of
+  // Author pictures, and of Unread dots was refused; a refused hidden label shows its own.
   const [densityError, setDensityError] = useState('')
   const [picturesError, setPicturesError] = useState('')
+  const [unreadError, setUnreadError] = useState('')
   const [draft, setDraft] = useState('')
   // invalid is why the draft cannot be added, found before asking the backend.
   const [invalid, setInvalid] = useState<Refusal>(noRefusal)
@@ -100,6 +102,14 @@ export function CardsSection({ settings: stored, onSaved }: SectionProps) {
     setPicturesError(result.ok ? '' : result.error)
   }
 
+  const switchUnread = async (on: boolean) => {
+    setUnreadError('')
+
+    const result = await save({ cardUnread: on }, () => setCardUnread(on))
+
+    setUnreadError(result.ok ? '' : result.error)
+  }
+
   return (
     <div className="flex flex-col gap-8">
       <Group>
@@ -127,6 +137,16 @@ export function CardsSection({ settings: stored, onSaved }: SectionProps) {
           error={picturesError}
           onChange={(on) => {
             void switchPictures(on)
+          }}
+        />
+        <SwitchRow
+          label="Unread dots"
+          controlId={`${id}-unread`}
+          description="A blue dot on a card with activity since you last opened it."
+          checked={settings.cardUnread}
+          error={unreadError}
+          onChange={(on) => {
+            void switchUnread(on)
           }}
         />
       </Group>
