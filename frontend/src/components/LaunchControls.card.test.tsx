@@ -104,7 +104,7 @@ describe('LaunchControls, card variant', () => {
     const pill = screen.getByRole('button', {
       name: `Claude session: ${words.replace('Claude ', '')}. Show the item's sessions`,
     })
-    expect(pill).toHaveTextContent(`${words}1m`)
+    expect(pill).toHaveTextContent(`${words} 1m`)
     expect(pill).toHaveAttribute('data-moving')
     expect(pill).toHaveClass('border-run', 'motion-safe:animate-border-run')
     expect(screen.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
@@ -230,5 +230,33 @@ describe('LaunchControls, card variant', () => {
 
     const column = within(screen.getByTestId('column'))
     expect(column.getAllByRole('button').map((b) => b.textContent)).toEqual(['Review', 'Claude', ''])
+  })
+
+  it('narrows with its list: the agent’s name, a pill’s words, and its age give way', () => {
+    const { unmount } = renderSlot()
+
+    expect(screen.getByText('Claude')).toHaveClass('@max-3xl:sr-only')
+    unmount()
+
+    withSession(agentSession({ state: 'working', detail: '' }))
+
+    expect(screen.getByText('Claude working')).toHaveAttribute('data-pill-label')
+    expect(screen.getByText('1m').parentElement).toHaveClass('@max-3xl:hidden')
+  })
+
+  it('hands the card’s peek its way to the launch options', async () => {
+    const { rerender } = renderSlot({ peek: (launch) => <div data-testid="peek">{launch}</div> })
+
+    const peek = within(screen.getByTestId('peek'))
+    await userEvent.click(peek.getByRole('button', { name: 'Claude…' }))
+
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+    expect(peek.getByRole('button', { name: 'Claude…' })).toHaveAttribute('aria-expanded', 'true')
+
+    rerender(
+      <LaunchControls {...props({ resolution: null, peek: (launch) => <div data-testid="peek">{launch}</div> })} />,
+    )
+
+    expect(within(screen.getByTestId('peek')).getByRole('button', { name: 'Launch…' })).toBeDisabled()
   })
 })

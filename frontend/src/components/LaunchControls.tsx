@@ -103,6 +103,9 @@ export interface LaunchControlsProps {
   // column frames the card variant's agent slot in the card's action column (CardActions,
   // its primary before the slot); without it the slot stands alone.
   column?: ((agent: ReactNode) => ReactNode) | undefined
+  // peek renders the card's peek (CardPeek), while it is open, after the action column,
+  // handing it the agent's button that opens the launch options.
+  peek?: ((launch: ReactNode) => ReactNode) | undefined
 }
 
 // LaunchState is where the row's launch stands. A launch that finds no local clone ends
@@ -180,6 +183,7 @@ export function LaunchControls({
   sessions,
   onOpen,
   column,
+  peek,
 }: LaunchControlsProps) {
   // start is the choices a launch starts from, and goes back to after it.
   const start: Choices = { ...noChoices, ...initial }
@@ -553,7 +557,7 @@ export function LaunchControls({
             className="inline-flex items-center gap-1.5 rounded-l-lg pr-1.75 pl-2.25 font-semibold text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
           >
             <SparkIcon className="size-3.5 shrink-0 text-accent" />
-            <span>
+            <span className="@max-3xl:sr-only">
               {state.kind === 'launching' || state.kind === 'linking'
                 ? 'Opening…'
                 : state.kind === 'cloning'
@@ -578,12 +582,16 @@ export function LaunchControls({
     const since = sinceWhen(session)
     const pill = 'inline-flex h-7.5 items-center gap-1.75 rounded-lg px-2.5 text-[0.8125rem] font-semibold'
     const done = `${pill} border border-success/30 bg-success/11 text-success transition-colors hover:bg-success/18`
-    // age is how long the session has been as it is, after lead.
-    const age = (lead: string) =>
+    // age is how long the session has been as it is, after a dot when dotted; a list
+    // narrower than 48rem leaves it out.
+    const age = (dotted: boolean) =>
       since !== '' && (
         <>
-          {lead}
-          <RelativeTime iso={since} show={formatAge} className="font-medium text-muted tabular-nums" />
+          {' '}
+          <span className="shrink-0 @max-3xl:hidden">
+            {dotted && '· '}
+            <RelativeTime iso={since} show={formatAge} className="font-medium text-muted tabular-nums" />
+          </span>
         </>
       )
 
@@ -598,13 +606,16 @@ export function LaunchControls({
               agents={agents}
               align="right"
               moving
+              shrinks
               label={`${name} session: ${label}. Show the item's sessions`}
               title={session.detail === '' ? `${name} ${label}` : `${name} ${label}: ${session.detail}`}
-              className={`${pill} border-run ${stateText[session.state]} motion-safe:animate-border-run`}
+              className={`${pill} border-run max-w-full min-w-0 ${stateText[session.state]} motion-safe:animate-border-run`}
             >
               <SessionDot state={session.state} />
-              {name} {label}
-              {age('')}
+              <span data-pill-label className="truncate">
+                {name} {label}
+              </span>
+              {age(false)}
             </SessionsButton>
             {session.runId !== 0 ? (
               <button
@@ -652,7 +663,9 @@ export function LaunchControls({
                 title={`${name}’s turn is done: show its terminal tab`}
                 className={done}
               >
-                {name}’s done{age(' · ')}
+                <SessionDot state={session.state} />
+                <span data-pill-label>{name}’s done</span>
+                {age(true)}
               </button>
             ) : (
               <SessionsButton
@@ -662,7 +675,9 @@ export function LaunchControls({
                 title={`${name}’s turn is done`}
                 className={done}
               >
-                {name}’s done{age(' · ')}
+                <SessionDot state={session.state} />
+                <span data-pill-label>{name}’s done</span>
+                {age(true)}
               </SessionsButton>
             )}
             {cardOptions(false)}
@@ -688,7 +703,8 @@ export function LaunchControls({
               className={done}
             >
               <SparkIcon className="size-3.5 shrink-0" />
-              Findings{age(' · ')}
+              <span data-pill-label>Findings</span>
+              {age(true)}
             </button>
             {cardOptions(false)}
           </>
@@ -851,16 +867,37 @@ export function LaunchControls({
   )
 
   if (variant === 'card') {
+    // The slot narrows only as far as a working pill's words let it, beside a primary
+    // that leaves the pill too little of the action column.
     const slot = (
-      <span className="inline-flex shrink-0 items-center gap-1">
+      <span className="inline-flex min-w-0 items-center gap-1">
         {cardSlot()}
         {dialog}
       </span>
     )
 
+    // peekLaunch is the peek's way to the launch options: the agent's name, opening the
+    // same dialog as the slot's arrow.
+    const peekLaunch = (
+      <button
+        type="button"
+        disabled={busy || resolution === null}
+        title={optionsTitle}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        onClick={showOptions}
+        className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 aria-expanded:bg-raised"
+      >
+        <SparkIcon className="size-3.5 shrink-0 text-accent" />
+        {agentName === '' ? 'Launch' : agentName}…
+      </button>
+    )
+
     return (
       <>
         {column === undefined ? slot : column(slot)}
+        {peek?.(peekLaunch)}
         {outcomes}
       </>
     )

@@ -130,7 +130,7 @@ export function WatchingList({ routineId, kit, highlight, onHighlighted }: Watch
         </p>
       ) : (
         <AutopilotRowsContext value={{ names: rows?.names ?? new Map(), chips, onShow: rows?.onShow }}>
-          <ul ref={listRef} aria-label="Watching" className="rounded-lg border border-border bg-surface">
+          <ul ref={listRef} aria-label="Watching" className="@container rounded-lg border border-border bg-surface">
             {list.map((item) => (
               <ItemRow
                 key={item.id}

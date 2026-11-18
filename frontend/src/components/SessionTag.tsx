@@ -25,6 +25,9 @@ export interface SessionsButtonProps {
   // moving marks a button that moves (data-moving), so the inbox card it is on keeps
   // rendering (index.css).
   moving?: boolean
+  // shrinks lets the button narrow below its words in a crowded row, as a card's pill
+  // does beside its primary; by default it keeps its width.
+  shrinks?: boolean
   className: string
   children: ReactNode
 }
@@ -38,6 +41,7 @@ export function SessionsButton({
   label,
   title,
   moving = false,
+  shrinks = false,
   className,
   children,
 }: SessionsButtonProps) {
@@ -46,7 +50,7 @@ export function SessionsButton({
   const { open, toggle, triggerRef } = popover
 
   return (
-    <span className="relative inline-flex min-w-0 shrink-0">
+    <span className={`relative inline-flex min-w-0 ${shrinks ? '' : 'shrink-0'}`}>
       <button
         ref={triggerRef}
         type="button"

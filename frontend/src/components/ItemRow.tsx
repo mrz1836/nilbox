@@ -26,6 +26,7 @@ import {
 import { AutopilotChip, useMarkedBy, useRoutineName } from './autopilot/AutopilotChip'
 import { CardActions, cardOutcomeClass } from './card/CardActions'
 import { CardAvatar } from './card/CardAvatar'
+import { CardPeek } from './card/CardPeek'
 import { CardStory } from './card/CardStory'
 import { IssueState } from './card/IssueState'
 import { RiskChip, trustTitle } from './card/RiskChip'
@@ -543,6 +544,22 @@ export const ItemRow = memo(function ItemRow({
     />
   )
 
+  const peek = (launchButton: ReactNode) => (
+    <CardPeek
+      id={peekId}
+      item={item}
+      tab={tab}
+      step={step}
+      session={session}
+      sessions={sessions ?? []}
+      agents={agents}
+      triage={triage}
+      onOpen={onOpen}
+      onFilterBy={onFilterBy}
+      launch={launchButton}
+    />
+  )
+
   return (
     <li
       data-item-id={item.id}
@@ -660,7 +677,10 @@ export const ItemRow = memo(function ItemRow({
         )}
       </div>
       {launch === null ? (
-        actions()
+        <>
+          {actions()}
+          {peeking && peek(null)}
+        </>
       ) : (
         <LaunchControls
           variant="card"
@@ -685,6 +705,7 @@ export const ItemRow = memo(function ItemRow({
                 }
           }
           column={actions}
+          peek={peeking ? peek : undefined}
         />
       )}
       {going && (

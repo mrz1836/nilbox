@@ -192,9 +192,10 @@ export interface AutopilotChipProps {
   align?: 'left' | 'right'
 }
 
-// AutopilotChip marks an item a routine touched, after its session pill: "⚡ Snoozed", "⚡
-// Would run", what the newest of the routines' matches on it says (chipOf). It opens the
-// item's history with the routines in a panel. An item no routine touched shows nothing.
+// AutopilotChip marks an item a routine touched, on its card's second line: "⚡ Snoozed",
+// "⚡ Would run", what the newest of the routines' matches on it says (chipOf); in a list
+// narrower than 48rem, the ⚡ alone. It opens the item's history with the routines in a
+// panel. An item no routine touched shows nothing.
 export function AutopilotChip({ item, align = 'left' }: AutopilotChipProps) {
   const id = useId()
   const rows = use(AutopilotRowsContext)
@@ -223,7 +224,7 @@ export function AutopilotChip({ item, align = 'left' }: AutopilotChipProps) {
         className={`inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[0.6875rem] leading-4 font-medium transition-colors hover:bg-raised aria-expanded:ring-1 aria-expanded:ring-border ${chipTones[chip.tone]}`}
       >
         <AutopilotIcon className="size-3 shrink-0" />
-        {chip.label}
+        <span className="@max-3xl:hidden">{chip.label}</span>
       </button>
       <PopoverPanel
         state={popover}

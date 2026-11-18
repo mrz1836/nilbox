@@ -38,7 +38,7 @@ export interface RiskChipProps {
 // RiskChip is a card's one chip for what to be careful of: who opened the item, when the
 // repository doesn't trust them ("Outside contributor", "Untrusted bot"), and the
 // sensitive files it changes, or that its files couldn't all be checked. The worst tone
-// wins. An outside contributor's files checked clean get a checked shield. It opens the
+// wins; in a list narrower than 48rem, the shield alone says it. An outside contributor's files checked clean get a checked shield. It opens the
 // sensitive-files panel when the files were checked. A trusted bot gets no chip: its square
 // avatar says it, and neither does an item without a finding from someone trusted.
 export function RiskChip({ item, onFilesSettings }: RiskChipProps) {
@@ -61,7 +61,7 @@ export function RiskChip({ item, onFilesSettings }: RiskChipProps) {
   const content = (
     <>
       {clean ? <ShieldCheckIcon className="size-3.5 shrink-0" /> : <ShieldAlertIcon className="size-3.5 shrink-0" />}
-      <span className="truncate">{words}</span>
+      <span className="truncate @max-3xl:sr-only">{words}</span>
     </>
   )
 
@@ -74,7 +74,7 @@ export function RiskChip({ item, onFilesSettings }: RiskChipProps) {
   }
 
   return (
-    <span className="relative z-10 inline-flex min-w-0 shrink-0">
+    <span className="relative z-10 inline-flex min-w-0 shrink-0 has-[[aria-expanded=true]]:z-20">
       <button
         ref={triggerRef}
         type="button"

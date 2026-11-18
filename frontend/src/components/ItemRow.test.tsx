@@ -105,6 +105,11 @@ function toggles(row: HTMLElement): { stretched: HTMLElement; chevron: HTMLEleme
   return { stretched, chevron }
 }
 
+// peek returns the queries scoped to the card's open peek.
+function peek() {
+  return within(screen.getByRole('region', { name: 'Details' }))
+}
+
 // body is the card's body: its two lines.
 function body(row: HTMLElement): HTMLElement {
   const title = within(row).getAllByRole('button')[0]
@@ -507,7 +512,7 @@ describe('ItemRow agent', () => {
 
     const pill = screen.getByRole('button', { name: /^Claude session: working/ })
     expect(pill).toHaveAttribute('data-moving', 'true')
-    expect(pill).toHaveTextContent(/^Claude working/)
+    expect(pill).toHaveTextContent('Claude working 1m')
     expect(screen.getByRole('button', { name: 'Show in terminal' })).toBeEnabled()
   })
 
@@ -552,8 +557,35 @@ describe('ItemRow agent', () => {
   })
 })
 
-describe('ItemRow toggle', () => {
-  it('keeps every control and every titled element above the stretched toggle', () => {
+describe('ItemRow peek', () => {
+  it('opens and closes from the card’s empty space and from Show details', async () => {
+    const row = mountCard(asked())
+    const { stretched, chevron } = toggles(row)
+
+    expect(stretched).toHaveAttribute('tabIndex', '-1')
+    expect(stretched).toHaveClass('absolute', 'inset-0', 'z-0')
+    expect(chevron).toHaveAttribute('title', 'Show details')
+    for (const button of [stretched, chevron]) {
+      expect(button).toHaveAttribute('aria-expanded', 'false')
+      expect(button).not.toHaveAttribute('aria-controls')
+    }
+    expect(screen.queryByRole('region', { name: 'Details' })).not.toBeInTheDocument()
+
+    await userEvent.click(stretched)
+
+    const region = screen.getByRole('region', { name: 'Details' })
+    for (const button of [stretched, chevron]) {
+      expect(button).toHaveAttribute('aria-expanded', 'true')
+      expect(button).toHaveAttribute('aria-controls', region.id)
+    }
+
+    await userEvent.click(chevron)
+
+    expect(screen.queryByRole('region', { name: 'Details' })).not.toBeInTheDocument()
+    expect(stretched).not.toHaveAttribute('aria-controls')
+  })
+
+  it('keeps every control and every titled element above the stretched toggle', async () => {
     const working = agentSession({ state: 'working', detail: '' })
     const row = mountCard(
       asked({
@@ -573,11 +605,188 @@ describe('ItemRow toggle', () => {
       },
     )
     const { stretched } = toggles(row)
+    await userEvent.click(stretched)
 
     const controls = [...row.querySelectorAll('button, [title]')].filter((el) => el !== stretched)
-    expect(controls.length).toBeGreaterThan(15)
+    expect(controls.length).toBeGreaterThan(20)
     const below = controls.filter((el) => el.closest('.z-10, .z-20, .z-30') === null)
     expect(below.map((el) => el.getAttribute('aria-label') ?? el.getAttribute('title') ?? el.textContent)).toEqual([])
+  })
+
+  it('shows where a pull request stands, the change, and what is around it', async () => {
+    const onFilterBy = vi.fn()
+    const it = asked({
+      isCrossRepository: true,
+      files: fileCheck(),
+      assigned: true,
+      details: details({
+        pushedSinceReview: true,
+        reviews: { decision: 'REVIEW_REQUIRED', reviewers: 2, reviewed: 1, approvals: 0, changesRequested: 1 },
+        checks: { state: 'FAILURE', passed: 10, failed: 1, pending: 1, skipped: 1, awaiting: 1 },
+      }),
+    })
+    const row = mountCard(it, {
+      onFilterBy,
+      sessions: [agentSession({ state: 'working', detail: '', stateAt: '2026-06-15T11:59:00Z' })],
+    })
+    await userEvent.click(toggles(row).stretched)
+
+    const stands = within(peek().getByRole('region', { name: 'Where it stands' }))
+    expect(stands.getByText('Checks: 10 passed, 1 failing, 1 running, 1 skipped')).toBeInTheDocument()
+    expect(
+      [
+        ...peek()
+          .getByText(/^Checks: 10/)
+          .querySelectorAll('[data-segment]'),
+      ].map((s) => s.getAttribute('data-segment')),
+    ).toEqual(['passed', 'failed', 'awaiting', 'pending', 'skipped'])
+    expect(stands.getByText(/^You asked for changes, and the author pushed since/)).toHaveTextContent(
+      'You asked for changes, and the author pushed since · 1 of 2 reviewers reviewed · approval required',
+    )
+    expect(stands.getByText('No conflicts')).toBeInTheDocument()
+
+    const change = within(peek().getByRole('region', { name: 'The change' }))
+    expect(change.getByText('Size M')).toBeInTheDocument()
+    expect(change.getByText('+120').parentElement).toHaveTextContent('+120 −30 · 6 files · 3 commits')
+    expect(change.getByText('widget-cache').parentElement).toHaveTextContent('widget-cache · from a fork')
+    expect(change.getByText('Sensitive files · 2')).toHaveClass('text-danger')
+    expect(change.getByRole('region', { name: 'Agent configuration' })).toBeInTheDocument()
+
+    const around = within(peek().getByRole('region', { name: 'Around it' }))
+    expect(around.getByText(/^Claude · working ·/)).toHaveTextContent('Claude · working · 1m')
+    expect(around.getByText('full access · new worktree')).toBeInTheDocument()
+    expect(around.getByText('Review requested from you · assigned to you · 4 comments')).toBeInTheDocument()
+
+    await userEvent.click(around.getByRole('button', { name: 'Filter by label needs-docs' }))
+    expect(onFilterBy).toHaveBeenCalledWith('label', 'needs-docs')
+  })
+
+  it('shows where an issue stands, and leaves out what it hasn’t', async () => {
+    const it = item({
+      kind: 'issue',
+      authored: true,
+      details: details({ comments: 0, labels: [], projects: [project()], subIssues: { total: 8, completed: 6 } }),
+    })
+    const row = mountCard(it)
+    await userEvent.click(toggles(row).stretched)
+
+    expect(peek().getByText('6 of 8 done')).toBeInTheDocument()
+    await userEvent.click(peek().getByRole('button', { name: /^Project Roadmap/ }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/orgs/acme-org/projects/1')
+    expect(peek().queryByRole('region', { name: 'The change' })).not.toBeInTheDocument()
+    expect(peek().getByText('You opened it')).toBeInTheDocument()
+    expect(peek().queryByText('Labels')).not.toBeInTheDocument()
+  })
+
+  it('leaves out where an item stands while it has nothing to say', async () => {
+    render(
+      <ul>
+        <ItemRow item={item({ kind: 'issue', details: details({ labels: [] }) })} launch={null} />
+        <ItemRow item={item({ id: 2, title: 'Not read yet' })} launch={null} />
+      </ul>,
+    )
+    const [issue, loading] = screen.getAllByRole('listitem') as [HTMLElement, HTMLElement]
+
+    await userEvent.click(toggles(issue).stretched)
+    expect(peek().queryByRole('region', { name: 'Where it stands' })).not.toBeInTheDocument()
+    expect(peek().getByText('4 comments')).toBeInTheDocument()
+    await userEvent.click(toggles(issue).chevron)
+
+    await userEvent.click(toggles(loading).stretched)
+    expect(
+      peek()
+        .getAllByRole('region')
+        .map((r) => r.getAttribute('aria-label')),
+    ).toEqual(['Around it'])
+  })
+
+  it('names the teams and the push that put a pull request here', async () => {
+    render(
+      <ul>
+        <ItemRow item={asked({ reviewRequest: 'team', reviewTeams: [] })} launch={null} />
+        <ItemRow item={asked({ id: 2, reviewRequest: 'pushed', details: details({ comments: 0 }) })} launch={null} />
+      </ul>,
+    )
+    const [team, pushed] = screen.getAllByRole('listitem') as [HTMLElement, HTMLElement]
+
+    await userEvent.click(toggles(team).stretched)
+    expect(peek().getByText('Review requested via a team · 4 comments')).toBeInTheDocument()
+    await userEvent.click(toggles(team).chevron)
+
+    await userEvent.click(toggles(pushed).stretched)
+    expect(peek().getByText('The author pushed since you requested changes')).toBeInTheDocument()
+  })
+
+  it('says what the routines did with it', async () => {
+    const rows: AutopilotRows = { names: new Map([[4, 'Pin outside PRs']]), chips: new Map([[1, autopilotMatch()]]) }
+    const row = mountCard(asked({ pinnedAt: '2026-06-15T11:00:00Z', pinnedBy: 4 }), { rows })
+    await userEvent.click(toggles(row).stretched)
+
+    expect(peek().getByText(/Snooze passing bot PRs: Snoozed/)).toBeInTheDocument()
+    expect(peek().getByText(/^Pinned by/)).toHaveTextContent('Pinned by Pin outside PRs')
+  })
+
+  it('acts from its action bar: the primary, the agent’s options, triage, and GitHub', async () => {
+    const triage = triageActions()
+    const onOpen = vi.fn()
+    const it = asked()
+    const row = mountCard(it, { triage, onOpen })
+    await userEvent.click(toggles(row).stretched)
+
+    await userEvent.click(peek().getByRole('button', { name: 'Review' }))
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith(it, 'inbox')
+    // Review already opens it, so it has no second Review.
+    expect(peek().getAllByRole('button', { name: 'Review' })).toHaveLength(1)
+
+    await userEvent.click(peek().getByRole('button', { name: 'Snooze' }))
+    expect(triage.onSnooze).toHaveBeenCalledWith(it, 3)
+    await userEvent.click(peek().getByRole('button', { name: 'Dismiss' }))
+    expect(triage.onDismiss).toHaveBeenCalledWith(it)
+    await userEvent.click(peek().getByRole('button', { name: 'Pin' }))
+    expect(triage.onPin).toHaveBeenCalledWith(it)
+    await userEvent.click(peek().getByRole('button', { name: 'GitHub' }))
+    expect(platform.openExternal).toHaveBeenCalledWith(it.url)
+
+    const options = peek().getByRole('button', { name: 'Claude…' })
+    await userEvent.click(options)
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+    expect(options).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('offers Review beside a primary that doesn’t open the item, and says when it fails', async () => {
+    platform.focusSession.mockRejectedValueOnce(new Error('The terminal tab is gone.'))
+    const onOpen = vi.fn()
+    const it = asked({ pinnedAt: '2026-06-15T11:00:00Z' })
+    const triage = triageActions()
+    const row = mountCard(it, { sessions: [agentSession()], onOpen, triage, tab: 'inbox' })
+    await userEvent.click(toggles(row).stretched)
+
+    await userEvent.click(peek().getByRole('button', { name: 'Review' }))
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith(it, 'inbox')
+
+    await userEvent.click(peek().getByRole('button', { name: 'Unpin' }))
+    expect(triage.onUnpin).toHaveBeenCalledWith(it)
+
+    await userEvent.click(peek().getByRole('button', { name: 'Show terminal' }))
+    expect(await peek().findByRole('alert')).toHaveTextContent('The terminal tab is gone.')
+  })
+
+  it('reads an issue on GitHub without a sheet, and offers only its pin in a set-aside tab', async () => {
+    const it = item({ kind: 'issue', details: details(), dismissedAt: '2026-06-15T10:00:00Z' })
+    const triage = triageActions()
+    render(
+      <ul>
+        <ItemRow item={it} launch={null} tab="dismissed" triage={triage} sessions={[agentSession()]} />
+      </ul>,
+    )
+    await userEvent.click(toggles(screen.getByRole('listitem')).stretched)
+
+    expect(peek().queryByRole('button', { name: 'Snooze' })).not.toBeInTheDocument()
+    expect(peek().getByRole('button', { name: 'Pin' })).toBeInTheDocument()
+    expect(peek().queryByRole('button', { name: /…$/ })).not.toBeInTheDocument()
+
+    await userEvent.click(peek().getByRole('button', { name: 'Read' }))
+    expect(platform.openExternal).toHaveBeenCalledWith(it.url)
   })
 })
 

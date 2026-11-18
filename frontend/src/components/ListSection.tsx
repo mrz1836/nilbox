@@ -363,7 +363,7 @@ export function ListSection({
         ) : items.length === 0 ? (
           <p className="px-4 py-3 text-sm text-muted">{emptyText(tab, title)}</p>
         ) : (
-          <ul>
+          <ul className="@container">
             {items.map((item) => (
               <ItemRow
                 key={item.id}

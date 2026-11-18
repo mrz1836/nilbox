@@ -63,8 +63,9 @@ function FileRow({ file }: { file: SensitiveFile }) {
   )
 }
 
-// GroupSection is one category's files, with why they deserve a look.
-function GroupSection({ group }: { group: SensitiveGroup }) {
+// SensitiveFilesGroup is one category's files, with why they deserve a look: in the
+// panel, and in a card's peek.
+export function SensitiveFilesGroup({ group }: { group: SensitiveGroup }) {
   const files = group.files
 
   return (
@@ -159,7 +160,7 @@ export function SensitiveFilesPanel({ itemId, check, onSettings, popover, id }: 
         {summary(check)}
       </p>
       {groups.map((group) => (
-        <GroupSection key={group.category} group={group} />
+        <SensitiveFilesGroup key={group.category} group={group} />
       ))}
       {unchecked && (
         <p role="note" className="text-xs leading-relaxed text-warning">

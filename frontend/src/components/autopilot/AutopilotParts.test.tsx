@@ -807,6 +807,7 @@ describe('WatchingList', () => {
     render(<Watching />, { wrapper: rows })
 
     const list = await screen.findByRole('list', { name: 'Watching' })
+    expect(list).toHaveClass('@container')
 
     const row = within(list).getByRole('listitem')
     await waitFor(() => {
