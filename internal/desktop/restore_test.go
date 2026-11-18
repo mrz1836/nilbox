@@ -15,6 +15,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/desktop"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/update"
 )
 
 // errNewerData is the error a database a newer build saved stops the start with.
@@ -124,14 +125,27 @@ func TestAFailureOfferingABackupSaysWhatItLoses(t *testing.T) {
 	t.Parallel()
 
 	r := desktop.Restore{Backup: "/data/app.db.backup-x", Button: "Use my data from Nov 14, 3:02 PM", Detail: "Or go back."}
-	got := desktop.StartupFailure(errNewerData).Offering(r)
+	newer := desktop.Newer{Way: update.WayUpdate}
+	alone := desktop.StartupFailure(errNewerData, newer)
+	got := alone.Offering(r)
 
 	assert.Equal(t, brand.Name+" needs an update", got.Title)
-	assert.Equal(t, "The data was saved by a newer version of "+brand.Name+"; update "+brand.Name+" to open it."+
-		"\n\nOr go back.", got.Message)
+	assert.Equal(t, alone.Message+"\n\nOr go back.", got.Message)
 	require.NotNil(t, got.Restore)
 	assert.Equal(t, r, *got.Restore)
-	assert.Nil(t, desktop.StartupFailure(errNewerData).Restore, "a failure offers nothing on its own")
+	assert.Nil(t, alone.Restore, "a failure offers nothing on its own")
+
+	assert.Equal(t, []desktop.Button{
+		{Label: "Use my data from Nov 14, 3:02 PM", Choice: desktop.ChoicePutBack},
+		{Label: "Update and Reopen", Choice: desktop.ChoiceUpdate, Default: true},
+		{Label: quitLabel, Choice: desktop.ChoiceQuit, Cancel: true},
+	}, got.Buttons(), "Return updates, Escape quits, and no key puts the backup back")
+
+	got = desktop.PutBackFailure("/data/app.db", errFakeStartup).Offering(r)
+	assert.Equal(t, []desktop.Button{
+		{Label: "Use my data from Nov 14, 3:02 PM", Choice: desktop.ChoicePutBack},
+		{Label: quitLabel, Choice: desktop.ChoiceQuit, Cancel: true},
+	}, got.Buttons(), "with no other way forward, no key puts the backup back")
 }
 
 // newerBuildSaved records in the database at path a migration this build doesn't have, as

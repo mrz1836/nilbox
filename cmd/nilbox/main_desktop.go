@@ -30,7 +30,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -70,6 +69,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/setup"
+	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/svcstatus"
 	"github.com/mrz1836/nilbox/internal/update"
 	"github.com/mrz1836/nilbox/internal/worktrees"
@@ -126,7 +126,7 @@ func run(args []string, stdout io.Writer) int {
 	defer func() { _ = logs.Close() }()
 
 	if err != nil {
-		err = startFailed(args, logger, fmt.Errorf("find the data directory: %w", err), "")
+		err = startFailed(args, logger, fmt.Errorf("find the data directory: %w", err), appdata.Paths{}, "")
 	} else {
 		err = start(args, stdout, paths, logger)
 	}
@@ -185,7 +185,7 @@ func rehearsal() bool {
 func start(args []string, stdout io.Writer, paths appdata.Paths, logger *slog.Logger) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return startFailed(args, logger, fmt.Errorf("find the home directory: %w", err), "")
+		return startFailed(args, logger, fmt.Errorf("find the home directory: %w", err), paths, "")
 	}
 
 	if slices.Contains(args, measure.RefreshFlag) {
@@ -197,7 +197,7 @@ func start(args []string, stdout io.Writer, paths appdata.Paths, logger *slog.Lo
 		measureStartup: slices.Contains(args, measure.StartupFlag),
 	})
 	if err != nil {
-		return startFailed(args, logger, err, paths.DB)
+		return startFailed(args, logger, err, paths, home)
 	}
 
 	runErr := app.Run()
@@ -533,10 +533,12 @@ func boundOptions() application.ServiceOptions {
 
 // startFailed returns err, which stopped the app from starting, with the build's details.
 // Outside a measurement run it first logs the error, shows it in a native dialog, and
-// exits with a failure status once the dialog is dismissed. db is the database's file, or
-// "" when the data couldn't be found: for data a newer build saved, the dialog offers to
-// put back the newest backup beside it this build can open.
-func startFailed(args []string, logger *slog.Logger, err error, db string) error {
+// exits with a failure status once the dialog is dismissed. paths are the data's locations,
+// none when the data couldn't be found, and home the home folder, or "": for data a newer
+// build saved, the dialog offers this build's way forward (an update, or the command that
+// installs or builds a newer one) and the newest backup beside the database this build
+// can open.
+func startFailed(args []string, logger *slog.Logger, err error, paths appdata.Paths, home string) error {
 	wrapped := fmt.Errorf("start the app (%s, %s build, commit %s, built %s): %w",
 		version, buildFlavor(), commit, buildDate, err)
 
@@ -544,9 +546,18 @@ func startFailed(args []string, logger *slog.Logger, err error, db string) error
 		return wrapped
 	}
 
-	failure := desktop.StartupFailure(err)
+	var (
+		newer desktop.Newer
+		bare  *update.Bare
+	)
 
-	restore, ok, findErr := desktop.FindRestore(err, db, time.Now())
+	if errors.Is(err, store.ErrNewerSchema) {
+		bare, newer = newerData(paths, home, logger)
+	}
+
+	failure := desktop.StartupFailure(err, newer)
+
+	restore, ok, findErr := desktop.FindRestore(err, paths.DB, time.Now())
 	if findErr != nil {
 		logger.Warn("could not look for a backup to offer", "error", findErr)
 	}
@@ -556,16 +567,11 @@ func startFailed(args []string, logger *slog.Logger, err error, db string) error
 		logger.Info("offering to put a backup back", "backup", filepath.Base(restore.Backup), "taken", restore.At)
 	}
 
-	failStartup(logger, wrapped, failure, putBack{db: db, sandbox: sandboxDir(args)})
+	failStartup(logger, wrapped, failure, startupDialog{
+		db: paths.DB, sandbox: sandboxDir(args), newer: newer, bare: bare,
+	})
 
 	return wrapped
-}
-
-// putBack is where a startup dialog that offers a backup puts it back: the database's
-// file, and the sandbox's data directory the app opens on again, or "".
-type putBack struct {
-	db      string
-	sandbox string
 }
 
 // buildFlavor names the kind of build this is: the flavor the linker stamped, or
@@ -576,91 +582,6 @@ func buildFlavor() string {
 	}
 
 	return flavor
-}
-
-// failStartup logs err, shows failure in a native error dialog, since nobody sees stderr
-// when the app is launched from Finder, and exits with a failure status once the dialog
-// is dismissed. The log file is written unbuffered, so exiting without closing it loses
-// nothing. The dialog needs a running app, so a bare one, with no window and no services,
-// runs just to show it.
-//
-// A failure that offers a backup (failure.Restore) has a button beside Quit that puts it
-// back in place of the database at to.db, setting the newer one aside, and then quits and
-// opens the app again, as a reset does, once the bare app has shut down; the app exits
-// with a success status then. A backup that can't be put back says so in a dialog of its
-// own, and Quit quits.
-func failStartup(logger *slog.Logger, err error, failure desktop.Failure, to putBack) {
-	logger.Error("the app could not start", "error", err)
-
-	var restored atomic.Bool
-
-	app := application.New(application.Options{
-		Name:        brand.Name,
-		Description: brand.Tagline,
-		Icon:        appIcon(),
-		// On macOS the app exits from inside Run once it terminates, with a success
-		// status unless this hook exits first.
-		PostShutdown: func() {
-			if restored.Load() {
-				relaunch(to.sandbox, "putting a backup back", logger)
-				os.Exit(0)
-			}
-
-			os.Exit(1)
-		},
-	})
-
-	// The dialog's click runs on the main thread; the copy runs off it, and so does the
-	// quit, which waits for the main thread.
-	putBackNow := func() {
-		go func() {
-			aside, putErr := desktop.PutBack(context.Background(), to.db, *failure.Restore)
-			if putErr != nil {
-				logger.Error("could not put the backup back", "backup", filepath.Base(failure.Restore.Backup),
-					"error", putErr)
-				showFailure(app, desktop.PutBackFailure(to.db, putErr), nil)
-
-				return
-			}
-
-			logger.Info("put the backup back in place of the newer data; opening the app again",
-				"backup", filepath.Base(failure.Restore.Backup), "newer", filepath.Base(aside))
-			restored.Store(true)
-			app.Quit()
-		}()
-	}
-
-	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		showFailure(app, failure, putBackNow)
-	})
-
-	_ = app.Run()
-
-	os.Exit(1)
-}
-
-// showFailure shows failure in a native error dialog whose Quit quits app, with its
-// backup's button beside it, which runs putBack, when it offers one and putBack is set.
-//
-// The runtime's macOS alert gives a button Return when it is the default and Escape only
-// when it isn't, never both. With a backup offered, Quit takes Escape, the safe answer,
-// and no button takes Return, so no key puts the backup back by accident; alone, Quit takes
-// Return.
-func showFailure(app *application.App, failure desktop.Failure, putBack func()) {
-	dialog := app.Dialog.Error().SetTitle(failure.Title).SetMessage(failure.Message)
-
-	// macOS shows the buttons right to left, the last added rightmost: Quit stays on the
-	// right.
-	if failure.Restore == nil || putBack == nil {
-		dialog.AddButton("Quit").SetAsDefault().OnClick(app.Quit)
-		dialog.Show()
-
-		return
-	}
-
-	dialog.AddButton(failure.Restore.Button).OnClick(putBack)
-	dialog.AddButton("Quit").SetAsCancel().OnClick(app.Quit)
-	dialog.Show()
 }
 
 // measureRefresh times live inbox refreshes the way the app makes them, each with searches
