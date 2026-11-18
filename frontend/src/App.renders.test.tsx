@@ -1,11 +1,11 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Profiler, type ReactNode } from 'react'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ItemRowProps } from './components/ItemRow'
 import { triageList } from './lib/triage'
-import type { AutopilotMatch, AutopilotState, InboxItem, InboxSnapshot, ListKey } from './platform'
+import type { AutopilotMatch, AutopilotState, CardDensity, InboxItem, InboxSnapshot, ListKey } from './platform'
 import { FIXED_NOW, fromNow } from './test/clock'
 import {
   autopilotMatch,
@@ -28,7 +28,8 @@ import { emit, platform, renderApp } from './test/platform'
 // notifications update and an update of the app's own notifications, which the cards don't
 // show, collapsing a list, leaving the inbox and coming back, and filtering it and clearing
 // the filter; then, with Autopilot on, an Autopilot update that changes where a routine
-// stands on one item. It runs twice. In the unit tests the components run as written,
+// stands on one item. It runs twice, and each run in both of Settings → Cards' densities,
+// comfortable and compact, with the same bounds. In the unit tests the components run as written,
 // where the bounds below hold however much a parent renders again. `pnpm test:renders`
 // (vitest.renders.config.ts) runs it through the React Compiler, as the build ships, where
 // the tighter bounds hold, and prints what it measured.
@@ -74,6 +75,11 @@ vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platfo
 // timers are faked.
 beforeAll(() => {
   vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'], now: FIXED_NOW })
+})
+
+// Each run starts at FIXED_NOW, however far the run before it stepped the clock.
+beforeEach(() => {
+  vi.setSystemTime(FIXED_NOW)
 })
 
 afterAll(() => {
@@ -199,11 +205,28 @@ function Profiled({ children }: { children: ReactNode }) {
 // beside the other test files.
 const wait = { timeout: 15_000 }
 
-describe('App rendering', () => {
+// densities are Settings → Cards' densities, each profiled with the same bounds.
+const densities: readonly CardDensity[] = ['comfortable', 'compact']
+
+// cards answers the window's reads of the settings with the cards in density, and
+// whatever else change sets.
+function cards(density: CardDensity, change: Parameters<typeof settings>[0] = {}) {
+  platform.getSettings.mockResolvedValue(settings({ cardDensity: density, ...change }))
+}
+
+// cardsAre reports whether the inbox's cards show in density.
+function cardsAre(density: CardDensity): boolean {
+  const row = document.querySelector('[data-item-id]')
+
+  return density === 'compact' ? row?.getAttribute('data-density') === 'compact' : !row?.hasAttribute('data-density')
+}
+
+describe.each(densities)('App rendering, %s cards', (density) => {
   // The steps find things by label and text rather than by role: working out the
   // accessibility tree of hundreds of rows takes longer than everything measured.
   it('renders a large inbox again only where it changed', { timeout: 60_000 }, async () => {
     const answer = setUp()
+    cards(density)
     answerThreads(3)
     const rows = shown('reviewRequested') + shown('yours')
     // The authors' pictures wait until the test lands them.
@@ -221,8 +244,10 @@ describe('App rendering', () => {
     })
 
     expect(mountedRows()).toBe(rows)
+    expect(cardsAre(density)).toBe(true)
 
-    // The authors' pictures landing renders the avatars that show them, and no row.
+    // The authors' pictures landing renders the avatars that show them, and no row; a
+    // compact card shows no avatar.
     await waitFor(() => {
       expect(platform.cardPictures).toHaveBeenCalledOnce()
     }, wait)
@@ -231,7 +256,9 @@ describe('App rendering', () => {
         land({ 'octo-user': avatarDataURL })
       })
       await waitFor(() => {
-        expect(document.querySelector('[data-item-id] img')).toHaveAttribute('src', avatarDataURL)
+        expect(document.querySelector('[data-item-id] img')?.getAttribute('src') ?? '').toBe(
+          density === 'comfortable' ? avatarDataURL : '',
+        )
       }, wait)
     })
 
@@ -377,7 +404,11 @@ describe('App rendering', () => {
         ([step, m]) => `  ${step}: ${String(m.rows)} / ${String(m.mounts)} / ${String(m.commits)} / ${String(m.ms)}`,
       )
 
-      console.warn(['render profile (rows rendered / rows mounted / commits / ms rendering):', ...steps].join('\n'))
+      console.warn(
+        [`render profile, ${density} cards (rows rendered / rows mounted / commits / ms rendering):`, ...steps].join(
+          '\n',
+        ),
+      )
     }
   })
 
@@ -392,7 +423,7 @@ describe('App rendering', () => {
     async () => {
       setUp()
       answerThreads(0)
-      platform.getSettings.mockResolvedValue(settings({ autopilot: { ...settings().autopilot, enabled: true } }))
+      cards(density, { autopilot: { ...settings().autopilot, enabled: true } })
       let matches = [match(1, 'waiting'), match(2, 'done')]
       platform.latestAutopilotMatches.mockImplementation(() => Promise.resolve(structuredClone(matches)))
       const rows = shown('reviewRequested') + shown('yours')
@@ -404,6 +435,7 @@ describe('App rendering', () => {
       await waitFor(() => {
         expect(rule(1)).toBe('autopilot_needs_you')
       }, wait)
+      expect(cardsAre(density)).toBe(true)
 
       // Item 2's chip changes, but not where its routine stands; item 3's routine starts work.
       matches = [match(1, 'waiting'), match(2, 'closed'), match(3, 'running')]
@@ -422,7 +454,7 @@ describe('App rendering', () => {
 
       if (compiled) {
         console.warn(
-          `render profile, Autopilot update (rows rendered / rows mounted / commits / ms rendering): ${String(update.rows)} / ${String(update.mounts)} / ${String(update.commits)} / ${String(update.ms)}`,
+          `render profile, Autopilot update, ${density} cards (rows rendered / rows mounted / commits / ms rendering): ${String(update.rows)} / ${String(update.mounts)} / ${String(update.commits)} / ${String(update.ms)}`,
         )
       }
     },
