@@ -314,10 +314,11 @@ export interface CardActionsProps {
 // showing a terminal fails, the failure under the card's two lines (cardOutcomeClass).
 //
 // The column is two slots, so every card's controls line up down the list: the primary's,
-// as wide as the longest primary (--card-primary, on the card), the primary at its start;
-// and the agent's, the rest of the column, its control at its end, so the ▾ closing it sits
-// at the same place on every card and the control narrows within the slot, never over the
-// primary. In a list narrower than 48rem the primary's slot fits its primary alone, and an
+// as wide as the longest common primary (--card-primary, on the card), the primary at its
+// start, widening for a longer one (Show terminal, What happened), which comes only beside
+// the agent's ▾; and the agent's, the rest of the column, its control at its end, so the ▾
+// closing it sits at the same place on every card and the control narrows within the slot,
+// never over the primary. In a list narrower than 48rem the primary's slot fits its primary alone, and an
 // agent's pill drops to its mark (its words stay for screen readers): the column always
 // holds the primary, so a pill in it always has a second button beside it. A panel open
 // from the column rises over the card's later parts, such as its peek. A compact card's
@@ -362,7 +363,7 @@ export function CardActions({
       ) : (
         <div
           data-guide="actions"
-          className="relative z-10 grid min-w-0 grid-cols-[var(--card-primary)_minmax(0,1fr)] items-center gap-x-1.5 has-[[aria-expanded=true]]:z-20 @max-3xl:[&:has([data-pill-label])_[data-pill-label]]:sr-only"
+          className="relative z-10 grid min-w-0 grid-cols-[minmax(var(--card-primary),max-content)_minmax(0,1fr)] items-center gap-x-1.5 has-[[aria-expanded=true]]:z-20 @max-3xl:[&:has([data-pill-label])_[data-pill-label]]:sr-only"
         >
           <div data-primary-slot className="flex min-w-0 justify-start">
             {primary}

@@ -302,9 +302,11 @@ function Byline({
 // column shows where a pull request stands (StateTrack, over its size, SizeGlyph) or an
 // issue (IssueState); the action column, the human's next move and the agent's slot beside
 // it (CardActions, with LaunchControls' card variant), each in a slot of its own: the
-// primary's as wide as the longest primary (--card-primary: 8.5rem fits Show terminal),
-// the agent's the rest of the column (--card-actions), so the primaries start, and the
-// agent's ▾ ends, at the same place on every card. The pointer or keyboard focus on
+// primary's as wide as the longest common primary (--card-primary: 5.625rem fits
+// Re-review; a longer one, which comes only beside the agent's ▾, widens it), the agent's
+// the rest of the column (--card-actions), so the primaries start, and the agent's ▾
+// ends, at the same place on every card. At full width the agent's slot (14.75rem) fits its
+// common pills whole, such as "Claude working · 59m" with its terminal button. The pointer or keyboard focus on
 // the card, or a menu or panel it opened, lights it (card-lit in index.css): the state
 // column fades for the triage buttons, Show details, and the menu of everything else
 // (ItemMenu), which stay while the card is busy. A click on the card's empty space, or
@@ -487,7 +489,7 @@ export const ItemRow = memo(function ItemRow({
       data-highlighted={highlighted || undefined}
       data-rule={step.rule}
       aria-busy={going || undefined}
-      className="item-row group relative grid grid-cols-[0.1875rem_1.875rem_minmax(0,1fr)_var(--card-state)_var(--card-actions)] items-center gap-x-3.5 border-b border-border py-3 pr-4 transition-colors [--card-actions:18.875rem] [--card-primary:8.5rem] [--card-state:8.25rem] last:border-b-0 hover:bg-raised/40 data-highlighted:bg-accent/10 @max-5xl:[--card-actions:16.875rem] @max-4xl:[--card-state:4.75rem] @max-3xl:[--card-actions:10.75rem] @max-3xl:[--card-primary:auto] @max-xl:grid-cols-[0.1875rem_1.875rem_minmax(0,1fr)_var(--card-actions)]"
+      className="item-row group relative grid grid-cols-[0.1875rem_1.875rem_minmax(0,1fr)_var(--card-state)_var(--card-actions)] items-center gap-x-3.5 border-b border-border py-3 pr-4 transition-colors [--card-actions:20.75rem] [--card-primary:5.625rem] [--card-state:8.25rem] last:border-b-0 hover:bg-raised/40 data-highlighted:bg-accent/10 @max-5xl:[--card-actions:16.875rem] @max-4xl:[--card-state:4.75rem] @max-3xl:[--card-actions:10.75rem] @max-3xl:[--card-primary:auto] @max-xl:grid-cols-[0.1875rem_1.875rem_minmax(0,1fr)_var(--card-actions)]"
     >
       <span
         aria-hidden="true"

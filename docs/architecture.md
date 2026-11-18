@@ -4394,9 +4394,12 @@ sentence), and `card/RiskChip` is the one chip for trust and sensitive files.
 `card/CardActions` renders the primary and frames `LaunchControls`' `card` variant, which
 follows the card's session (`cardSession`) and keeps its hold, take-over, and clone dialogs
 mounted. The action column is two slots, so the controls line up down the list: the
-primary's, as wide as the longest primary (`--card-primary`, 8.5rem for Show terminal; the
-primary's own width below `@3xl`), the primary at its start, and the agent's, the rest of the
-column, its control at its end. That control is one split control in every session state,
+primary's, as wide as the longest common primary (`--card-primary`, 5.625rem for Re-review;
+a longer one, Show terminal or What happened, comes only beside the agent's ▾ and widens it,
+`minmax(var(--card-primary), max-content)`; the primary's own width below `@3xl`), the
+primary at its start, and the agent's, the rest of the column (`--card-actions`, 20.75rem at
+full width, so its 14.75rem fits the common pills whole, "Claude working · 59m" with its
+terminal button the widest; 16.875rem below `@5xl`), its control at its end. That control is one split control in every session state,
 closed by the ▾: the launch, or a session's pill (and, while one works, Show in terminal or
 Watch), the first part narrowing and cutting its words short, its age first, while the
 marks and the ▾ keep their width, so nothing runs past a border. Its `column` and `peek`
