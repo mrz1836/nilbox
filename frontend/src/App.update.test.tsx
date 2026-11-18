@@ -19,10 +19,15 @@ import { emit, platform, renderApp } from './test/platform'
 
 vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platform))
 
-// Settings and the review sheet load apart from the first paint; they are imported once
-// before the tests, so no test pays their cold import inside a findBy's wait.
+// Settings, the review sheet, and the first-run setup load apart from the first paint;
+// they are imported once before the tests, so no test pays their cold import inside a
+// findBy's wait.
 beforeAll(async () => {
-  await Promise.all([import('./components/SettingsView'), import('./components/review/ReviewSheet')])
+  await Promise.all([
+    import('./components/SettingsView'),
+    import('./components/review/ReviewSheet'),
+    import('./components/setup/SetupView'),
+  ])
 })
 
 beforeEach(() => {

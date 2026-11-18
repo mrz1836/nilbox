@@ -119,7 +119,11 @@ describe('RefreshingSection', () => {
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Worktrees' }), '1800')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
-    expect(screen.getByRole('combobox', { name: 'Worktrees' })).toHaveValue('300')
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: 'Worktrees' })).toHaveValue('300')
+    })
   })
 
   it('turns noticing pushes from this Mac off and on, on by default', async () => {

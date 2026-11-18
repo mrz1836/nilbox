@@ -264,7 +264,11 @@ describe('IntegrationsSection’s runs', () => {
     await userEvent.click(runsIn().getByRole('radio', { name: terminalChoice }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('unknown place for runs')
-    expect(runsIn().getByRole('radio', { name: brand.name })).toBeChecked()
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(runsIn().getByRole('radio', { name: brand.name })).toBeChecked()
+    })
     expect(screen.getByRole('radiogroup', { name: 'Runs in' })).toHaveAccessibleDescription(
       `${note} unknown place for runs`,
     )
@@ -316,7 +320,11 @@ describe('IntegrationsSection’s runs', () => {
     await userEvent.click(offer)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
-    expect(offer).toBeChecked()
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(offer).toBeChecked()
+    })
     expect(offer).toHaveAccessibleDescription(/database is locked$/)
     expect(screen.getByRole('radiogroup', { name: 'Runs in' })).toHaveAccessibleDescription(note)
   })

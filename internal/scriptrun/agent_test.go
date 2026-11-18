@@ -308,7 +308,7 @@ func TestAgentRunsAreKeptNoLongerThanTheirLogs(t *testing.T) {
 	})
 
 	script := h.ended(h.start(h.spec(testutil.FakeRun{Stdout: "s\n"}))).ID
-	old := h.ended(h.start(h.agentSpec(testutil.FakeRun{Stdout: "a\n"}))).ID
+	h.ended(h.start(h.agentSpec(testutil.FakeRun{Stdout: "a\n"})))
 
 	h.waitCount(2, "both are kept while within an hour")
 
@@ -316,14 +316,24 @@ func TestAgentRunsAreKeptNoLongerThanTheirLogs(t *testing.T) {
 	keepFor = time.Nanosecond
 	mu.Unlock()
 
-	h.ended(h.start(h.spec(testutil.FakeRun{Stdout: "s\n"})))
+	third := h.ended(h.start(h.spec(testutil.FakeRun{Stdout: "s\n"}))).ID
 	h.waitCount(2)
 
-	_, err := h.e.store.get(t.Context(), old)
-	require.ErrorIs(t, err, ErrNotFound, "the agent's run went once its logs' time was up")
+	// The agent's run applies the retention once its end is recorded, a moment after it is
+	// let go of, so on a busy machine it may forget itself before the third run is recorded,
+	// and the history hands the newest run's ID out again once it forgets that run, as
+	// Clear history does: the third run then takes the agent's ID. What went is read from
+	// the runs the history holds, never from the agent's run's ID alone.
+	recs, err := h.e.store.list(t.Context())
+	require.NoError(t, err)
 
-	_, err = h.e.store.get(t.Context(), script)
-	require.NoError(t, err, "a script's run isn't kept by the agents' rule")
+	kinds := make(map[int64]Kind, len(recs))
+	for _, rec := range recs {
+		kinds[rec.ID] = rec.Kind
+	}
+
+	assert.Equal(t, map[int64]Kind{script: KindScript, third: KindScript}, kinds,
+		"the agent's run went once its logs' time was up, and a script's run isn't kept by the agents' rule")
 }
 
 func TestClearHistoryLeavesTheAgentsRunsToAutopilot(t *testing.T) {

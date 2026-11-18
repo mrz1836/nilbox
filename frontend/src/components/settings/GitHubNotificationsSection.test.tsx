@@ -177,7 +177,11 @@ describe('GitHubNotificationsSection', () => {
     await userEvent.click(toggle('Clear them automatically'))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
-    expect(toggle('Clear them automatically')).not.toBeChecked()
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(toggle('Clear them automatically')).not.toBeChecked()
+    })
     expect(platform.checkGitHubThreadsNow).not.toHaveBeenCalled()
   })
 

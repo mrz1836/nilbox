@@ -59,7 +59,11 @@ describe('CardsSection', () => {
     await waitFor(() => {
       expect(density).toHaveAccessibleDescription(/the database is locked/)
     })
-    expect(within(density).getByRole('radio', { name: 'Compact' })).toBeChecked()
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(within(density).getByRole('radio', { name: 'Compact' })).toBeChecked()
+    })
   })
 
   it('turns Author pictures off and on, storing each change', async () => {
@@ -90,7 +94,11 @@ describe('CardsSection', () => {
     await waitFor(() => {
       expect(pictures).toHaveAccessibleDescription(/the database is locked/)
     })
-    expect(pictures).not.toBeChecked()
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(pictures).not.toBeChecked()
+    })
   })
 
   it('turns Unread dots off and on, storing each change', async () => {
@@ -119,7 +127,11 @@ describe('CardsSection', () => {
     await waitFor(() => {
       expect(dots).toHaveAccessibleDescription(/the database is locked/)
     })
-    expect(dots).not.toBeChecked()
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(dots).not.toBeChecked()
+    })
   })
 
   it('shows the card guide on asking, and offers it only where the window can open it', async () => {

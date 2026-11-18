@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -143,7 +143,11 @@ describe('ScriptsCard', () => {
 
     await userEvent.click(card.getByRole('checkbox', { name: 'Read t3.json and VS Code tasks' }))
     expect(await card.findByRole('alert')).toHaveTextContent('database is locked')
-    expect(card.getByRole('checkbox', { name: 'Read t3.json and VS Code tasks' })).toBeChecked()
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(card.getByRole('checkbox', { name: 'Read t3.json and VS Code tasks' })).toBeChecked()
+    })
     expect(card.getByRole('group', { name: 'Repo scripts lists' })).toHaveAccessibleDescription('database is locked')
 
     await userEvent.click(card.getByRole('switch', { name: 'Scripts' }))

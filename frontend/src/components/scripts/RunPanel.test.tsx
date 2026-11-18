@@ -138,6 +138,14 @@ describe('RunPanel', () => {
     await shownRun()
     expect(await screen.findByText('5 s')).toBeInTheDocument()
 
+    // The panel starts its second's interval, beside the clock's minute, in the effects of
+    // the commit that shows the text, which can run after the text is found on a loaded
+    // machine; advancing before then would move nothing. So both intervals are waited
+    // for, and the tick's render after them.
+    await vi.waitFor(() => {
+      expect(vi.getTimerCount()).toBe(2)
+    })
+
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_000)
     })

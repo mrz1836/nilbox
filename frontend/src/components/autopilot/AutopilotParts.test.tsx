@@ -861,15 +861,22 @@ describe('WatchingList', () => {
     expect(await screen.findByRole('dialog', { name: 'The widget forgets its size' })).toBeInTheDocument()
 
     // On to #10, merged, past it to #11, closed and the last, and back to #9, never to #10.
+    // Each sheet's read is waited for in turn: the whole walk opens and reads two sheets,
+    // which can take longer than one wait on a loaded machine.
     await userEvent.click(screen.getByRole('button', { name: 'Next' }))
-    await waitFor(async () => {
-      expect(await screen.findByRole('group', { name: 'Notification' })).toHaveTextContent(
+    await waitFor(() => {
+      expect(platform.refreshReview).toHaveBeenCalledExactlyOnceWith(4)
+    })
+    await waitFor(() => {
+      expect(platform.refreshIssue).toHaveBeenCalledWith(6)
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('group', { name: 'Notification' })).toHaveTextContent(
         'acme-org/example-repo#11 was closed · The widget forgets its color',
       )
     })
     expect(await screen.findByRole('dialog', { name: 'The widget forgets its size' })).toBeInTheDocument()
     expect(platform.refreshReview).toHaveBeenCalledExactlyOnceWith(4)
-    expect(platform.refreshIssue).toHaveBeenCalledWith(6)
 
     await userEvent.keyboard('{Escape}')
     await waitFor(() => {

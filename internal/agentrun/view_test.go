@@ -89,11 +89,17 @@ func TestTheRunViewPagesALongLogBack(t *testing.T) {
 
 	const steps = 1200
 
+	// The tool's result is longer than a page's bytes, and spans several reads back: a page
+	// still holds it whole. Any longer only adds to its parse, which the race detector makes
+	// the bulk of the test's work (once as the run is followed, and again for each page that
+	// holds it), and which ran past the run's end's wait on a loaded machine at 5 MB.
+	const hugeSize = pageBytes + pageChunk
+
 	r := newRig(t)
 	start := time.Date(2026, 11, 16, 6, 15, 0, 0, time.UTC)
 
 	stdout := lines(t, "success-structured.jsonl", 1) + narration(t, start, 0, steps/2) +
-		hugeResult(t, 5<<20) + narration(t, start, steps/2, steps/2) + lastLine(t, "success-structured.jsonl")
+		hugeResult(t, hugeSize) + narration(t, start, steps/2, steps/2) + lastLine(t, "success-structured.jsonl")
 	plan := r.plan(testutil.FakeRun{Stdout: stdout})
 	r.start(plan)
 	r.end(plan.RunID)
@@ -139,7 +145,7 @@ func TestTheRunViewPagesALongLogBack(t *testing.T) {
 		assert.Equal(t, fmt.Sprintf("Step %d", i), text, "oldest first")
 	}
 
-	require.NotNil(t, huge, "a 5 MB line is read whole, and its event kept")
+	require.NotNil(t, huge, "a line longer than a page is read whole, and its event kept")
 	assert.True(t, huge.Cut)
 	assert.LessOrEqual(t, len(huge.Text), runevent.MaxText)
 

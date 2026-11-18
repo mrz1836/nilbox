@@ -74,7 +74,11 @@ describe('ReviewingSection', () => {
     expect(methods().getByRole('radio', { name: 'Create a merge commit' })).toHaveAccessibleDescription(
       'Adds every commit to the base branch, joined by a merge commit. unknown merge method',
     )
-    expect(methods().getByRole('radio', { name: 'As each repository offers first' })).toBeChecked()
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(methods().getByRole('radio', { name: 'As each repository offers first' })).toBeChecked()
+    })
     expect(onSaved).not.toHaveBeenCalled()
   })
 

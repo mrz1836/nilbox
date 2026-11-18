@@ -382,7 +382,11 @@ describe('UpdatesCard', () => {
     await userEvent.selectOptions(select, 'off')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('The settings are locked.')
-    expect(select).toHaveValue('download')
+    // The change shows at once and goes back as its save ends, which can be a render
+    // after the refusal shows.
+    await waitFor(() => {
+      expect(select).toHaveValue('download')
+    })
     expect(update.reload).not.toHaveBeenCalled()
   })
 
