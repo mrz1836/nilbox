@@ -527,19 +527,37 @@ describe('ItemRow agent', () => {
     expect(platform.focusSession).toHaveBeenCalledOnce()
   })
 
-  it('offers what happened after a session failed today, and the item’s move after a day', () => {
+  it('offers what happened after a session failed today, and a fresh launch beside the item’s move after a day', () => {
     const failed = (at: string) => agentSession({ state: 'failed', stateAt: at, detail: '' })
     render(
       <ul>
-        <ItemRow item={asked()} launch={launch} sessions={[failed('2026-06-15T11:00:00Z')]} />
-        <ItemRow item={asked({ id: 2 })} launch={launch} sessions={[failed('2026-06-13T11:00:00Z')]} />
+        <ItemRow
+          item={asked()}
+          launch={launch}
+          resolution={itemResolution()}
+          sessions={[failed('2026-06-15T11:00:00Z')]}
+        />
+        <ItemRow
+          item={asked({ id: 2 })}
+          launch={launch}
+          resolution={itemResolution()}
+          sessions={[failed('2026-06-13T11:00:00Z')]}
+        />
       </ul>,
     )
 
-    const [today, older] = screen.getAllByRole('listitem')
+    const [today, older] = screen.getAllByRole('listitem') as [HTMLElement, HTMLElement]
     expect(today).toHaveAttribute('data-rule', 'session_failed')
-    expect(within(today as HTMLElement).getByRole('button', { name: 'What happened' })).toBeInTheDocument()
+    expect(within(today).getByRole('button', { name: 'What happened' })).toBeInTheDocument()
+    // The primary is the way in, so the slot has only the launch options.
+    expect(within(today).queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
+    expect(within(today).getByRole('button', { name: /^Launch options/ })).toBeInTheDocument()
+
     expect(older).toHaveAttribute('data-rule', 'review')
+    expect(within(older).getByRole('button', { name: 'Review' })).toBeInTheDocument()
+    expect(within(older).queryByRole('button', { name: 'What happened' })).not.toBeInTheDocument()
+    expect(within(older).getByRole('button', { name: 'Open in Claude' })).toBeEnabled()
+    expect(within(older).getByRole('button', { name: /^Launch options/ })).toBeInTheDocument()
   })
 
   it('opens what an ended session found in the item’s sheet', async () => {

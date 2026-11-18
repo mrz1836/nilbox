@@ -232,6 +232,24 @@ describe('LaunchControls, card variant', () => {
     expect(column.getAllByRole('button').map((b) => b.textContent)).toEqual(['Review', 'Claude', ''])
   })
 
+  it('offers a fresh launch beside a session that failed more than a day ago, locked for an outside item', () => {
+    const failed = agentSession({ state: 'failed', endedAt: '' })
+    const { unmount } = withSession(failed, { sessionFresh: true })
+
+    expect(screen.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
+    expect(options()).toBeInTheDocument()
+    unmount()
+
+    const { container } = withSession(failed, {
+      sessionFresh: false,
+      item: item({ trust: 'outside', trusted: false }),
+    })
+
+    expect(screen.getByRole('button', { name: 'Open in Claude' })).toHaveTextContent(/^Claude$/)
+    expect(options()).toBeInTheDocument()
+    expect(container.querySelector('[title="Launches read-only: an outside contributor’s"]')).not.toBeNull()
+  })
+
   it('narrows with its list: the agent’s name, a pill’s words, and its age give way', () => {
     const { unmount } = renderSlot()
 

@@ -4766,7 +4766,8 @@ the card's story says so (**Claude needs approval · Bash: go test**) and its ne
 **Show terminal**, breathing, or **Watch**; its turn done, **Claude’s done · 2m**, which shows
 its terminal; ended, **✦ Findings · 2m**, which opens the item's sheet, where the agent's
 verdict shows what it last said; failed today, the next step is **What happened**, which opens
-the sessions. While an agent works, the card's story says **Claude is on it**, and your own
+the sessions, and a day later the card is back to its own next step, with a fresh launch
+beside it. While an agent works, the card's story says **Claude is on it**, and your own
 next step stays beside it, quiet. The [Worktrees view](#the-worktrees-view) shows the session
 as a tag beside the worktree's, such as **Claude · needs approval · 2m**.
 

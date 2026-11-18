@@ -82,6 +82,10 @@ export interface LaunchControlsProps {
   // variant it is the card's session (cardSession): the newest still running, else one
   // that ended in the last day.
   running?: AgentSession | null | undefined
+  // sessionFresh reports, for the card variant, that a failed card session failed under a
+  // day ago, as the card reads it from the clock. A failed session that isn't fresh is no
+  // session to the slot, which offers a fresh launch again; fresh by default.
+  sessionFresh?: boolean
   // initial are the choices every launch from here starts with, such as the worktree on
   // for a launch from the Worktrees view; none by default.
   initial?: Partial<Choices>
@@ -178,6 +182,7 @@ export function LaunchControls({
   onSettingsSaved,
   initial,
   running = null,
+  sessionFresh = true,
   variant = 'split',
   outcomeClass = 'col-[2/-1] mt-1.5',
   sessions,
@@ -541,9 +546,11 @@ export function LaunchControls({
   // round, and beside it Show in terminal, or Watch for a background run; once its turn is
   // done, a pill that shows its terminal; once it ended, a pill that opens what it found,
   // the item's sheet, or the run's view for a background run. Waiting on the user or
-  // failed, the card's primary is the way in, and the slot has only the options.
+  // failed today, the card's primary is the way in, and the slot has only the options; a
+  // session that failed longer ago leaves the card to the item's own move, and the slot to
+  // a fresh launch.
   const cardSlot = () => {
-    const session = running
+    const session = running?.state === 'failed' && !sessionFresh ? null : running
 
     if (session === null) {
       return (

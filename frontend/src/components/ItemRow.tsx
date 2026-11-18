@@ -694,6 +694,7 @@ export const ItemRow = memo(function ItemRow({
           onManagePrompts={launch.onManagePrompts}
           onSettingsSaved={launch.onSettingsSaved}
           running={session}
+          sessionFresh={sessionFresh}
           sessions={sessions}
           situation={step.situation}
           outcomeClass={cardOutcomeClass}
