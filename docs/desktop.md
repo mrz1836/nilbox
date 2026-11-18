@@ -1701,8 +1701,8 @@ aside, and what [wakes a snooze early](#waking-a-snooze-early)), cards (the labe
 repositories (the clone root, the other [repository locations](#repository-locations), and the
 [launch defaults](#launch-defaults) for orgs and repositories), [coding agents and
 profiles](#coding-agents-and-profiles), launching (the terminal, the default coding agent, each
-agent's default profile, the default prompt for pull requests and for issues, the worktree
-default, following agent sessions, and whether an agent may sign in with an [API key from your
+agent's default profile, the default prompt for pull requests, for issues, and for each
+situation a pull request can be in, the worktree default, following agent sessions, and whether an agent may sign in with an [API key from your
 shell](#launching-a-session)), trust (the [trusted bots](#outside-contributors)),
 [sensitive files](#sensitive-files), and worktrees (whether to [clean up worktrees after
 merging](#the-worktrees-view), which branches go with them, and protected branches); under
@@ -1849,10 +1849,14 @@ questions at a glance: where it stands, what changed, and what to do next.
   button then merges), **Decide** (a routine's Needs you, in the Autopilot tab), **Show
   terminal** or **Watch** (an agent waiting on you), **What happened** (an agent that failed
   today), or **Unsnooze**, **Restore**, or **Unmute** in the tabs an item is set aside in.
-  Beside it, the agent's: **✦ Claude** to [open a session](#launch-defaults), with its lock
-  when the item [launches read-only](#outside-contributors), and the arrow for the launch
-  options; or, once a session runs, its live state (see
-  [Following a session](#following-a-session)).
+  Beside it, the agent's: **✦ Claude** to [open a session](#launch-defaults), named for its
+  prompt where the card names one: **✦ Fix checks**, **✦ Resolve conflicts**, or **✦ Address
+  review** on your pull request whose checks fail, that conflicts with its base, or that a
+  reviewer asked to change, **✦ Re-review** on a pull request pushed to since your review
+  (each the prompt your [launch defaults](#launch-defaults) choose for that situation), and
+  **✦ Work on it** on an issue. It carries its lock when the item
+  [launches read-only](#outside-contributors), and the arrow for the launch options; or, once
+  a session runs, its live state (see [Following a session](#following-a-session)).
 
 **Hover a card** for its triage over the track: **Show details**, refresh it, snooze it,
 dismiss it, pin or unpin it, and the menu of everything else. They stay while the card is busy
@@ -1944,7 +1948,12 @@ refreshes; a card refresh that fails says why in a toast.
 reader, and **✦ Codex** when the item's settings choose Codex) starts a session with the item's
 [resolved launch settings](#launch-defaults) in one click. The arrow beside it, named for the
 prompt and profile those settings choose (**Launch options: Review · default**), opens the
-launch menu, as does **✦ Claude…** in the card's details:
+launch menu, as does **✦ Claude…** in the card's details. On a card that names a pull
+request's situation, the button starts the prompt your launch defaults choose for it (**Open
+in Claude: Fix checks** to a screen reader), with the settings that prompt brings; the card
+asks for nothing more until its launch menu opens, which then works out that prompt's
+settings once and opens on it, and **Save these choices as the default for** saves a prompt
+chosen there as the prompt for that situation, not for every pull request:
 
 - **Agent:** a switch between Claude and Codex at the top, the one the settings choose marked
   with where it comes from. An agent whose program isn't installed is shown disabled, with why.
@@ -4057,8 +4066,9 @@ or delete; a deleted starter is not added back. **Reset to original** restores a
 starter's title, text, and settings.
 
 **The page.** The library is on the left, grouped by what each prompt is for, with search; a
-star marks the app's defaults, "Default in N places" counts the orgs and repositories that
-use one, and "Used by N routines" the [Autopilot](#autopilot) routines that run it. A prompt a
+star marks the app's defaults, a situation's among them, "Default in N places" counts the
+org and repository defaults that name one, for a kind or a situation, and "Used by N routines"
+the [Autopilot](#autopilot) routines that run it. A prompt a
 routine runs can't be deleted (it says which routine uses it), and renaming one renames it in
 every routine that names it, so a routine never loses its prompt; one that goes anyway, as
 through an import, keeps the routine's runs from starting, saying so. The selected prompt's
@@ -4257,9 +4267,9 @@ alone brings them back from `prompts.json` on the next start.
 
 **Settings → Repositories → Launch defaults** sets what launches use for an org's repositories,
 or for one repository: the coding agent; a profile, a model, and extra flags for each agent; the
-default prompt for pull requests and for issues; and the effort, plan mode, and worktree, which
-every agent shares. Each value can also inherit, and the form shows what it inherits and from
-where. The per-agent values sit on a tab per agent, so a repository can launch on your work
+default prompt for pull requests, for issues, and for each situation a pull request can be in
+(below); and the effort, plan mode, and worktree, which every agent shares. Each value can also
+inherit, and the form shows what it inherits and from where. The per-agent values sit on a tab per agent, so a repository can launch on your work
 account with either agent. The launch menu's **Save these choices as the default for** saves its
 choices for the repository or the whole org in one click, and says when a saved choice won't
 change this item's launches: a setting the chosen prompt sets itself, or, for the org, one the
@@ -4276,7 +4286,7 @@ winning:
 4. its org's launch defaults;
 5. the profile's own settings (model, effort, plan mode);
 6. the app's settings under **Settings → Launching** (the agent's default profile, the prompt
-   for each kind, and the worktree default).
+   for each kind and each situation, and the worktree default).
 
 The effort is shared, so a level only one agent has, such as Codex's `ultra`, is skipped with a
 warning when the other agent launches, and that agent's own default is used.
@@ -4314,7 +4324,12 @@ app's, and with none of those set, the pull request's prompt as above; the setti
 brings follow it. So an org's prompt for pull requests doesn't beat the app's prompt for a
 situation: a review prompt is the wrong one to fix checks with, and an org that wants its own
 sets its own for the situation. The app's prompt for each starts on its starter (Fix checks,
-Resolve conflicts, Address review, Re-review).
+Resolve conflicts, Address review, Re-review). **Settings → Launching** sets it in **Prompt when
+checks fail**, **Prompt when it has conflicts**, **Prompt when changes are requested**, and
+**Prompt when you're asked to review again**, where **Same as pull requests** leaves that
+situation the pull request's prompt. The form above has the same four, each **Inherit** naming
+what it inherits: the org's prompt for the situation, else the app's, else *same as pull
+requests*.
 
 A default that no longer makes sense, such as a profile that was removed or an agent this
 version doesn't know, is skipped with a warning in the launch menu. The outside-contributor rule

@@ -4228,8 +4228,8 @@ action column, its widths the `--card-state` and `--card-actions` properties on 
 which `@max-*` container variants narrow against the list's `@container` (`ListSection`'s and
 `WatchingList`'s `<ul>`). `lib/nextStep.ts` is the pure function that decides what a card puts
 first, the first matching rule winning: its edge, its story (`card/CardStory`), its primary
-verb, whether that is quiet, and the situation that will pick the agent button's prompt
-(`LaunchControls` takes it, and reads nothing of it yet); the row passes it every
+verb, whether that is quiet, and the situation (the generated `launcher.Situation`) that picks
+the agent button's prompt; the row passes it every
 input, and the three that depend on the time (the card's session, whether a failed one is
 fresh, back from a snooze) come from `useNowAs` as primitives, so a clock tick renders no row.
 The state column is `card/StateTrack` over `card/SizeGlyph` for a pull request, or
@@ -4238,7 +4238,16 @@ sentence), and `card/RiskChip` is the one chip for trust and sensitive files.
 `card/CardActions` renders the primary and frames `LaunchControls`' `card` variant, which
 follows the card's session (`cardSession`) and keeps its hold, take-over, and clone dialogs
 mounted; its `column` and `peek` render props keep its outcome a direct child of the row, so it
-spans `col-[3/-1]`, and hand the peek its way to the launch options. The triage
+spans `col-[3/-1]`, and hand the peek its way to the launch options. With the card's
+situation, its launch is named for the situation's prompt as the item's resolution lists it
+(`Resolution.situations`, display only; an issue's is named for its own prompt), and the
+launch request, the launch options' one re-resolve when they open, and their Preview all carry
+the situation with `promptId` 0, so Go resolves that prompt and everything it brings; the card
+itself asks nothing more, since the re-resolve on changed choices fires for a situation only
+while the options show. Save as default writes the situation's field (`withChoices`). The four
+situations' words and fields (the app's `DefaultPrompts` field, the launch defaults' column) are
+one table, `situationInfo` in `lib/launch.ts`, which Settings → Launching, the launch defaults
+form, the prompt library's usage words, and the import dialog read. The triage
 (`TriageControls`' `card` mode, Show details, `ItemMenu`) is absolutely placed in the state
 column's grid area, both lines named, over the end of the body once a narrow list drops the
 column. A stretched toggle, the button right after the title (`absolute inset-0 z-0`,
