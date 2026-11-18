@@ -1829,12 +1829,12 @@ Cards** can make every card one line instead (**Compact cards**, below).
   it on GitHub instead.
 - **Line 2:** the story, one sentence in the edge's color that says why the card is here, such
   as **Your review · checks failing**, **Re-review · back early: 1 new commit**, **2 of 14
-  checks failing**, **Approved · ready to merge**, **Claude needs approval**, or **Merges when
-  green · squash**; in the Snoozed and Dismissed tabs, when it comes back or when it was
-  dismissed. Then the byline: the repository and number, the author (**you** for your own;
-  hover it for your login, and it still filters by the login), why it is yours (**via
-  @team** for a review asked of a team, **assigned** when it is assigned to you, in either
-  list), and how long ago it last changed. Then, only when there is something to say, one
+  checks failing**, **Approved · ready to merge**, **Claude needs approval**, **Waiting on the
+  author · you requested changes**, or **Merges when green · squash**; in the Snoozed and
+  Dismissed tabs, when it comes back or when it was dismissed. Then the byline: the repository
+  and number, the author (**you** for your own; hover it for your login, and it still
+  filters by the login), why it is yours (**via @team** for a review asked of a team,
+  **assigned** when it is assigned to you, in either list), and how long ago it last changed. Then, only when there is something to say, one
   risk chip for who opened it and the [sensitive files](#sensitive-files) it changes (such as
   **Outside · Workflows**, or **Untrusted bot · Not all files checked**; click it for the
   files), the routine's ⚡ chip, and a worktree chip when the item's worktree, as the
@@ -1863,6 +1863,11 @@ Cards** can make every card one line instead (**Compact cards**, below).
   **✦ Work on it** on an issue. It carries its lock when the item
   [launches read-only](#outside-contributors), and the arrow for the launch options; or, once
   a session runs, its live state (see [Following a session](#following-a-session)).
+- **Waiting on the author.** A pull request someone else opened that you requested changes on,
+  assigned to you or asked of you, is the author's move until they push: its story says
+  **Waiting on the author · you requested changes**, then its worst trouble (**you requested
+  changes, conflicts with its base**), in grey, with a quiet **Open** and the agent's plain
+  button. Once the author pushes, it asks for your **Re-review**, assigned to you or not.
 
 **Hover a card** for its triage over the track: **Show details**, refresh it, snooze it,
 dismiss it, pin or unpin it, and the menu of everything else. They stay while the card is busy

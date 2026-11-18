@@ -4316,7 +4316,11 @@ properties on the row, which `@max-*` container variants narrow against the list
 `@container` (`ListSection`'s and `WatchingList`'s `<ul>`). `lib/nextStep.ts` is the pure
 function that decides what a card puts first, the first matching rule winning: its edge, its
 story (`card/CardStory`), its primary verb, whether that is quiet, and the situation (the
-generated `launcher.Situation`) that picks the agent button's prompt; the row passes it every
+generated `launcher.Situation`) that picks the agent button's prompt. A pull request someone
+else opened whose user's own verdict (`Details.viewerVerdict`) requests changes waits on its
+author (`awaiting_author`, quiet, no situation) until the author pushes, and then asks for a
+re-review (`rereview`) before the rules for the user's own pull request can call it theirs to
+fix. The row passes it every
 input, and the three that depend on the time (the card's session, whether a failed one is
 fresh, back from a snooze) come from `useNowAs` as primitives, so a clock tick renders no row.
 The state column is `card/StateTrack` over `card/SizeGlyph` for a pull request, or

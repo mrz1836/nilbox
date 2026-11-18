@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { CardPrefsContext, defaultCardPrefs } from '../lib/cardPrefs'
 import { HiddenLabelsContext, labelMatcher } from '../lib/labels'
 import type { TriageTab } from '../lib/triage'
-import type { InboxItem, RepoRules, Worktree } from '../platform'
+import type { InboxItem, ItemDetails, RepoRules, Worktree } from '../platform'
 import { at } from '../test/clock'
 import {
   agentSession,
@@ -251,6 +251,60 @@ describe('ItemRow', () => {
       screen.getByRole('button', { name: label === 'Claude' ? 'Open in Claude' : `Open in Claude: ${label}` }),
     ).toHaveTextContent(new RegExp(`^${label}$`))
     expect(platform.resolveLaunch).not.toHaveBeenCalled()
+  })
+})
+
+describe('ItemRow waiting on the author', () => {
+  // theirs is someone else's pull request assigned to the user, who requested changes on
+  // it; it conflicts with its base and fails its checks.
+  function theirs(d: Partial<ItemDetails> = {}): InboxItem {
+    return item({
+      assigned: true,
+      author: 'contributor-a',
+      details: details({
+        viewerVerdict: 'changes',
+        mergeable: 'CONFLICTING',
+        checks: { ...details().checks, passed: 10, failed: 2 },
+        reviews: { decision: 'CHANGES_REQUESTED', reviewers: 1, reviewed: 1, approvals: 0, changesRequested: 1 },
+        ...d,
+      }),
+    })
+  }
+
+  // resolution resolves every situation to its own prompt, so the agent's button names
+  // the one the card asks for, if any.
+  const resolution = itemResolution({
+    situations: situationChoices({
+      conflicts: { id: 2, nickname: 'Resolve conflicts', inheritedId: 2 },
+      checks_failing: { id: 3, nickname: 'Fix checks', inheritedId: 3 },
+      changes_requested: { id: 4, nickname: 'Address review', inheritedId: 4 },
+      rereview: { id: 6, nickname: 'Re-review', inheritedId: 6 },
+    }),
+  })
+
+  it('says a pull request waits on its author until the author pushes, with no prompt for the agent', () => {
+    const row = mountCard(theirs(), { resolution })
+
+    expect(row).toHaveAttribute('data-rule', 'awaiting_author')
+    expect(row.querySelector('[data-edge]')).toHaveClass('bg-muted/30')
+    expect(body(row).lastElementChild).toHaveTextContent(
+      /^Waiting on the author · you requested changes, conflicts with its base·acme-org\/example-repo #7 · contributor-a · assigned · 3h$/,
+    )
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveClass('border-border', 'text-text')
+    expect(screen.getByRole('button', { name: 'Open in Claude' })).toHaveTextContent(/^Claude$/)
+    expect(screen.queryByText(/Resolve conflicts|Address review|Fix checks/)).not.toBeInTheDocument()
+  })
+
+  it('asks for a re-review once the author pushed', () => {
+    const row = mountCard(theirs({ pushedSinceReview: true }), { resolution })
+
+    expect(row).toHaveAttribute('data-rule', 'rereview')
+    expect(row.querySelector('[data-edge]')).toHaveClass('bg-accent')
+    expect(body(row).lastElementChild).toHaveTextContent(
+      /^Re-review · conflicts with its base·acme-org\/example-repo #7 · contributor-a · assigned · 3h$/,
+    )
+    expect(screen.getByRole('button', { name: 'Re-review' })).toHaveAttribute('data-verb', 'rereview')
+    expect(screen.getByRole('button', { name: 'Open in Claude: Re-review' })).toBeInTheDocument()
   })
 })
 

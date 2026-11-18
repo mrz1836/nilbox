@@ -45,11 +45,12 @@ export type Rule =
   | 'agent_working'
   | 'loading'
   | 'runs_held'
+  | 'awaiting_author'
+  | 'rereview'
   | 'conflicts'
   | 'checks_failing'
   | 'changes_requested'
   | 'my_draft'
-  | 'rereview'
   | 'review_draft'
   | 'review'
   | 'issue'
@@ -145,6 +146,8 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   const asked = item.reviewRequest !== 'none'
   const isPR = item.kind === 'pr'
   const mine = isPR && !asked && (item.authored || item.assigned)
+  // theirs is a pull request someone else opened, which the user may have reviewed.
+  const theirs = isPR && !item.authored
 
   const step = (rule: Rule, edge: Edge, s: Story, primary: Verb, quiet = false, situation: Situation = ''): Step => ({
     rule,
@@ -172,7 +175,8 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   const ran = passed + failed + pending
   const wake = backFromSnooze ? wakeText(item) : ''
 
-  // worst is a pull request's worst detail, for a review asked of the user.
+  // worst is a pull request's worst detail, for a review asked of the user or one that
+  // waits on its author.
   const worst =
     d.mergeable === 'CONFLICTING'
       ? 'conflicts with its base'
@@ -195,6 +199,23 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
       story(`${counted(d.checks.awaiting, 'run awaits', 'runs await')} your approval`, '', 'clock'),
       'review',
     )
+  }
+
+  // After 6. The user asked the author of someone else's pull request for changes, and
+  // the author hasn't pushed since: nothing is the user's to do until they do.
+  if (theirs && d.viewerVerdict === 'changes' && !d.pushedSinceReview) {
+    const detail = worst === '' ? 'you requested changes' : `you requested changes, ${worst}`
+
+    return step('awaiting_author', 'waiting', story('Waiting on the author', detail, 'dot'), 'open', true)
+  }
+
+  // 11, ahead of 7 to 10. The author pushed since the user asked for changes, on a review
+  // asked of the user or a pull request assigned to them: the user's move is to look again,
+  // not to fix it.
+  if ((asked || theirs) && d.pushedSinceReview) {
+    const text = d.reviewRequestedAgain ? 'Review re-requested' : 'Re-review'
+
+    return step('rereview', 'yours', story(text, worst, 'dot'), 'rereview', false, 'rereview')
   }
 
   // 7 to 10. The user's own pull request, or one assigned to them.
@@ -236,13 +257,7 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
     return step('my_draft', 'yours', story('Draft', 'not marked ready', 'dot'), 'open')
   }
 
-  // 11 to 13. A review asked of the user.
-  if (asked && d.pushedSinceReview) {
-    const text = d.reviewRequestedAgain ? 'Review re-requested' : 'Re-review'
-
-    return step('rereview', 'yours', story(text, worst, 'dot'), 'rereview', false, 'rereview')
-  }
-
+  // 12 and 13. A review asked of the user.
   if (asked && item.isDraft) {
     return step('review_draft', 'waiting', story('Not ready for review', '', 'dot'), 'open', true)
   }

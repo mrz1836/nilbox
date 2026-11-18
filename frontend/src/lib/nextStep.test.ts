@@ -59,6 +59,11 @@ const waitingOnTwo = {
 }
 const woke = { review: 'approved', commits: 2, forcePushed: false, comments: 0, ready: false } as const
 
+// theirs is someone else's pull request assigned to the user, who requested changes on it.
+function theirs(overrides: Partial<InboxItem> = {}, d: Partial<ItemDetails> = {}): InboxItem {
+  return pr({ assigned: true, author: 'contributor-a', ...overrides }, { ...changes, viewerVerdict: 'changes', ...d })
+}
+
 interface Want {
   rule: Step['rule']
   edge: Step['edge']
@@ -247,6 +252,68 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     { rule: 'review', edge: 'yours', text: 'Your review', primary: 'review' },
   ],
 
+  // After 6: the user requested changes on someone else's pull request, not pushed to since.
+  [
+    'after 6 waiting on the author',
+    input({ item: theirs() }),
+    {
+      rule: 'awaiting_author',
+      edge: 'waiting',
+      text: 'Waiting on the author',
+      detail: 'you requested changes',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'after 6 waiting on the author, checks still running',
+    input({ item: theirs({}, running) }),
+    {
+      rule: 'awaiting_author',
+      edge: 'waiting',
+      text: 'Waiting on the author',
+      detail: 'you requested changes, 5 checks still running',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'after 6 waiting on the author, back from snooze',
+    input({ item: theirs(), backFromSnooze: true }),
+    {
+      rule: 'awaiting_author',
+      edge: 'waiting',
+      text: 'Waiting on the author',
+      detail: 'you requested changes, back from snooze',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'after 6 waiting on the author of a review asked of the user',
+    input({ item: asked({ author: 'contributor-a' }, { ...changes, viewerVerdict: 'changes' }) }),
+    {
+      rule: 'awaiting_author',
+      edge: 'waiting',
+      text: 'Waiting on the author',
+      detail: 'you requested changes',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+
+  // 11, ahead of 7 to 10: the author pushed since the user requested changes.
+  [
+    '11 re-review of a pull request assigned to the user',
+    input({ item: theirs({}, { pushedSinceReview: true }) }),
+    { rule: 'rereview', edge: 'yours', text: 'Re-review', primary: 'rereview', situation: 'rereview' },
+  ],
+  [
+    '11 review re-requested on a pull request assigned to the user',
+    input({ item: theirs({}, { pushedSinceReview: true, reviewRequestedAgain: true }) }),
+    { rule: 'rereview', edge: 'yours', text: 'Review re-requested', primary: 'rereview', situation: 'rereview' },
+  ],
+
   // 7: the user's pull request conflicts with its base.
   [
     '7 conflicts',
@@ -350,7 +417,7 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     { rule: 'my_draft', edge: 'yours', text: 'Draft', detail: 'not marked ready', primary: 'open' },
   ],
 
-  // 11 to 13: a review asked of the user.
+  // 11 to 13: a review asked of the user (11 runs ahead of 7, above).
   [
     '11 re-review',
     input({ item: asked({}, { pushedSinceReview: true }) }),
@@ -691,6 +758,123 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     { rule: 'runs_held', edge: 'urgent', text: '2 runs await your approval', icon: 'clock', primary: 'review' },
   ],
   [
+    '6 over waiting on the author',
+    input({
+      item: asked(
+        { author: 'contributor-a' },
+        { viewerVerdict: 'changes', checks: { state: '', passed: 3, failed: 0, pending: 0, skipped: 0, awaiting: 1 } },
+      ),
+    }),
+    { rule: 'runs_held', edge: 'urgent', text: '1 run awaits your approval', icon: 'clock', primary: 'review' },
+  ],
+  [
+    'waiting on the author over 7',
+    input({ item: theirs({}, { mergeable: 'CONFLICTING' }) }),
+    {
+      rule: 'awaiting_author',
+      edge: 'waiting',
+      text: 'Waiting on the author',
+      detail: 'you requested changes, conflicts with its base',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'waiting on the author over 8',
+    input({ item: theirs({}, failing) }),
+    {
+      rule: 'awaiting_author',
+      edge: 'waiting',
+      text: 'Waiting on the author',
+      detail: 'you requested changes, checks failing',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'waiting on the author over 9 and 10',
+    input({ item: theirs({ isDraft: true }) }),
+    {
+      rule: 'awaiting_author',
+      edge: 'waiting',
+      text: 'Waiting on the author',
+      detail: 'you requested changes',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'waiting on the author over 15 and 17',
+    input({ item: theirs({}, { reviews: details().reviews }) }),
+    {
+      rule: 'awaiting_author',
+      edge: 'waiting',
+      text: 'Waiting on the author',
+      detail: 'you requested changes',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'the user’s own pull request never waits on its author',
+    input({ item: mine({}, { ...changes, viewerVerdict: 'changes' }) }),
+    {
+      rule: 'changes_requested',
+      edge: 'yours',
+      text: 'Changes requested',
+      detail: '4 comments',
+      primary: 'open',
+      situation: 'changes_requested',
+    },
+  ],
+  [
+    'an approval of the user’s is no wait on the author',
+    input({ item: pr({ assigned: true, author: 'contributor-a' }, { ...waitingOnTwo, viewerVerdict: 'approved' }) }),
+    { rule: 'assigned_pr', edge: 'yours', text: 'Assigned to you', primary: 'review' },
+  ],
+  [
+    '11 over 7',
+    input({ item: theirs({}, { mergeable: 'CONFLICTING', pushedSinceReview: true }) }),
+    {
+      rule: 'rereview',
+      edge: 'yours',
+      text: 'Re-review',
+      detail: 'conflicts with its base',
+      primary: 'rereview',
+      situation: 'rereview',
+    },
+  ],
+  [
+    '11 over 8 and 9',
+    input({ item: theirs({}, { ...failing, pushedSinceReview: true }) }),
+    {
+      rule: 'rereview',
+      edge: 'yours',
+      text: 'Re-review',
+      detail: 'checks failing',
+      primary: 'rereview',
+      situation: 'rereview',
+    },
+  ],
+  [
+    '11 over 10',
+    input({ item: theirs({ isDraft: true }, { pushedSinceReview: true }) }),
+    { rule: 'rereview', edge: 'yours', text: 'Re-review', primary: 'rereview', situation: 'rereview' },
+  ],
+  [
+    '4 keeps waiting on the author’s quiet primary, and no situation',
+    input({ item: theirs({}, { mergeable: 'CONFLICTING' }), session: session('working') }),
+    {
+      rule: 'agent_working',
+      edge: 'agent',
+      text: 'Claude is on it',
+      detail: 'new worktree',
+      icon: 'ping',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
     '7 over 8',
     input({ item: mine({}, { ...failing, mergeable: 'CONFLICTING' }) }),
     {
@@ -876,6 +1060,40 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     'a failed session older than a day',
     input({ item: mine(), session: session('failed'), sessionFresh: false }),
     { rule: 'ready', edge: 'ready', text: 'Approved · ready to merge', primary: 'merge' },
+  ],
+  [
+    'a pull request assigned to the user, changes requested by the user, conflicting, not pushed to since',
+    input({
+      item: pr(
+        { assigned: true, author: 'contributor-a' },
+        { ...changes, viewerVerdict: 'changes', mergeable: 'CONFLICTING', ...failing },
+      ),
+    }),
+    {
+      rule: 'awaiting_author',
+      edge: 'waiting',
+      text: 'Waiting on the author',
+      detail: 'you requested changes, conflicts with its base',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'the same pull request once its author pushed',
+    input({
+      item: pr(
+        { assigned: true, author: 'contributor-a' },
+        { ...changes, viewerVerdict: 'changes', mergeable: 'CONFLICTING', ...failing, pushedSinceReview: true },
+      ),
+    }),
+    {
+      rule: 'rereview',
+      edge: 'yours',
+      text: 'Re-review',
+      detail: 'conflicts with its base',
+      primary: 'rereview',
+      situation: 'rereview',
+    },
   ],
   [
     'an idle session',
