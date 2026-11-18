@@ -4,7 +4,7 @@ import { launchRequest, type Choices } from '../lib/launchChoices'
 import { terminalNames } from '../lib/terminals'
 import { useDebouncedQuery } from '../lib/useQuery'
 import { counted } from '../lib/format'
-import { previewLaunch, type InboxItem, type LaunchPreview, type WorktreePlan } from '../platform'
+import { previewLaunch, type InboxItem, type LaunchPreview, type Situation, type WorktreePlan } from '../platform'
 import { ChevronRightIcon } from './icons'
 
 export interface LaunchPreviewSectionProps {
@@ -13,6 +13,8 @@ export interface LaunchPreviewSectionProps {
   choices: Choices
   // untrusted marks an outside contributor's item, whose override the choices may set.
   untrusted: boolean
+  // situation is the pull request's situation the launch is for; '' (the default) for none.
+  situation?: Situation
 }
 
 // PreviewState is what the preview shows: the plan still on its way, the plan, or why
@@ -86,14 +88,14 @@ export function PlannedLaunch({ plan }: { plan: Plan }) {
 // LaunchPreviewSection is the launch menu's Preview: on request, it shows exactly what the
 // launch would run, which is the filled-in prompt, the worktree it makes or resumes, where
 // it starts, and the command. It reloads as the choices change.
-export function LaunchPreviewSection({ item, choices, untrusted }: LaunchPreviewSectionProps) {
+export function LaunchPreviewSection({ item, choices, untrusted, situation = '' }: LaunchPreviewSectionProps) {
   const id = useId()
   const [open, setOpen] = useState(false)
   // The plan is asked for again, once the choices rest, while the preview is open. While
   // they rest, the preview shows how the last ask went; once asked, it says it is planning.
   const planned = useDebouncedQuery(
-    () => previewLaunch(launchRequest(item.id, choices, untrusted)),
-    [item.id, choices, untrusted],
+    () => previewLaunch(launchRequest(item.id, choices, untrusted, situation)),
+    [item.id, choices, untrusted, situation],
     120,
     { enabled: open },
   )

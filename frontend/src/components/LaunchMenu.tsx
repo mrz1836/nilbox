@@ -2,7 +2,7 @@ import { useId } from 'react'
 
 import { agentOf, effortLabel, modelLabel, planToggleLabel, promptApplies, sourceLabel } from '../lib/launch'
 import { savableChoices, withAgent, type Choices, type SaveStatus } from '../lib/launchChoices'
-import type { AgentInfo, InboxItem, LaunchSetting, Profile, Prompt, Resolution } from '../platform'
+import type { AgentInfo, InboxItem, LaunchSetting, Profile, Prompt, Resolution, Situation } from '../platform'
 import { buttonClass, primaryButtonClass, quietButtonClass } from './controls'
 import { AlertIcon, StarIcon, TerminalIcon } from './icons'
 import { LaunchPreviewSection } from './LaunchPreviewSection'
@@ -35,6 +35,9 @@ export interface LaunchMenuProps {
   // resolveError says why the settings under the chosen prompt and profile could not be
   // worked out, or ''.
   resolveError: string
+  // situation is the pull request's situation the launch is for, which the preview plans
+  // with; '' (the default) for none.
+  situation?: Situation
   onManagePrompts: () => void
   // onCancel closes the options without launching.
   onCancel: () => void
@@ -83,6 +86,7 @@ export function LaunchMenu({
   status,
   onUndo,
   resolveError,
+  situation = '',
   onManagePrompts,
   onCancel,
 }: LaunchMenuProps) {
@@ -381,7 +385,7 @@ export function LaunchMenu({
           ))}
         </div>
 
-        <LaunchPreviewSection item={item} choices={choices} untrusted={untrusted} />
+        <LaunchPreviewSection item={item} choices={choices} untrusted={untrusted} situation={situation} />
       </div>
 
       <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-2.5">

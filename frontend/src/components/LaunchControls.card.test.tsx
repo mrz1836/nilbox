@@ -1,11 +1,21 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AgentSession } from '../platform'
 import { at } from '../test/clock'
-import { agentSession, agents, item, itemResolution, profile, prompts } from '../test/fixtures'
+import {
+  agentSession,
+  agents,
+  item,
+  itemResolution,
+  launchDefaults,
+  profile,
+  prompts,
+  resolution,
+  situationChoices,
+} from '../test/fixtures'
 import { platform } from '../test/platform'
 import { AutopilotRowsContext } from './autopilot/AutopilotChip'
 import { LaunchControls, type LaunchControlsProps } from './LaunchControls'
@@ -294,5 +304,127 @@ describe('LaunchControls, card variant', () => {
     )
 
     expect(within(screen.getByTestId('peek')).getByRole('button', { name: 'Launch…' })).toBeDisabled()
+  })
+})
+
+// fixChecks is the prompt the launch defaults choose when a pull request's checks fail: the
+// library's Fix checks, the app's.
+const fixChecks = { id: 3, nickname: 'Fix checks', name: 'Fix a pull request’s failing checks', inheritedId: 3 }
+
+// failing is a pull request's resolution whose prompt for failing checks is Fix checks, and
+// for every other situation its own, Review.
+function failing() {
+  return itemResolution({ situations: situationChoices({ checks_failing: fixChecks }) })
+}
+
+describe('LaunchControls, card variant, for a situation', () => {
+  it('names the launch for the situation’s prompt, asking nothing more until it opens', async () => {
+    renderSlot({ situation: 'checks_failing', resolution: failing() })
+
+    const open = screen.getByRole('button', { name: 'Open in Claude: Fix checks' })
+    expect(open).toHaveTextContent(/^Fix checks$/)
+    expect(open).toHaveAttribute('title', 'Open in Claude with “Fix checks” as default')
+    expect(options()).toHaveAccessibleName('Launch options: Fix checks · default')
+    expect(platform.resolveLaunch).not.toHaveBeenCalled()
+
+    await userEvent.click(open)
+
+    expect(platform.launch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ itemId: 1, agent: '', promptId: 0, profile: '', situation: 'checks_failing' }),
+    )
+    expect(platform.resolveLaunch).not.toHaveBeenCalled()
+  })
+
+  it('names a re-review’s launch for its prompt', () => {
+    renderSlot({
+      situation: 'rereview',
+      resolution: itemResolution({
+        situations: situationChoices({ rereview: { id: 6, nickname: 'Re-review', name: 'Re-review a pull request' } }),
+      }),
+    })
+
+    expect(screen.getByRole('button', { name: 'Open in Claude: Re-review' })).toHaveTextContent(/^Re-review$/)
+  })
+
+  it('names an issue’s launch for its prompt, and a pull request’s for the agent', () => {
+    const { unmount } = renderSlot({
+      item: item({ kind: 'issue' }),
+      resolution: itemResolution({
+        kind: 'issue',
+        prompt: { ...resolution().prompt, id: 4, nickname: 'Work on it', name: 'Work on an issue', inheritedId: 4 },
+      }),
+    })
+
+    expect(screen.getByRole('button', { name: 'Open in Claude: Work on it' })).toHaveTextContent(/^Work on it$/)
+    unmount()
+
+    // A situation the resolution doesn't name leaves the launch the agent's.
+    renderSlot({ situation: 'conflicts', resolution: itemResolution({ situations: [] }) })
+
+    expect(screen.getByRole('button', { name: 'Open in Claude' })).toHaveTextContent(/^Claude$/)
+  })
+
+  it('opens the options on the situation’s prompt, resolved once with the settings it brings', async () => {
+    platform.resolveLaunch.mockResolvedValue(
+      resolution({
+        prompt: { ...resolution().prompt, ...fixChecks },
+        model: { value: 'sonnet', source: 'prompt', inherited: 'sonnet', inheritedSource: 'prompt' },
+        effort: { value: 'low', source: 'prompt', inherited: 'low', inheritedSource: 'prompt' },
+      }),
+    )
+    renderSlot({ situation: 'checks_failing', resolution: failing() })
+
+    await userEvent.click(options())
+
+    const dialog = within(screen.getByRole('dialog', { name: 'Launch options' }))
+
+    expect(dialog.getByRole('combobox', { name: 'Prompt' })).toHaveValue('3')
+    expect(dialog.getByRole('option', { name: 'Fix checks · app default' })).toBeInTheDocument()
+    expect(await dialog.findByRole('option', { name: 'Default · Sonnet (prompt)' })).toBeInTheDocument()
+    expect(dialog.getByRole('option', { name: 'Default · Low (prompt)' })).toBeInTheDocument()
+    expect(platform.resolveLaunch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ itemId: 1, agent: '', promptId: 0, profile: '', situation: 'checks_failing' }),
+    )
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Preview' }))
+
+    await waitFor(() => {
+      expect(platform.previewLaunch).toHaveBeenCalledWith(expect.objectContaining({ situation: 'checks_failing' }))
+    })
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(platform.launch).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ promptId: 0, situation: 'checks_failing' }),
+    )
+    expect(platform.resolveLaunch).toHaveBeenCalledOnce()
+  })
+
+  it('saves a prompt chosen for the situation as the situation’s default', async () => {
+    renderSlot({
+      situation: 'checks_failing',
+      resolution: failing(),
+      launchDefaults: [launchDefaults({ name: 'example-repo', profiles: {}, prPromptId: 1 })],
+    })
+
+    await userEvent.click(options())
+
+    const dialog = within(screen.getByRole('dialog', { name: 'Launch options' }))
+
+    await userEvent.selectOptions(dialog.getByRole('combobox', { name: 'Prompt' }), '2')
+    await userEvent.click(dialog.getByRole('button', { name: 'example-repo' }))
+
+    expect(platform.resolveLaunch).toHaveBeenCalledWith(
+      expect.objectContaining({ promptId: 2, situation: 'checks_failing' }),
+    )
+    expect(platform.saveLaunchDefaults).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        owner: 'acme-org',
+        name: 'example-repo',
+        prPromptId: 1,
+        checksPromptId: 2,
+        conflictsPromptId: null,
+      }),
+    )
   })
 })

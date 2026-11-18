@@ -18,6 +18,7 @@ import {
   profile,
   project,
   prompts,
+  situationChoices,
   worktree,
 } from '../test/fixtures'
 import { platform } from '../test/platform'
@@ -212,6 +213,40 @@ describe('ItemRow', () => {
     expect(screen.getByRole('listitem')).toHaveAttribute('data-rule', 'session_needs_you')
     expect(screen.getByText('Codex needs approval')).toBeInTheDocument()
     expect(screen.getByRole('listitem').querySelector('[data-edge]')).toHaveClass('bg-warning')
+  })
+
+  it.each([
+    [
+      'the user’s pull request whose checks fail',
+      item({ authored: true, details: details({ checks: { ...details().checks, passed: 10, failed: 2 } }) }),
+      'checks_failing',
+      'Open',
+      'Fix checks',
+    ],
+    [
+      'a pull request pushed to since the user’s review',
+      asked({ details: details({ pushedSinceReview: true }) }),
+      'rereview',
+      'Re-review',
+      'Re-review',
+    ],
+    ['any other review request', asked(), 'review', 'Review', 'Claude'],
+  ])('names the agent’s button for %s', (_, card, rule, primary, label) => {
+    mountCard(card, {
+      resolution: itemResolution({
+        situations: situationChoices({
+          checks_failing: { id: 3, nickname: 'Fix checks', inheritedId: 3 },
+          rereview: { id: 6, nickname: 'Re-review', inheritedId: 6 },
+        }),
+      }),
+    })
+
+    expect(screen.getByRole('listitem')).toHaveAttribute('data-rule', rule)
+    expect(screen.getByRole('button', { name: primary })).toHaveAttribute('data-verb')
+    expect(
+      screen.getByRole('button', { name: label === 'Claude' ? 'Open in Claude' : `Open in Claude: ${label}` }),
+    ).toHaveTextContent(new RegExp(`^${label}$`))
+    expect(platform.resolveLaunch).not.toHaveBeenCalled()
   })
 })
 

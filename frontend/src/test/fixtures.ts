@@ -129,6 +129,7 @@ import type {
   RemoveResult,
   RepoScripts,
   Resolution,
+  SituationChoice,
   ScriptClone,
   ScriptEntry,
   ScriptInput,
@@ -1889,6 +1890,18 @@ export function resolution(overrides: Partial<Resolution> = {}): Resolution {
     situations: [],
     ...overrides,
   }
+}
+
+// situationChoices are a pull request's prompts for the situations it can be in, as its
+// resolution names them: each the pull request's own (Review, the app's default), as with
+// no situation prompt set, unless prompts names another for it.
+export function situationChoices(
+  prompts: Partial<Record<SituationChoice['situation'], Partial<Resolution['prompt']>>> = {},
+): SituationChoice[] {
+  return (['checks_failing', 'conflicts', 'changes_requested', 'rereview'] as const).map((situation) => ({
+    situation,
+    prompt: { ...resolution().prompt, ...prompts[situation] },
+  }))
 }
 
 export function itemResolution(overrides: Partial<ItemResolution> = {}): ItemResolution {

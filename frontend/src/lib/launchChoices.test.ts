@@ -48,6 +48,10 @@ describe('choices', () => {
     expect(launchRequest(7, c, false).fullAccessOverride).toBe(false)
   })
 
+  it('names the pull request’s situation the launch is for', () => {
+    expect(launchRequest(7, noChoices, false, 'rereview')).toMatchObject({ promptId: 0, situation: 'rereview' })
+  })
+
   it('keeps Fast mode for this launch alone: it is never a default, and goes with the agent', () => {
     const c = { ...noChoices, fast: true }
 
@@ -86,6 +90,25 @@ describe('launch defaults', () => {
         'claude',
       ),
     ).toEqual({ ...base, issuePromptId: 4, profiles: { claude: 'alt' }, effort: 'low', planMode: true })
+  })
+
+  it.each([
+    ['checks_failing', 'checksPromptId'],
+    ['conflicts', 'conflictsPromptId'],
+    ['changes_requested', 'changesPromptId'],
+    ['rereview', 'rereviewPromptId'],
+  ] as const)('saves a prompt chosen for the %s situation as its prompt, not the kind’s', (situation, field) => {
+    const base = defaultsInput(launchDefaults({ prPromptId: 1 }))
+
+    expect(withChoices(base, { ...noChoices, promptId: 3 }, 'pr', 'claude', situation)).toEqual({
+      ...base,
+      [field]: 3,
+    })
+    // An issue has no situation: its prompt is the kind's.
+    expect(withChoices(base, { ...noChoices, promptId: 4 }, 'issue', 'claude', situation)).toEqual({
+      ...base,
+      issuePromptId: 4,
+    })
   })
 
   it('saves the agent chosen, with the profile and model as that agent’s own', () => {

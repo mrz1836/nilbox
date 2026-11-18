@@ -2,7 +2,6 @@ import { useId, useState, type MouseEvent, type ReactNode } from 'react'
 
 import { attempt } from '../lib/call'
 import { agentName as agentLabel } from '../lib/launch'
-import type { Situation } from '../lib/nextStep'
 import { sinceWhen, stateLabel, stateText } from '../lib/sessions'
 import { formatAge } from '../lib/time'
 import {
@@ -48,6 +47,7 @@ import {
   type Prompt,
   type Resolution,
   type Settings,
+  type Situation,
 } from '../platform'
 import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
 import { TakeOverDialog } from './autopilot/TakeOverDialog'
@@ -92,8 +92,9 @@ export interface LaunchControlsProps {
   // variant is how the launch shows: the split button (split, the default), or a Signal
   // card's agent slot (card), which follows the card's session.
   variant?: 'split' | 'card'
-  // situation is the card's situation (nextStep), which picks the launch default's prompt
-  // the card's agent button runs. Nothing reads it yet: the situation prompts come next.
+  // situation is the card's situation (nextStep): a pull request's, whose launch defaults'
+  // prompt the card's agent button runs and is named for, and the launch options open on;
+  // '' (the default) for the item's own prompt.
   situation?: Situation
   // outcomeClass places the launch's outcome in the grid it renders into: by default under
   // the row's content, to its right edge.
@@ -184,6 +185,7 @@ export function LaunchControls({
   running = null,
   sessionFresh = true,
   variant = 'split',
+  situation = '',
   outcomeClass = 'col-[2/-1] mt-1.5',
   sessions,
   onOpen,
@@ -212,31 +214,44 @@ export function LaunchControls({
   const untrusted = !item.trusted
   const problem = resolution?.problem ?? ''
   const chosen = choices.agent !== '' || choices.promptId !== 0 || choices.profile !== ''
-  const key = `${choices.agent}:${String(choices.promptId)}:${choices.profile}`
-  // Re-resolve under the chosen agent, prompt, and profile, so every other setting's
-  // default (a prompt's model, a profile's effort) is shown as it would really apply. The
-  // answer carries the resolution it was made over and the choices it was made for, so one
-  // made for anything else never shows.
+  // situationPrompt is the prompt for the card's situation, as the item's resolution names
+  // it, only to name the launch: the launch, and the launch options, resolve it again with
+  // the settings it brings.
+  const situationPrompt =
+    situation === '' ? undefined : resolution?.situations.find((s) => s.situation === situation)?.prompt
+  // asking: the choices differ from the item's settings, or the card names a situation
+  // while the launch options show, whose prompt brings settings of its own. A card asks
+  // nothing for its situation alone until its options open.
+  const asking = chosen || (situation !== '' && open)
+  const key = `${choices.agent}:${String(choices.promptId)}:${choices.profile}:${situation}`
+  // Re-resolve under the situation and the chosen agent, prompt, and profile, so every other
+  // setting's default (a prompt's model, a profile's effort) is shown as it would really
+  // apply. The answer carries the resolution it was made over and the choices it was made
+  // for, so one made for anything else never shows.
   const reresolved = useQuery(
     () =>
       resolveLaunch({
-        ...launchRequest(item.id, noChoices, false),
+        ...launchRequest(item.id, noChoices, false, situation),
         agent: choices.agent,
         promptId: choices.promptId,
         profile: choices.profile,
       }).then((value) => ({ base: resolution, key, value })),
     [item.id, resolution, problem, key],
-    { enabled: resolution !== null && problem === '' && chosen },
+    { enabled: resolution !== null && problem === '' && asking },
   )
   // failed is a latest request, made for these choices, that was refused; the settings
   // under them are then unknown, whatever an earlier answer said.
-  const failed = chosen && !reresolved.pending && reresolved.error !== ''
+  const failed = asking && !reresolved.pending && reresolved.error !== ''
   const answer = reresolved.data
-  const resolved = chosen && !failed && answer?.base === resolution && answer.key === key ? answer.value : null
+  const resolved = asking && !failed && answer?.base === resolution && answer.key === key ? answer.value : null
   // resolveError says why the settings under the chosen prompt and profile could not be
   // worked out.
   const resolveError = failed ? reresolved.error : ''
-  const base: Resolution | null = resolution === null || problem !== '' ? null : (resolved ?? resolution)
+  // shown is the item's resolution as the launch names it until resolved again: with the
+  // situation's prompt in place of the item's own.
+  const shown =
+    situationPrompt === undefined || resolution === null ? resolution : { ...resolution, prompt: situationPrompt }
+  const base: Resolution | null = shown === null || problem !== '' ? null : (resolved ?? shown)
   // changed reports a choice that differs from where launches from here start.
   const changed = hasChoices(choices) && JSON.stringify(choices) !== JSON.stringify(start)
   // agentName names the agent the button starts: the one chosen for this launch, else the
@@ -301,7 +316,7 @@ export function LaunchControls({
 
   const launchNow = () => {
     close()
-    void run(launchRequest(item.id, choices, untrusted))
+    void run(launchRequest(item.id, choices, untrusted, situation))
   }
 
   // showTerminal brings a running session's terminal tab forward, saying why when it
@@ -404,6 +419,7 @@ export function LaunchControls({
       choices,
       item.kind,
       base.agent.id,
+      situation,
     )
     const target = scope === 'org' ? `every ${base.owner} repository` : base.repo
     const report = saveStatus(target, base.prompt.nickname, base.repo, shadowedChoices(choices, base, scope))
@@ -443,6 +459,9 @@ export function LaunchControls({
       ? (base?.prompt.nickname ?? '')
       : (prompts.find((p) => p.id === choices.promptId)?.nickname ?? '')
   const profileName = choices.profile === '' ? (base?.profile.value ?? '') : choices.profile
+  // nickname names the card's launch by its prompt: the situation's, or an issue's (Work on
+  // it); '' for a pull request's own, which the agent's name stands for.
+  const nickname = situationPrompt !== undefined || item.kind === 'issue' ? promptName : ''
   const chip = problem !== '' ? 'No prompt' : base === null ? '…' : `${promptName} · ${profileName}`
 
   const launchTitle =
@@ -507,6 +526,7 @@ export function LaunchControls({
                 }
           }
           resolveError={resolveError}
+          situation={situation}
           onManagePrompts={() => {
             close()
             onManagePrompts()
@@ -541,11 +561,12 @@ export function LaunchControls({
   )
 
   // cardSlot is the card's agent slot, by the card's session: with none, the launch, as one
-  // split control (the agent's name, and the options); while one starts or works, a pill
-  // with its state and age that opens the item's sessions, its border running slowly
-  // round, and beside it Show in terminal, or Watch for a background run; once its turn is
-  // done, a pill that shows its terminal; once it ended, a pill that opens what it found,
-  // the item's sheet, or the run's view for a background run. Waiting on the user or
+  // split control (its prompt's nickname for a situation or an issue, else the agent's
+  // name, and the options); while one starts or works, a pill with its state and age that
+  // opens the item's sessions, its border running slowly round, and beside it Show in
+  // terminal, or Watch for a background run; once its turn is done, a pill that shows its
+  // terminal; once it ended, a pill that opens what it found, the item's sheet, or the
+  // run's view for a background run. Waiting on the user or
   // failed today, the card's primary is the way in, and the slot has only the options; a
   // session that failed longer ago leaves the card to the item's own move, and the slot to
   // a fresh launch.
@@ -561,7 +582,9 @@ export function LaunchControls({
             type="button"
             disabled={busy || base === null}
             onClick={launchNow}
-            aria-label={agentName === '' ? 'Open in the agent' : openLabel}
+            aria-label={
+              agentName === '' ? 'Open in the agent' : nickname === '' ? openLabel : `${openLabel}: ${nickname}`
+            }
             title={launchTitle}
             className="inline-flex items-center gap-1.5 rounded-l-lg pr-1.75 pl-2.25 font-semibold text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
           >
@@ -571,9 +594,11 @@ export function LaunchControls({
                 ? 'Opening…'
                 : state.kind === 'cloning'
                   ? 'Cloning…'
-                  : agentName === ''
-                    ? 'Agent'
-                    : agentName}
+                  : nickname !== ''
+                    ? nickname
+                    : agentName === ''
+                      ? 'Agent'
+                      : agentName}
             </span>
             {untrusted && (
               <span title="Launches read-only: an outside contributor’s" className="inline-flex">
