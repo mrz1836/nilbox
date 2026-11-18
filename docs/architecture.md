@@ -702,12 +702,18 @@ again on the next visit. (An item with watch rows or local state is never pruned
 **Held workflow runs** (migration `0023_checks_awaiting_on_github`). A details read stores
 the runs GitHub holds for approval apart (`github.Checks`): `item_details.checks_awaiting`
 counts those the user can approve from the review sheet, and `checks_awaiting_on_github` those
-GitHub approves only on its site; the snapshot's `Checks.Awaiting` and `AwaitingOnGitHub` carry
-them to the card, whose **{n} run(s) await your approval** (rule 6) counts the first alone, while
-its track marks both held and says the second as **{n} workflow run(s) waiting for approval on
-GitHub**. A routine's facts count both (`checks.awaitingApproval`), since either way the checks
-haven't all run. A row stored before the migration counts every held run as approvable until
-the next whole refresh reads its details again.
+GitHub approves only on its site. The snapshot's `Checks.Awaiting` carries the first to the
+card, whose **{n} run(s) await your approval** (rule 6) counts it; `AwaitingOnGitHub` carries
+the second only while the stored `merge_state` (GitHub's `mergeStateStatus`, which the details
+already read) is `BLOCKED`, when one may be what blocks the merge, and its track then marks it
+held and says **{n} workflow run(s) waiting for approval on GitHub**. Otherwise such a run
+counts toward nothing: it waits on something the app can't do, and often never runs at all
+(a workflow a review starts on every fork's pull request), so its checks read as they are,
+its worst detail and rule 15 never see it, and a fork's approved pull request whose only held
+run is one a review started reads **Approved · ready to merge**. A routine's facts count every
+held run (`checks.awaitingApproval`), since either way the checks haven't all run. A row stored
+before the migration counts every held run as approvable until the next whole refresh reads
+its details again.
 
 **The reads for Autopilot.** The bound Service adds only `ItemsByID`, the rows of a routine's
 Watching list (listed and watched items alike, as a snapshot shows them). Everything else is
@@ -1099,7 +1105,13 @@ warning, when the pull request changes workflow files. A run GitHub approves onl
 (`Unrun.OnGitHub`, from `github.UnrunSuite.OnGitHub`; see internal/github) is never offered
 (`Facts.OnGitHub`): the bar lists it apart as waiting for approval on GitHub, with **Open on
 GitHub** (the run's page, or the pull request's checks for several) and no button, and an
-approval names only the others. Should GitHub still refuse one for what it is
+approval names only the others. A held run that doesn't count (`Unrun.Ignored`, marked as the sheet is built,
+by `Open`, `Refresh`, and `Act` alike: one GitHub approves only on its site, unless the merge
+state the sheet read is `BLOCKED`, when one may be what blocks it) is left out of the
+readiness (an UNSTABLE pull request whose only unpassing statuses are such runs reads **Ready
+to merge**) and not in the bar: the checks list names it quietly, a line a run (**{workflow}
+· held on GitHub · Open on GitHub**). A merge's warning still says every held run, since
+GitHub still counts it. Should GitHub still refuse one for what it is
 (`github.ErrRunNotApprovable`), `Act` remembers its run ID for as long as the app runs
 (`Service.onGitHub`, in memory, never stored; `markOnGitHub` applies it to every cache the
 sheet loads, over any read since), never sends it again, and goes on with the rest; with none

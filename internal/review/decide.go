@@ -106,6 +106,10 @@ type Facts struct {
 	OnGitHub   int
 	Approvable int
 
+	// Ignored counts the runs awaiting approval that don't count toward where the pull
+	// request stands (Unrun.Ignored), which the readiness leaves out.
+	Ignored int
+
 	// Sensitive names the sensitive categories of danger level the pull request changes,
 	// as in "Workflows", and ChangesWorkflows reports that the workflows category is among
 	// them: runs approved would use the pull request's own versions of those files.
@@ -717,7 +721,7 @@ func readiness(f Facts) Readiness {
 		r.State, r.Sentence = ReadyBehind, "Behind "+base(f)
 	case f.AutoMergeOn:
 		r.State, r.Sentence = ReadyAutoMerge, "Auto-merge is on"+waitingOn(needs)
-	case github.Mergeable(f.MergeState):
+	case mergesClean(f):
 		r.State, r.Sentence = ReadyMerge, "Ready to merge"
 	case f.MergeState == github.MergeStateUnstable:
 		r.State, r.Sentence = ReadyUnstable, "Ready to merge · "+unstableNote(f)
@@ -740,10 +744,30 @@ func optionalPending(f Facts) int {
 	return max(f.Pending-f.RequiredPending, 0)
 }
 
+// mergesClean reports a pull request GitHub would merge with nothing to say: one it calls
+// mergeable now, or UNSTABLE only for held runs that don't count (Facts.Ignored).
+func mergesClean(f Facts) bool {
+	if github.Mergeable(f.MergeState) {
+		return true
+	}
+
+	return f.MergeState == github.MergeStateUnstable && f.Ignored > 0 && len(unstableParts(f)) == 0
+}
+
 // unstableNote says what keeps a pull request GitHub would merge from passing, as in "1
 // optional check failing · 3 workflow runs awaiting approval", or, when nothing the sheet
-// read says, that a status isn't passing.
+// read says, that a status isn't passing. Held runs that don't count go unsaid.
 func unstableNote(f Facts) string {
+	parts := unstableParts(f)
+	if len(parts) == 0 {
+		return "a status isn't passing"
+	}
+
+	return strings.Join(parts, " · ")
+}
+
+// unstableParts are what unstableNote says, each a part.
+func unstableParts(f Facts) []string {
 	var parts []string
 
 	if n := optionalFailing(f); n > 0 {
@@ -754,9 +778,8 @@ func unstableNote(f Facts) string {
 		parts = append(parts, textutil.Counted(n, "optional check running", "optional checks running"))
 	}
 
-	if f.AwaitingApproval > 0 {
-		parts = append(parts, textutil.Counted(f.AwaitingApproval, "workflow run awaiting approval",
-			"workflow runs awaiting approval"))
+	if n := f.AwaitingApproval - f.Ignored; n > 0 {
+		parts = append(parts, textutil.Counted(n, "workflow run awaiting approval", "workflow runs awaiting approval"))
 	}
 
 	if f.NotStarted > 0 {
@@ -764,11 +787,7 @@ func unstableNote(f Facts) string {
 			"workflow runs that didn't start"))
 	}
 
-	if len(parts) == 0 {
-		return "a status isn't passing"
-	}
-
-	return strings.Join(parts, " · ")
+	return parts
 }
 
 // unstableWarning is unstableNote as the warning a merge asks the user to accept, a sentence

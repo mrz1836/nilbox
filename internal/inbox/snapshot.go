@@ -362,7 +362,9 @@ type Checks struct {
 	Awaiting int `json:"awaiting"`
 
 	// AwaitingOnGitHub counts the held runs GitHub approves only on its site, which State
-	// and the other counts leave out too (github.Checks.AwaitingOnGitHub).
+	// and the other counts leave out too (github.Checks.AwaitingOnGitHub), only while GitHub
+	// reports the merge blocked, when one may be what blocks it: otherwise one waits on
+	// something the app can't do, and often never runs at all.
 	AwaitingOnGitHub int `json:"awaitingOnGitHub"`
 }
 
@@ -624,14 +626,18 @@ type itemRow struct {
 	ChecksAwaiting         int
 	ChecksAwaitingOnGitHub int
 	ReviewDecision         string
-	Reviewers              int
-	Reviewed               int
-	Approvals              int
-	ChangesRequested       int
-	SubIssues              SubIssues
-	DetailsFetchedAt       *time.Time
-	HeadOID                string
-	AutoMerge              string
+
+	// MergeState is GitHub's mergeStateStatus as the details read it, "" before they did.
+	MergeState string
+
+	Reviewers        int
+	Reviewed         int
+	Approvals        int
+	ChangesRequested int
+	SubIssues        SubIssues
+	DetailsFetchedAt *time.Time
+	HeadOID          string
+	AutoMerge        string
 
 	// ReviewUsers and ReviewTeams are who a pull request asks to review: the logins of
 	// the people and the slugs of the teams. Both are nil until a refresh reads them.
@@ -698,6 +704,7 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		ChecksFailed: int(store.Deref(r.ChecksFailed)), ChecksPending: int(store.Deref(r.ChecksPending)),
 		ChecksSkipped: int(store.Deref(r.ChecksSkipped)), ChecksAwaiting: int(store.Deref(r.ChecksAwaiting)),
 		ChecksAwaitingOnGitHub: int(store.Deref(r.ChecksAwaitingOnGithub)),
+		MergeState:             store.Deref(r.MergeState),
 		ReviewDecision:         store.Deref(r.ReviewDecision), Reviewers: int(store.Deref(r.Reviewers)),
 		Reviewed:  int(store.Deref(r.Reviewed)),
 		Approvals: int(store.Deref(r.Approvals)), ChangesRequested: int(store.Deref(r.ChangesRequested)),
@@ -844,7 +851,8 @@ func decodeReasons(raw *string) *snooze.Reasons {
 }
 
 // details converts the row's details, or nil when no refresh has read them, telling whether
-// the pull request asks viewer to review it again after a push.
+// the pull request asks viewer to review it again after a push, and counting a held run GitHub
+// approves only on its site only while GitHub reports the merge blocked.
 func (r *itemRow) details(viewer string) *Details {
 	if !r.HasDetails {
 		return nil
@@ -867,6 +875,11 @@ func (r *itemRow) details(viewer string) *Details {
 		verdict = viewerVerdict(r.ViewerReviewState)
 	}
 
+	onGitHub := 0
+	if r.MergeState == github.MergeStateBlocked {
+		onGitHub = r.ChecksAwaitingOnGitHub
+	}
+
 	return &Details{
 		Labels:       labels,
 		Projects:     projects,
@@ -878,8 +891,7 @@ func (r *itemRow) details(viewer string) *Details {
 		Mergeable:    r.Mergeable,
 		Checks: Checks{
 			State: r.ChecksState, Passed: r.ChecksPassed, Failed: r.ChecksFailed,
-			Pending: r.ChecksPending, Skipped: r.ChecksSkipped, Awaiting: r.ChecksAwaiting,
-			AwaitingOnGitHub: r.ChecksAwaitingOnGitHub,
+			Pending: r.ChecksPending, Skipped: r.ChecksSkipped, Awaiting: r.ChecksAwaiting, AwaitingOnGitHub: onGitHub,
 		},
 		Reviews: Reviews{
 			Decision: r.ReviewDecision, Reviewers: r.Reviewers, Reviewed: r.Reviewed,

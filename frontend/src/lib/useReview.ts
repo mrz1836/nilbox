@@ -76,13 +76,20 @@ interface Follow extends Retries {
 }
 
 // approvableRuns are a pull request's workflow runs waiting for an approval the sheet can
-// give, and onGitHubRuns those waiting for one GitHub takes only on its site.
+// give, onGitHubRuns those waiting for one GitHub takes only on its site that still count,
+// as they do while GitHub reports the merge blocked, and ignoredRuns those waiting for
+// approval that don't count toward where it stands (a workflow the user ignores, or one
+// GitHub approves only on its site), which the backend marks.
 export function approvableRuns(review: Review): ReviewUnrun[] {
-  return review.unrun.filter((u) => u.approval && !u.onGitHub)
+  return review.unrun.filter((u) => u.approval && !u.onGitHub && !u.ignored)
 }
 
 export function onGitHubRuns(review: Review): ReviewUnrun[] {
-  return review.unrun.filter((u) => u.approval && u.onGitHub)
+  return review.unrun.filter((u) => u.approval && u.onGitHub && !u.ignored)
+}
+
+export function ignoredRuns(review: Review): ReviewUnrun[] {
+  return review.unrun.filter((u) => u.approval && u.ignored)
 }
 
 // heldRuns counts a pull request's workflow runs waiting for an approval the sheet can give.

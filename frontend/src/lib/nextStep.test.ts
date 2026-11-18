@@ -347,7 +347,7 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     },
   ],
   [
-    'approved by you, its runs held only for approval on GitHub',
+    'approved by you, its runs held only for approval on GitHub while GitHub reports the merge blocked',
     input({
       item: approved(
         {},
@@ -355,6 +355,32 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
       ),
     }),
     { rule: 'approved_by_you', edge: 'waiting', text: 'Approved by you', primary: 'open', quiet: true },
+  ],
+  [
+    // The owner's case: a fork's pull request assigned to the user, approved, 23 checks
+    // passed, and the one run GitHub holds on its site, which the backend no longer counts.
+    '15 approved by you, its only held run held on GitHub and not counted',
+    input({
+      item: approved(
+        { isCrossRepository: true },
+        {
+          checks: { state: 'SUCCESS', passed: 23, failed: 0, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
+        },
+      ),
+    }),
+    { rule: 'ready', edge: 'ready', text: 'Approved · ready to merge', primary: 'merge' },
+  ],
+  [
+    'a review asked of the user, its only held run not counted, has no worst detail of it',
+    input({
+      item: asked(
+        {},
+        {
+          checks: { state: 'SUCCESS', passed: 23, failed: 0, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
+        },
+      ),
+    }),
+    { rule: 'review', edge: 'yours', text: 'Your review', primary: 'review' },
   ],
 
   // After 6: the user requested changes on someone else's pull request, not pushed to since.

@@ -151,6 +151,7 @@ func (s *Service) loadAct(ctx context.Context, req ActRequest) (StoredPull, *cac
 	}
 
 	s.markOnGitHub(c)
+	markIgnored(c)
 
 	switch {
 	case c == nil:

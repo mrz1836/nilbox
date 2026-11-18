@@ -159,6 +159,7 @@ describe('ReviewSummary', () => {
               name: 'PR Management',
               approval: true,
               onGitHub: false,
+              ignored: false,
               runId: 106,
               url: 'https://example.test/runs/106',
             },
@@ -166,6 +167,7 @@ describe('ReviewSummary', () => {
               name: 'Auto-merge Trigger',
               approval: true,
               onGitHub: false,
+              ignored: false,
               runId: 107,
               url: 'https://example.test/runs/107',
             },
@@ -173,14 +175,16 @@ describe('ReviewSummary', () => {
               name: 'Auto-merge Trigger',
               approval: true,
               onGitHub: false,
+              ignored: false,
               runId: 108,
               url: 'https://example.test/runs/108',
             },
-            { name: 'Auto-merge Trigger', approval: false, onGitHub: false, runId: 0, url: '' },
+            { name: 'Auto-merge Trigger', approval: false, onGitHub: false, ignored: false, runId: 0, url: '' },
             {
               name: 'Review Trigger',
               approval: true,
               onGitHub: true,
+              ignored: false,
               runId: 109,
               url: 'https://example.test/runs/109',
             },
@@ -203,7 +207,10 @@ describe('ReviewSummary', () => {
 
     rerender(
       <ReviewSummary
-        review={review({ checks: [], unrun: [{ name: '', approval: false, onGitHub: false, runId: 0, url: '' }] })}
+        review={review({
+          checks: [],
+          unrun: [{ name: '', approval: false, onGitHub: false, ignored: false, runId: 0, url: '' }],
+        })}
         item={undefined}
       />,
     )
@@ -225,18 +232,20 @@ describe('ReviewSummary', () => {
               name: 'PR Management',
               approval: true,
               onGitHub: false,
+              ignored: false,
               runId: 106,
               url: 'https://example.test/runs/106',
             },
-            { name: 'Auto-merge Trigger', approval: true, onGitHub: false, runId: 0, url: '' },
+            { name: 'Auto-merge Trigger', approval: true, onGitHub: false, ignored: false, runId: 0, url: '' },
             {
               name: 'Auto-merge Trigger',
               approval: true,
               onGitHub: false,
+              ignored: false,
               runId: 108,
               url: 'https://example.test/runs/108',
             },
-            { name: 'Example CI', approval: false, onGitHub: false, runId: 0, url: '' },
+            { name: 'Example CI', approval: false, onGitHub: false, ignored: false, runId: 0, url: '' },
           ],
         })}
         item={undefined}

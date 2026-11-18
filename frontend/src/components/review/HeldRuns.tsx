@@ -21,12 +21,14 @@ export interface HeldRunsProps {
 // HeldRuns is the bar under the sheet's header while GitHub holds an open pull request's
 // workflow runs for a maintainer's approval, as it does a fork's: it names them, each a
 // link to its run's page on GitHub, beside the button that approves them, or why the user
-// can't. Runs GitHub approves only on its site (a run a review started in the base
-// repository, say) are named apart, as waiting for approval on GitHub, with a link there
-// and no button. Once the sheet approved them, it says what GitHub made of it while the
-// sheet waits for their checks to start, and names any run still held. GitHub otherwise
-// counts the runs as not passing though no check shows them, and the inbox's card can read
-// as passed.
+// can't. Runs GitHub approves only on its site (a run
+// a review started in the base repository, say) show here only while GitHub reports the
+// merge blocked, when they may be what blocks it: named apart, as waiting for approval on
+// GitHub, with a link there and no button. Runs that don't count (ignoredRuns) never show
+// here; the checks list names them quietly. Once the sheet approved them, it says what
+// GitHub made of it while the sheet waits for their checks to start, and names any run
+// still held. GitHub otherwise counts the runs as not passing though no check shows them,
+// and the inbox's card can read as passed.
 export function HeldRuns({ review, notice, following, error, busy, onApprove }: HeldRunsProps) {
   const held = following ? [] : approvableRuns(review)
   const elsewhere = following ? [] : onGitHubRuns(review)
@@ -74,6 +76,11 @@ export function HeldRuns({ review, notice, following, error, busy, onApprove }: 
             >
               <ExternalIcon className="size-3" /> Open on GitHub
             </button>
+          </p>
+        )}
+        {elsewhere.length > 0 && (
+          <p className="text-xs">
+            GitHub reports the merge blocked, so {elsewhere.length === 1 ? 'it' : 'they'} may be what holds it back.
           </p>
         )}
         {error !== '' && (

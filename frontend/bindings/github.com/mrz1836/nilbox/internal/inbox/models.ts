@@ -66,7 +66,9 @@ export interface Checks {
 
     /**
      * AwaitingOnGitHub counts the held runs GitHub approves only on its site, which State
-     * and the other counts leave out too (github.Checks.AwaitingOnGitHub).
+     * and the other counts leave out too (github.Checks.AwaitingOnGitHub), only while GitHub
+     * reports the merge blocked, when one may be what blocks it: otherwise one waits on
+     * something the app can't do, and often never runs at all.
      */
     "awaitingOnGitHub": number;
 }

@@ -1616,8 +1616,8 @@ func TestRefreshStoresTheRunsHeldForApproval(t *testing.T) {
 
 	first := itemByNumber(t, snap.ReviewRequested, 1)
 	require.NotNil(t, first.Details)
-	assert.Equal(t, Checks{State: "SUCCESS", Passed: 1, Awaiting: 4, AwaitingOnGitHub: 1}, first.Details.Checks,
-		"the runs the user can approve apart from those approved on GitHub")
+	assert.Equal(t, Checks{State: "SUCCESS", Passed: 1, Awaiting: 4}, first.Details.Checks,
+		"the runs the user can approve count, and the one approved on GitHub doesn't")
 
 	stored, err := NewStore(h.pool, h.clock).ReviewItem(t.Context(), first.ID)
 	require.NoError(t, err)

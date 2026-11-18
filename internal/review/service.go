@@ -419,6 +419,19 @@ func (s *Service) markOnGitHub(c *cached) {
 	}
 }
 
+// markIgnored marks the held runs of the cache c that don't count toward where the pull
+// request stands: those GitHub approves only on its site, unless the merge state the cache
+// read is BLOCKED, when one may be what blocks it. c may be nil.
+func markIgnored(c *cached) {
+	if c == nil {
+		return
+	}
+
+	for i, u := range c.context.Unrun {
+		c.context.Unrun[i].Ignored = u.Approval && u.OnGitHub && c.context.MergeState != github.MergeStateBlocked
+	}
+}
+
 // refresh reads the pull request with id, skipping one read recently unless force is set,
 // and returns it as Open builds it, or, when the read found it merged or closed, as the
 // read found it (ended).
@@ -456,6 +469,7 @@ func (s *Service) open(ctx context.Context, id, budget int64, visit bool) (Revie
 	}
 
 	s.markOnGitHub(c)
+	markIgnored(c)
 
 	return s.built(ctx, pull, c)
 }
@@ -907,21 +921,28 @@ func factsOf(pull StoredPull, c *cached, r Review) Facts {
 }
 
 // countUnrun counts the workflow runs that ended without a check into f: those awaiting
-// approval, those of them GitHub approves only on its site, those an approval can name (a
-// run ID read, and approved from the sheet), and those that failed to start.
+// approval, those of them GitHub approves only on its site, those that don't count
+// (Ignored), those an approval can name (a run ID read, and approved from the sheet), and
+// those that failed to start.
 func (f *Facts) countUnrun(unrun []Unrun) {
 	for _, u := range unrun {
-		switch {
-		case u.Approval && u.OnGitHub:
-			f.AwaitingApproval++
-			f.OnGitHub++
-		case u.Approval && u.RunID > 0:
-			f.AwaitingApproval++
-			f.Approvable++
-		case u.Approval:
-			f.AwaitingApproval++
-		default:
+		if !u.Approval {
 			f.NotStarted++
+
+			continue
+		}
+
+		f.AwaitingApproval++
+
+		if u.Ignored {
+			f.Ignored++
+		}
+
+		switch {
+		case u.OnGitHub:
+			f.OnGitHub++
+		case u.RunID > 0:
+			f.Approvable++
 		}
 	}
 }

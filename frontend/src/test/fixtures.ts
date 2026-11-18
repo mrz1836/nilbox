@@ -2690,13 +2690,20 @@ export function heldRun(name: string, id: number): ReviewUnrun {
     onGitHub: false,
     runId: id,
     url: `https://github.com/acme-org/example-repo/actions/runs/${String(id)}`,
+    ignored: false,
   }
 }
 
 // heldOnGitHub is a workflow run named name, with the ID id, waiting for an approval GitHub
-// takes only on its site, as a run a review started in the base repository does.
+// takes only on its site, as a run a review started in the base repository does. It doesn't
+// count toward where the pull request stands (ignored), as the backend marks it while GitHub
+// doesn't report the merge blocked; blockedOnGitHub is the same run while GitHub does.
 export function heldOnGitHub(name: string, id: number): ReviewUnrun {
-  return { ...heldRun(name, id), onGitHub: true }
+  return { ...heldRun(name, id), onGitHub: true, ignored: true }
+}
+
+export function blockedOnGitHub(name: string, id: number): ReviewUnrun {
+  return { ...heldOnGitHub(name, id), ignored: false }
 }
 
 // review is pull request #7 as the review sheet shows it, read from GitHub: ready to
