@@ -93,6 +93,7 @@ func FuzzChangesGitHub(f *testing.F) {
 	for _, seed := range []string{
 		"gh pr review 12 --approve", "git push", "/bin/zsh -lc 'gh pr merge 12'", "echo gh pr merge",
 		"gh api graphql -f query='mutation { x }'", "timeout 30 gh issue close 7", "sh -c 'sh -c \"git push\"'",
+		`sh -c 'sh -c g"it push"'`,
 	} {
 		f.Add(seed)
 	}
@@ -100,9 +101,13 @@ func FuzzChangesGitHub(f *testing.F) {
 	f.Fuzz(func(t *testing.T, line string) {
 		got := fence.ChangesGitHub(line)
 
-		// A line that names neither gh nor git, nor runs another shell's line, changes
-		// nothing on GitHub.
-		if !strings.Contains(line, "gh") && !strings.Contains(line, "git") {
+		// A shell builds a word from the line's own characters, less the quotes and
+		// backslashes it takes out (and a newline a backslash joins), so g"it" and g\it are
+		// git, in a shell's -c line too; only a $ spells a character the line doesn't hold
+		// ($'\147it' is git). A line without $ that, with those taken out, names neither
+		// gh nor git runs neither and changes nothing on GitHub.
+		joined := strings.NewReplacer(`'`, "", `"`, "", `\`, "", "\n", "").Replace(line)
+		if !strings.Contains(line, "$") && !strings.Contains(joined, "gh") && !strings.Contains(joined, "git") {
 			assert.False(t, got, "%q", line)
 		}
 	})
