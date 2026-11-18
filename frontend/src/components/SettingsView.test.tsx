@@ -154,6 +154,38 @@ describe('SettingsView', () => {
     expect(screen.getByRole('region', { name: 'Back up and restore' }).scrollTop).toBe(0)
   })
 
+  it('scrolls the open section’s place in the sidebar into view when it is out of sight', () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
+    // The sidebar shows its top 300 pixels, and the open section's button sits below them.
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const [top, height] = this.getAttribute('aria-current') === 'page' ? [600, 30] : [0, 300]
+
+      return { top, bottom: top + height, left: 0, right: 200, x: 0, y: top, width: 200, height, toJSON: () => ({}) }
+    })
+    renderSettings({ section: 'about' })
+
+    expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' })
+    expect(scroll.mock.contexts[0]).toHaveTextContent('About')
+  })
+
+  it('leaves the sidebar where it is while the open section’s place shows', () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
+    renderSettings({ section: 'about' })
+
+    expect(scroll).not.toHaveBeenCalled()
+  })
+
+  it('keeps the way back in place above the sidebar’s sections, which scroll', () => {
+    renderSettings()
+
+    const back = screen.getByRole('button', { name: 'Close settings' })
+    const account = screen.getByRole('button', { name: 'Account' })
+    const scroller = account.closest('.overflow-y-auto')
+
+    expect(scroller).not.toBeNull()
+    expect(scroller).not.toContainElement(back)
+  })
+
   it('opens on the account, with a sidebar of sections', () => {
     renderSettings()
 
@@ -889,12 +921,14 @@ describe('SettingsView', () => {
     expect(agents.getByText('unknown')).toHaveAttribute('title', 'codex --version failed: boom')
   })
 
-  it('shows the GitHub CLI version with the tools', async () => {
+  it('shows the GitHub CLI’s and Git’s versions with the tools', async () => {
     renderSettings({ section: 'about' })
 
     const tools = within(screen.getByRole('region', { name: 'Tools' }))
     expect(await tools.findByText('2.83.1')).toHaveAttribute('title', '/opt/homebrew/bin/gh')
     expect(tools.getByText('GitHub CLI')).toBeInTheDocument()
+    expect(tools.getByText('2.50.1')).toHaveAttribute('title', '/usr/bin/git')
+    expect(tools.getByText('Git')).toBeInTheDocument()
   })
 
   it('says why the tools could not be checked', async () => {

@@ -107,7 +107,8 @@ requirement. Nothing is notarized.
 tag, with `-dirty` when the working tree had uncommitted changes. Settings → About shows all
 three, with the macOS version and the processor architecture, the version of each coding
 agent installed, read with its own `--version` (`claude --version`, `codex --version`), and,
-under **Tools**, the GitHub CLI's (`gh --version`), whose sign-in the app borrows. Each is read
+under **Tools**, the GitHub CLI's (`gh --version`), whose sign-in the app borrows, and Git's
+(`git --version`), which makes every launch's worktree and tells which clone is which repository. Each is read
 once per build of its command and kept until the command changes, as when it updates itself,
 so opening About again runs nothing; hover a version for where its command is. Its **Report a
 bug** button opens a new GitHub issue with all of it filled in: the versions only, never their

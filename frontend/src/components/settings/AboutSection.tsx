@@ -219,7 +219,8 @@ export function AboutSection({ onRunSetup, update, settings = null, onSaved = ()
       </section>
       <section aria-labelledby={`${id}-tools`} className="flex flex-col gap-2">
         <SectionIntro id={`${id}-tools`} title="Tools">
-          The other programs {brand.name} runs, as each reports its version: the GitHub CLI, whose sign-in it borrows.
+          The other programs {brand.name} runs, as each reports its version: the GitHub CLI, whose sign-in it borrows,
+          and Git, which makes each launch&apos;s worktree and tells which clone is which repository.
         </SectionIntro>
         <Versions list={tools.data} error={tools.error} what="tools" />
       </section>

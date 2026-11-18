@@ -3,6 +3,7 @@ package appinfo
 import (
 	"context"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -156,24 +157,34 @@ func TestAgentVersionsSaysWhyAVersionIsMissing(t *testing.T) {
 	assert.NotContains(t, report, "--version", "a report never carries the error")
 }
 
-func TestToolVersionsReadsTheGitHubCLI(t *testing.T) {
+func TestToolVersionsReadsTheGitHubCLIAndGit(t *testing.T) {
 	t.Parallel()
 
 	home := t.TempDir()
 	gh := agentCommand(t, home, "gh")
+	git := agentCommand(t, home, "git")
 	script := &versionScript{
-		out:  map[string]string{"gh": "gh version 2.83.1 (2026-10-01)\nhttps://example.test/releases/v2.83.1\n"},
+		out: map[string]string{
+			"gh":  "gh version 2.83.1 (2026-10-01)\nhttps://example.test/releases/v2.83.1\n",
+			"git": "git version 2.50.1 (Apple Git-155)\n",
+		},
 		runs: map[string]int{},
 	}
-	s := NewService(Config{Finder: testutil.Finder{Paths: map[string]string{"gh": gh}}, Runner: script.runner(), Home: home})
+	s := NewService(Config{
+		Finder: testutil.Finder{Paths: map[string]string{"gh": gh, "git": git}}, Runner: script.runner(), Home: home,
+	})
 
 	assert.Equal(t, []ToolVersion{
 		{Tool: "gh", Name: "GitHub CLI", Installed: true, Path: "~/.local/bin/gh", Version: "2.83.1"},
+		{Tool: "git", Name: "Git", Installed: true, Path: "~/.local/bin/git", Version: "2.50.1"},
 	}, s.ToolVersions(t.Context()))
 
 	s.ToolVersions(t.Context())
-	s.BugReportURL(t.Context())
+	u, err := url.Parse(s.BugReportURL(t.Context()))
+	require.NoError(t, err)
+	assert.Contains(t, u.Query().Get(environmentField), "- GitHub CLI: 2.83.1\n- Git: 2.50.1\n")
 	assert.Equal(t, 1, script.count("gh"), "the same build is read once")
+	assert.Equal(t, 1, script.count("git"), "the same build is read once")
 
 	// Kept apart from the agents': an agent is never answered with the tool's version.
 	assert.False(t, s.AgentVersions(t.Context())[0].Installed)
@@ -182,13 +193,15 @@ func TestToolVersionsReadsTheGitHubCLI(t *testing.T) {
 func TestToolVersionsWithoutTheirCommands(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, []ToolVersion{{Tool: "gh", Name: "GitHub CLI"}}, NewService(Config{}).ToolVersions(t.Context()))
+	assert.Equal(t, []ToolVersion{{Tool: "gh", Name: "GitHub CLI"}, {Tool: "git", Name: "Git"}},
+		NewService(Config{}).ToolVersions(t.Context()))
 
 	s := NewService(Config{Finder: testutil.Finder{Paths: map[string]string{}}, Runner: &testutil.Runner{}})
 	got := s.ToolVersions(t.Context())
-	require.Len(t, got, 1)
+	require.Len(t, got, 2)
 	assert.False(t, got[0].Installed)
-	assert.Contains(t, environment(Info{}, nil, got, nil), "- GitHub CLI: not installed\n")
+	assert.False(t, got[1].Installed)
+	assert.Contains(t, environment(Info{}, nil, got, nil), "- GitHub CLI: not installed\n- Git: not installed\n")
 }
 
 func TestAgentVersionsWithoutTheirCommands(t *testing.T) {

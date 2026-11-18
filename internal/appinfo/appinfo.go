@@ -3,7 +3,7 @@
 // The product name and tagline come from internal/brand, so the frontend never hard-codes
 // them. Info also carries what a bug report needs, the build's versions and the system it
 // runs on; AgentVersions reads the installed coding agents' versions, ToolVersions the
-// other tools' (the GitHub CLI), and BugReportURL opens a new bug report with all of them
+// other tools' (the GitHub CLI and Git), and BugReportURL opens a new bug report with all of them
 // filled in, and with the app's state as its StateReader words it: the settings and the
 // integrations, with nothing personal in them. FeedbackURL opens a new blank issue with a
 // feedback title, a few prompts, and the app's version filled in. The user reads either on
@@ -252,8 +252,8 @@ func (s *Service) AgentVersions(ctx context.Context) []AgentVersion {
 }
 
 // ToolVersions returns each tool's installed version, other than the coding agents', in
-// the tools' order: the GitHub CLI, whose sign-in the app borrows. Each is read and kept
-// as AgentVersions reads and keeps the agents'.
+// the tools' order: the GitHub CLI, whose sign-in the app borrows, and Git. Each is read
+// and kept as AgentVersions reads and keeps the agents'.
 func (s *Service) ToolVersions(ctx context.Context) []ToolVersion {
 	return s.versions.tools(ctx)
 }

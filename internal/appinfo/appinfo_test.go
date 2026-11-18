@@ -114,7 +114,7 @@ func TestBugReportURLFillsInTheEnvironment(t *testing.T) {
 	assert.Equal(t, bugReportTemplate, u.Query().Get("template"))
 	assert.Equal(t,
 		"- Version: 0.0.0 (16)\n- Commit: abc1234-dirty\n- System: macOS 15.1 (24B83), "+runtime.GOARCH+"\n"+
-			"- Claude: 2.1.319\n- Codex: not installed\n- GitHub CLI: not installed\n",
+			"- Claude: 2.1.319\n- Codex: not installed\n- GitHub CLI: not installed\n- Git: not installed\n",
 		u.Query().Get(environmentField))
 }
 
@@ -139,7 +139,7 @@ func TestBugReportURLFoldsTheAppStateUnderTheVersions(t *testing.T) {
 
 	assert.Equal(t,
 		"- Version: 0.1.0 (16)\n- Commit: abc1234\n- System: macOS 15.1 (24B83), "+runtime.GOARCH+"\n"+
-			"- Claude: not installed\n- Codex: not installed\n- GitHub CLI: not installed\n"+
+			"- Claude: not installed\n- Codex: not installed\n- GitHub CLI: not installed\n- Git: not installed\n"+
 			"\n<details><summary>Settings and integrations</summary>\n"+
 			"\n**Settings**\n\n- Theme: dark\n- Terminal: iTerm2\n"+
 			"\n**Integrations**\n\n- magex: on (automatic) · 1.30.0 from Homebrew\n"+

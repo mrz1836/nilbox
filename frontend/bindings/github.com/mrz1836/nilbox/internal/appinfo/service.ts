@@ -62,8 +62,8 @@ export function ReportFirstPaint(): $CancellablePromise<void> {
 
 /**
  * ToolVersions returns each tool's installed version, other than the coding agents', in
- * the tools' order: the GitHub CLI, whose sign-in the app borrows. Each is read and kept
- * as AgentVersions reads and keeps the agents'.
+ * the tools' order: the GitHub CLI, whose sign-in the app borrows, and Git. Each is read
+ * and kept as AgentVersions reads and keeps the agents'.
  */
 export function ToolVersions(): $CancellablePromise<$models.ToolVersion[] | null> {
     return $Call.ByID(1682549596);

@@ -74,9 +74,13 @@ type program struct {
 }
 
 // tools are the tools, other than the coding agents, whose versions the About page and a
-// bug report give: the GitHub CLI, whose sign-in the app borrows.
+// bug report give: the GitHub CLI, whose sign-in the app borrows, and Git, which makes
+// every launch's worktree and tells which clone is which repository.
 func tools() []program {
-	return []program{{key: "gh", name: "GitHub CLI", command: "gh"}}
+	return []program{
+		{key: "gh", name: "GitHub CLI", command: "gh"},
+		{key: "git", name: "Git", command: "git"},
+	}
 }
 
 // installed is what is known of one program's command: whether it was found, where, and

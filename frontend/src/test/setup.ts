@@ -8,6 +8,22 @@ Element.prototype.scrollIntoView = function scrollIntoView() {
   // Nothing to scroll without a layout.
 }
 
+// jsdom has no ResizeObserver either, and nothing it lays out ever changes size; one that
+// never reports stands in, and a test that cares reports through its own.
+globalThis.ResizeObserver = class ResizeObserver {
+  observe() {
+    // Nothing changes size without a layout.
+  }
+
+  unobserve() {
+    // Nothing to stop following.
+  }
+
+  disconnect() {
+    // Nothing to stop following.
+  }
+}
+
 // jsdom has the <dialog> element but none of its methods. These stand-ins open and close it,
 // which is all a test can observe: the top layer and the inert page behind a modal need a
 // real browser.

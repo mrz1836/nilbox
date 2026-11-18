@@ -234,6 +234,7 @@ export function agentVersions(): AgentVersion[] {
 export function toolVersions(): ToolVersion[] {
   return [
     { tool: 'gh', name: 'GitHub CLI', installed: true, path: '/opt/homebrew/bin/gh', version: '2.83.1', error: '' },
+    { tool: 'git', name: 'Git', installed: true, path: '/usr/bin/git', version: '2.50.1', error: '' },
   ]
 }
 

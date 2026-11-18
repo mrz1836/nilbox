@@ -550,7 +550,7 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
       ],
     },
     { label: 'Coding agents', keywords: ['agent versions', 'installed', ...agentNames] },
-    { label: 'Tools', keywords: ['GitHub CLI', 'gh', 'versions', 'installed'] },
+    { label: 'Tools', keywords: ['GitHub CLI', 'gh', 'Git', 'versions', 'installed'] },
     {
       label: 'Setup',
       keywords: [
