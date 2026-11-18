@@ -120,11 +120,27 @@ const trackKey: readonly { look: KeyLook; words: string }[] = [
 // initials and nothing is downloaded for it.
 const noPictures: Pictures = {}
 
-// Spot is where a marker sits in the sample's box, in CSS pixels: its anchor, which its
-// side's classes (spotClass) place it against.
+// Spot is where a marker sits in the sample's box, in the box's own CSS pixels: its anchor,
+// which its side's classes (spotClass) place it against.
 interface Spot {
   left: number
   top: number
+}
+
+// Scale is how the sample's box measures on the screen against its laid-out size, across
+// and down: below 1 while the dialog's pop-in still scales it as it opens.
+interface Scale {
+  x: number
+  y: number
+}
+
+// scaleOf is the box's scale: its measured size over its laid-out size, or 1 while it has
+// no laid-out size.
+function scaleOf(el: HTMLElement, box: DOMRect): Scale {
+  return {
+    x: el.offsetWidth > 0 ? box.width / el.offsetWidth : 1,
+    y: el.offsetHeight > 0 ? box.height / el.offsetHeight : 1,
+  }
 }
 
 // sameSpots reports two measures that place every marker alike, so a measure that moves
@@ -147,23 +163,29 @@ const spotClass: Readonly<Record<Side, string>> = {
 
 // spotOf is where the marker of a part sits, measured against the sample's box, or null
 // while the part isn't laid out: missing, hidden by a narrow list, or in a dialog not
-// shown yet. The action column's marker goes over its first slot, the primary's, which
-// starts where the primary does.
-function spotOf(guide: GuidePart, el: Element | null, box: DOMRect): Spot | null {
-  const anchor = guide.part === 'actions' ? el?.firstElementChild : el
+// shown yet. The action column's marker goes over its first button, the primary, wherever
+// the column puts it. Boxes are measured on the screen, where the dialog's pop-in still
+// scales the sample as it opens, and a transform changes no size, so nothing measures them
+// again once it ends: a part's distance from the box's corner is divided by the box's
+// scale, or the markers furthest right would land short of their parts.
+function spotOf(guide: GuidePart, el: Element | null, box: DOMRect, scale: Scale): Spot | null {
+  const anchor = guide.part === 'actions' ? el?.querySelector('button') : el
   const r = anchor?.getBoundingClientRect()
 
   if (r === undefined || (r.width === 0 && r.height === 0)) {
     return null
   }
 
+  const x = (at: number) => (at - box.left) / scale.x
+  const y = (at: number) => (at - box.top) / scale.y
+
   switch (guide.side) {
     case 'center':
-      return { left: r.left + r.width / 2 - box.left, top: r.top + r.height / 2 - box.top }
+      return { left: x(r.left + r.width / 2), top: y(r.top + r.height / 2) }
     case 'above':
-      return { left: r.left - box.left, top: r.top - box.top }
+      return { left: x(r.left), top: y(r.top) }
     case 'below':
-      return { left: r.left - box.left, top: r.bottom - box.top }
+      return { left: x(r.left), top: y(r.bottom) }
   }
 }
 
@@ -173,8 +195,8 @@ function spotOf(guide: GuidePart, el: Element | null, box: DOMRect): Spot | null
 // asks for no picture; and no AutopilotRowsContext, so no routine's chip. It is always the
 // comfortable card, the one the legend numbers, and shows the unread dot while Unread dots
 // is on. With markers, it numbers its parts: each marker is placed from the part's measured
-// box, after layout and again whenever the sample's box changes size, and stays hidden
-// until its part is measured.
+// box, in the sample's own pixels however the dialog scales it, after layout and again
+// whenever the sample's box changes size, and stays hidden until its part is measured.
 function Sample({ markers }: { markers: boolean }) {
   const { unread } = use(CardPrefsContext)
   const clock = useClock()
@@ -200,7 +222,10 @@ function Sample({ markers }: { markers: boolean }) {
 
     const place = () => {
       const box = el.getBoundingClientRect()
-      const next = guideParts.map((guide) => spotOf(guide, el.querySelector(`[data-guide="${guide.part}"]`), box))
+      const scale = scaleOf(el, box)
+      const next = guideParts.map((guide) =>
+        spotOf(guide, el.querySelector(`[data-guide="${guide.part}"]`), box, scale),
+      )
 
       setSpots((was) => (sameSpots(was, next) ? was : next))
     }

@@ -47,7 +47,7 @@ function rect(left: number, top: number, width: number, height: number): DOMRect
 const box = rect(100, 50, 900, 120)
 
 // laidOut is each part's box, as a layout of the sample would put it: the action column's
-// first button for its actions.
+// first button, the primary, for its actions.
 const laidOut: Readonly<Record<string, DOMRect>> = {
   edge: rect(100, 78, 3, 64),
   avatar: rect(117, 96, 28, 28),
@@ -59,28 +59,103 @@ const laidOut: Readonly<Record<string, DOMRect>> = {
   actions: rect(840, 95, 70, 30),
 }
 
+// columns are the boxes around the track and the primary, each wider than its part and
+// starting before it: the state column, the track at its end; the action column; and the
+// primary's slot in it. No marker sits over one.
+const columns: Readonly<Record<string, DOMRect>> = {
+  '[data-state-column]': rect(638, 88, 132, 40),
+  '[data-guide="actions"]': rect(784, 92, 216, 36),
+  '[data-primary-slot]': rect(784, 95, 140, 30),
+}
+
 // nothing is the box of what isn't laid out.
 const nothing = rect(0, 0, 0, 0)
 
-// layOut stands in for the layout jsdom lacks: the sample's box and its parts measure as
-// parts says (the action column by its first button), and everything else as nothing. A
-// test changes parts to lay the sample out again.
-function layOut(parts: Record<string, DOMRect>) {
-  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function measure(this: Element) {
-    if (this.firstElementChild?.hasAttribute('inert') === true) {
-      return box
-    }
+// isBox reports the sample's box, which the markers are placed in.
+function isBox(el: Element): boolean {
+  return el.firstElementChild?.hasAttribute('inert') === true
+}
 
-    const parent = this.parentElement
+// isPrimary reports the action column's first button, the primary.
+function isPrimary(el: Element): boolean {
+  return el.closest('[data-guide="actions"]')?.querySelector('button') === el
+}
 
-    if (parent?.getAttribute('data-guide') === 'actions' && parent.firstElementChild === this) {
-      return parts.actions ?? nothing
-    }
+// laidOutBox is where an element is laid out: the sample's box, a part as parts says (the
+// action column by its primary), a column as columns says, and everything else nowhere.
+function laidOutBox(el: Element, parts: Record<string, DOMRect>): DOMRect {
+  if (isBox(el)) {
+    return box
+  }
 
-    const part = this.getAttribute('data-guide')
+  if (isPrimary(el)) {
+    return parts.actions ?? nothing
+  }
 
-    return part === null || part === 'actions' ? nothing : (parts[part] ?? nothing)
+  const column = Object.keys(columns).find((selector) => el.matches(selector))
+
+  if (column !== undefined) {
+    return columns[column] ?? nothing
+  }
+
+  const part = el.getAttribute('data-guide')
+
+  return part === null ? nothing : (parts[part] ?? nothing)
+}
+
+// popIn is a box as the dialog's pop-in (index.css) first draws it on the screen: scaled to
+// 0.97 about the dialog's center, below the sample, and lifted 4px.
+function popIn(r: DOMRect): DOMRect {
+  const scale = 0.97
+  const [x, y] = [550, 300]
+
+  return rect(x + (r.left - x) * scale, y + (r.top - y) * scale - 4, r.width * scale, r.height * scale)
+}
+
+// layOut stands in for the layout jsdom lacks: everything is laid out as laidOutBox says,
+// with parts, and measures on the screen as drawn draws it (as laid out, unless a test
+// passes the pop-in), while the sample's box keeps its laid-out size. A test changes parts
+// to lay the sample out again.
+function layOut(parts: Record<string, DOMRect>, drawn: (r: DOMRect) => DOMRect = (r) => r) {
+  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function width(this: HTMLElement) {
+    return isBox(this) ? box.width : 0
   })
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function height(this: HTMLElement) {
+    return isBox(this) ? box.height : 0
+  })
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function measure(this: Element) {
+    return drawn(laidOutBox(this, parts))
+  })
+}
+
+// place is where a part's marker is anchored in the sample's box, from its laid-out box:
+// the edge's center, the start of the top of a part it sits above, or the start of the
+// bottom of a part it sits under.
+function place(part: string): [number, number] {
+  const r = laidOut[part] ?? nothing
+  const side = guideParts.find((g) => g.part === part)?.side
+
+  if (side === 'center') {
+    return [r.left + r.width / 2 - box.left, r.top + r.height / 2 - box.top]
+  }
+
+  return [r.left - box.left, (side === 'below' ? r.bottom : r.top) - box.top]
+}
+
+// spotOf is where a marker is anchored, as its style places it.
+function spotOf(marker: HTMLElement): [number, number] {
+  return [Number.parseFloat(marker.style.left), Number.parseFloat(marker.style.top)]
+}
+
+// marker is the marker of a part.
+function marker(part: string): HTMLElement {
+  const found = document.querySelector<HTMLElement>(`[data-marker="${part}"]`)
+
+  if (found === null) {
+    throw new Error(`no ${part} marker`)
+  }
+
+  return found
 }
 
 // relayOut tells the guide its box changed size, as the layout would.
@@ -174,29 +249,49 @@ describe('CardGuide', () => {
     layOut({ ...laidOut })
     relayOut()
 
-    // place is where a marker's anchor sits in the box: the edge's center, the start of the
-    // top of a part it sits above, or the start of the bottom of a part it sits under.
-    const place = (part: string): [string, string] => {
-      const r = laidOut[part] ?? nothing
-      const side = guideParts.find((g) => g.part === part)?.side
+    for (const m of markers()) {
+      const part = m.getAttribute('data-marker') ?? ''
 
-      if (side === 'center') {
-        return [`${String(r.left + r.width / 2 - box.left)}px`, `${String(r.top + r.height / 2 - box.top)}px`]
-      }
-
-      return [`${String(r.left - box.left)}px`, `${String((side === 'below' ? r.bottom : r.top) - box.top)}px`]
+      expect(m, `the ${part} marker`).toBeVisible()
+      expect([m.style.left, m.style.top], `the ${part} marker`).toEqual(place(part).map((at) => `${String(at)}px`))
     }
 
-    for (const marker of markers()) {
-      const part = marker.getAttribute('data-marker') ?? ''
+    expect(place('edge')).toEqual([1.5, 60])
+    expect(place('story')).toEqual([59, 78])
+    expect(place('actions')).toEqual([740, 45])
+  })
 
-      expect(marker, `the ${part} marker`).toBeVisible()
-      expect([marker.style.left, marker.style.top], `the ${part} marker`).toEqual(place(part))
+  it('puts the track’s marker over the track and the action column’s over its primary, not over their columns', () => {
+    followSizes()
+    layOut({ ...laidOut })
+    showGuide('full')
+
+    expect(document.querySelector('[data-guide="actions"] button')).toHaveAttribute('data-verb', 'rereview')
+    expect(spotOf(marker('track'))).toEqual([600, 42])
+    expect(spotOf(marker('actions'))).toEqual([740, 45])
+
+    // Where each marker would sit over a column instead: the start of its top.
+    const columnSpots = Object.values(columns).map((r) => [r.left - box.left, r.top - box.top])
+
+    for (const part of ['track', 'actions']) {
+      expect(columnSpots, `the ${part} marker`).not.toContainEqual(spotOf(marker(part)))
     }
+  })
 
-    expect(place('edge')).toEqual(['1.5px', '60px'])
-    expect(place('story')).toEqual(['59px', '78px'])
-    expect(place('actions')).toEqual(['740px', '45px'])
+  it('places each marker over its part while the dialog’s pop-in still scales the sample', () => {
+    followSizes()
+    layOut({ ...laidOut }, popIn)
+    showGuide('full')
+
+    for (const m of markers()) {
+      const part = m.getAttribute('data-marker') ?? ''
+      const [left, top] = spotOf(m)
+      const [wantLeft, wantTop] = place(part)
+
+      expect(m, `the ${part} marker`).toBeVisible()
+      expect(left, `the ${part} marker's left`).toBeCloseTo(wantLeft)
+      expect(top, `the ${part} marker's top`).toBeCloseTo(wantTop)
+    }
   })
 
   it('hides a marker again once its part is no longer laid out, as a narrow list drops the track', () => {

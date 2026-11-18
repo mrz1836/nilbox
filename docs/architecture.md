@@ -4546,8 +4546,13 @@ comfortable, Unread dots as set), an empty `CardPicturesContext`, and no
 `AutopilotRowsContext`, so nothing in it takes a click or focus or asks for anything. In
 full it numbers the parts the card marks with `data-guide` (`edge`, `avatar`, `title`,
 `story`, `byline`, `risk`, `track`, `actions`, harmless on every card): each marker is placed
-from its part's measured box against the sample's, measured again whenever the sample's box
-changes size (`ResizeObserver`), and hidden until its part is laid out; then the legend.
+from its part's measured box against the sample's (the action column's first button, the
+primary, for `actions`), measured again whenever the sample's box changes size
+(`ResizeObserver`), and hidden until its part is laid out; then the legend. The boxes are
+measured on the screen, where the dialog's pop-in still scales the sample as it opens, and a
+transform changes no size, so each distance is divided by the box's scale (its measured
+size over its `offsetWidth` and `offsetHeight`), or the markers furthest right would land
+short of their parts.
 Both variants end with the key (its track symbols take `card/StateTrack`'s
 `trackStepClass`). `card/CardGuideDialog` shows the full guide in a modal; App owns whether it is
 open, loads it on its first opening, so the inbox's chunk holds none of the guide, and
