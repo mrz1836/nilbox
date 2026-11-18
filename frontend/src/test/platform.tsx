@@ -360,6 +360,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getDefaultPrompts: () => Promise.resolve(defaultPrompts()),
     setDefaultPrompt: done,
     setReplyDefault: done,
+    setSlotDefault: done,
     exportPrompts: (_path, ids) =>
       Promise.resolve({ prompts: ids === null || ids.length === 0 ? prompts().length : ids.length, replies: 0 }),
     listPromptBackups: () => Promise.resolve([promptBackup()]),

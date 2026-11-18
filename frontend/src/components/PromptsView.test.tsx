@@ -456,6 +456,41 @@ describe('PromptsView', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('names the situations a prompt is the default for, and why it cannot be deleted', async () => {
+    const used = prompts().map((p) =>
+      p.id === 3
+        ? {
+            ...p,
+            usage: {
+              ...p.usage,
+              slots: ['checks_failing' as const],
+              slotPlaces: [{ org: 'acme-org', repo: '', slot: 'conflicts' as const }],
+              kinds: ['pr' as const],
+            },
+          }
+        : p,
+    )
+    render(<Harness initial={used} />)
+
+    const fix = library().getByRole('button', { name: /Fix checks/ })
+    expect(fix).toHaveTextContent('Default in 1 place')
+    expect(fix.querySelector('svg')).not.toBeNull()
+    expect(fix).toHaveAttribute('title', expect.stringContaining('App default when checks fail'))
+    expect(
+      screen.getByText('App default when checks fail · acme-org’s prompt when it has conflicts'),
+    ).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions for Fix checks' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }))
+
+    const dialog = within(screen.getByRole('dialog', { name: '“Fix checks” is still in use' }))
+    expect(dialog.getByText('App default when checks fail')).toBeInTheDocument()
+    expect(dialog.getByText('acme-org’s prompt when it has conflicts')).toBeInTheDocument()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Got it' }))
+    expect(platform.deletePrompt).not.toHaveBeenCalled()
+  })
+
   it('says which routines use a prompt, and why one they run cannot be deleted', async () => {
     const used = prompts().map((p) =>
       p.id === 3

@@ -98,9 +98,9 @@ const modeOptions: readonly SegmentOption<PromptPurpose>[] = [
 ]
 
 // isDefault reports whether a prompt is an app default: an agent prompt's for a kind of
-// item, or a reply's for a review.
+// item or a pull request's situation, or a reply's for a review.
 function isDefault(p: Prompt): boolean {
-  return p.usage.defaults.length > 0 || p.usage.replies.length > 0
+  return p.usage.defaults.length > 0 || p.usage.slots.length > 0 || p.usage.replies.length > 0
 }
 
 interface GroupHeadingProps {
@@ -297,7 +297,7 @@ export function PromptLibrary({
                 {open &&
                   list.map((p) => {
                     const current = selection?.kind === 'prompt' && selection.id === p.id
-                    const places = p.usage.orgs.length + p.usage.repos.length
+                    const places = p.usage.orgs.length + p.usage.repos.length + p.usage.slotPlaces.length
                     const badges = p.usage.replies.map((slot) => replySlotBadges[slot])
                     const used = [
                       places > 0 ? `Default in ${String(places)} ${places === 1 ? 'place' : 'places'}` : '',

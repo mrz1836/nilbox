@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 
 import { brand } from '../generated/brand'
 import { counted, fileName } from '../lib/format'
-import { agentName, modelChoices, modelLabel, perAgentEntries } from '../lib/launch'
+import { agentName, modelChoices, modelLabel, perAgentEntries, situationInfo } from '../lib/launch'
 import { replySlotPlaces } from '../lib/replies'
 import { formatDateTime, formatFull } from '../lib/time'
 import { useMutation } from '../lib/useMutation'
@@ -107,14 +107,6 @@ function outcomeText(e: ImportEntry): string {
   }
 }
 
-// situationDefaults are a situation's default slot's field in BundleDefaults, and its words.
-const situationDefaults = {
-  checks_failing: { field: 'checksFailing', text: 'the default prompt when checks fail' },
-  conflicts: { field: 'conflicts', text: 'the default prompt when it has conflicts' },
-  changes_requested: { field: 'changesRequested', text: 'the default prompt when changes are requested' },
-  rereview: { field: 'rereview', text: 'the default prompt when you’re asked to review again' },
-} as const
-
 // slotText names what a default is the default for, as in "the default prompt for pull
 // requests" or "the default reply for approvals".
 function slotText(slot: DefaultSlot): string {
@@ -127,7 +119,7 @@ function slotText(slot: DefaultSlot): string {
     case 'conflicts':
     case 'changes_requested':
     case 'rereview':
-      return situationDefaults[slot].text
+      return `the default prompt ${situationInfo[slot].when}`
     default:
       return `the default reply for ${replySlotPlaces[slot]}`
   }
@@ -158,7 +150,8 @@ function chosenDefaults(offers: readonly DefaultOffer[], entries: readonly Impor
       case 'conflicts':
       case 'changes_requested':
       case 'rereview':
-        out[situationDefaults[offer.slot].field] = nickname
+        // A situation's field in the bundle's defaults is its field in the app's.
+        out[situationInfo[offer.slot].app] = nickname
         break
       default:
         out.replies = { ...out.replies, [offer.slot]: nickname }

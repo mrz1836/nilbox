@@ -5,12 +5,17 @@ import type {
   Agent,
   AgentID,
   Choice,
+  DefaultPrompts,
+  DefaultSlot,
   ItemKind,
+  LaunchDefaultsInput,
   LaunchSource,
   PerAgent,
   Prompt,
   PromptAppliesTo,
   PromptUsage,
+  Situation,
+  SlotPlace,
 } from '../platform'
 import { counted } from './format'
 
@@ -146,19 +151,72 @@ export function kindPlural(kind: ItemKind): string {
   return kind === 'pr' ? 'pull requests' : 'issues'
 }
 
+// PullSituation is a situation a pull request can be in, whose prompt the launch defaults
+// set: every Situation but '', the item's own prompt.
+export type PullSituation = Exclude<Situation, ''>
+
+// situations are the situations a pull request can be in, in the order the settings list
+// them.
+export const situations: readonly PullSituation[] = ['checks_failing', 'conflicts', 'changes_requested', 'rereview']
+
+// situationInfo is each situation's words and fields: when words it in a sentence, as in
+// "Prompt when checks fail"; who is the pull request it is about, for the settings; app is
+// its field in the app's default prompts, and field its prompt's in an org's or a
+// repository's launch defaults.
+export const situationInfo = {
+  checks_failing: {
+    when: 'when checks fail',
+    who: 'your pull request whose checks fail',
+    app: 'checksFailing',
+    field: 'checksPromptId',
+  },
+  conflicts: {
+    when: 'when it has conflicts',
+    who: 'your pull request that conflicts with its base',
+    app: 'conflicts',
+    field: 'conflictsPromptId',
+  },
+  changes_requested: {
+    when: 'when changes are requested',
+    who: 'your pull request a reviewer asked to change',
+    app: 'changesRequested',
+    field: 'changesPromptId',
+  },
+  rereview: {
+    when: 'when you’re asked to review again',
+    who: 'a pull request you’re asked to review that changed since your review',
+    app: 'rereview',
+    field: 'rereviewPromptId',
+  },
+} as const satisfies Readonly<
+  Record<PullSituation, { when: string; who: string; app: keyof DefaultPrompts; field: keyof LaunchDefaultsInput }>
+>
+
+// slotWhen words the situation a default slot of the usage is for, as in "when checks
+// fail". The usage names a slot only for a situation's default.
+function slotWhen(slot: DefaultSlot): string {
+  return situationInfo[slot as PullSituation].when
+}
+
 // usageCount is how many places use a prompt as a default: the app's settings for each
-// kind, and every org and repository.
+// kind and each situation, and every org and repository.
 export function usageCount(usage: PromptUsage): number {
-  return usage.defaults.length + usage.orgs.length + usage.repos.length
+  return usage.defaults.length + usage.slots.length + usage.orgs.length + usage.repos.length + usage.slotPlaces.length
 }
 
 // usageSummary says where a prompt is a default, as in "App default for pull requests ·
-// 2 orgs · 1 repo", or "Not a default anywhere".
+// App default when checks fail · 2 orgs · 1 repo · acme-org’s prompt when it has
+// conflicts", or "Not a default anywhere". Several orgs' and repositories' situations are
+// counted, as in "A situation’s prompt in 3 places".
 export function usageSummary(usage: PromptUsage): string {
   const parts: string[] = []
 
   if (usage.defaults.length > 0) {
     parts.push(`App default for ${usage.defaults.map(kindPlural).join(' and ')}`)
+  }
+
+  if (usage.slots.length > 0) {
+    parts.push(`App default ${usage.slots.map(slotWhen).join(' and ')}`)
   }
 
   const orgs = usage.orgs.length
@@ -172,7 +230,21 @@ export function usageSummary(usage: PromptUsage): string {
     parts.push(counted(repos, 'repo', 'repos'))
   }
 
+  const [place, ...more] = usage.slotPlaces
+
+  if (place !== undefined) {
+    parts.push(
+      more.length === 0 ? slotPlaceText(place) : `A situation’s prompt in ${String(usage.slotPlaces.length)} places`,
+    )
+  }
+
   return parts.length === 0 ? 'Not a default anywhere' : parts.join(' · ')
+}
+
+// slotPlaceText names an org's or a repository's situation a prompt is the default for, as
+// in "acme-org’s prompt when checks fail".
+function slotPlaceText(place: SlotPlace): string {
+  return `${place.org === '' ? place.repo : place.org}’s prompt ${slotWhen(place.slot)}`
 }
 
 // routinesUsing says which Autopilot routines run or comment a prompt, as in "Used by
@@ -192,12 +264,17 @@ export function routinePlaces(usage: PromptUsage): string[] {
   return usage.routines.map((name) => `The routine “${name}”`)
 }
 
-// usagePlaces lists every place a prompt is a default, for a tooltip or a dialog.
+// usagePlaces lists every place a prompt is a default, for a tooltip or a dialog: the
+// app's for a kind or a situation, as in "App default when checks fail", an org's or a
+// repository's for a kind, and an org's or a repository's for a situation, as in
+// "acme-org’s prompt when checks fail".
 export function usagePlaces(usage: PromptUsage): string[] {
   return [
     ...usage.defaults.map((kind) => `App default for ${kindPlural(kind)}`),
+    ...usage.slots.map((slot) => `App default ${slotWhen(slot)}`),
     ...usage.orgs.map((org) => `${org} (all repositories)`),
     ...usage.repos,
+    ...usage.slotPlaces.map(slotPlaceText),
   ]
 }
 
