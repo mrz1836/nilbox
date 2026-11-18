@@ -28,7 +28,7 @@ const endedSince = `-- name: EndedSince :many
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice, run_id
+    launch_notice, run_id, github_event, github_event_commit, github_event_at
 FROM agent_sessions
 WHERE state = 'ended' AND agent_session_id <> '' AND ended_at >= ?1
 ORDER BY ended_at DESC, id DESC
@@ -83,6 +83,9 @@ func (q *Queries) EndedSince(ctx context.Context, arg EndedSinceParams) ([]Agent
 			&i.WorktreeAction,
 			&i.LaunchNotice,
 			&i.RunID,
+			&i.GithubEvent,
+			&i.GithubEventCommit,
+			&i.GithubEventAt,
 		); err != nil {
 			return nil, err
 		}
@@ -114,7 +117,7 @@ const getRunSession = `-- name: GetRunSession :one
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice, run_id
+    launch_notice, run_id, github_event, github_event_commit, github_event_at
 FROM agent_sessions
 WHERE run_id = ?1 AND run_id <> 0
 ORDER BY launched_at DESC, id DESC
@@ -157,6 +160,9 @@ func (q *Queries) GetRunSession(ctx context.Context, runID int64) (AgentSession,
 		&i.WorktreeAction,
 		&i.LaunchNotice,
 		&i.RunID,
+		&i.GithubEvent,
+		&i.GithubEventCommit,
+		&i.GithubEventAt,
 	)
 	return i, err
 }
@@ -165,7 +171,7 @@ const getSession = `-- name: GetSession :one
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice, run_id
+    launch_notice, run_id, github_event, github_event_commit, github_event_at
 FROM agent_sessions
 WHERE id = ?1
 `
@@ -206,6 +212,9 @@ func (q *Queries) GetSession(ctx context.Context, id string) (AgentSession, erro
 		&i.WorktreeAction,
 		&i.LaunchNotice,
 		&i.RunID,
+		&i.GithubEvent,
+		&i.GithubEventCommit,
+		&i.GithubEventAt,
 	)
 	return i, err
 }
@@ -321,7 +330,7 @@ const liveSessions = `-- name: LiveSessions :many
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice, run_id
+    launch_notice, run_id, github_event, github_event_commit, github_event_at
 FROM agent_sessions
 WHERE state <> 'ended'
 ORDER BY launched_at, id
@@ -369,6 +378,9 @@ func (q *Queries) LiveSessions(ctx context.Context) ([]AgentSession, error) {
 			&i.WorktreeAction,
 			&i.LaunchNotice,
 			&i.RunID,
+			&i.GithubEvent,
+			&i.GithubEventCommit,
+			&i.GithubEventAt,
 		); err != nil {
 			return nil, err
 		}
@@ -381,6 +393,51 @@ func (q *Queries) LiveSessions(ctx context.Context) ([]AgentSession, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const noteGitHubEvent = `-- name: NoteGitHubEvent :execrows
+UPDATE agent_sessions SET
+    github_event = ?1,
+    github_event_commit = ?2,
+    github_event_at = ?3
+WHERE owner = ?4 COLLATE NOCASE AND name = ?5 COLLATE NOCASE
+    AND kind = ?6 AND number = ?7
+    AND launched_at <= ?8
+    AND (ended_at IS NULL OR ended_at >= ?9)
+    AND (github_event_at IS NULL OR github_event_at <= ?3)
+`
+
+type NoteGitHubEventParams struct {
+	GithubEvent       string
+	GithubEventCommit string
+	GithubEventAt     *time.Time
+	Owner             string
+	Name              string
+	Kind              string
+	Number            int64
+	Upto              time.Time
+	Since             *time.Time
+}
+
+// NoteGitHubEvent records what came of an item on GitHub, at a time, on each of its
+// sessions that ran then: launched no later than upto, and not ended before since. A
+// session that holds a later event keeps it.
+func (q *Queries) NoteGitHubEvent(ctx context.Context, arg NoteGitHubEventParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, noteGitHubEvent,
+		arg.GithubEvent,
+		arg.GithubEventCommit,
+		arg.GithubEventAt,
+		arg.Owner,
+		arg.Name,
+		arg.Kind,
+		arg.Number,
+		arg.Upto,
+		arg.Since,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const pruneEndedBefore = `-- name: PruneEndedBefore :execrows
@@ -419,7 +476,7 @@ const recentSessions = `-- name: RecentSessions :many
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice, run_id
+    launch_notice, run_id, github_event, github_event_commit, github_event_at
 FROM agent_sessions
 WHERE state <> 'ended' OR launched_at >= ?1
 ORDER BY launched_at DESC, id DESC
@@ -474,6 +531,9 @@ func (q *Queries) RecentSessions(ctx context.Context, arg RecentSessionsParams) 
 			&i.WorktreeAction,
 			&i.LaunchNotice,
 			&i.RunID,
+			&i.GithubEvent,
+			&i.GithubEventCommit,
+			&i.GithubEventAt,
 		); err != nil {
 			return nil, err
 		}

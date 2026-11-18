@@ -252,7 +252,10 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'A pull request is merged', keywords: ['merge', 'trigger'] },
     { label: 'A pull request is closed without merging', keywords: ['closed', 'trigger'] },
     { label: 'An issue is closed', keywords: ['closed', 'trigger'] },
-    { label: `You submit a review in ${brand.name}`, keywords: ['approve', 'request changes', 'trigger'] },
+    {
+      label: 'You approve or request changes on a pull request',
+      keywords: ['approve', 'request changes', 'review', 'agent', 'trigger'],
+    },
     { label: `You dismiss an item in ${brand.name}`, keywords: ['dismissed', 'archive', 'trigger'] },
     {
       label: 'You unassign yourself or remove yourself as reviewer',

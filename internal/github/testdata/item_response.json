@@ -80,6 +80,19 @@
                     }
                 ]
             },
+            "opinions": {
+                "nodes": [
+                    {
+                        "commit": {
+                            "oid": "1111111111111111111111111111111111111111"
+                        },
+                        "state": "APPROVED",
+                        "submittedAt": "2026-01-10T12:00:00Z",
+                        "url": "https://github.com/acme-org/example-repo/pull/12#pullrequestreview-1",
+                        "viewerDidAuthor": true
+                    }
+                ]
+            },
             "statusCheckRollup": {
                 "state": "SUCCESS",
                 "contexts": {

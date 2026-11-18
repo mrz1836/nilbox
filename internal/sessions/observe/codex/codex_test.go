@@ -471,6 +471,98 @@ func TestObserveATurnThatEndsInTheSecondItWasRead(t *testing.T) {
 		"a turn read in the second of the last update is read again")
 }
 
+func TestObserveTellsACompletedCommandThatChangedGitHub(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.alive[701] = true
+	h.procs.list = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
+
+	r := rec("s2", embeddedDir)
+	r.AgentSessionID, r.PID = embeddedThread, 701
+
+	set := func(updated int64, turns string) {
+		h.script.set(embeddedThread, thread(embeddedThread, embeddedDir, `{"type":"notLoaded"}`, updated), fixture(t, turns))
+	}
+
+	// The first read finds a turn the session was in before it was followed.
+	set(100, "turns_completed.json")
+	assert.False(t, h.observe(t, r)["s2"].Acted, "a git diff changes nothing on GitHub")
+
+	// The next turn approves the pull request, after a merge that failed.
+	set(200, "turns_acted.json")
+
+	h.now = h.now.Add(codex.Poll)
+	got := h.observe(t, r)
+	assert.True(t, got["s2"].Acted, "gh pr review finished, through Codex's shell")
+	assert.Equal(t, "The tests pass, so I approved it.", got["s2"].LastMessage)
+
+	// The same turn read again tells nothing again.
+	set(300, "turns_acted.json")
+
+	h.now = h.now.Add(codex.Poll)
+	assert.False(t, h.observe(t, r)["s2"].Acted, "each command is told once")
+}
+
+func TestObserveTellsNothingOfACommandThatFailedOrStillRuns(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.alive[701] = true
+	h.procs.list = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
+
+	r := rec("s2", embeddedDir)
+	r.AgentSessionID, r.PID = embeddedThread, 701
+
+	turn := func(status, exit string) json.RawMessage {
+		return json.RawMessage(`{"data":[{"id":"turn-2","status":"inProgress","items":[` +
+			`{"type":"commandExecution","id":"exec-9","command":"/bin/zsh -lc 'gh pr merge 12'",` +
+			`"status":"` + status + `","exitCode":` + exit + `}]}]}`)
+	}
+
+	h.script.set(embeddedThread, thread(embeddedThread, embeddedDir, `{"type":"notLoaded"}`, 100),
+		fixture(t, "turns_in_flight.json"))
+	h.observe(t, r)
+
+	for i, step := range []struct {
+		status, exit string
+		want         bool
+	}{
+		{status: "inProgress", exit: "null", want: false},
+		{status: "failed", exit: "1", want: false},
+	} {
+		h.script.set(embeddedThread, thread(embeddedThread, embeddedDir, `{"type":"notLoaded"}`, int64(200+i)),
+			turn(step.status, step.exit))
+
+		h.now = h.now.Add(codex.Poll)
+		assert.Equal(t, step.want, h.observe(t, r)["s2"].Acted, step.status)
+	}
+
+	// Once it completes, it is told; what failed before was never counted as done.
+	h.script.set(embeddedThread, thread(embeddedThread, embeddedDir, `{"type":"notLoaded"}`, 300),
+		json.RawMessage(`{"data":[{"id":"turn-2","status":"completed","items":[`+
+			`{"type":"commandExecution","id":"exec-10","command":"/bin/zsh -lc 'gh pr merge 12'",`+
+			`"status":"completed","exitCode":0}]}]}`))
+
+	h.now = h.now.Add(codex.Poll)
+	assert.True(t, h.observe(t, r)["s2"].Acted)
+}
+
+func TestObserveTellsNothingOfCommandsFromBeforeItFollowed(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.alive[701] = true
+	h.procs.list = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
+
+	r := rec("s2", embeddedDir)
+	r.AgentSessionID, r.PID = embeddedThread, 701
+
+	h.script.set(embeddedThread, thread(embeddedThread, embeddedDir, `{"type":"notLoaded"}`, 100),
+		fixture(t, "turns_acted.json"))
+	assert.False(t, h.observe(t, r)["s2"].Acted, "the first read primes what was already done")
+}
+
 func TestObserveAThreadWhoseTurnsCannotBeRead(t *testing.T) {
 	t.Parallel()
 

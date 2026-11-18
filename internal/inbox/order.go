@@ -165,12 +165,25 @@ type itemWrite struct {
 // itemUpdate is what an item's own refresh read: the account the item is stored for, by
 // id and login, GitHub's answer, and the outcome of the file check it ran, if one was due.
 // The login tells whether GitHub still asks that account to review a pull request (see
-// answeredReview); with none, the item stays in the lists it is in.
+// answeredReview); with none, the item stays in the lists it is in. viewer is the account
+// the token it was read with belongs to, as the inbox last learned it ("" when it doesn't
+// know), which says whether the verdict the answer calls the viewer's is the login's (see
+// readsVerdict).
 type itemUpdate struct {
 	accountID int64
 	login     string
+	viewer    string
 	update    *github.ItemUpdate
 	files     map[string]fileCheck
+}
+
+// applied is what storing an item write did that its caller tells: whether it stored the
+// write at all, whether it took the item out of the lists, and the user's verdict on a pull
+// request it found newly submitted, to tell as the user's review (see noteReadVerdict).
+type applied struct {
+	stored   bool
+	unlisted bool
+	reviewed *github.Verdict
 }
 
 // startFetch numbers a fetch for one item as it starts.
@@ -220,72 +233,93 @@ func (s *Service) takeReplays(seq uint64) []itemWrite {
 // storeItemWrite stores w in one transaction, unless a whole refresh that started later
 // already stored newer data about the item. It reports whether it stored w.
 func (s *Service) storeItemWrite(ctx context.Context, w itemWrite) (bool, error) {
+	did, err := s.storeItem(ctx, w)
+
+	return did.stored, err
+}
+
+// storeItem is storeItemWrite, reporting what the write did for its caller to tell.
+func (s *Service) storeItem(ctx context.Context, w itemWrite) (applied, error) {
 	s.order.mu.Lock()
 	defer s.order.mu.Unlock()
 
 	if s.order.supersedes(w) {
-		return false, nil
+		return applied{}, nil
 	}
 
+	var did applied
+
 	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
-		_, err := s.applyItemWrite(ctx, tx, w, true)
+		var err error
+
+		did, err = s.applyItemWrite(ctx, tx, w, true)
 
 		return err
 	})
 	if err != nil {
-		return false, err
+		return applied{}, err
 	}
 
 	if r := s.order.refresh; r != nil && w.seq > r.seq {
 		r.replays = append(r.replays, w)
 	}
 
-	return true, nil
+	did.stored = true
+
+	return did, nil
 }
 
-// applyItemWrite writes w in tx and reports whether it took the item out of the lists.
-// The first time, an item's own refresh records the GraphQL budget its query left; a
-// replay does not record it again.
-func (s *Service) applyItemWrite(ctx context.Context, tx *sql.Tx, w itemWrite, first bool) (bool, error) {
+// applyItemWrite writes w in tx and reports what it did: whether it took the item out of
+// the lists, and the user's verdict it found newly submitted. The first time, an item's
+// own refresh records the GraphQL budget its query left, and keeps a newly submitted
+// verdict to tell; a replay does neither again, though it stores the verdict again over
+// what the refresh it follows stored.
+func (s *Service) applyItemWrite(ctx context.Context, tx *sql.Tx, w itemWrite, first bool) (applied, error) {
 	switch {
 	case w.unlist:
-		return true, s.newWriter(tx).unlistActed(ctx, w.id, w.state)
+		return applied{unlisted: true}, s.newWriter(tx).unlistActed(ctx, w.id, w.state)
 	case w.files != nil:
-		return false, upsertFiles(ctx, s.q.WithTx(tx), *w.files)
+		return applied{}, upsertFiles(ctx, s.q.WithTx(tx), *w.files)
 	case w.noted != nil:
-		return false, setItemState(ctx, s.q.WithTx(tx), *w.noted)
+		return applied{}, setItemState(ctx, s.q.WithTx(tx), *w.noted)
 	}
 
 	u, it := w.update, w.update.update.Item
 	wr := s.newWriter(tx)
 	wr.accountID, wr.login, wr.files = u.accountID, u.login, u.files
 	wr.details = map[string]github.ItemDetails{it.NodeID: u.update.Details}
+	wr.verdict, wr.tellVerdict = u.readsVerdict(), first
 
 	if first {
 		if err := wr.saveGraphQLRate(ctx, u.update.RateLimit); err != nil {
-			return false, err
+			return applied{}, err
 		}
 	}
 
 	if !u.update.Found || it.Closed() || it.Repo.IsArchived {
-		return true, wr.unlist(ctx, w.id, u.update)
+		err := wr.unlistRead(ctx, w.id, u.update)
+
+		return applied{unlisted: true, reviewed: wr.reviewed}, err
 	}
 
-	return false, wr.rewrite(ctx, w.id, it)
+	err := wr.rewrite(ctx, w.id, it)
+
+	return applied{reviewed: wr.reviewed}, err
 }
 
 // replay applies again, in tx, the item writes stored while a refresh was fetching, and
-// returns the items they took out of the lists.
+// returns the items they took out of the lists. What they found to tell was told when
+// they were first stored.
 func (s *Service) replay(ctx context.Context, tx *sql.Tx, writes []itemWrite) (map[int64]bool, error) {
 	unlisted := make(map[int64]bool)
 
 	for _, w := range writes {
-		gone, err := s.applyItemWrite(ctx, tx, w, false)
+		did, err := s.applyItemWrite(ctx, tx, w, false)
 		if err != nil {
 			return nil, err
 		}
 
-		if gone {
+		if did.unlisted {
 			unlisted[w.id] = true
 		}
 	}

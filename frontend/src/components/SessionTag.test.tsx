@@ -122,6 +122,27 @@ describe('SessionTag', () => {
     expect(within(older).getByRole('button', { name: 'Resume' })).toBeEnabled()
   })
 
+  it('says what came of the item on GitHub while each session ran', async () => {
+    const user = userEvent.setup()
+    const sessions = [
+      agentSession({
+        id: 'approved',
+        githubEvent: 'approved',
+        githubEventCommit: 'abc1234def5678abc1234def5678abc1234def56',
+        githubEventAt: '2026-06-15T11:58:00Z',
+      }),
+      agentSession({ id: 'quiet' }),
+    ]
+
+    renderTag(sessions)
+    await user.click(screen.getByRole('button', { name: /Claude session/ }))
+
+    const [approved = document.body, quiet = document.body] = entries(2)
+
+    expect(approved).toHaveTextContent('On GitHub: Approved at abc1234 · 2m ago')
+    expect(quiet).not.toHaveTextContent('On GitHub')
+  })
+
   it('says what each session started with, where, and what its launch worked around', async () => {
     const user = userEvent.setup()
     const notice = 'Couldn’t fetch origin/main, so the worktree starts from the last fetched copy: timed out'

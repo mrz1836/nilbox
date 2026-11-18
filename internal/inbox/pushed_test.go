@@ -216,7 +216,7 @@ func TestAReviewFromTheSheetClearsTheTagInEveryList(t *testing.T) {
 	assert.False(t, snap.Yours.Items[0].Details.PushedSinceReview, "you reviewed it since it last moved")
 }
 
-func TestASingleReadLeavesThePushedFlagToTheWholeRefresh(t *testing.T) {
+func TestAReadWithoutTheVerdictLeavesThePushedFlag(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
@@ -229,7 +229,7 @@ func TestASingleReadLeavesThePushedFlagToTheWholeRefresh(t *testing.T) {
 	snap, err := h.svc.RefreshItem(t.Context(), id)
 	require.NoError(t, err)
 	assert.Equal(t, []int{5}, numbers(snap.ReviewRequested),
-		"a read of the pull request alone reads no verdict, so it keeps the list as the refresh left it")
+		"a read that didn't ask for the verdict keeps the list as the refresh left it")
 }
 
 func TestYouCannotTakeYourselfOffAPushedPullRequest(t *testing.T) {

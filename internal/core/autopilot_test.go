@@ -385,14 +385,21 @@ type engineSink struct{ order *toldInOrder }
 
 func (e engineSink) Outcomes(context.Context, []autopilot.Outcome) { e.order.add("engine") }
 
+// sessionsSink is the agent sessions, as the fan-out tells them.
+type sessionsSink struct{ order *toldInOrder }
+
+func (s sessionsSink) Settle(context.Context, []inbox.Outcome) { s.order.add("sessions") }
+
 func TestTheEngineHearsWhatTheUserTookBackBeforeTheMirror(t *testing.T) {
 	t.Parallel()
 
 	order := &toldInOrder{}
-	fan := outcomesFanOut{threads: mirrorSink{order: order}, engine: engineSink{order: order}}
+	fan := outcomesFanOut{
+		threads: mirrorSink{order: order}, engine: engineSink{order: order}, sessions: sessionsSink{order: order},
+	}
 
 	fan.Settle(t.Context(), []inbox.Outcome{{Kind: inbox.OutcomeRestored}})
-	assert.Equal(t, []string{"engine", "mirror"}, order.heard,
+	assert.Equal(t, []string{"engine", "mirror", "sessions"}, order.heard,
 		"the engine records hands off at once, never behind a clear the mirror sends to GitHub")
 
 	(&engineWaker{}).Outcomes(t.Context(), []autopilot.Outcome{{Kind: "restored"}})

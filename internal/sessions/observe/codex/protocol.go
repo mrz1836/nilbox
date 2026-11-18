@@ -24,6 +24,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/mrz1836/nilbox/internal/fence"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
@@ -103,11 +104,31 @@ type Turn struct {
 	Items []TurnItem `json:"items"`
 }
 
-// TurnItem is one item of a turn; only the agent's messages are read.
+// TurnItem is one item of a turn; only the agent's messages and the commands it ran are
+// read. A command (commandExecution) has its own ID, the line it ran (as Codex runs it,
+// through a shell's -c), its status (completed once it finished), and its exit code.
 type TurnItem struct {
 	Type  string  `json:"type"`
 	Text  string  `json:"text"`
 	Phase *string `json:"phase"`
+
+	ID       string `json:"id"`
+	Command  string `json:"command"`
+	Status   string `json:"status"`
+	ExitCode *int   `json:"exitCode"`
+}
+
+// itemCommand is the type of a turn item that ran a command.
+const itemCommand = "commandExecution"
+
+// commandCompleted is the status of a command that ran to its end.
+const commandCompleted = "completed"
+
+// changedGitHub reports a command item that finished without an error and changes
+// something on GitHub (fence.ChangesGitHub).
+func (i TurnItem) changedGitHub() bool {
+	return i.Type == itemCommand && i.Status == commandCompleted && i.ExitCode != nil && *i.ExitCode == 0 &&
+		fence.ChangesGitHub(i.Command)
 }
 
 // UnknownStatus is the detail of a session whose thread Codex reports in a status this

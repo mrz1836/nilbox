@@ -39,6 +39,12 @@ const (
 
 	// ReviveTick is how often the Watcher looks for a resumed session while none runs.
 	ReviveTick = 20 * time.Second
+
+	// ActedGap is the least time between two reads of one item that its sessions' commands
+	// asked for while they still work (Observation.Acted): the first is read at once, and
+	// any more within the gap once more at its end, so an approval then a merge both reach
+	// the card, at most a point each gap. The read once a session stops working is apart.
+	ActedGap = 30 * time.Second
 )
 
 // Observer reports what one agent's sessions are doing, through the agent's own
@@ -150,6 +156,10 @@ type Watcher struct {
 	// StateUnknown, so a moment its agent could not be asked is not taken for a change.
 	known map[string]State
 
+	// acted holds, by item, when the item was last read for its sessions' commands that
+	// changed GitHub, and whether another waits for ActedGap to pass (see heedActed).
+	acted map[int64]*actedRead
+
 	// observing reports whether the observers were asked since they were last closed.
 	observing bool
 
@@ -164,6 +174,7 @@ func NewWatcher(cfg WatcherConfig) *Watcher {
 		events: event.Or(cfg.Events), clock: clock.Or(cfg.Clock), home: cfg.Home, logger: logging.Or(cfg.Logger),
 		tick: cfg.Tick, debounce: cfg.Debounce, reviveIn: cfg.ReviveTick, window: cfg.ReviveWindow,
 		newID: cfg.NewID, wake: make(chan struct{}, 1), waiting: map[string]time.Time{}, known: map[string]State{},
+		acted: map[int64]*actedRead{},
 	}
 
 	if w.newID == nil {
@@ -237,7 +248,10 @@ func (w *Watcher) Reconcile(ctx context.Context) time.Duration {
 		return wait
 	}
 
-	observed, revived := w.revive(ctx, now, ended, w.observe(ctx, now, append(slices.Clone(live), ended...)))
+	observations := w.observe(ctx, now, append(slices.Clone(live), ended...))
+	w.heedActed(now, live, observations)
+
+	observed, revived := w.revive(ctx, now, ended, observations)
 
 	changes, err := w.store.Apply(ctx, now, observed)
 	if err != nil {
@@ -284,8 +298,69 @@ func (w *Watcher) idle(ctx context.Context, live, ended []Record) (time.Duration
 	w.closeObserversLocked()
 	clear(w.waiting)
 	clear(w.known)
+	clear(w.acted)
 
 	return wait, true
+}
+
+// actedRead is when an item was last read for its sessions' commands that changed GitHub,
+// and whether another such command waits for ActedGap to pass.
+type actedRead struct {
+	at      time.Time
+	pending bool
+}
+
+// heedActed hands the Rereader the item of each running session whose agent finished a
+// command that changed GitHub (Observation.Acted), as observed, before it stops working:
+// at once, or, within ActedGap of the item's last such read, once more at the gap's end.
+// It reads the observations as the observers made them, since storing drops one that
+// changes nothing, and passes over a session revived from an ended one, which carries its
+// old ID.
+func (w *Watcher) heedActed(now time.Time, live []Record, observed []Observation) {
+	if w.reread == nil {
+		return
+	}
+
+	items := make(map[string]int64, len(live))
+	for _, r := range live {
+		items[r.ID] = r.ItemID
+	}
+
+	for _, o := range observed {
+		if id := items[o.ID]; o.Acted && id > 0 {
+			w.actedOn(now, id)
+		}
+	}
+
+	for id, a := range w.acted {
+		switch {
+		case now.Sub(a.at) < ActedGap:
+		case a.pending:
+			w.reread.Reread(id)
+
+			a.at, a.pending = now, false
+		default:
+			delete(w.acted, id)
+		}
+	}
+}
+
+// actedOn reads the item with id again for a command that changed GitHub, unless one was
+// read within ActedGap, which leaves this one for the gap's end.
+func (w *Watcher) actedOn(now time.Time, id int64) {
+	a := w.acted[id]
+
+	switch {
+	case a == nil:
+		w.reread.Reread(id)
+		w.acted[id] = &actedRead{at: now}
+	case now.Sub(a.at) >= ActedGap:
+		w.reread.Reread(id)
+
+		a.at, a.pending = now, false
+	default:
+		a.pending = true
+	}
 }
 
 // resumable returns the sessions that ended in the last revive window, however long ago
@@ -491,6 +566,7 @@ func (w *Watcher) stoppedWorking(ctx context.Context, c Change) {
 
 	if w.reread != nil && c.After.ItemID > 0 {
 		w.reread.Reread(c.After.ItemID)
+		delete(w.acted, c.After.ItemID) // this read covers one still waiting (heedActed)
 	}
 }
 

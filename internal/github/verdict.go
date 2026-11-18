@@ -6,9 +6,10 @@ import "time"
 // or requested changes (latestOpinionatedReviews), the first 50, each with whether the
 // viewer wrote it. A later review that only comments, as a reply to a line comment is,
 // never hides it, as it hides the viewer's latest review (viewerLatestReview). Asked
-// beside the review sheet's other fields, it costs no point (measured in November 2026);
-// beside the inbox card's details it costs a point more per batch of 25, so the card
-// never asks for it.
+// beside the review sheet's other fields, or beside one item's in the item query (with or
+// without its projects), it costs no point (measured in November 2026); beside the inbox
+// card's details it costs a point more per batch of 25, so the details and the followers'
+// batches never ask for it.
 const opinionsField = `opinions: latestOpinionatedReviews(first: 50) {
     nodes { state url submittedAt viewerDidAuthor commit { oid } }
   }`

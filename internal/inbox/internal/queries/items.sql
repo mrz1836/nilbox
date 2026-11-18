@@ -1,10 +1,11 @@
 -- name: ClearReasons :exec
 -- ClearReasons takes every item of the account with account_id out of the inbox, clearing
 -- the four searches' flags, the one derived from the fourth (reason_pushed), and the user's
--- verdict it read. The rows stay, since local state may reference them.
+-- verdict it read, with when it was submitted. When the newest verdict seen was submitted
+-- (viewer_review_seen_at) stays. The rows stay, since local state may reference them.
 UPDATE items
 SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0, reason_reviewed = 0, reason_pushed = 0,
-    viewer_review_state = '', viewer_review_commit = ''
+    viewer_review_state = '', viewer_review_commit = '', viewer_review_at = NULL
 WHERE account_id = ?;
 
 -- name: UpsertItem :one
@@ -16,7 +17,8 @@ WHERE account_id = ?;
 -- requested changes) stays left while the item has not moved since, since GitHub's search
 -- index trails the edit; once the item moves past the stamp, the search is believed and the
 -- stamp cleared. reason_reviewed, reason_pushed, and the user's verdict come from the
--- fourth search (see 0017_pushed_since_review). The item's state is rewritten when the search said it (a state not empty),
+-- fourth search (see 0017_pushed_since_review), and when the verdict was submitted with it,
+-- while viewer_review_seen_at only ever rises (see 0018_viewer_review_seen). The item's state is rewritten when the search said it (a state not empty),
 -- but never over a merge, which nothing comes back from; and review_requested_at and
 -- assigned_at keep when the item first arrived in each list while it stays in it, stamped
 -- with fetched_at when it arrives; ClearArrivalStamps clears them once it leaves.
@@ -24,8 +26,8 @@ INSERT INTO items (
     account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_association,
     is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at,
     reason_review_requested, reason_authored, reason_assigned, fetched_at, state, review_requested_at, assigned_at,
-    reason_reviewed, reason_pushed, viewer_review_state, viewer_review_commit
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    reason_reviewed, reason_pushed, viewer_review_state, viewer_review_commit, viewer_review_at, viewer_review_seen_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     node_id = excluded.node_id,
     title = excluded.title,
@@ -50,6 +52,12 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     END,
     viewer_review_state = excluded.viewer_review_state,
     viewer_review_commit = excluded.viewer_review_commit,
+    viewer_review_at = excluded.viewer_review_at,
+    viewer_review_seen_at = CASE
+        WHEN items.viewer_review_seen_at IS NULL OR excluded.viewer_review_seen_at > items.viewer_review_seen_at
+            THEN excluded.viewer_review_seen_at
+        ELSE items.viewer_review_seen_at
+    END,
     reason_assigned = CASE
         WHEN items.assign_left_at IS NOT NULL AND excluded.item_updated_at <= items.assign_left_at THEN 0
         ELSE excluded.reason_assigned
@@ -304,10 +312,43 @@ UPDATE items SET reason_review_requested = 1, review_left_at = NULL, review_requ
 WHERE id = ?;
 
 -- name: NoteViewerReview :exec
--- NoteViewerReview records the user's own verdict on the item with id, as a review they
--- just left from the inbox: state (APPROVED or CHANGES_REQUESTED) at commit, so its card
--- reads it before the next whole refresh does.
-UPDATE items SET viewer_review_state = ?, viewer_review_commit = ? WHERE id = ?;
+-- NoteViewerReview records the user's own verdict on the item with id: state (APPROVED or
+-- CHANGES_REQUESTED, '' with none) at commit, submitted at reviewed_at (NULL with none), so
+-- its card reads it before the next whole refresh does. It is a review the user just left
+-- from the inbox, or the verdict a read of the pull request alone found. seen_at raises when
+-- the newest verdict seen was submitted, and never lowers it; NULL leaves it as it is.
+UPDATE items SET
+    viewer_review_state = sqlc.arg(viewer_review_state),
+    viewer_review_commit = sqlc.arg(viewer_review_commit),
+    viewer_review_at = sqlc.narg(reviewed_at),
+    viewer_review_seen_at = CASE
+        WHEN viewer_review_seen_at IS NULL OR sqlc.narg(seen_at) > viewer_review_seen_at THEN
+            COALESCE(sqlc.narg(seen_at), viewer_review_seen_at)
+        ELSE viewer_review_seen_at
+    END
+WHERE id = sqlc.arg(id);
+
+-- name: GetViewerVerdict :one
+-- GetViewerVerdict returns the user's own verdict stored on the item with id: its state,
+-- its commit, when it was submitted, and when the newest verdict seen was submitted.
+SELECT viewer_review_state, viewer_review_commit, viewer_review_at, viewer_review_seen_at
+FROM items WHERE id = ?;
+
+-- name: LeavePushed :exec
+-- LeavePushed takes the item with id out of Review requested where it is listed only
+-- because its author pushed since the user requested changes, after a read of the pull
+-- request alone found the user's verdict no longer pushed past: an approval, a request for
+-- changes at its head, or none. It is never stamped: the fourth search reads the verdict
+-- live, so the next whole refresh agrees.
+UPDATE items SET reason_pushed = 0 WHERE id = ? AND reason_pushed = 1;
+
+-- name: ListViewerReviewSeen :many
+-- ListViewerReviewSeen returns, for the items of the account with account_id among the
+-- node IDs, when the newest verdict of the user's seen on each was submitted, for those
+-- with one: a whole refresh tells a verdict newer than it as the user's review.
+SELECT node_id, viewer_review_seen_at FROM items
+WHERE account_id = sqlc.arg(account_id) AND viewer_review_seen_at IS NOT NULL
+  AND node_id IN (sqlc.slice(node_ids));
 
 -- name: LeaveAnsweredReview :exec
 -- LeaveAnsweredReview takes the item with id out of the review-requested list after a read

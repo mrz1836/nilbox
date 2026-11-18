@@ -54,6 +54,14 @@ type writer struct {
 	// tellOutcomes is set while an outcome sink listens, so a refresh reads and works out
 	// what it tells (see refreshOutcomes).
 	tellOutcomes bool
+
+	// verdict is set for an item's own write that read the user's own verdict on a pull
+	// request (see itemUpdate.readsVerdict), which noteReadVerdict stores; tellVerdict the
+	// first time the write is applied, so a replay tells nothing again. reviewed is the
+	// verdict it found newly submitted, to tell as the user's review.
+	verdict     bool
+	tellVerdict bool
+	reviewed    *github.Verdict
 }
 
 // newWriter returns a writer that stores through q and p, which run in one transaction,
@@ -181,7 +189,8 @@ func (w *writer) saveItem(ctx context.Context, repoID int64, e *entry) error {
 		FetchedAt: w.now, State: it.State,
 		ReviewRequestedAt: stampIf(e.reviewRequested, w.now), AssignedAt: stampIf(e.assigned, w.now),
 		ReasonReviewed: e.reviewed, ReasonPushed: e.pushed, ViewerReviewState: verdictState(e.verdict),
-		ViewerReviewCommit: verdictCommit(e.verdict),
+		ViewerReviewCommit: verdictCommit(e.verdict), ViewerReviewAt: timeOrNil(verdictAt(e.verdict)),
+		ViewerReviewSeenAt: timeOrNil(verdictAt(e.verdict)),
 	})
 	if err != nil {
 		return fmt.Errorf("save the item %s: %w", it.Ref(), err)

@@ -288,6 +288,26 @@ func (l *Ledger) RunState(ctx context.Context, id string, u RunUpdate) error {
 	return nil
 }
 
+// NoteGitHub records on the sessions of each note's item what came of it on GitHub while
+// they ran (see Store.NoteGitHub), and tells the window once when any session changed. It
+// records every note it can, and returns what failed.
+func (l *Ledger) NoteGitHub(ctx context.Context, notes []GitHubNote) error {
+	changed, errs := false, make([]error, 0, len(notes))
+
+	for _, n := range notes {
+		ok, err := l.store.NoteGitHub(ctx, n)
+		changed = changed || ok
+
+		errs = append(errs, err)
+	}
+
+	if changed {
+		l.events.Emit(event.SessionsUpdated{})
+	}
+
+	return errors.Join(errs...)
+}
+
 // ByRun returns the session of the background run runID, or ErrNotFound.
 func (l *Ledger) ByRun(ctx context.Context, runID int64) (Record, error) {
 	return l.store.ByRun(ctx, runID)

@@ -114,10 +114,13 @@ type savedEntry struct {
 // listedBefore is what the lists held before a refresh rewrote them, as the last refresh
 // of the same account left them: which items were in the review-requested and the
 // assigned lists, which arrivals compare with, and, while an outcome sink listens, every
-// item listed (rows), which outcomes compare with.
+// item listed (rows), which outcomes compare with, and when the newest verdict of the
+// user's seen on each pull request the fourth search returned with a verdict recent
+// enough to tell was submitted, by node ID (reviewSeen; none seen yet when absent).
 type listedBefore struct {
-	flags listedFlags
-	rows  []listedRow
+	flags      listedFlags
+	rows       []listedRow
+	reviewSeen map[string]*time.Time
 }
 
 // readListed reads the lists as they are before the refresh rewrites them with inbox, from
@@ -130,21 +133,8 @@ func (w *writer) readListed(ctx context.Context, status map[string]string, inbox
 		return nil, nil //nolint:nilnil // no lists to compare with is the answer for another account
 	}
 
-	before := &listedBefore{}
-
 	if w.tellOutcomes {
-		rows, err := w.q.ListListed(ctx, w.accountID)
-		if err != nil {
-			return nil, fmt.Errorf("read the listed items: %w", err)
-		}
-
-		for _, r := range rows {
-			before.flags.set(r.ID, r.ReasonReviewRequested, r.ReasonPushed, r.ReasonAssigned)
-		}
-
-		before.rows = rows
-
-		return before, nil
+		return w.readListedTelling(ctx, inbox)
 	}
 
 	if _, refreshed := lastRefresh(status); !refreshed {
@@ -156,8 +146,32 @@ func (w *writer) readListed(ctx context.Context, status map[string]string, inbox
 		return nil, fmt.Errorf("read the listed items: %w", err)
 	}
 
+	before := &listedBefore{}
+
 	for _, r := range rows {
 		before.flags.set(r.ID, r.ReasonReviewRequested, r.ReasonPushed, r.ReasonAssigned)
+	}
+
+	return before, nil
+}
+
+// readListedTelling is readListed while an outcome sink listens: every item listed, which
+// outcomes compare with too, and when the newest verdict seen on each of the fourth
+// search's pull requests was submitted (see readReviewSeen).
+func (w *writer) readListedTelling(ctx context.Context, inbox *github.Inbox) (*listedBefore, error) {
+	rows, err := w.q.ListListed(ctx, w.accountID)
+	if err != nil {
+		return nil, fmt.Errorf("read the listed items: %w", err)
+	}
+
+	before := &listedBefore{rows: rows}
+
+	for _, r := range rows {
+		before.flags.set(r.ID, r.ReasonReviewRequested, r.ReasonPushed, r.ReasonAssigned)
+	}
+
+	if before.reviewSeen, err = w.readReviewSeen(ctx, inbox.Reviewed.Items); err != nil {
+		return nil, err
 	}
 
 	return before, nil

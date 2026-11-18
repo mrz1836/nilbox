@@ -12,6 +12,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/store"
 )
 
 // The inbox tells an OutcomeSink what the user finished from it, and which items it saw
@@ -35,8 +36,11 @@ const (
 	// OutcomeClosed is a pull request or an issue the user closed from the inbox.
 	OutcomeClosed OutcomeKind = "closed"
 
-	// OutcomeReviewed is a pull request the user approved or asked changes of from the
-	// inbox, with no merge or close in the same action. A comment is not a review here.
+	// OutcomeReviewed is a pull request the user approved or asked changes of: from the
+	// inbox, with no merge or close in the same action, or anywhere else (an agent's gh,
+	// a browser), as a read of the pull request alone or a whole refresh first saw it,
+	// within reviewWindow of its submission, at GitHub's time for it. Each review is told
+	// once (see verdicts.go). A comment is not a review here.
 	OutcomeReviewed OutcomeKind = "reviewed"
 
 	// OutcomeDismissed is an item the user dismissed that wasn't, and OutcomeRestored a
@@ -85,6 +89,21 @@ type Outcome struct {
 	// (a restore of what it dismissed or snoozed, a snooze over that, an unpin of what it
 	// pinned); the zero Reversal otherwise.
 	Reversed Reversal
+
+	// GitHub is what the item came to on GitHub, where the outcome says: a review's
+	// verdict, a merge, or a close (see GitHubFact). It is zero for every other outcome.
+	GitHub GitHubFact
+}
+
+// GitHubFact is what an item came to on GitHub, as an outcome learned it: State is the
+// user's verdict (github.ReviewStateApproved or github.ReviewStateChangesRequested) with
+// Commit, the commit it was left on ("" when not known), or github.StateMerged or
+// github.StateClosed; At is GitHub's time for it, or the action's own for one the user took
+// from the inbox, and the read's when GitHub didn't say.
+type GitHubFact struct {
+	State  string
+	Commit string
+	At     time.Time
 }
 
 // Reversal is a routine's triage of an item that the user's own took back: the routine, the
@@ -174,15 +193,17 @@ func pullOutcomes(row editRow, acted Acted, now time.Time) []Outcome {
 
 	switch {
 	case acted.Merged:
-		out.Kind = OutcomeMerged
+		out.Kind, out.GitHub = OutcomeMerged, GitHubFact{State: github.StateMerged, At: now}
 	case acted.Closed:
-		out.Kind = OutcomeClosed
+		out.Kind, out.GitHub = OutcomeClosed, GitHubFact{State: github.StateClosed, At: now}
 	case acted.Reviewed && decides(acted.ReviewEvent):
 		out.Kind = OutcomeReviewed
 
 		if !acted.ReviewedAt.IsZero() {
 			out.At = acted.ReviewedAt.UTC()
 		}
+
+		out.GitHub = GitHubFact{State: verdictOf(acted.ReviewEvent), Commit: store.Deref(row.HeadOID), At: out.At}
 	default:
 		return nil
 	}
@@ -203,7 +224,10 @@ func issueOutcomes(row editRow, closed, own bool, now time.Time) []Outcome {
 		kind = OutcomeClosed
 	}
 
-	return []Outcome{{Kind: kind, Login: row.AccountLogin, Ref: refOfRow(row), At: now}}
+	return []Outcome{{
+		Kind: kind, Login: row.AccountLogin, Ref: refOfRow(row), At: now,
+		GitHub: GitHubFact{State: github.StateClosed, At: now},
+	}}
 }
 
 // seenClosed is what a stored read of one item tells: the item merged or closed, when its
@@ -214,7 +238,20 @@ func seenClosed(w itemWrite, login string, ref item.Ref, now time.Time) []Outcom
 		return nil
 	}
 
-	return []Outcome{{Kind: OutcomeSeenClosed, Login: login, Ref: ref, At: now}}
+	return []Outcome{{
+		Kind: OutcomeSeenClosed, Login: login, Ref: ref, At: now, GitHub: closedFact(w.update.update.Item, now),
+	}}
+}
+
+// closedFact is what the closed item it came to, as a read found it: merged or closed, at
+// GitHub's time for it, or now when GitHub didn't say.
+func closedFact(it github.Item, now time.Time) GitHubFact {
+	at := it.ClosedAt.UTC()
+	if it.ClosedAt.IsZero() {
+		at = now
+	}
+
+	return GitHubFact{State: it.State, At: at}
 }
 
 // triageItem is an item as a change to its triage tells it, with its triage before the
@@ -276,12 +313,14 @@ func triageOutcome(kind OutcomeKind, t triageItem, at time.Time) []Outcome {
 // listedRow is an item the lists held before a refresh rewrote them.
 type listedRow = queries.ListListedRow
 
-// refreshOutcomes is what a whole refresh that stored inbox tells, for its account, of the
-// items the lists held before it (before; nothing when there is none): each one it found
-// merged or closed (closed, the items dropClosed took out of the lists), then each one it
-// saved in no list, found neither closed nor archived (archived), and that was in no list
-// GitHub cut short this time, since it may still be in one, past the page. It works out
-// nothing while no sink listens. The caller has saved the items (w.saved).
+// refreshOutcomes is what a whole refresh that stored inbox tells, for its account: each
+// pull request of the fourth search whose verdict of the user's was newly submitted (see
+// reviewedOutcomes), then, of the items the lists held before it (before; nothing when
+// there is none), each one it found merged or closed (closed, the items dropClosed took out
+// of the lists), then each one it saved in no list, found neither closed nor archived
+// (archived), and that was in no list GitHub cut short this time, since it may still be in
+// one, past the page. It works out nothing while no sink listens. The caller has saved the
+// items (w.saved).
 func (w *writer) refreshOutcomes(inbox *github.Inbox, closed, archived []github.Item, before *listedBefore) []Outcome {
 	if !w.tellOutcomes || before == nil {
 		return nil
@@ -299,31 +338,39 @@ func (w *writer) refreshOutcomes(inbox *github.Inbox, closed, archived []github.
 	for _, r := range before.rows {
 		ref := refOf(r.RepoOwner, r.RepoName, r.Number, item.Kind(r.Kind))
 
+		if it, ok := wasClosed.find(r, ref); ok {
+			seen = append(seen, Outcome{
+				Kind: OutcomeSeenClosed, Login: login, Ref: ref, At: w.now, GitHub: closedFact(it, w.now),
+			})
+
+			continue
+		}
+
 		switch {
-		case wasClosed.has(r, ref):
-			seen = append(seen, Outcome{Kind: OutcomeSeenClosed, Login: login, Ref: ref, At: w.now})
 		case listed[r.ID], wasArchived.has(r, ref), cut.mayHold(r):
 		default:
 			unlisted = append(unlisted, Outcome{Kind: OutcomeUnlisted, Login: login, Ref: ref, At: w.now})
 		}
 	}
 
-	return append(seen, unlisted...)
+	reviewed := reviewedOutcomes(inbox.Reviewed.Items, before.reviewSeen, login, w.now)
+
+	return append(append(reviewed, seen...), unlisted...)
 }
 
 // itemKeys holds items a refresh read by node ID and by name, so a stored row finds the
 // one it is whichever of the two it shares.
-type itemKeys map[string]bool
+type itemKeys map[string]github.Item
 
 // keysOf returns the keys of items.
 func keysOf(items []github.Item) itemKeys {
 	keys := make(itemKeys, 2*len(items))
 
 	for _, it := range items {
-		keys[it.Ref().Key()] = true
+		keys[it.Ref().Key()] = it
 
 		if it.NodeID != "" {
-			keys[it.NodeID] = true
+			keys[it.NodeID] = it
 		}
 	}
 
@@ -332,7 +379,24 @@ func keysOf(items []github.Item) itemKeys {
 
 // has reports whether the stored row r, named ref, is one of the items.
 func (k itemKeys) has(r listedRow, ref item.Ref) bool {
-	return k[ref.Key()] || (r.NodeID != "" && k[r.NodeID])
+	_, ok := k.find(r, ref)
+
+	return ok
+}
+
+// find returns the item the stored row r, named ref, is, if it is one of them.
+func (k itemKeys) find(r listedRow, ref item.Ref) (github.Item, bool) {
+	if it, ok := k[ref.Key()]; ok {
+		return it, true
+	}
+
+	if r.NodeID == "" {
+		return github.Item{}, false
+	}
+
+	it, ok := k[r.NodeID]
+
+	return it, ok
 }
 
 // savedListed returns the items the writer saved in a list, by id: their lists as stored,

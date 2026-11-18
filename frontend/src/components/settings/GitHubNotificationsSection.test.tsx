@@ -67,7 +67,7 @@ describe('GitHubNotificationsSection', () => {
       'A pull request is merged',
       'A pull request is closed without merging',
       'An issue is closed',
-      `You submit a review in ${brand.name}`,
+      'You approve or request changes on a pull request',
       `You dismiss an item in ${brand.name}`,
       'You unassign yourself or remove yourself as reviewer',
       'Include repositories you only watch',
@@ -185,7 +185,7 @@ describe('GitHubNotificationsSection', () => {
     ['A pull request is merged', 'merged'],
     ['A pull request is closed without merging', 'pr_closed'],
     ['An issue is closed', 'issue_closed'],
-    [`You submit a review in ${brand.name}`, 'reviewed'],
+    ['You approve or request changes on a pull request', 'reviewed'],
     [`You dismiss an item in ${brand.name}`, 'dismissed'],
     ['You unassign yourself or remove yourself as reviewer', 'unassigned'],
   ] as const)('turns off and back on the moment %j', async (name, trigger) => {
@@ -209,7 +209,7 @@ describe('GitHubNotificationsSection', () => {
   it('shows a moment turned off as off', () => {
     renderSection(rulesOf({ triggersOff: ['reviewed'] }))
 
-    expect(toggle(`You submit a review in ${brand.name}`)).not.toBeChecked()
+    expect(toggle('You approve or request changes on a pull request')).not.toBeChecked()
     expect(toggle('A pull request is merged')).toBeChecked()
   })
 

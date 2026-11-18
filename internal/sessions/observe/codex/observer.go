@@ -109,6 +109,43 @@ type thread struct {
 	turnState  sessions.State
 	turnDetail string
 	message    string
+
+	// commands are the commands of the turn commandsOf (by item ID) already weighed, and
+	// primed whether a turn was read before: the commands the first read finds ran before
+	// the session was followed, and tell nothing. acted is set by a read that found a
+	// command that changed GitHub since, until the session's observation reports it.
+	commandsOf string
+	commands   map[string]bool
+	primed     bool
+	acted      bool
+}
+
+// noteCommands weighs the commands of turn, the thread's latest, each once it completed:
+// one that changed GitHub sets acted, once a turn was read before.
+func (t *thread) noteCommands(turn Turn) {
+	if t.commands == nil || turn.ID != t.commandsOf {
+		t.commands, t.commandsOf = map[string]bool{}, turn.ID
+	}
+
+	for _, it := range turn.Items {
+		if it.Type != itemCommand || it.ID == "" || it.Status != commandCompleted || t.commands[it.ID] {
+			continue
+		}
+
+		t.commands[it.ID] = true
+		t.acted = t.acted || (t.primed && it.changedGitHub())
+	}
+
+	t.primed = true
+}
+
+// takeActed reports whether a command changed GitHub since it was last asked, and forgets
+// it.
+func (t *thread) takeActed() bool {
+	acted := t.acted
+	t.acted = false
+
+	return acted
 }
 
 // settled reports whether the latest turn read still holds: it ended, and the thread
@@ -421,6 +458,7 @@ func (o *Observer) read(ctx context.Context, h *home, id string, now time.Time) 
 
 	t.turnAt, t.turnRead = t.updated, now.Unix()
 	t.turnState, t.turnDetail = TurnState(turns.Data[0])
+	t.noteCommands(turns.Data[0])
 
 	if msg := LastAgentMessage(turns.Data[0]); msg != "" {
 		t.message = msg
@@ -455,7 +493,7 @@ func (o *Observer) observe(
 
 	t := h.threads[threadID]
 	if t != nil {
-		obs.LastMessage = t.message
+		obs.LastMessage, obs.Acted = t.message, t.takeActed()
 	}
 
 	running, pid := o.running(ctx, r, now, scan)

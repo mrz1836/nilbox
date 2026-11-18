@@ -19,7 +19,7 @@ INSERT INTO agent_sessions (
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice, run_id
+    launch_notice, run_id, github_event, github_event_commit, github_event_at
 FROM agent_sessions
 WHERE id = sqlc.arg(id);
 
@@ -28,7 +28,7 @@ WHERE id = sqlc.arg(id);
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice, run_id
+    launch_notice, run_id, github_event, github_event_commit, github_event_at
 FROM agent_sessions
 WHERE state <> 'ended'
 ORDER BY launched_at, id;
@@ -39,7 +39,7 @@ ORDER BY launched_at, id;
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice, run_id
+    launch_notice, run_id, github_event, github_event_commit, github_event_at
 FROM agent_sessions
 WHERE state <> 'ended' OR launched_at >= sqlc.arg(since)
 ORDER BY launched_at DESC, id DESC
@@ -57,6 +57,20 @@ UPDATE agent_sessions SET
     state_at = sqlc.arg(state_at),
     ended_at = sqlc.narg(ended_at)
 WHERE id = sqlc.arg(id);
+
+-- name: NoteGitHubEvent :execrows
+-- NoteGitHubEvent records what came of an item on GitHub, at a time, on each of its
+-- sessions that ran then: launched no later than upto, and not ended before since. A
+-- session that holds a later event keeps it.
+UPDATE agent_sessions SET
+    github_event = sqlc.arg(github_event),
+    github_event_commit = sqlc.arg(github_event_commit),
+    github_event_at = sqlc.arg(github_event_at)
+WHERE owner = sqlc.arg(owner) COLLATE NOCASE AND name = sqlc.arg(name) COLLATE NOCASE
+    AND kind = sqlc.arg(kind) AND number = sqlc.arg(number)
+    AND launched_at <= sqlc.arg(upto)
+    AND (ended_at IS NULL OR ended_at >= sqlc.arg(since))
+    AND (github_event_at IS NULL OR github_event_at <= sqlc.arg(github_event_at));
 
 -- name: PruneEndedBefore :execrows
 -- PruneEndedBefore forgets the sessions that ended before a time.
@@ -82,7 +96,7 @@ DELETE FROM agent_sessions WHERE state = 'ended' AND (
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice, run_id
+    launch_notice, run_id, github_event, github_event_commit, github_event_at
 FROM agent_sessions
 WHERE state = 'ended' AND agent_session_id <> '' AND ended_at >= sqlc.arg(since)
 ORDER BY ended_at DESC, id DESC
@@ -104,7 +118,7 @@ SELECT DISTINCT item_id FROM agent_sessions WHERE item_id > 0 ORDER BY item_id;
 SELECT id, agent_session_id, resumed_from, agent, profile, config_dir, prompt, prompt_head, terminal,
     item_id, owner, name, kind, number, title, url, dir, clone_path, worktree, pid,
     state, state_detail, last_message, launched_at, linked_at, state_at, ended_at, permission, worktree_action,
-    launch_notice, run_id
+    launch_notice, run_id, github_event, github_event_commit, github_event_at
 FROM agent_sessions
 WHERE run_id = sqlc.arg(run_id) AND run_id <> 0
 ORDER BY launched_at DESC, id DESC

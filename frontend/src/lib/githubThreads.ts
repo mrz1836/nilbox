@@ -366,8 +366,8 @@ export const clearTriggers: readonly ClearTrigger[] = [
   },
   {
     trigger: 'reviewed',
-    label: `You submit a review in ${brand.name}`,
-    description: 'A review that approves the pull request or requests changes.',
+    label: 'You approve or request changes on a pull request',
+    description: `Here, from an agent’s session, in your browser, or anywhere else, once ${brand.name} sees it.`,
   },
   {
     trigger: 'dismissed',

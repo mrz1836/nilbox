@@ -24,13 +24,14 @@ type fakeObserver struct {
 	mu     sync.Mutex
 	listed bool
 	states map[string]sessions.State
+	acted  map[string]bool
 	calls  int
 	closes int
 	seen   [][]string
 }
 
 func newFakeObserver() *fakeObserver {
-	return &fakeObserver{states: map[string]sessions.State{}}
+	return &fakeObserver{states: map[string]sessions.State{}, acted: map[string]bool{}}
 }
 
 func (f *fakeObserver) Observe(_ context.Context, _ time.Time, live []sessions.Record) []sessions.Observation {
@@ -46,7 +47,8 @@ func (f *fakeObserver) Observe(_ context.Context, _ time.Time, live []sessions.R
 		ids = append(ids, r.ID)
 
 		if s, ok := f.states[r.ID]; ok {
-			out = append(out, sessions.Observation{ID: r.ID, State: s, PID: 4100, Seen: f.listed})
+			out = append(out, sessions.Observation{ID: r.ID, State: s, PID: 4100, Seen: f.listed, Acted: f.acted[r.ID]})
+			delete(f.acted, r.ID)
 		}
 	}
 
@@ -75,6 +77,15 @@ func (f *fakeObserver) set(id string, s sessions.State) {
 	defer f.mu.Unlock()
 
 	f.states[id] = s
+}
+
+// act has the observer report, once, that session id's agent ran a command that changed
+// GitHub.
+func (f *fakeObserver) act(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.acted[id] = true
 }
 
 func (f *fakeObserver) counts() (calls, closes int) {
@@ -712,6 +723,69 @@ func TestWatcherRereadsTheItemOfASessionThatStopsWorking(t *testing.T) {
 			})
 		})
 	}
+}
+
+// act has session s1's agent run a command that changed GitHub, and waits for the Watcher
+// to take it in.
+func (w *watched) act() {
+	w.claude.act("s1")
+	time.Sleep(sessions.DefaultTick)
+	synctest.Wait()
+}
+
+func TestWatcherRereadsWhenASessionChangesGitHub(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		w, reread := rereading(t)
+		w.run(t)
+
+		w.claude.set("s1", sessions.StateWorking)
+		w.start(t, "s1")
+		synctest.Wait()
+
+		w.act()
+		assert.Equal(t, []int64{12}, reread.heard(), "at once, while it still works")
+
+		// An approval, then a merge a moment later: the second waits for the gap.
+		w.act()
+		assert.Equal(t, []int64{12}, reread.heard(), "within the gap, it waits")
+
+		time.Sleep(sessions.ActedGap)
+		synctest.Wait()
+		assert.Equal(t, []int64{12, 12}, reread.heard(), "once more at the gap's end")
+
+		time.Sleep(sessions.ActedGap)
+		synctest.Wait()
+		assert.Equal(t, []int64{12, 12}, reread.heard(), "nothing more waits")
+
+		w.act()
+		assert.Equal(t, []int64{12, 12, 12}, reread.heard(), "past the gap, at once again")
+	})
+}
+
+func TestWatcherDropsAWaitingReadOnceTheSessionStops(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		w, reread := rereading(t)
+		w.run(t)
+
+		w.claude.set("s1", sessions.StateWorking)
+		w.start(t, "s1")
+		synctest.Wait()
+
+		w.act()
+		w.act()
+		assert.Equal(t, []int64{12}, reread.heard())
+
+		w.report(sessions.StateIdle)
+		assert.Equal(t, []int64{12, 12}, reread.heard(), "the read as it stops working")
+
+		time.Sleep(sessions.ActedGap)
+		synctest.Wait()
+		assert.Equal(t, []int64{12, 12}, reread.heard(), "covers the one that waited")
+	})
 }
 
 func TestWatcherRereadsOnlyWhenASessionStopsWorking(t *testing.T) {

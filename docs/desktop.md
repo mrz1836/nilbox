@@ -3871,9 +3871,15 @@ button's count stays and only its accent goes; with **Mark read**, one you alrea
 alone.
 
 - **When.** Each moment under **When to clear** is on by default: a pull request merged, or
-  closed without merging, and an issue closed, in Nilbox or anywhere else; a review you submit
-  in Nilbox that approves or asks for changes (a comment alone doesn't count); an item you
+  closed without merging, and an issue closed, in Nilbox or anywhere else; a review of yours
+  that approves or asks for changes (a comment alone doesn't count), in Nilbox or anywhere
+  else, as an agent's `gh pr review` or one in your browser, once Nilbox sees it (the read
+  after an agent's session stops working, a card's or the review sheet's refresh, or the next
+  whole refresh) within two hours of it; an item you
   dismiss in Nilbox; and taking yourself off an item's assignees or reviewers in Nilbox. A
+  review made elsewhere counts as your own action, at GitHub's time for it: a notification
+  that moved more than a couple of minutes after the review stays, and, as what you do in
+  Nilbox, it clears one you get only by watching the repository too. A
   merge or a close made elsewhere counts only on GitHub's own word, read within the last hour,
   so an item reopened stops counting at once. **Include repositories you only watch** clears a
   notification you get only by watching its repository once its item is merged or closed
@@ -4737,9 +4743,9 @@ stays on the card for a day.
 
 **The panel.** Click the tag for every session of the item, newest first: its agent, profile,
 and prompt, what it is doing and since when, the permissions it started with and where it runs
-(**full access · new worktree**, or **in the clone**), how many tokens it used, the folder,
-anything its launch worked around, and the start of what the agent last said. Each has its
-actions:
+(**full access · new worktree**, or **in the clone**), what came of the item on GitHub while it
+ran, how many tokens it used, the folder, anything its launch worked around, and the start of
+what the agent last said. Each has its actions:
 
 - **Show in terminal** brings forward the tab the session runs in, found by its terminal
   device (`ps -o tty=`). iTerm2 uses the Automation permission you gave at the first launch;
@@ -4786,6 +4792,30 @@ never the terminal:
   never that it waits for you, and says why. When the daemon can't be reached, the session is linked through the first
   line of the rollout file Codex writes, and the card shows **Status unavailable** while it
   runs.
+
+**What came of it on GitHub.** The panel says the newest of what happened to the item on GitHub
+while a session ran: **On GitHub: Approved at abc1234 · 2m ago**, **Changes requested at …**,
+**Merged**, or **Closed**. It comes from what Nilbox reads anyway (the read of the item after a
+session stops working, a card's or the review sheet's refresh, the whole refresh) and costs no
+request of its own. It counts what happened between the session's launch and its end, by
+GitHub's time, give or take a few seconds, and never says who did it: the agent with `gh`, or
+you in your browser or in Nilbox. A review counts only when it approves or requests changes,
+and only one made within two hours of when Nilbox sees it.
+
+**When the item is read again.** Each time a session stops working (it goes idle, waits for
+you, ends, or fails), Nilbox reads its item from GitHub again, one GraphQL point, so the card
+catches up with what the agent did. While the session still works, it also reads the item as
+soon as the agent finishes a command that changes something on GitHub: `gh pr review`,
+`merge`, `close`, `reopen`, `comment`, `edit`, `ready`, or `update-branch`; `gh issue close`,
+`reopen`, `comment`, or `edit`; a write through `gh api`; or `git push`, also behind `cd`,
+`timeout`, `env`, or a shell's `-c`. The first such command reads the item at once, and any
+more within 30 seconds once more when they're up, so an approval and a merge a moment later
+both reach the card, at most a point per item every 30 seconds. A command that failed, or one
+still running in the background, doesn't count. Nilbox spots these commands in the agent's own
+files on this Mac, never the network: only what Claude Code added to the session's transcript
+since the last look (the commands from before the launch never count), and the commands in the
+turns Codex's daemon reports. A Codex session the daemon can't reach gets only the read once it
+stops working.
 
 **Its tokens.** The panel says how many tokens each session used, such as **1.2M tokens · 840K
 cached**, with every count (in, out, read from the cache, written to it) in its tooltip, read

@@ -210,7 +210,7 @@ describe('matchSettings', () => {
 
     expect(match?.sections.get('github')).toBe(settingsIndex.github.length)
     expect(match?.isMatch('github', 'Read my GitHub notifications')).toBe(true)
-    expect(match?.isMatch('github', `You submit a review in ${brand.name}`)).toBe(true)
+    expect(match?.isMatch('github', 'You approve or request changes on a pull request')).toBe(true)
     expect(sectionOrder.indexOf('github')).toBe(sectionOrder.indexOf('notifications') + 1)
     expect(sectionInfo.github.label).toBe('GitHub notifications')
   })

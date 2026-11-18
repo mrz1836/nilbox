@@ -1,7 +1,16 @@
 import { useRef, useState } from 'react'
 
 import { agentName } from '../lib/launch'
-import { isLive, setupWords, sinceWhen, stateLabel, terminalName, usageWords } from '../lib/sessions'
+import {
+  githubEventTone,
+  githubEventWords,
+  isLive,
+  setupWords,
+  sinceWhen,
+  stateLabel,
+  terminalName,
+  usageWords,
+} from '../lib/sessions'
 import { formatAgo, formatFull } from '../lib/time'
 import { useMutation } from '../lib/useMutation'
 import { useQuery } from '../lib/useQuery'
@@ -108,6 +117,9 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
   const live = isLive(session.state)
   const [takingOver, setTakingOver] = useState(false)
   const setup = setupWords(session)
+  // onGitHub is what came of its item on GitHub while it ran, as the inbox learned it, or
+  // '': a review, a merge, or a close, by anyone.
+  const onGitHub = githubEventWords(session)
   // usage is how many tokens it used, as the agent's own files report them, or a run in
   // the background's record, read again each time it changes state; a session in the
   // terminal the agent hasn't named yet has no files.
@@ -205,6 +217,15 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
       </div>
       <StateLine session={session} />
       {setup !== '' && <p className="truncate text-[0.6875rem] text-muted">{setup}</p>}
+      {onGitHub !== '' && (
+        <p
+          className="truncate text-[0.6875rem] text-muted"
+          title="What came of it on GitHub while this session ran. It doesn’t say who did it."
+        >
+          On GitHub: <span className={githubEventTone(session)}>{onGitHub}</span> ·{' '}
+          <RelativeTime iso={session.githubEventAt} show={formatAgo} />
+        </p>
+      )}
       {tokens !== null && (
         <p className="truncate text-[0.6875rem] text-muted" title={tokens.title}>
           {tokens.text}

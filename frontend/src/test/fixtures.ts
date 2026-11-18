@@ -2537,6 +2537,9 @@ export function agentSession(overrides: Partial<AgentSession> = {}): AgentSessio
     canFocus: true,
     canResume: false,
     runId: 0,
+    githubEvent: '',
+    githubEventCommit: '',
+    githubEventAt: '',
     ...overrides,
   }
 }
