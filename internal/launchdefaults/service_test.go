@@ -80,9 +80,14 @@ func TestSaveRoundTripsEverySetting(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
+	defaults, err := h.library.Defaults(t.Context())
+	require.NoError(t, err)
+
 	saved, err := h.svc.Save(t.Context(), launchdefaults.Input{
 		Owner: acme, Name: " example-repo ", Agent: " claude ", Profiles: claude(" work "), PRPromptID: &h.review,
-		IssuePromptID: &h.work, Models: claude(" opus "), Effort: "high", PlanMode: new(true), Worktree: new(false),
+		IssuePromptID: &h.work, ChecksPromptID: &defaults.ChecksFailing, ConflictsPromptID: &defaults.Conflicts,
+		ChangesPromptID: &defaults.ChangesRequested, RereviewPromptID: &defaults.Rereview, Models: claude(" opus "),
+		Effort: "high", PlanMode: new(true), Worktree: new(false),
 		ExtraFlags: claude(`--append-system-prompt "be brief" --verbose`),
 	})
 	require.NoError(t, err)
@@ -93,6 +98,10 @@ func TestSaveRoundTripsEverySetting(t *testing.T) {
 	assert.Equal(t, claude("work"), saved.Profiles)
 	assert.Equal(t, &h.review, saved.PRPromptID)
 	assert.Equal(t, &h.work, saved.IssuePromptID)
+	assert.Equal(t, &defaults.ChecksFailing, saved.ChecksPromptID)
+	assert.Equal(t, &defaults.Conflicts, saved.ConflictsPromptID)
+	assert.Equal(t, &defaults.ChangesRequested, saved.ChangesPromptID)
+	assert.Equal(t, &defaults.Rereview, saved.RereviewPromptID)
 	assert.Equal(t, claude("opus"), saved.Models)
 	assert.Equal(t, "high", saved.Effort)
 	assert.Equal(t, new(true), saved.PlanMode)

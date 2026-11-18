@@ -59,8 +59,9 @@ func (s *Store) All(ctx context.Context) ([]Defaults, error) {
 }
 
 // PromptUses lists every place a launch default names a prompt: each org's and each
-// repository's default prompt for pull requests and for issues, in the order All
-// returns the defaults. It implements prompts.UsageSource.
+// repository's default prompt for pull requests, for issues, and for each situation a pull
+// request can be in, in the order All returns the defaults. It implements
+// prompts.UsageSource.
 func (s *Store) PromptUses(ctx context.Context) ([]prompts.Use, error) {
 	rows, err := s.q.ListPromptUses(ctx)
 	if err != nil {
@@ -72,12 +73,21 @@ func (s *Store) PromptUses(ctx context.Context) ([]prompts.Use, error) {
 	for _, row := range rows {
 		target := repo.Name{Owner: row.Owner, Repo: row.Name}
 
-		if row.PRPromptID != nil {
-			uses = append(uses, prompts.Use{PromptID: *row.PRPromptID, Kind: item.KindPR, Target: target})
-		}
-
-		if row.IssuePromptID != nil {
-			uses = append(uses, prompts.Use{PromptID: *row.IssuePromptID, Kind: item.KindIssue, Target: target})
+		for _, named := range []struct {
+			id   *int64
+			kind item.Kind
+			slot prompts.DefaultSlot
+		}{
+			{row.PRPromptID, item.KindPR, prompts.DefaultSlotPR},
+			{row.IssuePromptID, item.KindIssue, prompts.DefaultSlotIssue},
+			{row.ChecksPromptID, item.KindPR, prompts.DefaultSlotChecksFailing},
+			{row.ConflictsPromptID, item.KindPR, prompts.DefaultSlotConflicts},
+			{row.ChangesPromptID, item.KindPR, prompts.DefaultSlotChangesRequested},
+			{row.RereviewPromptID, item.KindPR, prompts.DefaultSlotRereview},
+		} {
+			if named.id != nil {
+				uses = append(uses, prompts.Use{PromptID: *named.id, Kind: named.kind, Target: target, Slot: named.slot})
+			}
 		}
 	}
 
@@ -103,8 +113,9 @@ func (s *Store) inTx(ctx context.Context, fn func(*Store) error) error {
 func (s *Store) save(ctx context.Context, in Input, checked agent.Checked) (Defaults, error) {
 	params := queries.SaveLaunchDefaultsParams{
 		Owner: in.Owner, Name: in.Name, Agent: string(in.Agent), PRPromptID: in.PRPromptID,
-		IssuePromptID: in.IssuePromptID, Effort: in.Effort, PlanMode: in.PlanMode, Worktree: in.Worktree,
-		AutopilotOutside: in.AutopilotOutside.stored(),
+		IssuePromptID: in.IssuePromptID, ChecksPromptID: in.ChecksPromptID, ConflictsPromptID: in.ConflictsPromptID,
+		ChangesPromptID: in.ChangesPromptID, RereviewPromptID: in.RereviewPromptID, Effort: in.Effort,
+		PlanMode: in.PlanMode, Worktree: in.Worktree, AutopilotOutside: in.AutopilotOutside.stored(),
 	}
 
 	var err error
@@ -176,8 +187,10 @@ func fromRow(row queries.LaunchDefault) (Defaults, error) {
 
 	return Defaults{
 		Owner: row.Owner, Name: row.Name, Agent: agent.ID(row.Agent), Profiles: textutil.NonNilMap(names),
-		PRPromptID: row.PRPromptID, IssuePromptID: row.IssuePromptID, Models: textutil.NonNilMap(models),
-		Effort: row.Effort, PlanMode: row.PlanMode, Worktree: row.Worktree, ExtraArgs: agent.CloneArgs(args),
+		PRPromptID: row.PRPromptID, IssuePromptID: row.IssuePromptID, ChecksPromptID: row.ChecksPromptID,
+		ConflictsPromptID: row.ConflictsPromptID, ChangesPromptID: row.ChangesPromptID,
+		RereviewPromptID: row.RereviewPromptID, Models: textutil.NonNilMap(models), Effort: row.Effort,
+		PlanMode: row.PlanMode, Worktree: row.Worktree, ExtraArgs: agent.CloneArgs(args),
 		ExtraFlags: agent.JoinArgs(args), AutopilotOutside: outsideOf(row.AutopilotOutside),
 		UpdatedAt: clock.Format(row.UpdatedAt),
 	}, nil

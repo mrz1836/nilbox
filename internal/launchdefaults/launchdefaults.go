@@ -1,6 +1,7 @@
 // Package launchdefaults stores launch defaults for orgs and repositories: the coding
 // agent, each agent's profile, model, and extra flags, the default prompt for each kind of
-// item, and the effort, plan mode, and worktree that launches on their items start from.
+// item and for each situation a pull request can be in, and the effort, plan mode, and
+// worktree that launches on their items start from.
 //
 // An owner's defaults (Name "") apply to every repository of that owner, and a
 // repository's own defaults win over them. Every setting inherits when it is "", nil, or
@@ -42,6 +43,12 @@ const (
 	FieldEffort        = agent.FieldEffort
 	FieldExtraFlags    = agent.FieldExtraFlags
 	FieldOutside       = "autopilotOutside"
+
+	// The default prompt for each situation a pull request can be in.
+	FieldChecksPromptID    = "checksPromptId"
+	FieldConflictsPromptID = "conflictsPromptId"
+	FieldChangesPromptID   = "changesPromptId"
+	FieldRereviewPromptID  = "rereviewPromptId"
 )
 
 // Outside says whether Autopilot may run agents on outside contributors' items in an org
@@ -105,6 +112,15 @@ type Defaults struct {
 	PRPromptID    *int64 `json:"prPromptId"`
 	IssuePromptID *int64 `json:"issuePromptId"`
 
+	// ChecksPromptID, ConflictsPromptID, ChangesPromptID, and RereviewPromptID are the
+	// default prompt for a pull request whose checks fail, that conflicts with its base,
+	// that a reviewer asked to change, and that the user is asked to review again; nil
+	// inherits.
+	ChecksPromptID    *int64 `json:"checksPromptId"`
+	ConflictsPromptID *int64 `json:"conflictsPromptId"`
+	ChangesPromptID   *int64 `json:"changesPromptId"`
+	RereviewPromptID  *int64 `json:"rereviewPromptId"`
+
 	// Models is each agent's model; an agent with no entry inherits.
 	Models map[agent.ID]string `json:"models"`
 
@@ -143,10 +159,18 @@ type Input struct {
 	Profiles      map[agent.ID]string `json:"profiles"`
 	PRPromptID    *int64              `json:"prPromptId"`
 	IssuePromptID *int64              `json:"issuePromptId"`
-	Models        map[agent.ID]string `json:"models"`
-	Effort        string              `json:"effort"`
-	PlanMode      *bool               `json:"planMode"`
-	Worktree      *bool               `json:"worktree"`
+
+	// ChecksPromptID, ConflictsPromptID, ChangesPromptID, and RereviewPromptID are the
+	// default prompt for each situation a pull request can be in; nil inherits.
+	ChecksPromptID    *int64 `json:"checksPromptId"`
+	ConflictsPromptID *int64 `json:"conflictsPromptId"`
+	ChangesPromptID   *int64 `json:"changesPromptId"`
+	RereviewPromptID  *int64 `json:"rereviewPromptId"`
+
+	Models   map[agent.ID]string `json:"models"`
+	Effort   string              `json:"effort"`
+	PlanMode *bool               `json:"planMode"`
+	Worktree *bool               `json:"worktree"`
 
 	// ExtraFlags is each agent's extra arguments typed on one line, quoted as in a shell.
 	ExtraFlags map[agent.ID]string `json:"extraFlags"`
@@ -158,9 +182,16 @@ type Input struct {
 
 // Empty reports whether every setting inherits.
 func (in Input) Empty() bool {
-	return in.Agent == agent.Inherit && !anySet(in.Profiles) && in.PRPromptID == nil && in.IssuePromptID == nil &&
-		!anySet(in.Models) && in.Effort == "" && in.PlanMode == nil && in.Worktree == nil && !anySet(in.ExtraFlags) &&
+	return in.Agent == agent.Inherit && !anySet(in.Profiles) && !in.namesAPrompt() && !anySet(in.Models) &&
+		in.Effort == "" && in.PlanMode == nil && in.Worktree == nil && !anySet(in.ExtraFlags) &&
 		in.AutopilotOutside == OutsideInherit
+}
+
+// namesAPrompt reports whether any default prompt is set, a kind's or a situation's.
+func (in Input) namesAPrompt() bool {
+	return slices.ContainsFunc([]*int64{
+		in.PRPromptID, in.IssuePromptID, in.ChecksPromptID, in.ConflictsPromptID, in.ChangesPromptID, in.RereviewPromptID,
+	}, func(id *int64) bool { return id != nil })
 }
 
 // anySet reports whether any agent has a value that is not blank.
@@ -547,11 +578,19 @@ func validate(ctx context.Context, known ProfileLookup, library PromptLookup, in
 
 	fields = append(fields, profileFields...)
 
+	// A situation's prompt is a pull request's, so it must be one for pull requests.
 	for _, p := range []struct {
 		field string
 		kind  item.Kind
 		id    *int64
-	}{{FieldPRPromptID, item.KindPR, in.PRPromptID}, {FieldIssuePromptID, item.KindIssue, in.IssuePromptID}} {
+	}{
+		{FieldPRPromptID, item.KindPR, in.PRPromptID},
+		{FieldIssuePromptID, item.KindIssue, in.IssuePromptID},
+		{FieldChecksPromptID, item.KindPR, in.ChecksPromptID},
+		{FieldConflictsPromptID, item.KindPR, in.ConflictsPromptID},
+		{FieldChangesPromptID, item.KindPR, in.ChangesPromptID},
+		{FieldRereviewPromptID, item.KindPR, in.RereviewPromptID},
+	} {
 		msg, promptErr := checkPrompt(ctx, library, p.id, p.kind)
 		if promptErr != nil {
 			return agent.Checked{}, nil, promptErr

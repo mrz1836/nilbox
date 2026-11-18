@@ -42,7 +42,8 @@ func (q *Queries) DeleteLaunchDefaults(ctx context.Context, arg DeleteLaunchDefa
 
 const listLaunchDefaults = `-- name: ListLaunchDefaults :many
 SELECT id, owner, name, agent, pr_prompt_id, issue_prompt_id, effort, plan_mode, worktree, created_at, updated_at,
-    profiles, models, agent_args, autopilot_outside
+    profiles, models, agent_args, autopilot_outside, checks_prompt_id, conflicts_prompt_id, changes_prompt_id,
+    rereview_prompt_id
 FROM launch_defaults
 ORDER BY owner COLLATE NOCASE, name COLLATE NOCASE
 `
@@ -75,6 +76,10 @@ func (q *Queries) ListLaunchDefaults(ctx context.Context) ([]LaunchDefault, erro
 			&i.Models,
 			&i.AgentArgs,
 			&i.AutopilotOutside,
+			&i.ChecksPromptID,
+			&i.ConflictsPromptID,
+			&i.ChangesPromptID,
+			&i.RereviewPromptID,
 		); err != nil {
 			return nil, err
 		}
@@ -90,21 +95,28 @@ func (q *Queries) ListLaunchDefaults(ctx context.Context) ([]LaunchDefault, erro
 }
 
 const listPromptUses = `-- name: ListPromptUses :many
-SELECT owner, name, pr_prompt_id, issue_prompt_id
+SELECT owner, name, pr_prompt_id, issue_prompt_id, checks_prompt_id, conflicts_prompt_id, changes_prompt_id,
+    rereview_prompt_id
 FROM launch_defaults
-WHERE pr_prompt_id IS NOT NULL OR issue_prompt_id IS NOT NULL
+WHERE pr_prompt_id IS NOT NULL OR issue_prompt_id IS NOT NULL OR checks_prompt_id IS NOT NULL
+    OR conflicts_prompt_id IS NOT NULL OR changes_prompt_id IS NOT NULL OR rereview_prompt_id IS NOT NULL
 ORDER BY owner COLLATE NOCASE, name COLLATE NOCASE
 `
 
 type ListPromptUsesRow struct {
-	Owner         string
-	Name          string
-	PRPromptID    *int64
-	IssuePromptID *int64
+	Owner             string
+	Name              string
+	PRPromptID        *int64
+	IssuePromptID     *int64
+	ChecksPromptID    *int64
+	ConflictsPromptID *int64
+	ChangesPromptID   *int64
+	RereviewPromptID  *int64
 }
 
 // ListPromptUses returns the owner, name, and default prompts of every launch default
-// that names a prompt, in the order ListLaunchDefaults uses.
+// that names a prompt, in the order ListLaunchDefaults uses: the prompt for each kind of
+// item, and for each situation a pull request can be in.
 func (q *Queries) ListPromptUses(ctx context.Context) ([]ListPromptUsesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPromptUses)
 	if err != nil {
@@ -119,6 +131,10 @@ func (q *Queries) ListPromptUses(ctx context.Context) ([]ListPromptUsesRow, erro
 			&i.Name,
 			&i.PRPromptID,
 			&i.IssuePromptID,
+			&i.ChecksPromptID,
+			&i.ConflictsPromptID,
+			&i.ChangesPromptID,
+			&i.RereviewPromptID,
 		); err != nil {
 			return nil, err
 		}
@@ -135,14 +151,19 @@ func (q *Queries) ListPromptUses(ctx context.Context) ([]ListPromptUsesRow, erro
 
 const saveLaunchDefaults = `-- name: SaveLaunchDefaults :one
 INSERT INTO launch_defaults (
-    owner, name, agent, profiles, pr_prompt_id, issue_prompt_id, models, effort, plan_mode, worktree, agent_args,
-    autopilot_outside, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    owner, name, agent, profiles, pr_prompt_id, issue_prompt_id, checks_prompt_id, conflicts_prompt_id,
+    changes_prompt_id, rereview_prompt_id, models, effort, plan_mode, worktree, agent_args, autopilot_outside,
+    created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (owner, name) DO UPDATE SET
     agent = excluded.agent,
     profiles = excluded.profiles,
     pr_prompt_id = excluded.pr_prompt_id,
     issue_prompt_id = excluded.issue_prompt_id,
+    checks_prompt_id = excluded.checks_prompt_id,
+    conflicts_prompt_id = excluded.conflicts_prompt_id,
+    changes_prompt_id = excluded.changes_prompt_id,
+    rereview_prompt_id = excluded.rereview_prompt_id,
     models = excluded.models,
     effort = excluded.effort,
     plan_mode = excluded.plan_mode,
@@ -151,24 +172,29 @@ ON CONFLICT (owner, name) DO UPDATE SET
     autopilot_outside = excluded.autopilot_outside,
     updated_at = excluded.updated_at
 RETURNING id, owner, name, agent, pr_prompt_id, issue_prompt_id, effort, plan_mode, worktree, created_at, updated_at,
-    profiles, models, agent_args, autopilot_outside
+    profiles, models, agent_args, autopilot_outside, checks_prompt_id, conflicts_prompt_id, changes_prompt_id,
+    rereview_prompt_id
 `
 
 type SaveLaunchDefaultsParams struct {
-	Owner            string
-	Name             string
-	Agent            string
-	Profiles         string
-	PRPromptID       *int64
-	IssuePromptID    *int64
-	Models           string
-	Effort           string
-	PlanMode         *bool
-	Worktree         *bool
-	AgentArgs        string
-	AutopilotOutside *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	Owner             string
+	Name              string
+	Agent             string
+	Profiles          string
+	PRPromptID        *int64
+	IssuePromptID     *int64
+	ChecksPromptID    *int64
+	ConflictsPromptID *int64
+	ChangesPromptID   *int64
+	RereviewPromptID  *int64
+	Models            string
+	Effort            string
+	PlanMode          *bool
+	Worktree          *bool
+	AgentArgs         string
+	AutopilotOutside  *string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 // SaveLaunchDefaults stores an org's or a repository's launch defaults and returns the
@@ -183,6 +209,10 @@ func (q *Queries) SaveLaunchDefaults(ctx context.Context, arg SaveLaunchDefaults
 		arg.Profiles,
 		arg.PRPromptID,
 		arg.IssuePromptID,
+		arg.ChecksPromptID,
+		arg.ConflictsPromptID,
+		arg.ChangesPromptID,
+		arg.RereviewPromptID,
 		arg.Models,
 		arg.Effort,
 		arg.PlanMode,
@@ -209,6 +239,10 @@ func (q *Queries) SaveLaunchDefaults(ctx context.Context, arg SaveLaunchDefaults
 		&i.Models,
 		&i.AgentArgs,
 		&i.AutopilotOutside,
+		&i.ChecksPromptID,
+		&i.ConflictsPromptID,
+		&i.ChangesPromptID,
+		&i.RereviewPromptID,
 	)
 	return i, err
 }
