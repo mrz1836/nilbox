@@ -147,8 +147,8 @@ const spotClass: Readonly<Record<Side, string>> = {
 
 // spotOf is where the marker of a part sits, measured against the sample's box, or null
 // while the part isn't laid out: missing, hidden by a narrow list, or in a dialog not
-// shown yet. The action column's buttons sit at its end, so its marker goes over the
-// first of them.
+// shown yet. The action column's marker goes over its first slot, the primary's, which
+// starts where the primary does.
 function spotOf(guide: GuidePart, el: Element | null, box: DOMRect): Spot | null {
   const anchor = guide.part === 'actions' ? el?.firstElementChild : el
   const r = anchor?.getBoundingClientRect()

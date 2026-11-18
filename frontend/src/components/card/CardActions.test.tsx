@@ -263,13 +263,26 @@ describe('CardActions', () => {
     expect(screen.getByRole('button', { name: 'Restore' })).toBeDisabled()
   })
 
-  it('puts the agent’s slot after the primary, in a column above the card’s toggle', () => {
+  it('puts the primary at the start of its slot and the agent’s at the end of the rest, above the card’s toggle', () => {
     renderActions(step('review'), { props: { agent: <button type="button">Claude</button> } })
 
-    const [primary, agent] = screen.getAllByRole('button')
+    const [primary, agent] = screen.getAllByRole('button') as [HTMLElement, HTMLElement]
     expect(primary).toHaveAccessibleName('Review')
     expect(agent).toHaveAccessibleName('Claude')
-    expect(primary?.parentElement).toHaveClass('relative', 'z-10', 'justify-end')
+
+    const primarySlot = primary.parentElement as HTMLElement
+    const agentSlot = agent.parentElement as HTMLElement
+    expect(primarySlot).toHaveAttribute('data-primary-slot')
+    expect(primarySlot).toHaveClass('justify-start')
+    expect(agentSlot).toHaveAttribute('data-agent-slot')
+    expect(agentSlot).toHaveClass('justify-end', 'min-w-0')
+    expect(primarySlot.parentElement).toBe(agentSlot.parentElement)
+    expect(primarySlot.parentElement).toHaveClass(
+      'relative',
+      'z-10',
+      'grid',
+      'grid-cols-[var(--card-primary)_minmax(0,1fr)]',
+    )
   })
 })
 

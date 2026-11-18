@@ -118,7 +118,12 @@ describe('LaunchControls, card variant', () => {
     expect(pill).toHaveAttribute('data-moving')
     expect(pill).toHaveClass('border-run', 'motion-safe:animate-border-run')
     expect(screen.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Launch options/ })).not.toBeInTheDocument()
+    // The split control holds the pill, Show in terminal, then the ▾.
+    expect(screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual([
+      pill.getAttribute('aria-label'),
+      'Show in terminal',
+      options().getAttribute('aria-label'),
+    ])
 
     await userEvent.click(pill)
 
@@ -286,8 +291,50 @@ describe('LaunchControls, card variant', () => {
 
     withSession(agentSession({ state: 'working', detail: '' }))
 
-    expect(screen.getByText('Claude working')).toHaveAttribute('data-pill-label')
-    expect(screen.getByText('1m').parentElement).toHaveClass('@max-3xl:hidden')
+    const age = screen.getByText('1m')
+    expect(age.parentElement).toHaveClass('@max-3xl:hidden')
+    expect(age.closest('[data-pill-label]')).toHaveTextContent(/^Claude working 1m$/)
+  })
+
+  it.each([
+    ['no session', null],
+    ['a starting session', agentSession({ state: 'starting', canFocus: false })],
+    ['a working session', agentSession({ state: 'working' })],
+    ['a background run', agentSession({ state: 'working', runId: 31, canFocus: false })],
+    ['a done session', agentSession({ state: 'idle' })],
+    ['a done session it can’t show', agentSession({ state: 'idle', canFocus: false })],
+    ['an ended session', agentSession({ state: 'ended', endedAt: '2026-06-15T11:59:00Z' })],
+  ])('draws one split control for %s, closed by the ▾', (_state, s) => {
+    const { container } = s === null ? renderSlot() : withSession(s)
+
+    const split = options().parentElement as HTMLElement
+    const [first] = screen.getAllByRole('button') as [HTMLElement]
+    expect(split.lastElementChild).toBe(options())
+    expect(split).toContainElement(first)
+    expect(split).toHaveClass('inline-flex', 'min-w-0', 'max-w-full')
+    expect(container.querySelectorAll('button[aria-haspopup="dialog"][aria-label^="Launch options"]')).toHaveLength(1)
+    // Only the ▾ keeps its width; the first part narrows, its words cut short.
+    expect(options()).toHaveClass('shrink-0', 'rounded-r-lg', 'border-l-0')
+    expect(first.closest('.min-w-0')).not.toBeNull()
+    expect(first).toHaveClass('rounded-l-lg', 'min-w-0')
+  })
+
+  it.each([
+    ['ended', agentSession({ state: 'ended', endedAt: '2026-06-15T12:00:00Z' }), 'Findings · just now'],
+    ['done', agentSession({ state: 'idle', stateAt: '2026-06-15T12:00:00Z' }), 'Claude’s done · just now'],
+    ['working', agentSession({ state: 'working', stateAt: '2026-06-15T12:00:00Z' }), 'Claude working just now'],
+  ])('cuts a %s pill’s age short before its words, never past its border', (_state, s, words) => {
+    withSession(s)
+
+    const age = screen.getByText('just now')
+    const text = age.closest('[data-pill-label]') as HTMLElement
+    expect(text).toHaveTextContent(words)
+    expect(text).toHaveClass('min-w-0', 'truncate')
+    // The age comes last in the one line that truncates, so it goes first.
+    expect(text.lastElementChild).toContainElement(age)
+    expect(text.closest('button')).toHaveClass('min-w-0')
+    expect(options()).toHaveClass('shrink-0')
+    expect(text.closest('button')).not.toContainElement(options())
   })
 
   it('hands the card’s peek its way to the launch options', async () => {
