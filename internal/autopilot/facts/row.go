@@ -106,6 +106,8 @@ type DetailsRow struct {
 
 	// ChecksState is the head commit's overall result (SUCCESS, FAILURE, ERROR, PENDING,
 	// EXPECTED), "" with no checks; the counts add up its check runs and statuses.
+	// ChecksAwaiting counts every workflow run held for a maintainer's approval, whether
+	// the user can approve it from the app or only on GitHub.
 	ChecksState    string
 	ChecksPassed   int
 	ChecksFailed   int

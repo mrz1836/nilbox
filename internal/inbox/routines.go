@@ -120,7 +120,9 @@ func utcOrNil(t *time.Time) *time.Time {
 	return new(t.UTC())
 }
 
-// factsDetails converts a row's details, or returns nil when none were read.
+// factsDetails converts a row's details, or returns nil when none were read. Its held
+// workflow runs count those the user can approve from the app and those approved only on
+// GitHub alike: either way the checks haven't all run.
 func factsDetails(r queries.ListFactsRowsRow) (*facts.DetailsRow, error) {
 	if r.DetailsItemID == nil {
 		return nil, nil //nolint:nilnil // no details is not an error, and there are none
@@ -146,8 +148,9 @@ func factsDetails(r queries.ListFactsRowsRow) (*facts.DetailsRow, error) {
 		MergeState: store.Deref(r.MergeState), ReviewDecision: store.Deref(r.ReviewDecision),
 		ChecksState: store.Deref(r.ChecksState), ChecksPassed: int(store.Deref(r.ChecksPassed)),
 		ChecksFailed: int(store.Deref(r.ChecksFailed)), ChecksPending: int(store.Deref(r.ChecksPending)),
-		ChecksAwaiting: int(store.Deref(r.ChecksAwaiting)), Additions: int(store.Deref(r.Additions)),
-		Deletions: int(store.Deref(r.Deletions)), ChangedFiles: int(store.Deref(r.ChangedFiles)),
+		ChecksAwaiting: int(store.Deref(r.ChecksAwaiting) + store.Deref(r.ChecksAwaitingOnGithub)),
+		Additions:      int(store.Deref(r.Additions)),
+		Deletions:      int(store.Deref(r.Deletions)), ChangedFiles: int(store.Deref(r.ChangedFiles)),
 		Commits: int(store.Deref(r.Commits)), Comments: int(store.Deref(r.Comments)), Labels: names,
 		Approvals: int(store.Deref(r.Approvals)), ChangesRequested: int(store.Deref(r.ChangesRequested)),
 		ReviewUsers: users, AutoMerge: store.Deref(r.AutoMergeMethod) != "",

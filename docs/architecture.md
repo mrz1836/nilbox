@@ -166,8 +166,9 @@ scheduler, the checks follower (`inbox.ChecksFollower`: the listed pull requests
 checks were running, but a muted repository's, and those a routine's search follows, 50 a
 round at most, the listed first, read 25 to a request side by side through
 `(*github.Client).FetchItems`, and nothing while none runs; a pull request whose workflow
-runs GitHub holds for approval, `item_details.checks_awaiting`, which its card marks held
-in place of the rollup's state, isn't running, and waits for the whole refresh), the
+runs GitHub holds for approval, `item_details.checks_awaiting` and
+`checks_awaiting_on_github`, which its card marks held in place of the rollup's state,
+isn't running, and waits for the whole refresh), the
 merge follower (`inbox.MergeFollower`: a few seconds after each merge the inbox learns of,
 its own through the Actor or one a read finds, the repository's other open pull requests on
 the branch merged into, read again as the checks follower reads its own, and again while
@@ -692,6 +693,16 @@ The rows that hang off an item by its id go with it, by their foreign keys' casc
 details, file check, and check names, and the review sheet's `review_diffs` (with
 `review_diff_files`) and the issue sheet's `issue_views`, which are only caches and are read
 again on the next visit. (An item with watch rows or local state is never pruned.)
+
+**Held workflow runs** (migration `0023_checks_awaiting_on_github`). A details read stores
+the runs GitHub holds for approval apart (`github.Checks`): `item_details.checks_awaiting`
+counts those the user can approve from the review sheet, and `checks_awaiting_on_github` those
+GitHub approves only on its site; the snapshot's `Checks.Awaiting` and `AwaitingOnGitHub` carry
+them to the card, whose **{n} run(s) await your approval** (rule 6) counts the first alone, while
+its track marks both held and says the second as **{n} workflow run(s) waiting for approval on
+GitHub**. A routine's facts count both (`checks.awaitingApproval`), since either way the checks
+haven't all run. A row stored before the migration counts every held run as approvable until
+the next whole refresh reads its details again.
 
 **The reads for Autopilot.** The bound Service adds only `ItemsByID`, the rows of a routine's
 Watching list (listed and watched items alike, as a snapshot shows them). Everything else is

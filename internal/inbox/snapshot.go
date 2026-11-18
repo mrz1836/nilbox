@@ -319,9 +319,14 @@ type Checks struct {
 	Pending int `json:"pending"`
 	Skipped int `json:"skipped"`
 
-	// Awaiting counts the workflow runs held until a maintainer approves them, which State
-	// and the other counts leave out (github.Checks.Awaiting).
+	// Awaiting counts the workflow runs held until a maintainer approves them whose
+	// approval GitHub takes from the app (the review sheet's Approve workflows to run),
+	// which State and the other counts leave out (github.Checks.Awaiting).
 	Awaiting int `json:"awaiting"`
+
+	// AwaitingOnGitHub counts the held runs GitHub approves only on its site, which State
+	// and the other counts leave out too (github.Checks.AwaitingOnGitHub).
+	AwaitingOnGitHub int `json:"awaitingOnGitHub"`
 }
 
 // Reviews counts who was asked to review a pull request and who has.
@@ -565,30 +570,31 @@ type itemRow struct {
 	SeenActivityAt *time.Time
 
 	// HasDetails reports whether a refresh has read the item's details.
-	HasDetails       bool
-	Labels           []storedLabel
-	Projects         []storedProject
-	Comments         int
-	Additions        int
-	Deletions        int
-	ChangedFiles     int
-	Commits          int
-	Mergeable        string
-	ChecksState      string
-	ChecksPassed     int
-	ChecksFailed     int
-	ChecksPending    int
-	ChecksSkipped    int
-	ChecksAwaiting   int
-	ReviewDecision   string
-	Reviewers        int
-	Reviewed         int
-	Approvals        int
-	ChangesRequested int
-	SubIssues        SubIssues
-	DetailsFetchedAt *time.Time
-	HeadOID          string
-	AutoMerge        string
+	HasDetails             bool
+	Labels                 []storedLabel
+	Projects               []storedProject
+	Comments               int
+	Additions              int
+	Deletions              int
+	ChangedFiles           int
+	Commits                int
+	Mergeable              string
+	ChecksState            string
+	ChecksPassed           int
+	ChecksFailed           int
+	ChecksPending          int
+	ChecksSkipped          int
+	ChecksAwaiting         int
+	ChecksAwaitingOnGitHub int
+	ReviewDecision         string
+	Reviewers              int
+	Reviewed               int
+	Approvals              int
+	ChangesRequested       int
+	SubIssues              SubIssues
+	DetailsFetchedAt       *time.Time
+	HeadOID                string
+	AutoMerge              string
 
 	// ReviewUsers and ReviewTeams are who a pull request asks to review: the logins of
 	// the people and the slugs of the teams. Both are nil until a refresh reads them.
@@ -654,7 +660,8 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		ChecksState: store.Deref(r.ChecksState), ChecksPassed: int(store.Deref(r.ChecksPassed)),
 		ChecksFailed: int(store.Deref(r.ChecksFailed)), ChecksPending: int(store.Deref(r.ChecksPending)),
 		ChecksSkipped: int(store.Deref(r.ChecksSkipped)), ChecksAwaiting: int(store.Deref(r.ChecksAwaiting)),
-		ReviewDecision: store.Deref(r.ReviewDecision), Reviewers: int(store.Deref(r.Reviewers)),
+		ChecksAwaitingOnGitHub: int(store.Deref(r.ChecksAwaitingOnGithub)),
+		ReviewDecision:         store.Deref(r.ReviewDecision), Reviewers: int(store.Deref(r.Reviewers)),
 		Reviewed:  int(store.Deref(r.Reviewed)),
 		Approvals: int(store.Deref(r.Approvals)), ChangesRequested: int(store.Deref(r.ChangesRequested)),
 		DetailsFetchedAt: r.DetailsFetchedAt, HeadOID: store.Deref(r.HeadOID), AutoMerge: store.Deref(r.AutoMergeMethod),
@@ -830,6 +837,7 @@ func (r *itemRow) details(viewer string) *Details {
 		Checks: Checks{
 			State: r.ChecksState, Passed: r.ChecksPassed, Failed: r.ChecksFailed,
 			Pending: r.ChecksPending, Skipped: r.ChecksSkipped, Awaiting: r.ChecksAwaiting,
+			AwaitingOnGitHub: r.ChecksAwaitingOnGitHub,
 		},
 		Reviews: Reviews{
 			Decision: r.ReviewDecision, Reviewers: r.Reviewers, Reviewed: r.Reviewed,

@@ -96,7 +96,7 @@ function reviewMore(d: ItemDetails): string {
 // checks signal's sentence, its review, and whether it can merge, each the track's
 // sentence with the numbers the track leaves out.
 function StandsPR({ d }: { d: ItemDetails }) {
-  const { passed, failed, awaiting, pending, skipped } = d.checks
+  const { passed, failed, awaiting, awaitingOnGitHub, pending, skipped } = d.checks
   const more = reviewMore(d)
 
   return (
@@ -106,7 +106,7 @@ function StandsPR({ d }: { d: ItemDetails }) {
           segments={[
             { name: 'passed', value: passed, color: 'bg-success' },
             { name: 'failed', value: failed, color: 'bg-danger' },
-            { name: 'awaiting', value: awaiting, color: 'bg-warning' },
+            { name: 'awaiting', value: awaiting + awaitingOnGitHub, color: 'bg-warning' },
             { name: 'pending', value: pending, color: 'bg-warning' },
             { name: 'skipped', value: skipped, color: 'bg-border' },
           ]}

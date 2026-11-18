@@ -790,7 +790,7 @@ describe('ItemRow peek', () => {
       details: details({
         pushedSinceReview: true,
         reviews: { decision: 'REVIEW_REQUIRED', reviewers: 2, reviewed: 1, approvals: 0, changesRequested: 1 },
-        checks: { state: 'FAILURE', passed: 10, failed: 1, pending: 1, skipped: 1, awaiting: 1 },
+        checks: { state: 'FAILURE', passed: 10, failed: 1, pending: 1, skipped: 1, awaiting: 1, awaitingOnGitHub: 2 },
       }),
     })
     const row = mountCard(it, {
@@ -808,6 +808,11 @@ describe('ItemRow peek', () => {
           .querySelectorAll('[data-segment]'),
       ].map((s) => s.getAttribute('data-segment')),
     ).toEqual(['passed', 'failed', 'awaiting', 'pending', 'skipped'])
+    expect(
+      peek()
+        .getByText(/^Checks: 10/)
+        .querySelector('[data-segment="awaiting"]'),
+    ).toHaveStyle({ flexGrow: '3' })
     expect(stands.getByText(/^You asked for changes, and the author pushed since/)).toHaveTextContent(
       'You asked for changes, and the author pushed since · 1 of 2 reviewers reviewed · approval required',
     )

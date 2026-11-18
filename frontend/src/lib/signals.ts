@@ -36,12 +36,15 @@ export type ChecksKind = 'passed' | 'failed' | 'awaiting' | 'pending' | 'none'
 // checksSignal reads the head commit's checks. Skipped checks count toward neither side,
 // so a pull request whose remaining checks all pass reads as fully passed. Workflow runs
 // GitHub holds until a maintainer approves them, as a fork's, come right after a failure:
-// GitHub's own state leaves them out, and can read as passed while they wait.
+// GitHub's own state leaves them out, and can read as passed while they wait. Those the
+// user can approve from the app (awaiting) and those GitHub approves only on its site
+// (awaitingOnGitHub) are held alike, and said apart.
 export function checksSignal(checks: Checks): Signal<ChecksKind> {
-  const { state, passed, failed, pending, skipped, awaiting } = checks
+  const { state, passed, failed, pending, skipped, awaiting, awaitingOnGitHub } = checks
   const ran = passed + failed + pending
+  const held = awaiting + awaitingOnGitHub
 
-  if (state === '' && ran === 0 && skipped === 0 && awaiting === 0) {
+  if (state === '' && ran === 0 && skipped === 0 && held === 0) {
     return { kind: 'none', tone: 'muted', short: 'No checks', long: 'No checks on the latest commit' }
   }
 
@@ -63,14 +66,19 @@ export function checksSignal(checks: Checks): Signal<ChecksKind> {
     }
   }
 
-  if (awaiting > 0) {
-    const held = `${counted(awaiting, 'workflow run', 'workflow runs')} awaiting approval`
+  if (held > 0) {
+    const waits = [
+      awaiting > 0 ? `${counted(awaiting, 'workflow run', 'workflow runs')} awaiting approval` : '',
+      awaitingOnGitHub > 0
+        ? `${counted(awaitingOnGitHub, 'workflow run', 'workflow runs')} waiting for approval on GitHub`
+        : '',
+    ].filter((part) => part !== '')
 
     return {
       kind: 'awaiting',
       tone: 'warning',
-      short: `${formatCount(awaiting)} held`,
-      long: parts.length > 0 ? `Checks: ${held}, ${parts.join(', ')}` : `Checks: ${held}`,
+      short: `${formatCount(held)} held`,
+      long: `Checks: ${[...waits, ...parts].join(', ')}`,
     }
   }
 

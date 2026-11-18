@@ -294,7 +294,7 @@ describe('CompactRow', () => {
     mountCompact(
       asked({
         details: details({
-          checks: { ...details().checks, pending: 2, awaiting: 1 },
+          checks: { ...details().checks, pending: 2, awaiting: 1, awaitingOnGitHub: 0 },
           reviews: { ...details().reviews, decision: 'REVIEW_REQUIRED', approvals: 0, reviewed: 0 },
           pushedSinceReview: true,
         }),
