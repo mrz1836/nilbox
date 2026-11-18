@@ -91,7 +91,7 @@ describe('CardAvatar', () => {
     expect(broken.querySelector('[data-avatar="initials"]')).toHaveTextContent('CB')
   })
 
-  it('shows a bot’s picture in a rounded square, by its login with [bot], and the bot mark until it decodes', () => {
+  it('shows a bot’s picture in a rounded square, by its login with [bot], and the bot mark until it decodes and should it fail', () => {
     const { container } = renderAvatar(
       { author: 'dependabot', authorIsBot: true },
       { dependabot: avatarDataURL, 'dependabot[bot]': botPicture },
@@ -104,6 +104,14 @@ describe('CardAvatar', () => {
     fireEvent.load(img as HTMLImageElement)
     expect(img).toHaveClass('size-7', 'rounded-lg')
     expect(container.querySelector('[data-avatar="bot"]')).toBeNull()
+
+    const { container: broken } = renderAvatar(
+      { author: 'renovate', authorIsBot: true },
+      { 'renovate[bot]': botPicture },
+    )
+    fireEvent.error(broken.querySelector('img') as HTMLImageElement)
+    expect(broken.querySelector('img')).toBeNull()
+    expect(broken.querySelector('[data-avatar="bot"]')).toHaveClass('rounded-lg')
   })
 
   it('shows initials and the bot mark with no picture for the author', () => {
