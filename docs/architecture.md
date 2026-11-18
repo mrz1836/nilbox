@@ -141,11 +141,11 @@ artwork the icons were rendered from. `build/darwin/` holds the bundle's generat
 ## internal/core
 
 `internal/core/` assembles the app and builds every service the window binds: settings,
-profiles, prompts, launch defaults, inbox, review, issues, launcher, worktrees,
-notifications, app info, the API budget, sessions, integrations, script runs, release, hooks,
-repository scripts, the mirror of the user's GitHub notifications, the backup of the
-user's setup, the service status check, the first-run setup, the app's updates, and
-Autopilot's routines.
+profiles, prompts, launch defaults, inbox, review, issues, the profile pictures, launcher,
+worktrees, notifications, app info, the API budget, sessions, integrations, script runs,
+release, hooks, repository scripts, the mirror of the user's GitHub notifications, the
+backup of the user's setup, the service status check, the first-run setup, the app's updates,
+and Autopilot's routines.
 Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 
 ## internal/event and internal/desktop
@@ -352,9 +352,11 @@ files.
 every response's rate-limit reading, and what the request spent, to its `Tracker`
 (`github.RateObserver`), whose state the `Saver` keeps across runs. Every GitHub request goes
 through `(*github.Client).do`, apart from three reads that aren't the API and carry no token:
-a profile picture (`FetchAvatar`, the user's own by the URL GitHub gives, and anyone's by login
-through `FetchLoginAvatar`, which builds the avatar host's URL itself and refuses a login no user
-could have, such as a bot's), a public release file (`DownloadAsset`, https only, its
+a profile picture (`FetchAvatar`, by the URL GitHub gives: the user's own, and a bot author's,
+which the item fields ask GitHub for, since the avatar host answers a bot's login with a
+generated pattern; and anyone's by login through `FetchLoginAvatar`, which builds the avatar
+host's URL itself and refuses a login no user could have, such as a bot's; either way https on
+the avatar host alone, every redirect on it too), a public release file (`DownloadAsset`, https only, its
 host and every redirect's on `DownloadHosts`), and a status page's summary (`FetchStatus`:
 GitHub's, Claude's, or OpenAI's, https on one of `StatusHosts` alone, a clean absolute path,
 every redirect on the request's own host, at most 1 MiB, conditional on its last ETag, so a
@@ -607,6 +609,15 @@ round does. A round whose stored answers left GitHub still working one out, or t
 has the follow read again `mergeRetry` (30 s) later, at most `mergeRounds` (3) rounds in all;
 a merge noted while a round ran keeps its own round. It costs about a point per 25 pull
 requests a round, and nothing while no merge happened.
+
+**A bot author's picture.** The item fields every inbox read shares (`ItemFields`) ask a bot
+author for its picture's URL, at no point more, and `items.author_avatar_url` keeps it, `''` for
+any other author (migration `0021_author_avatar_url`): the refresh's `UpsertItem` and an item's
+own read (`UpdateItem`) write it, a routine's search (`UpsertWatchedItem`, whose lean fields
+don't ask) leaves it, and `UpdateItem` keeps the stored URL when a read brought none for the
+same author, since a whole refresh applies a pass's read again over its own. The lists and a
+routine's Watching list carry it as `Item.AuthorAvatarURL`, which the window hands the avatars
+service for a bot's picture on its card.
 
 **State, arrivals, and the prune.** `items.state` and `closed_at` are written by every read
 that carries them: the inbox's searches (`UpsertItem`), an item's own read and the follower's
@@ -1178,16 +1189,25 @@ so no name or tag changes. It is a leaf: it imports only `github`, `item`, `cloc
 
 ## internal/avatars
 
-`internal/avatars/` keeps the profile pictures of the people the sheets show (who opened the
-issue or pull request, an issue's assignees and participants, a pull request's reviewers, and
-who wrote each comment and review shown in full, never a bot), which the window asks for in
-one batch through the issue sheet's bound `Avatars`, for both sheets, once a sheet renders, so
-the conversation never waits on one. It owns `avatars`, one row per
-lower-cased login, downloaded by login (`FetchLoginAvatar`), at most four at a time, each once
-until it is a week old and shown again, a failed one not tried again for 30 minutes, and
-bounded (30 days unused, 2,000 rows, 16 MiB), pruned in the transaction that writes. The window
-gets them as data: URLs (`PersonAvatar`, `frontend/src/lib/pictures.ts`), so it loads nothing
-remote itself.
+`internal/avatars/` keeps the profile pictures the sheets and the inbox's cards show. The
+sheets show people's (who opened the issue or pull request, an issue's assignees and
+participants, a pull request's reviewers, and who wrote each comment and review shown in full,
+never a bot), which the window asks for in one batch through the issue sheet's bound
+`Avatars` (`Pictures`), for both sheets, once a sheet renders, so the conversation never waits
+on one. The cards show their authors', people's and bots' alike, which the window asks for
+through the service's own binding, `PicturesFor(people, bots)`: core builds the one service,
+`Core.Avatars`, hands it to the issue sheet, and binds it, so both share its kept pictures and
+its back-off. A person's is downloaded by login (`FetchLoginAvatar`); a bot's (`Bot{Login,
+URL}`) by the URL the inbox stored with its item (`items.author_avatar_url`) through
+`FetchAvatar`, which refuses a URL off the avatar host, since the host answers a bot's login
+with a generated pattern rather than its app's picture. A bot is kept and answered under its
+login with `[bot]` after it, which no person's login can hold, so it never takes the picture of
+a person named after its app; a bot with no URL is skipped. It owns `avatars`, one row per
+lower-cased key, at most `MaxLogins` (100) people and bots together a call, downloaded at most
+four at a time, each once until it is a week old and shown again, a failed one (a refused URL
+included) not tried again for 30 minutes, and bounded (30 days unused, 2,000 rows, 16 MiB),
+pruned in the transaction that writes. The window gets them as data: URLs (`PersonAvatar`,
+`frontend/src/lib/pictures.ts`), so it loads nothing remote itself.
 
 ## internal/bump
 

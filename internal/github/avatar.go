@@ -56,8 +56,9 @@ func (a *Avatar) DataURL() string {
 	return "data:" + a.ContentType + ";base64," + base64.StdEncoding.EncodeToString(a.Data)
 }
 
-// FetchAvatar downloads the profile picture at rawURL, a Viewer's AvatarURL. The URL must
-// be https on the avatar host, and redirects may not leave that host. No token is sent,
+// FetchAvatar downloads the profile picture at rawURL, a Viewer's AvatarURL or a bot
+// author's (Item.AuthorAvatarURL). The URL must be https on the avatar host, and redirects
+// may not leave that host. No token is sent,
 // because avatars are public. The image type is sniffed from the bytes rather than taken
 // from the response header, and only raster image types are accepted.
 func (c *Client) FetchAvatar(ctx context.Context, rawURL string) (*Avatar, error) {
