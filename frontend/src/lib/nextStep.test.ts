@@ -67,7 +67,7 @@ function approved(overrides: Partial<InboxItem> = {}, d: Partial<ItemDetails> = 
 
 // held counts n workflow runs held for approval, beside 13 checks that passed.
 function held(n: number) {
-  return { checks: { state: '', passed: 13, failed: 0, pending: 0, skipped: 0, awaiting: n } }
+  return { checks: { state: '', passed: 13, failed: 0, pending: 0, skipped: 0, awaiting: n, awaitingOnGitHub: 0 } }
 }
 
 // theirs is someone else's pull request assigned to the user, who requested changes on it.
@@ -329,6 +329,34 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     { rule: 'runs_held', edge: 'urgent', text: '1 run awaits your approval', icon: 'clock', primary: 'review' },
   ],
 
+  [
+    '6 counts only the runs the user can approve on a pull request they approved',
+    input({
+      item: approved(
+        {},
+        { checks: { state: '', passed: 13, failed: 0, pending: 0, skipped: 0, awaiting: 1, awaitingOnGitHub: 2 } },
+      ),
+    }),
+    {
+      rule: 'runs_held',
+      edge: 'urgent',
+      text: '1 run awaits your approval',
+      detail: 'you approved',
+      icon: 'clock',
+      primary: 'open',
+    },
+  ],
+  [
+    'approved by you, its runs held only for approval on GitHub',
+    input({
+      item: approved(
+        {},
+        { checks: { state: '', passed: 13, failed: 0, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 1 } },
+      ),
+    }),
+    { rule: 'approved_by_you', edge: 'waiting', text: 'Approved by you', primary: 'open', quiet: true },
+  ],
+
   // After 6: the user requested changes on someone else's pull request, not pushed to since.
   [
     'after 6 waiting on the author',
@@ -388,7 +416,12 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
   [
     'approved by you, checks still running',
     input({
-      item: approved({}, { checks: { state: 'PENDING', passed: 13, failed: 0, pending: 1, skipped: 0, awaiting: 0 } }),
+      item: approved(
+        {},
+        {
+          checks: { state: 'PENDING', passed: 13, failed: 0, pending: 1, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
+        },
+      ),
     }),
     {
       rule: 'approved_by_you',
@@ -865,7 +898,10 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     input({
       item: asked(
         { author: 'contributor-a' },
-        { viewerVerdict: 'changes', checks: { state: '', passed: 3, failed: 0, pending: 0, skipped: 0, awaiting: 1 } },
+        {
+          viewerVerdict: 'changes',
+          checks: { state: '', passed: 3, failed: 0, pending: 0, skipped: 0, awaiting: 1, awaitingOnGitHub: 0 },
+        },
       ),
     }),
     { rule: 'runs_held', edge: 'urgent', text: '1 run awaits your approval', icon: 'clock', primary: 'review' },
@@ -1327,7 +1363,12 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
   [
     'a pull request assigned to the user, who approved it, ready to merge',
     input({
-      item: approved({}, { checks: { state: 'SUCCESS', passed: 13, failed: 0, pending: 0, skipped: 0, awaiting: 0 } }),
+      item: approved(
+        {},
+        {
+          checks: { state: 'SUCCESS', passed: 13, failed: 0, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
+        },
+      ),
     }),
     { rule: 'ready', edge: 'ready', text: 'Approved · ready to merge', primary: 'merge' },
   ],
