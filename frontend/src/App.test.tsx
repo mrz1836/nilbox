@@ -1,9 +1,18 @@
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { brand } from './generated/brand'
-import type { AutopilotTarget, Settings, TerminalID, AgentID, RemoveResult, TextSize } from './platform'
+import type {
+  AutopilotTarget,
+  Settings,
+  TerminalID,
+  AgentID,
+  RemoveResult,
+  TextSize,
+  InboxItem,
+  PictureBot,
+} from './platform'
 import {
   afterMerge,
   appInfo,
@@ -41,6 +50,7 @@ import {
   autopilotOff,
   autopilotTarget,
   activityPage,
+  avatarDataURL,
   routine,
 } from './test/fixtures'
 import { emit, listening, mocks, platform, renderApp } from './test/platform'
@@ -1010,6 +1020,140 @@ describe('App', () => {
       expect(await screen.findByRole('region', { name: 'Notifications' })).toBeInTheDocument()
       expect(screen.getByRole('switch', { name: 'Show in the menu bar' })).toBeChecked()
     })
+  })
+})
+
+describe('App’s card pictures', () => {
+  // dependabotURL is a bot's picture on the avatar host, as GitHub gives it.
+  const dependabotURL = 'https://avatars.githubusercontent.com/in/29110?v=4'
+
+  // picture is a stand-in data: URL for what.
+  function picture(what: string): string {
+    return `data:image/png;base64,${btoa(what)}`
+  }
+
+  // authored is 59 items opened by 59 people, person-00 and on, and one by dependabot: 60
+  // authors in Review requested, item id n + 1 opened by person-n.
+  function authored(): InboxItem[] {
+    const people = Array.from({ length: 59 }, (_, i) =>
+      item({
+        id: i + 1,
+        number: i + 1,
+        title: `Change ${String(i + 1)}`,
+        url: `https://github.com/acme-org/example-repo/pull/${String(i + 1)}`,
+        author: `person-${String(i).padStart(2, '0')}`,
+      }),
+    )
+
+    return [
+      ...people,
+      item({
+        id: 60,
+        number: 60,
+        title: 'Bump the cache',
+        url: 'https://github.com/acme-org/example-repo/pull/60',
+        author: 'dependabot',
+        authorIsBot: true,
+        authorAvatarUrl: dependabotURL,
+      }),
+    ]
+  }
+
+  // Held is a request for the cards' pictures, answered when the test says.
+  interface Held {
+    people: string[]
+    bots: PictureBot[]
+    answer: (got: Record<string, string>) => void
+  }
+
+  // hold makes every request for the cards' pictures wait for the test, and lists them.
+  function hold(): Held[] {
+    const held: Held[] = []
+
+    platform.cardPictures.mockImplementation(
+      (people, bots) =>
+        new Promise((answer) => {
+          held.push({ people: people ?? [], bots: bots ?? [], answer })
+        }),
+    )
+
+    return held
+  }
+
+  // pictureOn is the picture on item id's card, or null while it shows none.
+  function pictureOn(id: number): HTMLImageElement | null {
+    return document.querySelector(`[data-item-id="${String(id)}"] img`)
+  }
+
+  it('asks for 60 authors’ pictures in three requests at once, and shows each one’s as it lands', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list(authored()) }))
+    const held = hold()
+    await renderApp()
+    await screen.findByText('Bump the cache')
+
+    await waitFor(() => {
+      expect(held).toHaveLength(3)
+    })
+    expect(held.map((r) => r.people.length + r.bots.length)).toEqual([25, 25, 10])
+    expect(held[2]?.bots).toEqual([{ login: 'dependabot', url: dependabotURL }])
+
+    // The last request lands first: its pictures show while the others still download.
+    await act(async () => {
+      held[2]?.answer({ 'person-58': picture('58'), 'dependabot[bot]': picture('dependabot') })
+      await Promise.resolve()
+    })
+    await waitFor(() => {
+      expect(pictureOn(60)).toHaveAttribute('src', picture('dependabot'))
+    })
+    expect(pictureOn(59)).toHaveAttribute('src', picture('58'))
+    expect(pictureOn(1)).toBeNull()
+
+    // A person is a circle, a bot a rounded square, each once it decodes.
+    fireEvent.load(pictureOn(59) as HTMLImageElement)
+    fireEvent.load(pictureOn(60) as HTMLImageElement)
+    expect(pictureOn(59)).toHaveClass('rounded-full')
+    expect(pictureOn(60)).toHaveClass('rounded-lg')
+
+    await act(async () => {
+      held[0]?.answer({ 'person-00': picture('00') })
+      await Promise.resolve()
+    })
+    await waitFor(() => {
+      expect(pictureOn(1)).toHaveAttribute('src', picture('00'))
+    })
+    expect(platform.cardPictures).toHaveBeenCalledTimes(3)
+  })
+
+  it('asks for no picture while Author pictures is off, and shows them once it is turned on', async () => {
+    platform.getSettings.mockImplementation(() => stored({ cardAvatars: false }))
+    platform.setCardAvatars.mockImplementation((cardAvatars: boolean) => stored({ cardAvatars }))
+    platform.cardPictures.mockResolvedValue({ 'octo-user': avatarDataURL })
+    await renderApp()
+    await screen.findByRole('button', { name: 'Launch options: Review · work' })
+
+    expect(platform.cardPictures).not.toHaveBeenCalled()
+    expect(pictureOn(1)).toBeNull()
+
+    await openSettingsFromMenu()
+    await userEvent.click(screen.getByRole('button', { name: 'Cards' }))
+    await userEvent.click(screen.getByRole('switch', { name: 'Author pictures' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
+
+    await waitFor(() => {
+      expect(pictureOn(1)).toHaveAttribute('src', avatarDataURL)
+    })
+    expect(platform.cardPictures).toHaveBeenCalledExactlyOnceWith(['octo-user'], [])
+
+    // Off again, the pictures go at once, and nothing more is asked.
+    await openSettingsFromMenu()
+    await userEvent.click(screen.getByRole('button', { name: 'Cards' }))
+    await userEvent.click(screen.getByRole('switch', { name: 'Author pictures' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
+
+    await waitFor(() => {
+      expect(pictureOn(1)).toBeNull()
+    })
+    expect(platform.cardPictures).toHaveBeenCalledOnce()
   })
 })
 

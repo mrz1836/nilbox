@@ -9,6 +9,7 @@ import type { AutopilotMatch, AutopilotState, InboxItem, InboxSnapshot, ListKey 
 import { FIXED_NOW, fromNow } from './test/clock'
 import {
   autopilotMatch,
+  avatarDataURL,
   details,
   fileCheck,
   githubThreads,
@@ -22,11 +23,12 @@ import {
 } from './test/fixtures'
 import { emit, platform, renderApp } from './test/platform'
 
-// The render profile: a 300-item inbox, and how much of it renders again for a minute
-// tick, a background update that changes one item, a GitHub notifications update and an
-// update of the app's own notifications, which the cards don't show, collapsing a list, leaving the inbox and coming back, and
-// filtering it and clearing the filter; then, with Autopilot on, an Autopilot update that
-// changes where a routine stands on one item. It runs twice. In the unit tests the components run as written,
+// The render profile: a 300-item inbox, and how much of it renders again for its authors'
+// pictures landing, a minute tick, a background update that changes one item, a GitHub
+// notifications update and an update of the app's own notifications, which the cards don't
+// show, collapsing a list, leaving the inbox and coming back, and filtering it and clearing
+// the filter; then, with Autopilot on, an Autopilot update that changes where a routine
+// stands on one item. It runs twice. In the unit tests the components run as written,
 // where the bounds below hold however much a parent renders again. `pnpm test:renders`
 // (vitest.renders.config.ts) runs it through the React Compiler, as the build ships, where
 // the tighter bounds hold, and prints what it measured.
@@ -204,6 +206,14 @@ describe('App rendering', () => {
     const answer = setUp()
     answerThreads(3)
     const rows = shown('reviewRequested') + shown('yours')
+    // The authors' pictures wait until the test lands them.
+    let land: (pictures: Record<string, string>) => void = () => undefined
+    platform.cardPictures.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          land = resolve
+        }),
+    )
 
     const mounted = await measure(async () => {
       await renderApp({ now: () => new Date(), wrapper: Profiled })
@@ -211,6 +221,21 @@ describe('App rendering', () => {
     })
 
     expect(mountedRows()).toBe(rows)
+
+    // The authors' pictures landing renders the avatars that show them, and no row.
+    await waitFor(() => {
+      expect(platform.cardPictures).toHaveBeenCalledOnce()
+    }, wait)
+    const pictures = await measure(async () => {
+      act(() => {
+        land({ 'octo-user': avatarDataURL })
+      })
+      await waitFor(() => {
+        expect(document.querySelector('[data-item-id] img')).toHaveAttribute('src', avatarDataURL)
+      }, wait)
+    })
+
+    expect(pictures.mounts).toBe(0)
 
     // The minute tick renders the times it changes, and no row.
     const tick = await measure(() => {
@@ -310,12 +335,13 @@ describe('App rendering', () => {
     expect(clear.mounts).toBeLessThanOrEqual(hidden)
     expect(mountedRows()).toBe(unfiltered)
 
-    // Through the compiler, only the changed row renders again, and nothing else does;
-    // filtering renders only the rows it marks. As written, every render of a list renders
-    // its rows again, a couple of times a step.
+    // Through the compiler, only the changed row renders again, and nothing else does (the
+    // pictures render only the avatars); filtering renders only the rows it marks. As
+    // written, every render of a list renders its rows again, a couple of times a step.
     const most = compiled
-      ? { update: 1, threads: 0, notifications: 0, collapse: 0, away: 0, back: 0, filter: matches }
+      ? { pictures: 0, update: 1, threads: 0, notifications: 0, collapse: 0, away: 0, back: 0, filter: matches }
       : {
+          pictures: 2 * rows,
           update: 2 * rows,
           threads: 2 * rows,
           notifications: 2 * rows,
@@ -325,6 +351,7 @@ describe('App rendering', () => {
           filter: 2 * rows,
         }
 
+    expect(pictures.rows).toBeLessThanOrEqual(most.pictures)
     expect(update.rows).toBeLessThanOrEqual(most.update)
     expect(threads.rows).toBeLessThanOrEqual(most.threads)
     expect(notifications.rows).toBeLessThanOrEqual(most.notifications)
@@ -336,6 +363,7 @@ describe('App rendering', () => {
     if (compiled) {
       const steps = Object.entries({
         mounted,
+        pictures,
         tick,
         update,
         threads,
