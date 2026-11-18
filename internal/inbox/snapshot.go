@@ -211,6 +211,36 @@ const (
 	ReviewRequestPushed ReviewRequest = "pushed"
 )
 
+// ViewerVerdict is the signed-in user's own standing review of a pull request: their
+// latest review that approved it or requested changes, as the item's row keeps it
+// (viewer_review_state).
+type ViewerVerdict string
+
+const (
+	// ViewerVerdictNone is a pull request the user holds no verdict on, as far as the
+	// reads know (none read yet, or a dismissed review), and every issue.
+	ViewerVerdictNone ViewerVerdict = ""
+
+	// ViewerVerdictChanges is a pull request whose user's latest verdict requested
+	// changes.
+	ViewerVerdictChanges ViewerVerdict = "changes"
+
+	// ViewerVerdictApproved is a pull request whose user's latest verdict approved it.
+	ViewerVerdictApproved ViewerVerdict = "approved"
+)
+
+// viewerVerdict is the verdict a pull request's stored review state names.
+func viewerVerdict(state string) ViewerVerdict {
+	switch state {
+	case github.ReviewStateChangesRequested:
+		return ViewerVerdictChanges
+	case github.ReviewStateApproved:
+		return ViewerVerdictApproved
+	default:
+		return ViewerVerdictNone
+	}
+}
+
 // Details is what an item's inbox card shows beyond its title. The pull request fields
 // are zero, or "", for an issue.
 type Details struct {
@@ -259,6 +289,13 @@ type Details struct {
 	// re-requested in place of Pushed since your review. It goes by the requests the details
 	// read, never by the Review requested search, which can trail a request for a while.
 	ReviewRequestedAgain bool `json:"reviewRequestedAgain"`
+
+	// ViewerVerdict is the user's own standing review of a pull request, as the last read
+	// of it found (the whole refresh's fourth search, or a read of it alone), so a card
+	// whose user requested changes can say it waits on the author, and one the user
+	// approved that they approved it. It costs no request: the refresh already reads it for
+	// PushedSinceReview.
+	ViewerVerdict ViewerVerdict `json:"viewerVerdict"`
 }
 
 // Label is one label on an item.
@@ -825,6 +862,11 @@ func (r *itemRow) details(viewer string) *Details {
 
 	pushed := r.pushedSinceReview()
 
+	verdict := ViewerVerdictNone
+	if r.Kind == item.KindPR {
+		verdict = viewerVerdict(r.ViewerReviewState)
+	}
+
 	return &Details{
 		Labels:       labels,
 		Projects:     projects,
@@ -849,6 +891,7 @@ func (r *itemRow) details(viewer string) *Details {
 
 		PushedSinceReview:    pushed,
 		ReviewRequestedAgain: pushed && github.ReviewRequests{Users: r.ReviewUsers}.Asks(viewer),
+		ViewerVerdict:        verdict,
 	}
 }
 

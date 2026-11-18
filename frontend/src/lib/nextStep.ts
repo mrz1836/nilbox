@@ -45,11 +45,13 @@ export type Rule =
   | 'agent_working'
   | 'loading'
   | 'runs_held'
+  | 'awaiting_author'
+  | 'rereview'
+  | 'approved_by_you'
   | 'conflicts'
   | 'checks_failing'
   | 'changes_requested'
   | 'my_draft'
-  | 'rereview'
   | 'review_draft'
   | 'review'
   | 'issue'
@@ -61,12 +63,15 @@ export type Rule =
 
 // Story is the card's one sentence: its lead, in the edge's color, and a muted detail after
 // " · ", '' for none. In the Snoozed and Dismissed tabs it is triage: the card shows when
-// the item comes back, or when it was dismissed, instead.
+// the item comes back, or when it was dismissed, instead, then state, muted: the lead the
+// item's own story would have outside those tabs, so the card still says where it stands.
+// state is '' everywhere else.
 export interface Story {
   text: string
   detail: string
   icon: StoryIcon
   triage: boolean
+  state: string
 }
 
 // Step is what a card puts first. quiet makes the primary a quiet button, outlined in the
@@ -128,7 +133,7 @@ export function mergeMethodText(method: string): string {
 
 // story builds a story outside the triage tabs.
 function story(text: string, detail: string, icon: StoryIcon): Story {
-  return { text, detail, icon, triage: false }
+  return { text, detail, icon, triage: false, state: '' }
 }
 
 // wakeText says the item is back from a snooze: what ended it early, if anything did.
@@ -145,6 +150,8 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   const asked = item.reviewRequest !== 'none'
   const isPR = item.kind === 'pr'
   const mine = isPR && !asked && (item.authored || item.assigned)
+  // theirs is a pull request someone else opened, which the user may have reviewed.
+  const theirs = isPR && !item.authored
 
   const step = (rule: Rule, edge: Edge, s: Story, primary: Verb, quiet = false, situation: Situation = ''): Step => ({
     rule,
@@ -171,8 +178,20 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   const { passed, failed, pending } = d.checks
   const ran = passed + failed + pending
   const wake = backFromSnooze ? wakeText(item) : ''
+  // approvedByYou is someone else's pull request the user's latest verdict approved, with
+  // no review request of the user's open: a new request hands it back to the review rules.
+  const approvedByYou = theirs && !asked && d.viewerVerdict === 'approved'
+  // ready is a pull request ready to merge: no draft, approved, its checks passed (or it
+  // has none), no conflicts, and no auto-merge waiting to do it.
+  const ready =
+    !item.isDraft &&
+    reviews.kind === 'approved' &&
+    (checks.kind === 'passed' || checks.kind === 'none') &&
+    d.mergeable === 'MERGEABLE' &&
+    d.autoMerge === ''
 
-  // worst is a pull request's worst detail, for a review asked of the user.
+  // worst is a pull request's worst detail, for a review asked of the user or one that
+  // waits on its author.
   const worst =
     d.mergeable === 'CONFLICTING'
       ? 'conflicts with its base'
@@ -187,14 +206,49 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   const woken = (text: string, detail: string, icon: StoryIcon): Story =>
     backFromSnooze ? story(text, detail === '' ? wake : `${detail} · ${wake}`, 'clock') : story(text, detail, icon)
 
-  // 6. Workflow runs wait for the user's approval.
-  if (asked && d.checks.awaiting > 0) {
+  // 6. Workflow runs wait for the user's approval, on a review asked of the user or a pull
+  // request they approved.
+  if ((asked || approvedByYou) && d.checks.awaiting > 0) {
     return step(
       'runs_held',
       'urgent',
-      story(`${counted(d.checks.awaiting, 'run awaits', 'runs await')} your approval`, '', 'clock'),
-      'review',
+      story(
+        `${counted(d.checks.awaiting, 'run awaits', 'runs await')} your approval`,
+        approvedByYou ? 'you approved' : '',
+        'clock',
+      ),
+      asked ? 'review' : 'open',
     )
+  }
+
+  // After 6. The user asked the author of someone else's pull request for changes, and
+  // the author hasn't pushed since nor asked for the user's review again: nothing is the
+  // user's to do until they do.
+  if (theirs && !asked && d.viewerVerdict === 'changes' && !d.pushedSinceReview) {
+    const detail = worst === '' ? 'you requested changes' : `you requested changes, ${worst}`
+
+    return step('awaiting_author', 'waiting', story('Waiting on the author', detail, 'dot'), 'open', true)
+  }
+
+  // 11, ahead of 7 to 10. The author pushed since the user asked for changes, on a review
+  // asked of the user or a pull request assigned to them: the user's move is to look again,
+  // not to fix it.
+  if ((asked || theirs) && d.pushedSinceReview) {
+    const text = d.reviewRequestedAgain ? 'Review re-requested' : 'Re-review'
+
+    return step('rereview', 'yours', story(text, worst, 'dot'), 'rereview', false, 'rereview')
+  }
+
+  // Ahead of 7 to 10. The user approved someone else's pull request, which isn't ready to
+  // merge yet: there is nothing left to review. With auto-merge on, it says so, as rule 16
+  // does. Once it is ready, rule 15 offers the merge.
+  if (approvedByYou && !ready) {
+    const s =
+      d.autoMerge !== ''
+        ? woken('Merges when green', mergeMethodText(d.autoMerge), 'bolt')
+        : story('Approved by you', worst, 'dot')
+
+    return step('approved_by_you', 'waiting', s, 'open', true)
   }
 
   // 7 to 10. The user's own pull request, or one assigned to them.
@@ -236,13 +290,7 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
     return step('my_draft', 'yours', story('Draft', 'not marked ready', 'dot'), 'open')
   }
 
-  // 11 to 13. A review asked of the user.
-  if (asked && d.pushedSinceReview) {
-    const text = d.reviewRequestedAgain ? 'Review re-requested' : 'Re-review'
-
-    return step('rereview', 'yours', story(text, worst, 'dot'), 'rereview', false, 'rereview')
-  }
-
+  // 12 and 13. A review asked of the user.
   if (asked && item.isDraft) {
     return step('review_draft', 'waiting', story('Not ready for review', '', 'dot'), 'open', true)
   }
@@ -261,13 +309,7 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   }
 
   // 15 to 19. Not the user's move, or one ready to make.
-  if (
-    mine &&
-    reviews.kind === 'approved' &&
-    (checks.kind === 'passed' || checks.kind === 'none') &&
-    d.mergeable === 'MERGEABLE' &&
-    d.autoMerge === ''
-  ) {
+  if (mine && ready) {
     return step('ready', 'ready', woken('Approved · ready to merge', '', 'dot'), 'merge')
   }
 
@@ -296,35 +338,10 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   return step('waiting', 'waiting', woken(text, '', 'dot'), 'open', true)
 }
 
-// nextStep works out what a card puts first: the tabs an item is set aside in, then what
-// waits on the user now, then an agent or a routine at work, which keeps the item's own
-// move as a quiet primary, then what the item itself asks for.
-export function nextStep(input: StepInput): Step {
-  const { tab, session, sessionFresh, autopilot, agent, mutedTarget } = input
-  const none = { edge: 'none', quiet: true, situation: '' } as const
-
-  // T1 to T3. The tabs an item is set aside in, whose primary brings it back.
-  if (tab === 'snoozed') {
-    return {
-      ...none,
-      rule: 'snoozed',
-      story: { text: '', detail: '', icon: 'clock', triage: true },
-      primary: 'unsnooze',
-    }
-  }
-
-  if (tab === 'dismissed') {
-    return {
-      ...none,
-      rule: 'dismissed',
-      story: { text: '', detail: '', icon: 'archive', triage: true },
-      primary: 'restore',
-    }
-  }
-
-  if (tab === 'muted') {
-    return { ...none, rule: 'muted', story: story(`Muted with ${mutedTarget}`, '', 'dot'), primary: 'unmute' }
-  }
+// liveStep is the step rules 1 to 19 give, wherever the item is: what waits on the user
+// now, then an agent or a routine at work, then what the item itself asks for.
+function liveStep(input: StepInput): Step {
+  const { session, sessionFresh, autopilot, agent } = input
 
   // 1. An agent waits for the user.
   if (session !== null && needsYou(session.state)) {
@@ -383,4 +400,39 @@ export function nextStep(input: StepInput): Step {
   }
 
   return itemStep(input)
+}
+
+// nextStep works out what a card puts first: the tabs an item is set aside in, then what
+// waits on the user now, then an agent or a routine at work, which keeps the item's own
+// move as a quiet primary, then what the item itself asks for.
+export function nextStep(input: StepInput): Step {
+  const { tab, mutedTarget } = input
+  const none = { edge: 'none', quiet: true, situation: '' } as const
+
+  // T1 and T2. The Snoozed and Dismissed tabs, whose primary brings the item back: the
+  // card says when it comes back, or when it was dismissed, then where it stands, the
+  // lead its own story (rules 1 to 19) would have in its list.
+  if (tab === 'snoozed' || tab === 'dismissed') {
+    const snoozed = tab === 'snoozed'
+
+    return {
+      ...none,
+      rule: tab,
+      story: {
+        text: '',
+        detail: '',
+        icon: snoozed ? 'clock' : 'archive',
+        triage: true,
+        state: liveStep(input).story.text,
+      },
+      primary: snoozed ? 'unsnooze' : 'restore',
+    }
+  }
+
+  // T3. The Muted tab, whose primary unmutes the item's repository or org.
+  if (tab === 'muted') {
+    return { ...none, rule: 'muted', story: story(`Muted with ${mutedTarget}`, '', 'dot'), primary: 'unmute' }
+  }
+
+  return liveStep(input)
 }

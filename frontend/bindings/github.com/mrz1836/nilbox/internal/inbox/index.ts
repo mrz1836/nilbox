@@ -8,7 +8,8 @@ export {
 
 export {
     ProjectAccess,
-    ReviewRequest
+    ReviewRequest,
+    ViewerVerdict
 } from "./models.js";
 
 export type {

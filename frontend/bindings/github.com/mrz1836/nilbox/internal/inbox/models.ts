@@ -135,6 +135,15 @@ export interface Details {
      * read, never by the Review requested search, which can trail a request for a while.
      */
     "reviewRequestedAgain": boolean;
+
+    /**
+     * ViewerVerdict is the user's own standing review of a pull request, as the last read
+     * of it found (the whole refresh's fourth search, or a read of it alone), so a card
+     * whose user requested changes can say it waits on the author, and one the user
+     * approved that they approved it. It costs no request: the refresh already reads it for
+     * PushedSinceReview.
+     */
+    "viewerVerdict": ViewerVerdict;
 }
 
 /**
@@ -526,3 +535,32 @@ export interface SubIssues {
      */
     "completed": number;
 }
+
+/**
+ * ViewerVerdict is the signed-in user's own standing review of a pull request: their
+ * latest review that approved it or requested changes, as the item's row keeps it
+ * (viewer_review_state).
+ */
+export type ViewerVerdict = "" | "changes" | "approved";
+
+/**
+ * The values of ViewerVerdict, by the names of their Go constants.
+ */
+export const ViewerVerdict = {
+    /**
+     * ViewerVerdictNone is a pull request the user holds no verdict on, as far as the
+     * reads know (none read yet, or a dismissed review), and every issue.
+     */
+    ViewerVerdictNone: "",
+
+    /**
+     * ViewerVerdictChanges is a pull request whose user's latest verdict requested
+     * changes.
+     */
+    ViewerVerdictChanges: "changes",
+
+    /**
+     * ViewerVerdictApproved is a pull request whose user's latest verdict approved it.
+     */
+    ViewerVerdictApproved: "approved",
+} as const;

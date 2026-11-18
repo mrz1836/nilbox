@@ -297,8 +297,8 @@ function Byline({
 // (CardAvatar). Its first line is the title, after the unread dot while the item has
 // activity the user hasn't seen (and Settings → Cards' Unread dots is on) and a pin when
 // pinned, with up to two labels; its second, the story in the edge's color (CardStory: one sentence of why it is
-// here, or, in the Snoozed and Dismissed tabs, when it comes back or was dismissed), the
-// byline, then the risk chip, the ⚡ chip (AutopilotChip), and the worktree chip. The state
+// here, or, in the Snoozed and Dismissed tabs, when it comes back or was dismissed, then,
+// muted, where it stands), the byline, then the risk chip, the ⚡ chip (AutopilotChip), and the worktree chip. The state
 // column shows where a pull request stands (StateTrack, over its size, SizeGlyph) or an
 // issue (IssueState); the action column, the human's next move and the agent's slot beside
 // it (CardActions, with LaunchControls' card variant), each in a slot of its own: the

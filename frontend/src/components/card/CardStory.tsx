@@ -74,22 +74,53 @@ function Mark({ icon, edge }: { icon: StoryIcon; edge: Edge }) {
 export interface CardStoryProps {
   story: Story
   edge: Edge
-  // children is what a triage story shows in its place, in the Snoozed and Dismissed tabs:
-  // when the item comes back, or when it was dismissed (the row's TriageTag).
+  // children is what a triage story shows first, in the Snoozed and Dismissed tabs: when
+  // the item comes back, or when it was dismissed (the row's TriageTag). The story's state
+  // follows it.
   children?: ReactNode
   // chip draws the story as a compact card's chip: tinted with the edge's color, its words
   // cut short when they don't fit.
   chip?: boolean
 }
 
+// State is where a set-aside item stands, after its triage tag: " · " and its own story's
+// lead, muted. A compact card's (chip) is cut short when it doesn't fit.
+function State({ state, chip }: { state: string; chip: boolean }) {
+  return (
+    <span
+      data-story-state
+      className={`font-medium text-muted ${chip ? 'min-w-0 truncate text-[0.71875rem]' : 'shrink-0'}`}
+    >
+      <span aria-hidden="true" className={`opacity-60 ${chip ? 'mr-1.25' : 'mr-2'}`}>
+        ·
+      </span>
+      {state}
+    </span>
+  )
+}
+
 // CardStory is a card's one sentence, at the start of its second line: its mark, its lead
 // in the edge's color, and its detail after " · ", muted. It never shrinks; the byline
 // after it gives way first. A compact card's (chip) is a chip in its own column, tinted
 // with the edge's color, whose words are cut short instead. A triage story shows children
-// instead.
+// instead, then where the item stands (State).
 export function CardStory({ story, edge, children, chip = false }: CardStoryProps) {
   if (story.triage) {
-    return children
+    if (story.state === '') {
+      return children
+    }
+
+    return chip ? (
+      <span data-story-chip className="inline-flex h-5 max-w-60 min-w-0 items-center gap-1.25 whitespace-nowrap">
+        {children}
+        <State state={story.state} chip />
+      </span>
+    ) : (
+      <>
+        {children}
+        <State state={story.state} chip={false} />
+      </>
+    )
   }
 
   if (chip) {

@@ -1829,12 +1829,13 @@ Cards** can make every card one line instead (**Compact cards**, below).
   it on GitHub instead.
 - **Line 2:** the story, one sentence in the edge's color that says why the card is here, such
   as **Your review · checks failing**, **Re-review · back early: 1 new commit**, **2 of 14
-  checks failing**, **Approved · ready to merge**, **Claude needs approval**, or **Merges when
-  green · squash**; in the Snoozed and Dismissed tabs, when it comes back or when it was
-  dismissed. Then the byline: the repository and number, the author (**you** for your own;
-  hover it for your login, and it still filters by the login), why it is yours (**via
-  @team** for a review asked of a team, **assigned** when it is assigned to you, in either
-  list), and how long ago it last changed. Then, only when there is something to say, one
+  checks failing**, **Approved · ready to merge**, **Claude needs approval**, **Waiting on the
+  author · you requested changes**, or **Merges when green · squash**; in the Snoozed and
+  Dismissed tabs, when it comes back or when it was dismissed, then, muted, where it stands, as
+  its story would begin in its list (**Back tomorrow, 6:45 PM · Waiting on the author**).
+  Then the byline: the repository and number, the author (**you** for your own; hover it for your login, and it still
+  filters by the login), why it is yours (**via @team** for a review asked of a team,
+  **assigned** when it is assigned to you, in either list), and how long ago it last changed. Then, only when there is something to say, one
   risk chip for who opened it and the [sensitive files](#sensitive-files) it changes (such as
   **Outside · Workflows**, or **Untrusted bot · Not all files checked**; click it for the
   files), the routine's ⚡ chip, and a worktree chip when the item's worktree, as the
@@ -1863,6 +1864,19 @@ Cards** can make every card one line instead (**Compact cards**, below).
   **✦ Work on it** on an issue. It carries its lock when the item
   [launches read-only](#outside-contributors), and the arrow for the launch options; or, once
   a session runs, its live state (see [Following a session](#following-a-session)).
+- **Waiting on the author.** A pull request someone else opened that you requested changes on
+  is the author's move until they push: its story says **Waiting on the author · you requested
+  changes**, then its worst trouble (**you requested changes, conflicts with its base**), in
+  grey, with a quiet **Open** and the agent's plain button. Once the author pushes, it asks for
+  your **Re-review**, assigned to you or not.
+- **Approved by you.** A pull request someone else opened that you approved has nothing left
+  for you to review: it says **Approved by you**, then its worst trouble (**Approved by you · 1
+  check still running**), or **Merges when green · squash** while auto-merge is on, in grey,
+  with a quiet **Open**, until it is ready to merge, when one assigned to you reads **Approved ·
+  ready to merge** with **Merge**. Workflow runs held for your approval on it come first, in
+  amber: **1 run awaits your approval · you approved**, with **Open**.
+- **Asked again.** Either way, once your review is requested again it is an ordinary review
+  request: **Your review** (or **Re-review** after a push).
 
 **Hover a card** for its triage over the track: **Show details**, refresh it, snooze it,
 dismiss it, pin or unpin it, and the menu of everything else. They stay while the card is busy
@@ -1901,7 +1915,8 @@ two-line card above, and **Compact** fits about three times as many, one line ea
 per question so you can read down each one. From the left: the edge; the pull request or
 issue mark (grey for a draft); the repository, its org dimmed; the title and number, the
 labels as up to six dots in their colors (hover them for their names; hidden labels stay
-hidden), the pin, and the unread dot; the story as a chip tinted with the edge's color; the risk as its
+hidden), the pin, and the unread dot; the story as a chip tinted with the edge's color (in the
+Snoozed and Dismissed tabs, when it comes back or was dismissed, then where it stands); the risk as its
 shield alone (hover it for who opened it and the sensitive files); the track as three dots,
 filled for a tick, a cross, or ↻, half-filled for runs held, pinging while checks run,
 dashed while a step waits and dotted with nothing yet to say (hover them for the three

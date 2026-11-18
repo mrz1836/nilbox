@@ -426,8 +426,13 @@ reads; a read that fails leaves it pushed to, and is asked again next time. It d
 ask GitHub for `review:changes_requested`, which matches the overall decision, someone
 else's request included. Each row keeps the verdict (`viewer_review_state`,
 `viewer_review_commit`), so the card says **Pushed since your review** in any list
-(`Details.PushedSinceReview`, also while `review_left_at` holds it back). A pull request the
-fourth search returns alone and not pushed to is in no list: its details are never read
+(`Details.PushedSinceReview`, also while `review_left_at` holds it back), and hands the
+card the verdict itself (`Details.ViewerVerdict`: `changes`, `approved`, or `""` with none,
+read from `viewer_review_state`, so it costs no request), which lets a card whose user
+requested changes and whose author hasn't pushed since say it waits on the author, and one the
+user approved say so; one past the fourth search's page holds none, and its card falls back to
+the other rules. A pull
+request the fourth search returns alone and not pushed to is in no list: its details are never read
 (`nodeIDs`, `fileTargets`), and no file check runs. `UpsertItem` gates `reason_pushed` by
 `review_left_at` as it gates the request, so a review the user leaves from the inbox
 (`recordReview`: `LeaveReview`, and `NoteViewerReview`, the new verdict at the head they
@@ -4312,7 +4317,16 @@ properties on the row, which `@max-*` container variants narrow against the list
 `@container` (`ListSection`'s and `WatchingList`'s `<ul>`). `lib/nextStep.ts` is the pure
 function that decides what a card puts first, the first matching rule winning: its edge, its
 story (`card/CardStory`), its primary verb, whether that is quiet, and the situation (the
-generated `launcher.Situation`) that picks the agent button's prompt; the row passes it every
+generated `launcher.Situation`) that picks the agent button's prompt. A pull request someone
+else opened whose user's own verdict (`Details.viewerVerdict`) requests changes waits on its
+author (`awaiting_author`, quiet, no situation) until the author pushes, and then asks for a
+re-review (`rereview`) before the rules for the user's own pull request can call it theirs to
+fix. One the user approved says so (`approved_by_you`, quiet, no situation; with auto-merge
+on, rule 16's story) until it is ready to merge, when rule 15 offers the merge, and its held
+workflow runs ask for the user's approval as a review's do (`runs_held`, with Open). Neither
+rule applies while a review request of the user's is open: the author asked again, so the
+review rules decide. In the Snoozed and Dismissed tabs the story is the triage tag, then its
+`state`, muted: the lead rules 1 to 19 give the item in its list. The row passes it every
 input, and the three that depend on the time (the card's session, whether a failed one is
 fresh, back from a snooze) come from `useNowAs` as primitives, so a clock tick renders no row.
 The state column is `card/StateTrack` over `card/SizeGlyph` for a pull request, or

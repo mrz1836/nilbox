@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { CardPrefsContext, defaultCardPrefs } from '../lib/cardPrefs'
 import { HiddenLabelsContext, labelMatcher } from '../lib/labels'
 import type { TriageTab } from '../lib/triage'
-import type { InboxItem, RepoRules, Worktree } from '../platform'
+import type { InboxItem, ItemDetails, RepoRules, Worktree } from '../platform'
 import { at } from '../test/clock'
 import {
   agentSession,
@@ -251,6 +251,105 @@ describe('ItemRow', () => {
       screen.getByRole('button', { name: label === 'Claude' ? 'Open in Claude' : `Open in Claude: ${label}` }),
     ).toHaveTextContent(new RegExp(`^${label}$`))
     expect(platform.resolveLaunch).not.toHaveBeenCalled()
+  })
+})
+
+describe('ItemRow waiting on the author', () => {
+  // theirs is someone else's pull request assigned to the user, who requested changes on
+  // it; it conflicts with its base and fails its checks.
+  function theirs(d: Partial<ItemDetails> = {}): InboxItem {
+    return item({
+      assigned: true,
+      author: 'contributor-a',
+      details: details({
+        viewerVerdict: 'changes',
+        mergeable: 'CONFLICTING',
+        checks: { ...details().checks, passed: 10, failed: 2 },
+        reviews: { decision: 'CHANGES_REQUESTED', reviewers: 1, reviewed: 1, approvals: 0, changesRequested: 1 },
+        ...d,
+      }),
+    })
+  }
+
+  // resolution resolves every situation to its own prompt, so the agent's button names
+  // the one the card asks for, if any.
+  const resolution = itemResolution({
+    situations: situationChoices({
+      conflicts: { id: 2, nickname: 'Resolve conflicts', inheritedId: 2 },
+      checks_failing: { id: 3, nickname: 'Fix checks', inheritedId: 3 },
+      changes_requested: { id: 4, nickname: 'Address review', inheritedId: 4 },
+      rereview: { id: 6, nickname: 'Re-review', inheritedId: 6 },
+    }),
+  })
+
+  it('says a pull request waits on its author until the author pushes, with no prompt for the agent', () => {
+    const row = mountCard(theirs(), { resolution })
+
+    expect(row).toHaveAttribute('data-rule', 'awaiting_author')
+    expect(row.querySelector('[data-edge]')).toHaveClass('bg-muted/30')
+    expect(body(row).lastElementChild).toHaveTextContent(
+      /^Waiting on the author · you requested changes, conflicts with its base·acme-org\/example-repo #7 · contributor-a · assigned · 3h$/,
+    )
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveClass('border-border', 'text-text')
+    expect(screen.getByRole('button', { name: 'Open in Claude' })).toHaveTextContent(/^Claude$/)
+    expect(screen.queryByText(/Resolve conflicts|Address review|Fix checks/)).not.toBeInTheDocument()
+  })
+
+  it('asks for a re-review once the author pushed', () => {
+    const row = mountCard(theirs({ pushedSinceReview: true }), { resolution })
+
+    expect(row).toHaveAttribute('data-rule', 'rereview')
+    expect(row.querySelector('[data-edge]')).toHaveClass('bg-accent')
+    expect(body(row).lastElementChild).toHaveTextContent(
+      /^Re-review · conflicts with its base·acme-org\/example-repo #7 · contributor-a · assigned · 3h$/,
+    )
+    expect(screen.getByRole('button', { name: 'Re-review' })).toHaveAttribute('data-verb', 'rereview')
+    expect(screen.getByRole('button', { name: 'Open in Claude: Re-review' })).toBeInTheDocument()
+  })
+})
+
+describe('ItemRow approved by you', () => {
+  // approved is someone else's pull request assigned to the user, who approved it.
+  function approved(checks: Partial<ItemDetails['checks']>): InboxItem {
+    return item({
+      assigned: true,
+      author: 'contributor-a',
+      details: details({
+        viewerVerdict: 'approved',
+        checks: { ...details().checks, passed: 13, skipped: 0, ...checks },
+      }),
+    })
+  }
+
+  it('asks to approve a held workflow run, opening the pull request rather than reviewing it', () => {
+    const row = mountCard(approved({ state: '', awaiting: 1 }))
+
+    expect(row).toHaveAttribute('data-rule', 'runs_held')
+    expect(row.querySelector('[data-edge]')).toHaveClass('bg-warning')
+    expect(body(row).lastElementChild).toHaveTextContent(
+      /^1 run awaits your approval · you approved·acme-org\/example-repo #7 · contributor-a · assigned · 3h$/,
+    )
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveAttribute('data-verb', 'open')
+    expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument()
+  })
+
+  it('says the user approved it while it isn’t ready to merge, with a quiet Open', () => {
+    const row = mountCard(approved({ state: 'PENDING', pending: 1 }))
+
+    expect(row).toHaveAttribute('data-rule', 'approved_by_you')
+    expect(row.querySelector('[data-edge]')).toHaveClass('bg-muted/30')
+    expect(body(row).lastElementChild).toHaveTextContent(
+      /^Approved by you · 1 check still running·acme-org\/example-repo #7 · contributor-a · assigned · 3h$/,
+    )
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveClass('border-border', 'text-text')
+    expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument()
+  })
+
+  it('offers the merge once it is ready', () => {
+    const row = mountCard(approved({}))
+
+    expect(row).toHaveAttribute('data-rule', 'ready')
+    expect(screen.getByRole('button', { name: 'Merge' })).toHaveAttribute('data-verb', 'merge')
   })
 })
 
@@ -506,6 +605,43 @@ describe('ItemRow tabs', () => {
 
     await userEvent.click(unsnooze)
     expect(triage.onRestore).toHaveBeenCalledWith(it)
+  })
+
+  it('says where a snoozed item stands after when it comes back, muted', () => {
+    const row = mountCard(
+      item({
+        assigned: true,
+        author: 'contributor-a',
+        snoozedUntil: '2026-06-16T18:45:00Z',
+        details: details({ viewerVerdict: 'changes', mergeable: 'CONFLICTING' }),
+      }),
+      { tab: 'snoozed', triage: triageActions() },
+    )
+
+    expect(row).toHaveAttribute('data-rule', 'snoozed')
+    expect(row.querySelector('[data-edge]')).toHaveClass('bg-transparent')
+    const line = body(row).lastElementChild
+    expect(line).toHaveTextContent(
+      /^Back tomorrow, .+·Waiting on the author·acme-org\/example-repo #7 · contributor-a · assigned · 3h$/,
+    )
+    const state = line?.querySelector('[data-story-state]')
+    expect(state?.previousElementSibling).toHaveAttribute('title', expect.stringMatching(/^Snoozed until/))
+    expect(state).toHaveClass('text-muted')
+    expect(screen.getByRole('button', { name: 'Unsnooze' })).toHaveClass('border-border', 'text-text')
+  })
+
+  it('says where a dismissed item stands after when it was dismissed', () => {
+    const row = mountCard(
+      item({
+        authored: true,
+        dismissedAt: '2026-06-15T10:00:00Z',
+        details: details({ checks: { ...details().checks, passed: 10, failed: 2 } }),
+      }),
+      { tab: 'dismissed', triage: triageActions() },
+    )
+
+    expect(row).toHaveAttribute('data-rule', 'dismissed')
+    expect(body(row).lastElementChild).toHaveTextContent(/^Dismissed 2h ago·2 of 12 checks failing·/)
   })
 
   it('says when a dismissed item was dismissed, and restores it', async () => {

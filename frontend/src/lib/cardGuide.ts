@@ -110,6 +110,7 @@ export function guideItem(now: Date): InboxItem {
       fetchedAt: ago(now, 2),
       pushedSinceReview: true,
       reviewRequestedAgain: false,
+      viewerVerdict: 'changes',
     },
     files: {
       status: 'flagged',
