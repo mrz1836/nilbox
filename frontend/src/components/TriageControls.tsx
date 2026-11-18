@@ -194,7 +194,8 @@ function PinButton({ item, actions }: { item: InboxItem; actions: TriageActions 
 }
 
 // SnoozeSplit is the Snooze split button: the Snooze button's own length in one click,
-// with the arrow for another length.
+// with the arrow for another length. Each half draws its focus ring inside itself, so the
+// ring follows that half's shape rather than crossing the other.
 function SnoozeSplit({ item, actions }: { item: InboxItem; actions: TriageActions }) {
   const clock = useClock()
   // pointedAt is when the pointer or focus last reached the Snooze button, whose tooltip
@@ -223,7 +224,7 @@ function SnoozeSplit({ item, actions }: { item: InboxItem; actions: TriageAction
         onClick={() => {
           actions.onSnooze(item, snoozeDays)
         }}
-        className={`${ghostClass} rounded-r-none pr-1`}
+        className={`${ghostClass} rounded-r-none pr-1 focus-visible:-outline-offset-2`}
       >
         <ClockIcon className="size-3.5" />
         {snoozeShort(snoozeDays)}
@@ -233,7 +234,7 @@ function SnoozeSplit({ item, actions }: { item: InboxItem; actions: TriageAction
         title="Snooze for another length"
         heading="Snooze until"
         items={() => snoozeItems(item, actions)}
-        className={`${ghostClass} rounded-l-none px-1`}
+        className={`${ghostClass} rounded-l-none px-1 focus-visible:-outline-offset-2`}
       >
         <ChevronDownIcon className="size-3" />
       </MenuButton>

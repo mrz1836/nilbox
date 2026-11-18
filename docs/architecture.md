@@ -4307,7 +4307,12 @@ The triage, the state column's fade, the primary's fill, and a compact card's ho
 follow `index.css`'s `card-lit` variant: the pointer on the card, keyboard focus in it
 (`:focus-visible`, so the focus a click leaves on the stretched toggle doesn't count), or a
 menu or panel it opened open (`[aria-haspopup][aria-expanded=true]`), besides the busy
-card's own.
+card's own. A menu, panel, or dialog closing gives focus back to its button through
+`lib/focusBack.ts` (`usePopover`, `useModalDialog`): ringed after a key, and after a pointer
+with `focusVisible: false` (WebKit from Safari 18.4), so no ring is left behind and the card
+goes dark once the pointer leaves. The halves of a split control (the agent's launch and its
+▾, Snooze and its ▾) draw their focus rings inside themselves (`-outline-offset-2`), each
+following its own shape within the control's border.
 `card/CardAvatar` shows the author's picture through `Avatar.tsx`'s `Picture` (a circle, or
 with `shape="square"` a bot's rounded square), whose stand-in, the initials or the bot mark,
 shows until the picture decodes and when it fails. The pictures come from

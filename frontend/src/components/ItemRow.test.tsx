@@ -533,6 +533,16 @@ describe('ItemRow agent', () => {
     expect(screen.getByRole('button', { name: 'Launch options: Review · default' })).toBeInTheDocument()
   })
 
+  it('draws the focus ring of each half of its launch inside that half, within the control’s border', () => {
+    mountCard(asked())
+
+    const launch = screen.getByRole('button', { name: 'Open in Claude' })
+    const options = screen.getByRole('button', { name: 'Launch options: Review · default' })
+    expect(launch.parentElement).toHaveClass('rounded-lg', 'border')
+    expect(launch).toHaveClass('rounded-l-lg', 'focus-visible:-outline-offset-2')
+    expect(options).toHaveClass('rounded-r-lg', 'focus-visible:-outline-offset-2')
+  })
+
   it('waits for an item’s launch settings to resolve', () => {
     mountCard(asked({ id: 99 }))
 
@@ -988,6 +998,56 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
     while (document.activeElement !== chevron) {
       expect(await tab()).toBe(true)
     }
+  })
+
+  it('gives the ▾ focus back unringed after a pointer closes the launch options, ringed after Escape', async () => {
+    const user = userEvent.setup()
+    const row = mountLit(asked(), { triage: triageActions(), edits: editActions() })
+    const options = within(row).getByRole('button', { name: /^Launch options/ })
+
+    await user.click(options)
+    expect(shownAway(row)).toBe(true)
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()
+    expect(options).toHaveFocus()
+    expect(options.matches(':focus-visible')).toBe(false)
+    expect(shownAway(row)).toBe(false)
+
+    await user.click(options)
+    await user.keyboard('{Escape}')
+
+    expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()
+    expect(options).toHaveFocus()
+    expect(options.matches(':focus-visible')).toBe(true)
+    expect(shownAway(row)).toBe(true)
+  })
+
+  it('gives a menu’s button focus back unringed after a pointer picks from it', async () => {
+    const user = userEvent.setup()
+    const triage = triageActions()
+    const edits = editActions()
+    const row = mountLit(asked(), { triage, edits })
+
+    const snooze = within(row).getByRole('button', { name: 'Snooze for…' })
+    await user.click(snooze)
+    // The menu stays lit while it is open, wherever the pointer goes.
+    expect(shownAway(row)).toBe(true)
+    await user.click(screen.getByRole('menuitem', { name: /^1 week/ }))
+
+    expect(triage.onSnooze).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }), 7)
+    expect(snooze).toHaveFocus()
+    expect(snooze.matches(':focus-visible')).toBe(false)
+    expect(shownAway(row)).toBe(false)
+
+    const more = within(row).getByRole('button', { name: 'More actions' })
+    await user.click(more)
+    await user.click(screen.getByRole('menuitem', { name: 'Copy link' }))
+
+    expect(edits.onCopyLink).toHaveBeenCalledOnce()
+    expect(more).toHaveFocus()
+    expect(more.matches(':focus-visible')).toBe(false)
+    expect(shownAway(row)).toBe(false)
   })
 })
 

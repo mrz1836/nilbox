@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
+import { focusBack } from './focusBack'
 import { remToPx } from './rem'
 
 // Placement is where a panel opens against its button: always below it ('below'); below
@@ -110,8 +111,10 @@ export function usePopover<T extends HTMLElement, P extends HTMLElement>({
   const close = (restoreFocus = false) => {
     setOpen(false)
 
-    if (restoreFocus) {
-      triggerRef.current?.focus()
+    const trigger = triggerRef.current
+
+    if (restoreFocus && trigger !== null) {
+      focusBack(trigger)
     }
   }
 

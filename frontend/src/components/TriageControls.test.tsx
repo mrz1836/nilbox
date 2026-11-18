@@ -65,6 +65,19 @@ describe('TriageControls, card mode', () => {
     expect(actions.onUnpin).toHaveBeenCalledExactlyOnceWith(pinned)
   })
 
+  it('draws the focus ring of each half of the Snooze split inside that half', () => {
+    cardTriage(item(), 'inbox')
+
+    expect(screen.getByRole('button', { name: 'Snooze for 3 days' })).toHaveClass(
+      'rounded-r-none',
+      'focus-visible:-outline-offset-2',
+    )
+    expect(screen.getByRole('button', { name: 'Snooze for…' })).toHaveClass(
+      'rounded-l-none',
+      'focus-visible:-outline-offset-2',
+    )
+  })
+
   it('keeps every button shown while the card works with GitHub', () => {
     cardTriage(item(), 'inbox', 'refresh')
 

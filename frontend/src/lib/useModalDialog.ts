@@ -1,5 +1,7 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, type RefObject } from 'react'
 
+import { focusBack } from './focusBack'
+
 // focusableSelector finds a dialog's controls for keeping keyboard focus inside it.
 const focusableSelector =
   'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"])'
@@ -128,10 +130,10 @@ export interface ModalCancelEvent {
 // mounted: it opens it as a modal (the rest of the page inert and dimmed behind it) and
 // moves focus to what initialFocus returns, keeps Tab inside it, cancels on Escape (and,
 // with the backdrop option, on a click on the backdrop), and gives focus back to where it
-// was when it first opened as it closes. Only the topmost open dialog hears the keys, the
-// last opened (isTopmost), so a confirmation opened over another dialog handles its own
-// Escape and Tab. It returns the dialog's cancel handler, for a close request the system
-// sends.
+// was when it first opened as it closes, ringed only after a key (focusBack). Only the
+// topmost open dialog hears the keys, the last opened (isTopmost), so a confirmation
+// opened over another dialog handles its own Escape and Tab. It returns the dialog's
+// cancel handler, for a close request the system sends.
 export function useModalDialog(
   ref: RefObject<HTMLDialogElement | null>,
   onCancel: () => void,
@@ -174,7 +176,7 @@ export function useModalDialog(
       const back = opener.current
 
       if (back instanceof HTMLElement && back.isConnected) {
-        back.focus()
+        focusBack(back)
       }
     }
   }, [ref])
