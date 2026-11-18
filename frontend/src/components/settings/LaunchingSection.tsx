@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 
 import { attempt } from '../../lib/call'
-import { kindPlural, promptApplies } from '../../lib/launch'
+import { kindPlural, promptApplies, situationInfo, situations, type PullSituation } from '../../lib/launch'
 import { terminals } from '../../lib/terminals'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
@@ -13,6 +13,7 @@ import {
   setCodexFast,
   setDefaultPrompt,
   setFollowSessions,
+  setSlotDefault,
   setTerminal,
   setWorktreeDefault,
   type AgentID,
@@ -39,9 +40,9 @@ interface LaunchingSectionProps extends SectionProps {
 }
 
 // LaunchingSection holds the app defaults every launch starts from: the terminal, the
-// coding agent and each agent's profile, the prompt for each kind of item, and whether a
-// session runs in a worktree. Each is saved as soon as it changes, with why a change was
-// refused shown under its row.
+// coding agent and each agent's profile, the prompt for each kind of item and for each
+// situation a pull request can be in, and whether a session runs in a worktree. Each is
+// saved as soon as it changes, with why a change was refused shown under its row.
 export function LaunchingSection({
   settings: stored,
   agents,
@@ -85,6 +86,20 @@ export function LaunchingSection({
       await onLaunchChanged()
     } else {
       shows(kind, result.error)
+    }
+  }
+
+  // saveSituation makes a prompt the app's default for a pull request's situation, or with
+  // 0 leaves the situation the pull request's prompt, then loads the prompts again.
+  const saveSituation = async (situation: PullSituation, promptId: number) => {
+    shows(situation, '')
+
+    const result = await attempt(setSlotDefault(situation, promptId))
+
+    if (result.ok) {
+      await onLaunchChanged()
+    } else {
+      shows(situation, result.error)
     }
   }
 
@@ -209,6 +224,39 @@ export function LaunchingSection({
           </select>
         </SettingRow>
       ))}
+      {situations.map((situation) => {
+        const { when, who, app } = situationInfo[situation]
+
+        return (
+          <SettingRow
+            key={situation}
+            label={`Prompt ${when}`}
+            controlId={`${id}-prompt-${situation}`}
+            description={`What the agent button asks on ${who}, unless an org or repository chooses another.`}
+            error={errorOf(situation)}
+          >
+            <select
+              id={`${id}-prompt-${situation}`}
+              aria-describedby={rowDescribedBy(`${id}-prompt-${situation}`, errorOf(situation))}
+              value={defaultPrompts === null ? 0 : defaultPrompts[app]}
+              disabled={defaultPrompts === null}
+              onChange={(e) => {
+                void saveSituation(situation, Number(e.target.value))
+              }}
+              className={fieldClass}
+            >
+              <option value={0}>Same as pull requests</option>
+              {prompts
+                .filter((p) => promptApplies(p, 'pr'))
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nickname}
+                  </option>
+                ))}
+            </select>
+          </SettingRow>
+        )
+      })}
       <SwitchRow
         label="Start in a worktree"
         controlId={`${id}-worktree`}

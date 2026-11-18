@@ -39,13 +39,16 @@ func (s DefaultSlot) Label() string {
 		return "Default reply for requested changes"
 	case DefaultSlotComment:
 		return "Default comment reply"
+	case DefaultSlotChecksFailing, DefaultSlotConflicts, DefaultSlotChangesRequested, DefaultSlotRereview:
+		return "Default prompt " + s.When()
 	default:
 		return "Default"
 	}
 }
 
 // Bundle returns the whole library in portable form, as Export writes it: every prompt and
-// reply, the defaults, and the record of the starters it was given.
+// reply, the defaults, and the records of the starters it was given and the situations'
+// slots it filled.
 func (bp *BackupPart) Bundle(ctx context.Context) (Bundle, error) {
 	s := bp.s
 
@@ -54,12 +57,12 @@ func (bp *BackupPart) Bundle(ctx context.Context) (Bundle, error) {
 		return Bundle{}, err
 	}
 
-	added, err := s.store.seeded(ctx)
+	kept, err := s.store.records(ctx)
 	if err != nil {
 		return Bundle{}, err
 	}
 
-	return newBundle(lib, added, nil, s.clock.Now(), s.app), nil
+	return newBundle(lib, kept, nil, s.clock.Now(), s.app), nil
 }
 
 // BackupPlan is what applying a backup's prompt library does, as PlanBackup works it out.
@@ -386,7 +389,7 @@ func (r replaceStep) item() backup.Item {
 
 // previewDefaults lists each of lib's defaults Replace changes: to the file's, by nickname
 // among final (each of the file's nicknames with the prompt it becomes), where it fits; to
-// none, for a reply slot the file names nothing that fits for.
+// none, for a reply slot or a situation's the file names nothing that fits for.
 func previewDefaults(p *backup.Plan, lib Library, defaults BundleDefaults, final map[string]Prompt) {
 	byID := promptsByID(lib.Prompts)
 
@@ -397,7 +400,7 @@ func previewDefaults(p *backup.Plan, lib Library, defaults BundleDefaults, final
 		switch fits := ok && slot.takes(next.Purpose, next.ReplyAction, next.AppliesTo); {
 		case fits && next.Nickname != now:
 			p.Add(backup.Item{Label: slot.Label(), Change: backup.ChangeUpdate, Detail: nowWords(next.Nickname, now)})
-		case !fits && now != "" && slot.reply():
+		case !fits && now != "" && slot.noFallback():
 			p.Add(backup.Item{Label: slot.Label(), Change: backup.ChangeUpdate, Detail: nowWords("", now)})
 		}
 	}
@@ -523,7 +526,7 @@ func replaceDefaults(ctx context.Context, st *Store, before DefaultPrompts, defa
 		}
 
 		// A kind's default left with none falls back to a prompt, which may be the same.
-		if ok && before.Slot(slot) != p.ID || !ok && slot.reply() && before.Slot(slot) != 0 {
+		if ok && before.Slot(slot) != p.ID || !ok && slot.noFallback() && before.Slot(slot) != 0 {
 			changed++
 		}
 	}
@@ -535,7 +538,13 @@ func replaceDefaults(ctx context.Context, st *Store, before DefaultPrompts, defa
 func (s DefaultSlot) reply() bool {
 	_, kind := s.kind()
 
-	return !kind
+	return !kind && !s.situation()
+}
+
+// noFallback reports whether the slot is left with none when nothing fits it: a reply's or
+// a situation's, where a kind's falls back to the first prompt that applies.
+func (s DefaultSlot) noFallback() bool {
+	return s.reply() || s.situation()
 }
 
 // notePrompt records each of a prompt's notes, saying which prompt it is about.

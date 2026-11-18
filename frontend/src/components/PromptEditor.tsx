@@ -236,7 +236,9 @@ export function PromptEditor({
                   title={usagePlaces(saved.usage).join('\n') || undefined}
                   className="flex items-center gap-1.5 py-1 text-[0.8125rem] text-text"
                 >
-                  {saved.usage.defaults.length > 0 && <StarIcon className="size-3.5 text-accent" />}
+                  {(saved.usage.defaults.length > 0 || saved.usage.slots.length > 0) && (
+                    <StarIcon className="size-3.5 text-accent" />
+                  )}
                   {usageSummary(saved.usage)}
                 </p>
               )}

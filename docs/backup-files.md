@@ -87,8 +87,8 @@ as it was. The example leaves most out, as a file edited by hand may.
 | `app` | The version of the app that wrote it. Informational only. |
 | `settings` | Your settings ([below](#settings)). |
 | `repositories` | Your clone folder, other repository locations, and pinned and muted repositories and orgs ([below](#repositories)). |
-| `prompts` | Your prompt library, exactly as `prompts.json` holds it: a [prompt file](prompt-files.md) with its own `format` and `version`, its defaults and `startersAdded` included. |
-| `launchDefaults` | Your org and repository [launch defaults](desktop.md#launch-defaults), exactly as `launch-defaults.json` holds them: `{"format": "nilbox.launch-defaults", "version": 2, "defaults": [...]}`, each default prompt named by nickname. |
+| `prompts` | Your prompt library, exactly as `prompts.json` holds it: a [prompt file](prompt-files.md) with its own `format` and `version`, its defaults, `startersAdded`, and `slotsSeeded` included. |
+| `launchDefaults` | Your org and repository [launch defaults](desktop.md#launch-defaults), exactly as `launch-defaults.json` holds them: `{"format": "nilbox.launch-defaults", "version": 2, "defaults": [...]}`, each default prompt named by nickname: a row's prompt for pull requests (`prPrompt`) and issues (`issuePrompt`), and its prompt for a pull request whose checks fail (`checksPrompt`), that conflicts with its base (`conflictsPrompt`), that a reviewer asked to change (`changesPrompt`), and that you're asked to review again (`rereviewPrompt`). Those four are left out when they inherit, and a file from an older version, which has none, inherits them. |
 | `scripts` | Your own [scripts](desktop.md#repo-scripts), in their order ([below](#scripts)). |
 | `autopilot` | Your Autopilot routines, exactly as `autopilot.json` holds them ([below](#autopilot)). |
 

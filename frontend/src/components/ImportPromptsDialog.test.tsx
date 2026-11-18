@@ -308,6 +308,42 @@ describe('ImportPromptsDialog', () => {
     })
   })
 
+  it('offers a situation’s default as a prompt’s, not a reply’s', async () => {
+    const held = [importEntry({ outcome: 'skip', nickname: 'Security' })]
+    platform.previewPromptImport.mockResolvedValue(
+      importPreview({
+        entries: held,
+        defaults: [
+          defaultOffer({ slot: 'checks_failing', nickname: 'Security', current: 'Fix checks' }),
+          defaultOffer({ slot: 'conflicts', nickname: 'Security', current: '' }),
+          defaultOffer({ slot: 'changes_requested', nickname: 'Security', current: '' }),
+          defaultOffer({ slot: 'rereview', nickname: 'Security', current: '' }),
+        ],
+      }),
+    )
+    renderDialog(file)
+
+    const group = within(await screen.findByRole('group', { name: 'Defaults' }))
+    expect(group.getAllByRole('checkbox').map((b) => b.closest('label')?.textContent)).toEqual([
+      'Make “Security” the default prompt when checks fail (now “Fix checks”)',
+      'Make “Security” the default prompt when it has conflicts (now none)',
+      'Make “Security” the default prompt when changes are requested (now none)',
+      'Make “Security” the default prompt when you’re asked to review again (now none)',
+    ])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Import 4 defaults' }))
+
+    expect(platform.importPrompts).toHaveBeenCalledWith([held[0]?.prompt], {
+      pr: '',
+      issue: '',
+      checksFailing: 'Security',
+      conflicts: 'Security',
+      changesRequested: 'Security',
+      rereview: 'Security',
+      replies: {},
+    })
+  })
+
   it('shows no defaults when the file offers none', async () => {
     platform.previewPromptImport.mockResolvedValue(importPreview())
     renderDialog(file)

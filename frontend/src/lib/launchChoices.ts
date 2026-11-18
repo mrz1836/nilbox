@@ -10,7 +10,9 @@ import type {
   LaunchSource,
   LaunchTarget,
   Resolution,
+  Situation,
 } from '../platform'
+import { situationInfo } from './launch'
 
 // Choices are the launch menu's own choices. Each is unset (0, '', or null) until the
 // user picks something other than what the item's settings resolve to. agent is the
@@ -63,14 +65,21 @@ export function savableChoices(c: Choices): boolean {
   return hasChoices({ ...c, override: false, fast: null })
 }
 
-// launchRequest turns the choices into a launch request for an item. The override only
-// applies to an untrusted item.
-export function launchRequest(itemId: number, c: Choices, untrusted: boolean): LaunchRequest {
+// launchRequest turns the choices into a launch request for an item, for the pull
+// request's situation when the card names one, whose prompt the launch then resolves
+// unless the choices name another. The override only applies to an untrusted item.
+export function launchRequest(
+  itemId: number,
+  c: Choices,
+  untrusted: boolean,
+  situation: Situation = '',
+): LaunchRequest {
   return {
     itemId,
     agent: c.agent,
     profile: c.profile,
     promptId: c.promptId,
+    situation,
     model: c.model,
     effort: c.effort,
     planMode: c.planMode,
@@ -97,6 +106,10 @@ export function defaultsInput(d: LaunchDefaults): LaunchDefaultsInput {
     profiles: { ...d.profiles },
     prPromptId: d.prPromptId,
     issuePromptId: d.issuePromptId,
+    checksPromptId: d.checksPromptId,
+    conflictsPromptId: d.conflictsPromptId,
+    changesPromptId: d.changesPromptId,
+    rereviewPromptId: d.rereviewPromptId,
     models: { ...d.models },
     effort: d.effort,
     planMode: d.planMode,
@@ -116,6 +129,10 @@ export function emptyDefaults(owner: string, name: string): LaunchDefaultsInput 
     profiles: {},
     prPromptId: null,
     issuePromptId: null,
+    checksPromptId: null,
+    conflictsPromptId: null,
+    changesPromptId: null,
+    rereviewPromptId: null,
     models: {},
     effort: '',
     planMode: null,
@@ -133,12 +150,14 @@ export function findDefaults(all: readonly LaunchDefaults[], owner: string, name
 
 // withChoices returns launch defaults with the menu's choices for an item of kind
 // written over them; settings the menu did not change stay as they were. agent is the
-// agent the choices are for, whose own profile and model they set.
+// agent the choices are for, whose own profile and model they set. A prompt chosen for a
+// pull request's situation becomes the prompt for that situation, else the kind's.
 export function withChoices(
   base: LaunchDefaultsInput,
   c: Choices,
   kind: ItemKind,
   agent: AgentID,
+  situation: Situation = '',
 ): LaunchDefaultsInput {
   const next = { ...base, profiles: { ...base.profiles }, models: { ...base.models } }
 
@@ -151,10 +170,12 @@ export function withChoices(
   }
 
   if (c.promptId !== 0) {
-    if (kind === 'pr') {
+    if (kind === 'issue') {
+      next.issuePromptId = c.promptId
+    } else if (situation === '') {
       next.prPromptId = c.promptId
     } else {
-      next.issuePromptId = c.promptId
+      next[situationInfo[situation].field] = c.promptId
     }
   }
 

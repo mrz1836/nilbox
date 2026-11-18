@@ -898,7 +898,7 @@ func (q *Queries) ListItemsByID(ctx context.Context, arg ListItemsByIDParams) ([
 const listLaunchItems = `-- name: ListLaunchItems :many
 SELECT
     i.id, i.kind, i.number, i.url, i.title, i.head_ref, i.author_login, i.author_type, i.author_association,
-    i.is_cross_repository, i.is_draft, r.id AS repo_id, r.owner, r.name, r.local_path, r.default_branch,
+    i.is_cross_repository, i.is_draft, i.viewer_review_commit, r.id AS repo_id, r.owner, r.name, r.local_path, r.default_branch,
     d.labels, d.additions, d.deletions, d.changed_files, d.commits, d.mergeable, d.checks_state,
     d.review_decision, d.head_oid, d.base_ref, c.head_oid AS checks_head_oid, c.checks
 FROM items i
@@ -910,40 +910,42 @@ ORDER BY i.id
 `
 
 type ListLaunchItemsRow struct {
-	ID                int64
-	Kind              string
-	Number            int64
-	URL               string
-	Title             string
-	HeadRef           string
-	AuthorLogin       string
-	AuthorType        string
-	AuthorAssociation string
-	IsCrossRepository bool
-	IsDraft           bool
-	RepoID            int64
-	Owner             string
-	Name              string
-	LocalPath         string
-	DefaultBranch     string
-	Labels            *string
-	Additions         *int64
-	Deletions         *int64
-	ChangedFiles      *int64
-	Commits           *int64
-	Mergeable         *string
-	ChecksState       *string
-	ReviewDecision    *string
-	HeadOID           *string
-	BaseRef           *string
-	ChecksHeadOID     *string
-	Checks            *string
+	ID                 int64
+	Kind               string
+	Number             int64
+	URL                string
+	Title              string
+	HeadRef            string
+	AuthorLogin        string
+	AuthorType         string
+	AuthorAssociation  string
+	IsCrossRepository  bool
+	IsDraft            bool
+	ViewerReviewCommit string
+	RepoID             int64
+	Owner              string
+	Name               string
+	LocalPath          string
+	DefaultBranch      string
+	Labels             *string
+	Additions          *int64
+	Deletions          *int64
+	ChangedFiles       *int64
+	Commits            *int64
+	Mergeable          *string
+	ChecksState        *string
+	ReviewDecision     *string
+	HeadOID            *string
+	BaseRef            *string
+	ChecksHeadOID      *string
+	Checks             *string
 }
 
 // ListLaunchItems returns the stored items among ids, by id, each with its repository,
-// the repository's local clone, its details when a refresh has read them, and the last
-// read of its checks' names with the commit they were read at. A column of missing
-// details or checks is NULL.
+// the repository's local clone, the commit the user's last verdict on a pull request was
+// left on (” with none), its details when a refresh has read them, and the last read of
+// its checks' names with the commit they were read at. A column of missing details or
+// checks is NULL.
 func (q *Queries) ListLaunchItems(ctx context.Context, ids []int64) ([]ListLaunchItemsRow, error) {
 	query := listLaunchItems
 	var queryParams []interface{}
@@ -975,6 +977,7 @@ func (q *Queries) ListLaunchItems(ctx context.Context, ids []int64) ([]ListLaunc
 			&i.AuthorAssociation,
 			&i.IsCrossRepository,
 			&i.IsDraft,
+			&i.ViewerReviewCommit,
 			&i.RepoID,
 			&i.Owner,
 			&i.Name,

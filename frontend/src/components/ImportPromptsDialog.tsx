@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 
 import { brand } from '../generated/brand'
 import { counted, fileName } from '../lib/format'
-import { agentName, modelChoices, modelLabel, perAgentEntries } from '../lib/launch'
+import { agentName, modelChoices, modelLabel, perAgentEntries, situationInfo } from '../lib/launch'
 import { replySlotPlaces } from '../lib/replies'
 import { formatDateTime, formatFull } from '../lib/time'
 import { useMutation } from '../lib/useMutation'
@@ -115,6 +115,11 @@ function slotText(slot: DefaultSlot): string {
       return 'the default prompt for pull requests'
     case 'issue':
       return 'the default prompt for issues'
+    case 'checks_failing':
+    case 'conflicts':
+    case 'changes_requested':
+    case 'rereview':
+      return `the default prompt ${situationInfo[slot].when}`
     default:
       return `the default reply for ${replySlotPlaces[slot]}`
   }
@@ -136,10 +141,20 @@ function chosenDefaults(offers: readonly DefaultOffer[], entries: readonly Impor
   for (const offer of offers) {
     const nickname = entries[offer.entry]?.prompt.nickname ?? ''
 
-    if (offer.slot === 'pr' || offer.slot === 'issue') {
-      out[offer.slot] = nickname
-    } else {
-      out.replies = { ...out.replies, [offer.slot]: nickname }
+    switch (offer.slot) {
+      case 'pr':
+      case 'issue':
+        out[offer.slot] = nickname
+        break
+      case 'checks_failing':
+      case 'conflicts':
+      case 'changes_requested':
+      case 'rereview':
+        // A situation's field in the bundle's defaults is its field in the app's.
+        out[situationInfo[offer.slot].app] = nickname
+        break
+      default:
+        out.replies = { ...out.replies, [offer.slot]: nickname }
     }
   }
 

@@ -132,6 +132,12 @@ type Resolution struct {
 	// Warnings explain settings that were skipped, such as a repository default naming
 	// a profile that no longer exists.
 	Warnings []string `json:"warnings"`
+
+	// Situations are the prompt a launch on a pull request would start with in each
+	// situation it can be in, in the order the settings list them, each as a launch for
+	// that situation with no choice of its own would resolve it; empty for an issue. They
+	// only name the prompt: a launch for a situation resolves its other settings itself.
+	Situations []SituationChoice `json:"situations"`
 }
 
 // world is everything resolution reads besides the item: the app's settings, the prompt
@@ -235,6 +241,10 @@ type resolver struct {
 	repo     *launchdefaults.Defaults
 	agent    agent.Agent
 	warnings []string
+
+	// situation is the pull request's situation the launch is for, SituationNone for none
+	// and for an issue.
+	situation Situation
 }
 
 // resolve works out every launch setting for an item: the request's own choices first,
@@ -243,11 +253,20 @@ type resolver struct {
 // setting (the profile, the model, and the extra flags) is that agent's. A stored default
 // that no longer makes sense (an agent this build does not know, a profile or prompt that
 // is gone, a prompt for the other kind of item, or an effort level the agent lacks) is
-// skipped with a warning; a request naming an agent, profile, or prompt that does not
-// exist is an error.
+// skipped with a warning; a request naming an agent, profile, prompt, or situation that
+// does not exist is an error. A pull request's situation picks its prompt (see
+// inheritedPrompt); an issue's is ignored.
 func resolve(w world, it subject, req LaunchRequest) (Resolution, profiles.Profile, prompts.Prompt, error) {
+	if err := req.Situation.check(); err != nil {
+		return Resolution{}, profiles.Profile{}, prompts.Prompt{}, err
+	}
+
 	r := &resolver{w: w, item: it}
 	r.org, r.repo = w.rules.For(it.repo)
+
+	if it.kind == item.KindPR {
+		r.situation = req.Situation
+	}
 
 	res := Resolution{
 		ItemID: it.id, Kind: it.kind, Owner: it.repo.Owner, Repo: it.repo.String(), Trusted: it.trusted,
@@ -282,8 +301,34 @@ func resolve(w world, it subject, req LaunchRequest) (Resolution, profiles.Profi
 	}
 
 	res.Warnings = textutil.NonNil(r.warnings)
+	res.Situations = r.situations()
 
 	return res, profile, prompt, nil
+}
+
+// situations resolves the prompt a launch on the item would start with in each situation,
+// for a pull request, as inheritedPrompt does for a launch for it; none for an issue. What
+// they skip is left out of the warnings: a launch for the situation warns of it.
+func (r *resolver) situations() []SituationChoice {
+	out := []SituationChoice{}
+	if r.item.kind != item.KindPR {
+		return out
+	}
+
+	for _, s := range situations() {
+		quiet := &resolver{w: r.w, item: r.item, org: r.org, repo: r.repo, agent: r.agent, situation: s}
+		choice := PromptChoice{}
+
+		if p, source, err := quiet.inheritedPrompt(); err == nil {
+			choice = PromptChoice{
+				ID: p.ID, Nickname: p.Nickname, Name: p.Name, Source: source, InheritedID: p.ID, InheritedSource: source,
+			}
+		}
+
+		out = append(out, SituationChoice{Situation: s, Prompt: choice})
+	}
+
+	return out
 }
 
 // layers returns the repository's and the org's launch defaults, most specific first,
@@ -469,8 +514,7 @@ func (r *resolver) inheritedProfile() (profiles.Profile, Source, error) {
 	return p, SourceApp, nil
 }
 
-// prompt resolves the prompt: the request's, else the repository's, the org's, or the
-// app's default for the item's kind.
+// prompt resolves the prompt: the request's, else the one inheritedPrompt resolves.
 func (r *resolver) prompt(requested int64, res *Resolution) (prompts.Prompt, error) {
 	inherited, source, err := r.inheritedPrompt()
 	if err != nil {
@@ -501,8 +545,17 @@ func (r *resolver) prompt(requested int64, res *Resolution) (prompts.Prompt, err
 	return p, nil
 }
 
-// inheritedPrompt resolves the prompt without the request's choice.
+// inheritedPrompt resolves the prompt without the request's choice: for a pull request's
+// situation, the repository's, the org's, or the app's prompt for it; else, and when none
+// of those is set, the repository's, the org's, or the app's default for the item's kind.
+// So an org's prompt for pull requests never beats the app's for a situation: a review
+// prompt is the wrong one to fix checks with, and an org that wants its own sets its own
+// for the situation.
 func (r *resolver) inheritedPrompt() (prompts.Prompt, Source, error) {
+	if p, source, ok := r.situationPrompt(); ok {
+		return p, source, nil
+	}
+
 	for _, l := range r.layers() {
 		id := l.defaults.PRPromptID
 		if r.item.kind == item.KindIssue {
@@ -526,6 +579,35 @@ func (r *resolver) inheritedPrompt() (prompts.Prompt, Source, error) {
 	}
 
 	return prompts.Prompt{}, "", fmt.Errorf("%w (%s)", ErrNoPrompt, r.item.kind.Plural())
+}
+
+// situationPrompt resolves the prompt for the pull request's situation: the repository's,
+// the org's, or the app's, and reports false when the launch is for no situation, or none
+// of them is set. One that is gone, or isn't a prompt for pull requests, is skipped with a
+// warning.
+func (r *resolver) situationPrompt() (prompts.Prompt, Source, bool) {
+	if r.situation == SituationNone {
+		return prompts.Prompt{}, "", false
+	}
+
+	for _, l := range r.layers() {
+		id := r.situation.promptID(l.defaults)
+		if id == nil {
+			continue
+		}
+
+		if p, ok := r.w.prompts[*id]; ok && p.AppliesTo.Covers(item.KindPR) {
+			return p, l.source, true
+		}
+
+		r.warn("The %s default prompt %s no longer exists, so it was skipped.", l.source, r.situation.when())
+	}
+
+	if p, ok := r.w.prompts[r.w.defaults.Slot(r.situation.slot())]; ok && p.AppliesTo.Covers(item.KindPR) {
+		return p, SourceApp, true
+	}
+
+	return prompts.Prompt{}, "", false
 }
 
 // text resolves a text setting: the request's, else the prompt's, the repository's, the

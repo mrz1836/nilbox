@@ -354,6 +354,22 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     },
     { label: 'Prompt for pull requests', keywords: ['default prompt', 'PR prompt', 'review prompt'] },
     { label: 'Prompt for issues', keywords: ['default prompt', 'issue prompt'] },
+    {
+      label: 'Prompt when checks fail',
+      keywords: ['situation prompt', 'failing checks', 'CI', 'Fix checks', 'default prompt'],
+    },
+    {
+      label: 'Prompt when it has conflicts',
+      keywords: ['situation prompt', 'merge conflicts', 'Resolve conflicts', 'default prompt'],
+    },
+    {
+      label: 'Prompt when changes are requested',
+      keywords: ['situation prompt', 'review feedback', 'Address review', 'default prompt'],
+    },
+    {
+      label: 'Prompt when you’re asked to review again',
+      keywords: ['situation prompt', 'Re-review', 'pushed since your review', 're-requested', 'default prompt'],
+    },
     { label: 'Start in a worktree', keywords: ['worktree default', 'git worktree'] },
     { label: 'Follow agent sessions', keywords: ['session status', 'transcript', 'working', 'waiting'] },
     { label: 'Set Codex’s effort at launch', keywords: ['reasoning effort', 'config override'] },

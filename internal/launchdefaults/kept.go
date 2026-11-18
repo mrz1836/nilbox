@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/store"
@@ -57,6 +58,15 @@ type Kept struct {
 	// PRPrompt and IssuePrompt are the nicknames of the default prompts; "" inherits.
 	PRPrompt    string `json:"prPrompt"`
 	IssuePrompt string `json:"issuePrompt"`
+
+	// ChecksPrompt, ConflictsPrompt, ChangesPrompt, and RereviewPrompt are the nicknames of
+	// the default prompt for a pull request whose checks fail, that conflicts with its base,
+	// that a reviewer asked to change, and that the user is asked to review again; "" (left
+	// out) inherits. A copy without them, as an older build's, inherits.
+	ChecksPrompt    string `json:"checksPrompt,omitempty"`
+	ConflictsPrompt string `json:"conflictsPrompt,omitempty"`
+	ChangesPrompt   string `json:"changesPrompt,omitempty"`
+	RereviewPrompt  string `json:"rereviewPrompt,omitempty"`
 
 	Models    map[agent.ID]string   `json:"models"`
 	Effort    string                `json:"effort"`
@@ -279,21 +289,27 @@ func decodeKept(raw json.RawMessage, version int) (Kept, error) {
 
 // keep returns stored defaults as Kept, naming their prompts by nickname.
 func keep(ctx context.Context, d Defaults, library PromptLookup) (Kept, error) {
-	pr, err := nickname(ctx, library, d.PRPromptID)
-	if err != nil {
-		return Kept{}, err
+	k := Kept{
+		Owner: d.Owner, Name: d.Name, Agent: d.Agent, Profiles: agent.CloneModels(d.Profiles),
+		Models: agent.CloneModels(d.Models), Effort: d.Effort, PlanMode: d.PlanMode, Worktree: d.Worktree,
+		ExtraArgs: agent.CloneArgs(d.ExtraArgs), AutopilotOutside: d.AutopilotOutside,
 	}
 
-	issue, err := nickname(ctx, library, d.IssuePromptID)
-	if err != nil {
-		return Kept{}, err
+	ids := promptIDs{
+		pr: d.PRPromptID, issue: d.IssuePromptID, checks: d.ChecksPromptID, conflicts: d.ConflictsPromptID,
+		changes: d.ChangesPromptID, rereview: d.RereviewPromptID,
 	}
 
-	return Kept{
-		Owner: d.Owner, Name: d.Name, Agent: d.Agent, Profiles: agent.CloneModels(d.Profiles), PRPrompt: pr,
-		IssuePrompt: issue, Models: agent.CloneModels(d.Models), Effort: d.Effort, PlanMode: d.PlanMode,
-		Worktree: d.Worktree, ExtraArgs: agent.CloneArgs(d.ExtraArgs), AutopilotOutside: d.AutopilotOutside,
-	}, nil
+	for _, p := range promptsOf(&k, &ids) {
+		name, err := nickname(ctx, library, *p.id)
+		if err != nil {
+			return Kept{}, err
+		}
+
+		*p.nickname = name
+	}
+
+	return k, nil
 }
 
 // nickname returns the nickname of the prompt with id, or "" for nil or a prompt that is
@@ -320,8 +336,9 @@ func nickname(ctx context.Context, library PromptLookup, id *int64) (string, err
 // backup an older build wrote may lack some, and each one missing inherits.
 func defaultsColumns() []string {
 	return []string{
-		"owner", "name", "agent", "profile", "profiles", "pr_prompt_id", "issue_prompt_id", "model", "models",
-		"effort", "plan_mode", "worktree", "extra_args", "agent_args", "autopilot_outside",
+		"owner", "name", "agent", "profile", "profiles", "pr_prompt_id", "issue_prompt_id", "checks_prompt_id",
+		"conflicts_prompt_id", "changes_prompt_id", "rereview_prompt_id", "model", "models", "effort", "plan_mode",
+		"worktree", "extra_args", "agent_args", "autopilot_outside",
 	}
 }
 
@@ -356,6 +373,8 @@ func ReadSnapshot(ctx context.Context, path string, promptNickname func(id int64
 			Owner: row.Text("owner"), Name: row.Text("name"), Agent: agent.ID(row.Text("agent")),
 			Profiles: prompts.SnapshotModels(row, "profiles", "profile"),
 			PRPrompt: named(row, "pr_prompt_id"), IssuePrompt: named(row, "issue_prompt_id"),
+			ChecksPrompt: named(row, "checks_prompt_id"), ConflictsPrompt: named(row, "conflicts_prompt_id"),
+			ChangesPrompt: named(row, "changes_prompt_id"), RereviewPrompt: named(row, "rereview_prompt_id"),
 			Models: prompts.SnapshotModels(row, "models", "model"), Effort: row.Text("effort"),
 			PlanMode: row.Bool("plan_mode"), Worktree: row.Bool("worktree"),
 			ExtraArgs:        prompts.SnapshotArgs(row, "agent_args", "extra_args"),
@@ -424,15 +443,51 @@ type restoring struct {
 	checked agent.Checked
 }
 
+// promptIDs are the default prompts a row names, each nil to inherit: each kind's and each
+// situation's.
+type promptIDs struct {
+	pr, issue, checks, conflicts, changes, rereview *int64
+}
+
+// keptPrompt is one of the default prompts a Kept names: where the Kept names it by
+// nickname, where a promptIDs holds its ID, the kind of item it must be a prompt for (a
+// situation's is a pull request's), and the words a note names it with.
+type keptPrompt struct {
+	nickname *string
+	id       **int64
+	kind     item.Kind
+	what     string
+}
+
+// promptsOf returns each of the default prompts k names, each kind's and then each
+// situation's, with where ids holds its ID.
+func promptsOf(k *Kept, ids *promptIDs) []keptPrompt {
+	situation := func(slot prompts.DefaultSlot) string { return "its prompt " + slot.When() }
+
+	return []keptPrompt{
+		{&k.PRPrompt, &ids.pr, item.KindPR, "its prompt for " + item.KindPR.Plural()},
+		{&k.IssuePrompt, &ids.issue, item.KindIssue, "its prompt for " + item.KindIssue.Plural()},
+		{&k.ChecksPrompt, &ids.checks, item.KindPR, situation(prompts.DefaultSlotChecksFailing)},
+		{&k.ConflictsPrompt, &ids.conflicts, item.KindPR, situation(prompts.DefaultSlotConflicts)},
+		{&k.ChangesPrompt, &ids.changes, item.KindPR, situation(prompts.DefaultSlotChangesRequested)},
+		{&k.RereviewPrompt, &ids.rereview, item.KindPR, situation(prompts.DefaultSlotRereview)},
+	}
+}
+
 // restorable returns kept defaults as this build would store them, and whether there is
 // anything to store: a row for a valid org or repository that sets something.
 func restorable(k Kept, promptID func(nickname string) (int64, bool)) (restoring, bool) {
-	return restorableWith(k, idFor(k.PRPrompt, promptID), idFor(k.IssuePrompt, promptID))
+	var ids promptIDs
+
+	for _, p := range promptsOf(&k, &ids) {
+		*p.id = idFor(*p.nickname, promptID)
+	}
+
+	return restorableWith(k, ids)
 }
 
-// restorableWith returns kept defaults as restorable does, with the default prompts pr and
-// issue, each nil to inherit.
-func restorableWith(k Kept, pr, issue *int64) (restoring, bool) {
+// restorableWith returns kept defaults as restorable does, with the default prompts ids.
+func restorableWith(k Kept, ids promptIDs) (restoring, bool) {
 	in := Input{
 		Owner: strings.TrimSpace(k.Owner), Name: strings.TrimSpace(k.Name),
 		Agent: agent.ID(strings.TrimSpace(string(k.Agent))), Effort: strings.TrimSpace(k.Effort),
@@ -455,7 +510,9 @@ func restorableWith(k Kept, pr, issue *int64) (restoring, bool) {
 
 	in.Profiles, checked = restorableAgents(k)
 	in.Models, in.ExtraFlags = checked.Models, agent.JoinArgs(checked.Args)
-	in.PRPromptID, in.IssuePromptID = pr, issue
+	in.PRPromptID, in.IssuePromptID = ids.pr, ids.issue
+	in.ChecksPromptID, in.ConflictsPromptID, in.ChangesPromptID, in.RereviewPromptID = ids.checks, ids.conflicts,
+		ids.changes, ids.rereview
 
 	return restoring{input: in, checked: checked}, !in.Empty()
 }

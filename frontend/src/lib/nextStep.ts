@@ -4,7 +4,7 @@
 // matches wins. It reads only what the card already has, so it costs no request, and it
 // reads no clock: the caller works out every input that depends on the time.
 
-import type { AgentSession, InboxItem } from '../platform'
+import type { AgentSession, InboxItem, Situation } from '../platform'
 import { counted, formatCount } from './format'
 import { needsYou, whereWords } from './sessions'
 import { checksSignal, reviewsSignal } from './signals'
@@ -15,10 +15,6 @@ import { wakeSummary, type TriageTab } from './triage'
 // (ready), an agent is on it (agent), it waits on others (waiting), or none, in the tabs
 // an item is set aside in.
 export type Edge = 'urgent' | 'blocked' | 'yours' | 'ready' | 'agent' | 'waiting' | 'none'
-
-// Situation picks the launch default's prompt the agent button runs: '' for the item
-// kind's own, or one for a pull request's state.
-export type Situation = '' | 'checks_failing' | 'conflicts' | 'changes_requested' | 'rereview'
 
 // Verb is the human's next move, the card's primary button.
 export type Verb =
@@ -74,7 +70,8 @@ export interface Story {
 }
 
 // Step is what a card puts first. quiet makes the primary a quiet button, outlined in the
-// border color rather than the edge's.
+// border color rather than the edge's. situation picks the launch defaults' prompt the
+// agent button beside it runs: '' for the item kind's own, or a pull request's situation.
 export interface Step {
   rule: Rule
   edge: Edge

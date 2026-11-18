@@ -27,8 +27,9 @@ import (
 func askedAt() time.Time { return time.Date(2026, time.November, 15, 9, 0, 0, 0, time.UTC) }
 
 // usedCore starts a Core over opts and fills it as a user would: a prompt of their own, an
-// org's launch defaults naming it, a script of their own, a theme, and the setup finished.
-// It closes the Core and returns the prompt's nickname.
+// org's launch defaults naming it for pull requests and when checks fail, the app's prompt
+// when asked to review again cleared, a script of their own, a theme, and the setup
+// finished. It closes the Core and returns the prompt's nickname.
 func usedCore(t *testing.T, opts Options) string {
 	t.Helper()
 
@@ -40,8 +41,9 @@ func usedCore(t *testing.T, opts Options) string {
 	})
 	require.NoError(t, err)
 
-	_, err = c.LaunchDefaults.Save(ctx, launchdefaults.Input{Owner: boundOwner, PRPromptID: &mine.ID})
+	_, err = c.LaunchDefaults.Save(ctx, launchdefaults.Input{Owner: boundOwner, PRPromptID: &mine.ID, ChecksPromptID: &mine.ID})
 	require.NoError(t, err)
+	require.NoError(t, c.Prompts.SetSlotDefault(ctx, prompts.DefaultSlotRereview, 0))
 
 	_, err = c.Scripts.Save(ctx, scripts.UserScript{
 		Name: "Fix all", Command: "magex format:fix", Icon: scripts.IconPlay, Scope: scripts.ScopeAll,
@@ -92,6 +94,14 @@ func TestBootstrapStartsOverAsTheUserAsked(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, defaults, 1)
 	assert.Equal(t, boundOwner, defaults[0].Owner)
+
+	lib := libraryByNickname(t, c)
+	assert.Equal(t, new(lib[nickname].ID), defaults[0].ChecksPromptID, "the org's prompt when checks fail")
+
+	app, err := c.Prompts.Defaults(ctx)
+	require.NoError(t, err)
+	assert.Zero(t, app.Rereview, "a situation the user cleared isn't filled again")
+	assert.Equal(t, lib["Resolve conflicts"].ID, app.Conflicts, "and the others are as they were")
 
 	yours, err := scripts.NewBackupPart(c.Scripts).PortableScripts(ctx)
 	require.NoError(t, err)

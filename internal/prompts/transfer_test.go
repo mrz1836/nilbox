@@ -50,7 +50,9 @@ func keeping(t *testing.T) (*Service, *sql.DB, string) {
 
 // bundleOf returns a prompt file holding prompts.
 func bundleOf(prompts ...BundlePrompt) Bundle {
-	return Bundle{Format: BundleFormat, Version: BundleVersion, StartersAdded: []string{}, Prompts: prompts}
+	return Bundle{
+		Format: BundleFormat, Version: BundleVersion, StartersAdded: []string{}, SlotsSeeded: []string{}, Prompts: prompts,
+	}
 }
 
 // writeBundle writes b to a file in a new directory and returns its path.
@@ -139,7 +141,8 @@ func TestBundleRoundTrips(t *testing.T) {
 		CreatedAt: "2026-11-07T09:00:00Z", UpdatedAt: "2026-11-07T09:30:00Z",
 	})
 	b.ExportedAt, b.App = "2026-11-08T17:00:00Z", "v1.2.3"
-	b.Defaults = BundleDefaults{PR: "Security"}
+	b.Defaults = BundleDefaults{PR: "Security", ChecksFailing: "Security"}
+	b.StartersAdded, b.SlotsSeeded = []string{StarterFixChecks}, []string{string(DefaultSlotChecksFailing)}
 
 	data, err := EncodeBundle(b)
 	require.NoError(t, err)
@@ -201,21 +204,26 @@ func TestExportWritesTheWholeLibrary(t *testing.T) {
 
 	n, err := s.Export(t.Context(), path, nil)
 	require.NoError(t, err)
-	assert.Equal(t, ExportResult{Prompts: 9, Replies: 5}, n, "the starters are nine agent prompts and five replies")
+	assert.Equal(t, ExportResult{Prompts: 10, Replies: 5}, n, "the starters are ten agent prompts and five replies")
 
 	got, err := readBundleFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, "2026-11-08T17:00:00Z", got.ExportedAt)
 	assert.Equal(t, "v1.2.3", got.App)
-	assert.Equal(t, BundleDefaults{PR: "Review", Issue: "Work on it", Replies: map[ReplySlot]string{
-		SlotApprove: "LGTM", SlotApproveBots: "Update OK", SlotRequestChanges: "Needs changes", SlotComment: "Question",
-	}}, got.Defaults)
+	assert.Equal(t, BundleDefaults{
+		PR: "Review", Issue: "Work on it", ChecksFailing: "Fix checks", Conflicts: "Resolve conflicts",
+		ChangesRequested: "Address review", Rereview: "Re-review", Replies: map[ReplySlot]string{
+			SlotApprove: "LGTM", SlotApproveBots: "Update OK", SlotRequestChanges: "Needs changes", SlotComment: "Question",
+		},
+	}, got.Defaults)
 	assert.ElementsMatch(t, []string{
 		StarterReviewPR, StarterWorkOnIssue, StarterQuickLook, StarterFixChecks,
 		StarterReplyLGTM, StarterReplyUpdateOK, StarterReplyNeedsChanges, StarterReplyQuestion,
-		StarterFixDependencySecurity, StarterHealDependabot, StarterAddressReview, StarterResolveConflicts, StarterRerunFailedJobs,
-		StarterReplyNeedsRepro,
+		StarterFixDependencySecurity, StarterRereview, StarterHealDependabot, StarterAddressReview, StarterResolveConflicts,
+		StarterRerunFailedJobs, StarterReplyNeedsRepro,
 	}, got.StartersAdded)
+	assert.Equal(t, []string{"checks_failing", "conflicts", "changes_requested", "rereview"}, got.SlotsSeeded,
+		"the situations' slots the library filled travel with it")
 	assert.Len(t, got.Prompts, len(Starters()))
 
 	info, err := os.Stat(path)
@@ -244,6 +252,11 @@ func TestExportWritesTheChosenPrompts(t *testing.T) {
 	assert.Equal(t, "Quick look", got.Prompts[0].Nickname)
 	assert.Equal(t, BundleDefaults{}, got.Defaults, "the defaults are left out when they are not among them")
 	assert.Empty(t, got.StartersAdded, "the record of starters belongs to a whole library")
+	assert.Empty(t, got.SlotsSeeded, "and so does the record of the situations' slots filled")
+
+	data, err := os.ReadFile(path) //nolint:gosec // a file the test wrote
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "slotsSeeded", "a file of chosen prompts leaves it out")
 }
 
 func TestExportRefusesWhatItCannotWrite(t *testing.T) {
@@ -710,6 +723,7 @@ func TestRestoreBringsBackTheLibraryFromTheDatabaseSetAside(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, oldService.SetDefault(t.Context(), item.KindIssue, security.ID))
+	require.NoError(t, oldService.SetSlotDefault(t.Context(), DefaultSlotChecksFailing, 0))
 	require.NoError(t, oldService.Delete(t.Context(), byNickname(t, oldService, "Fix checks").ID))
 	require.NoError(t, oldDB.Close())
 
@@ -726,7 +740,7 @@ func TestRestoreBringsBackTheLibraryFromTheDatabaseSetAside(t *testing.T) {
 	require.NoError(t, Seed(t.Context(), s.store))
 	assert.ElementsMatch(t, []string{
 		"Address review", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro", "Question",
-		"Quick look",
+		"Quick look", "Re-review",
 		"Re-run failed jobs", "Resolve conflicts", "Review", "Security", "Update OK", "Work on it",
 	}, nicknames(t, s), "the deleted starter stays deleted")
 	assert.Equal(t, byNickname(t, s, "Security").ID, restored.IDs["Security"], "each nickname finds its restored prompt")
@@ -935,6 +949,7 @@ func TestReadSnapshotBundleReadsAnOlderSchema(t *testing.T) {
 		CreatedAt: "2026-01-01T10:00:00Z", UpdatedAt: "2026-01-02T10:00:00Z",
 	}}, got.Prompts, "a backup from before replies holds agent prompts")
 	assert.Equal(t, []string{}, got.StartersAdded)
+	assert.Equal(t, []string{}, got.SlotsSeeded)
 	assert.Equal(t, BundleDefaults{}, got.Defaults)
 }
 

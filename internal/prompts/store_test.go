@@ -62,10 +62,15 @@ func TestSeedRecordsWhatItAddedAndTheDefaults(t *testing.T) {
 
 	assert.Equal(t, map[string]string{
 		"prompts.seeded": `["review-pr","work-on-issue","quick-look","fix-checks","reply-lgtm","reply-update-ok",` +
-			`"reply-needs-changes","reply-question","fix-dependency-security","heal-dependabot-pr","address-review",` +
-			`"resolve-conflicts","rerun-failed-jobs","reply-needs-repro"]`,
+			`"reply-needs-changes","reply-question","fix-dependency-security","re-review","heal-dependabot-pr",` +
+			`"address-review","resolve-conflicts","rerun-failed-jobs","reply-needs-repro"]`,
+		"prompts.seededSlots":                   `["checks_failing","conflicts","changes_requested","rereview"]`,
 		"prompts.default.pr":                    strconv.FormatInt(review.ID, 10),
 		"prompts.default.issue":                 strconv.FormatInt(work.ID, 10),
+		"prompts.default.checks_failing":        id("Fix checks"),
+		"prompts.default.conflicts":             id("Resolve conflicts"),
+		"prompts.default.changes_requested":     id("Address review"),
+		"prompts.default.rereview":              id("Re-review"),
 		"prompts.default.reply.approve":         id("LGTM"),
 		"prompts.default.reply.approve.bots":    id("Update OK"),
 		"prompts.default.reply.request_changes": id("Needs changes"),
@@ -550,10 +555,14 @@ func TestLibraryHoldsEveryPromptAndTheDefaults(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, Library{Prompts: all, Defaults: defaults}, lib)
-	assert.Equal(t, DefaultPrompts{PR: idOf(t, s, "Review"), Issue: idOf(t, s, "Work on it"), Replies: ReplyDefaults{
-		Approve: idOf(t, s, "LGTM"), ApproveBots: idOf(t, s, "Update OK"), RequestChanges: idOf(t, s, "Needs changes"),
-		Comment: idOf(t, s, "Question"),
-	}}, lib.Defaults)
+	assert.Equal(t, DefaultPrompts{
+		PR: idOf(t, s, "Review"), Issue: idOf(t, s, "Work on it"), ChecksFailing: idOf(t, s, "Fix checks"),
+		Conflicts: idOf(t, s, "Resolve conflicts"), ChangesRequested: idOf(t, s, "Address review"),
+		Rereview: idOf(t, s, "Re-review"), Replies: ReplyDefaults{
+			Approve: idOf(t, s, "LGTM"), ApproveBots: idOf(t, s, "Update OK"), RequestChanges: idOf(t, s, "Needs changes"),
+			Comment: idOf(t, s, "Question"),
+		},
+	}, lib.Defaults)
 }
 
 func TestLibraryReportsUnreadableDefaults(t *testing.T) {

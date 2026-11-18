@@ -230,7 +230,10 @@ database back when the copy fails.
 GitHub can't give back. `prompts.LibraryFile` rewrites `prompts.json` beside the database
 after every change to the library, and `launchdefaults.File` rewrites
 `launch-defaults.json` after every change to the launch defaults or the library, since it
-names prompts by nickname. At startup, when the library is new, `prompts.Restore` brings it
+names prompts by nickname: each row's six default prompts, the kinds' and the situations'
+(`launchdefaults.Kept`, the four situations' left out when they inherit, so an older copy
+inherits them), which `promptsOf` lists once for the copy, a restore, and a backup's
+import. At startup, when the library is new, `prompts.Restore` brings it
 back before `Seed` runs, from the database set aside or else from `prompts.json`, and core
 (`internal/core/kept.go`) restores the launch defaults from the same place, matched to the
 restored prompts. Core writes each copy at startup only when it is missing or the data was
@@ -253,7 +256,17 @@ text: a change to a starter's text keeps the text it replaces, byte for byte, in
 starter's `Earlier` (pinned by SHA-256 in `TestEarlierStarterTextsAreAsShipped`), and
 `Seed` gives every copy still holding one the new text, keeping its title, nickname, and
 settings, as an import does a file's; a copy whose text the user changed, or a duplicate, is
-never touched. A starter's command names a value a repository, a clone's config, or an
+never touched. After the starters, `Seed` fills the app's prompt for each situation a pull
+request can be in (`prompts.DefaultSlot`'s `checks_failing`, `conflicts`, `changes_requested`,
+and `rereview`, the prefs `prompts.default.<slot>`) once, from the library's copy of the
+slot's starter when it has one, and records the slot in `prompts.seededSlots` either way, so a
+slot the user cleared, or whose starter they deleted, stays as they left it; unlike a kind's, a
+situation's default never falls back to another prompt. The record travels with the library
+like `prompts.seeded`: a whole library's `prompts.Bundle` carries it as `slotsSeeded`
+(`prompts.json`, an export, a backup's prompts section), `snapshotRecords` reads it and the
+four situations' prefs out of a database set aside, and `prompts.Restore` stores it, so a reset
+or a restore never fills a cleared slot again, while a library restored from a file without
+it, as an older build's, has each slot filled once. A starter's command names a value a repository, a clone's config, or an
 author chose only when it is plain (`.BranchIsPlain`, `.RemoteIsPlain`, worked out from the
 raw value in `Data.sanitized`, since sanitizing can hide characters), and then through the
 `shellquote` template function (`TestStarterCommandsAreInert`). The file format is `prompts.Bundle`, specified in
@@ -1216,7 +1229,14 @@ agent's `KeyEnv` unset, so the profile's own sign-in is used. An Autopilot routi
 a click's launch with `LaunchRequest.Routine` set (Go-only, `json:"-"`), which only holds it
 back more: its files are checked under the unattended scope, only `RoutineLaunch.Confirmed`
 confirms a hold, a running session always holds it, a dirty worktree holds it (`HoldDirty`),
-`FullAccessOverride` is ignored, and its prompt names the routine. `internal/workspacetrust`
+`FullAccessOverride` is ignored, and its prompt names the routine. A launch for a pull
+request's situation (`LaunchRequest.Situation`, a `Situation` from `situation.go`, refused when
+unknown and ignored on an issue) resolves its prompt from the repository's launch defaults'
+column for it, the org's, then the app's (`prompts.DefaultPrompts`), and with none set, from
+the pull request's own chain, so an org's prompt for pull requests never beats the app's for a
+situation; `Resolution.Situations` names the four for a pull request, only to label the card's
+agent button. `promptData` fills `.ReviewedCommit` from the inbox's `viewer_review_commit`
+only when it is a commit's hex ID (`prompts.CommitID`). `internal/workspacetrust`
 marks the launch folder trusted in each agent's own config (Claude's `.claude.json`, Codex's
 `config.toml`, appended to and never rewritten).
 
@@ -4208,8 +4228,8 @@ action column, its widths the `--card-state` and `--card-actions` properties on 
 which `@max-*` container variants narrow against the list's `@container` (`ListSection`'s and
 `WatchingList`'s `<ul>`). `lib/nextStep.ts` is the pure function that decides what a card puts
 first, the first matching rule winning: its edge, its story (`card/CardStory`), its primary
-verb, whether that is quiet, and the situation that will pick the agent button's prompt
-(`LaunchControls` takes it, and reads nothing of it yet); the row passes it every
+verb, whether that is quiet, and the situation (the generated `launcher.Situation`) that picks
+the agent button's prompt; the row passes it every
 input, and the three that depend on the time (the card's session, whether a failed one is
 fresh, back from a snooze) come from `useNowAs` as primitives, so a clock tick renders no row.
 The state column is `card/StateTrack` over `card/SizeGlyph` for a pull request, or
@@ -4218,7 +4238,16 @@ sentence), and `card/RiskChip` is the one chip for trust and sensitive files.
 `card/CardActions` renders the primary and frames `LaunchControls`' `card` variant, which
 follows the card's session (`cardSession`) and keeps its hold, take-over, and clone dialogs
 mounted; its `column` and `peek` render props keep its outcome a direct child of the row, so it
-spans `col-[3/-1]`, and hand the peek its way to the launch options. The triage
+spans `col-[3/-1]`, and hand the peek its way to the launch options. With the card's
+situation, its launch is named for the situation's prompt as the item's resolution lists it
+(`Resolution.situations`, display only; an issue's is named for its own prompt), and the
+launch request, the launch options' one re-resolve when they open, and their Preview all carry
+the situation with `promptId` 0, so Go resolves that prompt and everything it brings; the card
+itself asks nothing more, since the re-resolve on changed choices fires for a situation only
+while the options show. Save as default writes the situation's field (`withChoices`). The four
+situations' words and fields (the app's `DefaultPrompts` field, the launch defaults' column) are
+one table, `situationInfo` in `lib/launch.ts`, which Settings → Launching, the launch defaults
+form, the prompt library's usage words, and the import dialog read. The triage
 (`TriageControls`' `card` mode, Show details, `ItemMenu`) is absolutely placed in the state
 column's grid area, both lines named, over the end of the body once a narrow list drops the
 column. A stretched toggle, the button right after the title (`absolute inset-0 z-0`,

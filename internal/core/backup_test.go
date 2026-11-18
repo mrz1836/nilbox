@@ -104,8 +104,8 @@ func TestBackupBringsTheSetupBack(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	review := promptNamed(t, c, "Review")
-	_, err = c.LaunchDefaults.Save(ctx, launchdefaults.Input{Owner: boundOwner, PRPromptID: &review.ID})
+	review, fix := promptNamed(t, c, "Review"), promptNamed(t, c, "Fix checks")
+	_, err = c.LaunchDefaults.Save(ctx, launchdefaults.Input{Owner: boundOwner, PRPromptID: &review.ID, ChecksPromptID: &fix.ID})
 	require.NoError(t, err)
 
 	path := filepath.Join(t.TempDir(), "backup.json")
@@ -143,6 +143,7 @@ func TestBackupBringsTheSetupBack(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, defaults, 1)
 	assert.Equal(t, &review.ID, defaults[0].PRPromptID, "a launch default names its prompt again")
+	assert.Equal(t, &fix.ID, defaults[0].ChecksPromptID, "and its situation's prompt")
 
 	clock, ok := opts.Clock.(*testutil.Clock)
 	require.True(t, ok)

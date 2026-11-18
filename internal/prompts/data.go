@@ -3,6 +3,7 @@ package prompts
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/bump"
@@ -34,9 +35,26 @@ const (
 	// maxAttempt caps the try a routine's run is on, which its own limits keep to 10.
 	maxAttempt = 100
 
-	// sampleHeadCommit is the sample pull request's made-up head commit.
-	sampleHeadCommit = "4f2a9c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39"
+	// sampleHeadCommit is the sample pull request's made-up head commit, and
+	// sampleReviewedCommit the made-up commit the user's last review of it was on.
+	sampleHeadCommit     = "4f2a9c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39"
+	sampleReviewedCommit = "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d"
 )
+
+// commitPattern is a commit's ID as a prompt may hold it: 7 to 64 lower-case hex digits,
+// from an abbreviated SHA-1 to a full SHA-256.
+var commitPattern = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
+
+// CommitID returns s lower-cased when it is a commit's ID, 7 to 64 hex digits, and ""
+// otherwise, so a value someone else could choose never fills a variable that holds a
+// commit.
+func CommitID(s string) string {
+	if s = strings.ToLower(s); commitPattern.MatchString(s) {
+		return s
+	}
+
+	return ""
+}
 
 // AppliesTo is which kinds of item a prompt can launch.
 type AppliesTo string
@@ -129,6 +147,11 @@ type Data struct {
 	// HeadCommit is a pull request's head commit, the one whose files the launch checked
 	// or else the one the last refresh read; "" for an issue, or before a refresh read it.
 	HeadCommit string
+
+	// ReviewedCommit is the commit the user's last review of a pull request was on, when
+	// that review requested changes or approved it; "" otherwise, and for an issue. It is
+	// only ever a commit's ID (see CommitID), so a command may name it.
+	ReviewedCommit string
 
 	// Checks is "passing", "failing", or "pending", and "" when the head commit has none.
 	Checks string
@@ -265,6 +288,11 @@ func Variables() []Variable {
 			Name: "HeadCommit", Group: groupPR, Type: typeText, PROnly: true,
 			Description: "The head commit, or empty before a refresh read it",
 		},
+		{
+			Name: "ReviewedCommit", Group: groupPR, Type: typeText, PROnly: true,
+			Description: "The commit your last review was on, when your verdict requested changes or approved; " +
+				"empty otherwise",
+		},
 		{Name: "Checks", Group: groupPR, Type: typeText, Description: `"passing", "failing", "pending", or empty`, PROnly: true},
 		{
 			Name: "FailedChecks", Group: groupPR, Type: typeText, PROnly: true,
@@ -340,7 +368,7 @@ func Sample(kind item.Kind) Data {
 
 	d.Kind, d.IsPR, d.Number, d.Title = item.KindPR.Noun(), true, 7, "Add the widget cache"
 	d.URL, d.Labels, d.Branch = "https://github.com/acme-org/example-repo/pull/7", "enhancement", "widget-cache"
-	d.Remote, d.HeadCommit = "origin", sampleHeadCommit
+	d.Remote, d.HeadCommit, d.ReviewedCommit = "origin", sampleHeadCommit, sampleReviewedCommit
 	d.Checks, d.Review = "passing", "review required"
 	d.Additions, d.Deletions, d.ChangedFiles, d.Commits = 120, 30, 6, 3
 
@@ -405,9 +433,9 @@ func (d Data) kind() item.Kind {
 
 // sanitized returns d with every text field made a single line of plain text: control
 // characters become spaces, bidirectional controls are removed, and runs of whitespace
-// collapse. The title and labels are cut to their limits. BranchIsPlain and RemoteIsPlain
-// are worked out from the values d was given, before any of that, and hold only when it
-// changed nothing.
+// collapse. The title and labels are cut to their limits, and ReviewedCommit is kept only
+// when it is a commit's ID (CommitID). BranchIsPlain and RemoteIsPlain are worked out from
+// the values d was given, before any of that, and hold only when it changed nothing.
 func (d Data) sanitized() Data {
 	branch, remote := d.Branch, d.Remote
 
@@ -431,6 +459,8 @@ func (d Data) sanitized() Data {
 	for _, field := range []*string{&d.Remote, &d.HeadCommit} {
 		*field = textutil.Clip(*field, maxRefRunes)
 	}
+
+	d.ReviewedCommit = CommitID(sanitizeLine(d.ReviewedCommit))
 
 	d.Routine = textutil.Clip(sanitizeLine(d.Routine), maxRoutineRunes)
 	d.Trigger = textutil.Clip(sanitizeLine(d.Trigger), maxRoutineRunes)

@@ -48,7 +48,7 @@ func (r *RoutinePrompts) Bundled(ctx context.Context, nicknames []string) ([]byt
 		return nil, 0, nil
 	}
 
-	b := newBundle(lib, nil, ids, r.s.clock.Now(), r.s.app)
+	b := newBundle(lib, records{}, ids, r.s.clock.Now(), r.s.app)
 	b.Defaults = BundleDefaults{}
 
 	data, err := EncodeBundle(b)

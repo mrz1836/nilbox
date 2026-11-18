@@ -208,6 +208,13 @@ type LaunchRequest struct {
 	// PromptID is the prompt to fill in; 0 keeps the resolved prompt.
 	PromptID int64 `json:"promptId"`
 
+	// Situation is the situation of a pull request the launch is for, which picks the
+	// prompt resolved when PromptID is 0, and so the settings it brings: the launch
+	// defaults' prompt for the situation, and with none set, the pull request's own.
+	// SituationNone is the item's own prompt; an issue's situation is ignored, and one this
+	// build doesn't know is refused.
+	Situation Situation `json:"situation"`
+
 	// Model and Effort replace the resolved model and effort level; "" asks for the
 	// agent's own default. nil keeps the resolved value.
 	Model  *string `json:"model"`

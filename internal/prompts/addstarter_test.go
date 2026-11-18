@@ -16,6 +16,7 @@ func TestAddStarterBringsBackADeletedStarter(t *testing.T) {
 	ctx := t.Context()
 
 	gone := byNickname(t, s, "Resolve conflicts")
+	require.NoError(t, s.SetSlotDefault(ctx, DefaultSlotConflicts, 0))
 	require.NoError(t, s.Delete(ctx, gone.ID))
 	require.NoError(t, Seed(ctx, s.store))
 	assert.NotContains(t, nicknames(t, s), "Resolve conflicts", "Seed leaves a deleted starter deleted")

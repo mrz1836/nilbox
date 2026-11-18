@@ -20,7 +20,16 @@ import {
   usageSummary,
 } from './launch'
 
-const noUsage: PromptUsage = { defaults: [], orgs: [], repos: [], kinds: [], replies: [], routines: [] }
+const noUsage: PromptUsage = {
+  defaults: [],
+  slots: [],
+  orgs: [],
+  repos: [],
+  slotPlaces: [],
+  kinds: [],
+  replies: [],
+  routines: [],
+}
 
 describe('labels', () => {
   it('names where a setting came from', () => {
@@ -66,6 +75,29 @@ describe('usage', () => {
       'App default for pull requests · 1 org · 2 repos',
     )
     expect(usageSummary({ ...noUsage, defaults: ['pr', 'issue'] })).toBe('App default for pull requests and issues')
+  })
+
+  it('names the situations a prompt is a default for', () => {
+    const one = { org: 'acme-org', repo: '', slot: 'checks_failing' } as const
+    const two = { org: '', repo: 'acme-org/api', slot: 'rereview' } as const
+
+    expect(usageSummary({ ...noUsage, slots: ['checks_failing'] })).toBe('App default when checks fail')
+    expect(usageSummary({ ...noUsage, slots: ['conflicts', 'changes_requested'], slotPlaces: [one] })).toBe(
+      'App default when it has conflicts and when changes are requested · acme-org’s prompt when checks fail',
+    )
+    expect(usageSummary({ ...noUsage, orgs: ['acme-org'], slotPlaces: [one, two] })).toBe(
+      '1 org · A situation’s prompt in 2 places',
+    )
+
+    const usage: PromptUsage = { ...noUsage, slots: ['rereview'], repos: ['acme-org/api'], slotPlaces: [one, two] }
+
+    expect(usageCount(usage)).toBe(4)
+    expect(usagePlaces(usage)).toEqual([
+      'App default when you’re asked to review again',
+      'acme-org/api',
+      'acme-org’s prompt when checks fail',
+      'acme-org/api’s prompt when you’re asked to review again',
+    ])
   })
 
   it('counts and lists the places', () => {

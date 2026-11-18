@@ -84,8 +84,8 @@ export function Duplicate(id: number): $CancellablePromise<$models.Prompt> {
  * Export writes the prompts with ids, or every prompt when ids is empty, to a prompt file
  * at path, replacing any file there, and returns how many agent prompts and replies it
  * wrote. A whole library is written with the app's default prompts, its default replies,
- * and the record of the starters it was given, so importing it on another Mac, or
- * restoring it here, brings back the library as it was.
+ * and the records of the starters it was given and the situations' slots it filled, so
+ * importing it on another Mac, or restoring it here, brings back the library as it was.
  */
 export function Export(path: string, ids: number[] | null): $CancellablePromise<$models.ExportResult> {
     return $Call.ByID(1946062737, path, ids);
@@ -144,6 +144,16 @@ export function SetDefault(kind: item$0.Kind, id: number): $CancellablePromise<v
  */
 export function SetReplyDefault(slot: $models.ReplySlot, id: number): $CancellablePromise<void> {
     return $Call.ByID(1716749300, slot, id);
+}
+
+/**
+ * SetSlotDefault makes the prompt with id the app's default for the situation slot names,
+ * or, with id 0, leaves the situation with none, so a pull request in it launches with the
+ * prompt it would have anyway. The prompt must be an agent prompt that applies to pull
+ * requests.
+ */
+export function SetSlotDefault(slot: $models.DefaultSlot, id: number): $CancellablePromise<void> {
+    return $Call.ByID(2129509286, slot, id);
 }
 
 /**

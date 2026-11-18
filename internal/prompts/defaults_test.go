@@ -61,7 +61,7 @@ func TestExportHoldsEveryKindOfPromptAndEveryDefault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "all.json")
 	n, err := s.Export(ctx, path, nil)
 	require.NoError(t, err)
-	assert.Equal(t, ExportResult{Prompts: 9, Replies: 6}, n)
+	assert.Equal(t, ExportResult{Prompts: 10, Replies: 6}, n)
 
 	b, err := readBundleFile(path)
 	require.NoError(t, err)
@@ -76,7 +76,7 @@ func TestExportHoldsEveryKindOfPromptAndEveryDefault(t *testing.T) {
 		lgtmNick: "reply approve pr", "Update OK": "reply approve pr", "Needs changes": "reply request_changes pr",
 		"Question": "reply comment pr", "Looking": "reply comment issue", "Fix dep security": "agent  pr",
 		"Heal Dependabot PR": "agent  pr", "Address review": "agent  pr", "Resolve conflicts": "agent  pr",
-		"Re-run failed jobs": "agent  pr", "Needs repro": "reply comment issue",
+		"Re-run failed jobs": "agent  pr", "Needs repro": "reply comment issue", "Re-review": "agent  pr",
 	}, kinds, "every purpose, review, and kind of item is written, a comment reply for issues too")
 
 	for _, slot := range DefaultSlots() {
@@ -190,17 +190,32 @@ func TestImportWithNoDefaultsChangesNone(t *testing.T) {
 	assert.Equal(t, before, after)
 }
 
-func TestDefaultSlotsCoverTheKindsAndTheReplies(t *testing.T) {
+func TestDefaultSlotsCoverTheKindsTheSituationsAndTheReplies(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(t, []DefaultSlot{
-		DefaultSlotPR, DefaultSlotIssue, DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges,
-		DefaultSlotComment,
+		DefaultSlotPR, DefaultSlotIssue, DefaultSlotChecksFailing, DefaultSlotConflicts, DefaultSlotChangesRequested,
+		DefaultSlotRereview, DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment,
 	}, DefaultSlots())
 
 	for _, slot := range ReplySlots() {
 		_, isKind := DefaultSlot(slot).kind()
 		assert.False(t, isKind, slot)
+		assert.False(t, DefaultSlot(slot).situation(), slot)
+		assert.True(t, DefaultSlot(slot).reply(), slot)
+	}
+
+	for _, slot := range situationSlots() {
+		_, isKind := slot.kind()
+		assert.False(t, isKind, "%s is a pull request's prompt only in its situation", slot)
+		assert.True(t, slot.situation(), slot)
+		assert.False(t, slot.reply(), slot)
+		assert.True(t, slot.takes(PurposeAgent, ReplyNone, AppliesToPR), slot)
+		assert.True(t, slot.takes("", ReplyNone, AppliesToAny), slot)
+		assert.False(t, slot.takes(PurposeAgent, ReplyNone, AppliesToIssue), "%s takes a prompt for pull requests", slot)
+		assert.False(t, slot.takes(PurposeReply, ReplyApprove, AppliesToPR), "%s takes no reply", slot)
+		assert.NotEmpty(t, slot.starter(), slot)
+		assert.NotEqual(t, "Default", slot.Label(), slot)
 	}
 
 	kind, ok := DefaultSlotIssue.kind()

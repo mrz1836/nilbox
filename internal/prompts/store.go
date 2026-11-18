@@ -24,9 +24,19 @@ const (
 	// prefSeeded lists, as a JSON array, the starter keys already added once.
 	prefSeeded = "prompts.seeded"
 
+	// prefSeededSlots lists, as a JSON array, the situations' slots already filled once
+	// (see seedSlots).
+	prefSeededSlots = "prompts.seededSlots"
+
 	// prefDefaultPR and prefDefaultIssue hold the app's default prompt ID per kind.
 	prefDefaultPR    = "prompts.default.pr"
 	prefDefaultIssue = "prompts.default.issue"
+
+	// The app's default prompt IDs, one per situation a pull request can be in.
+	prefDefaultChecksFailing    = "prompts.default.checks_failing"
+	prefDefaultConflicts        = "prompts.default.conflicts"
+	prefDefaultChangesRequested = "prompts.default.changes_requested"
+	prefDefaultRereview         = "prompts.default.rereview"
 
 	// The default replies' IDs, one per ReplySlot.
 	prefReplyApprove        = "prompts.default.reply.approve"
@@ -48,6 +58,26 @@ func replyPrefKey(slot ReplySlot) string {
 		return prefReplyComment
 	default:
 		return prefReplyApprove
+	}
+}
+
+// situationPrefKey returns the preference holding the default prompt of slot, a
+// situation's.
+func situationPrefKey(slot DefaultSlot) string {
+	switch slot {
+	case DefaultSlotChecksFailing:
+		return prefDefaultChecksFailing
+	case DefaultSlotConflicts:
+		return prefDefaultConflicts
+	case DefaultSlotChangesRequested:
+		return prefDefaultChangesRequested
+	case DefaultSlotRereview:
+		return prefDefaultRereview
+	case DefaultSlotPR, DefaultSlotIssue, DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges,
+		DefaultSlotComment:
+		return prefDefaultChecksFailing
+	default:
+		return prefDefaultChecksFailing
 	}
 }
 
@@ -130,17 +160,22 @@ func (s *Store) Library(ctx context.Context) (Library, error) {
 	return Library{
 		Prompts: all,
 		Defaults: DefaultPrompts{
-			PR:      pickDefault(all, item.KindPR, stored.PR),
-			Issue:   pickDefault(all, item.KindIssue, stored.Issue),
-			Replies: pickReplies(all, stored.Replies),
+			PR:               pickDefault(all, item.KindPR, stored.PR),
+			Issue:            pickDefault(all, item.KindIssue, stored.Issue),
+			ChecksFailing:    pickSituation(all, stored.ChecksFailing),
+			Conflicts:        pickSituation(all, stored.Conflicts),
+			ChangesRequested: pickSituation(all, stored.ChangesRequested),
+			Rereview:         pickSituation(all, stored.Rereview),
+			Replies:          pickReplies(all, stored.Replies),
 		},
 	}, nil
 }
 
-// Defaults returns the app's default prompt for each kind and its default replies. A
-// stored default prompt that is gone or no longer applies falls back to the first agent
-// prompt, by nickname, that applies; a default reply that is gone or no longer a reply for
-// its review leaves that review with none.
+// Defaults returns the app's default prompt for each kind, for each situation, and its
+// default replies. A stored default prompt that is gone or no longer applies falls back to
+// the first agent prompt, by nickname, that applies; a situation's that is gone or no
+// longer an agent prompt for pull requests leaves the situation with none, as does a default
+// reply that is gone or no longer a reply for its review.
 func (s *Store) Defaults(ctx context.Context) (DefaultPrompts, error) {
 	lib, err := s.Library(ctx)
 	if err != nil {
@@ -238,9 +273,9 @@ func (s *Store) update(ctx context.Context, id int64, p Prompt) error {
 
 // remove deletes the prompt with id. It returns ErrPromptNotFound when no prompt has
 // id, and an InUseError naming the prompt, with its Usage left for the caller to fill
-// in, when the prompt is one of the app's default prompts, or when launch defaults name
-// it and their foreign keys refuse the delete. A reply that is a default reply is deleted,
-// and the reviews it was the default for are left with none.
+// in, when the prompt is one of the app's default prompts, a kind's or a situation's, or
+// when launch defaults name it and their foreign keys refuse the delete. A reply that is a
+// default reply is deleted, and the reviews it was the default for are left with none.
 func (s *Store) remove(ctx context.Context, id int64) error {
 	return s.inTx(ctx, func(st *Store) error {
 		defaults, err := st.storedDefaults(ctx)
@@ -252,7 +287,7 @@ func (s *Store) remove(ctx context.Context, id int64) error {
 			return err
 		}
 
-		if defaults.PR == id || defaults.Issue == id {
+		if defaults.PR == id || defaults.Issue == id || len(defaults.situations(id)) > 0 {
 			return st.inUse(ctx, id)
 		}
 
@@ -335,12 +370,27 @@ func (s *Store) storedDefaults(ctx context.Context) (DefaultPrompts, error) {
 	prID, _ := strconv.ParseInt(pr, 10, 64)       // a missing or bad value means no default
 	issueID, _ := strconv.ParseInt(issue, 10, 64) // a missing or bad value means no default
 
+	situations := make(map[DefaultSlot]int64, len(situationSlots()))
+
+	for _, slot := range situationSlots() {
+		raw, _, getErr := s.prefs.Get(ctx, situationPrefKey(slot))
+		if getErr != nil {
+			return DefaultPrompts{}, getErr
+		}
+
+		situations[slot], _ = strconv.ParseInt(raw, 10, 64) // a missing or bad value means no default
+	}
+
 	replies, err := s.storedReplies(ctx)
 	if err != nil {
 		return DefaultPrompts{}, err
 	}
 
-	return DefaultPrompts{PR: prID, Issue: issueID, Replies: replies}, nil
+	return DefaultPrompts{
+		PR: prID, Issue: issueID, ChecksFailing: situations[DefaultSlotChecksFailing],
+		Conflicts: situations[DefaultSlotConflicts], ChangesRequested: situations[DefaultSlotChangesRequested],
+		Rereview: situations[DefaultSlotRereview], Replies: replies,
+	}, nil
 }
 
 // storedReplies reads the stored default reply IDs; 0 where none is stored, or where the
@@ -384,6 +434,17 @@ func (s *Store) setReplyDefault(ctx context.Context, slot ReplySlot, id int64) e
 	return s.prefs.Set(ctx, replyPrefKey(slot), value)
 }
 
+// setSituationDefault stores id as the default prompt of slot, a situation's; 0 leaves the
+// situation with none.
+func (s *Store) setSituationDefault(ctx context.Context, slot DefaultSlot, id int64) error {
+	value := ""
+	if id != 0 {
+		value = strconv.FormatInt(id, 10)
+	}
+
+	return s.prefs.Set(ctx, situationPrefKey(slot), value)
+}
+
 // setDefault stores id as the app's default prompt for kind.
 func (s *Store) setDefault(ctx context.Context, kind item.Kind, id int64) error {
 	return s.prefs.Set(ctx, defaultPrefKey(kind), strconv.FormatInt(id, 10))
@@ -397,6 +458,43 @@ func (s *Store) seeded(ctx context.Context) ([]string, error) {
 	}
 
 	return keys, nil
+}
+
+// seededSlots reads the situations' slots already filled once.
+func (s *Store) seededSlots(ctx context.Context) ([]string, error) {
+	slots, _, err := s.prefs.GetList(ctx, prefSeededSlots)
+	if err != nil {
+		return nil, fmt.Errorf("read the situations' prompts filled: %w", err)
+	}
+
+	return slots, nil
+}
+
+// setSeededSlots records slots as the situations' slots already filled once.
+func (s *Store) setSeededSlots(ctx context.Context, slots []string) error {
+	return s.prefs.SetList(ctx, prefSeededSlots, slots)
+}
+
+// records are what a whole library keeps of its own history, which travels with it in a
+// prompt file: the starters it was given, and the situations' slots it filled once.
+type records struct {
+	startersAdded []string
+	slotsSeeded   []string
+}
+
+// records reads the starters the library was given and the situations' slots it filled.
+func (s *Store) records(ctx context.Context) (records, error) {
+	added, err := s.seeded(ctx)
+	if err != nil {
+		return records{}, err
+	}
+
+	slots, err := s.seededSlots(ctx)
+	if err != nil {
+		return records{}, err
+	}
+
+	return records{startersAdded: added, slotsSeeded: slots}, nil
 }
 
 // libraryExists reports whether the library was ever started: a starter was added to it
@@ -446,6 +544,20 @@ func pickDefault(all []Prompt, kind item.Kind, stored int64) int64 {
 	}
 
 	return first
+}
+
+// pickSituation returns a situation's stored default when it exists and is an agent prompt
+// that applies to pull requests, else 0: unlike a kind's, a situation's default never falls
+// back to another prompt, since with none a pull request in the situation launches with
+// the prompt it would have anyway.
+func pickSituation(all []Prompt, stored int64) int64 {
+	for _, p := range all {
+		if p.ID == stored && !p.IsReply() && p.AppliesTo.Covers(item.KindPR) {
+			return stored
+		}
+	}
+
+	return 0
 }
 
 // pickReplies returns each stored default reply that still exists and fits its slot, and 0

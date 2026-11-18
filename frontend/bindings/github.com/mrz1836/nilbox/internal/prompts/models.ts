@@ -101,6 +101,16 @@ export interface BundleDefaults {
     "issue": string;
 
     /**
+     * ChecksFailing, Conflicts, ChangesRequested, and Rereview name the default prompt for
+     * each situation a pull request can be in, left out where none of the file's prompts is
+     * that default, and in a file an older build wrote.
+     */
+    "checksFailing"?: string;
+    "conflicts"?: string;
+    "changesRequested"?: string;
+    "rereview"?: string;
+
+    /**
      * Replies names the default reply for each slot by nickname, leaving out a slot whose
      * default is none of the file's prompts.
      */
@@ -275,11 +285,23 @@ export interface DefaultOffer {
 
 /**
  * DefaultPrompts are the app's default prompt for each kind of item, 0 when no prompt
- * applies to that kind, and its default replies.
+ * applies to that kind, its default prompt for each situation a pull request can be in, and
+ * its default replies.
  */
 export interface DefaultPrompts {
     "pr": number;
     "issue": number;
+
+    /**
+     * ChecksFailing, Conflicts, ChangesRequested, and Rereview are the default prompt for a
+     * pull request whose checks fail, that conflicts with its base, that a reviewer asked to
+     * change, and that the user is asked to review again; 0 where none is chosen, which
+     * leaves such a pull request the prompt it would have anyway.
+     */
+    "checksFailing": number;
+    "conflicts": number;
+    "changesRequested": number;
+    "rereview": number;
 
     /**
      * Replies are the default replies.
@@ -289,19 +311,30 @@ export interface DefaultPrompts {
 
 /**
  * DefaultSlot names one of the library's defaults: the default prompt for pull requests or
- * for issues, or one of the default replies, under its ReplySlot's name.
+ * for issues, the default prompt for each situation a pull request can be in, or one of the
+ * default replies, under its ReplySlot's name.
  */
-export type DefaultSlot = "pr" | "issue" | "approve" | "approve_bots" | "request_changes" | "comment";
+export type DefaultSlot = "pr" | "issue" | "checks_failing" | "conflicts" | "changes_requested" | "rereview" | "approve" | "approve_bots" | "request_changes" | "comment";
 
 /**
  * The values of DefaultSlot, by the names of their Go constants.
  */
 export const DefaultSlot = {
     /**
-     * The library's defaults.
+     * The library's defaults. A situation's slot has the name of its situation in the
+     * launcher (launcher.Situation).
      */
     DefaultSlotPR: "pr",
     DefaultSlotIssue: "issue",
+
+    /**
+     * The default prompt for a pull request whose checks fail, that conflicts with its
+     * base, that a reviewer asked to change, and that the user is asked to review again.
+     */
+    DefaultSlotChecksFailing: "checks_failing",
+    DefaultSlotConflicts: "conflicts",
+    DefaultSlotChangesRequested: "changes_requested",
+    DefaultSlotRereview: "rereview",
     DefaultSlotApprove: "approve",
     DefaultSlotApproveBots: "approve_bots",
     DefaultSlotRequestChanges: "request_changes",
@@ -678,6 +711,29 @@ export const Severity = {
 } as const;
 
 /**
+ * SlotPlace is an org's or a repository's launch default that names a prompt for a
+ * situation a pull request can be in.
+ */
+export interface SlotPlace {
+    /**
+     * Org is the owner whose own launch defaults name the prompt, and "" for a
+     * repository's.
+     */
+    "org": string;
+
+    /**
+     * Repo is the "owner/name" repository whose launch defaults name it, and "" for an
+     * org's.
+     */
+    "repo": string;
+
+    /**
+     * Slot is the situation's default.
+     */
+    "slot": DefaultSlot;
+}
+
+/**
  * SourceKind says what an ImportSource is.
  */
 export type SourceKind = "file" | "backup";
@@ -711,14 +767,27 @@ export interface Usage {
     "defaults": item$0.Kind[] | null;
 
     /**
+     * Slots lists the situations whose app default the prompt is, in DefaultSlots order.
+     */
+    "slots": DefaultSlot[] | null;
+
+    /**
      * Orgs and Repos list the owners and "owner/name" repositories whose launch
-     * defaults use it, sorted.
+     * defaults use it for a kind of item, sorted.
      */
     "orgs": string[] | null;
     "repos": string[] | null;
 
     /**
-     * Kinds lists every kind the prompt is a default for, anywhere.
+     * SlotPlaces lists each org's and repository's situation whose launch default the
+     * prompt is, sorted by the org or repository, an org before its repositories, then by
+     * the situation, in DefaultSlots order.
+     */
+    "slotPlaces": SlotPlace[] | null;
+
+    /**
+     * Kinds lists every kind the prompt is a default for, anywhere: a situation's default
+     * is a pull request's.
      */
     "kinds": item$0.Kind[] | null;
 

@@ -279,6 +279,54 @@ func TestValidation(t *testing.T) {
 	assert.NotNil(t, got, "the UI always gets a list")
 }
 
+// TestValidationOfASituationsPrompt checks each situation's prompt as the pull requests'
+// own is checked: it must be an agent prompt for pull requests that is still stored.
+func TestValidationOfASituationsPrompt(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	lib, err := h.library.Library(t.Context())
+	require.NoError(t, err)
+
+	for _, situation := range []struct {
+		field string
+		set   func(in *launchdefaults.Input, id *int64)
+	}{
+		{launchdefaults.FieldChecksPromptID, func(in *launchdefaults.Input, id *int64) { in.ChecksPromptID = id }},
+		{launchdefaults.FieldConflictsPromptID, func(in *launchdefaults.Input, id *int64) { in.ConflictsPromptID = id }},
+		{launchdefaults.FieldChangesPromptID, func(in *launchdefaults.Input, id *int64) { in.ChangesPromptID = id }},
+		{launchdefaults.FieldRereviewPromptID, func(in *launchdefaults.Input, id *int64) { in.RereviewPromptID = id }},
+	} {
+		for _, bad := range []struct {
+			name string
+			id   *int64
+			want string
+		}{
+			{"a review reply", new(lib.Defaults.Replies.Approve), `"LGTM" is a review reply, not a prompt an agent can launch with.`},
+			{"a prompt for issues", &h.work, `"Work on it" isn't a prompt for pull requests.`},
+			{"a missing prompt", new(int64(9999)), "That prompt no longer exists; choose another."},
+		} {
+			in := launchdefaults.Input{Owner: acme}
+			situation.set(&in, bad.id)
+
+			got, checkErr := h.svc.Check(t.Context(), in)
+			require.NoError(t, checkErr)
+			assert.Equal(t, map[string]string{situation.field: bad.want}, fields(got), "%s for %s", bad.name, situation.field)
+
+			_, checkErr = h.svc.Save(t.Context(), in)
+			require.ErrorIs(t, checkErr, launchdefaults.ErrInvalidDefaults)
+		}
+
+		in := launchdefaults.Input{Owner: acme}
+		situation.set(&in, &h.review)
+
+		got, checkErr := h.svc.Check(t.Context(), in)
+		require.NoError(t, checkErr)
+		assert.Empty(t, got, "%s takes an agent prompt for pull requests", situation.field)
+	}
+}
+
 func TestRemove(t *testing.T) {
 	t.Parallel()
 
@@ -309,7 +357,7 @@ func TestDefaultPromptsCannotBeDeletedWhileUsed(t *testing.T) {
 	var fix prompts.Prompt
 
 	for _, p := range all {
-		if p.StarterKey == prompts.StarterFixChecks {
+		if p.StarterKey == prompts.StarterQuickLook {
 			fix = p
 		}
 	}
@@ -325,15 +373,16 @@ func TestDefaultPromptsCannotBeDeletedWhileUsed(t *testing.T) {
 	err = svc.Delete(ctx, fix.ID)
 	require.ErrorIs(t, err, prompts.ErrPromptInUse)
 	require.ErrorAs(t, err, &inUse)
-	assert.Equal(t, `"Fix checks" can't be deleted while it's a default for acme-org and acme-org/example-repo; `+
+	assert.Equal(t, `"Quick look" can't be deleted while it's a default for acme-org and acme-org/example-repo; `+
 		"choose other defaults there first", err.Error())
 
 	all, err = svc.List(ctx)
 	require.NoError(t, err)
 
 	fix.Usage = prompts.Usage{
-		Defaults: []item.Kind{}, Orgs: []string{acme}, Repos: []string{"acme-org/example-repo"},
-		Kinds: []item.Kind{item.KindPR}, Replies: []prompts.ReplySlot{}, Routines: []string{},
+		Defaults: []item.Kind{}, Slots: []prompts.DefaultSlot{}, Orgs: []string{acme},
+		Repos: []string{"acme-org/example-repo"}, SlotPlaces: []prompts.SlotPlace{}, Kinds: []item.Kind{item.KindPR},
+		Replies: []prompts.ReplySlot{}, Routines: []string{},
 	}
 	require.Contains(t, all, fix, "the prompt is still there, with where it is used")
 
@@ -350,18 +399,80 @@ func TestPromptUses(t *testing.T) {
 
 	_, err := h.svc.Save(ctx, launchdefaults.Input{Owner: acme, PRPromptID: &h.review, IssuePromptID: &h.work})
 	require.NoError(t, err)
-	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: acme, Name: "example-repo", IssuePromptID: &h.work})
+	_, err = h.svc.Save(ctx, launchdefaults.Input{
+		Owner: acme, Name: exampleRepo, IssuePromptID: &h.work, ChecksPromptID: &h.review,
+		ConflictsPromptID: &h.review, ChangesPromptID: &h.review, RereviewPromptID: &h.review,
+	})
 	require.NoError(t, err)
 	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: beta, Effort: "high"})
 	require.NoError(t, err)
+	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: beta, Name: "tools", RereviewPromptID: &h.review})
+	require.NoError(t, err)
+
+	example, tools := repo.Name{Owner: acme, Repo: exampleRepo}, repo.Name{Owner: beta, Repo: "tools"}
 
 	uses, err := h.store.PromptUses(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, []prompts.Use{
-		{PromptID: h.review, Kind: item.KindPR, Target: repo.Name{Owner: acme}},
-		{PromptID: h.work, Kind: item.KindIssue, Target: repo.Name{Owner: acme}},
-		{PromptID: h.work, Kind: item.KindIssue, Target: repo.Name{Owner: acme, Repo: "example-repo"}},
-	}, uses, "every org's and repository's default prompt, and nothing for defaults that name none")
+		{PromptID: h.review, Kind: item.KindPR, Target: repo.Name{Owner: acme}, Slot: prompts.DefaultSlotPR},
+		{PromptID: h.work, Kind: item.KindIssue, Target: repo.Name{Owner: acme}, Slot: prompts.DefaultSlotIssue},
+		{PromptID: h.work, Kind: item.KindIssue, Target: example, Slot: prompts.DefaultSlotIssue},
+		{PromptID: h.review, Kind: item.KindPR, Target: example, Slot: prompts.DefaultSlotChecksFailing},
+		{PromptID: h.review, Kind: item.KindPR, Target: example, Slot: prompts.DefaultSlotConflicts},
+		{PromptID: h.review, Kind: item.KindPR, Target: example, Slot: prompts.DefaultSlotChangesRequested},
+		{PromptID: h.review, Kind: item.KindPR, Target: example, Slot: prompts.DefaultSlotRereview},
+		{PromptID: h.review, Kind: item.KindPR, Target: tools, Slot: prompts.DefaultSlotRereview},
+	}, uses, "every org's and repository's default prompt, a situation's alone too, and nothing for defaults that name none")
+}
+
+// TestASituationsPromptCannotBeDeletedWhileUsed checks that a prompt an org's or a
+// repository's situation names is kept, and that the refusal names the situation.
+func TestASituationsPromptCannotBeDeletedWhileUsed(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	ctx := t.Context()
+
+	quick, err := h.prompts.Create(ctx, prompts.Input{
+		Name: "Fix it quickly", Nickname: "Quickly", AppliesTo: prompts.AppliesToPR, Body: "Fix {{.URL}}.",
+	})
+	require.NoError(t, err)
+
+	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: acme, ChecksPromptID: &quick.ID})
+	require.NoError(t, err)
+
+	err = h.prompts.Delete(ctx, quick.ID)
+	require.ErrorIs(t, err, prompts.ErrPromptInUse)
+	assert.Equal(t, `"Quickly" can't be deleted while it's acme-org's prompt when checks fail; `+
+		"choose other defaults there first", err.Error())
+
+	_, err = h.svc.Save(ctx, launchdefaults.Input{Owner: acme, Name: exampleRepo, RereviewPromptID: &quick.ID})
+	require.NoError(t, err)
+
+	all, err := h.prompts.List(ctx)
+	require.NoError(t, err)
+
+	for _, p := range all {
+		if p.ID != quick.ID {
+			continue
+		}
+
+		assert.Equal(t, []prompts.SlotPlace{
+			{Org: acme, Slot: prompts.DefaultSlotChecksFailing},
+			{Repo: "acme-org/example-repo", Slot: prompts.DefaultSlotRereview},
+		}, p.Usage.SlotPlaces)
+		assert.Empty(t, p.Usage.Orgs, "a situation's prompt is not the org's prompt for pull requests")
+		assert.Equal(t, []item.Kind{item.KindPR}, p.Usage.Kinds, "it has to keep applying to pull requests")
+		assert.True(t, p.Usage.InUse())
+	}
+
+	err = h.prompts.Delete(ctx, quick.ID)
+	require.ErrorIs(t, err, prompts.ErrPromptInUse)
+	assert.Contains(t, err.Error(), "a situation's prompt in 2 places")
+
+	require.NoError(t, h.svc.Remove(ctx, acme, ""))
+	require.NoError(t, h.svc.Remove(ctx, acme, exampleRepo))
+	require.NoError(t, h.prompts.Delete(ctx, quick.ID))
 }
 
 func TestTargets(t *testing.T) {
@@ -531,4 +642,10 @@ func TestInputEmpty(t *testing.T) {
 	assert.False(t, launchdefaults.Input{Owner: acme, Worktree: new(true)}.Empty())
 	assert.False(t, launchdefaults.Input{Owner: acme, Agent: "claude"}.Empty())
 	assert.False(t, launchdefaults.Input{Owner: acme, Profiles: map[agent.ID]string{agent.Codex: profileAlt}}.Empty())
+
+	id := int64(7)
+	assert.False(t, launchdefaults.Input{Owner: acme, ChecksPromptID: &id}.Empty())
+	assert.False(t, launchdefaults.Input{Owner: acme, ConflictsPromptID: &id}.Empty())
+	assert.False(t, launchdefaults.Input{Owner: acme, ChangesPromptID: &id}.Empty())
+	assert.False(t, launchdefaults.Input{Owner: acme, RereviewPromptID: &id}.Empty())
 }

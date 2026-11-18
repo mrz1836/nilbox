@@ -166,7 +166,8 @@ func TestSeed(t *testing.T) {
 
 	assert.Equal(t, []string{
 		"Address review", "Fix checks", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro",
-		"Question", "Quick look", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK", "Work on it",
+		"Question", "Quick look", "Re-review", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK",
+		"Work on it",
 	}, nicknames(t, s))
 
 	review, work := byNickname(t, s, "Review"), byNickname(t, s, "Work on it")
@@ -177,10 +178,14 @@ func TestSeed(t *testing.T) {
 
 	defaults, err := s.Defaults(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, DefaultPrompts{PR: review.ID, Issue: work.ID, Replies: ReplyDefaults{
-		Approve: byNickname(t, s, "LGTM").ID, ApproveBots: byNickname(t, s, "Update OK").ID,
-		RequestChanges: byNickname(t, s, "Needs changes").ID, Comment: byNickname(t, s, "Question").ID,
-	}}, defaults)
+	assert.Equal(t, DefaultPrompts{
+		PR: review.ID, Issue: work.ID, ChecksFailing: byNickname(t, s, "Fix checks").ID,
+		Conflicts: byNickname(t, s, "Resolve conflicts").ID, ChangesRequested: byNickname(t, s, "Address review").ID,
+		Rereview: byNickname(t, s, "Re-review").ID, Replies: ReplyDefaults{
+			Approve: byNickname(t, s, "LGTM").ID, ApproveBots: byNickname(t, s, "Update OK").ID,
+			RequestChanges: byNickname(t, s, "Needs changes").ID, Comment: byNickname(t, s, "Question").ID,
+		},
+	}, defaults)
 
 	quick := byNickname(t, s, "Quick look")
 	assert.Equal(t, map[agent.ID]string{agent.Claude: "sonnet"}, quick.Models)
@@ -194,7 +199,7 @@ func TestSeed(t *testing.T) {
 	require.NoError(t, Seed(ctx, s.store))
 	assert.Equal(t, []string{
 		"Address review", "Fix checks", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro",
-		"Question", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK", "Work on it",
+		"Question", "Re-review", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK", "Work on it",
 	}, nicknames(t, s))
 }
 
@@ -421,7 +426,7 @@ func TestUpdateKeepsTheKindsAPromptIsADefaultFor(t *testing.T) {
 
 	s, db := seeded(t, nil)
 	ctx := t.Context()
-	fix := byNickname(t, s, "Fix checks")
+	fix := byNickname(t, s, "Quick look")
 
 	addLaunchDefault(t, db, "acme-org", "", fix.ID)
 
@@ -450,27 +455,28 @@ func TestDeleteRefusesAPromptInUse(t *testing.T) {
 	assert.Equal(t, `"Review" can't be deleted while it's the default for pull requests; choose other defaults there first`,
 		err.Error())
 
-	fix := byNickname(t, s, "Fix checks")
+	fix := byNickname(t, s, "Quick look")
 	addLaunchDefault(t, db, "acme-org", "", fix.ID)
 	addLaunchDefault(t, db, "acme-org", "api", fix.ID)
 	addLaunchDefault(t, db, "other-org", "web", fix.ID)
 
-	fix = byNickname(t, s, "Fix checks")
+	fix = byNickname(t, s, "Quick look")
 	assert.Equal(t, Usage{
-		Defaults: []item.Kind{}, Orgs: []string{"acme-org"}, Repos: []string{"acme-org/api", "other-org/web"},
-		Kinds: []item.Kind{item.KindPR}, Replies: []ReplySlot{}, Routines: []string{},
+		Defaults: []item.Kind{}, Slots: []DefaultSlot{}, Orgs: []string{"acme-org"},
+		Repos: []string{"acme-org/api", "other-org/web"}, SlotPlaces: []SlotPlace{}, Kinds: []item.Kind{item.KindPR},
+		Replies: []ReplySlot{}, Routines: []string{},
 	}, fix.Usage)
 
 	var inUse *InUseError
 
 	err = s.Delete(ctx, fix.ID)
 	require.ErrorAs(t, err, &inUse)
-	assert.Equal(t, "Fix checks", inUse.Nickname)
+	assert.Equal(t, "Quick look", inUse.Nickname)
 	assert.Contains(t, err.Error(), "a default for acme-org and 2 repositories")
 
 	testutil.Exec(t, db, "DELETE FROM launch_defaults")
 	require.NoError(t, s.Delete(ctx, fix.ID))
-	assert.NotContains(t, nicknames(t, s), "Fix checks")
+	assert.NotContains(t, nicknames(t, s), "Quick look")
 
 	require.ErrorIs(t, s.Delete(ctx, fix.ID), ErrPromptNotFound)
 }

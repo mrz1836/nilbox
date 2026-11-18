@@ -85,6 +85,12 @@ func TestLaunchItems(t *testing.T) {
 
 	first, second := itemByNumber(t, snap.ReviewRequested, 1).ID, itemByNumber(t, snap.Yours, 2).ID
 
+	// The commit the user's verdict was left on, which a launch's prompt can diff from.
+	const reviewed = "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d"
+
+	h.exec(t, `UPDATE items SET viewer_review_state = 'CHANGES_REQUESTED', viewer_review_commit = ? WHERE id = ?`,
+		reviewed, first)
+
 	got, err := h.store().LaunchItems(t.Context(), []int64{second, 999, first})
 	require.NoError(t, err)
 	require.Len(t, got, 2, "an id with no stored item is left out")
@@ -94,7 +100,7 @@ func TestLaunchItems(t *testing.T) {
 	assert.Equal(t, LaunchItem{
 		ID: first, Kind: item.KindPR, Number: 1, URL: a.URL, Title: "Item 1", HeadRef: "branch-1",
 		AuthorLogin: octoUser, AuthorType: "User", AuthorAssociation: "CONTRIBUTOR", IsCrossRepository: true,
-		IsDraft: true, RepoID: repoID, Owner: "acme-org", Name: "example-repo", DefaultBranch: "main",
+		IsDraft: true, ViewerReviewCommit: reviewed, RepoID: repoID, Owner: "acme-org", Name: "example-repo", DefaultBranch: "main",
 		Labels: []string{"enhancement", "size/L"}, Additions: 120, Deletions: 30, ChangedFiles: 6, Commits: 3,
 		Mergeable: "CONFLICTING", ChecksState: "SUCCESS", ReviewDecision: details.Reviews.Decision,
 		FailedChecks: []string{},
@@ -103,6 +109,7 @@ func TestLaunchItems(t *testing.T) {
 	assert.Equal(t, second, got[1].ID)
 	assert.Equal(t, item.KindIssue, got[1].Kind)
 	assert.Equal(t, "other-repo", got[1].Name)
+	assert.Empty(t, got[1].ViewerReviewCommit, "no verdict, no commit")
 	assert.Equal(t, []string{}, got[1].Labels, "an item whose details were never read has none")
 	assert.Zero(t, got[1].Additions)
 	assert.Empty(t, got[1].Mergeable)

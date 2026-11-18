@@ -116,10 +116,14 @@ func (p *BackupPlan) planRow(raw Kept, known Known, seen map[string]bool) (Kept,
 		return Kept{}, false
 	}
 
-	k.PRPrompt = resolvePrompt(&p.Plan, k, k.PRPrompt, item.KindPR, known)
-	k.IssuePrompt = resolvePrompt(&p.Plan, k, k.IssuePrompt, item.KindIssue, known)
+	var marks promptIDs
 
-	switch _, sets := restorableWith(k, promptMark(k.PRPrompt), promptMark(k.IssuePrompt)); {
+	for _, f := range promptsOf(&k, &marks) {
+		*f.nickname = resolvePrompt(&p.Plan, k.target(), f, known)
+		*f.id = promptMark(*f.nickname)
+	}
+
+	switch _, sets := restorableWith(k, marks); {
 	case seen[keyOf(k)]:
 		p.AddNote(fmt.Sprintf("The file holds the launch defaults for %s twice; the first was imported.", k.target()))
 
@@ -179,17 +183,18 @@ func (bp *BackupPart) ApplyBackup(ctx context.Context, tx *sql.Tx, plan BackupPl
 
 // applyRow stores k in st, its prompts found through find.
 func applyRow(ctx context.Context, st *Store, k Kept, find PromptFinder) error {
-	pr, err := findPrompt(ctx, find, k.PRPrompt, item.KindPR)
-	if err != nil {
-		return err
+	var (
+		ids promptIDs
+		err error
+	)
+
+	for _, f := range promptsOf(&k, &ids) {
+		if *f.id, err = findPrompt(ctx, find, *f.nickname, f.kind); err != nil {
+			return err
+		}
 	}
 
-	issue, err := findPrompt(ctx, find, k.IssuePrompt, item.KindIssue)
-	if err != nil {
-		return err
-	}
-
-	in, sets := restorableWith(k, pr, issue)
+	in, sets := restorableWith(k, ids)
 	if sets {
 		_, err = st.save(ctx, in.input, in.checked)
 
@@ -245,11 +250,18 @@ func cleanKept(k Kept) (Kept, []string, bool) {
 	}
 
 	k.Profiles, k.Models, k.ExtraArgs = profiles, checked.Models, agent.CloneArgs(checked.Args)
-	k.PRPrompt, k.IssuePrompt = strings.TrimSpace(k.PRPrompt), strings.TrimSpace(k.IssuePrompt)
+	trimPrompts(&k)
 
 	k.AutopilotOutside, notes = cleanOutside(where, k.AutopilotOutside, notes)
 
 	return k, notes, true
+}
+
+// trimPrompts trims the nickname of each of k's default prompts.
+func trimPrompts(k *Kept) {
+	for _, f := range promptsOf(k, new(promptIDs)) {
+		*f.nickname = strings.TrimSpace(*f.nickname)
+	}
 }
 
 // cleanOutside returns a kept choice of Autopilot on outside contributors' items as this
@@ -277,14 +289,15 @@ func dropped(where, what string, given, kept map[agent.ID]string) []string {
 	return notes
 }
 
-// resolvePrompt returns nickname, k's default prompt for kind, when known finds it, and
-// otherwise "", noting that it inherits.
-func resolvePrompt(p *backup.Plan, k Kept, nickname string, kind item.Kind, known Known) string {
-	if nickname == "" || known(nickname, kind) {
+// resolvePrompt returns the nickname of f, one of the default prompts of the row for
+// where, when known finds it for f's kind, and otherwise "", noting that it inherits.
+func resolvePrompt(p *backup.Plan, where string, f keptPrompt, known Known) string {
+	nickname := *f.nickname
+	if nickname == "" || known(nickname, f.kind) {
 		return nickname
 	}
 
-	p.AddNote(fmt.Sprintf("%s: its prompt for %s, “%s”, isn't here, so it inherits.", k.target(), kind.Plural(), nickname))
+	p.AddNote(fmt.Sprintf("%s: %s, “%s”, isn't here, so it inherits.", where, f.what, nickname))
 
 	return ""
 }

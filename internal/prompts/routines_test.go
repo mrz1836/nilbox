@@ -70,6 +70,7 @@ func TestDeleteIsRefusedWhileARoutineRunsThePrompt(t *testing.T) {
 
 	s := withRoutines(t, routineUses{{Routine: "Fix my checks", Starter: "fix-checks"}}, nil)
 	ctx := t.Context()
+	require.NoError(t, s.SetSlotDefault(ctx, DefaultSlotChecksFailing, 0), "only the routine uses it")
 
 	fix := byNickname(t, s, "Fix checks")
 	err := s.Delete(ctx, fix.ID)

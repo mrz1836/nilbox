@@ -137,8 +137,8 @@ func countOf(b Bundle) ExportResult {
 // Export writes the prompts with ids, or every prompt when ids is empty, to a prompt file
 // at path, replacing any file there, and returns how many agent prompts and replies it
 // wrote. A whole library is written with the app's default prompts, its default replies,
-// and the record of the starters it was given, so importing it on another Mac, or
-// restoring it here, brings back the library as it was.
+// and the records of the starters it was given and the situations' slots it filled, so
+// importing it on another Mac, or restoring it here, brings back the library as it was.
 func (s *Service) Export(ctx context.Context, path string, ids []int64) (ExportResult, error) {
 	if path == "" || !filepath.IsAbs(path) {
 		return ExportResult{}, ErrNoPath
@@ -155,12 +155,12 @@ func (s *Service) Export(ctx context.Context, path string, ids []int64) (ExportR
 		}
 	}
 
-	added, err := s.store.seeded(ctx)
+	kept, err := s.store.records(ctx)
 	if err != nil {
 		return ExportResult{}, err
 	}
 
-	b := newBundle(lib, added, ids, s.clock.Now(), s.app)
+	b := newBundle(lib, kept, ids, s.clock.Now(), s.app)
 
 	data, err := EncodeBundle(b)
 	if err != nil {

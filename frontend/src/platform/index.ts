@@ -346,6 +346,10 @@ export type LaunchPreview = NonNullLists<launcher.Preview>
 export type Resolution = NonNullLists<launcher.Resolution>
 export type LaunchSetting = NonNullLists<launcher.Setting>
 export type LaunchSource = launcher.Source
+// Situation is the situation of a pull request a launch is for, as an inbox card names it,
+// which picks the launch defaults' prompt for it: '' for the item's own prompt.
+export type Situation = launcher.Situation
+export type SituationChoice = NonNullLists<launcher.SituationChoice>
 export type WorktreeAction = launcher.WorktreeAction
 export type WorktreePlan = NonNullLists<launcher.WorktreePlan>
 export type TerminalID = terminal.ID
@@ -559,6 +563,7 @@ export type Diagnostic = NonNullLists<prompts.Diagnostic>
 export type PromptInput = NonNullLists<prompts.Input>
 export type Prompt = NonNullLists<prompts.Prompt>
 export type PromptUsage = NonNullLists<prompts.Usage>
+export type SlotPlace = NonNullLists<prompts.SlotPlace>
 export type PromptVariable = NonNullLists<prompts.Variable>
 export type PromptAppliesTo = prompts.AppliesTo
 export type PromptPurpose = prompts.Purpose
@@ -850,6 +855,7 @@ export const {
   Defaults: getDefaultPrompts,
   SetDefault: setDefaultPrompt,
   SetReplyDefault: setReplyDefault,
+  SetSlotDefault: setSlotDefault,
   Export: exportPrompts,
   Backups: listPromptBackups,
   PreviewImport: previewPromptImport,
