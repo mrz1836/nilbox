@@ -1,5 +1,18 @@
-import { useEffect, useEffectEvent, useState } from 'react'
+import {
+  createContext,
+  use,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  useState,
+  type ActionDispatch,
+  type ReactNode,
+} from 'react'
 
+import { emptyQueue, offerToast, turnOf, type ToastQueueState, type Turn } from '../lib/toastQueue'
 import { AlertIcon, CircleCheckIcon, XIcon } from './icons'
 
 // How long a toast can be set to show, in seconds, unless the pointer rests on it, and how
@@ -28,6 +41,10 @@ export interface ToastMessage {
   undo?: () => void
   // action, when set, puts a button with its label on the toast, such as View.
   action?: ToastAction
+  // background marks a toast nothing the user just did asked for, such as a worktree
+  // cleanup's: under a ToastQueue it waits for the toast showing to close, rather than
+  // show over it at once as one that answers a click does.
+  background?: boolean
 }
 
 // ToastAction is a toast's button that leads somewhere, such as View.
@@ -42,6 +59,33 @@ export interface ToastAction {
 // length changed under it, starts its time again.
 const timing = new WeakMap<ToastMessage, { start: number; seconds: number }>()
 
+// ToastOffer is a Toast offering its message to the queue, or taking it off with null.
+interface ToastOffer {
+  key: string
+  toast: ToastMessage | null
+}
+
+// QueueContext is the window's toast queue, or null where none is, as in a component's own
+// tests, where each Toast shows its message at once.
+const QueueContext = createContext<{
+  state: ToastQueueState<ToastMessage>
+  offer: ActionDispatch<[ToastOffer]>
+} | null>(null)
+
+// queued is the queue once a Toast made its offer.
+function queued(state: ToastQueueState<ToastMessage>, o: ToastOffer): ToastQueueState<ToastMessage> {
+  return offerToast(state, o.key, o.toast)
+}
+
+// ToastQueue makes every Toast inside it take its turn (lib/toastQueue): one shows at a
+// time, wherever it is drawn, a toast that answers a click first, and the one showing says
+// its number while more wait ("1 of 3").
+export function ToastQueue({ children }: { children: ReactNode }) {
+  const [state, offer] = useReducer(queued, null, () => emptyQueue<ToastMessage>())
+
+  return <QueueContext value={{ state, offer }}>{children}</QueueContext>
+}
+
 export interface ToastProps {
   // toast is the message showing, or null for none.
   toast: ToastMessage | null
@@ -55,7 +99,34 @@ export interface ToastProps {
 // pointer rests on it or focus is in it (so Undo can be reached with the keyboard), and
 // is announced politely to screen readers: the live region stays mounted, so each new
 // message is read.
-export function Toast({ toast, seconds, onClose }: ToastProps) {
+//
+// Under a ToastQueue it offers its message to the queue and shows it only on its turn,
+// timing it only while it shows; one pushed back into line by a newer toast gets its full
+// time again when its turn comes.
+export function Toast({ toast: offered, seconds, onClose }: ToastProps) {
+  const queue = use(QueueContext)
+  const key = useId()
+  const offer = queue?.offer
+
+  // The offer is made before the window paints, so a toast never shows a frame out of turn.
+  useLayoutEffect(() => {
+    offer?.({ key, toast: offered })
+  }, [offer, key, offered])
+
+  useLayoutEffect(
+    () => () => {
+      offer?.({ key, toast: null })
+    },
+    [offer, key],
+  )
+
+  const turn: Turn | null = queue === null ? null : turnOf(queue.state, key)
+  const toast = turn === null || turn.showing ? offered : null
+
+  // shownLast is the toast this Toast last showed, so one pushed back into line is timed
+  // afresh when its turn comes again.
+  const shownLast = useRef<ToastMessage | null>(null)
+
   // hoveredId and focusedId are the toast the pointer rests on and the one focus is in.
   // Keyed by toast, a pause never outlives the toast it was for, even when that one is
   // replaced under the pointer.
@@ -69,7 +140,15 @@ export function Toast({ toast, seconds, onClose }: ToastProps) {
   })
 
   useEffect(() => {
+    const last = shownLast.current
+
+    shownLast.current = toast
+
     if (toast === null) {
+      if (last !== null && last === offered) {
+        timing.delete(last)
+      }
+
       return undefined
     }
 
@@ -94,7 +173,7 @@ export function Toast({ toast, seconds, onClose }: ToastProps) {
     return () => {
       clearTimeout(timer)
     }
-  }, [toast, paused, seconds])
+  }, [toast, offered, paused, seconds])
 
   const error = toast?.tone === 'error'
 
@@ -157,6 +236,11 @@ export function Toast({ toast, seconds, onClose }: ToastProps) {
               </div>
             )}
           </div>
+          {turn !== null && turn.total > 1 && (
+            <span className="mt-0.5 shrink-0 text-xs text-muted tabular-nums">
+              {turn.position} of {turn.total}
+            </span>
+          )}
           <button
             type="button"
             aria-label="Close"

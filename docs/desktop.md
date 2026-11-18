@@ -2051,6 +2051,12 @@ dismissal, with **Undo**, over the sheet while one is open. The default length a
 snooze menu's **Snooze settings…** opens. Snoozes, dismissals, and pins are kept in the local database only:
 GitHub never hears about them. The **N of M** count of a list leaves out the items set aside.
 
+**One toast at a time.** The window shows one toast at a time. One that answers your click shows
+at once; if another was showing, that one waits behind it and gets its full time again when it
+comes back, so an **Undo** is never lost. One you didn't ask for, such as a worktree cleanup's,
+an update's, or the Scripts tab's, waits its turn. While more wait, the toast says which it is,
+as in **1 of 3**.
+
 ### Pinned and muted repositories and orgs
 
 A rule can cover a whole repository, or an org (or a user) and every repository it owns. Set one

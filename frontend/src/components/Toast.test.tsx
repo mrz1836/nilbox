@@ -1,8 +1,9 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { defaultToastSeconds, Toast } from './Toast'
+import { defaultToastSeconds, Toast, ToastQueue, type ToastMessage } from './Toast'
 
 // toastMs is how long the toasts here show: the length a fresh install has.
 const toastMs = defaultToastSeconds * 1000
@@ -256,5 +257,120 @@ describe('Toast', () => {
 
     await person.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalledOnce()
+  })
+})
+
+// Owner is one source of toasts, as the inbox or the window's sweeps are: it shows its
+// toast with a Toast of its own, and forgets it once that closes.
+function Owner({ initial, label }: { initial: ToastMessage | null; label: string }) {
+  const [toast, setToast] = useState<ToastMessage | null>(initial)
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setToast({ id: Date.now(), text: `${label} again` })
+        }}
+      >
+        {`Act in ${label}`}
+      </button>
+      <Toast
+        seconds={5}
+        toast={toast}
+        onClose={() => {
+          setToast(null)
+        }}
+      />
+    </>
+  )
+}
+
+describe('Toast under a ToastQueue', () => {
+  const cleaned: ToastMessage = { id: 1, text: 'Cleaned up a finished worktree', background: true }
+  const snoozed: ToastMessage = { id: 2, text: 'Snoozed', undo: () => undefined }
+
+  // notifications are the toast cards showing.
+  function notifications() {
+    return screen.queryAllByRole('group', { name: 'Notification' })
+  }
+
+  it('shows one toast at a time, the click’s first, saying which while more wait', () => {
+    render(
+      <ToastQueue>
+        <Owner label="sweeps" initial={cleaned} />
+        <Owner label="inbox" initial={snoozed} />
+      </ToastQueue>,
+    )
+
+    expect(notifications()).toHaveLength(1)
+    expect(notifications()[0]).toHaveTextContent('Snoozed')
+    expect(notifications()[0]).toHaveTextContent('1 of 2')
+
+    // The snooze's toast runs out, and the cleanup's shows for its own full time.
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+    expect(notifications()).toHaveLength(1)
+    expect(notifications()[0]).toHaveTextContent('Cleaned up a finished worktree')
+    expect(notifications()[0]).toHaveTextContent('2 of 2')
+
+    act(() => {
+      vi.advanceTimersByTime(4999)
+    })
+    expect(notifications()).toHaveLength(1)
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(notifications()).toHaveLength(0)
+  })
+
+  it('times a toast pushed back in line afresh when its turn comes again', async () => {
+    const person = user()
+    render(
+      <ToastQueue>
+        <Owner label="sweeps" initial={cleaned} />
+        <Owner label="inbox" initial={null} />
+      </ToastQueue>,
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(4000)
+    })
+    await person.click(screen.getByRole('button', { name: 'Act in inbox' }))
+    // The click left the pointer on the page, not the toast; nothing holds it.
+    await person.click(document.body)
+
+    expect(notifications()).toHaveLength(1)
+    expect(notifications()[0]).toHaveTextContent('inbox again')
+    expect(notifications()[0]).toHaveTextContent('1 of 2')
+
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+    expect(notifications()[0]).toHaveTextContent('Cleaned up a finished worktree')
+
+    // It had shown for four seconds when the click pushed it back: it gets its full five.
+    act(() => {
+      vi.advanceTimersByTime(4999)
+    })
+    expect(notifications()).toHaveLength(1)
+
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(notifications()).toHaveLength(0)
+  })
+
+  it('says no number while it is the only one', () => {
+    render(
+      <ToastQueue>
+        <Owner label="inbox" initial={snoozed} />
+      </ToastQueue>,
+    )
+
+    expect(notifications()[0]).toHaveTextContent('Snoozed')
+    expect(notifications()[0]).not.toHaveTextContent(/of/)
   })
 })
