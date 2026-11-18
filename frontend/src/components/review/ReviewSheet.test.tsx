@@ -771,10 +771,11 @@ describe('ReviewSheet', () => {
     platform.actOnReview.mockResolvedValue(
       reviewResult({ outcome: 'pushed_since', message: 'acme-org/example-repo#7 was pushed to since you opened it.' }),
     )
+    // With no default reply, the box is empty however late each action's replies come.
+    platform.reviewReplies.mockResolvedValue(replyList({ replies: [], default: 0, defaultBots: 0 }))
     const onDone = vi.fn()
     render(<Harness onDone={onDone} />)
 
-    platform.reviewReplies.mockResolvedValue(replyList({ replies: [], default: 0, defaultBots: 0 }))
     await choose('Comment')
     await userEvent.type(screen.getByRole('textbox', { name: 'Your review' }), 'Why?')
     await userEvent.click(await actionButton('Comment'))
@@ -1414,6 +1415,39 @@ describe('ReviewSheet', () => {
       'Reviewed and approved. Thanks, @octo-other!',
     )
   })
+
+  it('never lets a default reply that comes after you typed replace what you wrote', async () => {
+    let fill: (text: string) => void = () => undefined
+    platform.fillReply.mockReturnValue(
+      new Promise<string>((resolve) => {
+        fill = resolve
+      }),
+    )
+    const onDone = vi.fn()
+    render(<Harness onDone={onDone} />)
+
+    await choose('Approve')
+    await waitFor(() => {
+      expect(platform.fillReply).toHaveBeenCalledWith(1, 21)
+    })
+    const box = screen.getByRole('textbox', { name: 'Your review' })
+    await userEvent.type(box, 'Still to say.')
+
+    // The default reply answers only now, after the first keystroke made the text yours.
+    await act(async () => {
+      fill('Reviewed and approved. Thanks, @octo-other!')
+      await Promise.resolve()
+    })
+
+    expect(box).toHaveValue('Still to say.')
+    await userEvent.click(await actionButton('Approve'))
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalled()
+    })
+    expect(platform.actOnReview).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'approve', body: 'Still to say.' }),
+    )
+  })
 })
 
 // held is #7 with two of its workflow runs held for a maintainer's approval, which the
@@ -2048,6 +2082,11 @@ describe('ReviewSheet commits', () => {
     expect(await screen.findByText('2 commits since you requested changes')).toBeInTheDocument()
     expect(await actionButton('Comment')).toBeInTheDocument()
     const box = screen.getByRole('textbox', { name: 'Your review' })
+    // The default reply fills the untouched box when it comes; clearing the box before then
+    // changes nothing, and the typing would follow the default.
+    await waitFor(() => {
+      expect(box).toHaveValue('Reviewed and approved. Thanks, @octo-other!')
+    })
     await userEvent.clear(box)
     await userEvent.type(box, 'Still to say.')
 
