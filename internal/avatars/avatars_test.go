@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,8 +23,9 @@ const octoUser = "octo-user"
 // errDown is a download that failed.
 var errDown = errors.New("the avatar host is down")
 
-// fakeFetcher hands out a picture per login, its bytes the login and how many times it was
-// downloaded, and fails for the logins in fail.
+// fakeFetcher hands out a picture per login or per URL, its bytes the login or the URL and
+// how many times it was downloaded, and fails for the logins and URLs in fail, and, as the
+// client does, for a URL off the avatar host.
 type fakeFetcher struct {
 	mu    sync.Mutex
 	asked map[string]int
@@ -45,6 +47,23 @@ func (f *fakeFetcher) FetchLoginAvatar(_ context.Context, login string) (*github
 	}
 
 	return &github.Avatar{ContentType: "image/png", Data: []byte(login + "#" + strconv.Itoa(f.asked[login]))}, nil
+}
+
+func (f *fakeFetcher) FetchAvatar(_ context.Context, rawURL string) (*github.Avatar, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.asked[rawURL]++
+
+	if !strings.HasPrefix(rawURL, "https://"+github.DefaultAvatarHost+"/") {
+		return nil, github.ErrAvatarURL
+	}
+
+	if f.fail[rawURL] {
+		return nil, errDown
+	}
+
+	return &github.Avatar{ContentType: "image/png", Data: []byte(rawURL + "#" + strconv.Itoa(f.asked[rawURL]))}, nil
 }
 
 func (f *fakeFetcher) times(login string) int {
