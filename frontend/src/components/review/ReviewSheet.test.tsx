@@ -2526,6 +2526,27 @@ describe('ReviewSheet of a pull request no longer open', () => {
     expect(onEnded).toHaveBeenCalledTimes(2)
   })
 
+  it('hands on a pull request the read its card’s moved checks asked for finds merged', async () => {
+    platform.rebuildReview.mockResolvedValue(review({ counts: { ...review().counts, newer: true }, moved: true }))
+    const onEnded = vi.fn()
+    const { rerender } = render(<Harness onEnded={onEnded} item={item({ id: 1, details: details() })} />)
+
+    await waitFor(() => {
+      expect(platform.refreshReview).toHaveBeenCalledOnce()
+    })
+    expect(onEnded).not.toHaveBeenCalled()
+
+    platform.refreshReview.mockResolvedValue(ended('MERGED'))
+    rerender(
+      <Harness onEnded={onEnded} item={item({ id: 1, details: details({ fetchedAt: '2026-06-15T12:00:00Z' }) })} />,
+    )
+
+    await waitFor(() => {
+      expect(onEnded).toHaveBeenCalledExactlyOnceWith(merged)
+    })
+    expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+  })
+
   it('shows a read that failed on an open pull request as its error, and hands nothing on', async () => {
     platform.refreshReview.mockRejectedValue(new Error('GitHub is not answering.'))
     platform.openReview.mockResolvedValue(
@@ -2597,10 +2618,17 @@ describe('ReviewSheet that stays current', () => {
     moved: true,
   })
 
-  it('takes the inbox’s newer checks from the card’s change, asking GitHub nothing', async () => {
-    platform.refreshReview.mockResolvedValue(
-      review({ checks: [running], counts: { ...review().counts, state: 'PENDING', passed: 0, pending: 1 } }),
-    )
+  it('takes the inbox’s newer checks from the card’s change, then reads GitHub once', async () => {
+    let answer: (r: Review) => void = () => undefined
+    platform.refreshReview
+      .mockResolvedValueOnce(
+        review({ checks: [running], counts: { ...review().counts, state: 'PENDING', passed: 0, pending: 1 } }),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          answer = resolve
+        }),
+      )
     platform.rebuildReview.mockResolvedValue(passed)
     const { rerender } = render(<Harness item={card('2026-06-15T11:59:00Z')} />)
 
@@ -2609,10 +2637,40 @@ describe('ReviewSheet that stays current', () => {
 
     rerender(<Harness item={card('2026-06-15T12:00:00Z')} />)
 
-    expect(await screen.findByText(/^Checks as read/)).toHaveTextContent('Checks as read 1h ago')
+    // Built again from the card, with no request: its newer count, and the list it moved past
+    // faded while the one read it asks for runs.
+    expect(await screen.findByText(/^Reading checks…/)).toHaveTextContent('Reading checks… · read 1h ago')
     expect(screen.getByText('1 check').tagName).toBe('SUMMARY')
     expect(platform.rebuildReview).toHaveBeenCalledExactlyOnceWith(1)
+    expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+
+    act(() => {
+      answer(review())
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText(/^Reading checks…/)).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('1 check').tagName).toBe('SUMMARY')
+    expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+    expect(platform.readReviewAgain).not.toHaveBeenCalled()
+  })
+
+  it('takes a card change that moves no check with no request at all', async () => {
+    platform.rebuildReview.mockResolvedValue(
+      review({ title: 'Add the widget cache, retitled', counts: { ...review().counts, newer: true } }),
+    )
+    const { rerender } = render(<Harness item={card('2026-06-15T11:59:00Z')} />)
+
+    await waitFor(() => {
+      expect(platform.refreshReview).toHaveBeenCalledOnce()
+    })
+    rerender(<Harness item={card('2026-06-15T12:00:00Z')} />)
+
+    expect(await screen.findByText('Add the widget cache, retitled')).toBeInTheDocument()
+    expect(platform.rebuildReview).toHaveBeenCalledOnce()
     expect(platform.refreshReview).toHaveBeenCalledOnce()
+    expect(screen.queryByText(/as read|^Reading/)).not.toBeInTheDocument()
   })
 
   it('marks what an older copy holds as being read until GitHub answers', async () => {
@@ -2629,16 +2687,16 @@ describe('ReviewSheet that stays current', () => {
     expect(screen.getByText('1 check').tagName).toBe('SUMMARY')
     expect(screen.getByRole('list', { name: 'Checks' }).closest('.opacity-60')).not.toBeNull()
     expect(screen.getByText(/^Reading held runs…/)).toHaveTextContent('Reading held runs… · read 1h ago')
-    expect(screen.getByText(/^Reading the conversation…/)).toBeInTheDocument()
+    // The conversation shows in its tab, which React renders behind the one shown.
+    expect(await screen.findByText(/^Reading the conversation…/)).toBeInTheDocument()
 
     act(() => {
       answer(review())
     })
 
     await waitFor(() => {
-      expect(screen.queryByText(/^Reading checks…/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/as read|^Reading/)).not.toBeInTheDocument()
     })
-    expect(screen.queryByText(/as read|^Reading/)).not.toBeInTheDocument()
     expect(screen.getByRole('list', { name: 'Checks' })).not.toHaveClass('opacity-60')
     expect(screen.getByRole('list', { name: 'Checks' }).parentElement).not.toHaveClass('opacity-60')
   })
@@ -2650,6 +2708,6 @@ describe('ReviewSheet that stays current', () => {
 
     expect(await screen.findByText('GitHub is not answering.')).toBeInTheDocument()
     expect(screen.getByText(/^Checks as read/)).toHaveTextContent('Checks as read 1h ago')
-    expect(screen.getByText(/^The conversation as read/)).toBeInTheDocument()
+    expect(await screen.findByText(/^The conversation as read/)).toHaveTextContent('The conversation as read 1h ago')
   })
 })

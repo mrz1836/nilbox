@@ -1261,7 +1261,8 @@ head count for nothing. The checks list, the held runs (`Unrun`), and the conver
 sheet read them, and `Review.Moved` says the card's head, checks, or held runs moved since:
 the cache keeps the read's own rollup counts beside the list (`pullContext.Counts`, the
 `github.Checks` the card took from the same answer, nil in an older build's cache), and `Moved` is
-any difference from the card's. A sheet never read shows the card's counts too, with its
+any difference from the card's, which the window answers with one `Refresh` (see frontend). A
+sheet never read shows the card's counts too, with its
 readiness still waiting for the read. `recent` also wants the card's checks state, counts, and
 held runs to match the cache's (`contextCounts.matches`): a check that ends moves no activity, so
 a sheet reopened within 20 seconds of its read, after the checks follower rewrote the card, reads
@@ -4545,7 +4546,13 @@ than what the sheet shows (the card read the pull request since, `counts.newer`)
 `oldAfter` (five minutes): faded under **Reading checks… · read 14m ago** while a read is under
 way, and **Checks as read 14m ago** after one failed, or while the card's checks moved past the
 list (`moved`); `ReadAge` (`review/ReviewLoading.tsx`) says it, and the summary counts the card's
-checks (`countsSummary`) while they are newer than the list.
+checks (`countsSummary`) while they are newer than the list. A rebuild whose answer says `moved`
+asks GitHub once, as `Refresh`, in the round after it, `readFloor` (20 seconds, the backend's
+`refreshAfter`) after the sheet's last read at the soonest, on a timer the effect clears when the
+sheet closes or steps on, and not while the reads after an approval run. Only a rebuild's answer
+asks, never a read's: a read that fails is not made again until the card moves on, and the card's
+changes during a read (`useQuery` cancels a request whose inputs change, so none is made while
+one is under way) build the sheet once after it, which asks for one more read at most.
 Its `density` (Settings → Cards' Density, `cards.density`) picks the card: `ItemRow` reads
 it and, compact, renders `card/CompactRow` from the same step, session, and clock reads, so
 one set of rules drives both. A compact card is one 2.375rem grid row (`data-density` gives

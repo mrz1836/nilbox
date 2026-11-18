@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { at } from '../test/clock'
 import { details, heldRun, item, review, reviewFile } from '../test/fixtures'
 import { platform } from '../test/platform'
 import {
@@ -9,6 +10,7 @@ import {
   cardKey,
   listMark,
   oldAfter,
+  readFloor,
   runsStarted,
   unknownRetries,
   unknownWait,
@@ -307,6 +309,125 @@ describe('useReview', () => {
     })
     expect(platform.refreshReview).toHaveBeenCalledOnce()
     expect(platform.readReviewAgain).not.toHaveBeenCalled()
+  })
+
+  describe('when the card’s checks move', () => {
+    // moved is #7 rebuilt from a card whose checks moved since the sheet read it, at 11:59.
+    const moved = review({ counts: { ...review().counts, passed: 2, newer: true }, moved: true })
+    // still is #7 rebuilt from a card the inbox read again with nothing moved.
+    const still = review({ counts: { ...review().counts, newer: true } })
+
+    // open opens #7 on a clock standing at now, its card at 'a', and lets its first read
+    // answer.
+    async function open(now = new Date('2026-06-15T12:00:00Z')) {
+      const view = renderHook(({ card }) => useReview(1, '', card), {
+        initialProps: { card: 'a' },
+        wrapper: at(now),
+      })
+
+      await settle()
+      expect(platform.refreshReview).toHaveBeenCalledOnce()
+
+      return view
+    }
+
+    it('reads GitHub once after the rebuild, and never for a card that moved nothing', async () => {
+      vi.useFakeTimers()
+      platform.rebuildReview.mockResolvedValueOnce(still).mockResolvedValueOnce(moved).mockResolvedValue(still)
+      const { result, rerender } = await open()
+
+      rerender({ card: 'b' })
+      await settle()
+      expect(platform.rebuildReview).toHaveBeenCalledOnce()
+      expect(platform.refreshReview, 'nothing moved: no request').toHaveBeenCalledOnce()
+
+      rerender({ card: 'c' })
+      await settle()
+      expect(platform.rebuildReview).toHaveBeenCalledTimes(2)
+      expect(platform.refreshReview, 'the checks moved: one read').toHaveBeenCalledTimes(2)
+      expect(platform.readReviewAgain).not.toHaveBeenCalled()
+
+      await wait(10 * readFloor)
+      expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+      expect(result.current.review?.moved).toBe(false)
+    })
+
+    it('reads once more at most for however many card changes came during a read', async () => {
+      vi.useFakeTimers()
+      let answer: (r: ReturnType<typeof review>) => void = () => undefined
+      platform.rebuildReview.mockResolvedValueOnce(moved).mockResolvedValueOnce(moved).mockResolvedValue(still)
+      const { rerender } = await open()
+
+      platform.refreshReview.mockReturnValueOnce(
+        new Promise((resolve) => {
+          answer = resolve
+        }),
+      )
+      rerender({ card: 'b' })
+      await settle()
+      expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+
+      for (const card of ['c', 'd', 'e', 'f']) {
+        rerender({ card })
+        await settle()
+      }
+      expect(platform.rebuildReview, 'a read under way is never cut short').toHaveBeenCalledOnce()
+      expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+
+      await act(async () => {
+        answer(review())
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      await settle()
+      expect(platform.rebuildReview, 'the changes build it once').toHaveBeenCalledTimes(2)
+      expect(platform.refreshReview, 'and that asks once').toHaveBeenCalledTimes(3)
+
+      await wait(10 * readFloor)
+      expect(platform.rebuildReview).toHaveBeenCalledTimes(2)
+      expect(platform.refreshReview).toHaveBeenCalledTimes(3)
+    })
+
+    it('waits until 20 seconds after the last read, and a closed sheet never reads', async () => {
+      vi.useFakeTimers()
+      platform.rebuildReview.mockResolvedValue(moved)
+      const { rerender, unmount } = await open(new Date('2026-06-15T11:59:05Z'))
+
+      rerender({ card: 'b' })
+      await settle()
+      expect(platform.rebuildReview).toHaveBeenCalledOnce()
+
+      await wait(readFloor - 5000 - 1)
+      expect(platform.refreshReview, 'read at 11:59:00, 5 seconds before').toHaveBeenCalledOnce()
+      await wait(1)
+      expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+
+      rerender({ card: 'c' })
+      await settle()
+      expect(platform.rebuildReview).toHaveBeenCalledTimes(2)
+      unmount()
+
+      await wait(10 * readFloor)
+      expect(platform.refreshReview, 'the read waiting went with the sheet').toHaveBeenCalledTimes(2)
+    })
+
+    it('makes no read again after one that failed, until the card moves on', async () => {
+      vi.useFakeTimers()
+      platform.rebuildReview.mockResolvedValue(moved)
+      const { result, rerender } = await open()
+
+      platform.refreshReview.mockRejectedValueOnce(new Error('GitHub is down'))
+      rerender({ card: 'b' })
+      await settle()
+      expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+      expect(result.current.error).toBe('GitHub is down')
+
+      await wait(10 * readFloor)
+      expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+
+      rerender({ card: 'c' })
+      await settle()
+      expect(platform.refreshReview).toHaveBeenCalledTimes(3)
+    })
   })
 
   it('keys the card on what the inbox stores of it', () => {
