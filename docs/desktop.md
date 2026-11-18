@@ -1864,17 +1864,19 @@ Cards** can make every card one line instead (**Compact cards**, below).
   **✦ Work on it** on an issue. It carries its lock when the item
   [launches read-only](#outside-contributors), and the arrow for the launch options; or, once
   a session runs, its live state (see [Following a session](#following-a-session)).
-- **Waiting on the author.** A pull request someone else opened that you requested changes on,
-  assigned to you or asked of you, is the author's move until they push: its story says
-  **Waiting on the author · you requested changes**, then its worst trouble (**you requested
-  changes, conflicts with its base**), in grey, with a quiet **Open** and the agent's plain
-  button. Once the author pushes, it asks for your **Re-review**, assigned to you or not.
+- **Waiting on the author.** A pull request someone else opened that you requested changes on
+  is the author's move until they push: its story says **Waiting on the author · you requested
+  changes**, then its worst trouble (**you requested changes, conflicts with its base**), in
+  grey, with a quiet **Open** and the agent's plain button. Once the author pushes, it asks for
+  your **Re-review**, assigned to you or not.
 - **Approved by you.** A pull request someone else opened that you approved has nothing left
   for you to review: it says **Approved by you**, then its worst trouble (**Approved by you · 1
-  check still running**), in grey, with a quiet **Open**, until it is ready to merge, when one
-  assigned to you reads **Approved · ready to merge** with **Merge**. Workflow runs held for
-  your approval on it come first, in amber: **1 run awaits your approval · you approved**, with
-  **Open**.
+  check still running**), or **Merges when green · squash** while auto-merge is on, in grey,
+  with a quiet **Open**, until it is ready to merge, when one assigned to you reads **Approved ·
+  ready to merge** with **Merge**. Workflow runs held for your approval on it come first, in
+  amber: **1 run awaits your approval · you approved**, with **Open**.
+- **Asked again.** Either way, once your review is requested again it is an ordinary review
+  request: **Your review** (or **Re-review** after a push).
 
 **Hover a card** for its triage over the track: **Show details**, refresh it, snooze it,
 dismiss it, pin or unpin it, and the menu of everything else. They stay while the card is busy

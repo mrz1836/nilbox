@@ -178,8 +178,9 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   const { passed, failed, pending } = d.checks
   const ran = passed + failed + pending
   const wake = backFromSnooze ? wakeText(item) : ''
-  // approvedByYou is someone else's pull request the user's latest verdict approved.
-  const approvedByYou = theirs && d.viewerVerdict === 'approved'
+  // approvedByYou is someone else's pull request the user's latest verdict approved, with
+  // no review request of the user's open: a new request hands it back to the review rules.
+  const approvedByYou = theirs && !asked && d.viewerVerdict === 'approved'
   // ready is a pull request ready to merge: no draft, approved, its checks passed (or it
   // has none), no conflicts, and no auto-merge waiting to do it.
   const ready =
@@ -221,8 +222,9 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   }
 
   // After 6. The user asked the author of someone else's pull request for changes, and
-  // the author hasn't pushed since: nothing is the user's to do until they do.
-  if (theirs && d.viewerVerdict === 'changes' && !d.pushedSinceReview) {
+  // the author hasn't pushed since nor asked for the user's review again: nothing is the
+  // user's to do until they do.
+  if (theirs && !asked && d.viewerVerdict === 'changes' && !d.pushedSinceReview) {
     const detail = worst === '' ? 'you requested changes' : `you requested changes, ${worst}`
 
     return step('awaiting_author', 'waiting', story('Waiting on the author', detail, 'dot'), 'open', true)
@@ -238,9 +240,15 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   }
 
   // Ahead of 7 to 10. The user approved someone else's pull request, which isn't ready to
-  // merge yet: there is nothing left to review. Once it is ready, rule 15 offers the merge.
+  // merge yet: there is nothing left to review. With auto-merge on, it says so, as rule 16
+  // does. Once it is ready, rule 15 offers the merge.
   if (approvedByYou && !ready) {
-    return step('approved_by_you', 'waiting', story('Approved by you', worst, 'dot'), 'open', true)
+    const s =
+      d.autoMerge !== ''
+        ? woken('Merges when green', mergeMethodText(d.autoMerge), 'bolt')
+        : story('Approved by you', worst, 'dot')
+
+    return step('approved_by_you', 'waiting', s, 'open', true)
   }
 
   // 7 to 10. The user's own pull request, or one assigned to them.

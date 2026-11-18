@@ -324,16 +324,9 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     },
   ],
   [
-    '6 runs held on a review asked of the user, who approved it',
+    '6 runs held on a review asked of the user again, after they approved it',
     input({ item: asked({ author: 'contributor-a' }, { viewerVerdict: 'approved', ...held(1) }) }),
-    {
-      rule: 'runs_held',
-      edge: 'urgent',
-      text: '1 run awaits your approval',
-      detail: 'you approved',
-      icon: 'clock',
-      primary: 'review',
-    },
+    { rule: 'runs_held', edge: 'urgent', text: '1 run awaits your approval', icon: 'clock', primary: 'review' },
   ],
 
   // After 6: the user requested changes on someone else's pull request, not pushed to since.
@@ -374,16 +367,9 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     },
   ],
   [
-    'after 6 waiting on the author of a review asked of the user',
+    'a review asked of the user again without a push, after they requested changes',
     input({ item: asked({ author: 'contributor-a' }, { ...changes, viewerVerdict: 'changes' }) }),
-    {
-      rule: 'awaiting_author',
-      edge: 'waiting',
-      text: 'Waiting on the author',
-      detail: 'you requested changes',
-      primary: 'open',
-      quiet: true,
-    },
+    { rule: 'review', edge: 'yours', text: 'Your review', primary: 'review' },
   ],
 
   // 11, ahead of 7 to 10: the author pushed since the user requested changes.
@@ -991,21 +977,40 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     { rule: 'approved_by_you', edge: 'waiting', text: 'Approved by you', primary: 'open', quiet: true },
   ],
   [
-    'approved by you over 13',
+    'approved, then asked again, not ready to merge',
     input({ item: asked({ author: 'contributor-a' }, { viewerVerdict: 'approved', ...failing }) }),
+    { rule: 'review', edge: 'yours', text: 'Your review', detail: 'checks failing', primary: 'review' },
+  ],
+  [
+    'approved, then asked again, ready to merge',
+    input({ item: asked({ author: 'contributor-a', assigned: true }, { viewerVerdict: 'approved' }) }),
+    { rule: 'review', edge: 'yours', text: 'Your review', primary: 'review' },
+  ],
+  [
+    'approved by you, with auto-merge on',
+    input({ item: approved({}, { autoMerge: 'SQUASH' }) }),
     {
       rule: 'approved_by_you',
       edge: 'waiting',
-      text: 'Approved by you',
-      detail: 'checks failing',
+      text: 'Merges when green',
+      detail: 'squash',
+      icon: 'bolt',
       primary: 'open',
       quiet: true,
     },
   ],
   [
-    'approved by you over 16',
-    input({ item: approved({}, { autoMerge: 'SQUASH' }) }),
-    { rule: 'approved_by_you', edge: 'waiting', text: 'Approved by you', primary: 'open', quiet: true },
+    'approved by you, with auto-merge on, back from snooze',
+    input({ item: approved({}, { ...running, autoMerge: 'REBASE' }), backFromSnooze: true }),
+    {
+      rule: 'approved_by_you',
+      edge: 'waiting',
+      text: 'Merges when green',
+      detail: 'rebase · back from snooze',
+      icon: 'clock',
+      primary: 'open',
+      quiet: true,
+    },
   ],
   [
     '15 over approved by you, once it is ready to merge',
