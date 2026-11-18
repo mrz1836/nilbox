@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -24,15 +25,20 @@ const (
 	fakeGrandchildEnv = "FAKE_TOOL_GRANDCHILD"
 )
 
-// FakeRun is what a fake tool does when it runs, in this order: ignore signals, start a
-// grandchild, report its stdin, open descriptors, or environment, change Files, write
-// Stdout and Stderr, sleep (until WaitFor appears, when set), and exit with Exit. A
-// recorded fixture's {"stdout", "stderr", "exit"} reads straight into it (see
+// FakeRun is what a fake tool does when it runs, in this order: check its arguments,
+// ignore signals, start a grandchild, report its stdin, open descriptors, or environment,
+// change Files, write Stdout and Stderr, sleep (until WaitFor appears, when set), and exit
+// with Exit. A recorded fixture's {"stdout", "stderr", "exit"} reads straight into it (see
 // LoadFakeRun).
 type FakeRun struct {
 	Stdout string `json:"stdout"`
 	Stderr string `json:"stderr"`
 	Exit   int    `json:"exit"`
+
+	// WantArgs, when set, are the arguments it must be started with. Started with any
+	// others, it does nothing else: it names both on stderr and exits with status 2, as a
+	// tool given a flag it doesn't know does.
+	WantArgs []string `json:"wantArgs,omitempty"`
 
 	// Files are changed in order before it writes, as a tool that writes, moves, or
 	// removes files does: go-pre-commit installing a hook, or fixing a file.
@@ -195,8 +201,18 @@ func fakeToolEnv(name string) string {
 	}, name)
 }
 
+// wrongArgsExit is the status a fake tool exits with when it was started with other
+// arguments than its run's WantArgs.
+const wrongArgsExit = 2
+
 // play does what run says and returns the exit status.
 func play(run FakeRun) int {
+	if run.WantArgs != nil && !slices.Equal(os.Args[1:], run.WantArgs) {
+		_, _ = fmt.Fprintf(os.Stderr, "fake tool: started with %q, want %q\n", os.Args[1:], run.WantArgs)
+
+		return wrongArgsExit
+	}
+
 	if err := prepare(run); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "fake tool:", err)
 

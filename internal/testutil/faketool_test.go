@@ -49,6 +49,23 @@ func TestFakeToolReplaysARun(t *testing.T) {
 	assert.Equal(t, 3, code)
 }
 
+func TestFakeToolChecksItsArguments(t *testing.T) {
+	t.Parallel()
+
+	path, env := testutil.FakeTool(t, "app", testutil.FakeRun{Stdout: "done\n", WantArgs: []string{"ignored", "--args"}})
+
+	stdout, _, code := runFake(t, path, env)
+	assert.Zero(t, code)
+	assert.Equal(t, "done\n", stdout, "started with the arguments it wants, it plays its run")
+
+	path, env = testutil.FakeTool(t, "app", testutil.FakeRun{Stdout: "done\n", WantArgs: []string{"--measure-startup"}})
+
+	stdout, stderr, code := runFake(t, path, env)
+	assert.Equal(t, 2, code)
+	assert.Empty(t, stdout, "started with others, it does nothing else")
+	assert.Equal(t, "fake tool: started with [\"ignored\" \"--args\"], want [\"--measure-startup\"]\n", stderr)
+}
+
 func TestFakeToolSleepsBeforeExiting(t *testing.T) {
 	t.Parallel()
 
