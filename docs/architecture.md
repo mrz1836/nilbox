@@ -4380,8 +4380,8 @@ from its part's measured box against the sample's, measured again whenever the s
 changes size (`ResizeObserver`), and hidden until its part is laid out; then the legend.
 Both variants end with the key (its track symbols take `card/StateTrack`'s
 `trackStepClass`). `card/CardGuideDialog` shows the full guide in a modal; App owns whether it is
-open, loads it on its first opening, so the inbox's chunk doesn't grow, and hands
-`onShowCardGuide` to `InboxView` (How to read a card, beside the last-refreshed time) and
-`SettingsView` (Settings → Cards' row). Setup's Finish step shows the compact guide, and App
-provides `CardPrefsContext` around the setup too. `useModalDialog`'s Tab wrap passes over
-the controls of an inert part of a dialog, which take no focus.
+open, loads it on its first opening, so the inbox's chunk holds none of the guide, and
+hands `onShowCardGuide` to `InboxView` (How to read a card, beside the last-refreshed time)
+and `SettingsView` (Settings → Cards' row). Setup's Finish step shows the compact guide, and
+App provides `CardPrefsContext` around the setup too. `useModalDialog`'s Tab wrap passes
+over the controls of an inert part of a dialog, which take no focus.
