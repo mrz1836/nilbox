@@ -42,8 +42,9 @@ export default defineConfig({
     // the window loads before its first paint; the other pages are chunks of their own,
     // loaded on their first visit (App.tsx), and so are the review and issue sheets,
     // loaded once the inbox has painted (InboxView.tsx). The limit stays as a tripwire for
-    // unexpected growth of any chunk.
-    chunkSizeWarningLimit: 700,
+    // unexpected growth of any chunk, set above the inbox's, about 706 kB since the inbox
+    // cards redesign.
+    chunkSizeWarningLimit: 750,
     rolldownOptions: {
       checks: {
         // Rolldown warns when plugins take most of a build. Here one always does, by
