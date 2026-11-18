@@ -91,6 +91,7 @@
     ],
     "cardAvatars": true,
     "cardDensity": "comfortable",
+    "cardUnread": true,
     "integrations": {
       "switches": {
         "go-pre-commit": "auto",

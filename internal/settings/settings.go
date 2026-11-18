@@ -270,6 +270,10 @@ type Settings struct {
 	// CardDensity is how much room each of the inbox's cards takes (see KeyCardDensity).
 	CardDensity CardDensity `json:"cardDensity"`
 
+	// CardUnread shows a dot on the inbox's cards with activity the user hasn't seen, and
+	// Mark as read and Mark as unread (see KeyCardUnread).
+	CardUnread bool `json:"cardUnread"`
+
 	// MergeMethod is how the review sheet merges a pull request.
 	MergeMethod MergeMethod `json:"mergeMethod"`
 
@@ -806,6 +810,7 @@ func fromStored(stored map[string]string) Settings {
 		DefaultHiddenLabels:  DefaultHiddenLabels(),
 		CardAvatars:          prefval.Bool(stored[KeyCardAvatars], DefaultCardAvatars),
 		CardDensity:          cardDensities().decode(stored[KeyCardDensity]),
+		CardUnread:           prefval.Bool(stored[KeyCardUnread], DefaultCardUnread),
 		MergeMethod:          mergeMethods().decode(stored[KeyMergeMethod]),
 		Integrations:         integrationprefs.Decode(stored),
 		GitHubNotifications:  threadrules.Decode(stored),
@@ -934,7 +939,7 @@ func settingKeys() []string {
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
 		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus, updateprefs.KeyMode,
-		KeyHiddenLabels, KeyCardAvatars, KeyCardDensity,
+		KeyHiddenLabels, KeyCardAvatars, KeyCardDensity, KeyCardUnread,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),
 		append(append(append(integrationprefs.Keys(), threadrules.Keys()...), statusprefs.Keys()...),
 			autopilotprefs.Keys()...)...)...)

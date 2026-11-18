@@ -124,6 +124,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetCardDensity": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetCardDensity(ctx, settings.CardCompact)
 		},
+		"settings.Service.SetCardUnread": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetCardUnread(ctx, false)
+		},
 		"settings.Service.SetTerminal": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetTerminal(ctx, settings.TerminalApp)
 		},

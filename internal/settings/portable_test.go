@@ -110,6 +110,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetHiddenLabels(ctx, []string{"size/*", "wontfix"}) },
 		func() (Settings, error) { return svc.SetCardAvatars(ctx, false) },
 		func() (Settings, error) { return svc.SetCardDensity(ctx, CardCompact) },
+		func() (Settings, error) { return svc.SetCardUnread(ctx, false) },
 		func() (Settings, error) {
 			return svc.SetIntegrationEnabled(ctx, integrationprefs.Scripts, integrationprefs.SwitchOff)
 		},
