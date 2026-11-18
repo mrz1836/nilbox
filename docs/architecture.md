@@ -4331,3 +4331,21 @@ Show details, and the menu, shown by opacity alone so the slot's dialogs keep th
 The stretched toggle, the peek, the outcome, and the busy note are the comfortable card's,
 and `card/CardParts` holds the parts both share (the edge's colors, `FilterText`,
 `PinGlyph`, `TriageTag`). The render check runs in both densities with the same bounds.
+Its `unread` (Settings → Cards' Unread dots, `cards.unread`) shows `card/CardParts`'
+`UnreadDot` while the item's `unread` holds, first on a comfortable card's first line and last
+in a compact card's title cell, and offers Mark as read or Mark as unread in `ItemMenu`'s Inbox
+actions and `CardPeek`'s action bar, which read `CardPrefsContext` themselves; off, it gates
+only what shows, never a mark. The marks are `useInbox`'s `markRead(ids)` and `markUnread(id)`
+(the bound `MarkSeen` and `MarkUnseen`), each shown at once as a `TriageChange` of `unread` and
+reverted on an error, as triage is. A mark emits no `InboxUpdated`, so each reads the inbox back
+once it is stored, numbered then, so no read asked before it shows the item as it was;
+`applyTriage` returns the snapshot itself for a change that changes nothing, so marking a card
+already read renders nothing. `marks` counts the stored marks, and a routine's Watching list
+reads its rows again as it changes. The window, not the Actor, marks what the user saw and did:
+`InboxView` and `useSheetHost`, as a sheet moves from one item to another (opening, stepping,
+following a link, closing), mark the item it left and the one it opened in one call
+(`useItemActions`' `seen`, which writes a failure to the console, since the user asked for
+none of it); `openOnGitHub` (`TriageControls`) marks a card opened on GitHub from its title's
+⌘-click, its ↗, the menu's Open on GitHub, or the peek's GitHub; and `useItemActions` marks a
+card once Unassign me or Remove me as reviewer succeeds. Mark as read, Mark as unread, and the
+opens on GitHub say a failure in a toast.
