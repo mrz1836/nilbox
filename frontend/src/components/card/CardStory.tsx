@@ -108,7 +108,10 @@ export function CardStory({ story, edge, children, chip = false }: CardStoryProp
   }
 
   return (
-    <span className={`inline-flex shrink-0 items-center gap-1.5 font-semibold whitespace-nowrap ${edgeText[edge]}`}>
+    <span
+      data-guide="story"
+      className={`inline-flex shrink-0 items-center gap-1.5 font-semibold whitespace-nowrap ${edgeText[edge]}`}
+    >
       <Mark icon={story.icon} edge={edge} />
       {story.text}
       {story.detail !== '' && <span className="font-medium text-muted">{` · ${story.detail}`}</span>}

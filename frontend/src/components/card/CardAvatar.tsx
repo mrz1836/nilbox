@@ -85,7 +85,7 @@ export function CardAvatar({ item }: { item: InboxItem }) {
   const ring = item.authored ? 'ring-2 ring-accent' : ''
 
   return (
-    <span className="relative inline-flex size-7 shrink-0">
+    <span data-guide="avatar" className="relative inline-flex size-7 shrink-0">
       <Picture src={picture} className={`size-7 ${ring}`} shape={bot ? 'square' : 'circle'}>
         {bot ? (
           <span

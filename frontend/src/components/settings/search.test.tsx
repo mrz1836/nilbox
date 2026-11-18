@@ -46,6 +46,7 @@ async function shownLabels(section: SettingsSection, stored = settings()): Promi
       onClose={vi.fn()}
       onRunSetup={() => Promise.resolve({ ok: true, data: undefined })}
       update={updateOf(updateStatus())}
+      onShowCardGuide={vi.fn()}
     />,
   )
 

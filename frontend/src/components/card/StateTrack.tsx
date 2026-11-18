@@ -9,7 +9,7 @@ import { StatusDot } from '../StatusDot'
 // Look is how a step's circle is drawn: in a color with a faint tint of it behind (ok,
 // bad, rereview, held), a still ring (waiting, dashed; none, dotted), a dashed one in the
 // success color (auto, for auto-merge), or a warning ring with a moving dot (running).
-type Look = 'ok' | 'bad' | 'rereview' | 'held' | 'running' | 'waiting' | 'none' | 'auto'
+export type Look = 'ok' | 'bad' | 'rereview' | 'held' | 'running' | 'waiting' | 'none' | 'auto'
 
 // looks are each look's circle, spelled out in full so Tailwind finds them. A tint is mixed
 // over the surface so the line joining the steps never shows through it.
@@ -25,6 +25,9 @@ const looks: Readonly<Record<Look, string>> = {
 }
 
 const iconClass = 'size-2.5 [stroke-width:2.4]'
+
+// stepClass is a step's circle, before its look.
+const stepClass = 'relative grid size-4.75 shrink-0 place-items-center rounded-full border-[1.5px]'
 
 // TrackStep is one step of the track: how it looks, what it shows inside (nothing for a
 // ring), and the sentence that says it. state names what it stands for, which data-state
@@ -171,7 +174,7 @@ export function StateTrack({ item }: { item: InboxItem }) {
   const { shown, sentence } = trackOf(item)
 
   return (
-    <div className="relative flex items-center gap-2.75">
+    <div data-guide="track" className="relative flex items-center gap-2.75">
       <span aria-hidden="true" className="absolute inset-x-2.5 top-1/2 h-px -translate-y-1/2 bg-border" />
       {shown.map((step, i) => (
         <span
@@ -179,7 +182,7 @@ export function StateTrack({ item }: { item: InboxItem }) {
           aria-hidden="true"
           data-step={names[i]}
           data-state={step.state}
-          className={`relative grid size-4.75 shrink-0 place-items-center rounded-full border-[1.5px] ${looks[step.look]}`}
+          className={`${stepClass} ${looks[step.look]}`}
         >
           {step.icon}
         </span>
@@ -187,6 +190,12 @@ export function StateTrack({ item }: { item: InboxItem }) {
       <span className="sr-only">{sentence}</span>
     </div>
   )
+}
+
+// trackStepClass is a step's circle in a look, as the card guide's key draws the track's
+// symbols.
+export function trackStepClass(look: Look): string {
+  return `${stepClass} ${looks[look]}`
 }
 
 // miniLooks are each look's dot in a compact card's track, spelled out in full so Tailwind

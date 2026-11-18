@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, type CSSProperties, type RefObject } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, type CSSProperties, type RefObject } from 'react'
 
 import { brand, palettes } from '../../generated/brand'
 import { prefersReducedMotion } from '../../lib/motion'
@@ -17,8 +17,9 @@ import type {
   SetupStep,
   TerminalChoice,
 } from '../../platform'
+import { CardGuide } from '../card/CardGuide'
 import { Confetti, useConfetti } from '../Confetti'
-import { buttonClass, primaryButtonClass } from '../controls'
+import { buttonClass, captionClass, primaryButtonClass } from '../controls'
 import { ChevronRightIcon, InboxIcon, TrophyIcon } from '../icons'
 import { Spinner } from '../Spinner'
 import type { SetupInbox } from './SetupView'
@@ -128,8 +129,9 @@ function InboxPreview({ inbox, connected }: { inbox: SetupInbox; connected: bool
 
 // FinishStep ends the setup: an achievement, confetti thrown from the heading, a log in a
 // terminal that checks off each part of the setup as go test would, with a Fix beside what
-// needs attention, what the inbox holds by now, a few tips, and Open my inbox. With
-// reduced motion nothing moves and no confetti flies.
+// needs attention, what the inbox holds by now, a few tips, how to read a card (the
+// compact card guide), and Open my inbox. With reduced motion nothing moves and no
+// confetti flies.
 export function FinishStep({
   headingId,
   headingRef,
@@ -148,6 +150,7 @@ export function FinishStep({
   autopilot = false,
   onTemplate,
 }: FinishStepProps) {
+  const guideId = useId()
   const { bursts, fire, land } = useConfetti()
   const terminal = terminals?.find((t) => t.id === settings?.terminal)
   const lines = finishLog({
@@ -263,6 +266,12 @@ export function FinishStep({
           </li>
           <li>Open in {agentName} starts a session from any card</li>
         </ul>
+        <section aria-labelledby={guideId} className="mt-2 w-full text-left">
+          <h3 id={guideId} className={`${captionClass} mb-2`}>
+            How to read a card
+          </h3>
+          <CardGuide variant="compact" />
+        </section>
         <button type="button" onClick={onDone} className={`${primaryButtonClass} mt-2 px-5 py-2 text-base`}>
           Open my inbox
           <ChevronRightIcon className="size-4" />

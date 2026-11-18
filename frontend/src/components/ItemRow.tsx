@@ -267,7 +267,7 @@ function Byline({
   ].filter((reason) => reason !== '')
 
   return (
-    <span className="relative z-10 min-w-0 truncate">
+    <span data-guide="byline" className="relative z-10 min-w-0 truncate">
       <span aria-hidden="true" className="mr-2 opacity-60">
         ·
       </span>
@@ -489,6 +489,7 @@ export const ItemRow = memo(function ItemRow({
       <span
         aria-hidden="true"
         data-edge={step.edge}
+        data-guide="edge"
         className={`-my-0.5 self-stretch rounded-r-[0.1875rem] ${edgeBar[step.edge]}`}
       />
       <CardAvatar item={item} />
@@ -499,6 +500,7 @@ export const ItemRow = memo(function ItemRow({
           {item.isDraft && <span className="shrink-0 text-xs font-semibold text-muted">Draft</span>}
           <button
             type="button"
+            data-guide="title"
             title={
               opens
                 ? `${item.title}\n${item.kind === 'pr' ? 'Review' : 'Read'} it here; ⌘-click opens GitHub`

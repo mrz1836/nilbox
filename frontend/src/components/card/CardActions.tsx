@@ -333,7 +333,10 @@ export function CardActions({
 
   return (
     <>
-      <div className="relative z-10 flex min-w-0 items-center justify-end gap-1.5 has-[[aria-expanded=true]]:z-20 @max-3xl:[&:has([data-pill-label])_[data-pill-label]]:sr-only">
+      <div
+        data-guide="actions"
+        className="relative z-10 flex min-w-0 items-center justify-end gap-1.5 has-[[aria-expanded=true]]:z-20 @max-3xl:[&:has([data-pill-label])_[data-pill-label]]:sr-only"
+      >
         <PrimaryVerb
           item={item}
           tab={tab}

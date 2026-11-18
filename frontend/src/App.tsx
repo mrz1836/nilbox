@@ -129,6 +129,11 @@ const WorktreesView = lazy(() => import('./components/WorktreesView').then((m) =
 // The first-run setup loads only when it shows, so a window opening on the inbox never
 // pays for it.
 const SetupView = lazy(() => import('./components/setup/SetupView'))
+// The card guide loads on its first opening, from the inbox or Settings → Cards, so the
+// inbox's first paint never pays for it.
+const CardGuideDialog = lazy(() =>
+  import('./components/card/CardGuideDialog').then((m) => ({ default: m.CardGuideDialog })),
+)
 
 // SetupCover stands over the window while the setup's code loads, opaque, so the inbox
 // never shows through before the setup's first frame.
@@ -619,6 +624,13 @@ export function App() {
   })
   // searchRef is the toolbar's field, which ⌘F focuses.
   const searchRef = useRef<HTMLInputElement>(null)
+  // cardGuide says the card guide's dialog is open, which the inbox's "How to read a card"
+  // button and Settings → Cards open.
+  const [cardGuide, setCardGuide] = useState(false)
+
+  const showCardGuide = () => {
+    setCardGuide(true)
+  }
 
   // openInbox shows the inbox at an item the menu bar or a notification asked for. It
   // clears the inbox's filter, so the item is always found.
@@ -1294,6 +1306,7 @@ export function App() {
                             remember(setConversationOrder(order), 'the conversations’ order')
                           }}
                           onItemOpened={notifications.markItemRead}
+                          onShowCardGuide={showCardGuide}
                         />
                       </CardPicturesContext>
                     </Activity>
@@ -1453,12 +1466,22 @@ export function App() {
                             githubThreads={githubThreads}
                             onRunSetup={setup.restart}
                             update={update}
+                            onShowCardGuide={showCardGuide}
                           />
                         </Suspense>
                       </Activity>
                     )}
                   </AutopilotRowsContext>
                 </AutopilotMenuContext>
+                {cardGuide && (
+                  <Suspense fallback={null}>
+                    <CardGuideDialog
+                      onClose={() => {
+                        setCardGuide(false)
+                      }}
+                    />
+                  </Suspense>
+                )}
               </CardPrefsContext>
             </HiddenLabelsContext>
           </main>
@@ -1468,23 +1491,26 @@ export function App() {
         </div>
         {setup.showing && (
           <Suspense fallback={<SetupCover />}>
-            <SetupView
-              control={setupControl}
-              theme={theme.theme}
-              onThemeChange={theme.chooseTheme}
-              settings={config.settings}
-              onSaved={saveSettings}
-              agents={config.agents}
-              profiles={config.profiles}
-              onLaunchChanged={reload}
-              inbox={inbox}
-              integrations={integrations}
-              autopilot={autopilotOn}
-              onTemplate={(key) => {
-                setupControl.finish()
-                openAutopilotWith({ template: key })
-              }}
-            />
+            {/* Its Finish step shows a card, which follows the cards' settings. */}
+            <CardPrefsContext value={cardPrefs}>
+              <SetupView
+                control={setupControl}
+                theme={theme.theme}
+                onThemeChange={theme.chooseTheme}
+                settings={config.settings}
+                onSaved={saveSettings}
+                agents={config.agents}
+                profiles={config.profiles}
+                onLaunchChanged={reload}
+                inbox={inbox}
+                integrations={integrations}
+                autopilot={autopilotOn}
+                onTemplate={(key) => {
+                  setupControl.finish()
+                  openAutopilotWith({ template: key })
+                }}
+              />
+            </CardPrefsContext>
           </Suspense>
         )}
         <QuitDialog />

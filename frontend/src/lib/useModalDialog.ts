@@ -7,10 +7,12 @@ const focusableSelector =
   'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"])'
 
 // nextFocus is the control Tab (or Shift+Tab) should move to so focus wraps around the
-// dialog instead of leaving it, or null when the browser's own move stays inside.
+// dialog instead of leaving it, or null when the browser's own move stays inside. A
+// control in an inert part of the dialog, such as the card guide's sample card, takes no
+// focus, so it is passed over.
 export function nextFocus(dialog: HTMLElement, backwards: boolean): HTMLElement | null {
   const controls = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector)).filter(
-    (el) => el.closest('dialog') === dialog,
+    (el) => el.closest('dialog') === dialog && el.closest('[inert]') === null,
   )
   const first = controls[0]
   const last = controls.at(-1)

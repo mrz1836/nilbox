@@ -362,11 +362,33 @@ describe.each(densities)('App rendering, %s cards', (density) => {
     expect(clear.mounts).toBeLessThanOrEqual(hidden)
     expect(mountedRows()).toBe(unfiltered)
 
+    // Opening the card guide from the inbox's button mounts the guide's sample card alone,
+    // and closing it leaves the inbox as it was.
+    const guide = await measure(async () => {
+      await userEvent.click(screen.getByLabelText('How to read a card'))
+      await screen.findByText('feat(client): accept a caller-supplied connection gater', {}, wait)
+    })
+
+    expect(guide.mounts).toBe(1)
+    await userEvent.keyboard('{Escape}')
+    expect(mountedRows()).toBe(unfiltered)
+
     // Through the compiler, only the changed row renders again, and nothing else does (the
-    // pictures render only the avatars); filtering renders only the rows it marks. As
-    // written, every render of a list renders its rows again, a couple of times a step.
+    // pictures render only the avatars); filtering renders only the rows it marks, and the
+    // card guide only its own sample. As written, every render of a list renders its rows
+    // again, a couple of times a step.
     const most = compiled
-      ? { pictures: 0, update: 1, threads: 0, notifications: 0, collapse: 0, away: 0, back: 0, filter: matches }
+      ? {
+          pictures: 0,
+          update: 1,
+          threads: 0,
+          notifications: 0,
+          collapse: 0,
+          away: 0,
+          back: 0,
+          filter: matches,
+          guide: 1,
+        }
       : {
           pictures: 2 * rows,
           update: 2 * rows,
@@ -376,6 +398,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
           away: 2 * rows,
           back: rows,
           filter: 2 * rows,
+          guide: 2 * rows + 1,
         }
 
     expect(pictures.rows).toBeLessThanOrEqual(most.pictures)
@@ -386,6 +409,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
     expect(away.rows).toBeLessThanOrEqual(most.away)
     expect(back.rows).toBeLessThanOrEqual(most.back)
     expect(filter.rows).toBeLessThanOrEqual(most.filter)
+    expect(guide.rows).toBeLessThanOrEqual(most.guide)
 
     if (compiled) {
       const steps = Object.entries({
@@ -400,6 +424,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
         back,
         filter,
         clear,
+        guide,
       }).map(
         ([step, m]) => `  ${step}: ${String(m.rows)} / ${String(m.mounts)} / ${String(m.commits)} / ${String(m.ms)}`,
       )

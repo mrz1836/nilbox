@@ -97,6 +97,9 @@ export interface SettingsViewProps {
   // update is the app's update, which About shows under the version; without it About
   // leaves it out.
   update?: UpdateControl | undefined
+  // onShowCardGuide opens the card guide, which Cards offers; without it Cards offers no
+  // way to.
+  onShowCardGuide?: (() => void) | undefined
 }
 
 // SettingsView is the settings page: a sidebar of sections and the chosen section's
@@ -129,6 +132,7 @@ export function SettingsView({
   githubThreads,
   onRunSetup,
   update,
+  onShowCardGuide,
 }: SettingsViewProps) {
   const headingId = useId()
   const [chosen, setSection] = useState<SectionId>(initialSection)
@@ -336,7 +340,11 @@ export function SettingsView({
                 {section === 'snoozing' &&
                   (settings === null ? loading : <SnoozingSection settings={settings} onSaved={onSaved} />)}
                 {section === 'cards' &&
-                  (settings === null ? loading : <CardsSection settings={settings} onSaved={onSaved} />)}
+                  (settings === null ? (
+                    loading
+                  ) : (
+                    <CardsSection settings={settings} onSaved={onSaved} onShowCardGuide={onShowCardGuide} />
+                  ))}
                 {section === 'reviewing' &&
                   (settings === null ? loading : <ReviewingSection settings={settings} onSaved={onSaved} />)}
                 {section === 'autopilot' &&

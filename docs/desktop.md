@@ -819,7 +819,7 @@ while focus isn't in a field or on a control; Escape never skips.
 | **Pick your agent** | Each coding agent with its version, or where to get it; its profiles, and the command that signs one in; the default, the profile a launch runs with, the terminal (iTerm2 or Terminal, installed ones only: a default iTerm2 that isn't installed moves to Terminal), and whether each session gets its own worktree |
 | **Stay in the loop** | Turns banners on with a sample, which makes macOS ask once; the agent sessions' banners; the menu bar icon; and the mirror of your GitHub notifications, and clearing them |
 | **Add your tools** | Only when it fits: mage-x or go-pre-commit is installed, or a clone uses one of them, runs go-fortress, or is a Go module (a few fixed paths in each clone, looked at with `lstat` alone). It says why it is suggested, shows each tool's card as Settings → Integrations does, and is always skippable |
-| **Finish** | Throws confetti, prints a `go test`-style log of the setup with a **Fix** beside whatever needs attention, previews the inbox, and opens it |
+| **Finish** | Throws confetti, prints a `go test`-style log of the setup with a **Fix** beside whatever needs attention, previews the inbox, shows [how to read a card](#inbox-cards) (a sample card and the key to its colors and symbols), and opens it |
 
 macOS asks to allow banners only once the setup ends, or from its Notifications step, never
 the moment the window opens. **Skip setup** ends it at any step. **Settings → About → Run
@@ -1883,6 +1883,17 @@ unread**. Click again to close it.
 1,000 pixels the action column narrows, then the labels and the size go, then the agent
 button shows its spark alone and a live session its dot, then the track goes too, with the
 repository's org.
+
+**How to read a card.** The **?** beside **Last refreshed**, at the top of the inbox, opens
+**How to read a card**: a sample card, the real one, with its parts numbered 1 to 8 and a
+legend of what each says (whose move it is, who opened it and what it is, the title and
+labels, the story, the byline, the risk, where it stands, and your move and the agent's),
+then a key to the edge's colors, the track's symbols, a person's picture and a bot's, and,
+with **Unread dots** on, the blue dot. **Show the guide**, in **Settings → Cards** → **How to
+read a card**, opens it too, and setup's **Finish** step shows the sample card and the key.
+The sample is the same pull request every time, made up for the guide: it takes no clicks,
+showing it asks nothing of GitHub, and it is always the two-line card, whatever **Density**
+says. Escape or **Close** puts it away.
 
 **Compact cards.** **Settings → Cards** → **Density** chooses how much room each card
 takes, in both lists and a routine's Watching list: **Comfortable** (to start with) is the

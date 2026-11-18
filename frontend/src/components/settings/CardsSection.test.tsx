@@ -122,6 +122,27 @@ describe('CardsSection', () => {
     expect(dots).not.toBeChecked()
   })
 
+  it('shows the card guide on asking, and offers it only where the window can open it', async () => {
+    const onShowCardGuide = vi.fn()
+    const { unmount } = render(
+      <CardsSection settings={settings()} onSaved={vi.fn()} onShowCardGuide={onShowCardGuide} />,
+    )
+
+    expect(screen.getByText('How to read a card')).toBeInTheDocument()
+    expect(
+      screen.getByText('A sample card with its parts numbered, and a key to its colors and symbols.'),
+    ).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show the guide' }))
+
+    expect(onShowCardGuide).toHaveBeenCalledOnce()
+
+    unmount()
+    renderSection()
+
+    expect(screen.queryByRole('button', { name: 'Show the guide' })).not.toBeInTheDocument()
+  })
+
   it('lists the hidden labels, marking the defaults, and says how a pattern reads', () => {
     renderSection(settings({ hiddenLabels: ['size/*', 'wontfix'] }))
 

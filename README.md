@@ -419,13 +419,15 @@ links to its full write-up in the [Desktop Guide](docs/desktop.md).
   when it is assigned to you. Each search reads up to 100 items, with **N of M** when GitHub
   matched more, and a list with nothing in it, set aside included, hides. Archived repositories,
   and items merged or closed since GitHub indexed them, never show.
-- **Cards that answer "is it ready?"** in three lines: the title with **Draft**, **Conflicts**,
-  and **Auto-merge · squash** tags; the repository, author, age, and a **bot**, **untrusted
-  bot**, or **outside contributor** tag; then the checks passed out of those that ran, reviews,
-  comments, a size grade (XS to XL) with lines, files, and commits, and the first labels in
-  their GitHub colors, leaving out those you hide in **Settings → Cards** (`size/*`, which the
-  size grade repeats, to start with). The details line up from card to card; hover any of them for the whole
-  sentence.
+- **Cards that answer "is it ready?"** in two lines: an edge whose color says whose move it
+  is, the author's picture, and the title with its first two labels in their GitHub colors
+  (leaving out those you hide in **Settings → Cards**, `size/*` to start with); then one
+  sentence of why it's here (**Re-review**, **2 of 14 checks failing**, **Approved · ready to
+  merge**), the repository, author, and age, and a risk chip for an outside contributor or
+  sensitive files. Beside them, a track of the checks, the review, and the merge over a size
+  grade (XS to XL), and your next move with the agent's beside it. Click a card's empty space
+  for everything else, make the cards one line each in **Settings → Cards**, and open **How to
+  read a card** for a numbered guide to every part.
 - **Live signals:** checks still running pulse in yellow (**12/18**), and a card names the item's
   worktree (**worktree · 2 changes · Codex 3h ago**) and what its agent session is doing
   (**Claude · needs approval · 2m**).
