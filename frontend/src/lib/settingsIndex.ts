@@ -278,6 +278,10 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
   ],
   cards: [
     {
+      label: 'Density',
+      keywords: ['comfortable', 'compact', 'dense', 'one line', 'two lines', 'rows', 'card size', 'more on screen'],
+    },
+    {
       label: 'Author pictures',
       keywords: ['avatars', 'profile pictures', 'photos', 'faces', 'people', 'bots', 'initials', 'bot mark'],
     },

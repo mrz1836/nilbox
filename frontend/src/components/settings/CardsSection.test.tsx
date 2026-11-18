@@ -29,6 +29,39 @@ beforeEach(() => {
 })
 
 describe('CardsSection', () => {
+  it('chooses the cards’ density, storing each choice', async () => {
+    platform.setCardDensity.mockImplementation((cardDensity) => Promise.resolve(settings({ cardDensity })))
+    const { onSaved } = renderSection()
+
+    const density = screen.getByRole('radiogroup', { name: 'Density' })
+    expect(within(density).getByRole('radio', { name: 'Comfortable' })).toBeChecked()
+    expect(
+      screen.getByText(
+        'Comfortable shows two lines per card, with the state track and the agent beside your next step. Compact fits about three times as many, one line each. Both lists follow it.',
+      ),
+    ).toBeInTheDocument()
+
+    await userEvent.click(within(density).getByRole('radio', { name: 'Compact' }))
+
+    expect(platform.setCardDensity).toHaveBeenCalledExactlyOnceWith('compact')
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ cardDensity: 'compact' }))
+    })
+  })
+
+  it('says why the density could not change, and shows it as stored', async () => {
+    platform.setCardDensity.mockRejectedValue(new Error('the database is locked'))
+    renderSection(settings({ cardDensity: 'compact' }))
+
+    const density = screen.getByRole('radiogroup', { name: 'Density' })
+    await userEvent.click(within(density).getByRole('radio', { name: 'Comfortable' }))
+
+    await waitFor(() => {
+      expect(density).toHaveAccessibleDescription(/the database is locked/)
+    })
+    expect(within(density).getByRole('radio', { name: 'Compact' })).toBeChecked()
+  })
+
   it('turns Author pictures off and on, storing each change', async () => {
     platform.setCardAvatars.mockImplementation((cardAvatars) => Promise.resolve(settings({ cardAvatars })))
     const { onSaved } = renderSection()

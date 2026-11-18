@@ -698,6 +698,7 @@ export type MergeMethodSetting = settings.MergeMethod
 export type ReviewTab = settings.ReviewTab
 export type NotificationsTab = settings.NotificationsTab
 export type ConversationOrder = settings.ConversationOrder
+export type CardDensity = settings.CardDensity
 export type RefreshKind = settings.RefreshKind
 
 // The service status check: where the services the user watches stand (GitHub, Claude,
@@ -926,6 +927,7 @@ export const {
   SetStatusOrder: setStatusOrder,
   SetHiddenLabels: setHiddenLabels,
   SetCardAvatars: setCardAvatars,
+  SetCardDensity: setCardDensity,
   SetBranchRules: setBranchRules,
   SetRepoRule: setRepoRule,
   SetMergeMethod: setMergeMethod,
