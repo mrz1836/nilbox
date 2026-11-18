@@ -110,6 +110,9 @@ export interface ListSectionProps {
   onFilterBy?: ((key: string, value: string) => void) | undefined
   // onOpen opens a card of this list in its sheet (see ItemRow).
   onOpen?: ((item: InboxItem, tab: TriageTab) => void) | undefined
+  // onTabChange hears each tab the user turns the list to, with the list's own section, for
+  // the page to keep it in place should the layout above it change.
+  onTabChange?: ((tab: TriageTab, section: HTMLElement | null) => void) | undefined
 }
 
 // ListSection is one inbox list as tabs: the list itself, then what was snoozed, what was
@@ -148,8 +151,10 @@ export function ListSection({
   marks = '',
   onFilterBy,
   onOpen,
+  onTabChange,
 }: ListSectionProps) {
   const id = useId()
+  const sectionRef = useRef<HTMLElement>(null)
   const rows = use(AutopilotRowsContext)
   const [tab, setTab] = useState<TriageTab>('inbox')
   // The list's own tab can sort by project status; the statuses are those of its items,
@@ -234,6 +239,7 @@ export function ListSection({
 
   // select shows a tab; choosing a tab of a collapsed list opens the list to show it.
   const select = (t: TriageTab) => {
+    onTabChange?.(t, sectionRef.current)
     setTab(t)
 
     if (collapsed) {
@@ -249,6 +255,7 @@ export function ListSection({
 
   return (
     <section
+      ref={sectionRef}
       aria-label={title}
       hidden={empty || (filtering && triageTabs.every((t) => matched[t].length === 0))}
       className="rounded-lg border border-border bg-surface"

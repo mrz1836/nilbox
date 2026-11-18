@@ -12,6 +12,11 @@
     mask-image: radial-gradient(ellipse 70% 62% at 50% 26%, #000 20%, transparent 100%);
   }
 
+  /* In the strip the party folds into, the grid fades out from the mark, at its left. */
+  .nil-grid-strip {
+    mask-image: radial-gradient(ellipse 38% 220% at 0% 50%, #000 10%, transparent 100%);
+  }
+
   /* The accent glow the mark sits in. */
   .nil-glow {
     background: radial-gradient(closest-side, color-mix(in oklab, var(--color-accent) 30%, transparent), transparent);
@@ -132,6 +137,11 @@
       animation:
         nil-pop 850ms cubic-bezier(0.34, 1.56, 0.64, 1) both,
         nil-float 5s ease-in-out 850ms infinite;
+    }
+
+    /* The strip's mark pops in and then holds still beside the lists. */
+    .nil-mark-still {
+      animation: nil-pop 850ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
     }
 
     .nil-ring {

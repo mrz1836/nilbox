@@ -8,9 +8,10 @@ import type { IssueDrafts } from '../lib/issueDrafts'
 import { issueTone } from '../lib/issues'
 import { itemKey, noWorktrees, worktreeOf } from '../lib/itemWorktrees'
 import { sheetCards, shownOrder } from '../lib/listOrder'
-import { isInboxNil } from '../lib/nil'
+import { isInboxNil, listsShow, partyCompact, type PartyFold } from '../lib/nil'
 import type { ReviewDrafts } from '../lib/reviewDrafts'
 import { ruleFor, withRepoRule } from '../lib/repoRules'
+import { holdPlace } from '../lib/scroll'
 import { noSessions, sessionsOf } from '../lib/sessions'
 import { movesOnTo } from '../lib/sheet'
 import { formatAgo } from '../lib/time'
@@ -247,8 +248,10 @@ function firstMessage(...messages: string[]): string {
 // Each list has tabs for what was snoozed or dismissed from it and collapses from its
 // header, and each triage action is confirmed by a toast with an Undo. When every list is
 // empty, the inbox throws a party in their place (InboxNil), above any list that still
-// holds what was snoozed, dismissed, or muted. The account and the API budget live in the
-// toolbar.
+// holds what was snoozed, dismissed, or muted. Above such a list the party fills the page
+// only for the moment the inbox empties while the user watches, and is a strip otherwise
+// (partyCompact); turning a list to what was set aside folds it into the strip, keeping
+// that list where it stood. The account and the API budget live in the toolbar.
 //
 // While the toolbar's query filters the inbox, each list shows only its matching items,
 // open whatever its stored collapse state, and a list with no match hides; when nothing
@@ -340,6 +343,18 @@ export function InboxView({
   // numbers the party anew: an inbox emptied meanwhile is found at nil, and sprinkles.
   const [busy, setBusy] = useState(false)
   const [visit, setVisit] = useState({ showing, n: 0 })
+  // fold is how the user left the party on this visit (partyCompact): turning a list to
+  // what was set aside, or the party's collapse button, folds it into its strip, and the
+  // strip's run opens it again. Each visit starts as it comes.
+  const [fold, setFold] = useState<PartyFold>('auto')
+  const party = nil && filter === null
+  // setAside says a list still shows below the party, which it can fold away for.
+  const setAside = triaged !== null && listsShow(triaged)
+  const compact = partyCompact(fold, busy, setAside)
+  // held is the list a tab was chosen in as it folded the party, and where it stood in
+  // the window then; the fold keeps it there rather than pulling the tab just chosen up
+  // from under the pointer.
+  const held = useRef<{ el: Element; top: number } | null>(null)
   const toastCount = useRef(0)
   // offeredProjects records that the projects tip showed during this run, so a refresh
   // that then finds access says the projects are on; projectsClosed, that the user
@@ -357,9 +372,36 @@ export function InboxView({
   if (visit.showing !== showing) {
     setVisit({ showing, n: showing ? visit.n + 1 : visit.n })
     setBusy(false)
+    setFold('auto')
   } else if (showing && !busy && count > 0) {
     setBusy(true)
   }
+
+  // chooseTab folds the party once the user turns a list to what was set aside while it
+  // shows: it has had its moment, and the page is theirs to work in. It stays folded for
+  // the visit, so dismissing an item again after restoring it, which empties the inbox
+  // anew, keeps the party to its strip.
+  const chooseTab = (tab: TriageTab, section: Element | null) => {
+    if (tab === 'inbox' || !party) {
+      return
+    }
+
+    if (!compact && section !== null) {
+      held.current = { el: section, top: section.getBoundingClientRect().top }
+    }
+
+    setFold('folded')
+  }
+
+  useLayoutEffect(() => {
+    const at = held.current
+
+    held.current = null
+
+    if (at !== null) {
+      holdPlace(at.el, at.top)
+    }
+  }, [fold])
 
   // revealIn is the first list that holds the item to show, the one that shows it.
   const revealIn =
@@ -716,7 +758,24 @@ export function InboxView({
         />
       )}
       {filter !== null && filter.matches === 0 && <NoMatches query={filter.query} onClear={onClearFilter} />}
-      {nil && filter === null && <InboxNil key={visit.n} stats={triaged} earned={busy} />}
+      {party && (
+        <InboxNil
+          key={visit.n}
+          stats={triaged}
+          earned={busy}
+          compact={compact}
+          onOpen={() => {
+            setFold('open')
+          }}
+          onCollapse={
+            setAside
+              ? () => {
+                  setFold('folded')
+                }
+              : undefined
+          }
+        />
+      )}
       {filling ? (
         <InboxFilling />
       ) : triaged === null || collapsed === null || order === null ? (
@@ -753,6 +812,7 @@ export function InboxView({
             marks={filter?.marks ?? ''}
             onFilterBy={onFilterBy}
             onOpen={sheets ? openIn[key] : undefined}
+            onTabChange={chooseTab}
           />
         ))
       )}

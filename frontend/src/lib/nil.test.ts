@@ -6,8 +6,10 @@ import { item, list, snapshot } from '../test/fixtures'
 import {
   earnedQuip,
   isInboxNil,
+  listsShow,
   maxBurst,
   nextQuip,
+  partyCompact,
   pickQuip,
   quips,
   replayBurst,
@@ -58,6 +60,47 @@ describe('isInboxNil', () => {
     const partial = list([item({ dismissedAt: '2026-06-14T09:00:00Z' })], 250)
 
     expect(nil(snapshot({ lastRefreshedAt: refreshed, yours: partial }))).toBe(false)
+  })
+})
+
+describe('listsShow', () => {
+  // shows reports whether a list shows below the party for the inbox as it sorts at now.
+  const shows = (inbox: InboxSnapshot) => listsShow(triageInbox(inbox, FIXED_NOW))
+
+  it('shows no list with nothing set aside', () => {
+    expect(shows(snapshot({ lastRefreshedAt: refreshed }))).toBe(false)
+  })
+
+  it('shows a list that holds anything snoozed, dismissed, or muted', () => {
+    for (const setAside of [
+      item({ snoozedUntil: '2026-06-16T09:00:00Z' }),
+      item({ dismissedAt: '2026-06-14T09:00:00Z' }),
+      item({ repo: 'acme-org/quiet', repoRule: 'muted' }),
+    ]) {
+      expect(shows(snapshot({ lastRefreshedAt: refreshed, yours: list([setAside]) }))).toBe(true)
+    }
+  })
+})
+
+describe('partyCompact', () => {
+  it('fills the page when no list shows below it, however it was left', () => {
+    for (const fold of ['auto', 'folded', 'open'] as const) {
+      for (const earned of [false, true]) {
+        expect(partyCompact(fold, earned, false), `${fold}, earned ${String(earned)}`).toBe(false)
+      }
+    }
+  })
+
+  it('fills the page when earned, and gives it to the lists on arrival', () => {
+    expect(partyCompact('auto', true, true)).toBe(false)
+    expect(partyCompact('auto', false, true)).toBe(true)
+  })
+
+  it('stays as the user left it, earned or not', () => {
+    for (const earned of [false, true]) {
+      expect(partyCompact('folded', earned, true)).toBe(true)
+      expect(partyCompact('open', earned, true)).toBe(false)
+    }
   })
 })
 

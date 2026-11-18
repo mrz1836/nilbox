@@ -1,5 +1,5 @@
 import type { InboxSnapshot } from '../platform'
-import { inboxLists, type TriagedInbox } from './triage'
+import { inboxLists, isEmptyList, type TriagedInbox } from './triage'
 
 // Inbox nil: the moment every list is empty, and the party the inbox throws for it.
 
@@ -17,6 +17,30 @@ export function isInboxNil(snapshot: InboxSnapshot, triaged: TriagedInbox): bool
 
 // NilStats is what the party reports was set aside to get there.
 export type NilStats = Pick<TriagedInbox, 'snoozed' | 'dismissed' | 'nextBack'>
+
+// listsShow reports whether a list still shows at nil, below the party: one that holds
+// something snoozed, dismissed, or muted.
+export function listsShow(triaged: TriagedInbox): boolean {
+  return inboxLists.some((list) => !isEmptyList(triaged.lists[list]))
+}
+
+// PartyFold is how the user left the party on this visit to the inbox: as it came
+// ('auto'), folded into its strip ('folded'), or run again in full from the strip ('open').
+export type PartyFold = 'auto' | 'folded' | 'open'
+
+// partyCompact reports whether the party shows as a strip above the lists rather than in
+// full. With no list below it, the party is the whole page, and shows in full. Otherwise
+// it shows in full when the inbox emptied while the user watched (earned), the reward for
+// getting there, and as a strip when they arrive to find it empty, leaving the page to
+// the lists of what was set aside. Once the user folds it or runs it again, it stays as
+// they left it.
+export function partyCompact(fold: PartyFold, earned: boolean, setAside: boolean): boolean {
+  if (!setAside) {
+    return false
+  }
+
+  return fold === 'folded' || (fold === 'auto' && !earned)
+}
 
 // earnedQuip greets an inbox emptied while you watched.
 export const earnedQuip = 'Inbox zero is for amateurs. You hit nil.'

@@ -16,7 +16,7 @@ import { formatWhen } from '../lib/time'
 import { inboxLists, listTitles } from '../lib/triage'
 import { useNowAs } from '../lib/useNow'
 import { Confetti, useConfetti, type Point } from './Confetti'
-import { PlayIcon, TrophyIcon } from './icons'
+import { ChevronDownIcon, PlayIcon, TrophyIcon } from './icons'
 import { LogoMark } from './Logo'
 
 export interface InboxNilProps {
@@ -25,6 +25,14 @@ export interface InboxNilProps {
   // earned is true when the inbox emptied while the page was open, which throws the full
   // party; opening the page at nil only sprinkles.
   earned: boolean
+  // compact shows the party as a strip above the lists (partyCompact): the mark, the
+  // heading, the one-liner, and the button, whose run asks for the party in full (onOpen).
+  compact?: boolean
+  // onOpen hears the strip's button run the party, which then shows it in full.
+  onOpen?: (() => void) | undefined
+  // onCollapse folds the full party into its strip, from a button in its corner, which
+  // shows only with it.
+  onCollapse?: (() => void) | undefined
 }
 
 // terminalTokens set the terminal in the dark palette in either theme, as terminals are.
@@ -84,7 +92,11 @@ function center(el: Element | null): Point {
 // do; and a button that runs the party again, a little harder each time. Confetti flies on
 // arrival, and far more of it when the inbox empties while you watch. With reduced motion
 // everything holds still and no confetti flies.
-export function InboxNil({ stats, earned }: InboxNilProps) {
+//
+// Compact, it is a strip that gives the page to the lists below it, still the mark, the
+// heading, and the one-liner, with the confetti thrown from it the same; its button runs
+// the party in full.
+export function InboxNil({ stats, earned, compact = false, onOpen, onCollapse }: InboxNilProps) {
   const headingId = useId()
   // word is where the party goes off, and button where a replay does.
   const word = useRef<HTMLSpanElement>(null)
@@ -123,6 +135,72 @@ export function InboxNil({ stats, earned }: InboxNilProps) {
     setRuns(next)
     setQuip(nextQuip)
     throwConfetti(button.current, replayBurst(next), next >= 3)
+
+    if (compact) {
+      onOpen?.()
+    }
+  }
+
+  // The heading is the same in both forms; only one shows, so word marks the one there.
+  const heading = (
+    <>
+      <span>inbox</span> <span className="text-muted">==</span>{' '}
+      <span ref={word} className="nil-word">
+        nil
+      </span>
+    </>
+  )
+
+  if (compact) {
+    return (
+      <section
+        aria-labelledby={headingId}
+        className="relative isolate overflow-hidden rounded-xl border border-border bg-surface px-5 py-3.5"
+        style={{ '--nil-highlight': brand.mark.highlight } as CSSProperties}
+      >
+        <div aria-hidden="true" className="nil-grid nil-grid-strip pointer-events-none absolute inset-0 -z-10" />
+        <div
+          aria-hidden="true"
+          className="nil-glow pointer-events-none absolute top-1/2 left-0 -z-10 h-40 w-72 -translate-x-1/4 -translate-y-1/2"
+        />
+
+        <div className="flex items-center gap-4">
+          <span aria-hidden="true" className="nil-mark nil-mark-still grid shrink-0 place-items-center">
+            <LogoMark className="h-9 w-auto" />
+          </span>
+
+          <div className="nil-rise min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h2 id={headingId} className="font-mono text-2xl font-bold tracking-tight">
+                {heading}
+              </h2>
+              {earned && (
+                <p className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-[0.625rem] font-semibold tracking-[0.14em] text-warning uppercase">
+                  <TrophyIcon className="size-3" />
+                  Achievement unlocked
+                </p>
+              )}
+            </div>
+            <p aria-live="polite" className="mt-0.5 truncate text-sm text-muted">
+              {quip}
+            </p>
+          </div>
+
+          <button
+            ref={button}
+            type="button"
+            onClick={replay}
+            className="nil-rise nil-replay group inline-flex shrink-0 items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 font-mono text-xs font-medium text-text transition hover:border-accent hover:bg-accent/15 active:scale-[0.97]"
+            style={{ animationDelay: '120ms' }}
+          >
+            <PlayIcon className="size-3 text-accent transition-transform group-hover:translate-x-0.5" />
+            {replayLabel(runs)}
+          </button>
+        </div>
+
+        <Confetti bursts={bursts} onLand={land} />
+      </section>
+    )
   }
 
   // Each line's place in the entrance: the lists, what was set aside, then, after a beat,
@@ -144,6 +222,18 @@ export function InboxNil({ stats, earned }: InboxNilProps) {
         aria-hidden="true"
         className="nil-glow pointer-events-none absolute top-0 left-1/2 -z-10 h-80 w-[40rem] max-w-full -translate-x-1/2"
       />
+
+      {onCollapse !== undefined && (
+        <button
+          type="button"
+          onClick={onCollapse}
+          aria-label="Collapse the party"
+          title="Collapse"
+          className="absolute top-3 right-3 rounded-md p-1 text-muted transition-colors hover:bg-raised hover:text-text"
+        >
+          <ChevronDownIcon className="size-4 rotate-180" />
+        </button>
+      )}
 
       <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
         <span aria-hidden="true" className="nil-mark relative grid place-items-center">
@@ -174,10 +264,7 @@ export function InboxNil({ stats, earned }: InboxNilProps) {
           className="nil-rise mt-4 font-mono text-5xl font-bold tracking-tight sm:text-6xl"
           style={{ animationDelay: '120ms' }}
         >
-          <span>inbox</span> <span className="text-muted">==</span>{' '}
-          <span ref={word} className="nil-word">
-            nil
-          </span>
+          {heading}
         </h2>
 
         <p

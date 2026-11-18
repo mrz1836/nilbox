@@ -2628,7 +2628,16 @@ The party needs a successful refresh: an inbox that was never refreshed, or whos
 failed, is unknown rather than empty. A list whose **N of M** count shows more on GitHub than
 was fetched is not empty either. A list that holds something set aside stays below the party,
 so its **Snoozed** and **Dismissed** tabs are a click away, and an **Undo** that brings an item
-back ends it. With
+back ends it.
+
+Above such a list, the party fills the page only for the moment you empty the inbox. Open
+the inbox to find it already empty and the party is a strip above the lists: **inbox == nil**,
+a one-liner, and the confetti, with the lists in view below. Turn a list to its **Snoozed**,
+**Dismissed**, or **Muted** tab while the full party shows and it folds into the strip, the
+list staying where it was under the pointer; the chevron in the party's corner folds it too.
+**go run ./party** in the strip runs the party in full again. It stays the way you left it
+until you leave the inbox for another page and come back. With nothing set aside, there's no
+list to make room for, and the party always fills the page. With
 **Reduce motion** on (System Settings → Accessibility → Display), everything holds still and no
 confetti flies.
 

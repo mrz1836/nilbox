@@ -140,6 +140,18 @@ describe('InboxNil', () => {
     expect(screen.getByText(quips[0] ?? '')).toBeInTheDocument()
   })
 
+  it('offers to collapse only when told how', async () => {
+    const collapse = vi.fn()
+    const { rerender } = renderNil(empty, false)
+
+    expect(screen.queryByRole('button', { name: 'Collapse the party' })).not.toBeInTheDocument()
+
+    rerender(<InboxNil stats={triageInbox(empty, FIXED_NOW)} earned={false} onCollapse={collapse} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse the party' }))
+
+    expect(collapse).toHaveBeenCalledOnce()
+  })
+
   it('clears the confetti once it lands', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     renderNil(empty, true)
@@ -152,5 +164,80 @@ describe('InboxNil', () => {
 
     expect(confetti()).toBe(0)
     expect(flashes()).toBe(0)
+  })
+})
+
+describe('InboxNil as a strip', () => {
+  // renderStrip throws the party as a strip, hearing its run and its collapse.
+  function renderStrip(earned: boolean, onOpen = vi.fn(), onCollapse = vi.fn()) {
+    return render(
+      <InboxNil
+        stats={triageInbox(empty, FIXED_NOW)}
+        earned={earned}
+        compact
+        onOpen={onOpen}
+        onCollapse={onCollapse}
+      />,
+      { wrapper: at() },
+    )
+  }
+
+  it('keeps the heading and a quip, and leaves the terminal out', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    renderStrip(false)
+
+    expect(screen.getByRole('heading', { name: 'inbox == nil' })).toBeInTheDocument()
+    expect(within(party()).getByText(quips[0] ?? '')).toBeInTheDocument()
+    expect(screen.queryByRole('figure', { name: 'Terminal' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('nil-badge')).not.toBeInTheDocument()
+    // It is already folded, so there is nothing to collapse.
+    expect(screen.queryByRole('button', { name: 'Collapse the party' })).not.toBeInTheDocument()
+  })
+
+  it('sprinkles the same confetti from the strip on arrival', () => {
+    renderStrip(false)
+
+    expect(confetti()).toBe(arrivalBurst)
+  })
+
+  it('unlocks the achievement in the strip, with the full burst, when earned', () => {
+    renderStrip(true)
+
+    expect(screen.getByText('Achievement unlocked')).toBeInTheDocument()
+    expect(screen.getByText(earnedQuip)).toBeInTheDocument()
+    expect(confetti()).toBe(earnedBurst)
+    expect(flashes()).toBe(1)
+  })
+
+  it('runs the party, asking for it in full', async () => {
+    const open = vi.fn()
+    renderStrip(false, open)
+
+    await userEvent.click(screen.getByRole('button', { name: 'go run ./party' }))
+
+    expect(open).toHaveBeenCalledOnce()
+    expect(confetti()).toBe(arrivalBurst + replayBurst(1))
+  })
+
+  it('asks for nothing when the full party runs again', async () => {
+    const open = vi.fn()
+    render(<InboxNil stats={triageInbox(empty, FIXED_NOW)} earned={false} onOpen={open} />, { wrapper: at() })
+
+    await userEvent.click(screen.getByRole('button', { name: 'go run ./party' }))
+
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('keeps its runs and quip when it opens in full', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const stats = triageInbox(empty, FIXED_NOW)
+    const { rerender } = renderStrip(false)
+
+    await userEvent.click(screen.getByRole('button', { name: 'go run ./party' }))
+    rerender(<InboxNil stats={stats} earned={false} />)
+
+    expect(screen.getByRole('figure', { name: 'Terminal' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'go run ./party --again' })).toBeInTheDocument()
+    expect(screen.getByText(quips[1] ?? '')).toBeInTheDocument()
   })
 })

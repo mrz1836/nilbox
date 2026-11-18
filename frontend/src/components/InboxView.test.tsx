@@ -75,6 +75,8 @@ interface HarnessProps {
   releases?: boolean
   // repoRules are the pinned and muted repositories the settings hold.
   repoRules?: RepoRules
+  // showing is whether the page is on screen, as App keeps it while another page shows.
+  showing?: boolean
 }
 
 // Harness renders the view over the real inbox state, triage, and collapsed lists, the
@@ -97,6 +99,7 @@ function Inbox({
   reviews = false,
   releases = true,
   repoRules = { pinned: [], muted: [] },
+  showing = true,
 }: Omit<HarnessProps, 'clock'>) {
   const inbox = useInbox()
   const drafts = useReviewDrafts()
@@ -131,6 +134,7 @@ function Inbox({
       {...(reviews ? { drafts: { review: drafts, issue: issueDrafts }, onManageReplies: manageReplies } : {})}
       {...(reviews && releases ? { onRelease: release } : {})}
       repoRules={repoRules}
+      showing={showing}
       onSettingsSaved={settingsSaved}
       onRepoRuleSettings={repoRuleSettings}
       onConversationOrder={conversationOrdered}
@@ -1188,8 +1192,10 @@ describe('InboxView at nil', () => {
   const refreshed = '2026-06-15T11:55:00Z'
   const last = item({ id: 1, title: 'Add the widget cache' })
 
-  // party finds the party, when there is one.
+  // party finds the party, when there is one, and terminal its terminal, which only the
+  // full party shows.
   const party = () => screen.queryByRole('region', { name: 'inbox == nil' })
+  const terminal = () => screen.queryByRole('figure', { name: 'Terminal' })
 
   it('throws a party in place of the lists once a refresh finds every list empty', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed }))
@@ -1204,7 +1210,7 @@ describe('InboxView at nil', () => {
     }
   })
 
-  it('keeps a list that holds what was snoozed beside the party', async () => {
+  it('keeps a list that holds what was snoozed beside the party, as a strip above it', async () => {
     const snoozed = { ...last, snoozedUntil: '2026-06-18T12:00:00Z' }
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, yours: list([snoozed]) }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
@@ -1212,6 +1218,120 @@ describe('InboxView at nil', () => {
     expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
     expect((await section('Yours')).getByRole('tab', { name: 'Snoozed 1' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Review requested' })).not.toBeInTheDocument()
+    // Arriving at nil leaves the page to the list: the party is a strip, without its terminal.
+    expect(terminal()).not.toBeInTheDocument()
+
+    // Its run brings the party in full, with a button to fold it again.
+    await userEvent.click(screen.getByRole('button', { name: 'go run ./party' }))
+    expect(terminal()).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse the party' }))
+    expect(terminal()).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'go run ./party --again' })).toBeInTheDocument()
+  })
+
+  it('fills the page when emptied, and folds once a list turns to what was set aside', async () => {
+    const snoozed = item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' })
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]), yours: list([snoozed]) }),
+    )
+    platform.dismissItem.mockResolvedValue(
+      snapshot({
+        lastRefreshedAt: refreshed,
+        reviewRequested: list([{ ...last, dismissedAt: FIXED_NOW.toISOString() }]),
+        yours: list([snoozed]),
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    await userEvent.click((await section('Review requested')).getByRole('button', { name: 'Dismiss' }))
+
+    // The reward: the full party, the terminal and all, though lists show below it.
+    expect(await screen.findByText('Achievement unlocked')).toBeInTheDocument()
+    expect(terminal()).toBeInTheDocument()
+
+    // Turning to what was set aside is getting back to work, and the party folds.
+    const yours = await section('Yours')
+    await userEvent.click(yours.getByRole('tab', { name: 'Snoozed 1' }))
+
+    expect(terminal()).not.toBeInTheDocument()
+    expect(party()).toHaveTextContent('Achievement unlocked')
+    expect(yours.getByRole('button', { name: 'Bump the parser' })).toBeInTheDocument()
+
+    // Turning back to the list's own tab leaves it folded, so nothing jumps.
+    await userEvent.click(yours.getByRole('tab', { name: 'Yours 0' }))
+    expect(terminal()).not.toBeInTheDocument()
+  })
+
+  it('stays folded for the visit, through a restore and a second dismissal', async () => {
+    const snoozed = item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' })
+    const dismissed = snapshot({
+      lastRefreshedAt: refreshed,
+      reviewRequested: list([{ ...last, dismissedAt: FIXED_NOW.toISOString() }]),
+      yours: list([snoozed]),
+    })
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]), yours: list([snoozed]) }),
+    )
+    platform.dismissItem.mockResolvedValue(dismissed)
+    platform.restoreItem.mockResolvedValue(
+      snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]), yours: list([snoozed]) }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
+    await userEvent.click(await review.findByRole('tab', { name: 'Dismissed 1' }))
+    expect(terminal()).not.toBeInTheDocument()
+
+    // Restoring the item ends the party; dismissing it again earns it back, as a strip, so
+    // the page doesn't jump while the user is still at work.
+    await userEvent.click(review.getByRole('button', { name: 'Restore' }))
+    await waitFor(() => {
+      expect(party()).not.toBeInTheDocument()
+    })
+    await userEvent.click(review.getByRole('tab', { name: 'Review requested 1' }))
+    await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
+
+    expect(await screen.findByRole('region', { name: 'inbox == nil' })).toHaveTextContent('Achievement unlocked')
+    expect(terminal()).not.toBeInTheDocument()
+  })
+
+  it('starts each visit as it comes', async () => {
+    const snoozed = { ...last, snoozedUntil: '2026-06-18T12:00:00Z' }
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, yours: list([snoozed]) }))
+    const { rerender } = render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'go run ./party' }))
+    expect(terminal()).toBeInTheDocument()
+
+    rerender(<Harness launch={launchOptions} clock={fixedNow} showing={false} />)
+    rerender(<Harness launch={launchOptions} clock={fixedNow} showing />)
+
+    expect(await screen.findByRole('button', { name: 'go run ./party' })).toBeInTheDocument()
+    expect(terminal()).not.toBeInTheDocument()
+  })
+
+  it('keeps the list a tab was chosen in where it stood as the party folds', async () => {
+    const snoozed = item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' })
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, yours: list([snoozed]) }))
+    // The page scrolls in its own scroller, as App's main does.
+    const scroller = document.body.appendChild(document.createElement('main'))
+    scroller.style.overflowY = 'auto'
+    render(<Harness launch={launchOptions} clock={fixedNow} />, { container: scroller })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'go run ./party' }))
+    const yours = screen.getByRole('region', { name: 'Yours' })
+    // The list stands lower in the window while the party fills the page above it.
+    vi.spyOn(yours, 'getBoundingClientRect').mockImplementation(() =>
+      DOMRect.fromRect({ y: terminal() === null ? 150 : 700, height: 200 }),
+    )
+    scroller.scrollTop = 900
+
+    await userEvent.click(within(yours).getByRole('tab', { name: 'Snoozed 1' }))
+
+    expect(terminal()).not.toBeInTheDocument()
+    expect(scroller.scrollTop).toBe(350)
   })
 
   it('throws no party before the first refresh, after an error, or while anything is left', async () => {
