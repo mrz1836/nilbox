@@ -1,6 +1,7 @@
 package prompts
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -12,11 +13,16 @@ import (
 )
 
 // Use is one place a launch default names a prompt: an org's (Target.Repo "") or a
-// repository's default prompt for one kind of item.
+// repository's default prompt for one kind of item, or for one situation a pull request can
+// be in.
 type Use struct {
 	PromptID int64
 	Kind     item.Kind
 	Target   repo.Name
+
+	// Slot is the default: DefaultSlotPR or DefaultSlotIssue for a kind's (or "", the
+	// kind's), or a situation's slot, whose Kind is item.KindPR.
+	Slot DefaultSlot
 }
 
 // UsageSource lists every place a launch default names a prompt, so a prompt's usage can
@@ -69,6 +75,15 @@ func defaultUsage(defaults DefaultPrompts) map[int64]Usage {
 
 	addDefault(defaults.PR, item.KindPR)
 	addDefault(defaults.Issue, item.KindIssue)
+
+	for _, slot := range situationSlots() {
+		if id := defaults.Slot(slot); id != 0 {
+			u := usage[id]
+			u.Slots = append(u.Slots, slot)
+			u.Kinds = appendUnique(u.Kinds, item.KindPR)
+			usage[id] = u
+		}
+	}
 
 	for _, slot := range ReplySlots() {
 		if id := defaults.Replies.For(slot); id != 0 {
@@ -164,16 +179,28 @@ func (s *Service) usageOf(ctx context.Context, id int64) (Usage, error) {
 	return usage[id], nil
 }
 
-// addPlace records that a launch default uses a prompt.
+// addPlace records that a launch default uses a prompt: a kind's among the orgs or the
+// repositories, a situation's among the slot places.
 func addPlace(usage map[int64]Usage, use Use) {
 	u := usage[use.PromptID]
-	if use.Target.Repo == "" {
+
+	switch {
+	case use.Slot.situation() && use.Target.Repo == "":
+		u.SlotPlaces = appendUnique(u.SlotPlaces, SlotPlace{Org: use.Target.Owner, Slot: use.Slot})
+	case use.Slot.situation():
+		u.SlotPlaces = appendUnique(u.SlotPlaces, SlotPlace{Repo: use.Target.String(), Slot: use.Slot})
+	case use.Target.Repo == "":
 		u.Orgs = appendUnique(u.Orgs, use.Target.Owner)
-	} else {
+	default:
 		u.Repos = appendUnique(u.Repos, use.Target.String())
 	}
 
-	u.Kinds = appendUnique(u.Kinds, use.Kind)
+	kind := use.Kind
+	if use.Slot.situation() {
+		kind = item.KindPR
+	}
+
+	u.Kinds = appendUnique(u.Kinds, kind)
 	usage[use.PromptID] = u
 }
 
@@ -186,15 +213,26 @@ func appendUnique[S comparable](list []S, s S) []S {
 	return append(list, s)
 }
 
-// normalizeUsage sorts a usage's lists, keeping the default replies in ReplySlots order,
-// and turns nil lists into empty ones.
+// normalizeUsage sorts a usage's lists, keeping the situations in DefaultSlots order and
+// the default replies in ReplySlots order, and turns nil lists into empty ones.
 func normalizeUsage(u Usage) Usage {
 	u.Defaults, u.Kinds = sortedList(u.Defaults), sortedList(u.Kinds)
+	u.Slots = textutil.NonNil(u.Slots)
+	slices.SortFunc(u.Slots, compareSlots)
 	u.Orgs, u.Repos = sortedList(u.Orgs), sortedList(u.Repos)
+	u.SlotPlaces = textutil.NonNil(u.SlotPlaces)
+	slices.SortFunc(u.SlotPlaces, func(a, b SlotPlace) int {
+		return cmp.Or(cmp.Compare(a.target(), b.target()), compareSlots(a.Slot, b.Slot))
+	})
 	u.Replies = textutil.NonNil(u.Replies)
 	u.Routines = sortedList(u.Routines)
 
 	return u
+}
+
+// compareSlots orders defaults as DefaultSlots lists them.
+func compareSlots(a, b DefaultSlot) int {
+	return cmp.Compare(slices.Index(DefaultSlots(), a), slices.Index(DefaultSlots(), b))
 }
 
 // sortedList sorts list in place and returns it, or an empty list for nil.
@@ -214,6 +252,10 @@ func describeUsage(u Usage) string {
 		parts = append(parts, "the default for "+kind.Plural())
 	}
 
+	for _, slot := range u.Slots {
+		parts = append(parts, slot.describe())
+	}
+
 	var places []string
 
 	if len(u.Orgs) > 0 {
@@ -226,6 +268,10 @@ func describeUsage(u Usage) string {
 
 	if len(places) > 0 {
 		parts = append(parts, "a default for "+strings.Join(places, " and "))
+	}
+
+	if words := slotPlacesWords(u.SlotPlaces); words != "" {
+		parts = append(parts, words)
 	}
 
 	switch len(u.Routines) {
@@ -241,6 +287,19 @@ func describeUsage(u Usage) string {
 	}
 
 	return strings.Join(parts, ", and ")
+}
+
+// slotPlacesWords says where orgs and repositories make a prompt a situation's, as in
+// "acme-org's prompt when checks fail" or "a situation's prompt in 3 places"; "" for none.
+func slotPlacesWords(places []SlotPlace) string {
+	switch len(places) {
+	case 0:
+		return ""
+	case 1:
+		return places[0].target() + "'s prompt " + places[0].Slot.when()
+	default:
+		return fmt.Sprintf("a situation's prompt in %d places", len(places))
+	}
 }
 
 // countedNames names one item, or counts several: "acme-org" or "3 orgs".

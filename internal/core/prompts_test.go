@@ -144,8 +144,8 @@ func TestAnUpdateThatSetsTheDatabaseAsideKeepsThePrompts(t *testing.T) {
 	assert.Regexp(t, `^~/data/`+regexp.QuoteMeta(filepath.Base(paths.DB))+`\.broken-`, info.Restored.From)
 
 	lib := libraryByNickname(t, c)
-	assert.Equal(t, 8, agentPrompts(lib),
-		"the three prompts, the five starters new in this build, and no starter the user deleted")
+	assert.Equal(t, 9, agentPrompts(lib),
+		"the three prompts, the six starters new in this build, and no starter the user deleted")
 	assert.Contains(t, lib, "Fix dep security", "a starter prompt new in this build is added, as the starter replies are")
 	assert.Contains(t, lib, "Heal Dependabot PR", "so are Autopilot's templates' starters")
 	assert.Contains(t, lib, "LGTM", "the starter replies, new in this build, are added")

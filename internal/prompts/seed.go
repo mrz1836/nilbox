@@ -15,8 +15,9 @@ import (
 // A starter that was added once is never added again, so one the user deleted stays
 // deleted. A starter whose nickname is taken gets a free one. It then gives each copy of a
 // starter whose text is still one of the starter's earlier texts the text this build ships
-// (Starter.Earlier), keeping the copy's title, nickname, and settings. It does all of it
-// or, when a write fails, none.
+// (Starter.Earlier), keeping the copy's title, nickname, and settings, and fills each
+// situation's slot never filled before (see seedSlots). It does all of it or, when a write
+// fails, none.
 func Seed(ctx context.Context, s *Store) error {
 	return s.inTx(ctx, func(st *Store) error {
 		seeded, err := st.seeded(ctx)
@@ -32,8 +33,79 @@ func Seed(ctx context.Context, s *Store) error {
 			return err
 		}
 
-		return refreshStarters(ctx, st)
+		if err = refreshStarters(ctx, st); err != nil {
+			return err
+		}
+
+		return seedSlots(ctx, st)
 	})
+}
+
+// seedSlots fills each situation's slot that was never filled before, once, in a new
+// library and in one that had its starters before the slot existed alike: a slot with no
+// default gets the library's copy of the slot's starter (DefaultSlot.starter), when it
+// holds one that fits, and the slot is recorded as filled either way. So a slot the user
+// cleared, or whose starter they deleted, is left as they left it, and a pull request in
+// that situation launches with the prompt it would have anyway.
+func seedSlots(ctx context.Context, st *Store) error {
+	filled, _, err := st.prefs.GetList(ctx, prefSeededSlots)
+	if err != nil {
+		return fmt.Errorf("read the situations' prompts filled: %w", err)
+	}
+
+	var fill []DefaultSlot
+
+	for _, slot := range situationSlots() {
+		if !slices.Contains(filled, string(slot)) {
+			fill = append(fill, slot)
+		}
+	}
+
+	if len(fill) == 0 {
+		return nil
+	}
+
+	lib, err := st.Library(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, slot := range fill {
+		if err = fillSlot(ctx, st, lib, slot); err != nil {
+			return err
+		}
+
+		filled = append(filled, string(slot))
+	}
+
+	return st.prefs.SetList(ctx, prefSeededSlots, filled)
+}
+
+// fillSlot makes the library's copy of slot's starter the slot's default, when lib holds
+// one that fits and the slot has none.
+func fillSlot(ctx context.Context, st *Store, lib Library, slot DefaultSlot) error {
+	p, ok := slotStarterCopy(lib.Prompts, slot)
+	if !ok || lib.Defaults.Slot(slot) != 0 {
+		return nil
+	}
+
+	if err := st.setSituationDefault(ctx, slot, p.ID); err != nil {
+		return fmt.Errorf("make %q %s: %w", p.Nickname, slot.describe(), err)
+	}
+
+	return nil
+}
+
+// slotStarterCopy returns the first of all, by nickname, that came from slot's starter and fits
+// slot, and whether there is one.
+func slotStarterCopy(all []Prompt, slot DefaultSlot) (Prompt, bool) {
+	for _, p := range all {
+		if p.StarterKey != "" && p.StarterKey == slot.starter() && slot.takes(p.Purpose, p.ReplyAction, p.AppliesTo) {
+			return p, true
+		}
+	}
+
+	return Prompt{}, false
 }
 
 // refreshStarters gives every stored copy of a starter whose text is still one of the

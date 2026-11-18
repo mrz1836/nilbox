@@ -55,6 +55,9 @@ var (
 	// ErrNotReply is returned when an agent prompt, or a reply for another review, is made
 	// a default reply.
 	ErrNotReply = errors.New("the prompt isn't a reply for that review")
+
+	// ErrNotSituation is returned when a default that isn't a situation's is set as one.
+	ErrNotSituation = errors.New("that isn't the default of a situation a pull request can be in")
 )
 
 // Purpose is what a prompt is for.
@@ -220,12 +223,21 @@ type Usage struct {
 	// Defaults lists the kinds the prompt is the app's default for.
 	Defaults []item.Kind `json:"defaults"`
 
+	// Slots lists the situations whose app default the prompt is, in DefaultSlots order.
+	Slots []DefaultSlot `json:"slots"`
+
 	// Orgs and Repos list the owners and "owner/name" repositories whose launch
-	// defaults use it, sorted.
+	// defaults use it for a kind of item, sorted.
 	Orgs  []string `json:"orgs"`
 	Repos []string `json:"repos"`
 
-	// Kinds lists every kind the prompt is a default for, anywhere.
+	// SlotPlaces lists each org's and repository's situation whose launch default the
+	// prompt is, sorted by the org or repository, an org before its repositories, then by
+	// the situation, in DefaultSlots order.
+	SlotPlaces []SlotPlace `json:"slotPlaces"`
+
+	// Kinds lists every kind the prompt is a default for, anywhere: a situation's default
+	// is a pull request's.
 	Kinds []item.Kind `json:"kinds"`
 
 	// Replies lists the default replies a reply is. Unlike the defaults above, being one
@@ -237,10 +249,34 @@ type Usage struct {
 	Routines []string `json:"routines"`
 }
 
+// SlotPlace is an org's or a repository's launch default that names a prompt for a
+// situation a pull request can be in.
+type SlotPlace struct {
+	// Org is the owner whose own launch defaults name the prompt, and "" for a
+	// repository's.
+	Org string `json:"org"`
+
+	// Repo is the "owner/name" repository whose launch defaults name it, and "" for an
+	// org's.
+	Repo string `json:"repo"`
+
+	// Slot is the situation's default.
+	Slot DefaultSlot `json:"slot"`
+}
+
+// target is the org or the repository.
+func (p SlotPlace) target() string {
+	if p.Repo != "" {
+		return p.Repo
+	}
+
+	return p.Org
+}
+
 // InUse reports whether the prompt is a default for a launch anywhere, or a routine runs
 // it, which keeps it from being deleted.
 func (u Usage) InUse() bool {
-	return len(u.Defaults)+len(u.Orgs)+len(u.Repos)+len(u.Routines) > 0
+	return len(u.Defaults)+len(u.Slots)+len(u.Orgs)+len(u.Repos)+len(u.SlotPlaces)+len(u.Routines) > 0
 }
 
 // Input is a prompt as the editor saves it. A reply's AppliesTo and launch settings are
@@ -291,10 +327,20 @@ func (e *InUseError) Is(target error) bool {
 }
 
 // DefaultPrompts are the app's default prompt for each kind of item, 0 when no prompt
-// applies to that kind, and its default replies.
+// applies to that kind, its default prompt for each situation a pull request can be in, and
+// its default replies.
 type DefaultPrompts struct {
 	PR    int64 `json:"pr"`
 	Issue int64 `json:"issue"`
+
+	// ChecksFailing, Conflicts, ChangesRequested, and Rereview are the default prompt for a
+	// pull request whose checks fail, that conflicts with its base, that a reviewer asked to
+	// change, and that the user is asked to review again; 0 where none is chosen, which
+	// leaves such a pull request the prompt it would have anyway.
+	ChecksFailing    int64 `json:"checksFailing"`
+	Conflicts        int64 `json:"conflicts"`
+	ChangesRequested int64 `json:"changesRequested"`
+	Rereview         int64 `json:"rereview"`
 
 	// Replies are the default replies.
 	Replies ReplyDefaults `json:"replies"`
@@ -348,6 +394,19 @@ func (d DefaultPrompts) For(kind item.Kind) int64 {
 	}
 
 	return d.Issue
+}
+
+// situations lists the situations' slots whose default is id, in DefaultSlots order.
+func (d DefaultPrompts) situations(id int64) []DefaultSlot {
+	out := []DefaultSlot{}
+
+	for _, slot := range situationSlots() {
+		if id != 0 && d.Slot(slot) == id {
+			out = append(out, slot)
+		}
+	}
+
+	return out
 }
 
 // IsReply reports a review reply.
@@ -713,6 +772,40 @@ func (s *Service) SetReplyDefault(ctx context.Context, slot ReplySlot, id int64)
 	}
 
 	if err := s.store.setReplyDefault(ctx, slot, id); err != nil {
+		return err
+	}
+
+	s.saved(ctx)
+
+	return nil
+}
+
+// SetSlotDefault makes the prompt with id the app's default for the situation slot names,
+// or, with id 0, leaves the situation with none, so a pull request in it launches with the
+// prompt it would have anyway. The prompt must be an agent prompt that applies to pull
+// requests.
+func (s *Service) SetSlotDefault(ctx context.Context, slot DefaultSlot, id int64) error {
+	if !slot.situation() {
+		return fmt.Errorf("%w: %q", ErrNotSituation, slot)
+	}
+
+	if id != 0 {
+		p, err := s.store.Lookup(ctx, id)
+		if err != nil {
+			return err
+		}
+
+		if p.IsReply() {
+			return fmt.Errorf("%w: %q can't be %s", ErrNotAgentPrompt, p.Nickname, slot.describe())
+		}
+
+		if !slot.takes(p.Purpose, p.ReplyAction, p.AppliesTo) {
+			return fmt.Errorf("%w: %q doesn't apply to pull requests, so it can't be %s", ErrWrongKind, p.Nickname,
+				slot.describe())
+		}
+	}
+
+	if err := s.store.setSituationDefault(ctx, slot, id); err != nil {
 		return err
 	}
 

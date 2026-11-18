@@ -240,8 +240,8 @@ func fittingPrompt(ctx context.Context, st *Store, ids map[string]int64, slot De
 	return p, true, nil
 }
 
-// setSlot stores id as slot's default; 0 leaves a reply slot with none, and a kind's
-// default to fall back to the first prompt that applies.
+// setSlot stores id as slot's default; 0 leaves a reply slot or a situation's with none,
+// and a kind's default to fall back to the first prompt that applies.
 func setSlot(ctx context.Context, st *Store, slot DefaultSlot, id int64) error {
 	if kind, ok := slot.kind(); ok {
 		if id == 0 {
@@ -249,6 +249,10 @@ func setSlot(ctx context.Context, st *Store, slot DefaultSlot, id int64) error {
 		}
 
 		return st.setDefault(ctx, kind, id)
+	}
+
+	if slot.situation() {
+		return st.setSituationDefault(ctx, slot, id)
 	}
 
 	return st.setReplyDefault(ctx, ReplySlot(slot), id)

@@ -5,24 +5,35 @@ import (
 )
 
 // DefaultSlot names one of the library's defaults: the default prompt for pull requests or
-// for issues, or one of the default replies, under its ReplySlot's name.
+// for issues, the default prompt for each situation a pull request can be in, or one of the
+// default replies, under its ReplySlot's name.
 type DefaultSlot string
 
-// The library's defaults.
+// The library's defaults. A situation's slot has the name of its situation in the
+// launcher (launcher.Situation).
 const (
-	DefaultSlotPR             DefaultSlot = "pr"
-	DefaultSlotIssue          DefaultSlot = "issue"
+	DefaultSlotPR    DefaultSlot = "pr"
+	DefaultSlotIssue DefaultSlot = "issue"
+
+	// The default prompt for a pull request whose checks fail, that conflicts with its
+	// base, that a reviewer asked to change, and that the user is asked to review again.
+	DefaultSlotChecksFailing    DefaultSlot = "checks_failing"
+	DefaultSlotConflicts        DefaultSlot = "conflicts"
+	DefaultSlotChangesRequested DefaultSlot = "changes_requested"
+	DefaultSlotRereview         DefaultSlot = "rereview"
+
 	DefaultSlotApprove        DefaultSlot = "approve"
 	DefaultSlotApproveBots    DefaultSlot = "approve_bots"
 	DefaultSlotRequestChanges DefaultSlot = "request_changes"
 	DefaultSlotComment        DefaultSlot = "comment"
 )
 
-// DefaultSlots returns every default, the kinds' first, then the replies in ReplySlots
-// order.
+// DefaultSlots returns every default, the kinds' first, then the situations' in
+// situationSlots order, then the replies in ReplySlots order.
 func DefaultSlots() []DefaultSlot {
-	out := make([]DefaultSlot, 0, 2+len(ReplySlots()))
+	out := make([]DefaultSlot, 0, 2+len(situationSlots())+len(ReplySlots()))
 	out = append(out, DefaultSlotPR, DefaultSlotIssue)
+	out = append(out, situationSlots()...)
 
 	for _, slot := range ReplySlots() {
 		out = append(out, DefaultSlot(slot))
@@ -31,26 +42,92 @@ func DefaultSlots() []DefaultSlot {
 	return out
 }
 
-// kind returns the kind of item slot is the default prompt for, and whether it is one.
+// situationSlots returns the default prompt of each situation a pull request can be in, in
+// the order the settings list them.
+func situationSlots() []DefaultSlot {
+	return []DefaultSlot{
+		DefaultSlotChecksFailing, DefaultSlotConflicts, DefaultSlotChangesRequested, DefaultSlotRereview,
+	}
+}
+
+// kind returns the kind of item slot is the app's default prompt for, and whether it is
+// one. A situation's slot is not: it is a pull request's prompt only in its situation.
 func (s DefaultSlot) kind() (item.Kind, bool) {
 	switch s {
 	case DefaultSlotPR:
 		return item.KindPR, true
 	case DefaultSlotIssue:
 		return item.KindIssue, true
-	case DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment:
+	case DefaultSlotChecksFailing, DefaultSlotConflicts, DefaultSlotChangesRequested, DefaultSlotRereview,
+		DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment:
 		return "", false
 	default:
 		return "", false
 	}
 }
 
+// situation reports whether slot is the default prompt of a situation a pull request can
+// be in.
+func (s DefaultSlot) situation() bool {
+	return s.when() != ""
+}
+
+// when names a situation's slot in a sentence, as in "when checks fail"; "" for every
+// other slot.
+func (s DefaultSlot) when() string {
+	switch s {
+	case DefaultSlotChecksFailing:
+		return "when checks fail"
+	case DefaultSlotConflicts:
+		return "when it has conflicts"
+	case DefaultSlotChangesRequested:
+		return "when changes are requested"
+	case DefaultSlotRereview:
+		return "when you're asked to review again"
+	case DefaultSlotPR, DefaultSlotIssue, DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges,
+		DefaultSlotComment:
+		return ""
+	default:
+		return ""
+	}
+}
+
+// describe names a situation's slot in a sentence, as in "the default when checks fail".
+func (s DefaultSlot) describe() string {
+	return "the default " + s.when()
+}
+
+// starter is the key of the starter a situation's slot starts on, and "" for every other
+// slot.
+func (s DefaultSlot) starter() string {
+	switch s {
+	case DefaultSlotChecksFailing:
+		return StarterFixChecks
+	case DefaultSlotConflicts:
+		return StarterResolveConflicts
+	case DefaultSlotChangesRequested:
+		return StarterAddressReview
+	case DefaultSlotRereview:
+		return StarterRereview
+	case DefaultSlotPR, DefaultSlotIssue, DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges,
+		DefaultSlotComment:
+		return ""
+	default:
+		return ""
+	}
+}
+
 // takes reports whether a prompt with purpose, written for action and applying to
-// appliesTo, can be the slot's default: an agent prompt for the kind, or a reply the reply
-// slot takes (see ReplySlot.takes).
+// appliesTo, can be the slot's default: an agent prompt for the kind, an agent prompt for
+// pull requests in a situation's slot, or a reply the reply slot takes (see
+// ReplySlot.takes).
 func (s DefaultSlot) takes(purpose Purpose, action ReplyAction, appliesTo AppliesTo) bool {
 	if kind, ok := s.kind(); ok {
 		return purposeOf(purpose) == PurposeAgent && appliesTo.Covers(kind)
+	}
+
+	if s.situation() {
+		return purposeOf(purpose) == PurposeAgent && appliesTo.Covers(item.KindPR)
 	}
 
 	return ReplySlot(s).takes(purposeOf(purpose), action, appliesTo)
@@ -58,11 +135,24 @@ func (s DefaultSlot) takes(purpose Purpose, action ReplyAction, appliesTo Applie
 
 // Slot returns the ID of slot's default; 0 for none.
 func (d DefaultPrompts) Slot(slot DefaultSlot) int64 {
-	if kind, ok := slot.kind(); ok {
-		return d.For(kind)
+	switch slot {
+	case DefaultSlotPR:
+		return d.PR
+	case DefaultSlotIssue:
+		return d.Issue
+	case DefaultSlotChecksFailing:
+		return d.ChecksFailing
+	case DefaultSlotConflicts:
+		return d.Conflicts
+	case DefaultSlotChangesRequested:
+		return d.ChangesRequested
+	case DefaultSlotRereview:
+		return d.Rereview
+	case DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment:
+		return d.Replies.For(ReplySlot(slot))
+	default:
+		return 0
 	}
-
-	return d.Replies.For(ReplySlot(slot))
 }
 
 // For returns the nickname naming slot's default; "" for none.
@@ -72,6 +162,14 @@ func (d *BundleDefaults) For(slot DefaultSlot) string {
 		return d.PR
 	case DefaultSlotIssue:
 		return d.Issue
+	case DefaultSlotChecksFailing:
+		return d.ChecksFailing
+	case DefaultSlotConflicts:
+		return d.Conflicts
+	case DefaultSlotChangesRequested:
+		return d.ChangesRequested
+	case DefaultSlotRereview:
+		return d.Rereview
 	case DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment:
 		return d.Replies[ReplySlot(slot)]
 	default:
@@ -86,6 +184,14 @@ func (d *BundleDefaults) Set(slot DefaultSlot, nickname string) {
 		d.PR = nickname
 	case DefaultSlotIssue:
 		d.Issue = nickname
+	case DefaultSlotChecksFailing:
+		d.ChecksFailing = nickname
+	case DefaultSlotConflicts:
+		d.Conflicts = nickname
+	case DefaultSlotChangesRequested:
+		d.ChangesRequested = nickname
+	case DefaultSlotRereview:
+		d.Rereview = nickname
 	case DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment:
 		d.setReply(ReplySlot(slot), nickname)
 	}

@@ -309,7 +309,7 @@ func TestDefaultPromptsCannotBeDeletedWhileUsed(t *testing.T) {
 	var fix prompts.Prompt
 
 	for _, p := range all {
-		if p.StarterKey == prompts.StarterFixChecks {
+		if p.StarterKey == prompts.StarterQuickLook {
 			fix = p
 		}
 	}
@@ -325,15 +325,16 @@ func TestDefaultPromptsCannotBeDeletedWhileUsed(t *testing.T) {
 	err = svc.Delete(ctx, fix.ID)
 	require.ErrorIs(t, err, prompts.ErrPromptInUse)
 	require.ErrorAs(t, err, &inUse)
-	assert.Equal(t, `"Fix checks" can't be deleted while it's a default for acme-org and acme-org/example-repo; `+
+	assert.Equal(t, `"Quick look" can't be deleted while it's a default for acme-org and acme-org/example-repo; `+
 		"choose other defaults there first", err.Error())
 
 	all, err = svc.List(ctx)
 	require.NoError(t, err)
 
 	fix.Usage = prompts.Usage{
-		Defaults: []item.Kind{}, Orgs: []string{acme}, Repos: []string{"acme-org/example-repo"},
-		Kinds: []item.Kind{item.KindPR}, Replies: []prompts.ReplySlot{}, Routines: []string{},
+		Defaults: []item.Kind{}, Slots: []prompts.DefaultSlot{}, Orgs: []string{acme},
+		Repos: []string{"acme-org/example-repo"}, SlotPlaces: []prompts.SlotPlace{}, Kinds: []item.Kind{item.KindPR},
+		Replies: []prompts.ReplySlot{}, Routines: []string{},
 	}
 	require.Contains(t, all, fix, "the prompt is still there, with where it is used")
 

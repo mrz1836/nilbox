@@ -95,6 +95,14 @@ type BundleDefaults struct {
 	PR    string `json:"pr"`
 	Issue string `json:"issue"`
 
+	// ChecksFailing, Conflicts, ChangesRequested, and Rereview name the default prompt for
+	// each situation a pull request can be in, left out where none of the file's prompts is
+	// that default, and in a file an older build wrote.
+	ChecksFailing    string `json:"checksFailing,omitempty"`
+	Conflicts        string `json:"conflicts,omitempty"`
+	ChangesRequested string `json:"changesRequested,omitempty"`
+	Rereview         string `json:"rereview,omitempty"`
+
 	// Replies names the default reply for each slot by nickname, leaving out a slot whose
 	// default is none of the file's prompts.
 	Replies map[ReplySlot]string `json:"replies,omitempty"`
@@ -184,6 +192,10 @@ func (d *BundleDefaults) name(defaults DefaultPrompts, p Prompt) {
 
 	if p.ID == defaults.Issue {
 		d.Issue = p.Nickname
+	}
+
+	for _, slot := range defaults.situations(p.ID) {
+		d.Set(slot, p.Nickname)
 	}
 
 	for _, slot := range defaults.Replies.Slots(p.ID) {

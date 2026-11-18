@@ -201,20 +201,23 @@ func TestExportWritesTheWholeLibrary(t *testing.T) {
 
 	n, err := s.Export(t.Context(), path, nil)
 	require.NoError(t, err)
-	assert.Equal(t, ExportResult{Prompts: 9, Replies: 5}, n, "the starters are nine agent prompts and five replies")
+	assert.Equal(t, ExportResult{Prompts: 10, Replies: 5}, n, "the starters are ten agent prompts and five replies")
 
 	got, err := readBundleFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, "2026-11-08T17:00:00Z", got.ExportedAt)
 	assert.Equal(t, "v1.2.3", got.App)
-	assert.Equal(t, BundleDefaults{PR: "Review", Issue: "Work on it", Replies: map[ReplySlot]string{
-		SlotApprove: "LGTM", SlotApproveBots: "Update OK", SlotRequestChanges: "Needs changes", SlotComment: "Question",
-	}}, got.Defaults)
+	assert.Equal(t, BundleDefaults{
+		PR: "Review", Issue: "Work on it", ChecksFailing: "Fix checks", Conflicts: "Resolve conflicts",
+		ChangesRequested: "Address review", Rereview: "Re-review", Replies: map[ReplySlot]string{
+			SlotApprove: "LGTM", SlotApproveBots: "Update OK", SlotRequestChanges: "Needs changes", SlotComment: "Question",
+		},
+	}, got.Defaults)
 	assert.ElementsMatch(t, []string{
 		StarterReviewPR, StarterWorkOnIssue, StarterQuickLook, StarterFixChecks,
 		StarterReplyLGTM, StarterReplyUpdateOK, StarterReplyNeedsChanges, StarterReplyQuestion,
-		StarterFixDependencySecurity, StarterHealDependabot, StarterAddressReview, StarterResolveConflicts, StarterRerunFailedJobs,
-		StarterReplyNeedsRepro,
+		StarterFixDependencySecurity, StarterRereview, StarterHealDependabot, StarterAddressReview, StarterResolveConflicts,
+		StarterRerunFailedJobs, StarterReplyNeedsRepro,
 	}, got.StartersAdded)
 	assert.Len(t, got.Prompts, len(Starters()))
 
@@ -710,6 +713,7 @@ func TestRestoreBringsBackTheLibraryFromTheDatabaseSetAside(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, oldService.SetDefault(t.Context(), item.KindIssue, security.ID))
+	require.NoError(t, oldService.SetSlotDefault(t.Context(), DefaultSlotChecksFailing, 0))
 	require.NoError(t, oldService.Delete(t.Context(), byNickname(t, oldService, "Fix checks").ID))
 	require.NoError(t, oldDB.Close())
 
@@ -726,7 +730,7 @@ func TestRestoreBringsBackTheLibraryFromTheDatabaseSetAside(t *testing.T) {
 	require.NoError(t, Seed(t.Context(), s.store))
 	assert.ElementsMatch(t, []string{
 		"Address review", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro", "Question",
-		"Quick look",
+		"Quick look", "Re-review",
 		"Re-run failed jobs", "Resolve conflicts", "Review", "Security", "Update OK", "Work on it",
 	}, nicknames(t, s), "the deleted starter stays deleted")
 	assert.Equal(t, byNickname(t, s, "Security").ID, restored.IDs["Security"], "each nickname finds its restored prompt")
