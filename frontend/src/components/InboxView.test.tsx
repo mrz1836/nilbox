@@ -2268,6 +2268,44 @@ describe('InboxView review sheet', () => {
     expect(within(requested.getAllByRole('listitem')[2] as HTMLElement).getByText('Unread')).toBeInTheDocument()
   })
 
+  it('marks a card read and unread from its menu, and puts the dot back with why when it can’t', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item({ id: 1, unread: true })]) }))
+    platform.markItemsSeen.mockRejectedValueOnce(new Error('database is locked'))
+    render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
+
+    const yours = await section('Yours')
+    const markFromMenu = async (label: string) => {
+      await userEvent.click(yours.getByRole('button', { name: 'More actions' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Inbox actions' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: label }))
+    }
+
+    await markFromMenu('Mark as read')
+    expect(platform.markItemsSeen).toHaveBeenCalledExactlyOnceWith([1])
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Could not mark “Add the widget cache” read · database is locked',
+    )
+    expect(yours.getByTitle('New since you last opened it'), 'the dot back').toBeInTheDocument()
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item({ id: 1 })]) }))
+    await markFromMenu('Mark as read')
+    await waitFor(() => {
+      expect(yours.queryByTitle('New since you last opened it')).not.toBeInTheDocument()
+    })
+
+    platform.markItemUnseen.mockRejectedValueOnce(new Error('database is locked'))
+    await markFromMenu('Mark as unread')
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Could not mark “Add the widget cache” unread · database is locked',
+    )
+    expect(yours.queryByTitle('New since you last opened it'), 'still read').not.toBeInTheDocument()
+
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item({ id: 1, unread: true })]) }))
+    await markFromMenu('Mark as unread')
+    expect(platform.markItemUnseen).toHaveBeenLastCalledWith(1)
+    expect(await yours.findByTitle('New since you last opened it')).toBeInTheDocument()
+  })
+
   it('writes a sheet’s failed mark to the console, and leaves the card as it was', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 

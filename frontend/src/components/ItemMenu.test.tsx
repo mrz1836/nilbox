@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { CardPrefsContext, defaultCardPrefs } from '../lib/cardPrefs'
 import type { TriageTab } from '../lib/triage'
 import type { AutopilotRoutine, InboxItem, RepoRules } from '../platform'
 import { at } from '../test/clock'
@@ -117,6 +118,7 @@ describe('ItemMenu', () => {
     expect(names(screen.getByRole('menu', { name: 'Inbox actions' }))).toEqual([
       'Refresh from GitHub',
       'Pin to top',
+      'Mark as unread',
       'Pin or mute repository',
       'Snooze',
       'Dismiss',
@@ -151,6 +153,53 @@ describe('ItemMenu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
+  it('offers Mark as read on an unread item, and Mark as unread on one read', async () => {
+    const unread = item({ unread: true })
+    const { triage } = renderRow(unread)
+
+    await openMenu()
+    await openSubmenu('Inbox actions')
+    expect(screen.queryByRole('menuitem', { name: 'Mark as unread' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Mark as read' }))
+    expect(triage.onMarkRead).toHaveBeenCalledExactlyOnceWith(unread)
+    expect(triage.onMarkUnread).not.toHaveBeenCalled()
+  })
+
+  it('marks a read item unread', async () => {
+    const read = item()
+    const { triage } = renderRow(read)
+
+    await openMenu()
+    await openSubmenu('Inbox actions')
+    expect(screen.queryByRole('menuitem', { name: 'Mark as read' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Mark as unread' }))
+    expect(triage.onMarkUnread).toHaveBeenCalledExactlyOnceWith(read)
+    expect(triage.onMarkRead).not.toHaveBeenCalled()
+  })
+
+  it('offers neither mark while the cards show no unread dots, and still marks an item opened on GitHub read', async () => {
+    const unread = item({ unread: true })
+    const triage = triageActions()
+
+    render(
+      <CardPrefsContext value={{ ...defaultCardPrefs, unread: false }}>
+        <ul>
+          <ItemRow item={unread} launch={null} triage={triage} edits={editActions()} />
+        </ul>
+      </CardPrefsContext>,
+      { wrapper: at() },
+    )
+
+    await openMenu()
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Open on GitHub' }))
+    expect(triage.onMarkRead).toHaveBeenCalledExactlyOnceWith(unread)
+
+    await openMenu()
+    await openSubmenu('Inbox actions')
+    expect(screen.queryByRole('menuitem', { name: 'Mark as read' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Mark as unread' })).not.toBeInTheDocument()
+  })
+
   it('unpins a pinned item, and offers a set-aside item back', async () => {
     const it = item({ pinnedAt: '2026-06-15T10:00:00Z', snoozedUntil: '2026-06-20T10:00:00Z' })
     const { triage } = renderRow(it, 'snoozed')
@@ -160,6 +209,7 @@ describe('ItemMenu', () => {
     expect(names(screen.getByRole('menu', { name: 'Inbox actions' }))).toEqual([
       'Unsnooze',
       'Unpin',
+      'Mark as unread',
       'Pin or mute repository',
       'Refresh from GitHub',
     ])
@@ -240,6 +290,7 @@ describe('ItemMenu', () => {
     expect(names(screen.getByRole('menu', { name: 'Inbox actions' }))).toEqual([
       'Unmute acme-org',
       'Pin to top',
+      'Mark as unread',
       'Refresh from GitHub',
     ])
     await userEvent.click(screen.getByRole('menuitem', { name: 'Unmute acme-org' }))

@@ -1,6 +1,7 @@
 import { use, useState, type ReactNode } from 'react'
 
 import { chipOf } from '../../lib/autopilot'
+import { CardPrefsContext } from '../../lib/cardPrefs'
 import { counted, formatCount } from '../../lib/format'
 import { agentName } from '../../lib/launch'
 import type { Step, Verb } from '../../lib/nextStep'
@@ -11,7 +12,7 @@ import { capitalize, formatAge } from '../../lib/time'
 import { isPinnedItself, isPinned, snoozeLength, type TriageTab } from '../../lib/triage'
 import { openExternal, type AgentInfo, type AgentSession, type InboxItem, type ItemDetails } from '../../platform'
 import { AutopilotRowsContext, useMarkedBy, useRoutineName } from '../autopilot/AutopilotChip'
-import { ArchiveIcon, AutopilotIcon, ClockIcon, ExternalIcon, PinIcon } from '../icons'
+import { ArchiveIcon, AutopilotIcon, ClockIcon, DotIcon, ExternalIcon, PinIcon, RingIcon } from '../icons'
 import { LabelChip, ProgressBar, ProjectLink } from '../ItemSignals'
 import { RelativeTime } from '../RelativeTime'
 import { SensitiveFilesGroup } from '../SensitiveFiles'
@@ -327,7 +328,8 @@ export interface CardPeekProps {
 // session, the routines, why it is here, every label), as three columns that become two,
 // then one, as the list narrows; an area with nothing to say is left out. Its action bar
 // repeats the primary, offers Review or Read beside a primary that doesn't open the item,
-// the agent's launch options, the triage actions, and GitHub.
+// the agent's launch options, the triage actions, GitHub, and, while Settings → Cards'
+// Unread dots is on, Mark as read or Mark as unread.
 export function CardPeek({
   id,
   item,
@@ -342,6 +344,7 @@ export function CardPeek({
   launch,
 }: CardPeekProps) {
   const [error, setError] = useState('')
+  const { unread: unreadDots } = use(CardPrefsContext)
   const d = item.details
   const isPR = item.kind === 'pr'
 
@@ -434,6 +437,22 @@ export function CardPeek({
           <ExternalIcon className="size-3.5 text-muted" />
           GitHub
         </button>
+        {triage !== undefined && unreadDots && (
+          <button
+            type="button"
+            onClick={() => {
+              if (item.unread) {
+                triage.onMarkRead(item)
+              } else {
+                triage.onMarkUnread(item)
+              }
+            }}
+            className={buttonClass}
+          >
+            {item.unread ? <RingIcon className="size-3.5 text-muted" /> : <DotIcon className="size-3.5 text-info" />}
+            {item.unread ? 'Mark as read' : 'Mark as unread'}
+          </button>
+        )}
       </div>
       {error !== '' && (
         <p role="alert" className="col-span-full -mt-3 text-xs text-danger">
