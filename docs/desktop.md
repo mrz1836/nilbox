@@ -1869,6 +1869,12 @@ Cards** can make every card one line instead (**Compact cards**, below).
   **Waiting on the author · you requested changes**, then its worst trouble (**you requested
   changes, conflicts with its base**), in grey, with a quiet **Open** and the agent's plain
   button. Once the author pushes, it asks for your **Re-review**, assigned to you or not.
+- **Approved by you.** A pull request someone else opened that you approved has nothing left
+  for you to review: it says **Approved by you**, then its worst trouble (**Approved by you · 1
+  check still running**), in grey, with a quiet **Open**, until it is ready to merge, when one
+  assigned to you reads **Approved · ready to merge** with **Merge**. Workflow runs held for
+  your approval on it come first, in amber: **1 run awaits your approval · you approved**, with
+  **Open**.
 
 **Hover a card** for its triage over the track: **Show details**, refresh it, snooze it,
 dismiss it, pin or unpin it, and the menu of everything else. They stay while the card is busy

@@ -47,6 +47,7 @@ export type Rule =
   | 'runs_held'
   | 'awaiting_author'
   | 'rereview'
+  | 'approved_by_you'
   | 'conflicts'
   | 'checks_failing'
   | 'changes_requested'
@@ -177,6 +178,16 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   const { passed, failed, pending } = d.checks
   const ran = passed + failed + pending
   const wake = backFromSnooze ? wakeText(item) : ''
+  // approvedByYou is someone else's pull request the user's latest verdict approved.
+  const approvedByYou = theirs && d.viewerVerdict === 'approved'
+  // ready is a pull request ready to merge: no draft, approved, its checks passed (or it
+  // has none), no conflicts, and no auto-merge waiting to do it.
+  const ready =
+    !item.isDraft &&
+    reviews.kind === 'approved' &&
+    (checks.kind === 'passed' || checks.kind === 'none') &&
+    d.mergeable === 'MERGEABLE' &&
+    d.autoMerge === ''
 
   // worst is a pull request's worst detail, for a review asked of the user or one that
   // waits on its author.
@@ -194,13 +205,18 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   const woken = (text: string, detail: string, icon: StoryIcon): Story =>
     backFromSnooze ? story(text, detail === '' ? wake : `${detail} · ${wake}`, 'clock') : story(text, detail, icon)
 
-  // 6. Workflow runs wait for the user's approval.
-  if (asked && d.checks.awaiting > 0) {
+  // 6. Workflow runs wait for the user's approval, on a review asked of the user or a pull
+  // request they approved.
+  if ((asked || approvedByYou) && d.checks.awaiting > 0) {
     return step(
       'runs_held',
       'urgent',
-      story(`${counted(d.checks.awaiting, 'run awaits', 'runs await')} your approval`, '', 'clock'),
-      'review',
+      story(
+        `${counted(d.checks.awaiting, 'run awaits', 'runs await')} your approval`,
+        approvedByYou ? 'you approved' : '',
+        'clock',
+      ),
+      asked ? 'review' : 'open',
     )
   }
 
@@ -219,6 +235,12 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
     const text = d.reviewRequestedAgain ? 'Review re-requested' : 'Re-review'
 
     return step('rereview', 'yours', story(text, worst, 'dot'), 'rereview', false, 'rereview')
+  }
+
+  // Ahead of 7 to 10. The user approved someone else's pull request, which isn't ready to
+  // merge yet: there is nothing left to review. Once it is ready, rule 15 offers the merge.
+  if (approvedByYou && !ready) {
+    return step('approved_by_you', 'waiting', story('Approved by you', worst, 'dot'), 'open', true)
   }
 
   // 7 to 10. The user's own pull request, or one assigned to them.
@@ -279,13 +301,7 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
   }
 
   // 15 to 19. Not the user's move, or one ready to make.
-  if (
-    mine &&
-    reviews.kind === 'approved' &&
-    (checks.kind === 'passed' || checks.kind === 'none') &&
-    d.mergeable === 'MERGEABLE' &&
-    d.autoMerge === ''
-  ) {
+  if (mine && ready) {
     return step('ready', 'ready', woken('Approved · ready to merge', '', 'dot'), 'merge')
   }
 

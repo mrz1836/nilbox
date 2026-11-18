@@ -139,8 +139,9 @@ export interface Details {
     /**
      * ViewerVerdict is the user's own standing review of a pull request, as the last read
      * of it found (the whole refresh's fourth search, or a read of it alone), so a card
-     * whose user requested changes can say it waits on the author. It costs no request:
-     * the refresh already reads it for PushedSinceReview.
+     * whose user requested changes can say it waits on the author, and one the user
+     * approved that they approved it. It costs no request: the refresh already reads it for
+     * PushedSinceReview.
      */
     "viewerVerdict": ViewerVerdict;
 }

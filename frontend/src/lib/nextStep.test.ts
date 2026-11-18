@@ -59,6 +59,17 @@ const waitingOnTwo = {
 }
 const woke = { review: 'approved', commits: 2, forcePushed: false, comments: 0, ready: false } as const
 
+// approved is someone else's pull request assigned to the user, who approved it: approved,
+// green, and mergeable unless d says otherwise.
+function approved(overrides: Partial<InboxItem> = {}, d: Partial<ItemDetails> = {}): InboxItem {
+  return pr({ assigned: true, author: 'contributor-a', ...overrides }, { viewerVerdict: 'approved', ...d })
+}
+
+// held counts n workflow runs held for approval, beside 13 checks that passed.
+function held(n: number) {
+  return { checks: { state: '', passed: 13, failed: 0, pending: 0, skipped: 0, awaiting: n } }
+}
+
 // theirs is someone else's pull request assigned to the user, who requested changes on it.
 function theirs(overrides: Partial<InboxItem> = {}, d: Partial<ItemDetails> = {}): InboxItem {
   return pr({ assigned: true, author: 'contributor-a', ...overrides }, { ...changes, viewerVerdict: 'changes', ...d })
@@ -300,6 +311,31 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     { rule: 'review', edge: 'yours', text: 'Your review', primary: 'review' },
   ],
 
+  [
+    '6 runs held on a pull request the user approved',
+    input({ item: approved({}, held(2)) }),
+    {
+      rule: 'runs_held',
+      edge: 'urgent',
+      text: '2 runs await your approval',
+      detail: 'you approved',
+      icon: 'clock',
+      primary: 'open',
+    },
+  ],
+  [
+    '6 runs held on a review asked of the user, who approved it',
+    input({ item: asked({ author: 'contributor-a' }, { viewerVerdict: 'approved', ...held(1) }) }),
+    {
+      rule: 'runs_held',
+      edge: 'urgent',
+      text: '1 run awaits your approval',
+      detail: 'you approved',
+      icon: 'clock',
+      primary: 'review',
+    },
+  ],
+
   // After 6: the user requested changes on someone else's pull request, not pushed to since.
   [
     'after 6 waiting on the author',
@@ -360,6 +396,39 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     '11 review re-requested on a pull request assigned to the user',
     input({ item: theirs({}, { pushedSinceReview: true, reviewRequestedAgain: true }) }),
     { rule: 'rereview', edge: 'yours', text: 'Review re-requested', primary: 'rereview', situation: 'rereview' },
+  ],
+
+  // Ahead of 7 to 10: the user approved someone else's pull request, not ready to merge.
+  [
+    'approved by you, checks still running',
+    input({
+      item: approved({}, { checks: { state: 'PENDING', passed: 13, failed: 0, pending: 1, skipped: 0, awaiting: 0 } }),
+    }),
+    {
+      rule: 'approved_by_you',
+      edge: 'waiting',
+      text: 'Approved by you',
+      detail: '1 check still running',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'approved by you, waiting on another reviewer',
+    input({ item: approved({}, waitingOnTwo) }),
+    { rule: 'approved_by_you', edge: 'waiting', text: 'Approved by you', primary: 'open', quiet: true },
+  ],
+  [
+    'approved by you, back from snooze',
+    input({ item: approved({}, waitingOnTwo), backFromSnooze: true }),
+    {
+      rule: 'approved_by_you',
+      edge: 'waiting',
+      text: 'Approved by you',
+      detail: 'back from snooze',
+      primary: 'open',
+      quiet: true,
+    },
   ],
 
   // 7: the user's pull request conflicts with its base.
@@ -878,7 +947,70 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
   [
     'an approval of the user’s is no wait on the author',
     input({ item: pr({ assigned: true, author: 'contributor-a' }, { ...waitingOnTwo, viewerVerdict: 'approved' }) }),
-    { rule: 'assigned_pr', edge: 'yours', text: 'Assigned to you', primary: 'review' },
+    { rule: 'approved_by_you', edge: 'waiting', text: 'Approved by you', primary: 'open', quiet: true },
+  ],
+  [
+    '6 over approved by you',
+    input({ item: approved({}, { ...waitingOnTwo, ...held(1) }) }),
+    {
+      rule: 'runs_held',
+      edge: 'urgent',
+      text: '1 run awaits your approval',
+      detail: 'you approved',
+      icon: 'clock',
+      primary: 'open',
+    },
+  ],
+  [
+    'approved by you over 7',
+    input({ item: approved({}, { mergeable: 'CONFLICTING' }) }),
+    {
+      rule: 'approved_by_you',
+      edge: 'waiting',
+      text: 'Approved by you',
+      detail: 'conflicts with its base',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'approved by you over 8',
+    input({ item: approved({}, failing) }),
+    {
+      rule: 'approved_by_you',
+      edge: 'waiting',
+      text: 'Approved by you',
+      detail: 'checks failing',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'approved by you over 10',
+    input({ item: approved({ isDraft: true }) }),
+    { rule: 'approved_by_you', edge: 'waiting', text: 'Approved by you', primary: 'open', quiet: true },
+  ],
+  [
+    'approved by you over 13',
+    input({ item: asked({ author: 'contributor-a' }, { viewerVerdict: 'approved', ...failing }) }),
+    {
+      rule: 'approved_by_you',
+      edge: 'waiting',
+      text: 'Approved by you',
+      detail: 'checks failing',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'approved by you over 16',
+    input({ item: approved({}, { autoMerge: 'SQUASH' }) }),
+    { rule: 'approved_by_you', edge: 'waiting', text: 'Approved by you', primary: 'open', quiet: true },
+  ],
+  [
+    '15 over approved by you, once it is ready to merge',
+    input({ item: approved() }),
+    { rule: 'ready', edge: 'ready', text: 'Approved · ready to merge', primary: 'merge' },
   ],
   [
     '11 over 7',
@@ -1162,6 +1294,37 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
       primary: 'unsnooze',
       quiet: true,
     },
+  ],
+  [
+    'a pull request assigned to the user, who approved it, with a workflow run held',
+    input({ item: approved({}, held(1)) }),
+    {
+      rule: 'runs_held',
+      edge: 'urgent',
+      text: '1 run awaits your approval',
+      detail: 'you approved',
+      icon: 'clock',
+      primary: 'open',
+    },
+  ],
+  [
+    'a pull request assigned to the user, who approved it, with conflicts',
+    input({ item: approved({}, { mergeable: 'CONFLICTING', ...running }) }),
+    {
+      rule: 'approved_by_you',
+      edge: 'waiting',
+      text: 'Approved by you',
+      detail: 'conflicts with its base',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'a pull request assigned to the user, who approved it, ready to merge',
+    input({
+      item: approved({}, { checks: { state: 'SUCCESS', passed: 13, failed: 0, pending: 0, skipped: 0, awaiting: 0 } }),
+    }),
+    { rule: 'ready', edge: 'ready', text: 'Approved · ready to merge', primary: 'merge' },
   ],
   [
     'an idle session',

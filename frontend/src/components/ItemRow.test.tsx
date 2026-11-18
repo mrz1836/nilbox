@@ -308,6 +308,51 @@ describe('ItemRow waiting on the author', () => {
   })
 })
 
+describe('ItemRow approved by you', () => {
+  // approved is someone else's pull request assigned to the user, who approved it.
+  function approved(checks: Partial<ItemDetails['checks']>): InboxItem {
+    return item({
+      assigned: true,
+      author: 'contributor-a',
+      details: details({
+        viewerVerdict: 'approved',
+        checks: { ...details().checks, passed: 13, skipped: 0, ...checks },
+      }),
+    })
+  }
+
+  it('asks to approve a held workflow run, opening the pull request rather than reviewing it', () => {
+    const row = mountCard(approved({ state: '', awaiting: 1 }))
+
+    expect(row).toHaveAttribute('data-rule', 'runs_held')
+    expect(row.querySelector('[data-edge]')).toHaveClass('bg-warning')
+    expect(body(row).lastElementChild).toHaveTextContent(
+      /^1 run awaits your approval · you approved·acme-org\/example-repo #7 · contributor-a · assigned · 3h$/,
+    )
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveAttribute('data-verb', 'open')
+    expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument()
+  })
+
+  it('says the user approved it while it isn’t ready to merge, with a quiet Open', () => {
+    const row = mountCard(approved({ state: 'PENDING', pending: 1 }))
+
+    expect(row).toHaveAttribute('data-rule', 'approved_by_you')
+    expect(row.querySelector('[data-edge]')).toHaveClass('bg-muted/30')
+    expect(body(row).lastElementChild).toHaveTextContent(
+      /^Approved by you · 1 check still running·acme-org\/example-repo #7 · contributor-a · assigned · 3h$/,
+    )
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveClass('border-border', 'text-text')
+    expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument()
+  })
+
+  it('offers the merge once it is ready', () => {
+    const row = mountCard(approved({}))
+
+    expect(row).toHaveAttribute('data-rule', 'ready')
+    expect(screen.getByRole('button', { name: 'Merge' })).toHaveAttribute('data-verb', 'merge')
+  })
+})
+
 describe('ItemRow labels', () => {
   it('shows two labels after the title, colored, and folds the rest into a count', () => {
     const labels = ['one', 'two', 'three', 'four'].map((name) => ({ name, color: '#d73a4a' }))
