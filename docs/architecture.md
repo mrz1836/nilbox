@@ -4359,8 +4359,8 @@ full it numbers the parts the card marks with `data-guide` (`edge`, `avatar`, `t
 `story`, `byline`, `risk`, `track`, `actions`, harmless on every card): each marker is placed
 from its part's measured box against the sample's, measured again whenever the sample's box
 changes size (`ResizeObserver`), and hidden until its part is laid out; then the legend.
-Both variants end with the key (`card/StateTrack`'s `TrackSymbol` draws the track's
-symbols). `card/CardGuideDialog` shows the full guide in a modal; App owns whether it is
+Both variants end with the key (its track symbols take `card/StateTrack`'s
+`trackStepClass`). `card/CardGuideDialog` shows the full guide in a modal; App owns whether it is
 open, loads it on its first opening, so the inbox's chunk doesn't grow, and hands
 `onShowCardGuide` to `InboxView` (How to read a card, beside the last-refreshed time) and
 `SettingsView` (Settings → Cards' row). Setup's Finish step shows the compact guide, and App

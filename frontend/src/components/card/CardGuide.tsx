@@ -7,11 +7,12 @@ import { CardPicturesContext, type Pictures } from '../../lib/pictures'
 import { useClock } from '../../lib/useNow'
 import { AutopilotRowsContext } from '../autopilot/AutopilotChip'
 import { captionClass } from '../controls'
-import { BotIcon } from '../icons'
+import { BotIcon, CheckIcon, ClockIcon, RereviewIcon, XIcon } from '../icons'
 import { ItemRow } from '../ItemRow'
 import { faceOf, initialsOf } from './CardAvatar'
 import { edgeBar } from './CardParts'
-import { TrackSymbol, type KeyLook } from './StateTrack'
+import { StatusDot } from '../StatusDot'
+import { trackStepClass, type Look } from './StateTrack'
 
 // Side is where a part's marker sits: centered on the edge, over the part's start, or under
 // it.
@@ -87,6 +88,23 @@ const edgeKey: readonly { edge: Edge; words: string }[] = [
   { edge: 'agent', words: 'An agent is on it' },
   { edge: 'waiting', words: 'Waiting on others' },
 ]
+
+// KeyLook is a look of the track's steps the key explains: every one but the dotted ring of
+// nothing to say yet, and auto-merge's bolt.
+type KeyLook = Extract<Look, 'ok' | 'bad' | 'rereview' | 'running' | 'held' | 'waiting'>
+
+// keyIconClass is a symbol's mark, as the track draws it.
+const keyIconClass = 'size-2.5 [stroke-width:2.4]'
+
+// keyIcons are what a step of each look the key explains shows inside its circle.
+const keyIcons: Readonly<Record<KeyLook, ReactNode>> = {
+  ok: <CheckIcon className={keyIconClass} />,
+  bad: <XIcon className={keyIconClass} />,
+  rereview: <RereviewIcon className={keyIconClass} />,
+  running: <StatusDot color="bg-warning" ping />,
+  held: <ClockIcon className={keyIconClass} />,
+  waiting: null,
+}
 
 // trackKey is each of the track's symbols with its words.
 const trackKey: readonly { look: KeyLook; words: string }[] = [
@@ -304,7 +322,9 @@ function Key() {
       <KeyGroup caption="The track">
         {trackKey.map(({ look, words }) => (
           <li key={look} className={keyRowClass}>
-            <TrackSymbol look={look} />
+            <span aria-hidden="true" className={trackStepClass(look)}>
+              {keyIcons[look]}
+            </span>
             {words}
           </li>
         ))}

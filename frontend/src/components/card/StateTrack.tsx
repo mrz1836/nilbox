@@ -9,7 +9,7 @@ import { StatusDot } from '../StatusDot'
 // Look is how a step's circle is drawn: in a color with a faint tint of it behind (ok,
 // bad, rereview, held), a still ring (waiting, dashed; none, dotted), a dashed one in the
 // success color (auto, for auto-merge), or a warning ring with a moving dot (running).
-type Look = 'ok' | 'bad' | 'rereview' | 'held' | 'running' | 'waiting' | 'none' | 'auto'
+export type Look = 'ok' | 'bad' | 'rereview' | 'held' | 'running' | 'waiting' | 'none' | 'auto'
 
 // looks are each look's circle, spelled out in full so Tailwind finds them. A tint is mixed
 // over the surface so the line joining the steps never shows through it.
@@ -192,28 +192,10 @@ export function StateTrack({ item }: { item: InboxItem }) {
   )
 }
 
-// KeyLook is a look the card guide's key explains: every one a step of the track takes but
-// the dotted ring of nothing to say yet, and auto-merge's bolt.
-export type KeyLook = 'ok' | 'bad' | 'rereview' | 'running' | 'held' | 'waiting'
-
-// keyIcons are what a step of each look the key explains shows inside its circle.
-const keyIcons: Readonly<Record<KeyLook, ReactNode>> = {
-  ok: <CheckIcon className={iconClass} />,
-  bad: <XIcon className={iconClass} />,
-  rereview: <RereviewIcon className={iconClass} />,
-  running: <StatusDot color="bg-warning" ping />,
-  held: <ClockIcon className={iconClass} />,
-  waiting: null,
-}
-
-// TrackSymbol is one of the track's symbols alone, as the card guide's key explains it: a
-// step's circle in its look, with what such a step shows inside.
-export function TrackSymbol({ look }: { look: KeyLook }) {
-  return (
-    <span aria-hidden="true" className={`${stepClass} ${looks[look]}`}>
-      {keyIcons[look]}
-    </span>
-  )
+// trackStepClass is a step's circle in a look, as the card guide's key draws the track's
+// symbols.
+export function trackStepClass(look: Look): string {
+  return `${stepClass} ${looks[look]}`
 }
 
 // miniLooks are each look's dot in a compact card's track, spelled out in full so Tailwind
