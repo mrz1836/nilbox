@@ -57,7 +57,7 @@ setting a prompt has, and you can edit one by hand.
 | `version` | The format's version, `3`. Version `1` and `2` files still import (see [Older versions](#older-versions)). |
 | `exportedAt` | When the file was written, as RFC 3339 in UTC. |
 | `app` | The version of the app that wrote it. Informational only. |
-| `defaults` | The app's default prompt for pull requests (`pr`) and issues (`issue`), each by nickname among the file's prompts, or `""`; and `replies`, the default [review replies](desktop.md#review-replies) by slot (`approve`, `approve_bots`, `request_changes`, `comment`), each by nickname. A slot whose default is none of the file's prompts is left out, as is `replies` when none is. |
+| `defaults` | The app's default prompt for pull requests (`pr`) and issues (`issue`), each by nickname among the file's prompts, or `""`; its prompt for a pull request whose checks fail (`checksFailing`), that conflicts with its base (`conflicts`), that a reviewer asked to change (`changesRequested`), and that you're asked to review again (`rereview`), each by nickname and left out when none of the file's prompts is it (an older file has none); and `replies`, the default [review replies](desktop.md#review-replies) by slot (`approve`, `approve_bots`, `request_changes`, `comment`), each by nickname. A slot whose default is none of the file's prompts is left out, as is `replies` when none is. |
 | `startersAdded` | The starter prompts the library had been given, by key. Restoring a library from the file keeps a starter you deleted from coming back. Only a whole-library file fills it in. |
 | `prompts` | The prompts, at most 1,000. |
 
@@ -75,7 +75,7 @@ Each prompt:
 | `effort` | The effort level it launches with, shared by every agent, or `""` to inherit it. An agent that lacks the level, such as Claude Code for Codex's `ultra`, launches with its own default. |
 | `planMode`, `worktree` | `true` or `false` to turn plan mode or the worktree on or off, or `null` to inherit. |
 | `extraArgs` | Extra arguments for each coding agent, keyed by agent (`claude` or `codex`), one per list item, added after the profile's and the launch defaults'. Each agent only ever gets its own. |
-| `starterKey` | The starter it came from (`review-pr`, `work-on-issue`, `quick-look`, `fix-checks`, `fix-dependency-security`, and the replies `reply-lgtm`, `reply-update-ok`, `reply-needs-changes`, `reply-question`), or `""` for a prompt someone wrote. |
+| `starterKey` | The starter it came from (`review-pr`, `work-on-issue`, `quick-look`, `fix-checks`, `fix-dependency-security`, `re-review`, and the replies `reply-lgtm`, `reply-update-ok`, `reply-needs-changes`, `reply-question`), or `""` for a prompt someone wrote. |
 | `createdAt`, `updatedAt` | When it was added and last saved, as RFC 3339, or `""`. Informational only. |
 
 <br>

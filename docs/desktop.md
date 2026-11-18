@@ -4027,7 +4027,7 @@ The **Prompts** tab is the prompt library: every prompt a launch can fill in. Ea
 characters (the short label the launch button and menu show, such as "Review"), what it is
 **for** (pull requests, issues, or both), its **text**, and optional **launch settings**.
 
-**Starter prompts.** The app adds nine starters, each once: **Review** (review a pull request),
+**Starter prompts.** The app adds ten starters, each once: **Review** (review a pull request),
 **Work on it** (work on an issue), **Quick look** (a fast read of a pull request's diff for
 blockers only, set to Sonnet at low effort without a worktree), **Fix checks** (find and fix
 a pull request's failing checks, then push the fix), and **Fix dep security** (fix the failing
@@ -4035,7 +4035,9 @@ security checks on a bot's dependency update: move the vulnerable dependency to 
 fixes it, never silence a scanner, and push with one exact `git push` to the pull request's
 own branch, named by its full ref and quoted, never forced; for a fork's pull request, or
 another outside contributor's, and for a branch or remote whose name isn't plain, it commits
-the fix but pushes nothing). Four more are the starters Autopilot's [templates](#templates-and-quick-setup) run: **Heal
+the fix but pushes nothing), and **Re-review** (review a pull request again, only what changed
+since the commit your last verdict was on, or the whole of it when that commit is no longer in
+its branch's history, as after a force-push). Four more are the starters Autopilot's [templates](#templates-and-quick-setup) run: **Heal
 Dependabot PR** (adapt the code to what a dependency update broke, never pinning it back or
 silencing a check, and push as Fix dep security does), **Address review** (work through the
 changes a review asked for, acting only on members' and collaborators' requests), **Resolve
@@ -4046,7 +4048,11 @@ starter new in a later version is added to your library once, as these were, and
 whose text you never changed takes the new text when a later version changes it, keeping the
 title and settings you gave it. Review and Work
 on it are the app's first
-defaults for pull requests and issues. From then on every prompt is yours to change, duplicate,
+defaults for pull requests and issues, and Fix checks, Resolve conflicts, Address review, and
+Re-review its first prompts for a pull request whose checks fail, that conflicts with its base,
+that a reviewer asked to change, and that you're asked to review again (see
+[Launch defaults](#launch-defaults)); each of those is filled once, so one you clear, or whose
+starter you delete, stays as you left it. From then on every prompt is yours to change, duplicate,
 or delete; a deleted starter is not added back. **Reset to original** restores a changed
 starter's title, text, and settings.
 
@@ -4066,8 +4072,9 @@ The **⋯** menu holds **Make the default for pull requests** (or issues), **Dup
 **Reset to original**, and **Delete**.
 
 **Deleting.** A prompt can be deleted once nothing uses it as a default. Deleting one that is
-the app's default for a kind, or an org's or repository's default, lists where it is used
-instead, so the defaults can be changed first. For the same reason, a prompt that is a default
+the app's default for a kind or a situation, or an org's or repository's default, lists where
+it is used instead (as in "acme-org's prompt when checks fail"), so the defaults can be changed
+first. For the same reason, a prompt that is a default
 for pull requests must keep applying to them.
 
 **Writing a prompt.** A prompt is a Go [text/template](https://pkg.go.dev/text/template). The
@@ -4080,7 +4087,7 @@ syntax snippet in the cheat sheet inserts it at the caret.
 |---|---|
 | `.Kind`, `.IsPR`, `.Number`, `.Title`, `.URL`, `.Author`, `.IsBot`, `.Labels`, `.IsDraft` | The item: its kind ("pull request" or "issue"), number, title (cut to 200 characters), address, author, whether a bot opened it, label names, and whether a pull request is a draft |
 | `.Repo`, `.Owner`, `.RepoName`, `.DefaultBranch`, `.Remote`, `.RemoteIsPlain` | The repository, the clone's remote for it (such as `origin`, or `upstream` in a fork's clone; empty without a clone), and whether that remote's name is plain (see Values in commands) |
-| `.Branch`, `.BranchIsPlain`, `.HeadCommit`, `.Checks`, `.FailedChecks`, `.Review`, `.HasConflicts`, `.Additions`, `.Deletions`, `.ChangedFiles`, `.Commits` | A pull request's head branch, whether its name is plain exactly as GitHub reported it (see Values in commands), its head commit (the one whose files the launch checked), its checks ("passing", "failing", "pending", or empty), its failed checks' names, separated by commas (empty when they aren't known), its review decision, whether it conflicts with its base, and its size; empty or zero for issues |
+| `.Branch`, `.BranchIsPlain`, `.HeadCommit`, `.ReviewedCommit`, `.Checks`, `.FailedChecks`, `.Review`, `.HasConflicts`, `.Additions`, `.Deletions`, `.ChangedFiles`, `.Commits` | A pull request's head branch, whether its name is plain exactly as GitHub reported it (see Values in commands), its head commit (the one whose files the launch checked), the commit your last review was on when your verdict requested changes or approved (empty otherwise), its checks ("passing", "failing", "pending", or empty), its failed checks' names, separated by commas (empty when they aren't known), its review decision, whether it conflicts with its base, and its size; empty or zero for issues |
 | `.SensitiveFiles` | A checked pull request's [sensitive files](#sensitive-files), each with its category, as in ".github/workflows/ci.yml (Workflows)", separated by commas; empty when there are none, and for issues |
 | `.Dependency`, `.FromVersion`, `.ToVersion`, `.UpdateType` | For a bot's dependency update, what its title says: the dependency (as in `golang.org/x/net`), the versions it moves between, and how big the jump is (`patch`, `minor`, `major`); empty when the title doesn't say, for a person's pull request, and for issues |
 | `.InWorktree`, `.WorktreeOnPRHead`, `.Worktree`, `.Profile`, `.Me`, `.OutsideContributor` | The session: whether it starts in a worktree, whether that worktree is at the pull request's head, its name, the profile, your login, and whether the item comes from an outside contributor |
@@ -4108,7 +4115,7 @@ name a branch or a remote in a command only under `{{if .BranchIsPlain}}` or
 and `-_./:,+@%=` alone and starts with neither `-` nor `=`, as every Dependabot and Renovate
 branch does.
 A number needs no quoting, nor do `.Repo`, `.Owner`, and `.RepoName`, which GitHub keeps to
-letters, digits, and `-_.`, nor `.HeadCommit`, which is hex.
+letters, digits, and `-_.`, nor `.HeadCommit` and `.ReviewedCommit`, which are hex.
 
 **Checking.** Every edit is checked as you type, by the same Go template package that fills
 the prompt in at launch. Each problem is listed under the editor with its line and column and
@@ -4298,6 +4305,15 @@ next layer's first word as its value. Each agent reserves its own flags:
   `review`, `resume`, `apply`, and the rest), which would run that command instead of a
   session, without the launch's sandbox. Other overrides, such as `-c model_verbosity=low`, and
   `-p` (a Codex config profile) are fine.
+
+**A situation's prompt.** A launch for the situation an inbox card names, a pull request whose
+checks fail, that conflicts with its base, that a reviewer asked to change, or that you're asked
+to review again, takes the repository's prompt for that situation, else its org's, else the
+app's, and with none of those set, the pull request's prompt as above; the settings that prompt
+brings follow it. So an org's prompt for pull requests doesn't beat the app's prompt for a
+situation: a review prompt is the wrong one to fix checks with, and an org that wants its own
+sets its own for the situation. The app's prompt for each starts on its starter (Fix checks,
+Resolve conflicts, Address review, Re-review).
 
 A default that no longer makes sense, such as a profile that was removed or an agent this
 version doesn't know, is skipped with a warning in the launch menu. The outside-contributor rule

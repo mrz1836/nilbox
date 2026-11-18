@@ -253,7 +253,12 @@ text: a change to a starter's text keeps the text it replaces, byte for byte, in
 starter's `Earlier` (pinned by SHA-256 in `TestEarlierStarterTextsAreAsShipped`), and
 `Seed` gives every copy still holding one the new text, keeping its title, nickname, and
 settings, as an import does a file's; a copy whose text the user changed, or a duplicate, is
-never touched. A starter's command names a value a repository, a clone's config, or an
+never touched. After the starters, `Seed` fills the app's prompt for each situation a pull
+request can be in (`prompts.DefaultSlot`'s `checks_failing`, `conflicts`, `changes_requested`,
+and `rereview`, the prefs `prompts.default.<slot>`) once, from the library's copy of the
+slot's starter when it has one, and records the slot in `prompts.seededSlots` either way, so a
+slot the user cleared, or whose starter they deleted, stays as they left it; unlike a kind's, a
+situation's default never falls back to another prompt. A starter's command names a value a repository, a clone's config, or an
 author chose only when it is plain (`.BranchIsPlain`, `.RemoteIsPlain`, worked out from the
 raw value in `Data.sanitized`, since sanitizing can hide characters), and then through the
 `shellquote` template function (`TestStarterCommandsAreInert`). The file format is `prompts.Bundle`, specified in
@@ -1216,7 +1221,14 @@ agent's `KeyEnv` unset, so the profile's own sign-in is used. An Autopilot routi
 a click's launch with `LaunchRequest.Routine` set (Go-only, `json:"-"`), which only holds it
 back more: its files are checked under the unattended scope, only `RoutineLaunch.Confirmed`
 confirms a hold, a running session always holds it, a dirty worktree holds it (`HoldDirty`),
-`FullAccessOverride` is ignored, and its prompt names the routine. `internal/workspacetrust`
+`FullAccessOverride` is ignored, and its prompt names the routine. A launch for a pull
+request's situation (`LaunchRequest.Situation`, a `Situation` from `situation.go`, refused when
+unknown and ignored on an issue) resolves its prompt from the repository's launch defaults'
+column for it, the org's, then the app's (`prompts.DefaultPrompts`), and with none set, from
+the pull request's own chain, so an org's prompt for pull requests never beats the app's for a
+situation; `Resolution.Situations` names the four for a pull request, only to label the card's
+agent button. `promptData` fills `.ReviewedCommit` from the inbox's `viewer_review_commit`
+only when it is a commit's hex ID (`prompts.CommitID`). `internal/workspacetrust`
 marks the launch folder trusted in each agent's own config (Claude's `.claude.json`, Codex's
 `config.toml`, appended to and never rewritten).
 
