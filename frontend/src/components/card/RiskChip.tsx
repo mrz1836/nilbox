@@ -29,22 +29,21 @@ const tones = {
 const chipClass =
   'inline-flex max-w-64 items-center gap-1 rounded-full border px-1.5 py-px text-[0.6875rem] leading-4 font-medium transition-colors aria-expanded:ring-1 aria-expanded:ring-border'
 
-export interface RiskChipProps {
-  item: InboxItem
-  // onFilesSettings opens Settings → Sensitive files from the sensitive-files panel.
-  onFilesSettings?: (() => void) | undefined
+// Risk is what a card says to be careful of: its words, its tooltip, its tone, and
+// whether an outside contributor's files were checked clean.
+interface Risk {
+  words: string
+  title: string
+  tone: keyof typeof tones
+  clean: boolean
 }
 
-// RiskChip is a card's one chip for what to be careful of: who opened the item, when the
-// repository doesn't trust them ("Outside contributor", "Untrusted bot"), and the
+// riskOf is what to be careful of with an item, or null for nothing: who opened it, when
+// the repository doesn't trust them ("Outside contributor", "Untrusted bot"), and the
 // sensitive files it changes, or that its files couldn't all be checked. The worst tone
-// wins; in a list narrower than 48rem, the shield alone says it. An outside contributor's files checked clean get a checked shield. It opens the
-// sensitive-files panel when the files were checked. A trusted bot gets no chip: its square
-// avatar says it, and neither does an item without a finding from someone trusted.
-export function RiskChip({ item, onFilesSettings }: RiskChipProps) {
-  const id = useId()
-  const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ placement: 'fit' })
-  const { open, toggle, triggerRef } = popover
+// wins. A trusted bot has nothing to say, and neither does an item without a finding from
+// someone trusted.
+function riskOf(item: InboxItem): Risk | null {
   const check = item.files
   const files = check === null ? null : filesChip(check)
   const notable = files !== null && files.short !== ''
@@ -54,13 +53,68 @@ export function RiskChip({ item, onFilesSettings }: RiskChipProps) {
   }
 
   const trust = item.trusted ? '' : item.authorIsBot ? 'Untrusted bot' : notable ? 'Outside' : 'Outside contributor'
-  const words = [trust, notable ? files.short : ''].filter((part) => part !== '').join(' · ')
-  const title = [trustTitle(item), files?.long ?? ''].filter((part) => part !== '').join('\n')
-  const tone = check?.groups.some((g) => g.level === 'danger') === true ? 'danger' : 'warning'
-  const clean = !item.trusted && files?.icon === 'clear'
+
+  return {
+    words: [trust, notable ? files.short : ''].filter((part) => part !== '').join(' · '),
+    title: [trustTitle(item), files?.long ?? ''].filter((part) => part !== '').join('\n'),
+    tone: check?.groups.some((g) => g.level === 'danger') === true ? 'danger' : 'warning',
+    clean: !item.trusted && files?.icon === 'clear',
+  }
+}
+
+// Shield is a risk's shield: checked for an outside contributor's files checked clean,
+// with ! otherwise.
+function Shield({ clean }: { clean: boolean }) {
+  return clean ? <ShieldCheckIcon className="size-3.5 shrink-0" /> : <ShieldAlertIcon className="size-3.5 shrink-0" />
+}
+
+// RiskIcon is a compact card's risk: the risk chip's shield alone, in its tone, its words
+// for a screen reader and its tooltip the chip's. The peek lists the sensitive files.
+export function RiskIcon({ item }: { item: InboxItem }) {
+  const risk = riskOf(item)
+
+  if (risk === null) {
+    return null
+  }
+
+  return (
+    <span
+      role="img"
+      aria-label={risk.words}
+      title={risk.title}
+      data-tone={risk.tone}
+      className={`relative z-10 grid place-items-center ${risk.tone === 'danger' ? 'text-danger' : 'text-warning'}`}
+    >
+      <Shield clean={risk.clean} />
+    </span>
+  )
+}
+
+export interface RiskChipProps {
+  item: InboxItem
+  // onFilesSettings opens Settings → Sensitive files from the sensitive-files panel.
+  onFilesSettings?: (() => void) | undefined
+}
+
+// RiskChip is a card's one chip for what to be careful of (riskOf). In a list narrower
+// than 48rem, the shield alone says it. An outside contributor's files checked clean get a
+// checked shield. It opens the sensitive-files panel when the files were checked. A trusted
+// bot gets no chip: its square avatar says it.
+export function RiskChip({ item, onFilesSettings }: RiskChipProps) {
+  const id = useId()
+  const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ placement: 'fit' })
+  const { open, toggle, triggerRef } = popover
+  const check = item.files
+  const risk = riskOf(item)
+
+  if (risk === null) {
+    return null
+  }
+
+  const { words, title, tone } = risk
   const content = (
     <>
-      {clean ? <ShieldCheckIcon className="size-3.5 shrink-0" /> : <ShieldAlertIcon className="size-3.5 shrink-0" />}
+      <Shield clean={risk.clean} />
       <span className="truncate @max-3xl:sr-only">{words}</span>
     </>
   )

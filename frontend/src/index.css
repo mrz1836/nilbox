@@ -156,6 +156,12 @@
     contain-intrinsic-size: auto 4.125rem;
   }
 
+  /* A compact card (Settings → Cards' Density) holds its own height, one line of 2.375rem
+     over its border, until it has been laid out. */
+  .item-row[data-density='compact'] {
+    contain-intrinsic-size: auto 2.375rem;
+  }
+
   .item-row:has([aria-expanded='true']) {
     content-visibility: visible;
   }

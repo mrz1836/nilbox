@@ -1,13 +1,14 @@
 import { Fragment, memo, use, useId, useState, type ReactNode } from 'react'
 
+import { CardPrefsContext } from '../lib/cardPrefs'
 import { counted } from '../lib/format'
 import { HiddenLabelsContext } from '../lib/labels'
 import { agentName } from '../lib/launch'
-import { autopilotState, nextStep, type Edge } from '../lib/nextStep'
+import { autopilotState, nextStep } from '../lib/nextStep'
 import { leaving, useRowWork, workWords } from '../lib/rowWork'
 import { cardSession, endedShownMs, sinceWhen } from '../lib/sessions'
-import { formatAge, formatAgo, formatFull, formatWhen } from '../lib/time'
-import { isBackFromSnooze, isPinned, isPinnedItself, type TriageTab } from '../lib/triage'
+import { formatAge, formatAgo } from '../lib/time'
+import { isBackFromSnooze, isPinned, type TriageTab } from '../lib/triage'
 import { useNowAs } from '../lib/useNow'
 import {
   openExternal,
@@ -19,13 +20,14 @@ import {
   type AgentSession,
   type Profile,
   type Prompt,
-  type RepoRules,
   type Settings,
   type Worktree,
 } from '../platform'
-import { AutopilotChip, useMarkedBy, useRoutineName } from './autopilot/AutopilotChip'
+import { AutopilotChip } from './autopilot/AutopilotChip'
 import { CardActions, cardOutcomeClass } from './card/CardActions'
 import { CardAvatar } from './card/CardAvatar'
+import { CompactRow } from './card/CompactRow'
+import { edgeBar, FilterText, PinGlyph, tagClass, TriageTag } from './card/CardParts'
 import { CardPeek } from './card/CardPeek'
 import { CardStory } from './card/CardStory'
 import { IssueState } from './card/IssueState'
@@ -33,13 +35,13 @@ import { RiskChip, trustTitle } from './card/RiskChip'
 import { SizeGlyph } from './card/SizeGlyph'
 import { StateTrack } from './card/StateTrack'
 import { Highlight } from './Highlight'
-import { ArchiveIcon, AutopilotIcon, ChevronDownIcon, ClockIcon, ExternalIcon, PinIcon, WorktreeIcon } from './icons'
+import { ChevronDownIcon, ExternalIcon, WorktreeIcon } from './icons'
 import { ItemMenu, type EditActions } from './ItemMenu'
 import { LabelChip } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
 import { RelativeTime } from './RelativeTime'
 import { Spinner } from './Spinner'
-import { ghostClass, hoverClass, mutedTarget, pinnedTarget, TriageControls, type TriageActions } from './TriageControls'
+import { ghostClass, hoverClass, mutedTarget, TriageControls, type TriageActions } from './TriageControls'
 
 // LaunchOptions are what every row's launch controls share: the coding agents, profiles,
 // and prompts to choose from, and the saved launch defaults. Each row's own resolved
@@ -97,44 +99,6 @@ export interface ItemRowProps {
   autopilot?: string
 }
 
-// tagClass is a status tag: weight and color mark it, with no pill around it.
-const tagClass = 'shrink-0 text-[0.6875rem] leading-4 font-medium'
-
-interface FilterTextProps {
-  // filterKey and value are the filter the text adds, as in repo and its name; name
-  // says what it is, as in "repository".
-  filterKey: string
-  value: string
-  name: string
-  onFilterBy: ((key: string, value: string) => void) | undefined
-  // full is what the text stands for, in its tooltip, and children what the card says,
-  // such as "you" for the user's own login; both default to value.
-  full?: string
-  children?: ReactNode
-}
-
-// FilterText is a card's repository or author: plain text, or a quiet inline button that
-// filters the inbox by it.
-function FilterText({ filterKey, value, name, onFilterBy, full = value, children = value }: FilterTextProps) {
-  if (onFilterBy === undefined) {
-    return full === value ? children : <span title={full}>{children}</span>
-  }
-
-  return (
-    <button
-      type="button"
-      aria-label={`Filter by ${name} ${full}`}
-      title={`Filter by ${name} ${full}`}
-      onClick={() => {
-        onFilterBy(filterKey, value)
-      }}
-      className="rounded-sm hover:text-text hover:underline"
-    >
-      {children}
-    </button>
-  )
-}
-
 // TrustTag marks an item by who opened it: a trusted bot quietly, and an untrusted bot or
 // an outside contributor as a warning, since their items launch in plan mode. Items from
 // the repository's own people carry no tag.
@@ -158,90 +122,6 @@ export function TrustTag({ item }: { item: InboxItem }) {
     <span title={trustTitle(item)} className={`${tagClass} text-warning`}>
       {item.authorIsBot ? 'untrusted bot' : 'outside contributor'}
     </span>
-  )
-}
-
-// ByRoutine names the Autopilot routine that set an item aside, after what it did: "by ⚡
-// Snooze passing bot PRs".
-function ByRoutine({ id }: { id: number }) {
-  const name = useRoutineName(id)
-
-  return (
-    <>
-      {' by '}
-      <AutopilotIcon className="inline size-3 align-[-0.125rem]" />
-      <span className="sr-only">the routine </span>
-      <span className="inline-block max-w-48 truncate align-bottom">{name}</span>
-    </>
-  )
-}
-
-// SnoozedTag says when a snoozed item comes back, and which routine snoozed it, when one did.
-function SnoozedTag({ item, className }: { item: InboxItem; className: string }) {
-  const back = useNowAs((now) => formatWhen(now, new Date(item.snoozedUntil)))
-  const by = useMarkedBy(item.setAsideBy)
-  const name = useRoutineName(by)
-  const until = formatFull(item.snoozedUntil)
-
-  if (by > 0) {
-    return (
-      <span title={`Snoozed by the routine ${name} until ${until}`} className={className}>
-        <ClockIcon className="size-3 shrink-0" />
-        <span className="truncate">
-          Snoozed
-          <ByRoutine id={by} /> · back {back}
-        </span>
-      </span>
-    )
-  }
-
-  return (
-    <span title={`Snoozed until ${until}`} className={className}>
-      <ClockIcon className="size-3" />
-      Back {back}
-    </span>
-  )
-}
-
-// DismissedTag says how long ago an item was dismissed, and by which routine, when one
-// did.
-function DismissedTag({ item, className }: { item: InboxItem; className: string }) {
-  const ago = useNowAs((now) => formatAgo(now, item.dismissedAt))
-  const by = useMarkedBy(item.setAsideBy)
-  const name = useRoutineName(by)
-  const when = formatFull(item.dismissedAt)
-
-  if (by > 0) {
-    return (
-      <span title={`Dismissed by the routine ${name}, ${when}`} className={className}>
-        <ArchiveIcon className="size-3 shrink-0" />
-        <span className="truncate">
-          Dismissed
-          <ByRoutine id={by} /> · {ago}
-        </span>
-      </span>
-    )
-  }
-
-  return (
-    <span title={`Dismissed ${when}`} className={className}>
-      <ArchiveIcon className="size-3" />
-      Dismissed {ago}
-    </span>
-  )
-}
-
-// TriageTag is the story of a card in the Snoozed or Dismissed tab: when the item comes
-// back, or how long ago it was dismissed, and which routine did it, when one did, until
-// the user changes it. Each tag reads the clock itself, so a tick renders a tag only when
-// its words change. While Autopilot (beta) is off, no tag names a routine (useMarkedBy).
-function TriageTag({ item, tab }: { item: InboxItem; tab: TriageTab }) {
-  const quiet = `${tagClass} relative z-10 inline-flex min-w-0 items-center gap-1 text-muted`
-
-  return tab === 'snoozed' ? (
-    <SnoozedTag item={item} className={quiet} />
-  ) : (
-    <DismissedTag item={item} className={quiet} />
   )
 }
 
@@ -363,26 +243,6 @@ function CardLabels({
   )
 }
 
-// PinGlyph marks a pinned card before its title: pinned by the user, by a routine, or with
-// its repository or org, which the card's menu or Settings unpins.
-function PinGlyph({ item, rules }: { item: InboxItem; rules: RepoRules | undefined }) {
-  const by = useMarkedBy(item.pinnedBy)
-  const name = useRoutineName(by)
-  const itself = isPinnedItself(item)
-  const label = !itself
-    ? `Pinned with ${rules === undefined ? item.repo : pinnedTarget(item, rules)}`
-    : by > 0
-      ? `Pinned by the routine ${name}`
-      : 'Pinned to the top of the list'
-  const title = itself ? label : `${label}: unpin it from the card’s menu or in Settings → Repositories`
-
-  return (
-    <span role="img" aria-label={label} title={title} className="relative z-10 inline-flex shrink-0 text-accent">
-      <PinIcon filled className="size-3.5" />
-    </span>
-  )
-}
-
 // teamsText names the teams a pull request asks to review, in the byline: "@platform".
 function teamsText(teams: readonly string[]): string {
   return teams.length === 0 ? 'a team' : teams.map((team) => `@${team}`).join(', ')
@@ -433,18 +293,6 @@ function Byline({
   )
 }
 
-// edgeBar is each edge's color, the bar down a card's left side, spelled out in full so
-// Tailwind finds them.
-const edgeBar: Readonly<Record<Edge, string>> = {
-  urgent: 'bg-warning',
-  blocked: 'bg-danger',
-  yours: 'bg-accent',
-  ready: 'bg-success',
-  agent: 'bg-info',
-  waiting: 'bg-muted/30',
-  none: 'bg-transparent',
-}
-
 // ItemRow is one inbox card, a Signal card two lines high. Down its left side, the edge's
 // color says whose move it is (nextStep); then the author's avatar with the item's kind
 // (CardAvatar). Its first line is the title, after a pin when pinned, with up to two
@@ -463,7 +311,9 @@ const edgeBar: Readonly<Record<Edge, string>> = {
 // clicks, so the wait shows however slow the network is; it comes back if the item stays.
 // Long titles are cut short with an ellipsis, so every card keeps the same shape, and the
 // card narrows with its list (@container on the list). A card off screen is not rendered
-// until it scrolls near (item-row in index.css).
+// until it scrolls near (item-row in index.css). With Settings → Cards' Density compact
+// (CardPrefsContext), the card is CompactRow instead: one line from the same step, with
+// the same toggle, peek, agent slot, and busy note.
 //
 // The card reads the clock only for three plain values (its session, whether a failed
 // session is fresh, and whether it is back from a snooze), so a tick renders it only when
@@ -499,6 +349,7 @@ export const ItemRow = memo(function ItemRow({
     return s?.state === 'failed' && now.getTime() - Date.parse(sinceWhen(s)) < endedShownMs
   })
   const backFromSnooze = useNowAs((now) => item.snoozedUntil !== '' && isBackFromSnooze(item, now))
+  const { density } = use(CardPrefsContext)
   const session = sessions?.find((s) => s.id === sessionId) ?? null
   const agents = launch?.agents ?? []
   const routine = autopilotState(autopilot)
@@ -559,6 +410,70 @@ export const ItemRow = memo(function ItemRow({
       launch={launchButton}
     />
   )
+
+  // slot renders the agent's slot, LaunchControls' card variant, framed by column (the
+  // card's action column, or a compact card's hover row and go button), its outcome placed
+  // by outcomeClass, then the peek while it is open. Until the launch options load, column
+  // frames no slot.
+  const slot = (column: (agent?: ReactNode) => ReactNode, outcomeClass: string) =>
+    launch === null ? (
+      <>
+        {column()}
+        {peeking && peek(null)}
+      </>
+    ) : (
+      <LaunchControls
+        variant="card"
+        item={item}
+        resolution={resolution}
+        agents={launch.agents}
+        profiles={launch.profiles}
+        prompts={launch.prompts}
+        launchDefaults={launch.launchDefaults}
+        onDefaultsSaved={launch.onDefaultsSaved}
+        onManagePrompts={launch.onManagePrompts}
+        onSettingsSaved={launch.onSettingsSaved}
+        running={session}
+        sessionFresh={sessionFresh}
+        sessions={sessions}
+        situation={step.situation}
+        outcomeClass={outcomeClass}
+        onOpen={
+          onOpen === undefined
+            ? undefined
+            : () => {
+                onOpen(item, tab)
+              }
+        }
+        column={column}
+        peek={peeking ? peek : undefined}
+      />
+    )
+
+  if (density === 'compact') {
+    return (
+      <CompactRow
+        item={item}
+        tab={tab}
+        step={step}
+        session={session}
+        sessions={sessions ?? []}
+        agents={agents}
+        triage={triage}
+        edits={edits}
+        highlighted={highlighted}
+        marks={marks}
+        onFilterBy={onFilterBy}
+        onOpen={onOpen}
+        work={work}
+        start={start}
+        peekId={peekId}
+        peeking={peeking}
+        onTogglePeek={togglePeek}
+        slot={slot}
+      />
+    )
+  }
 
   return (
     <li
@@ -676,39 +591,7 @@ export const ItemRow = memo(function ItemRow({
           <ItemMenu item={item} tab={tab} triage={triage} edits={edits} work={work} start={start} />
         )}
       </div>
-      {launch === null ? (
-        <>
-          {actions()}
-          {peeking && peek(null)}
-        </>
-      ) : (
-        <LaunchControls
-          variant="card"
-          item={item}
-          resolution={resolution}
-          agents={launch.agents}
-          profiles={launch.profiles}
-          prompts={launch.prompts}
-          launchDefaults={launch.launchDefaults}
-          onDefaultsSaved={launch.onDefaultsSaved}
-          onManagePrompts={launch.onManagePrompts}
-          onSettingsSaved={launch.onSettingsSaved}
-          running={session}
-          sessionFresh={sessionFresh}
-          sessions={sessions}
-          situation={step.situation}
-          outcomeClass={cardOutcomeClass}
-          onOpen={
-            onOpen === undefined
-              ? undefined
-              : () => {
-                  onOpen(item, tab)
-                }
-          }
-          column={actions}
-          peek={peeking ? peek : undefined}
-        />
-      )}
+      {slot(actions, cardOutcomeClass)}
       {going && (
         <div data-row-status className="absolute inset-0 z-30 flex items-center justify-center">
           <p

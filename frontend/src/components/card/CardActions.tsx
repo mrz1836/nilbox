@@ -16,6 +16,10 @@ import { bringBack, type TriageActions } from '../TriageControls'
 // card's stretched toggle, so its buttons take their own clicks.
 export const cardOutcomeClass = 'relative z-10 col-[3/-1] mt-1.5'
 
+// compactOutcomeClass places such a line under a compact card's one line, from its
+// repository to its right edge, with room under it before the next card.
+export const compactOutcomeClass = 'relative z-10 col-[3/-1] mb-2'
+
 // verbShape is every primary button's shape.
 const verbShape =
   'inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg border px-2.75 text-[0.8125rem] font-semibold whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-60'
@@ -50,6 +54,31 @@ const pills = {
   danger: 'border-danger/30 bg-danger/10 text-danger hover:bg-danger/18',
 } as const
 
+// goShape is a compact card's go button: the primary's words alone, no outline and no
+// icon.
+const goShape =
+  'inline-flex h-6.5 shrink-0 items-center rounded-md px-2.25 text-[0.78125rem] font-semibold whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-60'
+
+// goTones are the go button's colors: its words in the edge's color, filled with it while
+// the pointer or focus is on the card (white text on it, or the surface's on the success
+// and warning colors); a quiet one, or one waiting on others, muted and filling with the
+// raised color. Each is spelled out in full so Tailwind finds it.
+const goTones: Readonly<Record<Edge, string>> = {
+  urgent:
+    'text-warning group-focus-within:bg-warning group-focus-within:text-surface group-hover:bg-warning group-hover:text-surface',
+  blocked:
+    'text-danger group-focus-within:bg-danger group-focus-within:text-white group-hover:bg-danger group-hover:text-white',
+  yours:
+    'text-accent group-focus-within:bg-accent group-focus-within:text-white group-hover:bg-accent group-hover:text-white',
+  ready:
+    'text-success group-focus-within:bg-success group-focus-within:text-surface group-hover:bg-success group-hover:text-surface',
+  agent:
+    'text-info group-focus-within:bg-info group-focus-within:text-white group-hover:bg-info group-hover:text-white',
+  waiting:
+    'text-muted group-focus-within:bg-raised group-focus-within:text-text group-hover:bg-raised group-hover:text-text',
+  none: 'text-muted group-focus-within:bg-raised group-focus-within:text-text group-hover:bg-raised group-hover:text-text',
+}
+
 // labels are each primary's words.
 const labels: Readonly<Record<Verb, string>> = {
   review: 'Review',
@@ -76,6 +105,9 @@ export interface PrimaryVerbProps {
   triage: TriageActions | undefined
   onOpen: ((item: InboxItem, tab: TriageTab) => void) | undefined
   onError: (message: string) => void
+  // compact draws the primary as a compact card's go button (goShape): its words alone,
+  // in its tone, even for an agent's pill.
+  compact?: boolean
 }
 
 // tone is a primary's colors: quiet, or loud in its edge's color.
@@ -83,9 +115,20 @@ function tone(step: Step): string {
   return step.quiet ? quiet : loud[step.edge]
 }
 
+// verbClass is a primary's shape and colors: in a compact card, the go button in the
+// edge's tone (muted when quiet); else the verb's outline in its tone, or pill, the colors
+// of an agent's pill.
+function verbClass(step: Step, compact: boolean, pill?: string): string {
+  if (compact) {
+    return `${goShape} ${goTones[step.quiet ? 'waiting' : step.edge]}`
+  }
+
+  return `${verbShape} ${pill ?? tone(step)}`
+}
+
 // DecideVerb opens the routine's Needs you card in the Autopilot tab. It reads the rows'
 // Autopilot itself, so only it renders again as Autopilot's matches change.
-function DecideVerb({ item, step }: PrimaryVerbProps) {
+function DecideVerb({ item, step, compact = false }: PrimaryVerbProps) {
   const rows = use(AutopilotRowsContext)
   const match = rows?.chips.get(item.id)
   const show = rows?.onShow
@@ -102,7 +145,7 @@ function DecideVerb({ item, step }: PrimaryVerbProps) {
       data-verb="decide"
       disabled={decide === undefined}
       onClick={decide}
-      className={`${verbShape} ${tone(step)}`}
+      className={verbClass(step, compact)}
     >
       {labels.decide}
     </button>
@@ -110,22 +153,35 @@ function DecideVerb({ item, step }: PrimaryVerbProps) {
 }
 
 // TerminalVerb brings the terminal tab of an agent waiting on the user forward, breathing
-// so it is seen; it waits until the session can show its tab.
-function TerminalVerb({ session, onError }: { session: AgentSession; onError: (message: string) => void }) {
+// so it is seen (a compact card's go button holds still); it waits until the session can
+// show its tab.
+function TerminalVerb({
+  step,
+  session,
+  onError,
+  compact,
+}: {
+  step: Step
+  session: AgentSession
+  onError: (message: string) => void
+  compact: boolean
+}) {
   return (
     <button
       type="button"
       data-verb="terminal"
-      data-moving
+      data-moving={!compact || undefined}
       disabled={!session.canFocus}
       onClick={() => {
         void attempt(focusSession(session.id)).then((shown) => {
           onError(shown.ok ? '' : shown.error)
         })
       }}
-      className={`${verbShape} ${pills.warning} motion-safe:animate-breathe`}
+      className={
+        compact ? verbClass(step, true) : `${verbClass(step, false, pills.warning)} motion-safe:animate-breathe`
+      }
     >
-      <HandIcon className="size-3.5" />
+      {!compact && <HandIcon className="size-3.5" />}
       {labels.terminal}
     </button>
   )
@@ -134,16 +190,20 @@ function TerminalVerb({ session, onError }: { session: AgentSession; onError: (m
 // WatchVerb opens the run view of an agent's background run waiting on the user, or,
 // where there is none to open (Autopilot's Watching list), the item's sessions.
 function WatchVerb({
+  step,
   session,
   sessions,
   agents,
+  compact,
 }: {
+  step: Step
   session: AgentSession
   sessions: readonly AgentSession[]
   agents: readonly AgentInfo[]
+  compact: boolean
 }) {
   const watch = useWatch()
-  const className = `${verbShape} ${pills.warning}`
+  const className = verbClass(step, compact, pills.warning)
 
   if (watch === undefined) {
     return (
@@ -170,19 +230,28 @@ function WatchVerb({
 // PrimaryVerb is the card's primary button for its step's verb, in its action column and
 // in its peek. The verbs for an agent's session have none without the session.
 export function PrimaryVerb(props: PrimaryVerbProps) {
-  const { item, tab, step, session, sessions, agents, triage, onOpen, onError } = props
+  const { item, tab, step, session, sessions, agents, triage, onOpen, onError, compact = false } = props
   const verb = step.primary
 
   switch (verb) {
     case 'decide':
       return <DecideVerb {...props} />
     case 'terminal':
-      return session === null ? null : <TerminalVerb session={session} onError={onError} />
+      return session === null ? null : (
+        <TerminalVerb step={step} session={session} onError={onError} compact={compact} />
+      )
     case 'watch':
-      return session === null ? null : <WatchVerb session={session} sessions={sessions} agents={agents} />
+      return session === null ? null : (
+        <WatchVerb step={step} session={session} sessions={sessions} agents={agents} compact={compact} />
+      )
     case 'sessions':
       return (
-        <SessionsButton sessions={sessions} agents={agents} align="right" className={`${verbShape} ${pills.danger}`}>
+        <SessionsButton
+          sessions={sessions}
+          agents={agents}
+          align="right"
+          className={verbClass(step, compact, pills.danger)}
+        >
           {labels.sessions}
         </SessionsButton>
       )
@@ -199,7 +268,7 @@ export function PrimaryVerb(props: PrimaryVerbProps) {
           title={action?.title}
           disabled={action === null}
           onClick={action?.run}
-          className={`${verbShape} ${tone(step)}`}
+          className={verbClass(step, compact)}
         >
           {labels[verb]}
         </button>
@@ -217,9 +286,9 @@ export function PrimaryVerb(props: PrimaryVerbProps) {
               onOpen(item, tab)
             }
           }}
-          className={`${verbShape} ${tone(step)}`}
+          className={verbClass(step, compact)}
         >
-          {verb === 'merge' && <MergeIcon className="size-3.5" />}
+          {verb === 'merge' && !compact && <MergeIcon className="size-3.5" />}
           {labels[verb]}
         </button>
       )
@@ -244,6 +313,9 @@ export interface CardActionsProps {
   onOpen?: ((item: InboxItem, tab: TriageTab) => void) | undefined
   // agent is the agent's slot beside the primary (LaunchControls in its card variant).
   agent?: ReactNode
+  // compact draws the column as a compact card's go button, whose failure shows under the
+  // card's one line (compactOutcomeClass); the agent's slot is in its hover row instead.
+  compact?: boolean
 }
 
 // CardActions is a card's action column: the human's next move (the primary verb), then
@@ -255,7 +327,18 @@ export interface CardActionsProps {
 // (its words stay for screen readers): the column always holds the primary, so a pill in
 // it always has a second button beside it. A panel open from the column rises over the
 // card's later parts, such as its peek.
-export function CardActions({ item, tab, step, session, sessions, agents, triage, onOpen, agent }: CardActionsProps) {
+export function CardActions({
+  item,
+  tab,
+  step,
+  session,
+  sessions,
+  agents,
+  triage,
+  onOpen,
+  agent,
+  compact = false,
+}: CardActionsProps) {
   const [error, setError] = useState('')
 
   return (
@@ -271,11 +354,12 @@ export function CardActions({ item, tab, step, session, sessions, agents, triage
           triage={triage}
           onOpen={onOpen}
           onError={setError}
+          compact={compact}
         />
         {agent}
       </div>
       {error !== '' && (
-        <p role="alert" className={`${cardOutcomeClass} text-xs text-danger`}>
+        <p role="alert" className={`${compact ? compactOutcomeClass : cardOutcomeClass} text-xs text-danger`}>
           {error}
         </p>
       )}

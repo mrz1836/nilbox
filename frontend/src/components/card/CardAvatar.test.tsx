@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { CardPicturesContext, type Pictures } from '../../lib/pictures'
 import type { InboxItem } from '../../platform'
 import { avatarDataURL, item } from '../../test/fixtures'
-import { CardAvatar, faceOf, initialsOf } from './CardAvatar'
+import { CardAvatar, faceOf, initialsOf, KindMark } from './CardAvatar'
 
 function renderAvatar(overrides: Partial<InboxItem> = {}, pictures?: Pictures) {
   const avatar = <CardAvatar item={item(overrides)} />
@@ -137,5 +137,19 @@ describe('CardAvatar', () => {
     const badge = screen.getByRole('img', { name: label })
     expect(badge).toHaveAttribute('title', label)
     expect(badge).toHaveClass(color, 'z-10')
+  })
+})
+
+describe('KindMark', () => {
+  it.each([
+    [{}, 'Pull request', 'text-success'],
+    [{ isDraft: true }, 'Draft pull request', 'text-muted'],
+    [{ kind: 'issue' } as const, 'Issue', 'text-success'],
+  ])('marks %o as its kind in a compact card’s column', (overrides, label, color) => {
+    render(<KindMark item={item(overrides)} />)
+
+    const mark = screen.getByRole('img', { name: label })
+    expect(mark).toHaveAttribute('title', label)
+    expect(mark).toHaveClass(color, 'relative', 'z-10')
   })
 })

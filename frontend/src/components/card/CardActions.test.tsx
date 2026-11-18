@@ -270,3 +270,59 @@ describe('CardActions', () => {
     expect(primary?.parentElement).toHaveClass('relative', 'z-10', 'justify-end')
   })
 })
+
+describe('CardActions, compact', () => {
+  it('draws the go button as its words in the edge’s tone, filled while the pointer or focus is on the card', () => {
+    renderActions(step('merge', { edge: 'ready' }), { props: { compact: true } })
+
+    const merge = screen.getByRole('button', { name: 'Merge' })
+    expect(merge.querySelector('svg')).toBeNull()
+    expect(merge).toHaveClass('h-6.5', 'text-success', 'group-hover:bg-success', 'group-focus-within:bg-success')
+    expect(merge).not.toHaveClass('border')
+  })
+
+  it('mutes a quiet go button, filling it with the raised color', () => {
+    renderActions(step('open', { edge: 'yours', quiet: true }), { props: { compact: true } })
+
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveClass('text-muted', 'group-hover:bg-raised')
+  })
+
+  it('draws an agent’s verbs as words in their tone, Decide and the bring-backs too', async () => {
+    const session = agentSession({ runId: 12 })
+    const onWatch = vi.fn()
+    renderActions(step('watch', { edge: 'urgent' }), {
+      props: { session, sessions: [session], compact: true },
+      rows: { names: new Map(), chips: new Map(), onWatch },
+    })
+
+    const watch = screen.getByRole('button', { name: 'Watch' })
+    expect(watch).toHaveClass('text-warning', 'group-hover:bg-warning')
+    await userEvent.click(watch)
+    expect(onWatch).toHaveBeenCalledExactlyOnceWith(session.id)
+  })
+
+  it.each([
+    ['sessions', 'blocked', 'What happened', 'text-danger'],
+    ['decide', 'urgent', 'Decide', 'text-warning'],
+  ] as const)('tones %s’s go button by its edge', (verb, edge, label, color) => {
+    const sessions = [agentSession({ state: 'failed' })]
+    renderActions(step(verb, { edge }), {
+      props: { session: sessions[0] ?? null, sessions, compact: true },
+      rows: { names: new Map(), chips: new Map() },
+    })
+
+    expect(screen.getByRole('button', { name: label })).toHaveClass(color, 'h-6.5')
+  })
+
+  it('brings a set-aside item back from a quiet go button', async () => {
+    const { triage } = renderActions(step('restore', { edge: 'none', quiet: true }), {
+      props: { tab: 'dismissed', compact: true },
+    })
+
+    const restore = screen.getByRole('button', { name: 'Restore' })
+    expect(restore).toHaveClass('text-muted', 'h-6.5')
+
+    await userEvent.click(restore)
+    expect(triage.onRestore).toHaveBeenCalledExactlyOnceWith(item())
+  })
+})

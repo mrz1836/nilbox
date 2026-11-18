@@ -12,6 +12,7 @@ import type {
   TextSize,
   InboxItem,
   PictureBot,
+  CardDensity,
 } from './platform'
 import {
   afterMerge,
@@ -1154,6 +1155,39 @@ describe('App’s card pictures', () => {
       expect(pictureOn(1)).toBeNull()
     })
     expect(platform.cardPictures).toHaveBeenCalledOnce()
+  })
+})
+
+describe('App’s card density', () => {
+  it('shows the cards on one line once Settings → Cards says Compact, and on two again after', async () => {
+    platform.setCardDensity.mockImplementation((cardDensity: CardDensity) => stored({ cardDensity }))
+    await renderApp()
+    await screen.findByRole('button', { name: 'Launch options: Review · work' })
+
+    const card = () => document.querySelector('[data-item-id="1"]')
+    expect(card()).not.toHaveAttribute('data-density')
+
+    const choose = async (density: string) => {
+      await openSettingsFromMenu()
+      await userEvent.click(screen.getByRole('button', { name: 'Cards' }))
+      await userEvent.click(
+        within(screen.getByRole('radiogroup', { name: 'Density' })).getByRole('radio', { name: density }),
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Close settings' }))
+    }
+
+    await choose('Compact')
+
+    await waitFor(() => {
+      expect(card()).toHaveAttribute('data-density', 'compact')
+    })
+    expect(platform.setCardDensity).toHaveBeenCalledExactlyOnceWith('compact')
+
+    await choose('Comfortable')
+
+    await waitFor(() => {
+      expect(card()).not.toHaveAttribute('data-density')
+    })
   })
 })
 

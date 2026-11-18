@@ -61,4 +61,23 @@ describe('CardStory', () => {
 
     expect(screen.getByText('Back Mon 9:00')).toBeInTheDocument()
   })
+
+  it('draws a compact card’s story as a chip tinted with its edge, cutting its words short', () => {
+    const { container } = render(<CardStory story={story({ detail: '1 new commit' })} edge="yours" chip />)
+
+    const chip = container.firstElementChild
+    expect(chip).toHaveAttribute('data-story-chip')
+    expect(chip).toHaveClass('text-accent', 'bg-accent/11', 'max-w-60', 'h-5')
+    expect(chip).toHaveTextContent('Re-review · 1 new commit')
+    expect(screen.getByText('· 1 new commit')).toHaveClass('text-muted')
+    expect(screen.getByText('· 1 new commit').parentElement).toHaveClass('truncate')
+  })
+
+  it('leaves a compact card’s chip untinted while it waits on others, and its detail out when there is none', () => {
+    const { container } = render(<CardStory story={story({ text: 'Waiting for review' })} edge="waiting" chip />)
+
+    const chip = container.firstElementChild
+    expect(chip).toHaveTextContent(/^Waiting for review$/)
+    expect(chip?.className).not.toMatch(/\bbg-/)
+  })
 })

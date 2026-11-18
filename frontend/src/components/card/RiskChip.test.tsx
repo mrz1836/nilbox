@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { InboxItem } from '../../platform'
 import { at } from '../../test/clock'
 import { agentGroup, fileCheck, item } from '../../test/fixtures'
-import { RiskChip } from './RiskChip'
+import { RiskChip, RiskIcon } from './RiskChip'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
@@ -127,5 +127,33 @@ describe('RiskChip', () => {
 
     await userEvent.click(within(panel).getByRole('button', { name: 'What counts as sensitive' }))
     expect(onFilesSettings).toHaveBeenCalledOnce()
+  })
+})
+
+describe('RiskIcon', () => {
+  it('is the risk chip’s shield alone, in its tone, named and titled as the chip is', () => {
+    const { rerender } = render(
+      <RiskIcon item={item({ ...outside, files: fileCheck({ groups: [dependencies, agentGroup()] }) })} />,
+    )
+
+    const danger = screen.getByRole('img', { name: 'Outside · Dependencies · Agent config' })
+    expect(danger).toHaveAttribute('data-tone', 'danger')
+    expect(danger).toHaveClass('relative', 'z-10', 'text-danger')
+    expect(danger).toHaveAttribute(
+      'title',
+      `${outsideTitle}\nChanges sensitive files: Dependencies (1 file), Agent config (1 file)`,
+    )
+
+    rerender(<RiskIcon item={item({ ...outside, files: fileCheck({ status: 'clear', groups: [] }) })} />)
+
+    const clean = screen.getByRole('img', { name: 'Outside contributor' })
+    expect(clean).toHaveAttribute('data-tone', 'warning')
+    expect(clean).toHaveClass('text-warning')
+  })
+
+  it('shows nothing for a trusted author without a finding', () => {
+    const { container } = render(<RiskIcon item={item()} />)
+
+    expect(container).toBeEmptyDOMElement()
   })
 })

@@ -26,6 +26,18 @@ const edgeDot: Readonly<Record<Edge, string>> = {
   none: 'bg-muted',
 }
 
+// edgeTint is each edge's tint behind a compact card's story chip, spelled out in full so
+// Tailwind finds them; a card that waits on others has none.
+const edgeTint: Readonly<Record<Edge, string>> = {
+  urgent: 'bg-warning/13',
+  blocked: 'bg-danger/11',
+  yours: 'bg-accent/11',
+  ready: 'bg-success/11',
+  agent: 'bg-info/12',
+  waiting: '',
+  none: '',
+}
+
 // Mark is the story's icon: a dot in the edge's color, one with a ring swelling out of it
 // for something at work or waiting now (StatusDot), or a clock, a bolt, or an archive box.
 function Mark({ icon, edge }: { icon: StoryIcon; edge: Edge }) {
@@ -65,14 +77,34 @@ export interface CardStoryProps {
   // children is what a triage story shows in its place, in the Snoozed and Dismissed tabs:
   // when the item comes back, or when it was dismissed (the row's TriageTag).
   children?: ReactNode
+  // chip draws the story as a compact card's chip: tinted with the edge's color, its words
+  // cut short when they don't fit.
+  chip?: boolean
 }
 
 // CardStory is a card's one sentence, at the start of its second line: its mark, its lead
 // in the edge's color, and its detail after " · ", muted. It never shrinks; the byline
-// after it gives way first. A triage story shows children instead.
-export function CardStory({ story, edge, children }: CardStoryProps) {
+// after it gives way first. A compact card's (chip) is a chip in its own column, tinted
+// with the edge's color, whose words are cut short instead. A triage story shows children
+// instead.
+export function CardStory({ story, edge, children, chip = false }: CardStoryProps) {
   if (story.triage) {
     return children
+  }
+
+  if (chip) {
+    return (
+      <span
+        data-story-chip
+        className={`inline-flex h-5 max-w-60 min-w-0 items-center gap-1.25 rounded-md px-2 text-[0.71875rem] font-semibold whitespace-nowrap ${edgeText[edge]} ${edgeTint[edge]}`}
+      >
+        <Mark icon={story.icon} edge={edge} />
+        <span className="truncate">
+          {story.text}
+          {story.detail !== '' && <span className="font-medium text-muted">{` · ${story.detail}`}</span>}
+        </span>
+      </span>
+    )
   }
 
   return (
