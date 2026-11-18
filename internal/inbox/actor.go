@@ -330,10 +330,14 @@ func (s *Service) readPull(
 
 	target := pullTargetOfRow(row)
 
-	var seq uint64
+	var (
+		seq    uint64
+		viewer string
+	)
 
 	got, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (PullRead, error) {
 		seq = s.startFetch() // each try numbers its own fetch
+		viewer, _ = s.viewers.Get(tok)
 
 		return read(ctx, tok, target)
 	})
@@ -351,7 +355,7 @@ func (s *Service) readPull(
 	}
 
 	return s.storeRead(ctx, row, itemWrite{id: id, seq: seq, update: &itemUpdate{
-		accountID: row.AccountID, login: row.AccountLogin, update: got.Update, files: files,
+		accountID: row.AccountID, login: row.AccountLogin, viewer: viewer, update: got.Update, files: files,
 	}})
 }
 
@@ -370,21 +374,22 @@ func checkAnswer(update *github.ItemUpdate, row editRow) error {
 }
 
 // storeRead stores a read's answer as w says, for the item whose row is row, and returns
-// the new snapshot, and the outcome to tell when the answer it stored shows the item merged
-// or closed.
+// the new snapshot, and the outcomes to tell: a verdict of the user's the answer found
+// newly submitted, and a merge or a close the answer it stored shows.
 func (s *Service) storeRead(ctx context.Context, row editRow, w itemWrite) (Snapshot, []Outcome, error) {
-	wrote, err := s.storeItemWrite(ctx, w)
+	did, err := s.storeItem(ctx, w)
 	if err != nil {
 		return Snapshot{}, nil, fmt.Errorf("save the item: %w", err)
 	}
 
-	if !wrote {
+	if !did.stored {
 		snap, snapErr := s.Snapshot(ctx)
 
 		return snap, nil, snapErr
 	}
 
-	told := seenClosed(w, row.AccountLogin, refOfRow(row), s.now())
+	told := reviewedOutcome(did.reviewed, row.AccountLogin, refOfRow(row))
+	told = append(told, seenClosed(w, row.AccountLogin, refOfRow(row), s.now())...)
 	s.noteMergedRead(w, refOfRow(row))
 	snap, err := s.changed(ctx)
 
@@ -674,9 +679,16 @@ func (s *Service) recordEnded(ctx context.Context, row editRow, acted Acted) err
 // recordReview records a review acted left on target, in one transaction: out of Review
 // requested when it was in it, and, when it approves or requests changes, the user's
 // verdict at the head they saw (NoteViewerReview), so the card stops saying it was pushed
-// to since at once, before the next whole refresh reads the verdict.
+// to since at once, before the next whole refresh reads the verdict. The verdict is stamped
+// with when GitHub says it was submitted (now when it didn't say), as the newest seen too,
+// so a later read of the pull request tells it no more: pullOutcomes tells it.
 func (s *Service) recordReview(ctx context.Context, target PullTarget, acted Acted) error {
 	stamp := later(acted.ReviewedAt.UTC(), target.UpdatedAt)
+
+	submitted := acted.ReviewedAt.UTC().Truncate(time.Second)
+	if acted.ReviewedAt.IsZero() {
+		submitted = s.now().Truncate(time.Second)
+	}
 
 	return store.InTx(ctx, s.db, func(tx *sql.Tx) error {
 		q := s.q.WithTx(tx)
@@ -687,9 +699,10 @@ func (s *Service) recordReview(ctx context.Context, target PullTarget, acted Act
 			}
 		}
 
-		if state := verdictOf(acted.ReviewEvent); state != "" && target.Head != "" {
+		if state := verdictOf(acted.ReviewEvent); state != "" {
 			return q.NoteViewerReview(ctx, queries.NoteViewerReviewParams{
-				ViewerReviewState: state, ViewerReviewCommit: target.Head, ID: target.ID,
+				ViewerReviewState: state, ViewerReviewCommit: target.Head, ReviewedAt: &submitted,
+				SeenAt: &submitted, ID: target.ID,
 			})
 		}
 

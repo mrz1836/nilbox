@@ -60,6 +60,7 @@ func TestFetchItemsReadsSeveralItemsInOneRequest(t *testing.T) {
 		assert.NoError(t, json.Unmarshal(raw, &req))
 		assert.Contains(t, req.Query, "nodes(ids: $ids) { ...ItemFields ...DetailFields }")
 		assert.Contains(t, req.Query, "rateLimit { cost remaining resetAt limit used }")
+		assert.NotContains(t, req.Query, "latestOpinionatedReviews", "the verdicts cost a batch a point more")
 		assert.Equal(t, []string{"PR_fakeNodeId12", "PR_fakeGone"}, req.Variables.IDs)
 
 		_, _ = w.Write(body)
@@ -77,6 +78,7 @@ func TestFetchItemsReadsSeveralItemsInOneRequest(t *testing.T) {
 	assert.Equal(t, 120, update.Details.Additions)
 	assert.Equal(t, got.RateLimit, update.RateLimit)
 	assert.False(t, got.ProjectsRefused)
+	assert.False(t, update.VerdictRead, "a batch never asks for the verdicts, so its nil says nothing")
 }
 
 func TestFetchItemsReadsAtMostOneLookupsWorth(t *testing.T) {

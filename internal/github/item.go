@@ -11,18 +11,21 @@ import (
 const errorNotFound = "NOT_FOUND"
 
 // itemQuery reads one pull request or issue by node ID: what the inbox query reads about
-// it, its state included, and what the details query reads, in one request. It costs one
-// point, where a whole refresh costs a few, so a single card can be brought up to date
-// without asking about every other one. itemProjectsQuery reads an issue's projects too,
-// as detailsProjectsQuery does.
+// it, its state included, what the details query reads, and a pull request's verdicts
+// (opinionsField), so the viewer's own verdict comes with it (ItemUpdate.VerdictRead), in
+// one request. It costs one point, where a whole refresh costs a few, so a single card can
+// be brought up to date without asking about every other one. itemProjectsQuery reads an
+// issue's projects too, as detailsProjectsQuery does.
 const (
 	itemQuery         = itemQueryHead + detailFieldsFragment
 	itemProjectsQuery = itemQueryHead + detailFieldsProjectsFragment
 )
 
-// itemQueryHead is the item query without the DetailFields fragment.
+// itemQueryHead is the item query without the DetailFields fragment. The verdicts are
+// asked for here, beside one node, and never in DetailFields or the followers' batches,
+// where they would cost a point more per batch of 25 (see opinionsField).
 const itemQueryHead = `query Item($id: ID!) {
-  node(id: $id) { ...ItemFields ...DetailFields }
+  node(id: $id) { ...ItemFields ...DetailFields ... on PullRequest { ` + opinionsField + ` } }
   rateLimit { cost remaining resetAt limit used }
 }
 ` + itemFieldsFragment + repoFieldsFragment
@@ -42,6 +45,12 @@ type ItemUpdate struct {
 	// ProjectsRefused reports that GitHub refused the projects for want of a scope, so
 	// the item was read without them.
 	ProjectsRefused bool
+
+	// VerdictRead reports a pull request read with its verdicts, so Item.Verdict is the
+	// viewer's own verdict as of now: nil then means the viewer has none, where any other
+	// read's nil means only that it didn't ask. FetchItem and FetchPullReview read them;
+	// FetchItems, the followers' read, never does.
+	VerdictRead bool
 }
 
 // FetchItem reads one pull request or issue, by node ID, as of now, with what opts adds
@@ -85,6 +94,7 @@ func (c *Client) sendItem(ctx context.Context, tok Token, id string, opts Detail
 	}
 
 	update.ProjectsRefused = opts.Projects && scopeRefused(resp.Errors)
+	update.VerdictRead = update.Found && update.Item.IsPR
 
 	return update, nil
 }

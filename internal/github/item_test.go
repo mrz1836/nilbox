@@ -41,7 +41,7 @@ func TestFetchItemReadsTheItemAndItsDetails(t *testing.T) {
 
 		var req itemRequest
 		assert.NoError(t, json.Unmarshal(raw, &req))
-		assert.Contains(t, req.Query, "node(id: $id) { ...ItemFields ...DetailFields }")
+		assert.Contains(t, req.Query, "node(id: $id) { ...ItemFields ...DetailFields ... on PullRequest { opinions: latestOpinionatedReviews(first: 50)")
 		assert.Contains(t, req.Query, "fragment ItemFields on SearchResultItem")
 		assert.Contains(t, req.Query, "fragment RepoFields on Repository")
 		assert.Contains(t, req.Query, "fragment DetailFields on Node")
@@ -88,6 +88,34 @@ func TestFetchItemReadsTheItemAndItsDetails(t *testing.T) {
 	assert.Equal(t, QueryRate{
 		Cost: 1, Limit: 5000, Remaining: 4970, Used: 30, ResetAt: time.Date(2026, 1, 10, 13, 0, 0, 0, time.UTC),
 	}, update.RateLimit)
+
+	assert.True(t, update.VerdictRead, "the item query reads a pull request's verdicts")
+	assert.Equal(t, &Verdict{
+		State: ReviewStateApproved, Commit: "1111111111111111111111111111111111111111",
+		SubmittedAt: time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC),
+		URL:         "https://github.com/acme-org/example-repo/pull/12#pullrequestreview-1",
+	}, it.Verdict)
+}
+
+func TestFetchItemReadsThatTheViewerHasNoVerdict(t *testing.T) {
+	t.Parallel()
+
+	// Someone else's approval, and the viewer's own comment-only review, which is no verdict.
+	body := `{"data":{"node":{"__typename":"PullRequest","id":"PR_fakeNodeId5","number":5,"title":"Tidy up",
+		"prState":"OPEN","headRefOid":"5555555555555555555555555555555555555555",
+		"author":{"__typename":"User","login":"someone"},
+		"repository":{"name":"example-repo","owner":{"login":"acme-org"}},
+		"opinions":{"nodes":[
+			{"state":"APPROVED","submittedAt":"2026-01-10T12:00:00Z","viewerDidAuthor":false,"commit":{"oid":"5555555555555555555555555555555555555555"}},
+			{"state":"COMMENTED","submittedAt":"2026-01-10T12:05:00Z","viewerDidAuthor":true,"commit":{"oid":"5555555555555555555555555555555555555555"}}
+		]}},
+		"rateLimit":{"cost":1,"limit":5000,"remaining":4999,"used":1,"resetAt":"2026-01-10T13:00:00Z"}}}`
+
+	update, err := newTestClient(t, serveItem(body)).FetchItem(t.Context(), NewToken(fakeToken), "PR_fakeNodeId5", DetailOptions{})
+	require.NoError(t, err)
+
+	assert.True(t, update.VerdictRead, "nil is the viewer having no verdict, not a read that didn't ask")
+	assert.Nil(t, update.Item.Verdict)
 }
 
 func TestFetchItemReadsAnIssue(t *testing.T) {
@@ -108,6 +136,7 @@ func TestFetchItemReadsAnIssue(t *testing.T) {
 	assert.False(t, update.Item.Closed())
 	assert.Equal(t, "Bot", update.Item.AuthorType)
 	assert.Equal(t, ItemDetails{Labels: []Label{{Name: "bug", Color: "#d73a4a"}}, Comments: 2}, update.Details)
+	assert.False(t, update.VerdictRead, "an issue has no verdict to read")
 }
 
 func TestFetchItemThatIsGone(t *testing.T) {
@@ -122,6 +151,7 @@ func TestFetchItemThatIsGone(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.False(t, update.Found)
+	assert.False(t, update.VerdictRead)
 	assert.Equal(t, Item{}, update.Item)
 	assert.Equal(t, 4946, update.RateLimit.Remaining, "the budget reading still counts")
 }

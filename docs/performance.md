@@ -328,6 +328,12 @@ the same details inside the inbox query's three searches would cost 12 points a 
 the items returned; that dry-run cost is why the details are a separate query. Before the
 cards read details, a refresh cost 1 point (0.24%).
 
+A single item's read (a card's refresh, the read after an agent session stops working, and
+Autopilot's fresh read) is 1 point, its verdicts included: asked beside one node, your own
+latest approval or request for changes adds no point, with or without an issue's projects
+(`rateLimit.cost` 1 each, measured in November 2026). The followers' batches of 25 never ask
+for it, since there it would cost a point more per batch.
+
 The [sensitive-file check](desktop.md#sensitive-files) costs no GraphQL points: it reads a
 pull request's changed files from the REST API, whose separate budget is 5,000 requests an hour.
 It runs only for pull requests from outside the repository (and collaborators', by default),

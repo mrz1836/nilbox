@@ -407,6 +407,8 @@ func (c *Client) sendPullReview(ctx context.Context, tok Token, id, compareHead 
 		return nil, fmt.Errorf("%w: the ID is not a pull request", ErrMalformedResponse)
 	}
 
+	review.Update.VerdictRead = true // ReviewFields reads opinionsField
+
 	var fields reviewNode
 	if err = json.Unmarshal(resp.Data.Node, &fields); err != nil {
 		return nil, fmt.Errorf("%w: decode the pull review: %w", ErrMalformedResponse, err)

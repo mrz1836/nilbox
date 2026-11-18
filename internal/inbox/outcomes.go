@@ -35,8 +35,11 @@ const (
 	// OutcomeClosed is a pull request or an issue the user closed from the inbox.
 	OutcomeClosed OutcomeKind = "closed"
 
-	// OutcomeReviewed is a pull request the user approved or asked changes of from the
-	// inbox, with no merge or close in the same action. A comment is not a review here.
+	// OutcomeReviewed is a pull request the user approved or asked changes of: from the
+	// inbox, with no merge or close in the same action, or anywhere else (an agent's gh,
+	// a browser), as a read of the pull request alone or a whole refresh first saw it,
+	// within reviewWindow of its submission, at GitHub's time for it. Each review is told
+	// once (see verdicts.go). A comment is not a review here.
 	OutcomeReviewed OutcomeKind = "reviewed"
 
 	// OutcomeDismissed is an item the user dismissed that wasn't, and OutcomeRestored a
@@ -276,12 +279,14 @@ func triageOutcome(kind OutcomeKind, t triageItem, at time.Time) []Outcome {
 // listedRow is an item the lists held before a refresh rewrote them.
 type listedRow = queries.ListListedRow
 
-// refreshOutcomes is what a whole refresh that stored inbox tells, for its account, of the
-// items the lists held before it (before; nothing when there is none): each one it found
-// merged or closed (closed, the items dropClosed took out of the lists), then each one it
-// saved in no list, found neither closed nor archived (archived), and that was in no list
-// GitHub cut short this time, since it may still be in one, past the page. It works out
-// nothing while no sink listens. The caller has saved the items (w.saved).
+// refreshOutcomes is what a whole refresh that stored inbox tells, for its account: each
+// pull request of the fourth search whose verdict of the user's was newly submitted (see
+// reviewedOutcomes), then, of the items the lists held before it (before; nothing when
+// there is none), each one it found merged or closed (closed, the items dropClosed took out
+// of the lists), then each one it saved in no list, found neither closed nor archived
+// (archived), and that was in no list GitHub cut short this time, since it may still be in
+// one, past the page. It works out nothing while no sink listens. The caller has saved the
+// items (w.saved).
 func (w *writer) refreshOutcomes(inbox *github.Inbox, closed, archived []github.Item, before *listedBefore) []Outcome {
 	if !w.tellOutcomes || before == nil {
 		return nil
@@ -308,7 +313,9 @@ func (w *writer) refreshOutcomes(inbox *github.Inbox, closed, archived []github.
 		}
 	}
 
-	return append(seen, unlisted...)
+	reviewed := reviewedOutcomes(inbox.Reviewed.Items, before.reviewSeen, login, w.now)
+
+	return append(append(reviewed, seen...), unlisted...)
 }
 
 // itemKeys holds items a refresh read by node ID and by name, so a stored row finds the

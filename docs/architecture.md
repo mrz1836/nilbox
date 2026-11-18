@@ -402,8 +402,24 @@ fourth search returns alone and not pushed to is in no list: its details are nev
 `review_left_at` as it gates the request, so a review the user leaves from the inbox
 (`recordReview`: `LeaveReview`, and `NoteViewerReview`, the new verdict at the head they
 saw) takes it out at once and a refresh whose search trails it keeps it out until the pull
-request moves. A single read reads no verdict, so it leaves `reason_pushed` to the next whole
-refresh. A pull request newly pushed to arrives as `ArrivalReviewRequested` with
+request moves. A read of the pull request alone reads the verdict too, at no extra point
+(`opinionsField` in the item query beside one node, never in the followers' batches, where
+it would cost a point more per 25; `ItemUpdate.VerdictRead` says it was asked, so a nil verdict
+is none rather than unread): `RefreshItem` (a card's refresh, `Rereads` after an agent session
+stops working, Autopilot's fresh read) and the review sheet's `ReadPull`. Its writer stores it
+in the read's transaction (`noteReadVerdict`, `verdicts.go`) only when the token's account,
+as the last refresh learned it (`Service.viewers`, never a request), is the item's, since
+GitHub names the viewer's verdict by the token. Each row keeps when its verdict was submitted
+(`viewer_review_at`, moving and cleared with the verdict) and when the newest verdict seen was
+(`viewer_review_seen_at`, which only rises; migration `0018_viewer_review_seen`). The same
+review (state and second) is left as stored, so a commit `coverOwnPushes` moved stays moved;
+an older one is left too (a review from the inbox since the read went out); any other is
+stored whole, and none clears it (a dismissed review). A read never lists a pull request as
+pushed to, which takes the whole refresh's question of who pushed, but one whose verdict is no
+longer pushed past (an approval, changes requested at its head, or none) leaves Review
+requested at once (`LeavePushed`, unstamped: the fourth search reads the verdict live and
+agrees). A replay of the read over a whole refresh that outlived it stores its verdict again,
+since the refresh's search may be older. A pull request newly pushed to arrives as `ArrivalReviewRequested` with
 `Arrival.Pushed` only when it moved since the last refresh, so the first refresh after an
 upgrade tells no burst. `RemoveReviewRequest` still refuses one with no request
 (`ReviewRequestPushed`). The review sheet's **Re-request my review**, on the user's click
@@ -802,7 +818,10 @@ It clears the threads by the user's rules (`clear.go`), and owns `gh_thread_mome
 `ghThreadOutcomes` adapts `inbox.Outcome` to its own `Outcome`, never bound), whose
 `Settle` records, in one transaction and without waiting, the moments the user finished an
 item in the app (a merge, a close, a review that approves or requests changes, a
-dismissal, taking themselves off), a merge's or a close's state as GitHub answered it
+dismissal, taking themselves off), a review of the user's made anywhere else that the inbox
+saw (an agent's gh, a browser: `OutcomeReviewed` from a read of the pull request alone or a
+whole refresh, once per review and within two hours of it, at GitHub's time for it, so a
+thread that moved after it isn't cleared), a merge's or a close's state as GitHub answered it
 (`MERGED` or `CLOSED`, read now), and a restore's taking back of the dismissal's moment and
 its queued clears (kept), then nudges the `Syncer`, which runs a pass on those items at
 once, listing first only when the mirror is older than the poll interval (a minute at
@@ -1219,7 +1238,10 @@ interface core wires), which reads it again, one GraphQL point each, one item at
 single-item read (`RefreshItem`, the checks follower, the review sheet's `ReadPull`) takes a
 pull request out of Review requested once GitHub no longer asks the user, by name or
 through a team, stamped like the inbox's own edits (`review_left_at`), so a lagging search
-keeps it out until it moves. `LastWords` reads a session's whole last message from the
+keeps it out until it moves, and `RefreshItem` and `ReadPull` read the user's own verdict with
+it at no extra point, so an approval or a request for changes the agent left with gh reaches
+the card at once and is told once as the user's review (see
+[internal/inbox](#internalinbox)). `LastWords` reads a session's whole last message from the
 agent's own files, on demand, for the review sheet, and `Usage` its token counts, for the
 sessions panel (a `UsageReader` per agent: Claude Code's transcript, each assistant
 message's usage once, read incrementally to 64 MB; Codex's last rollout token count; a

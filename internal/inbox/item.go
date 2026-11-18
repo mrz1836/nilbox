@@ -96,7 +96,10 @@ func (s *Service) refreshItem(ctx context.Context, id int64) ([]Outcome, bool, e
 	update, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (itemUpdate, error) {
 		seq = s.startFetch() // each try numbers its own fetch
 
-		return s.fetchItem(ctx, tok, id, stored.NodeID, readOptions(last))
+		got, fetchErr := s.fetchItem(ctx, tok, id, stored.NodeID, readOptions(last))
+		got.viewer, _ = s.viewers.Get(tok)
+
+		return got, fetchErr
 	})
 	if err != nil {
 		return nil, false, err
@@ -105,19 +108,21 @@ func (s *Service) refreshItem(ctx context.Context, id int64) ([]Outcome, bool, e
 	update.accountID, update.login = stored.AccountID, stored.AccountLogin
 	w := itemWrite{id: id, seq: seq, update: &update}
 
-	wrote, err := s.storeItemWrite(ctx, w)
+	did, err := s.storeItem(ctx, w)
 	if err != nil {
 		return nil, false, fmt.Errorf("save the item: %w", err)
 	}
 
-	if !wrote {
+	if !did.stored {
 		return nil, false, nil
 	}
 
 	ref := refOf(stored.RepoOwner, stored.RepoName, stored.Number, item.Kind(stored.Kind))
 	s.noteMergedRead(w, ref)
 
-	return seenClosed(w, stored.AccountLogin, ref, s.now()), true, nil
+	told := reviewedOutcome(did.reviewed, stored.AccountLogin, ref)
+
+	return append(told, seenClosed(w, stored.AccountLogin, ref, s.now())...), true, nil
 }
 
 // fetchItem asks GitHub about the item with id and nodeID, with what opts adds to its
@@ -144,8 +149,8 @@ func (s *Service) fetchItem(
 
 // rewrite stores what GitHub says about an open item in place, with its details and file
 // check, takes a pull request GitHub no longer asks the account to review out of Review
-// requested (see leaveAnsweredReview), then ends the snoozes the new details give cause
-// to.
+// requested (see leaveAnsweredReview), stores the user's verdict when the read brought it
+// (see noteReadVerdict), then ends the snoozes the new details give cause to.
 func (w *writer) rewrite(ctx context.Context, id int64, it github.Item) error {
 	err := w.q.UpdateItem(ctx, queries.UpdateItemParams{
 		NodeID: it.NodeID, Title: it.Title, URL: it.URL, AuthorLogin: it.AuthorLogin, AuthorType: it.AuthorType,
@@ -163,6 +168,12 @@ func (w *writer) rewrite(ctx context.Context, id int64, it github.Item) error {
 
 	if err = w.leaveAnsweredReview(ctx, id, it); err != nil {
 		return err
+	}
+
+	if w.verdict {
+		if err = w.noteReadVerdict(ctx, id, it); err != nil {
+			return err
+		}
 	}
 
 	if err = w.saveFiles(ctx, id, it); err != nil {
@@ -217,6 +228,21 @@ func answeredReview(it github.Item, d github.ItemDetails, login string) bool {
 	default:
 		return !r.Asks(login)
 	}
+}
+
+// unlistRead takes an item a read found gone, closed, or archived out of the lists (see
+// unlist), and stores the user's verdict on it when the read brought it, since a pull
+// request approved and merged in one go was still reviewed first.
+func (w *writer) unlistRead(ctx context.Context, id int64, update *github.ItemUpdate) error {
+	if err := w.unlist(ctx, id, update); err != nil {
+		return err
+	}
+
+	if !w.verdict || !update.Found {
+		return nil
+	}
+
+	return w.noteReadVerdict(ctx, id, update.Item)
 }
 
 // unlistActed takes an item the user just merged or closed out of every list, with the

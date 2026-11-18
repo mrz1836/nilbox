@@ -140,8 +140,9 @@ const (
 	// TriggerIssueClosed is an issue closed, in the app or anywhere else.
 	TriggerIssueClosed Trigger = "issue_closed"
 
-	// TriggerReviewed is a review the user submitted in the app that approves a pull
-	// request or requests changes.
+	// TriggerReviewed is a review of the user's that approves a pull request or requests
+	// changes, in the app or anywhere else (an agent's gh, a browser), once the inbox
+	// sees it, at GitHub's time for it.
 	TriggerReviewed Trigger = "reviewed"
 
 	// TriggerDismissed is an item the user dismissed in the app.

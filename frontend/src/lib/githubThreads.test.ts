@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 
-import { brand } from '../generated/brand'
 import { FIXED_NOW } from '../test/clock'
 import { githubThread, queuedClear, settledClear, threadsStatus } from '../test/fixtures'
 import {
@@ -299,7 +298,7 @@ describe('the Cleared view’s words', () => {
       'unassigned',
     ])
     expect(triggerText('merged')).toBe('A pull request is merged')
-    expect(triggerText('reviewed')).toBe(`You submit a review in ${brand.name}`)
+    expect(triggerText('reviewed')).toBe('You approve or request changes on a pull request')
     expect(triggerText('by_hand')).toBe(byHandText)
     expect(triggerText('later' as Parameters<typeof triggerText>[0])).toBe('later')
   })

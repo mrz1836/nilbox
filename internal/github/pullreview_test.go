@@ -94,6 +94,8 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 		State: reviewChangesRequested, Commit: sha1s("2"), SubmittedAt: time.Date(2026, 11, 9, 16, 58, 0, 0, time.UTC),
 		URL: "https://github.com/acme-org/example-repo/pull/94#pullrequestreview-0",
 	}, review.Verdict, "the viewer's own verdict, which their later comment-only review doesn't hide")
+	assert.True(t, review.Update.VerdictRead, "the sheet's read reads the verdicts, so the inbox may store them")
+	assert.Equal(t, review.Verdict, review.Update.Item.Verdict)
 	assert.Equal(t, []PullCommit{
 		{
 			OID: sha1s("2"), Headline: "Bump github/codeql-action from 4.39.1 to 4.39.2",

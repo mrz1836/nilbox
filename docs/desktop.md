@@ -3871,9 +3871,15 @@ button's count stays and only its accent goes; with **Mark read**, one you alrea
 alone.
 
 - **When.** Each moment under **When to clear** is on by default: a pull request merged, or
-  closed without merging, and an issue closed, in Nilbox or anywhere else; a review you submit
-  in Nilbox that approves or asks for changes (a comment alone doesn't count); an item you
+  closed without merging, and an issue closed, in Nilbox or anywhere else; a review of yours
+  that approves or asks for changes (a comment alone doesn't count), in Nilbox or anywhere
+  else, as an agent's `gh pr review` or one in your browser, once Nilbox sees it (the read
+  after an agent's session stops working, a card's or the review sheet's refresh, or the next
+  whole refresh) within two hours of it; an item you
   dismiss in Nilbox; and taking yourself off an item's assignees or reviewers in Nilbox. A
+  review made elsewhere counts as your own action, at GitHub's time for it: a notification
+  that moved more than a couple of minutes after the review stays, and, as what you do in
+  Nilbox, it clears one you get only by watching the repository too. A
   merge or a close made elsewhere counts only on GitHub's own word, read within the last hour,
   so an item reopened stops counting at once. **Include repositories you only watch** clears a
   notification you get only by watching its repository once its item is merged or closed

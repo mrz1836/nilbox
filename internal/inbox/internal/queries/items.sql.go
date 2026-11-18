@@ -31,13 +31,14 @@ func (q *Queries) ClearArrivalStamps(ctx context.Context, accountID int64) error
 const clearReasons = `-- name: ClearReasons :exec
 UPDATE items
 SET reason_review_requested = 0, reason_authored = 0, reason_assigned = 0, reason_reviewed = 0, reason_pushed = 0,
-    viewer_review_state = '', viewer_review_commit = ''
+    viewer_review_state = '', viewer_review_commit = '', viewer_review_at = NULL
 WHERE account_id = ?
 `
 
 // ClearReasons takes every item of the account with account_id out of the inbox, clearing
 // the four searches' flags, the one derived from the fourth (reason_pushed), and the user's
-// verdict it read. The rows stay, since local state may reference them.
+// verdict it read, with when it was submitted. When the newest verdict seen was submitted
+// (viewer_review_seen_at) stays. The rows stay, since local state may reference them.
 func (q *Queries) ClearReasons(ctx context.Context, accountID int64) error {
 	_, err := q.db.ExecContext(ctx, clearReasons, accountID)
 	return err
@@ -427,6 +428,32 @@ func (q *Queries) GetStoredItem(ctx context.Context, id int64) (GetStoredItemRow
 	return i, err
 }
 
+const getViewerVerdict = `-- name: GetViewerVerdict :one
+SELECT viewer_review_state, viewer_review_commit, viewer_review_at, viewer_review_seen_at
+FROM items WHERE id = ?
+`
+
+type GetViewerVerdictRow struct {
+	ViewerReviewState  string
+	ViewerReviewCommit string
+	ViewerReviewAt     *time.Time
+	ViewerReviewSeenAt *time.Time
+}
+
+// GetViewerVerdict returns the user's own verdict stored on the item with id: its state,
+// its commit, when it was submitted, and when the newest verdict seen was submitted.
+func (q *Queries) GetViewerVerdict(ctx context.Context, id int64) (GetViewerVerdictRow, error) {
+	row := q.db.QueryRowContext(ctx, getViewerVerdict, id)
+	var i GetViewerVerdictRow
+	err := row.Scan(
+		&i.ViewerReviewState,
+		&i.ViewerReviewCommit,
+		&i.ViewerReviewAt,
+		&i.ViewerReviewSeenAt,
+	)
+	return i, err
+}
+
 const leaveAnsweredReview = `-- name: LeaveAnsweredReview :exec
 UPDATE items SET reason_review_requested = 0, review_left_at = ?, review_requested_at = NULL
 WHERE id = ? AND reason_review_requested = 1
@@ -462,6 +489,20 @@ type LeaveAssignedParams struct {
 // edit (see UpsertItem).
 func (q *Queries) LeaveAssigned(ctx context.Context, arg LeaveAssignedParams) error {
 	_, err := q.db.ExecContext(ctx, leaveAssigned, arg.AssignLeftAt, arg.ID)
+	return err
+}
+
+const leavePushed = `-- name: LeavePushed :exec
+UPDATE items SET reason_pushed = 0 WHERE id = ? AND reason_pushed = 1
+`
+
+// LeavePushed takes the item with id out of Review requested where it is listed only
+// because its author pushed since the user requested changes, after a read of the pull
+// request alone found the user's verdict no longer pushed past: an approval, a request for
+// changes at its head, or none. It is never stamped: the fourth search reads the verdict
+// live, so the next whole refresh agrees.
+func (q *Queries) LeavePushed(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, leavePushed, id)
 	return err
 }
 
@@ -1305,6 +1346,59 @@ func (q *Queries) ListRunningChecks(ctx context.Context, arg ListRunningChecksPa
 	return items, nil
 }
 
+const listViewerReviewSeen = `-- name: ListViewerReviewSeen :many
+SELECT node_id, viewer_review_seen_at FROM items
+WHERE account_id = ?1 AND viewer_review_seen_at IS NOT NULL
+  AND node_id IN (/*SLICE:node_ids*/?)
+`
+
+type ListViewerReviewSeenParams struct {
+	AccountID int64
+	NodeIds   []string
+}
+
+type ListViewerReviewSeenRow struct {
+	NodeID             string
+	ViewerReviewSeenAt *time.Time
+}
+
+// ListViewerReviewSeen returns, for the items of the account with account_id among the
+// node IDs, when the newest verdict of the user's seen on each was submitted, for those
+// with one: a whole refresh tells a verdict newer than it as the user's review.
+func (q *Queries) ListViewerReviewSeen(ctx context.Context, arg ListViewerReviewSeenParams) ([]ListViewerReviewSeenRow, error) {
+	query := listViewerReviewSeen
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.AccountID)
+	if len(arg.NodeIds) > 0 {
+		for _, v := range arg.NodeIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:node_ids*/?", strings.Repeat(",?", len(arg.NodeIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:node_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListViewerReviewSeenRow{}
+	for rows.Next() {
+		var i ListViewerReviewSeenRow
+		if err := rows.Scan(&i.NodeID, &i.ViewerReviewSeenAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWatchedItems = `-- name: ListWatchedItems :many
 SELECT i.id
 FROM items i
@@ -1368,20 +1462,39 @@ func (q *Queries) ListWatchedItems(ctx context.Context, arg ListWatchedItemsPara
 }
 
 const noteViewerReview = `-- name: NoteViewerReview :exec
-UPDATE items SET viewer_review_state = ?, viewer_review_commit = ? WHERE id = ?
+UPDATE items SET
+    viewer_review_state = ?1,
+    viewer_review_commit = ?2,
+    viewer_review_at = ?3,
+    viewer_review_seen_at = CASE
+        WHEN viewer_review_seen_at IS NULL OR ?4 > viewer_review_seen_at THEN
+            COALESCE(?4, viewer_review_seen_at)
+        ELSE viewer_review_seen_at
+    END
+WHERE id = ?5
 `
 
 type NoteViewerReviewParams struct {
 	ViewerReviewState  string
 	ViewerReviewCommit string
+	ReviewedAt         *time.Time
+	SeenAt             *time.Time
 	ID                 int64
 }
 
-// NoteViewerReview records the user's own verdict on the item with id, as a review they
-// just left from the inbox: state (APPROVED or CHANGES_REQUESTED) at commit, so its card
-// reads it before the next whole refresh does.
+// NoteViewerReview records the user's own verdict on the item with id: state (APPROVED or
+// CHANGES_REQUESTED, ” with none) at commit, submitted at reviewed_at (NULL with none), so
+// its card reads it before the next whole refresh does. It is a review the user just left
+// from the inbox, or the verdict a read of the pull request alone found. seen_at raises when
+// the newest verdict seen was submitted, and never lowers it; NULL leaves it as it is.
 func (q *Queries) NoteViewerReview(ctx context.Context, arg NoteViewerReviewParams) error {
-	_, err := q.db.ExecContext(ctx, noteViewerReview, arg.ViewerReviewState, arg.ViewerReviewCommit, arg.ID)
+	_, err := q.db.ExecContext(ctx, noteViewerReview,
+		arg.ViewerReviewState,
+		arg.ViewerReviewCommit,
+		arg.ReviewedAt,
+		arg.SeenAt,
+		arg.ID,
+	)
 	return err
 }
 
@@ -1540,8 +1653,8 @@ INSERT INTO items (
     account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_association,
     is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at,
     reason_review_requested, reason_authored, reason_assigned, fetched_at, state, review_requested_at, assigned_at,
-    reason_reviewed, reason_pushed, viewer_review_state, viewer_review_commit
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    reason_reviewed, reason_pushed, viewer_review_state, viewer_review_commit, viewer_review_at, viewer_review_seen_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     node_id = excluded.node_id,
     title = excluded.title,
@@ -1566,6 +1679,12 @@ ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     END,
     viewer_review_state = excluded.viewer_review_state,
     viewer_review_commit = excluded.viewer_review_commit,
+    viewer_review_at = excluded.viewer_review_at,
+    viewer_review_seen_at = CASE
+        WHEN items.viewer_review_seen_at IS NULL OR excluded.viewer_review_seen_at > items.viewer_review_seen_at
+            THEN excluded.viewer_review_seen_at
+        ELSE items.viewer_review_seen_at
+    END,
     reason_assigned = CASE
         WHEN items.assign_left_at IS NOT NULL AND excluded.item_updated_at <= items.assign_left_at THEN 0
         ELSE excluded.reason_assigned
@@ -1621,6 +1740,8 @@ type UpsertItemParams struct {
 	ReasonPushed          bool
 	ViewerReviewState     string
 	ViewerReviewCommit    string
+	ViewerReviewAt        *time.Time
+	ViewerReviewSeenAt    *time.Time
 }
 
 type UpsertItemRow struct {
@@ -1638,7 +1759,8 @@ type UpsertItemRow struct {
 // requested changes) stays left while the item has not moved since, since GitHub's search
 // index trails the edit; once the item moves past the stamp, the search is believed and the
 // stamp cleared. reason_reviewed, reason_pushed, and the user's verdict come from the
-// fourth search (see 0017_pushed_since_review). The item's state is rewritten when the search said it (a state not empty),
+// fourth search (see 0017_pushed_since_review), and when the verdict was submitted with it,
+// while viewer_review_seen_at only ever rises (see 0018_viewer_review_seen). The item's state is rewritten when the search said it (a state not empty),
 // but never over a merge, which nothing comes back from; and review_requested_at and
 // assigned_at keep when the item first arrived in each list while it stays in it, stamped
 // with fetched_at when it arrives; ClearArrivalStamps clears them once it leaves.
@@ -1670,6 +1792,8 @@ func (q *Queries) UpsertItem(ctx context.Context, arg UpsertItemParams) (UpsertI
 		arg.ReasonPushed,
 		arg.ViewerReviewState,
 		arg.ViewerReviewCommit,
+		arg.ViewerReviewAt,
+		arg.ViewerReviewSeenAt,
 	)
 	var i UpsertItemRow
 	err := row.Scan(
