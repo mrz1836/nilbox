@@ -39,9 +39,18 @@ func (h *harness) find(_ context.Context, nickname string, kind item.Kind) (int6
 func (h *harness) importKept(t *testing.T, kept []launchdefaults.Kept, mode backup.Mode) launchdefaults.BackupPlan {
 	t.Helper()
 
+	return h.importWith(t, kept, mode, h.knows, h.find)
+}
+
+// importWith is importKept finding prompts through known and find.
+func (h *harness) importWith(t *testing.T, kept []launchdefaults.Kept, mode backup.Mode, known launchdefaults.Known,
+	find launchdefaults.PromptFinder,
+) launchdefaults.BackupPlan {
+	t.Helper()
+
 	part := launchdefaults.NewBackupPart(h.svc)
 
-	plan, err := part.PlanBackup(t.Context(), kept, mode, h.knows)
+	plan, err := part.PlanBackup(t.Context(), kept, mode, known)
 	require.NoError(t, err)
 
 	require.NoError(t, store.InTx(t.Context(), h.db, func(tx *sql.Tx) error {
@@ -51,7 +60,7 @@ func (h *harness) importKept(t *testing.T, kept []launchdefaults.Kept, mode back
 			}
 		}
 
-		_, err := part.ApplyBackup(t.Context(), tx, plan, h.find)
+		_, err := part.ApplyBackup(t.Context(), tx, plan, find)
 
 		return err
 	}))
@@ -198,4 +207,79 @@ func TestImportOfTheSameRowsChangesNothing(t *testing.T) {
 	plan := h.importKept(t, kept, backup.ModeMerge)
 	assert.Equal(t, []string{"same acme-org"}, labels(plan.Plan))
 	assert.False(t, plan.Count.Changes())
+}
+
+// lookups returns an import's Known and PromptFinder over every prompt in the harness's
+// library, read before the import's transaction, finding an agent prompt for the kind, as
+// core's do.
+func (h *harness) lookups(t *testing.T) (launchdefaults.Known, launchdefaults.PromptFinder) {
+	t.Helper()
+
+	all, err := h.library.All(t.Context())
+	require.NoError(t, err)
+
+	ids := h.ids(t)
+
+	known := func(nickname string, kind item.Kind) bool {
+		for _, p := range all {
+			if p.Nickname == nickname {
+				return !p.IsReply() && p.AppliesTo.Covers(kind)
+			}
+		}
+
+		return false
+	}
+
+	find := func(_ context.Context, nickname string, kind item.Kind) (int64, bool, error) {
+		return ids[nickname], known(nickname, kind), nil
+	}
+
+	return known, find
+}
+
+func TestImportCarriesTheSituationsPrompts(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	ids := h.ids(t)
+	known, find := h.lookups(t)
+
+	plan := h.importWith(t, []launchdefaults.Kept{
+		{
+			Owner: acme, ChecksPrompt: "Fix checks", ConflictsPrompt: "Gone", ChangesPrompt: "Work on it",
+			RereviewPrompt: " Re-review ",
+		},
+		{Owner: beta, ConflictsPrompt: "Resolve conflicts"},
+		{Owner: "other-org", ChangesPrompt: "LGTM"},
+	}, backup.ModeMerge, known, find)
+
+	assert.Equal(t, []string{
+		"acme-org: its prompt when it has conflicts, “Gone”, isn't here, so it inherits.",
+		"acme-org: its prompt when changes are requested, “Work on it”, isn't here, so it inherits.",
+		"other-org: its prompt when changes are requested, “LGTM”, isn't here, so it inherits.",
+		"The launch defaults for other-org were left out: they set nothing.",
+	}, plan.Notes, "a situation's prompt must be an agent prompt for pull requests")
+	assert.Equal(t, []string{"add acme-org", "add beta-org"}, labels(plan.Plan), "a situation's prompt alone sets something")
+
+	all, err := h.svc.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, all, 2)
+	assert.Equal(t, []*int64{new(ids["Fix checks"]), nil, nil, new(ids["Re-review"])}, situationIDs(all[0]))
+	assert.Equal(t, []*int64{nil, new(ids["Resolve conflicts"]), nil, nil}, situationIDs(all[1]))
+
+	// The same rows again change nothing, and Replace leaves exactly the file's.
+	kept, err := launchdefaults.NewBackupPart(h.svc).Kept(t.Context())
+	require.NoError(t, err)
+
+	again := h.importWith(t, kept, backup.ModeMerge, known, find)
+	assert.Equal(t, []string{"same acme-org", "same beta-org"}, labels(again.Plan))
+
+	replaced := h.importWith(t, []launchdefaults.Kept{{Owner: acme, RereviewPrompt: "Fix checks"}}, backup.ModeReplace,
+		known, find)
+	assert.Equal(t, []string{"update acme-org", "remove beta-org"}, labels(replaced.Plan))
+
+	all, err = h.svc.List(t.Context())
+	require.NoError(t, err)
+	require.Len(t, all, 1)
+	assert.Equal(t, []*int64{nil, nil, nil, new(ids["Fix checks"])}, situationIDs(all[0]))
 }

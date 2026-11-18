@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/backup"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -326,4 +327,100 @@ func TestRereviewStarter(t *testing.T) {
 		"whole pull request.")
 	assert.Contains(t, whole, "First run `gh pr checkout 7 --repo acme-org/example-repo` to check out")
 	assert.NotContains(t, whole, "\n\n\n")
+}
+
+// greenNick names a prompt of the user's that fixes checks.
+const greenNick = "Green"
+
+// forPRs is a prompt the user wrote for pull requests, in portable form.
+func forPRs(nickname string) BundlePrompt {
+	p := mine(nickname)
+	p.AppliesTo = AppliesToPR
+
+	return p
+}
+
+func TestPreviewOffersASituationsDefaultWhenItWouldChangeIt(t *testing.T) {
+	t.Parallel()
+
+	s, _ := seeded(t, nil)
+	ctx := t.Context()
+
+	forIssues := mine("Issues only")
+	forIssues.AppliesTo = AppliesToIssue
+
+	b := bundleOf(forPRs(greenNick), starterAsBundled(t, StarterResolveConflicts, nil), forIssues,
+		replyOf("Ship it", ReplyApprove, AppliesToPR))
+	b.Defaults = BundleDefaults{
+		ChecksFailing: greenNick, Conflicts: "Resolve conflicts", ChangesRequested: "Issues only", Rereview: "Ship it",
+	}
+
+	got := previewAll(t, s, b)
+	require.Equal(t, []string{"add Green", "skip Resolve conflicts", "add Issues only", "add Ship it"},
+		outcomes(got.Entries))
+	assert.Equal(t, []DefaultOffer{
+		{Slot: DefaultSlotChecksFailing, Nickname: greenNick, Current: "Fix checks", Entry: 0},
+	}, got.Defaults, "never the library's own, nor a prompt for issues or a reply")
+
+	res, err := s.Import(ctx, got.prompts(0, 1, 2, 3), chosen(got, got.Defaults...))
+	require.NoError(t, err)
+	assert.Equal(t, 1, res.Defaults)
+
+	want := startersOfSituations()
+	want[DefaultSlotChecksFailing] = greenNick
+	assert.Equal(t, want, situationDefaults(t, s))
+}
+
+func TestABackupCarriesTheSituationsDefaults(t *testing.T) {
+	t.Parallel()
+
+	from, _ := seeded(t, nil)
+	ctx := t.Context()
+
+	green, err := from.Create(ctx, Input{Name: greenNick, Nickname: greenNick, AppliesTo: AppliesToPR, Body: lookAtURL})
+	require.NoError(t, err)
+	require.NoError(t, from.SetSlotDefault(ctx, DefaultSlotChecksFailing, green.ID))
+	require.NoError(t, from.SetSlotDefault(ctx, DefaultSlotRereview, 0))
+
+	b, err := NewBackupPart(from).Bundle(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, greenNick, b.Defaults.ChecksFailing)
+	assert.Empty(t, b.Defaults.Rereview, "a slot the user cleared names nothing")
+
+	data, err := EncodeBundle(b)
+	require.NoError(t, err)
+	b, err = DecodeBundle(data)
+	require.NoError(t, err)
+
+	// Merge sets each situation the file names, and leaves a slot it names nothing for.
+	merged, db := seeded(t, nil)
+	plan, _, _ := applyBundle(t, merged, db, b, backup.ModeMerge, false)
+	assert.Equal(t, []string{"add Green", "update Default prompt when checks fail"}, changed(plan.Plan))
+
+	want := startersOfSituations()
+	want[DefaultSlotChecksFailing] = greenNick
+	assert.Equal(t, want, situationDefaults(t, merged))
+
+	// Replace makes the library's situations the file's, a cleared one included.
+	replaced, db := seeded(t, nil)
+	plan, _, _ = applyBundle(t, replaced, db, b, backup.ModeReplace, true)
+	assert.Equal(t, []string{
+		"add Green", "update Default prompt when checks fail", "update Default prompt when you're asked to review again",
+	}, changed(plan.Plan))
+
+	want[DefaultSlotRereview] = ""
+	assert.Equal(t, want, situationDefaults(t, replaced))
+}
+
+// changed lists a plan's items that change something, as "<change> <label>".
+func changed(p backup.Plan) []string {
+	out := []string{}
+
+	for _, it := range p.Items {
+		if it.Change != backup.ChangeSame && it.Change != backup.ChangeRemove {
+			out = append(out, string(it.Change)+" "+it.Label)
+		}
+	}
+
+	return out
 }
