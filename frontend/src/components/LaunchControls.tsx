@@ -553,13 +553,15 @@ export function LaunchControls({
     const session = running?.state === 'failed' && !sessionFresh ? null : running
 
     if (session === null) {
+      // Until the agent is known, the launch names "the agent", so it never shares the
+      // name Open with the card's primary beside it.
       return (
         <div className="inline-flex h-7.5 items-stretch rounded-lg border border-border text-[0.8125rem]">
           <button
             type="button"
             disabled={busy || base === null}
             onClick={launchNow}
-            aria-label={openLabel}
+            aria-label={agentName === '' ? 'Open in the agent' : openLabel}
             title={launchTitle}
             className="inline-flex items-center gap-1.5 rounded-l-lg pr-1.75 pl-2.25 font-semibold text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
           >
@@ -570,7 +572,7 @@ export function LaunchControls({
                 : state.kind === 'cloning'
                   ? 'Cloning…'
                   : agentName === ''
-                    ? 'Open'
+                    ? 'Agent'
                     : agentName}
             </span>
             {untrusted && (

@@ -250,6 +250,24 @@ describe('LaunchControls, card variant', () => {
     expect(container.querySelector('[title="Launches read-only: an outside contributor’s"]')).not.toBeNull()
   })
 
+  it('names the launch apart from the card’s Open while the agent loads', () => {
+    renderSlot({
+      resolution: null,
+      column: (agent) => (
+        <div>
+          <button type="button">Open</button>
+          {agent}
+        </div>
+      ),
+    })
+
+    const launch = screen.getByRole('button', { name: 'Open in the agent' })
+    expect(launch).toBeDisabled()
+    expect(launch).toHaveTextContent(/^Agent$/)
+    expect(screen.getByText('Agent')).toHaveClass('@max-3xl:sr-only')
+    expect(screen.getAllByRole('button', { name: 'Open' })).toHaveLength(1)
+  })
+
   it('narrows with its list: the agent’s name, a pill’s words, and its age give way', () => {
     const { unmount } = renderSlot()
 

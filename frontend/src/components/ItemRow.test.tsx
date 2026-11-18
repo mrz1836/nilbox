@@ -497,8 +497,11 @@ describe('ItemRow agent', () => {
   it('waits for an item’s launch settings to resolve', () => {
     mountCard(asked({ id: 99 }))
 
-    // Until the settings resolve, the agent the button starts is not known.
-    expect(screen.getByRole('button', { name: 'Open' })).toBeDisabled()
+    // Until the settings resolve, the agent the button starts is not known, and its name
+    // never matches the card's Open.
+    const launch = screen.getByRole('button', { name: 'Open in the agent' })
+    expect(launch).toBeDisabled()
+    expect(launch).toHaveTextContent(/^Agent$/)
   })
 
   it('keeps the human’s move, quiet, beside a live session’s pill', () => {
