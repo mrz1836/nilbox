@@ -2285,7 +2285,7 @@ describe('InboxView review sheet', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Could not mark “Add the widget cache” read · database is locked',
     )
-    expect(yours.getByTitle('New since you last opened it'), 'the dot back').toBeInTheDocument()
+    expect(await yours.findByTitle('New since you last opened it'), 'the dot back').toBeInTheDocument()
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item({ id: 1 })]) }))
     await markFromMenu('Mark as read')
@@ -2298,7 +2298,9 @@ describe('InboxView review sheet', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Could not mark “Add the widget cache” unread · database is locked',
     )
-    expect(yours.queryByTitle('New since you last opened it'), 'still read').not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(yours.queryByTitle('New since you last opened it'), 'still read').not.toBeInTheDocument()
+    })
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item({ id: 1, unread: true })]) }))
     await markFromMenu('Mark as unread')
@@ -2320,7 +2322,8 @@ describe('InboxView review sheet', () => {
     await waitFor(() => {
       expect(logged).toHaveBeenCalledWith('could not mark the items read:', 'database is locked')
     })
-    expect(yours.getByTitle('New since you last opened it')).toBeInTheDocument()
+    // The card goes back as the mark's transition ends, which may be after the log.
+    expect(await yours.findByTitle('New since you last opened it')).toBeInTheDocument()
   })
 
   it('steps through the cards as the list shows them, the filter’s matches alone', async () => {

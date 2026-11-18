@@ -295,7 +295,9 @@ describe('useInbox’s seen marks', () => {
       await done
     })
 
-    expect(shownUnread(result.current), 'the dot back').toBe(true)
+    await waitFor(() => {
+      expect(shownUnread(result.current), 'the dot back').toBe(true)
+    })
   })
 
   it('reads the inbox back once the mark is stored, so a read asked while it was stored never shows the item unread', async () => {
