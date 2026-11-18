@@ -619,6 +619,34 @@ same author, since a whole refresh applies a pass's read again over its own. The
 routine's Watching list carry it as `Item.AuthorAvatarURL`, which the window hands the avatars
 service for a bot's picture on its card.
 
+**The seen stamp** (`seen.go`, migration `0022_seen_activity`). `items.seen_activity_at` is the
+activity on an item the user last saw, and `Item.Unread`, in the lists and a routine's Watching
+list alike, is true while it is NULL or `item_updated_at` is later; the window shows it as a dot
+on the card while **Unread dots** (`cards.unread`) is on. The migration set it to
+`item_updated_at` on every row it found, so the upgrade lit no card. Besides the marks, only a
+new row's insert writes it: a whole refresh inserts NULL, unread, except on an account's first
+load (`noteFirstLoad`: no item stored for it before that refresh, `HasItems`), when it inserts
+the item's activity, so a first sign-in isn't a wall of dots; a routine's search
+(`UpsertWatchedItem`) inserts the activity, since a watched item isn't news; and no `ON
+CONFLICT` update and no `UpdateItem` touches it, so newer activity from any read makes a card
+the user saw unread. `StoreFixture` follows the refresh's rule. The bound `MarkSeen(ids)` sets
+each of the signed-in account's rows among ids to the later of its activity and now (the
+injected clock), so a read that lands after the mark with activity from before it stays seen:
+opening a sheet runs `Open` and then a `Refresh` that can store a newer `item_updated_at`, which
+a stamp of the activity alone would leave unread while the sheet is open. `MarkUnseen(id)` sets
+one row to NULL. Another account's rows are left alone. A mark that changed a row empties the
+snapshot cache, so the next `Snapshot` shows it, but emits no `InboxUpdated`, which would wake
+Autopilot's engine (`engineOnInbox`) on every sheet opening; the window changes the card
+optimistically and reverts it on an error, as it does triage. The window, not the `Actor`,
+counts what the user saw and did as seen: it marks an item as its sheet opens (from the inbox
+or a routine's Watching list) and again for the item a sheet steps away from or closes on,
+which catches what the sheet read while open and the user's own actions in it, as the user
+opens it on GitHub, and after a card's own edits on GitHub succeed, whatever the setting, which
+gates only the dot and Mark as read and Mark as unread. The `Actor` is shared with Autopilot,
+whose steps aren't the user's, and most of its actions record no time of GitHub's, so it can't
+say which activity was the user's own. Something the user does on github.com itself reads as
+unread, since GitHub's last activity doesn't say who acted. Nothing of it goes to GitHub.
+
 **State, arrivals, and the prune.** `items.state` and `closed_at` are written by every read
 that carries them: the inbox's searches (`UpsertItem`), an item's own read and the follower's
 (`UpdateItem`, `UnlistItem`, which also drops a closed or gone item's watch rows), the closed
