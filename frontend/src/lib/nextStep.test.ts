@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { AgentSession, InboxItem, ItemDetails } from '../platform'
 import { agentSession, details, item, project } from '../test/fixtures'
-import { nextStep, type Step, type StepInput } from './nextStep'
+import { autopilotState, nextStep, type Step, type StepInput } from './nextStep'
 
 // input is what a card in the inbox tab reads, with no session, no routine, and the agent
 // known, changed by overrides.
@@ -827,5 +827,14 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
 describe('nextStep', () => {
   it.each(cases)('%s', (_name, given, want) => {
     expect(nextStep(given)).toEqual(step(want))
+  })
+})
+
+describe('autopilotState', () => {
+  it('reads where a routine stands from a card’s autopilot prop', () => {
+    expect(autopilotState('needs:Heal bot PRs: nightly')).toEqual({ state: 'needs', routine: 'Heal bot PRs: nightly' })
+    expect(autopilotState('working:Fix checks')).toEqual({ state: 'working', routine: 'Fix checks' })
+    expect(autopilotState('')).toEqual({ state: '', routine: '' })
+    expect(autopilotState('done:Fix checks')).toEqual({ state: '', routine: '' })
   })
 })

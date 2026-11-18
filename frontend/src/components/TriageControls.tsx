@@ -62,7 +62,7 @@ export function mutedTarget(item: InboxItem, rules: RepoRules): string {
 }
 
 // pinnedTarget is the target whose rule pins an item, as mutedTarget finds a mute's.
-function pinnedTarget(item: InboxItem, rules: RepoRules): string {
+export function pinnedTarget(item: InboxItem, rules: RepoRules): string {
   const applied = ruleFor(rules, item.repo)
 
   return applied.rule === 'pinned' ? applied.target : item.repo
@@ -322,17 +322,19 @@ function BringBack({
 // item's pin is always shown, filled, and unpins it. In the Snoozed, Dismissed, and Muted
 // tabs they are the one button that brings it back (BringBack). In a card's mode every
 // button shows only while the pointer or focus is on the card, a pinned item's pin too,
-// since the card marks a pinned item before its title; in the set-aside tabs the card's
-// primary brings the item back, so its triage is Pin or Unpin alone.
+// since the card marks a pinned item before its title, and an item pinned only with its
+// repository or org has no pin here at all: the card's mark says so, and a card doesn't
+// unpin a repository. In the set-aside tabs the card's primary brings the item back, so
+// its triage is Pin or Unpin alone.
 export function TriageControls({ item, tab, actions, work, start, mode = 'row' }: TriageControlsProps) {
   const hover = hoverClass(work)
   const card = mode === 'card'
+  // pin is the pin button, but none on a card for an item pinned only by a rule.
+  const pin = card && isPinned(item) && !isPinnedItself(item) ? null : <PinButton item={item} actions={actions} />
 
   if (tab !== 'inbox') {
     return card ? (
-      <div className={`${hover} self-center`}>
-        <PinButton item={item} actions={actions} />
-      </div>
+      pin !== null && <div className={`${hover} self-center`}>{pin}</div>
     ) : (
       <BringBack item={item} tab={tab} actions={actions} />
     )
@@ -362,9 +364,7 @@ export function TriageControls({ item, tab, actions, work, start, mode = 'row' }
       </div>
       {/* A pinned item's pin shows without hovering, to mark it and unpin it, except on a
           card, whose title line marks it. */}
-      <div className={isPinned(item) && !card ? 'flex' : hover}>
-        <PinButton item={item} actions={actions} />
-      </div>
+      {pin !== null && <div className={isPinned(item) && !card ? 'flex' : hover}>{pin}</div>}
     </div>
   )
 }

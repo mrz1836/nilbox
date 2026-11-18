@@ -89,6 +89,16 @@ describe('TriageControls, card mode', () => {
 
     expect(screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Unpin'])
   })
+
+  it.each(['inbox', 'snoozed'] as const)(
+    'offers no pin in the %s tab for an item pinned only with its repository, which the card marks',
+    (tab) => {
+      cardTriage(item({ repoRule: 'pinned' }), tab)
+
+      expect(screen.queryByRole('button', { name: /^(Pin to top|Unpin)$/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('img', { name: /^Pinned with/ })).not.toBeInTheDocument()
+    },
+  )
 })
 
 describe('TriageControls, row mode', () => {

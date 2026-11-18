@@ -417,6 +417,28 @@ export function chipOf(m: AutopilotMatch): Chip {
   return m.reason === '' || m.reason === 'would_run' ? reasonChips.ran : reasonChips[m.reason]
 }
 
+// rowAutopilot is what a card's next step reads of the newest match a routine has on its
+// item, as one plain string, so a card renders again only when it changes: the routine
+// waiting for the user's OK ("needs:<routine>", where its chip says Needs you), or at work
+// on it ("working:<routine>", where its chip says Working or Checking), else ''. A Dry run
+// never waits or works, as its chip says.
+export function rowAutopilot(m: AutopilotMatch | undefined): string {
+  if (m === undefined || m.dryRun) {
+    return ''
+  }
+
+  switch (m.state) {
+    case 'waiting':
+    case 'blocked':
+      return `needs:${m.routine}`
+    case 'running':
+    case 'verifying':
+      return `working:${m.routine}`
+    default:
+      return ''
+  }
+}
+
 // actionLabels name the GitHub step's actions, every one the catalog has: a record over the
 // generated union, so an action added in Go fails to compile until it is worded here.
 export const actionLabels: Readonly<Record<AutopilotGitHubActionKind, string>> = {

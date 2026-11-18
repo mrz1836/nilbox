@@ -247,9 +247,11 @@ describe('ItemMenu', () => {
     const it = item({ repo: 'acme-org/example-repo', repoRule: 'pinned' })
     const { triage } = renderRow(it, 'inbox', { pinned: ['acme-org'], muted: [] })
 
+    // The card marks it before its title; its triage offers no pin to take off.
     const mark = screen.getByRole('img', { name: 'Pinned with acme-org' })
-    expect(mark.parentElement).toHaveClass('flex')
+    expect(mark).toHaveAttribute('title', expect.stringContaining('the card’s menu'))
     expect(screen.queryByRole('button', { name: 'Unpin' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Pin to top' })).not.toBeInTheDocument()
 
     await openMenu()
     await openSubmenu('Inbox actions')

@@ -1,36 +1,44 @@
-import { memo } from 'react'
+import { Fragment, memo, use, useId, useState, type ReactNode } from 'react'
 
 import { counted } from '../lib/format'
+import { HiddenLabelsContext } from '../lib/labels'
 import { agentName } from '../lib/launch'
+import { autopilotState, nextStep, type Edge } from '../lib/nextStep'
 import { leaving, useRowWork, workWords } from '../lib/rowWork'
-import { runningSession } from '../lib/sessions'
+import { cardSession, endedShownMs, sinceWhen } from '../lib/sessions'
 import { formatAge, formatAgo, formatFull, formatWhen } from '../lib/time'
-import { isBackFromSnooze, wakeSummary, type TriageTab } from '../lib/triage'
+import { isBackFromSnooze, isPinned, isPinnedItself, type TriageTab } from '../lib/triage'
 import { useNowAs } from '../lib/useNow'
 import {
   openExternal,
   type AgentInfo,
   type InboxItem,
   type ItemResolution,
+  type Label,
   type LaunchDefaults,
   type AgentSession,
   type Profile,
   type Prompt,
+  type RepoRules,
   type Settings,
   type Worktree,
 } from '../platform'
 import { AutopilotChip, useMarkedBy, useRoutineName } from './autopilot/AutopilotChip'
-import { trustTitle } from './card/RiskChip'
+import { CardActions, cardOutcomeClass } from './card/CardActions'
+import { CardAvatar } from './card/CardAvatar'
+import { CardStory } from './card/CardStory'
+import { IssueState } from './card/IssueState'
+import { RiskChip, trustTitle } from './card/RiskChip'
+import { SizeGlyph } from './card/SizeGlyph'
+import { StateTrack } from './card/StateTrack'
 import { Highlight } from './Highlight'
-import { ArchiveIcon, AutopilotIcon, ClockIcon, ExternalIcon, IssueIcon, PinIcon, PullRequestIcon } from './icons'
+import { ArchiveIcon, AutopilotIcon, ChevronDownIcon, ClockIcon, ExternalIcon, PinIcon, WorktreeIcon } from './icons'
 import { ItemMenu, type EditActions } from './ItemMenu'
-import { ItemSignals } from './ItemSignals'
+import { LabelChip } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
 import { RelativeTime } from './RelativeTime'
-import { SensitiveFiles } from './SensitiveFiles'
-import { SessionTag } from './SessionTag'
 import { Spinner } from './Spinner'
-import { TriageControls, type TriageActions } from './TriageControls'
+import { ghostClass, hoverClass, mutedTarget, pinnedTarget, TriageControls, type TriageActions } from './TriageControls'
 
 // LaunchOptions are what every row's launch controls share: the coding agents, profiles,
 // and prompts to choose from, and the saved launch defaults. Each row's own resolved
@@ -50,8 +58,8 @@ export interface LaunchOptions {
 
 export interface ItemRowProps {
   item: InboxItem
-  // launch is null until the launch settings have loaded; the row has no launch button
-  // until then.
+  // launch is null until the launch settings have loaded; the row has no agent slot until
+  // then.
   launch: LaunchOptions | null
   // resolution is the item's resolved launch settings, or null while they load.
   resolution?: ItemResolution | null
@@ -59,7 +67,7 @@ export interface ItemRowProps {
   worktree?: Worktree | undefined
   // sessions are the item's agent sessions, newest first, if it has any.
   sessions?: readonly AgentSession[] | undefined
-  // tab is the list tab the row is in: the inbox, Snoozed, or Dismissed.
+  // tab is the list tab the row is in: the inbox, Snoozed, Dismissed, or Muted.
   tab?: TriageTab
   // triage is what the row's snooze, dismiss, and restore buttons do; without it the row
   // has none.
@@ -81,6 +89,11 @@ export interface ItemRowProps {
   // request, the issue sheet for an issue. Its title does, unless ⌘ is held, and a mark
   // beside it opens GitHub. Without it the title opens GitHub.
   onOpen?: ((item: InboxItem, tab: TriageTab) => void) | undefined
+  // autopilot is where a routine stands on the item, as its list reads it from the rows'
+  // Autopilot (rowAutopilot): "needs:<routine>", "working:<routine>", or ''. A plain
+  // string, so an Autopilot update renders only the rows it changes; the row never reads
+  // the rows' Autopilot itself.
+  autopilot?: string
 }
 
 // tagClass is a status tag: weight and color mark it, with no pill around it.
@@ -93,17 +106,17 @@ interface FilterTextProps {
   value: string
   name: string
   onFilterBy: ((key: string, value: string) => void) | undefined
-  // shown is what the card says in value's place, such as "you" for the user's own login,
-  // and full what it stands for, in its tooltip; both default to value.
-  shown?: string
+  // full is what the text stands for, in its tooltip, and children what the card says,
+  // such as "you" for the user's own login; both default to value.
   full?: string
+  children?: ReactNode
 }
 
 // FilterText is a card's repository or author: plain text, or a quiet inline button that
 // filters the inbox by it.
-function FilterText({ filterKey, value, name, onFilterBy, shown = value, full = value }: FilterTextProps) {
+function FilterText({ filterKey, value, name, onFilterBy, full = value, children = value }: FilterTextProps) {
   if (onFilterBy === undefined) {
-    return shown === value ? value : <span title={full}>{shown}</span>
+    return full === value ? children : <span title={full}>{children}</span>
   }
 
   return (
@@ -116,34 +129,8 @@ function FilterText({ filterKey, value, name, onFilterBy, shown = value, full = 
       }}
       className="rounded-sm hover:text-text hover:underline"
     >
-      {shown}
+      {children}
     </button>
-  )
-}
-
-// AssignedChip marks an item assigned to the user, in either list, since Review requested
-// holds a pull request that is assigned too.
-function AssignedChip() {
-  return (
-    <span
-      title="Assigned to you on GitHub"
-      className="shrink-0 rounded-full border border-border px-1.5 text-[0.6875rem] leading-4 text-muted"
-    >
-      Assigned
-    </span>
-  )
-}
-
-// KindIcon tells a pull request from an issue: green while open, muted for a draft.
-function KindIcon({ item }: { item: InboxItem }) {
-  const isPR = item.kind === 'pr'
-  const label = isPR ? (item.isDraft ? 'Draft pull request' : 'Pull request') : 'Issue'
-  const color = item.isDraft ? 'text-muted' : 'text-success'
-
-  return (
-    <span role="img" aria-label={label} title={label} className={`mt-0.5 ${color}`}>
-      {isPR ? <PullRequestIcon className="size-4" /> : <IssueIcon className="size-4" />}
-    </span>
   )
 }
 
@@ -173,21 +160,8 @@ export function TrustTag({ item }: { item: InboxItem }) {
   )
 }
 
-// mergeMethodWords names auto-merge's method on a card.
-const mergeMethodWords: Readonly<Record<string, string>> = { SQUASH: 'squash', MERGE: 'merge commit', REBASE: 'rebase' }
-
-// AutoMergeTag marks a pull request GitHub merges on its own once its requirements are
-// met, with the method it uses.
-function AutoMergeTag({ method }: { method: string }) {
-  return (
-    <span title="GitHub merges it once its requirements are met" className={`${tagClass} text-success`}>
-      Auto-merge · {mergeMethodWords[method] ?? method.toLowerCase()}
-    </span>
-  )
-}
-
-// ByRoutine names the Autopilot routine that set an item aside or pinned it, after what it
-// did: "by ⚡ Snooze passing bot PRs".
+// ByRoutine names the Autopilot routine that set an item aside, after what it did: "by ⚡
+// Snooze passing bot PRs".
 function ByRoutine({ id }: { id: number }) {
   const name = useRoutineName(id)
 
@@ -256,84 +230,18 @@ function DismissedTag({ item, className }: { item: InboxItem; className: string 
   )
 }
 
-// PinnedByTag says which routine pinned an item, while it is pinned by one.
-function PinnedByTag({ item, className }: { item: InboxItem; className: string }) {
-  const name = useRoutineName(item.pinnedBy)
-
-  return (
-    <span title={`Pinned by the routine ${name}`} className={className}>
-      <PinIcon filled className="size-3 shrink-0" />
-      <span className="truncate">
-        Pinned
-        <ByRoutine id={item.pinnedBy} />
-      </span>
-    </span>
-  )
-}
-
-// BackTag marks an item back from a snooze within the last day; a snooze that new
-// activity ended early says what was new.
-function BackTag({ item }: { item: InboxItem }) {
-  const back = useNowAs((now) => isBackFromSnooze(item, now))
-
-  if (!back) {
-    return null
-  }
-
-  const woke = wakeSummary(item.wokeBy)
-
-  return (
-    <span
-      title={
-        woke === ''
-          ? `Snoozed until ${formatFull(item.snoozedUntil)}`
-          : `Back early, ${formatFull(item.snoozedUntil)}: ${woke} since you snoozed it`
-      }
-      className="inline-flex min-w-0 items-center gap-1 text-[0.6875rem] leading-4 font-medium text-info"
-    >
-      <ClockIcon className="size-3 shrink-0" />
-      <span className="truncate">{woke === '' ? 'Back from snooze' : `Back early: ${woke}`}</span>
-    </span>
-  )
-}
-
-// TriageTag says where a snoozed or dismissed item stands, and marks an item just back
-// from a snooze, so it is easy to spot among the rest. A muted item needs no tag: its tab
-// says why it is there. What an Autopilot routine set aside or pinned says so, with the
-// routine's name, until the user changes it. Each tag reads the clock itself, so a tick
-// renders a tag only when its words change. While Autopilot (beta) is off, no tag names a
-// routine (useMarkedBy).
+// TriageTag is the story of a card in the Snoozed or Dismissed tab: when the item comes
+// back, or how long ago it was dismissed, and which routine did it, when one did, until
+// the user changes it. Each tag reads the clock itself, so a tick renders a tag only when
+// its words change. While Autopilot (beta) is off, no tag names a routine (useMarkedBy).
 function TriageTag({ item, tab }: { item: InboxItem; tab: TriageTab }) {
-  const quiet = `${tagClass} inline-flex min-w-0 items-center gap-1 text-muted`
-  const pinnedBy = useMarkedBy(item.pinnedBy)
-  const pinned = pinnedBy > 0 && item.pinnedAt !== '' && <PinnedByTag item={item} className={quiet} />
+  const quiet = `${tagClass} relative z-10 inline-flex min-w-0 items-center gap-1 text-muted`
 
-  switch (tab) {
-    case 'snoozed':
-      return (
-        <>
-          {pinned}
-          <SnoozedTag item={item} className={quiet} />
-        </>
-      )
-    case 'dismissed':
-      return (
-        <>
-          {pinned}
-          <DismissedTag item={item} className={quiet} />
-        </>
-      )
-    case 'muted':
-      return pinned
-    default:
-      // An item never snoozed has nothing to mark, nor any reason to follow the clock.
-      return (
-        <>
-          {pinned}
-          {item.snoozedUntil !== '' && <BackTag item={item} />}
-        </>
-      )
-  }
+  return tab === 'snoozed' ? (
+    <SnoozedTag item={item} className={quiet} />
+  ) : (
+    <DismissedTag item={item} className={quiet} />
+  )
 }
 
 // WorktreeTag marks an item that has a worktree, as the Worktrees view last listed it: its
@@ -363,23 +271,205 @@ export function WorktreeTag({ wt, agents }: { wt: Worktree; agents: readonly Age
   )
 }
 
-// ItemRow is one inbox card, three lines high: the title with its draft and conflict
-// tags; where it is, who opened it, when it last moved, and, for a pull request from
-// outside the repository, the sensitive files it changes, then its session pill and, for
-// an item an Autopilot routine touched, its ⚡ chip (AutopilotChip); and its signals (checks,
-// reviews, comments, size, labels). The triage buttons, the menu of everything else (see
-// ItemMenu), and the launch button sit on the right, and a launch's outcome spans the
-// card below. The row does one thing with GitHub at a time, which its buttons and its
-// menu share (useRowWork). While an edit that will likely take it out of the list runs,
-// the row fades and blurs under a note saying what GitHub is doing, and takes no clicks,
-// so the wait shows however slow the network is; it comes back if the item stays. Long
-// titles are cut short with an
-// ellipsis, so every card keeps the same shape. A card off screen is not rendered until
-// it scrolls near (item-row in index.css).
+// WorktreeChip marks a card whose worktree, as the Worktrees view last listed it, has
+// uncommitted changes, or has a session running in it; its title is the worktree's path.
+function WorktreeChip({ wt }: { wt: Worktree }) {
+  const words = wt.dirtyCount > 0 ? counted(wt.dirtyCount, 'change', 'changes') : 'in use'
+
+  return (
+    <span
+      title={wt.displayPath}
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[0.6875rem] leading-4 font-medium text-muted"
+    >
+      <WorktreeIcon className="size-3 shrink-0" />
+      <span className="@max-3xl:sr-only">{words}</span>
+    </span>
+  )
+}
+
+// CardChip is one of a card's chips after its risk chip: words name it in the count the
+// chips past the second fold into.
+export interface CardChip {
+  key: string
+  words: string
+  node: ReactNode
+}
+
+// shownChips is how many chips a card shows after its risk chip, before folding the rest
+// into "+N".
+const shownChips = 2
+
+// CardChips are a card's chips after its risk chip: the first two, then a quiet "+N"
+// whose title names the rest.
+export function CardChips({ chips }: { chips: readonly CardChip[] }) {
+  const rest = chips.slice(shownChips)
+  const names = rest.map((chip) => chip.words).join(', ')
+
+  return (
+    <>
+      {chips.slice(0, shownChips).map((chip) => (
+        <Fragment key={chip.key}>{chip.node}</Fragment>
+      ))}
+      {rest.length > 0 && (
+        <span title={names} className="shrink-0 text-[0.6875rem] font-medium">
+          +{rest.length}
+          <span className="sr-only"> more: {names}</span>
+        </span>
+      )}
+    </>
+  )
+}
+
+// cardLabels is how many labels a card shows after its title before folding the rest
+// into "+N".
+const cardLabels = 2
+
+// CardLabels are the first labels of a card after its title, with their GitHub colors,
+// and the count of the rest, named in its tooltip. The labels the user hid (Settings →
+// Cards) are left out before the first are taken, so a hidden one never takes a visible
+// one's place or counts in the +N. They give way before the title does, and a list
+// narrower than 56rem leaves them out.
+function CardLabels({
+  labels: all,
+  onFilterBy,
+}: {
+  labels: readonly Label[]
+  onFilterBy: ((key: string, value: string) => void) | undefined
+}) {
+  const hidden = use(HiddenLabelsContext)
+  const labels = all.filter((label) => !hidden(label.name))
+
+  if (labels.length === 0) {
+    return null
+  }
+
+  const rest = labels.slice(cardLabels)
+  const names = rest.map((label) => label.name).join(', ')
+
+  return (
+    <span className="relative z-10 flex min-w-0 shrink-[10] items-center gap-1 overflow-hidden @max-4xl:hidden">
+      <span className="sr-only">Labels:</span>
+      {labels.slice(0, cardLabels).map((label) => (
+        <LabelChip key={label.name} label={label} onFilterBy={onFilterBy} />
+      ))}
+      {rest.length > 0 && (
+        <span title={names} className="shrink-0 text-[0.6875rem] text-muted">
+          +{rest.length}
+          <span className="sr-only"> more: {names}</span>
+        </span>
+      )}
+    </span>
+  )
+}
+
+// PinGlyph marks a pinned card before its title: pinned by the user, by a routine, or with
+// its repository or org, which the card's menu or Settings unpins.
+function PinGlyph({ item, rules }: { item: InboxItem; rules: RepoRules | undefined }) {
+  const by = useMarkedBy(item.pinnedBy)
+  const name = useRoutineName(by)
+  const itself = isPinnedItself(item)
+  const label = !itself
+    ? `Pinned with ${rules === undefined ? item.repo : pinnedTarget(item, rules)}`
+    : by > 0
+      ? `Pinned by the routine ${name}`
+      : 'Pinned to the top of the list'
+  const title = itself ? label : `${label}: unpin it from the card’s menu or in Settings → Repositories`
+
+  return (
+    <span role="img" aria-label={label} title={title} className="relative z-10 inline-flex shrink-0 text-accent">
+      <PinIcon filled className="size-3.5" />
+    </span>
+  )
+}
+
+// teamsText names the teams a pull request asks to review, in the byline: "@platform".
+function teamsText(teams: readonly string[]): string {
+  return teams.length === 0 ? 'a team' : teams.map((team) => `@${team}`).join(', ')
+}
+
+// Byline is where a card's item is and who opened it, after its story: the repository
+// (its org dimmed, left out in a list narrower than 36rem) and number, the author ("you"
+// for the user's own), why it is the user's ("via @team" for a review asked of a team,
+// "assigned"), and how long ago it last moved. It truncates before the story does.
+function Byline({
+  item,
+  onFilterBy,
+}: {
+  item: InboxItem
+  onFilterBy: ((key: string, value: string) => void) | undefined
+}) {
+  const slash = item.repo.indexOf('/')
+  const org = item.repo.slice(0, slash + 1)
+  const name = item.repo.slice(slash + 1)
+  const reasons = [
+    item.reviewRequest === 'team' ? `via ${teamsText(item.reviewTeams)}` : '',
+    item.assigned ? 'assigned' : '',
+  ].filter((reason) => reason !== '')
+
+  return (
+    <span className="relative z-10 min-w-0 truncate">
+      <span aria-hidden="true" className="mr-2 opacity-60">
+        ·
+      </span>
+      <FilterText filterKey="repo" value={item.repo} name="repository" onFilterBy={onFilterBy}>
+        <span className="opacity-60 @max-xl:hidden">{org}</span>
+        {name}
+      </FilterText>
+      {` #${String(item.number)} · `}
+      <FilterText
+        filterKey="author"
+        value={item.author}
+        name="author"
+        onFilterBy={onFilterBy}
+        full={item.authored ? `${item.author} (you)` : item.author}
+      >
+        {item.authored ? <span className="font-semibold text-text">you</span> : item.author}
+      </FilterText>
+      {reasons.map((reason) => ` · ${reason}`).join('')}
+      {' · '}
+      <RelativeTime iso={item.updatedAt} show={formatAge} />
+    </span>
+  )
+}
+
+// edgeBar is each edge's color, the bar down a card's left side, spelled out in full so
+// Tailwind finds them.
+const edgeBar: Readonly<Record<Edge, string>> = {
+  urgent: 'bg-warning',
+  blocked: 'bg-danger',
+  yours: 'bg-accent',
+  ready: 'bg-success',
+  agent: 'bg-info',
+  waiting: 'bg-muted/30',
+  none: 'bg-transparent',
+}
+
+// ItemRow is one inbox card, a Signal card two lines high. Down its left side, the edge's
+// color says whose move it is (nextStep); then the author's avatar with the item's kind
+// (CardAvatar). Its first line is the title, after a pin when pinned, with up to two
+// labels; its second, the story in the edge's color (CardStory: one sentence of why it is
+// here, or, in the Snoozed and Dismissed tabs, when it comes back or was dismissed), the
+// byline, then the risk chip, the ⚡ chip (AutopilotChip), and the worktree chip. The state
+// column shows where a pull request stands (StateTrack, over its size, SizeGlyph) or an
+// issue (IssueState); the action column, the human's next move and the agent's slot beside
+// it (CardActions, with LaunchControls' card variant). The pointer or focus on the card
+// fades the state column for the triage buttons, Show details, and the menu of everything
+// else (ItemMenu), which stay while the card is busy. A click on the card's empty space, or
+// on Show details, opens the peek under its two lines (CardPeek), and a launch's outcome
+// spans the card below. The card does one thing with GitHub at a time, which its buttons
+// and its menu share (useRowWork). While an edit that will likely take it out of the list
+// runs, the card fades and blurs under a note saying what GitHub is doing, and takes no
+// clicks, so the wait shows however slow the network is; it comes back if the item stays.
+// Long titles are cut short with an ellipsis, so every card keeps the same shape, and the
+// card narrows with its list (@container on the list). A card off screen is not rendered
+// until it scrolls near (item-row in index.css).
 //
-// The row is wrapped in memo: the inbox renders its rows in a loop, where the React
-// Compiler can't keep each row's element from one render to the next, so without memo a
-// change to one item would render every row in its list again.
+// The card reads the clock only for three plain values (its session, whether a failed
+// session is fresh, and whether it is back from a snooze), so a tick renders it only when
+// one changes, and never reads the rows' Autopilot itself: its list hands it the plain
+// autopilot string. The row is wrapped in memo: the inbox renders its rows in a loop,
+// where the React Compiler can't keep each row's element from one render to the next, so
+// without memo a change to one item would render every row in its list again.
 export const ItemRow = memo(function ItemRow({
   item,
   launch,
@@ -394,23 +484,83 @@ export const ItemRow = memo(function ItemRow({
   marks = '',
   onFilterBy,
   onOpen,
+  autopilot = '',
 }: ItemRowProps) {
-  const conflicting = item.details?.mergeable === 'CONFLICTING'
-  const autoMerge = item.details?.autoMerge ?? ''
   const opens = onOpen !== undefined
   const [work, start] = useRowWork()
   const going = leaving(work)
+  const peekId = useId()
+  const [peeking, setPeeking] = useState(false)
+  const sessionId = useNowAs((now) => cardSession(sessions, now)?.id ?? null)
+  const sessionFresh = useNowAs((now) => {
+    const s = cardSession(sessions, now)
+
+    return s?.state === 'failed' && now.getTime() - Date.parse(sinceWhen(s)) < endedShownMs
+  })
+  const backFromSnooze = useNowAs((now) => item.snoozedUntil !== '' && isBackFromSnooze(item, now))
+  const session = sessions?.find((s) => s.id === sessionId) ?? null
+  const agents = launch?.agents ?? []
+  const routine = autopilotState(autopilot)
+  const step = nextStep({
+    item,
+    tab,
+    session,
+    sessionFresh,
+    backFromSnooze,
+    autopilot: routine,
+    agent: session === null ? (resolution?.agent.name ?? '') : agentName(agents, session.agent),
+    mutedTarget: tab !== 'muted' ? '' : triage === undefined ? item.repo : mutedTarget(item, triage.repoRules),
+  })
+  // The story is the routine's while it waits on the user, or works with no agent session
+  // at work, so the ⚡ chip would only say it again.
+  const sessionWorking = session?.state === 'starting' || session?.state === 'working'
+  const routineStory = step.rule === 'autopilot_needs_you' || (step.rule === 'agent_working' && !sessionWorking)
+  const chips: CardChip[] = []
+
+  if (!routineStory) {
+    chips.push({ key: 'autopilot', words: 'Autopilot', node: <AutopilotChip item={item} /> })
+  }
+
+  if (worktree !== undefined && (worktree.dirtyCount > 0 || worktree.inUse.length > 0)) {
+    chips.push({ key: 'worktree', words: worktree.displayPath, node: <WorktreeChip wt={worktree} /> })
+  }
+
+  const togglePeek = () => {
+    setPeeking(!peeking)
+  }
+
+  const actions = (agent?: ReactNode) => (
+    <CardActions
+      item={item}
+      tab={tab}
+      step={step}
+      session={session}
+      sessions={sessions ?? []}
+      agents={agents}
+      triage={triage}
+      onOpen={onOpen}
+      agent={agent}
+    />
+  )
 
   return (
     <li
       data-item-id={item.id}
       data-highlighted={highlighted || undefined}
+      data-rule={step.rule}
       aria-busy={going || undefined}
-      className="item-row group relative grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-start gap-x-3 border-b border-border px-4 py-3 transition-colors last:border-b-0 hover:bg-raised/40 data-highlighted:bg-accent/10"
+      className="item-row group relative grid grid-cols-[0.1875rem_1.875rem_minmax(0,1fr)_var(--card-state)_var(--card-actions)] items-center gap-x-3.5 border-b border-border py-3 pr-4 transition-colors [--card-actions:15.25rem] [--card-state:8.25rem] last:border-b-0 hover:bg-raised/40 data-highlighted:bg-accent/10 @max-5xl:[--card-actions:13.375rem] @max-4xl:[--card-state:4.75rem] @max-3xl:[--card-actions:9.5rem] @max-xl:grid-cols-[0.1875rem_1.875rem_minmax(0,1fr)_var(--card-actions)]"
     >
-      <KindIcon item={item} />
+      <span
+        aria-hidden="true"
+        data-edge={step.edge}
+        className={`-my-0.5 self-stretch rounded-r-[0.1875rem] ${edgeBar[step.edge]}`}
+      />
+      <CardAvatar item={item} />
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
+          {isPinned(item) && <PinGlyph item={item} rules={triage?.repoRules} />}
+          {item.isDraft && <span className="shrink-0 text-xs font-semibold text-muted">Draft</span>}
           <button
             type="button"
             title={
@@ -425,10 +575,22 @@ export const ItemRow = memo(function ItemRow({
                 openExternal(item.url)
               }
             }}
-            className="min-w-0 truncate text-left text-sm font-medium text-text hover:text-accent hover:underline"
+            className="relative z-10 min-w-[8ch] truncate text-left text-sm font-semibold text-text hover:text-accent hover:underline"
           >
             <Highlight text={item.title} marks={marks} />
           </button>
+          {/* The stretched toggle: a click on the card's empty space opens its peek. Every
+              control, and everything with a title, sits above it (relative z-10). Keyboard
+              users reach Show details instead, which focus within the card reveals. */}
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label="Show details"
+            aria-expanded={peeking}
+            aria-controls={peeking ? peekId : undefined}
+            onClick={togglePeek}
+            className="absolute inset-0 z-0"
+          />
           {opens && (
             <button
               type="button"
@@ -437,69 +599,71 @@ export const ItemRow = memo(function ItemRow({
               onClick={() => {
                 openExternal(item.url)
               }}
-              className="shrink-0 rounded-sm text-muted/70 opacity-0 transition-opacity group-hover:opacity-100 hover:text-accent focus-visible:opacity-100"
+              className="relative z-10 shrink-0 rounded-sm text-muted/70 opacity-0 transition-opacity group-hover:opacity-100 hover:text-accent focus-visible:opacity-100"
             >
               <ExternalIcon className="size-3" />
             </button>
           )}
-          {item.isDraft && <span className={`${tagClass} text-muted`}>Draft</span>}
-          {autoMerge !== '' && <AutoMergeTag method={autoMerge} />}
-          {conflicting && (
-            <span title="Has merge conflicts with its base branch" className={`${tagClass} text-danger`}>
-              Conflicts
-            </span>
-          )}
-          {item.details?.pushedSinceReview === true &&
-            (item.details.reviewRequestedAgain ? (
-              <span
-                title="The author pushed since you requested changes, and GitHub asks for your review again"
-                className={`${tagClass} text-accent`}
-              >
-                Review re-requested
-              </span>
-            ) : (
-              <span title="The author pushed since you requested changes" className={`${tagClass} text-accent`}>
-                Pushed since your review
-              </span>
-            ))}
+          {item.details !== null && <CardLabels labels={item.details.labels} onFilterBy={onFilterBy} />}
         </div>
-        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted">
-          <span className="truncate">
-            <FilterText filterKey="repo" value={item.repo} name="repository" onFilterBy={onFilterBy} /> #{item.number}
-            {' · '}
-            <FilterText
-              filterKey="author"
-              value={item.author}
-              name="author"
-              onFilterBy={onFilterBy}
-              shown={item.authored ? 'you' : item.author}
-              full={item.authored ? `${item.author} (you)` : item.author}
-            />
-            {' · '}
-            <RelativeTime iso={item.updatedAt} show={formatAge} />
+        <div className="mt-1 flex min-w-0 items-center gap-2 overflow-hidden text-xs whitespace-nowrap text-muted">
+          <CardStory story={step.story} edge={step.edge}>
+            <TriageTag item={item} tab={tab} />
+          </CardStory>
+          <Byline item={item} onFilterBy={onFilterBy} />
+          <span className="relative z-10 inline-flex shrink-0 items-center gap-1.5 empty:hidden has-[[aria-expanded=true]]:z-20">
+            <RiskChip item={item} onFilesSettings={onFilesSettings} />
+            <CardChips chips={chips} />
           </span>
-          {item.assigned && <AssignedChip />}
-          <TrustTag item={item} />
-          {item.files !== null && <SensitiveFiles itemId={item.id} check={item.files} onSettings={onFilesSettings} />}
-          <TriageTag item={item} tab={tab} />
-          {worktree !== undefined && <WorktreeTag wt={worktree} agents={launch?.agents ?? []} />}
-          {sessions !== undefined && (
-            <SessionTag sessions={sessions} agents={launch?.agents ?? []} markWorktree={worktree === undefined} />
-          )}
-          <AutopilotChip item={item} />
         </div>
-        <ItemSignals item={item} onFilterBy={onFilterBy} />
       </div>
-      {triage !== undefined && (
-        <div className="flex items-center gap-0.5 self-center">
-          <TriageControls item={item} tab={tab} actions={triage} work={work} start={start} />
-          {edits !== undefined && (
-            <ItemMenu item={item} tab={tab} triage={triage} edits={edits} work={work} start={start} />
-          )}
-        </div>
-      )}
-      {launch !== null && (
+      <div
+        data-state-column
+        className={`flex flex-col items-end justify-center gap-1.25 transition-opacity group-focus-within:opacity-0 group-hover:opacity-0 @max-xl:hidden ${work === null ? '' : 'opacity-0'}`}
+      >
+        {item.kind === 'pr' ? (
+          <>
+            <StateTrack item={item} />
+            <div className="@max-4xl:hidden">
+              <SizeGlyph item={item} />
+            </div>
+          </>
+        ) : (
+          <IssueState item={item} />
+        )}
+      </div>
+      {/* The triage, over the state column's place in the card's first row (over the end of
+          the body once a narrow list drops the column), on a backing tinted like the hovered
+          card, the row's full height so it covers the end of both lines. Positioned
+          absolutely, it takes no cell of its own: its grid area, both lines named (an auto
+          line would reach the card's edge), is only what it is placed in. */}
+      <div
+        data-triage
+        className={`${hoverClass(work)} absolute inset-y-0 right-0 z-20 col-[4/5] row-[1/2] w-max rounded-lg bg-[color-mix(in_oklab,var(--color-raised)_40%,var(--color-surface))] p-0.5 @max-xl:col-[3/4]`}
+      >
+        <button
+          type="button"
+          aria-label="Show details"
+          title="Show details"
+          aria-expanded={peeking}
+          aria-controls={peeking ? peekId : undefined}
+          onClick={togglePeek}
+          className={ghostClass}
+        >
+          <ChevronDownIcon className={`size-3.5 transition-transform ${peeking ? 'rotate-180' : ''}`} />
+        </button>
+        {triage !== undefined && (
+          <TriageControls item={item} tab={tab} actions={triage} work={work} start={start} mode="card" />
+        )}
+        {triage !== undefined && edits !== undefined && (
+          <ItemMenu item={item} tab={tab} triage={triage} edits={edits} work={work} start={start} />
+        )}
+      </div>
+      {launch === null ? (
+        actions()
+      ) : (
         <LaunchControls
+          variant="card"
           item={item}
           resolution={resolution}
           agents={launch.agents}
@@ -509,11 +673,22 @@ export const ItemRow = memo(function ItemRow({
           onDefaultsSaved={launch.onDefaultsSaved}
           onManagePrompts={launch.onManagePrompts}
           onSettingsSaved={launch.onSettingsSaved}
-          running={runningSession(sessions)}
+          running={session}
+          sessions={sessions}
+          situation={step.situation}
+          outcomeClass={cardOutcomeClass}
+          onOpen={
+            onOpen === undefined
+              ? undefined
+              : () => {
+                  onOpen(item, tab)
+                }
+          }
+          column={actions}
         />
       )}
       {going && (
-        <div data-row-status className="absolute inset-0 flex items-center justify-center">
+        <div data-row-status className="absolute inset-0 z-30 flex items-center justify-center">
           <p
             role="status"
             className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text shadow-lg shadow-black/20 motion-safe:animate-pop-in"

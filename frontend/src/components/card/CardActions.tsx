@@ -12,8 +12,9 @@ import { bringBack, type TriageActions } from '../TriageControls'
 
 // cardOutcomeClass places a line the card's actions report, a failure or a launch's
 // outcome, under the card's two lines, from its body to its right edge: CardActions' own
-// errors, and LaunchControls' outcome in the card (its outcomeClass).
-export const cardOutcomeClass = 'col-[3/-1] mt-1.5'
+// errors, and LaunchControls' outcome in the card (its outcomeClass). It sits above the
+// card's stretched toggle, so its buttons take their own clicks.
+export const cardOutcomeClass = 'relative z-10 col-[3/-1] mt-1.5'
 
 // verbShape is every primary button's shape.
 const verbShape =
@@ -65,7 +66,7 @@ const labels: Readonly<Record<Verb, string>> = {
   unmute: 'Unmute',
 }
 
-interface VerbProps {
+export interface PrimaryVerbProps {
   item: InboxItem
   tab: TriageTab
   step: Step
@@ -84,7 +85,7 @@ function tone(step: Step): string {
 
 // DecideVerb opens the routine's Needs you card in the Autopilot tab. It reads the rows'
 // Autopilot itself, so only it renders again as Autopilot's matches change.
-function DecideVerb({ item, step }: VerbProps) {
+function DecideVerb({ item, step }: PrimaryVerbProps) {
   const rows = use(AutopilotRowsContext)
   const match = rows?.chips.get(item.id)
   const show = rows?.onShow
@@ -166,9 +167,9 @@ function WatchVerb({
   )
 }
 
-// Primary is the card's primary button for its step's verb. The verbs for an agent's
-// session have none without the session.
-function Primary(props: VerbProps) {
+// PrimaryVerb is the card's primary button for its step's verb, in its action column and
+// in its peek. The verbs for an agent's session have none without the session.
+export function PrimaryVerb(props: PrimaryVerbProps) {
   const { item, tab, step, session, sessions, agents, triage, onOpen, onError } = props
   const verb = step.primary
 
@@ -249,13 +250,18 @@ export interface CardActionsProps {
 // the agent's beside it. The primary is loud, in the edge's color, when it is the card's
 // urgent move, and quiet otherwise. It renders two grid children: the column, and, when
 // showing a terminal fails, the failure under the card's two lines (cardOutcomeClass).
+//
+// In a list narrower than 48rem, an agent's pill beside the primary drops to its mark
+// (its words stay for screen readers): the column always holds the primary, so a pill in
+// it always has a second button beside it. A panel open from the column rises over the
+// card's later parts, such as its peek.
 export function CardActions({ item, tab, step, session, sessions, agents, triage, onOpen, agent }: CardActionsProps) {
   const [error, setError] = useState('')
 
   return (
     <>
-      <div className="relative z-10 flex min-w-0 items-center justify-end gap-1.5">
-        <Primary
+      <div className="relative z-10 flex min-w-0 items-center justify-end gap-1.5 has-[[aria-expanded=true]]:z-20 @max-3xl:[&:has([data-pill-label])_[data-pill-label]]:sr-only">
+        <PrimaryVerb
           item={item}
           tab={tab}
           step={step}

@@ -1,5 +1,6 @@
-import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
+import { use, useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
+import { rowAutopilot } from '../lib/autopilot'
 import { formatCount } from '../lib/format'
 import type { FilteredList } from '../lib/inboxFilter'
 import { ofKind, shownItems, statusRanking } from '../lib/listOrder'
@@ -9,6 +10,7 @@ import { isEmptyList, tabOf, triageTabs, type TriagedList, type TriageTab } from
 import { worktreeOf } from '../lib/itemWorktrees'
 import { sessionsOf } from '../lib/sessions'
 import type { AgentSession, InboxItem, ItemResolution, ListKind, Worktree } from '../platform'
+import { AutopilotRowsContext } from './autopilot/AutopilotChip'
 import { quietButtonClass, Segmented } from './controls'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon, MuteIcon } from './icons'
 import type { EditActions } from './ItemMenu'
@@ -124,6 +126,10 @@ export interface ListSectionProps {
 // While the inbox is filtered, each tab shows only its matching items, in its own order,
 // and counts them; a tab with none points to the tabs that have some. A list with no
 // match anywhere is hidden the same way, so it comes back as it was.
+//
+// The list is a container its cards narrow with (@container), and it reads where the
+// routines stand on each item for its card (rowAutopilot), as a plain string, so an
+// Autopilot update renders only the cards it changes.
 export function ListSection({
   title,
   triaged,
@@ -144,6 +150,7 @@ export function ListSection({
   onOpen,
 }: ListSectionProps) {
   const id = useId()
+  const rows = use(AutopilotRowsContext)
   const [tab, setTab] = useState<TriageTab>('inbox')
   // The list's own tab can sort by project status; the statuses are those of its items,
   // and the order the user's, with each status they haven't placed placed by its name.
@@ -373,6 +380,7 @@ export function ListSection({
                 marks={marks}
                 onFilterBy={onFilterBy}
                 onOpen={onOpen}
+                autopilot={rowAutopilot(rows?.chips.get(item.id))}
               />
             ))}
           </ul>

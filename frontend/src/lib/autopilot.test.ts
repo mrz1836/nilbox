@@ -47,6 +47,7 @@ import {
   reviewPostLabel,
   reasonChips,
   routineStatus,
+  rowAutopilot,
   runLabel,
   sameSecond,
   sheetLine,
@@ -557,6 +558,22 @@ describe('chipOf over every state and reason', () => {
     expect(notListedText(bare('baseline', 'from_now'))).toBe(
       'Activity has no line for that one. Already matched when you turned it on.',
     )
+  })
+})
+
+describe('rowAutopilot', () => {
+  it('says a routine waits on the user or works on the item, as its chip does, and nothing else', () => {
+    const at = (state: AutopilotState, dryRun = false) => rowAutopilot({ ...bare(state, ''), dryRun })
+
+    expect(at('waiting')).toBe('needs:Snooze passing bot PRs')
+    expect(at('blocked')).toBe('needs:Snooze passing bot PRs')
+    expect(at('running')).toBe('working:Snooze passing bot PRs')
+    expect(at('verifying')).toBe('working:Snooze passing bot PRs')
+    expect(at('queued')).toBe('')
+    expect(at('done')).toBe('')
+    // A Dry run would only have run.
+    expect(at('waiting', true)).toBe('')
+    expect(rowAutopilot(undefined)).toBe('')
   })
 })
 

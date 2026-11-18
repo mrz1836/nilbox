@@ -181,26 +181,28 @@ describe('InboxView', () => {
 
     const review = await section('Review requested')
     expect(review.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
-    expect(review.getByRole('listitem')).toHaveTextContent(/acme-org\/example-repo #7 · octo-user ·/)
+    expect(review.getByRole('listitem')).toHaveTextContent(/acme-org\/example-repo #7 · octo-user · assigned · 3h/)
     expect(review.getByText('3h')).toHaveAttribute('dateTime', '2026-06-15T09:00:00Z')
     expect(review.getByRole('img', { name: 'Pull request' })).toBeInTheDocument()
-    // A pull request asking for a review is in Review requested alone; its chip says it is
-    // assigned too.
-    expect(review.getByText('Assigned')).toHaveAttribute('title', 'Assigned to you on GitHub')
+    // A pull request asking for a review is in Review requested alone; its byline says it
+    // is assigned too.
 
     const yours = await section('Yours')
     const mine = within(yours.getByRole('button', { name: 'Fix the parser' }).closest('li') ?? document.body)
-    expect(mine.getByText(/acme-org\/other-repo/).closest('span')).toHaveTextContent(/acme-org\/other-repo #12 · you ·/)
+    const byline = mine.getByRole('button', { name: 'Filter by repository acme-org/other-repo' }).parentElement
+    expect(byline).toHaveTextContent(/acme-org\/other-repo #12 · you · \S+$/)
     // The card says "you" for the user's own login, and still filters by the login.
     expect(mine.getByRole('button', { name: 'Filter by author octo-user (you)' })).toHaveTextContent(/^you$/)
-    expect(mine.getByText('Draft')).toBeInTheDocument()
-    expect(mine.queryByText('Assigned'), 'opened, not assigned').not.toBeInTheDocument()
+    expect(mine.getByText('Draft')).toHaveClass('text-muted')
+    expect(byline, 'opened, not assigned').not.toHaveTextContent('assigned')
 
     const crash = within(yours.getByRole('button', { name: 'Crash on start' }).closest('li') ?? document.body)
     expect(crash.getByRole('img', { name: 'Issue' })).toBeInTheDocument()
     expect(crash.getByText(/dependabot\[bot\]/)).toBeInTheDocument()
-    expect(crash.getByText('outside contributor')).toBeInTheDocument()
-    expect(crash.getByText('Assigned')).toBeInTheDocument()
+    expect(crash.getByText('Outside contributor')).toBeInTheDocument()
+    expect(
+      crash.getByRole('button', { name: 'Filter by repository acme-org/example-repo' }).parentElement,
+    ).toHaveTextContent(/· assigned · /)
 
     expect(screen.getByText('5m ago')).toBeInTheDocument()
     // The account and the API budget live in the toolbar now, not beside the lists.
@@ -827,6 +829,7 @@ describe('InboxView triage', () => {
     const pins = review.getAllByRole('button', { name: 'Pin to top' })
     expect(pins).toHaveLength(2)
     expect(pins[1]?.parentElement).toHaveClass('opacity-0')
+    expect(review.queryByRole('img', { name: 'Pinned to the top of the list' })).not.toBeInTheDocument()
 
     await userEvent.click(pins[1] as HTMLElement)
 
@@ -836,8 +839,11 @@ describe('InboxView triage', () => {
     await waitFor(() => {
       expect(titles()).toEqual(['Tidy the docs', 'Add the widget cache'])
     })
-    // The pin of a pinned item shows without hovering, in the accent color.
-    expect(unpin.parentElement).not.toHaveClass('opacity-0')
+    // A pinned card is marked before its title, so its Unpin shows only on hover, in the
+    // accent color.
+    const mark = review.getByRole('img', { name: 'Pinned to the top of the list' })
+    expect(mark.closest('li')).toBe(unpin.closest('li'))
+    expect(unpin.parentElement).toHaveClass('opacity-0', 'group-hover:opacity-100')
     expect(unpin).toHaveClass('text-accent')
     expect(unpin).not.toHaveClass('text-muted')
     expect(unpin).toHaveAttribute('title', 'Pinned to the top of the list: click to unpin')
@@ -864,6 +870,7 @@ describe('InboxView triage', () => {
     const review = await section('Review requested')
     await userEvent.click(review.getByRole('tab', { name: 'Snoozed 1' }))
     expect(review.getByRole('button', { name: 'Unsnooze' })).toBeInTheDocument()
+    expect(review.getByRole('img', { name: 'Pinned to the top of the list' })).toBeInTheDocument()
 
     await userEvent.click(review.getByRole('button', { name: 'Unpin' }))
 
@@ -872,10 +879,10 @@ describe('InboxView triage', () => {
       expect(review.queryByRole('button', { name: 'Unpin' })).not.toBeInTheDocument()
     })
 
-    // An item set aside without a pin offers none there.
+    // An item set aside without a pin offers the card's Pin, on hover.
     await userEvent.click(review.getByRole('tab', { name: 'Dismissed 1' }))
     expect(review.getByRole('button', { name: 'Restore' })).toBeInTheDocument()
-    expect(review.queryByRole('button', { name: 'Pin to top' })).not.toBeInTheDocument()
+    expect(review.getByRole('button', { name: 'Pin to top' }).parentElement).toHaveClass('opacity-0')
   })
 
   it('says why a pin failed', async () => {
@@ -1083,7 +1090,7 @@ describe('InboxView triage', () => {
     const ticking = () => current
 
     platform.getInboxSnapshot.mockResolvedValue(
-      snapshot({ reviewRequested: list([{ ...fresh, snoozedUntil: '2026-06-15T12:00:30Z' }]) }),
+      snapshot({ reviewRequested: list([{ ...fresh, details: details(), snoozedUntil: '2026-06-15T12:00:30Z' }]) }),
     )
     render(<Harness launch={launchOptions} clock={ticking} />)
 
@@ -1098,7 +1105,7 @@ describe('InboxView triage', () => {
     // The tick re-renders the list; on a loaded machine that can land after the act, so
     // the item is waited for (only the interval is faked, so waiting uses real time).
     expect(await review.findByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
-    expect(review.getByText('Back from snooze')).toBeInTheDocument()
+    expect(review.getByText(/· back from snooze$/)).toBeInTheDocument()
     expect(review.getByRole('tab', { name: 'Snoozed' })).toBeInTheDocument()
   })
 
@@ -1117,10 +1124,9 @@ describe('InboxView triage', () => {
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
-    expect(review.getByText('Pushed since your review')).toHaveAttribute(
-      'title',
-      'The author pushed since you requested changes',
-    )
+    expect(review.getByRole('listitem')).toHaveAttribute('data-rule', 'rereview')
+    expect(review.getByText('Re-review', { selector: 'span' })).toHaveClass('text-accent')
+    expect(review.getByRole('button', { name: 'Re-review' })).toBeInTheDocument()
   })
 
   it('says what new activity brought an item back early', async () => {
@@ -1129,6 +1135,7 @@ describe('InboxView triage', () => {
         reviewRequested: list([
           {
             ...fresh,
+            details: details(),
             snoozedUntil: '2026-06-15T11:00:00Z',
             wokeBy: { commits: 2, forcePushed: false, review: 'approved', comments: 0, ready: false },
           },
@@ -1138,15 +1145,9 @@ describe('InboxView triage', () => {
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
-    const chip = review.getByText('Back early: approved, 2 new commits')
 
-    expect(chip.parentElement).toHaveAttribute(
-      'title',
-      expect.stringMatching(
-        /^Back early, Monday, June 15, 2026 at 11:00\sAM: approved, 2 new commits since you snoozed it$/,
-      ),
-    )
-    expect(review.queryByText('Back from snooze')).not.toBeInTheDocument()
+    expect(review.getByText(/· back early: approved, 2 new commits$/)).toBeInTheDocument()
+    expect(review.queryByText(/back from snooze/)).not.toBeInTheDocument()
   })
 
   it('never lets an older answer replace a newer one', async () => {
@@ -1478,9 +1479,8 @@ describe('InboxView’s projects tip', () => {
 
     expect(platform.refreshInbox).toHaveBeenCalled()
     expect(await screen.findByRole('region', { name: 'Projects are on.' })).toBeInTheDocument()
-    expect(
-      (await section('Yours')).getByRole('button', { name: 'Project Roadmap: In progress. Open it on GitHub' }),
-    ).toBeInTheDocument()
+    // The issue's status is its story, and its pill in the state column.
+    expect((await section('Yours')).getAllByText('In progress')).toHaveLength(2)
 
     await userEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByRole('region', { name: 'Projects are on.' })).not.toBeInTheDocument()

@@ -1,30 +1,30 @@
-import { render as renderPlain, screen, within } from '@testing-library/react'
+import { act, render as renderPlain, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { itemWorktrees, worktreeOf } from '../lib/itemWorktrees'
 import { HiddenLabelsContext, labelMatcher } from '../lib/labels'
-import type { InboxItem, Worktree } from '../platform'
+import type { TriageTab } from '../lib/triage'
+import type { InboxItem, RepoRules, Worktree } from '../platform'
 import { at } from '../test/clock'
 import {
   agentSession,
   agents,
+  autopilotMatch,
   details,
   fileCheck,
   item,
   itemResolution,
-  linkedItem,
-  mainWorktree,
   profile,
   project,
   prompts,
   worktree,
-  worktreeRepo,
-  worktreesSnapshot,
 } from '../test/fixtures'
 import { platform } from '../test/platform'
-import { ItemRow, type LaunchOptions } from './ItemRow'
+import { AutopilotRowsContext, type AutopilotRows } from './autopilot/AutopilotChip'
+import type { EditActions } from './ItemMenu'
+import { CardChips, ItemRow, TrustTag, WorktreeTag, type ItemRowProps, type LaunchOptions } from './ItemRow'
+import type { TriageActions } from './TriageControls'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -38,31 +38,87 @@ const launch: LaunchOptions = {
   onSettingsSaved: () => undefined,
 }
 
+function triageActions(repoRules: RepoRules = { pinned: [], muted: [] }): TriageActions {
+  return {
+    snoozeDays: 3,
+    onDismiss: vi.fn(),
+    onSnooze: vi.fn(),
+    onRestore: vi.fn(),
+    onPin: vi.fn(),
+    onUnpin: vi.fn(),
+    onRefresh: vi.fn(() => Promise.resolve()),
+    onChangeDefault: vi.fn(),
+    repoRules,
+    onRepoRule: vi.fn(),
+    onRepoRuleSettings: vi.fn(),
+  }
+}
+
+function editActions(): EditActions {
+  return {
+    onCopyLink: vi.fn(),
+    onUnassign: vi.fn(() => Promise.resolve()),
+    onRemoveReview: vi.fn(() => Promise.resolve()),
+  }
+}
+
 // render renders on a clock that stands at now.
 function render(ui: ReactElement) {
   return renderPlain(ui, { wrapper: at() })
 }
 
-function renderRow(it: InboxItem, options: LaunchOptions | null = launch) {
-  render(
+interface Setup extends Partial<ItemRowProps> {
+  // rows are the rows' Autopilot, if Autopilot is on.
+  rows?: AutopilotRows
+}
+
+// mountCard renders an item's card in a list, with its launch settings resolved for item
+// 1, and returns the row.
+function mountCard(it: InboxItem, { rows, ...props }: Setup = {}): HTMLElement {
+  const card = (
     <ul>
-      <ItemRow item={it} launch={options} resolution={it.id === 1 ? itemResolution() : null} />
-    </ul>,
+      <ItemRow item={it} launch={launch} resolution={it.id === 1 ? itemResolution() : null} {...props} />
+    </ul>
   )
+  const wrapped: ReactNode =
+    rows === undefined ? card : <AutopilotRowsContext value={rows}>{card}</AutopilotRowsContext>
+
+  render(<>{wrapped}</>)
+
+  return screen.getByRole('listitem')
 }
 
-// signals returns the queries scoped to the card's line of details.
-function signals() {
-  return within(screen.getByRole('list', { name: 'Details' }))
+// asked is a pull request that asks for the user's review, its details read.
+function asked(overrides: Partial<InboxItem> = {}): InboxItem {
+  return item({ reviewRequest: 'you', details: details(), ...overrides })
 }
 
-// slot returns the signal whose full sentence is text.
-function slot(text: string): HTMLElement {
-  return screen.getByTitle(text)
+// toggles are the card's two Show details buttons: the stretched toggle over the whole
+// card, and the ⌄ among its triage.
+function toggles(row: HTMLElement): { stretched: HTMLElement; chevron: HTMLElement } {
+  const [stretched, chevron] = within(row).getAllByRole('button', { name: 'Show details' })
+
+  if (stretched === undefined || chevron === undefined) {
+    throw new Error('the card has no Show details buttons')
+  }
+
+  return { stretched, chevron }
+}
+
+// body is the card's body: its two lines.
+function body(row: HTMLElement): HTMLElement {
+  const title = within(row).getAllByRole('button')[0]
+  const line = title?.parentElement?.parentElement
+
+  if (line === null || line === undefined) {
+    throw new Error('the card has no body')
+  }
+
+  return line
 }
 
 describe('ItemRow', () => {
-  it('names its item for the inbox to find, and marks it when highlighted', () => {
+  it('names its item and its rule for the inbox to find, and marks it when highlighted', () => {
     const { rerender } = render(
       <ul>
         <ItemRow item={item({ id: 42 })} launch={launch} />
@@ -71,6 +127,7 @@ describe('ItemRow', () => {
 
     const row = screen.getByRole('listitem')
     expect(row).toHaveAttribute('data-item-id', '42')
+    expect(row).toHaveAttribute('data-rule', 'loading')
     expect(row).not.toHaveAttribute('data-highlighted')
 
     rerender(
@@ -81,520 +138,510 @@ describe('ItemRow', () => {
     expect(row).toHaveAttribute('data-highlighted', 'true')
   })
 
-  it('shows a pull request on three lines', () => {
-    renderRow(item({ title: 'Add the widget cache', details: details() }))
+  it('shows a review request on two lines: the title, then its story and byline', () => {
+    const row = mountCard(asked())
 
-    expect(screen.getByRole('img', { name: 'Pull request' })).toHaveClass('text-success')
-    expect(screen.getByRole('button', { name: 'Add the widget cache' })).toHaveAttribute(
-      'title',
-      'Add the widget cache',
+    expect(row).toHaveAttribute('data-rule', 'review')
+    expect(row.querySelector('[data-edge]')).toHaveClass('bg-accent')
+    expect(body(row).children).toHaveLength(2)
+
+    const [first, second] = body(row).children
+    expect(within(first as HTMLElement).getByRole('button', { name: 'Add the widget cache' })).toHaveClass(
+      'font-semibold',
     )
-    expect(screen.getByRole('button', { name: 'Add the widget cache' }).closest('li')).toHaveTextContent(
-      /acme-org\/example-repo #7 · octo-user ·/,
-    )
+    expect(second).toHaveTextContent(/^Your review·acme-org\/example-repo #7 · octo-user · 3h$/)
     expect(screen.getByText('3h')).toHaveAttribute('dateTime', '2026-06-15T09:00:00Z')
-    expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeInTheDocument()
     // Without a filter to add to, the repository, author, and labels are plain text.
     expect(screen.queryByRole('button', { name: /^Filter by/ })).not.toBeInTheDocument()
 
-    const checks = slot('Checks: 12 passed, 3 skipped')
-    expect(checks).toHaveClass('text-success')
-    expect(checks).toHaveTextContent('12/12')
+    // The author's initials, with the kind at the corner.
+    expect(screen.getByText('OU')).toHaveAttribute('data-avatar', 'initials')
+    expect(screen.getByRole('img', { name: 'Pull request' })).toHaveClass('text-success')
 
-    expect(slot('Reviews: 1 of 2 reviewers reviewed, 1 approved')).toHaveClass('text-success')
-    expect(slot('Reviews: 1 of 2 reviewers reviewed, 1 approved')).toHaveTextContent('1/2')
-    expect(slot('4 comments')).toHaveTextContent('4')
-
-    const size = slot('Size M: 120 lines added and 30 removed across 6 files in 3 commits')
-    expect(within(size).getByText('M')).toBeInTheDocument()
-    expect(within(size).getByText('+120')).toHaveClass('text-success')
-    expect(within(size).getByText('−30')).toHaveClass('text-danger')
-    expect(size).toHaveTextContent('6 files')
-    expect(size).toHaveTextContent('3 commits')
-
-    expect(signals().getByText('enhancement')).toBeInTheDocument()
-    expect(signals().getByText('needs-docs')).toBeInTheDocument()
+    // The state column, then the human's move beside the agent's.
+    expect(screen.getByText(/^Checks: 12 passed, 3 skipped\. Reviews:/)).toHaveClass('sr-only')
+    expect(screen.getByText('Size M: 120 lines added and 30 removed across 6 files in 3 commits')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review' })).toHaveAttribute('data-verb', 'review')
+    expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeInTheDocument()
   })
 
-  it('colors each label with its GitHub color, or a neutral dot', () => {
-    renderRow(item({ details: details() }))
-
-    const colored = signals().getByText('enhancement').previousElementSibling
-    expect(colored).toHaveStyle({ backgroundColor: '#a2eeef' })
-
-    const plain = signals().getByText('needs-docs').previousElementSibling
-    expect(plain).toHaveClass('bg-muted')
-  })
-
-  it('folds labels past the third into a count', () => {
-    const labels = ['one', 'two', 'three', 'four', 'five'].map((name) => ({ name, color: '#d73a4a' }))
-    renderRow(item({ details: details({ labels }) }))
-
-    expect(signals().getByText('three')).toBeInTheDocument()
-    expect(signals().queryByText('four')).not.toBeInTheDocument()
-    expect(signals().getByTitle('four, five')).toHaveTextContent('+2')
-    expect(signals().getByText('more: four, five')).toHaveClass('sr-only')
-  })
-
-  it('leaves out the labels the user hid before taking the first three', () => {
-    const labels = ['size/XL', 'one', 'Size/S', 'two', 'three', 'wontfix', 'four'].map((name) => ({
-      name,
-      color: '#d73a4a',
-    }))
-
-    render(
-      <HiddenLabelsContext value={labelMatcher(['size/*', 'wontfix'])}>
-        <ul>
-          <ItemRow item={item({ details: details({ labels }) })} launch={launch} resolution={itemResolution()} />
-        </ul>
-      </HiddenLabelsContext>,
-    )
-
-    expect(signals().queryByText('size/XL')).not.toBeInTheDocument()
-    expect(signals().queryByText('wontfix')).not.toBeInTheDocument()
-    expect(signals().getByText('three'), 'a hidden label takes no place').toBeInTheDocument()
-    expect(signals().getByTitle('four')).toHaveTextContent('+1')
-    expect(signals().getByText('more: four'), 'nor counts in the rest').toHaveClass('sr-only')
-  })
-
-  it('shows no labels at all when every one is hidden', () => {
-    render(
-      <HiddenLabelsContext value={labelMatcher(['size/*'])}>
-        <ul>
-          <ItemRow
-            item={item({ details: details({ labels: [{ name: 'size/M', color: '#d73a4a' }] }) })}
-            launch={launch}
-            resolution={itemResolution()}
-          />
-        </ul>
-      </HiddenLabelsContext>,
-    )
-
-    expect(signals().queryByText('Labels:')).not.toBeInTheDocument()
-  })
-
-  it('marks failing checks, requested changes, and conflicts in red', () => {
-    renderRow(
-      item({
-        details: details({
-          mergeable: 'CONFLICTING',
-          checks: { state: 'FAILURE', passed: 18, failed: 2, pending: 0, skipped: 0, awaiting: 0 },
-          reviews: { decision: 'CHANGES_REQUESTED', reviewers: 1, reviewed: 1, approvals: 0, changesRequested: 1 },
-        }),
-      }),
-    )
-
-    expect(slot('Checks: 18 passed, 2 failing')).toHaveClass('text-danger')
-    expect(slot('Checks: 18 passed, 2 failing')).toHaveTextContent('18/20')
-    expect(slot('Reviews: 1 of 1 reviewer reviewed, 1 requested changes')).toHaveClass('text-danger')
-    expect(screen.getByText('Conflicts')).toHaveClass('text-danger')
-  })
-
-  it('marks running checks in yellow and a pull request without checks or reviewers as such', () => {
-    renderRow(
-      item({
-        details: details({
-          checks: { state: 'PENDING', passed: 3, failed: 0, pending: 2, skipped: 0, awaiting: 0 },
-          reviews: { decision: '', reviewers: 0, reviewed: 0, approvals: 0, changesRequested: 0 },
-        }),
-      }),
-    )
-
-    expect(slot('Checks: 3 passed, 2 running')).toHaveClass('text-warning')
-    // Running checks have the dot a working session has, a ring swelling out of it.
-    const dot = slot('Checks: 3 passed, 2 running').querySelector('[data-checks-running]')
-    expect(dot?.querySelector('.motion-safe\\:animate-ping')).toHaveClass('bg-warning')
-    expect(slot('Reviews: no reviewers yet')).toHaveTextContent('—')
-  })
-
-  it('marks workflow runs held for approval in yellow, in place of the passed checks GitHub reports', () => {
-    renderRow(
-      item({
-        details: details({
-          checks: { state: 'SUCCESS', passed: 1, failed: 0, pending: 0, skipped: 0, awaiting: 4 },
-        }),
-      }),
-    )
-
-    const held = slot('Checks: 4 workflow runs awaiting approval, 1 passed')
-    expect(held).toHaveClass('text-warning')
-    expect(held).toHaveTextContent('4 held')
-    expect(held.querySelector('[data-checks-held]')).toBeInTheDocument()
-    expect(held.querySelector('[data-checks-running]')).not.toBeInTheDocument()
-  })
-
-  it('tags a pull request pushed to since you requested changes', () => {
-    renderRow(item({ reviewRequest: 'pushed', details: details({ pushedSinceReview: true }) }))
-
-    const tag = screen.getByText('Pushed since your review')
-    expect(tag).toHaveClass('text-accent')
-    expect(tag).toHaveAttribute('title', 'The author pushed since you requested changes')
-  })
-
-  it('says the review was requested again once GitHub asks you again after the push', () => {
-    renderRow(item({ reviewRequest: 'you', details: details({ pushedSinceReview: true, reviewRequestedAgain: true }) }))
-
-    const tag = screen.getByText('Review re-requested')
-    expect(tag).toHaveClass('text-accent')
-    expect(tag).toHaveAttribute(
-      'title',
-      'The author pushed since you requested changes, and GitHub asks for your review again',
-    )
-    expect(screen.queryByText('Pushed since your review')).not.toBeInTheDocument()
-  })
-
-  it('tags nothing when nothing was pushed since your review', () => {
-    renderRow(item({ details: details() }))
-
-    expect(screen.queryByText('Pushed since your review')).not.toBeInTheDocument()
-  })
-
-  it('tags a draft and mutes its icon', () => {
-    renderRow(item({ isDraft: true, details: details() }))
-
-    expect(screen.getByRole('img', { name: 'Draft pull request' })).toHaveClass('text-muted')
-    expect(screen.getByText('Draft')).toBeInTheDocument()
-    expect(screen.queryByText('Conflicts')).not.toBeInTheDocument()
-  })
-
-  it('shows an issue with its comments and labels only', () => {
-    renderRow(
-      item({
-        kind: 'issue',
-        details: details({ comments: 1, labels: [{ name: 'bug', color: '#d73a4a' }] }),
-      }),
-    )
-
-    expect(screen.getByRole('img', { name: 'Issue' })).toBeInTheDocument()
-    expect(slot('1 comment')).toHaveTextContent('1')
-    expect(signals().getByText('bug')).toBeInTheDocument()
-    expect(screen.queryByTitle(/^Checks/)).not.toBeInTheDocument()
-    expect(screen.queryByTitle(/^Reviews/)).not.toBeInTheDocument()
-    expect(screen.queryByTitle(/^Size/)).not.toBeInTheDocument()
-  })
-
-  it('shows the project an issue is in, with its status there in the status’s color', () => {
-    renderRow(item({ kind: 'issue', details: details({ comments: 2, projects: [project()] }) }))
-
-    const link = signals().getByRole('button', { name: 'Project Roadmap: In progress. Open it on GitHub' })
-    expect(link).toHaveAttribute('title', 'Roadmap: In progress\nOpen the project on GitHub')
-    expect(within(link).getByText('Roadmap')).toBeInTheDocument()
-
-    const status = within(link).getByText('In progress').parentElement
-    expect(status).toHaveStyle({ backgroundColor: '#bf870029' })
-    expect(status?.firstElementChild).toHaveStyle({ backgroundColor: '#bf8700' })
-    expect(signals().getByText('Projects:')).toHaveClass('sr-only')
-  })
-
-  it('opens an issue’s project on GitHub', async () => {
-    renderRow(item({ kind: 'issue', details: details({ projects: [project()] }) }))
-
-    await userEvent.click(signals().getByRole('button', { name: /^Project Roadmap/ }))
-
-    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/orgs/acme-org/projects/1')
-  })
-
-  it('names a project alone when the issue has no status there, and a status without a color neutrally', () => {
-    renderRow(
-      item({
-        kind: 'issue',
-        details: details({
-          projects: [project({ status: 'Todo', statusColor: '' }), project({ title: 'Sprint', status: '' })],
-        }),
-      }),
-    )
-
-    const status = signals().getByText('Todo').parentElement
-    expect(status).toHaveClass('bg-raised')
-    expect(status?.firstElementChild).toHaveClass('bg-muted')
-    expect(signals().getByTitle('Sprint')).toHaveTextContent('+1')
-    expect(signals().getByText('more: Sprint')).toHaveClass('sr-only')
-  })
-
-  it('folds an issue’s projects past the first into a count, with their statuses in its tooltip', () => {
-    renderRow(
-      item({
-        kind: 'issue',
-        details: details({
-          projects: [
-            project(),
-            project({ title: 'Sprint', status: 'Todo' }),
-            project({ title: 'Triage', status: 'New' }),
-          ],
-        }),
-      }),
-    )
-
-    expect(signals().getByRole('button', { name: /^Project Roadmap/ })).toBeInTheDocument()
-    expect(signals().queryByRole('button', { name: /^Project Sprint/ })).not.toBeInTheDocument()
-    const rest = signals().getByTitle(/^Sprint: Todo\s+Triage: New$/)
-    expect(rest).toHaveAttribute('title', 'Sprint: Todo\nTriage: New')
-    expect(rest).toHaveTextContent('+2')
-  })
-
-  it('shows an issue’s priority and size beside its status, and every field in the tooltip', () => {
-    const fields = [
-      { name: 'Phase', value: 'Beta', color: '' },
-      { name: 'Size', value: 'XL', color: '' },
-      { name: 'Priority', value: 'High', color: '#fa4549' },
-    ]
-    renderRow(item({ kind: 'issue', details: details({ projects: [project({ fields })] }) }))
-
-    const link = signals().getByRole('button', {
-      name: 'Project Roadmap: In progress, Priority High, Size XL. Open it on GitHub',
-    })
-    expect(link).toHaveAttribute(
-      'title',
-      'Roadmap: In progress\nPhase: Beta\nSize: XL\nPriority: High\nOpen the project on GitHub',
-    )
-    expect(within(link).getByText('High').parentElement).toHaveStyle({ borderColor: '#fa4549b3' })
-    expect(within(link).getByText('XL').parentElement).toHaveClass('border-border')
-    expect(within(link).queryByText('Beta')).not.toBeInTheDocument()
-  })
-
-  it('shows how far along an issue’s sub-issues are', () => {
-    renderRow(item({ kind: 'issue', details: details({ subIssues: { total: 8, completed: 6 } }) }))
-
-    const progress = slot('Sub-issues: 6 of 8 sub-issues done (75%)')
-    expect(progress).toHaveTextContent('6/8')
-    expect(progress).not.toHaveClass('text-success')
-    expect(progress.querySelector('.bg-success')).toHaveStyle({ width: '75%' })
-  })
-
-  it('marks an issue whose sub-issues are all done', () => {
-    renderRow(item({ kind: 'issue', details: details({ subIssues: { total: 2, completed: 2 } }) }))
-
-    expect(slot('Sub-issues: 2 of 2 sub-issues done (100%)')).toHaveClass('text-success')
-  })
-
-  it('shows no sub-issue progress for an issue without sub-issues', () => {
-    renderRow(item({ kind: 'issue', details: details() }))
-
-    expect(screen.queryByTitle(/^Sub-issues/)).not.toBeInTheDocument()
-  })
-
-  it('shows no project on a pull request', () => {
-    renderRow(item({ details: details({ projects: [project()] }) }))
-
-    expect(signals().queryByRole('button', { name: /^Project/ })).not.toBeInTheDocument()
-  })
-
-  it('gives each value the same width on every card, whatever it says, so the columns line up', () => {
-    const small = details({ comments: 8, additions: 689, deletions: 65, changedFiles: 20, commits: 3 })
-    const large = details({
-      comments: 0,
-      additions: 12_799,
-      deletions: 25_322,
-      changedFiles: 358,
-      commits: 63,
-      checks: { state: '', passed: 0, failed: 0, pending: 0, skipped: 0, awaiting: 0 },
-      reviews: { decision: '', reviewers: 0, reviewed: 0, approvals: 0, changesRequested: 0 },
-    })
-    render(
-      <ul>
-        <ItemRow item={item({ id: 1, details: small })} launch={null} />
-        <ItemRow item={item({ id: 2, details: large })} launch={null} />
-      </ul>,
-    )
-
-    // values reads the classes of every value on a card's line of details, labels aside.
-    const values = (list: HTMLElement) =>
-      [...list.querySelectorAll('li[title] > [aria-hidden] > span')].map((value) => value.className)
-    const [first = [], second] = screen.getAllByRole('list', { name: 'Details' }).map(values)
-
-    expect(slot('No checks on the latest commit')).toHaveTextContent('No checks')
-    expect(first).toHaveLength(8)
-    expect(second).toEqual(first)
-    for (const value of first) {
-      expect(value).toMatch(/\bmin-w-\[[\d.]+ch\]/)
-    }
-  })
-
-  it('handles details with no labels at all', () => {
-    renderRow(item({ details: details({ labels: [] }) }))
-
-    expect(signals().getAllByRole('listitem')).toHaveLength(4)
-  })
-
-  it('says when the details have not been read yet', () => {
-    renderRow(item())
-
-    expect(screen.getByText('Details arrive with the next refresh.')).toBeInTheDocument()
-    expect(screen.queryByRole('list', { name: 'Details' })).not.toBeInTheDocument()
-  })
-
-  it('flags an outside contributor', () => {
-    renderRow(item({ trust: 'outside', trusted: false }))
-
-    expect(screen.getByText('outside contributor')).toHaveAttribute(
-      'title',
-      'Launches in plan or read-only mode unless you lift the restriction',
-    )
-  })
-
-  it('marks a trusted bot quietly, and an untrusted one as a warning', () => {
-    renderRow(item({ author: 'dependabot', trust: 'bot', trusted: true, authorIsBot: true }))
-
-    expect(screen.getByText('bot')).toHaveClass('text-muted')
-    expect(screen.getByText('bot')).toHaveAttribute('title', expect.stringContaining('A trusted bot'))
-    expect(screen.queryByText('outside contributor')).not.toBeInTheDocument()
-  })
-
-  it('flags a bot that is not trusted', () => {
-    renderRow(item({ author: 'random-helper', trust: 'outside', trusted: false, authorIsBot: true }))
-
-    expect(screen.getByText('untrusted bot')).toHaveClass('text-warning')
-    expect(screen.getByText('untrusted bot')).toHaveAttribute('title', expect.stringContaining('Settings → Trust'))
-    expect(screen.queryByText('outside contributor')).not.toBeInTheDocument()
-  })
-
-  it('tags nothing for the repository’s own people', () => {
-    renderRow(item())
-
-    expect(screen.queryByText('bot')).not.toBeInTheDocument()
-    expect(screen.queryByText('outside contributor')).not.toBeInTheDocument()
-  })
-
-  it('has no launch button until the launch options load', () => {
-    renderRow(item(), null)
-
-    expect(screen.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
-  })
-
-  it('names the item’s resolved prompt and profile on its launch button', () => {
-    renderRow(item())
-
-    expect(screen.getByRole('button', { name: 'Launch options: Review · default' })).toBeInTheDocument()
-  })
-
-  it('waits for an item’s launch settings to resolve', () => {
-    renderRow(item({ id: 99 }))
-
-    // Until the settings resolve, the agent the button starts is not known.
-    expect(screen.getByRole('button', { name: 'Open' })).toBeDisabled()
-  })
-
-  it('opens the item in the browser', async () => {
-    renderRow(item())
+  it('makes the title the row’s first button, which opens GitHub without a sheet', async () => {
+    const row = mountCard(asked())
+
+    const first = within(row).getAllByRole('button')[0]
+    expect(first).toHaveAccessibleName('Add the widget cache')
+    expect(first).toHaveAttribute('title', 'Add the widget cache')
 
     await userEvent.click(screen.getByRole('button', { name: 'Add the widget cache' }))
 
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
   })
 
-  it('points out the sensitive files of a checked pull request beside who opened it', async () => {
-    const onFilesSettings = vi.fn()
-    render(
-      <ul>
-        <ItemRow
-          item={item({ trusted: false, trust: 'outside', details: details(), files: fileCheck() })}
-          launch={launch}
-          resolution={itemResolution()}
-          onFilesSettings={onFilesSettings}
-        />
-      </ul>,
+  it('prefixes a draft’s title and mutes its kind', () => {
+    const row = mountCard(item({ isDraft: true, authored: true, details: details() }))
+
+    expect(within(body(row).firstElementChild as HTMLElement).getByText('Draft')).toHaveClass('text-muted')
+    expect(screen.getByRole('img', { name: 'Draft pull request' })).toHaveClass('text-muted')
+    expect(screen.getByRole('listitem')).toHaveAttribute('data-rule', 'my_draft')
+  })
+
+  it('shows an issue’s state in the state column, with Read as its move', () => {
+    mountCard(
+      item({
+        kind: 'issue',
+        assigned: true,
+        details: details({ projects: [project()], subIssues: { total: 8, completed: 6 } }),
+      }),
     )
 
-    const chip = screen.getByRole('button', { name: /^Changes sensitive files/ })
-    expect(chip).toHaveTextContent('Agent config · Workflows')
-    expect(chip.closest('div')).toHaveTextContent('outside contributor')
-
-    await userEvent.click(chip)
-    await userEvent.click(screen.getByRole('button', { name: 'What counts as sensitive' }))
-    expect(onFilesSettings).toHaveBeenCalledOnce()
+    expect(screen.getByRole('listitem')).toHaveAttribute('data-rule', 'issue')
+    expect(screen.getByRole('img', { name: 'Issue' })).toBeInTheDocument()
+    expect(screen.getByText('Sub-issues: 6 of 8 sub-issues done (75%)')).toBeInTheDocument()
+    expect(screen.queryByText(/^Checks:/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Read' })).toBeInTheDocument()
   })
 
-  it('marks an item back from a snooze for a day, then no longer', () => {
-    renderRow(item({ id: 2, snoozedUntil: '2026-06-15T11:00:00Z' }))
-    expect(screen.getByText('Back from snooze')).toBeInTheDocument()
-  })
+  it('names the agent’s session or the resolved launch in its story', () => {
+    mountCard(asked(), { sessions: [agentSession({ agent: 'codex' })] })
 
-  it('stops marking an item back from a snooze a day after it came back', () => {
-    renderRow(item({ id: 2, snoozedUntil: '2026-06-13T12:00:00Z' }))
-    expect(screen.queryByText('Back from snooze')).not.toBeInTheDocument()
-  })
-
-  it('shows no file chip for an item whose files are not checked', () => {
-    renderRow(item({ details: details(), files: null }))
-
-    expect(screen.queryByRole('button', { name: /sensitive/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('listitem')).toHaveAttribute('data-rule', 'session_needs_you')
+    expect(screen.getByText('Codex needs approval')).toBeInTheDocument()
+    expect(screen.getByRole('listitem').querySelector('[data-edge]')).toHaveClass('bg-warning')
   })
 })
 
-describe('ItemRow worktree tag', () => {
-  // renderWith renders an item's row with its worktree, as the Worktrees view last listed
-  // it, if the listing links one to the item.
-  function renderWith(it: InboxItem, overrides: Partial<Worktree> = {}) {
-    const listed = worktree({ item: linkedItem({ state: 'open' }), ...overrides })
-    const worktrees = itemWorktrees(
-      worktreesSnapshot({ repos: [worktreeRepo({ worktrees: [mainWorktree(), listed] })] }),
-    )
+describe('ItemRow labels', () => {
+  it('shows two labels after the title, colored, and folds the rest into a count', () => {
+    const labels = ['one', 'two', 'three', 'four'].map((name) => ({ name, color: '#d73a4a' }))
+    mountCard(asked({ details: details({ labels: [...labels, { name: 'plain', color: '' }] }) }))
 
-    render(
-      <ul>
-        <ItemRow item={it} launch={launch} worktree={worktreeOf(worktrees, it)} />
-      </ul>,
-    )
-  }
-
-  // tag is the worktree tag, titled with the worktree's path.
-  function tag(): HTMLElement {
-    return screen.getByTitle('~/projects/example-repo/.claude/worktrees/pr-7')
-  }
-
-  it('marks an item with a worktree, its changes, and the last session launched in it', () => {
-    renderWith(item(), { dirty: true, dirtyCount: 2, agent: 'codex', lastLaunchedAt: '2026-06-15T09:00:00Z' })
-
-    expect(tag()).toHaveTextContent('worktree · 2 changes · Codex 3h ago')
+    expect(screen.getByText('one')).toBeInTheDocument()
+    expect(screen.getByText('two').previousElementSibling).toHaveStyle({ backgroundColor: '#d73a4a' })
+    expect(screen.queryByText('three')).not.toBeInTheDocument()
+    expect(screen.getByTitle('three, four, plain')).toHaveTextContent('+3')
+    expect(screen.getByText('more: three, four, plain')).toHaveClass('sr-only')
+    // A narrow list leaves the labels out before the title gives way.
+    expect(screen.getByText('Labels:').parentElement).toHaveClass('@max-4xl:hidden', 'shrink-[10]')
   })
 
-  it('offers its running session’s terminal instead of a second launch', () => {
+  it('leaves out the labels the user hid before taking the first two', () => {
+    const labels = ['size/XL', 'one', 'wontfix', 'two', 'three'].map((name) => ({ name, color: '#d73a4a' }))
+    render(
+      <HiddenLabelsContext value={labelMatcher(['size/*', 'wontfix'])}>
+        <ul>
+          <ItemRow item={asked({ details: details({ labels }) })} launch={null} />
+        </ul>
+      </HiddenLabelsContext>,
+    )
+
+    expect(screen.queryByText('size/XL')).not.toBeInTheDocument()
+    expect(screen.getByText('two'), 'a hidden label takes no place').toBeInTheDocument()
+    expect(screen.getByTitle('three')).toHaveTextContent('+1')
+  })
+
+  it('shows no labels when every one is hidden, or there are none', () => {
+    render(
+      <HiddenLabelsContext value={labelMatcher(['size/*'])}>
+        <ul>
+          <ItemRow item={asked({ details: details({ labels: [{ name: 'size/M', color: '' }] }) })} launch={null} />
+          <ItemRow item={asked({ id: 2, details: details({ labels: [] }) })} launch={null} />
+        </ul>
+      </HiddenLabelsContext>,
+    )
+
+    expect(screen.queryByText('Labels:')).not.toBeInTheDocument()
+  })
+
+  it('filters by a label, the repository, and the author when clicked', async () => {
+    const onFilterBy = vi.fn()
+    mountCard(asked(), { onFilterBy })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by label enhancement' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by repository acme-org/example-repo' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by author octo-user' }))
+
+    expect(onFilterBy.mock.calls).toEqual([
+      ['label', 'enhancement'],
+      ['repo', 'acme-org/example-repo'],
+      ['author', 'octo-user'],
+    ])
+  })
+})
+
+describe('ItemRow byline', () => {
+  it('says “you” for the user’s own item, and why it is theirs', () => {
+    mountCard(item({ authored: true, assigned: true, details: details() }))
+
+    const you = screen.getByTitle('octo-user (you)')
+    expect(you).toHaveTextContent('you')
+    expect(body(screen.getByRole('listitem')).lastElementChild).toHaveTextContent(
+      /acme-org\/example-repo #7 · you · assigned · 3h/,
+    )
+  })
+
+  it('names the teams a review is asked of', () => {
+    mountCard(asked({ reviewRequest: 'team', reviewTeams: ['platform', 'security'] }))
+
+    expect(body(screen.getByRole('listitem')).lastElementChild).toHaveTextContent(
+      /octo-user · via @platform, @security · 3h/,
+    )
+  })
+
+  it('says a team before GitHub names it', () => {
+    mountCard(asked({ reviewRequest: 'team', reviewTeams: [] }))
+
+    expect(body(screen.getByRole('listitem')).lastElementChild).toHaveTextContent(/octo-user · via a team · 3h/)
+  })
+
+  it('dims the org, which a narrow list leaves out', () => {
+    mountCard(asked())
+
+    expect(screen.getByText('acme-org/')).toHaveClass('opacity-60', '@max-xl:hidden')
+  })
+})
+
+describe('ItemRow chips', () => {
+  it('shows one risk chip for an outside contributor’s sensitive files, which opens them', async () => {
+    const onFilesSettings = vi.fn()
+    mountCard(asked({ trusted: false, trust: 'outside', files: fileCheck() }), { onFilesSettings })
+
+    const chip = screen.getByRole('button', { name: 'Outside · Agent config · Workflows' })
+    await userEvent.click(chip)
+    await userEvent.click(screen.getByRole('button', { name: 'What counts as sensitive' }))
+
+    expect(onFilesSettings).toHaveBeenCalledOnce()
+  })
+
+  it('gives a trusted bot its square and no chip', () => {
+    mountCard(asked({ author: 'dependabot', trust: 'bot', trusted: true, authorIsBot: true }))
+
+    expect(screen.getByRole('listitem').querySelector('[data-avatar="bot"]')).toHaveClass('rounded-lg')
+    expect(screen.queryByText(/Outside|Untrusted/)).not.toBeInTheDocument()
+  })
+
+  it('marks a worktree with changes or in use, and nothing else', () => {
+    const shown = (wt: Worktree) => {
+      const { unmount } = render(
+        <ul>
+          <ItemRow item={asked()} launch={null} worktree={wt} />
+        </ul>,
+      )
+      const chip = screen.queryByTitle('~/projects/example-repo/.claude/worktrees/pr-7')
+      const words = chip?.textContent ?? null
+      unmount()
+
+      return words
+    }
+
+    expect(shown(worktree({ dirty: true, dirtyCount: 2 }))).toBe('2 changes')
+    expect(shown(worktree({ inUse: [{ pid: 4242, command: 'claude', agent: '', by: '' }] }))).toBe('in use')
+    expect(shown(worktree({ agent: 'codex', lastLaunchedAt: '2026-06-15T09:00:00Z' }))).toBeNull()
+  })
+
+  it('shows a routine’s chip, except when the story already is the routine’s', () => {
+    const rows: AutopilotRows = { names: new Map(), chips: new Map([[1, autopilotMatch()]]) }
+    const { unmount } = render(
+      <AutopilotRowsContext value={rows}>
+        <ul>
+          <ItemRow item={asked()} launch={null} />
+        </ul>
+      </AutopilotRowsContext>,
+    )
+
+    expect(screen.getByRole('button', { name: /^Autopilot: Snoozed/ })).toBeInTheDocument()
+    unmount()
+
+    render(
+      <AutopilotRowsContext value={rows}>
+        <ul>
+          <ItemRow item={asked()} launch={null} autopilot="needs:Heal bot PRs" />
+          <ItemRow item={asked({ id: 2 })} launch={null} autopilot="working:Fix checks" />
+        </ul>
+      </AutopilotRowsContext>,
+    )
+
+    expect(screen.getByText('Heal bot PRs wants your OK')).toBeInTheDocument()
+    expect(screen.getByText('Fix checks is working')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Autopilot:/ })).not.toBeInTheDocument()
+  })
+
+  it('folds the chips past the second into a count that names them', () => {
+    render(
+      <CardChips
+        chips={[
+          { key: 'a', words: 'First', node: <span>First</span> },
+          { key: 'b', words: 'Second', node: <span>Second</span> },
+          { key: 'c', words: 'Third', node: <span>Third</span> },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('Second')).toBeInTheDocument()
+    expect(screen.queryByText('Third')).not.toBeInTheDocument()
+    expect(screen.getByTitle('Third')).toHaveTextContent('+1')
+  })
+})
+
+describe('ItemRow pin', () => {
+  it('marks a pinned card before its title', () => {
+    mountCard(asked({ pinnedAt: '2026-06-15T11:00:00Z' }), { triage: triageActions() })
+
+    expect(screen.getByRole('img', { name: 'Pinned to the top of the list' })).toBeInTheDocument()
+  })
+
+  it('names the rule that pins it, which the card doesn’t unpin', () => {
+    mountCard(asked({ repoRule: 'pinned' }), { triage: triageActions({ pinned: ['acme-org'], muted: [] }) })
+
+    const mark = screen.getByRole('img', { name: 'Pinned with acme-org' })
+    expect(mark).toHaveAttribute('title', expect.stringContaining('Settings → Repositories'))
+    expect(screen.queryByRole('button', { name: 'Unpin' })).not.toBeInTheDocument()
+  })
+
+  it('names its repository while the rules are unknown, and the routine that pinned it', () => {
+    const rows: AutopilotRows = { names: new Map([[4, 'Pin outside PRs']]), chips: new Map() }
+    render(
+      <AutopilotRowsContext value={rows}>
+        <ul>
+          <ItemRow item={asked({ repoRule: 'pinned' })} launch={null} />
+          <ItemRow item={asked({ id: 2, pinnedAt: '2026-06-15T11:00:00Z', pinnedBy: 4 })} launch={null} />
+        </ul>
+      </AutopilotRowsContext>,
+    )
+
+    expect(screen.getByRole('img', { name: 'Pinned with acme-org/example-repo' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Pinned by the routine Pin outside PRs' })).toBeInTheDocument()
+  })
+})
+
+describe('ItemRow tabs', () => {
+  // inTab renders an item's card in a tab, with the row's triage.
+  function inTab(it: InboxItem, tab: TriageTab) {
+    const triage = triageActions({ pinned: [], muted: ['acme-org'] })
+    mountCard(it, { tab, triage })
+
+    return triage
+  }
+
+  it('says when a snoozed item comes back, and brings it back', async () => {
+    const it = item({ snoozedUntil: '2026-06-18T09:00:00Z', details: details() })
+    const triage = inTab(it, 'snoozed')
+
+    expect(screen.getByTitle(/^Snoozed until/)).toHaveTextContent(/^Back /)
+    const unsnooze = screen.getByRole('button', { name: 'Unsnooze' })
+    expect(unsnooze).toHaveClass('border-border', 'text-text')
+
+    await userEvent.click(unsnooze)
+    expect(triage.onRestore).toHaveBeenCalledWith(it)
+  })
+
+  it('says when a dismissed item was dismissed, and restores it', async () => {
+    const it = item({ dismissedAt: '2026-06-15T10:00:00Z' })
+    const triage = inTab(it, 'dismissed')
+
+    expect(screen.getByTitle(/^Dismissed /)).toHaveTextContent('Dismissed 2h ago')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Restore' }))
+    expect(triage.onRestore).toHaveBeenCalledWith(it)
+  })
+
+  it('says what mutes a muted item, and unmutes it', async () => {
+    const triage = inTab(item({ repoRule: 'muted', details: details() }), 'muted')
+
+    expect(screen.getByText('Muted with acme-org')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Unmute acme-org' }))
+    expect(triage.onRepoRule).toHaveBeenCalledWith('acme-org', '')
+  })
+
+  it('names the repository that mutes it while the row has no triage', () => {
+    mountCard(item({ repoRule: 'muted' }), { tab: 'muted' })
+
+    expect(screen.getByText('Muted with acme-org/example-repo')).toBeInTheDocument()
+  })
+
+  it('says an item is back from a snooze for a day, then no longer', () => {
+    mountCard(item({ id: 2, snoozedUntil: '2026-06-15T11:00:00Z', details: details() }))
+    expect(screen.getByText(/· back from snooze$/)).toBeInTheDocument()
+    expect(screen.getByRole('listitem').querySelector('[data-icon="clock"]')).not.toBeNull()
+  })
+
+  it('stops saying so a day after it came back', () => {
+    mountCard(item({ id: 2, snoozedUntil: '2026-06-13T12:00:00Z', details: details() }))
+    expect(screen.queryByText(/back from snooze/)).not.toBeInTheDocument()
+  })
+})
+
+describe('ItemRow agent', () => {
+  it('has no agent slot until the launch options load, but its own move', () => {
     render(
       <ul>
-        <ItemRow item={item()} launch={launch} resolution={itemResolution()} sessions={[agentSession()]} />
+        <ItemRow item={asked()} launch={null} />
       </ul>,
     )
 
-    expect(screen.getByRole('button', { name: 'Show in terminal' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review' })).toBeInTheDocument()
   })
 
-  it('launches again once its session ended', () => {
+  it('names the item’s resolved prompt and profile on its launch options', () => {
+    mountCard(asked())
+
+    expect(screen.getByRole('button', { name: 'Launch options: Review · default' })).toBeInTheDocument()
+  })
+
+  it('waits for an item’s launch settings to resolve', () => {
+    mountCard(asked({ id: 99 }))
+
+    // Until the settings resolve, the agent the button starts is not known.
+    expect(screen.getByRole('button', { name: 'Open' })).toBeDisabled()
+  })
+
+  it('keeps the human’s move, quiet, beside a live session’s pill', () => {
+    const working = agentSession({ state: 'working', detail: '', stateAt: '2026-06-15T11:59:00Z' })
+    const row = mountCard(asked(), { sessions: [working] })
+
+    expect(row).toHaveAttribute('data-rule', 'agent_working')
+    expect(row.querySelector('[data-edge]')).toHaveClass('bg-info')
+    expect(screen.getByText('Claude is on it')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review' })).toHaveClass('border-border', 'text-text')
+
+    const pill = screen.getByRole('button', { name: /^Claude session: working/ })
+    expect(pill).toHaveAttribute('data-moving', 'true')
+    expect(pill).toHaveTextContent(/^Claude working/)
+    expect(screen.getByRole('button', { name: 'Show in terminal' })).toBeEnabled()
+  })
+
+  it('breathes its Show terminal while an agent waits on the user', async () => {
+    mountCard(asked(), { sessions: [agentSession()] })
+
+    const terminal = screen.getByRole('button', { name: 'Show terminal' })
+    expect(terminal).toHaveAttribute('data-moving')
+    expect(terminal).toHaveClass('motion-safe:animate-breathe')
+
+    await userEvent.click(terminal)
+    expect(platform.focusSession).toHaveBeenCalledOnce()
+  })
+
+  it('offers what happened after a session failed today, and the item’s move after a day', () => {
+    const failed = (at: string) => agentSession({ state: 'failed', stateAt: at, detail: '' })
     render(
       <ul>
-        <ItemRow
-          item={item()}
-          launch={launch}
-          resolution={itemResolution()}
-          sessions={[agentSession({ state: 'ended', endedAt: '2026-06-15T11:59:00Z', canFocus: false })]}
-        />
+        <ItemRow item={asked()} launch={launch} sessions={[failed('2026-06-15T11:00:00Z')]} />
+        <ItemRow item={asked({ id: 2 })} launch={launch} sessions={[failed('2026-06-13T11:00:00Z')]} />
       </ul>,
     )
 
-    expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Show in terminal' })).not.toBeInTheDocument()
+    const [today, older] = screen.getAllByRole('listitem')
+    expect(today).toHaveAttribute('data-rule', 'session_failed')
+    expect(within(today as HTMLElement).getByRole('button', { name: 'What happened' })).toBeInTheDocument()
+    expect(older).toHaveAttribute('data-rule', 'review')
   })
 
-  it('says a session is running in it, rather than when one was launched', () => {
-    renderWith(item(), {
-      inUse: [{ pid: 4242, command: 'claude', agent: '', by: '' }],
-      agent: 'claude',
-      lastLaunchedAt: '2026-06-15T09:00:00Z',
+  it('opens what an ended session found in the item’s sheet', async () => {
+    const onOpen = vi.fn()
+    const it = asked()
+    mountCard(it, {
+      sessions: [agentSession({ state: 'ended', endedAt: '2026-06-15T11:59:00Z', canFocus: false })],
+      onOpen,
+      tab: 'inbox',
     })
 
-    expect(tag()).toHaveTextContent(/^worktree · in use$/)
+    await userEvent.click(screen.getByRole('button', { name: 'Findings · 1m' }))
+
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith(it, 'inbox')
+  })
+})
+
+describe('ItemRow toggle', () => {
+  it('keeps every control and every titled element above the stretched toggle', () => {
+    const working = agentSession({ state: 'working', detail: '' })
+    const row = mountCard(
+      asked({
+        trusted: false,
+        trust: 'outside',
+        files: fileCheck(),
+        pinnedAt: '2026-06-15T11:00:00Z',
+        isDraft: false,
+      }),
+      {
+        triage: triageActions(),
+        edits: editActions(),
+        onOpen: vi.fn(),
+        onFilterBy: vi.fn(),
+        sessions: [working],
+        worktree: worktree({ dirty: true, dirtyCount: 1 }),
+      },
+    )
+    const { stretched } = toggles(row)
+
+    const controls = [...row.querySelectorAll('button, [title]')].filter((el) => el !== stretched)
+    expect(controls.length).toBeGreaterThan(15)
+    const below = controls.filter((el) => el.closest('.z-10, .z-20, .z-30') === null)
+    expect(below.map((el) => el.getAttribute('aria-label') ?? el.getAttribute('title') ?? el.textContent)).toEqual([])
+  })
+})
+
+describe('ItemRow triage', () => {
+  it('hides the triage until the pointer or focus is on the card, over the state column', () => {
+    const row = mountCard(asked(), { triage: triageActions(), edits: editActions() })
+
+    const triage = row.querySelector('[data-triage]')
+    expect(triage).toHaveClass('opacity-0', 'group-hover:opacity-100', 'group-focus-within:opacity-100')
+    expect(triage).toHaveClass('col-[4/5]', 'row-[1/2]', '@max-xl:col-[3/4]')
+    expect(within(triage as HTMLElement).getByRole('button', { name: 'More actions' })).toBeInTheDocument()
+    expect(row.querySelector('[data-state-column]')).toHaveClass('group-hover:opacity-0', '@max-xl:hidden')
+    expect(row.querySelector('[data-state-column]')).not.toHaveClass('opacity-0')
   })
 
-  it('marks a worktree no session was launched in as just a worktree', () => {
-    renderWith(item())
+  it('keeps the triage shown, and the state column faded, while the card works with GitHub', async () => {
+    let done: () => void = () => undefined
+    const triage = triageActions()
+    triage.onRefresh = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          done = resolve
+        }),
+    )
+    const row = mountCard(asked(), { triage })
 
-    expect(tag()).toHaveTextContent(/^worktree$/)
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh from GitHub' }))
+
+    expect(row.querySelector('[data-triage]')).toHaveClass('opacity-100')
+    expect(row.querySelector('[data-state-column]')).toHaveClass('opacity-0')
+
+    await act(async () => {
+      done()
+      await Promise.resolve()
+    })
+
+    expect(row.querySelector('[data-triage]')).toHaveClass('opacity-0')
   })
 
-  it('marks nothing for an item with no worktree', () => {
-    renderWith(item({ number: 8 }))
+  it('fades the card under a note while an edit will likely take it out of the list', async () => {
+    let done: () => void = () => undefined
+    const edits = editActions()
+    edits.onUnassign = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          done = resolve
+        }),
+    )
+    const row = mountCard(item({ assigned: true, details: details() }), { triage: triageActions(), edits })
 
-    expect(screen.queryByText(/^worktree/)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Unassign me' }))
+
+    expect(row).toHaveAttribute('aria-busy', 'true')
+    const note = within(row).getByRole('status')
+    expect(note).toHaveTextContent('Unassigning you on GitHub…')
+    expect(note.closest('[data-row-status]')).toHaveClass('z-30')
+
+    await act(async () => {
+      done()
+      await Promise.resolve()
+    })
+
+    expect(row).not.toHaveAttribute('aria-busy')
   })
 })
 
@@ -659,12 +706,43 @@ describe('ItemRow open', () => {
     expect(platform.openExternal).toHaveBeenCalledOnce()
     expect(screen.queryByRole('button', { name: 'Open on GitHub' })).not.toBeInTheDocument()
   })
+})
 
-  it('marks a pull request GitHub merges on its own', () => {
-    renderRow(item({ details: details({ autoMerge: 'SQUASH' }) }))
-    expect(screen.getByText('Auto-merge · squash')).toBeInTheDocument()
+describe('TrustTag', () => {
+  it('marks a trusted bot quietly, an untrusted bot or outside contributor as a warning, and no one else', () => {
+    const tag = (it: InboxItem) => {
+      const { container, unmount } = render(<TrustTag item={it} />)
+      const shown = container.firstElementChild
+      const words = shown === null ? null : [shown.textContent, shown.className.includes('text-warning')]
+      unmount()
 
-    renderRow(item({ id: 2, details: details({ autoMerge: 'FAST' }) }))
-    expect(screen.getByText('Auto-merge · fast')).toBeInTheDocument()
+      return words
+    }
+
+    expect(tag(item({ trust: 'bot', trusted: true, authorIsBot: true }))).toEqual(['bot', false])
+    expect(tag(item({ trust: 'outside', trusted: false, authorIsBot: true }))).toEqual(['untrusted bot', true])
+    expect(tag(item({ trust: 'outside', trusted: false }))).toEqual(['outside contributor', true])
+    expect(tag(item())).toBeNull()
+  })
+})
+
+describe('WorktreeTag', () => {
+  // tag renders a worktree's tag and returns its words.
+  function tag(overrides: Partial<Worktree>): string | null {
+    const { container, unmount } = render(<WorktreeTag wt={worktree(overrides)} agents={agents()} />)
+    const words = container.textContent
+    unmount()
+
+    return words
+  }
+
+  it('says its changes, then the last session launched in it, or that one is running in it', () => {
+    expect(tag({ dirtyCount: 2, agent: 'codex', lastLaunchedAt: '2026-06-15T09:00:00Z' })).toBe(
+      'worktree · 2 changes · Codex 3h ago',
+    )
+    expect(tag({ inUse: [{ pid: 1, command: 'claude', agent: '', by: '' }], agent: 'claude' })).toBe(
+      'worktree · in use',
+    )
+    expect(tag({})).toBe('worktree')
   })
 })

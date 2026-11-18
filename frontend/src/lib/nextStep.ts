@@ -91,6 +91,18 @@ export interface AutopilotState {
   routine: string
 }
 
+// noAutopilot is a card no routine waits on or works on.
+const noAutopilot: AutopilotState = { state: '', routine: '' }
+
+// autopilotState reads a card's autopilot prop, as the lists word it (rowAutopilot):
+// "needs:<routine>", "working:<routine>", or '' for neither.
+export function autopilotState(row: string): AutopilotState {
+  const at = row.indexOf(':')
+  const state = row.slice(0, at)
+
+  return state === 'needs' || state === 'working' ? { state, routine: row.slice(at + 1) } : noAutopilot
+}
+
 // StepInput is everything nextStep reads. session, sessionFresh, and backFromSnooze depend
 // on the time, which the caller reads: session is the card's session (cardSession),
 // sessionFresh reports a failed one that failed under a day ago, and backFromSnooze an item
