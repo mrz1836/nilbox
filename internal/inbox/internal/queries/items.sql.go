@@ -1486,6 +1486,67 @@ func (q *Queries) ListWatchedItems(ctx context.Context, arg ListWatchedItemsPara
 	return items, nil
 }
 
+const markSeen = `-- name: MarkSeen :execrows
+UPDATE items SET
+    seen_activity_at = CASE WHEN item_updated_at > ?1 THEN item_updated_at ELSE ?1 END
+WHERE account_id = ?2
+  AND (seen_activity_at IS NULL
+    OR seen_activity_at < CASE WHEN item_updated_at > ?1 THEN item_updated_at ELSE ?1 END)
+  AND id IN (/*SLICE:ids*/?)
+`
+
+type MarkSeenParams struct {
+	Now       time.Time
+	AccountID int64
+	Ids       []int64
+}
+
+// MarkSeen records that the user saw the items of the account with account_id among ids:
+// each one's seen_activity_at becomes the later of its activity and now, so a read that
+// lands after the mark with activity from before it leaves the item seen. It returns how
+// many it moved; one already stamped at that time or later is left alone. ids comes last,
+// so the parameters before it keep their numbers however long it is; it is never empty.
+func (q *Queries) MarkSeen(ctx context.Context, arg MarkSeenParams) (int64, error) {
+	query := markSeen
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Now)
+	queryParams = append(queryParams, arg.AccountID)
+	if len(arg.Ids) > 0 {
+		for _, v := range arg.Ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(arg.Ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	result, err := q.db.ExecContext(ctx, query, queryParams...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const markUnseen = `-- name: MarkUnseen :execrows
+UPDATE items SET seen_activity_at = NULL
+WHERE account_id = ? AND id = ? AND seen_activity_at IS NOT NULL
+`
+
+type MarkUnseenParams struct {
+	AccountID int64
+	ID        int64
+}
+
+// MarkUnseen forgets that the user saw the item of the account with account_id with id, so
+// it reads unread, and returns how many it changed: none when it was never seen, or isn't
+// the account's.
+func (q *Queries) MarkUnseen(ctx context.Context, arg MarkUnseenParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markUnseen, arg.AccountID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const noteViewerReview = `-- name: NoteViewerReview :exec
 UPDATE items SET
     viewer_review_state = ?1,

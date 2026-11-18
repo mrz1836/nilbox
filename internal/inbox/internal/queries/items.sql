@@ -511,3 +511,23 @@ WHERE reason_review_requested = 0 AND reason_authored = 0 AND reason_assigned = 
 -- HasItems reports whether any item is stored for the account with account_id: a whole
 -- refresh that finds none is the account's first load, whose new items count as seen.
 SELECT CAST(EXISTS (SELECT 1 FROM items WHERE account_id = ?) AS BOOLEAN) AS has_items;
+
+-- name: MarkSeen :execrows
+-- MarkSeen records that the user saw the items of the account with account_id among ids:
+-- each one's seen_activity_at becomes the later of its activity and now, so a read that
+-- lands after the mark with activity from before it leaves the item seen. It returns how
+-- many it moved; one already stamped at that time or later is left alone. ids comes last,
+-- so the parameters before it keep their numbers however long it is; it is never empty.
+UPDATE items SET
+    seen_activity_at = CASE WHEN item_updated_at > sqlc.arg(now) THEN item_updated_at ELSE sqlc.arg(now) END
+WHERE account_id = sqlc.arg(account_id)
+  AND (seen_activity_at IS NULL
+    OR seen_activity_at < CASE WHEN item_updated_at > sqlc.arg(now) THEN item_updated_at ELSE sqlc.arg(now) END)
+  AND id IN (sqlc.slice(ids));
+
+-- name: MarkUnseen :execrows
+-- MarkUnseen forgets that the user saw the item of the account with account_id with id, so
+-- it reads unread, and returns how many it changed: none when it was never seen, or isn't
+-- the account's.
+UPDATE items SET seen_activity_at = NULL
+WHERE account_id = ? AND id = ? AND seen_activity_at IS NOT NULL;
