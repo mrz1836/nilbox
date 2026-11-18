@@ -568,9 +568,75 @@ describe('ItemRow agent', () => {
 
     const launch = screen.getByRole('button', { name: 'Open in Claude' })
     const options = screen.getByRole('button', { name: 'Launch options: Review · default' })
-    expect(launch.parentElement).toHaveClass('rounded-lg', 'border')
-    expect(launch).toHaveClass('rounded-l-lg', 'focus-visible:-outline-offset-2')
-    expect(options).toHaveClass('rounded-r-lg', 'focus-visible:-outline-offset-2')
+    expect(launch.parentElement).toBe(options.parentElement)
+    expect(launch).toHaveClass('rounded-l-lg', 'border', 'focus-visible:-outline-offset-2')
+    expect(options).toHaveClass('rounded-r-lg', 'border', 'border-l-0', 'focus-visible:-outline-offset-2')
+  })
+
+  it('keeps a done session’s pill on one line beside Review, its age cut first, the ▾ attached at the slot’s end', () => {
+    const idle = agentSession({ state: 'idle', detail: '', stateAt: '2026-06-15T12:00:00Z' })
+    const row = mountCard(asked(), { sessions: [idle] })
+
+    expect(within(row).getByRole('button', { name: 'Review' })).toBeInTheDocument()
+    const pill = within(row).getByRole('button', { name: 'Claude’s done · just now' })
+
+    // One line that truncates at its end: nowrap, clipped, with an ellipsis, the age last.
+    const words = pill.querySelector('[data-pill-label]') as HTMLElement
+    expect(words).toHaveTextContent(/^Claude’s done · just now$/)
+    expect(words).toHaveClass('min-w-0', 'truncate')
+    expect(words.lastElementChild).toHaveTextContent('· just now')
+    // The pill narrows within its border; its dot and the ▾ keep their width.
+    expect(pill).toHaveClass('min-w-0', 'border')
+    expect(pill.querySelector('[data-moving], span[aria-hidden="true"]')).toHaveClass('shrink-0')
+
+    const options = within(row).getByRole('button', { name: /^Launch options/ })
+    expect(options).toHaveClass('shrink-0', 'rounded-r-lg', 'border-l-0')
+    expect(options.parentElement).toBe(pill.parentElement)
+    expect(options.parentElement?.lastElementChild).toBe(options)
+    expect(options.closest('[data-agent-slot]')).toHaveClass('justify-end')
+  })
+
+  it('starts every card’s primary, and ends every card’s ▾, at the same place', () => {
+    const failed = agentSession({ state: 'failed', stateAt: '2026-06-15T11:00:00Z', detail: '' })
+    const ended = agentSession({ state: 'ended', endedAt: '2026-06-15T11:59:00Z', canFocus: false })
+    render(
+      <ul>
+        <ItemRow item={asked()} launch={launch} resolution={itemResolution()} />
+        <ItemRow item={asked({ id: 2 })} launch={launch} resolution={itemResolution()} sessions={[ended]} />
+        <ItemRow item={asked({ id: 3 })} launch={launch} resolution={itemResolution()} sessions={[agentSession()]} />
+        <ItemRow item={asked({ id: 4 })} launch={launch} resolution={itemResolution()} sessions={[failed]} />
+        <ItemRow
+          item={asked({ id: 5, snoozedUntil: '2026-06-20T12:00:00Z' })}
+          launch={launch}
+          resolution={itemResolution()}
+          tab="snoozed"
+          triage={triageActions()}
+        />
+      </ul>,
+    )
+
+    const primaries = ['Review', 'Review', 'Show terminal', 'What happened', 'Unsnooze'] as const
+    const rows = screen.getAllByRole('listitem')
+    expect(rows).toHaveLength(primaries.length)
+
+    rows.forEach((row, i) => {
+      const name = primaries[i] ?? ''
+      // The primary's slot is the first of the column's two, as wide as the longest
+      // primary, the primary at its start.
+      expect(row).toHaveClass('[--card-primary:8.5rem]', '@max-3xl:[--card-primary:auto]')
+      const primary = within(row).getByRole('button', { name })
+      const slot = primary.closest('[data-primary-slot]') as HTMLElement
+      expect(slot).toHaveClass('justify-start')
+      expect(slot.parentElement).toHaveClass('grid-cols-[var(--card-primary)_minmax(0,1fr)]')
+      expect(slot.parentElement?.firstElementChild).toBe(slot)
+
+      // The agent's slot is the rest, its control at its end, the ▾ last.
+      const options = within(row).getByRole('button', { name: /^Launch options/ })
+      const agent = options.closest('[data-agent-slot]') as HTMLElement
+      expect(agent).toHaveClass('justify-end')
+      expect(agent.parentElement?.lastElementChild).toBe(agent)
+      expect(Array.from(agent.querySelectorAll('button')).at(-1)).toBe(options)
+    })
   })
 
   it('waits for an item’s launch settings to resolve', () => {

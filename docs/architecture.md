@@ -4272,12 +4272,12 @@ its inset beside the window controls, and hairlines stay in px.
 
 **The inbox cards.** `ItemRow` (a `memo` export, which the render check counts) is a Signal
 card: a grid of the edge, `card/CardAvatar`, the two-line body, the state column, and the
-action column, its widths the `--card-state` and `--card-actions` properties on the row,
-which `@max-*` container variants narrow against the list's `@container` (`ListSection`'s and
-`WatchingList`'s `<ul>`). `lib/nextStep.ts` is the pure function that decides what a card puts
-first, the first matching rule winning: its edge, its story (`card/CardStory`), its primary
-verb, whether that is quiet, and the situation (the generated `launcher.Situation`) that picks
-the agent button's prompt; the row passes it every
+action column, its widths the `--card-state`, `--card-actions`, and `--card-primary`
+properties on the row, which `@max-*` container variants narrow against the list's
+`@container` (`ListSection`'s and `WatchingList`'s `<ul>`). `lib/nextStep.ts` is the pure
+function that decides what a card puts first, the first matching rule winning: its edge, its
+story (`card/CardStory`), its primary verb, whether that is quiet, and the situation (the
+generated `launcher.Situation`) that picks the agent button's prompt; the row passes it every
 input, and the three that depend on the time (the card's session, whether a failed one is
 fresh, back from a snooze) come from `useNowAs` as primitives, so a clock tick renders no row.
 The state column is `card/StateTrack` over `card/SizeGlyph` for a pull request, or
@@ -4285,8 +4285,15 @@ The state column is `card/StateTrack` over `card/SizeGlyph` for a pull request, 
 sentence), and `card/RiskChip` is the one chip for trust and sensitive files.
 `card/CardActions` renders the primary and frames `LaunchControls`' `card` variant, which
 follows the card's session (`cardSession`) and keeps its hold, take-over, and clone dialogs
-mounted; its `column` and `peek` render props keep its outcome a direct child of the row, so it
-spans `col-[3/-1]`, and hand the peek its way to the launch options. With the card's
+mounted. The action column is two slots, so the controls line up down the list: the
+primary's, as wide as the longest primary (`--card-primary`, 8.5rem for Show terminal; the
+primary's own width below `@3xl`), the primary at its start, and the agent's, the rest of the
+column, its control at its end. That control is one split control in every session state,
+closed by the ▾: the launch, or a session's pill (and, while one works, Show in terminal or
+Watch), the first part narrowing and cutting its words short, its age first, while the
+marks and the ▾ keep their width, so nothing runs past a border. Its `column` and `peek`
+render props keep its outcome a direct child of the row, so it spans `col-[3/-1]`, and hand
+the peek its way to the launch options. With the card's
 situation, its launch is named for the situation's prompt as the item's resolution lists it
 (`Resolution.situations`, display only; an issue's is named for its own prompt), and the
 launch request, the launch options' one re-resolve when they open, and their Preview all carry
@@ -4373,8 +4380,8 @@ from its part's measured box against the sample's, measured again whenever the s
 changes size (`ResizeObserver`), and hidden until its part is laid out; then the legend.
 Both variants end with the key (its track symbols take `card/StateTrack`'s
 `trackStepClass`). `card/CardGuideDialog` shows the full guide in a modal; App owns whether it is
-open, loads it on its first opening, so the inbox's chunk doesn't grow, and hands
-`onShowCardGuide` to `InboxView` (How to read a card, beside the last-refreshed time) and
-`SettingsView` (Settings → Cards' row). Setup's Finish step shows the compact guide, and App
-provides `CardPrefsContext` around the setup too. `useModalDialog`'s Tab wrap passes over
-the controls of an inert part of a dialog, which take no focus.
+open, loads it on its first opening, so the inbox's chunk holds none of the guide, and
+hands `onShowCardGuide` to `InboxView` (How to read a card, beside the last-refreshed time)
+and `SettingsView` (Settings → Cards' row). Setup's Finish step shows the compact guide, and
+App provides `CardPrefsContext` around the setup too. `useModalDialog`'s Tab wrap passes
+over the controls of an inert part of a dialog, which take no focus.

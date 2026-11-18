@@ -113,6 +113,14 @@ export interface LaunchControlsProps {
   peek?: ((launch: ReactNode) => ReactNode) | undefined
 }
 
+// partRing draws a focus ring inside a part of the card's agent slot, so it follows that
+// part's own shape within the slot's split control rather than crossing its neighbors.
+const partRing = 'focus-visible:-outline-offset-2'
+
+// joinedPart is a part of the agent slot's split control after its first: the top, right,
+// and bottom of a border, its left edge the part before it.
+const joinedPart = `border border-l-0 border-border ${partRing}`
+
 // LaunchState is where the row's launch stands. A launch that finds no local clone ends
 // in noClone, which keeps the request so a confirmed clone, or one the user finds
 // elsewhere, can continue it, with why the last clone found elsewhere was refused; one
@@ -538,11 +546,12 @@ export function LaunchControls({
     </LaunchDialog>
   )
 
-  // cardOptions is the card's ▾, the launch options: on its own, or closing the launch's
-  // split control (joined), its focus ring then drawn inside it, so the ring follows its
-  // rounded end within the control's border. It carries the dot of a choice changed for
-  // this launch, and the alert of a prompt that can't resolve, as the split button's arrow
-  // does.
+  // cardOptions is the card's ▾, the launch options: on its own, or the last part of the
+  // agent slot's split control (joined), drawing the top, right, and bottom of its border,
+  // its left edge the part before it. Its focus ring is drawn inside it, following its
+  // rounded end within the border. It never narrows: the part before it gives way. It
+  // carries the dot of a choice changed for this launch, and the alert of a prompt that
+  // can't resolve, as the split button's arrow does.
   const cardOptions = (joined: boolean) => (
     <button
       type="button"
@@ -555,7 +564,7 @@ export function LaunchControls({
       aria-expanded={open}
       aria-controls={open ? id : undefined}
       onClick={showOptions}
-      className={`inline-flex items-center gap-1 px-1.75 text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 aria-expanded:bg-raised ${joined ? 'rounded-r-lg border-l border-border focus-visible:-outline-offset-2' : 'h-7.5 rounded-lg border border-border'}`}
+      className={`inline-flex shrink-0 items-center gap-1 px-1.75 text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 aria-expanded:bg-raised ${joined ? `rounded-r-lg ${joinedPart}` : 'h-7.5 rounded-lg border border-border'}`}
     >
       {changed && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />}
       {problem !== '' && <AlertIcon className="size-3 shrink-0 text-warning" />}
@@ -563,81 +572,96 @@ export function LaunchControls({
     </button>
   )
 
-  // cardSlot is the card's agent slot, by the card's session: with none, the launch, as one
-  // split control (its prompt's nickname for a situation or an issue, else the agent's
-  // name, and the options); while one starts or works, a pill with its state and age that
-  // opens the item's sessions, its border running slowly round, and beside it Show in
-  // terminal, or Watch for a background run; once its turn is done, a pill that shows its
-  // terminal; once it ended, a pill that opens what it found, the item's sheet, or the
-  // run's view for a background run. Waiting on the user or
-  // failed today, the card's primary is the way in, and the slot has only the options; a
-  // session that failed longer ago leaves the card to the item's own move, and the slot to
-  // a fresh launch.
+  // split is the agent slot's one control: its parts, the first narrowing and cutting its
+  // words short when the action column is short, then the ▾, always last, so the ▾ sits at
+  // the slot's right edge whatever the session's state.
+  const split = (parts: ReactNode) => (
+    <div className="inline-flex h-7.5 max-w-full min-w-0 items-stretch text-[0.8125rem]">
+      {parts}
+      {cardOptions(true)}
+    </div>
+  )
+
+  // cardSlot is the card's agent slot, by the card's session, one split control closed by
+  // the ▾: with none, the launch (its prompt's nickname for a situation or an issue, else
+  // the agent's name); while one starts or works, a pill with its state and age that opens
+  // the item's sessions, its border running slowly round, then Show in terminal, or Watch
+  // for a background run; once its turn is done, a pill that shows its terminal; once it
+  // ended, a pill that opens what it found, the item's sheet, or the run's view for a
+  // background run. Waiting on the user or failed today, the card's primary is the way in,
+  // and the slot has only the ▾; a session that failed longer ago leaves the card to the
+  // item's own move, and the slot to a fresh launch.
   const cardSlot = () => {
     const session = running?.state === 'failed' && !sessionFresh ? null : running
 
     if (session === null) {
       // Until the agent is known, the launch names "the agent", so it never shares the
-      // name Open with the card's primary beside it. Its focus ring, as the ▾'s, is drawn
-      // inside it, following its rounded start within the control's border.
-      return (
-        <div className="inline-flex h-7.5 items-stretch rounded-lg border border-border text-[0.8125rem]">
-          <button
-            type="button"
-            disabled={busy || base === null}
-            onClick={launchNow}
-            aria-label={
-              agentName === '' ? 'Open in the agent' : nickname === '' ? openLabel : `${openLabel}: ${nickname}`
-            }
-            title={launchTitle}
-            className="inline-flex items-center gap-1.5 rounded-l-lg pr-1.75 pl-2.25 font-semibold text-text transition-colors hover:bg-raised focus-visible:-outline-offset-2 disabled:opacity-60 disabled:hover:bg-transparent"
-          >
-            <SparkIcon className="size-3.5 shrink-0 text-accent" />
-            <span className="@max-3xl:sr-only">
-              {state.kind === 'launching' || state.kind === 'linking'
-                ? 'Opening…'
-                : state.kind === 'cloning'
-                  ? 'Cloning…'
-                  : nickname !== ''
-                    ? nickname
-                    : agentName === ''
-                      ? 'Agent'
-                      : agentName}
+      // name Open with the card's primary beside it.
+      return split(
+        <button
+          type="button"
+          disabled={busy || base === null}
+          onClick={launchNow}
+          aria-label={
+            agentName === '' ? 'Open in the agent' : nickname === '' ? openLabel : `${openLabel}: ${nickname}`
+          }
+          title={launchTitle}
+          className={`inline-flex min-w-0 items-center gap-1.5 rounded-l-lg border border-border pr-1.75 pl-2.25 font-semibold text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent ${partRing}`}
+        >
+          <SparkIcon className="size-3.5 shrink-0 text-accent" />
+          <span className="min-w-0 truncate @max-3xl:sr-only">
+            {state.kind === 'launching' || state.kind === 'linking'
+              ? 'Opening…'
+              : state.kind === 'cloning'
+                ? 'Cloning…'
+                : nickname !== ''
+                  ? nickname
+                  : agentName === ''
+                    ? 'Agent'
+                    : agentName}
+          </span>
+          {untrusted && (
+            <span title="Launches read-only: an outside contributor’s" className="inline-flex shrink-0">
+              <LockIcon className="size-3 shrink-0 text-warning" />
             </span>
-            {untrusted && (
-              <span title="Launches read-only: an outside contributor’s" className="inline-flex">
-                <LockIcon className="size-3 shrink-0 text-warning" />
-              </span>
-            )}
-          </button>
-          {cardOptions(true)}
-        </div>
+          )}
+        </button>,
       )
     }
 
     const name = agentLabel(agents, session.agent)
     const label = stateLabel(session.state)
     const since = sinceWhen(session)
-    const pill = 'inline-flex h-7.5 items-center gap-1.75 rounded-lg px-2.5 text-[0.8125rem] font-semibold'
+    // A pill, the split's first part, narrows within the slot, its mark held and its words
+    // cut short, so nothing of it ever runs past its border.
+    const pill = `inline-flex min-w-0 items-center gap-1.75 rounded-l-lg px-2.5 font-semibold ${partRing}`
     const done = `${pill} border border-success/30 bg-success/11 text-success transition-colors hover:bg-success/18`
-    // age is how long the session has been as it is, after a dot when dotted; a list
-    // narrower than 48rem leaves it out.
-    const age = (dotted: boolean) =>
-      since !== '' && (
-        <>
-          {' '}
-          <span className="shrink-0 @max-3xl:hidden">
-            {dotted && '· '}
-            <RelativeTime iso={since} show={formatAge} className="font-medium text-muted tabular-nums" />
-          </span>
-        </>
-      )
+    // words are a pill's words, then how long the session has been as it is, after a dot
+    // when dotted, as one line that truncates at its end, so the age is cut before the
+    // words are; a list narrower than 48rem leaves the age out (and CardActions the words,
+    // data-pill-label, but for screen readers).
+    const words = (text: string, dotted: boolean) => (
+      <span data-pill-label className="min-w-0 truncate">
+        {text}
+        {since !== '' && (
+          <>
+            {' '}
+            <span className="@max-3xl:hidden">
+              {dotted && '· '}
+              <RelativeTime iso={since} show={formatAge} className="font-medium text-muted tabular-nums" />
+            </span>
+          </>
+        )}
+      </span>
+    )
+    // iconPart is a part between the pill and the ▾: an icon button, as wide as it is tall.
+    const iconPart = `inline-flex w-7.5 shrink-0 items-center justify-center text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 disabled:hover:bg-transparent ${joinedPart}`
 
     switch (session.state) {
       case 'starting':
       case 'working':
       case 'unknown':
-        return (
+        return split(
           <>
             <SessionsButton
               sessions={sessions ?? [session]}
@@ -647,13 +671,10 @@ export function LaunchControls({
               shrinks
               label={`${name} session: ${label}. Show the item's sessions`}
               title={session.detail === '' ? `${name} ${label}` : `${name} ${label}: ${session.detail}`}
-              className={`${pill} border-run max-w-full min-w-0 ${stateText[session.state]} motion-safe:animate-border-run`}
+              className={`${pill} border-run ${stateText[session.state]} motion-safe:animate-border-run`}
             >
               <SessionDot state={session.state} />
-              <span data-pill-label className="truncate">
-                {name} {label}
-              </span>
-              {age(false)}
+              {words(`${name} ${label}`, false)}
             </SessionsButton>
             {session.runId !== 0 ? (
               <button
@@ -664,7 +685,7 @@ export function LaunchControls({
                   watch?.(session.id)
                 }}
                 title={`${name} ${label} in the background, for Autopilot: watch it, stop it, or take it over from its run.`}
-                className="inline-flex size-7.5 items-center justify-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 disabled:hover:bg-transparent"
+                className={iconPart}
               >
                 <AutopilotIcon className="size-3.5" />
               </button>
@@ -681,71 +702,63 @@ export function LaunchControls({
                     ? `${name} ${label}: show its terminal tab. To start another session, use the launch options.`
                     : `${name} is starting; its terminal tab can be shown once it has started.`
                 }
-                className="inline-flex size-7.5 items-center justify-center rounded-lg text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 disabled:hover:bg-transparent"
+                className={iconPart}
               >
                 <TerminalIcon className="size-3.5" />
               </button>
             )}
-          </>
+          </>,
         )
       case 'idle':
-        return (
-          <>
-            {session.canFocus ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  void showTerminal(session.id)
-                }}
-                title={`${name}’s turn is done: show its terminal tab`}
-                className={done}
-              >
-                <SessionDot state={session.state} />
-                <span data-pill-label>{name}’s done</span>
-                {age(true)}
-              </button>
-            ) : (
-              <SessionsButton
-                sessions={sessions ?? [session]}
-                agents={agents}
-                align="right"
-                title={`${name}’s turn is done`}
-                className={done}
-              >
-                <SessionDot state={session.state} />
-                <span data-pill-label>{name}’s done</span>
-                {age(true)}
-              </SessionsButton>
-            )}
-            {cardOptions(false)}
-          </>
+        return split(
+          session.canFocus ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                void showTerminal(session.id)
+              }}
+              title={`${name}’s turn is done: show its terminal tab`}
+              className={done}
+            >
+              <SessionDot state={session.state} />
+              {words(`${name}’s done`, true)}
+            </button>
+          ) : (
+            <SessionsButton
+              sessions={sessions ?? [session]}
+              agents={agents}
+              align="right"
+              shrinks
+              title={`${name}’s turn is done`}
+              className={done}
+            >
+              <SessionDot state={session.state} />
+              {words(`${name}’s done`, true)}
+            </SessionsButton>
+          ),
         )
       case 'ended': {
         const background = session.runId !== 0 && watch !== undefined
 
-        return (
-          <>
-            <button
-              type="button"
-              onClick={() => {
-                if (background) {
-                  watch(session.id)
-                } else if (onOpen === undefined) {
-                  openExternal(item.url)
-                } else {
-                  onOpen()
-                }
-              }}
-              title={`${name}’s session ended: read what it found`}
-              className={done}
-            >
-              <SparkIcon className="size-3.5 shrink-0" />
-              <span data-pill-label>Findings</span>
-              {age(true)}
-            </button>
-            {cardOptions(false)}
-          </>
+        return split(
+          <button
+            type="button"
+            onClick={() => {
+              if (background) {
+                watch(session.id)
+              } else if (onOpen === undefined) {
+                openExternal(item.url)
+              } else {
+                onOpen()
+              }
+            }}
+            title={`${name}’s session ended: read what it found`}
+            className={done}
+          >
+            <SparkIcon className="size-3.5 shrink-0" />
+            {words('Findings', true)}
+          </button>,
         )
       }
       case 'needs_approval':
@@ -905,10 +918,10 @@ export function LaunchControls({
   )
 
   if (variant === 'card') {
-    // The slot narrows only as far as a working pill's words let it, beside a primary
-    // that leaves the pill too little of the action column.
+    // The slot's control narrows within the agent's part of the action column, its first
+    // part giving way, and never past its border.
     const slot = (
-      <span className="inline-flex min-w-0 items-center gap-1">
+      <span className="inline-flex max-w-full min-w-0 items-center">
         {cardSlot()}
         {dialog}
       </span>
