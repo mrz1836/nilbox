@@ -63,12 +63,6 @@ func StoreFixture(ctx context.Context, db *sql.DB, f Fixture) ([]int64, error) {
 			return err
 		}
 
-		// As a refresh, the first items stored for the account count as seen, and the items
-		// a later fixture adds start unread.
-		if err := w.noteFirstLoad(ctx); err != nil {
-			return err
-		}
-
 		for _, fi := range f.Items {
 			id, err := w.saveFixtureItem(ctx, fi)
 			if err != nil {

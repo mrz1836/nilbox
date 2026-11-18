@@ -75,7 +75,8 @@ func newWriter(q *queries.Queries, p *prefs.Store, now time.Time) *writer {
 	return &writer{q: q, prefs: p, now: now, repos: make(map[string]int64)}
 }
 
-// saveAccount upserts the signed-in account and remembers its id.
+// saveAccount upserts the signed-in account and remembers its id, and whether this is its
+// first load (see noteFirstLoad), before any item is written.
 func (w *writer) saveAccount(ctx context.Context, login string) error {
 	id, err := w.q.UpsertAccount(ctx, queries.UpsertAccountParams{Login: login, CreatedAt: w.now, UpdatedAt: w.now})
 	if err != nil {
@@ -84,7 +85,7 @@ func (w *writer) saveAccount(ctx context.Context, login string) error {
 
 	w.accountID = id
 
-	return nil
+	return w.noteFirstLoad(ctx)
 }
 
 // saveItems clears every reason flag for the account, then upserts each fetched item with
@@ -94,10 +95,6 @@ func (w *writer) saveAccount(ctx context.Context, login string) error {
 // Last, it ends the snoozes that the details stored give cause to, so no snapshot shows
 // new activity on an item still snoozed.
 func (w *writer) saveItems(ctx context.Context, inbox *github.Inbox) error {
-	if err := w.noteFirstLoad(ctx); err != nil {
-		return err
-	}
-
 	if err := w.q.ClearReasons(ctx, w.accountID); err != nil {
 		return fmt.Errorf("clear the reason flags: %w", err)
 	}
@@ -125,7 +122,7 @@ func (w *writer) saveItems(ctx context.Context, inbox *github.Inbox) error {
 }
 
 // noteFirstLoad sets firstLoad when no item is stored for the account yet: the account's
-// first load, before any item is written.
+// first load.
 func (w *writer) noteFirstLoad(ctx context.Context) error {
 	stored, err := w.q.HasItems(ctx, w.accountID)
 	if err != nil {
