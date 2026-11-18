@@ -249,6 +249,7 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     repo: 'acme-org/example-repo',
     author: 'octo-user',
     updatedAt: '2026-06-15T09:00:00Z',
+    unread: false,
     trust: 'member',
     trusted: true,
     authorIsBot: false,
@@ -1231,6 +1232,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     defaultHiddenLabels: ['size/*'],
     cardAvatars: true,
     cardDensity: 'comfortable',
+    cardUnread: true,
     mergeMethod: 'repo',
     integrations: integrationsConfig(),
     githubNotifications: {

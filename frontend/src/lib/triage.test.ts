@@ -304,6 +304,23 @@ describe('applyTriage', () => {
 
     expect(ids(applyTriage(inbox, { id: 9, set: { pinnedAt: '' } }).reviewRequested)).toEqual([2, 9])
   })
+
+  it('marks an item read or unread in its place', () => {
+    const inbox = snapshot({ reviewRequested: list([newest, { ...older, unread: true }]) })
+    const next = applyTriage(inbox, { id: 3, set: { unread: false } })
+
+    expect(ids(next.reviewRequested)).toEqual([2, 3])
+    expect(findItem(next, 3)?.unread).toBe(false)
+    expect(next.reviewRequested.items[0], 'the rest kept').toBe(newest)
+  })
+
+  it('returns the snapshot itself for a change that changes nothing, or an item in no list', () => {
+    const inbox = snapshot({ reviewRequested: list([newest, older]), yours: list([oldest]) })
+
+    expect(applyTriage(inbox, { id: 3, set: { unread: false } })).toBe(inbox)
+    expect(applyTriage(inbox, { id: 9, set: { unread: true } })).toBe(inbox)
+    expect(applyTriage(inbox, { id: 3, set: { unread: true } })).not.toBe(inbox)
+  })
 })
 
 describe('findItem and tabOf', () => {

@@ -29,6 +29,8 @@ function triageActions(): TriageActions {
     repoRules: { pinned: [], muted: ['acme-org'] },
     onRepoRule: vi.fn(),
     onRepoRuleSettings: vi.fn(),
+    onMarkRead: vi.fn(),
+    onMarkUnread: vi.fn(),
   }
 }
 

@@ -93,6 +93,35 @@ describe('CardsSection', () => {
     expect(pictures).not.toBeChecked()
   })
 
+  it('turns Unread dots off and on, storing each change', async () => {
+    platform.setCardUnread.mockImplementation((cardUnread) => Promise.resolve(settings({ cardUnread })))
+    const { onSaved } = renderSection()
+
+    const dots = screen.getByRole('switch', { name: 'Unread dots' })
+    expect(dots).toBeChecked()
+    expect(dots).toHaveAccessibleDescription('A blue dot on a card with activity since you last opened it.')
+
+    await userEvent.click(dots)
+
+    expect(platform.setCardUnread).toHaveBeenCalledExactlyOnceWith(false)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ cardUnread: false }))
+    })
+  })
+
+  it('says why Unread dots could not change, and shows it as stored', async () => {
+    platform.setCardUnread.mockRejectedValue(new Error('the database is locked'))
+    renderSection(settings({ cardUnread: false }))
+
+    const dots = screen.getByRole('switch', { name: 'Unread dots' })
+    await userEvent.click(dots)
+
+    await waitFor(() => {
+      expect(dots).toHaveAccessibleDescription(/the database is locked/)
+    })
+    expect(dots).not.toBeChecked()
+  })
+
   it('lists the hidden labels, marking the defaults, and says how a pattern reads', () => {
     renderSection(settings({ hiddenLabels: ['size/*', 'wontfix'] }))
 

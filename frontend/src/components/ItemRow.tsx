@@ -11,7 +11,6 @@ import { formatAge, formatAgo } from '../lib/time'
 import { isBackFromSnooze, isPinned, type TriageTab } from '../lib/triage'
 import { useNowAs } from '../lib/useNow'
 import {
-  openExternal,
   type AgentInfo,
   type InboxItem,
   type ItemResolution,
@@ -27,7 +26,7 @@ import { AutopilotChip } from './autopilot/AutopilotChip'
 import { CardActions, cardOutcomeClass } from './card/CardActions'
 import { CardAvatar } from './card/CardAvatar'
 import { CompactRow } from './card/CompactRow'
-import { edgeBar, FilterText, PinGlyph, tagClass, TriageTag } from './card/CardParts'
+import { edgeBar, FilterText, PinGlyph, tagClass, TriageTag, UnreadDot } from './card/CardParts'
 import { CardPeek } from './card/CardPeek'
 import { CardStory } from './card/CardStory'
 import { IssueState } from './card/IssueState'
@@ -41,7 +40,7 @@ import { LabelChip } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
 import { RelativeTime } from './RelativeTime'
 import { Spinner } from './Spinner'
-import { ghostClass, hoverClass, mutedTarget, TriageControls, type TriageActions } from './TriageControls'
+import { ghostClass, hoverClass, mutedTarget, openOnGitHub, TriageControls, type TriageActions } from './TriageControls'
 
 // LaunchOptions are what every row's launch controls share: the coding agents, profiles,
 // and prompts to choose from, and the saved launch defaults. Each row's own resolved
@@ -295,8 +294,9 @@ function Byline({
 
 // ItemRow is one inbox card, a Signal card two lines high. Down its left side, the edge's
 // color says whose move it is (nextStep); then the author's avatar with the item's kind
-// (CardAvatar). Its first line is the title, after a pin when pinned, with up to two
-// labels; its second, the story in the edge's color (CardStory: one sentence of why it is
+// (CardAvatar). Its first line is the title, after the unread dot while the item has
+// activity the user hasn't seen (and Settings → Cards' Unread dots is on) and a pin when
+// pinned, with up to two labels; its second, the story in the edge's color (CardStory: one sentence of why it is
 // here, or, in the Snoozed and Dismissed tabs, when it comes back or was dismissed), the
 // byline, then the risk chip, the ⚡ chip (AutopilotChip), and the worktree chip. The state
 // column shows where a pull request stands (StateTrack, over its size, SizeGlyph) or an
@@ -349,7 +349,8 @@ export const ItemRow = memo(function ItemRow({
     return s?.state === 'failed' && now.getTime() - Date.parse(sinceWhen(s)) < endedShownMs
   })
   const backFromSnooze = useNowAs((now) => item.snoozedUntil !== '' && isBackFromSnooze(item, now))
-  const { density } = use(CardPrefsContext)
+  const prefs = use(CardPrefsContext)
+  const unread = prefs.unread && item.unread
   const session = sessions?.find((s) => s.id === sessionId) ?? null
   const agents = launch?.agents ?? []
   const routine = autopilotState(autopilot)
@@ -450,7 +451,7 @@ export const ItemRow = memo(function ItemRow({
       />
     )
 
-  if (density === 'compact') {
+  if (prefs.density === 'compact') {
     return (
       <CompactRow
         item={item}
@@ -462,6 +463,7 @@ export const ItemRow = memo(function ItemRow({
         triage={triage}
         edits={edits}
         highlighted={highlighted}
+        unread={unread}
         marks={marks}
         onFilterBy={onFilterBy}
         onOpen={onOpen}
@@ -491,6 +493,7 @@ export const ItemRow = memo(function ItemRow({
       <CardAvatar item={item} />
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
+          {unread && <UnreadDot />}
           {isPinned(item) && <PinGlyph item={item} rules={triage?.repoRules} />}
           {item.isDraft && <span className="shrink-0 text-xs font-semibold text-muted">Draft</span>}
           <button
@@ -504,7 +507,7 @@ export const ItemRow = memo(function ItemRow({
               if (opens && !e.metaKey) {
                 onOpen(item, tab)
               } else {
-                openExternal(item.url)
+                openOnGitHub(item, triage)
               }
             }}
             className="relative z-10 min-w-[8ch] truncate text-left text-sm font-semibold text-text hover:text-accent hover:underline"
@@ -529,7 +532,7 @@ export const ItemRow = memo(function ItemRow({
               aria-label="Open on GitHub"
               title="Open on GitHub"
               onClick={() => {
-                openExternal(item.url)
+                openOnGitHub(item, triage)
               }}
               className="relative z-10 shrink-0 rounded-sm text-muted/70 opacity-0 transition-opacity group-hover:opacity-100 hover:text-accent focus-visible:opacity-100"
             >

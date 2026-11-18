@@ -23,13 +23,16 @@ WHERE account_id = ?;
 -- assigned_at keep when the item first arrived in each list while it stays in it, stamped
 -- with fetched_at when it arrives; ClearArrivalStamps clears them once it leaves.
 -- author_avatar_url is a bot author's picture URL, '' for any other author (see
--- 0021_author_avatar_url).
+-- 0021_author_avatar_url). seen_activity_at, the activity the user last saw, is written only
+-- when the item is new, NULL (unread) but on an account's first load, and the update leaves
+-- it as it is: only the window's marks move it (see 0022_seen_activity).
 INSERT INTO items (
     account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_avatar_url,
     author_association, is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at,
     reason_review_requested, reason_authored, reason_assigned, fetched_at, state, review_requested_at, assigned_at,
-    reason_reviewed, reason_pushed, viewer_review_state, viewer_review_commit, viewer_review_at, viewer_review_seen_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    reason_reviewed, reason_pushed, viewer_review_state, viewer_review_commit, viewer_review_at, viewer_review_seen_at,
+    seen_activity_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     node_id = excluded.node_id,
     title = excluded.title,
@@ -106,7 +109,8 @@ WHERE account_id = ?
 -- LeaveAnsweredReview, run after it, takes a pull request out of the review-requested list.
 -- A bot author's picture URL is rewritten too, but a read that brought none for the same
 -- author keeps the stored one: a routine's watched read doesn't ask for it, and a whole
--- refresh applies such a read again on top of its own (see order.go).
+-- refresh applies such a read again on top of its own (see order.go). The activity the user
+-- last saw stays, so newer activity makes a card the user saw unread.
 UPDATE items SET
     node_id = sqlc.arg(node_id),
     title = sqlc.arg(title),
@@ -181,8 +185,9 @@ JOIN repos r ON r.id = i.repo_id
 WHERE i.account_id = ? AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1);
 
 -- name: ListItems :many
--- ListItems returns every listed item of the account with account_id, with its
--- repository, its details when a refresh has read them, its last file check, and its
+-- ListItems returns every listed item of the account with account_id, with the activity the
+-- user last saw on it, its repository, its details when a refresh has read them, its last
+-- file check, and its
 -- triage state with the routines that set it: the pinned items first, the most recently
 -- pinned first, then the rest by newest activity. A column of a missing details, file
 -- check, or triage row is NULL.
@@ -190,7 +195,7 @@ SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
-    i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url,
+    i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url, i.seen_activity_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals,
@@ -456,7 +461,7 @@ SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
-    i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url,
+    i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url, i.seen_activity_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals,
@@ -501,3 +506,28 @@ WHERE reason_review_requested = 0 AND reason_authored = 0 AND reason_assigned = 
   AND NOT EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = items.id)
   AND NOT EXISTS (SELECT 1 FROM item_local_state l WHERE l.item_id = items.id)
   AND id NOT IN (sqlc.slice(keep));
+
+-- name: HasItems :one
+-- HasItems reports whether any item is stored for the account with account_id: a whole
+-- refresh that finds none is the account's first load, whose new items count as seen.
+SELECT CAST(EXISTS (SELECT 1 FROM items WHERE account_id = ?) AS BOOLEAN) AS has_items;
+
+-- name: MarkSeen :execrows
+-- MarkSeen records that the user saw the items of the account with account_id among ids:
+-- each one's seen_activity_at becomes the later of its activity and now, so a read that
+-- lands after the mark with activity from before it leaves the item seen. It returns how
+-- many it moved; one already stamped at that time or later is left alone. ids comes last,
+-- so the parameters before it keep their numbers however long it is; it is never empty.
+UPDATE items SET
+    seen_activity_at = CASE WHEN item_updated_at > sqlc.arg(now) THEN item_updated_at ELSE sqlc.arg(now) END
+WHERE account_id = sqlc.arg(account_id)
+  AND (seen_activity_at IS NULL
+    OR seen_activity_at < CASE WHEN item_updated_at > sqlc.arg(now) THEN item_updated_at ELSE sqlc.arg(now) END)
+  AND id IN (sqlc.slice(ids));
+
+-- name: MarkUnseen :execrows
+-- MarkUnseen forgets that the user saw the item of the account with account_id with id, so
+-- it reads unread, and returns how many it changed: none when it was never seen, or isn't
+-- the account's.
+UPDATE items SET seen_activity_at = NULL
+WHERE account_id = ? AND id = ? AND seen_activity_at IS NOT NULL;

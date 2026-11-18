@@ -51,6 +51,8 @@ function triageActions(): TriageActions {
     repoRules: { pinned: [], muted: [] },
     onRepoRule: vi.fn(),
     onRepoRuleSettings: vi.fn(),
+    onMarkRead: vi.fn(),
+    onMarkUnread: vi.fn(),
   }
 }
 
@@ -61,7 +63,7 @@ function compact(ui: ReactElement, hidden: readonly string[] = []) {
   return renderPlain(
     <Clock>
       <HiddenLabelsContext value={labelMatcher(hidden)}>
-        <CardPrefsContext value={{ avatars: true, density: 'compact' }}>{ui}</CardPrefsContext>
+        <CardPrefsContext value={{ avatars: true, density: 'compact', unread: true }}>{ui}</CardPrefsContext>
       </HiddenLabelsContext>
     </Clock>,
   )
@@ -433,9 +435,16 @@ describe('CompactRow', () => {
 
   it('keeps every control and every titled element above the stretched toggle', async () => {
     const row = mountCompact(
-      asked({ trusted: false, trust: 'outside', files: fileCheck(), pinnedAt: '2026-06-15T11:00:00Z' }),
+      asked({
+        trusted: false,
+        trust: 'outside',
+        files: fileCheck(),
+        pinnedAt: '2026-06-15T11:00:00Z',
+        unread: true,
+      }),
       { triage: triageActions(), onOpen: vi.fn(), onFilterBy: vi.fn(), sessions: [agentSession({ state: 'working' })] },
     )
+    expect(within(row).getByTitle('New since you last opened it')).toBeInTheDocument()
     const [stretched] = within(row).getAllByRole('button', { name: 'Show details' })
     await userEvent.click(stretched as HTMLElement)
 
@@ -465,8 +474,8 @@ describe('CompactRow', () => {
     expect(age).toHaveClass('@max-3xl:hidden')
   })
 
-  it('puts the pin after the title, its number, and its label dots', () => {
-    const row = mountCompact(asked({ pinnedAt: '2026-06-15T11:00:00Z' }), { triage: triageActions() })
+  it('puts the pin after the title, its number, and its label dots, and the unread dot last', () => {
+    const row = mountCompact(asked({ pinnedAt: '2026-06-15T11:00:00Z', unread: true }), { triage: triageActions() })
 
     const title = within(row).getByRole('button', { name: 'Add the widget cache' }).parentElement as HTMLElement
     const parts = [...title.children].map((el) =>
@@ -474,7 +483,7 @@ describe('CompactRow', () => {
         ? (el.getAttribute('aria-label') ?? '')
         : el.tagName === 'BUTTON'
           ? (el.getAttribute('aria-label') ?? 'title')
-          : el.textContent,
+          : (el.getAttribute('title') ?? el.textContent),
     )
     expect(parts).toEqual([
       'title',
@@ -482,7 +491,29 @@ describe('CompactRow', () => {
       '#7',
       'Labels: enhancement, needs-docs',
       'Pinned to the top of the list',
+      'New since you last opened it',
     ])
+    expect(title.lastElementChild).toHaveTextContent('Unread')
+  })
+
+  it('shows no unread dot on a card read', () => {
+    const read = mountCompact(asked())
+
+    expect(within(read).queryByTitle('New since you last opened it')).not.toBeInTheDocument()
+  })
+
+  it('shows no unread dot while the cards show none', () => {
+    renderPlain(
+      <CardPrefsContext value={{ avatars: true, density: 'compact', unread: false }}>
+        <ul>
+          <ItemRow item={asked({ unread: true })} launch={null} />
+        </ul>
+      </CardPrefsContext>,
+      { wrapper: at() },
+    )
+
+    expect(screen.getByRole('listitem')).toHaveAttribute('data-density', 'compact')
+    expect(screen.queryByTitle('New since you last opened it')).not.toBeInTheDocument()
   })
 
   it('shows up to six label dots in their colors, the hidden left out, every name in the title', () => {
@@ -519,8 +550,9 @@ describe('CompactRow', () => {
   it('filters by its repository, and opens its title in its sheet or, with ⌘, on GitHub', async () => {
     const onFilterBy = vi.fn()
     const onOpen = vi.fn()
+    const triage = triageActions()
     const it = asked()
-    mountCompact(it, { onFilterBy, onOpen, tab: 'inbox' })
+    mountCompact(it, { onFilterBy, onOpen, tab: 'inbox', triage })
 
     await userEvent.click(screen.getByRole('button', { name: 'Filter by repository acme-org/example-repo' }))
     expect(onFilterBy).toHaveBeenCalledExactlyOnceWith('repo', 'acme-org/example-repo')
@@ -531,10 +563,12 @@ describe('CompactRow', () => {
     expect(onOpen).toHaveBeenCalledExactlyOnceWith(it, 'inbox')
 
     const user = userEvent.setup()
+    expect(triage.onMarkRead, 'the sheet marks it').not.toHaveBeenCalled()
     await user.keyboard('{Meta>}')
     await user.click(title)
     await user.keyboard('{/Meta}')
     expect(platform.openExternal).toHaveBeenCalledWith(it.url)
+    expect(triage.onMarkRead, 'opening it on GitHub sees it').toHaveBeenCalledExactlyOnceWith(it)
   })
 
   it('opens an issue’s title on GitHub without a sheet', async () => {

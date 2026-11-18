@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactElement, ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { CardPrefsContext, defaultCardPrefs } from '../lib/cardPrefs'
 import { HiddenLabelsContext, labelMatcher } from '../lib/labels'
 import type { TriageTab } from '../lib/triage'
 import type { InboxItem, RepoRules, Worktree } from '../platform'
@@ -52,6 +53,8 @@ function triageActions(repoRules: RepoRules = { pinned: [], muted: [] }): Triage
     repoRules,
     onRepoRule: vi.fn(),
     onRepoRuleSettings: vi.fn(),
+    onMarkRead: vi.fn(),
+    onMarkUnread: vi.fn(),
   }
 }
 
@@ -650,6 +653,7 @@ describe('ItemRow peek', () => {
         files: fileCheck(),
         pinnedAt: '2026-06-15T11:00:00Z',
         isDraft: false,
+        unread: true,
       }),
       {
         triage: triageActions(),
@@ -660,6 +664,7 @@ describe('ItemRow peek', () => {
         worktree: worktree({ dirty: true, dirtyCount: 1 }),
       },
     )
+    expect(within(row).getByTitle('New since you last opened it')).toBeInTheDocument()
     const { stretched } = toggles(row)
     await userEvent.click(stretched)
 
@@ -910,14 +915,45 @@ describe('ItemRow triage', () => {
   })
 })
 
+describe('ItemRow unread dot', () => {
+  it('marks an unread card first on its first line, before the pin and the title', () => {
+    const row = mountCard(asked({ unread: true, pinnedAt: '2026-06-15T11:00:00Z' }), { triage: triageActions() })
+
+    const dot = within(row).getByTitle('New since you last opened it')
+    expect(dot).toHaveTextContent('Unread')
+    expect(dot.parentElement?.firstElementChild, 'first on the line').toBe(dot)
+    expect(dot.nextElementSibling).toBe(within(row).getByRole('img', { name: 'Pinned to the top of the list' }))
+  })
+
+  it('shows no dot on a card read since its last activity', () => {
+    const row = mountCard(asked())
+
+    expect(within(row).queryByTitle('New since you last opened it')).not.toBeInTheDocument()
+    expect(within(row).queryByText('Unread')).not.toBeInTheDocument()
+  })
+
+  it('shows no dot while the cards show no unread dots', () => {
+    render(
+      <CardPrefsContext value={{ ...defaultCardPrefs, unread: false }}>
+        <ul>
+          <ItemRow item={asked({ unread: true })} launch={null} />
+        </ul>
+      </CardPrefsContext>,
+    )
+
+    expect(screen.queryByTitle('New since you last opened it')).not.toBeInTheDocument()
+  })
+})
+
 describe('ItemRow open', () => {
   it('opens a pull request in the review sheet from its title, and GitHub otherwise', async () => {
     const onOpen = vi.fn()
     const user = userEvent.setup()
     const pull = item()
+    const triage = triageActions()
     render(
       <ul>
-        <ItemRow item={pull} launch={null} tab="dismissed" onOpen={onOpen} />
+        <ItemRow item={pull} launch={null} tab="dismissed" triage={triage} onOpen={onOpen} />
       </ul>,
     )
 
@@ -927,14 +963,18 @@ describe('ItemRow open', () => {
     await user.click(title)
     expect(onOpen).toHaveBeenCalledExactlyOnceWith(pull, 'dismissed')
     expect(platform.openExternal).not.toHaveBeenCalled()
+    expect(triage.onMarkRead, 'the sheet marks it').not.toHaveBeenCalled()
 
+    // Opening it on GitHub sees it, by ⌘-click or by the mark beside the title.
     await user.keyboard('{Meta>}')
     await user.click(screen.getByRole('button', { name: 'Add the widget cache' }))
     await user.keyboard('{/Meta}')
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
+    expect(triage.onMarkRead).toHaveBeenCalledExactlyOnceWith(pull)
 
     await user.click(screen.getByRole('button', { name: 'Open on GitHub' }))
     expect(platform.openExternal).toHaveBeenCalledTimes(2)
+    expect(triage.onMarkRead).toHaveBeenCalledTimes(2)
   })
 
   it('opens an issue in the issue sheet from its title', async () => {

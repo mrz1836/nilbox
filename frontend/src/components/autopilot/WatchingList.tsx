@@ -42,7 +42,8 @@ export function WatchingList({ routineId, kit, highlight, onHighlighted }: Watch
   const rows = use(AutopilotRowsContext)
   const ids = useQuery(() => routineWatching(routineId), [routineId])
   const key = (ids.data ?? []).join(',')
-  const items = useQuery(() => readItems(key === '' ? [] : key.split(',').map(Number)), [key], {
+  // A seen mark tells no one, so the rows are read again after each (the inbox's marks).
+  const items = useQuery(() => readItems(key === '' ? [] : key.split(',').map(Number)), [key, kit.inbox.marks], {
     enabled: ids.data !== undefined,
   })
   const chips = useAutopilotChips(key)

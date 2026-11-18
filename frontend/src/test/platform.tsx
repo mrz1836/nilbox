@@ -285,6 +285,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     unpinItem: inbox,
     unassignItem: inbox,
     removeReviewRequest: inbox,
+    markItemsSeen: done,
+    markItemUnseen: done,
     checkItemFiles: () => Promise.resolve(fileCheck()),
 
     listProfiles: () => Promise.resolve([profile(), profile({ agent: 'codex', folder: '~/.codex' })]),
@@ -433,6 +435,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setHiddenLabels: (hiddenLabels) => stored({ hiddenLabels: hiddenLabels ?? [] }),
     setCardAvatars: (cardAvatars) => stored({ cardAvatars }),
     setCardDensity: (cardDensity) => stored({ cardDensity }),
+    setCardUnread: (cardUnread) => stored({ cardUnread }),
     setWindowSize: (windowSize) => stored({ windowSize }),
     setBranchRules: (branches) => stored({ branches: { ...branches, protected: branches.protected ?? [] } }),
     setRepoRule: (target, rule) => stored({ repoRules: withRepoRule(settings().repoRules, target, rule) }),

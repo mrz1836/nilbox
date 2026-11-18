@@ -219,11 +219,14 @@ export function itemsByRef(snapshot: InboxSnapshot): ReadonlyMap<string, ListedI
 }
 
 // TriageChange is a triage action as the inbox shows it at once, before the backend's
-// answer: the triage fields it gives an item, and the Autopilot routine's mark it clears,
-// as the user's own triage does (setAsideBy, pinnedBy).
+// answer: the triage fields it gives an item, the Autopilot routine's mark it clears, as
+// the user's own triage does (setAsideBy, pinnedBy), or whether a seen mark leaves it
+// unread.
 export interface TriageChange {
   id: number
-  set: Partial<Pick<InboxItem, 'dismissedAt' | 'snoozedUntil' | 'wokeBy' | 'pinnedAt' | 'setAsideBy' | 'pinnedBy'>>
+  set: Partial<
+    Pick<InboxItem, 'dismissedAt' | 'snoozedUntil' | 'wokeBy' | 'pinnedAt' | 'setAsideBy' | 'pinnedBy' | 'unread'>
+  >
 }
 
 // listsNewer reports whether a lists before b among the items not pinned: newest activity
@@ -267,13 +270,15 @@ function placeItem(rest: readonly InboxItem[], next: InboxItem, was: InboxItem, 
 }
 
 // applyTriage returns the snapshot with a triage change made to the item in the list that
-// holds it, ordered as the backend will order it.
+// holds it, ordered as the backend will order it. A change that changes nothing, as a seen
+// mark of an item already shown read, or of one in no list, returns the snapshot itself, so
+// nothing renders again.
 export function applyTriage(snapshot: InboxSnapshot, change: TriageChange): InboxSnapshot {
   const apply = (list: InboxList): InboxList => {
     const index = list.items.findIndex((item) => item.id === change.id)
     const was = list.items[index]
 
-    if (was === undefined) {
+    if (was === undefined || Object.entries(change.set).every(([k, v]) => Object.is(was[k as keyof InboxItem], v))) {
       return list
     }
 
@@ -281,8 +286,9 @@ export function applyTriage(snapshot: InboxSnapshot, change: TriageChange): Inbo
 
     return { ...list, items: placeItem(rest, { ...was, ...change.set }, was, index) }
   }
+  const lists = byList((list) => apply(snapshot[list]))
 
-  return { ...snapshot, ...byList((list) => apply(snapshot[list])) }
+  return inboxLists.every((list) => lists[list] === snapshot[list]) ? snapshot : { ...snapshot, ...lists }
 }
 
 // tabOf is the tab of a sorted list that holds an item, or null when none does.

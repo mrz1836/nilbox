@@ -5,16 +5,16 @@ import type { Step } from '../../lib/nextStep'
 import { leaving, workWords, type RowWork, type StartWork } from '../../lib/rowWork'
 import { formatAge } from '../../lib/time'
 import { isPinned, type TriageTab } from '../../lib/triage'
-import { openExternal, type AgentInfo, type AgentSession, type InboxItem, type Label } from '../../platform'
+import type { AgentInfo, AgentSession, InboxItem, Label } from '../../platform'
 import { Highlight } from '../Highlight'
 import { ChevronDownIcon } from '../icons'
 import { ItemMenu, type EditActions } from '../ItemMenu'
 import { RelativeTime } from '../RelativeTime'
 import { Spinner } from '../Spinner'
-import { ghostClass, hoverClass, TriageControls, type TriageActions } from '../TriageControls'
+import { ghostClass, hoverClass, openOnGitHub, TriageControls, type TriageActions } from '../TriageControls'
 import { CardActions, compactOutcomeClass } from './CardActions'
 import { KindMark } from './CardAvatar'
-import { edgeBar, FilterText, PinGlyph, TriageTag } from './CardParts'
+import { edgeBar, FilterText, PinGlyph, TriageTag, UnreadDot } from './CardParts'
 import { CardStory } from './CardStory'
 import { IssueGrade, IssueTrack } from './IssueState'
 import { RiskIcon } from './RiskChip'
@@ -89,6 +89,9 @@ export interface CompactRowProps {
   triage: TriageActions | undefined
   edits: EditActions | undefined
   highlighted: boolean
+  // unread shows the unread dot: the item has activity the user hasn't seen, and Settings
+  // → Cards' Unread dots is on.
+  unread: boolean
   marks: string
   onFilterBy: ((key: string, value: string) => void) | undefined
   onOpen: ((item: InboxItem, tab: TriageTab) => void) | undefined
@@ -108,7 +111,7 @@ export interface CompactRowProps {
 // CompactRow is an inbox card on one line, for Settings → Cards' Compact density: the same
 // next step (nextStep) as the comfortable card, a column per question, so a list reads down
 // each column. After the edge, the item's kind (KindMark) and its repository; the title,
-// its number, its labels as dots (LabelDots), and its pin; the story as a chip tinted with
+// its number, its labels as dots (LabelDots), its pin, and its unread dot; the story as a chip tinted with
 // the edge's color (CardStory); the risk as its shield alone (RiskIcon); where it stands as
 // three dots (MiniTrack), or an issue's sub-issues or status (IssueTrack); its size grade,
 // or an issue's first featured field; its age; and its go button, the primary's words in
@@ -128,6 +131,7 @@ export function CompactRow({
   triage,
   edits,
   highlighted,
+  unread,
   marks,
   onFilterBy,
   onOpen,
@@ -211,7 +215,7 @@ export function CompactRow({
             if (opens && !e.metaKey) {
               onOpen(item, tab)
             } else {
-              openExternal(item.url)
+              openOnGitHub(item, triage)
             }
           }}
           className="relative z-10 min-w-[6ch] truncate text-left text-[0.8125rem] font-medium text-text hover:text-accent hover:underline"
@@ -232,6 +236,7 @@ export function CompactRow({
         <span className="shrink-0 text-xs text-muted tabular-nums">#{item.number}</span>
         {item.details !== null && <LabelDots labels={item.details.labels} />}
         {isPinned(item) && <PinGlyph item={item} rules={triage?.repoRules} />}
+        {unread && <UnreadDot />}
       </div>
       <div className="flex min-w-0 @max-3xl:hidden">
         <CardStory story={step.story} edge={step.edge} chip>

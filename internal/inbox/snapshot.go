@@ -100,6 +100,12 @@ type Item struct {
 	// UpdatedAt is the item's last activity on GitHub, as RFC 3339.
 	UpdatedAt string `json:"updatedAt"`
 
+	// Unread reports activity on the item the user hasn't seen: it arrived after the
+	// account's first load and was never marked seen, or its last activity is later than
+	// the activity it was marked seen at (see MarkSeen and MarkUnseen). The window marks an
+	// item as it opens it, and shows the dot while the cards' unread setting is on.
+	Unread bool `json:"unread"`
+
 	// Trust is the item's trust class (see the trust package): "member" for the
 	// repository's owner, org members, and collaborators, "bot" for a trusted bot, and
 	// "outside" for everyone else, every untrusted bot, and every fork.
@@ -554,6 +560,10 @@ type itemRow struct {
 	ViewerReviewCommit string
 	ReviewLeftAt       *time.Time
 
+	// SeenActivityAt is the activity the user last saw on the item, nil when they never
+	// did (see unread).
+	SeenActivityAt *time.Time
+
 	// HasDetails reports whether a refresh has read the item's details.
 	HasDetails       bool
 	Labels           []storedLabel
@@ -635,6 +645,7 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		HeadRef: r.HeadRef, ItemUpdatedAt: r.ItemUpdatedAt, ReasonReviewRequested: r.ReasonReviewRequested,
 		ReasonAuthored: r.ReasonAuthored, ReasonAssigned: r.ReasonAssigned, ReasonPushed: r.ReasonPushed,
 		ViewerReviewState: r.ViewerReviewState, ViewerReviewCommit: r.ViewerReviewCommit, ReviewLeftAt: r.ReviewLeftAt,
+		SeenActivityAt: r.SeenActivityAt,
 
 		HasDetails: r.DetailsItemID != nil, Labels: labels, Projects: projects,
 		Comments: int(store.Deref(r.Comments)), Additions: int(store.Deref(r.Additions)),
@@ -675,6 +686,7 @@ func (r *itemRow) item(scope fileScope, viewer string) Item {
 		Repo:              repo.Name{Owner: r.RepoOwner, Repo: r.RepoName}.String(),
 		Author:            r.AuthorLogin,
 		UpdatedAt:         clock.Format(r.ItemUpdatedAt),
+		Unread:            r.unread(),
 		Trust:             class,
 		Trusted:           class != trust.ClassOutside,
 		AuthorIsBot:       author.IsBot(),
@@ -696,6 +708,12 @@ func (r *itemRow) item(scope fileScope, viewer string) Item {
 		ReviewRequest:     r.reviewRequest(viewer),
 		ReviewTeams:       textutil.NonNil(r.ReviewTeams),
 	}
+}
+
+// unread reports activity on the row the user hasn't seen: they never saw it, or its last
+// activity is later than the activity they last saw (see Item.Unread).
+func (r *itemRow) unread() bool {
+	return r.SeenActivityAt == nil || r.ItemUpdatedAt.After(*r.SeenActivityAt)
 }
 
 // opened reports that viewer opened the row: the authored search found it, or, for what

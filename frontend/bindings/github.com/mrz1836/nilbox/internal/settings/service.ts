@@ -311,6 +311,14 @@ export function SetCardDensity(density: $models.CardDensity): $CancellablePromis
 }
 
 /**
+ * SetCardUnread stores whether the inbox's cards show the unread dots, and returns the
+ * settings with it.
+ */
+export function SetCardUnread(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1569419792, on);
+}
+
+/**
  * SetClaudeAPIKey stores whether an API key in the environment may sign Claude Code in,
  * and returns the settings with it. Off, launches remove the key, so Claude Code runs on
  * the profile's own sign-in.

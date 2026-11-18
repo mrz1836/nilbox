@@ -14,10 +14,14 @@ export interface CardPrefs {
   avatars: boolean
   // density is Density: each card on two lines (comfortable), or on one (compact).
   density: CardDensity
+  // unread is Unread dots: a dot on a card with activity the user hasn't seen, and Mark
+  // as read and Mark as unread in its menu and its peek. Off, the window still marks what
+  // the user sees; it only shows none of it.
+  unread: boolean
 }
 
 // defaultCardPrefs are a fresh install's, the backend's defaults.
-export const defaultCardPrefs: CardPrefs = { avatars: true, density: 'comfortable' }
+export const defaultCardPrefs: CardPrefs = { avatars: true, density: 'comfortable', unread: true }
 
 // CardPrefsContext gives the cards their settings. The window provides it from the
 // settings, and a fresh install's until they load; without a provider, the cards have a

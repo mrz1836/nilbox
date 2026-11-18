@@ -16,6 +16,14 @@ const KeyCardAvatars = "cards.avatars"
 // DefaultCardAvatars is whether a fresh database shows the authors' pictures on the cards.
 const DefaultCardAvatars = true
 
+// KeyCardUnread is whether the inbox's cards show a dot on an item with activity since the
+// user last opened it, and offer Mark as read and Mark as unread. Only the window reads it,
+// and only for what it shows: the window marks items seen as they open either way.
+const KeyCardUnread = "cards.unread"
+
+// DefaultCardUnread is whether a fresh database shows the unread dots on the cards.
+const DefaultCardUnread = true
+
 // KeyCardDensity is how much room each of the inbox's cards takes, in both lists, stored
 // as one of the CardDensity choices. Only the window reads it.
 const KeyCardDensity = "cards.density"
@@ -55,6 +63,12 @@ func cardDensities() choice[CardDensity] {
 // the settings with it.
 func (s *Service) SetCardAvatars(ctx context.Context, on bool) (Settings, error) {
 	return s.save(ctx, setting(KeyCardAvatars, prefval.EncodeBool(on)))
+}
+
+// SetCardUnread stores whether the inbox's cards show the unread dots, and returns the
+// settings with it.
+func (s *Service) SetCardUnread(ctx context.Context, on bool) (Settings, error) {
+	return s.save(ctx, setting(KeyCardUnread, prefval.EncodeBool(on)))
 }
 
 // SetCardDensity stores how much room the inbox's cards take, CardComfortable or

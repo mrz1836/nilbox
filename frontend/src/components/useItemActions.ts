@@ -63,6 +63,10 @@ export interface ItemActions {
   // unassignOn takes the user off the item on GitHub and says so once GitHub made it; it
   // resolves with why it couldn't, or ''.
   unassignOn: (item: InboxItem) => Promise<string>
+  // seen marks read the items a sheet showed, as it opens on one, steps away from one, or
+  // closes. The user asked for none of it, so a failure goes to the console, the items
+  // back as they were.
+  seen: (ids: readonly number[]) => void
 }
 
 // useItemActions builds what the rows of a list of items do with them: the inbox's own
@@ -82,11 +86,26 @@ export function useItemActions({
   listed = true,
 }: ItemActionsOptions): ItemActions {
   const clock = useClock()
-  const { dismiss, snooze, restore, pin, unpin, refreshItem, unassign, removeReviewRequest } = inbox
+  const { dismiss, snooze, restore, pin, unpin, refreshItem, unassign, removeReviewRequest, markRead, markUnread } =
+    inbox
 
   // failed reports a triage action the backend refused; the item is back as it was.
   const failed = (what: string, item: InboxItem, error: string) => {
     showToast({ text: `Could not ${what} “${item.title}”`, detail: error, tone: 'error' })
+  }
+
+  // mark marks an item read or unread, as the item's dot shows at once, and says why it
+  // couldn't, when the dot goes back as it was.
+  const mark = (item: InboxItem, unread: boolean) => {
+    void (unread ? markUnread(item.id) : markRead([item.id])).then((result) => {
+      if (!result.ok) {
+        showToast({
+          text: `Could not mark “${item.title}” ${unread ? 'unread' : 'read'}`,
+          detail: result.error,
+          tone: 'error',
+        })
+      }
+    })
   }
 
   // undo puts an item back the way it was before it was snoozed or dismissed.
@@ -222,6 +241,12 @@ export function useItemActions({
       void changeRule(target, rule)
     },
     onRepoRuleSettings: onRepoRuleSettings ?? (() => undefined),
+    onMarkRead: (item) => {
+      mark(item, false)
+    },
+    onMarkUnread: (item) => {
+      mark(item, true)
+    },
   }
 
   // unassignOn takes the user off the item on GitHub, from its card's menu or its sheet, and
@@ -240,7 +265,8 @@ export function useItemActions({
 
   // edits is what every row's menu does beyond triage. An edit shows once GitHub has
   // made it, as the item leaves the list, which the toast confirms; a pull request that
-  // still asks a team for a review stays, and the toast says which.
+  // still asks a team for a review stays, and the toast says which. The activity an edit
+  // made is the user's own, so the item is marked read once GitHub made it.
   const edits: EditActions = {
     onCopyLink: (item) => {
       void attempt(copyText(item.url)).then((result) => {
@@ -256,7 +282,11 @@ export function useItemActions({
 
       if (error !== '') {
         failed('unassign you from', item, error)
+
+        return
       }
+
+      mark(item, false)
     },
     onRemoveReview: async (item) => {
       const result = await removeReviewRequest(item.id)
@@ -269,6 +299,7 @@ export function useItemActions({
 
       const after = findItem(result.data, item.id)
 
+      mark(item, false)
       showToast({
         text: 'Removed you as a reviewer on GitHub',
         detail: after?.reviewRequest === 'team' ? `It still asks ${teamsText(after.reviewTeams)}` : item.title,
@@ -277,5 +308,13 @@ export function useItemActions({
     onOpen,
   }
 
-  return { triage, edits, dismissIt, snoozeIt, restoreIt, changeRule, unassignOn }
+  const seen = (ids: readonly number[]) => {
+    void markRead(ids).then((result) => {
+      if (!result.ok) {
+        console.error('could not mark the items read:', result.error)
+      }
+    })
+  }
+
+  return { triage, edits, dismissIt, snoozeIt, restoreIt, changeRule, unassignOn, seen }
 }

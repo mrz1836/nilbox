@@ -1,14 +1,16 @@
 import { use } from 'react'
 
+import { CardPrefsContext } from '../lib/cardPrefs'
 import { orgOf, ownRule } from '../lib/repoRules'
 import { leaving, workWords, type RowWork, type StartWork } from '../lib/rowWork'
 import { isPinnedItself, type TriageTab } from '../lib/triage'
-import { openExternal, type InboxItem } from '../platform'
+import type { InboxItem } from '../platform'
 import { AutopilotMenuContext, type AutopilotMenu } from './autopilot/RoutineMenu'
 import {
   ArchiveIcon,
   AutopilotIcon,
   ClockIcon,
+  DotIcon,
   ExternalIcon,
   EyeIcon,
   EyeOffIcon,
@@ -22,12 +24,13 @@ import {
   PlusIcon,
   RefreshIcon,
   ResetIcon,
+  RingIcon,
   RoutineIcon,
   SlidersIcon,
   UnassignIcon,
 } from './icons'
 import { MenuButton, type MenuItem } from './Menu'
-import { ghostClass, hoverClass, mutedTarget, snoozeItems, type TriageActions } from './TriageControls'
+import { ghostClass, hoverClass, mutedTarget, openOnGitHub, snoozeItems, type TriageActions } from './TriageControls'
 
 // EditActions are what a row's menu does beyond triage: copy the item's link, and the
 // edits it makes on GitHub. The inbox shares one set across every row.
@@ -125,12 +128,47 @@ export function repoRuleItems(item: InboxItem, triage: TriageActions): MenuItem[
   ]
 }
 
+// markItem is Mark as read on an unread item and Mark as unread on one read, or nothing
+// while Settings → Cards' Unread dots is off.
+function markItem(item: InboxItem, triage: TriageActions, unreadDots: boolean): MenuItem[] {
+  if (!unreadDots) {
+    return []
+  }
+
+  return [
+    item.unread
+      ? {
+          label: 'Mark as read',
+          icon: <RingIcon className={iconClass} />,
+          onSelect: () => {
+            triage.onMarkRead(item)
+          },
+        }
+      : {
+          label: 'Mark as unread',
+          icon: <DotIcon className="size-3.5 shrink-0 text-info" />,
+          onSelect: () => {
+            triage.onMarkUnread(item)
+          },
+        },
+  ]
+}
+
 // inboxActions are the triage actions the row's quiet controls offer, gathered in the
 // menu as well: in the inbox tab, Refresh, Pin, Snooze, Dismiss, and the repository's own
 // pin or mute; in the Snoozed and Dismissed tabs, Unsnooze or Restore, Pin, the
-// repository's pin or mute, and Refresh; in the Muted tab, Unmute, Pin, and Refresh.
-function inboxActions(item: InboxItem, tab: TriageTab, triage: TriageActions, work: RowWork, start: StartWork) {
+// repository's pin or mute, and Refresh; in the Muted tab, Unmute, Pin, and Refresh. After
+// Pin in each, Mark as read or Mark as unread, while the cards show unread dots.
+function inboxActions(
+  item: InboxItem,
+  tab: TriageTab,
+  triage: TriageActions,
+  work: RowWork,
+  start: StartWork,
+  unreadDots: boolean,
+) {
   const pinned = isPinnedItself(item)
+  const mark = markItem(item, triage, unreadDots)
   const refresh: MenuItem = {
     label: 'Refresh from GitHub',
     icon: <RefreshIcon className={iconClass} />,
@@ -171,6 +209,7 @@ function inboxActions(item: InboxItem, tab: TriageTab, triage: TriageActions, wo
         },
       },
       pin,
+      ...mark,
       { ...refresh, divided: true },
     ]
   }
@@ -188,6 +227,7 @@ function inboxActions(item: InboxItem, tab: TriageTab, triage: TriageActions, wo
         },
       },
       pin,
+      ...mark,
       repository,
       { ...refresh, divided: true },
     ]
@@ -196,6 +236,7 @@ function inboxActions(item: InboxItem, tab: TriageTab, triage: TriageActions, wo
   return [
     refresh,
     pin,
+    ...mark,
     repository,
     {
       label: 'Snooze',
@@ -321,6 +362,7 @@ function githubEdits(item: InboxItem, edits: EditActions, work: RowWork, start: 
 // Its items are built only as it opens.
 export function ItemMenu({ item, tab, triage, edits, work, start }: ItemMenuProps) {
   const autopilot = use(AutopilotMenuContext)
+  const { unread: unreadDots } = use(CardPrefsContext)
   const onOpen = edits.onOpen
   const review: MenuItem[] =
     onOpen === undefined
@@ -344,7 +386,7 @@ export function ItemMenu({ item, tab, triage, edits, work, start }: ItemMenuProp
       label: 'Open on GitHub',
       icon: <ExternalIcon className={iconClass} />,
       onSelect: () => {
-        openExternal(item.url)
+        openOnGitHub(item, triage)
       },
     },
     {
@@ -359,7 +401,7 @@ export function ItemMenu({ item, tab, triage, edits, work, start }: ItemMenuProp
       icon: <InboxIcon className={iconClass} />,
       title: 'Snooze, dismiss, pin, mute, or refresh it. These stay on this Mac.',
       divided: true,
-      items: () => inboxActions(item, tab, triage, work, start),
+      items: () => inboxActions(item, tab, triage, work, start, unreadDots),
     },
     ...(autopilot === null
       ? []

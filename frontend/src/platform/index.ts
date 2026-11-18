@@ -770,6 +770,10 @@ export const {
   Unpin: unpinItem,
   Unassign: unassignItem,
   RemoveReviewRequest: removeReviewRequest,
+  // MarkSeen marks the items with ids read, and MarkUnseen the one with id unread, on this
+  // Mac alone. Neither tells the window the inbox changed: it reads the inbox again itself.
+  MarkSeen: markItemsSeen,
+  MarkUnseen: markItemUnseen,
   // ItemsByID returns the stored items among ids, listed or not, each as a list shows it,
   // newest activity first: the rows of a routine's Watching list.
   ItemsByID: itemsByID,
@@ -928,6 +932,7 @@ export const {
   SetHiddenLabels: setHiddenLabels,
   SetCardAvatars: setCardAvatars,
   SetCardDensity: setCardDensity,
+  SetCardUnread: setCardUnread,
   SetBranchRules: setBranchRules,
   SetRepoRule: setRepoRule,
   SetMergeMethod: setMergeMethod,

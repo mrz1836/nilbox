@@ -1076,7 +1076,8 @@ func unreadMove(item *passItem, test bool) bool {
 }
 
 // storeWatchedItem stores what a search said of an item, with its repository, and its
-// details when the pass read them, and returns its id.
+// details when the pass read them, and returns its id. An item it stores new counts as
+// seen at its activity: a watched item isn't news.
 func (w *writer) storeWatchedItem(ctx context.Context, it github.WatchItem) (int64, error) {
 	repoID, err := w.watchedRepoID(ctx, it)
 	if err != nil {
@@ -1088,7 +1089,7 @@ func (w *writer) storeWatchedItem(ctx context.Context, it github.WatchItem) (int
 		NodeID: it.NodeID, Title: it.Title, URL: it.URL, AuthorLogin: it.AuthorLogin, AuthorType: it.AuthorType,
 		AuthorAssociation: it.AuthorAssociation, IsCrossRepository: it.IsCrossRepository, IsDraft: it.IsDraft,
 		HeadRef: it.HeadRef, ItemCreatedAt: it.CreatedAt.UTC(), ItemUpdatedAt: it.UpdatedAt.UTC(), FetchedAt: w.now,
-		State: it.State, ClosedAt: timeOrNil(it.ClosedAt),
+		State: it.State, ClosedAt: timeOrNil(it.ClosedAt), SeenActivityAt: new(it.UpdatedAt.UTC()),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("save the watched item %s: %w", it.Ref(), err)

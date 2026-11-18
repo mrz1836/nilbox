@@ -454,6 +454,19 @@ func (q *Queries) GetViewerVerdict(ctx context.Context, id int64) (GetViewerVerd
 	return i, err
 }
 
+const hasItems = `-- name: HasItems :one
+SELECT CAST(EXISTS (SELECT 1 FROM items WHERE account_id = ?) AS BOOLEAN) AS has_items
+`
+
+// HasItems reports whether any item is stored for the account with account_id: a whole
+// refresh that finds none is the account's first load, whose new items count as seen.
+func (q *Queries) HasItems(ctx context.Context, accountID int64) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasItems, accountID)
+	var has_items bool
+	err := row.Scan(&has_items)
+	return has_items, err
+}
+
 const leaveAnsweredReview = `-- name: LeaveAnsweredReview :exec
 UPDATE items SET reason_review_requested = 0, review_left_at = ?, review_requested_at = NULL
 WHERE id = ? AND reason_review_requested = 1
@@ -530,7 +543,7 @@ SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
-    i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url,
+    i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url, i.seen_activity_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals,
@@ -572,6 +585,7 @@ type ListItemsRow struct {
 	ViewerReviewCommit    string
 	ReviewLeftAt          *time.Time
 	AuthorAvatarURL       string
+	SeenActivityAt        *time.Time
 	DetailsItemID         *int64
 	Labels                *string
 	Projects              *string
@@ -614,8 +628,9 @@ type ListItemsRow struct {
 	PinnedBy              *int64
 }
 
-// ListItems returns every listed item of the account with account_id, with its
-// repository, its details when a refresh has read them, its last file check, and its
+// ListItems returns every listed item of the account with account_id, with the activity the
+// user last saw on it, its repository, its details when a refresh has read them, its last
+// file check, and its
 // triage state with the routines that set it: the pinned items first, the most recently
 // pinned first, then the rest by newest activity. A column of a missing details, file
 // check, or triage row is NULL.
@@ -651,6 +666,7 @@ func (q *Queries) ListItems(ctx context.Context, accountID int64) ([]ListItemsRo
 			&i.ViewerReviewCommit,
 			&i.ReviewLeftAt,
 			&i.AuthorAvatarURL,
+			&i.SeenActivityAt,
 			&i.DetailsItemID,
 			&i.Labels,
 			&i.Projects,
@@ -710,7 +726,7 @@ SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
-    i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url,
+    i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url, i.seen_activity_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals,
@@ -756,6 +772,7 @@ type ListItemsByIDRow struct {
 	ViewerReviewCommit    string
 	ReviewLeftAt          *time.Time
 	AuthorAvatarURL       string
+	SeenActivityAt        *time.Time
 	DetailsItemID         *int64
 	Labels                *string
 	Projects              *string
@@ -845,6 +862,7 @@ func (q *Queries) ListItemsByID(ctx context.Context, arg ListItemsByIDParams) ([
 			&i.ViewerReviewCommit,
 			&i.ReviewLeftAt,
 			&i.AuthorAvatarURL,
+			&i.SeenActivityAt,
 			&i.DetailsItemID,
 			&i.Labels,
 			&i.Projects,
@@ -1468,6 +1486,67 @@ func (q *Queries) ListWatchedItems(ctx context.Context, arg ListWatchedItemsPara
 	return items, nil
 }
 
+const markSeen = `-- name: MarkSeen :execrows
+UPDATE items SET
+    seen_activity_at = CASE WHEN item_updated_at > ?1 THEN item_updated_at ELSE ?1 END
+WHERE account_id = ?2
+  AND (seen_activity_at IS NULL
+    OR seen_activity_at < CASE WHEN item_updated_at > ?1 THEN item_updated_at ELSE ?1 END)
+  AND id IN (/*SLICE:ids*/?)
+`
+
+type MarkSeenParams struct {
+	Now       time.Time
+	AccountID int64
+	Ids       []int64
+}
+
+// MarkSeen records that the user saw the items of the account with account_id among ids:
+// each one's seen_activity_at becomes the later of its activity and now, so a read that
+// lands after the mark with activity from before it leaves the item seen. It returns how
+// many it moved; one already stamped at that time or later is left alone. ids comes last,
+// so the parameters before it keep their numbers however long it is; it is never empty.
+func (q *Queries) MarkSeen(ctx context.Context, arg MarkSeenParams) (int64, error) {
+	query := markSeen
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Now)
+	queryParams = append(queryParams, arg.AccountID)
+	if len(arg.Ids) > 0 {
+		for _, v := range arg.Ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(arg.Ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	result, err := q.db.ExecContext(ctx, query, queryParams...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const markUnseen = `-- name: MarkUnseen :execrows
+UPDATE items SET seen_activity_at = NULL
+WHERE account_id = ? AND id = ? AND seen_activity_at IS NOT NULL
+`
+
+type MarkUnseenParams struct {
+	AccountID int64
+	ID        int64
+}
+
+// MarkUnseen forgets that the user saw the item of the account with account_id with id, so
+// it reads unread, and returns how many it changed: none when it was never seen, or isn't
+// the account's.
+func (q *Queries) MarkUnseen(ctx context.Context, arg MarkUnseenParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markUnseen, arg.AccountID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const noteViewerReview = `-- name: NoteViewerReview :exec
 UPDATE items SET
     viewer_review_state = ?1,
@@ -1642,7 +1721,8 @@ type UpdateItemParams struct {
 // LeaveAnsweredReview, run after it, takes a pull request out of the review-requested list.
 // A bot author's picture URL is rewritten too, but a read that brought none for the same
 // author keeps the stored one: a routine's watched read doesn't ask for it, and a whole
-// refresh applies such a read again on top of its own (see order.go).
+// refresh applies such a read again on top of its own (see order.go). The activity the user
+// last saw stays, so newer activity makes a card the user saw unread.
 func (q *Queries) UpdateItem(ctx context.Context, arg UpdateItemParams) error {
 	_, err := q.db.ExecContext(ctx, updateItem,
 		arg.NodeID,
@@ -1670,8 +1750,9 @@ INSERT INTO items (
     account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_avatar_url,
     author_association, is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at,
     reason_review_requested, reason_authored, reason_assigned, fetched_at, state, review_requested_at, assigned_at,
-    reason_reviewed, reason_pushed, viewer_review_state, viewer_review_commit, viewer_review_at, viewer_review_seen_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    reason_reviewed, reason_pushed, viewer_review_state, viewer_review_commit, viewer_review_at, viewer_review_seen_at,
+    seen_activity_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     node_id = excluded.node_id,
     title = excluded.title,
@@ -1761,6 +1842,7 @@ type UpsertItemParams struct {
 	ViewerReviewCommit    string
 	ViewerReviewAt        *time.Time
 	ViewerReviewSeenAt    *time.Time
+	SeenActivityAt        *time.Time
 }
 
 type UpsertItemRow struct {
@@ -1784,7 +1866,9 @@ type UpsertItemRow struct {
 // assigned_at keep when the item first arrived in each list while it stays in it, stamped
 // with fetched_at when it arrives; ClearArrivalStamps clears them once it leaves.
 // author_avatar_url is a bot author's picture URL, ” for any other author (see
-// 0021_author_avatar_url).
+// 0021_author_avatar_url). seen_activity_at, the activity the user last saw, is written only
+// when the item is new, NULL (unread) but on an account's first load, and the update leaves
+// it as it is: only the window's marks move it (see 0022_seen_activity).
 func (q *Queries) UpsertItem(ctx context.Context, arg UpsertItemParams) (UpsertItemRow, error) {
 	row := q.db.QueryRowContext(ctx, upsertItem,
 		arg.AccountID,
@@ -1816,6 +1900,7 @@ func (q *Queries) UpsertItem(ctx context.Context, arg UpsertItemParams) (UpsertI
 		arg.ViewerReviewCommit,
 		arg.ViewerReviewAt,
 		arg.ViewerReviewSeenAt,
+		arg.SeenActivityAt,
 	)
 	var i UpsertItemRow
 	err := row.Scan(

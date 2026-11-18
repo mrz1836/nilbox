@@ -59,6 +59,25 @@ export function ItemsByID(ids: number[] | null): $CancellablePromise<$models.Ite
 }
 
 /**
+ * MarkSeen records that the user saw the items with ids: each one's seen stamp becomes the
+ * later of its last activity and now, so a read that lands after the mark with activity
+ * from before it leaves the item seen. Only the signed-in account's items are marked; an
+ * id with no stored item, or another account's, is left alone.
+ */
+export function MarkSeen(ids: number[] | null): $CancellablePromise<void> {
+    return $Call.ByID(2080825752, ids);
+}
+
+/**
+ * MarkUnseen forgets that the user saw the item with id, so it reads unread until they see
+ * it again. Only the signed-in account's item is marked; an id with no stored item, or
+ * another account's, is left alone.
+ */
+export function MarkUnseen(id: number): $CancellablePromise<void> {
+    return $Call.ByID(3996600011, id);
+}
+
+/**
  * Pin keeps an item at the top of every list it is in, above the items not pinned, the
  * most recently pinned first, and returns the new snapshot. A snoozed or dismissed item
  * stays set aside and comes back pinned. Pinning a pinned item keeps its place, and makes

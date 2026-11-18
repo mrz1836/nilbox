@@ -782,6 +782,49 @@ describe('WatchingList', () => {
     })
   })
 
+  it('marks a watched item read as its sheet opens, steps away, and closes, and reads the rows again after each mark', async () => {
+    // What the backend stores, which the marks change.
+    let watched = [
+      item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size', unread: true }),
+      item({ id: 4, kind: 'issue', number: 10, title: 'The widget forgets its place', unread: true }),
+    ]
+    const titleOf = (id: number) => watched.find((w) => w.id === id)?.title ?? ''
+
+    platform.routineWatching.mockResolvedValue([2, 4])
+    platform.itemsByID.mockImplementation(() => Promise.resolve(watched))
+    platform.markItemsSeen.mockImplementation((ids) => {
+      watched = watched.map((w) => (ids?.includes(w.id) === true ? { ...w, unread: false } : w))
+
+      return Promise.resolve()
+    })
+    platform.openIssue.mockImplementation((id) => Promise.resolve(issue({ id, title: titleOf(id) })))
+    platform.refreshIssue.mockImplementation((id) => Promise.resolve(issue({ id, title: titleOf(id) })))
+    render(<Watching />, { wrapper: rows })
+
+    expect(await screen.findAllByTitle('New since you last opened it')).toHaveLength(2)
+
+    await userEvent.click(screen.getByRole('button', { name: 'The widget forgets its size' }))
+    expect(await screen.findByRole('dialog', { name: 'The widget forgets its size' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(platform.markItemsSeen).toHaveBeenCalledExactlyOnceWith([2])
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    expect(await screen.findByRole('dialog', { name: 'The widget forgets its place' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(platform.markItemsSeen, 'the one left and the one opened').toHaveBeenLastCalledWith([2, 4])
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() => {
+      expect(platform.markItemsSeen, 'the one it closed on').toHaveBeenLastCalledWith([4])
+    })
+    await waitFor(() => {
+      expect(screen.queryByTitle('New since you last opened it'), 'the rows read again').not.toBeInTheDocument()
+    })
+    expect(platform.markItemsSeen).toHaveBeenCalledTimes(3)
+  })
+
   it('dismisses a watched row through the inbox’s own triage, and reads the rows again as the inbox changes', async () => {
     platform.routineWatching.mockResolvedValue([1])
     platform.itemsByID.mockResolvedValue([item()])

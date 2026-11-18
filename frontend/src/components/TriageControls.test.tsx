@@ -24,6 +24,8 @@ function triageActions(): TriageActions {
     repoRules: { pinned: [], muted: [] },
     onRepoRule: vi.fn(),
     onRepoRuleSettings: vi.fn(),
+    onMarkRead: vi.fn(),
+    onMarkUnread: vi.fn(),
   }
 }
 

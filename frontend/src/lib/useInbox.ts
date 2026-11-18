@@ -4,6 +4,8 @@ import {
   dismissItem,
   refreshItem as refreshInboxItem,
   getInboxSnapshot,
+  markItemsSeen,
+  markItemUnseen,
   on,
   pinItem,
   refreshInbox,
@@ -64,6 +66,18 @@ export interface InboxState {
   // shown, the item gone from that list, or with why it failed.
   unassign: (id: number) => Promise<Result<InboxSnapshot>>
   removeReviewRequest: (id: number) => Promise<Result<InboxSnapshot>>
+  // markRead marks items read, and markUnread one unread, on this Mac alone, whatever
+  // Settings → Cards' Unread dots says: the window marks what the user saw and did (an
+  // item's sheet opening, stepping away, or closing, the item opened on GitHub, a card's
+  // edits on GitHub), and a card's menu and peek offer both. Each shows at once, and
+  // resolves with the new inbox once it is stored, or with why it failed, when the items
+  // go back as they were. A mark tells no one the inbox changed, so each reads it back.
+  markRead: (ids: readonly number[]) => Promise<Result<InboxSnapshot>>
+  markUnread: (id: number) => Promise<Result<InboxSnapshot>>
+  // marks counts the marks stored since the window opened, so a list that reads its items
+  // itself (a routine's Watching list) reads them again after one, as it does on the
+  // shell's update, which a mark never sends.
+  marks: number
 }
 
 // Answer is a request's inbox, with the request's number.
@@ -81,9 +95,9 @@ function newer(a: Answer | null | undefined, b: Answer | null | undefined): Answ
   return b === null || b === undefined || a.n > b.n ? a : b
 }
 
-// showTriage applies a triage change still under way to the inbox shown.
-function showTriage(snapshot: InboxSnapshot | null, change: TriageChange): InboxSnapshot | null {
-  return snapshot === null ? null : applyTriage(snapshot, change)
+// showTriage applies the changes of a triage action still under way to the inbox shown.
+function showTriage(snapshot: InboxSnapshot | null, changes: readonly TriageChange[]): InboxSnapshot | null {
+  return snapshot === null ? null : changes.reduce((shown, change) => applyTriage(shown, change), snapshot)
 }
 
 // useInbox loads the stored inbox, loads it again whenever the shell reports a change
@@ -191,16 +205,16 @@ export function useInbox(): InboxState {
     void refresher.run(n)
   }
 
-  // triage runs a triage call, showing change at once while it is under way. It runs as
-  // a transition, which holds the change until the answer that replaces it is shown.
+  // triage runs a triage call, showing changes at once while it is under way. It runs as
+  // a transition, which holds the changes until the answer that replaces them is shown.
   // Transitions are kept to quick, local writes such as these: while any async transition
   // is under way, React holds back the updates of every other.
-  const triage = (change: TriageChange, call: () => PromiseLike<InboxSnapshot>) =>
+  const triage = (changes: readonly TriageChange[], call: () => PromiseLike<Answer>) =>
     new Promise<Result<InboxSnapshot>>((resolve) => {
       startTransition(async () => {
-        showChange(change)
+        showChange(changes)
 
-        const result = await attempt(ask(next(), call()))
+        const result = await attempt(call())
 
         if (result.ok) {
           startTransition(() => {
@@ -211,6 +225,29 @@ export function useInbox(): InboxState {
         resolve(result.ok ? { ok: true, data: result.data.snapshot } : result)
       })
     })
+
+  // change is a triage call numbered as it starts, which shows change at once.
+  const change = (set: TriageChange, call: () => PromiseLike<InboxSnapshot>) => triage([set], () => ask(next(), call()))
+
+  const [marks, setMarks] = useState(0)
+
+  // mark stores a seen mark of the items with ids, showing it at once. A mark tells no one,
+  // so the inbox is read back once it is stored, numbered then, so no read asked before
+  // the mark shows the items as they were.
+  const mark = async (ids: readonly number[], unread: boolean, store: () => PromiseLike<void>) => {
+    const changes = ids.map((id) => ({ id, set: { unread } }))
+    const result = await triage(changes, async () => {
+      await store()
+
+      return ask(next(), getInboxSnapshot())
+    })
+
+    if (result.ok) {
+      setMarks((n) => n + 1)
+    }
+
+    return result
+  }
 
   const stamp = () => clock.read().toISOString()
 
@@ -228,20 +265,23 @@ export function useInbox(): InboxState {
     // The user's own triage takes over the routine's mark it changes, as the backend's
     // does: a dismissal, a snooze, or a restore is the user's, and so is a pin, or none.
     dismiss: (id) =>
-      triage({ id, set: { dismissedAt: stamp(), snoozedUntil: '', setAsideBy: 0 } }, () => dismissItem(id)),
+      change({ id, set: { dismissedAt: stamp(), snoozedUntil: '', setAsideBy: 0 } }, () => dismissItem(id)),
     snooze: (id, days) =>
-      triage(
+      change(
         { id, set: { snoozedUntil: snoozeEnd(clock.read(), days).toISOString(), dismissedAt: '', setAsideBy: 0 } },
         () => snoozeItem(id, days),
       ),
     restore: (id) =>
-      triage({ id, set: { dismissedAt: '', snoozedUntil: '', wokeBy: null, setAsideBy: 0 } }, () => restoreItem(id)),
-    pin: (id) => triage({ id, set: { pinnedAt: stamp(), pinnedBy: 0 } }, () => pinItem(id)),
-    unpin: (id) => triage({ id, set: { pinnedAt: '', pinnedBy: 0 } }, () => unpinItem(id)),
+      change({ id, set: { dismissedAt: '', snoozedUntil: '', wokeBy: null, setAsideBy: 0 } }, () => restoreItem(id)),
+    pin: (id) => change({ id, set: { pinnedAt: stamp(), pinnedBy: 0 } }, () => pinItem(id)),
+    unpin: (id) => change({ id, set: { pinnedAt: '', pinnedBy: 0 } }, () => unpinItem(id)),
     refreshItem: (id) => attempt(record(next(), refreshInboxItem(id))),
     // An edit waits on GitHub, so it is not a transition: it would hold back every other
     // update while it runs.
     unassign: (id) => attempt(record(next(), unassignItem(id))),
     removeReviewRequest: (id) => attempt(record(next(), removeItemReviewRequest(id))),
+    markRead: (ids) => mark(ids, false, () => markItemsSeen([...ids])),
+    markUnread: (id) => mark([id], true, () => markItemUnseen(id)),
+    marks,
   }
 }

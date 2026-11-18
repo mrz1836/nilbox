@@ -1818,8 +1818,10 @@ Cards** can make every card one line instead (**Compact cards**, below).
   for a bot (an accent ring for your own), or until it arrives, and should it never, their
   initials on a color their login picks, or a bot's mark; with the pull request or issue mark
   at its corner, grey for a draft.
-- **Line 1:** the title, after a pin when the item is pinned (hover the pin for who pinned it:
-  you, a routine, or a rule for its repository or org) and **Draft** before a draft's title,
+- **Line 1:** the title, after a blue dot when something happened on the item since you last
+  opened it (**Unread dots**, below) and a pin when the item is pinned (hover the pin for who
+  pinned it: you, a routine, or a rule for its repository or org) and **Draft** before a draft's
+  title,
   then up to two labels in their GitHub colors and **+N** for the rest, which give way before
   the title does. A long title is cut short; hover it for all of it. Clicking a pull request's
   title opens it in the [review sheet](#reviewing-a-pull-request), and an issue's in the
@@ -1874,7 +1876,8 @@ commits, the head branch and whether it comes from a fork, and the sensitive fil
 category), and what is around it (the agent session and how it started, what the routines did
 with it, why it is here, and every label). Its buttons repeat your next move, offer **Review**
 or **Read** when that move doesn't open the item, open the agent's launch options, and snooze,
-dismiss, pin, or open it on GitHub. Click again to close it.
+dismiss, pin, or open it on GitHub, and, with **Unread dots** on, **Mark as read** or **Mark as
+unread**. Click again to close it.
 
 **A narrow window.** The cards follow their list's width rather than the window's: below about
 1,000 pixels the action column narrows, then the labels and the size go, then the agent
@@ -1887,7 +1890,7 @@ two-line card above, and **Compact** fits about three times as many, one line ea
 per question so you can read down each one. From the left: the edge; the pull request or
 issue mark (grey for a draft); the repository, its org dimmed; the title and number, the
 labels as up to six dots in their colors (hover them for their names; hidden labels stay
-hidden), and the pin; the story as a chip tinted with the edge's color; the risk as its
+hidden), the pin, and the unread dot; the story as a chip tinted with the edge's color; the risk as its
 shield alone (hover it for who opened it and the sensitive files); the track as three dots,
 filled for a tick, a cross, or ↻, half-filled for runs held, pinging while checks run,
 dashed while a step waits and dotted with nothing yet to say (hover them for the three
@@ -1908,6 +1911,26 @@ both without your token and kept in the database, each downloaded again at most 
 and a failed one not tried again for 30 minutes. Turned off, the cards show initials and the
 bot mark, and nothing is downloaded for them; with the cards compact, which show no picture,
 nothing is downloaded either. A routine's Watching list shows initials and the bot mark alone.
+
+**Unread dots.** A blue dot before a card's title (after it, on a compact card) says something
+happened on the item since you last opened it, such as a new commit, a comment, or a review,
+as GitHub's last activity on the item says. Opening its review or issue sheet clears it, from the
+inbox or a routine's Watching list, and so does opening it on GitHub (**⌘-click** on the title,
+the **↗** beside it, or **Open on GitHub** in the card's menu or details). What you do in a
+sheet counts as seen too: the card is marked again as the sheet steps on to the next card (← →)
+or closes, so your own review, comment, or merge never brings the dot back, and so is a card
+you took yourself off on GitHub (**Unassign me**, **Remove me as reviewer**). **Mark as read**
+and **Mark as unread**, in the card's **⋯** menu under **Inbox actions** and in its details,
+set it by hand: an unread card keeps its dot until you open it again. Something you do on
+github.com itself still lights the dot, since GitHub's last activity doesn't say who acted.
+Updating the app marks every item already in your inbox read, and so does your first sign-in
+for everything it brings; an item that arrives later starts unread, unless only a routine's
+search found it.
+**Settings → Cards** → **Unread dots** turns the dots off and on (on to start with); off, the
+cards show no dot and their menus no **Mark as** item, but what you open is still marked, so the
+dots are right when you turn them back on. All of it stays on this Mac: nothing is sent to
+GitHub, it doesn't mark your [GitHub notifications](#github-notifications) read, and theirs
+don't drive it.
 
 **Hidden labels.** **Settings → Cards** lists the labels the cards leave out, in every
 repository: `size/*` to start with, since each card already shows its own size grade, so
@@ -2203,11 +2226,12 @@ you hover the card or move focus into it. It gathers everything you can do with 
   **View issue…**, on an issue, in the [issue sheet](#reading-an-issue).
 - **Open on GitHub** and **Copy link**.
 - **Inbox actions**, a submenu with the card's triage buttons: **Refresh from GitHub**, **Pin to
-  top** (or **Unpin**), **Pin or mute repository**, with a submenu that pins or mutes the card's
-  repository or its whole org, **Snooze**, with a submenu of lengths, and **Dismiss**; on a card
-  in the **Snoozed** or **Dismissed** tab, **Unsnooze** or **Restore** instead, and in the
-  **Muted** tab, **Unmute**. The hover buttons stay, so the everyday ones are still one click
-  away.
+  top** (or **Unpin**), **Mark as read** on an unread card or **Mark as unread** on one read
+  (while [unread dots](#inbox-cards) are on), **Pin or mute repository**, with a submenu that
+  pins or mutes the card's repository or its whole org, **Snooze**, with a submenu of lengths,
+  and **Dismiss**; on a card in the **Snoozed** or **Dismissed** tab, **Unsnooze** or
+  **Restore** instead, and in the **Muted** tab, **Unmute**. The hover buttons stay, so the
+  everyday ones are still one click away.
 - **On GitHub**, when they apply: **Unassign me** on an item assigned to you, and **Remove me as
   reviewer** on a pull request that asks for your review.
 

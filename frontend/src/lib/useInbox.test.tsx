@@ -13,11 +13,13 @@ vi.mock('../platform', () => import('../test/platform').then((fake) => fake.plat
 // held is an answer the test lets go of, so what shows while a call is under way can be read.
 function held() {
   let resolve: (value: InboxSnapshot) => void = () => undefined
-  const promise = new Promise<InboxSnapshot>((done) => {
+  let reject: (err: Error) => void = () => undefined
+  const promise = new Promise<InboxSnapshot>((done, fail) => {
     resolve = done
+    reject = fail
   })
 
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 // marked is an inbox whose one item a routine snoozed and pinned.
@@ -192,5 +194,169 @@ describe('useInbox’s refreshing', () => {
       emit('inbox:progress', { phase: 'search', done: 0, total: 0 })
     })
     expect(result.current.caughtUp).toBe(true)
+  })
+})
+
+describe('useInbox’s seen marks', () => {
+  // unreadInbox is an inbox whose one item has activity the user hasn't seen, or has.
+  function unreadInbox(unread: boolean) {
+    return snapshot({ reviewRequested: list([item({ unread })]) })
+  }
+
+  // shownUnread reads whether the inbox shows its item unread.
+  function shownUnread(state: ReturnType<typeof useInbox>) {
+    return state.snapshot === null ? undefined : findItem(state.snapshot, 1)?.unread
+  }
+
+  it('shows a read mark at once, and the inbox read back once it is stored', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(unreadInbox(true))
+
+    const stored = held()
+
+    platform.markItemsSeen.mockReturnValue(stored.promise.then(() => undefined))
+
+    const { result } = renderHook(() => useInbox(), { wrapper: at() })
+
+    await waitFor(() => {
+      expect(shownUnread(result.current)).toBe(true)
+    })
+
+    let done: Promise<unknown> = Promise.resolve()
+
+    act(() => {
+      done = result.current.markRead([1])
+    })
+
+    await waitFor(() => {
+      expect(shownUnread(result.current), 'at once').toBe(false)
+    })
+    expect(platform.markItemsSeen).toHaveBeenCalledExactlyOnceWith([1])
+    expect(platform.getInboxSnapshot, 'nothing read back before the mark is stored').toHaveBeenCalledOnce()
+
+    platform.getInboxSnapshot.mockResolvedValue(unreadInbox(false))
+    await act(async () => {
+      stored.resolve(unreadInbox(false))
+      await done
+    })
+
+    expect(platform.getInboxSnapshot).toHaveBeenCalledTimes(2)
+    expect(shownUnread(result.current)).toBe(false)
+    expect(result.current.marks).toBe(1)
+  })
+
+  it('shows an unread mark at once, and puts the item back when it can’t be stored', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(unreadInbox(false))
+    platform.markItemUnseen.mockRejectedValue(new Error('database is locked'))
+
+    const { result } = renderHook(() => useInbox(), { wrapper: at() })
+
+    await waitFor(() => {
+      expect(shownUnread(result.current)).toBe(false)
+    })
+
+    let outcome: Awaited<ReturnType<ReturnType<typeof useInbox>['markUnread']>> | undefined
+
+    await act(async () => {
+      outcome = await result.current.markUnread(1)
+    })
+
+    expect(platform.markItemUnseen).toHaveBeenCalledExactlyOnceWith(1)
+    expect(outcome).toEqual({ ok: false, error: 'database is locked' })
+    expect(shownUnread(result.current), 'back as it was').toBe(false)
+    expect(platform.getInboxSnapshot, 'nothing read back').toHaveBeenCalledOnce()
+    expect(result.current.marks).toBe(0)
+  })
+
+  it('reverts a read mark that can’t be stored', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(unreadInbox(true))
+
+    const stored = held()
+
+    platform.markItemsSeen.mockReturnValue(stored.promise.then(() => undefined))
+
+    const { result } = renderHook(() => useInbox(), { wrapper: at() })
+
+    await waitFor(() => {
+      expect(shownUnread(result.current)).toBe(true)
+    })
+
+    let done: Promise<unknown> = Promise.resolve()
+
+    act(() => {
+      done = result.current.markRead([1])
+    })
+
+    await waitFor(() => {
+      expect(shownUnread(result.current)).toBe(false)
+    })
+
+    await act(async () => {
+      stored.reject(new Error('database is locked'))
+      await done
+    })
+
+    await waitFor(() => {
+      expect(shownUnread(result.current), 'the dot back').toBe(true)
+    })
+  })
+
+  it('reads the inbox back once the mark is stored, so a read asked while it was stored never shows the item unread', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(unreadInbox(true))
+
+    const stored = held()
+
+    platform.markItemsSeen.mockReturnValue(stored.promise.then(() => undefined))
+
+    const { result } = renderHook(() => useInbox(), { wrapper: at() })
+
+    await waitFor(() => {
+      expect(shownUnread(result.current)).toBe(true)
+    })
+
+    let done: Promise<unknown> = Promise.resolve()
+
+    act(() => {
+      done = result.current.markRead([1])
+    })
+
+    // An update's read goes out while the mark is being stored, and answers, from before
+    // it, last of all.
+    const during = held()
+
+    platform.getInboxSnapshot.mockReturnValueOnce(during.promise)
+    act(() => {
+      emit('inbox:updated')
+    })
+    platform.getInboxSnapshot.mockResolvedValue(unreadInbox(false))
+    await act(async () => {
+      stored.resolve(unreadInbox(false))
+      await done
+    })
+    await act(async () => {
+      during.resolve(unreadInbox(true))
+      await Promise.resolve()
+    })
+
+    expect(shownUnread(result.current)).toBe(false)
+  })
+
+  it('stores a mark that changes nothing shown, and keeps the inbox shown as it was', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(unreadInbox(false))
+
+    const { result } = renderHook(() => useInbox(), { wrapper: at() })
+
+    await waitFor(() => {
+      expect(result.current.snapshot).not.toBeNull()
+    })
+
+    const was = result.current.snapshot
+
+    await act(async () => {
+      await result.current.markRead([1, 9])
+    })
+
+    expect(platform.markItemsSeen).toHaveBeenCalledExactlyOnceWith([1, 9])
+    expect(result.current.snapshot, 'the same objects, so no card renders').toBe(was)
+    expect(result.current.marks).toBe(1)
   })
 })

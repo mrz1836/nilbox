@@ -31,6 +31,11 @@ type writer struct {
 	// whole refresh, whose searches say which lists each item is in.
 	login string
 
+	// firstLoad is set for a whole refresh that found no item stored for the account
+	// before it (see noteFirstLoad): the items it stores new count as seen, so a first
+	// sign-in doesn't light every card. Otherwise a new item starts unread.
+	firstLoad bool
+
 	// details holds the items' details by node ID. An item without an entry keeps the
 	// details stored before.
 	details map[string]github.ItemDetails
@@ -70,7 +75,8 @@ func newWriter(q *queries.Queries, p *prefs.Store, now time.Time) *writer {
 	return &writer{q: q, prefs: p, now: now, repos: make(map[string]int64)}
 }
 
-// saveAccount upserts the signed-in account and remembers its id.
+// saveAccount upserts the signed-in account and remembers its id, and whether this is its
+// first load (see noteFirstLoad), before any item is written.
 func (w *writer) saveAccount(ctx context.Context, login string) error {
 	id, err := w.q.UpsertAccount(ctx, queries.UpsertAccountParams{Login: login, CreatedAt: w.now, UpdatedAt: w.now})
 	if err != nil {
@@ -79,7 +85,7 @@ func (w *writer) saveAccount(ctx context.Context, login string) error {
 
 	w.accountID = id
 
-	return nil
+	return w.noteFirstLoad(ctx)
 }
 
 // saveItems clears every reason flag for the account, then upserts each fetched item with
@@ -113,6 +119,30 @@ func (w *writer) saveItems(ctx context.Context, inbox *github.Inbox) error {
 	}
 
 	return w.wakeSnoozed(ctx)
+}
+
+// noteFirstLoad sets firstLoad when no item is stored for the account yet: the account's
+// first load.
+func (w *writer) noteFirstLoad(ctx context.Context) error {
+	stored, err := w.q.HasItems(ctx, w.accountID)
+	if err != nil {
+		return fmt.Errorf("read whether the account has items: %w", err)
+	}
+
+	w.firstLoad = !stored
+
+	return nil
+}
+
+// seenOnInsert is the seen stamp a whole refresh stores with an item it stores new, which
+// an item already stored keeps (see UpsertItem): its activity on the account's first load,
+// so it reads as seen, and nil, unread, on any later one.
+func (w *writer) seenOnInsert(it github.Item) *time.Time {
+	if !w.firstLoad {
+		return nil
+	}
+
+	return new(it.UpdatedAt.UTC())
 }
 
 // saveRepos records the repositories of items that were left out, so an archived
@@ -191,7 +221,7 @@ func (w *writer) saveItem(ctx context.Context, repoID int64, e *entry) error {
 		ReviewRequestedAt: stampIf(e.reviewRequested, w.now), AssignedAt: stampIf(e.assigned, w.now),
 		ReasonReviewed: e.reviewed, ReasonPushed: e.pushed, ViewerReviewState: verdictState(e.verdict),
 		ViewerReviewCommit: verdictCommit(e.verdict), ViewerReviewAt: timeOrNil(verdictAt(e.verdict)),
-		ViewerReviewSeenAt: timeOrNil(verdictAt(e.verdict)),
+		ViewerReviewSeenAt: timeOrNil(verdictAt(e.verdict)), SeenActivityAt: w.seenOnInsert(it),
 	})
 	if err != nil {
 		return fmt.Errorf("save the item %s: %w", it.Ref(), err)

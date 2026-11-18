@@ -286,6 +286,10 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
       keywords: ['avatars', 'profile pictures', 'photos', 'faces', 'people', 'bots', 'initials', 'bot mark'],
     },
     {
+      label: 'Unread dots',
+      keywords: ['unread', 'read', 'new', 'seen', 'blue dot', 'mark as read', 'mark as unread', 'activity'],
+    },
+    {
       label: 'Hidden labels',
       keywords: ['labels', 'size/*', 'size labels', 'hide', 'chips', 'card labels', 'patterns', 'restore the defaults'],
     },
