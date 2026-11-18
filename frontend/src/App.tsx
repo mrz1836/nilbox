@@ -59,6 +59,8 @@ import { useGitHubThreads } from './lib/useGitHubThreads'
 import { useServiceStatus } from './lib/useServiceStatus'
 import { useSessions } from './lib/useSessions'
 import { defaultHiddenLabels, HiddenLabelsContext, labelMatcher } from './lib/labels'
+import { CardPrefsContext, defaultCardPrefs, type CardPrefs } from './lib/cardPrefs'
+import { CardPicturesContext, useCardPictures } from './lib/pictures'
 import { agentName } from './lib/launch'
 import { offersProjects } from './lib/projects'
 import { useTextSize } from './lib/textSize'
@@ -836,6 +838,14 @@ export function App() {
   // pattern holds a line break: the settings refuse a control character in one.
   const hiddenKey = (config.settings?.hiddenLabels ?? defaultHiddenLabels).join('\n')
   const hideLabels = labelMatcher(hiddenKey.split('\n'))
+  // cardAvatars is Settings → Cards' Author pictures, a fresh install's until the settings
+  // load. cardPrefs are built from such primitives alone, so a save of the settings that
+  // leaves the cards' as they were makes no new value, and renders no card.
+  const cardAvatars = config.settings?.cardAvatars ?? defaultCardPrefs.avatars
+  const cardPrefs: CardPrefs = { avatars: cardAvatars }
+  // cardPictures are the pictures of the inbox's authors, asked for once the settings load
+  // and only while they say to show them, so a user who turned them off has none asked for.
+  const cardPictures = useCardPictures(config.items, config.settings !== null && cardAvatars)
   // routineMenu is what every item's ⋯ menu offers of Autopilot, while it is on, and the
   // dialogs and toasts its choices show.
   const routineMenu = useRoutineMenu(autopilot.routines, toastSeconds, (item) => {
@@ -1233,211 +1243,215 @@ export function App() {
           )}
           <main className="min-h-0 flex-1 overflow-y-auto">
             <HiddenLabelsContext value={hideLabels}>
-              <AutopilotMenuContext value={autopilotOn ? routineMenu.menu : null}>
-                <AutopilotRowsContext value={autopilotOn ? rows : null}>
-                  <Activity mode={mode('inbox')}>
-                    <InboxView
-                      inbox={inbox}
-                      triaged={triaged}
-                      launch={launch}
-                      resolutions={config.resolutions}
-                      worktrees={worktrees}
-                      sessions={agentSessions.byItem}
-                      snoozeDays={config.settings?.snoozeDays ?? defaultSnoozeDays}
-                      toastSeconds={toastSeconds}
-                      onSnoozeSettings={openSnoozeSettings}
-                      onFilesSettings={openFilesSettings}
-                      collapsed={sections.collapsed}
-                      onCollapse={sections.setCollapsed}
-                      reveal={revealer.reveal}
-                      showing={view === 'inbox'}
-                      offerProjects={offersProjects(inbox.snapshot, config.settings)}
-                      onDismissProjects={dismissProjects}
-                      inboxOrder={inboxOrder}
-                      filter={inboxFilter}
-                      onFilterBy={onFilterBy}
-                      onClearFilter={() => {
-                        go({ type: 'search', view: 'inbox', query: '' })
-                      }}
-                      drafts={{ review: reviewDrafts, issue: issueDrafts }}
-                      onManageReplies={openPrompts}
-                      onRelease={openRelease}
-                      repoRules={config.settings?.repoRules}
-                      onSettingsSaved={setSettings}
-                      onRepoRuleSettings={openRepoRuleSettings}
-                      reviewTab={config.settings?.reviewTab}
-                      onReviewTab={(tab) => {
-                        remember(setReviewTab(tab), 'the review sheet’s tab')
-                      }}
-                      conversationOrder={config.settings?.conversationOrder}
-                      onConversationOrder={(order) => {
-                        remember(setConversationOrder(order), 'the conversations’ order')
-                      }}
-                      onItemOpened={notifications.markItemRead}
-                    />
-                  </Activity>
-                  {nav.visited.has('notifications') && (
-                    <Activity mode={mode('notifications')}>
-                      <Suspense fallback={<PageLoading />}>
-                        <NotificationsView
-                          tab={notificationsTab}
-                          onTab={(tab) => {
-                            go({ type: 'notifications', tab })
-                            remember(setNotificationsTab(tab), 'the Notifications page’s tab')
+              <CardPrefsContext value={cardPrefs}>
+                <AutopilotMenuContext value={autopilotOn ? routineMenu.menu : null}>
+                  <AutopilotRowsContext value={autopilotOn ? rows : null}>
+                    <Activity mode={mode('inbox')}>
+                      <CardPicturesContext value={cardPictures}>
+                        <InboxView
+                          inbox={inbox}
+                          triaged={triaged}
+                          launch={launch}
+                          resolutions={config.resolutions}
+                          worktrees={worktrees}
+                          sessions={agentSessions.byItem}
+                          snoozeDays={config.settings?.snoozeDays ?? defaultSnoozeDays}
+                          toastSeconds={toastSeconds}
+                          onSnoozeSettings={openSnoozeSettings}
+                          onFilesSettings={openFilesSettings}
+                          collapsed={sections.collapsed}
+                          onCollapse={sections.setCollapsed}
+                          reveal={revealer.reveal}
+                          showing={view === 'inbox'}
+                          offerProjects={offersProjects(inbox.snapshot, config.settings)}
+                          onDismissProjects={dismissProjects}
+                          inboxOrder={inboxOrder}
+                          filter={inboxFilter}
+                          onFilterBy={onFilterBy}
+                          onClearFilter={() => {
+                            go({ type: 'search', view: 'inbox', query: '' })
                           }}
-                          lists={notificationLists}
-                          onLists={(lists) => {
-                            go({ type: 'notificationLists', lists })
+                          drafts={{ review: reviewDrafts, issue: issueDrafts }}
+                          onManageReplies={openPrompts}
+                          onRelease={openRelease}
+                          repoRules={config.settings?.repoRules}
+                          onSettingsSaved={setSettings}
+                          onRepoRuleSettings={openRepoRuleSettings}
+                          reviewTab={config.settings?.reviewTab}
+                          onReviewTab={(tab) => {
+                            remember(setReviewTab(tab), 'the review sheet’s tab')
                           }}
-                          query={notificationsQuery}
-                          onClearQuery={() => {
-                            go({ type: 'search', view: 'notifications', query: '' })
+                          conversationOrder={config.settings?.conversationOrder}
+                          onConversationOrder={(order) => {
+                            remember(setConversationOrder(order), 'the conversations’ order')
                           }}
-                          notifications={notifications}
-                          githubThreads={githubThreads}
-                          settings={config.settings}
-                          onSettingsSaved={saveSettings}
-                          snapshot={inbox.snapshot}
-                          onShowItem={(itemId) => {
-                            showItem(itemId, '')
-                          }}
-                          onOpen={openNotification}
-                          onNotificationSettings={openNotificationSettings}
-                          onGitHubSettings={openGitHubThreadsSettings}
+                          onItemOpened={notifications.markItemRead}
                         />
-                      </Suspense>
+                      </CardPicturesContext>
                     </Activity>
-                  )}
-                  {nav.visited.has('autopilot') && (
-                    <Activity mode={mode('autopilot')}>
-                      <Suspense fallback={<PageLoading />}>
-                        <div className="h-full">
-                          <AutopilotView
-                            autopilot={autopilot}
+                    {nav.visited.has('notifications') && (
+                      <Activity mode={mode('notifications')}>
+                        <Suspense fallback={<PageLoading />}>
+                          <NotificationsView
+                            tab={notificationsTab}
+                            onTab={(tab) => {
+                              go({ type: 'notifications', tab })
+                              remember(setNotificationsTab(tab), 'the Notifications page’s tab')
+                            }}
+                            lists={notificationLists}
+                            onLists={(lists) => {
+                              go({ type: 'notificationLists', lists })
+                            }}
+                            query={notificationsQuery}
+                            onClearQuery={() => {
+                              go({ type: 'search', view: 'notifications', query: '' })
+                            }}
+                            notifications={notifications}
+                            githubThreads={githubThreads}
                             settings={config.settings}
                             onSettingsSaved={saveSettings}
-                            request={autopilotRequest}
-                            kit={rowsKit}
-                            listed={(itemId) =>
-                              inbox.snapshot !== null && findItem(inbox.snapshot, itemId) !== undefined
-                            }
-                            onShowItem={showItem}
-                            onSettings={() => {
-                              openSettingsAt('autopilot')
+                            snapshot={inbox.snapshot}
+                            onShowItem={(itemId) => {
+                              showItem(itemId, '')
                             }}
-                            viewer={viewer}
-                            prompts={config.prompts}
+                            onOpen={openNotification}
+                            onNotificationSettings={openNotificationSettings}
+                            onGitHubSettings={openGitHubThreadsSettings}
+                          />
+                        </Suspense>
+                      </Activity>
+                    )}
+                    {nav.visited.has('autopilot') && (
+                      <Activity mode={mode('autopilot')}>
+                        <Suspense fallback={<PageLoading />}>
+                          <div className="h-full">
+                            <AutopilotView
+                              autopilot={autopilot}
+                              settings={config.settings}
+                              onSettingsSaved={saveSettings}
+                              request={autopilotRequest}
+                              kit={rowsKit}
+                              listed={(itemId) =>
+                                inbox.snapshot !== null && findItem(inbox.snapshot, itemId) !== undefined
+                              }
+                              onShowItem={showItem}
+                              onSettings={() => {
+                                openSettingsAt('autopilot')
+                              }}
+                              viewer={viewer}
+                              prompts={config.prompts}
+                              agents={config.agents}
+                              profiles={config.profiles}
+                              onEditPrompts={openPrompts}
+                              onShowInbox={() => {
+                                changeView('inbox')
+                              }}
+                              toastSeconds={toastSeconds}
+                            />
+                          </div>
+                        </Suspense>
+                      </Activity>
+                    )}
+                    {nav.visited.has('worktrees') && (
+                      <Activity mode={mode('worktrees')}>
+                        <Suspense fallback={<PageLoading />}>
+                          <WorktreesView
+                            reloadKey={sweeps.seq}
+                            onSnapshot={sweeps.listed}
+                            focusHistory={nav.historyFocus}
+                            agentName={(id) => agentName(config.agents, id)}
+                            launchFor={launchFor}
+                            branchRules={config.settings?.branches}
+                            onSummary={reportChange}
+                            query={worktreesQuery}
+                          />
+                        </Suspense>
+                      </Activity>
+                    )}
+                    {nav.visited.has('prompts') && (
+                      <Activity mode={mode('prompts')}>
+                        <Suspense fallback={<PageLoading />}>
+                          <div className="h-full">
+                            <PromptsView
+                              agents={config.agents}
+                              prompts={config.prompts}
+                              replies={config.replies}
+                              defaults={config.defaultPrompts}
+                              variables={config.variables}
+                              items={config.items}
+                              onChanged={reload}
+                            />
+                          </div>
+                        </Suspense>
+                      </Activity>
+                    )}
+                    {nav.visited.has('scripts') && (
+                      <Activity mode={mode('scripts')}>
+                        <Suspense fallback={<PageLoading />}>
+                          <div className="h-full">
+                            <ScriptsView
+                              terminal={config.settings?.terminal ?? null}
+                              runsIn={config.settings?.integrations.runsIn ?? 'app'}
+                              where={config.settings === null ? '' : cloneWhere(config.settings)}
+                              integrations={integrations}
+                              scriptsSwitch={config.settings?.integrations.switches.scripts ?? 'auto'}
+                              runs={scriptRuns}
+                              request={releaseRequest}
+                              runRequest={runRequest}
+                              onOpenSettings={openSettingsAt}
+                              lastPage={config.settings?.integrations.lastPage ?? ''}
+                              lastRepo={config.settings?.integrations.lastRepo ?? ''}
+                              onPage={(page) => {
+                                remember(setScriptsLastPage(page), 'the Scripts page shown')
+                              }}
+                              onRepo={(dir) => {
+                                remember(setScriptsLastRepo(dir), 'the clone Repo scripts shows')
+                              }}
+                              sections={config.settings?.integrations.sections ?? {}}
+                              onSection={(section, open) => {
+                                remember(setScriptsSectionOpen(section, open), 'a Scripts section opened or folded')
+                              }}
+                              showRuns={config.settings?.integrations.showRuns ?? false}
+                              onShowRuns={(on) => {
+                                remember(setShowRuns(on), 'whether a run shows beside Repo scripts')
+                              }}
+                              repoRules={config.settings?.repoRules}
+                              onSettingsSaved={setSettings}
+                            />
+                          </div>
+                        </Suspense>
+                      </Activity>
+                    )}
+                    {nav.visited.has('settings') && (
+                      <Activity mode={mode('settings')}>
+                        <Suspense fallback={<PageLoading />}>
+                          <SettingsView
+                            initialSection={nav.settingsSection}
+                            opened={nav.settingsOpened}
+                            settings={config.settings}
                             agents={config.agents}
                             profiles={config.profiles}
-                            onEditPrompts={openPrompts}
-                            onShowInbox={() => {
-                              changeView('inbox')
-                            }}
-                            toastSeconds={toastSeconds}
-                          />
-                        </div>
-                      </Suspense>
-                    </Activity>
-                  )}
-                  {nav.visited.has('worktrees') && (
-                    <Activity mode={mode('worktrees')}>
-                      <Suspense fallback={<PageLoading />}>
-                        <WorktreesView
-                          reloadKey={sweeps.seq}
-                          onSnapshot={sweeps.listed}
-                          focusHistory={nav.historyFocus}
-                          agentName={(id) => agentName(config.agents, id)}
-                          launchFor={launchFor}
-                          branchRules={config.settings?.branches}
-                          onSummary={reportChange}
-                          query={worktreesQuery}
-                        />
-                      </Suspense>
-                    </Activity>
-                  )}
-                  {nav.visited.has('prompts') && (
-                    <Activity mode={mode('prompts')}>
-                      <Suspense fallback={<PageLoading />}>
-                        <div className="h-full">
-                          <PromptsView
-                            agents={config.agents}
                             prompts={config.prompts}
-                            replies={config.replies}
-                            defaults={config.defaultPrompts}
-                            variables={config.variables}
-                            items={config.items}
-                            onChanged={reload}
+                            defaultPrompts={config.defaultPrompts}
+                            launchDefaults={config.launchDefaults}
+                            account={account}
+                            projectAccess={inbox.snapshot?.projectAccess ?? ''}
+                            theme={theme.theme}
+                            onThemeChange={theme.chooseTheme}
+                            onSaved={saveSettings}
+                            onLaunchChanged={reload}
+                            onClose={closeSettings}
+                            query={settingsQuery}
+                            githubThreads={githubThreads}
+                            onRunSetup={setup.restart}
+                            update={update}
                           />
-                        </div>
-                      </Suspense>
-                    </Activity>
-                  )}
-                  {nav.visited.has('scripts') && (
-                    <Activity mode={mode('scripts')}>
-                      <Suspense fallback={<PageLoading />}>
-                        <div className="h-full">
-                          <ScriptsView
-                            terminal={config.settings?.terminal ?? null}
-                            runsIn={config.settings?.integrations.runsIn ?? 'app'}
-                            where={config.settings === null ? '' : cloneWhere(config.settings)}
-                            integrations={integrations}
-                            scriptsSwitch={config.settings?.integrations.switches.scripts ?? 'auto'}
-                            runs={scriptRuns}
-                            request={releaseRequest}
-                            runRequest={runRequest}
-                            onOpenSettings={openSettingsAt}
-                            lastPage={config.settings?.integrations.lastPage ?? ''}
-                            lastRepo={config.settings?.integrations.lastRepo ?? ''}
-                            onPage={(page) => {
-                              remember(setScriptsLastPage(page), 'the Scripts page shown')
-                            }}
-                            onRepo={(dir) => {
-                              remember(setScriptsLastRepo(dir), 'the clone Repo scripts shows')
-                            }}
-                            sections={config.settings?.integrations.sections ?? {}}
-                            onSection={(section, open) => {
-                              remember(setScriptsSectionOpen(section, open), 'a Scripts section opened or folded')
-                            }}
-                            showRuns={config.settings?.integrations.showRuns ?? false}
-                            onShowRuns={(on) => {
-                              remember(setShowRuns(on), 'whether a run shows beside Repo scripts')
-                            }}
-                            repoRules={config.settings?.repoRules}
-                            onSettingsSaved={setSettings}
-                          />
-                        </div>
-                      </Suspense>
-                    </Activity>
-                  )}
-                  {nav.visited.has('settings') && (
-                    <Activity mode={mode('settings')}>
-                      <Suspense fallback={<PageLoading />}>
-                        <SettingsView
-                          initialSection={nav.settingsSection}
-                          opened={nav.settingsOpened}
-                          settings={config.settings}
-                          agents={config.agents}
-                          profiles={config.profiles}
-                          prompts={config.prompts}
-                          defaultPrompts={config.defaultPrompts}
-                          launchDefaults={config.launchDefaults}
-                          account={account}
-                          projectAccess={inbox.snapshot?.projectAccess ?? ''}
-                          theme={theme.theme}
-                          onThemeChange={theme.chooseTheme}
-                          onSaved={saveSettings}
-                          onLaunchChanged={reload}
-                          onClose={closeSettings}
-                          query={settingsQuery}
-                          githubThreads={githubThreads}
-                          onRunSetup={setup.restart}
-                          update={update}
-                        />
-                      </Suspense>
-                    </Activity>
-                  )}
-                </AutopilotRowsContext>
-              </AutopilotMenuContext>
+                        </Suspense>
+                      </Activity>
+                    )}
+                  </AutopilotRowsContext>
+                </AutopilotMenuContext>
+              </CardPrefsContext>
             </HiddenLabelsContext>
           </main>
           {routineMenu.node}

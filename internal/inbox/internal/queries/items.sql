@@ -22,18 +22,21 @@ WHERE account_id = ?;
 -- but never over a merge, which nothing comes back from; and review_requested_at and
 -- assigned_at keep when the item first arrived in each list while it stays in it, stamped
 -- with fetched_at when it arrives; ClearArrivalStamps clears them once it leaves.
+-- author_avatar_url is a bot author's picture URL, '' for any other author (see
+-- 0021_author_avatar_url).
 INSERT INTO items (
-    account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_association,
-    is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at,
+    account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_avatar_url,
+    author_association, is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at,
     reason_review_requested, reason_authored, reason_assigned, fetched_at, state, review_requested_at, assigned_at,
     reason_reviewed, reason_pushed, viewer_review_state, viewer_review_commit, viewer_review_at, viewer_review_seen_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (account_id, repo_id, kind, number) DO UPDATE SET
     node_id = excluded.node_id,
     title = excluded.title,
     url = excluded.url,
     author_login = excluded.author_login,
     author_type = excluded.author_type,
+    author_avatar_url = excluded.author_avatar_url,
     author_association = excluded.author_association,
     is_cross_repository = excluded.is_cross_repository,
     is_draft = excluded.is_draft,
@@ -101,10 +104,18 @@ WHERE account_id = ?
 -- when the read said it (a state not empty), but never over a merge, which nothing comes
 -- back from. Its account, repository, kind, number, and lists stay as they are; only
 -- LeaveAnsweredReview, run after it, takes a pull request out of the review-requested list.
+-- A bot author's picture URL is rewritten too, but a read that brought none for the same
+-- author keeps the stored one: a routine's watched read doesn't ask for it, and a whole
+-- refresh applies such a read again on top of its own (see order.go).
 UPDATE items SET
     node_id = sqlc.arg(node_id),
     title = sqlc.arg(title),
     url = sqlc.arg(url),
+    author_avatar_url = CASE
+        WHEN CAST(sqlc.arg(author_avatar_url) AS TEXT) = '' AND author_login = sqlc.arg(author_login)
+            AND author_type = sqlc.arg(author_type) THEN author_avatar_url
+        ELSE CAST(sqlc.arg(author_avatar_url) AS TEXT)
+    END,
     author_login = sqlc.arg(author_login),
     author_type = sqlc.arg(author_type),
     author_association = sqlc.arg(author_association),
@@ -179,7 +190,7 @@ SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
-    i.viewer_review_state, i.viewer_review_commit, i.review_left_at,
+    i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals,
@@ -445,7 +456,7 @@ SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
-    i.viewer_review_state, i.viewer_review_commit, i.review_left_at,
+    i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals,

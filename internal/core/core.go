@@ -159,6 +159,7 @@ type Core struct {
 	Sessions       *sessions.Service
 	Review         *review.Service
 	Issues         *issues.Service
+	Avatars        *avatars.Service
 	Integrations   *integrations.Service
 	ScriptRuns     *scriptrun.Service
 	Release        *release.Service
@@ -383,8 +384,8 @@ func Bootstrap(ctx context.Context, opts Options) (*Core, error) {
 func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
-		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Integrations, c.ScriptRuns, c.Release, c.Hooks,
-		c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup, c.Updates, c.Autopilot,
+		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Avatars, c.Integrations, c.ScriptRuns, c.Release,
+		c.Hooks, c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup, c.Updates, c.Autopilot,
 	}
 }
 
@@ -754,8 +755,11 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	followed.statusRules = serviceStatusChecker
 
 	// The review sheet and the issue sheet read and act through the inbox's one Actor, and
-	// so do Autopilot's GitHub steps, through them.
+	// so do Autopilot's GitHub steps, through them. One avatars service keeps the pictures
+	// the sheets show (through the issue sheet's Avatars) and the inbox's cards show (bound
+	// itself), so a picture is downloaded, kept, and backed off once for both.
 	actor := inbox.NewActor(inboxSvc)
+	pictures := avatars.NewService(avatars.Config{Pool: pool, Fetcher: client, Clock: opts.Clock, Logger: logger})
 	reviewSheet := review.NewService(review.Config{
 		Pool: pool, Inbox: reviewInbox{store: inboxStore, actor: actor}, GitHub: client,
 		Settings: reviewSettings{settings: prefs}, Replies: reviewReplies{replyFiller{store: promptStore, source: previews}},
@@ -764,8 +768,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	issueSheet := issues.NewService(issues.Config{
 		Pool: pool, Inbox: issuesInbox{store: inboxStore, actor: actor}, GitHub: client,
 		Replies: issuesReplies{replyFiller{store: promptStore, source: previews}}, Events: opts.Events,
-		Pictures: avatars.NewService(avatars.Config{Pool: pool, Fetcher: client, Clock: opts.Clock, Logger: logger}),
-		Clock:    opts.Clock, Logger: logger,
+		Pictures: pictures, Clock: opts.Clock, Logger: logger,
 	})
 
 	budgetSvc := budget.NewService(budget.Config{
@@ -859,6 +862,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Sessions:              follow.service,
 		Review:                reviewSheet,
 		Issues:                issueSheet,
+		Avatars:               pictures,
 		Watcher:               follow.watcher,
 		ShellSessions:         ShellSessions{ledger: follow.ledger, service: follow.service},
 		ProfileStore:          profileStore,

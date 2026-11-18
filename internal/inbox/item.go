@@ -154,7 +154,8 @@ func (s *Service) fetchItem(
 func (w *writer) rewrite(ctx context.Context, id int64, it github.Item) error {
 	err := w.q.UpdateItem(ctx, queries.UpdateItemParams{
 		NodeID: it.NodeID, Title: it.Title, URL: it.URL, AuthorLogin: it.AuthorLogin, AuthorType: it.AuthorType,
-		AuthorAssociation: it.AuthorAssociation, IsCrossRepository: it.IsCrossRepository, IsDraft: it.IsDraft,
+		AuthorAvatarURL: it.AuthorAvatarURL, AuthorAssociation: it.AuthorAssociation,
+		IsCrossRepository: it.IsCrossRepository, IsDraft: it.IsDraft,
 		HeadRef: it.HeadRef, ItemCreatedAt: it.CreatedAt.UTC(), ItemUpdatedAt: it.UpdatedAt.UTC(),
 		State: it.State, ClosedAt: timeOrNil(it.ClosedAt), FetchedAt: w.now, ID: id,
 	})

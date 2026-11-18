@@ -42,6 +42,9 @@ const (
 	typePullRequest = "PullRequest"
 	typeIssue       = "Issue"
 
+	// typeBot is the GraphQL type of an author that is a GitHub App or bot.
+	typeBot = "Bot"
+
 	// errorInsufficientScopes is GitHub's error type for a field the token's scopes do
 	// not reach, such as an issue's projects without the read:project scope.
 	errorInsufficientScopes = "INSUFFICIENT_SCOPES"
@@ -620,6 +623,11 @@ type Item struct {
 	// or bot, or another actor type such as Mannequin.
 	AuthorType string
 
+	// AuthorAvatarURL is a bot author's picture, on the avatar host, as GitHub gave it,
+	// for a read that asks (ItemFields); "" for every other author, whose picture is
+	// fetched by login, and for a read that doesn't ask, as a routine's watched search.
+	AuthorAvatarURL string
+
 	// AuthorAssociation is the author's relationship to the repository (OWNER, MEMBER,
 	// COLLABORATOR, CONTRIBUTOR, NONE, ...).
 	AuthorAssociation string
@@ -869,10 +877,11 @@ func (d *graphQLData) inbox() *Inbox {
 }
 
 // graphQLActor is a user, bot, or other actor. TypeName is only asked for on an item's
-// author.
+// author, and AvatarURL only on an item's author that is a bot.
 type graphQLActor struct {
-	TypeName string `json:"__typename"`
-	Login    string `json:"login"`
+	TypeName  string `json:"__typename"`
+	Login     string `json:"login"`
+	AvatarURL string `json:"avatarUrl"`
 }
 
 // graphQLViewer is the query's viewer object. Name is null when the profile sets none,
@@ -1045,6 +1054,9 @@ func (n *graphQLNode) item() (Item, bool) {
 
 	if n.Author != nil {
 		item.AuthorLogin, item.AuthorType = n.Author.Login, n.Author.TypeName
+		if n.Author.TypeName == typeBot {
+			item.AuthorAvatarURL = n.Author.AvatarURL
+		}
 	}
 
 	return item, true

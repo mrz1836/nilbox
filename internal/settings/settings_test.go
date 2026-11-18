@@ -101,6 +101,7 @@ func TestPrefDefaults(t *testing.T) {
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}},
 		HiddenLabels:        DefaultHiddenLabels(),
 		DefaultHiddenLabels: DefaultHiddenLabels(),
+		CardAvatars:         true,
 		MergeMethod:         DefaultMergeMethod,
 		ReviewTab:           DefaultReviewTab,
 		NotificationsTab:    DefaultNotificationsTab,
@@ -262,6 +263,7 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetGitHubNotificationAction(t.Context(), threadrules.ActionRead)))
 	require.NoError(t, testutil.ErrOf(svc.SetUpdateMode(t.Context(), updateprefs.ModeOff)))
 	require.NoError(t, testutil.ErrOf(svc.SetAutopilotAgentsAtOnce(t.Context(), 1)))
+	require.NoError(t, testutil.ErrOf(svc.SetCardAvatars(t.Context(), false)))
 
 	got, err := svc.Get(t.Context())
 	require.NoError(t, err)
@@ -291,6 +293,7 @@ func TestSettersPersist(t *testing.T) {
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}},
 		HiddenLabels:        DefaultHiddenLabels(),
 		DefaultHiddenLabels: DefaultHiddenLabels(),
+		CardAvatars:         false,
 		MergeMethod:         DefaultMergeMethod,
 		ReviewTab:           DefaultReviewTab,
 		NotificationsTab:    DefaultNotificationsTab,
@@ -616,6 +619,10 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"worktree default", func() (Settings, error) { return svc.SetWorktreeDefault(ctx, false) },
 			func(s Settings) any { return s.WorktreeDefault }, false,
+		},
+		{
+			"card avatars", func() (Settings, error) { return svc.SetCardAvatars(ctx, false) },
+			func(s Settings) any { return s.CardAvatars }, false,
 		},
 		{
 			"worktree cleanup", func() (Settings, error) { return svc.SetWorktreeAutoCleanup(ctx, false) },

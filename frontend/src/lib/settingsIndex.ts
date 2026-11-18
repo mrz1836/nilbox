@@ -111,7 +111,7 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   },
   cards: {
     label: 'Cards',
-    description: 'What the inbox’s cards leave out, such as the labels their own size already shows.',
+    description: 'How the inbox’s cards look, and what they leave out.',
   },
   reviewing: {
     label: 'Reviewing',
@@ -277,6 +277,10 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Marked ready for review', keywords: ['wake', 'draft', 'ready'] },
   ],
   cards: [
+    {
+      label: 'Author pictures',
+      keywords: ['avatars', 'profile pictures', 'photos', 'faces', 'people', 'bots', 'initials', 'bot mark'],
+    },
     {
       label: 'Hidden labels',
       keywords: ['labels', 'size/*', 'size labels', 'hide', 'chips', 'card labels', 'patterns', 'restore the defaults'],

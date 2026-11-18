@@ -1,9 +1,9 @@
 import { startTransition, useActionState, useId, useState } from 'react'
 
 import { useSettingsSave } from '../../lib/useSettingsSave'
-import { setHiddenLabels } from '../../platform'
+import { setCardAvatars, setHiddenLabels } from '../../platform'
 import { quietButtonClass } from '../controls'
-import { Note, SectionIntro } from './rows'
+import { Group, Note, SectionIntro, SwitchRow } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
 
@@ -16,12 +16,16 @@ interface Refusal {
 
 const noRefusal: Refusal = { draft: '', message: '' }
 
-// CardsSection is the settings page's Cards section: the labels the inbox's cards leave
-// out, such as the size labels a card's own size grade already shows. Each change is
-// stored as it is made; Restore the defaults puts the list back as a fresh install has it.
+// CardsSection is the settings page's Cards section: whether the inbox's cards show their
+// authors' pictures, and the labels they leave out, such as the size labels a card's own
+// size grade already shows. Each change is stored as it is made; Restore the defaults puts
+// the list back as a fresh install has it.
 export function CardsSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
+  // picturesError is why the last change of Author pictures was refused; a refused hidden
+  // label shows its own.
+  const [picturesError, setPicturesError] = useState('')
   const [draft, setDraft] = useState('')
   // invalid is why the draft cannot be added, found before asking the backend.
   const [invalid, setInvalid] = useState<Refusal>(noRefusal)
@@ -73,8 +77,28 @@ export function CardsSection({ settings: stored, onSaved }: SectionProps) {
     })
   }
 
+  const switchPictures = async (on: boolean) => {
+    setPicturesError('')
+
+    const result = await save({ cardAvatars: on }, () => setCardAvatars(on))
+
+    setPicturesError(result.ok ? '' : result.error)
+  }
+
   return (
     <div className="flex flex-col gap-8">
+      <Group>
+        <SwitchRow
+          label="Author pictures"
+          controlId={`${id}-pictures`}
+          description="Each person’s GitHub picture in a circle, each bot’s in a rounded square, with initials or the bot’s mark until it arrives. Downloaded once a week each, without your token."
+          checked={settings.cardAvatars}
+          error={picturesError}
+          onChange={(on) => {
+            void switchPictures(on)
+          }}
+        />
+      </Group>
       <section aria-labelledby={`${id}-hidden`} className="flex flex-col gap-3">
         <SectionIntro
           id={`${id}-hidden`}

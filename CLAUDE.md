@@ -266,7 +266,7 @@ bytes).
 - [`internal/timeline`](docs/architecture.md#internaltimeline): the conversation both sheets
   show.
 - [`internal/avatars`](docs/architecture.md#internalavatars): the profile pictures the sheets
-  show.
+  and the inbox's cards show, people's and bots'.
 - [`internal/bump`](docs/architecture.md#internalbump): reads a dependency update from a bot's
   pull request.
 

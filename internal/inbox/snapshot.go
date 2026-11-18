@@ -111,6 +111,11 @@ type Item struct {
 	// AuthorIsBot reports whether GitHub reports the author as a bot.
 	AuthorIsBot bool `json:"authorIsBot"`
 
+	// AuthorAvatarURL is a bot author's picture, on the avatar host, as GitHub gave it,
+	// for the window to ask the avatars service for; "" for a person, whose picture is
+	// asked for by login, and for a bot no read has brought one for yet.
+	AuthorAvatarURL string `json:"authorAvatarUrl"`
+
 	IsCrossRepository bool   `json:"isCrossRepository"`
 	AuthorAssociation string `json:"authorAssociation"`
 
@@ -529,6 +534,7 @@ type itemRow struct {
 	RepoName              string
 	AuthorLogin           string
 	AuthorType            string
+	AuthorAvatarURL       string
 	AuthorAssociation     string
 	IsCrossRepository     bool
 	IsDraft               bool
@@ -624,7 +630,8 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 	return itemRow{
 		ID: r.ID, Kind: item.Kind(r.Kind), Number: int(r.Number), Title: r.Title, URL: r.URL,
 		RepoOwner: r.RepoOwner, RepoName: r.RepoName, AuthorLogin: r.AuthorLogin, AuthorType: r.AuthorType,
-		AuthorAssociation: r.AuthorAssociation, IsCrossRepository: r.IsCrossRepository, IsDraft: r.IsDraft,
+		AuthorAvatarURL: r.AuthorAvatarURL, AuthorAssociation: r.AuthorAssociation,
+		IsCrossRepository: r.IsCrossRepository, IsDraft: r.IsDraft,
 		HeadRef: r.HeadRef, ItemUpdatedAt: r.ItemUpdatedAt, ReasonReviewRequested: r.ReasonReviewRequested,
 		ReasonAuthored: r.ReasonAuthored, ReasonAssigned: r.ReasonAssigned, ReasonPushed: r.ReasonPushed,
 		ViewerReviewState: r.ViewerReviewState, ViewerReviewCommit: r.ViewerReviewCommit, ReviewLeftAt: r.ReviewLeftAt,
@@ -671,6 +678,7 @@ func (r *itemRow) item(scope fileScope, viewer string) Item {
 		Trust:             class,
 		Trusted:           class != trust.ClassOutside,
 		AuthorIsBot:       author.IsBot(),
+		AuthorAvatarURL:   r.AuthorAvatarURL,
 		IsCrossRepository: r.IsCrossRepository,
 		AuthorAssociation: r.AuthorAssociation,
 		Branch:            r.HeadRef,

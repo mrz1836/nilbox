@@ -483,6 +483,11 @@ export interface Settings {
     "defaultHiddenLabels": string[] | null;
 
     /**
+     * CardAvatars shows each author's picture on the inbox's cards (see KeyCardAvatars).
+     */
+    "cardAvatars": boolean;
+
+    /**
      * MergeMethod is how the review sheet merges a pull request.
      */
     "mergeMethod": MergeMethod;

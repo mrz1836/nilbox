@@ -121,11 +121,13 @@ not committed yet keeps the old build number; if a stale icon persists, clear th
 `killall Dock WindowManager`.
 
 **Firewalls.** The app talks to GitHub: `api.github.com` on every refresh, and
-`avatars.githubusercontent.com` to download profile pictures: yours once, and the pictures of the
-people an issue you open shows, each downloaded by login, without your token, kept in the
-database, and downloaded again at most once a week. The [service status](#the-window) check
-reads the status pages of the services you watch, `www.githubstatus.com`, `status.claude.com`,
-and `status.openai.com`, each sent only the request for its summary. A per-app firewall must
+`avatars.githubusercontent.com` to download profile pictures: yours once, the pictures of the
+people an issue you open shows, and those of the inbox cards' authors (unless **Settings →
+Cards** turns them off), each person's downloaded by login and each bot's from the address
+GitHub gives for it, without your token, kept in the database, and downloaded again at most
+once a week. The [service status](#the-window) check reads the status pages of the services you
+watch, `www.githubstatus.com`, `status.claude.com`, and `status.openai.com`, each sent only the
+request for its summary. A per-app firewall must
 allow `bin/Nilbox Dev.app/Contents/MacOS/nilbox` (a release's is
 `/Applications/Nilbox.app/Contents/MacOS/nilbox`) to reach `api.github.com`, or every refresh
 times out. Blocking the avatar host only means initials show instead of pictures, and blocking a
@@ -1811,9 +1813,10 @@ questions at a glance: where it stands, what changed, and what to do next.
   your accent when it is yours to do, green when it is ready to merge, blue while an agent or a
   routine works on it, and grey while it waits on others. In the Snoozed, Dismissed, and Muted
   tabs it has none.
-- **Who and what.** The author's initials on a color their login picks (a rounded square with
-  a bot's mark for a bot, an accent ring for your own), with the pull request or issue mark at
-  its corner, grey for a draft.
+- **Who and what.** The author's GitHub picture, in a circle for a person and a rounded square
+  for a bot (an accent ring for your own), or until it arrives, and should it never, their
+  initials on a color their login picks, or a bot's mark; with the pull request or issue mark
+  at its corner, grey for a draft.
 - **Line 1:** the title, after a pin when the item is pinned (hover the pin for who pinned it:
   you, a routine, or a rule for its repository or org) and **Draft** before a draft's title,
   then up to two labels in their GitHub colors and **+N** for the rest, which give way before
@@ -1876,6 +1879,16 @@ dismiss, pin, or open it on GitHub. Click again to close it.
 1,000 pixels the action column narrows, then the labels and the size go, then the agent
 button shows its spark alone and a live session its dot, then the track goes too, with the
 repository's org.
+
+**Author pictures.** **Settings → Cards** turns the authors' pictures off and on (on to start
+with). The inbox asks for the pictures of its authors as it loads, 25 to a request, all at once,
+and each card's shows as soon as its request comes back, so a slow download holds back only its
+own. A person's picture is downloaded by their login and a bot's from the address GitHub gives
+for it with the item, since the picture host answers a bot's login with a generated pattern;
+both without your token and kept in the database, each downloaded again at most once a week,
+and a failed one not tried again for 30 minutes. Turned off, the cards show initials and the
+bot mark, and nothing is downloaded for them. A routine's Watching list shows initials and the
+bot mark alone.
 
 **Hidden labels.** **Settings → Cards** lists the labels the cards leave out, in every
 repository: `size/*` to start with, since each card already shows its own size grade, so

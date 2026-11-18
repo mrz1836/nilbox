@@ -29,6 +29,37 @@ beforeEach(() => {
 })
 
 describe('CardsSection', () => {
+  it('turns Author pictures off and on, storing each change', async () => {
+    platform.setCardAvatars.mockImplementation((cardAvatars) => Promise.resolve(settings({ cardAvatars })))
+    const { onSaved } = renderSection()
+
+    const pictures = screen.getByRole('switch', { name: 'Author pictures' })
+    expect(pictures).toBeChecked()
+    expect(pictures).toHaveAccessibleDescription(
+      'Each person’s GitHub picture in a circle, each bot’s in a rounded square, with initials or the bot’s mark until it arrives. Downloaded once a week each, without your token.',
+    )
+
+    await userEvent.click(pictures)
+
+    expect(platform.setCardAvatars).toHaveBeenCalledExactlyOnceWith(false)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ cardAvatars: false }))
+    })
+  })
+
+  it('says why Author pictures could not change, and shows it as stored', async () => {
+    platform.setCardAvatars.mockRejectedValue(new Error('the database is locked'))
+    renderSection(settings({ cardAvatars: false }))
+
+    const pictures = screen.getByRole('switch', { name: 'Author pictures' })
+    await userEvent.click(pictures)
+
+    await waitFor(() => {
+      expect(pictures).toHaveAccessibleDescription(/the database is locked/)
+    })
+    expect(pictures).not.toBeChecked()
+  })
+
   it('lists the hidden labels, marking the defaults, and says how a pattern reads', () => {
     renderSection(settings({ hiddenLabels: ['size/*', 'wontfix'] }))
 

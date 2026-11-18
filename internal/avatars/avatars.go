@@ -1,8 +1,11 @@
-// Package avatars keeps the profile pictures of the people the sheets show, by login. Each
-// is downloaded from GitHub's avatar host by its login alone (github's FetchLoginAvatar: no
-// API request, so no token and no point of the budget), kept in the avatars table, which
-// this package owns, and downloaded again only once it is a week old and shown again. The
-// window gets them as data: URLs, so it loads nothing remote itself.
+// Package avatars keeps the profile pictures the sheets and the inbox's cards show: the
+// people's, by login, and the bots'. A person's is downloaded from GitHub's avatar host by
+// the login alone (github's FetchLoginAvatar), a bot's by the URL GitHub gave for it on the
+// same host (FetchAvatar), since the host answers a bot's login with a generated pattern
+// rather than its app's picture. Neither is an API request, so neither sends a token or
+// spends a point of the budget. Each is kept in the avatars table, which this package owns,
+// and downloaded again only once it is a week old and shown again. The window gets them as
+// data: URLs, so it loads nothing remote itself.
 package avatars
 
 import (
@@ -23,8 +26,14 @@ import (
 )
 
 const (
-	// MaxLogins is the most logins one call looks at; the rest get no picture.
+	// MaxLogins is the most logins one call looks at, people and bots together; the rest
+	// get no picture.
 	MaxLogins = 100
+
+	// botSuffix ends the key a bot's picture is kept and answered by, after its login:
+	// GitHub's GraphQL names a bot by its app's slug, which a person could have as a login,
+	// and no person's login can hold "[".
+	botSuffix = "[bot]"
 
 	// refreshAfter is how old a kept picture is downloaded again at, the next time it is
 	// shown: a login's address names no version, so a changed picture shows only then.
@@ -34,14 +43,14 @@ const (
 	// again, so a picture shown often is written at most once a day.
 	touchAfter = 24 * time.Hour
 
-	// unusedFor is how long a picture no sheet shows is kept, and maxKept and maxKeptBytes
+	// unusedFor is how long a picture nothing shows is kept, and maxKept and maxKeptBytes
 	// cap them all: the least recently shown past either are dropped.
 	unusedFor    = 30 * 24 * time.Hour
 	maxKept      = 2000
 	maxKeptBytes = 16 << 20
 
-	// retryAfter is how long a login whose download failed goes without another; and
-	// maxFailed how many such logins are remembered before all are forgotten at once.
+	// retryAfter is how long a picture whose download failed goes without another; and
+	// maxFailed how many such pictures are remembered before all are forgotten at once.
 	retryAfter = 30 * time.Minute
 	maxFailed  = 1000
 
@@ -50,9 +59,18 @@ const (
 	downloadTimeout = 15 * time.Second
 )
 
-// Fetcher downloads a login's picture. *github.Client implements it.
+// Fetcher downloads a picture: a person's by login, and a bot's by the URL GitHub gave
+// for it, which it refuses off the avatar host. *github.Client implements it.
 type Fetcher interface {
 	FetchLoginAvatar(ctx context.Context, login string) (*github.Avatar, error)
+	FetchAvatar(ctx context.Context, rawURL string) (*github.Avatar, error)
+}
+
+// Bot is a bot whose picture is asked for: its login as GitHub's GraphQL names it (its
+// app's slug, without "[bot]"), and its picture's URL as GitHub gave it.
+type Bot struct {
+	Login string `json:"login"`
+	URL   string `json:"url"`
 }
 
 // Config holds a Service's dependencies. Pool and Fetcher are required.
@@ -98,25 +116,36 @@ func NewService(cfg Config) *Service {
 // retryAfter. Only a failure to read the kept pictures is an error; one to keep them is
 // logged, and the pictures are served all the same.
 func (s *Service) Pictures(ctx context.Context, logins []string) (map[string]string, error) {
-	asked, keys := folded(logins)
-	if len(keys) == 0 {
+	return s.PicturesFor(ctx, logins, nil)
+}
+
+// PicturesFor returns the pictures of people, by login, as Pictures does, and of bots, each
+// downloaded from the URL given for it and keyed, kept and answered, by its login as given
+// with "[bot]" after it, so a bot never takes the picture of a person whose login is its
+// app's slug. A bot with no login or no URL is left out, and so is one whose URL the
+// fetcher refuses (one off the avatar host), which isn't tried again for retryAfter, as any
+// failed download. A bot's picture is kept, refreshed, and pruned as a person's is, and the
+// first MaxLogins different people and bots together, the people first, are looked at.
+func (s *Service) PicturesFor(ctx context.Context, people []string, bots []Bot) (map[string]string, error) {
+	a := folded(people, bots)
+	if len(a.keys) == 0 {
 		return map[string]string{}, nil
 	}
 
 	now := s.clock.Now()
 
-	have, err := s.read(ctx, keys, now)
+	have, err := s.read(ctx, a.keys, now)
 	if err != nil {
 		return nil, err
 	}
 
-	got := s.download(ctx, s.untried(have.due, now))
+	got := s.download(ctx, s.untried(have.due, now), a.urls)
 	if err = ctx.Err(); err != nil {
 		return nil, fmt.Errorf("read the profile pictures: %w", err)
 	}
 
 	if len(got) > 0 || have.stale {
-		if err = s.keep(ctx, got, keys, now); err != nil {
+		if err = s.keep(ctx, got, a.keys, now); err != nil {
 			s.logger.WarnContext(ctx, "keep the profile pictures", slog.Any("error", err))
 		}
 	}
@@ -125,7 +154,7 @@ func (s *Service) Pictures(ctx context.Context, logins []string) (map[string]str
 		have.pictures[key] = picture
 	}
 
-	return named(asked, have.pictures), nil
+	return named(a.asked, have.pictures), nil
 }
 
 // named keys the pictures, as data: URLs, by every login asked for each, leaving out those
@@ -182,58 +211,87 @@ func (s *Service) read(ctx context.Context, keys []string, now time.Time) (kept,
 	return out, nil
 }
 
-// folded groups logins by their lower-cased key, the first MaxLogins different ones, leaving
-// out "", and returns the keys in the order first seen.
-func folded(logins []string) (map[string][]string, []string) {
-	asked := map[string][]string{}
-
-	var keys []string
-
-	for _, login := range logins {
-		if login == "" {
-			continue
-		}
-
-		key := strings.ToLower(login)
-		if _, ok := asked[key]; !ok {
-			if len(keys) == MaxLogins {
-				continue
-			}
-
-			keys = append(keys, key)
-		}
-
-		asked[key] = append(asked[key], login)
-	}
-
-	return asked, keys
+// asking is what one call asks for: the names asked under each key (the lower-cased
+// login, with botSuffix after a bot's, and a bot's name with botSuffix after it too), the
+// keys in the order first seen, at most MaxLogins, and the URL of each bot's key.
+type asking struct {
+	asked map[string][]string
+	keys  []string
+	urls  map[string]string
 }
 
-// untried returns the logins whose download didn't fail within retryAfter of now,
+// folded gathers what a call asks for, the people first, leaving out an empty login and a
+// bot with no URL.
+func folded(people []string, bots []Bot) asking {
+	a := asking{asked: map[string][]string{}, urls: map[string]string{}}
+
+	for _, login := range people {
+		if login != "" {
+			a.add(strings.ToLower(login), login)
+		}
+	}
+
+	for _, bot := range bots {
+		a.addBot(bot)
+	}
+
+	return a
+}
+
+// add asks for name under key, unless the call already looks at MaxLogins other keys, and
+// reports whether it did.
+func (a *asking) add(key, name string) bool {
+	if _, ok := a.asked[key]; !ok {
+		if len(a.keys) == MaxLogins {
+			return false
+		}
+
+		a.keys = append(a.keys, key)
+	}
+
+	a.asked[key] = append(a.asked[key], name)
+
+	return true
+}
+
+// addBot asks for bot's picture, keeping the first URL given for it, unless it has no login
+// or no URL.
+func (a *asking) addBot(bot Bot) {
+	if bot.Login == "" || bot.URL == "" {
+		return
+	}
+
+	key := strings.ToLower(bot.Login) + botSuffix
+	if a.add(key, bot.Login+botSuffix) && a.urls[key] == "" {
+		a.urls[key] = bot.URL
+	}
+}
+
+// untried returns the keys whose download didn't fail within retryAfter of now,
 // forgetting the failures that old.
-func (s *Service) untried(logins []string, now time.Time) []string {
+func (s *Service) untried(keys []string, now time.Time) []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	out := logins[:0:0]
+	out := keys[:0:0]
 
-	for _, login := range logins {
-		if at, ok := s.failed[login]; ok {
+	for _, key := range keys {
+		if at, ok := s.failed[key]; ok {
 			if now.Sub(at) < retryAfter {
 				continue
 			}
 
-			delete(s.failed, login)
+			delete(s.failed, key)
 		}
 
-		out = append(out, login)
+		out = append(out, key)
 	}
 
 	return out
 }
 
-// failedAt remembers that login's download failed at.
-func (s *Service) failedAt(login string, at time.Time) {
+// failedAt remembers that key's download failed at.
+func (s *Service) failedAt(key string, at time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -241,13 +299,13 @@ func (s *Service) failedAt(login string, at time.Time) {
 		clear(s.failed)
 	}
 
-	s.failed[login] = at
+	s.failed[key] = at
 }
 
-// download downloads the logins' pictures, downloads at a time, and returns the ones it
-// got. A download that fails is remembered (failedAt), unless ctx ended, which ends them
-// all.
-func (s *Service) download(ctx context.Context, logins []string) map[string]*github.Avatar {
+// download downloads the keys' pictures, downloads at a time, a bot's from its URL in urls
+// and a person's by login, and returns the ones it got. A download that fails is
+// remembered (failedAt), unless ctx ended, which ends them all.
+func (s *Service) download(ctx context.Context, keys []string, urls map[string]string) map[string]*github.Avatar {
 	var (
 		mu sync.Mutex
 		wg sync.WaitGroup
@@ -256,7 +314,7 @@ func (s *Service) download(ctx context.Context, logins []string) map[string]*git
 	out := map[string]*github.Avatar{}
 	slots := make(chan struct{}, downloads)
 
-	for _, login := range logins {
+	for _, key := range keys {
 		wg.Go(func() {
 			select {
 			case slots <- struct{}{}:
@@ -266,9 +324,9 @@ func (s *Service) download(ctx context.Context, logins []string) map[string]*git
 
 			defer func() { <-slots }()
 
-			if picture := s.downloadOne(ctx, login); picture != nil {
+			if picture := s.downloadOne(ctx, key, urls[key]); picture != nil {
 				mu.Lock()
-				out[login] = picture
+				out[key] = picture
 				mu.Unlock()
 			}
 		})
@@ -279,19 +337,23 @@ func (s *Service) download(ctx context.Context, logins []string) map[string]*git
 	return out
 }
 
-// downloadOne downloads login's picture, within downloadTimeout, once for every call that
-// wants it at the time, and returns nil when that fails, remembering the failure (failedAt)
-// unless ctx ended.
-func (s *Service) downloadOne(ctx context.Context, login string) *github.Avatar {
-	picture, err := s.fetches.Do(ctx, login, func(ctx context.Context) (*github.Avatar, error) {
+// downloadOne downloads key's picture, from rawURL when it is a bot's and by the login
+// otherwise, within downloadTimeout, once for every call that wants it at the time, and
+// returns nil when that fails, remembering the failure (failedAt) unless ctx ended.
+func (s *Service) downloadOne(ctx context.Context, key, rawURL string) *github.Avatar {
+	picture, err := s.fetches.Do(ctx, key, func(ctx context.Context) (*github.Avatar, error) {
 		ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
 		defer cancel()
 
-		return s.fetcher.FetchLoginAvatar(ctx, login)
+		if rawURL != "" {
+			return s.fetcher.FetchAvatar(ctx, rawURL)
+		}
+
+		return s.fetcher.FetchLoginAvatar(ctx, key)
 	})
 	if err != nil {
 		if ctx.Err() == nil {
-			s.failedAt(login, s.clock.Now())
+			s.failedAt(key, s.clock.Now())
 			s.logger.DebugContext(ctx, "download a profile picture", slog.Any("error", err))
 		}
 
@@ -302,7 +364,7 @@ func (s *Service) downloadOne(ctx context.Context, login string) *github.Avatar 
 }
 
 // keep stores the pictures got, downloaded now, stamps the other shown ones (keys) as shown
-// now, and prunes, in one transaction.
+// now, and prunes, in one transaction. A bot's is kept under its key, botSuffix and all.
 func (s *Service) keep(ctx context.Context, got map[string]*github.Avatar, keys []string, now time.Time) error {
 	return store.InTx(ctx, s.db, func(tx *sql.Tx) error {
 		q := s.q.WithTx(tx)

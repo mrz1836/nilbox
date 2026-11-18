@@ -345,6 +345,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     issueLabels: () => Promise.resolve(repoLabels()),
     issueAssignable: () => Promise.resolve(candidates()),
     issueAvatars: () => Promise.resolve({}),
+    cardPictures: () => Promise.resolve({}),
     editIssue: () => Promise.resolve({ sent: 1, failed: '' }),
     reviewReplies: () => Promise.resolve(replyList()),
     fillReply: () => Promise.resolve('Reviewed and approved. Thanks, @octo-other!'),
@@ -430,6 +431,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setStatusOrder: (statusOrder) =>
       stored({ inboxOrder: { statusSorted: [], statusOrder: statusOrder ?? [], kinds: {} } }),
     setHiddenLabels: (hiddenLabels) => stored({ hiddenLabels: hiddenLabels ?? [] }),
+    setCardAvatars: (cardAvatars) => stored({ cardAvatars }),
     setWindowSize: (windowSize) => stored({ windowSize }),
     setBranchRules: (branches) => stored({ branches: { ...branches, protected: branches.protected ?? [] } }),
     setRepoRule: (target, rule) => stored({ repoRules: withRepoRule(settings().repoRules, target, rule) }),
