@@ -45,11 +45,14 @@ const MaxReviewRequests = 50
 //
 // The counts per check state come without listing the checks themselves, and review
 // requests and latest reviews come with their logins so a reviewer is counted once. The
-// head commit's check suites come with only their conclusions and run IDs, for the
-// workflow runs GitHub holds for a maintainer's approval, which the rollup leaves out: they
-// cost one point more per batch of 50 (measured in November 2026: 2 points without them, 3
-// with). The head commit's SHA tells a snooze when a pull request was pushed, force-pushes
-// included.
+// head commit's check suites come with only their conclusions, who created each, and their
+// runs' IDs and events, for the workflow runs GitHub holds for a maintainer's approval,
+// which the rollup leaves out, and whether GitHub takes their approval through its API
+// (suiteHold, with the pull request's isCrossRepository): they cost one point more per batch
+// of 50 (measured in November 2026: 2 points without them, 3 with), and the creator, the
+// event, and isCrossRepository nothing more (measured in November 2026: a batch of 25 cost
+// one point with them and without). The head commit's SHA tells a snooze when a pull
+// request was pushed, force-pushes included.
 // The fields are a fragment the item query spreads too, so a card refreshed on its own
 // reads exactly what a whole refresh reads. A pull request's base branch and merge state
 // (mergeStateStatus: BEHIND, DIRTY, CLEAN, ...) are scalars, which cost no points, but
@@ -107,7 +110,7 @@ fragment DetailFields on Node {
   __typename
   ... on PullRequest {
     id additions deletions changedFiles totalCommentsCount reviewDecision mergeable headRefOid
-    baseRefName mergeStateStatus
+    baseRefName mergeStateStatus isCrossRepository
     author { login }
     autoMergeRequest { enabledAt mergeMethod }
     commits { totalCount }
@@ -132,7 +135,9 @@ fragment DetailFields on Node {
       }
     }
     headSuites: commits(last: 1) {
-      nodes { commit { checkSuites(first: 50) { nodes { conclusion workflowRun { databaseId } } } } }
+      nodes {
+        commit { checkSuites(first: 50) { nodes { conclusion creator { login } workflowRun { databaseId event } } } }
+      }
     }
   }
   ... on Issue {
@@ -381,10 +386,17 @@ type Checks struct {
 	Skipped int
 
 	// Awaiting counts the head commit's GitHub Actions runs held until a maintainer approves
-	// them, as a fork's runs are: suites that ended ACTION_REQUIRED with a workflow run.
-	// GitHub counts none of them in State or the other counts, which can read SUCCESS while
-	// they wait.
+	// them (suites that ended ACTION_REQUIRED with a workflow run) whose approval GitHub
+	// takes through its API (ApproveWorkflowRun): a fork pull request's own runs, and those
+	// the Actions bot queued (suiteHold). GitHub counts none of them in State or the other
+	// counts, which can read SUCCESS while they wait.
 	Awaiting int
+
+	// AwaitingOnGitHub counts the other held runs, whose approval GitHub refuses through
+	// its API ("This run is not from a fork pull request or queued by the Actions bot"),
+	// such as a run a review started in the base repository: they wait for approval on
+	// GitHub, and GitHub leaves them out of State and the other counts too.
+	AwaitingOnGitHub int
 }
 
 // Reviews counts who was asked to review a pull request and who has.
@@ -616,6 +628,7 @@ type detailsNode struct {
 	MergeStateStatus   string             `json:"mergeStateStatus"`
 	HeadRefOID         string             `json:"headRefOid"`
 	BaseRefName        string             `json:"baseRefName"`
+	IsCrossRepository  bool               `json:"isCrossRepository"`
 	Repository         *graphQLRepository `json:"repository"`
 	Author             *graphQLActor      `json:"author"`
 	Commits            graphQLCount       `json:"commits"`
@@ -965,10 +978,11 @@ func (r *graphQLRollup) checks() Checks {
 }
 
 // checks counts the head commit's checks from its rollup, and the workflow runs held for
-// approval from its check suites, which the rollup leaves out.
+// approval from its check suites, which the rollup leaves out, apart by whether GitHub
+// takes their approval through its API.
 func (n *detailsNode) checks() Checks {
 	c := n.StatusCheckRollup.checks()
-	c.Awaiting = n.HeadSuites.awaiting()
+	c.Awaiting, c.AwaitingOnGitHub = n.HeadSuites.awaiting(n.IsCrossRepository)
 
 	return c
 }
@@ -998,17 +1012,21 @@ func (h graphQLHeadSuites) suites() []*graphQLSuite {
 	return nil
 }
 
-// awaiting counts the suites whose workflow run waits for approval (heldRun).
-func (h graphQLHeadSuites) awaiting() int {
-	n := 0
-
+// awaiting counts the suites whose workflow run waits for approval, those GitHub takes the
+// approval of through its API (approvable) and those it takes only on its site (onGitHub),
+// of a pull request from a fork or not (suiteHold).
+func (h graphQLHeadSuites) awaiting(fork bool) (approvable, onGitHub int) {
 	for _, s := range h.suites() {
-		if s.heldRun() {
-			n++
+		switch s.hold(fork) {
+		case holdApprovable:
+			approvable++
+		case holdOnGitHub:
+			onGitHub++
+		case holdNone:
 		}
 	}
 
-	return n
+	return approvable, onGitHub
 }
 
 // outcome is where a check state is counted.

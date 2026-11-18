@@ -5,6 +5,7 @@
                 "__typename": "PullRequest",
                 "headRefOid": "1111111111111111111111111111111111111111",
                 "id": "PR_fakeNodeIdPassing",
+                "isCrossRepository": true,
                 "additions": 120,
                 "deletions": 30,
                 "changedFiles": 6,
@@ -152,8 +153,12 @@
                                         },
                                         {
                                             "conclusion": "ACTION_REQUIRED",
+                                            "creator": {
+                                                "login": "octo-author"
+                                            },
                                             "workflowRun": {
-                                                "databaseId": 202
+                                                "databaseId": 202,
+                                                "event": "pull_request"
                                             }
                                         },
                                         {
@@ -162,14 +167,22 @@
                                         },
                                         {
                                             "conclusion": "ACTION_REQUIRED",
+                                            "creator": {
+                                                "login": "octo-approver"
+                                            },
                                             "workflowRun": {
-                                                "databaseId": 203
+                                                "databaseId": 203,
+                                                "event": "pull_request_review"
                                             }
                                         },
                                         {
                                             "conclusion": null,
+                                            "creator": {
+                                                "login": "octo-author"
+                                            },
                                             "workflowRun": {
-                                                "databaseId": 204
+                                                "databaseId": 204,
+                                                "event": "pull_request"
                                             }
                                         },
                                         null

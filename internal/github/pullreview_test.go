@@ -147,17 +147,23 @@ func TestFetchPullReviewReadsTheSheet(t *testing.T) {
 	assert.Equal(t, []UnrunSuite{
 		{
 			Name: "PR Management", Conclusion: SuiteAwaitsApproval, RunID: 106,
-			URL: "https://github.com/acme-org/example-repo/actions/runs/106",
+			URL: "https://github.com/acme-org/example-repo/actions/runs/106", OnGitHub: true,
 		},
 		{
 			Name: "Auto-merge Trigger", Conclusion: "FAILURE", RunID: 107,
 			URL: "https://github.com/acme-org/example-repo/actions/runs/107",
 		},
 		{Name: "Example CI", Conclusion: "STARTUP_FAILURE"},
+		{
+			Name: "Docs", Conclusion: SuiteAwaitsApproval, RunID: 111,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/111",
+		},
 	}, review.Unrun, "the suites that ended without a check and without passing, each workflow run with its ID and "+
 		"page: one that ran a check (e2e failed in CS_5), passed, or is still queued is none of them, and a null is "+
-		"skipped")
-	assert.Equal(t, 1, review.Update.Details.Checks.Awaiting, "the card counts the run held for approval")
+		"skipped; a run a review started on a pull request from the same repository waits for approval on GitHub, "+
+		"and one the Actions bot queued can be approved")
+	assert.Equal(t, 1, review.Update.Details.Checks.Awaiting, "the card counts the run the user can approve")
+	assert.Equal(t, 1, review.Update.Details.Checks.AwaitingOnGitHub, "and the one approved on GitHub")
 
 	observed := rates.all()
 	require.NotEmpty(t, observed)
@@ -190,15 +196,20 @@ func TestFetchPullReviewReadsHeldRunsWithoutARollup(t *testing.T) {
 		{Name: "e2e", Conclusion: "FAILURE", RunID: 105, URL: "https://github.com/acme-org/example-repo/actions/runs/105"},
 		{
 			Name: "PR Management", Conclusion: SuiteAwaitsApproval, RunID: 106,
-			URL: "https://github.com/acme-org/example-repo/actions/runs/106",
+			URL: "https://github.com/acme-org/example-repo/actions/runs/106", OnGitHub: true,
 		},
 		{
 			Name: "Auto-merge Trigger", Conclusion: "FAILURE", RunID: 107,
 			URL: "https://github.com/acme-org/example-repo/actions/runs/107",
 		},
 		{Name: "Example CI", Conclusion: "STARTUP_FAILURE"},
+		{
+			Name: "Docs", Conclusion: SuiteAwaitsApproval, RunID: 111,
+			URL: "https://github.com/acme-org/example-repo/actions/runs/111",
+		},
 	}, review.Unrun, "with no check run, no suite ran one")
-	assert.Equal(t, Checks{Awaiting: 1}, review.Update.Details.Checks, "the card has no rollup, and the held run")
+	assert.Equal(t, Checks{Awaiting: 1, AwaitingOnGitHub: 1}, review.Update.Details.Checks,
+		"the card has no rollup, and the held runs")
 }
 
 func TestFetchPullReviewWithoutACompare(t *testing.T) {

@@ -380,6 +380,20 @@ follower, or Autopilot's own reads), and the `Tracker` splits each budget's spen
 (`Reading.Purposes`, which add up to `Spent`); the budget menu says Autopilot's share in one
 line, only once it spent something.
 
+**Held workflow runs.** GitHub's approve endpoint (`POST .../actions/runs/{id}/approve`,
+`ApproveWorkflowRun`) takes only "a fork pull request" or a run "queued by the Actions bot", in
+its own words, and refuses any other run it holds, as one a review (`pull_request_review`)
+started in the base repository, even on a fork's pull request. The details fragment reads, of
+each head commit suite, its creator's login and its run's event, and the pull request's
+`isCrossRepository`, none of which costs a point (measured in November 2026), and `suiteHold`
+tells the held runs (suites that ended `ACTION_REQUIRED` with a run) apart: a `pull_request` run
+on a fork's pull request, or one whose suite `github-actions[bot]` created, is approvable
+(`Checks.Awaiting`); any other waits for approval on GitHub (`Checks.AwaitingOnGitHub`,
+`UnrunSuite.OnGitHub`). A run waiting on a deployment environment's reviewers hasn't ended, so
+it is neither: its job's check counts as running. A refusal for what the run is still comes back
+as a 403 or 422 like any other, with no code of its own, so `approveError` tells it by GitHub's
+message ("fork pull request") and wraps `ErrRunNotApprovable`, keeping GitHub's words.
+
 ## internal/inbox
 
 These notes cover what the inbox does for Autopilot: the routines' searches, which each

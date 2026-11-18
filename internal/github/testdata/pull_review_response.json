@@ -417,11 +417,15 @@
                                     {
                                         "id": "CS_6",
                                         "conclusion": "ACTION_REQUIRED",
+                                        "creator": {
+                                            "login": "octo-reviewer"
+                                        },
                                         "app": {
                                             "name": "GitHub Actions"
                                         },
                                         "workflowRun": {
                                             "databaseId": 106,
+                                            "event": "pull_request_review",
                                             "url": "https://github.com/acme-org/example-repo/actions/runs/106",
                                             "workflow": {
                                                 "name": "PR Management"
@@ -471,6 +475,24 @@
                                             "name": "Example CI"
                                         },
                                         "workflowRun": null
+                                    },
+                                    {
+                                        "id": "CS_11",
+                                        "conclusion": "ACTION_REQUIRED",
+                                        "creator": {
+                                            "login": "github-actions[bot]"
+                                        },
+                                        "app": {
+                                            "name": "GitHub Actions"
+                                        },
+                                        "workflowRun": {
+                                            "databaseId": 111,
+                                            "event": "pull_request",
+                                            "url": "https://github.com/acme-org/example-repo/actions/runs/111",
+                                            "workflow": {
+                                                "name": "Docs"
+                                            }
+                                        }
                                     },
                                     null
                                 ]
