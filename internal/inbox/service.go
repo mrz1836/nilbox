@@ -153,6 +153,10 @@ type Client interface {
 	FetchRateLimits(ctx context.Context, tok github.Token) (*github.RateLimits, error)
 	FetchAvatar(ctx context.Context, url string) (*github.Avatar, error)
 
+	// FetchCommitAuthors tells the user's own pushes to a pull request they requested
+	// changes on from the author's (ownpushes.go).
+	FetchCommitAuthors(ctx context.Context, tok github.Token, ids []string) (map[string][]github.CommitAuthor, error)
+
 	// FetchWatches and FetchChecks serve the routines: their searches (watches.go) and the
 	// check names of the pull requests they act on (checks.go).
 	FetchWatches(ctx context.Context, tok github.Token, searches []github.WatchSearch) (*github.Watches, error)
@@ -248,6 +252,10 @@ type Service struct {
 
 	// passes holds the watch pass worker's state (see watches.go).
 	passes watchPasses
+
+	// own remembers which pull requests only the user pushed to since their request for
+	// changes (see ownpushes.go).
+	own ownPushes
 
 	// merges holds the follows the merges the inbox learned of are owed (see merges.go).
 	merges *mergeQueue
@@ -474,6 +482,8 @@ func (s *Service) fetchAll(
 	if got.warning, err = github.CheckScopes(got.inbox.OAuthScopes); err != nil {
 		return refreshed{}, err
 	}
+
+	s.coverOwnPushes(ctx, tok, got.inbox)
 
 	if err = s.readMoreDetails(ctx, tok, &got, listed, asked, last, tracker); err != nil {
 		return refreshed{}, err

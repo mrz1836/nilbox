@@ -169,3 +169,24 @@ func offerOf(t *testing.T, r Review, action Action) Offer {
 
 	return Offer{}
 }
+
+func TestNoReRequestAfterOnlyYourOwnPush(t *testing.T) {
+	t.Parallel()
+
+	// The user merged the base in to fix the checks: the author still owes the changes,
+	// so the sheet says nothing came since, and offers no re-request.
+	h := pushedSinceHarness(t)
+	h.github.review.Commits = []github.PullCommit{
+		{OID: headB, Headline: "Add the cache", Author: octoOther},
+		{OID: headA, Headline: "Merge main into widget-cache", Author: octoUser},
+	}
+	h.github.review.CommitTotal = 2
+
+	r := h.refreshed(t)
+	require.NotNil(t, r.YourReview)
+	assert.Equal(t, SinceNone, r.YourReview.Since)
+
+	for _, o := range r.Offers {
+		assert.NotEqual(t, ActionRerequestReview, o.Action, "no re-request after the user's own push")
+	}
+}

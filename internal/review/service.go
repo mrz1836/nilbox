@@ -643,7 +643,7 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 	}
 
 	if c != nil {
-		r.fill(c, matcher)
+		r.fill(c, matcher, pull.Viewer)
 	}
 
 	r.Change = changeOf(r.Files, r.Bump != nil)
@@ -656,8 +656,9 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 	return r
 }
 
-// fill adds what the cache holds to r.
-func (r *Review) fill(c *cached, matcher *sensitive.Matcher) {
+// fill adds what the cache holds to r, the review of viewer, the signed-in account, told
+// from the others'.
+func (r *Review) fill(c *cached, matcher *sensitive.Matcher, viewer string) {
 	pc := c.context
 	r.Head, r.State, r.Body, r.Stale = c.head, cmp.Or(pc.State, github.StateOpen), pc.Body, !strings.EqualFold(c.head, r.Head)
 	r.BodyTrimmed, r.EditedAt, r.Reactions = pc.BodyTrimmed, pc.EditedAt, textutil.NonNil(pc.Reactions)
@@ -672,7 +673,7 @@ func (r *Review) fill(c *cached, matcher *sensitive.Matcher) {
 	r.Closes, r.MoreCloses = textutil.NonNil(pc.Closes), max(pc.CloseCount-len(pc.Closes), 0)
 	r.CommitList = commitsOf(pc.Commits, r.URL)
 	r.EarlierCommits = max(pc.CommitTotal-len(pc.Commits), 0)
-	r.YourReview = yourReview(pc.Opinion, pc.Commits, pc.CommitTotal, pc.Timeline)
+	r.YourReview = yourReview(pc.Opinion, pc.Commits, pc.CommitTotal, pc.Timeline, viewer)
 	r.BehindBy = pc.BehindBy
 	r.Behind = pc.behind()
 

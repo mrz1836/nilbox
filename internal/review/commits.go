@@ -101,12 +101,16 @@ func commitsOf(cached []contextCommit, pullURL string) []Commit {
 // yourReview works out the user's standing review op and what happened to the branch
 // since, from the newest commits, of total in all, and the conversation's newest entries.
 // It goes by where the reviewed commit is among the commits, never by their dates, which a
-// rebase keeps: found, the commits after it were pushed since; missing from every commit
-// the pull request has, the branch was rewritten; missing from the newest only, it was
+// rebase keeps: found, the commits after it were pushed since, unless viewer, the
+// signed-in account, wrote every one of them, as a merge of the base the user pushed to fix
+// its checks, which leaves the review standing as it was; missing from every commit the
+// pull request has, the branch was rewritten; missing from the newest only, it was
 // rewritten when a force push follows the review, and is further back otherwise. With no
 // commits read, as from an older build's cache, it says nothing of since. It returns nil
 // without a standing review.
-func yourReview(op *contextReview, commits []contextCommit, total int, entries []timeline.Entry) *YourReview {
+func yourReview(
+	op *contextReview, commits []contextCommit, total int, entries []timeline.Entry, viewer string,
+) *YourReview {
 	if op == nil || op.Commit == "" {
 		return nil
 	}
@@ -123,10 +127,10 @@ func yourReview(op *contextReview, commits []contextCommit, total int, entries [
 	at := slices.IndexFunc(commits, func(c contextCommit) bool { return strings.EqualFold(c.OID, op.Commit) })
 
 	switch {
-	case at >= 0 && at < len(commits)-1:
+	case at >= 0 && at < len(commits)-1 && !allBy(commits[at+1:], viewer):
 		out.Since, out.Count = SincePushed, len(commits)-1-at
 	case at >= 0:
-		// The review is at the head: nothing since.
+		// The review is at the head, or only the user pushed since: nothing the author owes.
 	case total <= len(commits), forcePushedAfter(entries, out.At):
 		out.Since = SinceRewritten
 	default:
@@ -134,6 +138,16 @@ func yourReview(op *contextReview, commits []contextCommit, total int, entries [
 	}
 
 	return out
+}
+
+// allBy reports commits all written by login, the GitHub account its author's email
+// matches; false with no login.
+func allBy(commits []contextCommit, login string) bool {
+	if login == "" {
+		return false
+	}
+
+	return !slices.ContainsFunc(commits, func(c contextCommit) bool { return !strings.EqualFold(c.Author, login) })
 }
 
 // forcePushedAfter reports a force push among entries after at, an RFC 3339 time; with no

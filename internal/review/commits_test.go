@@ -1,6 +1,7 @@
 package review
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,16 @@ func commitsAt(chars ...string) []contextCommit {
 	out := make([]contextCommit, 0, len(chars))
 	for _, c := range chars {
 		out = append(out, contextCommit{OID: sha(c), Headline: "Commit " + c})
+	}
+
+	return out
+}
+
+// by is commits with those from index from on written by login.
+func by(commits []contextCommit, from int, login string) []contextCommit {
+	out := slices.Clone(commits)
+	for i := from; i < len(out); i++ {
+		out[i].Author = login
 	}
 
 	return out
@@ -76,13 +87,21 @@ func TestYourReviewGoesByWhereTheReviewedCommitIs(t *testing.T) {
 			total: 150, entries: forcePushAt("2026-11-09T11:00:00Z"), since: SinceBeyond,
 		},
 		{name: "no commits read, as an older build's cache", op: reviewedAt("a"), total: 3},
+		{
+			name: "only the user pushed since, as a merge of the base", op: reviewedAt("a"),
+			commits: by(commitsAt("a", "b", "c"), 1, "Octo-User"), total: 3,
+		},
+		{
+			name: "the author pushed, then the user", op: reviewedAt("a"),
+			commits: by(by(commitsAt("a", "b", "c"), 1, octoOther), 2, octoUser), total: 3, since: SincePushed, count: 2,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := yourReview(tt.op, tt.commits, tt.total, tt.entries)
+			got := yourReview(tt.op, tt.commits, tt.total, tt.entries, octoUser)
 			require.NotNil(t, got)
 			assert.Equal(t, tt.since, got.Since)
 			assert.Equal(t, tt.count, got.Count)
@@ -91,11 +110,11 @@ func TestYourReviewGoesByWhereTheReviewedCommitIs(t *testing.T) {
 		})
 	}
 
-	assert.Nil(t, yourReview(nil, commitsAt("a"), 1, nil), "no standing review, as one that only commented")
-	assert.Nil(t, yourReview(&contextReview{State: github.ReviewStateApproved}, commitsAt("a"), 1, nil),
+	assert.Nil(t, yourReview(nil, commitsAt("a"), 1, nil, octoUser), "no standing review, as one that only commented")
+	assert.Nil(t, yourReview(&contextReview{State: github.ReviewStateApproved}, commitsAt("a"), 1, nil, octoUser),
 		"a review on no known commit tells nothing")
 
-	got := yourReview(reviewedAt("a"), commitsAt("a"), 1, nil)
+	got := yourReview(reviewedAt("a"), commitsAt("a"), 1, nil, octoUser)
 	assert.Equal(t, "2026-11-09T12:00:00Z", got.At)
 	assert.Equal(t, "https://github.com/r", got.URL)
 }

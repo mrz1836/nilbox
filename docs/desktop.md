@@ -1530,8 +1530,14 @@ or you asking GitHub for your own review again with **Re-request my review**, ma
 ordinary request, whose tag then reads **Review re-requested**; the re-request does so at once,
 with no extra read. The tag goes by who the pull request asks to review, as its details last
 read it, so a refresh whose search hasn't caught up with the request keeps it. Any move of
-the head counts: a push, a rebase, or **Update branch**. Its
-[review sheet's](#reviewing-a-pull-request) **Commits** tab shows the commits since. **Notifications** counts what is unread: the app's own notifications, the bell's, and,
+the head by someone else counts: a push, a rebase, or someone else's **Update branch**.
+Commits you pushed yourself never do, such as a merge of its base you pushed to fix its checks:
+the author still owes the changes, so the pull request stays out of Review requested, untagged,
+and its review sheet offers no **Re-request my review**. Nilbox tells your commits apart by
+their author, in one small read (1 GraphQL point) only for a pull request whose head moved past
+your verdict, once per push; a read that fails leaves it pushed to, and is tried again on the
+next refresh. Its [review sheet's](#reviewing-a-pull-request) **Commits** tab shows the commits
+since. **Notifications** counts what is unread: the app's own notifications, the bell's, and,
 while Nilbox reads them, your [GitHub notifications](#github-notifications); hover it for each,
 as **3 unread in Nilbox · 12 unread on GitHub**. **Autopilot** counts the agents its routines
 have working, with an amber dot while something waits for you and a red dot while a routine is

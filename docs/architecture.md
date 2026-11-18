@@ -144,9 +144,10 @@ the commits, never by their dates, which a rebase keeps: found, the commits afte
 pushed since (`SincePushed`, with the count); missing from every commit, the branch was
 rewritten (`SinceRewritten`); missing from the newest hundred only, it was rewritten when a
 force push in the conversation follows the review, and is further back otherwise
-(`SinceBeyond`); with no commits read, nothing is said. Commits from Update branch count as
-pushed since (labelling them would need each commit's `parents`, a connection that costs
-points). The sheet shows them in its Commits tab, the third, and says so above the tabs
+(`SinceBeyond`); with no commits read, nothing is said. Commits the signed-in user wrote, every
+one after the reviewed commit, as a merge of the base they pushed (Update branch's own merge
+commit is the clicker's), are nothing since (`allBy`), as the inbox's `ownSince` judges them,
+so neither the strip nor Re-request my review shows. The sheet shows them in its Commits tab, the third, and says so above the tabs
 (`SinceYourReview`) while the pull request is open. The summary lists
 each reviewer's latest review without its text, which is in the conversation, then who the
 card says the pull request still asks to review (`withRequests`, from `review_users` and
@@ -862,8 +863,18 @@ one its author pushed to without asking again would leave the inbox for good. It
 pull request with its head commit and the user's own verdict (`github.Verdict`, from
 `latestOpinionatedReviews`), which costs the query no point (measured in November 2026). It
 stores `reason_reviewed` (the raw match) and, when the verdict requested changes at a commit
-other than the head (`github.Item.PushedSinceChanges`, any head move: a push, a rebase, or
-Update branch), `reason_pushed`, which lists the pull request in Review requested; it doesn't
+other than the head (`github.Item.PushedSinceChanges`, any head move by someone else: a push,
+a rebase, or Update branch), `reason_pushed`, which lists the pull request in Review requested.
+Commits the user wrote never count, as a merge of the base they pushed to fix its checks: the
+fourth search can't say who wrote the commits between the verdict and the head without a point
+more every refresh, so the refresh asks (`coverOwnPushes`, `(*github.Client).FetchCommitAuthors`:
+the newest 20 commits of each, with the login each author's email matches, one point a batch of
+50) only about those whose head moved past the verdict, once per verdict and head, which
+`ownPushes` keeps in memory while the app runs. When the user wrote every commit after the
+verdict's (`ownSince`; an author matching no account is someone else, and so is a verdict older
+than the commits read), the refresh moves the verdict's commit onto the head before it stores
+it, so `viewer_review_commit` holds the newest commit the verdict covers, which only this rule
+reads; a read that fails leaves it pushed to, and is asked again next time. It doesn't
 ask GitHub for `review:changes_requested`, which matches the overall decision, someone
 else's request included. Each row keeps the verdict (`viewer_review_state`,
 `viewer_review_commit`), so the card says **Pushed since your review** in any list

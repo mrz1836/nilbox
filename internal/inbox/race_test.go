@@ -166,6 +166,10 @@ func (c *raceClient) RemoveReviewRequest(context.Context, github.Token, item.Ref
 	return nil, errNotAsked
 }
 
+func (c *raceClient) FetchCommitAuthors(context.Context, github.Token, []string) (map[string][]github.CommitAuthor, error) {
+	return map[string][]github.CommitAuthor{}, nil
+}
+
 // numbered returns the snapshot item with a number, from any list.
 func numbered(t *testing.T, snap inbox.Snapshot, number int) inbox.Item {
 	t.Helper()

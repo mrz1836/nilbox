@@ -636,6 +636,12 @@ func (w *World) RemoveReviewRequest(context.Context, github.Token, item.Ref, str
 	return nil, errNotAsked
 }
 
+// FetchCommitAuthors knows no commit's author, so a push to a pull request reviewed is
+// always someone else's.
+func (w *World) FetchCommitAuthors(context.Context, github.Token, []string) (map[string][]github.CommitAuthor, error) {
+	return map[string][]github.CommitAuthor{}, w.down()
+}
+
 // fails reports a search the world fails.
 func (w *World) fails(s github.WatchSearch) bool {
 	return w.failing || w.failWith != "" && strings.Contains(s.Query, w.failWith)

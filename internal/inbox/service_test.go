@@ -143,6 +143,36 @@ type fakeClient struct {
 	// itemsFail fails, as with a network error, a FetchItems request that holds this node
 	// ID; the others are answered.
 	itemsFail string
+
+	// commits holds each pull request's newest commits with their authors by node ID,
+	// commitsErr fails every such read, and commitIDs records the pull requests each asked
+	// about.
+	commits    map[string][]github.CommitAuthor
+	commitsErr error
+	commitIDs  [][]string
+}
+
+func (c *fakeClient) FetchCommitAuthors(
+	_ context.Context, _ github.Token, ids []string,
+) (map[string][]github.CommitAuthor, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.commitIDs = append(c.commitIDs, slices.Clone(ids))
+
+	if c.commitsErr != nil {
+		return nil, c.commitsErr
+	}
+
+	out := map[string][]github.CommitAuthor{}
+
+	for _, id := range ids {
+		if got, ok := c.commits[id]; ok {
+			out[id] = got
+		}
+	}
+
+	return out, nil
 }
 
 func (c *fakeClient) FetchInbox(_ context.Context, tok github.Token) (*github.Inbox, error) {

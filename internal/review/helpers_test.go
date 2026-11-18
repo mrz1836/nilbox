@@ -93,11 +93,11 @@ func TestFillReadsACacheWithNoStateAsOpen(t *testing.T) {
 
 	var r Review
 
-	r.fill(&cached{head: headA}, nil)
+	r.fill(&cached{head: headA}, nil, octoUser)
 	assert.Equal(t, github.StateOpen, r.State, "a cache that holds no state")
 
 	r = Review{}
-	r.fill(&cached{head: headA, context: pullContext{State: github.StateClosed}}, nil)
+	r.fill(&cached{head: headA, context: pullContext{State: github.StateClosed}}, nil, octoUser)
 	assert.Equal(t, github.StateClosed, r.State, "the state the cache holds")
 }
 
