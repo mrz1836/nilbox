@@ -401,10 +401,14 @@ const worktreeMakerFile = "internal/worktrees/create.go"
 
 // fenceVocabularyFiles name, as data, the commands the fence decides for an agent's run:
 // the git verbs it lets an edit preset run in its worktree or refuses, gh's clone among the
-// commands it refuses, and sudo among the programs no preset runs. They run none of them,
+// commands it refuses, and sudo among the programs no preset runs; and the commands it
+// recognizes in an agent's session as changing GitHub (github.go: gh's merge and the like,
+// and git's push), so the inbox reads the session's item again. They run none of them,
 // and the fence starts no process at all (TestTheFenceRunsNothing).
 func fenceVocabularyFiles() []string {
-	return []string{"internal/fence/rules.go", "internal/fence/decide.go", "internal/fence/decide_git.go"}
+	return []string{
+		"internal/fence/rules.go", "internal/fence/decide.go", "internal/fence/decide_git.go", "internal/fence/github.go",
+	}
 }
 
 // TestTheFenceRunsNothing holds the fence to deciding: no file of its package imports a

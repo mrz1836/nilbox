@@ -4802,6 +4802,21 @@ GitHub's time, give or take a few seconds, and never says who did it: the agent 
 you in your browser or in Nilbox. A review counts only when it approves or requests changes,
 and only one made within two hours of when Nilbox sees it.
 
+**When the item is read again.** Each time a session stops working (it goes idle, waits for
+you, ends, or fails), Nilbox reads its item from GitHub again, one GraphQL point, so the card
+catches up with what the agent did. While the session still works, it also reads the item as
+soon as the agent finishes a command that changes something on GitHub: `gh pr review`,
+`merge`, `close`, `reopen`, `comment`, `edit`, `ready`, or `update-branch`; `gh issue close`,
+`reopen`, `comment`, or `edit`; a write through `gh api`; or `git push`, also behind `cd`,
+`timeout`, `env`, or a shell's `-c`. The first such command reads the item at once, and any
+more within 30 seconds once more when they're up, so an approval and a merge a moment later
+both reach the card, at most a point per item every 30 seconds. A command that failed, or one
+still running in the background, doesn't count. Nilbox spots these commands in the agent's own
+files on this Mac, never the network: only what Claude Code added to the session's transcript
+since the last look (the commands from before the launch never count), and the commands in the
+turns Codex's daemon reports. A Codex session the daemon can't reach gets only the read once it
+stops working.
+
 **Its tokens.** The panel says how many tokens each session used, such as **1.2M tokens · 840K
 cached**, with every count (in, out, read from the cache, written to it) in its tooltip, read
 from the agent's own files on this Mac when the panel opens and again each time the session

@@ -1234,7 +1234,21 @@ rollout files. Each observer degrades to `StateUnknown` rather than guess, and a
 process says whether it still runs. Following never sends a session anything, and nothing here
 reaches the network. A session that stops working (idle, waiting on the user, ended, or
 failed) hands its item to the inbox's `Rereads` (a desktop worker, through the `Rereader`
-interface core wires), which reads it again, one GraphQL point each, one item at a time; a
+interface core wires), which reads it again, one GraphQL point each, one item at a time. A
+session still working hands it over too once its agent finishes a command that changes
+GitHub (`Observation.Acted`, from `fence.ChangesGitHub`): the Claude observer follows each
+listed session's transcript from where it last read it (`commandScan`, `commands.go`: only
+what the file gained, from its last 4 MB the first time, at most 4 MB a poll, lines over
+1 MB passed over, after the `Lstat` that refuses a link and through `paths.OpenRegular`),
+noting a Bash `tool_use` stamped at or after the launch that isn't `run_in_background`, and
+telling it once its `tool_result` arrives without `is_error`; the Codex observer weighs the
+`commandExecution` items of the turn it reads anyway (`status` completed, `exitCode` 0, each
+once by turn and ID, none from its first read, which ran before the session was followed).
+The Watcher reads `Acted` from the observations as made, before `Apply` drops one that
+changes nothing, and throttles per item (`heedActed`, `ActedGap`, 30 s): the first at once,
+any more within the gap once at its end, and a session that stops working drops one waiting,
+since its own read covers it. A background run's session is its run's to report
+(`Ledger.RunState`), never an observer's, so it gets only the read as it stops working. A
 single-item read (`RefreshItem`, the checks follower, the review sheet's `ReadPull`) takes a
 pull request out of Review requested once GitHub no longer asks the user, by name or
 through a team, stamped like the inbox's own edits (`review_left_at`), so a lagging search
@@ -4023,6 +4037,14 @@ depends on no agent. It is a leaf: it imports only `sensitive`, `paths`, and `te
   `ReadDenials` counts them and keeps the last 20 for the run's outcome.
   `WriteRun` writes a run's folder: the policy and the agent's own files, 0600 and never through
   a link, in a 0700 folder, with the sandbox check's proof folder for a sandboxed run.
+- **What changes GitHub.** `ChangesGitHub(line)` (`github.go`) reads a command line with the
+  fence's own reader and reports one that changes something on GitHub: `gh pr` merge, review,
+  close, reopen, comment, edit, ready, or update-branch; `gh issue` close, reopen, comment, or
+  edit; `gh api` with a method other than GET, with fields and no method, or a GraphQL
+  mutation; or `git push`, past git's own options and their values. It looks past the
+  wrappers and into a shell's `-c` line, as Codex runs every command, to `maxShellDepth`, and a
+  line it can't read is false. The sessions' observers call it to read an item again while
+  its session still works; it decides nothing for the fence.
 - **What a run changed.** `CheckChanged(head, files, cfg)` checks the files a run's commits
   changed against the sensitive categories, the denied ones always on (at most `MaxChanged`
   files; more make it incomplete), and `MergeChanged` adds that to an item's own file check.

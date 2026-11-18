@@ -181,6 +181,12 @@ type Observation struct {
 	// AgentSessionID, as Claude Code's /clear starts a new one, so the session follows it
 	// in place of the one it was linked to.
 	Relinked bool
+
+	// Acted reports that, since the session was last observed, its agent finished a
+	// command that changes something on GitHub (fence.ChangesGitHub) without an error, so
+	// its item may have changed while it still works. It is never stored: the Watcher
+	// reads the item again (see Watcher.heedActed).
+	Acted bool
 }
 
 // Change is a session whose record an observation changed: as it was, and as it is.

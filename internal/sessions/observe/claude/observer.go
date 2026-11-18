@@ -104,13 +104,20 @@ type dirState struct {
 	absent map[string]time.Time
 }
 
-// transcript is a session's transcript, as last read.
+// transcript is a session's transcript, as last read, and how far its commands were
+// followed (see commandScan).
 type transcript struct {
-	path    string
-	mod     time.Time
-	size    int64
-	message string
+	path     string
+	mod      time.Time
+	size     int64
+	message  string
+	commands commandScan
 }
+
+// commandSkew is how long before its launch a session's transcript lines may be stamped
+// and still be the session's own: the transcript's clock is this Mac's, as the launch's
+// is, and only rounds apart.
+const commandSkew = time.Second
 
 // New returns an Observer over cfg.
 func New(cfg Config) *Observer {
@@ -329,6 +336,7 @@ func (o *Observer) observe(
 func (o *Observer) listed(d *dirState, r sessions.Record, e Entry, relinked bool) sessions.Observation {
 	obs := sessions.Observation{
 		ID: r.ID, PID: e.PID, LastMessage: o.lastMessage(d, e.SessionID), Seen: true, Relinked: relinked,
+		Acted: o.actedOn(e.SessionID, r.LaunchedAt.Add(-commandSkew)),
 	}
 
 	if relinked {
@@ -467,6 +475,29 @@ func (o *Observer) lastMessage(d *dirState, sessionID string) string {
 	}
 
 	return t.message
+}
+
+// actedOn reports whether the session's agent finished, since its transcript was last
+// followed, a command it ran at or after since that changes GitHub (see commandScan). It
+// reads only what the transcript gained, and only once lastMessage found it, never through
+// a link swapped in since; a transcript it can't read tells nothing.
+func (o *Observer) actedOn(sessionID string, since time.Time) bool {
+	t := o.transcripts[sessionID]
+	if t == nil || t.path == "" {
+		return false
+	}
+
+	info, err := os.Lstat(t.path)
+	if err != nil || !info.Mode().IsRegular() || t.commands.unchanged(info) {
+		return false
+	}
+
+	acted, err := t.commands.follow(t.path, since)
+	if err != nil {
+		o.logger.Debug("could not follow a Claude Code transcript's commands", "error", err)
+	}
+
+	return acted
 }
 
 // forgetTranscripts drops the transcripts of sessions no longer followed.
