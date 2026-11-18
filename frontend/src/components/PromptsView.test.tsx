@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
+import { Activity, useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
@@ -99,7 +99,7 @@ describe('PromptsView', () => {
 
     expect(
       within(library().getByRole('region', { name: 'Pull requests' }))
-        .getAllByRole('button')
+        .getAllByRole('listitem')
         .map((b) => b.textContent),
     ).toEqual([
       expect.stringContaining('Fix checks'),
@@ -558,6 +558,104 @@ describe('PromptsView', () => {
     expect(library().getByText('No prompt matches “zzz”.')).toBeInTheDocument()
   })
 
+  it('folds a group away from its heading, which counts its prompts', async () => {
+    render(<Harness />)
+
+    const pulls = library().getByRole('button', { name: 'Pull requests, 3 prompts' })
+
+    expect(pulls).toHaveAttribute('aria-expanded', 'true')
+    expect(library().getByRole('button', { name: 'Issues, 1 prompt' })).toHaveAttribute('aria-expanded', 'true')
+
+    await userEvent.click(pulls)
+
+    expect(pulls).toHaveAttribute('aria-expanded', 'false')
+    expect(library().queryByRole('button', { name: /Quick look/ })).not.toBeInTheDocument()
+    expect(library().getByRole('button', { name: /Work on it/ })).toBeInTheDocument()
+    // Folding the open prompt's group away leaves it open in the editor.
+    expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveValue('Fix checks')
+
+    await userEvent.click(pulls)
+
+    expect(pulls).toHaveAttribute('aria-expanded', 'true')
+    expect(library().getByRole('button', { name: /Quick look/ })).toBeInTheDocument()
+  })
+
+  it('keeps the folded groups while the page is away, and opens a prompt in sight', async () => {
+    const { rerender } = render(
+      <Activity mode="visible">
+        <Harness />
+      </Activity>,
+    )
+
+    await userEvent.click(library().getByRole('button', { name: 'Pull requests, 3 prompts' }))
+
+    rerender(
+      <Activity mode="hidden">
+        <Harness />
+      </Activity>,
+    )
+    rerender(
+      <Activity mode="visible">
+        <Harness />
+      </Activity>,
+    )
+
+    expect(library().getByRole('button', { name: 'Pull requests, 3 prompts' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+
+    // Coming back from the replies opens the first prompt of a group left open.
+    await userEvent.click(screen.getByRole('radio', { name: 'Review replies' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'Agent prompts' }))
+
+    expect(library().getByRole('button', { name: 'Pull requests, 3 prompts' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    expect(library().getByRole('button', { name: /Work on it/ })).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('shows every group with a match open while searching, and counts the matches', async () => {
+    render(<Harness />)
+    await userEvent.click(library().getByRole('button', { name: 'Pull requests, 3 prompts' }))
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search prompts' }), 'quick')
+
+    expect(library().getByRole('heading', { name: 'Pull requests, 1 matching' })).toBeInTheDocument()
+    expect(library().getByRole('button', { name: /Quick look/ })).toBeInTheDocument()
+    expect(library().queryByRole('button', { name: /^Pull requests/ })).not.toBeInTheDocument()
+
+    await userEvent.clear(screen.getByRole('searchbox', { name: 'Search prompts' }))
+
+    expect(library().getByRole('button', { name: 'Pull requests, 3 prompts' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+  })
+
+  it('marks a folded group that hides unsaved changes, and opens it once they are saved', async () => {
+    render(<Harness />)
+    await waitForCheck()
+    await userEvent.click(library().getByRole('button', { name: 'Pull requests, 3 prompts' }))
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Nickname' }), '!')
+
+    expect(library().getByRole('button', { name: 'Pull requests, 3 prompts, unsaved changes' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+
+    await waitFor(() => {
+      expect(lastCheck().input.nickname).toBe('Fix checks!')
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByText('Saved.')).toBeInTheDocument()
+    expect(library().getByRole('button', { name: 'Pull requests, 3 prompts' })).toHaveAttribute('aria-expanded', 'true')
+    expect(library().getByRole('button', { name: /Fix checks/ })).toHaveAttribute('aria-current', 'true')
+  })
+
   it('previews with the items the prompt applies to', async () => {
     render(<Harness />)
     await waitForCheck()
@@ -954,7 +1052,7 @@ describe('PromptsView review replies', () => {
     expect(screen.queryByRole('navigation', { name: 'Prompts' })).not.toBeInTheDocument()
     expect(
       within(replyLibrary().getByRole('region', { name: 'Approvals' }))
-        .getAllByRole('button')
+        .getAllByRole('listitem')
         .map((b) => b.textContent),
     ).toEqual([expect.stringContaining('LGTM'), expect.stringContaining('Update OK')])
     expect(replyLibrary().getByRole('button', { name: /LGTM/ })).toHaveTextContent('Default for approvals')

@@ -49,7 +49,7 @@ import {
 import { ImportPromptsDialog, type ImportStart } from './ImportPromptsDialog'
 import { MenuButton, type MenuItem } from './Menu'
 import { PromptEditor, type PromptView } from './PromptEditor'
-import { PromptLibrary, type Selection } from './PromptLibrary'
+import { firstShown, groupKey, PromptLibrary, type Selection } from './PromptLibrary'
 import { PromptPreview } from './PromptPreview'
 import type { TemplateEditorHandle } from './TemplateEditor'
 import { VariablesPanel } from './VariablesPanel'
@@ -206,7 +206,9 @@ function touchedField(field: string, draft: PromptInput, start: PromptInput): bo
 // or pointing at a problem, while previewing goes back to Edit first. The library shows
 // either the agent prompts or the review replies, and a stored prompt always opens in its
 // own part. Edits are checked by the backend as you type and saved with Save (or ⌘S).
-// Leaving a prompt with unsaved changes asks first.
+// Leaving a prompt with unsaved changes asks first. The library's groups fold away and
+// stay folded while the page is away; a prompt the page opens on its own is the first in
+// a group left open, and one the user's action opens shows its group again.
 export function PromptsView({ agents, prompts, replies, defaults, variables, items, onChanged }: PromptsViewProps) {
   const editorRef = useRef<TemplateEditorHandle>(null)
   // previewRef is the filled-in text's scroll region, which ⇧⌘P focuses.
@@ -231,6 +233,34 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
   const [pending, setPending] = useState<Pending | null>(null)
   // importing is the import under way in its dialog, or null.
   const [importing, setImporting] = useState<ImportStart | null>(null)
+  // collapsed holds the library's groups the user folded away (see groupKey). The page
+  // stays mounted once visited, so they stay folded when the user leaves and comes back.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
+
+  // collapse folds a group of the library away, or opens it.
+  const collapse = (key: string, on: boolean) => {
+    setCollapsed((was) => {
+      const next = new Set(was)
+
+      if (on) {
+        next.add(key)
+      } else {
+        next.delete(key)
+      }
+
+      return next
+    })
+  }
+
+  // reveal opens the group a prompt is listed in, so a prompt the editor opens is in sight
+  // in the library: one saved into a folded group, a duplicate, an import.
+  const reveal = (p: Prompt) => {
+    const key = groupKey(p)
+
+    if (collapsed.has(key)) {
+      collapse(key, false)
+    }
+  }
 
   const replyMode = mode === 'reply'
   const noun = nounOf(mode)
@@ -291,6 +321,10 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
     const shows = stored?.purpose ?? part
     const input = stored === undefined ? (shows === 'reply' ? blankReply : blankInput) : toInput(stored)
 
+    if (stored !== undefined) {
+      reveal(stored)
+    }
+
     setMode(shows)
     setSelection(next)
 
@@ -330,7 +364,7 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
     if (wanted) {
       setAfterReload(null)
     } else if (selection === null || (selection.kind === 'prompt' && !listed.some((p) => p.id === selection.id))) {
-      const first = listed[0]
+      const first = firstShown(listed, mode, collapsed)
 
       if (first !== undefined) {
         open(lists, { kind: 'prompt', id: first.id }, mode)
@@ -350,10 +384,10 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
     }
   }
 
-  // switchMode shows the other part of the library, opening its first prompt, or none
-  // when it has none.
+  // switchMode shows the other part of the library, opening its first prompt in sight, or
+  // none when it has none.
   const switchMode = (part: PromptPurpose) => {
-    const first = (part === 'reply' ? replies : prompts)[0]
+    const first = firstShown(part === 'reply' ? replies : prompts, part, collapsed)
 
     ask(first === undefined ? null : { kind: 'prompt', id: first.id }, part)
   }
@@ -393,6 +427,7 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
 
     const stored = result.data
 
+    reveal(stored)
     setSelection({ kind: 'prompt', id: stored.id })
     setBaseline(toInput(stored))
     setDraft((current) => (sameInput(current, submitted) ? toInput(stored) : current))
@@ -778,6 +813,8 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
         }}
         actions={libraryActions}
         searchRef={searchRef}
+        collapsed={collapsed}
+        onCollapse={collapse}
       />
 
       <section aria-label="Prompt editor" className="flex min-w-0 flex-1 flex-col">
@@ -890,7 +927,7 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
                   disabled={busy}
                   onClick={() => {
                     if (selection.kind === 'new') {
-                      const first = listed[0]
+                      const first = firstShown(listed, mode, collapsed)
 
                       select(first === undefined ? null : { kind: 'prompt', id: first.id })
                     } else {
