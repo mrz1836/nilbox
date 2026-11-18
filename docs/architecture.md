@@ -426,8 +426,12 @@ reads; a read that fails leaves it pushed to, and is asked again next time. It d
 ask GitHub for `review:changes_requested`, which matches the overall decision, someone
 else's request included. Each row keeps the verdict (`viewer_review_state`,
 `viewer_review_commit`), so the card says **Pushed since your review** in any list
-(`Details.PushedSinceReview`, also while `review_left_at` holds it back). A pull request the
-fourth search returns alone and not pushed to is in no list: its details are never read
+(`Details.PushedSinceReview`, also while `review_left_at` holds it back), and hands the
+card the verdict itself (`Details.ViewerVerdict`: `changes`, `approved`, or `""` with none,
+read from `viewer_review_state`, so it costs no request), which lets a card whose user
+requested changes and whose author hasn't pushed since say it waits on the author; one past
+the fourth search's page holds none, and its card falls back to the other rules. A pull
+request the fourth search returns alone and not pushed to is in no list: its details are never read
 (`nodeIDs`, `fileTargets`), and no file check runs. `UpsertItem` gates `reason_pushed` by
 `review_left_at` as it gates the request, so a review the user leaves from the inbox
 (`recordReview`: `LeaveReview`, and `NoteViewerReview`, the new verdict at the head they

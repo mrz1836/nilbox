@@ -9,6 +9,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
+	"github.com/mrz1836/nilbox/internal/item"
 )
 
 // verdict is the user's verdict state on commit, submitted at.
@@ -381,4 +382,56 @@ func TestNewlySubmitted(t *testing.T) {
 			assert.Equal(t, tt.want, newlySubmitted(tt.v, tt.seen, now))
 		})
 	}
+}
+
+func TestACardKnowsTheUsersOwnVerdict(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.client.details = detailsOf(5, 6, 7, 8)
+
+	assigned := make([]github.Item, 0, 4)
+	for _, n := range []int{5, 6, 7, 8} {
+		assigned = append(assigned, byOther(pr(n, "MEMBER", false)))
+	}
+
+	h.client.inbox = withReviewed(fetched(nil, nil, assigned),
+		reviewed(5, github.ReviewStateChangesRequested, headNow),
+		pushed(6),
+		reviewed(7, github.ReviewStateApproved, headReviewed),
+	)
+
+	snap := h.refresh(t)
+
+	waiting := itemByNumber(t, snap.Yours, 5).Details
+	require.NotNil(t, waiting)
+	assert.Equal(t, ViewerVerdictChanges, waiting.ViewerVerdict, "changes requested at its head: it waits on the author")
+	assert.False(t, waiting.PushedSinceReview)
+
+	again := itemByNumber(t, snap.ReviewRequested, 6).Details
+	require.NotNil(t, again)
+	assert.Equal(t, ViewerVerdictChanges, again.ViewerVerdict)
+	assert.True(t, again.PushedSinceReview, "the author pushed since")
+
+	assert.Equal(t, ViewerVerdictApproved, itemByNumber(t, snap.Yours, 7).Details.ViewerVerdict)
+	assert.Equal(t, ViewerVerdictNone, itemByNumber(t, snap.Yours, 8).Details.ViewerVerdict, "never reviewed")
+
+	assert.Len(t, h.client.detailsIDs, 1, "the verdict rides the reads the refresh makes anyway")
+
+	// A read of it alone that finds the review dismissed clears it.
+	h.client.items = map[string]*github.ItemUpdate{nodeID(5): readOf(h, nil)}
+
+	snap, err := h.svc.RefreshItem(t.Context(), itemByNumber(t, snap.Yours, 5).ID)
+	require.NoError(t, err)
+	assert.Equal(t, ViewerVerdictNone, itemByNumber(t, snap.Yours, 5).Details.ViewerVerdict)
+}
+
+func TestAnIssueHoldsNoVerdict(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, ViewerVerdictNone, viewerVerdict(""))
+	assert.Equal(t, ViewerVerdictNone, viewerVerdict(github.ReviewStateDismissed))
+
+	row := itemRow{Kind: item.KindIssue, HasDetails: true, ViewerReviewState: github.ReviewStateChangesRequested}
+	assert.Equal(t, ViewerVerdictNone, row.details(octoUser).ViewerVerdict, "only a pull request is reviewed")
 }
