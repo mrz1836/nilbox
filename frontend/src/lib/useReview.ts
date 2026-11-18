@@ -1,10 +1,13 @@
 // useReview loads the review sheet's pull request: at once from what the sheet read
 // before (Open, which asks GitHub nothing), then from GitHub (Refresh), and the diffs
 // Open left out and the conversation's earlier pages, on demand. When a setting the sheet
-// follows changes while it is open, it builds the sheet again from what it read (Rebuild),
-// asking GitHub nothing.
+// follows changes while it is open, or the inbox stores something new of the pull request
+// (its card changes), it builds the sheet again from what it read and what the inbox read
+// since (Rebuild), asking GitHub nothing, and reads GitHub once more (Refresh) only when that
+// finds the checks, the held runs, or the head moved since the sheet's own read, or when the
+// window comes back to the front more than five minutes after it.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 
 import {
   openReview,
@@ -13,11 +16,13 @@ import {
   refreshReview,
   reviewEarlier,
   reviewPatches,
+  type InboxItem,
   type Review,
   type ReviewFilePatch,
   type ReviewUnrun,
 } from '../platform'
 import { attempt } from './call'
+import { useClock } from './useNow'
 import { useQuery } from './useQuery'
 import { useTimeline, type TimelineState } from './useTimeline'
 
@@ -66,6 +71,12 @@ export const unknownWait = 2000
 export const approvalRetries = 4
 export const approvalWait = 3000
 
+// When the inbox finds an open sheet's checks, held runs, or head moved since the sheet's
+// last read (its card changed, and the rebuild says moved), the sheet reads the pull request
+// again of its own accord, as Refresh does, but never sooner than readFloor after its last
+// read: the backend's refreshAfter, 20 seconds.
+export const readFloor = 20_000
+
 // Retries counts the reads again for one pull request.
 interface Retries {
   id: number
@@ -107,6 +118,42 @@ export function runsStarted(review: Review, held: number): boolean {
   return review.state !== 'OPEN' || (heldRuns(review) < held && review.checks.some((c) => c.outcome === 'pending'))
 }
 
+// oldAfter is how old the sheet's own read of a pull request grows, with nothing newer in the
+// inbox, before what it read of the checks, the held runs, and the conversation is marked
+// while it reads them again, and before the window coming back to the front reads it again:
+// the inbox's own refresh, five minutes.
+export const oldAfter = 5 * 60_000
+
+// ListMark is how the sheet marks what it read of the checks, the held runs, and the
+// conversation: as current, as being read again, or as read some time ago.
+export type ListMark = 'current' | 'reading' | 'old'
+
+// listMark marks what the sheet read of review at now, while checking says a read from
+// GitHub is under way and failed that the last one failed. What it read is older once the
+// inbox read the pull request since (counts.newer), or once oldAfter passed: then a read
+// under way marks it as being read, and a failed one as read when it was. With no read under
+// way, it is also marked as read when it was while the inbox found its checks or head moved
+// since (moved), so the counts never contradict the list without a word. Never read, it is
+// the first read's placeholders that say so.
+export function listMark(review: Review, now: Date, checking: boolean, failed: boolean): ListMark {
+  if (review.fetchedAt === '') {
+    return 'current'
+  }
+
+  const older = review.counts.newer || now.getTime() - Date.parse(review.fetchedAt) >= oldAfter
+
+  switch (true) {
+    case !older:
+      return 'current'
+    case checking:
+      return 'reading'
+    case failed || review.moved:
+      return 'old'
+    default:
+      return 'current'
+  }
+}
+
 // withPatches returns review with the diffs read on demand for its head filled in.
 function withPatches(review: Review, patches: Patches): Review {
   if (patches.head !== review.head || patches.byPath.size === 0) {
@@ -133,25 +180,37 @@ interface Round {
   rebuild: boolean
 }
 
+// cardKey is what of the pull request's inbox card, as one value, changes whenever the inbox
+// stores something new of it: its activity, its title and draft, and each read of its
+// details (a refresh's, the checks follower's, or a read of it alone), which bring its
+// labels, review requests, checks, and head. Empty without a card.
+export function cardKey(card: InboxItem | undefined): string {
+  return card === undefined
+    ? ''
+    : JSON.stringify([card.updatedAt, card.title, card.isDraft, card.details?.fetchedAt ?? ''])
+}
+
 // useReview loads the pull request with id. An answer about another pull request, from
 // before the sheet stepped to this one, is never shown. settingsKey is the settings the sheet
 // is built with that can change while it is open, as one value (the ignored workflows'
-// ignoreKey): a change builds it again.
-export function useReview(id: number, settingsKey = ''): ReviewState {
+// ignoreKey), and card the inbox's card (cardKey): a change of either builds it again.
+export function useReview(id: number, settingsKey = '', card = ''): ReviewState {
   const opened = useQuery(() => openReview(id), [id])
+  const clock = useClock()
   // round counts the reads asked for after the first, for one pull request. Stepping to
   // another pull request starts its rounds afresh, so a reload asked for on one never forces
   // the reads of the next.
   const [round, setRound] = useState<Round>({ id, n: 0, force: false, rebuild: false })
-  // built is the settings the sheet of the pull request was last asked for with.
-  const [built, setBuilt] = useState({ id, key: settingsKey })
+  // built is the settings and the card the sheet of the pull request was last asked for with.
+  const key = JSON.stringify([settingsKey, card])
+  const [built, setBuilt] = useState({ id, key })
 
   if (round.id !== id) {
     setRound({ id, n: 0, force: false, rebuild: false })
   }
 
   if (built.id !== id) {
-    setBuilt({ id, key: settingsKey })
+    setBuilt({ id, key })
   }
 
   const force = round.id === id && round.force
@@ -161,10 +220,11 @@ export function useReview(id: number, settingsKey = ''): ReviewState {
     [id, round.n],
   )
 
-  // A change of the settings builds the sheet again once no read is under way: one under
-  // way builds it with the settings as they are when it answers, and is never cut short.
-  if (built.id === id && built.key !== settingsKey && !refreshed.pending) {
-    setBuilt({ id, key: settingsKey })
+  // A change of the settings or the card builds the sheet again once no read is under way:
+  // one under way builds it with both as they are when it answers, and is never cut short.
+  // However often the card changed while it ran, the sheet is built again once.
+  if (built.id === id && built.key !== key && !refreshed.pending) {
+    setBuilt({ id, key })
     setRound((r) => ({ id, n: r.id === id ? r.n + 1 : 0, force: false, rebuild: true }))
   }
   const [patches, setPatches] = useState(noPatches)
@@ -226,6 +286,57 @@ export function useReview(id: number, settingsKey = ''): ReviewState {
       clearTimeout(timer)
     }
   }, [unsure, tries, id])
+
+  // A rebuild that finds the card's checks, held runs, or head moved since the sheet's last
+  // read asks GitHub once (Refresh), readFloor after that read at the soonest, and not while
+  // the reads after an approval run. Only a rebuild's answer asks, never a read's, so a read
+  // that fails is not made again until the card moves on, and however often the card changed
+  // while a read ran, the one rebuild after it asks for one more read at most. Closing the
+  // sheet, or stepping on, drops a read still waiting.
+  const lastRead = fresh?.fetchedAt ?? ''
+  const movedOn = rebuild && !refreshed.pending && fresh?.moved === true && !following
+
+  useEffect(() => {
+    if (!movedOn) {
+      return
+    }
+
+    const last = Date.parse(lastRead)
+    const wait = Number.isNaN(last) ? 0 : Math.max(0, last + readFloor - clock.read().getTime())
+    const timer = setTimeout(() => {
+      setRound((r) => ({ id, n: r.n + 1, force: false, rebuild: false }))
+    }, wait)
+
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [movedOn, lastRead, id, clock])
+
+  // The window coming back to the front reads the pull request once (Refresh) when the sheet's
+  // last read from GitHub is older than oldAfter, or it never read it, but not while a read
+  // or a rebuild is under way, which brings the sheet up to date anyway, nor while the reads
+  // after an approval run. A focus within oldAfter of the last read asks nothing.
+  const focused = useEffectEvent(() => {
+    const last = Date.parse(review?.fetchedAt ?? '')
+
+    if (refreshed.pending || following || clock.read().getTime() - last < oldAfter) {
+      return
+    }
+
+    setRound((r) => ({ id, n: r.id === id ? r.n + 1 : 0, force: false, rebuild: false }))
+  })
+
+  useEffect(() => {
+    const onFocus = () => {
+      focused()
+    }
+
+    window.addEventListener('focus', onFocus)
+
+    return () => {
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [])
 
   return {
     review,

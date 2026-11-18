@@ -274,7 +274,76 @@ describe('ReviewSummary', () => {
 
     expect(screen.getByText('No checks on this commit.')).toBeInTheDocument()
     expect(screen.queryByText('No longer open')).not.toBeInTheDocument()
-    expect(checksSummary([])).toEqual({ counts: '0 checks', running: '' })
+    expect(checksSummary([])).toEqual({ counts: '0 checks', running: '', total: 0 })
+  })
+
+  it('counts the checks as the inbox read them since, and says when the list was read', () => {
+    const running = { name: 'test', workflow: 'CI', state: 'IN_PROGRESS', outcome: 'pending', url: '', required: true }
+    const newer = review({
+      fetchedAt: '2026-06-15T11:00:00Z',
+      checks: [running],
+      counts: {
+        state: 'FAILURE',
+        passed: 3,
+        failed: 1,
+        pending: 0,
+        skipped: 0,
+        at: '2026-06-15T11:58:00Z',
+        newer: true,
+      },
+      moved: true,
+    })
+    const summary = (text: string) => screen.getByText(text).tagName
+    const { rerender } = render(<ReviewSummary review={newer} item={undefined} mark="old" />)
+
+    expect(summary('4 checks · 1 failing')).toBe('SUMMARY')
+    expect(screen.getByText(/^Checks as read/)).toHaveTextContent('Checks as read 1h ago')
+    expect(within(screen.getByRole('list', { name: 'Checks' })).getByText('test')).toBeInTheDocument()
+
+    rerender(<ReviewSummary review={newer} item={undefined} mark="reading" />)
+    expect(screen.getByText(/^Reading checks…/)).toHaveTextContent('Reading checks… · read 1h ago')
+    expect(screen.getByRole('list', { name: 'Checks' }).closest('.opacity-60')).not.toBeNull()
+
+    rerender(<ReviewSummary review={newer} item={undefined} />)
+    expect(screen.queryByText(/as read|Reading/)).not.toBeInTheDocument()
+    expect(summary('4 checks · 1 failing')).toBe('SUMMARY')
+
+    // The list's own read counts them, as it lists them.
+    rerender(<ReviewSummary review={review({ checks: [running] })} item={undefined} mark="old" />)
+    expect(summary('1 check · 1 running')).toBe('SUMMARY')
+  })
+
+  it('counts the checks of a pull request never read, and says the list is not read yet', () => {
+    render(
+      <ReviewSummary
+        review={review({
+          fetchedAt: '',
+          checks: [],
+          counts: {
+            state: 'SUCCESS',
+            passed: 2,
+            failed: 0,
+            pending: 0,
+            skipped: 0,
+            at: '2026-06-15T11:58:00Z',
+            newer: true,
+          },
+        })}
+        item={undefined}
+      />,
+    )
+
+    expect(screen.getByText(/^2 checks/)).toBeInTheDocument()
+    expect(screen.getByText('Not read from GitHub yet.')).toBeInTheDocument()
+    expect(screen.queryByText('No checks on this commit.')).not.toBeInTheDocument()
+  })
+
+  it('says how many checks GitHub lists past the list', async () => {
+    render(<ReviewSummary review={review({ moreChecks: 29 })} item={undefined} />)
+
+    expect(screen.getByText(/^29 more checks on GitHub/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Open on GitHub' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7/checks')
   })
 
   it('marks each check running, queued or in progress, with a ring, and their count too', () => {

@@ -2419,11 +2419,37 @@ Every card gets it, in any list.
 **Opening is instant.** The sheet opens from what it read last time, with no request, then reads
 the pull request from GitHub in the background (**Checking GitHub…**): one GraphQL request, and
 its files only when it was pushed to since. Opening one you read in the last 20 seconds asks
-nothing. The refresh button in the header reads it again whenever you click it, however recent
-the last read (a check re-run on GitHub shows up), and a light glides along the header while it
-reads. When the inbox has seen a push the sheet hasn't, it says so and offers **Reload**. Right
-after a push, GitHub can still be working out whether the pull request can merge (**Checking
-whether it can merge**); the sheet then asks again, up to twice, two seconds apart.
+nothing, unless its card's checks or held runs changed since. The refresh button in the header
+reads it again whenever you click it, however recent the last read (a check re-run on GitHub
+shows up), and a light glides along the header while it reads. When the inbox has seen a push the
+sheet hasn't, it says so and offers **Reload**. Right after a push, GitHub can still be working
+out whether the pull request can merge (**Checking whether it can merge**); the sheet then asks
+again, up to twice, two seconds apart.
+
+**It keeps up with its card.** The sheet never shows an old copy as current. Whenever the inbox
+stores something new of the pull request (its whole refresh, the checks follower while
+checks run, a push you made from this Mac), the open sheet builds itself again from what it read
+and what the card says now, with no request: the title, labels, draft, review requests, and
+review decision follow the card, and so do the summary's check count, the readiness line, and
+auto-merge whenever the card's read is newer than the sheet's. The same goes for a sheet you open:
+its count and readiness are never older than the card's. The list of checks, the held runs, and
+the conversation stay as the sheet last read them, so while the count has moved past them they
+say when, as in **Checks as read 14m ago**. While the sheet reads them again, those it read more
+than five minutes ago, or before the card's newer read, fade under **Reading checks… · read 14m
+ago** until GitHub answers; a read that fails leaves them marked with their age beside the error.
+A pull request with more than 100 checks lists the first 100 and says how many more GitHub has,
+with **Open on GitHub**.
+
+**One read when it matters.** When the card shows the checks' state, a check count, the held runs,
+or the head moved since the sheet's last read, the open sheet reads the pull request from GitHub
+once more on its own, for the same one point as opening it, so the list, the held runs, and the
+conversation catch up. It never reads within 20 seconds of its last read (it waits out the rest),
+never on a timer, and one read at a time: however often the card changes while one runs, at most
+one more follows it. A card that changed nothing about the checks or the head (a new label, a
+review request) costs nothing, a read that fails isn't made again until the card moves on, and a
+closed sheet reads nothing: the inbox's refresh never reads a sheet's checks list for you. Coming
+back to Nilbox's window with a sheet open reads it once more too, for a point, when its last read
+is more than five minutes old; within five minutes, or while a read is under way, it asks nothing.
 
 **Merged or closed since the last refresh.** A card can stay in the inbox until the next refresh
 after its pull request was merged or closed on GitHub. When the sheet's read finds that, the

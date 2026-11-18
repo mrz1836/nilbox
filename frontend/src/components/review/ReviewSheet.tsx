@@ -16,7 +16,8 @@ import {
 } from '../../lib/sheet'
 import { commentCount, entryAnchor, quoteInto } from '../../lib/timeline'
 import { useMutation } from '../../lib/useMutation'
-import { heldRuns, useReview } from '../../lib/useReview'
+import { useNowAs } from '../../lib/useNow'
+import { cardKey, heldRuns, listMark, useReview } from '../../lib/useReview'
 import {
   actOnReview,
   openExternal,
@@ -54,7 +55,14 @@ import { ActionConfirmDialog } from './ActionConfirmDialog'
 import { MergeConfirmDialog, merges } from './MergeConfirmDialog'
 import { commentFirst, heldBack, ReviewComposer, sendsText, sentText, useReplyBody } from './ReviewComposer'
 import { ReviewHeader } from './ReviewHeader'
-import { DescriptionSkeleton, DiffSkeleton, FileListSkeleton, ReadingBanner, SummarySkeleton } from './ReviewLoading'
+import {
+  DescriptionSkeleton,
+  DiffSkeleton,
+  FileListSkeleton,
+  ReadAge,
+  ReadingBanner,
+  SummarySkeleton,
+} from './ReviewLoading'
 import { Readiness, ReviewSummary } from './ReviewSummary'
 import { SinceYourReview } from './SinceYourReview'
 
@@ -203,8 +211,13 @@ export function ReviewSheet({
 }: ReviewSheetProps) {
   const titleId = useId()
   const tabsId = useId()
-  const loaded = useReview(id, ignoreKey(ignoring?.names))
+  const loaded = useReview(id, ignoreKey(ignoring?.names), cardKey(item))
   const review = loaded.review
+  // mark is how what the sheet read of the checks, the held runs, and the conversation stands
+  // against what it shows around them: being read again, or as read some time ago.
+  const mark = useNowAs((now) =>
+    review === null ? 'current' : listMark(review, now, loaded.checking, loaded.error !== ''),
+  )
   const pictures = usePictures(review === null ? [] : reviewPictureLogins(review))
   const draft = drafts.get(id)
   // tab shows at once on a click, and the window remembers it (onTab) behind it.
@@ -565,6 +578,7 @@ export function ReviewSheet({
               }}
               ignored={ignoring?.names}
               onIgnore={ignoreWorkflow}
+              mark={mark}
             />
           )}
           {loaded.patchError !== '' && <ErrorBanner>{loaded.patchError}</ErrorBanner>}
@@ -678,27 +692,32 @@ export function ReviewSheet({
                       {review === null || reading ? (
                         <ConversationSkeleton />
                       ) : (
-                        <Timeline
-                          key={`conversation-${String(id)}`}
-                          page={review.timeline}
-                          repo={review.repo}
-                          author={review.author}
-                          lastSeenAt={loaded.lastSeenAt}
-                          onEarlier={() => {
-                            void loaded.loadEarlier()
-                          }}
-                          loadingEarlier={loaded.loadingEarlier}
-                          earlierError={loaded.earlierError}
-                          onQuote={quote}
-                          onJump={jump}
-                          order={order}
-                          onOrder={onOrder}
-                          empty={
-                            <p className="text-sm text-muted">
-                              {review.fetchedAt === '' ? 'Not read from GitHub yet.' : 'No comments yet.'}
-                            </p>
-                          }
-                        />
+                        <>
+                          <div className="mx-auto mb-2 max-w-3xl empty:hidden">
+                            <ReadAge mark={mark} fetchedAt={review.fetchedAt} what="the conversation" />
+                          </div>
+                          <Timeline
+                            key={`conversation-${String(id)}`}
+                            page={review.timeline}
+                            repo={review.repo}
+                            author={review.author}
+                            lastSeenAt={loaded.lastSeenAt}
+                            onEarlier={() => {
+                              void loaded.loadEarlier()
+                            }}
+                            loadingEarlier={loaded.loadingEarlier}
+                            earlierError={loaded.earlierError}
+                            onQuote={quote}
+                            onJump={jump}
+                            order={order}
+                            onOrder={onOrder}
+                            empty={
+                              <p className="text-sm text-muted">
+                                {review.fetchedAt === '' ? 'Not read from GitHub yet.' : 'No comments yet.'}
+                              </p>
+                            }
+                          />
+                        </>
                       )}
                     </div>
                   </Activity>
@@ -752,6 +771,7 @@ export function ReviewSheet({
                         onShowReview={showReview}
                         ignored={ignoring?.names}
                         onIgnore={ignoreWorkflow}
+                        mark={mark}
                       />
                     )}
                     <AgentVerdict

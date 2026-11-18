@@ -190,6 +190,35 @@ export interface Check {
 }
 
 /**
+ * CheckCounts counts a pull request's checks on its head commit by where they count, as
+ * GitHub's rollup counts them, over every check.
+ */
+export interface CheckCounts {
+    /**
+     * State is GitHub's overall result: SUCCESS, FAILURE, ERROR, PENDING, or EXPECTED; ""
+     * with no checks.
+     */
+    "state": string;
+    "passed": number;
+    "failed": number;
+    "pending": number;
+    "skipped": number;
+
+    /**
+     * At is when they were read, as RFC 3339, or "" when no read counted them, as in a cache
+     * an older build kept, whose list alone counts its checks.
+     */
+    "at": string;
+
+    /**
+     * Newer reports counts the inbox read after the sheet last read the pull request
+     * (Review.FetchedAt), or before it ever did: the checks list, the held runs, and the
+     * conversation the sheet shows are older than they are.
+     */
+    "newer": boolean;
+}
+
+/**
  * Closing is an issue a pull request closes once it merges: its repository as "owner/name",
  * its number, title, and page, and its state, with the reason it was closed, as GitHub
  * says them.
@@ -759,6 +788,23 @@ export interface Review {
     "totalFiles": number;
     "filesComplete": boolean;
     "checks": Check[] | null;
+
+    /**
+     * Counts counts the head commit's checks by where they count, as the newest read of
+     * them says: the sheet's own, or the inbox's when it read the pull request since, or the
+     * sheet never did (Counts.Newer). MoreChecks is how many checks the sheet's read counted
+     * past the ones Checks lists, the first hundred, which GitHub lists; 0 while the counts
+     * are the inbox's.
+     */
+    "counts": CheckCounts;
+    "moreChecks": number;
+
+    /**
+     * Moved reports that the inbox read the pull request since the sheet did, and found its
+     * head, its checks, or its held runs moved: what the sheet read of them (Checks, Unrun,
+     * and the conversation) is behind, and a read brings it up to date.
+     */
+    "moved": boolean;
 
     /**
      * Reviews are the summary's list of reviewers: each reviewer's latest review, whose text

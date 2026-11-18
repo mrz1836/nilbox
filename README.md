@@ -599,6 +599,12 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
   right there too.
 - **Instant and cheap:** it opens from what it read last time, with no request, then checks GitHub
   in the background, for one GraphQL point when nothing was pushed.
+- **Never stale:** while it is open, it keeps up with its card as the inbox refreshes, with no
+  request: the check counts, the readiness, labels, and review requests follow the card, and a list
+  of checks or a conversation older than them says when it was read. When the card shows the
+  checks or the head moved, or you come back to the window more than five minutes after its last
+  read, it reads GitHub once more, for a point, and never within 20 seconds of its last read; a
+  closed sheet reads nothing.
 
 More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request).
 

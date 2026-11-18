@@ -257,8 +257,9 @@ SELECT
     r.delete_branch_on_merge, r.allow_update_branch, a.login AS account_login,
     d.item_id AS details_item_id, d.labels, d.comments, d.additions, d.deletions, d.changed_files, d.commits,
     d.mergeable, d.checks_state, d.checks_passed, d.checks_failed, d.checks_pending, d.checks_skipped,
-    d.checks_awaiting, d.review_decision, d.reviewers, d.reviewed, d.approvals, d.changes_requested, d.head_oid,
-    d.auto_merge_method, d.review_users, d.review_teams, d.fetched_at AS details_fetched_at
+    d.checks_awaiting, d.checks_awaiting_on_github, d.checks_held, d.merge_state, d.review_decision, d.reviewers,
+    d.reviewed, d.approvals, d.changes_requested, d.head_oid, d.auto_merge_method, d.review_users, d.review_teams,
+    d.fetched_at AS details_fetched_at
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 JOIN accounts a ON a.id = i.account_id
@@ -267,68 +268,73 @@ WHERE i.id = ?
 `
 
 type GetReviewItemRow struct {
-	ID                    int64
-	Kind                  string
-	Number                int64
-	NodeID                string
-	Title                 string
-	URL                   string
-	AuthorLogin           string
-	AuthorType            string
-	AuthorAssociation     string
-	IsCrossRepository     bool
-	IsDraft               bool
-	HeadRef               string
-	ItemCreatedAt         time.Time
-	ItemUpdatedAt         time.Time
-	ReasonReviewRequested bool
-	ReasonAuthored        bool
-	ReasonAssigned        bool
-	ReasonPushed          bool
-	RepoOwner             string
-	RepoName              string
-	DefaultBranch         string
-	ViewerPermission      string
-	ViewerMergeMethod     string
-	MergeCommitAllowed    bool
-	SquashMergeAllowed    bool
-	RebaseMergeAllowed    bool
-	AutoMergeAllowed      bool
-	DeleteBranchOnMerge   bool
-	AllowUpdateBranch     bool
-	AccountLogin          string
-	DetailsItemID         *int64
-	Labels                *string
-	Comments              *int64
-	Additions             *int64
-	Deletions             *int64
-	ChangedFiles          *int64
-	Commits               *int64
-	Mergeable             *string
-	ChecksState           *string
-	ChecksPassed          *int64
-	ChecksFailed          *int64
-	ChecksPending         *int64
-	ChecksSkipped         *int64
-	ChecksAwaiting        *int64
-	ReviewDecision        *string
-	Reviewers             *int64
-	Reviewed              *int64
-	Approvals             *int64
-	ChangesRequested      *int64
-	HeadOID               *string
-	AutoMergeMethod       *string
-	ReviewUsers           *string
-	ReviewTeams           *string
-	DetailsFetchedAt      *time.Time
+	ID                     int64
+	Kind                   string
+	Number                 int64
+	NodeID                 string
+	Title                  string
+	URL                    string
+	AuthorLogin            string
+	AuthorType             string
+	AuthorAssociation      string
+	IsCrossRepository      bool
+	IsDraft                bool
+	HeadRef                string
+	ItemCreatedAt          time.Time
+	ItemUpdatedAt          time.Time
+	ReasonReviewRequested  bool
+	ReasonAuthored         bool
+	ReasonAssigned         bool
+	ReasonPushed           bool
+	RepoOwner              string
+	RepoName               string
+	DefaultBranch          string
+	ViewerPermission       string
+	ViewerMergeMethod      string
+	MergeCommitAllowed     bool
+	SquashMergeAllowed     bool
+	RebaseMergeAllowed     bool
+	AutoMergeAllowed       bool
+	DeleteBranchOnMerge    bool
+	AllowUpdateBranch      bool
+	AccountLogin           string
+	DetailsItemID          *int64
+	Labels                 *string
+	Comments               *int64
+	Additions              *int64
+	Deletions              *int64
+	ChangedFiles           *int64
+	Commits                *int64
+	Mergeable              *string
+	ChecksState            *string
+	ChecksPassed           *int64
+	ChecksFailed           *int64
+	ChecksPending          *int64
+	ChecksSkipped          *int64
+	ChecksAwaiting         *int64
+	ChecksAwaitingOnGithub *int64
+	ChecksHeld             *string
+	MergeState             *string
+	ReviewDecision         *string
+	Reviewers              *int64
+	Reviewed               *int64
+	Approvals              *int64
+	ChangesRequested       *int64
+	HeadOID                *string
+	AutoMergeMethod        *string
+	ReviewUsers            *string
+	ReviewTeams            *string
+	DetailsFetchedAt       *time.Time
 }
 
 // GetReviewItem returns what the review sheet shows of the item with id before asking
 // GitHub: the item, its repository with its merge settings and the viewer's access, the
 // account whose inbox lists it, the lists it is in, and its details when a refresh has
-// read them (a column of missing details is NULL). It reads any stored item, listed or
-// not, so a pull request a routine's search watches opens from the routine's Watching list
-// as from the inbox. It returns sql.ErrNoRows when no item has id.
+// read them (a column of missing details is NULL), the held workflow runs and the merge
+// state among them, so the sheet can show the checks a refresh read since it last read the
+// pull request itself. It reads any stored item, listed or not, so a pull request a
+// routine's search watches opens from the routine's Watching list as from the inbox. It
+// returns sql.ErrNoRows when no item has id.
 func (q *Queries) GetReviewItem(ctx context.Context, id int64) (GetReviewItemRow, error) {
 	row := q.db.QueryRowContext(ctx, getReviewItem, id)
 	var i GetReviewItemRow
@@ -377,6 +383,9 @@ func (q *Queries) GetReviewItem(ctx context.Context, id int64) (GetReviewItemRow
 		&i.ChecksPending,
 		&i.ChecksSkipped,
 		&i.ChecksAwaiting,
+		&i.ChecksAwaitingOnGithub,
+		&i.ChecksHeld,
+		&i.MergeState,
 		&i.ReviewDecision,
 		&i.Reviewers,
 		&i.Reviewed,

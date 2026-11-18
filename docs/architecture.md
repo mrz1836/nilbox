@@ -1240,6 +1240,36 @@ triage access or more (`ErrCannotEditLabels`), through the Actor, each step sent
 token retry, and a step GitHub made standing (`LabelsResult`); Autopilot's labels action is its
 caller. Nothing here lets an agent approve, merge, or close.
 
+**An open sheet stays current with its card.** The inbox's refresh, its checks follower, a read
+of one pull request (`RefreshItem`, a push from this Mac through `internal/pushwatch`), and the
+sheet's own read all rewrite the card's details, while the sheet's cache moves only with the
+sheet's own reads; the inbox never fills the cache, so a closed sheet costs nothing. Every build
+(`Open`, `Refresh`, `Rebuild`, and `Act`'s decision) takes the title, labels, draft, review
+decision, review requests, and head (`Stale`) from the card (`inbox.Store.ReviewItem`, whose
+`GetReviewItem` reads the merge state and the held runs too, `heldruns.Unnamed` filling in the
+runs of no name). When the card's details are newer than the cache's context
+(`inboxNewer`: `DetailsAt` after `contextAt`, never against a context `expire` left without a
+time), the card wins for what it holds: the summary's counts (`Review.Counts`, `Newer` set, the
+card's rollup counts and their time), auto-merge, and the readiness's facts (`Facts.fromInbox`):
+GitHub's merge state (but `UNKNOWN`, which leaves the cache's), the checks failing and running,
+and the held runs, counted with the ignored workflows `markIgnored` keeps on the cache. The card
+counts no check as required, so the required ones are none while the merge state says nothing
+required holds the merge (`CLEAN`, `HAS_HOOKS`, `UNSTABLE`), and otherwise the cache's, capped at
+the card's totals; an approval names only runs the cache read (`Approvable` capped at what is
+asked, so it waits for a read while the card holds more), and runs that failed to start on another
+head count for nothing. The checks list, the held runs (`Unrun`), and the conversation stay as the
+sheet read them, and `Review.Moved` says the card's head, checks, or held runs moved since:
+the cache keeps the read's own rollup counts beside the list (`pullContext.Counts`, the
+`github.Checks` the card took from the same answer, nil in an older build's cache), and `Moved` is
+any difference from the card's, which the window answers with one `Refresh` (see frontend). A
+sheet never read shows the card's counts too, with its
+readiness still waiting for the read. `recent` also wants the card's checks state, counts, and
+held runs to match the cache's (`contextCounts.matches`): a check that ends moves no activity, so
+a sheet reopened within 20 seconds of its read, after the checks follower rewrote the card, reads
+again. A read replaces the whole context (`SetDiffContext`), its checks list with it, but the list
+is the rollup's first hundred (`contexts(first: 100)`), so `Review.MoreChecks` counts what the
+read's rollup counted past it, which the summary links to on GitHub.
+
 ## internal/issues
 
 `internal/issues/` is the issue sheet's service, beside the review sheet's: neither imports
@@ -4506,7 +4536,26 @@ workflows as `ignoring` (`IgnoredWorkflows`, `lib/ignoredWorkflows.ts`), through
 and the Autopilot tab's `RowsKit` (null until the settings load, so nothing offers to ignore),
 whose `save` stores a list through the window's settings queue and reads the inbox again; the sheet's **Ignore this workflow** saves, raises the host's toast
 (`onToast`) with Undo, and `useReview` builds the sheet again with `Rebuild` once no read is
-under way, so neither asks GitHub anything.
+under way, so neither asks GitHub anything. The review sheet's card does the same: `useReview`
+takes it as `cardKey` (its activity, title, draft, and the time its details were read, never its
+triage), and a change builds the sheet again with `Rebuild` once no read is under way, once
+however often it changed meanwhile, so the inbox's newer checks, readiness, labels, and review
+requests reach an open sheet with no request (see internal/review). `listMark` (`lib/useReview.ts`)
+marks what the sheet read of the checks, the held runs, and the conversation once it is older
+than what the sheet shows (the card read the pull request since, `counts.newer`) or than
+`oldAfter` (five minutes): faded under **Reading checks… · read 14m ago** while a read is under
+way, and **Checks as read 14m ago** after one failed, or while the card's checks moved past the
+list (`moved`); `ReadAge` (`review/ReviewLoading.tsx`) says it, and the summary counts the card's
+checks (`countsSummary`) while they are newer than the list. A rebuild whose answer says `moved`
+asks GitHub once, as `Refresh`, in the round after it, `readFloor` (20 seconds, the backend's
+`refreshAfter`) after the sheet's last read at the soonest, on a timer the effect clears when the
+sheet closes or steps on, and not while the reads after an approval run. Only a rebuild's answer
+asks, never a read's: a read that fails is not made again until the card moves on, and the card's
+changes during a read (`useQuery` cancels a request whose inputs change, so none is made while
+one is under way) build the sheet once after it, which asks for one more read at most. The
+window's own `focus` event (the browser's, as the setup's GitHub step uses, so no Go event) asks
+once more, as `Refresh`, while the sheet's last read is older than `oldAfter` or it never read
+it, but never while a read or a rebuild is under way, nor while the reads after an approval run.
 Its `density` (Settings → Cards' Density, `cards.density`) picks the card: `ItemRow` reads
 it and, compact, renders `card/CompactRow` from the same step, session, and clock reads, so
 one set of rules drives both. A compact card is one 2.375rem grid row (`data-density` gives
