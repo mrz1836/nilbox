@@ -3,13 +3,14 @@ package measure
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 var errLaunchFailed = errors.New("launch failed")
@@ -71,14 +72,14 @@ func TestParseFirstPaint(t *testing.T) {
 	}
 }
 
-// fakeApp writes an executable shell script standing in for the desktop binary.
-func fakeApp(t *testing.T, body string) string {
+// fakeApp makes a fake desktop binary that plays run (testutil.FakeTool), and returns its
+// path and the environment entry it must be started with. It is a link to this test binary,
+// never a file the test writes and then starts, so a parallel test's fork can't hold it open
+// for writing and fail its start with ETXTBSY.
+func fakeApp(t *testing.T, run testutil.FakeRun) (exe, env string) {
 	t.Helper()
 
-	path := filepath.Join(t.TempDir(), "app")
-	require.NoError(t, os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o700)) //nolint:gosec // a test executable
-
-	return path
+	return testutil.FakeTool(t, "app", run)
 }
 
 func TestLaunchApp(t *testing.T) {
@@ -87,13 +88,12 @@ func TestLaunchApp(t *testing.T) {
 	t.Run("reads the timing line", func(t *testing.T) {
 		t.Parallel()
 
-		exe := fakeApp(t, `test "$1" = "--measure-startup" || exit 9
-echo "starting"
-echo "startup.first_paint_ms=640 source=os"
-echo "startup.first_paint_ms=999 source=os"
-`)
+		exe, env := fakeApp(t, testutil.FakeRun{
+			WantArgs: []string{StartupFlag},
+			Stdout:   "starting\nstartup.first_paint_ms=640 source=os\nstartup.first_paint_ms=999 source=os\n",
+		})
 
-		got, err := LaunchApp(t.Context(), exe)
+		got, err := launchApp(t.Context(), exe, env)
 		require.NoError(t, err)
 
 		assert.Equal(t, int64(640), got.FirstPaintMS, "the first timing line counts")
@@ -104,9 +104,9 @@ echo "startup.first_paint_ms=999 source=os"
 	t.Run("no timing line", func(t *testing.T) {
 		t.Parallel()
 
-		exe := fakeApp(t, "echo starting\necho 'the window did not paint' >&2\n")
+		exe, env := fakeApp(t, testutil.FakeRun{Stdout: "starting\n", Stderr: "the window did not paint\n"})
 
-		_, err := LaunchApp(t.Context(), exe)
+		_, err := launchApp(t.Context(), exe, env)
 		require.ErrorIs(t, err, ErrNoTimingLine)
 		assert.Contains(t, err.Error(), "the window did not paint")
 	})
@@ -114,9 +114,9 @@ echo "startup.first_paint_ms=999 source=os"
 	t.Run("app fails", func(t *testing.T) {
 		t.Parallel()
 
-		exe := fakeApp(t, "echo 'startup.first_paint_ms=1 source=os'\necho boom >&2\nexit 3\n")
+		exe, env := fakeApp(t, testutil.FakeRun{Stdout: "startup.first_paint_ms=1 source=os\n", Stderr: "boom\n", Exit: 3})
 
-		_, err := LaunchApp(t.Context(), exe)
+		_, err := launchApp(t.Context(), exe, env)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "boom")
 	})

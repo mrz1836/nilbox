@@ -83,6 +83,12 @@ func ParseFirstPaint(line string) (Startup, bool) {
 // LaunchApp starts the desktop binary exe with StartupFlag, waits for it to print its
 // timing line and quit, and returns the reading.
 func LaunchApp(ctx context.Context, exe string) (Startup, error) {
+	return launchApp(ctx, exe)
+}
+
+// launchApp is LaunchApp with env added to the environment exe inherits: the tests hand
+// it a fake app's entry (testutil.FakeTool), so they stay parallel.
+func launchApp(ctx context.Context, exe string, env ...string) (Startup, error) {
 	ctx, cancel := context.WithTimeout(ctx, startupTimeout)
 	defer cancel()
 
@@ -90,6 +96,10 @@ func LaunchApp(ctx context.Context, exe string) (Startup, error) {
 
 	cmd := exec.CommandContext(ctx, exe, StartupFlag)
 	cmd.Stderr = &stderr
+
+	if len(env) > 0 {
+		cmd.Env = append(cmd.Environ(), env...)
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
