@@ -3,7 +3,15 @@ import { useId } from 'react'
 import { formatAgo } from '../lib/time'
 import { counted, formatCount } from '../lib/format'
 import { shortCommit } from '../lib/git'
-import { changeText, changeTone, filesChip, levelDot, sensitiveCount, type FilesChip } from '../lib/sensitive'
+import {
+  changeText,
+  changeTone,
+  changeWords,
+  filesChip,
+  levelDot,
+  sensitiveCount,
+  type FilesChip,
+} from '../lib/sensitive'
 import { toneText } from '../lib/signals'
 import { useMutation } from '../lib/useMutation'
 import { usePopover, type Popover } from '../lib/usePopover'
@@ -29,17 +37,49 @@ const chipClass: Readonly<Record<FilesChip['tone'], string>> = {
   muted: 'rounded-full px-1 text-muted hover:bg-raised hover:text-text',
 }
 
-// FileRow is one sensitive file: its path, which opens its diff on GitHub, and how it
-// changed.
-function FileRow({ file }: { file: SensitiveFile }) {
-  const change = changeText(file)
+// PathText is a file's path on one line in the width it is given: its folders give way
+// first, cut short, so the file name stays readable, and the name is cut short only when
+// it alone doesn't fit.
+function PathText({ path, title, className = '' }: { path: string; title?: string; className?: string }) {
+  const slash = path.lastIndexOf('/')
 
+  return (
+    <span title={title} className={`flex min-w-0 ${className}`}>
+      <span className="min-w-0 truncate">{path.slice(0, slash + 1)}</span>
+      <span className="max-w-full shrink-0 truncate">{path.slice(slash + 1)}</span>
+    </span>
+  )
+}
+
+// FileChange is how a file changed, its words never cut short; a moved or copied file's
+// previous path, beside them, gives way as the row's own path does.
+function FileChange({ file }: { file: SensitiveFile }) {
+  const { words, from } = changeWords(file)
+
+  return (
+    <span
+      title={changeText(file)}
+      className={`ml-auto flex max-w-1/2 shrink-0 items-baseline gap-1 text-[0.6875rem] ${toneText[changeTone(file.change)]}`}
+    >
+      <span className="shrink-0 whitespace-nowrap">{words}</span>
+      {from !== '' && (
+        <>
+          {' '}
+          <PathText path={from} />
+        </>
+      )}
+    </span>
+  )
+}
+
+// FileRow is one sensitive file: its path, which opens its diff on GitHub, and how it
+// changed. The path takes the room the change leaves it, and its title or its button's
+// name keeps it whole.
+function FileRow({ file }: { file: SensitiveFile }) {
   return (
     <li className="flex min-w-0 items-baseline gap-2 py-0.5">
       {file.url === '' ? (
-        <span className="min-w-0 truncate font-mono text-xs text-text" title={file.path}>
-          {file.path}
-        </span>
+        <PathText path={file.path} title={file.path} className="font-mono text-xs text-text" />
       ) : (
         <button
           type="button"
@@ -49,16 +89,11 @@ function FileRow({ file }: { file: SensitiveFile }) {
           }}
           className="group/file inline-flex min-w-0 items-baseline gap-1 text-left font-mono text-xs text-text hover:text-accent hover:underline"
         >
-          <span className="truncate">{file.path}</span>
+          <PathText path={file.path} />
           <ExternalIcon className="size-3 shrink-0 self-center text-muted group-hover/file:text-accent" />
         </button>
       )}
-      <span
-        title={change}
-        className={`ml-auto min-w-0 shrink truncate text-[0.6875rem] ${toneText[changeTone(file.change)]}`}
-      >
-        {change}
-      </span>
+      <FileChange file={file} />
     </li>
   )
 }
@@ -118,7 +153,9 @@ export interface SensitiveFilesPanelProps {
 // SensitiveFilesPanel lists a pull request's sensitive files by category, each opening its
 // diff on GitHub, with a button to check the files again now, in the panel a chip opens:
 // the sensitive-file chip's own, or the card's risk chip (card/RiskChip). The check it
-// runs outlasts the panel's closing.
+// runs outlasts the panel's closing. It wraps its own text: a card's line, which it opens
+// in, doesn't wrap, and that would carry into the panel and run its sentences past its
+// edge. It is never wider than the window, and its file rows fit its width.
 export function SensitiveFilesPanel({ itemId, check, onSettings, popover, id }: SensitiveFilesPanelProps) {
   const checker = useMutation(() => checkItemFiles(itemId))
 
@@ -140,7 +177,7 @@ export function SensitiveFilesPanel({ itemId, check, onSettings, popover, id }: 
       id={id}
       role="dialog"
       aria-label="Sensitive files"
-      className="z-20 flex max-h-[calc(100vh-8rem)] w-[26rem] flex-col gap-3 overflow-y-auto p-3.5 text-left shadow-black/25"
+      className="z-20 flex max-h-[calc(100vh-8rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto p-3.5 text-left break-words whitespace-normal shadow-black/25"
     >
       <div>
         <h3 className="text-sm font-semibold text-text">Sensitive files</h3>
@@ -174,7 +211,7 @@ export function SensitiveFilesPanel({ itemId, check, onSettings, popover, id }: 
           starts, even in plan or read-only mode.
         </p>
       )}
-      <div className="flex items-center justify-between gap-3 border-t border-border pt-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border pt-2.5">
         <button type="button" disabled={checking} onClick={checkNow} className={quietButtonClass}>
           <RefreshIcon className={`size-3.5 ${checking ? 'motion-safe:animate-spin' : ''}`} />
           {checking ? 'Checking…' : 'Check now'}

@@ -91,23 +91,39 @@ export function filesChip(check: FileCheck): FilesChip {
   }
 }
 
-// changeText words how a file changed: "added", "removed", "renamed", and so on, with
-// where a moved file came from.
-export function changeText(file: SensitiveFile): string {
-  const moved = file.previousPath !== '' && file.previousPath !== file.path
+// ChangeWords is how a file changed, in two parts: the words, as in "added" or "moved
+// from", and the path a moved or copied file came from, or ''.
+export interface ChangeWords {
+  words: string
+  from: string
+}
+
+// changeWords words how a file changed: "added", "removed", "renamed", and so on, with
+// where a moved file came from apart, so a narrow row can cut that path short and keep
+// the words whole.
+export function changeWords(file: SensitiveFile): ChangeWords {
+  const from = file.previousPath !== file.path ? file.previousPath : ''
 
   switch (file.change) {
     case 'renamed':
-      return moved ? `moved from ${file.previousPath}` : 'renamed'
+      return { words: from === '' ? 'renamed' : 'moved from', from }
     case 'copied':
-      return moved ? `copied from ${file.previousPath}` : 'copied'
+      return { words: from === '' ? 'copied' : 'copied from', from }
     case 'added':
     case 'removed':
     case 'modified':
-      return file.change
+      return { words: file.change, from: '' }
     default:
-      return 'changed'
+      return { words: 'changed', from: '' }
   }
+}
+
+// changeText words how a file changed in one line: "added", "removed", "renamed", and so
+// on, with where a moved file came from.
+export function changeText(file: SensitiveFile): string {
+  const { words, from } = changeWords(file)
+
+  return from === '' ? words : `${words} ${from}`
 }
 
 // changeTone colors a change: an added file stands out, a removed one warns.
