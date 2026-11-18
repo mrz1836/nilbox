@@ -231,7 +231,10 @@ export function AppHeader(props: AppHeaderProps) {
           Test data
         </span>
       )}
-      <nav aria-label="Views" className="flex shrink-0 items-center gap-0.5 [--wails-draggable:no-drag]">
+      {/* The tabs run the bar's full height, so the open one's accent line sits on the bar's
+          bottom edge, as the page tabs' lines below it do (Tabs), and the whole column
+          takes a click. */}
+      <nav aria-label="Views" className="flex shrink-0 items-stretch gap-0.5 self-stretch [--wails-draggable:no-drag]">
         {tabs.map(({ id, label }) => {
           if (
             (id === 'scripts' && (props.scripts ?? null) === null) ||
@@ -253,35 +256,49 @@ export function AppHeader(props: AppHeaderProps) {
               onClick={() => {
                 onViewChange(id)
               }}
-              className="group flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium text-muted transition-colors hover:bg-raised hover:text-text aria-pressed:bg-raised aria-pressed:text-text"
+              className="group relative flex items-center outline-none"
             >
-              {label}
-              {id === 'autopilot' && <BetaBadge />}
-              {id === 'inbox' && props.inboxRefreshing === true && (
-                <span data-testid="inbox-refreshing" title="Refreshing from GitHub…" className="flex">
-                  <Spinner className="size-3" />
-                </span>
-              )}
-              {/* The pill sits one step above the tab: raised on the bar, border on a
-                  hovered or active tab. */}
-              {badged && (
-                <span
-                  data-testid={`${id}-count`}
-                  className="flex items-center gap-1 rounded-full bg-raised px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium tabular-nums transition-colors group-hover:bg-border group-aria-pressed:bg-border"
-                >
-                  {failed && (
-                    <span data-testid={`${id}-failed`} aria-hidden="true" className="size-1.5 rounded-full bg-danger" />
-                  )}
-                  {attention && (
-                    <span
-                      data-testid={id === 'worktrees' ? 'worktree-attention' : `${id}-attention`}
-                      aria-hidden="true"
-                      className="size-1.5 rounded-full bg-warning"
-                    />
-                  )}
-                  {count > 0 && formatCount(count)}
-                </span>
-              )}
+              {/* The open tab reads in full text over an accent line on the bar's edge, the
+                  line growing out from its middle as the tab opens; a hovered one shows its
+                  pill, and the keyboard's focus rings the pill rather than the column. */}
+              <span className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium text-muted transition-colors group-hover:bg-raised group-hover:text-text group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-accent group-aria-pressed:text-text">
+                {label}
+                {id === 'autopilot' && <BetaBadge />}
+                {id === 'inbox' && props.inboxRefreshing === true && (
+                  <span data-testid="inbox-refreshing" title="Refreshing from GitHub…" className="flex">
+                    <Spinner className="size-3" />
+                  </span>
+                )}
+                {/* The pill sits one step above the tab: raised on the bar, border on a
+                  hovered tab, and the accent's tint on the open one, as a page tab's count
+                  is. */}
+                {badged && (
+                  <span
+                    data-testid={`${id}-count`}
+                    className="flex items-center gap-1 rounded-full bg-raised px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium tabular-nums transition-colors group-hover:bg-border group-aria-pressed:bg-accent/15 group-aria-pressed:text-text"
+                  >
+                    {failed && (
+                      <span
+                        data-testid={`${id}-failed`}
+                        aria-hidden="true"
+                        className="size-1.5 rounded-full bg-danger"
+                      />
+                    )}
+                    {attention && (
+                      <span
+                        data-testid={id === 'worktrees' ? 'worktree-attention' : `${id}-attention`}
+                        aria-hidden="true"
+                        className="size-1.5 rounded-full bg-warning"
+                      />
+                    )}
+                    {count > 0 && formatCount(count)}
+                  </span>
+                )}
+              </span>
+              <span
+                aria-hidden="true"
+                className="absolute inset-x-2.5 -bottom-px h-0.5 scale-x-50 rounded-full bg-accent opacity-0 transition-[opacity,scale] duration-200 ease-out group-aria-pressed:scale-x-100 group-aria-pressed:opacity-100 motion-reduce:transition-none"
+              />
             </button>
           )
         })}
