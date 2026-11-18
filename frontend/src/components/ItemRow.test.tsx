@@ -22,6 +22,7 @@ import {
   situationChoices,
   worktree,
 } from '../test/fixtures'
+import { shownAway } from '../test/cardLit'
 import { platform } from '../test/platform'
 import { AutopilotRowsContext, type AutopilotRows } from './autopilot/AutopilotChip'
 import type { EditActions } from './ItemMenu'
@@ -852,14 +853,14 @@ describe('ItemRow peek', () => {
 })
 
 describe('ItemRow triage', () => {
-  it('hides the triage until the pointer or focus is on the card, over the state column', () => {
+  it('hides the triage until the card is lit, over the state column', () => {
     const row = mountCard(asked(), { triage: triageActions(), edits: editActions() })
 
     const triage = row.querySelector('[data-triage]')
-    expect(triage).toHaveClass('opacity-0', 'group-hover:opacity-100', 'group-focus-within:opacity-100')
+    expect(triage).toHaveClass('opacity-0', 'card-lit:opacity-100')
     expect(triage).toHaveClass('col-[4/5]', 'row-[1/2]', '@max-xl:col-[3/4]')
     expect(within(triage as HTMLElement).getByRole('button', { name: 'More actions' })).toBeInTheDocument()
-    expect(row.querySelector('[data-state-column]')).toHaveClass('group-hover:opacity-0', '@max-xl:hidden')
+    expect(row.querySelector('[data-state-column]')).toHaveClass('card-lit:opacity-0', '@max-xl:hidden')
     expect(row.querySelector('[data-state-column]')).not.toHaveClass('opacity-0')
   })
 
@@ -912,6 +913,81 @@ describe('ItemRow triage', () => {
     })
 
     expect(row).not.toHaveAttribute('aria-busy')
+  })
+})
+
+describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) => {
+  // mountLit renders an item's card in the density, after a button the keyboard can start
+  // from, and returns the row.
+  function mountLit(it: InboxItem, props: Partial<ItemRowProps> = {}): HTMLElement {
+    render(
+      <CardPrefsContext value={{ ...defaultCardPrefs, density }}>
+        <button type="button">Before</button>
+        <ul>
+          <ItemRow item={it} launch={launch} resolution={itemResolution()} {...props} />
+        </ul>
+      </CardPrefsContext>,
+    )
+
+    return screen.getByRole('listitem')
+  }
+
+  it('lights only while the pointer is on the card, whatever a click focused in it', async () => {
+    const user = userEvent.setup()
+    const triage = triageActions()
+    const onOpen = vi.fn()
+    const row = mountLit(asked(), { triage, edits: editActions(), onOpen })
+    const { stretched, chevron } = toggles(row)
+    const title = within(row).getAllByRole('button')[0] as HTMLElement
+
+    expect(row.querySelector('[class*="group-focus-within:"]')).toBeNull()
+
+    // A click leaves focus on what it pressed, as WebKit does on the stretched toggle and
+    // jsdom on any button, but none of it lights the card once the pointer moves on.
+    for (const target of [
+      stretched,
+      stretched,
+      chevron,
+      chevron,
+      title,
+      within(row).getByRole('button', { name: 'Review' }),
+      within(row).getByRole('button', { name: 'Dismiss' }),
+      within(row).getByRole('button', { name: 'Pin to top' }),
+    ]) {
+      await user.click(target)
+      await user.unhover(target)
+
+      expect(target).toHaveFocus()
+      expect(shownAway(row)).toBe(false)
+    }
+
+    expect(stretched).toHaveAttribute('aria-expanded', 'false')
+    expect(onOpen).toHaveBeenCalledTimes(2)
+    expect(triage.onDismiss).toHaveBeenCalledOnce()
+  })
+
+  it('lights as the keyboard moves focus into the card, through to Show details', async () => {
+    const user = userEvent.setup()
+    const row = mountLit(asked(), { triage: triageActions(), edits: editActions() })
+    const { chevron } = toggles(row)
+
+    // jsdom rings focus that Tab moved while the key is down, and remembers the last
+    // ringed element, so each Tab is looked at before its key comes up.
+    const tab = async () => {
+      await user.keyboard('{Tab>}')
+      const lit = shownAway(row)
+      await user.keyboard('{/Tab}')
+
+      return lit
+    }
+
+    await user.click(screen.getByRole('button', { name: 'Before' }))
+    expect(await tab()).toBe(true)
+    expect(row.contains(document.activeElement)).toBe(true)
+
+    while (document.activeElement !== chevron) {
+      expect(await tab()).toBe(true)
+    }
   })
 })
 

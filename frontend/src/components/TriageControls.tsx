@@ -95,11 +95,12 @@ export interface TriageControlsProps {
   mode?: 'row' | 'card'
 }
 
-// hoverClass shows a row's quiet controls while the pointer is on the row or focus is in
-// it, and while the row is busy with GitHub, so a refresh or an edit under way stays in
-// sight. It sits on a wrapper, since the buttons' own transition is for color.
+// hoverClass shows a card's quiet controls while the card is lit (card-lit in index.css:
+// the pointer on it, keyboard focus in it, or a menu or panel it opened open), and while it
+// is busy with GitHub, so a refresh or an edit under way stays in sight. It sits on a
+// wrapper, since the buttons' own transition is for color.
 export function hoverClass(work: RowWork): string {
-  return `flex items-center gap-0.5 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 ${work === null ? 'opacity-0' : 'opacity-100'}`
+  return `flex items-center gap-0.5 transition-opacity card-lit:opacity-100 ${work === null ? 'opacity-0' : 'opacity-100'}`
 }
 
 // ghostShape is a quiet button without its text color, and ghostClass one in the muted
@@ -329,15 +330,14 @@ function BringBack({
 
 // TriageControls are a row's quiet triage buttons. In a list's inbox tab they are
 // Refresh (this item alone, from GitHub), the Snooze split button (the default length in
-// one click, with the arrow for another), Dismiss, and Pin, shown while the pointer is on
-// the row or focus is in it, so the cards stay clean, and while a refresh runs. A pinned
-// item's pin is always shown, filled, and unpins it. In the Snoozed, Dismissed, and Muted
-// tabs they are the one button that brings it back (BringBack). In a card's mode every
-// button shows only while the pointer or focus is on the card, a pinned item's pin too,
-// since the card marks a pinned item before its title, and an item pinned only with its
-// repository or org has no pin here at all: the card's mark says so, and a card doesn't
-// unpin a repository. In the set-aside tabs the card's primary brings the item back, so
-// its triage is Pin or Unpin alone.
+// one click, with the arrow for another), Dismiss, and Pin, shown while the card is lit
+// (hoverClass), so the cards stay clean, and while a refresh runs. A pinned item's pin is
+// always shown, filled, and unpins it. In the Snoozed, Dismissed, and Muted tabs they are
+// the one button that brings it back (BringBack). In a card's mode every button shows only
+// while the card is lit, a pinned item's pin too, since the card marks a pinned item
+// before its title, and an item pinned only with its repository or org has no pin here at
+// all: the card's mark says so, and a card doesn't unpin a repository. In the set-aside
+// tabs the card's primary brings the item back, so its triage is Pin or Unpin alone.
 export function TriageControls({ item, tab, actions, work, start, mode = 'row' }: TriageControlsProps) {
   const hover = hoverClass(work)
   const card = mode === 'card'

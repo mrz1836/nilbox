@@ -87,7 +87,7 @@ describe('ItemMenu', () => {
 
     const button = screen.getByRole('button', { name: 'More actions' })
     expect(button).toHaveAttribute('aria-haspopup', 'menu')
-    expect(button.parentElement?.parentElement).toHaveClass('opacity-0', 'group-hover:opacity-100')
+    expect(button.parentElement?.parentElement).toHaveClass('opacity-0', 'card-lit:opacity-100')
   })
 
   it('opens the item on GitHub, or copies its link', async () => {

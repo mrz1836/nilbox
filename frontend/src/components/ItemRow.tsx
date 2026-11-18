@@ -301,9 +301,10 @@ function Byline({
 // byline, then the risk chip, the ⚡ chip (AutopilotChip), and the worktree chip. The state
 // column shows where a pull request stands (StateTrack, over its size, SizeGlyph) or an
 // issue (IssueState); the action column, the human's next move and the agent's slot beside
-// it (CardActions, with LaunchControls' card variant). The pointer or focus on the card
-// fades the state column for the triage buttons, Show details, and the menu of everything
-// else (ItemMenu), which stay while the card is busy. A click on the card's empty space, or
+// it (CardActions, with LaunchControls' card variant). The pointer or keyboard focus on
+// the card, or a menu or panel it opened, lights it (card-lit in index.css): the state
+// column fades for the triage buttons, Show details, and the menu of everything else
+// (ItemMenu), which stay while the card is busy. A click on the card's empty space, or
 // on Show details, opens the peek under its two lines (CardPeek), and a launch's outcome
 // spans the card below. The card does one thing with GitHub at a time, which its buttons
 // and its menu share (useRowWork). While an edit that will likely take it out of the list
@@ -516,7 +517,7 @@ export const ItemRow = memo(function ItemRow({
           </button>
           {/* The stretched toggle: a click on the card's empty space opens its peek. Every
               control, and everything with a title, sits above it (relative z-10). Keyboard
-              users reach Show details instead, which focus within the card reveals. */}
+              users reach Show details instead, which keyboard focus in the card reveals. */}
           <button
             type="button"
             tabIndex={-1}
@@ -554,7 +555,7 @@ export const ItemRow = memo(function ItemRow({
       </div>
       <div
         data-state-column
-        className={`flex flex-col items-end justify-center gap-1.25 transition-opacity group-focus-within:opacity-0 group-hover:opacity-0 @max-xl:hidden ${work === null ? '' : 'opacity-0'}`}
+        className={`flex flex-col items-end justify-center gap-1.25 transition-opacity @max-xl:hidden card-lit:opacity-0 ${work === null ? '' : 'opacity-0'}`}
       >
         {item.kind === 'pr' ? (
           <>

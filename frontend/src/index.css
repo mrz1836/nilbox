@@ -9,6 +9,15 @@
 @source not './test';
 @source not '../bindings';
 
+/* card-lit lights an inbox card's hover controls (its triage, the state column's fade, the
+   primary's fill, a compact card's hover row) while the pointer is on the card (the row, its
+   group), while keyboard focus is in it, and while a menu or panel it opened is open, so the
+   panel doesn't fade with the button it opened from. Keyboard focus is :focus-visible: a
+   click focuses the card's stretched toggle without it, and a menu or dialog a pointer
+   closed gives focus back without it (lib/focusBack.ts), so neither keeps the card lit once
+   the pointer leaves. */
+@custom-variant card-lit (&:where(.group:is(:hover, :has(:focus-visible), :has([aria-haspopup][aria-expanded='true'])) *));
+
 @theme inline {
   /* Popovers and menus grow out of their trigger. */
   --animate-pop-in: pop-in 120ms ease-out;

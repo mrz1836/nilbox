@@ -115,9 +115,11 @@ export interface CompactRowProps {
 // the edge's color (CardStory); the risk as its shield alone (RiskIcon); where it stands as
 // three dots (MiniTrack), or an issue's sub-issues or status (IssueTrack); its size grade,
 // or an issue's first featured field; its age; and its go button, the primary's words in
-// its tone (CardActions' compact go). The pointer or focus on the card shows its hover row
-// just left of the go button: the triage, the agent's slot (LaunchControls' card variant,
-// kept mounted under opacity so its dialogs keep their state), Show details, and the menu.
+// its tone (CardActions' compact go). While the card is lit (card-lit in index.css: the
+// pointer on it, keyboard focus in it, or a menu or panel it opened open), its hover row
+// shows just left of the go button: the triage, the agent's slot (LaunchControls' card
+// variant, kept mounted under opacity so its dialogs keep their state), Show details, and
+// the menu.
 // The stretched toggle, the peek, a launch's outcome, and the busy note are the
 // comfortable card's. A list narrower than 56rem leaves out the repository and the size,
 // and one narrower than 48rem the story and the age.
