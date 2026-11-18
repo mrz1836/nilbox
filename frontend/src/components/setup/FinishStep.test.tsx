@@ -87,6 +87,24 @@ describe('FinishStep', () => {
     expect(props.onDone).toHaveBeenCalledOnce()
   })
 
+  it('shows how to read a card, the compact guide, before opening the inbox', async () => {
+    const props = showFinish()
+
+    const guide = screen.getByRole('region', { name: 'How to read a card' })
+
+    expect(within(guide).getByRole('heading', { name: 'How to read a card' })).toBeInTheDocument()
+    expect(guide.querySelector('[inert] li[data-item-id]')).not.toBeNull()
+    expect(guide.querySelector('[data-marker]')).toBeNull()
+    expect(within(guide).queryByRole('list', { name: 'The parts of a card' })).not.toBeInTheDocument()
+    expect(within(guide).getByRole('list', { name: 'Whose move' })).toBeInTheDocument()
+    expect(guide.compareDocumentPosition(screen.getByRole('button', { name: 'Open my inbox' }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open my inbox' }))
+    expect(props.onDone).toHaveBeenCalledOnce()
+  })
+
   it('names the tools the Tools step left, or that it was skipped', () => {
     showFinish({
       tools: integrationTools({ tools: [integrationTool(), goPreCommitTool({ state: 'missing' })] }),
