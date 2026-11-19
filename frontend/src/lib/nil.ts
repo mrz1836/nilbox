@@ -89,11 +89,22 @@ export function replayLabel(runs: number): string {
   return replayLabels[Math.min(runs, replayLabels.length - 1)] ?? 'go run ./party'
 }
 
-// arrivalBurst and earnedBurst are how much confetti opening the inbox at nil and emptying
-// it throw; maxBurst caps a replay.
-export const arrivalBurst = 70
+// earnedBurst is how much confetti emptying the inbox throws; maxBurst caps a replay.
 export const earnedBurst = 180
 export const maxBurst = 320
+
+// confettiCooldownMs is how long confetti, once it has flown on its own, waits before it
+// flies on its own again.
+export const confettiCooldownMs = 4 * 60 * 60 * 1000
+
+// confettiDue reports whether the party throws confetti on its own as it starts at now,
+// with last the time it last did (null if it has not yet). Only an inbox emptied while
+// the user watched (earned) throws it, and then not within confettiCooldownMs of the
+// last that flew. Arriving at an inbox already empty throws none however often the user
+// comes back, so the confetti keeps its meaning; the replay button throws it on demand.
+export function confettiDue(earned: boolean, last: Date | null, now: Date): boolean {
+  return earned && (last === null || now.getTime() - last.getTime() >= confettiCooldownMs)
+}
 
 // replayBurst is how much confetti a replay throws: more with every run, to a limit.
 export function replayBurst(runs: number): number {

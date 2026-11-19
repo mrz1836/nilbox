@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent, useId, useRef, useState, type CSSProperties,
 import { brand, palettes } from '../generated/brand'
 import { prefersReducedMotion } from '../lib/motion'
 import {
-  arrivalBurst,
+  confettiDue,
   earnedBurst,
   earnedQuip,
   nextQuip,
@@ -14,7 +14,7 @@ import {
 } from '../lib/nil'
 import { formatWhen } from '../lib/time'
 import { inboxLists, listTitles } from '../lib/triage'
-import { useNowAs } from '../lib/useNow'
+import { useClock, useNowAs } from '../lib/useNow'
 import { Confetti, useConfetti, type Point } from './Confetti'
 import { ChevronDownIcon, PlayIcon, TrophyIcon } from './icons'
 import { LogoMark } from './Logo'
@@ -22,9 +22,13 @@ import { LogoMark } from './Logo'
 export interface InboxNilProps {
   // stats are what was set aside to get there, from the inbox's triage.
   stats: NilStats
-  // earned is true when the inbox emptied while the page was open, which throws the full
-  // party; opening the page at nil only sprinkles.
+  // earned is true when the inbox emptied while the page was open, which unlocks the
+  // achievement and throws confetti (confettiDue); opening the page at nil throws none.
   earned: boolean
+  // confettiAt is when confetti last flew on its own, which it waits a while after to fly
+  // on its own again (confettiDue); onConfetti hears it fly, as the party starts.
+  confettiAt?: Date | null
+  onConfetti?: ((at: Date) => void) | undefined
   // compact shows the party as a strip above the lists (partyCompact): the mark, the
   // heading, the one-liner, and the button, whose run asks for the party in full (onOpen).
   compact?: boolean
@@ -89,21 +93,37 @@ function center(el: Element | null): Point {
 // InboxNil is the party the inbox throws when every list is empty: the mark, pulsing, over
 // a drifting grid; "inbox == nil" in glitching, shimmering type; a one-liner; a terminal
 // that checks off every list, counts what was set aside, and panics with nothing left to
-// do; and a button that runs the party again, a little harder each time. Confetti flies on
-// arrival, and far more of it when the inbox empties while you watch. With reduced motion
-// everything holds still and no confetti flies.
+// do; and a button that runs the party again, a little harder each time. Confetti flies
+// from the heading only when the inbox empties while you watch, and then at most once in
+// a while (confettiDue). Any other entrance is quieter: a glint sweeps across the party
+// once, and the button wiggles a couple of times, offering the confetti instead. With
+// reduced motion everything holds still and no confetti flies.
 //
 // Compact, it is a strip that gives the page to the lists below it, still the mark, the
 // heading, and the one-liner, with the confetti thrown from it the same; its button runs
 // the party in full.
-export function InboxNil({ stats, earned, compact = false, onOpen, onCollapse }: InboxNilProps) {
+export function InboxNil({
+  stats,
+  earned,
+  confettiAt = null,
+  onConfetti,
+  compact = false,
+  onOpen,
+  onCollapse,
+}: InboxNilProps) {
   const headingId = useId()
+  const clock = useClock()
   // word is where the party goes off, and button where a replay does.
   const word = useRef<HTMLSpanElement>(null)
   const button = useRef<HTMLButtonElement>(null)
   const { bursts, fire, land } = useConfetti()
   const [runs, setRuns] = useState(0)
   const [quip, setQuip] = useState(() => (earned ? earnedQuip : pickQuip()))
+  // loud is whether this party throws confetti as it starts, settled once as it mounts,
+  // so hearing it fly (onConfetti) does not turn it quiet.
+  const [loud] = useState(() => confettiDue(earned, confettiAt, clock.getSnapshot()))
+  // nudge wiggles the button on a quiet entrance until the user runs the party.
+  const nudge = !loud && runs === 0
   const { nextBack } = stats
   const comeback = useNowAs((now) => (nextBack === null ? '' : formatWhen(now, nextBack)))
 
@@ -117,7 +137,12 @@ export function InboxNil({ stats, earned, compact = false, onOpen, onCollapse }:
   // start it twice.
   const started = useRef(false)
   const start = useEffectEvent(() => {
-    throwConfetti(word.current, earned ? earnedBurst : arrivalBurst, earned)
+    if (!loud) {
+      return
+    }
+
+    throwConfetti(word.current, earnedBurst, true)
+    onConfetti?.(clock.read())
   })
 
   useEffect(() => {
@@ -151,6 +176,13 @@ export function InboxNil({ stats, earned, compact = false, onOpen, onCollapse }:
     </>
   )
 
+  // A quiet entrance sweeps a glint across the party once, in place of the confetti.
+  const glint = !loud && (
+    <div aria-hidden="true" data-testid="nil-glint" className="nil-glint pointer-events-none absolute inset-0 -z-10" />
+  )
+  // The button sits in a span that wiggles, leaving the button's own entrance to it.
+  const nudgeClass = nudge ? 'nil-nudge inline-flex' : 'inline-flex'
+
   if (compact) {
     return (
       <section
@@ -163,6 +195,7 @@ export function InboxNil({ stats, earned, compact = false, onOpen, onCollapse }:
           aria-hidden="true"
           className="nil-glow pointer-events-none absolute top-1/2 left-0 -z-10 h-40 w-72 -translate-x-1/4 -translate-y-1/2"
         />
+        {glint}
 
         <div className="flex items-center gap-4">
           <span aria-hidden="true" className="nil-mark nil-mark-still grid shrink-0 place-items-center">
@@ -186,16 +219,18 @@ export function InboxNil({ stats, earned, compact = false, onOpen, onCollapse }:
             </p>
           </div>
 
-          <button
-            ref={button}
-            type="button"
-            onClick={replay}
-            className="nil-rise nil-replay group inline-flex shrink-0 items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 font-mono text-xs font-medium text-text transition hover:border-accent hover:bg-accent/15 active:scale-[0.97]"
-            style={{ animationDelay: '120ms' }}
-          >
-            <PlayIcon className="size-3 text-accent transition-transform group-hover:translate-x-0.5" />
-            {replayLabel(runs)}
-          </button>
+          <span className={`${nudgeClass} shrink-0`}>
+            <button
+              ref={button}
+              type="button"
+              onClick={replay}
+              className="nil-rise nil-replay group inline-flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 font-mono text-xs font-medium text-text transition hover:border-accent hover:bg-accent/15 active:scale-[0.97]"
+              style={{ animationDelay: '120ms' }}
+            >
+              <PlayIcon className="size-3 text-accent transition-transform group-hover:translate-x-0.5" />
+              {replayLabel(runs)}
+            </button>
+          </span>
         </div>
 
         <Confetti bursts={bursts} onLand={land} />
@@ -222,6 +257,7 @@ export function InboxNil({ stats, earned, compact = false, onOpen, onCollapse }:
         aria-hidden="true"
         className="nil-glow pointer-events-none absolute top-0 left-1/2 -z-10 h-80 w-[40rem] max-w-full -translate-x-1/2"
       />
+      {glint}
 
       {onCollapse !== undefined && (
         <button
@@ -335,16 +371,18 @@ export function InboxNil({ stats, earned, compact = false, onOpen, onCollapse }:
           </div>
         </figure>
 
-        <button
-          ref={button}
-          type="button"
-          onClick={replay}
-          className="nil-rise nil-replay group mt-9 inline-flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 font-mono text-sm font-medium text-text transition hover:border-accent hover:bg-accent/15 active:scale-[0.97]"
-          style={{ animationDelay: '420ms' }}
-        >
-          <PlayIcon className="size-3.5 text-accent transition-transform group-hover:translate-x-0.5" />
-          {replayLabel(runs)}
-        </button>
+        <span className={`${nudgeClass} mt-9`}>
+          <button
+            ref={button}
+            type="button"
+            onClick={replay}
+            className="nil-rise nil-replay group inline-flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 font-mono text-sm font-medium text-text transition hover:border-accent hover:bg-accent/15 active:scale-[0.97]"
+            style={{ animationDelay: '420ms' }}
+          >
+            <PlayIcon className="size-3.5 text-accent transition-transform group-hover:translate-x-0.5" />
+            {replayLabel(runs)}
+          </button>
+        </span>
       </div>
 
       <Confetti bursts={bursts} onLand={land} />

@@ -2832,11 +2832,14 @@ the requests to GitHub's API.
 When every list is empty, the inbox throws a party in their place, above any list that still
 holds what you snoozed, dismissed, or muted: **inbox == nil**, a one-liner,
 and a terminal that checks off each list, counts what you snoozed and dismissed (with when the
-first snooze comes back), and panics, having nothing left to do. Confetti flies from the
-**nil**. Empty the inbox while you watch, by triaging the last item or by a refresh that finds
-nothing left, and you get the full party with **Achievement unlocked**; opening the inbox when
-it is already empty gets a lighter sprinkle. **go run ./party** runs it again, with more
-confetti and a new one-liner each time.
+first snooze comes back), and panics, having nothing left to do. Empty the inbox while you
+watch, by triaging the last item or by a refresh that finds nothing left, and you get the full
+party with **Achievement unlocked**, and confetti flies from the **nil**. So that it keeps its
+meaning, the confetti flies on its own at most once every four hours while the app runs, and
+never when you open the inbox to find it already empty, however often you come back. Those
+quieter entrances sweep a glint across the party instead, and **go run ./party** gives a little
+wiggle, twice. It runs the party again whenever you like, with more confetti and a new one-liner
+each time.
 
 The party needs a successful refresh: an inbox that was never refreshed, or whose last refresh
 failed, is unknown rather than empty. A list whose **N of M** count shows more on GitHub than
@@ -2846,7 +2849,7 @@ back ends it.
 
 Above such a list, the party fills the page only for the moment you empty the inbox. Open
 the inbox to find it already empty and the party is a strip above the lists: **inbox == nil**,
-a one-liner, and the confetti, with the lists in view below. Turn a list to its **Snoozed**,
+a one-liner, and **go run ./party**, with the lists in view below. Turn a list to its **Snoozed**,
 **Dismissed**, or **Muted** tab while the full party shows and it folds into the strip, the
 list staying where it was under the pointer; the chevron in the party's corner folds it too.
 **go run ./party** in the strip runs the party in full again. It stays the way you left it

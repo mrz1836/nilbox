@@ -352,11 +352,14 @@ export function InboxView({
     error === '' &&
     isInboxNil(snapshot, triaged)
   // busy records that the inbox has held something while the page was showing, so emptying
-  // it from here throws the full party, while coming to the page at nil only sprinkles.
-  // The page stays mounted while another shows, so hiding it forgets busy, and each visit
-  // numbers the party anew: an inbox emptied meanwhile is found at nil, and sprinkles.
+  // it from here earns the party, confetti and all, while coming to the page at nil throws
+  // a quiet one. The page stays mounted while another shows, so hiding it forgets busy, and
+  // each visit numbers the party anew: an inbox emptied meanwhile is found at nil, quietly.
   const [busy, setBusy] = useState(false)
   const [visit, setVisit] = useState({ showing, n: 0 })
+  // confettiAt is when the party last threw confetti on its own, which it then holds back
+  // for a while (confettiDue). It outlives the visits, as the page stays mounted.
+  const [confettiAt, setConfettiAt] = useState<Date | null>(null)
   // fold is how the user left the party on this visit (partyCompact): turning a list to
   // what was set aside, or the party's collapse button, folds it into its strip, and the
   // strip's run opens it again. Each visit starts as it comes.
@@ -818,6 +821,8 @@ export function InboxView({
           key={visit.n}
           stats={triaged}
           earned={busy}
+          confettiAt={confettiAt}
+          onConfetti={setConfettiAt}
           compact={compact}
           onOpen={() => {
             setFold('open')

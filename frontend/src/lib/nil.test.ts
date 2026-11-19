@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import type { InboxSnapshot } from '../platform'
-import { FIXED_NOW } from '../test/clock'
+import { FIXED_NOW, fromNow } from '../test/clock'
 import { item, list, snapshot } from '../test/fixtures'
 import {
+  confettiCooldownMs,
+  confettiDue,
   earnedQuip,
   isInboxNil,
   listsShow,
@@ -137,5 +139,19 @@ describe('replays', () => {
   it('throws more confetti with every run, up to a limit', () => {
     expect(replayBurst(2)).toBeGreaterThan(replayBurst(1))
     expect(replayBurst(99)).toBe(maxBurst)
+  })
+})
+
+describe('confettiDue', () => {
+  it('throws confetti on its own only for an inbox emptied while the user watched', () => {
+    expect(confettiDue(true, null, FIXED_NOW)).toBe(true)
+    expect(confettiDue(false, null, FIXED_NOW)).toBe(false)
+  })
+
+  it('holds it back until the cooldown since the last has passed', () => {
+    expect(confettiDue(true, fromNow(-60_000), FIXED_NOW)).toBe(false)
+    expect(confettiDue(true, fromNow(1 - confettiCooldownMs), FIXED_NOW)).toBe(false)
+    expect(confettiDue(true, fromNow(-confettiCooldownMs), FIXED_NOW)).toBe(true)
+    expect(confettiDue(false, fromNow(-confettiCooldownMs), FIXED_NOW)).toBe(false)
   })
 })

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useState } from 'react'
 
 import { filterInbox } from '../lib/inboxFilter'
+import { earnedBurst } from '../lib/nil'
 import { offersProjects } from '../lib/projects'
 import { useCollapsedSections } from '../lib/useCollapsedSections'
 import { useInbox } from '../lib/useInbox'
@@ -1221,8 +1222,9 @@ describe('InboxView at nil', () => {
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
-    // Opening the page at nil sprinkles; the achievement is for emptying it.
+    // Opening the page at nil is quiet; the achievement and the confetti are for emptying it.
     expect(screen.queryByText('Achievement unlocked')).not.toBeInTheDocument()
+    expect(screen.queryAllByTestId('confetti')).toHaveLength(0)
     // With nothing set aside, no list shows.
     for (const title of ['Review requested', 'Yours']) {
       expect(screen.queryByRole('region', { name: title })).not.toBeInTheDocument()
@@ -1400,6 +1402,45 @@ describe('InboxView at nil', () => {
 
     expect(await review.findByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
     expect(party()).not.toBeInTheDocument()
+  })
+
+  it('throws confetti on its own only on emptying the inbox, and then only once in a while', async () => {
+    const dismissed = snapshot({
+      lastRefreshedAt: refreshed,
+      reviewRequested: list([{ ...last, dismissedAt: FIXED_NOW.toISOString() }]),
+    })
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]) }))
+    platform.dismissItem.mockResolvedValue(dismissed)
+    platform.restoreItem.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]) }))
+    const { rerender } = render(<Harness launch={launchOptions} clock={fixedNow} />)
+    const confetti = () => screen.queryAllByTestId('confetti').length
+
+    const review = await section('Review requested')
+    await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
+
+    expect(await screen.findByText('Achievement unlocked')).toBeInTheDocument()
+    expect(confetti()).toBe(earnedBurst)
+
+    // Leaving for another page and coming back finds the inbox at nil, quietly.
+    rerender(<Harness launch={launchOptions} clock={fixedNow} showing={false} />)
+    rerender(<Harness launch={launchOptions} clock={fixedNow} showing />)
+
+    expect(await screen.findByRole('button', { name: 'go run ./party' })).toBeInTheDocument()
+    expect(confetti()).toBe(0)
+
+    // Bringing the item back and emptying the inbox again earns the party, but the confetti
+    // has flown too recently to fly again on its own.
+    const again = await section('Review requested')
+    await userEvent.click(again.getByRole('tab', { name: 'Dismissed 1' }))
+    await userEvent.click(again.getByRole('button', { name: 'Restore' }))
+    await waitFor(() => {
+      expect(party()).not.toBeInTheDocument()
+    })
+    await userEvent.click(again.getByRole('tab', { name: 'Review requested 1' }))
+    await userEvent.click(again.getByRole('button', { name: 'Dismiss' }))
+
+    expect(await screen.findByText('Achievement unlocked')).toBeInTheDocument()
+    expect(confetti()).toBe(0)
   })
 })
 

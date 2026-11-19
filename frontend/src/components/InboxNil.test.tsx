@@ -4,10 +4,10 @@ import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import { arrivalBurst, earnedBurst, earnedQuip, quips, replayBurst } from '../lib/nil'
+import { confettiCooldownMs, earnedBurst, earnedQuip, quips, replayBurst } from '../lib/nil'
 import { triageInbox } from '../lib/triage'
 import type { InboxSnapshot } from '../platform'
-import { at, FIXED_NOW } from '../test/clock'
+import { at, FIXED_NOW, fromNow } from '../test/clock'
 import { item, list, snapshot } from '../test/fixtures'
 import { InboxNil } from './InboxNil'
 
@@ -30,6 +30,16 @@ function confetti() {
 
 function flashes() {
   return screen.queryAllByTestId('confetti-flash').length
+}
+
+// nudging reports whether the replay button wiggles, and glinting whether a glint sweeps
+// across the party: what a quiet entrance does in place of the confetti.
+function nudging(name = 'go run ./party') {
+  return screen.getByRole('button', { name }).parentElement?.classList.contains('nil-nudge') ?? false
+}
+
+function glinting() {
+  return screen.queryByTestId('nil-glint') !== null
 }
 
 afterEach(() => {
@@ -77,22 +87,26 @@ describe('InboxNil', () => {
     expect(terminal.getByText(/next one back tomorrow, 9:00/)).toBeInTheDocument()
   })
 
-  it('sprinkles confetti on arrival', () => {
+  it('throws no confetti on arrival, and glints and nudges the button instead', () => {
     renderNil(empty, false)
 
-    expect(confetti()).toBe(arrivalBurst)
+    expect(confetti()).toBe(0)
     expect(flashes()).toBe(0)
+    expect(glinting()).toBe(true)
+    expect(nudging()).toBe(true)
   })
 
   it('starts the party once when development mounts it twice', () => {
+    const fly = vi.fn()
     render(
       <StrictMode>
-        <InboxNil stats={triageInbox(empty, FIXED_NOW)} earned={false} />
+        <InboxNil stats={triageInbox(empty, FIXED_NOW)} earned onConfetti={fly} />
       </StrictMode>,
       { wrapper: at() },
     )
 
-    expect(confetti()).toBe(arrivalBurst)
+    expect(confetti()).toBe(earnedBurst)
+    expect(fly).toHaveBeenCalledOnce()
   })
 
   it('throws the full party, flash and all, when the inbox was emptied', () => {
@@ -106,6 +120,33 @@ describe('InboxNil', () => {
     // The confetti flies over the whole window, outside the page, hidden from assistive
     // technology.
     expect(party()).not.toContainElement(screen.getAllByTestId('confetti')[0] ?? null)
+    // It needs no glint or nudge.
+    expect(glinting()).toBe(false)
+    expect(nudging()).toBe(false)
+  })
+
+  it('holds the confetti back for a while after it last flew on its own', () => {
+    const fly = vi.fn()
+    const stats = triageInbox(empty, FIXED_NOW)
+    const { unmount } = render(
+      <InboxNil stats={stats} earned confettiAt={fromNow(1 - confettiCooldownMs)} onConfetti={fly} />,
+      { wrapper: at() },
+    )
+
+    // Earned all the same, but quiet.
+    expect(screen.getByText('Achievement unlocked')).toBeInTheDocument()
+    expect(confetti()).toBe(0)
+    expect(glinting()).toBe(true)
+    expect(nudging()).toBe(true)
+    expect(fly).not.toHaveBeenCalled()
+    unmount()
+
+    render(<InboxNil stats={stats} earned confettiAt={fromNow(-confettiCooldownMs)} onConfetti={fly} />, {
+      wrapper: at(),
+    })
+
+    expect(confetti()).toBe(earnedBurst)
+    expect(fly).toHaveBeenCalledExactlyOnceWith(FIXED_NOW)
   })
 
   it('runs the party again, harder each time, with a new quip', async () => {
@@ -115,14 +156,16 @@ describe('InboxNil', () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole('button', { name: 'go run ./party' }))
 
-    expect(confetti()).toBe(arrivalBurst + replayBurst(1))
+    expect(confetti()).toBe(replayBurst(1))
     expect(screen.getByText(quips[1] ?? '')).toBeInTheDocument()
+    // Once run, the button has made its point and stops wiggling.
+    expect(nudging('go run ./party --again')).toBe(false)
 
     await user.click(screen.getByRole('button', { name: 'go run ./party --again' }))
     await user.click(screen.getByRole('button', { name: 'go run ./party --again --harder' }))
 
     expect(screen.getByRole('button', { name: 'sudo go run ./party' })).toBeInTheDocument()
-    expect(confetti()).toBe(arrivalBurst + replayBurst(1) + replayBurst(2) + replayBurst(3))
+    expect(confetti()).toBe(replayBurst(1) + replayBurst(2) + replayBurst(3))
     // From the third run on, each burst lights the window.
     expect(flashes()).toBe(1)
   })
@@ -194,10 +237,12 @@ describe('InboxNil as a strip', () => {
     expect(screen.queryByRole('button', { name: 'Collapse the party' })).not.toBeInTheDocument()
   })
 
-  it('sprinkles the same confetti from the strip on arrival', () => {
+  it('throws no confetti from the strip on arrival, and glints and nudges the button', () => {
     renderStrip(false)
 
-    expect(confetti()).toBe(arrivalBurst)
+    expect(confetti()).toBe(0)
+    expect(glinting()).toBe(true)
+    expect(nudging()).toBe(true)
   })
 
   it('unlocks the achievement in the strip, with the full burst, when earned', () => {
@@ -216,7 +261,7 @@ describe('InboxNil as a strip', () => {
     await userEvent.click(screen.getByRole('button', { name: 'go run ./party' }))
 
     expect(open).toHaveBeenCalledOnce()
-    expect(confetti()).toBe(arrivalBurst + replayBurst(1))
+    expect(confetti()).toBe(replayBurst(1))
   })
 
   it('asks for nothing when the full party runs again', async () => {

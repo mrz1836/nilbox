@@ -75,6 +75,20 @@
     box-shadow: 0 0 28px -6px var(--color-accent);
   }
 
+  /* The glint a quiet entrance sweeps across the party, behind its content: a soft band of
+     the mark's highlight, parked past the right edge when it is not moving. */
+  .nil-glint {
+    background-image: linear-gradient(
+      105deg,
+      transparent 40%,
+      color-mix(in oklab, var(--nil-highlight) 16%, transparent) 50%,
+      transparent 60%
+    );
+    background-size: 250% 100%;
+    background-position: 0% 0;
+    background-repeat: no-repeat;
+  }
+
   /* Confetti: the outer span drifts sideways and fades, the middle one rises and falls,
      and the inner one, the shape itself, tumbles in 3D. */
   .nil-confetti {
@@ -123,7 +137,8 @@
 
   @media (prefers-reduced-motion: reduce) {
     .nil-confetti,
-    .nil-flash {
+    .nil-flash,
+    .nil-glint {
       display: none;
     }
   }
@@ -195,6 +210,15 @@
 
     .nil-flash {
       animation: nil-flash 900ms ease-out both;
+    }
+
+    .nil-glint {
+      animation: nil-glint 1.6s cubic-bezier(0.45, 0, 0.25, 1) 0.5s both;
+    }
+
+    /* Two wiggles, seven seconds apart, the first once the entrance settles; then it rests. */
+    .nil-nudge {
+      animation: nil-nudge 7s ease-in-out 1.8s 2;
     }
   }
 
@@ -364,6 +388,43 @@
     }
     to {
       transform: rotate3d(var(--ax), var(--ay), 1, var(--spin));
+    }
+  }
+
+  /* The band crosses from past the left edge to past the right. */
+  @keyframes nil-glint {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: 0% 0;
+    }
+  }
+
+  /* A quick, settling wiggle in the first tenth of the cycle, then stillness. */
+  @keyframes nil-nudge {
+    0%,
+    11%,
+    100% {
+      rotate: 0deg;
+      scale: 1;
+    }
+    1.5% {
+      rotate: -4deg;
+      scale: 1.04;
+    }
+    3.5% {
+      rotate: 3.5deg;
+      scale: 1.04;
+    }
+    5.5% {
+      rotate: -2.5deg;
+    }
+    7.5% {
+      rotate: 1.5deg;
+    }
+    9.5% {
+      rotate: -0.5deg;
     }
   }
 
