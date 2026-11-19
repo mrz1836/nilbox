@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -446,6 +447,25 @@ func TestEventsRecordsEveryEventInOrder(t *testing.T) {
 	got[0] = event.MenuBarChanged{}
 
 	assert.Equal(t, event.InboxUpdated{}, events.All()[0], "All returns a copy")
+}
+
+func TestListerAnswersAndCounts(t *testing.T) {
+	t.Parallel()
+
+	running := []procs.Process{{PID: 4242, Command: "claude"}}
+	l := &testutil.Lister[procs.Process]{List: running}
+
+	var lister procs.Lister = l
+
+	got, err := lister.Processes(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, running, got)
+
+	l.Err = procs.ErrUnsupported
+	_, err = lister.Processes(t.Context())
+	require.ErrorIs(t, err, procs.ErrUnsupported)
+
+	assert.Equal(t, 2, l.Calls())
 }
 
 func TestLogsCollectsRecords(t *testing.T) {

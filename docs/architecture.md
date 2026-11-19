@@ -387,7 +387,7 @@ opened without waiting and checked again once open, so a named pipe swapped in i
 `internal/testutil` holds the fakes and fixtures the test suites share (a fresh database, an
 isolated git, `Commit` for a fixture file, git templates built once per test binary, the
 `Planter`, which plants fake programs in a clone's own config for the guard tests, recorded
-runs of real tools, a runner, finder, clock, event sink, log, fake tools, and
+runs of real tools, a runner, finder, process lister, clock, event sink, log, fake tools, and
 `TerminalScript`, the shell a fake terminal runs a run's command under); only tests
 may import it. `internal/scriptrun/scriptruntest` holds the runner the
 hooks, scripts, and release suites share, built on it: a real `scriptrun.Engine` and its
