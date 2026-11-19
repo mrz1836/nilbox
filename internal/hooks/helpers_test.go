@@ -193,17 +193,17 @@ type cloneOpts struct {
 	origin string
 }
 
-// cloneRepos are the repositories rig.clone starts its clones from, one for each name,
-// built once for the test binary by buildClone and copied into each rig that makes one.
-var cloneRepos = testutil.NewGitTemplates(buildClone) //nolint:gochecknoglobals // built once for the whole test binary
+// cloneRepo is the repository rig.clone starts every clone from, whatever its name, built
+// once for the test binary by buildClone and copied into the clone's folder.
+var cloneRepo = testutil.NewGitTemplate(buildClone) //nolint:gochecknoglobals // built once for the whole test binary
 
-// buildClone builds a repository called name, on main, whose one commit, first, holds
-// README.md.
-func buildClone(b *testutil.GitBuild, name string) struct{} {
-	b.WriteFile(filepath.Join(name, "README.md"), "# "+name+"\n")
-	b.Git(name, "-c", "init.defaultBranch=main", "init", "-q")
-	b.Git(name, "add", "README.md")
-	b.Git(name, "commit", "-q", "-m", "first")
+// buildClone builds, at the template's root, a repository on main whose one commit,
+// first, holds README.md.
+func buildClone(b *testutil.GitBuild) struct{} {
+	b.WriteFile("README.md", "# clone\n")
+	b.Git(".", "-c", "init.defaultBranch=main", "init", "-q")
+	b.Git(".", "add", "README.md")
+	b.Git(".", "commit", "-q", "-m", "first")
 
 	return struct{}{}
 }
@@ -212,7 +212,7 @@ func buildClone(b *testutil.GitBuild, name string) struct{} {
 func (r *rig) clone(name string, o cloneOpts) string {
 	r.t.Helper()
 
-	cloneRepos.Copy(r.t, name, r.root)
+	cloneRepo.Copy(r.t, filepath.Join(r.root, name))
 
 	return r.setUp(name, o)
 }
