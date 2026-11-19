@@ -617,38 +617,6 @@ func (q *Queries) ListWatchBaseline(ctx context.Context, arg ListWatchBaselinePa
 	return items, nil
 }
 
-const listWatchedNodes = `-- name: ListWatchedNodes :many
-SELECT DISTINCT i.node_id
-FROM item_watches w
-JOIN items i ON i.id = w.item_id
-WHERE i.account_id = ? AND i.node_id <> ''
-`
-
-// ListWatchedNodes returns the node IDs of every item of the account with account_id a
-// routine's search watches, each once.
-func (q *Queries) ListWatchedNodes(ctx context.Context, accountID int64) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listWatchedNodes, accountID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var node_id string
-		if err := rows.Scan(&node_id); err != nil {
-			return nil, err
-		}
-		items = append(items, node_id)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const markSearchStale = `-- name: MarkSearchStale :exec
 UPDATE item_watches SET stale = 1 WHERE watch_key = ?
 `
