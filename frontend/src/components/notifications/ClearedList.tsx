@@ -99,7 +99,7 @@ function SettledRow({ clear }: { clear: SettledClear }) {
   const failed = clear.state === 'failed'
 
   return (
-    <li className="notification-row">
+    <li>
       <button
         type="button"
         onClick={() => {

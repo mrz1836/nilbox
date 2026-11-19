@@ -231,7 +231,6 @@ export function MiniTrack({ item }: { item: InboxItem }) {
           aria-hidden="true"
           data-step={names[i]}
           data-state={step.state}
-          data-moving={step.look === 'running' || undefined}
           className={`relative block size-2.25 shrink-0 rounded-full border-[1.5px] ${miniLooks[step.look]}`}
         >
           {step.look === 'running' && (

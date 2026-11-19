@@ -667,7 +667,6 @@ export function LaunchControls({
               sessions={sessions ?? [session]}
               agents={agents}
               align="right"
-              moving
               shrinks
               label={`${name} session: ${label}. Show the item's sessions`}
               title={session.detail === '' ? `${name} ${label}` : `${name} ${label}: ${session.detail}`}

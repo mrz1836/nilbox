@@ -115,7 +115,6 @@ describe('LaunchControls, card variant', () => {
       name: `Claude session: ${words.replace('Claude ', '')}. Show the item's sessions`,
     })
     expect(pill).toHaveTextContent(`${words} 1m`)
-    expect(pill).toHaveAttribute('data-moving')
     expect(pill).toHaveClass('border-run', 'motion-safe:animate-border-run')
     expect(screen.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
     // The split control holds the pill, Show in terminal, then the ▾.

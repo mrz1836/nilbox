@@ -170,7 +170,6 @@ function TerminalVerb({
     <button
       type="button"
       data-verb="terminal"
-      data-moving={!compact || undefined}
       disabled={!session.canFocus}
       onClick={() => {
         void attempt(focusSession(session.id)).then((shown) => {

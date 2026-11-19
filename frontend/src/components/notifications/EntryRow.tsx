@@ -64,7 +64,7 @@ export interface EntryRowProps {
   onDone: () => void
   onUnread?: () => void
   // compact is the bell's row, which lists only the unread; the page's row tells read from
-  // unread, and skips rendering while off screen.
+  // unread.
   compact?: boolean
 }
 
@@ -81,7 +81,7 @@ export function EntryRow({ entry, onOpen, onDone, onUnread, compact = false }: E
   const weight = compact ? 'font-medium' : unread ? 'font-semibold' : 'font-normal'
 
   return (
-    <li className={`group relative ${compact ? '' : 'notification-row'}`}>
+    <li className="group relative">
       <button
         type="button"
         onClick={onOpen}

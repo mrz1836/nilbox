@@ -28,8 +28,7 @@ export const pollMs = 750
 export const retryMs = 3000
 
 // blockLines groups the lines in blocks the browser skips while off screen
-// (content-visibility), as the inbox skips its rows; a block's place holds as many lines
-// until it has been drawn once.
+// (content-visibility); a block's place holds as many lines until it has been drawn once.
 const blockLines = 50
 
 // lineRem is a line's height, in rem; the view follows the output while its end is

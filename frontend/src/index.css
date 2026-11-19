@@ -37,7 +37,7 @@
   /* A card's live agent pill: a bright stretch of its border runs slowly round it (see
      .border-run). A card's Show terminal button, an agent waiting on the user, breathes: a
      soft ring of its own color swells out of it and back. Both run only without reduced
-     motion (motion-safe:), and their elements carry data-moving. */
+     motion (motion-safe:). */
   --animate-border-run: border-run 2.6s linear infinite;
   --animate-breathe: breathe 2.2s ease-in-out infinite;
 
@@ -153,35 +153,12 @@
 }
 
 @layer components {
-  /* An inbox row off screen skips rendering until it scrolls near, so a long list costs
-     little more than the rows in view. Until a row has been laid out once it holds a
-     typical row's height, so the scrollbar stays steady; after that it holds its own: a
-     Signal card's two lines and its padding measure 65 to 70px at the default text size.
-     The containment this brings clips anything drawn outside the row, so a row with a
-     menu or panel open (its button aria-expanded), or its peek, renders in full. WebKit
-     before Safari 18 ignores both rules. */
-  .item-row {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 4.125rem;
-  }
-
-  /* A compact card (Settings → Cards' Density) holds its own height, one line of 2.375rem
-     over its border, until it has been laid out. */
-  .item-row[data-density='compact'] {
-    contain-intrinsic-size: auto 2.375rem;
-  }
-
-  .item-row:has([aria-expanded='true']) {
-    content-visibility: visible;
-  }
-
-  /* A row with a dot that moves (a session at work or starting, checks running) renders in
-     full too: inside content-visibility: auto, WebKit moved such a dot only when something
-     else made it paint, as a mouse move, so it stood still the rest of the time. Few rows
-     move at once, so the rest of the list keeps skipping its work. */
-  .item-row:has([data-moving]) {
-    content-visibility: visible;
-  }
+  /* A row of the inbox or the Notifications page always renders, on screen or off: never
+     give one content-visibility: auto, nor switch it on and off. In the app's WebKit a row
+     with it painted badly, in ways no headless WebKit shows: a dot or a spinner inside one
+     moved only when something else made it paint, and a row whose menu or peek had just
+     closed, or whose dot had just stopped, could stay blank in plain view, its border and
+     its height kept but nothing inside drawn, until the list was drawn again. */
 
   /* A row an edit on GitHub is taking out of its list (aria-busy while the request runs)
      fades and blurs behind the note that says so, and takes no clicks, so the wait shows
@@ -211,20 +188,6 @@
         )
         padding-box,
       conic-gradient(from var(--border-angle), transparent 0 62%, currentColor 82%, transparent 92%) border-box;
-  }
-
-  /* A row of the Notifications page off screen skips rendering too, so a history of a
-     thousand costs little more than the rows in view; until laid out once it holds a
-     typical row's height. A row on its way to GitHub (aria-busy, on itself or inside)
-     renders in full, since WebKit stops a spinner inside content-visibility: auto. */
-  .notification-row {
-    content-visibility: auto;
-    contain-intrinsic-size: auto 4.25rem;
-  }
-
-  .notification-row[aria-busy='true'],
-  .notification-row:has([aria-busy='true']) {
-    content-visibility: visible;
   }
 }
 

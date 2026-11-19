@@ -11,9 +11,9 @@ function dot(props: Parameters<typeof StatusDot>[0]): Element | null {
 }
 
 describe('StatusDot', () => {
-  it('marks itself moving only while it pings or pulses, so its card keeps rendering', () => {
-    expect(dot({ color: 'bg-success' })).not.toHaveAttribute('data-moving')
-    expect(dot({ color: 'bg-info', ping: true })).toHaveAttribute('data-moving', 'true')
-    expect(dot({ color: 'bg-muted', pulse: true })).toHaveAttribute('data-moving', 'true')
+  it('moves only while it pings or pulses', () => {
+    expect(dot({ color: 'bg-success' })?.querySelector('[class*="animate-"]')).toBeNull()
+    expect(dot({ color: 'bg-info', ping: true })?.querySelector('.motion-safe\\:animate-ping')).not.toBeNull()
+    expect(dot({ color: 'bg-muted', pulse: true })?.querySelector('.motion-safe\\:animate-pulse')).not.toBeNull()
   })
 })

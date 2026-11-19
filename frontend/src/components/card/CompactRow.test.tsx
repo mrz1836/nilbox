@@ -316,7 +316,6 @@ describe('CompactRow', () => {
 
     const [running, review, merge] = [...document.querySelectorAll('[data-step]')]
     expect(running).toHaveAttribute('data-state', 'pending')
-    expect(running).toHaveAttribute('data-moving', 'true')
     expect(running?.firstElementChild).toHaveClass('motion-safe:animate-ping')
     expect(review).toHaveClass('border-dotted')
     expect(merge).toHaveClass('border-dotted')
@@ -344,7 +343,6 @@ describe('CompactRow', () => {
 
     const go = within(row).getByRole('button', { name: 'Show terminal' })
     expect(go).toHaveClass('text-warning', 'card-lit:bg-warning')
-    expect(go).not.toHaveAttribute('data-moving')
     expect(go).not.toHaveClass('motion-safe:animate-breathe')
 
     platform.focusSession.mockRejectedValueOnce(new Error('Couldn’t find the session’s tab.'))

@@ -84,11 +84,11 @@ describe('StateTrack', () => {
   it('marks held runs and running checks, the running ones with a moving dot', () => {
     const { checks: held } = renderTrack(checks({ state: '', awaiting: 1, awaitingOnGitHub: 0 }))
     expect(held.querySelector('[data-checks-held]')).not.toBeNull()
-    expect(held.querySelector('[data-moving]')).toBeNull()
+    expect(held.querySelector('[class*="animate-"]')).toBeNull()
 
     const { container, checks: running } = renderTrack(checks({ state: 'PENDING', passed: 16, pending: 1 }))
     expect(running).toHaveAttribute('data-state', 'pending')
-    expect(running.querySelector('[data-checks-running] [data-moving]')).not.toBeNull()
+    expect(running.querySelector('[data-checks-running] .motion-safe\\:animate-ping')).not.toBeNull()
     expect(running).toHaveClass('text-warning')
     expect(container).toHaveTextContent('Checks: 16 passed, 1 running')
   })

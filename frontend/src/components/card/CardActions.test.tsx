@@ -164,7 +164,6 @@ describe('CardActions', () => {
     renderActions(step('terminal', { edge: 'urgent' }), { props: { session, sessions: [session] } })
 
     const show = screen.getByRole('button', { name: 'Show terminal' })
-    expect(show).toHaveAttribute('data-moving')
     expect(show).toHaveClass('motion-safe:animate-breathe', 'text-warning')
 
     await userEvent.click(show)

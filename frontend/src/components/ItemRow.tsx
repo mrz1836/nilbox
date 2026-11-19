@@ -342,8 +342,8 @@ function Byline({
 // runs, the card fades and blurs under a note saying what GitHub is doing, and takes no
 // clicks, so the wait shows however slow the network is; it comes back if the item stays.
 // Long titles are cut short with an ellipsis, so every card keeps the same shape, and the
-// card narrows with its list (@container on the list). A card off screen is not rendered
-// until it scrolls near (item-row in index.css). With Settings → Cards' Density compact
+// card narrows with its list (@container on the list). A card always renders, on screen
+// or off (item-row in index.css says why). With Settings → Cards' Density compact
 // (CardPrefsContext), the card is CompactRow instead: one line from the same step, with
 // the same toggle, peek, agent slot, and busy note.
 //

@@ -42,14 +42,14 @@ describe('CardStory', () => {
   it('marks something at work or waiting now with a moving dot', () => {
     const { container } = render(<CardStory story={story({ icon: 'ping' })} edge="urgent" />)
 
-    expect(container.querySelector('[data-icon="ping"] [data-moving]')).not.toBeNull()
+    expect(container.querySelector('[data-icon="ping"] .motion-safe\\:animate-ping')).not.toBeNull()
   })
 
   it.each(['clock', 'bolt', 'archive'] as const)('marks a story with a %s', (icon) => {
     const { container } = render(<CardStory story={story({ icon })} edge="waiting" />)
 
     expect(container.querySelector(`[data-icon="${icon}"] svg`)).not.toBeNull()
-    expect(container.querySelector('[data-moving]')).toBeNull()
+    expect(container.querySelector('[class*="animate-"]')).toBeNull()
   })
 
   it('shows what it is given in place of a triage story', () => {

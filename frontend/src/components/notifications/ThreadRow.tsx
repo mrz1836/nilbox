@@ -64,7 +64,7 @@ export interface ThreadRowProps {
   onRead?: () => void
   onShowInInbox?: (() => void) | undefined
   // compact is the toolbar panel's line, which lists only the unread; the page's line
-  // tells read from unread, chips its item's state, and skips rendering while off screen.
+  // tells read from unread and chips its item's state.
   compact?: boolean
 }
 
@@ -93,7 +93,7 @@ export function ThreadRow({
   return (
     <li
       aria-busy={busy || undefined}
-      className={`group relative transition-opacity duration-200 ${compact ? '' : 'notification-row'} ${busy ? 'opacity-60' : ''}`}
+      className={`group relative transition-opacity duration-200 ${busy ? 'opacity-60' : ''}`}
     >
       <button
         type="button"
