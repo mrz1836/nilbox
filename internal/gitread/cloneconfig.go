@@ -43,9 +43,10 @@ const anyPart = "*"
 // section.subsection.name, anyPart standing for any subsection or name):
 //
 //   - inertKeys: what git, Git LFS, and the editors and git clients write into a clone for
-//     themselves, which none of the commands a Setup is for (a fast-forward pull, a fetch,
-//     an ls-remote, `git worktree add`) reads as a program to run, a place to write outside
-//     the clone, or a way to reach a host;
+//     themselves, and git's many-files mode, which only changes how git writes the
+//     clone's index, none of which the commands a Setup is for (a fast-forward pull, a
+//     fetch, an ls-remote, `git worktree add`) read as a program to run, a place to write
+//     outside the clone, or a way to reach a host;
 //   - neutralizedKeys: settings that could name a program or change how a remote is
 //     reached, which every Setup sets again for the command or sets aside for the user's
 //     own (remoteGuard), so the clone's own value is never used, or which the remote guard
@@ -65,6 +66,13 @@ const anyPart = "*"
 //
 //   - core: what git init and git clone write, and sparse checkout's switches, which only
 //     choose which of the clone's files are written (index.sparse with them);
+//   - feature.manyFiles, and the settings it turns on through git 2.56, index.version,
+//     index.skipHash, and core.untrackedCache, each allowed alone too: git's many-files
+//     mode, which users of large repositories turn on for speed. With any value, they only
+//     choose how git writes the index in the clone's git folder (its format, whether it is
+//     checksummed, and whether it caches the untracked folders), and none names a program,
+//     a path, or a host. git's other group of defaults, feature.experimental, stays
+//     refused: what it turns on changes from release to release;
 //   - remote.<name>: what git clone and git remote write (url is weighed by the remote
 //     guard for each remote the command reaches, and fetch is never used: every fetch
 //     names its refspec with --refmap=); and gh-resolved, gtserviceaccountidentifier, and
@@ -104,6 +112,7 @@ func inertKeys() []string {
 		"core.repositoryformatversion", "core.filemode", "core.bare", "core.logallrefupdates", "core.ignorecase",
 		"core.precomposeunicode", "core.symlinks", "core.autocrlf", "core.eol", "core.sparsecheckout",
 		"core.sparsecheckoutcone", "index.sparse",
+		"feature.manyfiles", "index.version", "index.skiphash", "core.untrackedcache",
 		"remote.*.url", "remote.*.fetch", "remote.*.pushurl", "remote.*.tagopt", "remote.*.prune", "remote.*.promisor",
 		"remote.*.partialclonefilter", "remote.*.gh-resolved", "remote.*.gtserviceaccountidentifier",
 		"remote.*.github-pr-remote",

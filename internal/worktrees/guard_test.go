@@ -477,8 +477,8 @@ func TestEnsureRunsNoHookOrMonitorOfTheClonesOwn(t *testing.T) {
 
 // TestEnsureInACloneWithWhatGitAndItsToolsWrite makes worktrees in a clone whose own config
 // holds what git clone, a fork's upstream, Git LFS, commit signing, an editor's branch
-// notes, and git clone --recurse-submodules write: none of it refuses them, and a pull
-// request is fetched from the fork's upstream.
+// notes, git clone --recurse-submodules, and git's many-files mode write: none of it
+// refuses them, and a pull request is fetched from the fork's upstream.
 func TestEnsureInACloneWithWhatGitAndItsToolsWrite(t *testing.T) {
 	t.Parallel()
 
@@ -499,6 +499,7 @@ func TestEnsureInACloneWithWhatGitAndItsToolsWrite(t *testing.T) {
 		{"tag.gpgsign", "true"},
 		{"branch.main.vscode-merge-base", "origin/main"},
 		{"submodule.active", "."},
+		{"feature.manyFiles", "true"},
 	} {
 		testutil.RunGit(t, r.f.clone, "config", kv[0], kv[1])
 	}

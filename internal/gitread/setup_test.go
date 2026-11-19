@@ -146,6 +146,10 @@ func TestCloneSettingAllowed(t *testing.T) {
 		{"core.repositoryformatversion", "0"},
 		{"core.sparsecheckout", on},
 		{"core.sparsecheckoutcone", on},
+		{"feature.manyfiles", on},
+		{"index.version", "4"},
+		{"index.skiphash", on},
+		{"core.untrackedcache", "keep"},
 		{"remote.origin.url", "https://example.invalid/acme-org/example-repo.git"},
 		{"remote.upstream.gh-resolved", "base"},
 		{"remote.fork.github-pr-remote", on},
@@ -224,7 +228,12 @@ func TestCloneSettingAllowed(t *testing.T) {
 		{"core.alternaterefscommand", "x"},
 		{"core.pager", "x"},
 		{"core.editor", "x"},
+		{"core.gitproxy", "x"},
 		{"sequence.editor", "x"},
+		{"feature.experimental", on},
+		{"feature.x.manyfiles", on},
+		{"index.x.version", "4"},
+		{"alias.st", "!x"},
 		{"push.https://example.invalid.default", "x"},
 		{"rebase.x.y", "x"},
 		{"status.x.y", "x"},
@@ -380,6 +389,98 @@ func TestSetupAllowsWhatGitAndItsToolsWrite(t *testing.T) {
 
 	_, err = g.CheckoutSetup(t.Context(), dir)
 	require.NoError(t, err)
+}
+
+// manyFilesSettings are git's many-files mode and each setting it turns on, each written in
+// a case of its own, as git takes a key by any case.
+func manyFilesSettings() [][2]string {
+	return [][2]string{
+		{"FEATURE.ManyFiles", on}, {"Index.Version", "4"}, {"index.SKIPHASH", on}, {"Core.UntrackedCache", on},
+	}
+}
+
+// guardedRuns are every guard a command that changes the clone at dir runs under, each
+// returning the clone's refusal: a fetch's, a checkout's, a status', a removal's, and a
+// prune's (LocalSetup's Refused), and Repo scripts' branch status (CloneConfig).
+func guardedRuns(t *testing.T, g *Git, dir string) map[string]func() error {
+	t.Helper()
+
+	return map[string]func() error{
+		"fetch": func() error {
+			_, err := g.RemoteSetup(t.Context(), dir)
+
+			return err
+		},
+		"checkout": func() error {
+			_, err := g.CheckoutSetup(t.Context(), dir)
+
+			return err
+		},
+		"local": func() error {
+			local, err := g.LocalSetup(t.Context(), dir)
+			require.NoError(t, err, "a read runs none of the clone's programs")
+
+			return local.Refused
+		},
+		"branch status": func() error { return g.CloneConfig(t.Context(), dir) },
+	}
+}
+
+func TestSetupAllowsGitsManyFilesMode(t *testing.T) {
+	t.Parallel()
+
+	for _, kv := range manyFilesSettings() {
+		t.Run(kv[0], func(t *testing.T) {
+			t.Parallel()
+
+			dir, _, env := setupClone(t)
+			g := New(Config{Env: func() []string { return env }})
+
+			testutil.RunGit(t, dir, "config", kv[0], kv[1])
+
+			for name, run := range guardedRuns(t, g, dir) {
+				require.NoError(t, run(), "%s: %s=%s", name, kv[0], kv[1])
+			}
+		})
+	}
+}
+
+func TestGitsManyFilesModeAllowsNothingElse(t *testing.T) {
+	t.Parallel()
+
+	for _, s := range [][3]string{
+		{"core.pager", "touch /nonexistent/owned", "core.pager"},
+		{"core.editor", "touch /nonexistent/owned", "core.editor"},
+		{"core.gitProxy", "touch /nonexistent/owned", "core.gitproxy"},
+		{"diff.external", "touch /nonexistent/owned", "diff.external"},
+		{"alias.st", "!touch /nonexistent/owned", "alias.st"},
+		{"feature.experimental", on, "feature.experimental"},
+	} {
+		t.Run(s[2], func(t *testing.T) {
+			t.Parallel()
+
+			dir, _, env := setupClone(t)
+			g := New(Config{Env: func() []string { return env }})
+
+			for _, kv := range manyFilesSettings() {
+				testutil.RunGit(t, dir, "config", kv[0], kv[1])
+			}
+
+			testutil.RunGit(t, dir, "config", s[0], s[1])
+
+			for name, run := range guardedRuns(t, g, dir) {
+				err := run()
+				require.ErrorIs(t, err, ErrCloneConfig, name)
+
+				refused, ok := asCloneConfig(err)
+				require.True(t, ok, name)
+				assert.Equal(t, []string{s[2]}, refused.Keys, "%s: only the refused setting is named", name)
+				assert.Equal(t, "This clone's own git config sets "+s[2]+", which isn't run with here: a clone's own "+
+					"config may hold only what git and Git LFS write there. Set it for this folder in your global git "+
+					"config, with an includeIf, instead.", Message(err), name)
+			}
+		})
+	}
 }
 
 func TestTheUsersOwnIncludeIfStillCounts(t *testing.T) {
