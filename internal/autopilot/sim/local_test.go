@@ -424,7 +424,7 @@ func TestARestoreStepWaitsForItsActiveHours(t *testing.T) {
 		assert.NotEmpty(t, s.InboxItem(1).DismissedAt)
 		assert.Empty(t, s.Triage.Calls())
 
-		s.Advance(time.Hour, true)
+		s.Reach(s.Clock.Now().Add(time.Hour), true)
 
 		assert.Equal(t, autopilot.StateDone, only(t, s).State, "it runs once the hours begin")
 		assert.Empty(t, s.InboxItem(1).DismissedAt, "and brings back what the user dismissed")

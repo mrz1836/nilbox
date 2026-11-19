@@ -5,8 +5,9 @@
 //
 // Each scenario is a timeline with its expected ledger at the end. It runs inside a
 // synctest bubble: Advance lets time pass with the engine's ticks, Sleep jumps over a
-// gap with none (the Mac asleep, or the app closed), and Settle waits for every goroutine
-// to have done what it can. Only tests may import it.
+// gap with none (the Mac asleep, or the app closed), Reach does both to come to a moment
+// awake, and Settle waits for every goroutine to have done what it can. Only tests may
+// import it.
 package sim
 
 import (
@@ -389,6 +390,28 @@ func (s *Sim) Sleep(d time.Duration) {
 	}
 
 	s.Settle()
+}
+
+// Lead is how much of the way to a moment Reach lets pass awake, with the engine's ticks:
+// two of the scheduler's refreshes.
+const Lead = 10 * time.Minute
+
+// Reach brings the clock to at, the Mac asleep until Lead before it and awake from then
+// on: it jumps to Lead before at with no tick, as Sleep does, then lets the last Lead pass
+// as Advance does, refreshing when refresh says so. It crosses idle hours in a few minutes'
+// ticks, where Advance runs a whole cycle for every minute of them, and still runs the
+// ticks that lead up to the moment a scenario asserts. A time at most Lead away is only
+// advanced to, and one already gone is left as it is.
+func (s *Sim) Reach(at time.Time, refresh bool) {
+	d := at.Sub(s.Clock.Now())
+	if d > Lead {
+		s.Sleep(d - Lead)
+		d = Lead
+	}
+
+	if d > 0 {
+		s.Advance(d, refresh)
+	}
 }
 
 // Change changes the settings, as a setter does, and tells the engine.

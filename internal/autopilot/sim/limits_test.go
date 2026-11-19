@@ -163,7 +163,7 @@ func TestPauseHoldsLocalStepsTooAndResumeRunsThem(t *testing.T) {
 		assert.Equal(t, []sim.Row{row(1, autopilot.StateQueued, autopilot.BlockPaused, "", "appears:item")}, s.Ledger())
 		assert.Empty(t, s.Triage.Calls(), "Pause holds a local step too")
 
-		s.Advance(time.Hour, true)
+		s.Reach(s.Clock.Now().Add(time.Hour), true)
 		s.Change(func(c *autopilotprefs.Config) { c.Paused = false })
 
 		assert.Equal(t, []sim.Row{row(1, autopilot.StateDone, "", autopilot.ReasonRan, "appears:item")}, s.Ledger(),

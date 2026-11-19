@@ -313,7 +313,7 @@ func TestChecksThatNeverFinishAreUnknownAfterTheGiveUpTime(t *testing.T) {
 
 		fix := pushAndFinish(t, s, only(t, s).Runs[0].ID, 2)
 
-		s.Advance(50*time.Minute, true)
+		s.Reach(s.Clock.Now().Add(50*time.Minute), true)
 		assert.Equal(t, autopilot.StateVerifying, only(t, s).State, "still running is no verdict yet")
 
 		s.Advance(15*time.Minute, true)
