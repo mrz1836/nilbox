@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/sim"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // errCantSay is a runner that can't say whether a run goes.
@@ -51,6 +52,54 @@ func TestALongGapWithTheAppOpenAsksFirstUntilTheSearchesAreReadAgain(t *testing.
 		assert.Len(t, s.Runner.Started(), 1, "the catch-up ended with the first full read after the gap")
 		assert.Equal(t, autopilot.BlockCatchUp, s.Matches()[0].BlockedBy, "the match from the catch-up still waits")
 	})
+}
+
+func TestACycleThatCantReadWhatItActsOnRunsNothingUntilItCan(t *testing.T) {
+	t.Parallel()
+
+	// Each is a column of the inbox's that only one of a cycle's reads of the items names:
+	// their facts' file check, then their states, read after the facts.
+	tests := []struct {
+		name          string
+		table, column string
+	}{
+		{name: "the items' facts", table: "item_files", column: "files"},
+		{name: "the items' states", table: "items", column: "reason_pushed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			synctest.Test(t, func(t *testing.T) {
+				s := sim.New(t)
+				s.World.Add(sim.Item{Number: 1, Listed: true, Checks: passing, Passed: 4})
+				s.Begin()
+
+				// A routine on the user's own pull requests, which the refresh stores before
+				// the routine is on.
+				sp := sim.Pins()
+				sp.Watch.Sources = []spec.Source{{Lists: []catalog.ListSource{catalog.SourceAuthored}}}
+				r := s.Save("Pin mine", sp, autopilotprefs.ModeAuto)
+				s.Refresh()
+
+				testutil.Exec(t, s.DB, "ALTER TABLE "+tt.table+" RENAME COLUMN "+tt.column+" TO away")
+				s.Enable(r.ID, autopilot.CurrentRun)
+
+				assert.Empty(t, s.Ledger(), "a cycle that can't read all it acts on records nothing")
+				assert.Empty(t, s.Triage.Calls(), "and runs nothing")
+				assert.Contains(t, s.Logs.String(), "an Autopilot cycle failed")
+
+				testutil.Exec(t, s.DB, "ALTER TABLE "+tt.table+" RENAME COLUMN away TO "+tt.column)
+				s.Engine.Wake()
+				s.Settle()
+
+				assert.Equal(t, []sim.Row{row(1, autopilot.StateDone, "", autopilot.ReasonRan, "appears:item")}, s.Ledger(),
+					"the next cycle that can runs it")
+				assert.Len(t, s.Triage.Calls(), 1)
+			})
+		})
+	}
 }
 
 func TestAMatchThatRanNeverRunsAgainWhenItsRoutineIsSwitchedOffAndOn(t *testing.T) {
