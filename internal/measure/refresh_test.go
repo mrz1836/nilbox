@@ -19,17 +19,25 @@ var (
 	errNotRun        = errors.New("tests run no external programs")
 )
 
-// fakeRefresher answers refreshes with snapshots carrying the given GraphQL costs.
+// fakeRefresher answers refreshes with snapshots carrying the given GraphQL costs. With a
+// clock, each refresh moves it on by the next of took, as a refresh that long would.
 type fakeRefresher struct {
 	costs   []int
 	limit   int
 	unknown bool
 	failAt  int
 	calls   int
+
+	clock *testutil.Clock
+	took  []time.Duration
 }
 
 func (f *fakeRefresher) Refresh(context.Context) (inbox.Snapshot, error) {
 	f.calls++
+
+	if f.clock != nil {
+		f.clock.Advance(f.took[(f.calls-1)%len(f.took)])
+	}
 
 	if f.failAt == f.calls {
 		return inbox.Snapshot{}, errRefreshFailed
@@ -42,37 +50,20 @@ func (f *fakeRefresher) Refresh(context.Context) (inbox.Snapshot, error) {
 	return snap, nil
 }
 
-// steppingClock advances by the next step each time it is read twice (once per refresh).
-type steppingClock struct {
-	now   time.Time
-	steps []time.Duration
-	reads int
-}
-
-func (c *steppingClock) Now() time.Time {
-	if c.reads%2 == 1 {
-		c.now = c.now.Add(c.steps[c.reads/2])
-	}
-
-	c.reads++
-
-	return c.now
-}
-
 func TestTimeRefreshes(t *testing.T) {
 	t.Parallel()
 
-	clock := &steppingClock{
-		now:   time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
-		steps: []time.Duration{900 * time.Millisecond, 700 * time.Millisecond, 800 * time.Millisecond, 650 * time.Millisecond, 1200 * time.Millisecond},
+	clock := testutil.NewClock(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	refresher := &fakeRefresher{
+		costs: []int{1, 1, 2, 1, 1}, limit: 5000, clock: clock,
+		took: []time.Duration{900 * time.Millisecond, 700 * time.Millisecond, 800 * time.Millisecond, 650 * time.Millisecond, 1200 * time.Millisecond},
 	}
-	refresher := &fakeRefresher{costs: []int{1, 1, 2, 1, 1}, limit: 5000}
 
 	report, err := TimeRefreshes(t.Context(), refresher, 5, clock.Now)
 	require.NoError(t, err)
 
 	assert.Equal(t, 5, refresher.calls)
-	assert.Equal(t, clock.steps, report.Runs)
+	assert.Equal(t, refresher.took, report.Runs, "each refresh timed from its start to its end")
 	assert.Equal(t, 800*time.Millisecond, report.Median())
 	assert.Equal(t, 2, report.Cost, "the highest cost seen")
 	assert.Equal(t, 24, report.HourlyPoints())
