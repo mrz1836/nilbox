@@ -1707,11 +1707,15 @@ Each reads the clone's whole config once, includes followed, with `config --show
 --show-origin -z --list`, and weighs every setting of the clone's own (the local and
 worktree scopes, and whatever they include) by the three classes in `cloneconfig.go`, the
 one place they are listed. Inert (`inertKeys`): what git init, clone, remote, branch,
-submodule, sparse-checkout, and Git LFS write, and the notes editors and git clients keep,
-which none of these commands reads as a program, a place to write, or a way to reach a
-host: `core.{repositoryformatversion, filemode, bare, logallrefupdates, ignorecase,
-precomposeunicode, symlinks, autocrlf, eol, sparseCheckout, sparseCheckoutCone}`,
-`index.sparse`; `remote.<n>.{url, fetch, pushurl, tagopt, prune, promisor,
+submodule, sparse-checkout, and Git LFS write, the notes editors and git clients keep, and
+git's many-files mode, which none of these commands reads as a program, a place to write,
+or a way to reach a host: `core.{repositoryformatversion, filemode, bare, logallrefupdates,
+ignorecase, precomposeunicode, symlinks, autocrlf, eol, sparseCheckout, sparseCheckoutCone}`,
+`index.sparse`; `feature.manyFiles` and the settings it turns on through git 2.56,
+`index.version`, `index.skipHash`, and `core.untrackedCache` (each allowed alone too), which
+users of large repositories set for speed and which, with any value, only choose how git
+writes the index in the clone's git folder (`feature.experimental`, whose group changes from
+release to release, stays refused); `remote.<n>.{url, fetch, pushurl, tagopt, prune, promisor,
 partialclonefilter, gh-resolved, gtserviceaccountidentifier}`; `branch.<n>.<any>`;
 `extensions.{partialclone, worktreeconfig, objectformat, refstorage}`; `user.{name, email,
 signingkey}`, `commit.gpgsign`, `tag.gpgsign`, `gpg.format`; `pull.{rebase, ff}`,

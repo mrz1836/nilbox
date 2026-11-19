@@ -106,6 +106,118 @@ func TestRemoveWeighsTheWorktreesOwnConfig(t *testing.T) {
 	assert.FileExists(t, marker, "a plain removal runs the worktree's own filter")
 }
 
+// manyFilesSettings are git's many-files mode and each setting it turns on, each written in
+// a case of its own, as git takes a key by any case.
+func manyFilesSettings() [][2]string {
+	return [][2]string{
+		{"FEATURE.ManyFiles", "true"}, {"Index.Version", "4"}, {"index.SKIPHASH", "true"}, {"Core.UntrackedCache", "true"},
+	}
+}
+
+// TestPruneInACloneInGitsManyFilesMode prunes, under gitread's guards, a clone whose own
+// config turns on git's many-files mode, as users of large repositories do, or one of the
+// settings it turns on: the gone worktree's entry is cleared, and the clone's other
+// worktree's status is read and it is removed, as in any clone.
+func TestPruneInACloneInGitsManyFilesMode(t *testing.T) {
+	t.Parallel()
+
+	for _, kv := range manyFilesSettings() {
+		t.Run(kv[0], func(t *testing.T) {
+			t.Parallel()
+
+			e := newEnv(t)
+			alpha := e.newRepo(t, "alpha")
+			testutil.RunGit(t, alpha, "config", kv[0], kv[1])
+
+			wt := filepath.Join(e.home, "wt")
+			gone := addWorktree(t, alpha, filepath.Join(wt, "gone"), "gone")
+			clean := addWorktree(t, alpha, filepath.Join(wt, "clean"), "clean")
+			require.NoError(t, os.RemoveAll(gone))
+
+			svc := e.linked(linkDeps{guard: e.guardOf()})
+
+			snap, err := svc.List(t.Context())
+			require.NoError(t, err)
+			assert.Empty(t, mustRow(t, snap, clean).Error, "its status is read")
+
+			require.NoError(t, svc.Prune(t.Context(), alpha))
+			assert.Equal(t, []string{resolvedPath(alpha), resolvedPath(clean)}, gitWorktreePaths(t, alpha))
+
+			require.NoError(t, testutil.ErrOf(svc.Remove(t.Context(), alpha, clean, nil)))
+			assert.NoDirExists(t, clean)
+		})
+	}
+}
+
+// TestPruneStillRefusesWhatManyFilesModeDoesnt prunes a clone in git's many-files mode
+// whose own config also names a pager, a program: the prune is refused before git runs,
+// naming the pager alone, and the gone worktree's entry stays.
+func TestPruneStillRefusesWhatManyFilesModeDoesnt(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	alpha := e.newRepo(t, "alpha")
+	gone := addWorktree(t, alpha, filepath.Join(e.home, "wt", "gone"), "gone")
+	require.NoError(t, os.RemoveAll(gone))
+	testutil.RunGit(t, alpha, "config", "feature.manyFiles", "true")
+	testutil.RunGit(t, alpha, "config", "core.pager", "touch /nonexistent/owned")
+
+	err := e.linked(linkDeps{guard: e.guardOf()}).Prune(t.Context(), alpha)
+	require.ErrorIs(t, err, gitread.ErrCloneConfig)
+	assert.Equal(t, "This clone's own git config sets core.pager, which isn't run with here: a clone's own config "+
+		"may hold only what git and Git LFS write there. Set it for this folder in your global git config, with an "+
+		"includeIf, instead.", uierr.Message(err))
+	assert.Len(t, gitWorktreePaths(t, alpha), 2, "the gone worktree's entry stays")
+}
+
+// TestManyFilesModeRunsNoMonitorOrHookOfTheClonesOwn lists, prunes, and removes the
+// worktrees of a clone in git's many-files mode, whose untracked cache a status reads,
+// and whose own config also names a file system monitor and a hooks folder, which every
+// guarded command sets again, with the stat data of every file changed: neither runs. A
+// plain status runs both.
+func TestManyFilesModeRunsNoMonitorOrHookOfTheClonesOwn(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	plants := testutil.NewPlanter(t, e.home)
+	alpha := e.newRepo(t, "alpha")
+	wt := filepath.Join(e.home, "wt")
+	gone := addWorktree(t, alpha, filepath.Join(wt, "gone"), "gone")
+	clean := addWorktree(t, alpha, filepath.Join(wt, "clean"), "clean")
+	require.NoError(t, os.RemoveAll(gone))
+
+	testutil.RunGit(t, alpha, "config", "feature.manyFiles", "true")
+
+	markers := map[string]string{
+		"file system monitor": plants.Plant(alpha, testutil.Planting{
+			Name: "evil-fsmonitor", Settings: [][2]string{{"core.fsmonitor", "%s"}},
+		}),
+		"hooks folder": plants.PlantHooks(alpha, "post-index-change"),
+	}
+
+	touchAll(t, alpha)
+	touchAll(t, clean)
+
+	svc := e.linked(linkDeps{guard: gitread.New(gitread.Config{Env: plants.Environ})})
+
+	snap, err := svc.List(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, mustRow(t, snap, clean).Error, "its status is read")
+	require.NoError(t, svc.Prune(t.Context(), alpha))
+	require.NoError(t, testutil.ErrOf(svc.Remove(t.Context(), alpha, clean, nil)))
+
+	for name, marker := range markers {
+		assert.NoFileExists(t, marker, "a guarded command ran the clone's own %s", name)
+	}
+
+	_, _, err = execpath.Exec{Env: plants.Environ(), Dir: alpha}.Run(t.Context(), "git", "status", "--porcelain")
+	require.NoError(t, err)
+
+	for name, marker := range markers {
+		assert.FileExists(t, marker, "a plain status runs the clone's own %s", name)
+	}
+}
+
 // touchAll changes the stat data of every file directly in dir, so a status reads them all
 // again.
 func touchAll(t *testing.T, dir string) {

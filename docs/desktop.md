@@ -4927,7 +4927,10 @@ whatever it includes, and run only when every setting there is one of these:
   place to write: what `git init` and `git clone` write (`core.repositoryformatversion`,
   `core.filemode`, `core.bare`, `core.logallrefupdates`, `core.ignorecase`,
   `core.precomposeunicode`, `core.symlinks`, `core.autocrlf`, `core.eol`), sparse checkout's
-  switches; a remote's `url`, `fetch`, `pushurl`, `tagopt`, `prune`, `promisor`, and
+  switches; git's many-files mode, which users of large repositories turn on for speed
+  (`feature.manyFiles`, and the settings it turns on, `index.version`, `index.skipHash`, and
+  `core.untrackedCache`, each on its own too), which only changes how git writes its index; a
+  remote's `url`, `fetch`, `pushurl`, `tagopt`, `prune`, `promisor`, and
   `partialclonefilter`, and the notes the GitHub CLI and other git clients keep there;
   anything about a branch but its `mergeoptions` (VS Code keeps `vscode-merge-base` there);
   the repository's format extensions; `user.name`, `user.email`, `user.signingkey`,
