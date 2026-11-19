@@ -287,24 +287,40 @@ func (pipeAddr) String() string  { return pipeHost }
 func TestDownloadAssetStopsWhenItStalls(t *testing.T) {
 	t.Parallel()
 
-	synctest.Test(t, func(t *testing.T) {
-		client := pipeClient(t, func(w http.ResponseWriter, r *http.Request) {
-			_, _ = io.WriteString(w, "a start")
-			w.(http.Flusher).Flush() //nolint:forcetypeassert // the server's writer flushes
+	tests := []struct {
+		name  string
+		stall time.Duration // the client's own, none when zero
+		want  time.Duration
+	}{
+		{name: "once nothing arrived for 30 seconds", want: defaultDownloadStall},
+		{name: "once nothing arrived for the client's own stall", stall: 5 * time.Second, want: 5 * time.Second},
+	}
 
-			<-r.Context().Done()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			synctest.Test(t, func(t *testing.T) {
+				client := pipeClient(t, func(w http.ResponseWriter, r *http.Request) {
+					_, _ = io.WriteString(w, "a start")
+					w.(http.Flusher).Flush() //nolint:forcetypeassert // the server's writer flushes
+
+					<-r.Context().Done()
+				})
+				client.HTTP.Timeout = 0
+				client.stall = tt.stall
+
+				begun := time.Now()
+
+				var got bytes.Buffer
+
+				_, err := client.DownloadAsset(t.Context(), "https://"+pipeHost+"/file", &got, 1<<20)
+				require.ErrorIs(t, err, ErrDownloadStalled)
+				assert.Equal(t, "a start", got.String(), "what arrived before the stall is written")
+				assert.Equal(t, tt.want, time.Since(begun), "it gives up after the stall, and no sooner")
+			})
 		})
-		client.HTTP.Timeout = 0
-
-		begun := time.Now()
-
-		var got bytes.Buffer
-
-		_, err := client.DownloadAsset(t.Context(), "https://"+pipeHost+"/file", &got, 1<<20)
-		require.ErrorIs(t, err, ErrDownloadStalled)
-		assert.Equal(t, "a start", got.String(), "what arrived before the stall is written")
-		assert.Equal(t, defaultDownloadStall, time.Since(begun), "it gives up once nothing arrived for 30 seconds")
-	})
+	}
 }
 
 func TestDownloadAssetIgnoresTheClientTimeout(t *testing.T) {
