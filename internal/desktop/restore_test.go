@@ -35,6 +35,9 @@ func TestRestoreOfferPicksTheNewestBackupThisBuildOpens(t *testing.T) {
 	nov13 := nov14.Add(-24 * time.Hour)
 	nov15 := nov14.Add(12 * time.Hour)
 
+	// known is a build whose base starts at 0100, after a squash that froze the history 0024 ended.
+	known := store.Schemas{Oldest: 100, Newest: 104, Squashed: []int{24}}
+
 	tests := []struct {
 		name    string
 		err     error
@@ -45,9 +48,9 @@ func TestRestoreOfferPicksTheNewestBackupThisBuildOpens(t *testing.T) {
 			name: "the newest backup of a schema this build has",
 			err:  errNewerData,
 			backups: []store.SnapshotFile{
-				backupAt("newest-but-newer", nov15, 5),
-				backupAt("offered", nov14, 4),
-				backupAt("older", nov13, 3),
+				backupAt("newest-but-newer", nov15, 105),
+				backupAt("offered", nov14, 104),
+				backupAt("older", nov13, 103),
 			},
 			want: "/data/app.db.backup-offered",
 		},
@@ -57,7 +60,7 @@ func TestRestoreOfferPicksTheNewestBackupThisBuildOpens(t *testing.T) {
 			backups: []store.SnapshotFile{
 				{Path: "/data/app.db.broken-x", Kind: store.SnapshotSetAside, At: nov15},
 				{Path: "/data/app.db.reset-x", Kind: store.SnapshotReset, At: nov15},
-				backupAt("offered", nov13, 2),
+				backupAt("offered", nov13, 101),
 			},
 			want: "/data/app.db.backup-offered",
 		},
@@ -69,13 +72,31 @@ func TestRestoreOfferPicksTheNewestBackupThisBuildOpens(t *testing.T) {
 		{
 			name:    "only backups a newer build took",
 			err:     errNewerData,
-			backups: []store.SnapshotFile{backupAt("newer", nov15, 5)},
+			backups: []store.SnapshotFile{backupAt("newer", nov15, 105)},
+		},
+		{
+			name: "a backup of a history a squash froze, which this build carries over",
+			err:  errNewerData,
+			backups: []store.SnapshotFile{
+				backupAt("squashed", nov14, 24),
+				backupAt("older", nov13, 103),
+			},
+			want: "/data/app.db.backup-squashed",
+		},
+		{
+			name: "a backup from before a squash, which this build can't carry over, is never offered",
+			err:  errNewerData,
+			backups: []store.SnapshotFile{
+				backupAt("too-old", nov15, 4),
+				backupAt("offered", nov13, 103),
+			},
+			want: "/data/app.db.backup-offered",
 		},
 		{name: "no backups", err: errNewerData},
 		{
 			name:    "any other failure offers nothing",
 			err:     errFakeStartup,
-			backups: []store.SnapshotFile{backupAt("offered", nov14, 4)},
+			backups: []store.SnapshotFile{backupAt("offered", nov14, 104)},
 		},
 	}
 
@@ -83,7 +104,7 @@ func TestRestoreOfferPicksTheNewestBackupThisBuildOpens(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, ok := desktop.RestoreOffer(tt.err, tt.backups, 4, now)
+			got, ok := desktop.RestoreOffer(tt.err, tt.backups, known, now)
 
 			if tt.want == "" {
 				assert.False(t, ok)
@@ -100,7 +121,7 @@ func TestRestoreOfferPicksTheNewestBackupThisBuildOpens(t *testing.T) {
 	t.Run("words the backup's time in the user's", func(t *testing.T) {
 		t.Parallel()
 
-		got, ok := desktop.RestoreOffer(errNewerData, []store.SnapshotFile{backupAt("offered", nov14, 4)}, 4, now)
+		got, ok := desktop.RestoreOffer(errNewerData, []store.SnapshotFile{backupAt("offered", nov14, 104)}, known, now)
 		require.True(t, ok)
 
 		assert.Equal(t, nov14, got.At)
@@ -115,7 +136,7 @@ func TestRestoreOfferPicksTheNewestBackupThisBuildOpens(t *testing.T) {
 
 		lastYear := nov14.AddDate(-1, 0, 0)
 
-		got, ok := desktop.RestoreOffer(errNewerData, []store.SnapshotFile{backupAt("offered", lastYear, 4)}, 4, now)
+		got, ok := desktop.RestoreOffer(errNewerData, []store.SnapshotFile{backupAt("offered", lastYear, 104)}, known, now)
 		require.True(t, ok)
 		assert.Equal(t, "Use my data from Nov 14, 2025, 3:02 PM", got.Button)
 	})
@@ -153,13 +174,13 @@ func TestAFailureOfferingABackupSaysWhatItLoses(t *testing.T) {
 func newerBuildSaved(t *testing.T, path string) {
 	t.Helper()
 
-	newest, err := store.LatestSchema()
+	known, err := store.KnownSchemas()
 	require.NoError(t, err)
 
 	db := testutil.DBAt(t, path)
 	testutil.Exec(t, db,
 		`INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?, 'from_a_newer_build', 'x', ?)`,
-		newest+1, "2026-11-15 00:00:00+00:00")
+		known.Newest+1, "2026-11-15 00:00:00+00:00")
 	require.NoError(t, db.Close(), "a newer build that quit holds nothing open")
 }
 

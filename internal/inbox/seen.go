@@ -9,7 +9,7 @@ import (
 
 // The user's seen marks. An item is unread while the activity the user last saw on it
 // (items.seen_activity_at) is unset or older than its last activity on GitHub (see
-// Item.Unread). Apart from a new item's insert (see 0022_seen_activity), only these marks
+// Item.Unread). Apart from a new item's insert (see 0101_inbox), only these marks
 // move it: the window sends them as an item's sheet opens, steps away, or closes, as the
 // user opens it on GitHub, after a card's own edits on GitHub, and from Mark as read and
 // Mark as unread, whatever the cards' unread setting says. The window, not the Actor,

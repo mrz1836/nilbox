@@ -1,0 +1,619 @@
+create table accounts
+    id integer primary key
+    login text not null collate nocase unique
+    created_at datetime not null
+    updated_at datetime not null
+create table agent_profiles
+    id integer primary key
+    agent text not null check (agent <> '')
+    name text not null
+    config_dir text not null default ''
+    model text not null default ''
+    effort text not null default ''
+    permission_mode text not null default ''
+    plan_mode boolean not null default 0 check (plan_mode in (0, 1))
+    add_dirs text not null default '[]' check (json_valid (add_dirs) and json_type (add_dirs) = 'array')
+    extra_args text not null default '[]' check (json_valid (extra_args) and json_type (extra_args) = 'array')
+    env text not null default '{}' check (json_valid (env) and json_type (env) = 'object')
+    created_at datetime not null
+    updated_at datetime not null
+    unique (agent, name)
+create table agent_sessions
+    id text primary key check (id <> '')
+    agent_session_id text not null default ''
+    resumed_from text not null default ''
+    agent text not null check (agent <> '')
+    profile text not null default ''
+    config_dir text not null default ''
+    prompt text not null default ''
+    prompt_head text not null default ''
+    terminal text not null default ''
+    item_id integer not null default 0
+    owner text not null collate nocase check (owner <> '')
+    name text not null collate nocase check (name <> '')
+    kind text not null check (kind in ('pr', 'issue'))
+    number integer not null check (number > 0)
+    title text not null default ''
+    url text not null default ''
+    dir text not null check (dir <> '')
+    clone_path text not null default ''
+    worktree text not null default ''
+    pid integer not null default 0 check (pid >= 0)
+    state text not null check (state <> '')
+    state_detail text not null default ''
+    last_message text not null default ''
+    launched_at datetime not null
+    linked_at datetime
+    state_at datetime not null
+    ended_at datetime
+    permission text not null default ''
+    worktree_action text not null default ''
+    launch_notice text not null default ''
+    run_id integer not null default 0 check (run_id >= 0)
+    github_event text not null default '' check (github_event in ('', 'approved', 'changes_requested', 'merged', 'closed'))
+    github_event_commit text not null default ''
+    github_event_at datetime
+create table autopilot_baselines
+    routine_id integer not null references autopilot_routines (id)
+    item_id integer not null references items (id) on delete cascade
+    state text not null default '{}' check (json_valid (state))
+    first_seen_at datetime not null
+    updated_at datetime not null
+    primary key (routine_id, item_id)
+create table autopilot_effects
+    id integer primary key
+    match_id integer not null references autopilot_matches (id) on delete cascade
+    step integer not null default 0 check (step >= 0)
+    routine_id integer not null references autopilot_routines (id)
+    item_id integer references items (id) on delete set null
+    action text not null check (action <> '')
+    state_before text not null default '{}' check (json_valid (state_before))
+    state_after text not null default '{}' check (json_valid (state_after))
+    applied_at datetime not null
+    undone_at datetime
+    reversed_at datetime
+    unique (match_id, step)
+create table autopilot_hands_off
+    routine_id integer not null references autopilot_routines (id)
+    item_id integer not null references items (id) on delete cascade
+    since datetime not null
+    why text not null default ''
+    primary key (routine_id, item_id)
+create table autopilot_matches
+    id integer primary key
+    routine_id integer not null references autopilot_routines (id)
+    item_id integer references items (id) on delete set null
+    account_login text not null default '' collate nocase
+    repo_owner text not null default ''
+    repo_name text not null default ''
+    kind text not null default ''
+    number integer not null default 0
+    title text not null default ''
+    url text not null default ''
+    fire_key text not null check (fire_key <> '')
+    dry_run boolean not null default 0 check (dry_run in (0, 1))
+    manual boolean not null default 0 check (manual in (0, 1))
+    state text not null check (state <> '')
+    blocked_by text not null default ''
+    reason text not null default ''
+    detail text not null default ''
+    trace text not null default '[]' check (json_valid (trace))
+    steps text not null default '[]' check (json_valid (steps))
+    step integer not null default 0 check (step >= 0)
+    spec_hash text not null default ''
+    head_oid text not null default ''
+    auto_merge_at_match boolean check (auto_merge_at_match in (0, 1))
+    approved boolean not null default 0 check (approved in (0, 1))
+    attempt integer not null default 0 check (attempt >= 0)
+    created_at datetime not null
+    updated_at datetime not null
+    decided_at datetime not null
+    closed_at datetime
+    unique (routine_id, item_id, fire_key, dry_run)
+create table autopilot_routines
+    id integer primary key
+    account_login text not null default '' collate nocase
+    name text not null check (name <> '')
+    name_key text not null check (name_key <> '')
+    description text not null default ''
+    enabled boolean not null default 0 check (enabled in (0, 1))
+    mode text not null check (mode <> '')
+    spec text not null check (spec <> '')
+    spec_version integer not null default 0 check (spec_version >= 0)
+    template_key text not null default ''
+    sort_order integer not null default 0
+    enabled_at datetime
+    last_error text not null default ''
+    broken_reason text not null default ''
+    created_at datetime not null
+    updated_at datetime not null
+    deleted_at datetime
+    graduate_declined_at datetime
+    check (enabled = 0 or enabled_at is not null)
+    check (deleted_at is null or enabled = 0)
+create table autopilot_runs
+    id integer primary key
+    match_id integer not null references autopilot_matches (id) on delete cascade
+    routine_id integer not null references autopilot_routines (id)
+    item_id integer references items (id) on delete set null
+    repo_owner text not null default ''
+    repo_name text not null default ''
+    kind text not null default ''
+    number integer not null default 0
+    title text not null default ''
+    url text not null default ''
+    step integer not null default 0 check (step >= 0)
+    runner text not null check (runner in ('terminal', 'background', 'github', 'script'))
+    agent text not null default ''
+    github_action text not null default ''
+    script_run_id integer not null default 0
+    session_id text not null default ''
+    agent_session_id text not null default ''
+    status text not null check (status <> '')
+    outcome text not null default ''
+    verdict text not null default ''
+    profile text not null default ''
+    model text not null default ''
+    effort text not null default ''
+    preset text not null default ''
+    clone_path text not null default ''
+    worktree text not null default ''
+    head_before text not null default ''
+    run_commit text not null default ''
+    head_after text not null default ''
+    display_command text not null default ''
+    budget_reserved real not null default 0 check (budget_reserved >= 0)
+    budget_unit text not null default ''
+    cost real
+    cost_estimated boolean not null default 0 check (cost_estimated in (0, 1))
+    tokens_in integer not null default 0
+    tokens_out integer not null default 0
+    cache_read_tokens integer not null default 0
+    turns integer not null default 0
+    summary text not null default ''
+    error text not null default ''
+    manual boolean not null default 0 check (manual in (0, 1))
+    counted boolean not null default 1 check (counted in (0, 1))
+    log_cleared boolean not null default 0 check (log_cleared in (0, 1))
+    queued_at datetime not null
+    started_at datetime
+    finished_at datetime
+    verified_at datetime
+    updated_at datetime not null
+create table autopilot_tries
+    routine_id integer not null references autopilot_routines (id)
+    item_id integer not null references items (id) on delete cascade
+    reset_at datetime not null
+    primary key (routine_id, item_id)
+create table avatars
+    login text primary key check (login <> '' and login = lower (login))
+    mime text not null check (mime <> '')
+    image blob not null
+    bytes integer not null check (bytes >= 0)
+    fetched_at datetime not null
+    used_at datetime not null
+create table gh_thread_clears
+    id integer primary key
+    account_login text not null collate nocase check (account_login <> '')
+    thread_id integer not null check (thread_id > 0)
+    repo_owner text not null collate nocase check (repo_owner <> '')
+    repo_name text not null collate nocase check (repo_name <> '')
+    item_kind text not null check (item_kind in ('pr', 'issue'))
+    number integer not null check (number > 0)
+    title text not null default ''
+    reason text not null default ''
+    trigger text not null check (trigger <> '')
+    action text not null check (action in ('done', 'read'))
+    state text not null check (state in ('queued', 'sent', 'kept', 'failed', 'skipped'))
+    thread_updated_at datetime not null
+    queued_at datetime not null
+    send_after datetime not null
+    sent_at datetime
+    settled_at datetime
+    attempts integer not null default 0 check (attempts >= 0)
+    error text not null default ''
+    skip_reason text not null default ''
+    check ((state = 'queued') = (settled_at is null))
+    check ((state = 'sent') = (sent_at is not null))
+create table gh_thread_moments
+    account_login text not null collate nocase check (account_login <> '')
+    repo_owner text not null collate nocase check (repo_owner <> '')
+    repo_name text not null collate nocase check (repo_name <> '')
+    item_kind text not null check (item_kind in ('pr', 'issue'))
+    number integer not null check (number > 0)
+    trigger text not null check (trigger <> '' and trigger <> 'by_hand')
+    at datetime not null
+    created_at datetime not null
+    primary key (account_login, repo_owner, repo_name, item_kind, number, trigger)
+create table gh_threads
+    account_login text not null collate nocase check (account_login <> '')
+    thread_id integer not null check (thread_id > 0)
+    reason text not null default ''
+    unread boolean not null default 0 check (unread in (0, 1))
+    updated_at datetime not null
+    last_read_at datetime
+    subject_type text not null default ''
+    subject_title text not null default ''
+    repo_owner text not null default '' collate nocase
+    repo_name text not null default '' collate nocase
+    item_kind text not null default '' check (item_kind in ('', 'pr', 'issue'))
+    number integer not null default 0 check (number >= 0)
+    subject_state text not null default '' check (subject_state in ('', 'OPEN', 'CLOSED', 'MERGED'))
+    subject_closed_at datetime
+    state_checked_at datetime
+    after_moment text not null default '' check (after_moment in ('', 'bot', 'person'))
+    after_moment_checked_at datetime
+    latest_comment_url text not null default ''
+    seen_at datetime not null
+    primary key (account_login, thread_id)
+    check ((item_kind = '') = (number = 0))
+    check (item_kind = '' or (repo_owner <> '' and repo_name <> ''))
+create table issue_views
+    item_id integer primary key references items (id) on delete cascade
+    view text not null default '{}' check (json_valid (view) and json_type (view) = 'object')
+    bytes integer not null default 0 check (bytes >= 0)
+    fetched_at datetime
+    used_at datetime not null
+    seen_at datetime
+create table item_agent_changes
+    item_id integer not null references items (id) on delete cascade
+    head_oid text not null check (head_oid <> '' and head_oid = lower (head_oid))
+    files text not null default '[]' check (json_valid (files) and json_type (files) = 'array')
+    total integer not null default 0 check (total >= 0)
+    complete boolean not null default 1 check (complete in (0, 1))
+    run_id integer not null default 0 check (run_id >= 0)
+    noted_at datetime not null
+    primary key (item_id, head_oid)
+create table item_checks
+    item_id integer primary key references items (id) on delete cascade
+    head_oid text not null default ''
+    checks text not null default '[]' check (json_valid (checks) and json_type (checks) = 'array')
+    complete boolean not null default 0 check (complete in (0, 1))
+    settled_at datetime
+    fetched_at datetime not null
+create table item_details
+    item_id integer primary key references items (id) on delete cascade
+    labels text not null default '[]' check (json_valid (labels) and json_type (labels) = 'array')
+    comments integer not null default 0 check (comments >= 0)
+    additions integer not null default 0 check (additions >= 0)
+    deletions integer not null default 0 check (deletions >= 0)
+    changed_files integer not null default 0 check (changed_files >= 0)
+    commits integer not null default 0 check (commits >= 0)
+    mergeable text not null default ''
+    checks_state text not null default ''
+    checks_passed integer not null default 0 check (checks_passed >= 0)
+    checks_failed integer not null default 0 check (checks_failed >= 0)
+    checks_pending integer not null default 0 check (checks_pending >= 0)
+    checks_skipped integer not null default 0 check (checks_skipped >= 0)
+    review_decision text not null default ''
+    reviewers integer not null default 0 check (reviewers >= 0)
+    reviewed integer not null default 0 check (reviewed >= 0 and reviewed <= reviewers)
+    approvals integer not null default 0 check (approvals >= 0)
+    changes_requested integer not null default 0 check (changes_requested >= 0)
+    fetched_at datetime not null
+    head_oid text not null default ''
+    projects text not null default '[]' check (json_valid (projects) and json_type (projects) = 'array')
+    sub_issues_total integer not null default 0 check (sub_issues_total >= 0)
+    sub_issues_completed integer not null default 0 check (sub_issues_completed >= 0 and sub_issues_completed <= sub_issues_total)
+    review_users text not null default '[]' check (json_valid (review_users) and json_type (review_users) = 'array')
+    review_teams text not null default '[]' check (json_valid (review_teams) and json_type (review_teams) = 'array')
+    auto_merge_method text not null default ''
+    auto_merge_at datetime
+    checks_awaiting integer not null default 0 check (checks_awaiting >= 0)
+    base_ref text not null default ''
+    merge_state text not null default ''
+    checks_awaiting_on_github integer not null default 0 check (checks_awaiting_on_github >= 0)
+    checks_held text not null default '[]' check (json_valid (checks_held) and json_type (checks_held) = 'array')
+    issue_info text not null default '{}' check (json_valid (issue_info) and json_type (issue_info) = 'object')
+create table item_files
+    item_id integer primary key references items (id) on delete cascade
+    head_oid text not null default ''
+    total integer not null default 0 check (total >= 0)
+    files text not null default '[]' check (json_valid (files) and json_type (files) = 'array')
+    complete boolean not null default 0 check (complete in (0, 1))
+    error text not null default ''
+    checked_at datetime not null
+create table item_local_state
+    item_id integer primary key references items (id) on delete cascade
+    dismissed_at datetime
+    updated_at datetime not null
+    snoozed_until datetime check (snoozed_until is null or dismissed_at is null)
+    snooze_baseline text check (snooze_baseline is null or (json_valid (snooze_baseline) and json_type (snooze_baseline) = 'object'))
+    wake_reasons text check (wake_reasons is null or (json_valid (wake_reasons) and json_type (wake_reasons) = 'object'))
+    pinned_at datetime
+    set_aside_by integer references autopilot_routines (id) on delete set null
+    pinned_by integer references autopilot_routines (id) on delete set null
+create table item_watches
+    watch_key text not null check (watch_key <> '')
+    item_id integer not null references items (id) on delete cascade
+    follow boolean not null default 0 check (follow in (0, 1))
+    seen_at datetime not null
+    stale boolean not null default 0 check (stale in (0, 1))
+    primary key (watch_key, item_id)
+create table items
+    id integer primary key
+    account_id integer not null references accounts (id) on delete cascade
+    repo_id integer not null references repos (id) on delete cascade
+    kind text not null check (kind in ('pr', 'issue'))
+    number integer not null check (number > 0)
+    node_id text not null default ''
+    title text not null default ''
+    url text not null default ''
+    author_login text not null default ''
+    author_association text not null default ''
+    is_cross_repository boolean not null default 0 check (is_cross_repository in (0, 1))
+    is_draft boolean not null default 0 check (is_draft in (0, 1))
+    head_ref text not null default ''
+    item_created_at datetime not null
+    item_updated_at datetime not null
+    reason_review_requested boolean not null default 0 check (reason_review_requested in (0, 1))
+    reason_authored boolean not null default 0 check (reason_authored in (0, 1))
+    reason_assigned boolean not null default 0 check (reason_assigned in (0, 1))
+    fetched_at datetime not null
+    author_type text not null default ''
+    assign_left_at datetime
+    review_left_at datetime
+    state text not null default ''
+    closed_at datetime
+    review_requested_at datetime
+    assigned_at datetime
+    reason_reviewed boolean not null default 0 check (reason_reviewed in (0, 1))
+    reason_pushed boolean not null default 0 check (reason_pushed in (0, 1))
+    viewer_review_state text not null default '' check (viewer_review_state in ('', 'APPROVED', 'CHANGES_REQUESTED'))
+    viewer_review_commit text not null default ''
+    viewer_review_at datetime
+    viewer_review_seen_at datetime
+    author_avatar_url text not null default ''
+    seen_activity_at datetime
+    unique (account_id, repo_id, kind, number)
+create table launch_defaults
+    id integer primary key
+    owner text not null collate nocase
+    name text not null default '' collate nocase
+    agent text not null default ''
+    pr_prompt_id integer references prompts (id) on delete restrict
+    issue_prompt_id integer references prompts (id) on delete restrict
+    effort text not null default ''
+    plan_mode boolean check (plan_mode in (0, 1))
+    worktree boolean check (worktree in (0, 1))
+    created_at datetime not null
+    updated_at datetime not null
+    profiles text not null default '{}' check (json_valid (profiles) and json_type (profiles) = 'object')
+    models text not null default '{}' check (json_valid (models) and json_type (models) = 'object')
+    agent_args text not null default '{}' check (json_valid (agent_args) and json_type (agent_args) = 'object')
+    autopilot_outside text check (autopilot_outside in ('off', 'on'))
+    checks_prompt_id integer references prompts (id) on delete restrict
+    conflicts_prompt_id integer references prompts (id) on delete restrict
+    changes_prompt_id integer references prompts (id) on delete restrict
+    rereview_prompt_id integer references prompts (id) on delete restrict
+    unique (owner, name)
+create table notifications
+    id integer primary key
+    kind text not null check (kind <> '')
+    created_at datetime not null
+    read_at datetime
+    item_id integer references items (id) on delete set null
+    item_kind text not null default '' check (item_kind in ('', 'pr', 'issue'))
+    repo_owner text not null default ''
+    repo_name text not null default ''
+    number integer not null default 0 check (number >= 0)
+    title text not null default ''
+    url text not null default ''
+    author text not null default ''
+    detail text not null default ''
+    run_id integer not null default 0 check (run_id >= 0)
+    run_started text not null default ''
+    heading text not null default ''
+    autopilot_routine integer not null default 0 check (autopilot_routine >= 0)
+    autopilot_match integer not null default 0 check (autopilot_match >= 0)
+    autopilot_run integer not null default 0 check (autopilot_run >= 0)
+    autopilot_created text not null default ''
+    once_key text not null default ''
+create table prefs
+    key text not null primary key
+    value text not null
+    updated_at datetime not null
+create table prompts
+    id integer primary key
+    name text not null
+    nickname text not null collate nocase unique
+    applies_to text not null check (applies_to in ('pr', 'issue', 'any'))
+    body text not null
+    effort text not null default ''
+    plan_mode boolean check (plan_mode in (0, 1))
+    worktree boolean check (worktree in (0, 1))
+    starter_key text not null default ''
+    created_at datetime not null
+    updated_at datetime not null
+    models text not null default '{}' check (json_valid (models) and json_type (models) = 'object')
+    agent_args text not null default '{}' check (json_valid (agent_args) and json_type (agent_args) = 'object')
+    purpose text not null default 'agent' check (purpose in ('agent', 'reply'))
+    reply_action text not null default '' check (reply_action in ('', 'approve', 'request_changes', 'comment') and (reply_action = '') = (purpose = 'agent'))
+create table rate_snapshots
+    id integer primary key
+    account_id integer not null references accounts (id) on delete cascade
+    resource text not null
+    limit_total integer not null
+    remaining integer not null
+    used integer not null
+    cost integer not null default 0
+    reset_at datetime not null
+    taken_at datetime not null
+create table repos
+    id integer primary key
+    owner text not null collate nocase
+    name text not null collate nocase
+    local_path text not null default ''
+    created_at datetime not null
+    updated_at datetime not null
+    node_id text not null default ''
+    description text not null default ''
+    visibility text not null default ''
+    is_archived boolean not null default 0 check (is_archived in (0, 1))
+    archived_at datetime
+    is_disabled boolean not null default 0 check (is_disabled in (0, 1))
+    is_locked boolean not null default 0 check (is_locked in (0, 1))
+    lock_reason text not null default ''
+    is_fork boolean not null default 0 check (is_fork in (0, 1))
+    parent text not null default ''
+    default_branch text not null default ''
+    viewer_permission text not null default ''
+    viewer_merge_method text not null default ''
+    merge_commit_allowed boolean not null default 0 check (merge_commit_allowed in (0, 1))
+    squash_merge_allowed boolean not null default 0 check (squash_merge_allowed in (0, 1))
+    rebase_merge_allowed boolean not null default 0 check (rebase_merge_allowed in (0, 1))
+    auto_merge_allowed boolean not null default 0 check (auto_merge_allowed in (0, 1))
+    delete_branch_on_merge boolean not null default 0 check (delete_branch_on_merge in (0, 1))
+    allow_update_branch boolean not null default 0 check (allow_update_branch in (0, 1))
+    language text not null default ''
+    language_color text not null default ''
+    pushed_at datetime
+    fetched_at datetime
+    unique (owner, name)
+create table review_diff_files
+    item_id integer not null references review_diffs (item_id) on delete cascade
+    position integer not null check (position >= 0)
+    path text not null check (path <> '')
+    previous_path text not null default ''
+    status text not null default ''
+    additions integer not null default 0 check (additions >= 0)
+    deletions integer not null default 0 check (deletions >= 0)
+    blob_sha text not null default ''
+    patch text not null default ''
+    patch_state text not null default '' check (patch_state in ('', 'no_content', 'cache_cap'))
+    primary key (item_id, position)
+create table review_diffs
+    item_id integer primary key references items (id) on delete cascade
+    head_oid text not null default ''
+    total integer not null default 0 check (total >= 0)
+    complete boolean not null default 0 check (complete in (0, 1))
+    bytes integer not null default 0 check (bytes >= 0)
+    context text not null default '{}' check (json_valid (context) and json_type (context) = 'object')
+    context_at datetime
+    fetched_at datetime
+    used_at datetime not null
+    seen_at datetime
+create table script_runs
+    id integer primary key
+    kind text not null check (kind <> '')
+    title text not null default ''
+    source text not null default ''
+    repo_owner text not null default '' collate nocase
+    repo_name text not null default '' collate nocase
+    dir text not null check (dir <> '')
+    argv text not null default '[]'
+    command text not null default ''
+    runs_in text not null default 'app'
+    status text not null check (status <> '')
+    exit_code integer
+    pid integer not null default 0 check (pid >= 0)
+    pgid integer not null default 0 check (pgid >= 0)
+    proc_started_at datetime
+    summary text not null default ''
+    result text not null default '{}'
+    log_bytes integer not null default 0
+    seen_at datetime
+    started_at datetime not null
+    finished_at datetime
+create table script_trust
+    repo_owner text not null collate nocase check (repo_owner <> '')
+    repo_name text not null collate nocase check (repo_name <> '')
+    source text not null check (source <> '')
+    name text not null check (name <> '')
+    sha256 text not null check (length (sha256) = 64)
+    command text not null default ''
+    granted_at datetime not null
+    primary key (repo_owner, repo_name, source, name)
+create table tool_installs
+    id integer primary key
+    tool text not null check (tool <> '')
+    version text not null check (version <> '')
+    path text not null check (path <> '')
+    sha256 text not null check (length (sha256) = 64)
+    archive text not null default ''
+    replaced text not null default ''
+    installed_at datetime not null
+create table user_scripts
+    id integer primary key
+    name text not null check (name <> '')
+    command text not null check (command <> '')
+    icon text not null default ''
+    scope text not null default 'all'
+    scope_repos text not null default '[]'
+    runs_in text not null default ''
+    confirm integer not null default 0
+    position integer not null default 0
+    created_at datetime not null
+    updated_at datetime not null
+create table worktree_cleanups
+    id integer primary key
+    cleaned_at datetime not null
+    automatic boolean not null default 0 check (automatic in (0, 1))
+    repo text not null check (repo <> '')
+    worktree text not null check (worktree <> '')
+    display_path text not null default ''
+    deleted_branch text not null default ''
+    head text not null default ''
+    item_kind text not null default '' check (item_kind in ('', 'pr', 'issue'))
+    item_owner text not null default ''
+    item_name text not null default ''
+    item_number integer not null default 0 check (item_number >= 0)
+    item_title text not null default ''
+    item_url text not null default ''
+    item_state text not null default '' check (item_state in ('', 'open', 'merged', 'closed'))
+create table worktree_records
+    id integer primary key
+    clone_path text not null check (clone_path <> '')
+    worktree text not null check (worktree <> '')
+    path text not null default ''
+    branch text not null default ''
+    owner text not null collate nocase check (owner <> '')
+    name text not null collate nocase check (name <> '')
+    kind text not null check (kind in ('pr', 'issue'))
+    number integer not null check (number > 0)
+    agent text not null default ''
+    created_at datetime not null
+    last_agent_at datetime
+    launches integer not null default 0 check (launches >= 0)
+    fetched_head text not null default ''
+    unique (clone_path, worktree)
+create index agent_sessions_item on agent_sessions (owner, name, number, launched_at)
+create index agent_sessions_state on agent_sessions (state)
+create index autopilot_effects_applied on autopilot_effects (applied_at)
+create index autopilot_effects_item on autopilot_effects (item_id)
+create index autopilot_matches_created on autopilot_matches (created_at)
+create index autopilot_matches_item on autopilot_matches (item_id)
+create index autopilot_matches_open on autopilot_matches (state) where state in ('waiting', 'blocked', 'queued', 'running', 'verifying')
+create index autopilot_matches_routine_item on autopilot_matches (routine_id, item_id)
+create unique index autopilot_routines_name_key on autopilot_routines (name_key) where deleted_at is null
+create index autopilot_routines_order on autopilot_routines (sort_order, id) where deleted_at is null
+create unique index autopilot_runs_active_item on autopilot_runs (item_id) where status in ('starting', 'running', 'stopping')
+create index autopilot_runs_match on autopilot_runs (match_id)
+create index autopilot_runs_routine_started on autopilot_runs (routine_id, started_at)
+create index autopilot_runs_script_run on autopilot_runs (script_run_id) where script_run_id > 0
+create index autopilot_runs_started on autopilot_runs (started_at)
+create index avatars_used on avatars (used_at)
+create index gh_thread_clears_account on gh_thread_clears (account_login, thread_id)
+create index gh_thread_clears_due on gh_thread_clears (state, send_after)
+create unique index gh_thread_clears_queued on gh_thread_clears (account_login, thread_id) where state = 'queued'
+create index gh_thread_clears_settled on gh_thread_clears (settled_at)
+create index gh_threads_item on gh_threads (account_login, repo_owner, repo_name, number)
+create index issue_views_used on issue_views (used_at)
+create index item_watches_item_id on item_watches (item_id)
+create index items_account_updated on items (account_id, item_updated_at)
+create index items_repo_id on items (repo_id)
+create index launch_defaults_changes_prompt_id on launch_defaults (changes_prompt_id)
+create index launch_defaults_checks_prompt_id on launch_defaults (checks_prompt_id)
+create index launch_defaults_conflicts_prompt_id on launch_defaults (conflicts_prompt_id)
+create index launch_defaults_issue_prompt_id on launch_defaults (issue_prompt_id)
+create index launch_defaults_pr_prompt_id on launch_defaults (pr_prompt_id)
+create index launch_defaults_rereview_prompt_id on launch_defaults (rereview_prompt_id)
+create index notifications_created_at on notifications (created_at)
+create unique index notifications_once_key on notifications (once_key) where once_key <> ''
+create index rate_snapshots_account_id on rate_snapshots (account_id)
+create index rate_snapshots_resource_taken_at on rate_snapshots (resource, taken_at)
+create index review_diffs_used on review_diffs (used_at)
+create index script_runs_started on script_runs (started_at)
+create index script_runs_status on script_runs (status)
+create index tool_installs_path on tool_installs (path, installed_at)
+create index worktree_cleanups_cleaned_at on worktree_cleanups (cleaned_at)

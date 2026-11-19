@@ -220,6 +220,39 @@ app:lint` reads.
 
 ## internal/store
 
+**Migrations and squashes.** The schema is the migrations in `internal/store/migrate/migrations/`,
+each recorded with its file's checksum once it runs. A migration a build has shipped is never
+edited or deleted: a database that ran it would read as a history this build disagrees with and
+be set aside. To combine shipped migrations into fewer files, squash them, which carries every
+user's database over without touching its data:
+
+1. Make sure the users run the newest release; only the histories a squash freezes carry over.
+2. Freeze each history users' databases may have, before deleting anything:
+   `go test ./internal/store/migrate -run TestFreezeASquashedHistory -freeze NNNN`, NNNN the
+   newest version of the history (the newest release's, and the tip's when a migration came
+   after it). It writes `squashed/NNNN.json` (each version, name, and checksum) and
+   `squashed/NNNN.schema` (the schema those migrations build, `schemaOf`'s form: comments,
+   whitespace, case, and quotes left out, a table's columns and constraints one per line).
+3. Write the base: whole `CREATE`s at the next hundred above every version any build shipped
+   (`0100`, then `0200`), the columns in each table's order, an added column after the last
+   one and before the table's constraints, as SQLite's `ADD COLUMN` writes it, and no data
+   steps (they fixed rows older builds stored). A migration after the newest release stays a
+   file of its own after the base.
+4. Set each history's `through` (the newest base migration that builds its schema) and its
+   `about`, delete the old files and their per-migration tests, and run `magex db:generate`:
+   the generated code must not change but for comments that name a migration.
+
+`TestEverySquashedHistoryBuildsTheSchemaOfItsBase` builds the base through each `through` and
+compares it with the frozen `.schema`, and a database whose history is exactly a frozen one is
+carried over by `migrate.Apply`: backed up as `-v<its newest>`, its history rows swapped for the
+base's in one transaction, nothing run against its tables, then the later migrations applied. Any
+other history of versions below the base is `migrate.ErrSquashedHistory`, which `store.Open` sets
+aside as `ResetHistory`. An older build that opens a database carried over finds versions above
+its own and refuses it as a newer build's, offering the backup taken before the carry over
+(`store.KnownSchemas`, which `desktop.RestoreOffer` reads, knows the frozen histories' versions
+too). A later squash drops the histories it can't carry over (their `through` is gone), so a
+database two squashes old is set aside.
+
 **Self-heal.** `store.Open` backs the database up before applying pending migrations. A file
 that is not a database or is damaged, a schema the migrations did not create, or a history this
 build disagrees with is renamed, with its `-wal` and `-shm` files, to
@@ -427,7 +460,7 @@ batch's price stays where it was (measured in November 2026: 1 point for 25 issu
 and without, 2 with the projects either way). Each kind of field value aliases its value apart
 (`number`, `text`, `date`) so values of different types never share a name. Because the
 fragment is shared, a card's own read and the issue sheet's view read them too. The inbox
-stores them as one JSON object, `item_details.issue_info` (migration 0025), and the card's
+stores them as one JSON object, `item_details.issue_info` (migration `0104_issue_info`), and the card's
 peek shows them as **The issue**, in the column a pull request's change takes.
 
 ## internal/inbox
@@ -481,7 +514,7 @@ in the read's transaction (`noteReadVerdict`, `verdicts.go`) only when the token
 as the last refresh learned it (`Service.viewers`, never a request), is the item's, since
 GitHub names the viewer's verdict by the token. Each row keeps when its verdict was submitted
 (`viewer_review_at`, moving and cleared with the verdict) and when the newest verdict seen was
-(`viewer_review_seen_at`, which only rises; migration `0018_viewer_review_seen`). The same
+(`viewer_review_seen_at`, which only rises; migration `0101_inbox`). The same
 review (state and second) is left as stored, so a commit `coverOwnPushes` moved stays moved;
 an older one is left too (a review from the inbox since the read went out); any other is
 stored whole, and none clears it (a dismissed review). A read never lists a pull request as
@@ -667,18 +700,18 @@ requests a round, and nothing while no merge happened.
 
 **A bot author's picture.** The item fields every inbox read shares (`ItemFields`) ask a bot
 author for its picture's URL, at no point more, and `items.author_avatar_url` keeps it, `''` for
-any other author (migration `0021_author_avatar_url`): the refresh's `UpsertItem` and an item's
+any other author (migration `0101_inbox`): the refresh's `UpsertItem` and an item's
 own read (`UpdateItem`) write it, a routine's search (`UpsertWatchedItem`, whose lean fields
 don't ask) leaves it, and `UpdateItem` keeps the stored URL when a read brought none for the
 same author, since a whole refresh applies a pass's read again over its own. The lists and a
 routine's Watching list carry it as `Item.AuthorAvatarURL`, which the window hands the avatars
 service for a bot's picture on its card.
 
-**The seen stamp** (`seen.go`, migration `0022_seen_activity`). `items.seen_activity_at` is the
+**The seen stamp** (`seen.go`, migration `0101_inbox`). `items.seen_activity_at` is the
 activity on an item the user last saw, and `Item.Unread`, in the lists and a routine's Watching
 list alike, is true while it is NULL or `item_updated_at` is later; the window shows it as a dot
-on the card while **Unread dots** (`cards.unread`) is on. The migration set it to
-`item_updated_at` on every row it found, so the upgrade lit no card. Besides the marks, only a
+on the card while **Unread dots** (`cards.unread`) is on.
+Besides the marks, only a
 new row's insert writes it: a whole refresh inserts NULL, unread, except on an account's first
 load (`noteFirstLoad`: no item stored for it before that refresh, `HasItems`), when it inserts
 the item's activity, so a first sign-in isn't a wall of dots; a routine's search
@@ -734,7 +767,7 @@ details, file check, and check names, and the review sheet's `review_diffs` (wit
 `review_diff_files`) and the issue sheet's `issue_views`, which are only caches and are read
 again on the next visit. (An item with watch rows or local state is never pruned.)
 
-**Held workflow runs** (migrations `0023_checks_awaiting_on_github` and `0024_checks_held`). A
+**Held workflow runs** (migration `0101_inbox`). A
 details read stores the runs GitHub holds for approval apart (`github.Checks`):
 `item_details.checks_awaiting` counts those the user can approve from the review sheet,
 `checks_awaiting_on_github` those GitHub approves only on its site, and `checks_held` lists
@@ -769,7 +802,7 @@ test only looks, and its card is stored all the same; nothing is sent while the 
 under a quarter, `ErrLowBudget`) and `ReadChecks` (`github.FetchChecks` into `item_checks`,
 returning what it cost, which a test adds to its points, and `ErrLowBudget` too).
 
-**A routine's triage** (`triage_routine.go`, migration `0008_autopilot_effects`). Autopilot's
+**A routine's triage** (`triage_routine.go`, migration `0103_autopilot`). Autopilot's
 local steps run the inbox's own triage through `inbox.Routines`, never the bound Service:
 `Triage` runs a Pin, a Snooze (for the routine's length, recording the item's activity as
 the user's Snooze does, so the user's wake rules end it early), a Dismiss, or a Restore on
@@ -1483,7 +1516,7 @@ reported (the permissions it started with, what it did to the item's worktree, a
 worked around), which the card's sessions panel shows in place of a line on the row after
 the launch, and what came of its item on GitHub while it ran (`GitHubEvent`: approved,
 changes requested, merged, or closed, with the review's commit and GitHub's time; migration
-`0019_session_github_event`). That comes from the inbox's outcomes, never a request:
+`0102_runs_and_caches`). That comes from the inbox's outcomes, never a request:
 core's `sessionOutcomes`, the third sink of `outcomesFanOut`, late-bound once the sessions
 are followed, turns each `inbox.Outcome` whose `GitHubFact` says a decided review, a merge,
 or a close into a `GitHubNote` for `Ledger.NoteGitHub` (Go-only), which records it
@@ -2632,7 +2665,7 @@ reading what was missing never turns a yes or a no into anything else.
 
 ### The routines, kept
 
-The root package owns `autopilot_routines` (migration `0005_autopilot_routines`): one row
+The root package owns `autopilot_routines` (migration `0100_settings`): one row
 per routine, its spec one JSON document (`spec.Encode`, compact) beside its `spec_version`,
 and, as columns, never spec, its name, description, switch (`enabled`, with `enabled_at`
 while on), mode (`dryRun`, `ask`, or `auto`, checked in Go, so a later mode needs no
@@ -2889,7 +2922,7 @@ rewrites it).
 
 ### The engine and the ledger
 
-**The ledger** (migration `0007_autopilot_ledger`, all of it Autopilot's) records what each
+**The ledger** (migration `0103_autopilot`, all of it Autopilot's) records what each
 routine did with each item it matched. `autopilot_matches` holds one row per routine, item,
 fire key, and Dry run (unique), so an existing row blocks a repeat: once per occurrence holds
 across refreshes, check re-runs, and restarts, and a Dry run's record never blocks a real
@@ -2918,9 +2951,9 @@ running, stopping), so a second active run on an item fails in the database what
 engine's own checks say. `autopilot_tries` keeps when Try again last reset a routine's count
 on an item, `autopilot_baselines` what a routine first saw of an item (its head, its comment
 count, for New commits' first commit and New comments), `autopilot_hands_off` the items a
-routine leaves alone, and `autopilot_effects` (migration `0008_autopilot_effects`) what its
-local steps did to their items' triage (**Local actions**, below). Migration
-`0011_autopilot_matches_item` indexes `autopilot_matches` by `item_id`, which every read by
+routine leaves alone, and `autopilot_effects` what its
+local steps did to their items' triage (**Local actions**, below).
+`autopilot_matches` is indexed by `item_id`, which every read by
 item (`LatestMatches` and `ItemHistory`) searches. The engine's own state,
 `autopilot.engine` (a JSON pref only the engine writes, `enginestate.go`), holds when Pause
 began, the last refresh it saw, when the last catch-up began and the routines still in it, the
@@ -3764,8 +3797,8 @@ the parts that make their moments. Core maps each kind to the notifications' own
 `autopilot_alert`, `autopilot_needs_you`, `autopilot_finished`, `autopilot_checks`, and
 `autopilot_problem`, are all on by default (`notifyprefs.AutopilotKinds`, `Kind.Autopilot`),
 titled *Autopilot alert* (an alert's banner is headed by its routine, `Entry.Heading`), *Needs
-your OK*, *Agent finished*, *Checks after a fix*, and *Autopilot problem*. Migration
-`0009_notification_targets` gives `notifications` a `heading` and the Autopilot target
+your OK*, *Agent finished*, *Checks after a fix*, and *Autopilot problem*.
+`notifications` (migration `0101_inbox`) has a `heading` and the Autopilot target
 (`autopilot_routine`, `autopilot_match`, `autopilot_run`, `autopilot_created`, RFC 3339 of the
 most specific one's creation, since Clear history hands IDs out again), and a `once_key`
 under a partial unique index. An `Entry` now names
@@ -3912,7 +3945,7 @@ reply with no choice stays as it is, and the engine's prompt check holds its run
 every routine through `keptFrom` and `insertKept`, switched off, the account signed in's, at the
 end of the list under a free name, one that won't load as it was.
 
-**Graduating** (`graduate.go`, migration `0015_autopilot_graduate`). `List` gives a routine
+**Graduating** (`graduate.go`, migration `0100_settings`). `List` gives a routine
 `Figures.Graduate` while it is on, the account signed in's, loading, in Ask first, with a step
 that asks first, and its last `GraduateAfter` (5) answered real matches since
 `graduate_declined_at` (`ListRoutineAsked`: approved or skipped by the user, newest first) are
@@ -3955,8 +3988,7 @@ its matches, so a digest told again after a quit is told once and a later one is
 **Run one of my scripts** (`scripts.go`, `catalog.StepScript`, `spec.ScriptStep`: the
 script's ID, and the name it was picked under, for the sentence and an export). It is an
 asks-first step of the scripts part (`catalog.DispatchScripts`), recorded as a run under
-runner `script` (migration `0016_autopilot_script_runs` makes `autopilot_runs` again with that
-runner in its check, copying every row) and handed to `EngineConfig.Scripts`, a `Runner`, as
+runner `script` (`autopilot_runs`' check takes that runner) and handed to `EngineConfig.Scripts`, a `Runner`, as
 an agent's is: Dispatch starts it and returns Running, and its end comes through `RunEnded`;
 the engine routes a run's `Alive`, a Stop, and Stop all by its runner (`runnerFor`). Its limits
 are a GitHub action's: the tries, the routine's runs a day, Pause, the active hours, an outside

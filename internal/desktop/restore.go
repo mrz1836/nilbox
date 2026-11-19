@@ -32,12 +32,12 @@ type Restore struct {
 }
 
 // RestoreOffer works out the backup the startup dialog offers to put back for err, from
-// backups, the files kept beside the database (store.Snapshots), and newest, the newest
-// migration this build has (store.LatestSchema): the newest backup whose schema is known
-// and no newer, which this build opens and brings up to date. ok is false unless err is a
-// database a newer build saved (store.ErrNewerSchema) and there is such a backup. Times
-// are worded in now's location, with the year only when it isn't now's.
-func RestoreOffer(err error, backups []store.SnapshotFile, newest int, now time.Time) (Restore, bool) {
+// backups, the files kept beside the database (store.Snapshots), and known, the schemas
+// this build opens (store.KnownSchemas): the newest backup whose schema is known and one
+// this build opens and brings up to date, its own or a history a squash froze. ok is false
+// unless err is a database a newer build saved (store.ErrNewerSchema) and there is such a
+// backup. Times are worded in now's location, with the year only when it isn't now's.
+func RestoreOffer(err error, backups []store.SnapshotFile, known store.Schemas, now time.Time) (Restore, bool) {
 	if !errors.Is(err, store.ErrNewerSchema) {
 		return Restore{}, false
 	}
@@ -48,7 +48,7 @@ func RestoreOffer(err error, backups []store.SnapshotFile, newest int, now time.
 	)
 
 	for _, b := range backups {
-		if b.Kind != store.SnapshotBackup || b.Schema <= 0 || b.Schema > newest {
+		if b.Kind != store.SnapshotBackup || !known.Opens(b.Schema) {
 			continue
 		}
 
@@ -91,12 +91,12 @@ func FindRestore(err error, db string, now time.Time) (Restore, bool, error) {
 		return Restore{}, false, listErr //nolint:wrapcheck // store words its own failure
 	}
 
-	newest, schemaErr := store.LatestSchema()
+	known, schemaErr := store.KnownSchemas()
 	if schemaErr != nil {
 		return Restore{}, false, schemaErr //nolint:wrapcheck // store words its own failure
 	}
 
-	r, ok := RestoreOffer(err, backups, newest, now)
+	r, ok := RestoreOffer(err, backups, known, now)
 
 	return r, ok, nil
 }

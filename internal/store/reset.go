@@ -51,8 +51,8 @@ const (
 	ResetUnmanaged ResetReason = "unmanaged"
 
 	// ResetHistory means the database's migration history disagrees with this build's:
-	// a migration it records has changed since it ran, or one older than its newest
-	// never ran.
+	// a migration it records has changed since it ran, one older than its newest never
+	// ran, or it records migrations this build squashed in a history it can't carry over.
 	ResetHistory ResetReason = "history"
 
 	// ResetRequested means the user asked to start over: the database could be used, and
@@ -87,7 +87,8 @@ func resetReason(err error) (ResetReason, bool) {
 		return "", false
 	case errors.Is(err, migrate.ErrUnmanagedSchema):
 		return ResetUnmanaged, true
-	case errors.Is(err, migrate.ErrChecksumMismatch), errors.Is(err, migrate.ErrOutOfOrder):
+	case errors.Is(err, migrate.ErrChecksumMismatch), errors.Is(err, migrate.ErrOutOfOrder),
+		errors.Is(err, migrate.ErrSquashedHistory):
 		return ResetHistory, true
 	}
 

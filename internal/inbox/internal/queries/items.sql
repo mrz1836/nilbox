@@ -17,15 +17,15 @@ WHERE account_id = ?;
 -- requested changes) stays left while the item has not moved since, since GitHub's search
 -- index trails the edit; once the item moves past the stamp, the search is believed and the
 -- stamp cleared. reason_reviewed, reason_pushed, and the user's verdict come from the
--- fourth search (see 0017_pushed_since_review), and when the verdict was submitted with it,
--- while viewer_review_seen_at only ever rises (see 0018_viewer_review_seen). The item's state is rewritten when the search said it (a state not empty),
+-- fourth search (see 0101_inbox), and when the verdict was submitted with it,
+-- while viewer_review_seen_at only ever rises. The item's state is rewritten when the search said it (a state not empty),
 -- but never over a merge, which nothing comes back from; and review_requested_at and
 -- assigned_at keep when the item first arrived in each list while it stays in it, stamped
 -- with fetched_at when it arrives; ClearArrivalStamps clears them once it leaves.
 -- author_avatar_url is a bot author's picture URL, '' for any other author (see
--- 0021_author_avatar_url). seen_activity_at, the activity the user last saw, is written only
+-- 0101_inbox). seen_activity_at, the activity the user last saw, is written only
 -- when the item is new, NULL (unread) but on an account's first load, and the update leaves
--- it as it is: only the window's marks move it (see 0022_seen_activity).
+-- it as it is: only the window's marks move it.
 INSERT INTO items (
     account_id, repo_id, kind, number, node_id, title, url, author_login, author_type, author_avatar_url,
     author_association, is_cross_repository, is_draft, head_ref, item_created_at, item_updated_at,

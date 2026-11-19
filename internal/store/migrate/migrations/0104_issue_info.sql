@@ -1,6 +1,6 @@
--- 0025_issue_info: how an issue is planned, beyond the projects it is in.
+-- 0104_issue_info: how an issue is planned, beyond the projects it is in.
 --
--- The conventions are 0001_init's. The inbox owns every column here.
+-- The conventions are 0100_settings's. The inbox owns every column here.
 
 -- == item_details ========================================================================
 

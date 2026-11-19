@@ -1,0 +1,126 @@
+{
+    "through": 103,
+    "about": "The history v0.4.0 and v0.5.0 recorded: 0001_init to 0024_checks_held, which the base migrations 0100 to 0103 build whole.",
+    "migrations": [
+        {
+            "version": 1,
+            "name": "init",
+            "checksum": "108011b54a49d85b0b4055b2460612f11e179175256c1cb69d6e1e66bd93ffd2"
+        },
+        {
+            "version": 2,
+            "name": "gh_thread_clears",
+            "checksum": "b2a03524e2e583f7f024cc2ce3bc0c75a9853ea0f0f131ea70f4295ea5cc500c"
+        },
+        {
+            "version": 3,
+            "name": "review_seen",
+            "checksum": "ee923be97e5ebdb855d339df0b526d7ec7c095d6ea677acd7f76659004773265"
+        },
+        {
+            "version": 4,
+            "name": "service_status",
+            "checksum": "e38d8284c49a13eebd36c437fa42c24ac9f2a0f3d006b40a5e7ffa671027a1dd"
+        },
+        {
+            "version": 5,
+            "name": "autopilot_routines",
+            "checksum": "7402f72786b38a9b8c6c2853ce4b1f1b1280f5570458a1ecdbbe72192cdcaa13"
+        },
+        {
+            "version": 6,
+            "name": "item_watches",
+            "checksum": "a7087cc562a7c8574c369a8498a96e41d25ae817beebfa659087db063c598a0d"
+        },
+        {
+            "version": 7,
+            "name": "autopilot_ledger",
+            "checksum": "954e8c0d6004752198d0baac9574ef7f606ffa34a917a17b9a8932a1abefcbf4"
+        },
+        {
+            "version": 8,
+            "name": "autopilot_effects",
+            "checksum": "e7f08d3176e623519a986832630c2c1d03c68c3b6f8fefe0db8dcc3f3b146349"
+        },
+        {
+            "version": 9,
+            "name": "notification_targets",
+            "checksum": "a06eb64be56887a217ffd6e6d434f862278cec1b3e0d1d45125afbc5b60c7506"
+        },
+        {
+            "version": 10,
+            "name": "worktree_fetched_head",
+            "checksum": "7ce8459ad5e0454de01a9d7b292e4f227c4bef0adbc3022680f636fa9413f3ec"
+        },
+        {
+            "version": 11,
+            "name": "autopilot_matches_item",
+            "checksum": "a62e5e79bfdc8df1a824f42b17db7b32da998cbf66793daa0d187a484c633519"
+        },
+        {
+            "version": 12,
+            "name": "launch_outside",
+            "checksum": "789a2a84084ffe1a6dd2838d576f8b3f3bba744a63117c65972c58ca6af0a3ae"
+        },
+        {
+            "version": 13,
+            "name": "item_agent_changes",
+            "checksum": "ea5f0497410429f2585750b735e20c1aec6ffdc0c3fff7f183b46e87b0c594d1"
+        },
+        {
+            "version": 14,
+            "name": "background_runs",
+            "checksum": "d2fe74350b83ce49b62daf83e6510d7f945fdb7d98f41e783d15e5c0cbd1947d"
+        },
+        {
+            "version": 15,
+            "name": "autopilot_graduate",
+            "checksum": "071e29160972a38067104614ac98db9d61eb882424175eb9ff41b8e470813fdb"
+        },
+        {
+            "version": 16,
+            "name": "autopilot_script_runs",
+            "checksum": "0f75f3a82350c9a38f8705deadd4e449b166740efbe4c7e16502a876777ca095"
+        },
+        {
+            "version": 17,
+            "name": "pushed_since_review",
+            "checksum": "f10e89b746b9c8d5a102d42e092ec3444861024e54cf76270da41c8807ac0c54"
+        },
+        {
+            "version": 18,
+            "name": "viewer_review_seen",
+            "checksum": "219e71d80182066c3ae563beafc03fd8a14d38af368c355e3dfe7d70359190cf"
+        },
+        {
+            "version": 19,
+            "name": "session_github_event",
+            "checksum": "eccae237a01a7a672353048517d77c1c4b52309469939b4f03c9e34ce0d5a902"
+        },
+        {
+            "version": 20,
+            "name": "situation_prompts",
+            "checksum": "34071b36b5bacd4faa6061e5c2a3b7d64bda9004454bcc7ccd8d5e99e23abdd6"
+        },
+        {
+            "version": 21,
+            "name": "author_avatar_url",
+            "checksum": "bd15181f3a385b6ce3976d5980ecc4f3ead87dc46a121c3ac5aa3b77bc147cde"
+        },
+        {
+            "version": 22,
+            "name": "seen_activity",
+            "checksum": "23fd3bacc9b736ba254d821a921ffee77515ac1ff1f4b156241aedec781da71b"
+        },
+        {
+            "version": 23,
+            "name": "checks_awaiting_on_github",
+            "checksum": "662ca435229b127f37027b6a3e3ea729f2cd6b2c9522baf2717d353df02f29a6"
+        },
+        {
+            "version": 24,
+            "name": "checks_held",
+            "checksum": "93e5b4de4b2f955d490e977e916c257c0442cb076a6a429d8b7f569a02b201e2"
+        }
+    ]
+}

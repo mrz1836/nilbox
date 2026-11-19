@@ -6,7 +6,8 @@
 // reads and then writes waits for the write lock up front instead of failing part way.
 // Open then brings the schema up to date with the checksummed migrations in the migrate
 // package, backing up a migrated database before it changes it. The schema comes from
-// those migrations alone.
+// those migrations alone. A database whose history is one a squash froze (see the migrate
+// package) is carried over to the migrations that replaced it, its data untouched.
 //
 // The store owns no table. Each table's owner package queries it through code sqlc
 // generates from the owner's SQL, on the pool Open returns or in a transaction from
@@ -24,7 +25,8 @@
 // safely can:
 //
 //   - A file that is not a database or is damaged, a schema the migrations did not
-//     create, or a migration history this build disagrees with is set aside: once Open
+//     create, or a migration history this build disagrees with, such as an older build's
+//     whose migrations a squash combined and it can't carry over, is set aside: once Open
 //     has shown that no other connection has the file open, the file and its -wal and
 //     -shm files are renamed to <path>.broken-<UTC stamp>, a fresh database is created
 //     in its place, and Opened.Reset says what happened. When the fresh database cannot

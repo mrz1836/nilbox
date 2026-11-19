@@ -325,7 +325,7 @@ func (p storedProject) githubProject() github.ProjectItem {
 }
 
 // storedIssueInfo is how an issue is planned as the issue_info column of item_details
-// stores it (see 0025_issue_info). A row stored before it holds '{}', which reads as an
+// stores it (see 0104_issue_info). A row stored before it holds '{}', which reads as an
 // issue planned in no way.
 type storedIssueInfo struct {
 	Type      string             `json:"type"`
