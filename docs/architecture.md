@@ -3369,14 +3369,15 @@ open matches that haven't started (waiting, blocked, queued), real ones alone, n
 for that section.
 
 **Run a routine** (`RunNow(id, itemID, anyway)`): a manual match, once per click, counting
-toward no cap or try; with `anyway`, on an item its conditions don't match but of a kind it acts
-on, under a manual fire key. Every limit of a start still holds it. Without `anyway`, an item its
+toward no cap or try, only on an item of a kind it acts on (a click holds whatever the trigger,
+so the kinds are checked first); with `anyway`, on such an item its conditions don't match too,
+under a manual fire key. Every limit of a start still holds it. Without `anyway`, an item its
 conditions don't match is refused with a `RefusalError` (`refusal.go`) whose code is
 `RefusalNoMatch`, its words naming the first condition that fails and its chain holding
 `ErrNoMatch`; `desktop.MarshalError` sends the window `{"code": "noMatch"}` beside them, as
 `update.RefusalError`'s codes go, so the window offers Run anyway from the code, never the
 words, and never asks `Explain` for it. Every other refusal, the same `ErrNoMatch` for a match
-that is gone and a Run anyway on a kind it doesn't act on among them, carries no code.
+that is gone and a run, anyway or not, on a kind it doesn't act on among them, carries no code.
 
 **Preview** (`PreviewRun(draft, itemID)`) is `Previewer` (core's `runPreviews`): the launcher's
 own `Preview` of the same `routineRequest` a start would launch, with where each setting came
