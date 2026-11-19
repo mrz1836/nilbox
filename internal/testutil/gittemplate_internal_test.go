@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,6 +20,18 @@ func TestATemplateHoldsOnlyFoldersAndFiles(t *testing.T) {
 	})
 
 	require.ErrorIs(t, err, errTemplateEntry)
+}
+
+func TestATemplateWithNoTemporaryFolderFailsBeforeItsBuild(t *testing.T) {
+	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
+
+	_, err := buildTree(func(*GitBuild) struct{} {
+		t.Error("the build runs with no folder to build in")
+
+		return struct{}{}
+	})
+
+	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 func TestATemplateNamesItsFolderOnlyInText(t *testing.T) {
