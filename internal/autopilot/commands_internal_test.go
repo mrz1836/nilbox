@@ -94,12 +94,12 @@ type cmdRig struct {
 	matches int
 }
 
-// newCmdRig returns a rig whose engine has cfg's runners and parts.
-func newCmdRig(t *testing.T, cfg EngineConfig) *cmdRig {
+// seedItems stores the pull request cmdPR and the issue cmdIssue in db, as the inbox would,
+// and returns their facts.
+func seedItems(t *testing.T, db *sql.DB) map[int64]facts.Facts {
 	t.Helper()
 
 	now := cmdNow()
-	db := testutil.DB(t)
 
 	testutil.Exec(t, db, `INSERT INTO accounts (id, login, created_at, updated_at) VALUES (1, 'octo-user', ?, ?)`, now, now)
 	testutil.Exec(t, db, `INSERT INTO repos (id, owner, name, created_at, updated_at)
@@ -108,10 +108,19 @@ VALUES (1, 'acme-org', 'example-repo', ?, ?)`, now, now)
     fetched_at) VALUES (?, 1, 1, 'pr', 5, ?, ?, ?), (?, 1, 1, 'issue', 6, ?, ?, ?)`,
 		cmdPR, now, now, now, cmdIssue, now, now, now)
 
-	items := &cmdItems{facts: map[int64]facts.Facts{
+	return map[int64]facts.Facts{
 		cmdPR:    {Item: facts.Item{ID: cmdPR, Kind: item.KindPR, Repo: "acme-org/example-repo", Number: 5}},
 		cmdIssue: {Item: facts.Item{ID: cmdIssue, Kind: item.KindIssue, Repo: "acme-org/example-repo", Number: 6}},
-	}}
+	}
+}
+
+// newCmdRig returns a rig whose engine has cfg's runners and parts.
+func newCmdRig(t *testing.T, cfg EngineConfig) *cmdRig {
+	t.Helper()
+
+	now := cmdNow()
+	db := testutil.DB(t)
+	items := &cmdItems{facts: seedItems(t, db)}
 	logs := &testutil.Logs{}
 	svc := NewService(Config{Pool: db, Prefs: switchedOn(true), Clock: testutil.NewClock(now), Logger: logs.Logger()})
 
