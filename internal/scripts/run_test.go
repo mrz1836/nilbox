@@ -366,7 +366,7 @@ func TestRunAgainOfATrustedCommand(t *testing.T) {
 	require.ErrorIs(t, err, ErrNeedsTrust, "a changed command is looked at again on the page")
 
 	testutil.WriteFile(t, filepath.Join(dir, t3File), t3With(magexTest))
-	r.clones.setOrigin(dir, repo.Name{}) // the origin is no longer on GitHub
+	r.clones.SetOrigin(dir, repo.Name{}) // the origin is no longer on GitHub
 
 	_, err = r.runs.RunAgain(t.Context(), id)
 	require.ErrorIs(t, err, ErrNeedsTrust, "trust is read under the clone's origin now, never the run's")

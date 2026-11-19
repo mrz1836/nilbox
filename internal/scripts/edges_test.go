@@ -11,6 +11,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
+	"github.com/mrz1836/nilbox/internal/localrepos/localrepostest"
 	"github.com/mrz1836/nilbox/internal/repo"
 )
 
@@ -73,7 +74,7 @@ func TestTrustStoreWithoutADatabase(t *testing.T) {
 func TestServiceDefaults(t *testing.T) {
 	t.Parallel()
 
-	s := NewService(Config{Clones: &fakeClones{}})
+	s := NewService(Config{Clones: &localrepostest.Clones{}})
 
 	cfg, err := s.config(t.Context())
 	require.NoError(t, err)

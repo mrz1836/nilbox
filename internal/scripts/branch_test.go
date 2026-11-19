@@ -167,7 +167,7 @@ func newGitRigAs(t *testing.T, shape gitRigShape) (*gitRig, string) {
 
 	// The clone's origin is on GitHub, as the clones list reads it, so its status asks
 	// origin unasked (a local bare repository stands in for GitHub's).
-	r.clones.setOrigin(g.dir, repo.Name{Owner: "acme-org", Repo: "sdk"})
+	r.clones.SetOrigin(g.dir, repo.Name{Owner: "acme-org", Repo: "sdk"})
 
 	g.asked = &countingGit{BranchGit: gitread.New(gitread.Config{Env: g.plants.Environ})}
 	g.branch = NewService(Config{
@@ -408,9 +408,7 @@ func TestBranchStatusAsksAnOriginOffGitHubOnlyWhenTheUserDoes(t *testing.T) {
 	t.Parallel()
 
 	g := newGitRig(t)
-	g.clones.mu.Lock()
-	delete(g.clones.origins, g.dir)
-	g.clones.mu.Unlock()
+	g.clones.ForgetOrigin(g.dir)
 
 	st := g.status(false)
 	assert.Equal(t, BranchNotAsked, st.State, "an origin off GitHub isn't asked unasked")

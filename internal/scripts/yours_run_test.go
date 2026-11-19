@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
+	"github.com/mrz1836/nilbox/internal/localrepos/localrepostest"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -144,7 +145,7 @@ func TestRepoNamesStopsOnceTheCallerHasGone(t *testing.T) {
 		r.clone(name, "acme-org/"+name, nil)
 	}
 
-	held := &heldOrigins{fakeClones: r.clones, started: make(chan string, 6), release: make(chan struct{})}
+	held := &heldOrigins{Clones: r.clones, started: make(chan string, 6), release: make(chan struct{})}
 	svc := NewService(Config{Clones: held, Home: r.home})
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -176,7 +177,7 @@ func TestRepoNamesStopsOnceTheCallerHasGone(t *testing.T) {
 // heldOrigins is a Clones whose origin reads say they started on started, then wait for
 // release.
 type heldOrigins struct {
-	*fakeClones
+	*localrepostest.Clones
 
 	started chan string
 	release chan struct{}

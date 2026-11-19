@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
+	"github.com/mrz1836/nilbox/internal/localrepos/localrepostest"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -648,7 +649,7 @@ func TestRepoNames(t *testing.T) {
 		"each repository once, in any case, sorted; a clone not on GitHub has none")
 
 	moved := repo.Name{Owner: "acme-org", Repo: "moved"}
-	r.clones.setOrigin(sdk, moved)
+	r.clones.SetOrigin(sdk, moved)
 
 	got, err = r.svc.RepoNames(t.Context())
 	require.NoError(t, err)
@@ -663,7 +664,7 @@ func TestRepoNames(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"acme-org/Api", "acme-org/moved", "Acme-Org/SDK", "acme-org/web"}, got, "read again")
 
-	r.clones.root = filepath.Join(r.home, "missing")
+	r.clones.SetRoot(filepath.Join(r.home, "missing"))
 	_, err = r.svc.RepoNames(t.Context())
 	require.Error(t, err)
 }
@@ -681,7 +682,7 @@ func TestOriginOfAnOriginThatCantBeRead(t *testing.T) {
 
 // failingOrigins is a Clones whose origins can't be read.
 type failingOrigins struct {
-	fakeClones
+	localrepostest.Clones
 }
 
 func (*failingOrigins) Origin(context.Context, string) (repo.Name, bool, error) {
@@ -691,7 +692,7 @@ func (*failingOrigins) Origin(context.Context, string) (repo.Name, bool, error) 
 func TestYourStoreWithoutADatabase(t *testing.T) {
 	t.Parallel()
 
-	s := NewService(Config{Clones: &fakeClones{}})
+	s := NewService(Config{Clones: &localrepostest.Clones{}})
 
 	all, err := s.yours.all(t.Context())
 	require.NoError(t, err)

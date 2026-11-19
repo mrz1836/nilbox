@@ -14,7 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
-	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/localrepos/localrepostest"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/scriptrun/scriptruntest"
@@ -36,7 +36,7 @@ type rig struct {
 	root    string
 	scratch string
 
-	clones   *fakeClones
+	clones   *localrepostest.Clones
 	git      *fakeGit
 	tools    *fakeTools
 	settings *fakeSettings
@@ -65,13 +65,13 @@ func newRig(t *testing.T) *rig {
 	runner := scriptruntest.New(t, home, nil)
 	r := &rig{
 		t: t, home: home, root: filepath.Join(home, "projects"), scratch: t.TempDir(),
-		clones: &fakeClones{origins: map[string]repo.Name{}}, git: &fakeGit{}, tools: &fakeTools{},
+		clones: &localrepostest.Clones{}, git: &fakeGit{}, tools: &fakeTools{},
 		settings: &fakeSettings{cfg: integrationprefs.Decode(nil)}, help: &fakeHelp{out: fixture(t, "magex-1.30.2-help-commands.txt")},
 		runner: runner, locks: runner.Locks, engine: runner.Engine, runs: runner.Runs,
 		env: []string{"PATH=/usr/bin:/bin", "HOME=" + home},
 	}
 	require.NoError(t, os.MkdirAll(r.root, 0o700))
-	r.clones.root = r.root
+	r.clones.SetRoot(r.root)
 
 	r.shell = r.fake("zsh", testutil.FakeRun{Stdout: "ran\n"})
 	r.magex("1.30.2", testutil.FakeRun{Stdout: "magex ran\n"})
@@ -133,7 +133,7 @@ func (r *rig) clone(name, origin string, files map[string]string) string {
 	if origin != "" {
 		n, err := repo.Parse(origin)
 		require.NoError(r.t, err)
-		r.clones.setOrigin(dir, n)
+		r.clones.SetOrigin(dir, n)
 	}
 
 	return dir
@@ -189,48 +189,6 @@ func (r *rig) recorded() int {
 	require.NoError(r.t, err)
 
 	return len(got)
-}
-
-// fakeClones is the clone root: its folder, the clones made under it, and their origins,
-// with the other locations extra.
-type fakeClones struct {
-	mu      sync.Mutex
-	root    string
-	extra   []localrepos.Location
-	origins map[string]repo.Name
-}
-
-func (f *fakeClones) Roots(context.Context) (localrepos.Roots, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	return localrepos.NewRoots(f.root, f.extra, "")
-}
-
-// Dirs lists the clones in roots, as localrepos.Roots.Clones does.
-func (f *fakeClones) Dirs(ctx context.Context, roots localrepos.Roots) ([]string, error) {
-	found, err := roots.Clones(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return found.Dirs, nil
-}
-
-func (f *fakeClones) Origin(_ context.Context, dir string) (repo.Name, bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	name, ok := f.origins[dir]
-
-	return name, ok, nil
-}
-
-func (f *fakeClones) setOrigin(dir string, name repo.Name) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.origins[dir] = name
 }
 
 // fakeGit says every clone is on branch, with origin's HEAD naming head ("" for none), or
