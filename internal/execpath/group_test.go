@@ -82,6 +82,21 @@ func waitPID(t *testing.T, file string) int {
 	return pid
 }
 
+// exitFile returns the path of a file a fake tool waits for (FakeRun.WaitFor) before it
+// exits, which no one has made yet.
+func exitFile(t *testing.T) string {
+	t.Helper()
+
+	return filepath.Join(t.TempDir(), "exit")
+}
+
+// letExit makes the file a fake tool waits for, so it exits now.
+func letExit(t *testing.T, path string) {
+	t.Helper()
+
+	require.NoError(t, os.WriteFile(path, nil, 0o600))
+}
+
 // alive reports whether a process with pid runs.
 func alive(pid int) bool {
 	err := syscall.Kill(pid, 0)
@@ -257,8 +272,11 @@ func TestGroupHangsUpWhatTheProgramLeftRunning(t *testing.T) {
 	t.Parallel()
 
 	left := grandchild(t, false)
-	proc, _ := startFake(t, t.Context(), testutil.FakeRun{Sleep: 300 * time.Millisecond, Grandchild: left})
+	exit := exitFile(t)
+	proc, _ := startFake(t, t.Context(), testutil.FakeRun{WaitFor: exit, Grandchild: left})
 	pid := waitPID(t, left.PIDFile)
+
+	letExit(t, exit)
 
 	code, err := proc.Wait()
 	require.NoError(t, err)
@@ -273,12 +291,18 @@ func TestGroupHangUpSparesWhatIgnoresIt(t *testing.T) {
 	kept := grandchild(t, false)
 	kept.IgnoreSignals = true
 
-	proc, _ := startFake(t, t.Context(), testutil.FakeRun{Sleep: 300 * time.Millisecond, Grandchild: kept})
+	exit := exitFile(t)
+	proc, _ := startFake(t, t.Context(), testutil.FakeRun{WaitFor: exit, Grandchild: kept})
 	pid := waitPID(t, kept.PIDFile)
+
+	letExit(t, exit)
 
 	_, err := proc.Wait()
 	require.NoError(t, err)
 
+	// The hang-up went out before Wait returned. A job it ended would die a moment later,
+	// as TestGroupHangsUpWhatTheProgramLeftRunning's does, so this real wait is what proves
+	// it didn't.
 	time.Sleep(300 * time.Millisecond)
 	assert.True(t, alive(pid), "a job started to survive a hang-up (nohup) survives the program, as with a closed terminal")
 }
