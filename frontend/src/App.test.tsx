@@ -695,7 +695,11 @@ describe('App', () => {
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()
 
+    // Its launch button opens them too, and their Open starts it.
     await userEvent.click(listed.getByRole('button', { name: 'Open in Claude' }))
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Launch options' })).getByRole('button', { name: 'Open in Claude' }),
+    )
 
     expect(platform.launch).toHaveBeenCalledWith(expect.objectContaining({ itemId: 1, worktree: true }))
 

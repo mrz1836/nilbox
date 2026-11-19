@@ -2131,14 +2131,16 @@ can tell. The last-refreshed time and the error line above the lists belong to w
 refreshes; a card refresh that fails says why in a toast.
 
 **Opening a session.** **✦ Claude** beside a card's next step (**Open in Claude** to a screen
-reader, and **✦ Codex** when the item's settings choose Codex) starts a session with the item's
-[resolved launch settings](#launch-defaults) in one click. The arrow beside it, named for the
-prompt and profile those settings choose (**Launch options: Review · default**), opens the
-launch menu, as does **✦ Claude…** in the card's details. On a card that names a pull
-request's situation, the button starts the prompt your launch defaults choose for it (**Open
-in Claude: Fix checks** to a screen reader), with the settings that prompt brings; the card
-asks for nothing more until its launch menu opens, which then works out that prompt's
-settings once and opens on it, and **Save these choices as the default for** saves a prompt
+reader, and **✦ Codex** when the item's settings choose Codex) opens the launch menu on the
+item's [resolved launch settings](#launch-defaults), so you see what the session would start
+with, and can change any of it, before anything starts; the menu's **Open in Claude** starts
+it. Every launch button does the same: the review and issue sheets' **Open in Claude**, and a
+worktree's in the Worktrees view. The arrow beside it, named for the prompt and profile those settings choose (**Launch
+options: Review · default**), opens the same launch menu, as does **✦ Claude…** in the card's
+details. On a card that names a pull request's situation, the button opens the launch menu on
+the prompt your launch defaults choose for it (**Open in Claude: Fix checks** to a screen
+reader), with the settings that prompt brings; the card asks for nothing more until its
+launch menu opens, which then works out that prompt's settings once and opens on it, and **Save these choices as the default for** saves a prompt
 chosen there as the prompt for that situation, not for every pull request:
 
 - **Agent:** a switch between Claude and Codex at the top, the one the settings choose marked
@@ -5255,7 +5257,7 @@ whom, whether its directory is gone, the age of its last commit, and who made it
 Nilbox**, or **made by Claude (legacy)** for a worktree under a clone's `.claude/worktrees/`. A
 worktree the app recorded also shows the agent of its latest session and when it started, and a
 row whose item is still in the inbox offers **Open in Claude** or **Open in Codex**, which
-resumes it, and **Copy path**.
+opens the launch options and, from their **Open**, resumes it, and **Copy path**.
 
 **Keeping track.** The app records each worktree it makes or adopts, and checks every record
 against `git worktree list` each time it lists or sweeps:

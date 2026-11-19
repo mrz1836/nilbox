@@ -4786,8 +4786,9 @@ a longer one, Show terminal or What happened, comes only beside the agent's ▾ 
 primary at its start, and the agent's, the rest of the column (`--card-actions`, 20.75rem at
 full width, so its 14.75rem fits the common pills whole, "Claude working · 59m" with its
 terminal button the widest; 16.875rem below `@5xl`), its control at its end. That control is one split control in every session state,
-closed by the ▾: the launch, or a session's pill (and, while one works, Show in terminal or
-Watch), the first part narrowing and cutting its words short, its age first, while the
+closed by the ▾: the launch, which opens the launch options as the ▾ does rather than
+launching at once (the options' Open starts it), or a session's pill (and, while one works,
+Show in terminal or Watch), the first part narrowing and cutting its words short, its age first, while the
 marks and the ▾ keep their width, so nothing runs past a border. Its `column` and `peek`
 render props keep its outcome a direct child of the row, so it spans `col-[3/-1]`, and hand
 the peek its way to the launch options. With the card's

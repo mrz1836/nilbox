@@ -70,20 +70,46 @@ function options(): HTMLElement {
 }
 
 describe('LaunchControls, card variant', () => {
-  it('launches as one split control, the agent named, with the options beside it', async () => {
+  it('launches as one split control, the agent named, from the launch options it opens first', async () => {
     renderSlot()
 
     const open = screen.getByRole('button', { name: 'Open in Claude' })
     expect(open).toHaveTextContent(/^Claude$/)
-    expect(open).toHaveAttribute('title', 'Open in Claude with “Review” as default')
+    expect(open).toHaveAttribute(
+      'title',
+      'Open in Claude with “Review” as default. The launch options open first, to check or change them.',
+    )
+    expect(open).toHaveAttribute('aria-haspopup', 'dialog')
     expect(open.querySelector('svg')).not.toBeNull()
     expect(options()).toHaveAccessibleName('Launch options: Review · default')
     expect(options()).toHaveTextContent('')
 
     await userEvent.click(open)
 
+    const dialog = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    expect(open).toHaveAttribute('aria-expanded', 'true')
+    expect(platform.launch).not.toHaveBeenCalled()
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Open in Claude' }))
+
     expect(platform.launch).toHaveBeenCalledOnce()
     expect(platform.launch.mock.calls[0]?.[0]).toMatchObject({ itemId: 1, agent: '', promptId: 0 })
+    expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()
+  })
+
+  it('opens the launch options on a prompt that can’t resolve, which say why', async () => {
+    const problem = 'No prompt fits this pull request.'
+    renderSlot({ resolution: itemResolution({ problem }) })
+
+    const open = screen.getByRole('button', { name: 'Open in Claude' })
+    expect(open).toBeEnabled()
+    expect(open).toHaveAttribute('title', problem)
+
+    await userEvent.click(open)
+
+    const dialog = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    expect(dialog.getByText(problem)).toBeInTheDocument()
+    expect(platform.launch).not.toHaveBeenCalled()
   })
 
   it('opens the launch options in their dialog', async () => {
@@ -369,16 +395,23 @@ describe('LaunchControls, card variant, for a situation', () => {
 
     const open = screen.getByRole('button', { name: 'Open in Claude: Fix checks' })
     expect(open).toHaveTextContent(/^Fix checks$/)
-    expect(open).toHaveAttribute('title', 'Open in Claude with “Fix checks” as default')
+    expect(open).toHaveAttribute(
+      'title',
+      'Open in Claude with “Fix checks” as default. The launch options open first, to check or change them.',
+    )
     expect(options()).toHaveAccessibleName('Launch options: Fix checks · default')
     expect(platform.resolveLaunch).not.toHaveBeenCalled()
 
     await userEvent.click(open)
 
+    const dialog = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    expect(platform.resolveLaunch).toHaveBeenCalledWith(expect.objectContaining({ situation: 'checks_failing' }))
+
+    await userEvent.click(dialog.getByRole('button', { name: 'Open in Claude' }))
+
     expect(platform.launch).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ itemId: 1, agent: '', promptId: 0, profile: '', situation: 'checks_failing' }),
     )
-    expect(platform.resolveLaunch).not.toHaveBeenCalled()
   })
 
   it('names a re-review’s launch for its prompt', () => {
