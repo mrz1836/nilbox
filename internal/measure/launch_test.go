@@ -494,6 +494,20 @@ func TestRunLaunchSetupErrors(t *testing.T) {
 		_, err := RunLaunch(t.Context(), LaunchOptions{TempDir: t.TempDir(), Runner: runner})
 		require.Error(t, err)
 	})
+
+	t.Run("unknown agent", func(t *testing.T) {
+		t.Parallel()
+
+		agent, finder := fakeAgent(t)
+		runner := launchRunner(t, agent, func() ([]byte, []byte, error) { return nil, nil, nil })
+
+		_, err := RunLaunch(t.Context(), LaunchOptions{
+			Home: t.TempDir(), TempDir: t.TempDir(), Agent: "example-agent", Runner: runner, Finder: finder,
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "example-agent")
+		assert.NotContains(t, ran(runner), "osascript", "nothing is launched")
+	})
 }
 
 func TestRunLaunchWithoutAnAgent(t *testing.T) {
