@@ -162,10 +162,12 @@ type Client interface {
 	FetchWatches(ctx context.Context, tok github.Token, searches []github.WatchSearch) (*github.Watches, error)
 	FetchChecks(ctx context.Context, tok github.Token, ids []string) (*github.ChecksRead, error)
 
-	// FetchViewer, RemoveAssignee, and RemoveReviewRequest serve the edits (edits.go).
+	// FetchViewer, RemoveAssignee, RemoveReviewRequest, and AddComment serve the edits
+	// (edits.go): AddComment posts a nudge.
 	FetchViewer(ctx context.Context, tok github.Token) (string, error)
 	RemoveAssignee(ctx context.Context, tok github.Token, ref item.Ref, login string) (*github.Edited, error)
 	RemoveReviewRequest(ctx context.Context, tok github.Token, ref item.Ref, login string) (*github.Edited, error)
+	AddComment(ctx context.Context, tok github.Token, ref item.Ref, body string) (*github.Comment, error)
 }
 
 // RefreshUsage hears what each whole refresh spent of the GraphQL budget, in points, and

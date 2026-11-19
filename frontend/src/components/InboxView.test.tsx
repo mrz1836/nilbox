@@ -39,6 +39,7 @@ import {
   profile,
   project,
   prompts,
+  replyList,
   review,
   reviewResult,
   reviewTimeline,
@@ -1880,6 +1881,52 @@ describe('InboxView edits on GitHub', () => {
     expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
     // What the edit did on GitHub is the user's own, so it counts as seen.
     expect(platform.markItemsSeen).toHaveBeenCalledExactlyOnceWith([5])
+  })
+
+  it('nudges the author of a pull request waiting on them, and says so with the comment', async () => {
+    const waiting = item({
+      id: 7,
+      number: 434,
+      title: 'Add the widget cache',
+      author: 'contributor-a',
+      assigned: true,
+      updatedAt: '2026-06-01T09:00:00Z',
+      details: details({ viewerVerdict: 'changes' }),
+    })
+    const url = 'https://github.com/acme-org/example-repo/pull/434#issuecomment-1'
+    const after = snapshot({ yours: list([{ ...waiting, nudgedAt: FIXED_NOW.toISOString() }]) })
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([waiting]) }))
+    platform.reviewReplies.mockResolvedValue(
+      replyList({ replies: [{ id: 31, name: 'Nudge the author', nickname: 'Nudge', action: 'comment' }], nudge: 31 }),
+    )
+    platform.fillReply.mockResolvedValue('Hi @contributor-a, any news?')
+    platform.nudgeAuthor.mockImplementation(() => {
+      platform.getInboxSnapshot.mockResolvedValue(after)
+
+      return Promise.resolve({ snapshot: after, url })
+    })
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    const yours = await section('Yours')
+    await userEvent.click(yours.getByRole('button', { name: 'Nudge' }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Nudge @contributor-a' }))
+    await waitFor(() => {
+      expect(dialog.getByRole('textbox', { name: 'Your comment' })).toHaveValue('Hi @contributor-a, any news?')
+    })
+    await userEvent.click(dialog.getByRole('button', { name: 'Post comment' }))
+
+    expect(platform.nudgeAuthor).toHaveBeenCalledExactlyOnceWith({ itemId: 7, body: 'Hi @contributor-a, any news?' })
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Nudged @contributor-a on example-repo #434 · Add the widget cache',
+    )
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(yours.getByText(/you nudged them just now/)).toBeInTheDocument()
+    expect(yours.queryByRole('button', { name: 'Nudge' }), 'not again until it is quiet again').not.toBeInTheDocument()
+    // The comment is the user's own activity, so the item counts as seen.
+    expect(platform.markItemsSeen).toHaveBeenCalledExactlyOnceWith([7])
+
+    await userEvent.click(screen.getByRole('button', { name: 'View comment' }))
+    expect(platform.openExternal).toHaveBeenCalledWith(url)
   })
 
   it('says why an edit failed, and leaves the item where it was', async () => {

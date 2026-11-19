@@ -857,13 +857,22 @@ export function App() {
   const hiddenKey = (config.settings?.hiddenLabels ?? defaultHiddenLabels).join('\n')
   const hideLabels = labelMatcher(hiddenKey.split('\n'))
   // cardAvatars, cardDensity, and cardUnread are Settings → Cards' Author pictures,
-  // Density, and Unread dots, a fresh install's until the settings load. cardPrefs are
-  // built from such primitives alone, so a save of the settings that leaves the cards' as
-  // they were makes no new value, and renders no card.
+  // Density, and Unread dots, and nudgeAfterHours and nudgeSnooze Settings → Reviewing's
+  // Offer a nudge after and Snooze after a nudge, a fresh install's until the settings
+  // load. cardPrefs are built from such primitives alone, so a save of the settings that
+  // leaves the cards' as they were makes no new value, and renders no card.
   const cardAvatars = config.settings?.cardAvatars ?? defaultCardPrefs.avatars
   const cardDensity = config.settings?.cardDensity ?? defaultCardPrefs.density
   const cardUnread = config.settings?.cardUnread ?? defaultCardPrefs.unread
-  const cardPrefs: CardPrefs = { avatars: cardAvatars, density: cardDensity, unread: cardUnread }
+  const nudgeAfterHours = config.settings?.nudgeAfterHours ?? defaultCardPrefs.nudgeAfterHours
+  const nudgeSnooze = config.settings?.nudgeSnooze ?? defaultCardPrefs.nudgeSnooze
+  const cardPrefs: CardPrefs = {
+    avatars: cardAvatars,
+    density: cardDensity,
+    unread: cardUnread,
+    nudgeAfterHours,
+    nudgeSnooze,
+  }
   // cardPictures are the pictures of the inbox's authors, asked for once the settings load
   // and only while they say to show them on comfortable cards, so a user who turned them off,
   // or whose cards are compact and show no avatar, has none asked for; turning compact
@@ -1496,6 +1505,7 @@ export function App() {
                             onRunSetup={setup.restart}
                             update={update}
                             onShowCardGuide={showCardGuide}
+                            onManageReplies={openPrompts}
                           />
                         </Suspense>
                       </Activity>

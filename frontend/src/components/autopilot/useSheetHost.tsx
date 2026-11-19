@@ -151,7 +151,7 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
     onClose?.()
   }
 
-  const { triage, edits, seen, ended } = useItemActions({
+  const { triage, edits, seen, ended, nudgeDialog } = useItemActions({
     inbox: kit.inbox,
     snoozeDays: kit.snoozeDays,
     onSnoozeSettings: kit.onSnoozeSettings,
@@ -162,6 +162,7 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
     closeToast,
     onOpen: open,
     listed: false,
+    onManageReplies: kit.onManageReplies,
   })
 
   // An item opened in its sheet is heard once per opening, as the inbox's are, and marked
@@ -278,6 +279,7 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
           />
         )}
       </Suspense>
+      {nudgeDialog}
       <Toast toast={viewing === null ? toast : null} seconds={seconds} onClose={closeToast} />
     </>
   )

@@ -153,6 +153,12 @@ type Item struct {
 	// nil when its snooze ran its course, is still running, or there was none.
 	WokeBy *snooze.Reasons `json:"wokeBy"`
 
+	// NudgedAt is when the user last nudged the author of a pull request from the inbox
+	// (Nudge), as RFC 3339, or "" when they haven't since their standing verdict: a nudge
+	// from before the user's latest review is a past round's, and shows as none. The card
+	// measures how long the author has been quiet from the later of it and UpdatedAt.
+	NudgedAt string `json:"nudgedAt"`
+
 	// PinnedAt is when the item was pinned, as RFC 3339, or "" when it is not. Pinned
 	// items come first in each list, the most recently pinned first. A pin outlasts a
 	// snooze or a dismissal.
@@ -704,6 +710,11 @@ type itemRow struct {
 	// did (see unread).
 	SeenActivityAt *time.Time
 
+	// ViewerReviewAt is when the user's verdict was submitted, and NudgedAt when they last
+	// nudged the author from the inbox, each nil with none (see nudged).
+	ViewerReviewAt *time.Time
+	NudgedAt       *time.Time
+
 	// HasDetails reports whether a refresh has read the item's details.
 	HasDetails             bool
 	Labels                 []storedLabel
@@ -810,7 +821,7 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		HeadRef: r.HeadRef, ItemUpdatedAt: r.ItemUpdatedAt, ReasonReviewRequested: r.ReasonReviewRequested,
 		ReasonAuthored: r.ReasonAuthored, ReasonAssigned: r.ReasonAssigned, ReasonPushed: r.ReasonPushed,
 		ViewerReviewState: r.ViewerReviewState, ViewerReviewCommit: r.ViewerReviewCommit, ReviewLeftAt: r.ReviewLeftAt,
-		SeenActivityAt: r.SeenActivityAt,
+		SeenActivityAt: r.SeenActivityAt, ViewerReviewAt: r.ViewerReviewAt, NudgedAt: r.NudgedAt,
 
 		HasDetails: r.DetailsItemID != nil, Labels: labels, Projects: projects,
 		Comments: int(store.Deref(r.Comments)), Additions: int(store.Deref(r.Additions)),
@@ -870,6 +881,7 @@ func (r *itemRow) item(scope fileScope, viewer string, ignored []string) Item {
 		DismissedAt:       formatOptionalTime(r.DismissedAt),
 		SnoozedUntil:      formatOptionalTime(r.SnoozedUntil),
 		WokeBy:            decodeReasons(r.WakeReasons),
+		NudgedAt:          formatOptionalTime(r.nudged()),
 		PinnedAt:          formatOptionalTime(r.PinnedAt),
 		SetAsideBy:        store.Deref(r.SetAsideBy),
 		PinnedBy:          store.Deref(r.PinnedBy),
@@ -878,6 +890,16 @@ func (r *itemRow) item(scope fileScope, viewer string, ignored []string) Item {
 		ReviewRequest:     r.reviewRequest(viewer),
 		ReviewTeams:       textutil.NonNil(r.ReviewTeams),
 	}
+}
+
+// nudged is when the user last nudged the row's author, or nil when they never did, or did
+// only before their standing verdict was submitted, in a round of review since over.
+func (r *itemRow) nudged() *time.Time {
+	if r.NudgedAt == nil || (r.ViewerReviewAt != nil && !r.NudgedAt.After(*r.ViewerReviewAt)) {
+		return nil
+	}
+
+	return r.NudgedAt
 }
 
 // unread reports activity on the row the user hasn't seen: they never saw it, or its last

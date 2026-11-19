@@ -166,7 +166,7 @@ func TestSeed(t *testing.T) {
 
 	assert.Equal(t, []string{
 		"Address review", "Fix checks", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro",
-		"Question", "Quick look", "Re-review", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK",
+		"Nudge", "Question", "Quick look", "Re-review", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK",
 		"Work on it",
 	}, nicknames(t, s))
 
@@ -184,6 +184,7 @@ func TestSeed(t *testing.T) {
 		Rereview: byNickname(t, s, "Re-review").ID, Replies: ReplyDefaults{
 			Approve: byNickname(t, s, "LGTM").ID, ApproveBots: byNickname(t, s, "Update OK").ID,
 			RequestChanges: byNickname(t, s, "Needs changes").ID, Comment: byNickname(t, s, "Question").ID,
+			Nudge: byNickname(t, s, "Nudge").ID,
 		},
 	}, defaults)
 
@@ -199,7 +200,7 @@ func TestSeed(t *testing.T) {
 	require.NoError(t, Seed(ctx, s.store))
 	assert.Equal(t, []string{
 		"Address review", "Fix checks", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro",
-		"Question", "Re-review", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK", "Work on it",
+		"Nudge", "Question", "Re-review", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK", "Work on it",
 	}, nicknames(t, s))
 }
 

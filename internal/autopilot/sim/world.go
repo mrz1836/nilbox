@@ -636,6 +636,11 @@ func (w *World) RemoveReviewRequest(context.Context, github.Token, item.Ref, str
 	return nil, errNotAsked
 }
 
+// AddComment is never asked: a nudge is the user's, from the window.
+func (w *World) AddComment(context.Context, github.Token, item.Ref, string) (*github.Comment, error) {
+	return nil, errNotAsked
+}
+
 // FetchCommitAuthors knows no commit's author, so a push to a pull request reviewed is
 // always someone else's.
 func (w *World) FetchCommitAuthors(context.Context, github.Token, []string) (map[string][]github.CommitAuthor, error) {

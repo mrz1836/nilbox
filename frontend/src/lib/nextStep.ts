@@ -6,6 +6,7 @@
 
 import type { AgentSession, InboxItem, Situation } from '../platform'
 import { counted, formatCount } from './format'
+import { awaitsAuthor } from './nudge'
 import { needsYou, whereWords } from './sessions'
 import { checksSignal, reviewsSignal } from './signals'
 import { wakeSummary, type TriageTab } from './triage'
@@ -30,6 +31,7 @@ export type Verb =
   | 'unsnooze'
   | 'restore'
   | 'unmute'
+  | 'nudge'
 
 // StoryIcon is the mark before the story's words.
 export type StoryIcon = 'dot' | 'ping' | 'clock' | 'bolt' | 'archive'
@@ -106,18 +108,31 @@ export function autopilotState(row: string): AutopilotState {
   return state === 'needs' || state === 'working' ? { state, routine: row.slice(at + 1) } : noAutopilot
 }
 
-// StepInput is everything nextStep reads. session, sessionFresh, and backFromSnooze depend
-// on the time, which the caller reads: session is the card's session (cardSession),
-// sessionFresh reports a failed one that failed under a day ago, and backFromSnooze an item
-// back from a snooze within the last day. agent names the session's agent, or else the
-// agent a launch resolves to, '' while unknown; mutedTarget is the repository or org that
-// mutes the item, '' outside the Muted tab.
+// NudgeState is what a card knows of a nudge of a pull request's author, at the time the
+// caller read: whether one is due (nudgeDue), and the words its story says of the wait
+// (nudgeWords), '' for none.
+export interface NudgeState {
+  due: boolean
+  words: string
+}
+
+// noNudge is a card that offers no nudge and says nothing of one.
+export const noNudge: NudgeState = { due: false, words: '' }
+
+// StepInput is everything nextStep reads. session, sessionFresh, backFromSnooze, and nudge
+// depend on the time, which the caller reads: session is the card's session (cardSession),
+// sessionFresh reports a failed one that failed under a day ago, backFromSnooze an item
+// back from a snooze within the last day, and nudge whether a nudge of a pull request's
+// quiet author is due, with what the story says of the wait. agent names the session's
+// agent, or else the agent a launch resolves to, '' while unknown; mutedTarget is the
+// repository or org that mutes the item, '' outside the Muted tab.
 export interface StepInput {
   item: InboxItem
   tab: TriageTab
   session: AgentSession | null
   sessionFresh: boolean
   backFromSnooze: boolean
+  nudge?: NudgeState
   autopilot: AutopilotState
   agent: string
   mutedTarget: string
@@ -146,7 +161,7 @@ function wakeText(item: InboxItem): string {
 
 // itemStep is the step rules 5 to 19 give: what the item itself asks for, whatever an
 // agent or a routine is doing with it.
-function itemStep({ item, backFromSnooze }: StepInput): Step {
+function itemStep({ item, backFromSnooze, nudge = noNudge }: StepInput): Step {
   const d = item.details
   const asked = item.reviewRequest !== 'none'
   const isPR = item.kind === 'pr'
@@ -224,11 +239,24 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
 
   // After 6. The user asked the author of someone else's pull request for changes, and
   // the author hasn't pushed since nor asked for the user's review again: nothing is the
-  // user's to do until they do.
-  if (theirs && !asked && d.viewerVerdict === 'changes' && !d.pushedSinceReview) {
-    const detail = worst === '' ? 'you requested changes' : `you requested changes, ${worst}`
+  // user's to do until they do, but nudge them once they have been quiet long enough. The
+  // story says how long, or when the user nudged them.
+  if (awaitsAuthor(item)) {
+    const said =
+      nudge.words === ''
+        ? 'you requested changes'
+        : item.nudgedAt !== ''
+          ? nudge.words
+          : `you requested changes, ${nudge.words}`
+    const detail = worst === '' ? said : `${said}, ${worst}`
 
-    return step('awaiting_author', 'waiting', story('Waiting on the author', detail, 'dot'), 'open', true)
+    return step(
+      'awaiting_author',
+      'waiting',
+      story('Waiting on the author', detail, 'dot'),
+      nudge.due ? 'nudge' : 'open',
+      !nudge.due,
+    )
   }
 
   // 11, ahead of 7 to 10. The author pushed since the user asked for changes, on a review

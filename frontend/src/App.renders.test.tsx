@@ -362,20 +362,21 @@ describe.each(densities)('App rendering, %s cards', (density) => {
     expect(clear.mounts).toBeLessThanOrEqual(hidden)
     expect(mountedRows()).toBe(unfiltered)
 
-    // Opening the card guide from the inbox's button mounts the guide's sample card alone,
-    // and closing it leaves the inbox as it was.
+    // Opening the card guide from the inbox's button mounts the guide's two sample cards
+    // alone (the card it numbers, and the one that offers a nudge), and closing it leaves
+    // the inbox as it was.
     const guide = await measure(async () => {
       await userEvent.click(screen.getByLabelText('How to read a card'))
       await screen.findByText('feat(client): accept a caller-supplied connection gater', {}, wait)
     })
 
-    expect(guide.mounts).toBe(1)
+    expect(guide.mounts).toBe(2)
     await userEvent.keyboard('{Escape}')
     expect(mountedRows()).toBe(unfiltered)
 
     // Through the compiler, only the changed row renders again, and nothing else does (the
     // pictures render only the avatars); filtering renders only the rows it marks, and the
-    // card guide only its own sample. As written, every render of a list renders its rows
+    // card guide only its own two samples. As written, every render of a list renders its rows
     // again, a couple of times a step.
     const most = compiled
       ? {
@@ -387,7 +388,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
           away: 0,
           back: 0,
           filter: matches,
-          guide: 1,
+          guide: 2,
         }
       : {
           pictures: 2 * rows,
@@ -398,7 +399,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
           away: 2 * rows,
           back: rows,
           filter: 2 * rows,
-          guide: 2 * rows + 1,
+          guide: 2 * rows + 2,
         }
 
     expect(pictures.rows).toBeLessThanOrEqual(most.pictures)

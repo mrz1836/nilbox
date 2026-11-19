@@ -112,7 +112,8 @@ const getEditItem = `-- name: GetEditItem :one
 SELECT
     i.id, i.account_id, i.kind, i.number, i.node_id, i.item_updated_at, i.reason_review_requested,
     i.reason_authored, i.reason_assigned, i.reason_pushed, r.owner AS repo_owner, r.name AS repo_name, a.login AS account_login,
-    d.head_oid, d.base_ref, CAST(EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id) AS BOOLEAN) AS watched
+    d.head_oid, d.base_ref, CAST(EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id) AS BOOLEAN) AS watched,
+    i.author_login, i.state
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 JOIN accounts a ON a.id = i.account_id
@@ -137,12 +138,15 @@ type GetEditItemRow struct {
 	HeadOID               *string
 	BaseRef               *string
 	Watched               bool
+	AuthorLogin           string
+	State                 string
 }
 
 // GetEditItem returns what an edit to the item with id on GitHub needs: the item, its
-// node ID, its repository, the account whose inbox lists it, the lists it is in, whether a
-// routine's search watches it, and its head commit and base branch when a refresh has read
-// its details (NULL otherwise). It returns sql.ErrNoRows when no item has id.
+// node ID, its author, its state, its repository, the account whose inbox lists it, the
+// lists it is in, whether a routine's search watches it, and its head commit and base
+// branch when a refresh has read its details (NULL otherwise). It returns sql.ErrNoRows
+// when no item has id.
 func (q *Queries) GetEditItem(ctx context.Context, id int64) (GetEditItemRow, error) {
 	row := q.db.QueryRowContext(ctx, getEditItem, id)
 	var i GetEditItemRow
@@ -163,6 +167,8 @@ func (q *Queries) GetEditItem(ctx context.Context, id int64) (GetEditItemRow, er
 		&i.HeadOID,
 		&i.BaseRef,
 		&i.Watched,
+		&i.AuthorLogin,
+		&i.State,
 	)
 	return i, err
 }
@@ -628,6 +634,7 @@ SELECT
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
     i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url, i.seen_activity_at,
+    i.viewer_review_at, i.nudged_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.checks_awaiting_on_github, d.checks_held,
@@ -672,6 +679,8 @@ type ListItemsRow struct {
 	ReviewLeftAt           *time.Time
 	AuthorAvatarURL        string
 	SeenActivityAt         *time.Time
+	ViewerReviewAt         *time.Time
+	NudgedAt               *time.Time
 	DetailsItemID          *int64
 	Labels                 *string
 	Projects               *string
@@ -758,6 +767,8 @@ func (q *Queries) ListItems(ctx context.Context, accountID int64) ([]ListItemsRo
 			&i.ReviewLeftAt,
 			&i.AuthorAvatarURL,
 			&i.SeenActivityAt,
+			&i.ViewerReviewAt,
+			&i.NudgedAt,
 			&i.DetailsItemID,
 			&i.Labels,
 			&i.Projects,
@@ -823,6 +834,7 @@ SELECT
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
     i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url, i.seen_activity_at,
+    i.viewer_review_at, i.nudged_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.checks_awaiting_on_github, d.checks_held,
@@ -871,6 +883,8 @@ type ListItemsByIDRow struct {
 	ReviewLeftAt           *time.Time
 	AuthorAvatarURL        string
 	SeenActivityAt         *time.Time
+	ViewerReviewAt         *time.Time
+	NudgedAt               *time.Time
 	DetailsItemID          *int64
 	Labels                 *string
 	Projects               *string
@@ -966,6 +980,8 @@ func (q *Queries) ListItemsByID(ctx context.Context, arg ListItemsByIDParams) ([
 			&i.ReviewLeftAt,
 			&i.AuthorAvatarURL,
 			&i.SeenActivityAt,
+			&i.ViewerReviewAt,
+			&i.NudgedAt,
 			&i.DetailsItemID,
 			&i.Labels,
 			&i.Projects,
@@ -1727,6 +1743,22 @@ func (q *Queries) MarkUnseen(ctx context.Context, arg MarkUnseenParams) (int64, 
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const noteNudge = `-- name: NoteNudge :exec
+UPDATE items SET nudged_at = ? WHERE id = ?
+`
+
+type NoteNudgeParams struct {
+	NudgedAt *time.Time
+	ID       int64
+}
+
+// NoteNudge records that the user nudged the author of the pull request with id, with a
+// comment GitHub says it posted at nudged_at (see 0107_nudges).
+func (q *Queries) NoteNudge(ctx context.Context, arg NoteNudgeParams) error {
+	_, err := q.db.ExecContext(ctx, noteNudge, arg.NudgedAt, arg.ID)
+	return err
 }
 
 const noteViewerReview = `-- name: NoteViewerReview :exec

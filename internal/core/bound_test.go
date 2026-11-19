@@ -413,6 +413,12 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetMergeMethod": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetMergeMethod(ctx, settings.MergeMethodSquash)
 		},
+		"settings.Service.SetNudgeAfterHours": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetNudgeAfterHours(ctx, 48)
+		},
+		"settings.Service.SetNudgeSnooze": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetNudgeSnooze(ctx, true)
+		},
 		"settings.Service.SetIntegrationEnabled": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetIntegrationEnabled(ctx, integrationprefs.MageX, integrationprefs.SwitchOff)
 		},
@@ -947,6 +953,7 @@ func unreachedBound() map[string]string {
 		"inbox.Service.RefreshItem":         "reads GitHub; its snapshot is built as Snapshot's",
 		"inbox.Service.Unassign":            "edits GitHub; its snapshot is built as Snapshot's",
 		"inbox.Service.RemoveReviewRequest": "edits GitHub; its snapshot is built as Snapshot's",
+		"inbox.Service.Nudge":               "edits GitHub; its snapshot is built as Snapshot's",
 		"inbox.Service.CheckFiles":          "reads GitHub; nil for an item whose files are not checked",
 		"inbox.Service.StoredFiles":         "nil for an item whose files are not checked",
 		"launcher.Service.Preview":          "needs a clone; its resolution is built as Resolve's",

@@ -15,14 +15,17 @@ import (
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
-// The inbox edits GitHub only when the user asks, one item at a time, and only to take
-// the user off something: off an item's assignees (Unassign), or off a pull request's
-// requested reviewers (RemoveReviewRequest). Each edit is one REST request, which the
-// GitHub client's WriteGate paces and the API budget counts, made with the token of the
-// account whose inbox the user sees (see checkViewer). Once GitHub has made it, the item
-// loses that reason at once, with no refresh, and stays without it while GitHub's search
-// index catches up (see UpsertItem's left stamps): it moves to Yours, or leaves the inbox
-// when nothing else keeps it there.
+// The inbox edits GitHub only when the user asks, one item at a time: to take the user off
+// something, off an item's assignees (Unassign) or off a pull request's requested
+// reviewers (RemoveReviewRequest), or to nudge the author of a pull request the user asked
+// for changes on with a comment (Nudge). Each edit is one REST request, which the GitHub
+// client's WriteGate paces and the API budget counts, made with the token of the account
+// whose inbox the user sees (see checkViewer). Once GitHub has made one that takes the user
+// off something, the item loses that reason at once, with no refresh, and stays without it
+// while GitHub's search index catches up (see UpsertItem's left stamps): it moves to Yours,
+// or leaves the inbox when nothing else keeps it there. A nudge the item keeps, stamped
+// with when GitHub posted it (nudged_at), so its card stops offering another until the
+// author has been quiet as long again.
 
 var (
 	// ErrNotAssigned is returned for an edit that takes the user off the assignees of an
@@ -36,6 +39,13 @@ var (
 	// ErrOtherAccount is returned for an edit while the GitHub CLI is signed in to another
 	// account than the one whose inbox is shown.
 	ErrOtherAccount = errors.New("the GitHub CLI is signed in to another account")
+
+	// ErrNotNudgeable is returned for a nudge of a pull request the user opened, or one no
+	// longer open.
+	ErrNotNudgeable = errors.New("the pull request has no author to nudge")
+
+	// ErrEmptyNudge is returned for a nudge with no text.
+	ErrEmptyNudge = errors.New("the nudge has no text")
 )
 
 // Unassign takes the signed-in user off the assignees of an item assigned to them, on
@@ -57,6 +67,127 @@ func (s *Service) Unassign(ctx context.Context, id int64) (Snapshot, error) {
 // work on the same item.
 func (s *Service) RemoveReviewRequest(ctx context.Context, id int64) (Snapshot, error) {
 	return s.edit(ctx, id, editReview)
+}
+
+// NudgeRequest is a nudge to post: the pull request it is for, by its id in the inbox, and
+// the comment's text, as the user left it.
+type NudgeRequest struct {
+	ItemID int64  `json:"itemId"`
+	Body   string `json:"body"`
+}
+
+// Nudged is what a nudge GitHub posted leaves: the new snapshot, in which the item says
+// when it was nudged, and the comment's address on GitHub.
+type Nudged struct {
+	Snapshot Snapshot `json:"snapshot"`
+	URL      string   `json:"url"`
+}
+
+// Nudge posts req's text as a comment on the conversation of a pull request someone else
+// opened, on GitHub, to ask its author about the changes the user requested, and returns
+// the new snapshot with the comment's address. The item keeps when GitHub posted it, as
+// its NudgedAt, and counts the comment among its own, so its card says so at once with no
+// read. It is one REST request, paced and counted against the API budget, and it waits for
+// nothing but other work on the same item. GitHub having posted it, a failure to store it
+// is returned, and the next refresh catches the comment count up.
+func (s *Service) Nudge(ctx context.Context, req NudgeRequest) (Nudged, error) {
+	if strings.TrimSpace(req.Body) == "" {
+		return Nudged{}, uierr.New("Write the comment first.", fmt.Errorf("nudge: %w", ErrEmptyNudge))
+	}
+
+	unlock, err := s.items.lock(ctx, req.ItemID)
+	if err != nil {
+		return Nudged{}, fmt.Errorf("nudge: %w", err)
+	}
+
+	defer unlock()
+
+	row, err := s.nudgeTarget(ctx, req.ItemID)
+	if err != nil {
+		return Nudged{}, fmt.Errorf("nudge: %w", err)
+	}
+
+	ref := refOfRow(row)
+
+	comment, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (*github.Comment, error) {
+		if checkErr := s.checkViewer(ctx, tok, row.AccountLogin); checkErr != nil {
+			return nil, checkErr
+		}
+
+		return s.client.AddComment(ctx, tok, ref, req.Body)
+	})
+	if err != nil {
+		return Nudged{}, fmt.Errorf("nudge: %w", err)
+	}
+
+	if comment == nil {
+		return Nudged{}, fmt.Errorf("nudge: %w", ErrIncompleteFetch)
+	}
+
+	if err = s.storeNudge(ctx, row.ID, comment.CreatedAt); err != nil {
+		return Nudged{}, uierr.New(
+			"GitHub posted the comment, but the inbox could not record it. The next refresh catches it up.",
+			fmt.Errorf("nudge: %w", err),
+		)
+	}
+
+	snap, err := s.changed(ctx)
+	if err != nil {
+		return Nudged{}, err
+	}
+
+	return Nudged{Snapshot: snap, URL: comment.URL}, nil
+}
+
+// nudgeTarget reads the item with id, and checks that it is an open pull request someone
+// else opened, whose author a nudge can ask.
+func (s *Service) nudgeTarget(ctx context.Context, id int64) (queries.GetEditItemRow, error) {
+	row, err := s.shownItem(ctx, id)
+	if err != nil {
+		return queries.GetEditItemRow{}, err
+	}
+
+	ref := refOfRow(row)
+
+	switch {
+	case item.Kind(row.Kind) != item.KindPR:
+		return queries.GetEditItemRow{}, fmt.Errorf("%w (id %d)", ErrNotPull, id)
+	case strings.EqualFold(row.AuthorLogin, row.AccountLogin):
+		return queries.GetEditItemRow{}, uierr.New(fmt.Sprintf("%s is your own pull request.", ref), ErrNotNudgeable)
+	case row.State == github.StateClosed || row.State == github.StateMerged:
+		return queries.GetEditItemRow{}, uierr.New(fmt.Sprintf("%s is no longer open.", ref), ErrNotNudgeable)
+	default:
+		return row, nil
+	}
+}
+
+// storeNudge stores a nudge GitHub posted on the pull request with id at posted, in one
+// transaction: when it was posted, the later of then and now standing in for a time GitHub
+// left out, and one more comment on its conversation.
+func (s *Service) storeNudge(ctx context.Context, id int64, posted time.Time) error {
+	stamp := posted.UTC()
+	if stamp.IsZero() {
+		stamp = s.now()
+	}
+
+	err := store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		q := s.q.WithTx(tx)
+
+		if err := q.NoteNudge(ctx, queries.NoteNudgeParams{NudgedAt: &stamp, ID: id}); err != nil {
+			return fmt.Errorf("save when it was nudged: %w", err)
+		}
+
+		if err := q.CountOwnComment(ctx, id); err != nil {
+			return fmt.Errorf("count the comment: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("save the nudge: %w", err)
+	}
+
+	return nil
 }
 
 // editKind is which of the item's reasons an edit takes the user off.

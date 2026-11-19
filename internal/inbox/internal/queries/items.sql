@@ -196,6 +196,7 @@ SELECT
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
     i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url, i.seen_activity_at,
+    i.viewer_review_at, i.nudged_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.checks_awaiting_on_github, d.checks_held,
@@ -251,13 +252,15 @@ ORDER BY i.id;
 
 -- name: GetEditItem :one
 -- GetEditItem returns what an edit to the item with id on GitHub needs: the item, its
--- node ID, its repository, the account whose inbox lists it, the lists it is in, whether a
--- routine's search watches it, and its head commit and base branch when a refresh has read
--- its details (NULL otherwise). It returns sql.ErrNoRows when no item has id.
+-- node ID, its author, its state, its repository, the account whose inbox lists it, the
+-- lists it is in, whether a routine's search watches it, and its head commit and base
+-- branch when a refresh has read its details (NULL otherwise). It returns sql.ErrNoRows
+-- when no item has id.
 SELECT
     i.id, i.account_id, i.kind, i.number, i.node_id, i.item_updated_at, i.reason_review_requested,
     i.reason_authored, i.reason_assigned, i.reason_pushed, r.owner AS repo_owner, r.name AS repo_name, a.login AS account_login,
-    d.head_oid, d.base_ref, CAST(EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id) AS BOOLEAN) AS watched
+    d.head_oid, d.base_ref, CAST(EXISTS (SELECT 1 FROM item_watches w WHERE w.item_id = i.id) AS BOOLEAN) AS watched,
+    i.author_login, i.state
 FROM items i
 JOIN repos r ON r.id = i.repo_id
 JOIN accounts a ON a.id = i.account_id
@@ -349,6 +352,11 @@ UPDATE items SET
         ELSE viewer_review_seen_at
     END
 WHERE id = sqlc.arg(id);
+
+-- name: NoteNudge :exec
+-- NoteNudge records that the user nudged the author of the pull request with id, with a
+-- comment GitHub says it posted at nudged_at (see 0107_nudges).
+UPDATE items SET nudged_at = ? WHERE id = ?;
 
 -- name: GetViewerVerdict :one
 -- GetViewerVerdict returns the user's own verdict stored on the item with id: its state,
@@ -516,6 +524,7 @@ SELECT
     i.author_login, i.author_type, i.author_association, i.is_cross_repository, i.is_draft, i.head_ref,
     i.item_updated_at, i.reason_review_requested, i.reason_authored, i.reason_assigned, i.reason_pushed,
     i.viewer_review_state, i.viewer_review_commit, i.review_left_at, i.author_avatar_url, i.seen_activity_at,
+    i.viewer_review_at, i.nudged_at,
     d.item_id AS details_item_id, d.labels, d.projects, d.comments, d.additions, d.deletions,
     d.changed_files, d.commits, d.mergeable, d.checks_state, d.checks_passed, d.checks_failed,
     d.checks_pending, d.checks_skipped, d.checks_awaiting, d.checks_awaiting_on_github, d.checks_held,

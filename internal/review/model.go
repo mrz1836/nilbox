@@ -662,4 +662,8 @@ type ReplyList struct {
 	// DefaultBots one of a bot's; 0 for none, which starts with no text.
 	Default     int64 `json:"default"`
 	DefaultBots int64 `json:"defaultBots"`
+
+	// Nudge is the comment reply a nudge of a pull request's author starts with, among the
+	// comment replies; 0 for none, and for every other review.
+	Nudge int64 `json:"nudge"`
 }

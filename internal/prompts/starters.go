@@ -25,6 +25,10 @@ const (
 	StarterReplyUpdateOK     = "reply-update-ok"
 	StarterReplyNeedsChanges = "reply-needs-changes"
 	StarterReplyQuestion     = "reply-question"
+
+	// StarterReplyNudge asks the author of a pull request the user requested changes on,
+	// who has been quiet since, how it is going.
+	StarterReplyNudge = "reply-nudge"
 )
 
 // The starter review replies. A reply is the text of a review the user submits, so it is
@@ -42,6 +46,9 @@ const (
 		"details are in the comments below.\n"
 
 	replyQuestionBody = "Thanks, @{{.Author}}. I have a few questions before approving; see the comments below.\n"
+
+	replyNudgeBody = "Hi @{{.Author}}, just checking in on the changes requested here. Is anything unclear, " +
+		"or anything blocking you? Happy to help.\n"
 )
 
 // The starter prompts. Each passes the item's address and title, never its body: the
@@ -326,6 +333,10 @@ func builtStarters() []Starter {
 		{
 			Key: StarterRereview, Name: "Re-review a pull request", Nickname: "Re-review",
 			AppliesTo: AppliesToPR, Body: rereviewBody,
+		},
+		{
+			Key: StarterReplyNudge, Name: "Nudge the author", Nickname: "Nudge", AppliesTo: AppliesToPR,
+			Body: replyNudgeBody, Purpose: PurposeReply, ReplyAction: ReplyComment, Slot: SlotNudge,
 		},
 	}
 }

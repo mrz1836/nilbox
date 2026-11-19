@@ -79,6 +79,8 @@
       ]
     },
     "mergeMethod": "repo",
+    "nudgeAfterHours": 24,
+    "nudgeSnooze": false,
     "theme": "system",
     "textSize": "default",
     "toastSeconds": 12,
@@ -151,6 +153,7 @@
         "approve": "LGTM",
         "approve_bots": "Update OK",
         "comment": "Question",
+        "nudge": "Nudge",
         "request_changes": "Needs changes"
       }
     },
@@ -165,6 +168,7 @@
       "reply-question",
       "fix-dependency-security",
       "re-review",
+      "reply-nudge",
       "heal-dependabot-pr",
       "address-review",
       "resolve-conflicts",
@@ -287,6 +291,22 @@
         "worktree": null,
         "extraArgs": {},
         "starterKey": "reply-needs-repro",
+        "createdAt": "2026-11-14T17:00:00Z",
+        "updatedAt": "2026-11-14T17:00:00Z"
+      },
+      {
+        "name": "Nudge the author",
+        "nickname": "Nudge",
+        "appliesTo": "pr",
+        "body": "Hi @{{.Author}}, just checking in on the changes requested here. Is anything unclear, or anything blocking you? Happy to help.\n",
+        "purpose": "reply",
+        "action": "comment",
+        "models": {},
+        "effort": "",
+        "planMode": null,
+        "worktree": null,
+        "extraArgs": {},
+        "starterKey": "reply-nudge",
         "createdAt": "2026-11-14T17:00:00Z",
         "updatedAt": "2026-11-14T17:00:00Z"
       },

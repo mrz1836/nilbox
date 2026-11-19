@@ -189,6 +189,7 @@ export function CompactRow({
         agents={agents}
         triage={triage}
         onOpen={onOpen}
+        onNudge={edits?.onNudge}
         compact
       />
     </>

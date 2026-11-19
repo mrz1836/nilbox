@@ -373,6 +373,59 @@ describe('ItemMenu', () => {
     expect(triage.onRefresh).not.toHaveBeenCalled()
   })
 
+  it('offers to nudge the author of a pull request waiting on them, in every tab', async () => {
+    const it = item({
+      author: 'contributor-a',
+      snoozedUntil: '2026-06-18T12:00:00Z',
+      updatedAt: '2026-06-15T11:00:00Z',
+      details: details({ viewerVerdict: 'changes' }),
+    })
+    const triage = triageActions()
+    const edits = { ...editActions(), onNudge: vi.fn() }
+
+    render(
+      <ul>
+        <ItemRow item={it} launch={null} tab="snoozed" triage={triage} edits={edits} />
+      </ul>,
+      { wrapper: at() },
+    )
+
+    expect(screen.getByRole('button', { name: 'Unsnooze' }), 'the primary stays Unsnooze').toBeInTheDocument()
+    const menu = await openMenu()
+    expect(names(screen.getByRole('menu'))).toEqual([
+      'Open on GitHub',
+      'Copy link',
+      'Inbox actions',
+      'Nudge @contributor-a…',
+    ])
+    expect(menu.getByRole('menuitem', { name: 'Nudge @contributor-a…' })).toHaveAttribute(
+      'title',
+      'Post a comment asking the author about the changes you requested. Uses one REST request.',
+    )
+
+    await userEvent.click(menu.getByRole('menuitem', { name: 'Nudge @contributor-a…' }))
+
+    expect(edits.onNudge).toHaveBeenCalledExactlyOnceWith(it)
+  })
+
+  it('offers no nudge of a bot, nor where the menu can’t post one', async () => {
+    const waiting = { author: 'contributor-a', details: details({ viewerVerdict: 'changes' }) }
+
+    render(
+      <ul>
+        <ItemRow
+          item={item({ ...waiting, authorIsBot: true })}
+          launch={null}
+          triage={triageActions()}
+          edits={{ ...editActions(), onNudge: vi.fn() }}
+        />
+      </ul>,
+      { wrapper: at() },
+    )
+    await openMenu()
+    expect(names(screen.getByRole('menu'))).toEqual(['Open on GitHub', 'Copy link', 'Inbox actions'])
+  })
+
   it('takes the user off a pull request’s reviewers when it asks them by name', async () => {
     const it = item({ reviewRequest: 'you', reviewTeams: ['backend'] })
     const { edits } = renderRow(it)

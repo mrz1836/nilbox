@@ -314,7 +314,7 @@ export interface DefaultPrompts {
  * for issues, the default prompt for each situation a pull request can be in, or one of the
  * default replies, under its ReplySlot's name.
  */
-export type DefaultSlot = "pr" | "issue" | "checks_failing" | "conflicts" | "changes_requested" | "rereview" | "approve" | "approve_bots" | "request_changes" | "comment";
+export type DefaultSlot = "pr" | "issue" | "checks_failing" | "conflicts" | "changes_requested" | "rereview" | "approve" | "approve_bots" | "request_changes" | "comment" | "nudge";
 
 /**
  * The values of DefaultSlot, by the names of their Go constants.
@@ -339,6 +339,7 @@ export const DefaultSlot = {
     DefaultSlotApproveBots: "approve_bots",
     DefaultSlotRequestChanges: "request_changes",
     DefaultSlotComment: "comment",
+    DefaultSlotNudge: "nudge",
 } as const;
 
 /**
@@ -667,13 +668,18 @@ export interface ReplyDefaults {
     "approveBots": number;
     "requestChanges": number;
     "comment": number;
+
+    /**
+     * Nudge is the comment a nudge of a pull request's author starts with.
+     */
+    "nudge": number;
 }
 
 /**
  * ReplySlot is a default a reply can be: the reply for each review, and a second one for
  * approving a bot's pull request, such as a dependency update.
  */
-export type ReplySlot = "approve" | "approve_bots" | "request_changes" | "comment";
+export type ReplySlot = "approve" | "approve_bots" | "request_changes" | "comment" | "nudge";
 
 /**
  * The values of ReplySlot, by the names of their Go constants.
@@ -686,6 +692,12 @@ export const ReplySlot = {
     SlotApproveBots: "approve_bots",
     SlotRequestChanges: "request_changes",
     SlotComment: "comment",
+
+    /**
+     * SlotNudge is the comment a nudge posts to the author of a pull request the user
+     * requested changes on, who has been quiet since.
+     */
+    SlotNudge: "nudge",
 } as const;
 
 /**

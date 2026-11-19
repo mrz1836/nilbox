@@ -1930,6 +1930,24 @@ Cards** can make every card one line instead (**Compact cards**, below).
   changes**, then its worst trouble (**you requested changes, conflicts with its base**), in
   grey, with a quiet **Open** and the agent's plain button. Once the author pushes, it asks for
   your **Re-review**, assigned to you or not.
+- **Nudge.** Once such a pull request has been quiet for a day (**Offer a nudge after** in
+  Settings → Reviewing, see [Nudges](#reviewing-a-pull-request)), its story says so (**you requested changes, quiet for
+  2d**) and its primary becomes **Nudge**, outlined in the accent color while its edge stays
+  grey: it still waits on the author, but asking them is yours to do. **Nudge** opens a short
+  dialog, **Nudge @author**, with the pull request, how long it has been quiet, and a comment
+  already filled in from your **Nudge** reply in [Prompts → Review replies](#review-replies);
+  **Replies** picks another of your comment replies, and **Manage replies…** opens them. **Post
+  comment** (or ⌘↩) posts it on the pull request's conversation, and **Then snooze for 3 days**
+  (your snooze length; ticked to start with when **Snooze after a nudge** is on) snoozes it
+  after, until it comes back early when the author pushes. A toast says **Nudged @author on
+  example-repo #434**, with **View comment**, or, snoozed, **Nudged @author and snoozed until
+  Sat**, with **Undo**. The card then says **you nudged them just now** with a quiet **Open**,
+  and offers **Nudge** again only once the pull request has been quiet that long since. Any
+  push, comment, or review restarts the wait; a nudge from before your latest request for
+  changes counts for nothing, so a new round of review starts clean; and a bot's pull request
+  never offers one. The card's **⋯** menu offers **Nudge @author…** whenever a pull request
+  waits on its author, in every tab and however long it has been quiet, and so does its
+  details' action bar.
 - **Approved by you.** A pull request someone else opened that you approved has nothing left
   for you to review: it says **Approved by you**, then its worst trouble (**Approved by you · 1
   check still running**), or **Merges when green · squash** while auto-merge is on, in grey,
@@ -2345,7 +2363,8 @@ you hover the card or move focus into it. It gathers everything you can do with 
   and **Dismiss**; on a card in the **Snoozed** or **Dismissed** tab, **Unsnooze** or
   **Restore** instead, and in the **Muted** tab, **Unmute**. The hover buttons stay, so the
   everyday ones are still one click away.
-- **On GitHub**, when they apply: **Unassign me** on an item assigned to you, and **Remove me as
+- **On GitHub**, when they apply: **Nudge @author…** on a pull request waiting on its author
+  (see [Nudge](#inbox-cards)), **Unassign me** on an item assigned to you, and **Remove me as
   reviewer** on a pull request that asks for your review.
 
 The keyboard works as in any Mac menu: the arrows move, → opens a submenu and ← leaves it,
@@ -2365,6 +2384,7 @@ clearing on: it marks a notification done, or read, when the work behind it is f
 |---|---|---|
 | Unassign me | The card's menu, or the issue sheet's | 1 REST point |
 | Remove me as reviewer | The card's menu | 1 REST point |
+| Nudge the author (a comment on the pull request) | A card's **Nudge**, its menu, or its details, after you read the comment | 1 REST point |
 | Re-request my review | The review sheet, once its author pushed since you requested changes | 1 REST point |
 | Approve (with line comments) | The review sheet | 1 GraphQL point to check nothing was pushed, then 1 REST point |
 | Request changes, Comment (with line comments) | The review sheet | 1 REST point |
@@ -2676,6 +2696,14 @@ acme-org/api#212: …**. Otherwise the toast says **Closed acme-org/api#212 with
 each repository offers first** (the default, GitHub's own first choice for you there), **Squash
 and merge**, **Create a merge commit**, or **Rebase and merge**. A repository that doesn't allow
 the one you chose starts on the one it offers first.
+
+**Nudges.** **Settings → Reviewing** → **Nudges** decides when a pull request you requested
+changes on, waiting on its author, offers **Nudge** on its card. **Offer a nudge after** is how
+long it has to be quiet first: **Off**, **12 hours**, **1 day** (the default), **2 days**, **3
+days**, or **1 week**. Any push, comment, or review starts the wait again, and so does your own
+nudge; a bot's pull request never offers one. **Snooze after a nudge** (off to start with) starts
+each nudge with **Then snooze** ticked, for your snooze length. A note under them links to
+**Prompts → Review replies**, where the **Nudge** reply the comment starts from is kept.
 
 **Safe by construction.**
 
@@ -4407,17 +4435,23 @@ for the work on this, @{{.Author}}!" **Update OK** (approve, the default for bot
 minor update of `golang.org/x/net` from 0.30.0 to 0.31.0. All checks pass. Approved.", which says
 "Reviewed this automated update." when the title says nothing it can read, and "All checks pass."
 only when they do. **Needs
-changes** (request changes) and **Question** (comment). **Needs repro** (comment, for issues: it asks the person who
+changes** (request changes) and **Question** (comment). **Nudge** (comment, the default for
+nudges): "Hi @{{.Author}}, just checking in on the changes requested here. Is anything unclear,
+or anything blocking you? Happy to help." **Needs repro** (comment, for issues: it asks the person who
 opened the issue how to reproduce it, and fills no default, since a review's default is for pull
 requests; the Ask for a repro on quiet bugs template comments it). Like the starter prompts, each is added
 once, and **Reset to original** restores one you changed.
 
 **Defaults.** The **⋯** menu makes a reply the default for approvals, for approvals of bots' pull
-requests, for requests for changes, or for comments. The sheet fills the default in for the
-review you're about to send, a bot's default on a bot's pull request, until you write your own
-text; with no default, the text starts empty. Deleting a reply that is a default clears that
-default. A default is for pull requests, so a reply for issues alone is never one, and the
-default for comments can't be changed to one; the issue sheet has no default.
+requests, for requests for changes, for comments, or for nudges. The sheet fills the default in
+for the review you're about to send, a bot's default on a bot's pull request, until you write
+your own text; with no default, the text starts empty. The default for nudges is a comment
+reply too: it fills in the comment a **Waiting on the author** card's **Nudge** posts to the
+author of a pull request you requested changes on, and with none the comment starts empty.
+Deleting a reply that is a default clears that default. A default is for pull requests, so a
+reply for issues alone is never one, and the defaults for comments and nudges can't be changed
+to one; the issue sheet has no default. A library from before nudges gets the **Nudge** starter
+as the default for nudges once, unless you already chose one.
 
 **Writing one.** A reply is a template like a prompt, with the same variables, checked the same
 way, with three differences: it may start with `-`, for a markdown list; it may come out empty,

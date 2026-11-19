@@ -306,6 +306,67 @@ describe('ItemRow waiting on the author', () => {
     expect(screen.queryByText(/Resolve conflicts|Address review|Fix checks/)).not.toBeInTheDocument()
   })
 
+  it('offers to nudge the author once they have been quiet a day, where the card can', async () => {
+    const edits = { ...editActions(), onNudge: vi.fn() }
+    const quiet = { ...theirs(), updatedAt: '2026-06-13T12:00:00Z' }
+    const row = mountCard(quiet, { resolution, edits })
+
+    expect(row).toHaveAttribute('data-rule', 'awaiting_author')
+    expect(row.querySelector('[data-edge]'), 'still waiting on the author').toHaveClass('bg-muted/30')
+    expect(body(row).lastElementChild).toHaveTextContent(
+      /^Waiting on the author · you requested changes, quiet for 2d, conflicts with its base·/,
+    )
+    const nudge = screen.getByRole('button', { name: 'Nudge' })
+    expect(nudge).toHaveAttribute('data-verb', 'nudge')
+    expect(nudge, 'the user’s move').toHaveClass('border-accent/45', 'text-accent')
+    expect(screen.queryByRole('button', { name: 'Open' })).not.toBeInTheDocument()
+
+    await userEvent.click(nudge)
+
+    expect(edits.onNudge).toHaveBeenCalledExactlyOnceWith(quiet)
+  })
+
+  it('says when the user nudged the author, and waits again from then', () => {
+    const edits = { ...editActions(), onNudge: vi.fn() }
+    const row = mountCard(
+      { ...theirs(), updatedAt: '2026-06-10T12:00:00Z', nudgedAt: '2026-06-15T09:00:00Z' },
+      {
+        resolution,
+        edits,
+      },
+    )
+
+    expect(body(row).lastElementChild).toHaveTextContent(
+      /^Waiting on the author · you nudged them 3h ago, conflicts with its base·/,
+    )
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveClass('border-border', 'text-text')
+    expect(screen.queryByRole('button', { name: 'Nudge' })).not.toBeInTheDocument()
+  })
+
+  it('offers no nudge where the card can’t post one', () => {
+    mountCard({ ...theirs(), updatedAt: '2026-06-01T12:00:00Z' }, { resolution })
+
+    expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Nudge' })).not.toBeInTheDocument()
+  })
+
+  it('offers no nudge while Offer a nudge after is Off', () => {
+    render(
+      <CardPrefsContext value={{ ...defaultCardPrefs, nudgeAfterHours: 0 }}>
+        <ul>
+          <ItemRow
+            item={{ ...theirs(), updatedAt: '2026-06-01T12:00:00Z' }}
+            launch={launch}
+            edits={{ ...editActions(), onNudge: vi.fn() }}
+          />
+        </ul>
+      </CardPrefsContext>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Nudge' })).not.toBeInTheDocument()
+  })
+
   it('asks for a re-review once the author pushed', () => {
     const row = mountCard(theirs({ pushedSinceReview: true }), { resolution })
 

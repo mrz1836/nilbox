@@ -541,6 +541,15 @@ export interface Settings {
     "mergeMethod": MergeMethod;
 
     /**
+     * NudgeAfterHours is how many hours a pull request the user requested changes on has
+     * to be quiet before its card offers to nudge its author, 0 for never (see
+     * KeyNudgeAfterHours), and NudgeSnooze whether the nudge dialog starts with "Then
+     * snooze" ticked.
+     */
+    "nudgeAfterHours": number;
+    "nudgeSnooze": boolean;
+
+    /**
      * Integrations is each integration's switch, and the copy of each tool the user chose.
      */
     "integrations": integrationprefs$0.Config;

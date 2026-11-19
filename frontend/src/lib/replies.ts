@@ -1,7 +1,8 @@
 // Shared wording for review replies: the prompts the review sheet fills in as a review's
 // text. A reply is written for one review (an approval, a request for changes, or a
-// comment) and can be the default reply for it, and an approval also for bots' pull
-// requests.
+// comment) and can be the default reply for it, an approval also for bots' pull
+// requests, and a comment also for a nudge, the comment a card posts to ask the author of
+// a pull request the user requested changes on how it is going.
 
 import type { PromptReplyAction, ReplySlot } from '../platform'
 
@@ -29,6 +30,7 @@ export const replySlotBadges: Readonly<Record<ReplySlot, string>> = {
   approve_bots: 'Default for bots',
   request_changes: 'Default for changes',
   comment: 'Default for comments',
+  nudge: 'Default for nudges',
 }
 
 // replySlotPlaces name what each default reply is the default for, as in "the default
@@ -38,6 +40,7 @@ export const replySlotPlaces: Readonly<Record<ReplySlot, string>> = {
   approve_bots: 'approvals on bot pull requests',
   request_changes: 'requests for changes',
   comment: 'comments',
+  nudge: 'nudges',
 }
 
 // replySlots lists the defaults a reply written for action can be, in the order the
@@ -49,7 +52,7 @@ export function replySlots(action: PromptReplyAction): ReplySlot[] {
     case 'request_changes':
       return ['request_changes']
     case 'comment':
-      return ['comment']
+      return ['comment', 'nudge']
     default:
       return []
   }

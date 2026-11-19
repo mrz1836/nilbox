@@ -528,6 +528,24 @@ export function SetNotificationsTab(tab: $models.NotificationsTab): $Cancellable
 }
 
 /**
+ * SetNudgeAfterHours stores how many hours a pull request waiting on its author has to be
+ * quiet before its card offers a nudge, 0 for never to MaxNudgeAfterHours, and returns the
+ * settings with it.
+ */
+export function SetNudgeAfterHours(hours: number): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(4272366869, hours);
+}
+
+/**
+ * SetNudgeSnooze stores whether the nudge dialog starts with "Then snooze" ticked, so a
+ * nudge snoozes its pull request until the author answers, and returns the settings with
+ * it.
+ */
+export function SetNudgeSnooze(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(2844633174, on);
+}
+
+/**
  * SetOfferAfterMerge stores whether merging a pull request in the review sheet offers to
  * release its repository, and returns the settings with it. Nothing else hears of it: the
  * review sheet asks Release whether to offer as each merge lands.

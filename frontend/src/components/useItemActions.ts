@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import { attempt } from '../lib/call'
 import { ownRule } from '../lib/repoRules'
 import { endedText, type EndedItem } from '../lib/sheet'
@@ -15,6 +17,7 @@ import {
   type Settings,
 } from '../platform'
 import { teamsText, type EditActions } from './ItemMenu'
+import { useNudge } from './NudgeDialog'
 import type { ToastMessage } from './Toast'
 import type { TriageActions } from './TriageControls'
 
@@ -56,6 +59,9 @@ export interface ItemActionsOptions {
   // listed reports rows of the inbox's own lists, whose item a refresh that leaves it out
   // of the inbox closed or merged; a routine's Watching list lists items in no list.
   listed?: boolean
+  // onManageReplies opens the replies in the Prompts tab, from the Nudge dialog's replies
+  // menu; without it the menu has no way there.
+  onManageReplies?: (() => void) | undefined
 }
 
 // ItemActions are what the rows' controls and menus do, and the triage a sheet's header
@@ -65,8 +71,9 @@ export interface ItemActions {
   edits: EditActions
   // dismissIt, snoozeIt, and restoreIt set an item aside or bring it back, and changeRule
   // pins or mutes a repository or an org; each resolves with whether it took the change.
+  // snoozeIt's toast leads with lead ("Snoozed" unless given), then when it comes back.
   dismissIt: (item: InboxItem) => Promise<boolean>
-  snoozeIt: (item: InboxItem, days: number) => Promise<boolean>
+  snoozeIt: (item: InboxItem, days: number, lead?: string) => Promise<boolean>
   restoreIt: (item: InboxItem) => Promise<boolean>
   changeRule: (target: string, rule: RepoRule) => Promise<boolean>
   // unassignOn takes the user off the item on GitHub and says so once GitHub made it; it
@@ -79,12 +86,15 @@ export interface ItemActions {
   // ended says what became of an item its sheet found merged or closed on GitHub since the
   // inbox last read it, as the sheet moves on from it, and offers it on GitHub.
   ended: (item: EndedItem) => void
+  // nudgeDialog is the Nudge dialog the rows' edits open (edits.onNudge), while it is open,
+  // which the list renders.
+  nudgeDialog: ReactNode
 }
 
 // useItemActions builds what the rows of a list of items do with them: the inbox's own
 // triage (each confirmed by a toast with an Undo), the pinned and muted rules, and the
-// edits on GitHub, which show once GitHub has made them. The inbox's lists and a routine's
-// Watching list share it.
+// edits on GitHub, which show once GitHub has made them, a nudge of a quiet author through
+// its dialog (useNudge). The inbox's lists and a routine's Watching list share it.
 export function useItemActions({
   inbox,
   snoozeDays,
@@ -96,6 +106,7 @@ export function useItemActions({
   closeToast,
   onOpen,
   listed = true,
+  onManageReplies,
 }: ItemActionsOptions): ItemActions {
   const clock = useClock()
   const { dismiss, snooze, restore, pin, unpin, refreshItem, unassign, removeReviewRequest, markRead, markUnread } =
@@ -178,7 +189,7 @@ export function useItemActions({
     return result.ok
   }
 
-  const snoozeIt = async (item: InboxItem, days: number): Promise<boolean> => {
+  const snoozeIt = async (item: InboxItem, days: number, lead = 'Snoozed'): Promise<boolean> => {
     const result = await snooze(item.id, days)
 
     if (!result.ok) {
@@ -188,7 +199,7 @@ export function useItemActions({
     }
 
     const until = findItem(result.data, item.id)?.snoozedUntil ?? ''
-    const text = until === '' ? 'Snoozed' : `Snoozed until ${formatWhen(clock.getSnapshot(), new Date(until))}`
+    const text = until === '' ? lead : `${lead} until ${formatWhen(clock.getSnapshot(), new Date(until))}`
 
     showToast({ text, detail: item.title, undo: undo(item) })
 
@@ -275,6 +286,20 @@ export function useItemActions({
     return ''
   }
 
+  // nudging is the Nudge dialog the rows open. The comment it posts is the user's own
+  // activity, so the item is marked read once GitHub posted it.
+  const nudging = useNudge({
+    nudge: inbox.nudge,
+    snoozeDays,
+    snoozeIt,
+    markRead: (item) => {
+      mark(item, false)
+    },
+    showToast,
+    closeToast,
+    onManageReplies,
+  })
+
   // edits is what every row's menu does beyond triage. An edit shows once GitHub has
   // made it, as the item leaves the list, which the toast confirms; a pull request that
   // still asks a team for a review stays, and the toast says which. The activity an edit
@@ -317,6 +342,7 @@ export function useItemActions({
         detail: after?.reviewRequest === 'team' ? `It still asks ${teamsText(after.reviewTeams)}` : item.title,
       })
     },
+    onNudge: nudging.onNudge,
     onOpen,
   }
 
@@ -342,5 +368,16 @@ export function useItemActions({
     })
   }
 
-  return { triage, edits, dismissIt, snoozeIt, restoreIt, changeRule, unassignOn, seen, ended }
+  return {
+    triage,
+    edits,
+    dismissIt,
+    snoozeIt,
+    restoreIt,
+    changeRule,
+    unassignOn,
+    seen,
+    ended,
+    nudgeDialog: nudging.dialog,
+  }
 }

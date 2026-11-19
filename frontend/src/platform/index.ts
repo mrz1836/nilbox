@@ -197,6 +197,9 @@ export type RateGauge = NonNullLists<inbox.RateGauge>
 export type Reviews = NonNullLists<inbox.Reviews>
 export type ReviewRequest = inbox.ReviewRequest
 export type InboxSnapshot = NonNullLists<inbox.Snapshot>
+// A nudge of a pull request's author: the comment to post, and what GitHub posting it left.
+export type NudgeRequest = NonNullLists<inbox.NudgeRequest>
+export type Nudged = NonNullLists<inbox.Nudged>
 // InboxProgress is how far a whole refresh of the inbox has got, as the "inbox:progress"
 // event says, whoever started the refresh.
 export type InboxProgress = Events.CustomEvents['inbox:progress']
@@ -785,6 +788,7 @@ export const {
   Unpin: unpinItem,
   Unassign: unassignItem,
   RemoveReviewRequest: removeReviewRequest,
+  Nudge: nudgeAuthor,
   // MarkSeen marks the items with ids read, and MarkUnseen the one with id unread, on this
   // Mac alone. Neither tells the window the inbox changed: it reads the inbox again itself.
   MarkSeen: markItemsSeen,
@@ -961,6 +965,8 @@ export const {
   SetBranchRules: setBranchRules,
   SetRepoRule: setRepoRule,
   SetMergeMethod: setMergeMethod,
+  SetNudgeAfterHours: setNudgeAfterHours,
+  SetNudgeSnooze: setNudgeSnooze,
   SetIntegrationEnabled: setIntegrationEnabled,
   SetIntegrationPath: setIntegrationPath,
   SetRunsIn: setRunsIn,

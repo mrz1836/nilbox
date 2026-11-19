@@ -1,13 +1,14 @@
 import { use, useId, useState, type ReactNode } from 'react'
 
-import { guideItem, guideLaunchOptions, guideResolution, guideSession } from '../../lib/cardGuide'
-import { CardPrefsContext, type CardPrefs } from '../../lib/cardPrefs'
+import { guideItem, guideLaunchOptions, guideNudgeItem, guideResolution, guideSession } from '../../lib/cardGuide'
+import { CardPrefsContext, defaultCardPrefs, type CardPrefs } from '../../lib/cardPrefs'
 import type { Edge } from '../../lib/nextStep'
 import { CardPicturesContext, type Pictures } from '../../lib/pictures'
 import { useClock } from '../../lib/useNow'
 import { AutopilotRowsContext } from '../autopilot/AutopilotChip'
 import { captionClass } from '../controls'
 import { BotIcon, CheckIcon, ClockIcon, RereviewIcon, XIcon } from '../icons'
+import type { EditActions } from '../ItemMenu'
 import { ItemRow } from '../ItemRow'
 import { faceOf, initialsOf } from './CardAvatar'
 import { edgeBar } from './CardParts'
@@ -212,7 +213,7 @@ function Sample({ markers }: { markers: boolean }) {
     }
   })
   const [spots, setSpots] = useState<readonly (Spot | null)[]>(() => guideParts.map(() => null))
-  const prefs: CardPrefs = { avatars: false, density: 'comfortable', unread }
+  const prefs: CardPrefs = { ...defaultCardPrefs, avatars: false, density: 'comfortable', unread }
 
   // measure follows the box the markers sit in, while there are markers.
   const measure = (el: HTMLDivElement | null) => {
@@ -276,6 +277,47 @@ function Sample({ markers }: { markers: boolean }) {
           )
         })}
     </div>
+  )
+}
+
+// guideEdits are the second sample's edits: none do anything, since the guide's cards take
+// no clicks, but with them its card can offer Nudge.
+const guideEdits: EditActions = {
+  onCopyLink: () => undefined,
+  onUnassign: () => Promise.resolve(),
+  onRemoveReview: () => Promise.resolve(),
+  onNudge: () => undefined,
+}
+
+// NudgeSample is the guide's second sample, in full: a pull request the user asked to
+// change, whose author has been quiet two days, so its card offers Nudge in place of a
+// quiet Open, as it does a day in with Settings → Reviewing's Offer a nudge after as it
+// comes.
+function NudgeSample() {
+  const prefs = use(CardPrefsContext)
+  const clock = useClock()
+  const [sample] = useState(() => guideNudgeItem(clock.getSnapshot()))
+  const shown: CardPrefs = { ...prefs, avatars: false, density: 'comfortable', nudgeAfterHours: 24 }
+
+  return (
+    <section aria-label="When the author goes quiet" className="flex flex-col gap-2">
+      <p className={captionClass}>When the author goes quiet</p>
+      <div inert className="isolate overflow-hidden rounded-lg border border-border bg-surface text-left">
+        <CardPrefsContext value={shown}>
+          <CardPicturesContext value={noPictures}>
+            <AutopilotRowsContext value={null}>
+              <ul className="@container">
+                <ItemRow item={sample} launch={null} edits={guideEdits} />
+              </ul>
+            </AutopilotRowsContext>
+          </CardPicturesContext>
+        </CardPrefsContext>
+      </div>
+      <p className="text-xs text-muted">
+        Once a pull request you asked to change has been quiet long enough, Nudge posts a comment asking its author
+        about it, which you read first. Settings › Reviewing says how long.
+      </p>
+    </section>
   )
 }
 
@@ -394,7 +436,8 @@ export interface CardGuideProps {
 
 // CardGuide teaches how to read a card: a legend, not a tour. It shows the real card on a
 // fixed sample, then, in full, its parts numbered and a legend of what each says, and in
-// both variants a key to the card's colors and symbols. It makes no request.
+// both variants a key to the card's colors and symbols; in full, after the key, a second
+// sample whose card offers a nudge (NudgeSample). It makes no request.
 export function CardGuide({ variant }: CardGuideProps) {
   const full = variant === 'full'
 
@@ -405,6 +448,11 @@ export function CardGuide({ variant }: CardGuideProps) {
       <div className={full ? 'border-t border-border pt-4' : ''}>
         <Key />
       </div>
+      {full && (
+        <div className="border-t border-border pt-4">
+          <NudgeSample />
+        </div>
+      )}
     </div>
   )
 }

@@ -39,6 +39,8 @@ func (s DefaultSlot) Label() string {
 		return "Default reply for requested changes"
 	case DefaultSlotComment:
 		return "Default comment reply"
+	case DefaultSlotNudge:
+		return "Default nudge reply"
 	case DefaultSlotChecksFailing, DefaultSlotConflicts, DefaultSlotChangesRequested, DefaultSlotRereview:
 		return "Default prompt " + s.When()
 	default:

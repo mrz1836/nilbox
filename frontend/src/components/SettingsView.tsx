@@ -100,6 +100,9 @@ export interface SettingsViewProps {
   // onShowCardGuide opens the card guide, which Cards offers; without it Cards offers no
   // way to.
   onShowCardGuide?: (() => void) | undefined
+  // onManageReplies opens the review replies in the Prompts tab, which Reviewing's nudges
+  // point at; without it they name the place alone.
+  onManageReplies?: (() => void) | undefined
 }
 
 // SettingsView is the settings page: a sidebar of sections and the chosen section's
@@ -133,6 +136,7 @@ export function SettingsView({
   onRunSetup,
   update,
   onShowCardGuide,
+  onManageReplies,
 }: SettingsViewProps) {
   const headingId = useId()
   const [chosen, setSection] = useState<SectionId>(initialSection)
@@ -346,7 +350,11 @@ export function SettingsView({
                     <CardsSection settings={settings} onSaved={onSaved} onShowCardGuide={onShowCardGuide} />
                   ))}
                 {section === 'reviewing' &&
-                  (settings === null ? loading : <ReviewingSection settings={settings} onSaved={onSaved} />)}
+                  (settings === null ? (
+                    loading
+                  ) : (
+                    <ReviewingSection settings={settings} onSaved={onSaved} onManageReplies={onManageReplies} />
+                  ))}
                 {section === 'autopilot' &&
                   (settings === null ? loading : <AutopilotSection settings={settings} onSaved={onSaved} />)}
                 {section === 'launching' &&

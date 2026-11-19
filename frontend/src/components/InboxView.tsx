@@ -538,17 +538,19 @@ export function InboxView({
 
   // What every row's controls and menu do, and the triage a sheet's header makes, each said
   // in a toast.
-  const { triage, edits, dismissIt, snoozeIt, restoreIt, changeRule, unassignOn, seen, ended } = useItemActions({
-    inbox,
-    snoozeDays,
-    onSnoozeSettings,
-    repoRules,
-    onSettingsSaved,
-    onRepoRuleSettings,
-    showToast,
-    closeToast,
-    onOpen: sheets ? openFromMenu : undefined,
-  })
+  const { triage, edits, dismissIt, snoozeIt, restoreIt, changeRule, unassignOn, seen, ended, nudgeDialog } =
+    useItemActions({
+      inbox,
+      snoozeDays,
+      onSnoozeSettings,
+      repoRules,
+      onSettingsSaved,
+      onRepoRuleSettings,
+      showToast,
+      closeToast,
+      onOpen: sheets ? openFromMenu : undefined,
+      onManageReplies,
+    })
 
   // openedItem is the item last opened in its sheet, or 0 while none is, so each opening
   // is heard once: the page shown again (Activity), or an effect run twice, opens nothing
@@ -968,6 +970,7 @@ export function InboxView({
           )}
         </Suspense>
       </LinksContext>
+      {nudgeDialog}
       <Toast toast={sheetOpen ? null : toast} seconds={toastSeconds} onClose={closeToast} />
     </div>
   )

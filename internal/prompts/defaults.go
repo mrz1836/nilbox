@@ -26,6 +26,7 @@ const (
 	DefaultSlotApproveBots    DefaultSlot = "approve_bots"
 	DefaultSlotRequestChanges DefaultSlot = "request_changes"
 	DefaultSlotComment        DefaultSlot = "comment"
+	DefaultSlotNudge          DefaultSlot = "nudge"
 )
 
 // DefaultSlots returns every default, the kinds' first, then the situations' in
@@ -63,7 +64,7 @@ func (s DefaultSlot) When() string {
 	case DefaultSlotRereview:
 		return "when you're asked to review again"
 	case DefaultSlotPR, DefaultSlotIssue, DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges,
-		DefaultSlotComment:
+		DefaultSlotComment, DefaultSlotNudge:
 		return ""
 	default:
 		return ""
@@ -79,7 +80,8 @@ func (s DefaultSlot) kind() (item.Kind, bool) {
 	case DefaultSlotIssue:
 		return item.KindIssue, true
 	case DefaultSlotChecksFailing, DefaultSlotConflicts, DefaultSlotChangesRequested, DefaultSlotRereview,
-		DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment:
+		DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment,
+		DefaultSlotNudge:
 		return "", false
 	default:
 		return "", false
@@ -110,7 +112,7 @@ func (s DefaultSlot) starter() string {
 	case DefaultSlotRereview:
 		return StarterRereview
 	case DefaultSlotPR, DefaultSlotIssue, DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges,
-		DefaultSlotComment:
+		DefaultSlotComment, DefaultSlotNudge:
 		return ""
 	default:
 		return ""
@@ -148,7 +150,8 @@ func (d DefaultPrompts) Slot(slot DefaultSlot) int64 {
 		return d.ChangesRequested
 	case DefaultSlotRereview:
 		return d.Rereview
-	case DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment:
+	case DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment,
+		DefaultSlotNudge:
 		return d.Replies.For(ReplySlot(slot))
 	default:
 		return 0
@@ -170,7 +173,8 @@ func (d *BundleDefaults) For(slot DefaultSlot) string {
 		return d.ChangesRequested
 	case DefaultSlotRereview:
 		return d.Rereview
-	case DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment:
+	case DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment,
+		DefaultSlotNudge:
 		return d.Replies[ReplySlot(slot)]
 	default:
 		return ""
@@ -192,7 +196,8 @@ func (d *BundleDefaults) Set(slot DefaultSlot, nickname string) {
 		d.ChangesRequested = nickname
 	case DefaultSlotRereview:
 		d.Rereview = nickname
-	case DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment:
+	case DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment,
+		DefaultSlotNudge:
 		d.setReply(ReplySlot(slot), nickname)
 	}
 }

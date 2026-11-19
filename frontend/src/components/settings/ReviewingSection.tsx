@@ -1,8 +1,16 @@
 import { startTransition, useActionState, useId, useState } from 'react'
 
+import { snoozeLength } from '../../lib/triage'
 import { useSettingsSave } from '../../lib/useSettingsSave'
-import { setIgnoredWorkflows, setMergeMethod, type MergeMethodSetting } from '../../platform'
-import { ErrorText, joinIds, Note, SectionIntro } from './rows'
+import {
+  setIgnoredWorkflows,
+  setMergeMethod,
+  setNudgeAfterHours,
+  setNudgeSnooze,
+  type MergeMethodSetting,
+} from '../../platform'
+import { Segmented, type SegmentOption } from '../controls'
+import { ChoiceRow, ErrorText, Group, joinIds, Note, SectionIntro, SwitchRow } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
 
@@ -40,15 +48,60 @@ const mergeChoices: readonly { value: MergeMethodSetting; label: string; descrip
   },
 ]
 
+// nudgeHours are the quiet times Offer a nudge after offers, in hours: 0 offers none.
+const nudgeHours: readonly number[] = [0, 12, 24, 48, 72, 168]
+
+// nudgeWords name a quiet time, short for the segmented control ("1 day") or long for its
+// title ("after a day of quiet").
+function nudgeWords(hours: number): { label: string; title: string } {
+  if (hours === 0) {
+    return { label: 'Off', title: 'Never offer a nudge' }
+  }
+
+  const label =
+    hours % 168 === 0
+      ? hours === 168
+        ? '1 week'
+        : `${String(hours / 168)} weeks`
+      : hours % 24 === 0
+        ? hours === 24
+          ? '1 day'
+          : `${String(hours / 24)} days`
+        : hours === 1
+          ? '1 hour'
+          : `${String(hours)} hours`
+
+  return { label, title: `Offer a nudge once it has been quiet for ${label}` }
+}
+
+// nudgeOptions are the segmented control's choices: the usual quiet times, and the stored
+// one when it is none of them, as a backup can bring.
+function nudgeOptions(stored: number): SegmentOption<string>[] {
+  const hours = nudgeHours.includes(stored) ? nudgeHours : [...nudgeHours, stored].sort((a, b) => a - b)
+
+  return hours.map((n) => ({ value: String(n), ...nudgeWords(n) }))
+}
+
+export interface ReviewingSectionProps extends SectionProps {
+  // onManageReplies opens the review replies in the Prompts tab, from the nudges' note;
+  // without it the note names the place alone.
+  onManageReplies?: (() => void) | undefined
+}
+
 // ReviewingSection holds how the review sheet merges a pull request, saved as soon as it
-// is chosen, the workflows whose held runs never count (Ignored workflows), each change
-// stored as it is made, and points at where the review replies are kept.
-export function ReviewingSection({ settings: stored, onSaved }: SectionProps) {
+// is chosen, when a pull request waiting on its author offers a nudge and whether a nudge
+// snoozes it, each saved as soon as it is chosen, the workflows whose held runs never count
+// (Ignored workflows), each change stored as it is made, and points at where the review
+// replies are kept.
+export function ReviewingSection({ settings: stored, onSaved, onManageReplies }: ReviewingSectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
-  // error is why the last choice of a merge method was refused; a refused ignored workflow
-  // shows its own.
+  // error is why the last choice of a merge method was refused, and nudgeError and
+  // snoozeError why the last change of Offer a nudge after and of Snooze after a nudge was;
+  // a refused ignored workflow shows its own.
   const [error, setError] = useState('')
+  const [nudgeError, setNudgeError] = useState('')
+  const [snoozeError, setSnoozeError] = useState('')
   const [draft, setDraft] = useState('')
   // invalid is why the draft cannot be added, found before asking the backend.
   const [invalid, setInvalid] = useState<Refusal>(noRefusal)
@@ -79,6 +132,24 @@ export function ReviewingSection({ settings: stored, onSaved }: SectionProps) {
     const result = await save({ mergeMethod }, () => setMergeMethod(mergeMethod))
 
     setError(result.ok ? '' : result.error)
+  }
+
+  const chooseNudge = async (value: string) => {
+    const nudgeAfterHours = Number(value)
+
+    setNudgeError('')
+
+    const result = await save({ nudgeAfterHours }, () => setNudgeAfterHours(nudgeAfterHours))
+
+    setNudgeError(result.ok ? '' : result.error)
+  }
+
+  const chooseSnooze = async (nudgeSnooze: boolean) => {
+    setSnoozeError('')
+
+    const result = await save({ nudgeSnooze }, () => setNudgeSnooze(nudgeSnooze))
+
+    setSnoozeError(result.ok ? '' : result.error)
   }
 
   // store replaces the ignored workflows.
@@ -150,6 +221,51 @@ export function ReviewingSection({ settings: stored, onSaved }: SectionProps) {
           A repository that doesn’t allow the method you choose merges the way it offers first.
         </Note>
       </div>
+      <section aria-labelledby={`${id}-nudges`} className="flex flex-col gap-3">
+        <SectionIntro id={`${id}-nudges`} title="Nudges">
+          When a pull request you requested changes on goes quiet, its card offers <em>Nudge</em>: a comment asking its
+          author how it is going, which you read before it is posted.
+        </SectionIntro>
+        <Group>
+          <ChoiceRow
+            label="Offer a nudge after"
+            description="How long it has to be quiet: any push, comment, or review starts the wait again, and so does your nudge. Never for a bot’s pull request."
+            error={nudgeError}
+            errorId={`${id}-nudge-error`}
+          >
+            <Segmented
+              label="Offer a nudge after"
+              value={String(settings.nudgeAfterHours)}
+              options={nudgeOptions(settings.nudgeAfterHours)}
+              describedBy={joinIds(nudgeError !== '' && `${id}-nudge-error`)}
+              onChange={(value) => {
+                void chooseNudge(value)
+              }}
+            />
+          </ChoiceRow>
+          <SwitchRow
+            label="Snooze after a nudge"
+            controlId={`${id}-nudge-snooze`}
+            description={`Start each nudge with “Then snooze for ${snoozeLength(settings.snoozeDays)}” ticked. The pull request comes back early when its author pushes.`}
+            error={snoozeError}
+            checked={settings.nudgeSnooze}
+            onChange={(on) => {
+              void chooseSnooze(on)
+            }}
+          />
+        </Group>
+        <Note>
+          The comment starts from your <strong className="font-semibold text-text">Nudge</strong> reply in{' '}
+          {onManageReplies === undefined ? (
+            <span className="text-text">Prompts › Review replies</span>
+          ) : (
+            <button type="button" onClick={onManageReplies} className="text-accent hover:underline">
+              Prompts › Review replies
+            </button>
+          )}
+          .
+        </Note>
+      </section>
       <section aria-labelledby={`${id}-ignored`} className="flex flex-col gap-3">
         <SectionIntro id={`${id}-ignored`} title="Ignored workflows">
           Workflows whose runs, held for approval, never count toward where a pull request stands, even when GitHub
@@ -177,7 +293,7 @@ export function ReviewingSection({ settings: stored, onSaved }: SectionProps) {
         <Note id={`${id}-names`}>A name matches a workflow’s whole name, case and all.</Note>
       </section>
       <SectionIntro title="Review replies">
-        Reply templates for approvals, requests for changes, and comments live in{' '}
+        Reply templates for approvals, requests for changes, comments, and nudges live in{' '}
         <span className="text-text">Prompts → Review replies</span>.
       </SectionIntro>
     </div>

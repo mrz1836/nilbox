@@ -2,7 +2,10 @@ package prompts
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -225,6 +228,87 @@ func TestSetReplyDefault(t *testing.T) {
 	assert.Equal(t, []ReplySlot{SlotApprove, SlotApproveBots}, byNickname(t, s, "LGTM").Usage.Replies)
 
 	require.ErrorIs(t, s.SetDefault(ctx, item.KindPR, lgtm.ID), ErrNotAgentPrompt, "a reply is never a launch's default")
+
+	// A nudge posts a comment on a pull request, so its default is a comment reply for pull
+	// requests, and no other.
+	require.ErrorIs(t, s.SetReplyDefault(ctx, SlotNudge, lgtm.ID), ErrNotReply, "an approval can't be a nudge")
+	require.ErrorIs(t, s.SetReplyDefault(ctx, SlotNudge, review.ID), ErrNotReply, "an agent prompt is no reply")
+	require.ErrorIs(t, s.SetReplyDefault(ctx, SlotNudge, byNickname(t, s, "Needs repro").ID), ErrWrongKind,
+		"a comment reply for issues can't be a nudge")
+	require.NoError(t, s.SetReplyDefault(ctx, SlotNudge, question.ID))
+
+	defaults, err = s.Defaults(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, question.ID, defaults.Replies.Nudge)
+	assert.Equal(t, question.ID, defaults.Replies.For(SlotNudge))
+	assert.Equal(t, []ReplySlot{SlotNudge}, byNickname(t, s, "Question").Usage.Replies)
+	assert.Empty(t, byNickname(t, s, "Nudge").Usage.Replies, "the starter is no longer the default")
+}
+
+// TestSeedAddsTheNudgeReplyToAnOlderLibrary checks a library seeded by a build before
+// nudges: the next Seed adds the Nudge starter and makes it the nudge's default, and one
+// whose nudge already has a default keeps it.
+func TestSeedAddsTheNudgeReplyToAnOlderLibrary(t *testing.T) {
+	t.Parallel()
+
+	older := func(t *testing.T) *Service {
+		t.Helper()
+
+		s, _ := seeded(t, nil)
+		ctx := t.Context()
+
+		require.NoError(t, s.Delete(ctx, byNickname(t, s, "Nudge").ID))
+
+		keys, err := s.store.seeded(ctx)
+		require.NoError(t, err)
+		require.NoError(t, s.store.setSeeded(ctx, slices.DeleteFunc(slices.Clone(keys), func(k string) bool {
+			return k == StarterReplyNudge
+		})))
+
+		defaults, err := s.Defaults(ctx)
+		require.NoError(t, err)
+		require.Zero(t, defaults.Replies.Nudge, "the older library has no nudge")
+
+		return s
+	}
+
+	t.Run("an empty slot gets the starter", func(t *testing.T) {
+		t.Parallel()
+
+		s := older(t)
+		ctx := t.Context()
+
+		require.NoError(t, Seed(ctx, s.store))
+
+		nudge := byNickname(t, s, "Nudge")
+		assert.Equal(t, StarterReplyNudge, nudge.StarterKey)
+		assert.True(t, nudge.IsReply())
+		assert.Equal(t, ReplyComment, nudge.ReplyAction)
+		assert.Equal(t, AppliesToPR, nudge.AppliesTo)
+		assert.Equal(t, []ReplySlot{SlotNudge}, nudge.Usage.Replies)
+
+		defaults, err := s.Defaults(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, nudge.ID, defaults.Replies.Nudge)
+		assert.Equal(t, byNickname(t, s, "Question").ID, defaults.Replies.Comment, "the comments' default stays")
+	})
+
+	t.Run("a slot with a default keeps it", func(t *testing.T) {
+		t.Parallel()
+
+		s := older(t)
+		ctx := t.Context()
+		question := byNickname(t, s, "Question")
+
+		require.NoError(t, s.SetReplyDefault(ctx, SlotNudge, question.ID))
+		require.NoError(t, Seed(ctx, s.store))
+
+		assert.Equal(t, StarterReplyNudge, byNickname(t, s, "Nudge").StarterKey, "the starter is added all the same")
+
+		defaults, err := s.Defaults(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, question.ID, defaults.Replies.Nudge)
+	})
 }
 
 func TestDeletingADefaultReplyLeavesItsReviewsWithNone(t *testing.T) {
@@ -302,6 +386,8 @@ func TestStarterRepliesFillIn(t *testing.T) {
 	assert.Equal(t, "Reviewed the major update of `eslint` to v9. All checks pass. Approved.\n", fill("Update OK", renovate))
 
 	assert.Equal(t, "Reviewed and approved. Thanks for the work on this, @octo-user!\n", fill("LGTM", Sample(item.KindPR)))
+	assert.Equal(t, "Hi @octo-user, just checking in on the changes requested here. Is anything unclear, "+
+		"or anything blocking you? Happy to help.\n", fill("Nudge", Sample(item.KindPR)))
 
 	// A starter reply that fills a slot fills one of its own review; one for issues fills none, since no
 	// review's default can be for issues.
@@ -322,10 +408,12 @@ func TestReplySlotWords(t *testing.T) {
 	assert.Equal(t, ReplyApprove, SlotApproveBots.Action())
 	assert.Equal(t, ReplyRequestChanges, SlotRequestChanges.Action())
 	assert.Equal(t, ReplyComment, SlotComment.Action())
+	assert.Equal(t, ReplyComment, SlotNudge.Action(), "a nudge is a comment")
 	assert.Empty(t, ReplySlot("x").Action())
 
 	for slot, words := range map[ReplySlot]string{
 		SlotApprove: "approvals", SlotApproveBots: "bots", SlotRequestChanges: "changes", SlotComment: "comments",
+		SlotNudge: "nudges",
 	} {
 		assert.Contains(t, slot.describe(), words)
 	}
@@ -382,6 +470,20 @@ func TestBundleCarriesReplies(t *testing.T) {
 	defaults, err := dst.Defaults(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, restored.ID, defaults.Replies.Approve, "the default replies come back")
+	assert.Equal(t, byNickname(t, dst, "Nudge").ID, defaults.Replies.Nudge, "the nudge's default comes back")
+	assert.Equal(t, "Nudge", b.Defaults.Replies[SlotNudge], "the file names the nudge's default")
+
+	raw, err := os.ReadFile(path) //nolint:gosec // the test's own temporary file
+	require.NoError(t, err)
+
+	var file struct {
+		Defaults struct {
+			Replies map[string]string `json:"replies"`
+		} `json:"defaults"`
+	}
+
+	require.NoError(t, json.Unmarshal(raw, &file))
+	assert.Equal(t, "Nudge", file.Defaults.Replies["nudge"], "under the slot's own key")
 }
 
 func TestImportReadsAnOlderFileAsAgentPrompts(t *testing.T) {

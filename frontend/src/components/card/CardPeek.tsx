@@ -5,6 +5,7 @@ import { CardPrefsContext } from '../../lib/cardPrefs'
 import { counted, formatCount } from '../../lib/format'
 import { agentName } from '../../lib/launch'
 import type { Step, Verb } from '../../lib/nextStep'
+import { nudgeable } from '../../lib/nudge'
 import { sensitiveCount } from '../../lib/sensitive'
 import { setupWords, sinceWhen, stateLabel, stateText } from '../../lib/sessions'
 import { checksSignal, sizeOf } from '../../lib/signals'
@@ -476,6 +477,9 @@ export interface CardPeekProps {
   agents: readonly AgentInfo[]
   triage?: TriageActions | undefined
   onOpen?: ((item: InboxItem, tab: TriageTab) => void) | undefined
+  // onNudge opens the Nudge dialog for a pull request waiting on its author; without it
+  // the peek offers no nudge.
+  onNudge?: ((item: InboxItem) => void) | undefined
   onFilterBy?: ((key: string, value: string) => void) | undefined
   // launch is the agent's button that opens the launch options (LaunchControls' card
   // variant hands it over), or null while the launch settings load.
@@ -491,8 +495,9 @@ export interface CardPeekProps {
 // here, every label), as three columns that become two, then one, as the list narrows; an
 // area with nothing to say is left out. Its action bar
 // repeats the primary, offers Review or Read beside a primary that doesn't open the item,
-// the agent's launch options, the triage actions, GitHub, and, while Settings → Cards'
-// Unread dots is on, Mark as read or Mark as unread.
+// Nudge for a pull request waiting on its author whose primary isn't Nudge already, however
+// long it has been quiet, the agent's launch options, the triage actions, GitHub, and,
+// while Settings → Cards' Unread dots is on, Mark as read or Mark as unread.
 export function CardPeek({
   id,
   item,
@@ -503,6 +508,7 @@ export function CardPeek({
   agents,
   triage,
   onOpen,
+  onNudge,
   onFilterBy,
   launch,
 }: CardPeekProps) {
@@ -538,11 +544,24 @@ export function CardPeek({
           agents={agents}
           triage={triage}
           onOpen={onOpen}
+          onNudge={onNudge}
           onError={setError}
         />
         {!opensIt.includes(step.primary) && (
           <button type="button" onClick={open} className={buttonClass}>
             {isPR ? 'Review' : 'Read'}
+          </button>
+        )}
+        {onNudge !== undefined && step.primary !== 'nudge' && nudgeable(item) && (
+          <button
+            type="button"
+            title={`Ask @${item.author} about the changes you requested, in a comment you see before it’s posted`}
+            onClick={() => {
+              onNudge(item)
+            }}
+            className={buttonClass}
+          >
+            Nudge
           </button>
         )}
         {launch}

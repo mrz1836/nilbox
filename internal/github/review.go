@@ -186,8 +186,9 @@ func (c *Client) ApproveWorkflowRun(ctx context.Context, tok Token, name repo.Na
 
 // AddComment adds a comment to the conversation of the pull request or issue ref, with
 // one REST request (POST /repos/{owner}/{repo}/issues/{number}/comments). The review sheet
-// uses it only to ask Dependabot to rebase, and the issue sheet for the user's comment,
-// whose refusals are worded as a comment's (commentError).
+// uses it only to ask Dependabot to rebase, the issue sheet for the user's comment, and the
+// inbox for a nudge of a pull request's author, whose refusals are worded as a comment's
+// (commentError).
 func (c *Client) AddComment(ctx context.Context, tok Token, ref item.Ref, body string) (*Comment, error) {
 	comment, err := c.addComment(ctx, tok, ref, body)
 
