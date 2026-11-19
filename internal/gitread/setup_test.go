@@ -21,6 +21,24 @@ import (
 // on is git's word for a switch turned on.
 const on = "true"
 
+// setupRepos are the origin, clone, and global config setupClone makes, built once for
+// the test binary by buildSetup and copied into each test that asks for them.
+var setupRepos = testutil.NewGitTemplate(buildSetup) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildSetup builds origin.git, a bare repository on main; clone, a repository on main
+// with no commits whose origin is origin.git over file://; and global.gitconfig, which
+// names Git LFS's driver.
+func buildSetup(b *testutil.GitBuild) struct{} {
+	origin := filepath.Join(b.Root, "origin.git")
+
+	b.WriteFile("global.gitconfig", "[filter \"lfs\"]\n\tprocess = git-lfs filter-process\n")
+	b.Git(".", "-c", "init.defaultBranch=main", "init", "-q", "--bare", origin)
+	b.Git(".", "-c", "init.defaultBranch=main", "init", "-q", "clone")
+	b.Git("clone", "remote", "add", "origin", "file://"+filepath.ToSlash(origin))
+
+	return struct{}{}
+}
+
 // setupClone is a clone of a local bare origin reached over file://, with git isolated
 // from the user's configuration but for a global config of the user's own, at global, that
 // names Git LFS's driver; env is git's environment.
@@ -29,16 +47,46 @@ func setupClone(t *testing.T) (dir, global string, env []string) {
 
 	env = testutil.Git(t)
 	root := t.TempDir()
-	origin := filepath.Join(root, "origin.git")
-	dir = filepath.Join(root, "clone")
-	global = filepath.Join(root, "global.gitconfig")
+	setupRepos.Copy(t, root)
 
-	require.NoError(t, os.WriteFile(global, []byte("[filter \"lfs\"]\n\tprocess = git-lfs filter-process\n"), 0o600))
-	testutil.RunGit(t, root, "-c", "init.defaultBranch=main", "init", "-q", "--bare", origin)
-	testutil.InitRepo(t, dir)
-	testutil.RunGit(t, dir, "remote", "add", "origin", "file://"+filepath.ToSlash(origin))
+	dir, global = filepath.Join(root, "clone"), filepath.Join(root, "global.gitconfig")
 
 	return dir, global, append(env, "GIT_CONFIG_GLOBAL="+global)
+}
+
+// setConfig sets each of settings, a key and its value, in the clone at dir's own config,
+// as one `git config <key> <value>` each would, by adding them to the end of its
+// .git/config, so a test that sets many runs no git to do it. A key is
+// <section>[.<subsection>].<name>; the value and subsection are written quoted.
+func setConfig(t *testing.T, dir string, settings ...[2]string) {
+	t.Helper()
+
+	var b strings.Builder
+
+	for _, kv := range settings {
+		dot, last := strings.IndexByte(kv[0], '.'), strings.LastIndexByte(kv[0], '.')
+		require.Positive(t, dot, "a config key has a section: %q", kv[0])
+
+		b.WriteString("[" + kv[0][:dot])
+
+		if last > dot {
+			b.WriteString(" " + configQuote(kv[0][dot+1:last]))
+		}
+
+		b.WriteString("]\n\t" + kv[0][last+1:] + " = " + configQuote(kv[1]) + "\n")
+	}
+
+	f, err := os.OpenFile(filepath.Join(dir, ".git", "config"), os.O_APPEND|os.O_WRONLY, 0) //nolint:gosec // the test's own clone
+	require.NoError(t, err)
+
+	_, err = f.WriteString(b.String())
+	require.NoError(t, errors.Join(err, f.Close()))
+}
+
+// configQuote quotes s as a git config file holds a value or a subsection: in double
+// quotes, with each backslash and double quote escaped.
+func configQuote(s string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
 }
 
 // configOf returns the settings env passes git through GIT_CONFIG_COUNT, key=value each.
@@ -305,7 +353,7 @@ func TestSetupRefusesTheClonesOwnSettingsBeforeAnythingRuns(t *testing.T) {
 			dir, _, env := setupClone(t)
 			g := New(Config{Env: func() []string { return env }})
 
-			testutil.RunGit(t, dir, "config", s[0], s[1])
+			setConfig(t, dir, [2]string{s[0], s[1]})
 
 			for name, setup := range map[string]func() (Setup, error){
 				"fetch":    func() (Setup, error) { return g.RemoteSetup(t.Context(), dir) },
@@ -355,7 +403,7 @@ func TestSetupAllowsWhatGitAndItsToolsWrite(t *testing.T) {
 	dir, _, env := setupClone(t)
 	g := New(Config{Env: func() []string { return env }})
 
-	for _, kv := range [][2]string{
+	setConfig(t, dir, [][2]string{
 		{"remote.upstream.url", "https://example.invalid/acme-org/example-repo.git"},
 		{"remote.upstream.fetch", "+refs/heads/*:refs/remotes/upstream/*"},
 		{"remote.upstream.gh-resolved", "base"},
@@ -375,9 +423,7 @@ func TestSetupAllowsWhatGitAndItsToolsWrite(t *testing.T) {
 		{"core.hooksPath", ".husky/_"},
 		{"log.excludeDecoration", "refs/prefetch/"},
 		{"pull.rebase", on},
-	} {
-		testutil.RunGit(t, dir, "config", kv[0], kv[1])
-	}
+	}...)
 
 	setup, err := g.RemoteSetup(t.Context(), dir)
 	require.NoError(t, err)
@@ -436,7 +482,7 @@ func TestSetupAllowsGitsManyFilesMode(t *testing.T) {
 			dir, _, env := setupClone(t)
 			g := New(Config{Env: func() []string { return env }})
 
-			testutil.RunGit(t, dir, "config", kv[0], kv[1])
+			setConfig(t, dir, kv)
 
 			for name, run := range guardedRuns(t, g, dir) {
 				require.NoError(t, run(), "%s: %s=%s", name, kv[0], kv[1])
@@ -462,11 +508,7 @@ func TestGitsManyFilesModeAllowsNothingElse(t *testing.T) {
 			dir, _, env := setupClone(t)
 			g := New(Config{Env: func() []string { return env }})
 
-			for _, kv := range manyFilesSettings() {
-				testutil.RunGit(t, dir, "config", kv[0], kv[1])
-			}
-
-			testutil.RunGit(t, dir, "config", s[0], s[1])
+			setConfig(t, dir, append(manyFilesSettings(), [2]string{s[0], s[1]})...)
 
 			for name, run := range guardedRuns(t, g, dir) {
 				err := run()
@@ -591,17 +633,16 @@ func TestLocalSetup(t *testing.T) {
 	dir, _, env := setupClone(t)
 	g := New(Config{Env: func() []string { return env }})
 
-	testutil.RunGit(t, dir, "config", "filter.lfs.process", "git-lfs filter-process")
+	setConfig(t, dir, [][2]string{
+		{"filter.lfs.process", "git-lfs filter-process"},
 
-	for _, kv := range [][2]string{
+		// What users and their tools write, which refuses nothing.
 		{"push.default", "simple"},
 		{"rebase.autoStash", on},
 		{"status.short", on},
 		{"gitflow.branch.master", "main"},
 		{"init.defaultBranch", "main"},
-	} {
-		testutil.RunGit(t, dir, "config", kv[0], kv[1]) // what users and their tools write, which refuses nothing
-	}
+	}...)
 
 	local, err := g.LocalSetup(t.Context(), dir)
 	require.NoError(t, err)
@@ -743,20 +784,19 @@ func transportClone(t *testing.T) (dir string, env []string) {
 	t.Helper()
 
 	dir, _, env = setupClone(t)
-	origin := strings.TrimSpace(testutil.RunGit(t, dir, "remote", "get-url", "origin"))
+	origin := "file://" + filepath.ToSlash(filepath.Join(filepath.Dir(dir), "origin.git"))
 
-	for _, kv := range [][2]string{
+	// remote.origin.url is already set, so git itself replaces it.
+	testutil.RunGit(t, dir, "config", "remote.origin.url", "https://example.invalid/acme-org/example-repo.git")
+	setConfig(t, dir, [][2]string{
 		{"core.sshCommand", "evil-ssh"},
 		{"core.askPass", "evil-askpass"},
 		{"credential.helper", "!evil-helper"},
 		{"url." + origin + ".insteadOf", "https://example.invalid/acme-org/example-repo.git"},
-		{"remote.origin.url", "https://example.invalid/acme-org/example-repo.git"},
 		{"http.cookieFile", filepath.Join(t.TempDir(), "cookies")},
 		{"http.postBuffer", "524288000"},
 		{"protocol.version", "2"},
-	} {
-		testutil.RunGit(t, dir, "config", kv[0], kv[1])
-	}
+	}...)
 
 	return dir, env
 }
@@ -844,6 +884,25 @@ func TestTheSetupsGitIsTheOneGitFinderFinds(t *testing.T) {
 	assert.Equal(t, found, setup.Git)
 }
 
+// bloblessRepos are the repositories blobless makes, built once for the test binary by
+// buildBlobless and copied into each test that asks for them.
+var bloblessRepos = testutil.NewGitTemplate(buildBlobless) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildBlobless builds src, a repository whose one commit holds a.txt; origin.git, its
+// bare clone, which lets clones filter; and clone, a blobless partial clone of origin.git
+// over file://, never checked out.
+func buildBlobless(b *testutil.GitBuild) struct{} {
+	src, origin := filepath.Join(b.Root, "src"), filepath.Join(b.Root, "origin.git")
+
+	b.Git(".", "-c", "init.defaultBranch=main", "init", "-q", src)
+	b.Commit("src", "a.txt", "a\n")
+	b.Git(".", "clone", "-q", "--bare", src, origin)
+	b.Git("origin.git", "config", "uploadpack.allowFilter", on)
+	b.Git(".", "clone", "-q", "--filter=blob:none", "--no-checkout", "file://"+filepath.ToSlash(origin), "clone")
+
+	return struct{}{}
+}
+
 // blobless returns a blobless partial clone of a local bare origin over file:// that lets
 // clones filter, and git's environment.
 func blobless(t *testing.T) (dir string, env []string) {
@@ -851,16 +910,9 @@ func blobless(t *testing.T) (dir string, env []string) {
 
 	env = testutil.Git(t)
 	root := t.TempDir()
-	src, origin := filepath.Join(root, "src"), filepath.Join(root, "origin.git")
-	dir = filepath.Join(root, "clone")
+	bloblessRepos.Copy(t, root)
 
-	testutil.InitRepo(t, src)
-	testutil.Commit(t, src, "a.txt", "a\n")
-	testutil.RunGit(t, root, "clone", "-q", "--bare", src, origin)
-	testutil.RunGit(t, origin, "config", "uploadpack.allowFilter", on)
-	testutil.RunGit(t, root, "clone", "-q", "--filter=blob:none", "--no-checkout", "file://"+filepath.ToSlash(origin), dir)
-
-	return dir, env
+	return filepath.Join(root, "clone"), env
 }
 
 func TestAPartialClonesSetupMayFetchFromItsPromisor(t *testing.T) {
