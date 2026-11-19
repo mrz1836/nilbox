@@ -463,6 +463,21 @@ fragment is shared, a card's own read and the issue sheet's view read them too. 
 stores them as one JSON object, `item_details.issue_info` (migration `0104_issue_info`), and the card's
 peek shows them as **The issue**, in the column a pull request's change takes.
 
+**An issue's closing pull requests.** The issue's part of the fragment also reads the first
+five open or merged pull requests that close it once they merge (`closingPullsField`,
+GitHub's `closedByPullRequestsReferences`, aliased `linkedPulls` so it never meets the issue
+sheet's own `fixes`, which take other arguments), each with who opened it and whether its
+branch is in a fork. Measured in November 2026, it leaves a batch's price where it was (1
+point for 25 issues, 2 with the projects); the same link read on a pull request's side
+(`closingIssuesReferences`) would cost a point more a batch, so it is read on the issue's side
+alone. The inbox stores them in `item_details.closing_pulls` (migration `0105_closing_pulls`),
+with the author, and decides each one's trust as the snapshot is built, with the trust
+policy of the moment: the user's own, or one the policy trusts (a fork's never is). In the
+window, `lib/cardLinks` indexes the lists: an issue's card links to its closing pull
+requests, and a pull request's card finds the listed issues that name it, so a pull
+request's own read asks for nothing. A trusted fix turns an issue's story to **Fix in
+progress** or **Fix merged** (`nextStep`); an untrusted one only links.
+
 ## internal/inbox
 
 These notes cover what the inbox does for Autopilot: the routines' searches, which each

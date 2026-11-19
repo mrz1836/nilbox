@@ -386,6 +386,37 @@ func storedIssueInfoOf(info github.IssueInfo) storedIssueInfo {
 	return stored
 }
 
+// storedClosingPull is a pull request that closes an issue, as the closing_pulls column of
+// item_details stores it (see 0105_closing_pulls): with who opened it, so its trust is
+// decided as the card is drawn, under the trusted bots of the time.
+type storedClosingPull struct {
+	Repo              string `json:"repo"`
+	Number            int    `json:"number"`
+	Title             string `json:"title"`
+	URL               string `json:"url"`
+	Merged            bool   `json:"merged"`
+	Draft             bool   `json:"draft"`
+	AuthorLogin       string `json:"authorLogin"`
+	AuthorType        string `json:"authorType"`
+	AuthorAssociation string `json:"authorAssociation"`
+	Fork              bool   `json:"fork"`
+}
+
+// storedClosingPullsOf converts an issue's fetched closing pull requests for storing; never
+// nil, so the column always holds an array.
+func storedClosingPullsOf(pulls []github.ClosingPull) []storedClosingPull {
+	out := make([]storedClosingPull, 0, len(pulls))
+	for _, p := range pulls {
+		out = append(out, storedClosingPull{
+			Repo: p.Repo, Number: p.Number, Title: p.Title, URL: p.URL, Merged: p.Merged, Draft: p.IsDraft,
+			AuthorLogin: p.AuthorLogin, AuthorType: p.AuthorType, AuthorAssociation: p.AuthorAssociation,
+			Fork: p.IsCrossRepository,
+		})
+	}
+
+	return out
+}
+
 // detailsRow converts fetched details to their row.
 func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.UpsertDetailsParams, error) {
 	labels := make([]storedLabel, 0, len(d.Labels))
@@ -428,6 +459,11 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		return queries.UpsertDetailsParams{}, err
 	}
 
+	encodedClosingPulls, err := store.EncodeJSON(storedClosingPullsOf(d.ClosingPulls))
+	if err != nil {
+		return queries.UpsertDetailsParams{}, err
+	}
+
 	return queries.UpsertDetailsParams{
 		ItemID:                 itemID,
 		Labels:                 encodedLabels,
@@ -461,6 +497,7 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		AutoMergeMethod:        d.AutoMerge.Method,
 		AutoMergeAt:            autoMergeAt(d.AutoMerge),
 		IssueInfo:              encodedIssueInfo,
+		ClosingPulls:           encodedClosingPulls,
 		FetchedAt:              now,
 	}, nil
 }
