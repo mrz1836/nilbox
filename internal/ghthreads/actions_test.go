@@ -10,6 +10,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/threadrules"
 )
 
@@ -212,4 +213,93 @@ func TestPreviewCountsWithAutoOff(t *testing.T) {
 	assert.Zero(t, preview.Count)
 	assert.NotNil(t, preview.Repos)
 	assert.NotNil(t, preview.Held)
+}
+
+func TestPreviewLeavesOutAThreadWhoseClearIsQueued(t *testing.T) {
+	t.Parallel()
+
+	r := heldClear(t)
+
+	preview, err := r.svc.Preview(t.Context())
+	require.NoError(t, err)
+	assert.Zero(t, preview.Count, "its clear is on its way already")
+	assert.Empty(t, preview.Held)
+
+	snap := r.snapshot()
+	require.Len(t, snap.Queued, 1, "the snapshot's queue shows it instead")
+	assert.Equal(t, firstID, snap.Queued[0].ThreadID)
+}
+
+func TestTheSheetsActionsSayWhatFailed(t *testing.T) {
+	t.Parallel()
+
+	const refuseUpdate = `CREATE TRIGGER refused BEFORE UPDATE ON gh_thread_clears
+		BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`
+
+	// preview, clearThread, clearItem, and keep are the sheet's actions, each on the rig's one
+	// thread or its queued clear.
+	preview := func(r *rig) error {
+		_, err := r.svc.Preview(r.t.Context())
+		return err
+	}
+	clearThread := func(r *rig) error {
+		_, err := r.svc.Clear(r.t.Context(), []int64{firstID})
+		return err
+	}
+	clearItem := func(r *rig) error {
+		_, err := r.svc.ClearItem(r.t.Context(), owner, exampleRepo, 1)
+		return err
+	}
+	keep := func(r *rig) error {
+		_, err := r.svc.Keep(r.t.Context(), []int64{r.ledger()[0].id})
+		return err
+	}
+
+	tests := []struct {
+		name  string
+		sql   string
+		call  func(r *rig) error
+		words string
+	}{
+		{name: "preview, the mirror gone", sql: `DROP TABLE gh_threads`, call: preview, words: "read the GitHub notifications to clear"},
+		{name: "clear, the mirror gone", sql: `DROP TABLE gh_threads`, call: clearThread, words: "read a GitHub notification to clear"},
+		{name: "clear an item, the mirror gone", sql: `DROP TABLE gh_threads`, call: clearItem, words: "read the GitHub notifications to clear"},
+		{name: "clear, refused", sql: refuseUpdate, call: clearThread, words: "queue a GitHub notification's clear"},
+		{name: "keep, refused", sql: refuseUpdate, call: keep, words: "keep the GitHub notifications"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := heldClear(t)
+			testutil.Exec(t, r.db, tt.sql)
+
+			require.ErrorContains(t, tt.call(r), tt.words)
+			assertNoRequests(t, r.gh.requests(), "nothing is sent")
+			queuedOnly(t, r, "the clear is left as it was, held")
+			assert.True(t, r.ledger()[0].sendAfter.Equal(start.Add(MinHold)))
+		})
+	}
+
+	t.Run("the rules unreadable", func(t *testing.T) {
+		t.Parallel()
+
+		r := heldClear(t)
+		r.rules.fail(errRulesUnread)
+
+		require.ErrorIs(t, preview(r), errRulesUnread)
+		require.ErrorIs(t, clearThread(r), errRulesUnread)
+		queuedOnly(t, r, "the clear is left as it was")
+	})
+
+	t.Run("clear, the ledger gone", func(t *testing.T) {
+		t.Parallel()
+
+		r := heldClear(t)
+		testutil.Exec(t, r.db, `DROP TABLE gh_thread_clears`)
+
+		require.ErrorContains(t, clearThread(r), "read the cleared GitHub notifications")
+		assertNoRequests(t, r.gh.requests(), "nothing is sent")
+	})
 }

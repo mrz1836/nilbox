@@ -244,6 +244,30 @@ func TestMarkRefusedSaysWhyAndKeepsWhatWentBefore(t *testing.T) {
 			setUp: func(r *rig) { r.gh.viewer = otherLogin },
 			says:  "Your GitHub token is for another account now. Check again to read its notifications.",
 		},
+		{
+			name: "the token's account can't be learned",
+			setUp: func(r *rig) {
+				r.tokens.Swap("another-test-token-not-real")
+				r.gh.viewerStatus = http.StatusBadGateway
+			},
+			says: "Check the signed-in account:",
+		},
+		{
+			name: "a client with no chore lane",
+			setUp: func(r *rig) {
+				r.gh.gate = nil
+				r.restart()
+			},
+			says: "Notifications can't be changed on GitHub from here.",
+		},
+		{
+			name: "GitHub took it, the mirror refused it",
+			setUp: func(r *rig) {
+				testutil.Exec(r.t, r.db, `CREATE TRIGGER refused BEFORE DELETE ON gh_threads
+					BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
+			},
+			says: "Record the marked GitHub notifications:",
+		},
 	}
 
 	for _, tt := range tests {
@@ -260,6 +284,53 @@ func TestMarkRefusedSaysWhyAndKeepsWhatWentBefore(t *testing.T) {
 			assert.Empty(t, r.events.All())
 		})
 	}
+}
+
+func TestMarkReadRefusedSaysItWasntMarkedRead(t *testing.T) {
+	t.Parallel()
+
+	r, _ := markRig(t, prThread(firstID, 1, start))
+	r.gh.writeStatus = http.StatusBadGateway
+
+	_, err := r.svc.MarkRead(t.Context(), []int64{firstID})
+	require.Error(t, err)
+	assert.Contains(t, uierr.Message(err), "GitHub didn't mark it read:")
+	assert.Equal(t, 1, r.snapshot().Status.Unread, "still unread")
+}
+
+func TestMarkWithTheRulesUnreadableSendsNothing(t *testing.T) {
+	t.Parallel()
+
+	r, _ := markRig(t, prThread(firstID, 1, start))
+	r.rules.fail(errRulesUnread)
+
+	_, err := r.svc.MarkDone(t.Context(), []int64{firstID})
+	require.ErrorIs(t, err, errRulesUnread)
+	assertNoRequests(t, r.gh.requests(), "whether reading is on can't be told")
+}
+
+func TestMarkDoneWhoseQueuedClearCantBeSettledKeepsBoth(t *testing.T) {
+	t.Parallel()
+
+	r := heldClear(t)
+	r.svc.paceSleep = (&waits{}).sleep
+	testutil.Exec(t, r.db, `CREATE TRIGGER refused BEFORE UPDATE ON gh_thread_clears
+		BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
+
+	_, err := r.svc.MarkDone(t.Context(), []int64{firstID})
+	require.ErrorContains(t, err, "record the marked GitHub notifications")
+	assert.Equal(t, []int64{firstID}, idsOf(ofKind(r.gh.requests(), kindDone)), "GitHub took it")
+
+	_, listed := r.row(viewerLogin, firstID)
+	assert.True(t, listed, "the mirror and the ledger change together, or neither does")
+	queuedOnly(t, r, "the clear is left queued")
+
+	// Its send finds GitHub has no such thread now, which counts as done.
+	testutil.Exec(t, r.db, `DROP TRIGGER refused`)
+	r.clock.Advance(MinHold)
+
+	assert.Equal(t, []int64{firstID}, idsOf(ofKind(r.send(), kindDone)))
+	assert.Equal(t, "sent", r.ledger()[0].state)
 }
 
 func TestMarkDoneOfAThreadGitHubNoLongerHasDropsIt(t *testing.T) {

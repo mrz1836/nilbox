@@ -311,6 +311,85 @@ func TestPassThatFailsPartwayStoresNothing(t *testing.T) {
 	assert.Equal(t, 120, r.rows(viewerLogin))
 }
 
+func TestAListingTheMirrorCantKeepStoresNothing(t *testing.T) {
+	t.Parallel()
+
+	// stored returns a rig whose first pass stored three threads, and two of another
+	// account's: one no pass listed for longer than they are kept.
+	stored := func(t *testing.T) *rig {
+		t.Helper()
+
+		r := newRig(t)
+		r.gh.set(prThreads(3, start))
+		r.mustPass()
+		otherAccountRow(t, r, firstID+10, start.Add(-OtherAccountsKept-time.Hour))
+
+		return r
+	}
+
+	tests := []struct {
+		name  string
+		setUp func(r *rig)
+		words string
+	}{
+		{
+			name: "a thread refused",
+			setUp: func(r *rig) {
+				r.gh.update(firstID+2, start.Add(time.Minute))
+				testutil.Exec(r.t, r.db, `CREATE TRIGGER refused BEFORE UPDATE ON gh_threads
+					BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
+			},
+			words: "store a GitHub notification",
+		},
+		{
+			name: "a thread done on GitHub kept",
+			setUp: func(r *rig) {
+				r.gh.remove(firstID + 1)
+				r.restart() // the first pass after a start reads every page
+				testutil.Exec(r.t, r.db, `CREATE TRIGGER refused BEFORE DELETE ON gh_threads WHEN OLD.account_login = 'octo-user'
+					BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
+			},
+			words: "drop the GitHub notifications that are done",
+		},
+		{
+			name: "another account's kept",
+			setUp: func(r *rig) {
+				r.restart()
+				testutil.Exec(r.t, r.db, `CREATE TRIGGER refused BEFORE DELETE ON gh_threads WHEN OLD.account_login = 'octo-other'
+					BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
+			},
+			words: "drop other accounts' GitHub notifications",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := stored(t)
+			before := r.state()
+
+			tt.setUp(r)
+			r.clock.Advance(5 * time.Minute)
+
+			_, err := r.pass()
+			require.ErrorContains(t, err, tt.words)
+
+			st := r.state()
+			assert.Equal(t, before.ETag, st.ETag, "the listing's ETag isn't kept")
+			assert.True(t, before.HighWater.Equal(st.HighWater), "nor its high-water mark")
+			assert.Contains(t, st.LastError, tt.words, "the failure is what the window shows")
+			assert.Equal(t, 3, r.rows(viewerLogin), "the mirror is as it was")
+			assert.Equal(t, 1, r.rows(otherLogin))
+
+			testutil.Exec(t, r.db, `DROP TRIGGER refused`)
+			r.clock.Advance(5 * time.Minute)
+			r.mustPass()
+			assert.Empty(t, r.state().LastError, "the next pass stores it")
+		})
+	}
+}
+
 func TestRefusedListingBacksOff(t *testing.T) {
 	t.Parallel()
 
