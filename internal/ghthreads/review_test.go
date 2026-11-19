@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/threadrules"
@@ -155,9 +156,14 @@ func TestAfterMomentChecksCappedPerPass(t *testing.T) {
 
 	r := commentedRig(t, MaxCommentChecks+10)
 
+	// GitHub holds the app's writes, so the clears the checks let through wait in the queue:
+	// what is under test is the checks, and sending 150 clears would only take time.
+	r.gate().refuse = budget.ErrWritesHeld
+
 	got := r.mustPass()
 	assert.Len(t, ofKind(got, "comment"), MaxCommentChecks, "150 a pass at most")
-	assert.Len(t, r.ledger(), MaxCommentChecks, "those checked clear")
+	assert.Len(t, r.ledger(), MaxCommentChecks, "those checked are queued to clear")
+	assert.Empty(t, writes(got), "held by GitHub")
 
 	r.clock.Advance(5 * time.Minute)
 
