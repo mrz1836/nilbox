@@ -344,6 +344,28 @@ func TestGroupStopAfterExitDoesNothing(t *testing.T) {
 	require.Error(t, proc.Signal(syscall.SIGTERM), "nothing is left in the group to signal")
 }
 
+func TestKillingAGroupThatIsGoneCountsAsDone(t *testing.T) {
+	t.Parallel()
+
+	proc, _ := startFake(t, t.Context(), testutil.FakeRun{})
+
+	_, err := proc.Wait()
+	require.NoError(t, err)
+
+	require.ErrorIs(t, execpath.KillGroup(proc.Pgid()), os.ErrProcessDone,
+		"a program that exited just as its context ended still succeeded")
+}
+
+func TestASignalNeverGoesToTheAppsOwnGroupNorToEveryProcess(t *testing.T) {
+	t.Parallel()
+
+	// Were 0 or -1 let through, kill(2) would signal this test's own group, or every
+	// process the user may signal, and the test would end here.
+	for _, pgid := range []int{0, -1} {
+		require.ErrorIs(t, execpath.SignalGroup(pgid, syscall.SIGKILL), syscall.ESRCH, "group %d", pgid)
+	}
+}
+
 func TestStartRefusesARelativePath(t *testing.T) {
 	t.Parallel()
 
