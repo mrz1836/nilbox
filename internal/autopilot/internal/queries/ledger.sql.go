@@ -2154,62 +2154,6 @@ func (q *Queries) ReviseRunEnd(ctx context.Context, arg ReviseRunEndParams) (int
 	return result.RowsAffected()
 }
 
-const setRunStarted = `-- name: SetRunStarted :execrows
-UPDATE autopilot_runs SET
-    status = ?1,
-    script_run_id = ?2,
-    session_id = ?3,
-    agent_session_id = ?4,
-    profile = ?5,
-    model = ?6,
-    effort = ?7,
-    clone_path = ?8,
-    worktree = ?9,
-    display_command = ?10,
-    updated_at = ?11
-WHERE id = ?12 AND status = ?13
-`
-
-type SetRunStartedParams struct {
-	Status         string
-	ScriptRunID    int64
-	SessionID      string
-	AgentSessionID string
-	Profile        string
-	Model          string
-	Effort         string
-	ClonePath      string
-	Worktree       string
-	DisplayCommand string
-	UpdatedAt      time.Time
-	ID             int64
-	Was            string
-}
-
-// SetRunStarted records what started a run: the run engine's run, the sessions, and the
-// command, while the run is still starting.
-func (q *Queries) SetRunStarted(ctx context.Context, arg SetRunStartedParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, setRunStarted,
-		arg.Status,
-		arg.ScriptRunID,
-		arg.SessionID,
-		arg.AgentSessionID,
-		arg.Profile,
-		arg.Model,
-		arg.Effort,
-		arg.ClonePath,
-		arg.Worktree,
-		arg.DisplayCommand,
-		arg.UpdatedAt,
-		arg.ID,
-		arg.Was,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
 const setRunStatus = `-- name: SetRunStatus :execrows
 UPDATE autopilot_runs SET status = ?1, updated_at = ?2
 WHERE id = ?3 AND status = ?4
