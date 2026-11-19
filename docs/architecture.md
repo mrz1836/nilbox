@@ -400,9 +400,12 @@ may import it either. `internal/github/githubtest` holds the fakes of `internal/
 suites share, which `internal/testutil` cannot hold as `internal/github` imports it: `Tokens`,
 a token source that lends in turn, fails as told, and records what it was told to forget;
 `Calls`, a fake GitHub's requests counted by name and in order; and `BadCredentials`,
-GitHub refusing the token; only tests may import it too. The repoguard guards on SQL and
-on the git verbs the app runs treat both test-support packages as they treat `_test.go`
-files.
+GitHub refusing the token; only tests may import it too.
+`internal/localrepos/localrepostest` holds the fake clone root the hooks, scripts, and
+release suites share (`Clones`: the roots, the clones listed in them, and each clone's
+origin, each read counted, failed, or hooked as a test says); only tests may import it as
+well. The repoguard guards on SQL and on the git verbs the app runs treat every
+test-support package as they treat `_test.go` files.
 
 ## internal/budget and internal/github
 
