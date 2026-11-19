@@ -23,8 +23,8 @@ const (
 func RequireGit(t testing.TB) string {
 	t.Helper()
 
-	path, err := exec.LookPath("git")
-	if err != nil {
+	path, _ := fixtureGit()
+	if path == "" {
 		t.Skip("git is not installed")
 	}
 
@@ -73,14 +73,12 @@ func Git(t testing.TB) []string {
 	return GitEnv(t.TempDir())
 }
 
-// fixtureGit is git's path and the environment every RunGit shares: GitEnv over a home
-// that is never made, so its git reads no configuration from it, and finding git and
-// copying the environment happen once per test binary rather than once per command.
+// fixtureGit is git's path, empty when git is not installed, and the environment every
+// RunGit shares: GitEnv over a home that is never made, so its git reads no configuration
+// from it. Finding git and copying the environment happen once per test binary rather
+// than once per command.
 var fixtureGit = sync.OnceValues(func() (string, []string) { //nolint:gochecknoglobals // found once for the whole test binary
-	path, err := exec.LookPath("git")
-	if err != nil {
-		return "", nil
-	}
+	path, _ := exec.LookPath("git") // no path when git is missing, which RequireGit skips on
 
 	return path, GitEnv(filepath.Join(os.TempDir(), "testutil-git-home-"+strconv.Itoa(os.Getpid())))
 })
@@ -91,10 +89,8 @@ var fixtureGit = sync.OnceValues(func() (string, []string) { //nolint:gochecknog
 func RunGit(t testing.TB, dir string, args ...string) string {
 	t.Helper()
 
-	path, env := fixtureGit()
-	if path == "" {
-		t.Skip("git is not installed")
-	}
+	path := RequireGit(t)
+	_, env := fixtureGit()
 
 	var stdout, stderr bytes.Buffer
 
