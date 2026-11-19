@@ -5,7 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -71,16 +73,34 @@ func Git(t testing.TB) []string {
 	return GitEnv(t.TempDir())
 }
 
-// RunGit runs git with args in dir, isolated as Git describes, and returns what it wrote
-// to standard output. A failure fails the test with what git wrote to standard error.
+// fixtureGit is git's path and the environment every RunGit shares: GitEnv over a home
+// that is never made, so its git reads no configuration from it, and finding git and
+// copying the environment happen once per test binary rather than once per command.
+var fixtureGit = sync.OnceValues(func() (string, []string) { //nolint:gochecknoglobals // found once for the whole test binary
+	path, err := exec.LookPath("git")
+	if err != nil {
+		return "", nil
+	}
+
+	return path, GitEnv(filepath.Join(os.TempDir(), "testutil-git-home-"+strconv.Itoa(os.Getpid())))
+})
+
+// RunGit runs git with args in dir, isolated as GitEnv describes over an empty home every
+// call shares, and returns what it wrote to standard output. It skips the test when git
+// is not installed, and a failure fails the test with what git wrote to standard error.
 func RunGit(t testing.TB, dir string, args ...string) string {
 	t.Helper()
 
+	path, env := fixtureGit()
+	if path == "" {
+		t.Skip("git is not installed")
+	}
+
 	var stdout, stderr bytes.Buffer
 
-	cmd := exec.CommandContext(t.Context(), "git", args...) //nolint:gosec // test fixture setup; argv only, no shell
+	cmd := exec.CommandContext(t.Context(), path, args...) //nolint:gosec // test fixture setup; argv only, no shell
 	cmd.Dir = dir
-	cmd.Env = Git(t)
+	cmd.Env = env
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
@@ -90,7 +110,7 @@ func RunGit(t testing.TB, dir string, args ...string) string {
 }
 
 // Commit writes content to the file name in the repository at dir, creating its
-// directory, adds it, and commits it with name as the message, isolated as Git
+// directory, adds it, and commits it with name as the message, isolated as RunGit
 // describes. It returns the new commit.
 func Commit(t testing.TB, dir, name, content string) string {
 	t.Helper()
