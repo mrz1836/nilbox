@@ -2,6 +2,8 @@ package store_test
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,6 +22,10 @@ import (
 // setPref stores value under example.key in the database at path, opened and closed.
 func setPref(t *testing.T, path, value string) {
 	t.Helper()
+
+	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+		testutil.DBFile(t, path) // migrated once per test binary, not once per test
+	}
 
 	opened, err := store.Open(t.Context(), path)
 	require.NoError(t, err)

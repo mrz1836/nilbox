@@ -60,9 +60,11 @@ func buildTemplate() (body []byte, err error) {
 	return body, nil
 }
 
-// writeTemplate creates the database file at path, which does not exist yet, and its
-// folder, as store.Open would, holding a copy of the migrated template.
-func writeTemplate(t testing.TB, path string) {
+// DBFile creates the database file at path, which does not exist yet, and its folder, as
+// store.Open would, holding a copy of a database migrated once per test binary. Code that
+// opens the database itself, such as a whole app's start, then finds it migrated rather
+// than running every migration again.
+func DBFile(t testing.TB, path string) {
 	t.Helper()
 
 	body, err := template()
@@ -96,7 +98,7 @@ func DBAt(t testing.TB, path string) *sql.DB {
 	t.Helper()
 
 	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
-		writeTemplate(t, path)
+		DBFile(t, path)
 	}
 
 	opened, err := store.Open(t.Context(), path)

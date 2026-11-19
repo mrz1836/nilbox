@@ -156,3 +156,27 @@ func TestDBAtOpensAnExistingFileAsItIs(t *testing.T) {
 	assert.Equal(t, os.FileMode(0o640), info.Mode().Perm(), "an existing file is not replaced")
 	assert.Equal(t, schemaOf(t, testutil.DB(t)), schemaOf(t, db), "the store migrates an empty file itself")
 }
+
+func TestDBFileWritesADatabaseTheStoreOpensAsMigrated(t *testing.T) {
+	t.Parallel()
+
+	testutil.SkipAsRoot(t)
+
+	path := filepath.Join(t.TempDir(), "nested", "app.db")
+	testutil.DBFile(t, path)
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(), "the database is private to the user")
+
+	opened, err := store.Open(t.Context(), path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = opened.DB.Close() })
+
+	assert.Nil(t, opened.Reset, "the copy is a database the store keeps")
+	assert.Equal(t, schemaOf(t, testutil.DB(t)), schemaOf(t, opened.DB), "it is the migrated schema")
+
+	backups, err := filepath.Glob(path + migrate.BackupInfix + "*")
+	require.NoError(t, err)
+	assert.Empty(t, backups, "nothing was pending, so the store backed nothing up")
+}
