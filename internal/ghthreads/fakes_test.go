@@ -135,8 +135,14 @@ type fakeGitHub struct {
 	listMessage string
 	failPage    int
 
-	// viewer is the token's login.
-	viewer string
+	// viewer is the token's login; viewerStatus answers every viewer query with that status
+	// when set.
+	viewer       string
+	viewerStatus int
+
+	// onWrite, when set, runs as each write to a thread arrives, before the fake answers
+	// it, under the fake's lock, so it must not call the fake.
+	onWrite func(r *http.Request)
 
 	// states are the items' states by owner/name#number, an item missing is one GitHub
 	// can't find; statesStatus answers every states query with that status when set; and
@@ -300,6 +306,10 @@ func (f *fakeGitHub) serveWrite(w http.ResponseWriter, r *http.Request) {
 
 	kind := map[string]string{http.MethodDelete: kindDone, http.MethodPatch: kindRead}[r.Method]
 	f.got = append(f.got, listedRequest{kind: kind, id: id, at: f.now()})
+
+	if f.onWrite != nil {
+		f.onWrite(r)
+	}
 
 	if f.writeStatus != 0 {
 		w.WriteHeader(f.writeStatus)
@@ -477,6 +487,13 @@ func (f *fakeGitHub) serveGraphQL(w http.ResponseWriter, r *http.Request) {
 
 	if strings.Contains(req.Query, "query Viewer") {
 		f.got = append(f.got, listedRequest{kind: "viewer"})
+
+		if f.viewerStatus != 0 {
+			w.WriteHeader(f.viewerStatus)
+
+			return
+		}
+
 		_, _ = fmt.Fprintf(w, `{"data": {"viewer": {"login": %q}, "rateLimit": {"cost": 1}}}`, f.viewer)
 
 		return
@@ -543,18 +560,23 @@ func hashOf(s string) string {
 }
 
 // fakeRules are the user's rules: the defaults, with reading on until turned off, unless
-// changed.
+// changed, or unreadable once told to fail.
 type fakeRules struct {
 	off atomic.Bool
 
 	mu      sync.Mutex
 	changed *threadrules.Rules
+	err     error
 }
 
 // ThreadRules returns the rules, with Read as set.
 func (r *fakeRules) ThreadRules(context.Context) (threadrules.Rules, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if r.err != nil {
+		return threadrules.Rules{}, r.err
+	}
 
 	rules := threadrules.Defaults()
 	if r.changed != nil {
@@ -578,6 +600,14 @@ func (r *fakeRules) change(edit func(*threadrules.Rules)) {
 
 	edit(&rules)
 	r.changed = &rules
+}
+
+// fail makes the rules unreadable with err from now on, or readable again for nil.
+func (r *fakeRules) fail(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.err = err
 }
 
 // fakeGate is a chore lane that allows every clear, unless told to refuse.
@@ -695,6 +725,16 @@ func (r *rig) send() []listedRequest {
 	require.NoError(r.t, r.svc.runPass(r.t.Context(), passRequest{send: true}))
 
 	return r.gh.requests()
+}
+
+// trySend runs a run that sends the clears due, as send does, and returns the requests it
+// sent and how it ended.
+func (r *rig) trySend() ([]listedRequest, error) {
+	r.t.Helper()
+
+	err := r.svc.runPass(r.t.Context(), passRequest{send: true})
+
+	return r.gh.requests(), err
 }
 
 // untilSend returns how long until the next clear may be sent, which must wait on a time.
