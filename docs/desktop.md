@@ -1876,8 +1876,10 @@ Cards** can make every card one line instead (**Compact cards**, below).
   opened it (**Unread dots**, below) and a pin when the item is pinned (hover the pin for who
   pinned it: you, a routine, or a rule for its repository or org) and **Draft** before a draft's
   title,
-  then up to two labels in their GitHub colors and **+N** for the rest, which give way before
-  the title does. A long title is cut short; hover it for all of it. Clicking a pull request's
+  then up to two labels in their GitHub colors and **+N** for the rest (hover it for their
+  names). A label shows whole or folds into the **+N**, never cut off: the labels take the room
+  the title leaves, or up to a third of the line beside a long title, and the first always
+  shows. A long title is cut short; hover it for all of it. Clicking a pull request's
   title opens it in the [review sheet](#reviewing-a-pull-request), and an issue's in the
   [issue sheet](#reading-an-issue); **⌘-click** it, or click the small **↗** beside it, to open
   it on GitHub instead.
