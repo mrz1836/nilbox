@@ -1,6 +1,8 @@
 package sessions_test
 
 import (
+	"database/sql"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -384,4 +386,214 @@ func TestApplyTakesOnlyAProcessIDThatCanBeOne(t *testing.T) {
 	got, err := store.Get(t.Context(), "s1")
 	require.NoError(t, err)
 	assert.Zero(t, got.PID, "a PID the kernel would cut to -1 is not taken")
+}
+
+func TestInsertUnlessLiveRecordsASessionTheAgentHasNotNamed(t *testing.T) {
+	t.Parallel()
+
+	store := sessions.NewStore(testutil.DB(t))
+
+	for _, id := range []string{"first", "second"} {
+		r := record(id, 12)
+		r.Agent, r.AgentSessionID = agent.Codex, ""
+
+		inserted, err := store.InsertUnlessLive(t.Context(), r)
+		require.NoError(t, err)
+		assert.True(t, inserted, "%s: no conversation yet, so none another session carries on", id)
+	}
+
+	live, err := store.Live(t.Context())
+	require.NoError(t, err)
+	assert.Len(t, live, 2, "both followed")
+}
+
+func TestAStateThisBuildDoesNotKnowIsStillFollowed(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.DB(t)
+	store := sessions.NewStore(db)
+	require.NoError(t, store.Insert(t.Context(), record("s1", 12)))
+	testutil.Exec(t, db, `UPDATE agent_sessions SET state = 'example-state' WHERE id = 's1'`)
+
+	got, err := store.Get(t.Context(), "s1")
+	require.NoError(t, err)
+	assert.Equal(t, sessions.StateUnknown, got.State, "a later build's state reads as unknown")
+
+	live, err := store.Live(t.Context())
+	require.NoError(t, err)
+	require.Len(t, live, 1, "and the session is still followed")
+
+	changes, err := store.Apply(t.Context(), launched().Add(time.Minute), []sessions.Observation{
+		{ID: "s1", State: sessions.StateIdle},
+	})
+	require.NoError(t, err)
+	require.Len(t, changes, 1)
+	assert.Equal(t, sessions.StateIdle, changes[0].After.State, "what the agent says next is taken")
+}
+
+func TestSetRunStateIgnoresASessionTheLedgerDoesNotHold(t *testing.T) {
+	t.Parallel()
+
+	store := sessions.NewStore(testutil.DB(t))
+
+	change, changed, err := store.SetRunState(t.Context(), "missing", sessions.RunUpdate{State: sessions.StateEnded}, launched())
+	require.NoError(t, err)
+	assert.False(t, changed)
+	assert.Zero(t, change)
+}
+
+func TestTheStoreSaysWhatFailedOnADatabaseItCannotUse(t *testing.T) {
+	t.Parallel()
+
+	store := sessions.NewStore(testutil.ClosedDB(t))
+	ctx := t.Context()
+	note := noteOn(12, sessions.GitHubApproved, "", launched())
+
+	for words, call := range map[string]func() error{
+		"read the sessions' items": func() error {
+			_, err := store.KeptItems(ctx)
+			return err
+		},
+		"record the session": func() error { return store.Insert(ctx, record("s1", 12)) },
+		"read the session": func() error {
+			_, err := store.Get(ctx, "s1")
+			return err
+		},
+		"read the running sessions": func() error {
+			_, err := store.Live(ctx)
+			return err
+		},
+		"read the recent sessions": func() error {
+			_, err := store.Recent(ctx, launched())
+			return err
+		},
+		"read the sessions that ended": func() error {
+			_, err := store.EndedSince(ctx, launched())
+			return err
+		},
+		"follow the session": func() error {
+			_, err := store.InsertUnlessLive(ctx, record("s1", 12))
+			return err
+		},
+		"store what the sessions reported": func() error {
+			_, err := store.Apply(ctx, launched(), []sessions.Observation{{ID: "s1", State: sessions.StateIdle}})
+			return err
+		},
+		"read the run's session": func() error {
+			_, err := store.ByRun(ctx, 7)
+			return err
+		},
+		"store what the run says of its session": func() error {
+			_, _, err := store.SetRunState(ctx, "s1", sessions.RunUpdate{State: sessions.StateIdle}, launched())
+			return err
+		},
+		"record what came of acme-org/example-repo#12": func() error {
+			_, err := store.NoteGitHub(ctx, note)
+			return err
+		},
+		"forget old sessions": func() error {
+			_, err := store.Prune(ctx, launched())
+			return err
+		},
+		"forget the session": func() error { return store.Forget(ctx, "s1") },
+	} {
+		err := call()
+		require.Error(t, err, words)
+		require.NotErrorIs(t, err, sessions.ErrNotFound, words)
+		assert.Contains(t, err.Error(), words)
+	}
+
+	_, err := store.ConversationLive(ctx, "thread-1")
+	require.ErrorContains(t, err, "read the running sessions")
+}
+
+// runAndOther returns a store holding a run's session and a terminal's, both starting,
+// and its database.
+func runAndOther(t *testing.T) (*sessions.Store, *sql.DB) {
+	t.Helper()
+
+	db := testutil.DB(t)
+	store := sessions.NewStore(db)
+
+	r := record("run", 12)
+	r.RunID = 7
+	require.NoError(t, store.Insert(t.Context(), r))
+	require.NoError(t, store.Insert(t.Context(), record("other", 13)))
+
+	return store, db
+}
+
+func TestAFailedWriteStoresNothing(t *testing.T) {
+	t.Parallel()
+
+	t.Run("an update refused", func(t *testing.T) {
+		t.Parallel()
+
+		store, db := runAndOther(t)
+		testutil.Exec(t, db, `CREATE TRIGGER refuse_update BEFORE UPDATE ON agent_sessions WHEN OLD.id = 'run'
+			BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
+
+		at := launched().Add(time.Minute)
+
+		_, err := store.Apply(t.Context(), at, []sessions.Observation{
+			{ID: "other", State: sessions.StateWorking}, {ID: "run", State: sessions.StateWorking},
+		})
+		require.ErrorContains(t, err, "store what the sessions reported")
+
+		_, changed, err := store.SetRunState(t.Context(), "run", sessions.RunUpdate{State: sessions.StateEnded}, at)
+		require.ErrorContains(t, err, "store what the run says of its session")
+		assert.False(t, changed)
+
+		for _, id := range []string{"run", "other"} {
+			got, getErr := store.Get(t.Context(), id)
+			require.NoError(t, getErr)
+			assert.Equal(t, sessions.StateStarting, got.State, "%s: the observations go in one transaction, or none do", id)
+		}
+	})
+
+	t.Run("the ledger gone", func(t *testing.T) {
+		t.Parallel()
+
+		store, db := runAndOther(t)
+		testutil.Exec(t, db, `DROP TABLE agent_sessions`)
+
+		_, err := store.Apply(t.Context(), launched(), []sessions.Observation{{ID: "run", State: sessions.StateIdle}})
+		require.ErrorContains(t, err, "store what the sessions reported")
+
+		_, _, err = store.SetRunState(t.Context(), "run", sessions.RunUpdate{State: sessions.StateIdle}, launched())
+		require.ErrorContains(t, err, "store what the run says of its session")
+
+		_, err = store.Prune(t.Context(), launched())
+		require.ErrorContains(t, err, "forget old sessions")
+	})
+
+	t.Run("a prune refused partway", func(t *testing.T) {
+		t.Parallel()
+
+		db := testutil.DB(t)
+		store := sessions.NewStore(db)
+		now := launched().Add(40 * 24 * time.Hour)
+
+		// A session that ended long ago, which the first step forgets, and an item with one
+		// ended session past its newest KeepPerItem, which the second step is refused.
+		require.NoError(t, store.Insert(t.Context(), record("ancient", 1)))
+		endAt(t, store, "ancient", launched())
+
+		for i := range sessions.KeepPerItem + 1 {
+			r := record("busy-"+strconv.Itoa(i), 2)
+			r.LaunchedAt = now.Add(-time.Duration(sessions.KeepPerItem+1-i) * time.Minute)
+			require.NoError(t, store.Insert(t.Context(), r))
+			endAt(t, store, r.ID, now)
+		}
+
+		testutil.Exec(t, db, `CREATE TRIGGER refuse_excess BEFORE DELETE ON agent_sessions WHEN OLD.id = 'busy-0'
+			BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
+
+		forgot, err := store.Prune(t.Context(), now)
+		require.ErrorContains(t, err, "forget old sessions")
+		assert.Zero(t, forgot)
+
+		_, err = store.Get(t.Context(), "ancient")
+		require.NoError(t, err, "the first step is undone with the second")
+	})
 }

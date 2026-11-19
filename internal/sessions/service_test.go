@@ -262,3 +262,72 @@ func TestShowFolder(t *testing.T) {
 	require.ErrorIs(t, err, sessions.ErrNoFinder)
 	assert.Contains(t, uierr.Message(err), "can't open Finder here")
 }
+
+func TestFocusWhereNoTerminalCanBeShown(t *testing.T) {
+	t.Parallel()
+
+	ps := &testutil.Runner{Stdout: "ttys004 \n"}
+	svc := sessions.NewService(sessions.Config{Store: seeded(t), PS: ps, Home: "/srv"})
+
+	err := svc.Focus(t.Context(), "s1")
+	require.ErrorIs(t, err, sessions.ErrNoTerminal)
+	assert.Contains(t, uierr.Message(err), "isn't supported here")
+	assert.Empty(t, ps.Calls(), "its terminal isn't even looked for")
+}
+
+func TestListSaysWhenItCantBeRead(t *testing.T) {
+	t.Parallel()
+
+	switchFails := sessions.NewService(sessions.Config{Store: seeded(t), Switch: &toggle{err: assert.AnError}})
+	_, err := switchFails.List(t.Context())
+	require.ErrorIs(t, err, assert.AnError, "whether sessions are followed can't be read")
+
+	storeFails := sessions.NewService(sessions.Config{Store: sessions.NewStore(testutil.ClosedDB(t)), Switch: &toggle{on: true}})
+	_, err = storeFails.List(t.Context())
+	require.ErrorContains(t, err, "read the recent sessions")
+}
+
+func TestTheLedgerAsksNothingWhileSessionsAreNotFollowed(t *testing.T) {
+	t.Parallel()
+
+	follow := &toggle{}
+	ledger := sessions.NewLedger(sessions.Config{Store: seeded(t), Switch: follow})
+
+	live, err := ledger.ConversationLive(t.Context(), "s1")
+	require.NoError(t, err)
+	assert.False(t, live, "what the ledger knows may be stale")
+
+	follow.set(true)
+
+	live, err = ledger.ConversationLive(t.Context(), "s1")
+	require.NoError(t, err)
+	assert.True(t, live, "s1 carries on its conversation")
+
+	live, err = ledger.ConversationLive(t.Context(), "s2")
+	require.NoError(t, err)
+	assert.False(t, live, "s2 ended")
+}
+
+func TestALedgerOnADatabaseItCannotUseSaysSo(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	ledger := sessions.NewLedger(sessions.Config{
+		Store: sessions.NewStore(testutil.ClosedDB(t)), Switch: &toggle{on: true}, Events: events,
+	})
+
+	require.ErrorContains(t, ledger.Start(t.Context(), record("s1", 12)), "record the session")
+	assert.Empty(t, events.All(), "a session not recorded is not told")
+
+	_, err := ledger.AgentProcesses(t.Context())
+	require.ErrorContains(t, err, "read the running sessions")
+
+	_, err = ledger.Running(t.Context(), "/srv/wt/example-repo/pr-12")
+	require.ErrorContains(t, err, "read the running sessions")
+
+	_, err = ledger.Waiting(t.Context())
+	require.ErrorContains(t, err, "read the running sessions")
+
+	_, err = ledger.ConversationLive(t.Context(), "s1")
+	require.ErrorContains(t, err, "read the running sessions")
+}
