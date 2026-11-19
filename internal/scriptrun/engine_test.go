@@ -276,6 +276,7 @@ func TestEachKindHasItsLimit(t *testing.T) {
 	assert.Equal(t, time.Second, e.newLive(Spec{Kind: KindHooks, RunsIn: RunsInApp, Timeout: time.Second}, holds{}).timeout)
 	assert.Equal(t, "5 minutes", durationText(5*time.Minute))
 	assert.Equal(t, "1 minute", durationText(time.Minute))
+	assert.Equal(t, "1m30s", durationText(90*time.Second), "a limit of no whole minutes reads as Go writes it")
 }
 
 func TestABusyCloneNamesItsHolderAndNeverQueues(t *testing.T) {

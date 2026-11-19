@@ -238,6 +238,43 @@ func TestAnOrphanPastItsTimeLimitIsStoppedAtOnce(t *testing.T) {
 	assert.Equal(t, []syscall.Signal{syscall.SIGINT}, procs.sent())
 }
 
+func TestAnOrphanWhoseOutputSaysItIsDoneIsStoppedWithoutCountingItStopped(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	procs := newFakeProcs()
+	procs.install(h.e)
+
+	// The group ends at SIGINT, as an agent's does.
+	h.e.signal = func(pgid int, sig syscall.Signal) error {
+		procs.end(pgid)
+
+		return procs.send(pgid, sig)
+	}
+
+	out := &collector{}
+
+	h.e.RegisterVerifier(KindAgent, verifierFunc(func(Record) Verification {
+		return Verification{Callbacks: Callbacks{Output: out, Over: func() bool { return strings.Contains(out.String(), "result") }}}
+	}))
+
+	started := time.Now().Add(-time.Minute)
+	procs.run(4747, started)
+
+	// Before the restart, the agent wrote its result line, and waits on a shell it left.
+	id := h.insertAgentRow(h.clone(), 4747, started)
+	require.NoError(t, h.e.files.ensureDir())
+	testutil.WriteFile(t, h.e.files.log(id), "result\n")
+
+	h.e.reconcile(t.Context())
+
+	rec := h.ended(id)
+
+	assert.Equal(t, []syscall.Signal{syscall.SIGINT}, procs.sent(), "what is left of it is stopped")
+	assert.Equal(t, StatusInterrupted, rec.Status, "no one stopped it: its output said it was done")
+	assert.Equal(t, "result\n", out.String(), "its log was read from its start")
+}
+
 func TestAnOrphanWithinItsTimeLimitGoesOn(t *testing.T) {
 	t.Parallel()
 
