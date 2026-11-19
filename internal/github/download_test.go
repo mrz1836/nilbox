@@ -6,10 +6,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -198,43 +201,139 @@ func TestDownloadAssetFailsPastItsSize(t *testing.T) {
 	assert.Equal(t, int64(11), n, "it stops one byte past the size")
 }
 
+// pipeHost is the download host a pipe client downloads from.
+const pipeHost = "downloads.example.test"
+
+// pipeClient returns a client that downloads from pipeHost, which handler serves over
+// in-memory connections: in a synctest bubble, the server's waits and the download's all
+// read the bubble's clock, so a test of a slow or stalled download waits for nothing. The
+// server and the connections close when the test ends.
+func pipeClient(t *testing.T, handler http.HandlerFunc) *Client {
+	t.Helper()
+
+	l := &pipeListener{conns: make(chan net.Conn), closed: make(chan struct{})}
+	srv := &http.Server{Handler: handler, ReadHeaderTimeout: time.Minute}
+	served := make(chan struct{})
+
+	go func() {
+		defer close(served)
+
+		_ = srv.Serve(l)
+	}()
+
+	// The connection stands in for one whose TLS handshake is done: the download's rules
+	// on the scheme and the host are what is under test, not TLS.
+	transport := &http.Transport{DialTLSContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return l.dial(ctx)
+	}}
+
+	t.Cleanup(func() {
+		transport.CloseIdleConnections()
+
+		_ = srv.Close()
+
+		<-served
+	})
+
+	return &Client{
+		HTTP: &http.Client{Transport: transport, Timeout: time.Second}, UserAgent: testUserAgent, DownloadHosts: []string{pipeHost},
+	}
+}
+
+// pipeListener hands its server the far end of each in-memory connection its client dials.
+type pipeListener struct {
+	conns  chan net.Conn
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (l *pipeListener) Accept() (net.Conn, error) {
+	select {
+	case c := <-l.conns:
+		return c, nil
+	case <-l.closed:
+		return nil, net.ErrClosed
+	}
+}
+
+func (l *pipeListener) Close() error {
+	l.once.Do(func() { close(l.closed) })
+
+	return nil
+}
+
+func (l *pipeListener) Addr() net.Addr { return pipeAddr{} }
+
+// dial makes a connection and hands its far end to the server.
+func (l *pipeListener) dial(ctx context.Context) (net.Conn, error) {
+	near, far := net.Pipe()
+
+	select {
+	case l.conns <- far:
+		return near, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-l.closed:
+		return nil, net.ErrClosed
+	}
+}
+
+// pipeAddr is the address of an in-memory connection's listener.
+type pipeAddr struct{}
+
+func (pipeAddr) Network() string { return "pipe" }
+func (pipeAddr) String() string  { return pipeHost }
+
 func TestDownloadAssetStopsWhenItStalls(t *testing.T) {
 	t.Parallel()
 
-	client, servers := downloadServers(t, []http.HandlerFunc{
-		func(w http.ResponseWriter, r *http.Request) {
+	synctest.Test(t, func(t *testing.T) {
+		client := pipeClient(t, func(w http.ResponseWriter, r *http.Request) {
 			_, _ = io.WriteString(w, "a start")
-			w.(http.Flusher).Flush() //nolint:forcetypeassert // httptest's writer flushes
+			w.(http.Flusher).Flush() //nolint:forcetypeassert // the server's writer flushes
 
 			<-r.Context().Done()
-		},
-	}, 0)
-	client.stall = 100 * time.Millisecond
-	client.HTTP.Timeout = 0
+		})
+		client.HTTP.Timeout = 0
 
-	_, err := client.DownloadAsset(t.Context(), servers[0].URL+"/file", io.Discard, 1<<20)
-	require.ErrorIs(t, err, ErrDownloadStalled)
+		begun := time.Now()
+
+		var got bytes.Buffer
+
+		_, err := client.DownloadAsset(t.Context(), "https://"+pipeHost+"/file", &got, 1<<20)
+		require.ErrorIs(t, err, ErrDownloadStalled)
+		assert.Equal(t, "a start", got.String(), "what arrived before the stall is written")
+		assert.Equal(t, defaultDownloadStall, time.Since(begun), "it gives up once nothing arrived for 30 seconds")
+	})
 }
 
 func TestDownloadAssetIgnoresTheClientTimeout(t *testing.T) {
 	t.Parallel()
 
-	client, servers := downloadServers(t, []http.HandlerFunc{
-		func(w http.ResponseWriter, _ *http.Request) {
+	synctest.Test(t, func(t *testing.T) {
+		client := pipeClient(t, func(w http.ResponseWriter, r *http.Request) {
 			for range 4 {
 				_, _ = io.WriteString(w, "chunk ")
-				w.(http.Flusher).Flush() //nolint:forcetypeassert // httptest's writer flushes
-				time.Sleep(50 * time.Millisecond)
+				w.(http.Flusher).Flush() //nolint:forcetypeassert // the server's writer flushes
+
+				select {
+				case <-time.After(20 * time.Second):
+				case <-r.Context().Done():
+					return // the download gave up
+				}
 			}
-		},
-	}, 0)
-	client.HTTP.Timeout = 100 * time.Millisecond
+		})
+		client.HTTP.Timeout = 30 * time.Second
 
-	var got bytes.Buffer
+		begun := time.Now()
 
-	_, err := client.DownloadAsset(t.Context(), servers[0].URL+"/file", &got, 1<<20)
-	require.NoError(t, err, "a slow download that keeps arriving outlasts the API's timeout")
-	assert.Equal(t, strings.Repeat("chunk ", 4), got.String())
+		var got bytes.Buffer
+
+		_, err := client.DownloadAsset(t.Context(), "https://"+pipeHost+"/file", &got, 1<<20)
+		require.NoError(t, err, "a slow download that keeps arriving outlasts the API's timeout")
+		assert.Equal(t, strings.Repeat("chunk ", 4), got.String())
+		assert.Equal(t, 80*time.Second, time.Since(begun), "it took longer than the client's timeout allows")
+	})
 }
 
 func TestDownloadAssetFailsOnAnErrorStatus(t *testing.T) {
