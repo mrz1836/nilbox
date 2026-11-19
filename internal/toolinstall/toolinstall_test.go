@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -606,11 +607,15 @@ func TestACancelLeavesNothingBehind(t *testing.T) {
 	s := newSetup(t, goodArchive(t))
 	s.d.hang = true
 
-	ctx, cancel := context.WithCancel(t.Context())
-	time.AfterFunc(20*time.Millisecond, cancel)
+	// The cancel comes while the download waits, on the bubble's clock.
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		time.AfterFunc(20*time.Millisecond, cancel)
 
-	_, err := s.in.Install(ctx, s.request(""))
-	require.ErrorIs(t, err, context.Canceled)
+		_, err := s.in.Install(ctx, s.request(""))
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
 	assert.Empty(t, s.leftovers(t))
 	assert.NoFileExists(t, filepath.Join(s.dir, testBinary))
 }
