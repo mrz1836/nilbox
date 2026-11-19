@@ -187,6 +187,9 @@ type fakeMaker struct {
 	ensured []WorktreeRequest
 	err     error
 
+	// planErr is what planning a worktree fails with, or nil.
+	planErr error
+
 	// head is the commit an existing worktree has checked out.
 	head string
 
@@ -208,6 +211,10 @@ func (m *fakeMaker) PlanWorktree(_ context.Context, req WorktreeRequest) (Worktr
 	defer m.mu.Unlock()
 
 	m.planned = append(m.planned, req)
+
+	if m.planErr != nil {
+		return Worktree{}, m.planErr
+	}
 
 	return m.answer(req), nil
 }
