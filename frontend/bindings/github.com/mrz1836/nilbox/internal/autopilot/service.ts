@@ -373,9 +373,9 @@ export function RunEventsBefore(runID: number, before: number): $CancellableProm
 
 /**
  * RunNow runs the routine id on the item now, as the user asked from the item's menu, and
- * returns its match: once per click, whatever its trigger says, on an item its conditions
- * match, or, with anyway (the menu's Run anyway, which the user chose knowing why it
- * doesn't match), on any item of a kind it acts on. It counts toward no daily cap or try,
+ * returns its match: once per click, whatever its trigger says, on an item of a kind it acts
+ * on that its conditions match, or, with anyway (the menu's Run anyway, which the user chose
+ * knowing why it doesn't match), on any item of such a kind. It counts toward no daily cap or try,
  * needs no OK, and keeps to the routine's mode, so a Dry run records what it would have
  * done. Every limit that keeps a start from happening still holds it, as for any match:
  * the outside contributor rule, this Mac's readiness, the item read fresh, the holds. On
@@ -404,7 +404,8 @@ export function RunView(runID: number): $CancellablePromise<$models.RunView> {
 }
 
 /**
- * RunsToday counts today's runs, those that never started left out.
+ * RunsToday counts today's runs, those that never started left out, as are a GitHub action
+ * that sent nothing and a script's run, which is neither an agent's nor a GitHub action.
  */
 export function RunsToday(): $CancellablePromise<$models.RunsToday> {
     return $Call.ByID(2493309342);
