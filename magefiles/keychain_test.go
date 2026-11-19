@@ -6,16 +6,77 @@ import (
 	"errors"
 	"os"
 	"os/signal"
+	"slices"
+	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // errStep stands in for a packaging step that fails.
 var errStep = errors.New("the step failed")
+
+// keychainList is the user's keychain search list as a fake security keeps it: starting
+// at originalKeychains, printed by `list-keychains -d user`, one quoted path a line, and
+// set by `list-keychains -d user -s`.
+type keychainList struct {
+	mu   sync.Mutex
+	list []string
+}
+
+// newKeychainList returns a search list holding originalKeychains.
+func newKeychainList() *keychainList {
+	return &keychainList{list: []string{"/Library/Keychains/My Keys.keychain-db", "/Library/Keychains/System.keychain"}}
+}
+
+// printed is the list as security prints it.
+func (k *keychainList) printed() string {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	var b strings.Builder
+
+	for _, path := range k.list {
+		b.WriteString("    \"" + path + "\"\n")
+	}
+
+	return b.String()
+}
+
+// answer is the fake security's answer: it prints the list, or sets it, and fails any
+// other command.
+func (k *keychainList) answer(args []string) testutil.FakeRun {
+	switch {
+	case slices.Equal(args, []string{"list-keychains", "-d", "user"}):
+		return testutil.FakeRun{Stdout: k.printed()}
+	case len(args) >= 4 && slices.Equal(args[:4], []string{"list-keychains", "-d", "user", "-s"}):
+		k.mu.Lock()
+		k.list = slices.Clone(args[4:])
+		k.mu.Unlock()
+
+		return testutil.FakeRun{}
+	default:
+		return testutil.FakeRun{Exit: 1}
+	}
+}
+
+// keychainRig returns a rig with a fake security that keeps a fresh search list, and the
+// list.
+func keychainRig(t *testing.T) (*rig, *keychainList) {
+	t.Helper()
+
+	g := newRig(t)
+	k := newKeychainList()
+	g.tool("security", k.answer)
+
+	return g, k
+}
 
 func TestParseKeychainList(t *testing.T) {
 	t.Parallel()
@@ -54,75 +115,86 @@ func TestParseKeychainList(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // changes the process's environment and PATH
 func TestWithKeychain(t *testing.T) {
+	t.Parallel()
+
 	const keychains = "/Library/Keychains/My Keys.keychain-db /Library/Keychains/System.keychain"
 
 	t.Run("puts the keychain first while fn runs, then the list back", func(t *testing.T) {
-		_, log := releaseTools(t, "")
+		t.Parallel()
+
+		g, k := keychainRig(t)
 
 		var during string
 
-		err := withKeychain(testKeychain, func() error {
-			during = readFile(t, os.Getenv("KEYCHAIN_LIST"))
+		err := g.runner().withKeychain(testKeychain, func() error {
+			during = k.printed()
 
 			return nil
 		})
 
 		require.NoError(t, err)
 		assert.Equal(t, "    \""+testKeychain+"\"\n"+originalKeychains, during)
-		assert.Equal(t, originalKeychains, readFile(t, os.Getenv("KEYCHAIN_LIST")))
+		assert.Equal(t, originalKeychains, k.printed())
 		assert.Equal(t, []string{
 			"security list-keychains -d user",
 			"security list-keychains -d user -s " + testKeychain + " " + keychains,
 			"security list-keychains -d user -s " + keychains,
-		}, logLines(t, log))
+		}, g.lines())
 	})
 
 	t.Run("puts the list back when fn fails", func(t *testing.T) {
-		releaseTools(t, "")
+		t.Parallel()
 
-		err := withKeychain(testKeychain, func() error { return errStep })
+		g, k := keychainRig(t)
+
+		err := g.runner().withKeychain(testKeychain, func() error { return errStep })
 
 		require.ErrorIs(t, err, errStep)
-		assert.Equal(t, originalKeychains, readFile(t, os.Getenv("KEYCHAIN_LIST")))
+		assert.Equal(t, originalKeychains, k.printed())
 	})
 
 	t.Run("a keychain already on the list moves first, once", func(t *testing.T) {
-		releaseTools(t, "")
+		t.Parallel()
+
+		g, k := keychainRig(t)
 
 		var during string
 
-		require.NoError(t, withKeychain("/Library/Keychains/System.keychain", func() error {
-			during = readFile(t, os.Getenv("KEYCHAIN_LIST"))
+		require.NoError(t, g.runner().withKeychain("/Library/Keychains/System.keychain", func() error {
+			during = k.printed()
 
 			return nil
 		}))
 
 		assert.Equal(t, "    \"/Library/Keychains/System.keychain\"\n    \"/Library/Keychains/My Keys.keychain-db\"\n", during)
-		assert.Equal(t, originalKeychains, readFile(t, os.Getenv("KEYCHAIN_LIST")))
+		assert.Equal(t, originalKeychains, k.printed())
 	})
 
 	t.Run("no keychain leaves the list alone", func(t *testing.T) {
-		_, log := releaseTools(t, "")
+		t.Parallel()
+
+		g, _ := keychainRig(t)
 
 		ran := false
 
-		require.NoError(t, withKeychain("", func() error {
+		require.NoError(t, g.runner().withKeychain("", func() error {
 			ran = true
 
 			return nil
 		}))
 
 		assert.True(t, ran)
-		assert.NoFileExists(t, log)
+		assert.Empty(t, g.lines())
 	})
 
 	t.Run("a list that can't be read runs nothing", func(t *testing.T) {
-		tools, _ := releaseTools(t, "")
-		fakeTool(t, tools, "security", "exit 1")
+		t.Parallel()
 
-		err := withKeychain(testKeychain, func() error {
+		g := newRig(t)
+		g.tool("security", exits(1))
+
+		err := g.runner().withKeychain(testKeychain, func() error {
 			t.Error("fn ran without its keychain on the list")
 
 			return nil
@@ -133,19 +205,29 @@ func TestWithKeychain(t *testing.T) {
 	})
 
 	t.Run("a list security prints otherwise runs nothing", func(t *testing.T) {
-		tools, _ := releaseTools(t, "")
-		fakeTool(t, tools, "security", "echo not-quoted")
+		t.Parallel()
 
-		require.ErrorIs(t, withKeychain(testKeychain, func() error { return nil }), errKeychainList)
+		g := newRig(t)
+		g.fixed("security", testutil.FakeRun{Stdout: "not-quoted\n"})
+
+		require.ErrorIs(t, g.runner().withKeychain(testKeychain, func() error { return nil }), errKeychainList)
 	})
 
 	t.Run("a list that can't be set runs nothing and is set back", func(t *testing.T) {
-		tools, log := releaseTools(t, "")
-		fakeTool(t, tools, "security", `printf 'security %s\n' "$*" >> "$TOOLS_LOG"
-if [ "$#" -eq 3 ]; then /bin/cat "$KEYCHAIN_LIST"; exit 0; fi
-exit 1`)
+		t.Parallel()
 
-		err := withKeychain(testKeychain, func() error {
+		g := newRig(t)
+		k := newKeychainList()
+
+		g.tool("security", func(args []string) testutil.FakeRun {
+			if len(args) == 3 {
+				return k.answer(args)
+			}
+
+			return testutil.FakeRun{Exit: 1}
+		})
+
+		err := g.runner().withKeychain(testKeychain, func() error {
 			t.Error("fn ran without its keychain on the list")
 
 			return nil
@@ -153,16 +235,24 @@ exit 1`)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "add the keychain to the search list")
-		assert.Equal(t, "security list-keychains -d user -s "+keychains, logLines(t, log)[2], "it tries to set the list back")
+		assert.Equal(t, "security list-keychains -d user -s "+keychains, g.lines()[2], "it tries to set the list back")
 	})
 
 	t.Run("a list that can't be set back says so", func(t *testing.T) {
-		tools, _ := releaseTools(t, "")
-		fakeTool(t, tools, "security", `if [ "$#" -eq 3 ]; then /bin/cat "$KEYCHAIN_LIST"; exit 0; fi
-case "$*" in *"`+testKeychain+`"*) exit 0 ;; esac
-exit 1`)
+		t.Parallel()
 
-		err := withKeychain(testKeychain, func() error { return errStep })
+		g := newRig(t)
+		k := newKeychainList()
+
+		g.tool("security", func(args []string) testutil.FakeRun {
+			if len(args) == 3 || slices.Contains(args, testKeychain) {
+				return k.answer(args)
+			}
+
+			return testutil.FakeRun{Exit: 1}
+		})
+
+		err := g.runner().withKeychain(testKeychain, func() error { return errStep })
 
 		require.ErrorIs(t, err, errStep)
 		assert.Contains(t, err.Error(), "put the keychain search list back")

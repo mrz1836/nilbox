@@ -3,6 +3,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,110 +18,135 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-// fakeBundle writes the bundle built from source under bin/ in the working directory, with
-// an executable running body, and returns the executable's path.
-func fakeBundle(t *testing.T, body string) string {
+// errWrite stands in for standard output refusing a write.
+var errWrite = errors.New("the output is closed")
+
+// failingWriter is an output that refuses every write.
+type failingWriter struct{}
+
+// Write refuses p.
+func (failingWriter) Write([]byte) (int, error) { return 0, errWrite }
+
+// fakeBundle writes the bundle built from source into the rig's checkout, its executable
+// a file of its own, and returns the executable's path. A test that runs it makes a fake
+// tool named brand.Slug, the executable's name, which plays it.
+func fakeBundle(t *testing.T, g *rig) string {
 	t.Helper()
 
-	exe := filepath.Join("bin", brand.DevName+".app", "Contents", "MacOS", brand.Slug)
-	testutil.WriteExecutable(t, exe, "#!/bin/sh\n"+body+"\n")
+	exe := bundleExecutable(g.path(devBundle))
+	testutil.WriteFile(t, exe, "binary")
 
 	return exe
 }
 
-//nolint:paralleltest // changes the process's standard output
 func TestPrintLines(t *testing.T) {
+	t.Parallel()
+
 	t.Run("prints each line", func(t *testing.T) {
-		var err error
+		t.Parallel()
 
-		out := captureStdout(t, func() { err = printLines([]string{"size.binary_bytes=1", "size.bundle_bytes=2"}) })
+		g := newRig(t)
 
-		require.NoError(t, err)
-		assert.Equal(t, "size.binary_bytes=1\nsize.bundle_bytes=2\n", out)
+		require.NoError(t, g.runner().printLines([]string{"size.binary_bytes=1", "size.bundle_bytes=2"}))
+
+		assert.Equal(t, "size.binary_bytes=1\nsize.bundle_bytes=2\n", g.out.String())
 	})
 
 	t.Run("reports a failed write", func(t *testing.T) {
-		closed, err := os.Create(filepath.Join(t.TempDir(), "stdout"))
-		require.NoError(t, err)
-		require.NoError(t, closed.Close())
+		t.Parallel()
 
-		original := os.Stdout
-		os.Stdout = closed
+		r := newRig(t).runner()
+		r.stdout = failingWriter{}
 
-		defer func() { os.Stdout = original }()
+		err := r.printLines([]string{"a"})
 
-		err = printLines([]string{"a"})
-
-		require.Error(t, err)
+		require.ErrorIs(t, err, errWrite)
 		assert.Contains(t, err.Error(), "print the report")
 	})
 }
 
-//nolint:paralleltest // changes the process's standard output
 func TestSay(t *testing.T) {
-	assert.Equal(t, "hello\n", captureStdout(t, func() { say("hello") }))
+	t.Parallel()
+
+	g := newRig(t)
+
+	g.runner().say("hello")
+
+	assert.Equal(t, "hello\n", g.out.String())
 }
 
-//nolint:paralleltest // changes the process's working directory, environment, and standard output
-func TestMeasureOnMacOS(t *testing.T) {
-	onlyOnMacOS(t)
+func TestMeasure(t *testing.T) {
+	t.Parallel()
 
 	t.Run("size reports the binary and the bundle", func(t *testing.T) {
-		inTempDir(t)
-		exe := fakeBundle(t, "exit 0")
+		t.Parallel()
+
+		g := newRig(t)
+		exe := fakeBundle(t, g)
 		testutil.WriteFile(t, filepath.Join(filepath.Dir(filepath.Dir(exe)), "Info.plist"), strings.Repeat("x", 100))
 
 		info, err := os.Stat(exe)
 		require.NoError(t, err)
 
-		out := captureStdout(t, func() { err = Measure{}.Size() })
+		require.NoError(t, g.runner().measureSize())
 
-		require.NoError(t, err)
 		assert.Equal(t, strings.Join(measure.SizeReport{
 			BinaryBytes: info.Size(),
 			BundleBytes: info.Size() + 100,
-		}.Lines(), "\n")+"\n", out)
+		}.Lines(), "\n")+"\n", g.out.String())
 	})
 
 	t.Run("refresh runs the app's measurement mode", func(t *testing.T) {
-		inTempDir(t)
+		t.Parallel()
 
-		log := filepath.Join(t.TempDir(), "app.log")
-		t.Setenv("APP_LOG", log)
-		fakeBundle(t, `printf '%s\n' "$*" >> "$APP_LOG"`)
+		g := newRig(t)
+		exe := fakeBundle(t, g)
+		g.tool(brand.Slug, exits(0))
 
-		require.NoError(t, Measure{}.Refresh())
+		require.NoError(t, g.runner().measureRefresh())
 
-		assert.Equal(t, []string{measure.RefreshFlag}, logLines(t, log))
+		assert.Equal(t, []toolCall{{name: exe, args: []string{measure.RefreshFlag}}}, g.toolCalls(), "the bundle's own binary runs")
 	})
 
 	t.Run("refresh reads routine searches when asked", func(t *testing.T) {
-		inTempDir(t)
+		t.Parallel()
 
-		log := filepath.Join(t.TempDir(), "app.log")
-		t.Setenv("APP_LOG", log)
-		t.Setenv(mageArgsJSON, `["searches=5"]`)
-		fakeBundle(t, `printf '%s\n' "$*" >> "$APP_LOG"`)
+		g := newRig(t)
+		fakeBundle(t, g)
+		g.tool(brand.Slug, exits(0))
+		g.setenv(mageArgsJSON, `["searches=5"]`)
 
-		require.NoError(t, Measure{}.Refresh())
+		require.NoError(t, g.runner().measureRefresh())
 
-		assert.Equal(t, []string{measure.RefreshFlag + " " + measure.SearchesFlag + "5"}, logLines(t, log))
+		assert.Equal(t, []string{measure.RefreshFlag + " " + measure.SearchesFlag + "5"}, g.linesOf(brand.Slug))
 	})
 
 	t.Run("every measurement needs a built bundle", func(t *testing.T) {
-		inTempDir(t)
+		t.Parallel()
 
-		require.ErrorIs(t, Measure{}.All(), errNoBundle)
-		require.ErrorIs(t, Measure{}.Startup(), errNoBundle)
+		r := newRig(t).runner()
+
+		require.ErrorIs(t, r.measureSize(), errNoBundle)
+		require.ErrorIs(t, r.measureRefresh(), errNoBundle)
+		require.ErrorIs(t, r.measureStartup(t.Context(), func(context.Context, string) (measure.Startup, error) {
+			t.Error("nothing to launch")
+
+			return measure.Startup{}, nil
+		}), errNoBundle)
 	})
 }
 
 func TestMageArg(t *testing.T) {
-	t.Setenv(mageArgsJSON, `["agent=codex","verbose","other=a=b"]`)
-	assert.Equal(t, "codex", mageArg("agent"))
-	assert.Equal(t, "a=b", mageArg("other"))
-	assert.Empty(t, mageArg("missing"))
+	t.Parallel()
 
-	t.Setenv(mageArgsJSON, "not json")
-	assert.Empty(t, mageArg("agent"))
+	g := newRig(t)
+	r := g.runner()
+
+	g.setenv(mageArgsJSON, `["agent=codex","verbose","other=a=b"]`)
+	assert.Equal(t, "codex", r.mageArg("agent"))
+	assert.Equal(t, "a=b", r.mageArg("other"))
+	assert.Empty(t, r.mageArg("missing"))
+
+	g.setenv(mageArgsJSON, "not json")
+	assert.Empty(t, r.mageArg("agent"))
 }

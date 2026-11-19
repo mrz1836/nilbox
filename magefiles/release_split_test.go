@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -59,31 +58,24 @@ func treeOf(t *testing.T, root string) map[string]os.FileMode {
 }
 
 func TestBuildReleaseBundle(t *testing.T) {
+	t.Parallel()
+
 	keys := releaseKeyPair(1)
 	pinned := update.EncodeKey(keys.public)
 
 	t.Run("builds the universal bundle, unsigned, alone in its folder", func(t *testing.T) {
-		dir := inTempDir(t)
-		checkout(t, dir)
-		_, log := releaseTools(t, "v"+testVersion)
+		t.Parallel()
 
-		original := syscall.Umask(0o077)
+		g, _ := releaseRig(t, releaseFake{tag: "v" + testVersion})
 
-		t.Cleanup(func() { syscall.Umask(original) })
-
-		var (
-			bundle string
-			err    error
-		)
-
-		stdout := captureStdout(t, func() { bundle, err = buildReleaseBundle(testVersion, pinned) })
+		bundle, err := g.runner().buildReleaseBundle(testVersion, pinned)
 
 		require.NoError(t, err)
-		assert.Equal(t, unsignedBundle(), bundle)
-		requireLines(t, releaseBuildLines(), toolLines(t, log))
-		assert.NotContains(t, readFile(t, log), "codesign", "nothing is signed")
-		assert.NotContains(t, readFile(t, log), "security", "no keychain is touched")
-		assert.Contains(t, stdout, "✅ Built the unsigned bundle "+bundle)
+		assert.Equal(t, unsignedBundle(g.dir), bundle)
+		requireLines(t, releaseBuildLines(g.dir), toolLines(g))
+		assert.Empty(t, g.linesOf("codesign"), "nothing is signed")
+		assert.Empty(t, g.linesOf("security"), "no keychain is touched")
+		assert.Contains(t, g.out.String(), "✅ Built the unsigned bundle "+bundle)
 
 		entries, err := os.ReadDir(filepath.Dir(bundle))
 		require.NoError(t, err)
@@ -93,11 +85,10 @@ func TestBuildReleaseBundle(t *testing.T) {
 		tree := treeOf(t, bundle)
 		assert.NotContains(t, tree, filepath.Join("Contents", "_CodeSignature"))
 		assert.Equal(t, os.FileMode(0o755), tree[filepath.Join("Contents", "MacOS", brand.Slug)].Perm())
-		assert.Equal(t, os.FileMode(0o644), tree[filepath.Join("Contents", "Info.plist")].Perm(),
-			"the modes don't depend on the umask")
-		assert.NoDirExists(t, filepath.Join("bin", "release"), "nothing is packaged")
+		assert.Equal(t, os.FileMode(0o644), tree[filepath.Join("Contents", "Info.plist")].Perm())
+		assert.NoDirExists(t, g.path("bin/release"), "nothing is packaged")
 
-		require.NoError(t, checkUnsignedBundle(bundle), "app:signRelease takes what it builds")
+		require.NoError(t, g.runner().checkUnsignedBundle(bundle), "app:signRelease takes what it builds")
 	})
 
 	tests := []struct {
@@ -119,45 +110,41 @@ func TestBuildReleaseBundle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run("refuses "+tt.name+" before anything builds", func(t *testing.T) {
-			dir := inTempDir(t)
-			checkout(t, dir)
-			_, log := releaseTools(t, tt.tag)
-			t.Setenv("FAKE_TAG_AT", tt.at)
-			t.Setenv("FAKE_DIRTY", tt.dirty)
+			t.Parallel()
 
-			_, err := buildReleaseBundle(tt.version, tt.key)
+			g, _ := releaseRig(t, releaseFake{tag: tt.tag, at: tt.at, dirty: tt.dirty})
+
+			_, err := g.runner().buildReleaseBundle(tt.version, tt.key)
 
 			require.ErrorIs(t, err, tt.wantErr)
-			assert.Empty(t, toolLines(t, log))
-			assert.NoDirExists(t, filepath.Join("bin", "unsigned"))
+			assert.Empty(t, toolLines(g))
+			assert.NoDirExists(t, g.path("bin/unsigned"))
 		})
 	}
 }
 
-//nolint:paralleltest // changes the process's working directory, environment, PATH, and standard output
 func TestSignReleaseBundle(t *testing.T) {
+	t.Parallel()
+
 	keys := releaseKeyPair(1)
-	out := filepath.Join(releaseRoot, testVersion)
-	signed := filepath.Join(out, bundleName)
 
 	t.Run("signs a copy of the bundle and packages the release", func(t *testing.T) {
-		dir := inTempDir(t)
-		checkout(t, dir)
-		_, log := releaseTools(t, "v"+testVersion)
+		t.Parallel()
+
+		g, state := releaseRig(t, releaseFake{tag: "v" + testVersion})
 		keychain := keychainFile(t)
-		bundle := writeUnsignedBundle(t, dir)
+		bundle := writeUnsignedBundle(t, t.TempDir())
 		before := treeOf(t, bundle)
+		out := filepath.Join(g.path(releaseRoot), testVersion)
+		signed := filepath.Join(out, bundleName)
 
-		var err error
+		require.NoError(t, g.runner().signReleaseBundle(testConfig(t, keys, keychain), bundle))
 
-		stdout := captureStdout(t, func() { err = signReleaseBundle(testConfig(t, keys, keychain), bundle) })
-
-		require.NoError(t, err)
-		requireLines(t, releaseSignLines(bundle, keychain), toolLines(t, log))
-		assert.NotContains(t, readFile(t, log), "go GOARCH", "nothing is built")
-		assert.NotContains(t, readFile(t, log), "pnpm", "no frontend tool runs")
+		requireLines(t, releaseSignLines(g.dir, bundle, keychain), toolLines(g))
+		assert.Empty(t, g.linesOf("go"), "nothing is built")
+		assert.Empty(t, g.linesOf("pnpm"), "no frontend tool runs")
 		assert.Equal(t, before, treeOf(t, bundle), "the unsigned bundle is left as it was")
-		assert.Equal(t, originalKeychains, readFile(t, os.Getenv("KEYCHAIN_LIST")), "the search list is back as it was")
+		assert.Equal(t, originalKeychains, state.keychains.printed(), "the search list is back as it was")
 
 		tree := treeOf(t, signed)
 		assert.Equal(t, os.FileMode(0o755), tree[filepath.Join("Contents", "MacOS", brand.Slug)].Perm(),
@@ -165,27 +152,28 @@ func TestSignReleaseBundle(t *testing.T) {
 		assert.Equal(t, os.FileMode(0o644), tree[filepath.Join("Contents", "_CodeSignature", "CodeResources")].Perm())
 		assert.Equal(t, "universal", readFile(t, bundleExecutable(signed)))
 
-		require.NoError(t, verifyRelease(out, testVersion, keys.public))
-		assert.Contains(t, stdout, "matches its signed manifest ("+testVersion)
+		require.NoError(t, g.runner().verifyRelease(out, testVersion, keys.public))
+		assert.Contains(t, g.out.String(), "matches its signed manifest ("+testVersion)
 	})
 
 	t.Run("signs from the search list when no keychain is named", func(t *testing.T) {
-		dir := inTempDir(t)
-		checkout(t, dir)
-		_, log := releaseTools(t, "v"+testVersion)
-		bundle := writeUnsignedBundle(t, dir)
+		t.Parallel()
 
-		captureStdout(t, func() { require.NoError(t, signReleaseBundle(testConfig(t, keys, ""), bundle)) })
+		g, _ := releaseRig(t, releaseFake{tag: "v" + testVersion})
+		bundle := writeUnsignedBundle(t, t.TempDir())
 
-		requireLines(t, releaseSignLines(bundle, ""), toolLines(t, log))
+		require.NoError(t, g.runner().signReleaseBundle(testConfig(t, keys, ""), bundle))
+
+		requireLines(t, releaseSignLines(g.dir, bundle, ""), toolLines(g))
 	})
 }
 
 // TestSignReleaseBundleRefusesBeforeAnyToolRuns: each of these refuses before any tool
 // runs, the search list included.
 func TestSignReleaseBundleRefusesBeforeAnyToolRuns(t *testing.T) {
+	t.Parallel()
+
 	keys := releaseKeyPair(1)
-	out := filepath.Join(releaseRoot, testVersion)
 
 	early := []struct {
 		name    string
@@ -223,21 +211,18 @@ func TestSignReleaseBundleRefusesBeforeAnyToolRuns(t *testing.T) {
 
 	for _, tt := range early {
 		t.Run("refuses "+tt.name, func(t *testing.T) {
-			dir := inTempDir(t)
-			checkout(t, dir)
+			t.Parallel()
 
 			tag := "v" + testVersion
 			if tt.tag == "-" {
 				tag = ""
 			}
 
-			_, log := releaseTools(t, tag)
-			t.Setenv("FAKE_TAG_AT", tt.at)
-			t.Setenv("FAKE_DIRTY", tt.dirty)
+			g, _ := releaseRig(t, releaseFake{tag: tag, at: tt.at, dirty: tt.dirty})
 
-			bundle := writeUnsignedBundle(t, dir)
+			bundle := writeUnsignedBundle(t, t.TempDir())
 			if tt.bundle != nil {
-				bundle = tt.bundle(t, dir)
+				bundle = tt.bundle(t, g.dir)
 			}
 
 			cfg := testConfig(t, keys, keychainFile(t))
@@ -245,11 +230,11 @@ func TestSignReleaseBundleRefusesBeforeAnyToolRuns(t *testing.T) {
 				tt.change(t, &cfg)
 			}
 
-			err := signReleaseBundle(cfg, bundle)
+			err := g.runner().signReleaseBundle(cfg, bundle)
 
 			require.ErrorIs(t, err, tt.wantErr)
-			assert.Empty(t, toolLines(t, log), "nothing runs, and the search list is left alone")
-			assert.NoFileExists(t, filepath.Join(out, update.ManifestName))
+			assert.Empty(t, toolLines(g), "nothing runs, and the search list is left alone")
+			assert.NoFileExists(t, filepath.Join(g.path(releaseRoot), testVersion, update.ManifestName))
 		})
 	}
 }
@@ -258,8 +243,9 @@ func TestSignReleaseBundleRefusesBeforeAnyToolRuns(t *testing.T) {
 // would never hand over; it is refused before the keychain search list is touched or
 // anything is signed.
 func TestSignReleaseBundleRefusesOtherBundles(t *testing.T) {
+	t.Parallel()
+
 	keys := releaseKeyPair(1)
-	out := filepath.Join(releaseRoot, testVersion)
 
 	bundles := []struct {
 		name    string
@@ -331,85 +317,74 @@ func TestSignReleaseBundleRefusesOtherBundles(t *testing.T) {
 
 	for _, tt := range bundles {
 		t.Run("refuses "+tt.name, func(t *testing.T) {
-			dir := inTempDir(t)
-			checkout(t, dir)
-			_, log := releaseTools(t, "v"+testVersion)
+			t.Parallel()
 
-			if tt.archs != "" {
-				t.Setenv("LIPO_ARCHS", tt.archs)
-			}
+			g, _ := releaseRig(t, releaseFake{tag: "v" + testVersion, archs: tt.archs})
 
-			bundle := tt.make(t, dir)
+			bundle := tt.make(t, t.TempDir())
 
-			err := signReleaseBundle(testConfig(t, keys, keychainFile(t)), bundle)
+			err := g.runner().signReleaseBundle(testConfig(t, keys, keychainFile(t)), bundle)
 
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Contains(t, err.Error(), tt.wantMsg)
 
-			for _, line := range toolLines(t, log) {
+			for _, line := range toolLines(g) {
 				assert.Regexp(t, "^lipo -archs ", line, "only the bundle's architectures are read")
 			}
 
-			assert.NoDirExists(t, out, "nothing is packaged")
+			assert.NoDirExists(t, filepath.Join(g.path(releaseRoot), testVersion), "nothing is packaged")
 		})
 	}
 }
 
-//nolint:paralleltest // swaps the pinned key and changes the process's working directory, environment, PATH, and standard output
-func TestAppReleaseHalvesOnMacOS(t *testing.T) {
-	onlyOnMacOS(t)
+func TestAppReleaseHalves(t *testing.T) {
+	t.Parallel()
 
 	keys := releaseKeyPair(1)
+	pinned := update.EncodeKey(keys.public)
 
 	t.Run("app:buildRelease, then app:signRelease of what it built", func(t *testing.T) {
-		dir := inTempDir(t)
-		checkout(t, dir)
-		releaseTools(t, "v"+testVersion)
-		pinKey(t, update.EncodeKey(keys.public))
-		t.Setenv(envReleaseVersion, testVersion)
+		t.Parallel()
 
-		captureStdout(t, func() { require.NoError(t, App{}.BuildRelease()) })
+		g, _ := releaseRig(t, releaseFake{tag: "v" + testVersion})
+		g.setenv(envReleaseVersion, testVersion)
 
-		bundle, err := filepath.Abs(unsignedBundle())
-		require.NoError(t, err)
+		require.NoError(t, g.runner().buildReleaseFromEnv(pinned))
 
-		t.Setenv(envCodesignIdentity, testIdentity)
-		t.Setenv(envCodesignKeychain, keychainFile(t))
-		t.Setenv(envUpdateSigningKey, writeSigningKey(t, keys))
-		t.Setenv(mageArgsJSON, `["bundle=`+bundle+`"]`)
+		g.setenv(envCodesignIdentity, testIdentity)
+		g.setenv(envCodesignKeychain, keychainFile(t))
+		g.setenv(envUpdateSigningKey, writeSigningKey(t, keys))
+		g.setenv(mageArgsJSON, `["bundle=`+unsignedBundle(g.dir)+`"]`)
 
-		captureStdout(t, func() { require.NoError(t, App{}.SignRelease()) })
+		require.NoError(t, g.runner().signReleaseFromEnv(pinned))
 
-		require.NoError(t, verifyRelease(filepath.Join(releaseRoot, testVersion), testVersion, keys.public))
+		require.NoError(t, g.runner().verifyRelease(filepath.Join(g.path(releaseRoot), testVersion), testVersion, keys.public))
 	})
 
 	t.Run("app:buildRelease refuses while no key is pinned", func(t *testing.T) {
-		pinKey(t, "")
-		t.Setenv(envReleaseVersion, testVersion)
+		t.Parallel()
 
-		require.ErrorIs(t, App{}.BuildRelease(), errNoReleaseKey)
+		g := newRig(t)
+		g.setenv(envReleaseVersion, testVersion)
+
+		require.ErrorIs(t, g.runner().buildReleaseFromEnv(""), errNoReleaseKey)
 	})
 
 	t.Run("app:signRelease needs its bundle", func(t *testing.T) {
-		dir := inTempDir(t)
-		checkout(t, dir)
-		releaseTools(t, "v"+testVersion)
-		pinKey(t, update.EncodeKey(keys.public))
-		t.Setenv(envReleaseVersion, testVersion)
-		t.Setenv(envCodesignIdentity, testIdentity)
-		t.Setenv(envUpdateSigningKey, writeSigningKey(t, keys))
-		t.Setenv(mageArgsJSON, `[]`)
+		t.Parallel()
 
-		require.ErrorIs(t, App{}.SignRelease(), errBundlePath)
+		g, _ := releaseRig(t, releaseFake{tag: "v" + testVersion})
+		g.setenv(envReleaseVersion, testVersion)
+		g.setenv(envCodesignIdentity, testIdentity)
+		g.setenv(envUpdateSigningKey, writeSigningKey(t, keys))
+		g.setenv(mageArgsJSON, `[]`)
+
+		require.ErrorIs(t, g.runner().signReleaseFromEnv(pinned), errBundlePath)
 	})
 
 	t.Run("app:signRelease names the environment it lacks", func(t *testing.T) {
-		pinKey(t, update.EncodeKey(keys.public))
+		t.Parallel()
 
-		for _, key := range []string{envReleaseVersion, envCodesignIdentity, envCodesignKeychain, envUpdateSigningKey} {
-			unsetenv(t, key)
-		}
-
-		require.ErrorIs(t, App{}.SignRelease(), errMissingEnv)
+		require.ErrorIs(t, newRig(t).runner().signReleaseFromEnv(pinned), errMissingEnv)
 	})
 }

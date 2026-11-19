@@ -30,22 +30,32 @@ type Frontend mg.Namespace
 //
 //	magex frontend:install
 func (Frontend) Install() error {
-	if err := requirePNPM(); err != nil {
+	return hostRunner().installFrontend()
+}
+
+// installFrontend does Frontend.Install's work.
+func (r runner) installFrontend() error {
+	if err := r.requirePNPM(); err != nil {
 		return err
 	}
 
-	return runPNPM(frontendDir, "install", "--frozen-lockfile")
+	return r.runPNPM("install", "--frozen-lockfile")
 }
 
 // Build type-checks the frontend and builds it into frontend/dist.
 //
 //	magex frontend:build
 func (Frontend) Build() error {
-	if err := (Frontend{}).Install(); err != nil {
+	return hostRunner().buildFrontend()
+}
+
+// buildFrontend does Frontend.Build's work.
+func (r runner) buildFrontend() error {
+	if err := r.installFrontend(); err != nil {
 		return err
 	}
 
-	return runPNPM(frontendDir, "build")
+	return r.runPNPM("build")
 }
 
 // Gate runs the frontend gate, the one entry point for every frontend check: the
@@ -55,12 +65,17 @@ func (Frontend) Build() error {
 //
 //	magex frontend:gate
 func (Frontend) Gate() error {
-	if err := (Frontend{}).Install(); err != nil {
+	return hostRunner().gateFrontend()
+}
+
+// gateFrontend does Frontend.Gate's work.
+func (r runner) gateFrontend() error {
+	if err := r.installFrontend(); err != nil {
 		return err
 	}
 
 	for _, script := range frontendGateScripts() {
-		if err := runPNPM(frontendDir, "run", script); err != nil {
+		if err := r.runPNPM("run", script); err != nil {
 			return err
 		}
 	}
@@ -77,14 +92,14 @@ func frontendGateScripts() []string {
 
 // requirePNPM returns an actionable error naming the pinned pnpm version when pnpm is
 // not installed.
-func requirePNPM() error {
-	if _, err := exec.LookPath("pnpm"); err == nil {
+func (r runner) requirePNPM() error {
+	if _, err := r.lookPath("pnpm"); err == nil {
 		return nil
 	}
 
 	pinned := "pnpm"
 
-	body, err := os.ReadFile(filepath.Join(frontendDir, "package.json"))
+	body, err := os.ReadFile(filepath.Join(r.path(frontendDir), "package.json"))
 	if err == nil {
 		var manifest struct {
 			PackageManager string `json:"packageManager"`
@@ -98,34 +113,34 @@ func requirePNPM() error {
 	return fmt.Errorf("%w. Install it once with: npm install -g %s", errPNPMMissing, pinned)
 }
 
-// runPNPM runs pnpm with args in dir, streaming its output.
-func runPNPM(dir string, args ...string) error {
-	cmd, err := pnpmCommand(context.Background(), dir, args...)
+// runPNPM runs pnpm with args in the frontend's folder, streaming its output.
+func (r runner) runPNPM(args ...string) error {
+	cmd, err := r.pnpmCommand(context.Background(), args...)
 	if err != nil {
 		return err
 	}
 
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
+	cmd.Stdout = r.stdout
+	cmd.Stderr = r.stderr
+	cmd.Stdin = r.stdin
 
 	if err = cmd.Run(); err != nil {
-		return fmt.Errorf("pnpm %v in %s: %w", args, dir, err)
+		return fmt.Errorf("pnpm %v in %s: %w", args, cmd.Dir, err)
 	}
 
 	return nil
 }
 
-// pnpmCommand returns a command that runs pnpm with args in dir. Until pnpm's native
-// binary is installed, its launcher on macOS and Linux is a shell script without a
-// shebang line: a shell runs it, but the OS will not exec it directly, so such a launcher
-// runs through /bin/sh. Windows runs pnpm's .exe or .cmd launcher directly.
-func pnpmCommand(ctx context.Context, dir string, args ...string) (*exec.Cmd, error) {
-	if err := requirePNPM(); err != nil {
+// pnpmCommand returns a command that runs pnpm with args in the frontend's folder. Until
+// pnpm's native binary is installed, its launcher on macOS and Linux is a shell script
+// without a shebang line: a shell runs it, but the OS will not exec it directly, so such a
+// launcher runs through /bin/sh. Windows runs pnpm's .exe or .cmd launcher directly.
+func (r runner) pnpmCommand(ctx context.Context, args ...string) (*exec.Cmd, error) {
+	if err := r.requirePNPM(); err != nil {
 		return nil, err
 	}
 
-	path, err := exec.LookPath("pnpm")
+	path, err := r.lookPath("pnpm")
 	if err != nil {
 		return nil, fmt.Errorf("find pnpm: %w", err)
 	}
@@ -135,8 +150,8 @@ func pnpmCommand(ctx context.Context, dir string, args ...string) (*exec.Cmd, er
 		name, argv = "/bin/sh", append([]string{path}, args...)
 	}
 
-	cmd := exec.CommandContext(ctx, name, argv...) //nolint:gosec // argv only, no shell command line
-	cmd.Dir = dir
+	cmd := r.command(ctx, name, argv...)
+	cmd.Dir = r.path(frontendDir)
 
 	return cmd, nil
 }

@@ -199,10 +199,12 @@ build when broken.
   the `--color-*` tokens; checkboxes and radio buttons take the `checkbox` and `radio` classes;
   text is sized in rem, never px (a repoguard test fails on px text).
 - **magefiles.** `magefiles/` holds the custom `magex` targets: `brand:*`, `frontend:*`,
-  `app:*`, `db:*`, and `measure:*`. Its tests build with the `mage` tag and run the real target
-  code against fake tools on an isolated `PATH` (`fakeTool` in `magefiles/helpers_test.go`).
-  Keep new targets testable on Linux the same way: a macOS-only target checks the OS, then
-  hands the real work to a helper the tests can call, as `App.Build` does with `buildBundle`.
+  `app:*`, `db:*`, and `measure:*`. Its tests build with the `mage` tag and run in parallel.
+  A target checks the OS and reads its arguments, then hands the work to methods of a `runner`
+  (`magefiles/runner.go`): the checkout, output, environment, and tool lookup they use. A
+  target passes `hostRunner()`, this process's own; a test passes a `rig`'s runner
+  (`magefiles/helpers_test.go`), a temporary checkout and `testutil.FakeTool` fakes answered
+  per call. Keep new targets testable on Linux the same way, as `App.Build` does with `buildApp`.
 
 <br>
 

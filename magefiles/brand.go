@@ -6,13 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 
 	"github.com/magefile/mage/mg"
-	"github.com/magefile/mage/sh"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/brandgen"
@@ -43,7 +41,12 @@ type Brand mg.Namespace
 //
 //	magex brand:generate
 func (Brand) Generate() error {
-	return brandgen.Write(".")
+	return hostRunner().generateBrand()
+}
+
+// generateBrand does Brand.Generate's work, in the checkout.
+func (r runner) generateBrand() error {
+	return brandgen.Write(r.root())
 }
 
 // Icons renders the app icon artwork, build/appicon.svg, into the bundle's icon set,
@@ -59,57 +62,62 @@ func (Brand) Icons() error {
 		return errNeedsMacOS
 	}
 
-	if _, err := exec.LookPath(svgRenderer); err != nil {
+	return hostRunner().brandIcons(func() { mg.Deps(Brand.Generate) })
+}
+
+// brandIcons does Brand.Icons' work once it knows it is on macOS: it checks rsvg-convert
+// is there, has generate regenerate the brand files, and renders the icons.
+func (r runner) brandIcons(generate func()) error {
+	if _, err := r.lookPath(svgRenderer); err != nil {
 		return errNoSVGRenderer
 	}
 
-	mg.Deps(Brand.Generate)
+	generate()
 
-	return renderIcons()
+	return r.renderIcons()
 }
 
 // renderIcons renders the app icon set, the development Dock icon, and the menu bar icon
-// from the artwork under the working directory, then records which artwork they came
-// from: the steps Brand.Icons runs once it knows the tools are there.
-func renderIcons() error {
-	tmp, err := os.MkdirTemp("", brand.Slug+"-icons-")
+// from the artwork in the checkout, then records which artwork they came from: the steps
+// Brand.Icons runs once it knows the tools are there.
+func (r runner) renderIcons() error {
+	tmp, err := os.MkdirTemp(r.tmp, brand.Slug+"-icons-")
 	if err != nil {
 		return fmt.Errorf("create a temporary directory: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 
 	iconset := filepath.Join(tmp, brandgen.IconFile+".iconset")
-	if err = renderIconSet(iconset); err != nil {
+	if err = r.renderIconSet(iconset); err != nil {
 		return err
 	}
 
-	err = sh.Run("iconutil", "--convert", "icns", "--output", filepath.FromSlash(brandgen.IconSetPath), iconset)
+	err = r.run("iconutil", "--convert", "icns", "--output", r.path(brandgen.IconSetPath), iconset)
 	if err != nil {
 		return fmt.Errorf("build the icon set: %w", err)
 	}
 
-	if err = renderIcon(devIconSize, filepath.FromSlash(brandgen.DevIconPath)); err != nil {
+	if err = r.renderIcon(devIconSize, r.path(brandgen.DevIconPath)); err != nil {
 		return err
 	}
 
-	err = renderSVG(brandgen.TraySVGPath, brandgen.TrayIconSize, filepath.FromSlash(brandgen.TrayIconPath))
+	err = r.renderSVG(brandgen.TraySVGPath, brandgen.TrayIconSize, r.path(brandgen.TrayIconPath))
 	if err != nil {
 		return err
 	}
 
-	if err = brandgen.WriteIconStamp("."); err != nil {
+	if err = brandgen.WriteIconStamp(r.root()); err != nil {
 		return err
 	}
 
-	//nolint:forbidigo // mage target output
-	fmt.Printf("✅ Rendered %s, %s, and %s\n", brandgen.IconSetPath, brandgen.DevIconPath, brandgen.TrayIconPath)
+	_, _ = fmt.Fprintf(r.stdout, "✅ Rendered %s, %s, and %s\n", brandgen.IconSetPath, brandgen.DevIconPath, brandgen.TrayIconPath)
 
 	return nil
 }
 
 // renderIconSet renders every image of a macOS icon set into dir, an .iconset directory
 // it creates, under the names iconutil expects.
-func renderIconSet(dir string) error {
+func (r runner) renderIconSet(dir string) error {
 	if err := os.Mkdir(dir, 0o750); err != nil {
 		return fmt.Errorf("create the icon set: %w", err)
 	}
@@ -117,11 +125,11 @@ func renderIconSet(dir string) error {
 	for _, size := range iconSetSizes {
 		name := "icon_" + strconv.Itoa(size) + "x" + strconv.Itoa(size)
 
-		if err := renderIcon(size, filepath.Join(dir, name+".png")); err != nil {
+		if err := r.renderIcon(size, filepath.Join(dir, name+".png")); err != nil {
 			return err
 		}
 
-		if err := renderIcon(2*size, filepath.Join(dir, name+"@2x.png")); err != nil {
+		if err := r.renderIcon(2*size, filepath.Join(dir, name+"@2x.png")); err != nil {
 			return err
 		}
 	}
@@ -130,16 +138,16 @@ func renderIconSet(dir string) error {
 }
 
 // renderIcon rasterizes the app icon artwork into a square PNG of the given side.
-func renderIcon(size int, out string) error {
-	return renderSVG(brandgen.IconSVGPath, size, out)
+func (r runner) renderIcon(size int, out string) error {
+	return r.renderSVG(brandgen.IconSVGPath, size, out)
 }
 
-// renderSVG rasterizes the artwork at svgPath, slash-separated, into a square PNG of the
-// given side.
-func renderSVG(svgPath string, size int, out string) error {
+// renderSVG rasterizes the artwork at svgPath, slash-separated, in the checkout, into a
+// square PNG of the given side.
+func (r runner) renderSVG(svgPath string, size int, out string) error {
 	side := strconv.Itoa(size)
 
-	err := sh.Run(svgRenderer, "--width", side, "--height", side, "--output", out, filepath.FromSlash(svgPath))
+	err := r.run(svgRenderer, "--width", side, "--height", side, "--output", out, r.path(svgPath))
 	if err != nil {
 		return fmt.Errorf("render the %s-pixel %s: %w", side, filepath.Base(svgPath), err)
 	}

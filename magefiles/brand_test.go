@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,64 +13,93 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/brandgen"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-// outputWriter is a fake tool body that creates the file named after --output, as
-// rsvg-convert and iconutil do.
-const outputWriter = `while [ $# -gt 0 ]; do
-  if [ "$1" = --output ]; then out="$2"; fi
-  shift
-done
-: > "$out"`
+// writesOutput is the answer of a fake rsvg-convert or iconutil: it writes the file named
+// after --output, as both do.
+func writesOutput(args []string) testutil.FakeRun {
+	return writes(argAfter(args, "--output"), "")
+}
 
-// fakeRenderer puts an rsvg-convert into the PATH directory dir that logs its arguments,
-// then runs body, and returns the log's path.
-func fakeRenderer(t *testing.T, dir, body string) string {
+// failsFor is an answer that fails a call whose arguments hold part, and otherwise writes
+// the file named after --output.
+func failsFor(part string) answer {
+	return func(args []string) testutil.FakeRun {
+		if strings.Contains(strings.Join(args, " "), part) {
+			return testutil.FakeRun{Exit: 1}
+		}
+
+		return writesOutput(args)
+	}
+}
+
+// artwork returns a rig whose checkout holds the brand files, the icon artwork among them,
+// and the folder the development icons go to.
+func artwork(t *testing.T) *rig {
 	t.Helper()
 
-	return fakeLoggedTool(t, dir, svgRenderer, body)
+	g := newRig(t)
+	require.NoError(t, brandgen.Write(g.dir))
+	require.NoError(t, os.MkdirAll(g.path("cmd/"+brand.Slug), 0o750))
+
+	return g
 }
 
-//nolint:paralleltest // changes the process's working directory
 func TestBrandGenerate(t *testing.T) {
-	dir := inTempDir(t)
+	t.Parallel()
 
-	require.NoError(t, Brand{}.Generate())
+	g := newRig(t)
 
-	require.NoError(t, brandgen.Check(dir), "every generated file is written and current")
+	require.NoError(t, g.runner().generateBrand())
+
+	require.NoError(t, brandgen.Check(g.dir), "every generated file is written and current")
 }
 
-//nolint:paralleltest // changes the process's PATH
 func TestRenderSVG(t *testing.T) {
+	t.Parallel()
+
 	t.Run("renders a square PNG of the given side", func(t *testing.T) {
-		log := fakeRenderer(t, isolatedPath(t), outputWriter)
+		t.Parallel()
+
+		g := newRig(t)
+		g.tool(svgRenderer, writesOutput)
+
 		out := filepath.Join(t.TempDir(), "tray.png")
 
-		require.NoError(t, renderSVG(brandgen.TraySVGPath, brandgen.TrayIconSize, out))
+		require.NoError(t, g.runner().renderSVG(brandgen.TraySVGPath, brandgen.TrayIconSize, out))
 
 		assert.FileExists(t, out)
 		assert.Equal(t, []string{
-			"--width 66 --height 66 --output " + out + " " + filepath.FromSlash(brandgen.TraySVGPath),
-		}, logLines(t, log))
+			"--width 66 --height 66 --output " + out + " " + g.path(brandgen.TraySVGPath),
+		}, g.linesOf(svgRenderer))
 	})
 
 	t.Run("names the render that failed", func(t *testing.T) {
-		fakeRenderer(t, isolatedPath(t), "exit 1")
+		t.Parallel()
 
-		err := renderSVG(brandgen.TraySVGPath, brandgen.TrayIconSize, filepath.Join(t.TempDir(), "tray.png"))
+		g := newRig(t)
+		g.tool(svgRenderer, exits(1))
+
+		err := g.runner().renderSVG(brandgen.TraySVGPath, brandgen.TrayIconSize, filepath.Join(t.TempDir(), "tray.png"))
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "render the 66-pixel trayicon.svg")
 	})
 }
 
-//nolint:paralleltest // changes the process's PATH
 func TestRenderIconSet(t *testing.T) {
+	t.Parallel()
+
 	t.Run("renders every size at 1x and 2x under the names iconutil expects", func(t *testing.T) {
-		log := fakeRenderer(t, isolatedPath(t), outputWriter)
+		t.Parallel()
+
+		g := newRig(t)
+		g.tool(svgRenderer, writesOutput)
+
 		dir := filepath.Join(t.TempDir(), brandgen.IconFile+".iconset")
 
-		require.NoError(t, renderIconSet(dir))
+		require.NoError(t, g.runner().renderIconSet(dir))
 
 		entries, err := os.ReadDir(dir)
 		require.NoError(t, err)
@@ -86,126 +116,120 @@ func TestRenderIconSet(t *testing.T) {
 			"icon_256x256.png", "icon_256x256@2x.png",
 			"icon_512x512.png", "icon_512x512@2x.png",
 		}, names)
-		assert.Contains(t, logLines(t, log),
-			"--width 1024 --height 1024 --output "+filepath.Join(dir, "icon_512x512@2x.png")+" "+filepath.FromSlash(brandgen.IconSVGPath))
+		assert.Contains(t, g.linesOf(svgRenderer),
+			"--width 1024 --height 1024 --output "+filepath.Join(dir, "icon_512x512@2x.png")+" "+g.path(brandgen.IconSVGPath))
 	})
 
 	t.Run("the icon set already exists", func(t *testing.T) {
-		dir := t.TempDir()
+		t.Parallel()
 
-		err := renderIconSet(dir)
+		err := newRig(t).runner().renderIconSet(t.TempDir())
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "create the icon set")
 	})
 
 	t.Run("a 1x render fails", func(t *testing.T) {
-		fakeRenderer(t, isolatedPath(t), "exit 1")
+		t.Parallel()
 
-		err := renderIconSet(filepath.Join(t.TempDir(), "icons.iconset"))
+		g := newRig(t)
+		g.tool(svgRenderer, exits(1))
+
+		err := g.runner().renderIconSet(filepath.Join(t.TempDir(), "icons.iconset"))
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "render the 16-pixel")
 	})
 
 	t.Run("a 2x render fails", func(t *testing.T) {
-		fakeRenderer(t, isolatedPath(t), `case "$*" in *@2x*) exit 1;; esac`+"\n"+outputWriter)
+		t.Parallel()
 
-		err := renderIconSet(filepath.Join(t.TempDir(), "icons.iconset"))
+		g := newRig(t)
+		g.tool(svgRenderer, failsFor("@2x"))
+
+		err := g.runner().renderIconSet(filepath.Join(t.TempDir(), "icons.iconset"))
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "render the 32-pixel")
 	})
 }
 
-//nolint:paralleltest // changes the process's working directory, PATH, and standard output
-func TestBrandIconsOnMacOS(t *testing.T) {
-	onlyOnMacOS(t)
+func TestBrandIcons(t *testing.T) {
+	t.Parallel()
 
 	t.Run("needs rsvg-convert", func(t *testing.T) {
-		inTempDir(t)
-		isolatedPath(t)
+		t.Parallel()
 
-		require.ErrorIs(t, Brand{}.Icons(), errNoSVGRenderer)
+		err := newRig(t).runner().brandIcons(func() { t.Error("the brand files are generated without a renderer") })
+
+		require.ErrorIs(t, err, errNoSVGRenderer)
 	})
 
 	t.Run("renders every icon and records the artwork", func(t *testing.T) {
-		dir := inTempDir(t)
-		require.NoError(t, os.MkdirAll(filepath.Join(dir, "cmd", brand.Slug), 0o750))
+		t.Parallel()
 
-		tools := isolatedPath(t)
-		fakeRenderer(t, tools, outputWriter)
-		fakeTool(t, tools, "iconutil", outputWriter)
+		g := newRig(t)
+		require.NoError(t, os.MkdirAll(g.path("cmd/"+brand.Slug), 0o750))
+		g.tool(svgRenderer, writesOutput)
+		g.tool("iconutil", writesOutput)
 
-		var err error
+		r := g.runner()
 
-		out := captureStdout(t, func() { err = Brand{}.Icons() })
+		require.NoError(t, r.brandIcons(func() { require.NoError(t, r.generateBrand()) }))
 
-		require.NoError(t, err)
-		assert.Contains(t, out, "Rendered "+brandgen.IconSetPath)
-		require.NoError(t, checkBrandFiles(), "the brand files and every icon are current")
+		assert.Contains(t, g.out.String(), "Rendered "+brandgen.IconSetPath)
+		require.NoError(t, r.checkBrandFiles(), "the brand files and every icon are current")
 	})
 }
 
-//nolint:paralleltest // changes the process's working directory, PATH, environment, and standard output
 func TestRenderIcons(t *testing.T) {
-	// artwork writes the brand files, the icon artwork among them, into a fresh working
-	// directory, with the directory the development icons go to.
-	artwork := func(t *testing.T) {
-		t.Helper()
-
-		dir := inTempDir(t)
-		require.NoError(t, brandgen.Write(dir))
-		require.NoError(t, os.MkdirAll(filepath.Join(dir, "cmd", brand.Slug), 0o750))
-	}
+	t.Parallel()
 
 	t.Run("renders every icon and records the artwork", func(t *testing.T) {
-		artwork(t)
+		t.Parallel()
 
-		tools := isolatedPath(t)
-		fakeRenderer(t, tools, outputWriter)
-		fakeTool(t, tools, "iconutil", outputWriter)
+		g := artwork(t)
+		g.tool(svgRenderer, writesOutput)
+		g.tool("iconutil", writesOutput)
 
-		var err error
+		require.NoError(t, g.runner().renderIcons())
 
-		out := captureStdout(t, func() { err = renderIcons() })
-
-		require.NoError(t, err)
-		assert.Equal(t, "✅ Rendered "+brandgen.IconSetPath+", "+brandgen.DevIconPath+", and "+brandgen.TrayIconPath+"\n", out)
-		require.NoError(t, brandgen.CheckIcons("."), "every icon exists and the stamp names the current artwork")
+		assert.Equal(t, "✅ Rendered "+brandgen.IconSetPath+", "+brandgen.DevIconPath+", and "+brandgen.TrayIconPath+"\n",
+			g.out.String())
+		require.NoError(t, brandgen.CheckIcons(g.dir), "every icon exists and the stamp names the current artwork")
 	})
 
 	tests := []struct {
 		name     string
-		renderer string
-		iconutil string
+		renderer answer
+		iconutil answer
 		wantErr  string
 	}{
-		{name: "the icon set render fails", renderer: "exit 1", iconutil: outputWriter, wantErr: "render the 16-pixel appicon.svg"},
-		{name: "iconutil fails", renderer: outputWriter, iconutil: "exit 1", wantErr: "build the icon set"},
+		{name: "the icon set render fails", renderer: exits(1), iconutil: writesOutput, wantErr: "render the 16-pixel appicon.svg"},
+		{name: "iconutil fails", renderer: writesOutput, iconutil: exits(1), wantErr: "build the icon set"},
 		{
 			name:     "the Dock icon render fails",
-			renderer: `case "$*" in *` + filepath.Base(brandgen.DevIconPath) + `*) exit 1;; esac` + "\n" + outputWriter,
-			iconutil: outputWriter,
+			renderer: failsFor(filepath.Base(brandgen.DevIconPath)),
+			iconutil: writesOutput,
 			wantErr:  "render the 512-pixel appicon.svg",
 		},
 		{
 			name:     "the menu bar icon render fails",
-			renderer: `case "$*" in *` + filepath.Base(brandgen.TrayIconPath) + `*) exit 1;; esac` + "\n" + outputWriter,
-			iconutil: outputWriter,
+			renderer: failsFor(filepath.Base(brandgen.TrayIconPath)),
+			iconutil: writesOutput,
 			wantErr:  "render the 66-pixel trayicon.svg",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			artwork(t)
+			t.Parallel()
 
-			tools := isolatedPath(t)
-			fakeRenderer(t, tools, tt.renderer)
-			fakeTool(t, tools, "iconutil", tt.iconutil)
+			g := artwork(t)
+			g.tool(svgRenderer, tt.renderer)
+			g.tool("iconutil", tt.iconutil)
 
-			err := renderIcons()
+			err := g.runner().renderIcons()
 
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
@@ -213,22 +237,23 @@ func TestRenderIcons(t *testing.T) {
 	}
 
 	t.Run("the stamp cannot be written", func(t *testing.T) {
-		artwork(t)
-		require.NoError(t, os.Mkdir(filepath.FromSlash(brandgen.IconStampPath), 0o750))
+		t.Parallel()
 
-		tools := isolatedPath(t)
-		fakeRenderer(t, tools, outputWriter)
-		fakeTool(t, tools, "iconutil", outputWriter)
+		g := artwork(t)
+		require.NoError(t, os.Mkdir(g.path(brandgen.IconStampPath), 0o750))
+		g.tool(svgRenderer, writesOutput)
+		g.tool("iconutil", writesOutput)
 
-		require.Error(t, renderIcons())
+		require.Error(t, g.runner().renderIcons())
 	})
 
 	t.Run("no temporary directory", func(t *testing.T) {
-		missing := filepath.Join(t.TempDir(), "missing")
-		artwork(t)
-		t.Setenv("TMPDIR", missing)
+		t.Parallel()
 
-		err := renderIcons()
+		r := artwork(t).runner()
+		r.tmp = filepath.Join(t.TempDir(), "missing")
+
+		err := r.renderIcons()
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "create a temporary directory")

@@ -29,15 +29,9 @@ const (
 )
 `
 
-// enumGenerator is a fake go body that writes, into the directory after -d, the kinds
-// package's models as the binding generator renders Kind with a DefaultKind constant.
-const enumGenerator = `while [ $# -gt 0 ]; do
-  if [ "$1" = -d ]; then out="$2"; fi
-  shift
-done
-/bin/mkdir -p "$out/` + enumModule + `/kinds"
-/bin/cat > "$out/` + enumModule + `/kinds/models.ts" <<'EOF'
-/**
+// kindsModels is the kinds package's models as the binding generator renders Kind with a
+// DefaultKind constant.
+const kindsModels = `/**
  * Kind is what an item is.
  */
 export enum Kind {
@@ -57,19 +51,31 @@ export enum Kind {
      */
     DefaultKind = "a",
 };
-EOF`
+`
 
-// writeKinds makes the working directory a module holding the kinds package, with
-// DefaultKind declared in the file named defaultIn.
-func writeKinds(t *testing.T, defaultIn string) {
+// enumGenerator is a fake go's answer that writes kindsModels into the folder after -d.
+func enumGenerator(t *testing.T) answer {
 	t.Helper()
 
-	testutil.WriteFile(t, goModFile, "module "+enumModule+"\n\ngo 1.26\n")
-	testutil.WriteFile(t, filepath.Join("kinds", "kinds.go"), kindsSource)
+	return func(args []string) testutil.FakeRun {
+		out := filepath.Join(argAfter(args, "-d"), enumModule, "kinds")
+		mkdir(t, out)
+
+		return writes(filepath.Join(out, modelsFile), kindsModels)
+	}
+}
+
+// writeKinds makes dir a module holding the kinds package, with DefaultKind declared in
+// the file named defaultIn.
+func writeKinds(t *testing.T, dir, defaultIn string) {
+	t.Helper()
+
+	testutil.WriteFile(t, filepath.Join(dir, goModFile), "module "+enumModule+"\n\ngo 1.26\n")
+	testutil.WriteFile(t, filepath.Join(dir, "kinds", "kinds.go"), kindsSource)
 
 	const defaultKind = "\n// DefaultKind is the kind of a new item.\nconst DefaultKind = KindA\n"
 
-	path := filepath.Join("kinds", defaultIn)
+	path := filepath.Join(dir, "kinds", defaultIn)
 	if defaultIn == "kinds.go" {
 		testutil.WriteFile(t, path, kindsSource+defaultKind)
 
@@ -79,67 +85,72 @@ func writeKinds(t *testing.T, defaultIn string) {
 	testutil.WriteFile(t, path, "package kinds\n"+defaultKind)
 }
 
-//nolint:paralleltest // changes the process's working directory and PATH
 func TestBindingsRefuseAnEnumSplitAcrossFiles(t *testing.T) {
-	t.Run("app:bindings names the enum and its files", func(t *testing.T) {
-		inTempDir(t)
-		writeKinds(t, "defaults.go")
-		fakeGo(t, enumGenerator)
+	t.Parallel()
 
-		err := App{}.Bindings()
+	t.Run("app:bindings names the enum and its files", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		writeKinds(t, g.dir, "defaults.go")
+		fakeGo(g, enumGenerator(t))
+
+		err := g.runner().generateBindings(bindingsDir)
 
 		require.ErrorIs(t, err, errSplitEnum)
 		assert.Contains(t, err.Error(), enumModule+"/kinds.Kind: defaults.go, kinds.go")
 	})
 
 	t.Run("app:bindingsCheck refuses it rather than report drift by chance", func(t *testing.T) {
-		inTempDir(t)
-		writeKinds(t, "defaults.go")
-		fakeGo(t, enumGenerator)
-		require.ErrorIs(t, App{}.Bindings(), errSplitEnum)
+		t.Parallel()
 
-		err := App{}.BindingsCheck()
+		g := newRig(t)
+		writeKinds(t, g.dir, "defaults.go")
+		fakeGo(g, enumGenerator(t))
+		require.ErrorIs(t, g.runner().generateBindings(bindingsDir), errSplitEnum)
+
+		err := g.runner().checkBindings()
 
 		require.ErrorIs(t, err, errSplitEnum)
 		assert.NotErrorIs(t, err, errBindingsDrift)
 	})
 
 	t.Run("an enum declared in one file passes", func(t *testing.T) {
-		inTempDir(t)
-		writeKinds(t, "kinds.go")
-		fakeGo(t, enumGenerator)
+		t.Parallel()
 
-		require.NoError(t, App{}.Bindings())
-		assert.Contains(t, readFile(t, filepath.Join(bindingsDir, enumModule, "kinds", modelsFile)),
+		g := newRig(t)
+		writeKinds(t, g.dir, "kinds.go")
+		fakeGo(g, enumGenerator(t))
+
+		require.NoError(t, g.runner().generateBindings(bindingsDir))
+		assert.Contains(t, readFile(t, filepath.Join(g.path(bindingsDir), enumModule, "kinds", modelsFile)),
 			`export type Kind = "a" | "b";`)
 
-		var err error
-
-		captureStdout(t, func() { err = App{}.BindingsCheck() })
-
-		require.NoError(t, err)
+		require.NoError(t, g.runner().checkBindings())
 	})
 }
 
-//nolint:paralleltest // changes the process's working directory to the repository root
 func TestBoundEnumsAreEachDeclaredInOneFile(t *testing.T) {
-	inRepoRoot(t)
+	t.Parallel()
 
-	files, err := treeFiles(bindingsDir)
+	r, _ := realRunner(t, repoRoot(t), nil)
+
+	files, err := treeFiles(r.path(bindingsDir))
 	require.NoError(t, err)
 
-	module, err := modulePath(goModFile)
+	module, err := modulePath(r.path(goModFile))
 	require.NoError(t, err)
 
 	enums := boundEnums(files)
 	require.Contains(t, enums[module+"/internal/autopilot/catalog"]["Preset"], "DefaultPreset",
 		"the check reads the committed bindings' enums")
 
-	require.NoError(t, checkEnumFiles(bindingsDir))
+	require.NoError(t, r.checkEnumFiles(r.path(bindingsDir)))
 }
 
-//nolint:paralleltest // changes the process's working directory
 func TestCheckEnumFiles(t *testing.T) {
+	t.Parallel()
+
 	// models writes a tidy models file for pkg under root holding the named enums, each
 	// with its members.
 	models := func(t *testing.T, root, pkg string, enums map[string][]string) {
@@ -160,11 +171,13 @@ func TestCheckEnumFiles(t *testing.T) {
 	}
 
 	t.Run("names each enum split across files, sorted", func(t *testing.T) {
-		inTempDir(t)
-		writeKinds(t, "defaults.go")
-		testutil.WriteFile(t, filepath.Join("states", "states.go"), "package states\n\ntype State int\n\nconst (\n\tOpen State = iota\n\tShut\n)\n")
-		testutil.WriteFile(t, filepath.Join("states", "more.go"), "package states\n\nconst Gone State = 9\n")
-		testutil.WriteFile(t, filepath.Join("whole", "whole.go"), "package whole\n\ntype Mode string\n\nconst (\n\tOn Mode = \"on\"\n\tOff Mode = \"off\"\n)\n")
+		t.Parallel()
+
+		g := newRig(t)
+		writeKinds(t, g.dir, "defaults.go")
+		testutil.WriteFile(t, g.path("states/states.go"), "package states\n\ntype State int\n\nconst (\n\tOpen State = iota\n\tShut\n)\n")
+		testutil.WriteFile(t, g.path("states/more.go"), "package states\n\nconst Gone State = 9\n")
+		testutil.WriteFile(t, g.path("whole/whole.go"), "package whole\n\ntype Mode string\n\nconst (\n\tOn Mode = \"on\"\n\tOff Mode = \"off\"\n)\n")
 
 		root := t.TempDir()
 		models(t, root, enumModule+"/kinds", map[string][]string{"Kind": {"KindA", "KindB", "DefaultKind"}})
@@ -172,7 +185,7 @@ func TestCheckEnumFiles(t *testing.T) {
 		models(t, root, enumModule+"/whole", map[string][]string{"Mode": {"On", "Off", "Stale"}})
 		models(t, root, "example.org/other/split", map[string][]string{"Far": {"A", "B"}})
 
-		err := checkEnumFiles(root)
+		err := g.runner().checkEnumFiles(root)
 
 		require.ErrorIs(t, err, errSplitEnum)
 		assert.Contains(t, err.Error(), ":\n  "+enumModule+"/kinds.Kind: defaults.go, kinds.go\n  "+enumModule+"/states.State: more.go, states.go")
@@ -181,98 +194,111 @@ func TestCheckEnumFiles(t *testing.T) {
 	})
 
 	t.Run("reads the files the desktop build compiles", func(t *testing.T) {
-		inTempDir(t)
-		writeKinds(t, "kinds.go")
-		testutil.WriteFile(t, filepath.Join("kinds", "legacy.go"), "//go:build ignore\n\npackage kinds\n\nconst KindB = Kind(\"b\")\n")
+		t.Parallel()
+
+		g := newRig(t)
+		writeKinds(t, g.dir, "kinds.go")
+		testutil.WriteFile(t, g.path("kinds/legacy.go"), "//go:build ignore\n\npackage kinds\n\nconst KindB = Kind(\"b\")\n")
 
 		root := t.TempDir()
 		models(t, root, enumModule+"/kinds", map[string][]string{"Kind": {"KindA", "KindB", "DefaultKind"}})
 
-		require.NoError(t, checkEnumFiles(root), "a file the build leaves out declares nothing")
+		require.NoError(t, g.runner().checkEnumFiles(root), "a file the build leaves out declares nothing")
 
-		testutil.WriteFile(t, filepath.Join("kinds", "shell.go"), "//go:build "+desktopTag+"\n\npackage kinds\n\nconst KindC Kind = \"c\"\n")
+		testutil.WriteFile(t, g.path("kinds/shell.go"), "//go:build "+desktopTag+"\n\npackage kinds\n\nconst KindC Kind = \"c\"\n")
 		models(t, root, enumModule+"/kinds", map[string][]string{"Kind": {"KindA", "KindC"}})
 
-		err := checkEnumFiles(root)
+		err := g.runner().checkEnumFiles(root)
 
 		require.ErrorIs(t, err, errSplitEnum)
 		assert.Contains(t, err.Error(), enumModule+"/kinds.Kind: kinds.go, shell.go")
 	})
 
 	t.Run("an enum in the module's root package", func(t *testing.T) {
-		inTempDir(t)
-		testutil.WriteFile(t, goModFile, "module "+enumModule+"\n")
-		testutil.WriteFile(t, "a.go", "package acme\n\ntype T string\n\nconst A T = \"a\"\n")
-		testutil.WriteFile(t, "b.go", "package acme\n\nconst B T = \"b\"\n")
+		t.Parallel()
+
+		g := newRig(t)
+		testutil.WriteFile(t, g.path(goModFile), "module "+enumModule+"\n")
+		testutil.WriteFile(t, g.path("a.go"), "package acme\n\ntype T string\n\nconst A T = \"a\"\n")
+		testutil.WriteFile(t, g.path("b.go"), "package acme\n\nconst B T = \"b\"\n")
 
 		root := t.TempDir()
 		models(t, root, enumModule, map[string][]string{"T": {"A", "B"}})
 
-		err := checkEnumFiles(root)
+		err := g.runner().checkEnumFiles(root)
 
 		require.ErrorIs(t, err, errSplitEnum)
 		assert.Contains(t, err.Error(), enumModule+".T: a.go, b.go")
 	})
 
 	t.Run("bindings with no enums need no module", func(t *testing.T) {
-		inTempDir(t)
+		t.Parallel()
+
+		r := newRig(t).runner()
 
 		root := t.TempDir()
 		testutil.WriteFile(t, filepath.Join(root, "models", "a.ts"), "export const a = {\n    b: 1,\n} as const;\n")
 		testutil.WriteFile(t, filepath.Join(root, "x", modelsFile), "export interface X {\n}\n")
 
-		require.NoError(t, checkEnumFiles(root))
-		require.NoError(t, checkEnumFiles(filepath.Join(root, "missing")))
+		require.NoError(t, r.checkEnumFiles(root))
+		require.NoError(t, r.checkEnumFiles(filepath.Join(root, "missing")))
 	})
 
 	t.Run("go.mod missing", func(t *testing.T) {
-		inTempDir(t)
+		t.Parallel()
+
+		g := newRig(t)
 
 		root := t.TempDir()
 		models(t, root, enumModule+"/kinds", map[string][]string{"Kind": {"KindA"}})
 
-		err := checkEnumFiles(root)
+		err := g.runner().checkEnumFiles(root)
 
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "read "+goModFile)
+		require.ErrorIs(t, err, os.ErrNotExist)
+		assert.Contains(t, err.Error(), "read "+g.path(goModFile))
 	})
 
 	t.Run("the package is gone", func(t *testing.T) {
-		inTempDir(t)
-		testutil.WriteFile(t, goModFile, "module "+enumModule+"\n")
+		t.Parallel()
+
+		g := newRig(t)
+		testutil.WriteFile(t, g.path(goModFile), "module "+enumModule+"\n")
 
 		root := t.TempDir()
 		models(t, root, enumModule+"/kinds", map[string][]string{"Kind": {"KindA"}})
 
-		err := checkEnumFiles(root)
+		err := g.runner().checkEnumFiles(root)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "read the package in kinds")
 	})
 
 	t.Run("a file that doesn't parse", func(t *testing.T) {
-		inTempDir(t)
-		writeKinds(t, "kinds.go")
-		testutil.WriteFile(t, filepath.Join("kinds", "broken.go"), "package kinds\n\nconst (\n")
+		t.Parallel()
+
+		g := newRig(t)
+		writeKinds(t, g.dir, "kinds.go")
+		testutil.WriteFile(t, g.path("kinds/broken.go"), "package kinds\n\nconst (\n")
 
 		root := t.TempDir()
 		models(t, root, enumModule+"/kinds", map[string][]string{"Kind": {"KindA"}})
 
-		err := checkEnumFiles(root)
+		err := g.runner().checkEnumFiles(root)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "read the constants in kinds")
 	})
 
 	t.Run("unreadable bindings", func(t *testing.T) {
+		t.Parallel()
+
 		skipAsRoot(t)
-		inTempDir(t)
 
 		root := t.TempDir()
 		testutil.WriteFile(t, filepath.Join(root, modelsFile), "")
 		require.NoError(t, os.Chmod(filepath.Join(root, modelsFile), 0o000))
 
-		require.Error(t, checkEnumFiles(root))
+		require.Error(t, newRig(t).runner().checkEnumFiles(root))
 	})
 }
 

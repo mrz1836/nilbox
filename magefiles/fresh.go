@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -42,12 +41,17 @@ func (App) Reset() error {
 		return fmt.Errorf("find the app's data: %w", err)
 	}
 
-	bundle, exe, err := builtBundle()
+	return hostRunner().reset(paths)
+}
+
+// reset does App.Reset's work for the data at paths once it knows it is on macOS.
+func (r runner) reset(paths appdata.Paths) error {
+	bundle, exe, err := r.builtBundle()
 	if err != nil {
 		return err
 	}
 
-	return resetApp(paths, bundle, exe, appQuitTimeout)
+	return r.resetApp(paths, bundle, exe, appQuitTimeout)
 }
 
 // Fresh opens the app on a fresh data folder of its own, a sandbox for trying the first-run
@@ -68,24 +72,29 @@ func (App) Fresh() error {
 		return fmt.Errorf("find the app's data: %w", err)
 	}
 
-	bundle, exe, err := builtBundle()
+	return hostRunner().fresh(paths)
+}
+
+// fresh does App.Fresh's work from the data at paths once it knows it is on macOS.
+func (r runner) fresh(paths appdata.Paths) error {
+	bundle, exe, err := r.builtBundle()
 	if err != nil {
 		return err
 	}
 
-	return openFresh(paths, os.TempDir(), bundle, exe, appQuitTimeout)
+	return r.openFresh(paths, r.tempDir(), bundle, exe, appQuitTimeout)
 }
 
 // builtBundle returns the macOS app bundle built from source and its executable, building
 // the bundle first when it is missing.
-func builtBundle() (bundle, exe string, err error) {
-	bundle, exe, err = appBundle()
+func (r runner) builtBundle() (bundle, exe string, err error) {
+	bundle, exe, err = r.appBundle()
 	if errors.Is(err, errNoBundle) {
-		if err = (App{}).Build(); err != nil {
+		if err = r.buildApp(); err != nil {
 			return "", "", err
 		}
 
-		bundle, exe, err = appBundle()
+		bundle, exe, err = r.appBundle()
 	}
 
 	return bundle, exe, err
@@ -94,8 +103,8 @@ func builtBundle() (bundle, exe string, err error) {
 // resetApp does App.Reset's work for the data at paths and the app bundle, whose running
 // copies get quitTimeout to quit: the request is written only once none runs, so a copy
 // that holds its data open never meets it half way.
-func resetApp(paths appdata.Paths, bundle, exe string, quitTimeout time.Duration) error {
-	quit, err := quitRunningApp(exe, quitTimeout)
+func (r runner) resetApp(paths appdata.Paths, bundle, exe string, quitTimeout time.Duration) error {
+	quit, err := r.quitRunningApp(exe, quitTimeout)
 	if err != nil {
 		return err
 	}
@@ -104,14 +113,14 @@ func resetApp(paths appdata.Paths, bundle, exe string, quitTimeout time.Duration
 		return err
 	}
 
-	if err = openBundle(quit, bundle); err != nil {
+	if err = r.openBundle(quit, bundle); err != nil {
 		return fmt.Errorf("the reset is asked for, and the next start carries it out: %w", err)
 	}
 
-	say("Starting " + brand.DevName + " over, on the data it shares with " + brand.Name + ". It keeps your prompts, " +
+	r.say("Starting " + brand.DevName + " over, on the data it shares with " + brand.Name + ". It keeps your prompts, " +
 		"launch defaults, and your own scripts.")
-	say("Your clones, worktrees, backups, and logs are left as they are.")
-	say("To undo it, quit " + brand.DevName + ", then rename the newest " + filepath.Base(paths.DB) +
+	r.say("Your clones, worktrees, backups, and logs are left as they are.")
+	r.say("To undo it, quit " + brand.DevName + ", then rename the newest " + filepath.Base(paths.DB) +
 		".reset-<stamp> in " + paths.Root + " back to " + filepath.Base(paths.DB) + ".")
 
 	return nil
@@ -120,8 +129,8 @@ func resetApp(paths appdata.Paths, bundle, exe string, quitTimeout time.Duration
 // openFresh does App.Fresh's work: it quits the running copies of the app bundle, whose
 // executable is exe, makes a sandbox data folder in tmp from the data at paths, and opens
 // the bundle on it.
-func openFresh(paths appdata.Paths, tmp, bundle, exe string, quitTimeout time.Duration) error {
-	quit, err := quitRunningApp(exe, quitTimeout)
+func (r runner) openFresh(paths appdata.Paths, tmp, bundle, exe string, quitTimeout time.Duration) error {
+	quit, err := r.quitRunningApp(exe, quitTimeout)
 	if err != nil {
 		return err
 	}
@@ -131,12 +140,12 @@ func openFresh(paths appdata.Paths, tmp, bundle, exe string, quitTimeout time.Du
 		return err
 	}
 
-	if err = openBundle(quit, "-n", bundle, "--args", appdata.DataDirFlag+"="+dir); err != nil {
+	if err = r.openBundle(quit, "-n", bundle, "--args", appdata.DataDirFlag+"="+dir); err != nil {
 		return err
 	}
 
-	say(brand.DevName + " is open on fresh data in " + dir + ".")
-	say("Your own data is untouched; `magex app:run` goes back to it.")
+	r.say(brand.DevName + " is open on fresh data in " + dir + ".")
+	r.say("Your own data is untouched; `magex app:run` goes back to it.")
 
 	return nil
 }
@@ -200,12 +209,12 @@ func copyKept(from, to string) error {
 
 // openBundle runs open with args: at once, or, just after a running copy of the app quit,
 // trying again for a moment as openAfterQuit does.
-func openBundle(quit bool, args ...string) error {
+func (r runner) openBundle(quit bool, args ...string) error {
 	if quit {
-		return openRetrying(appReopenTimeout, args...)
+		return r.openRetrying(appReopenTimeout, args...)
 	}
 
-	out, err := exec.CommandContext(context.Background(), "open", args...).CombinedOutput() //nolint:gosec // argv only, no shell
+	out, err := r.cmd(context.Background(), nil, "open", args...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("open %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
