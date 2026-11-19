@@ -397,7 +397,8 @@ WHERE id = ? AND reason_review_requested = 1;
 SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
     CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1 AS BOOLEAN) AS listed,
     CAST(CAST(sqlc.arg(watched) AS BOOLEAN) = 1
-      AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed
+      AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed,
+    i.kind
 FROM items i
 JOIN accounts a ON a.id = i.account_id
 JOIN repos r ON r.id = i.repo_id
@@ -433,7 +434,8 @@ ORDER BY d.fetched_at, i.id;
 SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
     CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1 AS BOOLEAN) AS listed,
     CAST(CAST(sqlc.arg(watched) AS BOOLEAN) = 1
-      AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed
+      AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed,
+    i.kind
 FROM items i
 JOIN accounts a ON a.id = i.account_id
 JOIN repos r ON r.id = i.repo_id
@@ -456,6 +458,28 @@ WHERE a.login = sqlc.arg(login)
   )
   AND (CAST(sqlc.arg(any_base) AS BOOLEAN) = 1 OR d.base_ref IN (sqlc.slice(bases)))
 ORDER BY d.fetched_at, i.id;
+
+-- name: ListClosingIssues :many
+-- ListClosingIssues returns the open listed issues of the account with account_id, signed
+-- in as login, whatever their triage, that name a pull request among their closing pull
+-- requests (closing_pulls), each with its number, its repository's owner and name, and those
+-- pull requests, for the follow of a merge to find the issues the merged one closes. They
+-- are a few at most: an issue names one only while a pull request is on its way to closing
+-- it. Its columns up to kind are ListOpenPullsInRepo's, every issue listed and none followed.
+SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
+    CAST(1 AS BOOLEAN) AS listed, CAST(0 AS BOOLEAN) AS followed, i.kind, d.closing_pulls
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+JOIN repos r ON r.id = i.repo_id
+JOIN item_details d ON d.item_id = i.id
+WHERE a.login = sqlc.arg(login)
+  AND i.account_id = sqlc.arg(account_id)
+  AND i.kind = 'issue'
+  AND i.node_id <> ''
+  AND i.state NOT IN ('CLOSED', 'MERGED')
+  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
+  AND d.closing_pulls <> '[]'
+ORDER BY i.id;
 
 -- name: ListPushTargets :many
 -- ListPushTargets returns the open pull requests of the account with login whose branch the

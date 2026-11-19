@@ -670,7 +670,7 @@ func (s *Service) recordEnded(ctx context.Context, row editRow, acted Acted) err
 	}
 
 	if acted.Merged {
-		s.noteMerged(row.NodeID, row.AccountID, refOfRow(row).Repo, store.Deref(row.BaseRef))
+		s.noteMerged(row.NodeID, row.AccountID, refOfRow(row), store.Deref(row.BaseRef))
 	}
 
 	return nil

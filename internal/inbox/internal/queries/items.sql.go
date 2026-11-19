@@ -547,6 +547,81 @@ func (q *Queries) LeaveReview(ctx context.Context, arg LeaveReviewParams) error 
 	return err
 }
 
+const listClosingIssues = `-- name: ListClosingIssues :many
+SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
+    CAST(1 AS BOOLEAN) AS listed, CAST(0 AS BOOLEAN) AS followed, i.kind, d.closing_pulls
+FROM items i
+JOIN accounts a ON a.id = i.account_id
+JOIN repos r ON r.id = i.repo_id
+JOIN item_details d ON d.item_id = i.id
+WHERE a.login = ?1
+  AND i.account_id = ?2
+  AND i.kind = 'issue'
+  AND i.node_id <> ''
+  AND i.state NOT IN ('CLOSED', 'MERGED')
+  AND (i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1)
+  AND d.closing_pulls <> '[]'
+ORDER BY i.id
+`
+
+type ListClosingIssuesParams struct {
+	Login     string
+	AccountID int64
+}
+
+type ListClosingIssuesRow struct {
+	ID           int64
+	AccountID    int64
+	NodeID       string
+	Number       int64
+	RepoOwner    string
+	RepoName     string
+	Listed       bool
+	Followed     bool
+	Kind         string
+	ClosingPulls string
+}
+
+// ListClosingIssues returns the open listed issues of the account with account_id, signed
+// in as login, whatever their triage, that name a pull request among their closing pull
+// requests (closing_pulls), each with its number, its repository's owner and name, and those
+// pull requests, for the follow of a merge to find the issues the merged one closes. They
+// are a few at most: an issue names one only while a pull request is on its way to closing
+// it. Its columns up to kind are ListOpenPullsInRepo's, every issue listed and none followed.
+func (q *Queries) ListClosingIssues(ctx context.Context, arg ListClosingIssuesParams) ([]ListClosingIssuesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listClosingIssues, arg.Login, arg.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListClosingIssuesRow{}
+	for rows.Next() {
+		var i ListClosingIssuesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AccountID,
+			&i.NodeID,
+			&i.Number,
+			&i.RepoOwner,
+			&i.RepoName,
+			&i.Listed,
+			&i.Followed,
+			&i.Kind,
+			&i.ClosingPulls,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listItems = `-- name: ListItems :many
 SELECT
     i.id, i.kind, i.number, i.title, i.url, r.owner AS repo_owner, r.name AS repo_name,
@@ -1203,7 +1278,8 @@ const listOpenPullsInRepo = `-- name: ListOpenPullsInRepo :many
 SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
     CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1 AS BOOLEAN) AS listed,
     CAST(CAST(?1 AS BOOLEAN) = 1
-      AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed
+      AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed,
+    i.kind
 FROM items i
 JOIN accounts a ON a.id = i.account_id
 JOIN repos r ON r.id = i.repo_id
@@ -1249,6 +1325,7 @@ type ListOpenPullsInRepoRow struct {
 	RepoName  string
 	Listed    bool
 	Followed  bool
+	Kind      string
 }
 
 // ListOpenPullsInRepo returns the open pull requests of the account with account_id, signed
@@ -1298,6 +1375,7 @@ func (q *Queries) ListOpenPullsInRepo(ctx context.Context, arg ListOpenPullsInRe
 			&i.RepoName,
 			&i.Listed,
 			&i.Followed,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}
@@ -1384,7 +1462,8 @@ const listRunningChecks = `-- name: ListRunningChecks :many
 SELECT i.id, i.account_id, i.node_id, i.number, r.owner AS repo_owner, r.name AS repo_name,
     CAST(i.reason_review_requested = 1 OR i.reason_authored = 1 OR i.reason_assigned = 1 OR i.reason_pushed = 1 AS BOOLEAN) AS listed,
     CAST(CAST(?1 AS BOOLEAN) = 1
-      AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed
+      AND EXISTS (SELECT 1 FROM item_watches fw WHERE fw.item_id = i.id AND fw.follow = 1) AS BOOLEAN) AS followed,
+    i.kind
 FROM items i
 JOIN accounts a ON a.id = i.account_id
 JOIN repos r ON r.id = i.repo_id
@@ -1422,6 +1501,7 @@ type ListRunningChecksRow struct {
 	RepoName  string
 	Listed    bool
 	Followed  bool
+	Kind      string
 }
 
 // ListRunningChecks returns the open pull requests of the account with login whose checks
@@ -1458,6 +1538,7 @@ func (q *Queries) ListRunningChecks(ctx context.Context, arg ListRunningChecksPa
 			&i.RepoName,
 			&i.Listed,
 			&i.Followed,
+			&i.Kind,
 		); err != nil {
 			return nil, err
 		}

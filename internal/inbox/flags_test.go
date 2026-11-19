@@ -45,6 +45,7 @@ func reasonFlagDecisions() map[string]string {
 		"PruneFiles":          "keeps the file checks of watched items, and of pushed ones",
 		"ListRepoCounts":      "counts watched items too, so a repository only watched can have launch defaults",
 		"ListRunningChecks":   "adds the watched pull requests a routine follows, muted or not; a pushed one is listed",
+		"ListClosingIssues":   "none: the follow of a merge reads the lists' issues alone, whatever their triage",
 		"ListOpenPullsInRepo": "adds the watched pull requests a routine follows, as ListRunningChecks does; a pushed one is listed",
 		"ListPushTargets":     "none: the push watch follows the lists' pull requests alone, a pushed one among them",
 		"GetEditItem":         "accepts a watched item (watched), so its sheet acts from the Watching list; pushed reads as requested",

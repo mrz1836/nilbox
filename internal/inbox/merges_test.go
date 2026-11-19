@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -253,7 +254,7 @@ func TestAMergeIntoAnUnknownBaseReadsEveryBase(t *testing.T) {
 	t.Parallel()
 
 	h, f, _ := mergeHarness(t)
-	h.svc.noteMerged(nodeID(9), 1, repo.Name{Owner: acmeOrg, Repo: exampleRepo}, "")
+	h.svc.noteMerged(nodeID(9), 1, item.Ref{Repo: repo.Name{Owner: acmeOrg, Repo: exampleRepo}, Number: 9}, "")
 	h.answer(map[int]string{1: mergeableClean, 2: mergeableClean, 3: mergeableClean, 4: mergeableClean})
 
 	h.clock.Advance(mergeSettle)
@@ -348,7 +349,7 @@ func TestMergeFollowerRunsEachFollowsRounds(t *testing.T) {
 
 		q := newMergeQueue()
 		f := &MergeFollower{
-			queue: q, now: time.Now, logger: (&testutil.Logs{}).Logger(),
+			queue: q, closes: newCloseQueue(q.wake), now: time.Now, logger: (&testutil.Logs{}).Logger(),
 			round: func(context.Context, mergeFollow) (bool, error) {
 				rounds.Add(1)
 
@@ -401,7 +402,7 @@ func TestMergeFollowerRecoversAPanickingRound(t *testing.T) {
 		logs := &testutil.Logs{}
 		q := newMergeQueue()
 		f := &MergeFollower{
-			queue: q, now: time.Now, logger: logs.Logger(),
+			queue: q, closes: newCloseQueue(q.wake), now: time.Now, logger: logs.Logger(),
 			round: func(context.Context, mergeFollow) (bool, error) {
 				if rounds.Add(1) == 1 {
 					panic("boom")

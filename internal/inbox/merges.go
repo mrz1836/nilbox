@@ -250,10 +250,16 @@ func (q *mergeQueue) next(now time.Time) (time.Duration, bool) {
 	return max(soonest.Sub(now), 0), true
 }
 
-// noteMerged owes the repository name a follow of the merge of the pull request with
-// nodeID into base, for the account with accountID (see mergeQueue.add). It never waits.
-func (s *Service) noteMerged(nodeID string, accountID int64, name repo.Name, base string) {
-	s.merges.add(nodeID, accountID, name, base, s.clock.Now().UTC())
+// noteMerged owes the merge of the pull request pull, with nodeID, into base ("" when not
+// known), for the account with accountID, a follow of the other pull requests in its
+// repository (see mergeQueue.add) and of the issues it closes (see closeQueue.add), each
+// merge once. It never waits.
+func (s *Service) noteMerged(nodeID string, accountID int64, pull item.Ref, base string) {
+	now := s.clock.Now().UTC()
+
+	if s.merges.add(nodeID, accountID, pull.Repo, base, now) {
+		s.closes.add(accountID, pull, now)
+	}
 }
 
 // noteMergedRead notes the merge a stored read of the item ref shows, as w wrote it.
@@ -267,7 +273,7 @@ func (s *Service) noteMergedRead(w itemWrite, ref item.Ref) {
 		return
 	}
 
-	s.noteMerged(u.Item.NodeID, w.update.accountID, ref.Repo, u.Details.BaseRef)
+	s.noteMerged(u.Item.NodeID, w.update.accountID, ref, u.Details.BaseRef)
 }
 
 // noteMergedClosed notes the merges among a whole refresh's items that GitHub's search
@@ -284,7 +290,7 @@ func (s *Service) noteMergedClosed(accountID int64, got refreshed) {
 			base = got.details.Items[it.NodeID].BaseRef
 		}
 
-		s.noteMerged(it.NodeID, accountID, it.Ref().Repo, base)
+		s.noteMerged(it.NodeID, accountID, it.Ref(), base)
 	}
 }
 
@@ -351,24 +357,28 @@ func followRowsOf[R queries.ListRunningChecksRow | queries.ListOpenPullsInRepoRo
 	return out
 }
 
-// MergeFollower follows the merges the inbox learns of (see followMerge), as a desktop
-// worker: its own merges and Autopilot's through the Actor, and those a read of the inbox
-// finds. It isn't bound, and neither is what it calls. Each follow's rounds run one at a
-// time; a round that fails or panics is logged, and a failed one is tried again within
-// the follow's rounds, so it keeps going until its context is canceled.
+// MergeFollower follows the merges the inbox learns of, as a desktop worker: its own
+// merges and Autopilot's through the Actor, and those a read of the inbox finds. It reads
+// the issues each merge closes (see followClose) and the other pull requests in its
+// repository (see followMerge). It isn't bound, and neither is what it calls. Each
+// follow's rounds run one at a time, the issues' first; a round that fails or panics is
+// logged, and a failed one is tried again within the follow's rounds, so it keeps going
+// until its context is canceled.
 type MergeFollower struct {
-	queue  *mergeQueue
-	round  func(ctx context.Context, f mergeFollow) (bool, error)
-	now    func() time.Time
-	logger *slog.Logger
+	queue      *mergeQueue
+	closes     *closeQueue
+	round      func(ctx context.Context, f mergeFollow) (bool, error)
+	closeRound func(ctx context.Context, f closeFollow) (bool, error)
+	now        func() time.Time
+	logger     *slog.Logger
 }
 
 // NewMergeFollower returns the MergeFollower of s, logging failures to logger; a nil
 // logger discards them.
 func NewMergeFollower(s *Service, logger *slog.Logger) *MergeFollower {
 	return &MergeFollower{
-		queue: s.merges, round: s.followMerge, now: func() time.Time { return s.clock.Now().UTC() },
-		logger: logging.Or(logger),
+		queue: s.merges, closes: s.closes, round: s.followMerge, closeRound: s.followClose,
+		now: func() time.Time { return s.clock.Now().UTC() }, logger: logging.Or(logger),
 	}
 }
 
@@ -378,45 +388,72 @@ func (f *MergeFollower) Run(ctx context.Context) {
 	for ctx.Err() == nil {
 		f.pass(ctx)
 
-		wait, timed := f.queue.next(f.now())
+		wait, timed := f.next()
 		if !f.sleep(ctx, wait, timed) {
 			return
 		}
 	}
 }
 
-// pass runs a round of each follow due now.
+// next says how long until the next follow of either kind comes due, and false when none
+// is owed.
+func (f *MergeFollower) next() (time.Duration, bool) {
+	now := f.now()
+	wait, timed := f.queue.next(now)
+
+	if soon, ok := f.closes.next(now); ok && (!timed || soon < wait) {
+		wait, timed = soon, true
+	}
+
+	return wait, timed
+}
+
+// pass runs a round of each follow due now: the issues merges close first, which their
+// cards wait on, then the pull requests merges changed.
 func (f *MergeFollower) pass(ctx context.Context) {
+	for _, c := range f.closes.due(f.now()) {
+		if ctx.Err() != nil {
+			return
+		}
+
+		again := runRound(ctx, f.logger, closeJob, c, f.closeRound, "merged", c.pull.String())
+		f.closes.done(c, again, f.now())
+	}
+
 	for _, m := range f.queue.due(f.now()) {
 		if ctx.Err() != nil {
 			return
 		}
 
-		again := f.roundOne(ctx, m)
+		again := runRound(ctx, f.logger, mergeJob, m, f.round, "repo", m.repo.String())
 		f.queue.done(m, again, f.now())
 	}
 }
 
-// roundOne runs one round of m, logging a failure or a panic, and reports whether its
-// follow reads again: GitHub was still working out a pull request, or the round failed.
-func (f *MergeFollower) roundOne(ctx context.Context, m mergeFollow) (again bool) {
+// runRound runs one round of the follow it through round, logging a failure or a panic as
+// job's, with attrs, and reports whether the follow reads again: round said so (GitHub was
+// still working out a pull request, or an issue was still open), or the round failed.
+func runRound[F any](
+	ctx context.Context, logger *slog.Logger, job string, it F, round func(context.Context, F) (bool, error),
+	attrs ...any,
+) (again bool) {
 	defer func() {
 		if p := recover(); p != nil {
-			f.logger.ErrorContext(ctx, mergeJob+" panicked", "repo", m.repo.String(), "panic", p)
+			logger.ErrorContext(ctx, job+" panicked", append(attrs, "panic", p)...)
 
 			again = false
 		}
 	}()
 
-	unknown, err := f.round(ctx, m)
+	more, err := round(ctx, it)
 
 	switch {
 	case err == nil:
-		return unknown
+		return more
 	case ctx.Err() != nil || errors.Is(err, context.Canceled):
 		return false
 	default:
-		f.logger.WarnContext(ctx, mergeJob+" failed", "repo", m.repo.String(), "error", err)
+		logger.WarnContext(ctx, job+" failed", append(attrs, "error", err)...)
 
 		return true
 	}
