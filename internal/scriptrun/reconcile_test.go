@@ -256,6 +256,30 @@ func TestReconcileTellsAShellFromAStrangerWithItsPID(t *testing.T) {
 	}
 }
 
+func TestReconcileNeverAdoptsAShellWhoseStartCantBeRead(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	procs := newFakeProcs()
+	procs.install(h.e)
+
+	// The PID file names a process the table can't give a start time for: gone, or not
+	// the user's to read.
+	id := h.insertRow(RunsInTerminal, h.clone(), 0, 0, time.Time{})
+
+	require.NoError(t, h.e.files.ensureDir())
+	testutil.WriteFile(t, h.e.files.pid(id), "777\n")
+
+	h.e.pidWait = 0 // too old to wait for its shell
+
+	h.e.reconcile(t.Context())
+
+	rec := h.record(id)
+	assert.Equal(t, StatusInterrupted, rec.Status, "with no start to match, it can't be the run's shell")
+	assert.Equal(t, terminalClosed, rec.Summary)
+	assert.Zero(t, rec.PID, "it is never recorded as the run's shell")
+}
+
 func TestReconcileLeavesRunsItStartedItselfAlone(t *testing.T) {
 	t.Parallel()
 
