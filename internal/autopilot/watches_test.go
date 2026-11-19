@@ -138,6 +138,41 @@ func TestTheWatchSetLeavesOutAnotherAccountsAndBrokenRoutines(t *testing.T) {
 	assert.Len(t, set.Searches, 1, "a broken routine is left out")
 }
 
+func TestARebuildThatCantReadKeepsTheSearchesAsTheyWere(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the routines", func(t *testing.T) {
+		t.Parallel()
+
+		r := newRig(t, autopilotprefs.ModeDryRun)
+		r.on(t, "New Dependabot", searchSpec(catalog.EventAppears, orgSearch))
+
+		searches := autopilot.NewSearches(r.svc)
+		before := searches.Current()
+		require.Len(t, before.Searches, 1)
+
+		testutil.Exec(t, r.db, `ALTER TABLE autopilot_routines RENAME TO autopilot_routines_away`)
+
+		assert.Equal(t, before, searches.Rebuild(t.Context()), "the inbox goes on reading the searches it had")
+		assert.Equal(t, before, searches.Current())
+		assert.Contains(t, r.logs.String(), "could not read the routines for their searches")
+	})
+
+	t.Run("whether Autopilot is on", func(t *testing.T) {
+		t.Parallel()
+
+		logs := &testutil.Logs{}
+		svc := autopilot.NewService(autopilot.Config{
+			Pool: testutil.DB(t), Prefs: prefs{err: errLocked}, Accounts: &accounts{login: viewer}, Logger: logs.Logger(),
+		})
+
+		set := autopilot.NewSearches(svc).Rebuild(t.Context())
+
+		assert.Equal(t, autopilot.WatchSet{Searches: []autopilot.WatchSearch{}}, set, "none before a first build")
+		assert.Contains(t, logs.String(), "could not read whether Autopilot is on for the routines' searches")
+	})
+}
+
 // fakeItems is a fake inbox: suggestions, watched items, facts, and searches it answers.
 type fakeItems struct {
 	mu sync.Mutex
