@@ -58,7 +58,7 @@ func TestARoutineThisMacIsntReadyForWaitsAndStartsOnItsOwnOnceItIs(t *testing.T)
 		got := only(t, s)
 		assert.Equal(t, autopilot.StateBlocked, got.State)
 		assert.Equal(t, autopilot.BlockNotReady, got.BlockedBy)
-		assert.Contains(t, got.Words, "Not ready on this Mac: Agent:claude is missing. Run `fix agent:claude`, then Check again.")
+		assert.Contains(t, got.Words, "Not ready on this Mac: agent:claude is missing. Run `fix agent:claude`, then Check again.")
 		assert.Empty(t, s.Runner.Started(), "a Mac without what the routine needs starts nothing")
 		assert.Zero(t, s.World.Reads(1), "and spends nothing on a read before a start")
 
