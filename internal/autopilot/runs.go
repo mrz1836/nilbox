@@ -253,7 +253,8 @@ type RunsToday struct {
 	Actions    int `json:"actions"`
 }
 
-// RunsToday counts today's runs, those that never started left out.
+// RunsToday counts today's runs, those that never started left out, as are a GitHub action
+// that sent nothing and a script's run, which is neither an agent's nor a GitHub action.
 func (s *Service) RunsToday(ctx context.Context) (RunsToday, error) {
 	out := RunsToday{}
 
@@ -269,21 +270,28 @@ func (s *Service) RunsToday(ctx context.Context) (RunsToday, error) {
 	day := dayStart(s.clock.Now())
 
 	for _, r := range rows {
-		if RunOutcome(r.Outcome) == RunNotStarted || r.QueuedAt.Before(day) {
-			continue
-		}
-
-		switch r.Runner {
-		case runnerBackground:
-			out.Background++
-		case runnerGitHub:
-			out.Actions++
-		default:
-			out.Terminal++
+		if !r.QueuedAt.Before(day) {
+			out.count(r.Runner, RunOutcome(r.Outcome))
 		}
 	}
 
 	return out, nil
+}
+
+// count counts a run of today's by its runner, unless it never started or, a GitHub
+// action, sent nothing; a script's counts nowhere.
+func (t *RunsToday) count(runner string, outcome RunOutcome) {
+	switch {
+	case outcome == RunNotStarted:
+	case runner == runnerBackground:
+		t.Background++
+	case runner == runnerGitHub:
+		if outcome != RunNotSent {
+			t.Actions++
+		}
+	case isAgentRunner(runner):
+		t.Terminal++
+	}
 }
 
 // RunEvents returns the events of the ledger's run runID after the one numbered after:
