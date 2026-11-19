@@ -60,7 +60,7 @@ func BenchmarkList(b *testing.B) {
 func benchListing(b *testing.B, e *env, running []procs.Process) {
 	b.Helper()
 
-	svc := e.linked(linkDeps{running: fakeRunning{list: running}})
+	svc := e.linked(linkDeps{running: &testutil.Lister[procs.Process]{List: running}})
 
 	snap, err := svc.List(b.Context())
 	require.NoError(b, err)

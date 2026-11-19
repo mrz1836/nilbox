@@ -1,7 +1,6 @@
 package worktrees
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -103,16 +102,6 @@ func (e *env) maker(records *fakeLaunches) (*Maker, *Service) {
 	svc := e.linked(linkDeps{launches: records})
 
 	return NewMaker(svc), svc
-}
-
-// fakeRunning is a fixed list of running processes.
-type fakeRunning struct {
-	list []procs.Process
-	err  error
-}
-
-func (f fakeRunning) Processes(context.Context) ([]procs.Process, error) {
-	return f.list, f.err
 }
 
 func TestEnsureCreatesAPullRequestsWorktreeAtItsHead(t *testing.T) {
@@ -662,7 +651,7 @@ func TestListReportsSessionsAndRemovalRefusesThem(t *testing.T) {
 	got, err := NewMaker(e.linked(linkDeps{launches: records})).Ensure(t.Context(), f.request(item.KindPR, 7))
 	require.NoError(t, err)
 
-	running := fakeRunning{list: []procs.Process{
+	running := &testutil.Lister[procs.Process]{List: []procs.Process{
 		{PID: 4000, PPID: 1, Command: "iTerm2", Dir: "/"},
 		{PID: 4242, PPID: 4000, Command: "codex", Dir: filepath.Join(got.Path, "src")},
 		{PID: 4343, PPID: 4000, Command: "zsh", Dir: f.clone},
@@ -686,7 +675,7 @@ func TestListReportsSessionsAndRemovalRefusesThem(t *testing.T) {
 	require.ErrorContains(t, err, "codex (pid 4242)")
 	assert.DirExists(t, got.Path)
 
-	unknown := e.linked(linkDeps{launches: records, running: fakeRunning{err: procs.ErrUnsupported}})
+	unknown := e.linked(linkDeps{launches: records, running: &testutil.Lister[procs.Process]{Err: procs.ErrUnsupported}})
 
 	snap, err = unknown.List(t.Context())
 	require.NoError(t, err)
@@ -988,7 +977,7 @@ func TestABackgroundServiceLeftInAWorktreeIsNoSession(t *testing.T) {
 		{PID: 15337, PPID: 1, Command: "codex", Dir: got.Path},
 		{PID: 22072, PPID: 15337, Command: "codex", Dir: got.Path},
 	}
-	svc := e.linked(linkDeps{launches: records, running: fakeRunning{list: daemon}})
+	svc := e.linked(linkDeps{launches: records, running: &testutil.Lister[procs.Process]{List: daemon}})
 
 	snap, err := svc.List(t.Context())
 	require.NoError(t, err)
@@ -1003,7 +992,7 @@ func TestABackgroundServiceLeftInAWorktreeIsNoSession(t *testing.T) {
 		procs.Process{PID: 83937, PPID: 1, Command: "Code Helper (Plugin)", Dir: "/"},
 		procs.Process{PID: 87508, PPID: 83937, Command: "codex", Dir: got.Path},
 	)
-	inEditor := e.linked(linkDeps{launches: records, running: fakeRunning{list: editor}})
+	inEditor := e.linked(linkDeps{launches: records, running: &testutil.Lister[procs.Process]{List: editor}})
 
 	snap, err = inEditor.List(t.Context())
 	require.NoError(t, err)
@@ -1019,14 +1008,14 @@ func TestSweepLeavesWhatItCannotTellIsUnused(t *testing.T) {
 
 	e := newEnv(t)
 	f := newSweepFixture(t, e)
-	svc := e.linked(linkDeps{gh: f.gh, launches: f.launches, auto: true, running: fakeRunning{err: procs.ErrUnsupported}})
+	svc := e.linked(linkDeps{gh: f.gh, launches: f.launches, auto: true, running: &testutil.Lister[procs.Process]{Err: procs.ErrUnsupported}})
 
 	report := svc.Sweep(t.Context())
 	assert.Empty(t, report.Cleaned, "without the running processes the sweep never guesses")
 	assert.Empty(t, report.Failed)
 	assert.Equal(t, 6, report.Leftover)
 
-	busy := e.linked(linkDeps{gh: f.gh, launches: f.launches, auto: true, running: fakeRunning{list: []procs.Process{
+	busy := e.linked(linkDeps{gh: f.gh, launches: f.launches, auto: true, running: &testutil.Lister[procs.Process]{List: []procs.Process{
 		{PID: 99, PPID: 98, Command: "claude", Dir: f.launchedPR},
 	}}})
 

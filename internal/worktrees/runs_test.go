@@ -38,7 +38,7 @@ func TestAWorktreeAnAgentRunWorksInIsInUseAndNeverRemoved(t *testing.T) {
 		{Dir: got.Path, PID: 4242, Agent: agent.Claude, By: "⚡ Fix checks"},
 		{Dir: filepath.Join(got.Path, "src"), Agent: agent.Claude, By: "⚡ Fix checks"},
 	} {
-		svc := e.linked(linkDeps{launches: records, running: fakeRunning{list: []procs.Process{}}, runs: fakeRuns{run}})
+		svc := e.linked(linkDeps{launches: records, running: &testutil.Lister[procs.Process]{List: []procs.Process{}}, runs: fakeRuns{run}})
 
 		snap, err := svc.List(t.Context())
 		require.NoError(t, err)
@@ -62,7 +62,7 @@ func TestTheSweepLeavesAWorktreeAnAgentRunWorksIn(t *testing.T) {
 	e := newEnv(t)
 	f := newSweepFixture(t, e)
 	busy := e.linked(linkDeps{
-		gh: f.gh, launches: f.launches, auto: true, running: fakeRunning{list: []procs.Process{}},
+		gh: f.gh, launches: f.launches, auto: true, running: &testutil.Lister[procs.Process]{List: []procs.Process{}},
 		runs: fakeRuns{{Dir: f.launchedPR, PID: 99, Agent: agent.Claude, By: "⚡ Review"}},
 	})
 
