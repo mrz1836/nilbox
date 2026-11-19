@@ -114,7 +114,7 @@ func newReleaseRig(t *testing.T, opts rigOptions) *releaseRig {
 	r.magex("1.30.2", testutil.FakeRun{})
 
 	r.svc = NewService(Config{
-		GitHub: r.github, Clones: &fakeClones{root: r.root, list: []Clone{{Dir: r.clone, Origin: name("sdk"), OnHub: true}}},
+		GitHub: r.github, Clones: clonesAt(r.root, Clone{Dir: r.clone, Origin: name("sdk"), OnHub: true}),
 		Git:     gitread.New(gitread.Config{Env: func() []string { return r.env }}),
 		Origins: fakeOrigins{name: name("sdk"), onGitHub: true}, Tools: rigTools{r: r}, Locks: r.locks,
 		Env:    func() ([]string, bool) { return append(slices.Clone(r.env), r.magexEnv), true },
@@ -1023,7 +1023,7 @@ func TestStartRefusesWhatItCantServe(t *testing.T) {
 	_, err := r.svc.Start(ctx, StartRequest{Repo: "acme-org/other", Bump: BumpPatch, Version: recVersion})
 	require.ErrorIs(t, err, ErrNoClone)
 
-	bare := NewService(Config{GitHub: r.github, Clones: &fakeClones{}})
+	bare := NewService(Config{GitHub: r.github, Clones: clonesAt("")})
 
 	_, err = bare.Prepare(ctx, PrepareRequest{Repo: sdkRepo})
 	require.ErrorIs(t, err, ErrNotSetUp)

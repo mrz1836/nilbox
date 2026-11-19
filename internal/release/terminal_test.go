@@ -36,10 +36,10 @@ func TestOpenTerminalOpensOnlyAClonesFolder(t *testing.T) {
 	t.Parallel()
 
 	folders := &fakeFolders{}
-	clones := &fakeClones{list: []Clone{
+	clones := clonesAt("", []Clone{
 		{Dir: "/Users/example/projects/sdk", Origin: name("sdk"), OnHub: true},
 		{Dir: "/Users/example/projects/notes"},
-	}}
+	}...)
 	svc := NewService(Config{GitHub: &fakeGitHub{}, Clones: clones, Home: "/Users/example", Terminal: folders})
 
 	require.NoError(t, svc.OpenTerminal(t.Context(), "acme-org/sdk", "~/projects/sdk"))

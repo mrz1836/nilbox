@@ -1,6 +1,7 @@
 package release
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"slices"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/localrepos/localrepostest"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -141,31 +143,36 @@ func (f *fakeGitHub) fail(err error) {
 	f.err = err
 }
 
-// fakeClones lists fixed clones under a clone root that can change, counting the scans.
+// exampleRoot is the clone root of a fake made without one.
+const exampleRoot = "/Users/example/projects"
+
+// sharedClones is the clone root the suites share, under a name of its own, so that
+// fakeClones can embed it beside its own Clones method.
+type sharedClones = localrepostest.Clones
+
+// fakeClones lists fixed clones under a clone root that can change, as the shared fake
+// holds it (SetRoot, SetExtra, FailRoots), counting the scans.
 type fakeClones struct {
+	*sharedClones
+
 	mu      sync.Mutex
-	root    string
-	extra   []localrepos.Location
-	rootErr error
 	list    []Clone
 	err     error
 	scanned int
 }
 
-func (f *fakeClones) Roots(context.Context) (localrepos.Roots, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+// clonesAt returns a fake whose clone root is root, exampleRoot for "", and whose scan
+// lists list.
+func clonesAt(root string, list ...Clone) *fakeClones {
+	return &fakeClones{sharedClones: localrepostest.New(cmp.Or(root, exampleRoot)), list: list}
+}
 
-	if f.rootErr != nil {
-		return localrepos.Roots{}, f.rootErr
-	}
+// clonesFailing returns a fake under exampleRoot whose scan fails with err.
+func clonesFailing(err error) *fakeClones {
+	f := clonesAt("")
+	f.err = err
 
-	root := f.root
-	if root == "" {
-		root = "/Users/example/projects"
-	}
-
-	return localrepos.NewRoots(root, f.extra, "")
+	return f
 }
 
 func (f *fakeClones) Clones(context.Context, localrepos.Roots) ([]Clone, error) {
@@ -183,13 +190,6 @@ func (f *fakeClones) scans() int {
 	defer f.mu.Unlock()
 
 	return f.scanned
-}
-
-func (f *fakeClones) moveTo(root string) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.root = root
 }
 
 // fakeChecker answers every clone's state with its folder as the branch, recording the
@@ -262,7 +262,7 @@ func newRig() *rig {
 		events:  &testutil.Events{},
 	}
 
-	clones := &fakeClones{list: []Clone{
+	clones := clonesAt("", []Clone{
 		{Dir: "/Users/example/projects/sdk", Origin: name("sdk"), OnHub: true},
 		{Dir: "/Users/example/projects/web", Origin: name("web"), OnHub: true},
 		{Dir: "/Users/example/projects/cli", Origin: name("cli"), OnHub: true},
@@ -271,7 +271,7 @@ func newRig() *rig {
 		{Dir: "/Users/example/projects/docs", Origin: name("docs"), OnHub: true},
 		{Dir: "/Users/example/projects/gone", Origin: name("gone"), OnHub: true},
 		{Dir: "/Users/example/projects/notes"},
-	}}
+	}...)
 
 	r.clones = clones
 	r.svc = NewService(Config{
@@ -469,14 +469,14 @@ func TestAChangedCloneRootIsReadAgain(t *testing.T) {
 	_, err := r.svc.Candidates(t.Context(), false)
 	require.NoError(t, err)
 
-	r.clones.moveTo("/Users/example/work")
+	r.clones.SetRoot("/Users/example/work")
 
 	_, err = r.svc.Candidates(t.Context(), false)
 	require.NoError(t, err)
 	assert.Equal(t, 2, r.github.calls(), "a list from another clone root isn't served")
 
 	r.github.fail(errGitHubDown)
-	r.clones.moveTo("/Users/example/elsewhere")
+	r.clones.SetRoot("/Users/example/elsewhere")
 
 	_, err = r.svc.Candidates(t.Context(), false)
 	require.ErrorIs(t, err, errGitHubDown, "nor kept when the new root's refresh fails")
@@ -490,9 +490,7 @@ func TestChangedLocationsAreReadAgain(t *testing.T) {
 	_, err := r.svc.Candidates(t.Context(), false)
 	require.NoError(t, err)
 
-	r.clones.mu.Lock()
-	r.clones.extra = []localrepos.Location{{Path: "/Users/example/work", Kind: localrepos.KindFolder}}
-	r.clones.mu.Unlock()
+	r.clones.SetExtra([]localrepos.Location{{Path: "/Users/example/work", Kind: localrepos.KindFolder}}...)
 
 	_, err = r.svc.Candidates(t.Context(), false)
 	require.NoError(t, err)
@@ -540,7 +538,7 @@ func TestAFirstRefreshThatFailsIsAnError(t *testing.T) {
 	require.ErrorIs(t, err, ErrSignedOut)
 	assert.Equal(t, "Sign in to GitHub first, so the Release page can read your repositories.", uierr.Message(err))
 
-	clonesFail := NewService(Config{GitHub: &fakeGitHub{}, Clones: &fakeClones{err: errGitHubDown}})
+	clonesFail := NewService(Config{GitHub: &fakeGitHub{}, Clones: clonesFailing(errGitHubDown)})
 	_, err = clonesFail.Candidates(t.Context(), false)
 	require.ErrorIs(t, err, errGitHubDown)
 }
@@ -550,7 +548,7 @@ func TestCandidatesWithNoClonesAskNothing(t *testing.T) {
 
 	gh := &fakeGitHub{}
 	svc := NewService(Config{
-		GitHub: gh, Clones: &fakeClones{list: []Clone{{Dir: "/Users/example/projects/notes"}}}, Clock: testutil.NewClock(testNow()),
+		GitHub: gh, Clones: clonesAt("", Clone{Dir: "/Users/example/projects/notes"}), Clock: testutil.NewClock(testNow()),
 	})
 
 	got, err := svc.Candidates(t.Context(), false)
@@ -567,10 +565,10 @@ func TestTwoClonesOfOneRepositoryAskOnce(t *testing.T) {
 	gh := &fakeGitHub{statuses: map[string]RepoStatus{
 		name("sdk").Key(): {Permission: "WRITE", DefaultBranch: "master", HeadOID: "s1", Tags: []Tag{{Name: "v1.0.0", Commit: "s1"}}},
 	}}
-	svc := NewService(Config{GitHub: gh, Clones: &fakeClones{list: []Clone{
+	svc := NewService(Config{GitHub: gh, Clones: clonesAt("", []Clone{
 		{Dir: "/Users/example/projects/sdk", Origin: name("sdk"), OnHub: true},
 		{Dir: "/Users/example/projects/sdk-copy", Origin: repo.Name{Owner: "Acme-Org", Repo: "SDK"}, OnHub: true},
-	}}})
+	}...)})
 
 	got, err := svc.Candidates(t.Context(), false)
 	require.NoError(t, err)

@@ -206,7 +206,7 @@ func TestFollowChecksAsksNothingWithNothingToFollow(t *testing.T) {
 			_, err := r.svc.Candidates(t.Context(), false)
 			require.NoError(t, err)
 
-			r.clones.moveTo("/Users/example/work")
+			r.clones.SetRoot("/Users/example/work")
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

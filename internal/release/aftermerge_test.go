@@ -137,7 +137,7 @@ func newMergeRig(t *testing.T) *mergeRig {
 	testutil.WriteFile(t, filepath.Join(root, "SDK.md"), "not a folder")
 
 	return &mergeRig{
-		home: home, root: root, github: newRig().github, clones: &fakeClones{root: root, list: listed},
+		home: home, root: root, github: newRig().github, clones: clonesAt(root, listed...),
 		origins: &folderOrigins{origins: clones}, setting: fakeMergeSetting{on: true}, tool: usableMagex(),
 		branches: &fakeBranches{branches: map[string]string{
 			name("sdk").Key(): branchMaster, name("web").Key(): branchMain, name("mirror").Key(): branchMain,
@@ -262,7 +262,7 @@ func TestOfferAfterMergeReadsTheReleasePagesListFirst(t *testing.T) {
 	assert.Equal(t, 1, m.github.calls(), "and nothing more was asked of GitHub")
 	assert.Equal(t, 1, m.clones.scans(), "nor the clone root scanned again")
 
-	m.clones.moveTo(filepath.Join(m.home, "elsewhere"))
+	m.clones.SetRoot(filepath.Join(m.home, "elsewhere"))
 	require.NoError(t, os.MkdirAll(filepath.Join(m.home, "elsewhere"), 0o700))
 
 	got, err = svc.OfferAfterMerge(t.Context(), "acme-org", "cli", "trunk")
@@ -295,12 +295,12 @@ func TestOfferAfterMergeSaysWhatItCantRead(t *testing.T) {
 	assert.True(t, got.Offer)
 
 	m = newMergeRig(t)
-	m.clones.moveTo(filepath.Join(m.home, "gone"))
+	m.clones.SetRoot(filepath.Join(m.home, "gone"))
 	_, err = m.service().OfferAfterMerge(ctx, "acme-org", sdkName, branchMaster)
 	require.ErrorContains(t, err, "read the clone root", "a clone root that isn't there")
 
 	m = newMergeRig(t)
-	m.clones.rootErr = errGitHubDown
+	m.clones.FailRoots(errGitHubDown)
 	_, err = m.service().OfferAfterMerge(ctx, "acme-org", sdkName, branchMaster)
 	require.ErrorIs(t, err, errGitHubDown, "the clone root couldn't be read from the settings")
 
@@ -335,11 +335,11 @@ func TestOfferAfterMergeLooksInEveryLocation(t *testing.T) {
 		require.NoError(t, os.MkdirAll(dir, 0o700))
 	}
 
-	m.clones.extra = []localrepos.Location{
+	m.clones.SetExtra([]localrepos.Location{
 		{Path: filepath.Join(m.home, "gone"), Kind: localrepos.KindFolder},
 		{Path: work, Kind: localrepos.KindFolder},
 		{Path: exp, Kind: localrepos.KindClone},
-	}
+	}...)
 	m.origins.origins["api"] = Clone{Origin: name("api"), OnHub: true}
 	m.origins.origins["exp-app"] = Clone{Origin: name("exp"), OnHub: true}
 	m.branches.branches[name("api").Key()] = branchMain
