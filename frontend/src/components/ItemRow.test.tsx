@@ -503,6 +503,35 @@ describe('ItemRow byline', () => {
 
     expect(screen.getByText('acme-org/')).toHaveClass('opacity-60', '@max-xl:hidden')
   })
+
+  // A button is one box to its line, which the line's ellipsis never cuts, only hides
+  // whole, leaving a gap as wide as its text. So the repository and the author are plain
+  // text the byline's ellipsis cuts like the rest of it, under buttons laid over them.
+  it('keeps the repository and the author text its ellipsis can cut, under their buttons', async () => {
+    const onFilterBy = vi.fn()
+    mountCard(asked(), { onFilterBy })
+
+    const byline = screen.getByRole('listitem').querySelector('[data-guide="byline"]')
+    expect(byline).toHaveClass('min-w-0', 'truncate')
+
+    const filters = [
+      ['repository acme-org/example-repo', 'acme-org/example-repo'],
+      ['author octo-user', 'octo-user'],
+    ] as const
+    for (const [name, text] of filters) {
+      const button = screen.getByRole('button', { name: `Filter by ${name}` })
+      const under = button.closest('[data-filter-text]')
+
+      expect(button).toBeEmptyDOMElement()
+      expect(button).toHaveClass('absolute', 'inset-0')
+      expect(under).toHaveClass('relative')
+      expect(under?.textContent).toBe(text)
+      expect(under?.parentElement).toBe(byline)
+    }
+
+    await userEvent.click(screen.getByRole('button', { name: 'Filter by repository acme-org/example-repo' }))
+    expect(onFilterBy).toHaveBeenCalledExactlyOnceWith('repo', 'acme-org/example-repo')
+  })
 })
 
 describe('ItemRow chips', () => {

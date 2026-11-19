@@ -29,25 +29,29 @@ export interface FilterTextProps {
   children?: ReactNode
 }
 
-// FilterText is a card's repository or author: plain text, or a quiet inline button that
-// filters the inbox by it.
+// FilterText is a card's repository or author: plain text, or plain text under a quiet
+// button laid over it that filters the inbox by it. The text stays out of the button so a
+// line that ends in an ellipsis can cut it like the rest of the line: a button is one box
+// to its line, which the ellipsis never cuts, only hides whole, leaving a gap as wide as
+// the text it held.
 export function FilterText({ filterKey, value, name, onFilterBy, full = value, children = value }: FilterTextProps) {
   if (onFilterBy === undefined) {
     return full === value ? children : <span title={full}>{children}</span>
   }
 
   return (
-    <button
-      type="button"
-      aria-label={`Filter by ${name} ${full}`}
-      title={`Filter by ${name} ${full}`}
-      onClick={() => {
-        onFilterBy(filterKey, value)
-      }}
-      className="rounded-sm hover:text-text hover:underline"
-    >
-      {children}
-    </button>
+    <span data-filter-text className="relative hover:text-text hover:underline">
+      <span aria-hidden="true">{children}</span>
+      <button
+        type="button"
+        aria-label={`Filter by ${name} ${full}`}
+        title={`Filter by ${name} ${full}`}
+        onClick={() => {
+          onFilterBy(filterKey, value)
+        }}
+        className="absolute inset-0 rounded-sm"
+      />
+    </span>
   )
 }
 

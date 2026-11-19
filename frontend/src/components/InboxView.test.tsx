@@ -248,10 +248,14 @@ describe('InboxView', () => {
 
     const yours = await section('Yours')
     const mine = within(yours.getByRole('button', { name: 'Fix the parser' }).closest('li') ?? document.body)
-    const byline = mine.getByRole('button', { name: 'Filter by repository acme-org/other-repo' }).parentElement
+    const byline = mine
+      .getByRole('button', { name: 'Filter by repository acme-org/other-repo' })
+      .closest('[data-guide="byline"]')
     expect(byline).toHaveTextContent(/acme-org\/other-repo #12 · you · \S+$/)
     // The card says "you" for the user's own login, and still filters by the login.
-    expect(mine.getByRole('button', { name: 'Filter by author octo-user (you)' })).toHaveTextContent(/^you$/)
+    expect(
+      mine.getByRole('button', { name: 'Filter by author octo-user (you)' }).closest('[data-filter-text]'),
+    ).toHaveTextContent(/^you$/)
     expect(mine.getByText('Draft')).toHaveClass('text-muted')
     expect(byline, 'opened, not assigned').not.toHaveTextContent('assigned')
 
@@ -260,7 +264,9 @@ describe('InboxView', () => {
     expect(crash.getByText(/dependabot\[bot\]/)).toBeInTheDocument()
     expect(crash.getByText('Outside contributor')).toBeInTheDocument()
     expect(
-      crash.getByRole('button', { name: 'Filter by repository acme-org/example-repo' }).parentElement,
+      crash
+        .getByRole('button', { name: 'Filter by repository acme-org/example-repo' })
+        .closest('[data-guide="byline"]'),
     ).toHaveTextContent(/· assigned · /)
 
     expect(screen.getByText('5m ago')).toBeInTheDocument()

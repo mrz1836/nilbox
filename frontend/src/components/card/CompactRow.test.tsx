@@ -554,7 +554,13 @@ describe('CompactRow', () => {
     const it = asked()
     mountCompact(it, { onFilterBy, onOpen, tab: 'inbox', triage })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Filter by repository acme-org/example-repo' }))
+    // The repository is text its column's ellipsis cuts, under the button (FilterText),
+    // never inside it, where a name too long for the column would leave the cell empty.
+    const repo = screen.getByRole('button', { name: 'Filter by repository acme-org/example-repo' })
+    expect(repo).toBeEmptyDOMElement()
+    expect(repo.closest('[data-repo]')).toHaveClass('min-w-0', 'truncate')
+    expect(repo.closest('[data-repo]')).toHaveTextContent(/^acme-org\/example-repo$/)
+    await userEvent.click(repo)
     expect(onFilterBy).toHaveBeenCalledExactlyOnceWith('repo', 'acme-org/example-repo')
 
     const title = screen.getByRole('button', { name: 'Add the widget cache' })
