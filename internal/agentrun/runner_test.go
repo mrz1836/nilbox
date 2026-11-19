@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -50,6 +51,9 @@ type rig struct {
 	sweeper  *fakeSweeper
 	limits   LimitReader
 
+	// engineClock is the clock the next build's run engine reads; nil is the real one.
+	engineClock clock.Clock
+
 	mu     sync.Mutex
 	ends   map[int64]End
 	nextID atomic.Int64
@@ -74,7 +78,7 @@ func newRig(t *testing.T) *rig {
 // build returns a run engine, its service, and a runner over the rig's database.
 func (r *rig) build() (*scriptrun.Engine, *scriptrun.Service, *Runner) {
 	engine := scriptrun.NewEngine(scriptrun.Config{
-		DB: r.db, Locks: clonelock.New(), LogDir: r.logs, Folders: r.folders,
+		DB: r.db, Locks: clonelock.New(), LogDir: r.logs, Folders: r.folders, Clock: r.engineClock,
 	})
 	service := scriptrun.NewService(engine)
 	runner := New(Config{
@@ -429,7 +433,14 @@ func TestReconcileFollowsAnOrphanAgainAndJudgesTheEnded(t *testing.T) {
 	exited := r.plan(testutil.FakeRun{Stdout: partial, Sleep: time.Minute, OnInterrupt: onInt})
 	gone := r.plan(testutil.FakeRun{Stdout: partial, Sleep: time.Minute, OnInterrupt: onInt})
 	late := r.plan(testutil.FakeRun{Stdout: partial, Sleep: time.Minute, OnInterrupt: onInt})
-	late.Fence.Timeout = 2 * time.Second
+
+	// The next start reads the time an hour on: late's limit has passed by then, and the
+	// others' have not.
+	for _, p := range []*Plan{&alive, &exited, &gone} {
+		p.Fence.Timeout = 24 * time.Hour
+	}
+
+	late.Fence.Timeout = 10 * time.Minute
 
 	for _, p := range []Plan{alive, exited, gone, late} {
 		r.start(p)
@@ -467,13 +478,13 @@ func TestReconcileFollowsAnOrphanAgainAndJudgesTheEnded(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return !procs.Alive(pids[exited.Dir]) && !procs.Alive(pids[gone.Dir])
 	}, waitFor, 10*time.Millisecond)
-	time.Sleep(2 * time.Second) // past late's time limit
 
-	// The next start follows them again.
+	// The next start, an hour on, follows them again.
 	r.mu.Lock()
 	clear(r.ends)
 	r.mu.Unlock()
 
+	r.engineClock = testutil.NewClock(time.Now().Add(time.Hour))
 	engine, _, runner := r.build()
 	r.engine, r.runner = engine, runner
 
@@ -494,15 +505,17 @@ func TestReconcileFollowsAnOrphanAgainAndJudgesTheEnded(t *testing.T) {
 	assert.Equal(t, StatusInterrupted, r.end(gone.RunID).Outcome.Status, "a gone one, without a result, is interrupted")
 	assert.Equal(t, StatusTimedOut, r.end(late.RunID).Outcome.Status, "an orphan past its time limit is stopped at once")
 
+	// The orphan is alive as soon as it is followed again, and its log is read on the
+	// follow's first tick after that, so the test waits on the events themselves.
 	require.Eventually(t, func() bool {
-		live, err := runner.Alive(t.Context(), alive.RunID)
+		page, err := runner.Events(t.Context(), alive.RunID, 0)
 
-		return err == nil && live == LiveAlive
-	}, waitFor, 10*time.Millisecond, "an orphan still running is followed again")
+		return err == nil && len(page.Events) > 0
+	}, waitFor, 10*time.Millisecond, "an orphan still running is followed again, its log read again from its start")
 
-	page, err := runner.Events(t.Context(), alive.RunID, 0)
+	live, err := runner.Alive(t.Context(), alive.RunID)
 	require.NoError(t, err)
-	assert.NotEmpty(t, page.Events, "its log is read again from its start")
+	assert.Equal(t, LiveAlive, live, "an orphan still running is followed again")
 
 	require.NoError(t, runner.Stop(t.Context(), alive.RunID))
 	assert.Equal(t, StatusStopped, r.end(alive.RunID).Outcome.Status)
