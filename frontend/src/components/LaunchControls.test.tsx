@@ -91,6 +91,13 @@ async function openMenu() {
   return within(screen.getByRole('dialog', { name: 'Launch options' }))
 }
 
+// launchIt launches as the user does: the button, name, opens the launch options, and
+// their own Open, named the same, starts the launch.
+async function launchIt(name = 'Open in Claude') {
+  await userEvent.click(screen.getByRole('button', { name }))
+  await userEvent.click(within(screen.getByRole('dialog', { name: 'Launch options' })).getByRole('button', { name }))
+}
+
 // choosePrompt picks a prompt, by its nickname, in the launch options' Prompt select.
 async function choosePrompt(menu: BoundFunctions<typeof queries>, nickname: string) {
   const select = menu.getByRole('combobox', { name: 'Prompt' })
@@ -112,8 +119,9 @@ describe('LaunchControls', () => {
     expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Open in Claude' })).toHaveAttribute(
       'title',
-      'Open in Claude with “Review” as default',
+      'Open in Claude with “Review” as default. The launch options open first, to check or change them.',
     )
+    expect(screen.getByRole('button', { name: 'Open in Claude' })).toHaveAttribute('aria-haspopup', 'dialog')
     expect(optionsButton()).toHaveAccessibleName('Launch options: Review · default')
     expect(optionsButton()).toHaveAttribute('aria-expanded', 'false')
   })
@@ -327,10 +335,18 @@ describe('LaunchControls', () => {
     expect(optionsButton()).toHaveTextContent('…')
   })
 
-  it('launches with the resolved settings in one click', async () => {
+  it('opens the launch options first, and launches with the resolved settings from them', async () => {
     render(<LaunchControls {...props()} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+
+    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Open in Claude' })[0]).toHaveAttribute('aria-expanded', 'true')
+    expect(platform.launch).not.toHaveBeenCalled()
+
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Launch options' })).getByRole('button', { name: 'Open in Claude' }),
+    )
 
     expect(platform.launch).toHaveBeenCalledWith(defaultRequest)
     // The card's session tag follows the session it started, so the row says nothing more.
@@ -343,7 +359,7 @@ describe('LaunchControls', () => {
     platform.launch.mockResolvedValue(launchResult({ notice }))
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
 
     const status = await screen.findByRole('status')
     expect(status).toHaveTextContent(notice)
@@ -355,7 +371,7 @@ describe('LaunchControls', () => {
     platform.launch.mockRejectedValue(new Error('find the agent: executable not found'))
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
 
     expect(await screen.findByRole('alert')).toHaveTextContent('find the agent: executable not found')
     expect(platform.cloneTarget).toHaveBeenCalledWith(1)
@@ -367,7 +383,7 @@ describe('LaunchControls', () => {
     platform.cloneTarget.mockRejectedValue(new Error('read clone root: permission denied'))
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(noCloneError.message)
     expect(screen.queryByRole('button', { name: /^Clone into/ })).not.toBeInTheDocument()
@@ -411,7 +427,7 @@ describe('LaunchControls', () => {
     platform.cloneRepo.mockReturnValue(new Promise(() => undefined))
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'Clone into ~/projects/example-repo' }))
     await userEvent.click(screen.getByRole('button', { name: 'Clone and open' }))
 
@@ -426,7 +442,7 @@ describe('LaunchControls', () => {
     platform.cloneTarget.mockResolvedValue(missingClone)
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'Clone into ~/projects/example-repo' }))
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
@@ -440,7 +456,7 @@ describe('LaunchControls', () => {
     platform.cloneTarget.mockResolvedValue({ ...missingClone, where: '~/projects or your other repository locations' })
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'No local clone of acme-org/example-repo in ~/projects or your other repository locations.',
@@ -452,7 +468,7 @@ describe('LaunchControls', () => {
     platform.cloneTarget.mockResolvedValue({ ...missingClone, taken: true })
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'No local clone of acme-org/example-repo in ~/projects, and ~/projects/example-repo already exists, so it can’t be cloned there.',
@@ -469,7 +485,7 @@ describe('LaunchControls', () => {
     const onSettingsSaved = vi.fn()
     render(<LaunchControls {...props({ onSettingsSaved })} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
 
     expect(platform.chooseFolder).toHaveBeenCalledWith({
@@ -502,7 +518,7 @@ describe('LaunchControls', () => {
     )
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
 
     expect(
@@ -535,7 +551,7 @@ describe('LaunchControls', () => {
     platform.addCloneLocations.mockRejectedValue(new Error('~/Desktop/example-repo doesn’t exist.'))
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
 
     expect(
@@ -559,7 +575,7 @@ describe('LaunchControls', () => {
     platform.chooseFolder.mockRejectedValue(new Error('the dialog could not open'))
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
 
     expect(await screen.findByText('the dialog could not open')).toBeInTheDocument()
@@ -575,7 +591,7 @@ describe('LaunchControls', () => {
     )
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
 
     await waitFor(() => {
@@ -593,7 +609,7 @@ describe('LaunchControls', () => {
     )
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
 
     expect(
@@ -609,7 +625,7 @@ describe('LaunchControls', () => {
     platform.cloneTarget.mockResolvedValue(missingClone)
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'It’s cloned elsewhere…' }))
 
     expect(platform.linkClone).not.toHaveBeenCalled()
@@ -622,7 +638,7 @@ describe('LaunchControls', () => {
     platform.linkClone.mockResolvedValue(linkedClone({ dir: '~/old/example-repo' }))
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'Use ~/old/example-repo' }))
 
     expect(platform.chooseFolder).not.toHaveBeenCalled()
@@ -638,7 +654,7 @@ describe('LaunchControls', () => {
     platform.cloneRepo.mockRejectedValue(new Error('clone acme-org/example-repo: GraphQL: Could not resolve'))
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'Clone into ~/projects/example-repo' }))
     await userEvent.click(screen.getByRole('button', { name: 'Clone and open' }))
 
@@ -1031,10 +1047,13 @@ describe('LaunchControls', () => {
     })
     render(<LaunchControls {...props({ resolution: res, onManagePrompts })} />)
 
-    expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Open in Claude' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Open in Claude' })).toHaveAttribute('title', res.problem)
     expect(optionsButton()).toHaveAccessibleName('Launch options: No prompt')
 
-    const menu = await openMenu()
+    // The button opens the same launch options as the arrow, which say why.
+    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    const menu = within(screen.getByRole('dialog', { name: 'Launch options' }))
 
     expect(menu.getByText(/No prompt applies/)).toBeInTheDocument()
     // With no options to choose, focus starts in the dialog itself.
@@ -1173,7 +1192,7 @@ describe('LaunchControls', () => {
     platform.launch.mockResolvedValueOnce(launchResult({ hold: { ...base, worktree: '', running } }))
     render(<LaunchControls {...props()} />, { wrapper: at() })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
 
     const dialog = within(await screen.findByRole('dialog', { name: 'A session is already running here' }))
     expect(dialog.getByRole('list', { name: 'Sessions running here' })).toHaveTextContent(
@@ -1190,7 +1209,7 @@ describe('LaunchControls', () => {
       .mockResolvedValueOnce(launchResult())
     render(<LaunchControls {...props()} />, { wrapper: at() })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'Start another' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Open anyway' }))
 
@@ -1207,7 +1226,7 @@ describe('LaunchControls', () => {
     platform.launch.mockResolvedValueOnce(launchResult({ hold })).mockResolvedValueOnce(launchResult())
     render(<LaunchControls {...props({ item: item({ trusted: false, trust: 'outside' }) })} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
 
     const dialog = within(await screen.findByRole('dialog', { name: 'This pull request changes agent configuration' }))
     expect(dialog.getByText(/starts in worktree pr-7, at the pull request’s head/)).toBeInTheDocument()
@@ -1235,7 +1254,7 @@ describe('LaunchControls', () => {
     platform.launch.mockResolvedValueOnce(launchResult({ hold: launchHold({ atHead: false, worktree: '' }) }))
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
 
     const dialog = within(await screen.findByRole('dialog'))
     expect(dialog.getByText(/If the session checks the pull request out, Claude loads these files/)).toBeInTheDocument()
@@ -1257,7 +1276,7 @@ describe('LaunchControls', () => {
       .mockResolvedValueOnce(launchResult({ hold: second }))
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'Open anyway' }))
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
@@ -1270,7 +1289,7 @@ describe('LaunchControls', () => {
     )
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
 
     const dialog = within(await screen.findByRole('dialog', { name: 'Its files couldn’t all be checked' }))
     expect(dialog.getByText(/GitHub listed only 3,000 of its 4,210 changed files/)).toBeInTheDocument()
@@ -1283,7 +1302,7 @@ describe('LaunchControls', () => {
     )
     render(<LaunchControls {...props()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
+    await launchIt()
 
     expect(await screen.findByText(/GitHub didn’t list its files: GitHub answered 502\./)).toBeInTheDocument()
   })
@@ -1315,7 +1334,11 @@ describe('LaunchControls with more than one agent', () => {
     expect(menu.getByRole('option', { name: 'Ultra' })).toBeInTheDocument()
     expect(menu.getByRole('checkbox', { name: /Start read-only/ })).toBeInTheDocument()
     // The row's button and the menu's own both follow the agent chosen.
-    expect(screen.getByTitle('Open in Codex with “Review” as default')).toBeEnabled()
+    expect(
+      screen.getByTitle(
+        'Open in Codex with “Review” as default. The launch options open first, to check or change them.',
+      ),
+    ).toBeEnabled()
 
     await userEvent.click(menu.getByRole('button', { name: 'Open in Codex' }))
 

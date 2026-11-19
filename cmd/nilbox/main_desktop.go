@@ -125,10 +125,15 @@ func run(args []string, stdout io.Writer) int {
 	logger, logs := logging.New(paths, logging.Level(args, os.Getenv))
 	defer func() { _ = logs.Close() }()
 
+	// A build from source keeps every record for its inspector too; any other build's
+	// devKit leaves the logger as it is.
+	dev := newDevKit()
+	logger = dev.logger(logger)
+
 	if err != nil {
 		err = startFailed(args, logger, fmt.Errorf("find the data directory: %w", err), appdata.Paths{}, "")
 	} else {
-		err = start(args, stdout, paths, logger)
+		err = start(args, stdout, paths, logger, dev)
 	}
 
 	if err != nil {
@@ -182,7 +187,7 @@ func rehearsal() bool {
 // macOS the app exits from inside Run once it terminates, so the shell stops in the
 // runtime's shutdown hook. An error that stops the app from starting is shown in a
 // native dialog first, except in a measurement run.
-func start(args []string, stdout io.Writer, paths appdata.Paths, logger *slog.Logger) error {
+func start(args []string, stdout io.Writer, paths appdata.Paths, logger *slog.Logger, dev *devKit) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return startFailed(args, logger, fmt.Errorf("find the home directory: %w", err), paths, "")
@@ -194,7 +199,7 @@ func start(args []string, stdout io.Writer, paths appdata.Paths, logger *slog.Lo
 
 	app, shell, err := assemble(launch{
 		paths: paths, home: home, sandbox: sandboxDir(args), stdout: stdout, logger: logger,
-		measureStartup: slices.Contains(args, measure.StartupFlag),
+		measureStartup: slices.Contains(args, measure.StartupFlag), dev: dev,
 	})
 	if err != nil {
 		return startFailed(args, logger, err, paths, home)
@@ -207,7 +212,8 @@ func start(args []string, stdout io.Writer, paths appdata.Paths, logger *slog.Lo
 
 // launch is what one run of the app starts from: its data locations, the home directory,
 // a sandbox's data directory ("" for the user's own), where a startup measurement prints,
-// the logger, and whether this run is a startup measurement.
+// the logger, whether this run is a startup measurement, and the inspector, which only a
+// build from source carries.
 type launch struct {
 	paths          appdata.Paths
 	home           string
@@ -215,6 +221,7 @@ type launch struct {
 	stdout         io.Writer
 	logger         *slog.Logger
 	measureStartup bool
+	dev            *devKit
 }
 
 // assemble bootstraps the core, builds the shell over it, and creates the app, which
@@ -232,7 +239,7 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 		Version: version,
 		Release: release,
 		Build:   buildNumber,
-		Events:  relay,
+		Events:  l.dev.sink(relay),
 		Banners: banners.poster(),
 		Logger:  logger,
 		// A rehearsal build runs on test data of its own, which the window says, as a
@@ -286,7 +293,7 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 
 	registerEvents()
 
-	app := application.New(application.Options{
+	opts := application.Options{
 		Name:        brand.Name,
 		Description: brand.Tagline,
 		Icon:        appIcon(),
@@ -309,6 +316,7 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 				os.Exit(1)
 			}
 
+			l.dev.stop()
 			logQuit(logger, shell.Stop())
 
 			argv, ok := shell.RelaunchCommand(executable(), l.sandbox)
@@ -320,8 +328,12 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 				logger.Info("the app runs outside a bundle, so it only quits; open it again to finish the reset")
 			}
 		},
-	})
+	}
+	l.dev.configure(&opts)
+
+	app := application.New(opts)
 	ui.attach(app, shell)
+	l.dev.start(app, l)
 	attachInstaller(app, c.UpdateEngine, logger)
 	attachMover(c.UpdateEngine, shell)
 

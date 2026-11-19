@@ -224,7 +224,6 @@ describe('NotificationsView', () => {
       expect(within(unread).getByTestId('notification-unread')).toBeInTheDocument()
       expect(read).not.toHaveTextContent('Unread')
       expect(within(read).getByText('Bump the parser')).toHaveClass('font-normal')
-      expect(unread.closest('li')).toHaveClass('notification-row')
     })
 
     it('opens an entry, marks one done, and puts a read one back on the bell', async () => {

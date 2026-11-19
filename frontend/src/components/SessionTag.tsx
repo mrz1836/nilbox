@@ -22,9 +22,6 @@ export interface SessionsButtonProps {
   // its tooltip.
   label?: string | undefined
   title?: string | undefined
-  // moving marks a button that moves (data-moving), so the inbox card it is on keeps
-  // rendering (index.css).
-  moving?: boolean
   // shrinks lets the button narrow below its words in a crowded row, as a card's pill
   // does beside its primary; by default it keeps its width.
   shrinks?: boolean
@@ -40,7 +37,6 @@ export function SessionsButton({
   align,
   label,
   title,
-  moving = false,
   shrinks = false,
   className,
   children,
@@ -59,7 +55,6 @@ export function SessionsButton({
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? id : undefined}
-        data-moving={moving || undefined}
         onClick={toggle}
         className={className}
       >

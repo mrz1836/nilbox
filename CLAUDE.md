@@ -65,6 +65,13 @@ On macOS, a change to the desktop shell, the bound services, or the frontend mus
 build). No CI check runs on macOS (only `desktop-release.yml`'s jobs do, and they build
 releases), so this check is local.
 
+**Look before guessing.** A build from source (Nilbox Dev, `magex app:dev`) carries an
+inspector: when the owner reports something wrong in the window, `magex inspect:trail` shows
+what they clicked, and `inspect:shot`, `inspect:cards`, `inspect:dom`, `inspect:js`,
+`inspect:console`, `inspect:logs`, and `inspect:sql` show the window, the page, the log, and the
+live database as they are now ([the inspector](docs/desktop.md#the-inspector)). Run them
+outside the sandbox, which refuses the socket.
+
 <br>
 
 ## Tests
@@ -199,7 +206,7 @@ build when broken.
   the `--color-*` tokens; checkboxes and radio buttons take the `checkbox` and `radio` classes;
   text is sized in rem, never px (a repoguard test fails on px text).
 - **magefiles.** `magefiles/` holds the custom `magex` targets: `brand:*`, `frontend:*`,
-  `app:*`, `db:*`, and `measure:*`. Its tests build with the `mage` tag and run in parallel.
+  `app:*`, `db:*`, `measure:*`, and `inspect:*`. Its tests build with the `mage` tag and run in parallel.
   A target checks the OS and reads its arguments, then hands the work to methods of a `runner`
   (`magefiles/runner.go`): the checkout, output, environment, and tool lookup they use. A
   target passes `hostRunner()`, this process's own; a test passes a `rig`'s runner
@@ -227,6 +234,8 @@ bytes).
   the app's events; the shell's logic (menu bar, window close, quit guard, workers, shutdown).
 - [`internal/appinfo`](docs/architecture.md#internalappinfo): app info, Report a bug, and Send
   feedback.
+- [`internal/devtools`](docs/architecture.md#internaldevtools): the inspector a build from
+  source carries (the `devtools` tag, never a release's), which `magex inspect:*` talks to.
 - [`internal/store`](docs/architecture.md#internalstore): opens the database, self-heals,
   backs up and restores; what outlives the database.
 

@@ -406,6 +406,17 @@ func (r runner) quietLinkerFlags(ctx context.Context) string {
 	return " -extldflags=-Wl,-no_warn_duplicate_libraries"
 }
 
+// buildTags are the build tags of the desktop binary of a build of flavor: the desktop
+// shell, and, for a build from source (no flavor), the inspector (devtoolsTag). A release
+// or a rehearsal never carries the inspector.
+func buildTags(flavor string) string {
+	if flavor == "" {
+		return desktopTag + "," + devtoolsTag
+	}
+
+	return desktopTag
+}
+
 // buildDesktopBinary compiles the production desktop binary into exe, for goarch, or for
 // this Mac's processor when goarch is "".
 func (r runner) buildDesktopBinary(exe string, meta buildMeta, goarch string) error {
@@ -422,7 +433,7 @@ func (r runner) buildDesktopBinary(exe string, meta buildMeta, goarch string) er
 	}
 
 	err := r.runWithV(env, "go", "build",
-		"-tags", desktopTag+",production", "-trimpath", "-buildvcs=false",
+		"-tags", buildTags(meta.flavor)+",production", "-trimpath", "-buildvcs=false",
 		"-ldflags", "-s -w "+versionFlags(meta)+r.quietLinkerFlags(context.Background()), "-o", exe, "./cmd/"+brand.Slug)
 	if err != nil {
 		return fmt.Errorf("build the desktop binary: %w", err)

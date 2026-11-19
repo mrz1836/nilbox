@@ -157,10 +157,11 @@ interface Saved {
 }
 
 // LaunchControls is one row's "Open in Claude" or "Open in Codex" split button. The
-// button launches with the item's resolved settings: the agent, prompt, and profile its
-// org's and repository's defaults choose, the prompt and profile named on the arrow beside
-// it ("Review · default"). The arrow opens the launch options in a dialog in the middle of
-// the window (LaunchDialog), where this launch can use another agent, prompt, profile,
+// button opens the launch options on the item's resolved settings (the agent, prompt, and
+// profile its org's and repository's defaults choose, the prompt and profile named on the
+// arrow beside it, "Review · default"), so every launch is seen before it starts, and
+// their own Open starts it. The arrow opens the same launch options, in a dialog in the
+// middle of the window (LaunchDialog), where this launch can use another agent, prompt, profile,
 // model, effort, worktree, or plan mode, preview exactly what it runs, or save those
 // choices as the repository's or the org's defaults. The dialog is rendered only while it
 // is open, so a list of rows holds none, and it closes when its page hides. Choices apply
@@ -474,6 +475,10 @@ export function LaunchControls({
 
   const launchTitle =
     problem !== '' ? problem : base === null ? openLabel : `${openLabel} with “${promptName}” as ${profileName}`
+  // firstTitle is the launch button's tooltip: what it would start, and that the launch
+  // options open first.
+  const firstTitle =
+    problem !== '' ? problem : `${launchTitle}. The launch options open first, to check or change them.`
   const optionsLabel = `Launch options: ${chip}${changed ? ', changed for this launch' : ''}`
   const optionsTitle = 'Prompt, profile, and options for this launch'
 
@@ -584,7 +589,8 @@ export function LaunchControls({
 
   // cardSlot is the card's agent slot, by the card's session, one split control closed by
   // the ▾: with none, the launch (its prompt's nickname for a situation or an issue, else
-  // the agent's name); while one starts or works, a pill with its state and age that opens
+  // the agent's name), which opens the launch options rather than starting at once; while
+  // one starts or works, a pill with its state and age that opens
   // the item's sessions, its border running slowly round, then Show in terminal, or Watch
   // for a background run; once its turn is done, a pill that shows its terminal; once it
   // ended, a pill that opens what it found, the item's sheet, or the run's view for a
@@ -596,16 +602,20 @@ export function LaunchControls({
 
     if (session === null) {
       // Until the agent is known, the launch names "the agent", so it never shares the
-      // name Open with the card's primary beside it.
+      // name Open with the card's primary beside it. It opens the launch options, as the ▾
+      // does.
       return split(
         <button
           type="button"
-          disabled={busy || base === null}
-          onClick={launchNow}
+          disabled={busy || resolution === null}
+          onClick={showOptions}
           aria-label={
             agentName === '' ? 'Open in the agent' : nickname === '' ? openLabel : `${openLabel}: ${nickname}`
           }
-          title={launchTitle}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={open ? id : undefined}
+          title={firstTitle}
           className={`inline-flex min-w-0 items-center gap-1.5 rounded-l-lg border border-border pr-1.75 pl-2.25 font-semibold text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent ${partRing}`}
         >
           <SparkIcon className="size-3.5 shrink-0 text-accent" />
@@ -667,7 +677,6 @@ export function LaunchControls({
               sessions={sessions ?? [session]}
               agents={agents}
               align="right"
-              moving
               shrinks
               label={`${name} session: ${label}. Show the item's sessions`}
               title={session.detail === '' ? `${name} ${label}` : `${name} ${label}: ${session.detail}`}
@@ -961,9 +970,12 @@ export function LaunchControls({
           {running === null ? (
             <button
               type="button"
-              disabled={busy || base === null}
-              onClick={launchNow}
-              title={launchTitle}
+              disabled={busy || resolution === null}
+              onClick={showOptions}
+              aria-haspopup="dialog"
+              aria-expanded={open}
+              aria-controls={open ? id : undefined}
+              title={firstTitle}
               className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
             >
               <TerminalIcon className="size-3.5 text-accent" />

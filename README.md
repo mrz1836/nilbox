@@ -354,12 +354,13 @@ you saw. Every merge asks first.
 
 ### Launch a coding agent
 
-Click **Open in Claude** (or **Open in Codex**) on any card. Nilbox finds the item's local clone
-under `~/projects`, or in your other repository locations, gives the item its own `pr-<n>` or
+Click **✦ Claude** (or **✦ Codex**) on any card. Its launch options open on the prompt, profile,
+model, effort, and plan mode the item's settings choose, so you see what will run first; switch
+agents or change any of them for this launch, or save them as the repository's or org's
+defaults, then click **Open in Claude**. Nilbox finds the item's local clone under
+`~/projects`, or in your other repository locations, gives the item its own `pr-<n>` or
 `issue-<n>` worktree beside it, opens a terminal there, and starts the agent with your prompt
-loaded. The card then follows the session: working, waiting for your approval, or done. Use the
-arrow beside the button instead to switch agents for one launch, pick the prompt, profile, model,
-effort, and plan mode, and save the choices as the repository's or org's defaults.
+loaded. The card then follows the session: working, waiting for your approval, or done.
 
 <br>
 
@@ -691,7 +692,8 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request) and
 
 - **Two agents, one button:** **Open in Claude** or **Open in Codex** starts the agent in a new
   iTerm2 tab (the default) or Terminal.app window, with the item's prompt, profile, model, and
-  permissions already worked out.
+  permissions already worked out. The button shows those settings first, in its launch
+  options, so you see what will run before it starts.
 - **The item's clone,** found by matching git remotes one level under your clone root
   (`~/projects` by default) and your other repository locations: folders anywhere else, each
   looked into one level deep, or single clones, added in **Settings → Repositories**. No clone

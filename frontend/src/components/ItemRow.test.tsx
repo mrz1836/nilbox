@@ -875,7 +875,7 @@ describe('ItemRow agent', () => {
     expect(words.lastElementChild).toHaveTextContent('· just now')
     // The pill narrows within its border; its dot and the ▾ keep their width.
     expect(pill).toHaveClass('min-w-0', 'border')
-    expect(pill.querySelector('[data-moving], span[aria-hidden="true"]')).toHaveClass('shrink-0')
+    expect(pill.querySelector('span[aria-hidden="true"]')).toHaveClass('shrink-0')
 
     const options = within(row).getByRole('button', { name: /^Launch options/ })
     expect(options).toHaveClass('shrink-0', 'rounded-r-lg', 'border-l-0')
@@ -1019,7 +1019,7 @@ describe('ItemRow agent', () => {
     expect(screen.getByRole('button', { name: 'Review' })).toHaveClass('border-border', 'text-text')
 
     const pill = screen.getByRole('button', { name: /^Claude session: working/ })
-    expect(pill).toHaveAttribute('data-moving', 'true')
+    expect(pill).toHaveClass('motion-safe:animate-border-run')
     expect(pill).toHaveTextContent('Claude working 1m')
     expect(screen.getByRole('button', { name: 'Show in terminal' })).toBeEnabled()
   })
@@ -1028,7 +1028,6 @@ describe('ItemRow agent', () => {
     mountCard(asked(), { sessions: [agentSession()] })
 
     const terminal = screen.getByRole('button', { name: 'Show terminal' })
-    expect(terminal).toHaveAttribute('data-moving')
     expect(terminal).toHaveClass('motion-safe:animate-breathe')
 
     await userEvent.click(terminal)

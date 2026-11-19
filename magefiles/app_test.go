@@ -576,7 +576,10 @@ func TestLintOnPath(t *testing.T) {
 func TestAppLint(t *testing.T) {
 	t.Parallel()
 
-	lintArgs := "run --build-tags desktop --config .golangci.json --timeout 10m ./cmd/" + brand.Slug + "/... ./frontend/"
+	// lintArgs lints the desktop code built with tags.
+	lintArgs := func(tags string) string {
+		return "run --build-tags " + tags + " --config .golangci.json --timeout 10m ./cmd/" + brand.Slug + "/... ./frontend/"
+	}
 
 	t.Run("lints the desktop code with the pinned version on PATH", func(t *testing.T) {
 		t.Parallel()
@@ -586,7 +589,8 @@ func TestAppLint(t *testing.T) {
 
 		require.NoError(t, g.runner().lintDesktop())
 
-		assert.Equal(t, []string{"version", lintArgs}, g.linesOf("golangci-lint"), "the version is checked first")
+		assert.Equal(t, []string{"version", lintArgs("desktop"), lintArgs("desktop,devtools")}, g.linesOf("golangci-lint"),
+			"the version is checked first, then the code is linted as a release builds it and with the inspector")
 		assert.FileExists(t, g.path(distIndex), "the desktop embed needs a frontend to match")
 	})
 
@@ -601,7 +605,10 @@ func TestAppLint(t *testing.T) {
 		require.NoError(t, g.runner().lintDesktop())
 
 		assert.Equal(t, []string{"version"}, g.linesOf("golangci-lint"))
-		assert.Equal(t, []string{"run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 " + lintArgs}, g.linesOf("go"))
+		assert.Equal(t, []string{
+			"run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 " + lintArgs("desktop"),
+			"run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 " + lintArgs("desktop,devtools"),
+		}, g.linesOf("go"))
 	})
 
 	t.Run("no pinned version", func(t *testing.T) {
@@ -811,7 +818,7 @@ func TestAppDevRunsTheAppAgainstTheDevServer(t *testing.T) {
 
 	goRuns := g.linesOf("go")
 	require.Len(t, goRuns, 1)
-	assert.True(t, strings.HasPrefix(goRuns[0], "run -tags desktop -ldflags -X main.version=dev "), goRuns[0])
+	assert.True(t, strings.HasPrefix(goRuns[0], "run -tags desktop,devtools -ldflags -X main.version=dev "), goRuns[0])
 	assert.True(t, strings.HasSuffix(goRuns[0], " ./cmd/"+brand.Slug+" --data-dir=/sandbox"), goRuns[0])
 	assert.Contains(t, g.out.String(), "FRONTEND_DEVSERVER_URL="+devServerURL+"\nCGO_ENABLED=1\n")
 	assert.Equal(t, []string{"dev"}, g.linesOf("pnpm"), "the dev server starts first")
@@ -1402,7 +1409,7 @@ func TestBuildDesktopBinary(t *testing.T) {
 		bundleBuild:   "7",
 	}
 
-	build := "build -tags desktop,production -trimpath -buildvcs=false -ldflags -s -w " + versionFlags(meta)
+	build := "build -tags desktop,devtools,production -trimpath -buildvcs=false -ldflags -s -w " + versionFlags(meta)
 
 	t.Run("builds the tagged production binary for the oldest supported macOS", func(t *testing.T) {
 		t.Parallel()
@@ -1792,7 +1799,7 @@ func TestBuildBundle(t *testing.T) {
 		lines := g.lines()
 		require.Len(t, lines, 10)
 		assert.Equal(t, []string{"pnpm install --frozen-lockfile", "pnpm build"}, lines[:2])
-		assert.True(t, strings.HasPrefix(lines[2], "go build -tags desktop,production -trimpath -buildvcs=false -ldflags -s -w -X main.version="), lines[2])
+		assert.True(t, strings.HasPrefix(lines[2], "go build -tags desktop,devtools,production -trimpath -buildvcs=false -ldflags -s -w -X main.version="), lines[2])
 		assert.True(t, strings.HasSuffix(lines[2], " -o "+exe+" ./cmd/"+brand.Slug), lines[2])
 		assert.NotContains(t, lines[2], "main.flavor", "a build from source stamps no flavor")
 
@@ -2050,10 +2057,12 @@ func TestAppTargets(t *testing.T) {
 		lint := slices.Index(lines, "golangci-lint run --build-tags desktop --config .golangci.json --timeout 10m ./cmd/"+
 			brand.Slug+"/... ./frontend/")
 		tests := slices.Index(lines, "go test -tags desktop ./cmd/"+brand.Slug+"/")
+		devTests := slices.Index(lines, "go test -tags desktop,devtools ./cmd/"+brand.Slug+"/")
 
 		require.NotEqual(t, -1, lint, "the desktop lint")
 		require.NotEqual(t, -1, tests, "the desktop tests")
 		assert.Less(t, lint, tests, "the tests run after the lint")
+		assert.Less(t, tests, devTests, "then the inspector's build is tested too")
 		assert.Equal(t, "codesign --force --sign - "+g.path(devBundle), lines[len(lines)-1])
 	})
 
@@ -2065,7 +2074,10 @@ func TestAppTargets(t *testing.T) {
 
 		require.NoError(t, g.runner().testDesktop())
 
-		assert.Equal(t, []string{"go test -tags desktop ./cmd/" + brand.Slug + "/"}, g.lines())
+		assert.Equal(t, []string{
+			"go test -tags desktop ./cmd/" + brand.Slug + "/",
+			"go test -tags desktop,devtools ./cmd/" + brand.Slug + "/",
+		}, g.lines(), "the desktop code is tested as a release builds it, then with the inspector")
 		assert.FileExists(t, g.path(distIndex), "the embed needs a page, so a placeholder stands in")
 	})
 

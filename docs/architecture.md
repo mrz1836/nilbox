@@ -220,6 +220,68 @@ turn that link into the template chooser. The `magefiles`
 tests likewise fail if the synced `10-mage-x.env` stops pinning golangci-lint, which `magex
 app:lint` reads.
 
+## internal/devtools
+
+The inspector a build from source carries, which the `magex inspect:*` targets talk to
+(`magefiles/inspect.go`; the user's side is in
+[the inspector](desktop.md#the-inspector)). It is plain Go, tested on Linux; the desktop side
+is `cmd/nilbox/devtools_desktop.go` and, for the picture, `devtools_darwin.go`.
+
+**Only builds from source.** Every file that imports it builds only with the `devtools` tag,
+and magex passes that tag to a build from source alone: `buildTags` in
+`magefiles/bundle.go` gives it to `app:dev` and to the bundle `app:build` makes (no flavor),
+never to a release or a rehearsal, which the magefiles' tests pin, and
+`TestOnlyBuildsFromSourceCarryTheInspector` (`internal/repoguard/devtools_test.go`) fails on a
+file that imports it and builds without the tag. A release's `devKit`
+(`cmd/nilbox/nodevtools_desktop.go`) does nothing, so the bootstrap reads the same either way.
+`app:lint` and `app:test` lint and test the desktop code both ways.
+
+**The socket.** `Listen` listens on `devtools.sock` in the data folder, mode 0600, after
+removing a socket a run left behind; one another running copy answers on is left alone
+(`ErrInUse`), and the inspector stays off, which the log says. A connection carries one
+request, one JSON line (`Request`: a command and string arguments, as magex passes them), and
+gets JSON lines back (`Line`), ending with `end` or `error`. Each line is written within ten
+seconds, so a client that stops reading never holds the app up, and a client closing its end
+ends a command that follows. It speaks no HTTP: only `internal/github` imports `net/http`.
+
+**What it keeps.** `Feed` keeps the last entries of one kind and hands each new one to its
+followers, never waiting on a slow one. The log is kept by `LogHandler`, which the bootstrap
+adds beside the app's handlers, from Debug up whatever level they write at; the events by
+`Tee`, which wraps the relay the services emit into; the page's console and the user's trail
+by the agent. `stream` sends a feed's last entries, or several feeds' in time order (`watch`),
+then follows: it starts following before it reads what is kept, so nothing between the two is
+missed.
+
+**The page.** `agent.js`, embedded, is the agent. The bootstrap runs it in the main window,
+the first the app opens (`app.Window.OnCreate`), on every page load
+(`events.Common.WindowRuntimeReady`, then `ExecJS`), and `Page.Eval` runs it again ahead of
+each evaluation, so a page that lost it gets it back; it installs once. The agent posts to the
+app through the web view's message handler, each message prefixed `devtools:` (`Prefix`); the
+app's `RawMessageHandler`, set only in a build with the inspector, hands each message from the
+main frame to `Page.Receive`. An evaluation's code goes to the agent as a JSON string with an
+ID; the agent compiles it as an expression, or else as statements, runs it with its helpers as
+`nb`, and posts back the value, made safe for JSON (an element as its description, a cycle cut
+short, depth and size capped), or what it threw. The trail names a control by its label or text,
+anything else by its label alone or its text when it holds no other element, and keystrokes in
+a field only as typing in it, once per pause, never the keys. A card's description reads whether
+the web view draws it and what is inside it (`checkVisibility`), which is what
+`content-visibility` once got wrong (index.css says why no inbox or notification row uses it).
+The agent runs outside the frontend's sources, so `frontend/src/test/devtoolsAgent.test.ts`
+runs it in jsdom.
+
+**The picture.** `devKit.shot` has the web view take a picture of what it draws
+(`WKWebView takeSnapshotWithConfiguration`), as PNG, on the main thread, and waits for it on a
+thread of its own; one that takes longer than the request allows is left to finish.
+
+**The database.** `store.ReadOnlyQuery` and `store.Tables` read the live database over a
+connection of their own, `mode=ro` and `query_only`, and run one statement that reads (SELECT,
+WITH, EXPLAIN, VALUES, or a PRAGMA that sets nothing): the one way a package other than a
+table's owner reads a table, for a build from source alone, and never to write.
+
+**Trust.** The socket is the user's alone, and anything the user runs could already read the
+data folder. But a script the inspector runs can do whatever the window can, writes to GitHub
+through the bound services among them, which is why only a build from source carries it.
+
 ## internal/store
 
 **Migrations and squashes.** The schema is the migrations in `internal/store/migrate/migrations/`,
@@ -4786,8 +4848,9 @@ a longer one, Show terminal or What happened, comes only beside the agent's ▾ 
 primary at its start, and the agent's, the rest of the column (`--card-actions`, 20.75rem at
 full width, so its 14.75rem fits the common pills whole, "Claude working · 59m" with its
 terminal button the widest; 16.875rem below `@5xl`), its control at its end. That control is one split control in every session state,
-closed by the ▾: the launch, or a session's pill (and, while one works, Show in terminal or
-Watch), the first part narrowing and cutting its words short, its age first, while the
+closed by the ▾: the launch, which opens the launch options as the ▾ does rather than
+launching at once (the options' Open starts it), or a session's pill (and, while one works,
+Show in terminal or Watch), the first part narrowing and cutting its words short, its age first, while the
 marks and the ▾ keep their width, so nothing runs past a border. Its `column` and `peek`
 render props keep its outcome a direct child of the row, so it spans `col-[3/-1]`, and hand
 the peek its way to the launch options. With the card's
