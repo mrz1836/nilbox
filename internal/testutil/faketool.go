@@ -162,7 +162,8 @@ func LoadFakeRun(t testing.TB, path string) FakeRun {
 }
 
 // FakeToolMain plays a fake tool and exits when this test binary was started as one;
-// otherwise it returns at once. Call it first in TestMain.
+// otherwise it returns at once, once it has made the fakes the tests start skip the race
+// detector's pause at exit. Call it first in TestMain.
 func FakeToolMain() {
 	if script := os.Getenv(fakeGrandchildEnv); script != "" {
 		os.Exit(playGrandchild(script))
@@ -170,6 +171,8 @@ func FakeToolMain() {
 
 	script := os.Getenv(fakeToolEnv(filepath.Base(os.Args[0])))
 	if script == "" {
+		skipRaceExitPause()
+
 		return
 	}
 
@@ -188,6 +191,16 @@ func FakeToolMain() {
 	}
 
 	os.Exit(play(run))
+}
+
+// skipRaceExitPause sets GORACE's atexit_sleep_ms to 0 in this test binary's environment
+// before any test runs, so every fake a test starts with it inherits the setting. A fake
+// is the test binary itself, and one built with -race sleeps a second before every exit
+// with status 0, so each fake run that succeeded would cost its test a second. The fake
+// still exits through os.Exit, whose hooks write the coverage it ran into go test -cover's
+// GOCOVERDIR. A binary built without -race ignores GORACE.
+func skipRaceExitPause() {
+	_ = os.Setenv("GORACE", strings.TrimSpace(os.Getenv("GORACE")+" atexit_sleep_ms=0"))
 }
 
 // fakeToolEnv returns the environment variable naming the fake tool name's script.

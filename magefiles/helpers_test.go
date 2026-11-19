@@ -222,15 +222,9 @@ func (g *rig) linesOf(name string) []string {
 
 // fakeEnv is the environment a fake tool starts with: the test's, but GOARCH, which a
 // step sets only for a build for another processor, so a fake reports only what the step
-// gave it, and with the race detector's pause at exit off. A test binary built with -race
-// sleeps atexit_sleep_ms, a second unless GORACE says otherwise, before it exits with
-// status 0, which every fake that succeeds would otherwise spend.
+// gave it.
 func fakeEnv() []string {
-	env := slices.DeleteFunc(os.Environ(), func(entry string) bool {
-		return strings.HasPrefix(entry, "GOARCH=") || strings.HasPrefix(entry, "GORACE=")
-	})
-
-	return append(env, "GORACE="+strings.TrimSpace(os.Getenv("GORACE")+" atexit_sleep_ms=0"))
+	return slices.DeleteFunc(os.Environ(), func(entry string) bool { return strings.HasPrefix(entry, "GOARCH=") })
 }
 
 // argAfter returns the argument after flag in args, or "" when there is none.
