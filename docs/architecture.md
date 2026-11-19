@@ -3255,7 +3255,10 @@ What the user sees is in `docs/desktop.md`'s *Merge it and Post the agent's revi
   method) or `auto_merge`, and only `comment`, `request_changes`, or `approve`;
   `TestMergeAndReviewReachNoForbiddenAction` parses the adapter and fails on
   `merge_bypass`, `approve_auto_merge`, a close, approving workflow runs, or sending
-  `approve_merge`, whose offer it only reads.
+  `approve_merge`, whose offer it only reads. A merge GitHub refuses, by the merge state the
+  sheet reads right before it or by the merge itself (`github.ErrNotMergeable`), merged
+  nothing, so `mergeSent` makes it not offered, in the sheet's words, never a failure after
+  which GitHub may have taken it.
 - **Ask first** (`askFirst`): both steps ask again once reached (`followsRun`, the wait's
   words from `followWords`), whatever the routine's OK to start, and `Approve` records the
   OK on the step (`stepRun.OK`), so the card shows what the run came to. The window's card

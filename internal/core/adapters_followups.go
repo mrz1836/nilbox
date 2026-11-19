@@ -123,11 +123,14 @@ func waitsOnReview(offers []review.Offer) bool {
 	return !enabled(review.ActionMerge) && enabled(review.ActionApproveMerge)
 }
 
-// mergeSent is how a merge Act came to, in the GitHub step's words.
+// mergeSent is how a merge Act came to, in the GitHub step's words. GitHub refusing the
+// merge (github.ErrNotMergeable), whether the merge state read fresh right before it said
+// so or the merge itself was refused, merged nothing, so it is no longer offered, in the
+// sheet's words, rather than an error after which GitHub may have taken it.
 func mergeSent(res review.Result, err error) (autopilot.GitHubSent, error) {
 	switch {
 	case err != nil:
-		return refusal(err, review.ErrNotOffered, review.ErrWarningsNotAccepted)
+		return refusal(err, review.ErrNotOffered, review.ErrWarningsNotAccepted, github.ErrNotMergeable)
 	case res.Outcome == review.OutcomePushedSince:
 		return notOffered("It was pushed to after its checks passed, so it isn't merged."), nil
 	case res.Outcome == review.OutcomeMerged, res.Outcome == review.OutcomeAutoMerge:

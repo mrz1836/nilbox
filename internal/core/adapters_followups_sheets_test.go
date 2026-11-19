@@ -67,6 +67,42 @@ func TestAMergeItMergesNothingPushedToSinceItsChecksPassed(t *testing.T) {
 	assert.Empty(t, r.pulls.writes(), "no merge went")
 }
 
+func TestAMergeItGitHubRefusesRightBeforeItIsNotOfferedRatherThanFailed(t *testing.T) {
+	t.Parallel()
+
+	r := newGHRig(t)
+
+	// The sheet's read says it can merge, and GitHub's fresh merge state, read right before
+	// the merge, that branch protection holds it back: nothing is sent, so nothing may have
+	// reached GitHub.
+	r.pulls.mu.Lock()
+	r.pulls.states[ghNode(ghPullNumber)] = &github.MergeState{
+		Found: true, Status: github.MergeStateBlocked, Head: ghHeadA, State: github.StateOpen,
+	}
+	r.pulls.mu.Unlock()
+
+	got, err := r.steps.Merge(t.Context(), r.mergeOf(false, catalog.MergeDefault))
+	require.NoError(t, err, "a merge GitHub won't make fails no step")
+	assert.Equal(t, autopilot.GitHubNotOffered, got.Outcome)
+	assert.Equal(t, "Branch protection still blocks it.", got.Words, "saying why, in the sheet's words")
+	assert.Empty(t, r.pulls.writes(), "no merge went")
+
+	// The merge state says it can merge, and GitHub refuses the merge itself.
+	r.later()
+	r.pulls.mu.Lock()
+	delete(r.pulls.states, ghNode(ghPullNumber))
+	r.pulls.mu.Unlock()
+	r.pulls.failWrites(&github.NotMergeableError{
+		Reason: "At least 1 approving review is required by reviewers with write access.",
+	})
+
+	got, err = r.steps.Merge(t.Context(), r.mergeOf(false, catalog.MergeDefault))
+	require.NoError(t, err, "GitHub's own refusal merged nothing either")
+	assert.Equal(t, autopilot.GitHubNotOffered, got.Outcome)
+	assert.Equal(t, "GitHub won't merge the pull request yet: At least 1 approving review is required by reviewers "+
+		"with write access.", got.Words)
+}
+
 func TestAMergeItMergesOnlyHowTheRepositoryAllows(t *testing.T) {
 	t.Parallel()
 
