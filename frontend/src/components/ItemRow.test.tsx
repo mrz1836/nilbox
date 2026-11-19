@@ -116,6 +116,16 @@ function peek() {
   return within(screen.getByRole('region', { name: 'Details' }))
 }
 
+// layOut gives an element the place and width jsdom, which lays nothing out, lacks, and
+// the whole width of what it holds when that is more than it shows.
+function layOut(el: HTMLElement, left: number, width: number, whole = width) {
+  Object.defineProperty(el, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({ left, right: left + width, width, top: 0, bottom: 20, height: 20, x: left, y: 0 }),
+  })
+  Object.defineProperty(el, 'scrollWidth', { configurable: true, value: whole })
+}
+
 // body is the card's body: its two lines.
 function body(row: HTMLElement): HTMLElement {
   const title = within(row).getAllByRole('button')[0]
@@ -364,8 +374,59 @@ describe('ItemRow labels', () => {
     expect(screen.queryByText('three')).not.toBeInTheDocument()
     expect(screen.getByTitle('three, four, plain')).toHaveTextContent('+3')
     expect(screen.getByText('more: three, four, plain')).toHaveClass('sr-only')
-    // A narrow list leaves the labels out before the title gives way.
-    expect(screen.getByText('Labels:').parentElement).toHaveClass('@max-4xl:hidden', 'shrink-[10]')
+    // A narrow list leaves the labels out, and the title gives way to them, so none is
+    // ever cut off.
+    expect(screen.getByText('Labels:').parentElement).toHaveClass('@max-4xl:hidden', 'shrink-0')
+  })
+
+  it('folds a label that would not show whole into the count, beside a long title', () => {
+    const resized: (() => void)[] = []
+
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resized.push(callback)
+        }
+
+        observe() {
+          // The test reports the layout itself.
+        }
+
+        disconnect() {
+          // Nothing to stop following.
+        }
+      },
+    )
+
+    const labels = [
+      { name: 'bug-P3', color: '#d73a4a' },
+      { name: 'enhancement', color: '#a2eeef' },
+      { name: 'docs', color: '' },
+    ]
+    const row = mountCard(asked({ title: 'A title far too long for its line', details: details({ labels }) }))
+    const strip = screen.getByText('Labels:').parentElement as HTMLElement
+    const [first, second] = strip.querySelectorAll('[data-label-chip]')
+
+    // A 600px line whose title, 900px whole, is cut short beside the labels at 408px:
+    // a third of the line is room for the first label and "+2", not the second.
+    layOut(strip.parentElement as HTMLElement, 0, 600)
+    layOut(row.querySelector('[data-card-title]') as HTMLElement, 20, 380, 900)
+    layOut(strip, 408, 232)
+    layOut(first as HTMLElement, 408, 60)
+    layOut(second as HTMLElement, 472, 150)
+    layOut(strip.querySelector('[data-label-count]') as HTMLElement, 626, 14)
+    act(() => {
+      resized.forEach((callback) => {
+        callback()
+      })
+    })
+
+    expect(first).not.toHaveAttribute('inert')
+    expect(second, 'laid out unseen, to be measured').toHaveAttribute('inert')
+    expect(second).toHaveClass('invisible', 'absolute')
+    expect(screen.getByTitle('enhancement, docs')).toHaveTextContent('+2')
+    expect(screen.getByText('more: enhancement, docs')).toHaveClass('sr-only')
   })
 
   it('leaves out the labels the user hid before taking the first two', () => {
