@@ -305,15 +305,21 @@ func TestCodexConformanceACrashMidRun(t *testing.T) {
 func TestCodexConformanceAHangUntilTheTimeLimit(t *testing.T) {
 	t.Parallel()
 
-	r := newRig(t)
+	limit := newHeldLimit()
+	r := newRig(t, limit.hold)
 	plan := r.planFor(agent.Codex, testutil.FakeRun{Stdout: codexLines(t, "success-structured.jsonl", 4), Sleep: time.Minute})
-	plan.Fence.Timeout = time.Second
+	plan.Fence.Timeout = 20 * time.Minute
 
 	r.start(plan)
+	assert.Equal(t, 20*time.Minute, limit.await(t), "the run is held to its fence's time limit")
+
+	r.awaitEvents(plan.RunID)
+	limit.reach()
+
 	end := r.end(plan.RunID)
 
-	assert.Equal(t, StatusTimedOut, end.Outcome.Status)
-	assert.Equal(t, "Stopped after 1s.", end.Outcome.Summary)
+	assert.Equal(t, StatusTimedOut, end.Outcome.Status, "it hung mid-run until its limit came")
+	assert.Equal(t, "Stopped after 20 minutes.", end.Outcome.Summary)
 }
 
 func TestCodexConformanceStopAndTheSweepAfterSIGKILL(t *testing.T) {

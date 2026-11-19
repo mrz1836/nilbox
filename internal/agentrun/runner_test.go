@@ -54,18 +54,27 @@ type rig struct {
 	// engineClock is the clock the next build's run engine reads; nil is the real one.
 	engineClock clock.Clock
 
+	// timeLimit is the next build's run engine's timer for a run's time limit (its
+	// Config.TimeLimit); nil is the real one.
+	timeLimit func(time.Duration) (<-chan time.Time, func() bool)
+
 	mu     sync.Mutex
 	ends   map[int64]End
 	nextID atomic.Int64
 }
 
-// newRig returns a runner over a fresh database, its engine stopped when the test ends.
-func newRig(t *testing.T) *rig {
+// newRig returns a runner over a fresh database, its engine stopped when the test ends;
+// edit changes the rig before its engine is built.
+func newRig(t *testing.T, edit ...func(*rig)) *rig {
 	t.Helper()
 
 	r := &rig{
 		t: t, db: testutil.DB(t), logs: filepath.Join(t.TempDir(), "script-runs"), folders: t.TempDir(),
 		sessions: &fakeSessions{states: map[string][]SessionState{}}, sweeper: &fakeSweeper{}, ends: map[int64]End{},
+	}
+
+	for _, fn := range edit {
+		fn(r)
 	}
 
 	r.engine, r.service, r.runner = r.build()
@@ -79,6 +88,7 @@ func newRig(t *testing.T) *rig {
 func (r *rig) build() (*scriptrun.Engine, *scriptrun.Service, *Runner) {
 	engine := scriptrun.NewEngine(scriptrun.Config{
 		DB: r.db, Locks: clonelock.New(), LogDir: r.logs, Folders: r.folders, Clock: r.engineClock,
+		TimeLimit: r.timeLimit,
 	})
 	service := scriptrun.NewService(engine)
 	runner := New(Config{
@@ -154,6 +164,61 @@ func (r *rig) record(id int64) scriptrun.Run {
 	require.NoError(r.t, err)
 
 	return run
+}
+
+// awaitEvents waits until the ledger's run's log has been read into events.
+func (r *rig) awaitEvents(runID int64) {
+	r.t.Helper()
+
+	require.Eventually(r.t, func() bool {
+		page, err := r.runner.Events(r.t.Context(), runID, 0)
+
+		return err == nil && len(page.Events) > 0
+	}, waitFor, 10*time.Millisecond, "run %d's first lines are read", runID)
+}
+
+// heldLimit holds the time limits the rig's engine sets (its Config.TimeLimit) until the
+// test reaches them, so no test waits out a real one.
+type heldLimit struct {
+	asked chan time.Duration
+	fire  chan time.Time
+}
+
+// newHeldLimit returns a held limit no run has asked for yet.
+func newHeldLimit() *heldLimit {
+	return &heldLimit{asked: make(chan time.Duration, scriptrun.Slots), fire: make(chan time.Time)}
+}
+
+// hold makes the rig's next engine hold its runs' limits here.
+func (l *heldLimit) hold(r *rig) {
+	r.timeLimit = l.set
+}
+
+// set is the engine's Config.TimeLimit: it hands the test the limit d, and fires once the
+// test reaches it.
+func (l *heldLimit) set(d time.Duration) (<-chan time.Time, func() bool) {
+	l.asked <- d
+
+	return l.fire, func() bool { return true }
+}
+
+// await returns the next limit a run was held to, failing the test when none is set.
+func (l *heldLimit) await(t *testing.T) time.Duration {
+	t.Helper()
+
+	select {
+	case d := <-l.asked:
+		return d
+	case <-time.After(waitFor):
+		require.FailNow(t, "no run was held to a time limit")
+
+		return 0
+	}
+}
+
+// reach fires every limit set, as though its time had come.
+func (l *heldLimit) reach() {
+	close(l.fire)
 }
 
 // lines returns the first n lines of a fixture.
@@ -263,15 +328,22 @@ func TestConformanceACrashMidRun(t *testing.T) {
 func TestConformanceAHangUntilTheTimeLimit(t *testing.T) {
 	t.Parallel()
 
-	r := newRig(t)
+	limit := newHeldLimit()
+	r := newRig(t, limit.hold)
 	plan := r.plan(testutil.FakeRun{Stdout: lines(t, "success-structured.jsonl", 3), Sleep: time.Minute})
-	plan.Fence.Timeout = time.Second
+	plan.Fence.Timeout = 20 * time.Minute
 
 	r.start(plan)
+	assert.Equal(t, 20*time.Minute, limit.await(t), "the run is held to its fence's time limit")
+
+	r.awaitEvents(plan.RunID)
+	limit.reach()
+
 	end := r.end(plan.RunID)
 
-	assert.Equal(t, StatusTimedOut, end.Outcome.Status)
-	assert.Equal(t, "Stopped after 1s.", end.Outcome.Summary)
+	assert.Equal(t, StatusTimedOut, end.Outcome.Status, "it hung mid-run until its limit came")
+	assert.Equal(t, "Stopped after 20 minutes.", end.Outcome.Summary)
+	assert.Equal(t, []SessionState{SessionWorking, SessionFailed}, r.sessions.of(plan.SessionID))
 }
 
 func TestConformanceAResultEndsARunWhoseShellLingers(t *testing.T) {
