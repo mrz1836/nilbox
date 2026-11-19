@@ -72,6 +72,32 @@ func TestIsForeignKeyViolation(t *testing.T) {
 	})
 }
 
+func TestIsUniqueViolation(t *testing.T) {
+	t.Parallel()
+
+	db := parentAndChild(t)
+	ctx := t.Context()
+
+	_, err := db.ExecContext(ctx, "INSERT INTO parent (name) VALUES ('one')")
+	require.Error(t, err)
+	assert.True(t, store.IsUniqueViolation(fmt.Errorf("add a parent: %w", err)), "a second row a unique index allows once")
+
+	_, err = db.ExecContext(ctx, "INSERT INTO parent (id, name) VALUES (1, 'other')")
+	require.Error(t, err)
+	assert.True(t, store.IsUniqueViolation(err), "a second row with a primary key taken")
+
+	_, err = db.ExecContext(ctx, "INSERT INTO parent (name) VALUES (NULL)")
+	require.Error(t, err)
+	assert.False(t, store.IsUniqueViolation(err), "another constraint is not")
+
+	_, err = db.ExecContext(ctx, "DELETE FROM parent WHERE id = 1")
+	require.Error(t, err)
+	assert.False(t, store.IsUniqueViolation(err), "nor is a foreign key")
+
+	assert.False(t, store.IsUniqueViolation(errExample), "not a driver error")
+	assert.False(t, store.IsUniqueViolation(nil))
+}
+
 func TestIsBusyIsOnlyALock(t *testing.T) {
 	t.Parallel()
 

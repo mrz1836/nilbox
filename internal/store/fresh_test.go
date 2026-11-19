@@ -222,3 +222,48 @@ func TestPruneResetCopiesOfAMissingDirectoryFails(t *testing.T) {
 
 	require.Error(t, store.PruneResetCopies(filepath.Join(t.TempDir(), "missing", "app.db")))
 }
+
+func TestPruneResetCopiesNamesWhatItCantDeleteAndDeletesTheRest(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "app.db")
+
+	resets := []string{
+		"app.db.reset-20261101T000000Z",
+		"app.db.reset-20261102T000000Z",
+		"app.db.reset-20261103T000000Z",
+		"app.db.reset-20261104T000000Z",
+		"app.db.reset-20261105T000000Z",
+	}
+
+	for _, name := range resets {
+		testutil.WriteFile(t, filepath.Join(dir, name), "x")
+	}
+
+	// The oldest copy's log is a folder with a file in it, which no remove deletes.
+	stuck := filepath.Join(dir, resets[0]+"-wal")
+	require.NoError(t, os.Mkdir(stuck, 0o700))
+	testutil.WriteFile(t, filepath.Join(stuck, "inside"), "x")
+
+	err := store.PruneResetCopies(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "delete an old database set aside by a reset")
+	assert.Contains(t, err.Error(), filepath.Base(stuck), "the error names what it couldn't delete")
+
+	assert.Equal(t, []string{
+		stuck, filepath.Join(dir, resets[2]), filepath.Join(dir, resets[3]), filepath.Join(dir, resets[4]),
+	}, resetFiles(t, path), "the old copies are still deleted, all but the log it couldn't, and the newest kept")
+}
+
+func TestOpenFreshFailsWhereItCantLookForTheDatabase(t *testing.T) {
+	t.Parallel()
+
+	file := filepath.Join(t.TempDir(), "data")
+	testutil.WriteFile(t, file, "x")
+
+	_, err := store.OpenFresh(t.Context(), filepath.Join(file, "app.db"))
+	require.Error(t, err, "a file in the folder's place")
+	assert.Contains(t, err.Error(), "start a fresh database")
+	assert.Equal(t, "x", string(readFile(t, file)), "the file is left as it was")
+}

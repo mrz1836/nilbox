@@ -307,3 +307,95 @@ func TestSnapshotsOfAMissingDirectoryIsEmpty(t *testing.T) {
 	assert.Empty(t, got)
 	assert.NotNil(t, got)
 }
+
+func TestSnapshotsReadOnlyWhatTheirNamesSay(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	for _, name := range []string{
+		"app.db.broken-2026110XT165152Z",                       // a stamp's length, but no stamp
+		"app.db.backup-20261030T000000Z-v99999999999999999999", // digits too many to be a schema
+	} {
+		testutil.WriteFile(t, filepath.Join(dir, name), "x")
+	}
+
+	got, err := store.Snapshots(filepath.Join(dir, "app.db"))
+	require.NoError(t, err)
+	assert.Equal(t, []store.SnapshotFile{{
+		Path: filepath.Join(dir, "app.db.backup-20261030T000000Z-v99999999999999999999"), Kind: store.SnapshotBackup,
+		At: time.Date(2026, time.October, 30, 0, 0, 0, 0, time.UTC),
+	}}, got, "a name that isn't a stamp is no snapshot, and a schema too large for one names none")
+}
+
+func TestSnapshotsFailsWhereTheFolderCantBeListed(t *testing.T) {
+	t.Parallel()
+
+	file := filepath.Join(t.TempDir(), "data")
+	testutil.WriteFile(t, file, "x")
+
+	_, err := store.Snapshots(filepath.Join(file, "app.db"))
+	require.Error(t, err, "a file in the folder's place")
+	assert.Contains(t, err.Error(), "list the database's backups")
+}
+
+func TestAClosedSnapshotReadsNothing(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "kept.db")
+	snapshotDB(t, path)
+
+	snap, err := store.OpenSnapshot(t.Context(), path)
+	require.NoError(t, err)
+	require.NoError(t, snap.Close())
+
+	_, err = snap.Rows(t.Context(), "prompts", "name")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read the backup's schema")
+}
+
+func TestOpenSnapshotLeavesNoCopyWhenItCantMakeOne(t *testing.T) {
+	// The scratch copies go to the temporary folder, which the test sets.
+	tests := []struct {
+		name string
+		// log makes what stands beside the snapshot as its log.
+		log func(t *testing.T, path string)
+		// tmp is the temporary folder, under the test's own.
+		tmp string
+	}{
+		{
+			name: "a log that is a link to nothing",
+			log: func(t *testing.T, path string) {
+				require.NoError(t, os.Symlink(filepath.Join(filepath.Dir(path), "gone"), path+"-wal"))
+			},
+			tmp: "tmp",
+		},
+		{
+			name: "a log that is a folder",
+			log:  func(t *testing.T, path string) { require.NoError(t, os.Mkdir(path+"-wal", 0o700)) },
+			tmp:  "tmp",
+		},
+		{
+			name: "no temporary folder",
+			log:  func(t *testing.T, path string) { testutil.WriteFile(t, path+"-wal", "") },
+			tmp:  "missing",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.Mkdir(filepath.Join(dir, "tmp"), 0o700))
+			t.Setenv("TMPDIR", filepath.Join(dir, tt.tmp))
+
+			path := filepath.Join(dir, "kept.db")
+			snapshotDB(t, path)
+			tt.log(t, path)
+
+			_, err := store.OpenSnapshot(t.Context(), path)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "copy the backup to read it")
+			assert.Empty(t, dirNames(t, filepath.Join(dir, "tmp")), "no scratch copy is left")
+		})
+	}
+}
