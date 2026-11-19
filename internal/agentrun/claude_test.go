@@ -289,3 +289,109 @@ func TestALeakedSandboxFailsTheRun(t *testing.T) {
 	assert.Empty(t, sandboxOf(""), "no folder, no policy")
 	assert.Empty(t, sandboxOf(t.TempDir()), "a folder with no policy can't say")
 }
+
+// toolUse returns an assistant's line that uses the tool name with input.
+func toolUse(name, input string) string {
+	return `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"` + name + `","input":` + input + `}]}}` + "\n"
+}
+
+func TestTheParserSaysWhatEachToolDoes(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		line     string
+		category runevent.Category
+		text     string
+		step     string
+	}{
+		"an edit in the worktree": {
+			line: toolUse("Edit", `{"file_path":"`+fixtureDir+`/add.go"}`), category: runevent.CategoryEdit, text: "add.go",
+			step: "Editing add.go",
+		},
+		"a read outside it": {
+			line: toolUse("Read", `{"file_path":"/etc/hosts"}`), category: runevent.CategoryRead, text: "/etc/hosts",
+			step: "Reading /etc/hosts",
+		},
+		"a search": {
+			line: toolUse("Grep", `{"pattern":"func Add","path":"`+fixtureDir+`/internal"}`), category: runevent.CategorySearch,
+			text: "func Add internal", step: "Searching for func Add",
+		},
+		"a subagent": {
+			line: toolUse("Task", `{"description":"Review the tests"}`), category: runevent.CategorySubagent,
+			text: "Review the tests", step: "Review the tests",
+		},
+		"a page read": {
+			line: toolUse("WebFetch", `{"url":"https://example.com/docs"}`), category: runevent.CategoryWeb,
+			text: "https://example.com/docs", step: "Reading https://example.com/docs",
+		},
+		"a web search": {
+			line: toolUse("WebSearch", `{"query":"go timers"}`), category: runevent.CategoryWeb, text: "go timers",
+			step: "Reading go timers",
+		},
+		"a tool it doesn't know": {
+			line: toolUse("mcp__acme__deploy", `{"target":"prod"}`), category: runevent.CategoryOther, text: "mcp__acme__deploy",
+			step: "mcp__acme__deploy",
+		},
+		"a todo in progress named only by its content": {
+			line:     toolUse("TodoWrite", `{"todos":[{"content":"Fix the test","status":"in_progress"}]}`),
+			category: runevent.CategoryTodo, text: "0 of 1 done", step: "Fix the test",
+		},
+	} {
+		p := newClaudeParser(fixtureDir)
+		_, _ = p.Write([]byte(tc.line))
+
+		page := p.Page(0)
+		require.Len(t, page.Events, 1, name)
+		assert.Equal(t, runevent.KindTool, page.Events[0].Kind, name)
+		assert.Equal(t, tc.category, page.Events[0].Category, name)
+		assert.Equal(t, tc.text, page.Events[0].Text, name)
+		assert.Equal(t, tc.step, p.Progress().Step, name)
+		assert.Zero(t, p.Progress().Unknown, name)
+	}
+}
+
+func TestTheParserReadsAToolsResultInEitherShape(t *testing.T) {
+	t.Parallel()
+
+	result := func(content string, isError bool) string {
+		e := "false"
+		if isError {
+			e = "true"
+		}
+
+		return `{"type":"user","message":{"content":[{"type":"tool_result","is_error":` + e + `,"content":` + content + `}]}}` + "\n"
+	}
+
+	p := newClaudeParser("")
+	_, _ = p.Write([]byte(result(`"  ok\n"`, false) +
+		result(`[{"type":"text","text":"first"},{"type":"image"},{"type":"text","text":"second"}]`, true) +
+		result(`42`, false) +
+		`{"type":"user","message":{"content":"a plain prompt"}}` + "\n" +
+		`{"type":"user","message":{"content":[{"type":"text","text":"a note"}]}}` + "\n"))
+
+	page := p.Page(0)
+	require.Len(t, page.Events, 3, "a plain message and a text block show nothing")
+	assert.Equal(t, "ok", page.Events[0].Text, "a string result, trimmed")
+	assert.Equal(t, "first\nsecond", page.Events[1].Text, "the text blocks of a result, and nothing else")
+	assert.True(t, page.Events[1].Error)
+	assert.Empty(t, page.Events[2].Text, "a result in no shape it knows shows no text")
+	assert.Zero(t, p.Progress().Unknown)
+}
+
+func TestTheParserCountsKnownMessagesItCantRead(t *testing.T) {
+	t.Parallel()
+
+	p := newClaudeParser("")
+	_, _ = p.Write([]byte(`{"type":"assistant"}` + "\n" +
+		`{"type":"assistant","message":{"content":"not blocks"}}` + "\n" +
+		`{"type":"assistant","message":{"content":[{"type":"server_tool_use"},{"type":"text","text":"  "}]}}` + "\n" +
+		`{"type":"user","message":"not a message"}` + "\n" +
+		`{"type":"user","message":{"content":7}}` + "\n" +
+		`{"type":"user","message":{"content":[{"type":"document"}]}}` + "\n" +
+		`{"type":"rate_limit_event"}` + "\n"))
+
+	got := p.Progress()
+	assert.Equal(t, int64(7), got.Unknown, "each is counted, never fatal")
+	assert.Zero(t, got.Events, "and none shows")
+	assert.Nil(t, p.Limit(), "a limit event without its limit says nothing of it")
+}

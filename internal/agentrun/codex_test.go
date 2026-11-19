@@ -450,3 +450,59 @@ func (f *fakeLimits) Limit(_ context.Context, id agent.ID, configDir, agentSessi
 func (f *fakeLimits) asked() []string {
 	return append([]string(nil), f.calls...)
 }
+
+func TestTheCodexParserShowsWhatAToolGaveBack(t *testing.T) {
+	t.Parallel()
+
+	p := newCodexParser(codexDir)
+	_, _ = p.Write([]byte(
+		`{"type":"item.started","item":{"id":"m","type":"mcp_tool_call","server":"docs","tool":"search"}}` + "\n" +
+			`{"type":"item.updated","item":{"id":"m","type":"mcp_tool_call","server":"docs","tool":"search"}}` + "\n" +
+			`{"type":"item.completed","item":{"id":"m","type":"mcp_tool_call","server":"docs","tool":"search",` +
+			`"status":"completed","result":{"hits":2}}}` + "\n" +
+			`{"type":"item.completed","item":{"id":"f","type":"file_change","status":"declined",` +
+			`"changes":[{"path":"` + codexDir + `/add.go","kind":"update"}]}}` + "\n" +
+			`{"type":"item.completed","item":{"id":"a","type":"agent_message","text":"   "}}` + "\n",
+	))
+
+	page := p.Page(0)
+	require.Len(t, page.Events, 4, "a tool shows once, however often it is updated, and an empty message not at all")
+	assert.Equal(t, "docs.search", page.Events[0].Text)
+	assert.Equal(t, `{"hits":2}`, page.Events[1].Text, "what an MCP tool gave back")
+	assert.False(t, page.Events[1].Error)
+	assert.Equal(t, "add.go", page.Events[2].Text)
+	assert.Equal(t, runevent.KindToolResult, page.Events[3].Kind)
+	assert.Equal(t, "declined", page.Events[3].Text, "a change its fence declined says so")
+	assert.True(t, page.Events[3].Error)
+	assert.Equal(t, "Editing add.go", p.Progress().Step)
+}
+
+func TestTheCodexParserWritesACommandAsItWasTyped(t *testing.T) {
+	t.Parallel()
+
+	for command, want := range map[string]string{
+		`/bin/zsh -lc 'git add add.go'`:      "git add add.go",
+		`/bin/zsh -lc 'echo '\''hi'\'''`:     "echo 'hi'",
+		`/bin/bash -lc "echo \"\$HOME\""`:    `echo "$HOME"`,
+		`/bin/zsh -lc ls`:                    "ls",
+		`/usr/bin/env bash -lc 'git status'`: `/usr/bin/env bash -lc 'git status'`,
+		`git status`:                         "git status",
+		`/bin/zsh -lc '`:                     "'",
+	} {
+		assert.Equal(t, want, codexCommand(command), command)
+	}
+}
+
+func TestTheCodexParserCountsWhatItCantRead(t *testing.T) {
+	t.Parallel()
+
+	p := newCodexParser(codexDir)
+	_, _ = p.Write([]byte("not json\n" +
+		`{"type":"item.completed"}` + "\n" +
+		`{"type":"item.completed","item":{"id":"x","type":"a_newer_item"}}` + "\n" +
+		`{"type":"item.completed","item":{"id":"e","type":"error","message":"hooks bypassed"}}` + "\n"))
+
+	got := p.Progress()
+	assert.Equal(t, int64(3), got.Unknown, "each is counted, never fatal")
+	assert.Zero(t, got.Events, "and a warning shows nothing either")
+}
