@@ -38,22 +38,33 @@ type guardRig struct {
 	names recorded
 }
 
+// guardRepos are the repositories newGuardRig starts from, built once for the test binary
+// by buildGuard and copied into each rig.
+var guardRepos = testutil.NewGitTemplate(buildGuard) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildGuard builds what buildRemote does, then pushes pull request 9's head to the bare
+// remote from pr-9, a clone of it: one commit past main holding a.txt and a .gitattributes
+// that names the filter driver evil for every text file.
+func buildGuard(b *testutil.GitBuild) remoteCommits {
+	c := buildRemote(b)
+
+	b.Git(".", "clone", "-q", filepath.Join(b.Root, "remote.git"), filepath.Join(b.Root, "pr-9"))
+	b.WriteFile(filepath.Join("pr-9", ".gitattributes"), "*.txt filter=evil\n")
+	b.WriteFile(filepath.Join("pr-9", "a.txt"), "a\n")
+	b.Git("pr-9", "add", ".gitattributes", "a.txt")
+	b.Git("pr-9", "commit", "-q", "-m", "attributes")
+	b.Git("pr-9", "push", "-q", "origin", "HEAD:refs/pull/9/head")
+
+	return c
+}
+
 // newGuardRig builds a guardRig, or skips the test without git.
 func newGuardRig(t *testing.T) *guardRig {
 	t.Helper()
 
 	e := newEnv(t)
-	r := &guardRig{t: t, e: e, f: newRemoteFixture(t, e), plants: testutil.NewPlanter(t, e.home)}
 
-	work := filepath.Join(e.home, "pr-9")
-	testutil.RunGit(t, e.home, "clone", "-q", r.f.bare, work)
-	require.NoError(t, os.WriteFile(filepath.Join(work, ".gitattributes"), []byte("*.txt filter=evil\n"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(work, "a.txt"), []byte("a\n"), 0o600))
-	testutil.RunGit(t, work, "add", ".gitattributes", "a.txt")
-	testutil.RunGit(t, work, "commit", "-q", "-m", "attributes")
-	testutil.RunGit(t, work, "push", "-q", "origin", "HEAD:refs/pull/9/head")
-
-	return r
+	return &guardRig{t: t, e: e, f: e.remoteFixture(guardRepos.Copy(t, e.home)), plants: testutil.NewPlanter(t, e.home)}
 }
 
 // maker returns a Maker whose guarded commands run under gitread's guards, recording the

@@ -32,50 +32,89 @@ type sweepFixture struct {
 	launchedPR, commitLinked, nameOnly, unlaunchedIssue, launchedIssue, changed, open string
 }
 
+// sweepWorktrees are the sweep fixture's agent worktrees, in the order it makes them, each
+// with the remote-tracking branch its head is pushed to, "" for none.
+func sweepWorktrees() [][2]string {
+	return [][2]string{
+		{"pr-1", "one"},
+		{"pr-2", ""},
+		{"pr-3", "three"},
+		{"issue-4", "four"},
+		{"issue-5", "five"},
+		{"pr-6", "six"},
+		{"pr-7", "seven"},
+	}
+}
+
+// sweepRepos are the clone and agent worktrees newSweepFixture starts from, built once for
+// the test binary by buildSweep and copied into each env that asks for them.
+var sweepRepos = testutil.NewGitTemplate(buildSweep) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildSweep builds, under the clone root, example-repo, whose origin is
+// github.com/acme-org/example-repo, with each of sweepWorktrees as agentWorktree makes it,
+// pushed as pushed records it, and returns each worktree's head by its name.
+func buildSweep(b *testutil.GitBuild) map[string]string {
+	repo := filepath.Join("projects", "example-repo")
+	initOneCommit(b, repo, true)
+
+	heads := map[string]string{}
+
+	for _, wt := range sweepWorktrees() {
+		name, as := wt[0], wt[1]
+		path := filepath.Join(repo, ".claude", "worktrees", name)
+
+		b.Git(repo, "worktree", "add", "-q", "-b", ownBranchPrefix+name, filepath.Join(b.Root, path))
+		heads[name] = b.Commit(path, "fix.txt", name+"\n")
+
+		if as != "" {
+			b.Git(repo, "update-ref", "refs/remotes/origin/"+as, heads[name])
+		}
+	}
+
+	return heads
+}
+
+// newSweepFixture copies the sweep's clone and agent worktrees into the env's home, under
+// its folder's resolved path, which git's own worktree add records, and sets up what
+// GitHub and the app's launches know of each.
 func newSweepFixture(t *testing.T, e *env) *sweepFixture {
 	t.Helper()
 
-	f := &sweepFixture{repo: e.newGitHubRepo(t, "example-repo"), gh: &fakeGitHub{}, launches: &fakeLaunches{}}
-
-	var head string
+	heads := sweepRepos.Copy(t, resolvedPath(e.home))
+	f := &sweepFixture{repo: filepath.Join(e.root, "example-repo"), gh: &fakeGitHub{}, launches: &fakeLaunches{}}
+	worktree := func(name string) string { return filepath.Join(f.repo, ".claude", "worktrees", name) }
 
 	// Launched by the app, and its pull request merged: cleaned up.
-	f.launchedPR, head = agentWorktree(t, f.repo, "pr-1")
-	pushed(t, f.repo, "one", head)
+	f.launchedPR = worktree("pr-1")
 	f.gh.set("example-repo", 1, pr(ItemMerged, "a different head"))
 	f.launches.records = append(f.launches.records, launchOf(f.repo, "pr-1", item.KindPR, 1))
 
 	// Not launched by the app, but HEAD is the merged pull request's head: cleaned up.
-	f.commitLinked, head = agentWorktree(t, f.repo, "pr-2")
-	f.gh.set("example-repo", 2, pr(ItemMerged, head))
+	f.commitLinked = worktree("pr-2")
+	f.gh.set("example-repo", 2, pr(ItemMerged, heads["pr-2"]))
 
 	// Not launched, and linked by its name alone: finished, but left for the user.
-	f.nameOnly, head = agentWorktree(t, f.repo, "pr-3")
-	pushed(t, f.repo, "three", head)
+	f.nameOnly = worktree("pr-3")
 	f.gh.set("example-repo", 3, pr(ItemMerged, "a different head"))
 
 	// An issue not launched by the app: left for the user.
-	f.unlaunchedIssue, head = agentWorktree(t, f.repo, "issue-4")
-	pushed(t, f.repo, "four", head)
+	f.unlaunchedIssue = worktree("issue-4")
 	f.gh.set("example-repo", 4, closedIssue())
 
 	// An issue the app launched, now closed: cleaned up.
-	f.launchedIssue, head = agentWorktree(t, f.repo, "issue-5")
-	pushed(t, f.repo, "five", head)
+	f.launchedIssue = worktree("issue-5")
 	f.gh.set("example-repo", 5, closedIssue())
 	f.launches.records = append(f.launches.records, launchOf(f.repo, "issue-5", item.KindIssue, 5))
 
 	// Merged, but it holds uncommitted changes: needs a look.
-	f.changed, head = agentWorktree(t, f.repo, "pr-6")
-	pushed(t, f.repo, "six", head)
+	f.changed = worktree("pr-6")
 	dirty(t, f.changed)
-	f.gh.set("example-repo", 6, pr(ItemMerged, head))
+	f.gh.set("example-repo", 6, pr(ItemMerged, heads["pr-6"]))
 	f.launches.records = append(f.launches.records, launchOf(f.repo, "pr-6", item.KindPR, 6))
 
 	// Still open: nothing to do.
-	f.open, head = agentWorktree(t, f.repo, "pr-7")
-	pushed(t, f.repo, "seven", head)
-	f.gh.set("example-repo", 7, pr(ItemOpen, head))
+	f.open = worktree("pr-7")
+	f.gh.set("example-repo", 7, pr(ItemOpen, heads["pr-7"]))
 
 	return f
 }

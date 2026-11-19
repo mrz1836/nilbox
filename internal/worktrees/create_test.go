@@ -42,27 +42,55 @@ type remoteFixture struct {
 	main   string
 }
 
-// newRemoteFixture makes the bare remote and clones it under the env's clone root.
+// remoteCommits are the commits a remote fixture's build makes: main's head, and pull
+// request 7's.
+type remoteCommits struct {
+	main   string
+	prHead string
+}
+
+// remoteRepos are the repositories newRemoteFixture starts from, built once for the test
+// binary by buildRemote and copied into each env that asks for them.
+var remoteRepos = testutil.NewGitTemplate(buildRemote) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildRemote builds, in the folder an env's home takes the place of, src, whose main
+// holds README.md and whose contributor-fix is one commit past it; remote.git, its bare
+// clone, which holds contributor-fix's head only as refs/pull/7/head; and the clone of
+// remote.git under the clone root, projects/example-repo.
+func buildRemote(b *testutil.GitBuild) remoteCommits {
+	src := filepath.Join(b.Root, "src")
+	b.Git(".", "-c", "init.defaultBranch="+mainBranch, "init", "-q", src)
+	main := b.Commit("src", "README.md", "example\n")
+
+	b.Git("src", "switch", "-q", "-c", "contributor-fix")
+	prHead := b.Commit("src", "fix.txt", "fix\n")
+	b.Git("src", "switch", "-q", mainBranch)
+
+	bare := filepath.Join(b.Root, "remote.git")
+	b.Git(".", "clone", "-q", "--bare", src, bare)
+	b.Git("remote.git", "update-ref", "refs/pull/7/head", prHead)
+	b.Git("remote.git", "update-ref", "-d", "refs/heads/contributor-fix")
+
+	b.Git(".", "clone", "-q", bare, filepath.Join(b.Root, "projects", "example-repo"))
+
+	return remoteCommits{main: main, prHead: prHead}
+}
+
+// newRemoteFixture copies the bare remote, and its clone under the env's clone root,
+// into the env's home.
 func newRemoteFixture(t *testing.T, e *env) remoteFixture {
 	t.Helper()
 
-	src := filepath.Join(e.home, "src")
-	testutil.InitRepo(t, src)
-	main := testutil.Commit(t, src, "README.md", "example\n")
+	return e.remoteFixture(remoteRepos.Copy(t, e.home))
+}
 
-	testutil.RunGit(t, src, "switch", "-q", "-c", "contributor-fix")
-	prHead := testutil.Commit(t, src, "fix.txt", "fix\n")
-	testutil.RunGit(t, src, "switch", "-q", mainBranch)
-
-	bare := filepath.Join(e.home, "remote.git")
-	testutil.RunGit(t, e.home, "clone", "-q", "--bare", src, bare)
-	testutil.RunGit(t, bare, "update-ref", "refs/pull/7/head", prHead)
-	testutil.RunGit(t, bare, "update-ref", "-d", "refs/heads/contributor-fix")
-
-	clone := filepath.Join(e.root, "example-repo")
-	testutil.RunGit(t, e.home, "clone", "-q", bare, clone)
-
-	return remoteFixture{clone: clone, bare: bare, prHead: prHead, main: main}
+// remoteFixture is the remote fixture a copy of buildRemote's repositories into the env's
+// home holds, whose commits are c.
+func (e *env) remoteFixture(c remoteCommits) remoteFixture {
+	return remoteFixture{
+		clone: filepath.Join(e.root, "example-repo"), bare: filepath.Join(e.home, "remote.git"),
+		prHead: c.prHead, main: c.main,
+	}
 }
 
 // request asks for kind #number's worktree in the fixture's clone.

@@ -250,10 +250,9 @@ func (e *env) linked(deps linkDeps) *Service {
 func (e *env) newGitHubRepo(t *testing.T, name string) string {
 	t.Helper()
 
-	dir := e.newRepo(t, name)
-	testutil.RunGit(t, dir, "remote", "add", "origin", "https://github.com/acme-org/"+name+".git")
+	oneCommitRepos.Copy(t, oneCommitRepo{name: name, github: true}, e.root)
 
-	return dir
+	return filepath.Join(e.root, name)
 }
 
 // agentWorktree adds the agent's worktree <name> under the clone's .claude/worktrees on its
