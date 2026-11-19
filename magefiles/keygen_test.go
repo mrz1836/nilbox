@@ -218,6 +218,19 @@ func TestAppKeygen(t *testing.T) {
 	assert.FileExists(t, filepath.Join(home, "keys", signingKeyFile))
 }
 
+func TestAppKeygenNeedsAHomeFolder(t *testing.T) {
+	t.Parallel()
+
+	g := newRig(t)
+	g.setenv(mageArgsJSON, `["out=`+t.TempDir()+`"]`)
+
+	err := g.runner().keygenFromArgs(func() (string, error) { return "", paths.ErrNoHome })
+
+	require.ErrorIs(t, err, paths.ErrNoHome)
+	assert.Contains(t, err.Error(), "find the home folder")
+	assert.Empty(t, g.out.String(), "no key is made")
+}
+
 func TestInsideFolder(t *testing.T) {
 	t.Parallel()
 

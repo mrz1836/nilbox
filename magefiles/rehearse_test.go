@@ -18,6 +18,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/brandgen"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/update"
 )
 
@@ -312,6 +313,139 @@ func TestRehearse(t *testing.T) {
 			assert.NoDirExists(t, g.path("bin"))
 		})
 	}
+}
+
+func TestRehearseFromEnv(t *testing.T) {
+	t.Parallel()
+
+	home := func() (string, error) { return rehearsalHome, nil }
+
+	t.Run("builds the case magex names, signed as the environment says, in bin/rehearsal", func(t *testing.T) {
+		t.Parallel()
+
+		g, state := rehearsalRig(t)
+		keychain := keychainFile(t)
+
+		g.setenv(mageArgsJSON, `["case=tampered"]`)
+		g.setenv(envCodesignIdentity, testIdentity)
+		g.setenv(envCodesignKeychain, keychain+"/") // cleaned, as app:package cleans it
+
+		require.NoError(t, g.runner().rehearseFromEnv(home))
+
+		cfg := rehearsalConfigIn(g.dir, caseTampered)
+		assert.DirExists(t, cfg.paths().a)
+		assert.Contains(t, toolLines(g), "codesign --force --sign "+testIdentity+" --keychain "+keychain+
+			" --timestamp=none "+cfg.paths().a)
+		assert.Contains(t, g.out.String(), "✅ The rehearsal is ready (case=tampered)")
+		assert.Equal(t, originalKeychains, state.keychains.printed())
+	})
+
+	t.Run("refuses a rehearsal without an identity before anything builds", func(t *testing.T) {
+		t.Parallel()
+
+		g, _ := rehearsalRig(t)
+		g.setenv(mageArgsJSON, `["case=normal"]`)
+
+		require.ErrorIs(t, g.runner().rehearseFromEnv(home), errNoIdentity)
+		assert.Empty(t, g.lines())
+	})
+
+	t.Run("needs a home folder for the steps it prints", func(t *testing.T) {
+		t.Parallel()
+
+		g, _ := rehearsalRig(t)
+
+		err := g.runner().rehearseFromEnv(func() (string, error) { return "", appdata.ErrNoHomeDir })
+
+		require.ErrorIs(t, err, appdata.ErrNoHomeDir)
+		assert.Contains(t, err.Error(), "find the home folder")
+		assert.Empty(t, g.lines())
+	})
+}
+
+func TestRehearseFailures(t *testing.T) {
+	t.Parallel()
+
+	t.Run("stale brand files stop it before anything builds", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		releaseTools(g, releaseFake{})
+
+		require.ErrorIs(t, g.runner().rehearse(rehearsalConfigIn(g.dir, caseNormal)), brandgen.ErrStale)
+		assert.Empty(t, g.lines())
+		assert.NoDirExists(t, g.path("bin"))
+	})
+
+	t.Run("a bundle with no icon to break", func(t *testing.T) {
+		t.Parallel()
+
+		err := newRig(t).runner().breakBundle(caseBroken, filepath.Join(t.TempDir(), bundleName))
+
+		require.ErrorIs(t, err, fs.ErrNotExist)
+		assert.Contains(t, err.Error(), "break the bundle")
+	})
+
+	t.Run("no zip to tamper with", func(t *testing.T) {
+		t.Parallel()
+
+		p := rehearsalConfigIn(t.TempDir(), caseTampered).paths()
+
+		err := newRig(t).runner().tamperZip(caseTampered, p, releaseKeyPair(1).public)
+
+		require.ErrorIs(t, err, fs.ErrNotExist)
+		assert.Contains(t, err.Error(), "tamper with the zip")
+	})
+
+	t.Run("an empty zip has no byte to change", func(t *testing.T) {
+		t.Parallel()
+
+		p := rehearsalConfigIn(t.TempDir(), caseTampered).paths()
+		testutil.WriteFile(t, p.zip, "")
+
+		require.ErrorIs(t, newRig(t).runner().tamperZip(caseTampered, p, releaseKeyPair(1).public), errStillMatches)
+	})
+
+	t.Run("a zip it can't write", func(t *testing.T) {
+		t.Parallel()
+
+		skipAsRoot(t)
+
+		p := rehearsalConfigIn(t.TempDir(), caseTampered).paths()
+		testutil.WriteFileMode(t, p.zip, "the zip", 0o400)
+
+		err := newRig(t).runner().tamperZip(caseTampered, p, releaseKeyPair(1).public)
+
+		require.ErrorIs(t, err, fs.ErrPermission)
+		assert.Equal(t, "the zip", readFile(t, p.zip))
+	})
+
+	t.Run("no data directory to name", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		cfg := rehearsalConfigIn(t.TempDir(), caseNormal)
+		cfg.home = ""
+
+		err := g.runner().printRehearsal(cfg, cfg.paths())
+
+		require.ErrorIs(t, err, appdata.ErrNoHomeDir)
+		assert.Contains(t, err.Error(), "find the rehearsal's data directory")
+		assert.Empty(t, g.out.String())
+	})
+
+	t.Run("a step that fails stops the rest", func(t *testing.T) {
+		t.Parallel()
+
+		g, _ := rehearsalRig(t)
+		g.tool("ditto", exits(1))
+
+		err := g.runner().rehearse(rehearsalConfigIn(g.dir, caseNormal))
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "zip the bundle")
+		assert.NotContains(t, g.out.String(), "The rehearsal is ready")
+	})
 }
 
 func TestRehearsalMeta(t *testing.T) {

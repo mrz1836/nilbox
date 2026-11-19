@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"go/ast"
 	"go/parser"
@@ -726,6 +727,18 @@ func TestAppBindingsCheck(t *testing.T) {
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, errBindingsDrift)
 	})
+
+	t.Run("no temporary directory", func(t *testing.T) {
+		t.Parallel()
+
+		r := newRig(t).runner()
+		r.tmp = filepath.Join(t.TempDir(), "missing")
+
+		err := r.checkBindings()
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "create a temporary directory")
+	})
 }
 
 func TestWailsCLIUsesTheVersionGoModPins(t *testing.T) {
@@ -768,6 +781,108 @@ func TestAppDevStopsTheDevServerWhenTheAppFails(t *testing.T) {
 	assert.Less(t, time.Since(start), devServerStopTimeout, "the dev server is stopped, not waited out")
 	assert.Equal(t, []string{"install --frozen-lockfile", "dev"}, g.linesOf("pnpm"))
 	assert.FileExists(t, g.path(distIndex))
+}
+
+// devRig returns a rig whose checkout holds the frontend's folder, with a pnpm whose dev
+// server runs until it is stopped.
+func devRig(t *testing.T) *rig {
+	t.Helper()
+
+	g := newRig(t)
+	mkdir(t, g.path(frontendDir))
+	g.tool("pnpm", func(args []string) testutil.FakeRun {
+		if slices.Equal(args, []string{"dev"}) {
+			return testutil.FakeRun{Sleep: time.Minute}
+		}
+
+		return testutil.FakeRun{}
+	})
+
+	return g
+}
+
+func TestAppDevRunsTheAppAgainstTheDevServer(t *testing.T) {
+	t.Parallel()
+
+	g := devRig(t)
+	g.fixed("go", testutil.FakeRun{ReportEnv: []string{"FRONTEND_DEVSERVER_URL", "CGO_ENABLED"}})
+
+	require.NoError(t, g.runner().runDev(t.Context(), []string{"--data-dir=/sandbox"}))
+
+	goRuns := g.linesOf("go")
+	require.Len(t, goRuns, 1)
+	assert.True(t, strings.HasPrefix(goRuns[0], "run -tags desktop -ldflags -X main.version=dev "), goRuns[0])
+	assert.True(t, strings.HasSuffix(goRuns[0], " ./cmd/"+brand.Slug+" --data-dir=/sandbox"), goRuns[0])
+	assert.Contains(t, g.out.String(), "FRONTEND_DEVSERVER_URL="+devServerURL+"\nCGO_ENABLED=1\n")
+	assert.Equal(t, []string{"dev"}, g.linesOf("pnpm"), "the dev server starts first")
+}
+
+func TestAppDevStopsQuietlyWhenInterrupted(t *testing.T) {
+	t.Parallel()
+
+	g := devRig(t)
+	started := filepath.Join(t.TempDir(), "started")
+	g.fixed("go", testutil.FakeRun{Files: []testutil.FakeFile{{Path: started}}, Sleep: time.Minute})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	interrupted := make(chan struct{})
+
+	go func() {
+		defer close(interrupted)
+
+		// Control-C, once the app is up: magex's signal context ends.
+		assert.Eventually(t, func() bool {
+			_, err := os.Stat(started)
+
+			return err == nil
+		}, 10*time.Second, 10*time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	err := g.runner().runDev(ctx, nil)
+
+	<-interrupted
+	require.NoError(t, err, "stopping the app on an interrupt is no failure")
+	assert.Less(t, time.Since(start), devServerStopTimeout, "the app's group is stopped, not waited out")
+}
+
+func TestAppDevNeedsItsTools(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a dev server that can't start", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t) // no frontend folder for pnpm to run in
+		g.tool("pnpm", exits(0))
+
+		err := g.runner().runDev(t.Context(), nil)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "start the frontend dev server")
+	})
+
+	t.Run("no pnpm to run the dev server", func(t *testing.T) {
+		t.Parallel()
+
+		require.ErrorIs(t, newRig(t).runner().runDev(t.Context(), nil), errPNPMMissing)
+	})
+
+	t.Run("no page for the desktop embed", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		mkdir(t, g.path(frontendDir))
+		testutil.WriteFile(t, g.path("frontend/dist"), "")
+		g.tool("pnpm", exits(0))
+
+		_, err := g.runner().prepareDev(false, nil)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "create frontend/dist")
+	})
 }
 
 func TestAppDevNeedsPNPM(t *testing.T) {
@@ -885,6 +1000,15 @@ func TestAppProcesses(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, []string{"-f ^" + regexp.QuoteMeta(exe) + "( |$)"}, g.linesOf("pgrep"))
+	})
+
+	t.Run("pgrep missing", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := newRig(t).runner().appProcesses(exe)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "find the running app")
 	})
 }
 
@@ -1808,6 +1932,40 @@ func TestRemoveLegacyBundle(t *testing.T) {
 		assert.FileExists(t, bundleExecutable(target), "and what it links to")
 		assert.Empty(t, g.lines(), "no bundle, so nothing to look for running")
 	})
+
+	t.Run("a folder it can't look into", func(t *testing.T) {
+		t.Parallel()
+
+		skipAsRoot(t)
+
+		parent := t.TempDir()
+		require.NoError(t, os.Chmod(parent, 0o000))
+		t.Cleanup(func() { _ = os.Chmod(parent, 0o700) }) //nolint:gosec // lets the test's cleanup remove it
+
+		err := newRig(t).runner().removeLegacyBundle(filepath.Join(parent, brand.Name+".app"))
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "look for the earlier build")
+	})
+
+	t.Run("one it can't remove is named", func(t *testing.T) {
+		t.Parallel()
+
+		skipAsRoot(t)
+
+		legacy := earlier(t)
+		require.NoError(t, os.Chmod(filepath.Dir(legacy), 0o500))       //nolint:gosec // a folder nothing can be removed from is the fixture
+		t.Cleanup(func() { _ = os.Chmod(filepath.Dir(legacy), 0o700) }) //nolint:gosec // lets the test's cleanup remove it
+
+		g := newRig(t)
+		g.tool("pgrep", exits(1))
+
+		err := g.runner().removeLegacyBundle(legacy)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "remove the earlier build "+legacy)
+		assert.Empty(t, g.out.String(), "nothing is said removed")
+	})
 }
 
 func TestAppTargets(t *testing.T) {
@@ -1910,4 +2068,141 @@ func TestAppTargets(t *testing.T) {
 		assert.Equal(t, []string{"go test -tags desktop ./cmd/" + brand.Slug + "/"}, g.lines())
 		assert.FileExists(t, g.path(distIndex), "the embed needs a page, so a placeholder stands in")
 	})
+
+	t.Run("run quits a running copy first, then opens the fresh bundle", func(t *testing.T) {
+		t.Parallel()
+
+		pid := startSleeper(t)
+
+		synctest.Test(t, func(t *testing.T) {
+			g := newRig(t)
+			checkout(t, g.dir)
+			appTools(g)
+
+			looks := 0
+
+			g.tool("pgrep", func([]string) testutil.FakeRun {
+				looks++
+				if looks == 1 {
+					return testutil.FakeRun{Stdout: strconv.Itoa(pid) + "\n"}
+				}
+
+				return testutil.FakeRun{Exit: 1}
+			})
+
+			require.NoError(t, g.runner().runApp())
+
+			lines := g.lines()
+			assert.Contains(t, g.out.String(), "Quitting the running "+brand.DevName+"...")
+			assert.Equal(t, "open "+g.path(devBundle), lines[len(lines)-1])
+		})
+
+		requireExited(t, pid)
+	})
+}
+
+func TestAppTargetsStopAtAFailingStep(t *testing.T) {
+	t.Parallel()
+
+	t.Run("open, when the bundle can't be built", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		appTools(g)
+
+		require.ErrorIs(t, g.runner().openApp(), brandgen.ErrStale)
+		assert.Empty(t, g.linesOf("open"))
+	})
+
+	t.Run("run, when the build fails", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		appTools(g)
+
+		require.ErrorIs(t, g.runner().runApp(), brandgen.ErrStale)
+		assert.Empty(t, g.lines())
+	})
+
+	t.Run("run, when it can't tell whether a copy runs", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		checkout(t, g.dir)
+		appTools(g)
+		g.tool("pgrep", exits(2))
+
+		require.ErrorContains(t, g.runner().runApp(), "find the running app")
+		assert.Empty(t, g.linesOf("open"))
+	})
+
+	t.Run("test, with no frontend folder", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		appTools(g)
+		testutil.WriteFile(t, g.path(frontendDir), "")
+
+		require.Error(t, g.runner().testDesktop())
+		assert.Empty(t, g.lines())
+	})
+
+	t.Run("check builds no bundle on other systems", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		checkout(t, g.dir)
+		appTools(g)
+		require.NoError(t, g.runner().generateBindings(bindingsDir))
+
+		require.ErrorIs(t, g.runner().checkDesktop("linux"), errNeedsMacOS)
+
+		assert.Contains(t, g.lines(), "go test -tags desktop ./cmd/"+brand.Slug+"/", "every check but the build runs")
+		assert.Empty(t, g.linesOf("codesign"))
+	})
+
+	checkSteps := []struct {
+		name    string
+		tool    string
+		answer  func(prev answer) answer // the tool's new answer, given the one appTools gave it
+		wantErr string
+	}{
+		{name: "check, at the drift check", tool: "go", answer: func(answer) answer { return exits(1) }, wantErr: "read the pinned " + wailsModule + " version"},
+		{name: "check, at the lint", tool: "golangci-lint", answer: func(answer) answer {
+			return func(args []string) testutil.FakeRun {
+				if slices.Equal(args, []string{"version"}) {
+					return testutil.FakeRun{Stdout: "golangci-lint has version 2.15.0 built with go1.26.0\n"}
+				}
+
+				return testutil.FakeRun{Exit: 1}
+			}
+		}, wantErr: "golangci-lint run"},
+		{name: "check, at the tests", tool: "go", answer: func(prev answer) answer {
+			return func(args []string) testutil.FakeRun {
+				if args[0] == "test" {
+					return testutil.FakeRun{Exit: 1}
+				}
+
+				return prev(args)
+			}
+		}, wantErr: "go test"},
+	}
+
+	for _, tt := range checkSteps {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			g := newRig(t)
+			checkout(t, g.dir)
+			appTools(g)
+			require.NoError(t, g.runner().generateBindings(bindingsDir))
+			g.tool(tt.tool, tt.answer(g.answers[tt.tool]))
+
+			err := g.runner().checkDesktop(goosMacOS)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+			assert.Empty(t, g.linesOf("codesign"), "nothing is built")
+		})
+	}
 }

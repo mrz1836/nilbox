@@ -1326,3 +1326,195 @@ func TestAppPackage(t *testing.T) {
 		assert.Empty(t, toolLines(g))
 	})
 }
+
+func TestBuildReleaseBundleFailures(t *testing.T) {
+	t.Parallel()
+
+	pinned := update.EncodeKey(releaseKeyPair(1).public)
+
+	t.Run("stale brand files stop it once the tag and the tree are checked", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		releaseTools(g, releaseFake{tag: "v" + testVersion})
+
+		_, err := g.runner().buildReleaseBundle(testVersion, pinned)
+
+		require.ErrorIs(t, err, brandgen.ErrStale)
+		assert.Empty(t, toolLines(g))
+		assert.NoDirExists(t, g.path(unsignedRoot))
+	})
+
+	t.Run("a folder for the bundle that can't be made", func(t *testing.T) {
+		t.Parallel()
+
+		skipAsRoot(t)
+
+		g, _ := releaseRig(t, releaseFake{tag: "v" + testVersion})
+		mkdir(t, g.path(unsignedRoot))
+		require.NoError(t, os.Chmod(g.path(unsignedRoot), 0o500))       //nolint:gosec // a folder nothing can be made in is the fixture
+		t.Cleanup(func() { _ = os.Chmod(g.path(unsignedRoot), 0o700) }) //nolint:gosec // lets the test's cleanup remove it
+
+		_, err := g.runner().buildReleaseBundle(testVersion, pinned)
+
+		require.ErrorIs(t, err, fs.ErrPermission)
+		assert.Contains(t, err.Error(), "create "+filepath.Join(g.path(unsignedRoot), testVersion))
+		assert.Empty(t, g.linesOf("go"), "nothing is compiled")
+	})
+}
+
+func TestCheckUnsignedBundleUnreadable(t *testing.T) {
+	t.Parallel()
+
+	skipAsRoot(t)
+
+	tests := []struct {
+		name string
+		lock func(bundle string) string // the part of the bundle made unreadable
+	}{
+		{name: "a folder that can't be listed", lock: filepath.Dir},
+		{name: "a bundle that can't be opened", lock: func(bundle string) string { return bundle }},
+		{name: "a folder inside it that can't be read", lock: func(bundle string) string {
+			return filepath.Join(bundle, "Contents", "Resources")
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			bundle := writeUnsignedBundle(t, t.TempDir())
+			locked := tt.lock(bundle)
+			require.NoError(t, os.Chmod(locked, 0o300))       //nolint:gosec // a folder that can't be read is the fixture
+			t.Cleanup(func() { _ = os.Chmod(locked, 0o700) }) //nolint:gosec // lets the test's cleanup remove it
+
+			err := newRig(t).runner().checkUnsignedBundle(bundle)
+
+			require.ErrorIs(t, err, errUnsignedBundle)
+			require.ErrorIs(t, err, fs.ErrPermission)
+		})
+	}
+}
+
+func TestCopyBundle(t *testing.T) {
+	t.Parallel()
+
+	src := writeUnsignedBundle(t, t.TempDir())
+	dst := filepath.Join(t.TempDir(), bundleName)
+
+	require.NoError(t, copyBundle(src, dst))
+	assert.Equal(t, "universal", readFile(t, bundleExecutable(dst)))
+	assert.Equal(t, "<plist/>", readFile(t, filepath.Join(dst, "Contents", "Info.plist")))
+
+	err := copyBundle(src, dst)
+	require.ErrorIs(t, err, fs.ErrExist, "a copy never overwrites a bundle")
+	assert.Contains(t, err.Error(), "copy the unsigned bundle")
+
+	err = copyBundle(filepath.Join(t.TempDir(), "missing.app"), filepath.Join(t.TempDir(), bundleName))
+	require.ErrorIs(t, err, fs.ErrNotExist)
+}
+
+func TestReleaseFileFailures(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a signing key that is a folder", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := readSigningKey(t.TempDir())
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "read the signing key")
+	})
+
+	t.Run("an earlier release that can't be removed", func(t *testing.T) {
+		t.Parallel()
+
+		skipAsRoot(t)
+
+		dir := filepath.Join(t.TempDir(), testVersion)
+		testutil.WriteFile(t, filepath.Join(dir, "old.zip"), "old")
+		require.NoError(t, os.Chmod(dir, 0o500))       //nolint:gosec // a folder nothing can be removed from is the fixture
+		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) }) //nolint:gosec // lets the test's cleanup remove it
+
+		err := freshFolder(dir)
+
+		require.ErrorIs(t, err, fs.ErrPermission)
+		assert.Contains(t, err.Error(), "remove the earlier files in "+dir)
+	})
+
+	t.Run("a file to sum that is a folder", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+
+		require.Error(t, writeSums(filepath.Join(dir, update.SumsName), t.TempDir()))
+		assert.NoFileExists(t, filepath.Join(dir, update.SumsName), "no sums for a file that can't be read")
+	})
+
+	t.Run("a manifest that is a folder", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		mkdir(t, filepath.Join(dir, update.ManifestName))
+
+		err := newRig(t).runner().verifyRelease(dir, "", releaseKeyPair(1).public)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "read the update manifest")
+	})
+
+	t.Run("a release missing a file to report", func(t *testing.T) {
+		t.Parallel()
+
+		names := update.AssetNames(testVersion)
+		dir := t.TempDir()
+		testutil.WriteFile(t, filepath.Join(dir, names.Zip), "zip")
+
+		g := newRig(t)
+		err := g.runner().reportRelease(dir, names)
+
+		require.ErrorIs(t, err, fs.ErrNotExist)
+		assert.Contains(t, err.Error(), "read the size of "+names.DMG)
+		assert.Contains(t, g.out.String(), "  "+names.Zip+" (3 bytes, 0.0 MB)", "the files before it are reported")
+	})
+}
+
+func TestMakeDMGFailures(t *testing.T) {
+	t.Parallel()
+
+	sign := signer{identity: testIdentity}
+
+	t.Run("no folder for the disk image", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		releaseTools(g, releaseFake{})
+
+		err := g.runner().makeDMG(t.TempDir(), filepath.Join(t.TempDir(), "missing", "app.dmg"), sign)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "create the disk image's folder")
+		assert.Empty(t, g.lines())
+	})
+
+	t.Run("Applications can't be linked beside the bundle", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		releaseTools(g, releaseFake{})
+		g.tool("ditto", func(args []string) testutil.FakeRun {
+			mkdir(t, lastArg(args))
+			mkdir(t, filepath.Join(filepath.Dir(lastArg(args)), "Applications")) // in the way of the link
+
+			return testutil.FakeRun{}
+		})
+
+		dmg := filepath.Join(t.TempDir(), "app.dmg")
+		err := g.runner().makeDMG(filepath.Join(t.TempDir(), bundleName), dmg, sign)
+
+		require.ErrorIs(t, err, fs.ErrExist)
+		assert.Contains(t, err.Error(), "link Applications for the disk image")
+		assert.Empty(t, g.linesOf("hdiutil"), "no disk image is made")
+		assert.NoFileExists(t, dmg)
+	})
+}
