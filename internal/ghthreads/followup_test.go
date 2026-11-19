@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -209,7 +210,7 @@ func TestAThreadGitHubBringsBackAfterAMergeIsClearedAgainSoon(t *testing.T) {
 		rules.change(func(r *threadrules.Rules) { r.Auto = true })
 
 		svc := NewService(Config{
-			Pool: db, Tokens: &fakeTokens{value: "test-token-not-real"}, Client: client, Rules: rules,
+			Pool: db, Tokens: githubtest.NewTokens(), Client: client, Rules: rules,
 		})
 
 		stop := runSyncer(t, NewSyncer(svc, nil, nil))

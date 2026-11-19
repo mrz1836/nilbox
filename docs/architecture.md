@@ -396,7 +396,11 @@ a fake terminal app that runs each run meant for the user's terminal under `/bin
 (`Terminal`, through `WithTerminal`; `Close` hangs it up mid-run), and `Ended` and `Await`,
 which look again only when the engine's `Changed` says the runs changed, never on a timer
 (`AwaitShell`, for the shell the engine notes without telling, alone polls); only tests
-may import it either. The repoguard guards on SQL and
+may import it either. `internal/github/githubtest` holds the fakes of `internal/github` the
+suites share, which `internal/testutil` cannot hold as `internal/github` imports it: `Tokens`,
+a token source that lends in turn, fails as told, and records what it was told to forget;
+`Calls`, a fake GitHub's requests counted by name and in order; and `BadCredentials`,
+GitHub refusing the token; only tests may import it too. The repoguard guards on SQL and
 on the git verbs the app runs treat both test-support packages as they treat `_test.go`
 files.
 

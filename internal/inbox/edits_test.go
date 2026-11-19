@@ -282,7 +282,7 @@ func TestEditsRetryARefusedToken(t *testing.T) {
 	_, err := h.svc.Unassign(t.Context(), ids[3])
 	require.Error(t, err)
 	assert.Len(t, h.client.edits, 2, "tried once more with a fresh token")
-	assert.Equal(t, []string{fakeToken}, h.tokens.forgot)
+	assert.Equal(t, []string{fakeToken}, h.tokens.Forgot())
 }
 
 func TestARefreshKeepsALeftListLeftUntilTheItemMoves(t *testing.T) {

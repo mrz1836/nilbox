@@ -57,7 +57,7 @@ func TestSendWaitsOnAccountMismatch(t *testing.T) {
 	r.settle(outcome(OutcomeReviewed, item.KindPR, 1, start))
 
 	// gh auth switch, before the hold ends.
-	r.tokens.swap("another-test-token-not-real")
+	r.tokens.Swap("another-test-token-not-real")
 	r.gh.configure(func(f *fakeGitHub) { f.viewer = otherLogin })
 	r.clock.Advance(MinHold)
 
@@ -69,7 +69,7 @@ func TestSendWaitsOnAccountMismatch(t *testing.T) {
 	assert.False(t, waiting, "until the next pass, not on a timer")
 
 	// Switched back: the next pass sends it.
-	r.tokens.swap("test-token-not-real")
+	r.tokens.Swap("test-token-not-real")
 	r.gh.configure(func(f *fakeGitHub) { f.viewer = viewerLogin })
 	r.clock.Advance(time.Minute)
 
@@ -209,13 +209,13 @@ func TestSendNothingWithReadingOffOrRefused(t *testing.T) {
 
 		r := clearingRig(t, prThread(firstID, 1, start))
 		r.settle(outcome(OutcomeDismissed, item.KindPR, 1, start))
-		loans := r.tokens.loans()
+		loans := r.tokens.Loans()
 
 		r.rules.off.Store(true)
 		r.clock.Advance(MinHold)
 
 		assertNoRequests(t, r.send(), "reading off: no request at all")
-		assert.Equal(t, loans, r.tokens.loans(), "not even a token borrowed")
+		assert.Equal(t, loans, r.tokens.Loans(), "not even a token borrowed")
 		assert.Equal(t, "skipped", r.ledger()[0].state)
 		assert.Equal(t, string(SkipOff), r.ledger()[0].reason)
 

@@ -239,6 +239,8 @@ bytes).
   interval runner, one call per key, paths, progress, and text and shell quoting.
 - `internal/testutil`, `internal/scriptrun/scriptruntest`: the shared test fakes and fixtures;
   only tests import them.
+- `internal/github/githubtest`: the shared fakes of `internal/github` (a token source, a fake
+  GitHub's request counts, a refused token); only tests import it.
 
 **GitHub, the inbox, and notifications**
 

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -89,7 +90,7 @@ func benchService(b *testing.B) *Service {
 	b.Helper()
 
 	svc := NewService(Config{
-		Pool: testutil.DB(b), Tokens: &fakeTokens{}, Client: benchInbox(),
+		Pool: testutil.DB(b), Tokens: githubtest.NewTokens(), Client: benchInbox(),
 		Clock: testutil.NewClock(time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)),
 	})
 

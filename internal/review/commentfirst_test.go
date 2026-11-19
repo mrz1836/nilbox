@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -409,12 +410,12 @@ func TestAFailureAfterTheCommentIsAResult(t *testing.T) {
 				t.Helper()
 
 				h.github.states = []*github.MergeState{open(github.MergeStateClean, headA)}
-				h.github.mergeOnce, h.github.stateErr, h.github.stateOK = badCredentials(), badCredentials(), 1
+				h.github.mergeOnce, h.github.stateErr, h.github.stateOK = githubtest.BadCredentials(), githubtest.BadCredentials(), 1
 
 				return t.Context()
 			},
-			requests: []string{callState, callSubmit, callMerge, callState}, reason: trimmed(badCredentials()),
-			message: "Commented on acme-org/example-repo#7, but it wasn't merged: " + trimmed(badCredentials()),
+			requests: []string{callState, callSubmit, callMerge, callState}, reason: trimmed(githubtest.BadCredentials()),
+			message: "Commented on acme-org/example-repo#7, but it wasn't merged: " + trimmed(githubtest.BadCredentials()),
 		},
 		{
 			name: "the fresh token's account check failing", action: ActionMerge, harness: ownClean,
@@ -422,7 +423,7 @@ func TestAFailureAfterTheCommentIsAResult(t *testing.T) {
 				t.Helper()
 
 				h.github.states = []*github.MergeState{open(github.MergeStateClean, headA)}
-				h.github.mergeOnce, h.inbox.retryErr = badCredentials(), signedOut
+				h.github.mergeOnce, h.inbox.retryErr = githubtest.BadCredentials(), signedOut
 
 				return t.Context()
 			},
@@ -501,14 +502,14 @@ func TestAFailureBeforeAnyCommentIsStillAnError(t *testing.T) {
 
 	h := ownClean(t)
 	h.github.states = []*github.MergeState{open(github.MergeStateClean, headA)}
-	h.github.mergeErr = badCredentials()
+	h.github.mergeErr = githubtest.BadCredentials()
 
 	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionMerge, Head: headA, Accept: true})
 	require.True(t, github.IsBadCredentials(err), "a merge with no text posted nothing, so it is an error")
 
 	h = readHarness(t, github.MergeStateClean)
 	h.github.states = []*github.MergeState{open(github.MergeStateClean, headA)}
-	h.github.mergeErr = badCredentials()
+	h.github.mergeErr = githubtest.BadCredentials()
 
 	_, err = h.svc.Act(t.Context(), ActRequest{
 		ItemID: pullID, Action: ActionApproveMerge, Head: headA, Accept: true, Body: mergeText,
@@ -521,7 +522,7 @@ func TestARetriedTokenNeverCommentsTwice(t *testing.T) {
 
 	h := ownClean(t)
 	h.github.states = []*github.MergeState{open(github.MergeStateClean, headA)}
-	h.github.mergeOnce = badCredentials()
+	h.github.mergeOnce = githubtest.BadCredentials()
 
 	res := h.act(t, ActRequest{Action: ActionMerge, Accept: true, Body: mergeText})
 	assert.Equal(t, OutcomeMerged, res.Outcome)

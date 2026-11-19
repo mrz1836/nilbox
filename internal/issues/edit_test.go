@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -133,7 +134,7 @@ func TestEditNeverSendsAStepTwice(t *testing.T) {
 	t.Parallel()
 
 	h := readHarness(t)
-	h.github.editErr = map[string]error{"-assignee:octo-third": badCredentials()}
+	h.github.editErr = map[string]error{"-assignee:octo-third": githubtest.BadCredentials()}
 
 	got, err := h.svc.Edit(t.Context(), EditRequest{
 		ItemID: issueID, AddLabels: []string{"triage"}, RemoveAssignees: []string{"octo-third"},

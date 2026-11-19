@@ -306,7 +306,7 @@ func TestCheckFilesWithoutAToken(t *testing.T) {
 
 	h := filesHarness(t, from(1, "outsider", "NONE", false))
 	id := itemByNumber(t, h.refresh(t).ReviewRequested, 1).ID
-	h.tokens.err = errFakeNetwork
+	h.tokens.Fail(errFakeNetwork)
 
 	check, err := h.svc.CheckFiles(t.Context(), id)
 	require.NoError(t, err)

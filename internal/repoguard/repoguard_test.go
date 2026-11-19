@@ -956,9 +956,11 @@ func TestWailsAllowed(t *testing.T) {
 
 // testSupportDirs hold the test-support packages, which must never reach the app: the
 // helpers and fakes the test suites share, the runner the suites of scriptrun's kinds
-// share, which builds on them, and Autopilot's simulator.
+// share, which builds on them, Autopilot's simulator, and the fakes of internal/github.
 func testSupportDirs() []string {
-	return []string{"internal/testutil", "internal/scriptrun/scriptruntest", "internal/autopilot/sim"}
+	return []string{
+		"internal/testutil", "internal/scriptrun/scriptruntest", "internal/autopilot/sim", "internal/github/githubtest",
+	}
 }
 
 // inTestSupport reports whether rel, a path relative to the module, is in a test-support
@@ -1018,6 +1020,8 @@ func TestTestSupportImports(t *testing.T) {
 		"internal/testutil/db.go":                           true,
 		"internal/scriptrun/scriptruntest":                  true,
 		"internal/scriptrun/scriptruntest/scriptruntest.go": true,
+		"internal/github/githubtest/githubtest.go":          true,
+		"internal/github/tokencache.go":                     false,
 		"internal/scriptrun/engine.go":                      false,
 		"internal/scriptrun":                                false,
 		"internal/testutilx/a.go":                           false,

@@ -415,13 +415,13 @@ func TestReadingOffSendsNothing(t *testing.T) {
 	r.gh.set(prThreads(3, start))
 	r.mustPass()
 
-	loans, told := r.tokens.loans(), r.events.Count()
+	loans, told := r.tokens.Loans(), r.events.Count()
 
 	r.rules.off.Store(true)
 	r.clock.Advance(5 * time.Minute)
 
 	assertNoRequests(t, r.mustPass(), "reading off: no request")
-	assert.Equal(t, loans, r.tokens.loans(), "not even a token borrowed")
+	assert.Equal(t, loans, r.tokens.Loans(), "not even a token borrowed")
 	assert.Equal(t, told+1, r.events.Count(), "the window hears the notifications are hidden")
 
 	snap := r.snapshot()
@@ -437,7 +437,7 @@ func TestReadingOffSendsNothing(t *testing.T) {
 	snap, err := r.svc.CheckNow(t.Context())
 	require.NoError(t, err)
 	assertNoRequests(t, r.gh.requests(), "nor when the user asks")
-	assert.Equal(t, loans, r.tokens.loans())
+	assert.Equal(t, loans, r.tokens.Loans())
 	assert.False(t, snap.Status.Reading)
 }
 
@@ -491,7 +491,7 @@ func TestAccountSwitchWalksFully(t *testing.T) {
 	r.mustPass()
 
 	// gh auth switch: another token, another account, its own notifications.
-	r.tokens.swap("another-test-token-not-real")
+	r.tokens.Swap("another-test-token-not-real")
 	r.gh.configure(func(f *fakeGitHub) { f.viewer = otherLogin })
 	r.gh.set(newThreadsFrom(firstID+700, 3, start))
 	r.clock.Advance(5 * time.Minute)

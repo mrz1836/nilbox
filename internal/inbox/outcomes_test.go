@@ -2,7 +2,6 @@ package inbox
 
 import (
 	"context"
-	"net/http"
 	"slices"
 	"sync"
 	"testing"
@@ -13,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -155,11 +155,6 @@ func acting(acted Acted) func(context.Context, github.Token, PullTarget) (Acted,
 	}
 }
 
-// badCredentials is GitHub refusing a token.
-func badCredentials() error {
-	return &github.StatusError{StatusCode: http.StatusUnauthorized, Message: "Bad credentials"}
-}
-
 func TestOutcomesMergedToldOnce(t *testing.T) {
 	t.Parallel()
 
@@ -169,7 +164,7 @@ func TestOutcomesMergedToldOnce(t *testing.T) {
 
 	_, err := NewActor(h.svc).Act(t.Context(), id, func(context.Context, github.Token, PullTarget) (Acted, error) {
 		if tries++; tries == 1 {
-			return Acted{}, badCredentials()
+			return Acted{}, githubtest.BadCredentials()
 		}
 
 		return Acted{Merged: true}, nil
@@ -276,7 +271,7 @@ func TestOutcomesReviewWithMergeToldAsMergedOnly(t *testing.T) {
 	_, err := NewActor(h.svc).Act(t.Context(), id, func(context.Context, github.Token, PullTarget) (Acted, error) {
 		approved := Acted{Reviewed: true, ReviewedAt: h.clock.Now(), ReviewEvent: github.ReviewApprove}
 		if tries++; tries == 1 {
-			return approved, badCredentials()
+			return approved, githubtest.BadCredentials()
 		}
 
 		approved.Merged = true

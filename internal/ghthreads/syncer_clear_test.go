@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -177,7 +178,7 @@ func TestSyncerSendsAHeldClearWhenItsHoldEnds(t *testing.T) {
 		rules.change(func(r *threadrules.Rules) { r.Auto = true })
 
 		svc := NewService(Config{
-			Pool: db, Tokens: &fakeTokens{value: "test-token-not-real"}, Client: client, Rules: rules,
+			Pool: db, Tokens: githubtest.NewTokens(), Client: client, Rules: rules,
 			Holds: fakeHolds{seconds: 30},
 		})
 
@@ -215,7 +216,7 @@ func clearingService(db *sql.DB, client Client, auto bool, events event.Sink, lo
 	rules.change(func(r *threadrules.Rules) { r.Auto = auto })
 
 	return NewService(Config{
-		Pool: db, Tokens: &fakeTokens{value: "test-token-not-real"}, Client: client, Rules: rules, Events: events,
+		Pool: db, Tokens: githubtest.NewTokens(), Client: client, Rules: rules, Events: events,
 		Logger: logs.Logger(),
 	})
 }

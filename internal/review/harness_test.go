@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
@@ -233,9 +233,8 @@ type fakeGitHub struct {
 	unlabelErrs map[string]error
 	labeled     []string
 
-	calls map[string]int
-	// order names every request, in the order they came.
-	order    []string
+	// calls counts every request by name, in the order they came.
+	calls    githubtest.Calls
 	sent     []github.ReviewInput
 	merges   []github.MergeInput
 	autos    []string
@@ -304,7 +303,7 @@ func (g *fakeGitHub) FetchMergeState(ctx context.Context, _ github.Token, _ stri
 		return nil, err
 	}
 
-	if g.stateErr != nil && g.calls[callState] > g.stateOK {
+	if g.stateErr != nil && g.calls.Count(callState) > g.stateOK {
 		return nil, g.stateErr
 	}
 
@@ -531,37 +530,14 @@ func (g *fakeGitHub) FetchTimeline(
 	}
 }
 
-func (g *fakeGitHub) count(name string) {
-	if g.calls == nil {
-		g.calls = map[string]int{}
-	}
+// count records a request named name.
+func (g *fakeGitHub) count(name string) { g.calls.Add(name) }
 
-	g.calls[name]++
-	g.order = append(g.order, name)
-}
-
-func (g *fakeGitHub) called(name string) int {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
-	return g.calls[name]
-}
+// called returns how many requests named name were made.
+func (g *fakeGitHub) called(name string) int { return g.calls.Count(name) }
 
 // requests names the requests made since the sheet last read the pull request, in order.
-func (g *fakeGitHub) requests() []string {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
-	last := -1
-
-	for i, name := range g.order {
-		if name == callReview || name == callDiff {
-			last = i
-		}
-	}
-
-	return append([]string{}, g.order[last+1:]...)
-}
+func (g *fakeGitHub) requests() []string { return g.calls.Since(callReview, callDiff) }
 
 // fakeSettings is the settings the sheet follows.
 type fakeSettings struct {
@@ -708,11 +684,6 @@ func pullDiff(head string) *github.PullDiff {
 		{Path: ".github/workflows/ci.yml", Status: "modified", Patch: "@@ -1 +1 @@\n-a\n+b", HasPatch: true, Additions: 1, Deletions: 1},
 		{Path: "logo.png", Status: "added"},
 	}}
-}
-
-// badCredentials is GitHub refusing the token.
-func badCredentials() error {
-	return &github.StatusError{StatusCode: http.StatusUnauthorized, Message: "Bad credentials"}
 }
 
 // fakeMerges records the repositories the sheet's merges went into, as the Release page's

@@ -206,7 +206,7 @@ func TestRefreshItemFailuresKeepTheStoredInbox(t *testing.T) {
 		{
 			name:    "no token",
 			id:      func(id int64) int64 { return id },
-			prepare: func(h *harness) { h.tokens.err = errFakeNetwork },
+			prepare: func(h *harness) { h.tokens.Fail(errFakeNetwork) },
 			wantErr: errFakeNetwork,
 		},
 		{

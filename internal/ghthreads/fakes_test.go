@@ -25,6 +25,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -541,42 +542,6 @@ func hashOf(s string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// fakeTokens lends a token that never reaches GitHub, and counts its loans.
-type fakeTokens struct {
-	mu       sync.Mutex
-	value    string
-	borrowed int
-}
-
-// Token lends the token.
-func (f *fakeTokens) Token(context.Context) (github.Token, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.borrowed++
-
-	return github.NewToken(f.value), nil
-}
-
-// Forget does nothing: the fake GitHub never refuses the token.
-func (*fakeTokens) Forget(github.Token) {}
-
-// loans returns how many tokens were lent.
-func (f *fakeTokens) loans() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	return f.borrowed
-}
-
-// swap lends another token from now on, as gh auth switch does.
-func (f *fakeTokens) swap(value string) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.value = value
-}
-
 // fakeRules are the user's rules: the defaults, with reading on until turned off, unless
 // changed.
 type fakeRules struct {
@@ -665,7 +630,7 @@ type rig struct {
 	gh     *fakeGitHub
 	db     *sql.DB
 	clock  *testutil.Clock
-	tokens *fakeTokens
+	tokens *githubtest.Tokens
 	rules  *fakeRules
 	holds  HoldSource
 	events *testutil.Events
@@ -678,7 +643,7 @@ func newRig(t *testing.T) *rig {
 
 	r := &rig{
 		t: t, gh: newFakeGitHub(t), db: testutil.DB(t), clock: testutil.NewClock(start),
-		tokens: &fakeTokens{value: "test-token-not-real"}, rules: &fakeRules{}, holds: fakeHolds{seconds: 12},
+		tokens: githubtest.NewTokens(), rules: &fakeRules{}, holds: fakeHolds{seconds: 12},
 		events: &testutil.Events{},
 	}
 	r.gh.now = r.clock.Now
