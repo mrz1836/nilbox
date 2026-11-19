@@ -43,15 +43,20 @@ func requireNoKey(t *testing.T, repo string) {
 	assert.Empty(t, entries, "nothing is written inside the repository")
 }
 
-//nolint:paralleltest // changes the process's standard output
 func TestKeygen(t *testing.T) {
+	t.Parallel()
+
 	t.Run("writes the private key and prints the public key", func(t *testing.T) {
+		t.Parallel()
+
 		repo, home := keygenRepo(t)
 		out := filepath.Join(t.TempDir(), "keys")
 
 		var err error
 
-		stdout := captureStdout(t, func() { err = keygen(out, repo, home) })
+		g := newRig(t)
+		err = g.runner().keygen(out, repo, home)
+		stdout := g.out.String()
 
 		require.NoError(t, err)
 
@@ -74,35 +79,43 @@ func TestKeygen(t *testing.T) {
 	})
 
 	t.Run("expands ~ from the home folder", func(t *testing.T) {
+		t.Parallel()
+
 		repo, home := keygenRepo(t)
 
-		captureStdout(t, func() { require.NoError(t, keygen("~/keys", repo, home)) })
+		require.NoError(t, newRig(t).runner().keygen("~/keys", repo, home))
 
 		assert.FileExists(t, filepath.Join(home, "keys", signingKeyFile))
 	})
 
 	t.Run("reads a relative folder from the working folder", func(t *testing.T) {
+		t.Parallel()
+
 		repo, _ := keygenRepo(t)
 
-		require.ErrorIs(t, keygen("keys", repo, ""), errInRepository)
-		captureStdout(t, func() { require.NoError(t, keygen("../outside", repo, "")) })
+		require.ErrorIs(t, newRig(t).runner().keygen("keys", repo, ""), errInRepository)
+		require.NoError(t, newRig(t).runner().keygen("../outside", repo, ""))
 
 		assert.FileExists(t, filepath.Join(filepath.Dir(repo), "outside", signingKeyFile))
 	})
 
 	t.Run("never overwrites a key", func(t *testing.T) {
+		t.Parallel()
+
 		repo, home := keygenRepo(t)
 		out := t.TempDir()
 		path := filepath.Join(out, signingKeyFile)
 		testutil.WriteFile(t, path, "the key kept")
 
-		err := keygen(out, repo, home)
+		err := newRig(t).runner().keygen(out, repo, home)
 
 		require.ErrorIs(t, err, fs.ErrExist)
 		assert.Equal(t, "the key kept", readFile(t, path))
 	})
 
 	t.Run("refuses a folder inside the repository", func(t *testing.T) {
+		t.Parallel()
+
 		repo, home := keygenRepo(t)
 		link := filepath.Join(t.TempDir(), "into-repo")
 		require.NoError(t, os.Symlink(repo, link))
@@ -114,13 +127,15 @@ func TestKeygen(t *testing.T) {
 			filepath.Join(repo, "keys", "..", "other"),
 			filepath.Join(link, "keys"),
 		} {
-			require.ErrorIs(t, keygen(out, repo, home), errInRepository, out)
+			require.ErrorIs(t, newRig(t).runner().keygen(out, repo, home), errInRepository, out)
 		}
 
 		requireNoKey(t, repo)
 	})
 
 	t.Run("refuses the repository by another case of its name", func(t *testing.T) {
+		t.Parallel()
+
 		repo, home := keygenRepo(t)
 		upper := filepath.Join(filepath.Dir(repo), strings.ToUpper(filepath.Base(repo)))
 
@@ -128,11 +143,13 @@ func TestKeygen(t *testing.T) {
 			t.Skip("this file system tells names apart by case, so the other case is another folder")
 		}
 
-		require.ErrorIs(t, keygen(filepath.Join(upper, "keys"), repo, home), errInRepository)
+		require.ErrorIs(t, newRig(t).runner().keygen(filepath.Join(upper, "keys"), repo, home), errInRepository)
 		requireNoKey(t, repo)
 	})
 
 	t.Run("refuses the repository through a firmlink", func(t *testing.T) {
+		t.Parallel()
+
 		if runtime.GOOS != "darwin" {
 			t.Skip("firmlinks are macOS's")
 		}
@@ -144,50 +161,74 @@ func TestKeygen(t *testing.T) {
 			t.Skipf("the data volume doesn't show the repository at %s", data)
 		}
 
-		require.ErrorIs(t, keygen(filepath.Join(data, "keys"), repo, home), errInRepository)
+		require.ErrorIs(t, newRig(t).runner().keygen(filepath.Join(data, "keys"), repo, home), errInRepository)
 		requireNoKey(t, repo)
 	})
 
 	t.Run("refuses no folder", func(t *testing.T) {
+		t.Parallel()
+
 		repo, home := keygenRepo(t)
 
-		require.ErrorIs(t, keygen("", repo, home), errNoKeyFolder)
+		require.ErrorIs(t, newRig(t).runner().keygen("", repo, home), errNoKeyFolder)
 	})
 
 	t.Run("refuses ~ without a home folder", func(t *testing.T) {
+		t.Parallel()
+
 		repo, _ := keygenRepo(t)
 
-		require.ErrorIs(t, keygen("~/keys", repo, ""), paths.ErrNoHome)
+		require.ErrorIs(t, newRig(t).runner().keygen("~/keys", repo, ""), paths.ErrNoHome)
 	})
 
 	t.Run("a folder that can't be made", func(t *testing.T) {
+		t.Parallel()
+
 		repo, home := keygenRepo(t)
 		file := filepath.Join(t.TempDir(), "file")
 		testutil.WriteFile(t, file, "")
 
-		require.ErrorIs(t, keygen(filepath.Join(file, "keys"), repo, home), syscall.ENOTDIR)
+		require.ErrorIs(t, newRig(t).runner().keygen(filepath.Join(file, "keys"), repo, home), syscall.ENOTDIR)
 	})
 
 	t.Run("a repository that can't be read", func(t *testing.T) {
+		t.Parallel()
+
 		_, home := keygenRepo(t)
 
-		err := keygen(t.TempDir(), filepath.Join(t.TempDir(), "missing"), home)
+		err := newRig(t).runner().keygen(t.TempDir(), filepath.Join(t.TempDir(), "missing"), home)
 
 		require.ErrorIs(t, err, fs.ErrNotExist)
 	})
 }
 
 func TestAppKeygen(t *testing.T) {
-	repo := inTempDir(t)
+	t.Parallel()
+
+	g := newRig(t)
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	r := g.runner()
+	homeDir := func() (string, error) { return home, nil }
 
-	t.Setenv(mageArgsJSON, `["out=`+filepath.Join(repo, "keys")+`"]`)
-	require.ErrorIs(t, App{}.Keygen(), errInRepository, "the working directory is the repository")
+	g.setenv(mageArgsJSON, `["out=`+filepath.Join(g.dir, "keys")+`"]`)
+	require.ErrorIs(t, r.keygenFromArgs(homeDir), errInRepository, "the checkout is the repository")
 
-	t.Setenv(mageArgsJSON, `["out=~/keys"]`)
-	captureStdout(t, func() { require.NoError(t, App{}.Keygen()) })
+	g.setenv(mageArgsJSON, `["out=~/keys"]`)
+	require.NoError(t, r.keygenFromArgs(homeDir))
 	assert.FileExists(t, filepath.Join(home, "keys", signingKeyFile))
+}
+
+func TestAppKeygenNeedsAHomeFolder(t *testing.T) {
+	t.Parallel()
+
+	g := newRig(t)
+	g.setenv(mageArgsJSON, `["out=`+t.TempDir()+`"]`)
+
+	err := g.runner().keygenFromArgs(func() (string, error) { return "", paths.ErrNoHome })
+
+	require.ErrorIs(t, err, paths.ErrNoHome)
+	assert.Contains(t, err.Error(), "find the home folder")
+	assert.Empty(t, g.out.String(), "no key is made")
 }
 
 func TestInsideFolder(t *testing.T) {

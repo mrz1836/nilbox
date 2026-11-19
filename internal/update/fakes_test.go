@@ -163,15 +163,18 @@ func (f *fakeFeed) set(raw []byte, err error) {
 	f.manifest, f.manifestErr = raw, err
 }
 
-// fakeMemory is the update.* preferences, in memory.
+// fakeMemory is the update.* preferences, in memory, whose reads of some keys, writes, and
+// deletes can be made to fail.
 type fakeMemory struct {
-	mu      sync.Mutex
-	values  map[string]string
-	failSet error
+	mu         sync.Mutex
+	values     map[string]string
+	failGet    map[string]error
+	failSet    error
+	failDelete error
 }
 
 func newMemory() *fakeMemory {
-	return &fakeMemory{values: map[string]string{}}
+	return &fakeMemory{values: map[string]string{}, failGet: map[string]error{}}
 }
 
 func (m *fakeMemory) GetMany(_ context.Context, keys ...string) (map[string]string, error) {
@@ -181,6 +184,10 @@ func (m *fakeMemory) GetMany(_ context.Context, keys ...string) (map[string]stri
 	out := map[string]string{}
 
 	for _, k := range keys {
+		if err := m.failGet[k]; err != nil {
+			return nil, err
+		}
+
 		if v, ok := m.values[k]; ok {
 			out[k] = v
 		}
@@ -206,9 +213,31 @@ func (m *fakeMemory) Delete(_ context.Context, key string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.failDelete != nil {
+		return m.failDelete
+	}
+
 	delete(m.values, key)
 
 	return nil
+}
+
+// failReads makes every read that asks for one of keys fail with err.
+func (m *fakeMemory) failReads(err error, keys ...string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, k := range keys {
+		m.failGet[k] = err
+	}
+}
+
+// failWrites makes every write fail with set, and every delete with del; nil lets them work.
+func (m *fakeMemory) failWrites(set, del error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.failSet, m.failDelete = set, del
 }
 
 // get reads one value.

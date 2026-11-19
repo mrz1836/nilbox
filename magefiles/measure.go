@@ -15,7 +15,6 @@ import (
 	"syscall"
 
 	"github.com/magefile/mage/mg"
-	"github.com/magefile/mage/sh"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/measure"
@@ -42,22 +41,32 @@ type Measure mg.Namespace
 //
 //	magex measure:startup
 func (Measure) Startup() error {
-	_, exe, err := appBundle()
-	if err != nil {
-		return err
+	if runtime.GOOS != goosMacOS {
+		return errNeedsMacOS
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	return hostRunner().measureStartup(ctx, measure.LaunchApp)
+}
+
+// measureStartup does Measure.Startup's work once it knows it is on macOS: it times
+// startupRuns launches of the bundle's executable, each one launch's.
+func (r runner) measureStartup(ctx context.Context, launch func(ctx context.Context, exe string) (measure.Startup, error)) error {
+	_, exe, err := r.appBundle()
+	if err != nil {
+		return err
+	}
+
 	report, err := measure.TimeStartups(ctx, startupRuns, func(ctx context.Context) (measure.Startup, error) {
-		return measure.LaunchApp(ctx, exe)
+		return launch(ctx, exe)
 	})
 	if err != nil {
 		return fmt.Errorf("measure startup: %w", err)
 	}
 
-	return printLines(report.Lines())
+	return r.printLines(report.Lines())
 }
 
 // Refresh times five live inbox refreshes through the app binary, against a scratch
@@ -70,16 +79,25 @@ func (Measure) Startup() error {
 //	magex measure:refresh
 //	magex measure:refresh searches=5
 func (Measure) Refresh() error {
-	_, exe, err := appBundle()
+	if runtime.GOOS != goosMacOS {
+		return errNeedsMacOS
+	}
+
+	return hostRunner().measureRefresh()
+}
+
+// measureRefresh does Measure.Refresh's work once it knows it is on macOS.
+func (r runner) measureRefresh() error {
+	_, exe, err := r.appBundle()
 	if err != nil {
 		return err
 	}
 
-	if searches := mageArg("searches"); searches != "" {
-		return sh.RunV(exe, measure.RefreshFlag, measure.SearchesFlag+searches)
+	if searches := r.mageArg("searches"); searches != "" {
+		return r.runV(exe, measure.RefreshFlag, measure.SearchesFlag+searches)
 	}
 
-	return sh.RunV(exe, measure.RefreshFlag)
+	return r.runV(exe, measure.RefreshFlag)
 }
 
 // Launch times one real launch in iTerm2, from the launch request to the agent running in
@@ -95,39 +113,57 @@ func (Measure) Launch() error {
 		return errNeedsMacOS
 	}
 
-	id := agent.ID(mageArg("agent"))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	return hostRunner().measureLaunch(ctx, os.UserHomeDir, measure.RunLaunch)
+}
+
+// measureLaunch does Measure.Launch's work once it knows it is on macOS: it measures the
+// launch with run, for the agent its agent= argument names, from the home folder home
+// finds.
+func (r runner) measureLaunch(ctx context.Context, home func() (string, error),
+	run func(ctx context.Context, opts measure.LaunchOptions) (measure.LaunchReport, error),
+) error {
+	id := agent.ID(r.mageArg("agent"))
 	if _, err := agent.Lookup(id); err != nil {
 		return err
 	}
 
-	home, err := os.UserHomeDir()
+	dir, err := home()
 	if err != nil {
 		return fmt.Errorf("find the home directory: %w", err)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	report, err := measure.RunLaunch(ctx, measure.LaunchOptions{
-		Home: home, Agent: id, Version: readBuildMeta().version,
+	report, err := run(ctx, measure.LaunchOptions{
+		Home: dir, Agent: id, Version: r.readBuildMeta(ctx).version,
 	})
 	if err != nil {
 		return fmt.Errorf("measure the launch: %w", err)
 	}
 
 	if report.NeedsAutomation {
-		say("NEEDS AUTOMATION PERMISSION: allow this terminal to control iTerm2 in System Settings → " +
+		r.say("NEEDS AUTOMATION PERMISSION: allow this terminal to control iTerm2 in System Settings → " +
 			"Privacy & Security → Automation, then run magex measure:launch again")
 	}
 
-	return printLines(report.Lines())
+	return r.printLines(report.Lines())
 }
 
 // Size reports the size of the app binary and of the whole bundle.
 //
 //	magex measure:size
 func (Measure) Size() error {
-	bundle, exe, err := appBundle()
+	if runtime.GOOS != goosMacOS {
+		return errNeedsMacOS
+	}
+
+	return hostRunner().measureSize()
+}
+
+// measureSize does Measure.Size's work once it knows it is on macOS.
+func (r runner) measureSize() error {
+	bundle, exe, err := r.appBundle()
 	if err != nil {
 		return err
 	}
@@ -137,7 +173,7 @@ func (Measure) Size() error {
 		return err
 	}
 
-	return printLines(report.Lines())
+	return r.printLines(report.Lines())
 }
 
 // All runs every measurement: size, startup, refresh, and launch.
@@ -155,14 +191,10 @@ func (Measure) All() error {
 	return nil
 }
 
-// appBundle returns the app bundle built from source, devBundle, and its executable, or an
-// error naming the build step when it is missing.
-func appBundle() (bundle, exe string, err error) {
-	if runtime.GOOS != goosMacOS {
-		return "", "", errNeedsMacOS
-	}
-
-	bundle = devBundle
+// appBundle returns the app bundle built from source in the checkout, devBundle, and its
+// executable, or an error naming the build step when it is missing.
+func (r runner) appBundle() (bundle, exe string, err error) {
+	bundle = r.path(devBundle)
 	exe = bundleExecutable(bundle)
 
 	if _, err = os.Stat(exe); err != nil {
@@ -178,9 +210,9 @@ func appBundle() (bundle, exe string, err error) {
 }
 
 // printLines prints a report's lines.
-func printLines(lines []string) error {
+func (r runner) printLines(lines []string) error {
 	for _, line := range lines {
-		if _, err := fmt.Fprintln(os.Stdout, line); err != nil {
+		if _, err := fmt.Fprintln(r.stdout, line); err != nil {
 			return fmt.Errorf("print the report: %w", err)
 		}
 	}
@@ -188,16 +220,16 @@ func printLines(lines []string) error {
 	return nil
 }
 
-// say prints one line of target output.
-func say(line string) {
-	_, _ = fmt.Fprintln(os.Stdout, line)
+// say prints one line of a step's output.
+func (r runner) say(line string) {
+	_, _ = fmt.Fprintln(r.stdout, line)
 }
 
 // mageArg returns the value of the key=value argument magex handed the target for key,
 // or "" when there is none.
-func mageArg(key string) string {
+func (r runner) mageArg(key string) string {
 	var args []string
-	if err := json.Unmarshal([]byte(os.Getenv(mageArgsJSON)), &args); err != nil {
+	if err := json.Unmarshal([]byte(r.getenv(mageArgsJSON)), &args); err != nil {
 		return ""
 	}
 

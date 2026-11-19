@@ -632,18 +632,17 @@ func TestInstallAllReadsTheCloneRootsOnce(t *testing.T) {
 	r.tool("1.13.1", writesHook(t, 0o755))
 	r.page(false)
 
-	listed := r.clones.listings()
-	rooted, asked := r.clones.counts()
+	before := r.clones.Reads()
 
 	got, err := r.svc.InstallAll(t.Context(), []string{r.shown(api), r.shown(cli), r.shown(sdk)})
 	require.NoError(t, err)
 	require.Len(t, got.Lines, 3)
 	assert.Equal(t, "acme-org/api", got.Lines[0].Name, "the name the scan read")
 
-	nowRooted, nowAsked := r.clones.counts()
-	assert.Equal(t, 1, r.clones.listings()-listed, "the clones are listed once")
-	assert.Equal(t, 1, nowRooted-rooted, "the clone root is read once")
-	assert.Equal(t, asked, nowAsked, "the origins the scan read aren't read again")
+	now := r.clones.Reads()
+	assert.Equal(t, 1, now.Dirs-before.Dirs, "the clones are listed once")
+	assert.Equal(t, 1, now.Roots-before.Roots, "the clone root is read once")
+	assert.Equal(t, before.Origins, now.Origins, "the origins the scan read aren't read again")
 
 	// Each line is told once its run let go of its clone and its end was recorded.
 	for _, l := range got.Lines[:2] {
@@ -654,7 +653,7 @@ func TestInstallAllReadsTheCloneRootsOnce(t *testing.T) {
 		assert.Equal(t, scriptrun.StatusSucceeded, run.Status)
 	}
 
-	r.clones.setDirsErr(errFake)
+	r.clones.FailDirs(errFake)
 
 	_, err = r.svc.InstallAll(t.Context(), []string{r.shown(api)})
 	require.ErrorIs(t, err, errFake)

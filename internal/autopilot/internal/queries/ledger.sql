@@ -195,23 +195,6 @@ SELECT * FROM autopilot_runs WHERE status IN ('starting', 'running', 'stopping')
 -- ListMatchRuns returns the runs of the matches among ids, oldest first.
 SELECT * FROM autopilot_runs WHERE match_id IN (sqlc.slice(ids)) ORDER BY id;
 
--- name: SetRunStarted :execrows
--- SetRunStarted records what started a run: the run engine's run, the sessions, and the
--- command, while the run is still starting.
-UPDATE autopilot_runs SET
-    status = sqlc.arg(status),
-    script_run_id = sqlc.arg(script_run_id),
-    session_id = sqlc.arg(session_id),
-    agent_session_id = sqlc.arg(agent_session_id),
-    profile = sqlc.arg(profile),
-    model = sqlc.arg(model),
-    effort = sqlc.arg(effort),
-    clone_path = sqlc.arg(clone_path),
-    worktree = sqlc.arg(worktree),
-    display_command = sqlc.arg(display_command),
-    updated_at = sqlc.arg(updated_at)
-WHERE id = sqlc.arg(id) AND status = sqlc.arg(was);
-
 -- name: SetRunUsage :execrows
 -- SetRunUsage records an agent's run's tokens so far, while it goes.
 UPDATE autopilot_runs SET

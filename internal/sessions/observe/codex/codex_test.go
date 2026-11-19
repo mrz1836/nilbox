@@ -22,6 +22,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/sessions"
 	"github.com/mrz1836/nilbox/internal/sessions/observe/codex"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // update makes TestMapGolden rewrite its golden file from the current output.
@@ -299,7 +300,7 @@ func (s *daemonScript) set(id, thread string, turns json.RawMessage) {
 type harness struct {
 	script *daemonScript
 	dialer *fakeDialer
-	procs  *fakeProcs
+	procs  *testutil.Lister[procs.Process]
 	alive  map[int]bool
 	obs    *codex.Observer
 	now    time.Time
@@ -313,7 +314,7 @@ func newHarness(t *testing.T) *harness {
 			list: fixture(t, "thread_list.json"), threads: map[string]json.RawMessage{},
 			turns: map[string]json.RawMessage{},
 		},
-		procs: &fakeProcs{},
+		procs: &testutil.Lister[procs.Process]{},
 		alive: map[int]bool{},
 		now:   launchedAt().Add(10 * time.Second),
 	}
@@ -349,7 +350,7 @@ func TestObserveAHostedThreadLive(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.procs.list = []procs.Process{{PID: 700, PPID: 690, Command: codexCommand, Dir: hostedDir}}
+	h.procs.List = []procs.Process{{PID: 700, PPID: 690, Command: codexCommand, Dir: hostedDir}}
 	h.alive[700] = true
 	h.script.set(hostedThread, thread(hostedThread, hostedDir, `{"type":"active","activeFlags":["waitingOnApproval"]}`, 10),
 		nil)
@@ -393,7 +394,7 @@ func TestObserveAnEmbeddedThreadByItsTurns(t *testing.T) {
 
 	h := newHarness(t)
 	h.alive[701] = true
-	h.procs.list = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
+	h.procs.List = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
 
 	r := rec("s2", embeddedDir)
 	r.AgentSessionID, r.PID = embeddedThread, 701
@@ -440,7 +441,7 @@ func TestObserveATurnThatEndsInTheSecondItWasRead(t *testing.T) {
 
 	h := newHarness(t)
 	h.alive[701] = true
-	h.procs.list = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
+	h.procs.List = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
 
 	r := rec("s2", embeddedDir)
 	r.AgentSessionID, r.PID = embeddedThread, 701
@@ -476,7 +477,7 @@ func TestObserveTellsACompletedCommandThatChangedGitHub(t *testing.T) {
 
 	h := newHarness(t)
 	h.alive[701] = true
-	h.procs.list = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
+	h.procs.List = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
 
 	r := rec("s2", embeddedDir)
 	r.AgentSessionID, r.PID = embeddedThread, 701
@@ -509,7 +510,7 @@ func TestObserveTellsNothingOfACommandThatFailedOrStillRuns(t *testing.T) {
 
 	h := newHarness(t)
 	h.alive[701] = true
-	h.procs.list = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
+	h.procs.List = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
 
 	r := rec("s2", embeddedDir)
 	r.AgentSessionID, r.PID = embeddedThread, 701
@@ -553,7 +554,7 @@ func TestObserveTellsNothingOfCommandsFromBeforeItFollowed(t *testing.T) {
 
 	h := newHarness(t)
 	h.alive[701] = true
-	h.procs.list = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
+	h.procs.List = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
 
 	r := rec("s2", embeddedDir)
 	r.AgentSessionID, r.PID = embeddedThread, 701
@@ -568,7 +569,7 @@ func TestObserveAThreadWhoseTurnsCannotBeRead(t *testing.T) {
 
 	h := newHarness(t)
 	h.alive[701] = true
-	h.procs.list = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
+	h.procs.List = []procs.Process{{PID: 701, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
 
 	r := rec("s2", embeddedDir)
 	r.AgentSessionID, r.PID = embeddedThread, 701
@@ -604,7 +605,7 @@ func TestObserveTwoSessionsInOneFolderKeepTheirOwnProcesses(t *testing.T) {
 
 	h := newHarness(t)
 	h.alive[800], h.alive[801], h.alive[802] = true, true, true
-	h.procs.list = []procs.Process{
+	h.procs.List = []procs.Process{
 		{PID: 802, PPID: 600, Command: codexCommand, Dir: hostedDir},
 		{PID: 801, PPID: 600, Command: codexCommand, Dir: hostedDir},
 		{PID: 800, PPID: 600, Command: codexCommand, Dir: hostedDir},
@@ -623,7 +624,7 @@ func TestObserveTwoSessionsInOneFolderKeepTheirOwnProcesses(t *testing.T) {
 	assert.Equal(t, 802, got["c"].PID, "a process another session has is never taken")
 
 	h.alive[801] = false
-	h.procs.list = slices.DeleteFunc(h.procs.list, func(p procs.Process) bool { return p.PID == 801 })
+	h.procs.List = slices.DeleteFunc(h.procs.List, func(p procs.Process) bool { return p.PID == 801 })
 
 	h.now = h.now.Add(codex.Recheck)
 	got = h.observe(t, a, b)
@@ -849,7 +850,7 @@ func TestObserveEndsASessionWhoseProcessIDWentToAnotherProgram(t *testing.T) {
 
 	h := newHarness(t)
 	h.alive[730] = true
-	h.procs.list = []procs.Process{{PID: 730, PPID: 600, Command: codexCommand, Dir: hostedDir}}
+	h.procs.List = []procs.Process{{PID: 730, PPID: 600, Command: codexCommand, Dir: hostedDir}}
 
 	r := rec("s1", hostedDir)
 	r.AgentSessionID, r.PID = hostedThread, 730
@@ -857,7 +858,7 @@ func TestObserveEndsASessionWhoseProcessIDWentToAnotherProgram(t *testing.T) {
 
 	assert.Equal(t, sessions.StateIdle, h.observe(t, r)["s1"].State)
 
-	h.procs.list = []procs.Process{{PID: 730, PPID: 1, Command: "Safari", Dir: "/"}}
+	h.procs.List = []procs.Process{{PID: 730, PPID: 1, Command: "Safari", Dir: "/"}}
 
 	h.now = h.now.Add(time.Second)
 	assert.Equal(t, sessions.StateIdle, h.observe(t, r)["s1"].State, "checked again only every Recheck")
@@ -870,7 +871,7 @@ func TestObserveLeavesTheDaemonAndCodexProcessesApart(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.procs.list = []procs.Process{
+	h.procs.List = []procs.Process{
 		{PID: 1, Command: "launchd", Dir: "/"},
 		{PID: 710, PPID: 1, Command: codexCommand, Dir: hostedDir},
 		{PID: 711, PPID: 600, Command: "zsh", Dir: hostedDir},
@@ -899,7 +900,7 @@ func TestObserveWithoutTheDaemon(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dayDir, name), data, 0o600)) //nolint:gosec // the test's own temp dir
 	require.NoError(t, os.Chtimes(filepath.Join(dayDir, name), h.now, h.now))
 
-	h.procs.list = []procs.Process{{PID: 720, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
+	h.procs.List = []procs.Process{{PID: 720, PPID: 600, Command: codexCommand, Dir: embeddedDir}}
 	h.alive[720] = true
 
 	// The rollout's thread started just after this launch, as its first line says.
@@ -963,14 +964,4 @@ func waitClosed(d *fakeDaemon) <-chan struct{} {
 	}()
 
 	return done
-}
-
-// fakeProcs is a procs.Lister that lists list, or fails with err.
-type fakeProcs struct {
-	list []procs.Process
-	err  error
-}
-
-func (f *fakeProcs) Processes(context.Context) ([]procs.Process, error) {
-	return f.list, f.err
 }

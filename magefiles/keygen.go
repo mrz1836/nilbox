@@ -34,22 +34,28 @@ var (
 //
 //	magex app:keygen out=<a folder outside the repository>
 func (App) Keygen() error {
-	repo, err := os.Getwd()
+	return hostRunner().keygenFromArgs(os.UserHomeDir)
+}
+
+// keygenFromArgs does App.Keygen's work: it makes the release key in the folder its out=
+// argument names, outside the checkout, reading ~/ from the home folder home finds.
+func (r runner) keygenFromArgs(home func() (string, error)) error {
+	repo, err := r.workDir()
 	if err != nil {
 		return fmt.Errorf("find the repository: %w", err)
 	}
 
-	home, err := os.UserHomeDir()
+	dir, err := home()
 	if err != nil {
 		return fmt.Errorf("find the home folder: %w", err)
 	}
 
-	return keygen(mageArg("out"), repo, home)
+	return r.keygen(r.mageArg("out"), repo, dir)
 }
 
 // keygen makes the release key in out, which must not be inside repo, as App.Keygen
 // describes. A relative out is read from repo, the working folder, and ~/ from home.
-func keygen(out, repo, home string) error {
+func (r runner) keygen(out, repo, home string) error {
 	dir, err := keyFolder(out, repo, home)
 	if err != nil {
 		return err
@@ -83,10 +89,10 @@ func keygen(out, repo, home string) error {
 		return err
 	}
 
-	say("Wrote the release's private key to " + path + ". Keep it secret and back it up: without it, no install " +
+	r.say("Wrote the release's private key to " + path + ". Keep it secret and back it up: without it, no install " +
 		"can verify an update again.")
-	say("The public key, base64, to pin as update.ReleaseKey:")
-	say(update.EncodeKey(public))
+	r.say("The public key, base64, to pin as update.ReleaseKey:")
+	r.say(update.EncodeKey(public))
 
 	return nil
 }

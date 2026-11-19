@@ -162,10 +162,10 @@ func (e *Engine) followApp(ctx context.Context, l *live) {
 	var limit <-chan time.Time
 
 	if l.timeout > 0 {
-		timer := time.NewTimer(l.timeout)
-		defer timer.Stop()
+		fire, stop := e.timeLimit(l.timeout)
+		defer stop()
 
-		limit = timer.C
+		limit = fire
 	}
 
 	for {

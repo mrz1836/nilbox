@@ -145,13 +145,19 @@ func passTime(p inbox.WatchPass) PassTime {
 }
 
 // addRoutines saves and switches on a routine for each of the first n typical searches,
-// each notifying when its pull requests' checks fail, so their searches follow the checks.
+// each notifying when its pull requests' checks fail, so their searches follow the checks;
+// the issues' routine, which Checks fail never fires for, notifies when one appears.
 func addRoutines(ctx context.Context, routines *autopilot.Service, n int) error {
 	for i, search := range typicalSearchesList[:n] {
+		event := catalog.EventChecksFailed
+		if search.Kind == item.KindIssue {
+			event = catalog.EventAppears
+		}
+
 		s := spec.Spec{
 			Version: spec.Version,
 			Watch:   spec.Watch{Sources: []spec.Source{{Search: &search}}},
-			Trigger: spec.Trigger{Event: catalog.EventChecksFailed},
+			Trigger: spec.Trigger{Event: event},
 			Steps:   []spec.Step{{Notify: &spec.NotifyStep{}}},
 		}
 

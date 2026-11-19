@@ -14,8 +14,13 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/fence"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/sensitive"
+	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // readOnly asks for a Read only background run on id.
@@ -180,6 +185,28 @@ func TestBuildBackgroundRefusesAPluginFlag(t *testing.T) {
 	}
 }
 
+func TestBuildBackgroundRefusesWhatNoRunMayStartWith(t *testing.T) {
+	t.Parallel()
+
+	relative := fencedRequest()
+	relative.Dir = "pr-7"
+
+	_, err := BuildBackground(relative, background{})
+	require.ErrorIs(t, err, ErrRelativePath)
+
+	looser := fencedRequest()
+	looser.Profile.ExtraArgs = []string{"--dangerously-skip-permissions"}
+
+	_, err = BuildBackground(looser, background{})
+	require.ErrorIs(t, err, ErrConflictingExtraArg, "a profile's flag never loosens the fence")
+
+	nul := fencedRequest()
+	nul.Dir = absPath("pr-7\x00elsewhere")
+
+	_, err = BuildBackground(nul, background{})
+	require.ErrorIs(t, err, ErrNULByte)
+}
+
 func TestPlanBackgroundOnAnOutsideContributorsItemReadsOnly(t *testing.T) {
 	t.Parallel()
 
@@ -273,4 +300,163 @@ func TestALaunchIsHeldForABackgroundRunWithSessionsUnfollowed(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, res.Hold, "never started beside it")
 	assert.Empty(t, h.iterm.opened)
+}
+
+func TestMadeHoldsARoutinesRunOnAWorktreeWithChanges(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	b := NewBackgrounds(h.service())
+
+	bp, hold := h.planBackground(t, readOnly(h.trustedPR))
+	require.Nil(t, hold)
+
+	routine := &RoutineLaunch{Name: "Review"}
+	clean := Worktree{Path: bp.Plan.Dir, Head: holdHeadA, Dirty: 0}
+	dirty := Worktree{Path: bp.Plan.Dir, Head: holdHeadA, Dirty: 3}
+
+	assert.Nil(t, b.Made(bp, clean, routine), "a clean worktree holds nothing")
+	assert.Nil(t, b.Made(bp, dirty, nil), "a person's run is never held for changes in its worktree")
+
+	held := b.Made(bp, dirty, routine)
+	require.NotNil(t, held, "a routine never runs over changes no one confirmed")
+	assert.Equal(t, HoldDirty, held.Reason)
+	assert.Equal(t, 3, held.Dirty)
+	assert.Equal(t, "pr-7", held.Worktree)
+	assert.Equal(t, paths.Tilde(bp.Plan.Dir, h.home), held.Dir)
+
+	routine.Confirmed = []string{held.Key}
+	assert.Nil(t, b.Made(bp, dirty, routine), "the user's confirmation of exactly those changes lets it through")
+	assert.NotNil(t, b.Made(bp, Worktree{Path: bp.Plan.Dir, Head: holdHeadA, Dirty: 4}, routine),
+		"but not of changes it never saw")
+}
+
+func TestPlanBackgroundSaysWhyARunCantBePlanned(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		edit func(*launchHarness) BackgroundRequest
+		is   error
+		says string
+	}{
+		"an item no longer in the inbox": {
+			edit: func(*launchHarness) BackgroundRequest { return readOnly(404) }, is: item.ErrNotFound,
+		},
+		"a profile that's gone": {
+			edit: func(h *launchHarness) BackgroundRequest {
+				req := readOnly(h.trustedPR)
+				req.Profile = "nope"
+
+				return req
+			},
+			is: profiles.ErrProfileNotFound,
+		},
+		"a repository with no clone": {
+			edit: func(h *launchHarness) BackgroundRequest { return readOnly(h.orphanPR) }, is: localrepos.ErrCloneNotFound,
+		},
+		"an agent that isn't installed": {
+			edit: func(h *launchHarness) BackgroundRequest {
+				h.cfg.Finder = testutil.Finder{Err: errFakeNoClaude}
+
+				return readOnly(h.trustedPR)
+			},
+			is: errFakeNoClaude, says: "Claude isn't installed (claude wasn't found).",
+		},
+		"no worktrees to make": {
+			edit: func(h *launchHarness) BackgroundRequest {
+				h.cfg.Worktrees = nil
+
+				return readOnly(h.trustedPR)
+			},
+			is: ErrNoWorktrees,
+		},
+		"a worktree that can't be planned": {
+			edit: func(h *launchHarness) BackgroundRequest {
+				h.maker.planErr = errFakeOpen
+
+				return readOnly(h.trustedPR)
+			},
+			is: errFakeOpen,
+		},
+		"files that can't be checked": {
+			edit: func(h *launchHarness) BackgroundRequest {
+				h.cfg.Files = &fakeFiles{err: errFakeFiles}
+
+				return readOnly(h.trustedPR)
+			},
+			is: errFakeFiles,
+		},
+	} {
+		h := newLaunchHarness(t)
+		req := tc.edit(h)
+
+		_, hold, err := NewBackgrounds(h.service()).Plan(t.Context(), req)
+		require.Error(t, err, name)
+		assert.Nil(t, hold, name)
+
+		if tc.is != nil {
+			require.ErrorIs(t, err, tc.is, name)
+		}
+
+		if tc.says != "" {
+			assert.Equal(t, tc.says, uierr.Message(err), name)
+		}
+	}
+
+	h := newLaunchHarness(t)
+
+	_, err := NewBackgrounds(h.service()).Preview(t.Context(), readOnly(404))
+	require.ErrorIs(t, err, item.ErrNotFound, "a preview of an item that's gone says so too")
+}
+
+// failingTruster is an agent's config that can't be written.
+type failingTruster struct{}
+
+func (failingTruster) Trust(context.Context, string, []string) error { return errFakeSettings }
+
+func TestTrustTrustsTheWorktreeOnlyForAnAgentThatReadsIt(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	b := NewBackgrounds(h.service())
+
+	bp, hold := h.planBackground(t, readOnly(h.trustedPR))
+	require.Nil(t, hold)
+	require.NoError(t, os.MkdirAll(bp.Plan.Dir, 0o700))
+
+	require.NoError(t, b.Trust(t.Context(), bp))
+
+	worktree, err := filepath.EvalSymlinks(bp.Plan.Dir)
+	require.NoError(t, err)
+	assert.True(t, trustedIn(t, filepath.Join(h.home, ".claude.json"), worktree),
+		"Claude Code's run would stop at the trust question no one answers")
+
+	codexReq := readOnly(h.trustedPR)
+	codexReq.Agent = agent.Codex
+
+	codexPlan, hold := h.planBackground(t, codexReq)
+	require.Nil(t, hold)
+	require.NoError(t, b.Trust(t.Context(), codexPlan))
+	assert.NoDirExists(t, filepath.Join(h.home, ".codex"), "Codex's run reads no trust, so none is written")
+
+	h.cfg.Trust = map[agent.ID]Truster{agent.Claude: failingTruster{}}
+	require.ErrorIs(t, NewBackgrounds(h.service()).Trust(t.Context(), bp), errFakeSettings)
+
+	bp.Plan.Agent = "an-agent-nobody-ships"
+	require.Error(t, b.Trust(t.Context(), bp))
+}
+
+func TestFencedRefusesAPresetItsPlanWasntMadeFor(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	h.paths.AgentRuns = t.TempDir()
+
+	bp, hold := h.planBackground(t, readOnly(h.trustedPR))
+	require.Nil(t, hold)
+
+	bp.Preset = fence.EditTestPush
+
+	_, _, err := NewBackgrounds(h.service()).Fenced(bp, FenceIn{Worktree: t.TempDir(), Program: "/app"})
+	require.ErrorIs(t, err, agent.ErrInvalidAccess, "a plan's fence is never widened after it was planned")
 }

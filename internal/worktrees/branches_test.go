@@ -2,6 +2,7 @@ package worktrees
 
 import (
 	"context"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -18,17 +19,6 @@ import (
 // exampleRepo is the GitHub repository the merged-branch tests' clone tracks.
 func exampleRepo() repo.Name { return repo.Name{Owner: "acme-org", Repo: "example-repo"} }
 
-// branchAt makes branch point at a new commit on top of base, without checking it out,
-// and returns the commit.
-func branchAt(t *testing.T, clone, branch, base string) string {
-	t.Helper()
-
-	commit := commitOn(t, clone, base, "work on "+branch)
-	testutil.RunGit(t, clone, "update-ref", "refs/heads/"+branch, commit)
-
-	return commit
-}
-
 // commitOn makes a commit on top of base that no branch points at, and returns it.
 func commitOn(t *testing.T, clone, base, message string) string {
 	t.Helper()
@@ -36,6 +26,21 @@ func commitOn(t *testing.T, clone, base, message string) string {
 	tree := strings.TrimSpace(testutil.RunGit(t, clone, "rev-parse", base+"^{tree}"))
 
 	return strings.TrimSpace(testutil.RunGit(t, clone, "commit-tree", tree, "-p", base, "-m", message))
+}
+
+// buildCommitOn is commitOn in a template's build, in the clone at dir relative to its
+// root.
+func buildCommitOn(b *testutil.GitBuild, dir, base, message string) string {
+	return b.Git(dir, "commit-tree", b.Git(dir, "rev-parse", base+"^{tree}"), "-p", base, "-m", message)
+}
+
+// buildBranchAt makes branch point at a new commit on top of base, without checking it
+// out, in the clone at dir relative to a template's root, and returns the commit.
+func buildBranchAt(b *testutil.GitBuild, dir, branch, base string) string {
+	commit := buildCommitOn(b, dir, base, "work on "+branch)
+	b.Git(dir, "update-ref", "refs/heads/"+branch, commit)
+
+	return commit
 }
 
 // mergedFixture is a clone whose branches cover every case of the cleanup of merged
@@ -48,38 +53,70 @@ type mergedFixture struct {
 	heads map[string]string
 }
 
+// mergedCommits are what a merged fixture's build makes: each branch's head by its name,
+// main's included, and behind, the commit past the behind branch at which its pull
+// request merged.
+type mergedCommits struct {
+	heads  map[string]string
+	behind string
+}
+
+// mergedRepos are the clone and worktree newMergedFixture starts from, built once for the
+// test binary by buildMerged and copied into each env that asks for them.
+var mergedRepos = testutil.NewGitTemplate(buildMerged) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildMerged builds, under the clone root, example-repo, whose origin is
+// github.com/acme-org/example-repo, with a branch one commit past main for every case of
+// the cleanup of merged branches, and the worktree busy beside the clone root.
+func buildMerged(b *testutil.GitBuild) mergedCommits {
+	clone := filepath.Join("projects", "example-repo")
+	initOneCommit(b, clone, true)
+
+	main := b.Git(clone, "rev-parse", "HEAD")
+	heads := map[string]string{"main": main}
+	branch := func(name string) { heads[name] = buildBranchAt(b, clone, name, main) }
+	pushed := func(name string) { b.Git(clone, "update-ref", "refs/remotes/origin/"+name, heads[name]) }
+
+	// develop is the default branch, as origin's HEAD says; it is never offered.
+	branch("develop")
+	pushed("develop")
+	b.Git(clone, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+
+	// At the merged head; behind it; with work beyond it; checked out; pushed.
+	branch("feature-x")
+	branch("behind")
+
+	behind := buildCommitOn(b, clone, heads["behind"], "the pull request's last commit")
+
+	branch("extra-work")
+	branch("busy")
+	b.Git(clone, "worktree", "add", "-q", filepath.Join(b.Root, "busy"), "busy")
+	branch("pushed-x")
+	pushed("pushed-x")
+
+	// The clone's own checkout: current shares main's files, so moving HEAD to it changes
+	// none.
+	branch("current")
+	b.Git(clone, "symbolic-ref", "HEAD", "refs/heads/current")
+
+	// Protected, never merged, and a worktree's own branch left after its worktree went.
+	branch("release/1")
+	branch("never-merged")
+	branch("worktree-pr-9")
+
+	return mergedCommits{heads: heads, behind: behind}
+}
+
+// newMergedFixture copies the merged fixture's clone and worktree into a new env's home,
+// under its folder's resolved path, which git's own worktree add records, and tells its
+// GitHub which branches merged.
 func newMergedFixture(t *testing.T) mergedFixture {
 	t.Helper()
 
 	e := newEnv(t)
-	clone := e.newGitHubRepo(t, "example-repo")
-	main := strings.TrimSpace(testutil.RunGit(t, clone, "rev-parse", "HEAD"))
-	heads := map[string]string{"main": main}
-
-	// develop is the default branch, as origin's HEAD says; it is never offered.
-	heads["develop"] = branchAt(t, clone, "develop", main)
-	pushed(t, clone, "develop", heads["develop"])
-	testutil.RunGit(t, clone, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
-
-	// At the merged head; behind it; with work beyond it; checked out; pushed.
-	heads["feature-x"] = branchAt(t, clone, "feature-x", main)
-	heads["behind"] = branchAt(t, clone, "behind", main)
-	behindHead := commitOn(t, clone, heads["behind"], "the pull request's last commit")
-	heads["extra-work"] = branchAt(t, clone, "extra-work", main)
-	heads["busy"] = branchAt(t, clone, "busy", main)
-	testutil.RunGit(t, clone, "worktree", "add", "-q", filepath.Join(e.home, "busy"), "busy")
-	heads["pushed-x"] = branchAt(t, clone, "pushed-x", main)
-	pushed(t, clone, "pushed-x", heads["pushed-x"])
-
-	// The clone's own checkout: current shares main's files, so moving HEAD to it changes
-	// none.
-	heads["current"] = branchAt(t, clone, "current", main)
-	testutil.RunGit(t, clone, "symbolic-ref", "HEAD", "refs/heads/current")
-
-	// Protected, never merged, and a worktree's own branch left after its worktree went.
-	heads["release/1"] = branchAt(t, clone, "release/1", main)
-	heads["never-merged"] = branchAt(t, clone, "never-merged", main)
-	heads["worktree-pr-9"] = branchAt(t, clone, "worktree-pr-9", main)
+	c := mergedRepos.Copy(t, resolvedPath(e.home))
+	clone := filepath.Join(e.root, "example-repo")
+	heads, behindHead := maps.Clone(c.heads), c.behind
 
 	key := func(branch string) BranchKey { return BranchKey{Repo: exampleRepo().Key(), Branch: branch} }
 	merged := func(n int, head string) []MergedPR {

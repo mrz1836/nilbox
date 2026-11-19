@@ -822,11 +822,15 @@ and it sits behind the `desktop` build tag:
   `frontend/` to Prettier, out of the Go formatter.
 - A repository test fails if anything outside the desktop bootstrap imports Wails.
 - The `magex` targets in `magefiles/` are tested under the `mage` build tag, which the combined
-  pass includes. Fake tools on an isolated `PATH` stand in for pnpm, go, rsvg-convert, and the
-  macOS-only commands (`plutil`, `codesign`, `iconutil`, `open`, and, for packaging a release,
-  `lipo`, `ditto`, `hdiutil`, and `security`), so CI on Linux runs the bundle assembly, the
-  release packaging, and the icon rendering steps too. On a Mac, the same tests also run
-  `app:open`, `app:run`, and `app:check` end to end against those fakes.
+  pass includes. Each target checks the OS and reads its arguments, then runs its steps with a
+  `runner` (`magefiles/runner.go`) that names the checkout they work in, where they print, the
+  environment they read, and how they start a tool; the tests hand the steps one of their own,
+  so they change nothing of the test process and run in parallel. Fakes played by the test
+  binary (`testutil.FakeTool`), each call answered by its arguments, stand in for pnpm, go,
+  rsvg-convert, and the macOS-only commands (`plutil`, `codesign`, `iconutil`, `open`, `pgrep`,
+  and, for packaging a release, `lipo`, `ditto`, `hdiutil`, and `security`), so CI on Linux runs
+  the bundle assembly, `app:open`, `app:run`, and `app:check`, the release packaging, and the
+  icon rendering steps too.
 
 CI runs the fortress workflows on ubuntu for the Go code, `.github/workflows/frontend.yml` for
 `magex frontend:gate`, and `.github/workflows/sqlc.yml` for `magex db:check`. No check runs on

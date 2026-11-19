@@ -185,7 +185,7 @@ func TestAnotherRootsKeptListIsntShown(t *testing.T) {
 	t.Parallel()
 
 	_, next := startsOver(t, testutil.DB(t))
-	next.clones.moveTo("/Users/example/work")
+	next.clones.SetRoot("/Users/example/work")
 	next.github.fail(errGitHubDown)
 
 	_, err := next.svc.Candidates(t.Context(), false)

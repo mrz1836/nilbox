@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/threadrules"
 )
 
@@ -324,6 +325,143 @@ func TestAfterMomentSubjectURLCountsAsBot(t *testing.T) {
 	got := r.mustPass()
 	assert.Empty(t, ofKind(got, "comment"), "no request: a merge or a close leaves the subject's URL")
 	assert.Equal(t, []int64{firstID}, idsOf(ofKind(got, kindDone)))
+}
+
+func TestAfterMomentURLThatNamesNoCommentOfItsOwnAsksNothing(t *testing.T) {
+	t.Parallel()
+
+	for name, comment := range map[string]string{
+		"another item's own URL": "pulls/99",
+		"no comment's URL":       "commits/0123abc",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := newRig(t)
+			r.clearing()
+
+			threads := r.gh.mergedThreads(1)
+			threads[0].updated, threads[0].comment = start.Add(10*time.Minute), comment
+			r.gh.set(threads)
+			r.clock.Advance(11 * time.Minute)
+
+			got := r.mustPass()
+			assert.Empty(t, ofKind(got, "comment"), "no comment to read")
+			assert.Empty(t, writes(got), "who acted after the merge can't be told: held")
+			assert.Equal(t, string(threadrules.AfterUnknown), r.afterMomentOf(firstID))
+
+			r.clock.Advance(5 * time.Minute)
+			assert.Empty(t, ofKind(r.mustPass(), "comment"), "nor asked on the next pass")
+		})
+	}
+}
+
+func TestWhoActedThatCantBeStoredIsAskedAgain(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.clearing()
+	r.gh.set(r.gh.mergedThreads(1))
+	r.gh.commented(firstID, 900, "Bot", start.Add(5*time.Minute))
+	r.clock.Advance(6 * time.Minute)
+
+	testutil.Exec(t, r.db, `CREATE TRIGGER refused BEFORE UPDATE OF after_moment_checked_at ON gh_threads
+		BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
+
+	got := r.mustPass()
+	assert.Len(t, ofKind(got, "comment"), 1)
+	assert.Empty(t, writes(got), "the answer wasn't kept, so the thread is held")
+	assert.Empty(t, r.ledger())
+
+	testutil.Exec(t, r.db, `DROP TRIGGER refused`)
+	r.clock.Advance(5 * time.Minute)
+
+	got = r.mustPass()
+	assert.Len(t, ofKind(got, "comment"), 1, "asked again")
+	assert.Equal(t, []int64{firstID}, idsOf(ofKind(got, kindDone)), "a bot's: cleared")
+}
+
+func TestAPassTheDatabaseFailsSaysWhatFailed(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		sql   string
+		words string
+	}{
+		{name: "the moments gone", sql: `DROP TABLE gh_thread_moments`, words: "read the moments that clear GitHub notifications"},
+		{name: "the ledger gone", sql: `DROP TABLE gh_thread_clears`, words: "read the cleared GitHub notifications"},
+		{
+			name: "a clear refused", words: "queue a GitHub notification's clear",
+			sql: `CREATE TRIGGER refused BEFORE INSERT ON gh_thread_clears BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			open := prThread(firstID+900, 900, start)
+			r := clearingRig(t, open)
+			testutil.Exec(t, r.db, tt.sql)
+
+			// A pull request merged elsewhere: its thread would clear.
+			r.gh.set(append(r.gh.mergedFrom(firstID, 1, 1, start.Add(time.Hour)), open))
+			r.clock.Advance(5 * time.Minute)
+
+			got, err := r.pass()
+			require.ErrorContains(t, err, tt.words)
+			assert.Empty(t, writes(got), "nothing cleared")
+
+			_, listed := r.row(viewerLogin, firstID)
+			assert.True(t, listed, "what the listing read is still stored")
+		})
+	}
+}
+
+func TestTurningClearingOffThatCantSkipTheQueueSaysSo(t *testing.T) {
+	t.Parallel()
+
+	r := heldClear(t)
+	testutil.Exec(t, r.db, `CREATE TRIGGER refused BEFORE UPDATE ON gh_thread_clears
+		BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`)
+
+	r.rules.change(func(rules *threadrules.Rules) { rules.Auto = false })
+	r.clock.Advance(MinHold)
+
+	got, err := r.pass()
+	require.ErrorContains(t, err, "skip the queued clears of GitHub notifications")
+	assertNoRequests(t, got, "the pass stops there")
+	queuedOnly(t, r, "the clear is left as it was")
+}
+
+func TestAFailedPruneStillSendsTheClearsDue(t *testing.T) {
+	t.Parallel()
+
+	for name, table := range map[string]string{"an old moment": "gh_thread_moments", "an old clear": "gh_thread_clears"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			// A dismissal in the app, cleared: a moment and a settled clear, both a month old
+			// once the clock moves on.
+			r := heldClear(t)
+			r.clock.Advance(MinHold)
+			require.Len(t, writes(r.send()), 1)
+
+			r.clock.Advance(max(MomentsKept, ClearsKept) + time.Hour)
+			testutil.Exec(t, r.db, "CREATE TRIGGER refused BEFORE DELETE ON "+table+
+				" BEGIN SELECT RAISE(ABORT, 'refused by the test'); END")
+
+			// A pull request merged elsewhere since: its thread is due at once.
+			r.gh.set(r.gh.mergedFrom(firstID+1, 2, 1, r.clock.Now()))
+			r.clock.Advance(time.Minute)
+
+			got, err := r.pass()
+			require.ErrorContains(t, err, "prune the cleared GitHub notifications")
+			assert.Equal(t, []int64{firstID + 1}, idsOf(ofKind(got, kindDone)), "the clear due still goes")
+			assert.Len(t, r.ledger(), 2, "the old clear is kept until a prune goes through")
+		})
+	}
 }
 
 func TestAfterMomentPersonSticksUntilRead(t *testing.T) {

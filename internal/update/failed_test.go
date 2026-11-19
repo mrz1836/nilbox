@@ -226,6 +226,23 @@ func TestAFailureForGoodRecordedWithoutItsZipStaysOffered(t *testing.T) {
 	assert.Empty(t, r.memory.get(update.KeyUninstallable))
 }
 
+func TestAnUpdateThatFailsForGoodAgainIsRememberedOnce(t *testing.T) {
+	t.Parallel()
+
+	first := failedInstall(t, "2026-11-15T12:00:01Z: staged update is not installable: empty — aborting swap")
+	stored := first.memory.get(update.KeyUninstallable)
+	require.Contains(t, stored, sha512Of(zipOf(next)))
+
+	again := relaunch(t, first)
+	record(t, again, running, next, update.HelperWindow+time.Minute)
+	helperLogIn(t, again, "2026-11-15T12:00:00Z: helper start",
+		"2026-11-15T12:00:01Z: staged update is not installable: empty — aborting swap")
+
+	require.Zero(t, again.engine.Settle(t.Context()))
+	assert.Equal(t, stored, again.memory.get(update.KeyUninstallable), "the same update isn't listed twice")
+	assert.Equal(t, next, again.status(t).InstallFailed.Version)
+}
+
 func TestTheUpdatesThatFailedForGoodAreFewAndTheNewestKept(t *testing.T) {
 	t.Parallel()
 

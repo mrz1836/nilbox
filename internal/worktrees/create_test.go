@@ -1,7 +1,6 @@
 package worktrees
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -42,27 +41,55 @@ type remoteFixture struct {
 	main   string
 }
 
-// newRemoteFixture makes the bare remote and clones it under the env's clone root.
+// remoteCommits are the commits a remote fixture's build makes: main's head, and pull
+// request 7's.
+type remoteCommits struct {
+	main   string
+	prHead string
+}
+
+// remoteRepos are the repositories newRemoteFixture starts from, built once for the test
+// binary by buildRemote and copied into each env that asks for them.
+var remoteRepos = testutil.NewGitTemplate(buildRemote) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildRemote builds, in the folder an env's home takes the place of, src, whose main
+// holds README.md and whose contributor-fix is one commit past it; remote.git, its bare
+// clone, which holds contributor-fix's head only as refs/pull/7/head; and the clone of
+// remote.git under the clone root, projects/example-repo.
+func buildRemote(b *testutil.GitBuild) remoteCommits {
+	src := filepath.Join(b.Root, "src")
+	b.Git(".", "-c", "init.defaultBranch="+mainBranch, "init", "-q", src)
+	main := b.Commit("src", "README.md", "example\n")
+
+	b.Git("src", "switch", "-q", "-c", "contributor-fix")
+	prHead := b.Commit("src", "fix.txt", "fix\n")
+	b.Git("src", "switch", "-q", mainBranch)
+
+	bare := filepath.Join(b.Root, "remote.git")
+	b.Git(".", "clone", "-q", "--bare", src, bare)
+	b.Git("remote.git", "update-ref", "refs/pull/7/head", prHead)
+	b.Git("remote.git", "update-ref", "-d", "refs/heads/contributor-fix")
+
+	b.Git(".", "clone", "-q", bare, filepath.Join(b.Root, "projects", "example-repo"))
+
+	return remoteCommits{main: main, prHead: prHead}
+}
+
+// newRemoteFixture copies the bare remote, and its clone under the env's clone root,
+// into the env's home.
 func newRemoteFixture(t *testing.T, e *env) remoteFixture {
 	t.Helper()
 
-	src := filepath.Join(e.home, "src")
-	testutil.InitRepo(t, src)
-	main := testutil.Commit(t, src, "README.md", "example\n")
+	return e.remoteFixture(remoteRepos.Copy(t, e.home))
+}
 
-	testutil.RunGit(t, src, "switch", "-q", "-c", "contributor-fix")
-	prHead := testutil.Commit(t, src, "fix.txt", "fix\n")
-	testutil.RunGit(t, src, "switch", "-q", mainBranch)
-
-	bare := filepath.Join(e.home, "remote.git")
-	testutil.RunGit(t, e.home, "clone", "-q", "--bare", src, bare)
-	testutil.RunGit(t, bare, "update-ref", "refs/pull/7/head", prHead)
-	testutil.RunGit(t, bare, "update-ref", "-d", "refs/heads/contributor-fix")
-
-	clone := filepath.Join(e.root, "example-repo")
-	testutil.RunGit(t, e.home, "clone", "-q", bare, clone)
-
-	return remoteFixture{clone: clone, bare: bare, prHead: prHead, main: main}
+// remoteFixture is the remote fixture a copy of buildRemote's repositories into the env's
+// home holds, whose commits are c.
+func (e *env) remoteFixture(c remoteCommits) remoteFixture {
+	return remoteFixture{
+		clone: filepath.Join(e.root, "example-repo"), bare: filepath.Join(e.home, "remote.git"),
+		prHead: c.prHead, main: c.main,
+	}
 }
 
 // request asks for kind #number's worktree in the fixture's clone.
@@ -75,16 +102,6 @@ func (e *env) maker(records *fakeLaunches) (*Maker, *Service) {
 	svc := e.linked(linkDeps{launches: records})
 
 	return NewMaker(svc), svc
-}
-
-// fakeRunning is a fixed list of running processes.
-type fakeRunning struct {
-	list []procs.Process
-	err  error
-}
-
-func (f fakeRunning) Processes(context.Context) ([]procs.Process, error) {
-	return f.list, f.err
 }
 
 func TestEnsureCreatesAPullRequestsWorktreeAtItsHead(t *testing.T) {
@@ -634,7 +651,7 @@ func TestListReportsSessionsAndRemovalRefusesThem(t *testing.T) {
 	got, err := NewMaker(e.linked(linkDeps{launches: records})).Ensure(t.Context(), f.request(item.KindPR, 7))
 	require.NoError(t, err)
 
-	running := fakeRunning{list: []procs.Process{
+	running := &testutil.Lister[procs.Process]{List: []procs.Process{
 		{PID: 4000, PPID: 1, Command: "iTerm2", Dir: "/"},
 		{PID: 4242, PPID: 4000, Command: "codex", Dir: filepath.Join(got.Path, "src")},
 		{PID: 4343, PPID: 4000, Command: "zsh", Dir: f.clone},
@@ -658,7 +675,7 @@ func TestListReportsSessionsAndRemovalRefusesThem(t *testing.T) {
 	require.ErrorContains(t, err, "codex (pid 4242)")
 	assert.DirExists(t, got.Path)
 
-	unknown := e.linked(linkDeps{launches: records, running: fakeRunning{err: procs.ErrUnsupported}})
+	unknown := e.linked(linkDeps{launches: records, running: &testutil.Lister[procs.Process]{Err: procs.ErrUnsupported}})
 
 	snap, err = unknown.List(t.Context())
 	require.NoError(t, err)
@@ -960,7 +977,7 @@ func TestABackgroundServiceLeftInAWorktreeIsNoSession(t *testing.T) {
 		{PID: 15337, PPID: 1, Command: "codex", Dir: got.Path},
 		{PID: 22072, PPID: 15337, Command: "codex", Dir: got.Path},
 	}
-	svc := e.linked(linkDeps{launches: records, running: fakeRunning{list: daemon}})
+	svc := e.linked(linkDeps{launches: records, running: &testutil.Lister[procs.Process]{List: daemon}})
 
 	snap, err := svc.List(t.Context())
 	require.NoError(t, err)
@@ -975,7 +992,7 @@ func TestABackgroundServiceLeftInAWorktreeIsNoSession(t *testing.T) {
 		procs.Process{PID: 83937, PPID: 1, Command: "Code Helper (Plugin)", Dir: "/"},
 		procs.Process{PID: 87508, PPID: 83937, Command: "codex", Dir: got.Path},
 	)
-	inEditor := e.linked(linkDeps{launches: records, running: fakeRunning{list: editor}})
+	inEditor := e.linked(linkDeps{launches: records, running: &testutil.Lister[procs.Process]{List: editor}})
 
 	snap, err = inEditor.List(t.Context())
 	require.NoError(t, err)
@@ -991,14 +1008,14 @@ func TestSweepLeavesWhatItCannotTellIsUnused(t *testing.T) {
 
 	e := newEnv(t)
 	f := newSweepFixture(t, e)
-	svc := e.linked(linkDeps{gh: f.gh, launches: f.launches, auto: true, running: fakeRunning{err: procs.ErrUnsupported}})
+	svc := e.linked(linkDeps{gh: f.gh, launches: f.launches, auto: true, running: &testutil.Lister[procs.Process]{Err: procs.ErrUnsupported}})
 
 	report := svc.Sweep(t.Context())
 	assert.Empty(t, report.Cleaned, "without the running processes the sweep never guesses")
 	assert.Empty(t, report.Failed)
 	assert.Equal(t, 6, report.Leftover)
 
-	busy := e.linked(linkDeps{gh: f.gh, launches: f.launches, auto: true, running: fakeRunning{list: []procs.Process{
+	busy := e.linked(linkDeps{gh: f.gh, launches: f.launches, auto: true, running: &testutil.Lister[procs.Process]{List: []procs.Process{
 		{PID: 99, PPID: 98, Command: "claude", Dir: f.launchedPR},
 	}}})
 

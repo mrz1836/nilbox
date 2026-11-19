@@ -156,7 +156,7 @@ func TestBootstrapKeepsTheNewestResetCopies(t *testing.T) {
 func TestBootstrapKeepsTheRequestWhenItCannotStartOver(t *testing.T) {
 	t.Parallel()
 
-	opts := testOptions(t)
+	opts := noDataOptions(t)
 	require.NoError(t, os.MkdirAll(opts.Paths.DB, appdata.PrivateDirPerm), "a folder where the database goes")
 	require.NoError(t, appdata.RequestReset(opts.Paths.ResetRequest, appdata.ResetBySettings, askedAt()))
 
@@ -189,7 +189,7 @@ func TestBootstrapDropsARequestItCannotRead(t *testing.T) {
 func TestBootstrapStartsOverOnADataFolderWithNoDatabase(t *testing.T) {
 	t.Parallel()
 
-	opts := testOptions(t)
+	opts := noDataOptions(t)
 	require.NoError(t, appdata.RequestReset(opts.Paths.ResetRequest, appdata.ResetByMagex, askedAt()))
 
 	c := bootstrap(t, opts)

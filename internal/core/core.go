@@ -112,6 +112,11 @@ type Options struct {
 	// covers the well-known directories under Home.
 	Runner execpath.Runner
 
+	// AgentFinder finds the coding agent's program a launch starts. Nil searches the PATH
+	// and the well-known directories under Home; tests hand in a fake, so a launch never
+	// depends on the agents installed on the developer's machine.
+	AgentFinder execpath.Finder
+
 	// Logger receives every service's log records. Without it they are not logged.
 	Logger *slog.Logger
 
@@ -649,7 +654,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Defaults:   defaultsStore,
 		Git:        runner,
 		GH:         runner,
-		Finder:     search,
+		Finder:     agentFinder(opts, search),
 		Registry:   registry,
 		Paths:      opts.Paths,
 		Home:       opts.Home,

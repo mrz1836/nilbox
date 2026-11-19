@@ -14,6 +14,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -520,7 +521,7 @@ func TestARetriedTokenNeverApprovesTwice(t *testing.T) {
 
 	h := readHarness(t, github.MergeStateClean)
 	h.github.states = []*github.MergeState{open(github.MergeStateClean, headA)}
-	h.github.mergeOnce = badCredentials()
+	h.github.mergeOnce = githubtest.BadCredentials()
 
 	res := h.act(t, ActRequest{Action: ActionApproveMerge, Accept: true})
 	assert.Equal(t, OutcomeMerged, res.Outcome)
@@ -686,7 +687,7 @@ func TestARetriedTokenAsksDependabotOnce(t *testing.T) {
 	h.inbox.pull.AuthorLogin, h.inbox.pull.AuthorType = "dependabot", "Bot"
 	h.github.review = pullReview(headA, github.MergeStateDirty)
 	h.refreshed(t)
-	h.github.commentOnce = badCredentials()
+	h.github.commentOnce = githubtest.BadCredentials()
 
 	res := h.act(t, ActRequest{Action: ActionRebaseBot})
 	assert.Equal(t, OutcomeAskedBot, res.Outcome)
@@ -871,7 +872,7 @@ func TestBadCredentialsMidwayAreRetriedNotReported(t *testing.T) {
 
 	h := readHarness(t, github.MergeStateClean)
 	h.github.states = []*github.MergeState{open(github.MergeStateClean, headA)}
-	h.github.mergeErr = badCredentials()
+	h.github.mergeErr = githubtest.BadCredentials()
 
 	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: pullID, Action: ActionApproveMerge, Head: headA, Accept: true})
 	require.True(t, github.IsBadCredentials(err), "the actor retries a refused token; a second refusal is its error")
@@ -979,7 +980,7 @@ func TestARetriedTokenNeverApprovesARunTwice(t *testing.T) {
 	t.Parallel()
 
 	h := heldRunsHarness(t, 101, 102)
-	h.github.approveOnce = map[int64]error{102: badCredentials()}
+	h.github.approveOnce = map[int64]error{102: githubtest.BadCredentials()}
 
 	res := h.act(t, ActRequest{Action: ActionApproveRuns, Accept: true})
 	assert.Equal(t, OutcomeRunsApproved, res.Outcome)
@@ -1130,7 +1131,7 @@ func TestARetriedTokenNeverSendsARunGitHubWontApproveAgain(t *testing.T) {
 
 	h := heldRunsHarness(t, 101, 102)
 	h.github.approveErrs = map[int64]error{101: notApprovable(101)}
-	h.github.approveOnce = map[int64]error{102: badCredentials()}
+	h.github.approveOnce = map[int64]error{102: githubtest.BadCredentials()}
 
 	res := h.act(t, ActRequest{Action: ActionApproveRuns, Accept: true})
 	assert.Equal(t, OutcomeRunsApproved, res.Outcome)

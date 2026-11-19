@@ -35,45 +35,65 @@ type fixture struct {
 	third  string
 }
 
-// newFixture builds a fixture in a fresh folder, or skips the test without git.
+// fixtureCommits are the commits a fixture's build makes on main, oldest first.
+type fixtureCommits struct {
+	first  string
+	second string
+	third  string
+}
+
+// fixtureRepos are the origin, clone, and worktrees newFixture starts from, built once for
+// the test binary by buildFixture and copied into each test that asks for them.
+var fixtureRepos = testutil.NewGitTemplate(buildFixture) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildFixture builds what a fixture describes: origin.git, clone, feature, and detached.
+func buildFixture(b *testutil.GitBuild) fixtureCommits {
+	origin := filepath.Join(b.Root, "origin.git")
+
+	b.Git(".", "-c", "init.defaultBranch="+mainBranch, "init", "-q", "--bare", origin)
+	b.Git(".", "-c", "init.defaultBranch="+mainBranch, "init", "-q", "clone")
+
+	var c fixtureCommits
+
+	c.first = b.Commit("clone", "one.txt", "one\n")
+	b.Git("clone", "tag", "-a", "v1.0.0", "-m", "v1.0.0")
+	c.second = b.Commit("clone", "two.txt", "two\n")
+	b.Git("clone", "tag", "v1.1.0")
+	b.Git("clone", "tag", "release-notes")
+	b.Git("clone", "remote", "add", "origin", origin)
+	b.Git("clone", "push", "-q", "-u", "origin", mainBranch, "--tags")
+
+	c.third = b.Commit("clone", "three.txt", "three\n")
+	b.Git("clone", "tag", "v1.2.0")
+
+	b.Git("clone", "worktree", "add", "-q", "-b", "feature", filepath.Join(b.Root, "feature"))
+	b.Git("clone", "worktree", "add", "-q", "--detach", filepath.Join(b.Root, "detached"), c.second)
+
+	b.WriteFile(filepath.Join("clone", ".git", "worktrees", "detached", "MERGE_HEAD"), c.third+"\n")
+
+	b.WriteFile(filepath.Join("clone", "one.txt"), "changed\n")
+	b.WriteFile(filepath.Join("clone", "notes.txt"), "untracked\n")
+
+	return c
+}
+
+// newFixture copies a fixture into a fresh folder, under its resolved path, which git's
+// own worktree add records, or skips the test without git.
 func newFixture(t *testing.T) fixture {
 	t.Helper()
 
 	env := testutil.Git(t)
 	root := t.TempDir()
+	c := fixtureRepos.Copy(t, resolved(t, root))
 
-	f := fixture{
+	return fixture{
 		git:      New(Config{Env: func() []string { return env }}),
 		origin:   filepath.Join(root, "origin.git"),
 		clone:    filepath.Join(root, "clone"),
 		feature:  filepath.Join(root, "feature"),
 		detached: filepath.Join(root, "detached"),
+		first:    c.first, second: c.second, third: c.third,
 	}
-
-	testutil.RunGit(t, root, "-c", "init.defaultBranch=main", "init", "-q", "--bare", f.origin)
-	testutil.InitRepo(t, f.clone)
-
-	f.first = testutil.Commit(t, f.clone, "one.txt", "one\n")
-	testutil.RunGit(t, f.clone, "tag", "-a", "v1.0.0", "-m", "v1.0.0")
-	f.second = testutil.Commit(t, f.clone, "two.txt", "two\n")
-	testutil.RunGit(t, f.clone, "tag", "v1.1.0")
-	testutil.RunGit(t, f.clone, "tag", "release-notes")
-	testutil.RunGit(t, f.clone, "remote", "add", "origin", f.origin)
-	testutil.RunGit(t, f.clone, "push", "-q", "-u", "origin", mainBranch, "--tags")
-
-	f.third = testutil.Commit(t, f.clone, "three.txt", "three\n")
-	testutil.RunGit(t, f.clone, "tag", "v1.2.0")
-
-	testutil.RunGit(t, f.clone, "worktree", "add", "-q", "-b", "feature", f.feature)
-	testutil.RunGit(t, f.clone, "worktree", "add", "-q", "--detach", f.detached, f.second)
-
-	gitDir := strings.TrimSpace(testutil.RunGit(t, f.detached, "rev-parse", "--absolute-git-dir"))
-	require.NoError(t, os.WriteFile(filepath.Join(gitDir, "MERGE_HEAD"), []byte(f.third+"\n"), 0o600))
-
-	testutil.WriteFile(t, filepath.Join(f.clone, "one.txt"), "changed\n")
-	testutil.WriteFile(t, filepath.Join(f.clone, "notes.txt"), "untracked\n")
-
-	return f
 }
 
 // resolved returns path with every symbolic link resolved, as git prints a worktree's folder.

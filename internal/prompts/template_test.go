@@ -179,6 +179,14 @@ func TestParseSyntaxErrors(t *testing.T) {
 		},
 		{name: "unclosed action", body: "One {{ .Title", line: 1, want: "This {{ is never closed with }}.", underline: "{{"},
 		{
+			name: "closing braces inside a string", body: `One {{"}}"`, line: 1,
+			want: "An action is never closed with }}.", underline: `{{"}}`,
+		},
+		{
+			name: "an error on a line no action starts on", body: "One {{.URL}}\n{{if\n}}", line: 3,
+			want: "{{if}} needs something to test", underline: "}}",
+		},
+		{
 			name: "unterminated string", body: `One {{printf "%s .Title}}`, line: 1,
 			want: "A quoted string is missing its closing quote.",
 		},

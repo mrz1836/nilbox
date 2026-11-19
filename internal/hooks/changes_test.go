@@ -18,34 +18,45 @@ type changesRig struct {
 	svc *Service
 }
 
-// newChangesRig builds a clone with README.md committed with trailing spaces, an
-// unstaged edit in docs/setup.md, a staged edit in main.go, a file both staged and
-// edited, and an untracked note; or skips the test without git.
+// changesRepo is the clone a changesRig starts from, built once for the test binary by
+// buildChanges and copied into each rig.
+var changesRepo = testutil.NewGitTemplate(buildChanges) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildChanges builds clone, with README.md committed with trailing spaces, an unstaged
+// edit in docs/setup.md, a staged edit in main.go, a file both staged and edited, and an
+// untracked note.
+func buildChanges(b *testutil.GitBuild) struct{} {
+	b.Git(".", "-c", "init.defaultBranch=main", "init", "-q", "clone")
+	b.WriteFile(filepath.Join("clone", "README.md"), "# clone  \n")
+	b.WriteFile(filepath.Join("clone", "docs", "setup.md"), "setup\n")
+	b.WriteFile(filepath.Join("clone", "main.go"), "package main\n")
+	b.WriteFile(filepath.Join("clone", "both.go"), "package main\n")
+	b.Git("clone", "add", ".")
+	b.Git("clone", "commit", "-q", "-m", "first")
+
+	b.WriteFile(filepath.Join("clone", "docs", "setup.md"), "setup\nmore  \n")
+	b.WriteFile(filepath.Join("clone", "main.go"), "package main\n\nfunc main() {}\n")
+	b.Git("clone", "add", "main.go")
+	b.WriteFile(filepath.Join("clone", "both.go"), "package main // staged\n")
+	b.Git("clone", "add", "both.go")
+	b.WriteFile(filepath.Join("clone", "both.go"), "package main // staged, then edited\n")
+	b.WriteFile(filepath.Join("clone", "notes.txt"), "notes\n")
+
+	return struct{}{}
+}
+
+// newChangesRig copies the changes clone into a fresh folder, or skips the test without
+// git.
 func newChangesRig(t *testing.T) changesRig {
 	t.Helper()
 
 	env := testutil.Git(t)
-	dir := filepath.Join(testutil.RealTempDir(t), "clone")
-
-	testutil.InitRepo(t, dir)
-	testutil.WriteFileMode(t, filepath.Join(dir, "README.md"), "# clone  \n", 0o600)
-	testutil.WriteFileMode(t, filepath.Join(dir, "docs/setup.md"), "setup\n", 0o600)
-	testutil.WriteFileMode(t, filepath.Join(dir, "main.go"), "package main\n", 0o600)
-	testutil.WriteFileMode(t, filepath.Join(dir, "both.go"), "package main\n", 0o600)
-	testutil.RunGit(t, dir, "add", ".")
-	testutil.RunGit(t, dir, "commit", "-q", "-m", "first")
-
-	testutil.WriteFileMode(t, filepath.Join(dir, "docs/setup.md"), "setup\nmore  \n", 0o600)
-	testutil.WriteFileMode(t, filepath.Join(dir, "main.go"), "package main\n\nfunc main() {}\n", 0o600)
-	testutil.RunGit(t, dir, "add", "main.go")
-	testutil.WriteFileMode(t, filepath.Join(dir, "both.go"), "package main // staged\n", 0o600)
-	testutil.RunGit(t, dir, "add", "both.go")
-	testutil.WriteFileMode(t, filepath.Join(dir, "both.go"), "package main // staged, then edited\n", 0o600)
-	testutil.WriteFileMode(t, filepath.Join(dir, "notes.txt"), "notes\n", 0o600)
+	root := testutil.RealTempDir(t)
+	changesRepo.Copy(t, root)
 
 	git := gitread.New(gitread.Config{Env: func() []string { return env }})
 
-	return changesRig{dir: dir, svc: NewService(Config{Git: git})}
+	return changesRig{dir: filepath.Join(root, "clone"), svc: NewService(Config{Git: git})}
 }
 
 func TestChangedFilesFindsEveryChange(t *testing.T) {

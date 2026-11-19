@@ -14,20 +14,40 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
-// fakePNPM puts a pnpm on an isolated PATH that appends its arguments to a log, runs
-// body, and returns the log's path.
-func fakePNPM(t *testing.T, body string) string {
+// frontendRig returns a rig whose checkout holds the frontend's folder, with a pnpm that
+// answers each call with a.
+func frontendRig(t *testing.T, a answer) *rig {
 	t.Helper()
 
-	return fakeLoggedTool(t, isolatedPath(t), "pnpm", body)
+	g := newRig(t)
+	mkdir(t, g.path(frontendDir))
+	g.tool("pnpm", a)
+
+	return g
 }
 
-//nolint:paralleltest // changes the process's working directory and PATH
-func TestRequirePNPM(t *testing.T) {
-	t.Run("pnpm on PATH", func(t *testing.T) {
-		fakeTool(t, isolatedPath(t), "pnpm", "exit 0")
+// failsAt is a fake pnpm's answer that fails when its argument at index i is arg, and
+// succeeds otherwise.
+func failsAt(i int, arg string) answer {
+	return func(args []string) testutil.FakeRun {
+		if len(args) > i && args[i] == arg {
+			return testutil.FakeRun{Exit: 1}
+		}
 
-		require.NoError(t, requirePNPM())
+		return testutil.FakeRun{}
+	}
+}
+
+func TestRequirePNPM(t *testing.T) {
+	t.Parallel()
+
+	t.Run("pnpm on PATH", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		g.tool("pnpm", exits(0))
+
+		require.NoError(t, g.runner().requirePNPM())
 	})
 
 	tests := []struct {
@@ -58,14 +78,15 @@ func TestRequirePNPM(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := inTempDir(t)
-			isolatedPath(t)
+			t.Parallel()
+
+			g := newRig(t)
 
 			if tt.manifest != "" {
-				testutil.WriteFile(t, filepath.Join(dir, frontendDir, "package.json"), tt.manifest)
+				testutil.WriteFile(t, g.path(frontendDir+"/package.json"), tt.manifest)
 			}
 
-			err := requirePNPM()
+			err := g.runner().requirePNPM()
 
 			require.ErrorIs(t, err, errPNPMMissing)
 			assert.EqualError(t, err, tt.want)
@@ -73,12 +94,13 @@ func TestRequirePNPM(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // changes the process's working directory and PATH
 func TestRequirePNPMNamesTheRepositoryPin(t *testing.T) {
-	inRepoRoot(t)
-	isolatedPath(t)
+	t.Parallel()
 
-	err := requirePNPM()
+	g := newRig(t)
+	g.dir = repoRoot(t) // read only: no pnpm, so nothing runs
+
+	err := g.runner().requirePNPM()
 
 	require.ErrorIs(t, err, errPNPMMissing)
 	assert.Regexp(t, `npm install -g pnpm@\d+\.\d+\.\d+$`, err.Error(), "frontend/package.json pins packageManager")
@@ -153,115 +175,132 @@ func TestNeedsPOSIXShell(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // changes the process's working directory and PATH
 func TestPnpmCommand(t *testing.T) {
-	t.Run("runs a native launcher directly", func(t *testing.T) {
-		pnpm := fakeTool(t, isolatedPath(t), "pnpm", "exit 0")
+	t.Parallel()
 
-		cmd, err := pnpmCommand(t.Context(), frontendDir, "install")
+	t.Run("runs a native launcher directly", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		g.tool("pnpm", exits(0))
+
+		pnpm, err := g.lookPath("pnpm")
 		require.NoError(t, err)
 
-		assert.Equal(t, pnpm, cmd.Path)
-		assert.Equal(t, []string{pnpm, "install"}, cmd.Args)
-		assert.Equal(t, frontendDir, cmd.Dir)
+		cmd, err := g.runner().pnpmCommand(t.Context(), "install")
+		require.NoError(t, err)
+
+		assert.Equal(t, []toolCall{{name: pnpm, args: []string{"install"}}}, g.toolCalls(), "the launcher found on PATH runs")
+		assert.Equal(t, g.path(frontendDir), cmd.Dir)
 	})
 
 	t.Run("runs a launcher without a shebang through sh", func(t *testing.T) {
-		pnpm := filepath.Join(isolatedPath(t), "pnpm")
-		testutil.WriteExecutable(t, pnpm, "exit 0\n")
+		t.Parallel()
 
-		cmd, err := pnpmCommand(t.Context(), frontendDir, "install")
+		g := newRig(t)
+		g.tool("sh", exits(0))
+
+		// pnpm's launcher, read for its first line and never run, as a shell runs it.
+		launcher := filepath.Join(t.TempDir(), "pnpm")
+		testutil.WriteFile(t, launcher, "exec node pnpm.cjs \"$@\"\n")
+
+		r := g.runner()
+		r.lookPath = func(string) (string, error) { return launcher, nil }
+
+		cmd, err := r.pnpmCommand(t.Context(), "install")
 		require.NoError(t, err)
 
-		assert.Equal(t, "/bin/sh", cmd.Path)
-		assert.Equal(t, []string{"/bin/sh", pnpm, "install"}, cmd.Args)
+		assert.Equal(t, []toolCall{{name: "/bin/sh", args: []string{launcher, "install"}}}, g.toolCalls())
+		assert.Equal(t, g.path(frontendDir), cmd.Dir)
 	})
 
 	t.Run("pnpm missing", func(t *testing.T) {
-		inTempDir(t)
-		isolatedPath(t)
+		t.Parallel()
 
-		_, err := pnpmCommand(t.Context(), frontendDir, "install")
+		_, err := newRig(t).runner().pnpmCommand(t.Context(), "install")
 
 		require.ErrorIs(t, err, errPNPMMissing)
 	})
 }
 
-//nolint:paralleltest // changes the process's working directory and PATH
 func TestRunPNPM(t *testing.T) {
+	t.Parallel()
+
 	t.Run("passes the arguments", func(t *testing.T) {
-		log := fakePNPM(t, "exit 0")
+		t.Parallel()
 
-		require.NoError(t, runPNPM(t.TempDir(), "install", "--frozen-lockfile"))
+		g := frontendRig(t, exits(0))
 
-		assert.Equal(t, []string{"install --frozen-lockfile"}, logLines(t, log))
+		require.NoError(t, g.runner().runPNPM("install", "--frozen-lockfile"))
+
+		assert.Equal(t, []string{"install --frozen-lockfile"}, g.linesOf("pnpm"))
 	})
 
 	t.Run("reports a failure", func(t *testing.T) {
-		fakePNPM(t, "exit 3")
+		t.Parallel()
 
-		err := runPNPM(t.TempDir(), "build")
+		g := frontendRig(t, exits(3))
+
+		err := g.runner().runPNPM("build")
 
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "pnpm [build] in ")
+		assert.Contains(t, err.Error(), "pnpm [build] in "+g.path(frontendDir))
 	})
 
 	t.Run("pnpm missing", func(t *testing.T) {
-		inTempDir(t)
-		isolatedPath(t)
+		t.Parallel()
 
-		require.ErrorIs(t, runPNPM(t.TempDir(), "build"), errPNPMMissing)
+		require.ErrorIs(t, newRig(t).runner().runPNPM("build"), errPNPMMissing)
 	})
 }
 
-//nolint:paralleltest // changes the process's working directory and PATH
 func TestFrontendInstall(t *testing.T) {
+	t.Parallel()
+
 	t.Run("installs from the lockfile", func(t *testing.T) {
-		dir := inTempDir(t)
-		require.NoError(t, os.Mkdir(filepath.Join(dir, frontendDir), 0o750))
+		t.Parallel()
 
-		log := fakePNPM(t, "exit 0")
+		g := frontendRig(t, exits(0))
 
-		require.NoError(t, Frontend{}.Install())
+		require.NoError(t, g.runner().installFrontend())
 
-		assert.Equal(t, []string{"install --frozen-lockfile"}, logLines(t, log))
+		assert.Equal(t, []string{"install --frozen-lockfile"}, g.linesOf("pnpm"))
 	})
 
 	t.Run("pnpm missing", func(t *testing.T) {
-		inTempDir(t)
-		isolatedPath(t)
+		t.Parallel()
 
-		require.ErrorIs(t, Frontend{}.Install(), errPNPMMissing)
+		require.ErrorIs(t, newRig(t).runner().installFrontend(), errPNPMMissing)
 	})
 }
 
-//nolint:paralleltest // changes the process's working directory and PATH
 func TestFrontendBuild(t *testing.T) {
+	t.Parallel()
+
 	t.Run("installs, then builds", func(t *testing.T) {
-		dir := inTempDir(t)
-		require.NoError(t, os.Mkdir(filepath.Join(dir, frontendDir), 0o750))
+		t.Parallel()
 
-		log := fakePNPM(t, "exit 0")
+		g := frontendRig(t, exits(0))
 
-		require.NoError(t, Frontend{}.Build())
+		require.NoError(t, g.runner().buildFrontend())
 
-		assert.Equal(t, []string{"install --frozen-lockfile", "build"}, logLines(t, log))
+		assert.Equal(t, []string{"install --frozen-lockfile", "build"}, g.linesOf("pnpm"))
 	})
 
 	t.Run("stops when the install fails", func(t *testing.T) {
-		dir := inTempDir(t)
-		require.NoError(t, os.Mkdir(filepath.Join(dir, frontendDir), 0o750))
+		t.Parallel()
 
-		log := fakePNPM(t, `[ "$1" = install ] && exit 1`+"\nexit 0")
+		g := frontendRig(t, failsAt(0, "install"))
 
-		require.Error(t, Frontend{}.Build())
+		require.Error(t, g.runner().buildFrontend())
 
-		assert.Equal(t, []string{"install --frozen-lockfile"}, logLines(t, log))
+		assert.Equal(t, []string{"install --frozen-lockfile"}, g.linesOf("pnpm"))
 	})
 }
 
-//nolint:paralleltest // changes the process's working directory and PATH
 func TestFrontendGate(t *testing.T) {
+	t.Parallel()
+
 	allSteps := []string{
 		"install --frozen-lockfile",
 		"run format:check",
@@ -272,57 +311,52 @@ func TestFrontendGate(t *testing.T) {
 	}
 
 	t.Run("installs, then runs every check in order", func(t *testing.T) {
-		dir := inTempDir(t)
-		require.NoError(t, os.Mkdir(filepath.Join(dir, frontendDir), 0o750))
+		t.Parallel()
 
-		log := fakePNPM(t, "exit 0")
+		g := frontendRig(t, exits(0))
 
-		require.NoError(t, Frontend{}.Gate())
+		require.NoError(t, g.runner().gateFrontend())
 
-		assert.Equal(t, allSteps, logLines(t, log))
+		assert.Equal(t, allSteps, g.linesOf("pnpm"))
 	})
 
 	t.Run("stops at the first check that fails", func(t *testing.T) {
-		dir := inTempDir(t)
-		require.NoError(t, os.Mkdir(filepath.Join(dir, frontendDir), 0o750))
+		t.Parallel()
 
-		log := fakePNPM(t, `[ "$2" = lint ] && exit 1`+"\nexit 0")
+		g := frontendRig(t, failsAt(1, "lint"))
 
-		err := Frontend{}.Gate()
+		err := g.runner().gateFrontend()
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "pnpm [run lint]")
-		assert.Equal(t, allSteps[:3], logLines(t, log))
+		assert.Equal(t, allSteps[:3], g.linesOf("pnpm"))
 	})
 
 	t.Run("stops when the install fails", func(t *testing.T) {
-		dir := inTempDir(t)
-		require.NoError(t, os.Mkdir(filepath.Join(dir, frontendDir), 0o750))
+		t.Parallel()
 
-		log := fakePNPM(t, `[ "$1" = install ] && exit 1`+"\nexit 0")
+		g := frontendRig(t, failsAt(0, "install"))
 
-		require.Error(t, Frontend{}.Gate())
+		require.Error(t, g.runner().gateFrontend())
 
-		assert.Equal(t, allSteps[:1], logLines(t, log))
+		assert.Equal(t, allSteps[:1], g.linesOf("pnpm"))
 	})
 
 	t.Run("pnpm missing", func(t *testing.T) {
-		inTempDir(t)
-		isolatedPath(t)
+		t.Parallel()
 
-		require.ErrorIs(t, Frontend{}.Gate(), errPNPMMissing)
+		require.ErrorIs(t, newRig(t).runner().gateFrontend(), errPNPMMissing)
 	})
 }
 
-//nolint:paralleltest // changes the process's working directory
 func TestFrontendGateScriptsExist(t *testing.T) {
-	inRepoRoot(t)
+	t.Parallel()
 
 	var manifest struct {
 		Scripts map[string]string `json:"scripts"`
 	}
 
-	require.NoError(t, json.Unmarshal([]byte(readFile(t, filepath.Join(frontendDir, "package.json"))), &manifest))
+	require.NoError(t, json.Unmarshal([]byte(readFile(t, filepath.Join(repoRoot(t), frontendDir, "package.json"))), &manifest))
 
 	for _, script := range frontendGateScripts() {
 		assert.Contains(t, manifest.Scripts, script, "frontend/package.json must define every script the gate runs")

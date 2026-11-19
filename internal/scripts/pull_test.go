@@ -46,9 +46,7 @@ func (g *gitRig) ref(dir, ref string) string {
 func TestPullFastForwardsTheBranch(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	g.pushed("two.txt")
-	third := g.pushed("three.txt")
+	g, third := newBehindGitRig(t, "two.txt", "three.txt")
 	require.Equal(t, BranchBehind, g.status(false).State)
 
 	run := g.pull()
@@ -93,9 +91,8 @@ func TestPullOfABranchUpToDate(t *testing.T) {
 func TestPullNeverRebasesOrMergesADivergedBranch(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
+	g, _ := newBehindGitRig(t, "theirs.txt")
 	mine := g.commit(g.dir, "mine.txt")
-	g.pushed("theirs.txt")
 	testutil.RunGit(t, g.dir, "config", "pull.rebase", "true")
 	g.status(false)
 
@@ -113,10 +110,9 @@ func TestPullNeverRebasesOrMergesADivergedBranch(t *testing.T) {
 func TestPullNeverMovesARefThroughTheClonesOwnRefspecs(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
+	g, theirs := newBehindGitRig(t, "theirs.txt")
 	testutil.RunGit(t, g.dir, "config", "remote.origin.fetch", "+refs/heads/*:refs/heads/*")
 	mine := g.commit(g.dir, "mine.txt")
-	theirs := g.pushed("theirs.txt")
 	g.status(false)
 
 	run := g.pull()
@@ -133,8 +129,7 @@ func TestPullNeverMovesARefThroughTheClonesOwnRefspecs(t *testing.T) {
 func TestPullKeepsWhatItFetchedAsOrigins(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	g.pushed("two.txt")
+	g, _ := newBehindGitRig(t, "two.txt")
 	require.Equal(t, BranchBehind, g.status(false).State)
 
 	var newer string
@@ -156,8 +151,7 @@ func TestPullKeepsWhatItFetchedAsOrigins(t *testing.T) {
 func TestPullSaysWhenTheCloneMovedWhileItRan(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	g.pushed("two.txt")
+	g, _ := newBehindGitRig(t, "two.txt")
 	g.status(false)
 
 	g.asked.afterSetup(func() { testutil.RunGit(t, g.dir, "checkout", "-q", "-b", "feature") })
@@ -226,8 +220,7 @@ func TestPullHoldsStopForItsWholeRun(t *testing.T) {
 func TestPullRefusesACloneOnAnotherBranch(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	g.pushed("two.txt")
+	g, _ := newBehindGitRig(t, "two.txt")
 	require.Equal(t, "main", g.status(false).Branch)
 
 	testutil.RunGit(t, g.dir, "checkout", "-q", "-b", "feature")
@@ -274,8 +267,7 @@ func TestPullRefusesWhatTheStatusWouldNotOffer(t *testing.T) {
 func TestPullIsRefusedWhileScriptsAreOff(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	g.pushed("two.txt")
+	g, _ := newBehindGitRig(t, "two.txt")
 	g.status(false)
 
 	g.settings.scripts(integrationprefs.SwitchOff)
@@ -293,8 +285,7 @@ func TestPullIsRefusedWhileScriptsAreOff(t *testing.T) {
 func TestPullWeighsOriginAgainUnderTheLockAskingItNothing(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	g.pushed("two.txt")
+	g, _ := newBehindGitRig(t, "two.txt")
 	g.status(false)
 	asked := g.asked.remote.Load()
 
@@ -332,12 +323,7 @@ func TestPullOfABranchOriginNoLongerHas(t *testing.T) {
 func TestPullOfABloblessClone(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	testutil.RunGit(t, g.origin, "config", "uploadpack.allowFilter", "true")
-	require.NoError(t, os.RemoveAll(g.dir))
-	testutil.RunGit(t, g.root, "clone", "-q", "--filter=blob:none", g.url(), g.dir)
-
-	third := g.pushed("three.txt")
+	g, third := newGitRigAs(t, gitRigShape{blobless: true, pushed: "three.txt"})
 	require.Equal(t, BranchBehind, g.status(false).State)
 
 	run := g.pull()
@@ -368,8 +354,7 @@ func TestPullFailsAtOnceOnABusyClone(t *testing.T) {
 func TestPullRunsAgainOnTheSameBranch(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	g.pushed("two.txt")
+	g, _ := newBehindGitRig(t, "two.txt")
 	g.status(false)
 
 	first := g.pull()
@@ -423,8 +408,7 @@ func lookup(env []string, key string) string {
 func TestPullKeepsWhenOriginWasAsked(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	two := g.pushed("two.txt")
+	g, two := newBehindGitRig(t, "two.txt")
 	asked := g.status(false).CheckedAt
 
 	g.clock.Advance(time.Minute)
@@ -447,8 +431,7 @@ func TestPullKeepsWhenOriginWasAsked(t *testing.T) {
 func TestAPullItsLimitCutOffSaysWhatItLeft(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	g.pushed("two.txt")
+	g, _ := newBehindGitRig(t, "two.txt")
 	g.status(false)
 
 	lock := filepath.Join(g.dir, ".git", "index.lock")
@@ -489,8 +472,7 @@ func (g *gitRig) pullRecord(before string) scriptrun.Record {
 func TestAPullFollowedAgainAfterARestart(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	two := g.pushed("two.txt")
+	g, two := newBehindGitRig(t, "two.txt")
 	g.status(false)
 
 	v := NewVerifier(g.branch).Verify(g.pullRecord(g.first))

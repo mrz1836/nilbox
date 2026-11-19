@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -313,7 +314,7 @@ func TestATokenRetryNeverPostsTwice(t *testing.T) {
 	t.Parallel()
 
 	h := readHarness(t)
-	h.github.closeOnce = badCredentials()
+	h.github.closeOnce = githubtest.BadCredentials()
 
 	res := h.act(t, ActRequest{Action: ActionCloseCompleted, Body: closingText})
 	assert.Equal(t, OutcomeClosed, res.Outcome)
@@ -328,7 +329,7 @@ func TestARetryAfterTheCommentStopsAtSomeoneElsesComment(t *testing.T) {
 	t.Parallel()
 
 	h := readHarness(t)
-	h.github.closeOnce = badCredentials()
+	h.github.closeOnce = githubtest.BadCredentials()
 	h.github.states = []*github.IssueState{
 		openState(seenComment()),
 		openState(seenComment(), comment("IC_3", octoUser, testNow, true), comment("IC_4", octoThird, testNow, false)),
@@ -345,7 +346,7 @@ func TestARefusedRetryAfterTheCommentIsAResult(t *testing.T) {
 	t.Parallel()
 
 	h := readHarness(t)
-	h.github.closeOnce = badCredentials()
+	h.github.closeOnce = githubtest.BadCredentials()
 	h.inbox.retryErr = uierr.New("Sign in again.", errFakeRead)
 
 	res := h.act(t, ActRequest{Action: ActionCloseCompleted, Body: closingText})
@@ -353,7 +354,7 @@ func TestARefusedRetryAfterTheCommentIsAResult(t *testing.T) {
 	assert.Equal(t, "Sign in again", res.Reason)
 
 	h = readHarness(t)
-	h.github.commentOnce = badCredentials()
+	h.github.commentOnce = githubtest.BadCredentials()
 	h.inbox.retryErr = uierr.New("Sign in again.", errFakeRead)
 
 	_, err := h.svc.Act(t.Context(), ActRequest{ItemID: issueID, Action: ActionComment, Body: "Hi."})

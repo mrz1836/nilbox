@@ -19,13 +19,13 @@ import (
 // quitRunningApp asks every process running exe, the build from source's, to quit, with
 // SIGTERM, which the app handles as a normal quit, and waits up to timeout until they have
 // exited. It reports whether any was running.
-func quitRunningApp(exe string, timeout time.Duration) (bool, error) {
-	pids, err := appProcesses(exe)
+func (r runner) quitRunningApp(exe string, timeout time.Duration) (bool, error) {
+	pids, err := r.appProcesses(exe)
 	if err != nil || len(pids) == 0 {
 		return false, err
 	}
 
-	fmt.Printf("Quitting the running %s...\n", brand.DevName) //nolint:forbidigo // mage target output
+	r.say("Quitting the running " + brand.DevName + "...")
 
 	for _, pid := range pids {
 		if err = syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
@@ -34,7 +34,7 @@ func quitRunningApp(exe string, timeout time.Duration) (bool, error) {
 	}
 
 	for deadline := time.Now().Add(timeout); time.Now().Before(deadline); time.Sleep(appQuitPoll) {
-		if pids, err = appProcesses(exe); err != nil || len(pids) == 0 {
+		if pids, err = r.appProcesses(exe); err != nil || len(pids) == 0 {
 			return true, err
 		}
 	}
@@ -46,17 +46,17 @@ func quitRunningApp(exe string, timeout time.Duration) (bool, error) {
 // can still list the old copy for a moment after its process exits, and an open in that
 // window fails with error -600 (procNotFound), so it tries again until timeout, quietly,
 // and reports the last failure only if none succeeds.
-func openAfterQuit(bundle string, timeout time.Duration) error {
-	return openRetrying(timeout, bundle)
+func (r runner) openAfterQuit(bundle string, timeout time.Duration) error {
+	return r.openRetrying(timeout, bundle)
 }
 
 // openRetrying runs open with args as openAfterQuit does: again until timeout while it
 // fails, reporting the last failure only if none succeeds.
-func openRetrying(timeout time.Duration, args ...string) error {
+func (r runner) openRetrying(timeout time.Duration, args ...string) error {
 	deadline := time.Now().Add(timeout)
 
 	for {
-		out, err := exec.CommandContext(context.Background(), "open", args...).CombinedOutput() //nolint:gosec // argv only, no shell
+		out, err := r.cmd(context.Background(), nil, "open", args...).CombinedOutput()
 		if err == nil {
 			return nil
 		}
@@ -70,10 +70,10 @@ func openRetrying(timeout time.Duration, args ...string) error {
 }
 
 // appProcesses returns the IDs of the processes whose command line starts with exe.
-func appProcesses(exe string) ([]int, error) {
+func (r runner) appProcesses(exe string) ([]int, error) {
 	pattern := "^" + regexp.QuoteMeta(exe) + "( |$)"
 
-	out, err := exec.CommandContext(context.Background(), "pgrep", "-f", pattern).Output() //nolint:gosec // argv only, no shell
+	out, err := r.cmd(context.Background(), nil, "pgrep", "-f", pattern).Output()
 	if err != nil {
 		if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() == 1 { // pgrep exits 1 when nothing matches
 			return nil, nil

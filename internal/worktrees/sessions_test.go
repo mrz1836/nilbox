@@ -12,6 +12,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/procs"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // wtDir is the worktree the processes work in. claudeCmd is the program name Claude Code's
@@ -133,7 +134,7 @@ func TestARefusalNamesTheFollowedAgent(t *testing.T) {
 	t.Parallel()
 
 	wt := t.TempDir()
-	running := fakeRunning{list: []procs.Process{
+	running := &testutil.Lister[procs.Process]{List: []procs.Process{
 		{PID: 4000, PPID: 1, Command: "iTerm2", Dir: "/"},
 		{PID: 4100, PPID: 4000, Command: "zsh", Dir: wt},
 		{PID: 4242, PPID: 4100, Command: claudeCmd, Dir: wt},
@@ -164,7 +165,7 @@ func TestListMatchesEachWorktreeToTheSessionsInIt(t *testing.T) {
 	link := filepath.Join(e.home, "second")
 	require.NoError(t, os.Symlink(second, link))
 
-	running := fakeRunning{list: []procs.Process{
+	running := &testutil.Lister[procs.Process]{List: []procs.Process{
 		{PID: 4000, PPID: 1, Command: "iTerm2", Dir: "/"},
 		{PID: 4100, PPID: 4000, Command: "fish", Dir: first},
 		{PID: 4200, PPID: 4000, Command: "vim", Dir: filepath.Join(link, "src")},

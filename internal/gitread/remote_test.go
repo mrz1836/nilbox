@@ -474,22 +474,34 @@ type remoteRig struct {
 	marker string
 }
 
+// remoteRepos are the origin and clone newRemoteRig starts from, built once for the test
+// binary by buildRemote and copied into each rig.
+var remoteRepos = testutil.NewGitTemplate(buildRemote) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildRemote builds origin.git, a bare repository, and clone, whose one commit holds
+// a.txt and is tagged v1.0.0, pushed with its tag to origin's main.
+func buildRemote(b *testutil.GitBuild) struct{} {
+	origin := filepath.Join(b.Root, "origin.git")
+
+	b.Git(".", "-c", "init.defaultBranch="+mainBranch, "init", "-q", "--bare", origin)
+	b.Git(".", "-c", "init.defaultBranch="+mainBranch, "init", "-q", "clone")
+	b.Commit("clone", "a.txt", "a\n")
+	b.Git("clone", "tag", "v1.0.0")
+	b.Git("clone", "remote", "add", "origin", origin)
+	b.Git("clone", "push", "-q", "origin", "HEAD:refs/heads/main", "--tags")
+
+	return struct{}{}
+}
+
 // newRemoteRig builds a remoteRig, or skips without git.
 func newRemoteRig(t *testing.T) remoteRig {
 	t.Helper()
 
 	r := remoteRig{env: testutil.Git(t)}
 	root := t.TempDir()
-	origin := filepath.Join(root, "origin.git")
+	remoteRepos.Copy(t, root)
 	r.clone = filepath.Join(root, "clone")
 	r.marker = filepath.Join(t.TempDir(), "ran")
-
-	testutil.RunGit(t, root, "-c", "init.defaultBranch=main", "init", "-q", "--bare", origin)
-	testutil.InitRepo(t, r.clone)
-	testutil.Commit(t, r.clone, "a.txt", "a\n")
-	testutil.RunGit(t, r.clone, "tag", "v1.0.0")
-	testutil.RunGit(t, r.clone, "remote", "add", "origin", origin)
-	testutil.RunGit(t, r.clone, "push", "-q", "origin", "HEAD:refs/heads/main", "--tags")
 
 	return r
 }

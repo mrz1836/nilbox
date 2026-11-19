@@ -12,6 +12,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/localrepos/localrepostest"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -227,7 +228,7 @@ func TestListRefusesAFolderItCantRead(t *testing.T) {
 
 // failingRoot is a Clones whose clone root can't be read.
 type failingRoot struct {
-	fakeClones
+	localrepostest.Clones
 }
 
 func (*failingRoot) Roots(context.Context) (localrepos.Roots, error) {
@@ -270,12 +271,10 @@ func TestReposTellsApartClonesOfTheSameName(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Join(r.home, dir, ".git"), 0o700))
 	}
 
-	r.clones.mu.Lock()
-	r.clones.extra = []localrepos.Location{
+	r.clones.SetExtra([]localrepos.Location{
 		{Path: filepath.Join(r.home, "work"), Kind: localrepos.KindFolder},
 		{Path: filepath.Join(r.home, "Desktop", "exp"), Kind: localrepos.KindClone},
-	}
-	r.clones.mu.Unlock()
+	}...)
 
 	got, err := r.svc.Repos(t.Context())
 	require.NoError(t, err)

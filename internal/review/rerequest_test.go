@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -64,7 +65,7 @@ func TestAReRequestNeverGoesTwice(t *testing.T) {
 
 	h := pushedSinceHarness(t)
 	h.refreshed(t)
-	h.github.requestErr = badCredentials()
+	h.github.requestErr = githubtest.BadCredentials()
 
 	res := h.act(t, ActRequest{Action: ActionRerequestReview})
 	assert.Equal(t, OutcomeReviewRerequested, res.Outcome)

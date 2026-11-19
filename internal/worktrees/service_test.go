@@ -168,12 +168,42 @@ func (e *env) newRepo(t testing.TB, name string) string {
 func (e *env) repoAt(t testing.TB, dir string) string {
 	t.Helper()
 
-	testutil.InitRepo(t, dir)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("example\n"), 0o600))
-	testutil.RunGit(t, dir, "add", "README.md")
-	testutil.RunGit(t, dir, "commit", "-q", "-m", "init")
+	oneCommitRepos.Copy(t, oneCommitRepo{name: filepath.Base(dir)}, filepath.Dir(dir))
 
 	return dir
+}
+
+// oneCommitRepo names a repository with one commit: its folder's name, and whether its
+// origin is github.com/acme-org/<name>.
+type oneCommitRepo struct {
+	name   string
+	github bool
+}
+
+// oneCommitRepos are the repositories repoAt and newGitHubRepo make, one for each name
+// and origin, built once for the test binary by buildOneCommit and copied into each test
+// that makes one.
+var oneCommitRepos = testutil.NewGitTemplates(buildOneCommit) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildOneCommit builds r.
+func buildOneCommit(b *testutil.GitBuild, r oneCommitRepo) struct{} {
+	initOneCommit(b, r.name, r.github)
+
+	return struct{}{}
+}
+
+// initOneCommit makes, at dir relative to the build's root, a repository on main whose one
+// commit, init, holds README.md, and whose origin, with github, is
+// github.com/acme-org/<the folder's name>.
+func initOneCommit(b *testutil.GitBuild, dir string, github bool) {
+	b.Git(".", "-c", "init.defaultBranch="+mainBranch, "init", "-q", dir)
+	b.WriteFile(filepath.Join(dir, "README.md"), "example\n")
+	b.Git(dir, "add", "README.md")
+	b.Git(dir, "commit", "-q", "-m", "init")
+
+	if github {
+		b.Git(dir, "remote", "add", "origin", "https://github.com/acme-org/"+filepath.Base(dir)+".git")
+	}
 }
 
 // addWorktree adds a linked worktree on a new branch at path.

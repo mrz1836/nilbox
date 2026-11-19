@@ -396,7 +396,7 @@ func TestWithReason(t *testing.T) {
 func TestCloneForSaysWhyItCantLook(t *testing.T) {
 	t.Parallel()
 
-	s := NewService(Config{Clones: &fakeClones{err: errGitHubDown}})
+	s := NewService(Config{Clones: clonesFailing(errGitHubDown)})
 
 	_, err := s.cloneFor(t.Context(), name("sdk"), "")
 	require.ErrorIs(t, err, errGitHubDown)

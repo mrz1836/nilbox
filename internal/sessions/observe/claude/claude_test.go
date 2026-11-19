@@ -156,7 +156,7 @@ func TestLastMessage(t *testing.T) {
 type harness struct {
 	home   string
 	runner *envRunner
-	procs  *fakeProcs
+	procs  *testutil.Lister[procs.Process]
 	alive  map[int]bool
 	obs    *claude.Observer
 	now    time.Time
@@ -168,7 +168,7 @@ func newHarness(t *testing.T) *harness {
 	h := &harness{
 		home:   t.TempDir(),
 		runner: &envRunner{out: string(fixture(t, "agents.json"))},
-		procs:  &fakeProcs{},
+		procs:  &testutil.Lister[procs.Process]{},
 		alive:  map[int]bool{},
 		now:    time.Date(2026, 11, 9, 5, 11, 30, 0, time.UTC),
 	}
@@ -318,7 +318,7 @@ func TestObserveSessionsNoLongerListed(t *testing.T) {
 
 	stuck := h.record("55555555-2222-4333-8444-555555555555")
 	stuck.LaunchedAt, stuck.Dir = h.now.Add(-claude.Grace-time.Second), "/srv/wt/example-repo/pr-99"
-	h.procs.list = []procs.Process{{PID: 503, Command: "2.1.319", Dir: stuck.Dir}}
+	h.procs.List = []procs.Process{{PID: 503, Command: "2.1.319", Dir: stuck.Dir}}
 
 	got := h.observe(t, starting, quit, running, neverListed, stuck)
 
@@ -365,7 +365,7 @@ func TestObserveAsksForSessionsThatEndedOnlyWhenTheFolderChanges(t *testing.T) {
 	}
 
 	assert.Len(t, h.runner.all(), 1, "no safety poll for sessions that ended")
-	assert.Zero(t, h.procs.calls, "nor any look at the running processes")
+	assert.Zero(t, h.procs.Calls(), "nor any look at the running processes")
 
 	sessionsDir := filepath.Join(h.home, ".claude", "sessions")
 	testutil.WriteFile(t, filepath.Join(sessionsDir, "41005.json"), "{}")
@@ -479,7 +479,7 @@ func TestObserveTakesOnlyAClaudeProcessForAnUnlistedSession(t *testing.T) {
 
 			for _, p := range tt.procs {
 				p.Dir = r.Dir
-				h.procs.list = append(h.procs.list, p)
+				h.procs.List = append(h.procs.List, p)
 			}
 
 			got := h.observe(t, r)[r.ID]
@@ -541,7 +541,7 @@ func TestObserveWhenClaudeCannotBeAsked(t *testing.T) {
 	got = h.observe(t, running)
 	assert.Empty(t, got[running.ID].State, "a failure after an answer gets its grace again")
 
-	h.procs.err = procs.ErrUnsupported
+	h.procs.Err = procs.ErrUnsupported
 	unlisted := h.record("99999999-2222-4333-8444-555555555555")
 	unlisted.LaunchedAt = h.now.Add(-claude.Grace - time.Second)
 
@@ -621,17 +621,4 @@ type runnerFunc func(ctx context.Context, name string, args ...string) ([]byte, 
 
 func (f runnerFunc) Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
 	return f(ctx, name, args...)
-}
-
-// fakeProcs is a procs.Lister that lists list, or fails with err, and counts its calls.
-type fakeProcs struct {
-	list  []procs.Process
-	err   error
-	calls int
-}
-
-func (f *fakeProcs) Processes(context.Context) ([]procs.Process, error) {
-	f.calls++
-
-	return f.list, f.err
 }

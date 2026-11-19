@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -18,7 +17,6 @@ import (
 	"time"
 
 	"github.com/magefile/mage/mg"
-	"github.com/magefile/mage/sh"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
@@ -105,7 +103,7 @@ type App mg.Namespace
 //
 //	magex app:bindings
 func (App) Bindings() error {
-	return generateBindings(bindingsDir)
+	return hostRunner().generateBindings(bindingsDir)
 }
 
 // BindingsCheck regenerates the bindings into a temporary directory and fails, listing
@@ -113,18 +111,23 @@ func (App) Bindings() error {
 //
 //	magex app:bindingsCheck
 func (App) BindingsCheck() error {
-	tmp, err := os.MkdirTemp("", brand.Slug+"-bindings-")
+	return hostRunner().checkBindings()
+}
+
+// checkBindings does App.BindingsCheck's work.
+func (r runner) checkBindings() error {
+	tmp, err := os.MkdirTemp(r.tmp, brand.Slug+"-bindings-")
 	if err != nil {
 		return fmt.Errorf("create a temporary directory: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 
 	fresh := filepath.Join(tmp, "bindings")
-	if err = generateBindings(fresh); err != nil {
+	if err = r.generateBindings(fresh); err != nil {
 		return err
 	}
 
-	drift, err := treeDiff(bindingsDir, fresh)
+	drift, err := treeDiff(r.path(bindingsDir), fresh)
 	if err != nil {
 		return err
 	}
@@ -133,7 +136,7 @@ func (App) BindingsCheck() error {
 		return fmt.Errorf("%w:\n  %s", errBindingsDrift, strings.Join(drift, "\n  "))
 	}
 
-	fmt.Println("✅ frontend/bindings is up to date") //nolint:forbidigo // mage target output
+	r.say("✅ frontend/bindings is up to date")
 
 	return nil
 }
@@ -143,11 +146,16 @@ func (App) BindingsCheck() error {
 //
 //	magex app:lint
 func (App) Lint() error {
-	if err := ensureDist(); err != nil {
+	return hostRunner().lintDesktop()
+}
+
+// lintDesktop does App.Lint's work.
+func (r runner) lintDesktop() error {
+	if err := r.ensureDist(); err != nil {
 		return err
 	}
 
-	version, err := lintVersion()
+	version, err := r.lintVersion()
 	if err != nil {
 		return err
 	}
@@ -157,11 +165,11 @@ func (App) Lint() error {
 		"./cmd/" + brand.Slug + "/...", "./frontend/",
 	}
 
-	if lintOnPath(version) {
-		return sh.RunV("golangci-lint", args...)
+	if r.lintOnPath(version) {
+		return r.runV("golangci-lint", args...)
 	}
 
-	return sh.RunV("go", append([]string{"run", "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@" + version}, args...)...)
+	return r.runV("go", append([]string{"run", "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@" + version}, args...)...)
 }
 
 // Dev runs the desktop app against the frontend dev server, with hot reload, and stops
@@ -171,15 +179,9 @@ func (App) Lint() error {
 //	magex app:dev
 //	magex app:dev fresh=true
 func (App) Dev() error {
-	if err := (Frontend{}).Install(); err != nil {
-		return err
-	}
+	r := hostRunner()
 
-	if err := ensureDist(); err != nil {
-		return err
-	}
-
-	appArgs, err := devAppArgs(mageArg("fresh") == "true")
+	appArgs, err := r.prepareDev(r.mageArg("fresh") == "true", appdata.Resolve)
 	if err != nil {
 		return err
 	}
@@ -187,13 +189,34 @@ func (App) Dev() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	vite, err := pnpmCommand(ctx, frontendDir, "dev")
+	return r.runDev(ctx, appArgs)
+}
+
+// prepareDev does what App.Dev does before it starts anything: it installs the frontend's
+// dependencies, gives the desktop embed a page, and returns the app's arguments
+// (devAppArgs), finding the user's data with resolve.
+func (r runner) prepareDev(fresh bool, resolve func() (appdata.Paths, error)) ([]string, error) {
+	if err := r.installFrontend(); err != nil {
+		return nil, err
+	}
+
+	if err := r.ensureDist(); err != nil {
+		return nil, err
+	}
+
+	return r.devAppArgs(fresh, resolve)
+}
+
+// runDev starts the frontend dev server, then runs the desktop app against it with
+// appArgs until the app exits or ctx ends, and stops the dev server then.
+func (r runner) runDev(ctx context.Context, appArgs []string) error {
+	vite, err := r.pnpmCommand(ctx, "dev")
 	if err != nil {
 		return err
 	}
 
-	vite.Stdout = os.Stdout
-	vite.Stderr = os.Stderr
+	vite.Stdout = r.stdout
+	vite.Stderr = r.stderr
 	vite.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // stop pnpm and the server it starts together
 
 	if err = vite.Start(); err != nil {
@@ -202,14 +225,13 @@ func (App) Dev() error {
 
 	defer stopProcessGroup(vite)
 
-	ldflags := versionFlags(readBuildMeta()) + quietLinkerFlags()
+	ldflags := versionFlags(r.readBuildMeta(ctx)) + r.quietLinkerFlags(ctx)
 
 	goArgs := append([]string{"run", "-tags", desktopTag, "-ldflags", ldflags, "./cmd/" + brand.Slug}, appArgs...)
-	app := exec.CommandContext(ctx, "go", goArgs...) //nolint:gosec // argv only, no shell
+	app := r.cmd(ctx, []string{"FRONTEND_DEVSERVER_URL=" + devServerURL, "CGO_ENABLED=1"}, "go", goArgs...)
 
-	app.Env = append(os.Environ(), "FRONTEND_DEVSERVER_URL="+devServerURL, "CGO_ENABLED=1")
-	app.Stdout = os.Stdout
-	app.Stderr = os.Stderr
+	app.Stdout = r.stdout
+	app.Stderr = r.stderr
 
 	// go run starts the app as its own child, so stopping go run alone would leave the
 	// app running: run both in one group and stop the group.
@@ -225,23 +247,24 @@ func (App) Dev() error {
 }
 
 // devAppArgs are the arguments app:dev passes the app: none, or, with fresh, --data-dir
-// naming a fresh sandbox data folder, made as app:fresh makes one.
-func devAppArgs(fresh bool) ([]string, error) {
+// naming a fresh sandbox data folder, made as app:fresh makes one from the user's data,
+// which resolve finds.
+func (r runner) devAppArgs(fresh bool, resolve func() (appdata.Paths, error)) ([]string, error) {
 	if !fresh {
 		return nil, nil
 	}
 
-	paths, err := appdata.Resolve()
+	paths, err := resolve()
 	if err != nil {
 		return nil, fmt.Errorf("find the app's data: %w", err)
 	}
 
-	dir, err := freshDataDir(paths, os.TempDir())
+	dir, err := freshDataDir(paths, r.tempDir())
 	if err != nil {
 		return nil, err
 	}
 
-	say("Running on fresh data in " + dir + "; your own data is untouched.")
+	r.say("Running on fresh data in " + dir + "; your own data is untouched.")
 
 	return []string{appdata.DataDirFlag + "=" + dir}, nil
 }
@@ -260,18 +283,23 @@ func (App) Build() error {
 		return errNeedsMacOS
 	}
 
-	if err := buildBundle(devBundle); err != nil {
+	return hostRunner().buildApp()
+}
+
+// buildApp does App.Build's work once it knows it is on macOS.
+func (r runner) buildApp() error {
+	if err := r.buildBundle(r.path(devBundle)); err != nil {
 		return err
 	}
 
-	return removeLegacyBundle(legacyBundle)
+	return r.removeLegacyBundle(r.path(legacyBundle))
 }
 
 // removeLegacyBundle removes legacy, the folder an earlier build from source went into
 // under the release's name and bundle ID, so Spotlight and Open With stop offering it for
 // the release. A copy still running from it is left alone, and named, for the next build
 // to remove; nothing there, or a link, is nothing to remove.
-func removeLegacyBundle(legacy string) error {
+func (r runner) removeLegacyBundle(legacy string) error {
 	info, err := os.Lstat(legacy)
 
 	switch {
@@ -288,13 +316,13 @@ func removeLegacyBundle(legacy string) error {
 		return fmt.Errorf("resolve %s: %w", legacy, err)
 	}
 
-	pids, err := appProcesses(exe)
+	pids, err := r.appProcesses(exe)
 	if err != nil {
 		return err
 	}
 
 	if len(pids) > 0 {
-		say(legacy + ", an earlier build from source under " + brand.Name + "'s own name, still runs: quit it, " +
+		r.say(legacy + ", an earlier build from source under " + brand.Name + "'s own name, still runs: quit it, " +
 			"and the next build removes it.")
 
 		return nil
@@ -304,7 +332,7 @@ func removeLegacyBundle(legacy string) error {
 		return fmt.Errorf("remove the earlier build %s: %w", legacy, err)
 	}
 
-	say("Removed " + legacy + ", an earlier build from source under " + brand.Name + "'s own name and bundle ID.")
+	r.say("Removed " + legacy + ", an earlier build from source under " + brand.Name + "'s own name and bundle ID.")
 
 	return nil
 }
@@ -315,12 +343,21 @@ func removeLegacyBundle(legacy string) error {
 //
 //	magex app:open
 func (App) Open() error {
-	bundle, _, err := builtBundle()
+	if runtime.GOOS != goosMacOS {
+		return errNeedsMacOS
+	}
+
+	return hostRunner().openApp()
+}
+
+// openApp does App.Open's work once it knows it is on macOS.
+func (r runner) openApp() error {
+	bundle, _, err := r.builtBundle()
 	if err != nil {
 		return err
 	}
 
-	return sh.RunV("open", bundle)
+	return r.runV("open", bundle)
 }
 
 // Run builds the macOS app bundle from source and opens it. It quits a copy of that build
@@ -329,25 +366,34 @@ func (App) Open() error {
 //
 //	magex app:run
 func (App) Run() error {
-	if err := (App{}).Build(); err != nil {
+	if runtime.GOOS != goosMacOS {
+		return errNeedsMacOS
+	}
+
+	return hostRunner().runApp()
+}
+
+// runApp does App.Run's work once it knows it is on macOS.
+func (r runner) runApp() error {
+	if err := r.buildApp(); err != nil {
 		return err
 	}
 
-	bundle, exe, err := appBundle()
+	bundle, exe, err := r.appBundle()
 	if err != nil {
 		return err
 	}
 
-	quit, err := quitRunningApp(exe, appQuitTimeout)
+	quit, err := r.quitRunningApp(exe, appQuitTimeout)
 	if err != nil {
 		return err
 	}
 
 	if quit {
-		return openAfterQuit(bundle, appReopenTimeout)
+		return r.openAfterQuit(bundle, appReopenTimeout)
 	}
 
-	return sh.RunV("open", bundle)
+	return r.runV("open", bundle)
 }
 
 // Test runs the desktop-tagged tests of the desktop command, which run the desktop
@@ -356,11 +402,16 @@ func (App) Run() error {
 //
 //	magex app:test
 func (App) Test() error {
-	if err := ensureDist(); err != nil {
+	return hostRunner().testDesktop()
+}
+
+// testDesktop does App.Test's work.
+func (r runner) testDesktop() error {
+	if err := r.ensureDist(); err != nil {
 		return err
 	}
 
-	return sh.RunV("go", "test", "-tags", desktopTag, "./cmd/"+brand.Slug+"/")
+	return r.runV("go", "test", "-tags", desktopTag, "./cmd/"+brand.Slug+"/")
 }
 
 // Check runs every desktop check: the bindings drift check, the desktop lint, the
@@ -368,33 +419,44 @@ func (App) Test() error {
 //
 //	magex app:check
 func (App) Check() error {
-	if err := (App{}).BindingsCheck(); err != nil {
+	return hostRunner().checkDesktop(runtime.GOOS)
+}
+
+// checkDesktop does App.Check's work on goos, the system it runs on, whose bundle build,
+// as App.Build's, needs macOS.
+func (r runner) checkDesktop(goos string) error {
+	if err := r.checkBindings(); err != nil {
 		return err
 	}
 
-	if err := (App{}).Lint(); err != nil {
+	if err := r.lintDesktop(); err != nil {
 		return err
 	}
 
-	if err := (App{}).Test(); err != nil {
+	if err := r.testDesktop(); err != nil {
 		return err
 	}
 
-	return (App{}).Build()
+	if goos != goosMacOS {
+		return errNeedsMacOS
+	}
+
+	return r.buildApp()
 }
 
 // ensureDist writes a placeholder frontend/dist/index.html when the frontend has not been
 // built, because the desktop embed must match at least one file.
-func ensureDist() error {
-	if _, err := os.Stat(distIndex); err == nil {
+func (r runner) ensureDist() error {
+	index := r.path(distIndex)
+	if _, err := os.Stat(index); err == nil {
 		return nil
 	}
 
-	if err := os.MkdirAll(filepath.Dir(distIndex), 0o755); err != nil { //nolint:gosec // build output, world-readable
+	if err := os.MkdirAll(filepath.Dir(index), 0o755); err != nil { //nolint:gosec // build output, world-readable
 		return fmt.Errorf("create frontend/dist: %w", err)
 	}
 
-	if err := os.WriteFile(distIndex, []byte(placeholderPage), 0o644); err != nil { //nolint:gosec // build output, world-readable
+	if err := os.WriteFile(index, []byte(placeholderPage), 0o644); err != nil { //nolint:gosec // build output, world-readable
 		return fmt.Errorf("write the placeholder frontend: %w", err)
 	}
 
@@ -402,18 +464,18 @@ func ensureDist() error {
 }
 
 // lintVersion returns the golangci-lint version MAGE-X pins.
-func lintVersion() (string, error) {
-	return pinnedVersion(mageXEnvFile, lintVersionKey)
+func (r runner) lintVersion() (string, error) {
+	return r.pinnedVersion(mageXEnvFile, lintVersionKey)
 }
 
 // pinnedVersion returns the tool version that key pins: the environment's value when set,
-// else the first non-empty value file assigns it.
-func pinnedVersion(file, key string) (string, error) {
-	if v := os.Getenv(key); v != "" {
+// else the first non-empty value file, in the checkout, assigns it.
+func (r runner) pinnedVersion(file, key string) (string, error) {
+	if v := r.getenv(key); v != "" {
 		return v, nil
 	}
 
-	f, err := os.Open(file) //nolint:gosec // one of this repository's own env files
+	f, err := os.Open(r.path(file))
 	if err != nil {
 		return "", fmt.Errorf("read %s: %w", file, err)
 	}
@@ -435,8 +497,8 @@ func pinnedVersion(file, key string) (string, error) {
 
 // lintOnPath reports whether golangci-lint on PATH is the pinned version, so it can run
 // directly instead of being built.
-func lintOnPath(version string) bool {
-	out, err := sh.Output("golangci-lint", "version")
+func (r runner) lintOnPath(version string) bool {
+	out, err := r.output("golangci-lint", "version")
 	if err != nil {
 		return false
 	}

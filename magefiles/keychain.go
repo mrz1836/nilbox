@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-
-	"github.com/magefile/mage/sh"
 )
 
 // errKeychainList is returned when security prints a line of the keychain search list
@@ -22,12 +20,12 @@ var errKeychainList = errors.New("unexpected line in the keychain search list")
 // the list back exactly as it was afterwards, whether fn succeeds or fails, or the target
 // is interrupted. codesign finds an identity only in a keychain on that list, even when
 // it is named with --keychain. With no keychain it just runs fn.
-func withKeychain(keychain string, fn func() error) (err error) {
+func (r runner) withKeychain(keychain string, fn func() error) (err error) {
 	if keychain == "" {
 		return fn()
 	}
 
-	restore, err := useKeychain(keychain)
+	restore, err := r.useKeychain(keychain)
 	if err != nil {
 		return err
 	}
@@ -48,8 +46,8 @@ func withKeychain(keychain string, fn func() error) (err error) {
 // useKeychain puts keychain, an absolute path, first on the user's keychain search list
 // and returns a function that sets the list back to exactly what it was, once however
 // often it is called.
-func useKeychain(keychain string) (func() error, error) {
-	original, err := keychainSearchList()
+func (r runner) useKeychain(keychain string) (func() error, error) {
+	original, err := r.keychainSearchList()
 	if err != nil {
 		return nil, err
 	}
@@ -62,9 +60,9 @@ func useKeychain(keychain string) (func() error, error) {
 		}
 	}
 
-	if err = setKeychainSearchList(list); err != nil {
+	if err = r.setKeychainSearchList(list); err != nil {
 		// The list may have changed partway, so set it back all the same.
-		return nil, errors.Join(fmt.Errorf("add the keychain to the search list: %w", err), setKeychainSearchList(original))
+		return nil, errors.Join(fmt.Errorf("add the keychain to the search list: %w", err), r.setKeychainSearchList(original))
 	}
 
 	var (
@@ -73,15 +71,15 @@ func useKeychain(keychain string) (func() error, error) {
 	)
 
 	return func() error {
-		once.Do(func() { restoreErr = setKeychainSearchList(original) })
+		once.Do(func() { restoreErr = r.setKeychainSearchList(original) })
 
 		return restoreErr
 	}, nil
 }
 
 // keychainSearchList returns the user's keychain search list, in order.
-func keychainSearchList() ([]string, error) {
-	out, err := sh.Output("security", "list-keychains", "-d", "user")
+func (r runner) keychainSearchList() ([]string, error) {
+	out, err := r.output("security", "list-keychains", "-d", "user")
 	if err != nil {
 		return nil, fmt.Errorf("read the keychain search list: %w", err)
 	}
@@ -112,8 +110,8 @@ func parseKeychainList(out string) ([]string, error) {
 }
 
 // setKeychainSearchList makes list the user's keychain search list, in order.
-func setKeychainSearchList(list []string) error {
-	if err := sh.Run("security", append([]string{"list-keychains", "-d", "user", "-s"}, list...)...); err != nil {
+func (r runner) setKeychainSearchList(list []string) error {
+	if err := r.run("security", append([]string{"list-keychains", "-d", "user", "-s"}, list...)...); err != nil {
 		return fmt.Errorf("set the keychain search list: %w", err)
 	}
 

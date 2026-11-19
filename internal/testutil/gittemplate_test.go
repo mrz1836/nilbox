@@ -99,6 +99,25 @@ func TestGitTemplateCommitsAreTheSameInEveryBuild(t *testing.T) {
 		"committed as the test identity, at the template's date, with the file's name as the message")
 }
 
+// TestGitTemplateKeepsMaintenanceOffForEverySide reads, in a build, the settings that keep
+// git's automatic maintenance off from the global config: a push into a local repository
+// runs the receiving side with none of the settings handed to git's own command
+// (GIT_CONFIG_COUNT and -c are dropped for it), so only a config file it reads too keeps
+// that side's maintenance, and its objects/maintenance.lock, from starting while the
+// build's folder is read.
+func TestGitTemplateKeepsMaintenanceOffForEverySide(t *testing.T) {
+	t.Parallel()
+
+	got := testutil.NewGitTemplate(func(b *testutil.GitBuild) []string {
+		return []string{
+			b.Git(".", "config", "--global", "--get", "maintenance.auto"),
+			b.Git(".", "config", "--global", "--get", "gc.auto"),
+		}
+	}).Copy(t, t.TempDir())
+
+	assert.Equal(t, []string{"false", "0"}, got)
+}
+
 func TestGitTemplatesBuildEachKeyOnce(t *testing.T) {
 	t.Parallel()
 

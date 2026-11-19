@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -316,4 +319,97 @@ func TestKnownSchemasSaysWhichBackupsOpen(t *testing.T) {
 	own, err := migrate.KnownSchemas(migrate.Options{Source: oldBuild()})
 	require.NoError(t, err)
 	assert.Equal(t, migrate.Schemas{Oldest: 1, Newest: 2, Squashed: []int{}}, own, "a source of the caller's own has none squashed")
+}
+
+func TestACarryOverThatCantFinishLeavesTheHistoryAsItWas(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// trigger makes the database's history change, or refuse a change, as the carry
+		// over rewrites it.
+		trigger string
+		want    string
+	}{
+		{
+			name:    "a delete the database refuses",
+			trigger: `CREATE TRIGGER keep BEFORE DELETE ON schema_migrations BEGIN SELECT RAISE(ABORT, 'kept'); END`,
+			want:    "forget version 1",
+		},
+		{
+			name:    "a row gone before it was deleted",
+			trigger: `CREATE TRIGGER gone BEFORE DELETE ON schema_migrations BEGIN SELECT RAISE(IGNORE); END`,
+			want:    "version 1",
+		},
+		{
+			name: "a row written meanwhile",
+			trigger: `CREATE TRIGGER more AFTER DELETE ON schema_migrations WHEN OLD.version = 2 BEGIN
+INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (3, 'third', 'x', 'now'); END`,
+			want: "1 more migrations",
+		},
+		{
+			name:    "a record the database refuses",
+			trigger: `CREATE TRIGGER refuse BEFORE INSERT ON schema_migrations BEGIN SELECT RAISE(ABORT, 'refused'); END`,
+			want:    "record 0100_base.sql",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			db, path := openDB(t)
+			apply(t, db, path, oldBuild(), clock())
+			execAll(t, db, tt.trigger)
+
+			_, err := migrate.Apply(t.Context(), db, path, newOptions(t))
+			require.ErrorIs(t, err, migrate.ErrMigrationFailed)
+			assert.Contains(t, err.Error(), "carry over the squashed history")
+			assert.Contains(t, err.Error(), tt.want)
+
+			assert.Equal(t, []int{1, 2}, recordedVersions(t, db), "the history is rolled back")
+			assert.NotContains(t, tables(t, db), "gamma", "and nothing after it runs")
+			assert.Len(t, backups(t, path), 1, "the backup taken first stays")
+		})
+	}
+}
+
+// unreadable is a source that lists its files but can't read any of them.
+type unreadable struct{ fstest.MapFS }
+
+func (unreadable) Open(name string) (fs.File, error) {
+	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrPermission}
+}
+
+func (unreadable) ReadFile(name string) ([]byte, error) {
+	return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrPermission}
+}
+
+func TestMigrateReportsASourceItCantRead(t *testing.T) {
+	t.Parallel()
+
+	_, err := migrate.Load(unreadable{firstN(1)})
+	require.ErrorIs(t, err, fs.ErrPermission)
+	assert.Contains(t, err.Error(), "read migration "+firstFile)
+
+	db, path := openDB(t)
+	apply(t, db, path, oldBuild(), clock())
+
+	for name, squashed := range map[string]fs.FS{
+		"read squashed history 0002.json": unreadable{squashedOf(t, oldBuild(), 100)},
+		"read squashed histories":         os.DirFS(filepath.Join(t.TempDir(), "missing")),
+	} {
+		opts := migrate.Options{Source: newBuild(), Squashed: squashed, Now: clock()}
+
+		err = migrate.Check(t.Context(), db, opts)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), name)
+
+		_, err = migrate.Apply(t.Context(), db, path, opts)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), name)
+	}
+
+	assert.Equal(t, []int{1, 2}, recordedVersions(t, db), "nothing is written")
+	assert.Empty(t, backups(t, path))
 }

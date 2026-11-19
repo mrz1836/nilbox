@@ -75,6 +75,45 @@ func newHarness(t *testing.T, edit ...func(*Config)) *harness {
 	return h
 }
 
+// heldLimit holds the time limits an engine sets for its runs in the app (Config.TimeLimit)
+// until the test reaches them, so no test waits out a real one.
+type heldLimit struct {
+	asked chan time.Duration
+	fire  chan time.Time
+}
+
+// newHeldLimit returns a held limit no run has asked for yet.
+func newHeldLimit() *heldLimit {
+	return &heldLimit{asked: make(chan time.Duration, Slots), fire: make(chan time.Time)}
+}
+
+// set is the engine's Config.TimeLimit: it hands the test the limit d, and fires once the
+// test reaches it.
+func (l *heldLimit) set(d time.Duration) (<-chan time.Time, func() bool) {
+	l.asked <- d
+
+	return l.fire, func() bool { return true }
+}
+
+// await returns the next limit a run was held to, failing the test when none is set.
+func (l *heldLimit) await(t *testing.T) time.Duration {
+	t.Helper()
+
+	select {
+	case d := <-l.asked:
+		return d
+	case <-time.After(wait):
+		require.FailNow(t, "no run was held to a time limit")
+
+		return 0
+	}
+}
+
+// reach fires every limit set, as though its time had come.
+func (l *heldLimit) reach() {
+	close(l.fire)
+}
+
 // fastLadder stops a group as StopLadder does, with short waits.
 func fastLadder() execpath.Ladder {
 	return execpath.Ladder{

@@ -8,13 +8,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/magefile/mage/sh"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/brandgen"
@@ -44,38 +41,38 @@ type bundleSpec struct {
 // buildBundle builds the production app bundle at bundle, the steps App.Build runs once
 // it knows it is on macOS: a build from source, named apart from the release, for this
 // Mac's processor, signed ad hoc.
-func buildBundle(bundle string) error {
-	if err := prepareBuild(); err != nil {
+func (r runner) buildBundle(bundle string) error {
+	if err := r.prepareBuild(); err != nil {
 		return err
 	}
 
-	return assembleBundle(bundleSpec{bundle: bundle, meta: readBuildMeta(), signer: signer{identity: adHoc}, dev: true})
+	return r.assembleBundle(bundleSpec{bundle: bundle, meta: r.readBuildMeta(context.Background()), signer: signer{identity: adHoc}, dev: true})
 }
 
 // prepareBuild checks the generated brand files and app icons, then builds the frontend
 // the desktop binary embeds.
-func prepareBuild() error {
-	if err := checkBrandFiles(); err != nil {
+func (r runner) prepareBuild() error {
+	if err := r.checkBrandFiles(); err != nil {
 		return err
 	}
 
-	return (Frontend{}).Build()
+	return r.buildFrontend()
 }
 
 // assembleBundle builds the bundle spec describes from a built frontend, as
 // buildUnsignedBundle does, signs it with spec's signer, as signBundle does, and reports
 // the binary's size.
-func assembleBundle(spec bundleSpec) error {
-	exe, err := buildUnsignedBundle(spec)
+func (r runner) assembleBundle(spec bundleSpec) error {
+	exe, err := r.buildUnsignedBundle(spec)
 	if err != nil {
 		return err
 	}
 
-	if err = signBundle(spec.bundle, exe, spec.signer); err != nil {
+	if err = r.signBundle(spec.bundle, exe, spec.signer); err != nil {
 		return err
 	}
 
-	return reportSize(spec.bundle, exe)
+	return r.reportSize(spec.bundle, exe)
 }
 
 // bundleExecutable is the path of the desktop binary inside bundle.
@@ -87,7 +84,7 @@ func bundleExecutable(bundle string) string {
 // compiles the desktop binary, adds the Info.plist with the build's versions and the app
 // icon, and sets every mode as an app's, whatever the umask. A previous bundle at the same
 // path is removed first. It returns the binary's path. spec's signer is not used.
-func buildUnsignedBundle(spec bundleSpec) (string, error) {
+func (r runner) buildUnsignedBundle(spec bundleSpec) (string, error) {
 	contents := filepath.Join(spec.bundle, "Contents")
 	exe := bundleExecutable(spec.bundle)
 
@@ -99,15 +96,15 @@ func buildUnsignedBundle(spec bundleSpec) (string, error) {
 		return "", fmt.Errorf("create the bundle: %w", err)
 	}
 
-	if err := buildExecutable(exe, spec.meta, spec.arches, filepath.Dir(spec.bundle)); err != nil {
+	if err := r.buildExecutable(exe, spec.meta, spec.arches, filepath.Dir(spec.bundle)); err != nil {
 		return "", err
 	}
 
-	if err := writeInfoPlist(filepath.Join(contents, "Info.plist"), spec.meta, spec.dev); err != nil {
+	if err := r.writeInfoPlist(filepath.Join(contents, "Info.plist"), spec.meta, spec.dev); err != nil {
 		return "", err
 	}
 
-	if err := copyIconSet(filepath.Join(contents, "Resources")); err != nil {
+	if err := r.copyIconSet(filepath.Join(contents, "Resources")); err != nil {
 		return "", err
 	}
 
@@ -121,12 +118,12 @@ func buildUnsignedBundle(spec bundleSpec) (string, error) {
 // signBundle signs bundle, whose binary is exe, with s: it sets every mode as an app's
 // first, since the bundle may come from elsewhere (a build artifact keeps no modes), then
 // signs, then sets the modes again for the seal codesign wrote.
-func signBundle(bundle, exe string, s signer) error {
+func (r runner) signBundle(bundle, exe string, s signer) error {
 	if err := normalizeModes(bundle, exe); err != nil {
 		return err
 	}
 
-	if err := s.sign(bundle); err != nil {
+	if err := r.sign(s, bundle); err != nil {
 		return fmt.Errorf("sign the bundle %s: %w", s, err)
 	}
 
@@ -140,9 +137,9 @@ func signBundle(bundle, exe string, s signer) error {
 // binary. The slices are built in a folder of their own inside scratch, which is removed
 // once they are combined; a run cut off before that leaves it there, beside the bundle,
 // for the next run to clear.
-func buildExecutable(exe string, meta buildMeta, arches []string, scratch string) error {
+func (r runner) buildExecutable(exe string, meta buildMeta, arches []string, scratch string) error {
 	if len(arches) == 0 {
-		return buildDesktopBinary(exe, meta, "")
+		return r.buildDesktopBinary(exe, meta, "")
 	}
 
 	dir, err := os.MkdirTemp(scratch, ".slices-")
@@ -155,22 +152,22 @@ func buildExecutable(exe string, meta buildMeta, arches []string, scratch string
 
 	for _, arch := range arches {
 		part := filepath.Join(dir, brand.Slug+"-"+arch)
-		if err = buildDesktopBinary(part, meta, arch); err != nil {
+		if err = r.buildDesktopBinary(part, meta, arch); err != nil {
 			return err
 		}
 
-		if err = reportSlice(arch, part); err != nil {
+		if err = r.reportSlice(arch, part); err != nil {
 			return err
 		}
 
 		parts = append(parts, part)
 	}
 
-	if err = sh.RunV("lipo", append([]string{"-create", "-output", exe}, parts...)...); err != nil {
+	if err = r.runV("lipo", append([]string{"-create", "-output", exe}, parts...)...); err != nil {
 		return fmt.Errorf("combine the slices with lipo: %w", err)
 	}
 
-	return checkArches(exe, arches)
+	return r.checkArches(exe, arches)
 }
 
 // normalizeModes gives every folder in bundle and every executable (exe, and any file with
@@ -237,8 +234,8 @@ func lipoArch(goarch string) string {
 }
 
 // checkArches fails unless lipo reads exactly the architectures of arches in exe.
-func checkArches(exe string, arches []string) error {
-	out, err := sh.Output("lipo", "-archs", exe)
+func (r runner) checkArches(exe string, arches []string) error {
+	out, err := r.output("lipo", "-archs", exe)
 	if err != nil {
 		return fmt.Errorf("read the binary's architectures: %w", err)
 	}
@@ -291,9 +288,9 @@ func (s signer) args(path string) []string {
 	return append(args, "--timestamp=none", path)
 }
 
-// sign signs path, a bundle or a disk image.
-func (s signer) sign(path string) error {
-	return sh.RunV("codesign", s.args(path)...)
+// sign signs path, a bundle or a disk image, with s.
+func (r runner) sign(s signer, path string) error {
+	return r.runV("codesign", s.args(path)...)
 }
 
 // buildMeta is the version metadata stamped into a build.
@@ -313,13 +310,13 @@ type buildMeta struct {
 	updateKey  string
 }
 
-// readBuildMeta derives the version metadata from git; outside a git checkout it falls
-// back to development values.
+// readBuildMeta derives the version metadata from the checkout's git; outside a git
+// checkout it falls back to development values.
 //
 // The build number is the commit count, so it grows with every commit, tagged or not.
 // macOS keys its icon caches on the bundle version (CFBundleVersion), and a build number
 // that never changed would leave Stage Manager and Finder showing a stale icon.
-func readBuildMeta() buildMeta {
+func (r runner) readBuildMeta(ctx context.Context) buildMeta {
 	meta := buildMeta{
 		version:       "dev",
 		commit:        "none",
@@ -329,20 +326,20 @@ func readBuildMeta() buildMeta {
 		bundleBuild:   brandgen.PlaceholderVersion,
 	}
 
-	if out := gitOutput("describe", "--tags", "--always", "--dirty"); out != "" {
+	if out := r.gitOutput(ctx, "describe", "--tags", "--always", "--dirty"); out != "" {
 		meta.version = out
 	}
 
-	if out := gitOutput("rev-parse", "--short", "HEAD"); out != "" {
+	if out := r.gitOutput(ctx, "rev-parse", "--short", "HEAD"); out != "" {
 		meta.commit = out
 	}
 
-	if out := gitOutput("describe", "--tags", "--abbrev=0"); out != "" {
+	if out := r.gitOutput(ctx, "describe", "--tags", "--abbrev=0"); out != "" {
 		meta.release = strings.TrimPrefix(out, "v")
 		meta.bundleVersion = numericCore(meta.release)
 	}
 
-	if out := gitOutput("rev-list", "--count", "HEAD"); out != "" {
+	if out := r.gitOutput(ctx, "rev-list", "--count", "HEAD"); out != "" {
 		meta.bundleBuild = out
 	}
 
@@ -358,10 +355,10 @@ func numericCore(version string) string {
 	return core
 }
 
-// gitOutput returns git's trimmed output, or "" when git fails (for example, describe in
-// a repository without tags); its error output is discarded.
-func gitOutput(args ...string) string {
-	out, err := exec.CommandContext(context.Background(), "git", args...).Output() //nolint:gosec // argv only, no shell
+// gitOutput returns git's trimmed output in the checkout, or "" when git fails (for
+// example, describe in a repository without tags); its error output is discarded.
+func (r runner) gitOutput(ctx context.Context, args ...string) string {
+	out, err := r.cmd(ctx, nil, "git", args...).Output()
 	if err != nil {
 		return ""
 	}
@@ -399,9 +396,9 @@ func versionFlags(meta buildMeta) string {
 // once and warns "ignoring duplicate libraries: '-lobjc'". Only that linker knows
 // -no_warn_duplicate_libraries, so the flag is added only when ld -v names it (ld-, where
 // the older ld64 says ld64-); an older Apple linker, or any other, gets nothing.
-func quietLinkerFlags() string {
+func (r runner) quietLinkerFlags(ctx context.Context) string {
 	// ld -v reports on standard error; whatever its exit status, the text decides.
-	out, _ := exec.CommandContext(context.Background(), "ld", "-v").CombinedOutput()
+	out, _ := r.cmd(ctx, nil, "ld", "-v").CombinedOutput()
 	if !strings.Contains(string(out), "PROJECT:ld-") {
 		return ""
 	}
@@ -411,22 +408,22 @@ func quietLinkerFlags() string {
 
 // buildDesktopBinary compiles the production desktop binary into exe, for goarch, or for
 // this Mac's processor when goarch is "".
-func buildDesktopBinary(exe string, meta buildMeta, goarch string) error {
+func (r runner) buildDesktopBinary(exe string, meta buildMeta, goarch string) error {
 	minVersion := "-mmacosx-version-min=" + macOSMinVersion
-	env := map[string]string{
-		"CGO_ENABLED":              "1",
-		"CGO_CFLAGS":               minVersion,
-		"CGO_LDFLAGS":              minVersion,
-		"MACOSX_DEPLOYMENT_TARGET": macOSMinVersion,
+	env := []string{
+		"CGO_ENABLED=1",
+		"CGO_CFLAGS=" + minVersion,
+		"CGO_LDFLAGS=" + minVersion,
+		"MACOSX_DEPLOYMENT_TARGET=" + macOSMinVersion,
 	}
 
 	if goarch != "" {
-		env["GOARCH"] = goarch
+		env = append(env, "GOARCH="+goarch)
 	}
 
-	err := sh.RunWithV(env, "go", "build",
+	err := r.runWithV(env, "go", "build",
 		"-tags", desktopTag+",production", "-trimpath", "-buildvcs=false",
-		"-ldflags", "-s -w "+versionFlags(meta)+quietLinkerFlags(), "-o", exe, "./cmd/"+brand.Slug)
+		"-ldflags", "-s -w "+versionFlags(meta)+r.quietLinkerFlags(context.Background()), "-o", exe, "./cmd/"+brand.Slug)
 	if err != nil {
 		return fmt.Errorf("build the desktop binary: %w", err)
 	}
@@ -450,11 +447,12 @@ func devStamps() []plistStamp {
 	}
 }
 
-// writeInfoPlist copies the generated Info.plist into the bundle and stamps the build's
-// release version and build number into the copy, and, for a build from source (dev),
-// devStamps; the committed file keeps its placeholder version and the release's name.
-func writeInfoPlist(dst string, meta buildMeta, dev bool) error {
-	body, err := os.ReadFile(filepath.Join("build", "darwin", "Info.plist"))
+// writeInfoPlist copies the checkout's generated Info.plist into the bundle and stamps the
+// build's release version and build number into the copy, and, for a build from source
+// (dev), devStamps; the committed file keeps its placeholder version and the release's
+// name.
+func (r runner) writeInfoPlist(dst string, meta buildMeta, dev bool) error {
+	body, err := os.ReadFile(r.path(brandgen.InfoPlistPath))
 	if err != nil {
 		return fmt.Errorf("read the Info.plist: %w", err)
 	}
@@ -473,7 +471,7 @@ func writeInfoPlist(dst string, meta buildMeta, dev bool) error {
 	}
 
 	for _, s := range stamps {
-		if err = sh.Run("plutil", "-replace", s.key, "-string", s.value, dst); err != nil {
+		if err = r.run("plutil", "-replace", s.key, "-string", s.value, dst); err != nil {
 			return fmt.Errorf("stamp %s: %w", s.key, err)
 		}
 	}
@@ -482,23 +480,23 @@ func writeInfoPlist(dst string, meta buildMeta, dev bool) error {
 }
 
 // checkBrandFiles fails when a file generated from internal/brand, or an app icon
-// rendered from its artwork, is out of date.
-func checkBrandFiles() error {
-	if err := brandgen.Check("."); err != nil {
+// rendered from its artwork, is out of date in the checkout.
+func (r runner) checkBrandFiles() error {
+	if err := brandgen.Check(r.root()); err != nil {
 		return fmt.Errorf("generated brand files: %w", err)
 	}
 
-	if err := brandgen.CheckIcons("."); err != nil {
+	if err := brandgen.CheckIcons(r.root()); err != nil {
 		return fmt.Errorf("app icons: %w", err)
 	}
 
 	return nil
 }
 
-// copyIconSet copies the committed app icon set into the bundle's resources directory,
-// under the name the Info.plist gives it.
-func copyIconSet(resources string) error {
-	body, err := os.ReadFile(filepath.FromSlash(brandgen.IconSetPath))
+// copyIconSet copies the checkout's committed app icon set into the bundle's resources
+// directory, under the name the Info.plist gives it.
+func (r runner) copyIconSet(resources string) error {
+	body, err := os.ReadFile(r.path(brandgen.IconSetPath))
 	if err != nil {
 		return fmt.Errorf("read the app icon set: %w", err)
 	}
@@ -516,28 +514,26 @@ func copyIconSet(resources string) error {
 }
 
 // reportSize prints the built bundle's path and its binary's size.
-func reportSize(bundle, exe string) error {
+func (r runner) reportSize(bundle, exe string) error {
 	info, err := os.Stat(exe)
 	if err != nil {
 		return fmt.Errorf("read the binary size: %w", err)
 	}
 
-	//nolint:forbidigo // mage target output
-	fmt.Printf("✅ Built %s (binary %d bytes, %.1f MB)\n", bundle, info.Size(), float64(info.Size())/1e6)
+	_, _ = fmt.Fprintf(r.stdout, "✅ Built %s (binary %d bytes, %.1f MB)\n", bundle, info.Size(), float64(info.Size())/1e6)
 
 	return nil
 }
 
 // reportSlice prints the size of one architecture's slice of a universal binary, which
 // the per-architecture size target is held to.
-func reportSlice(arch, path string) error {
+func (r runner) reportSlice(arch, path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("read the %s slice's size: %w", arch, err)
 	}
 
-	//nolint:forbidigo // mage target output
-	fmt.Printf("Built the %s slice (%d bytes, %.1f MB)\n", arch, info.Size(), float64(info.Size())/1e6)
+	_, _ = fmt.Fprintf(r.stdout, "Built the %s slice (%d bytes, %.1f MB)\n", arch, info.Size(), float64(info.Size())/1e6)
 
 	return nil
 }

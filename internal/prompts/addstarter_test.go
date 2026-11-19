@@ -1,10 +1,13 @@
 package prompts
 
 import (
+	"database/sql"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // TestAddStarterBringsBackADeletedStarter checks that a starter the user deleted, which
@@ -74,4 +77,75 @@ func TestAddStarterRefusesAnUnknownKey(t *testing.T) {
 
 	_, err := s.AddStarter(t.Context(), "a-later-starter")
 	require.ErrorIs(t, err, ErrUnknownStarter)
+}
+
+// TestAddStarterAddsNothingWhenAStepFails checks that a starter whose adding fails part of
+// the way leaves the library as it was, and says what failed.
+func TestAddStarterAddsNothingWhenAStepFails(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		spoil func(t *testing.T, s *Service, db *sql.DB)
+		want  string
+	}{
+		{
+			name:  "the prompts cannot be read",
+			spoil: func(t *testing.T, _ *Service, db *sql.DB) { t.Helper(); testutil.Exec(t, db, "DROP TABLE prompts") },
+			want:  "read the prompts",
+		},
+		{
+			name:  "the defaults cannot be read",
+			spoil: func(t *testing.T, _ *Service, db *sql.DB) { t.Helper(); testutil.Exec(t, db, "DROP TABLE prefs") },
+			want:  "read setting " + prefDefaultPR,
+		},
+		{
+			name:  "the starter cannot be stored",
+			spoil: func(t *testing.T, _ *Service, db *sql.DB) { t.Helper(); testutil.Exec(t, db, refusePromptInserts) },
+			want:  `add the "Resolve a pull request's merge conflicts" starter prompt`,
+		},
+		{
+			name: "the record of starters cannot be read",
+			spoil: func(t *testing.T, s *Service, _ *sql.DB) {
+				t.Helper()
+				require.NoError(t, s.store.prefs.Set(t.Context(), prefSeeded, "not a list"))
+			},
+			want: "read setting " + prefSeeded,
+		},
+		{
+			name:  "the record of starters cannot be saved",
+			spoil: func(t *testing.T, _ *Service, db *sql.DB) { t.Helper(); testutil.Exec(t, db, refusePref(prefSeeded)) },
+			want:  "save setting " + prefSeeded,
+		},
+		{
+			name: "the starter is not stored as one",
+			spoil: func(t *testing.T, _ *Service, db *sql.DB) {
+				t.Helper()
+				testutil.Exec(t, db, `CREATE TRIGGER drop_starter_key AFTER INSERT ON prompts
+BEGIN UPDATE prompts SET starter_key = '' WHERE id = NEW.id; END`)
+			},
+			want: "the starter prompt isn't stored",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s, db := empty(t, nil)
+			tt.spoil(t, s, db)
+
+			_, err := s.AddStarter(t.Context(), StarterResolveConflicts)
+			require.ErrorContains(t, err, tt.want)
+
+			if tt.name != "the prompts cannot be read" {
+				all, allErr := s.store.All(t.Context())
+				require.NoError(t, allErr)
+				assert.Empty(t, all, "nothing is added")
+			}
+		})
+	}
+
+	_, err := closedService(t).AddStarter(t.Context(), StarterResolveConflicts)
+	require.Error(t, err, "a database that cannot start the transaction")
 }

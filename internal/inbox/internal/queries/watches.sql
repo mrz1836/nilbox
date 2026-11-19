@@ -132,14 +132,6 @@ DELETE FROM item_watches WHERE watch_key NOT IN (sqlc.slice(keys));
 -- merged, closed, or gone: no open search returns it any more.
 DELETE FROM item_watches WHERE item_id = ?;
 
--- name: ListWatchedNodes :many
--- ListWatchedNodes returns the node IDs of every item of the account with account_id a
--- routine's search watches, each once.
-SELECT DISTINCT i.node_id
-FROM item_watches w
-JOIN items i ON i.id = w.item_id
-WHERE i.account_id = ? AND i.node_id <> '';
-
 -- name: UpsertChecks :exec
 -- UpsertChecks stores a pull request's checks on one head commit, replacing what was
 -- stored before.

@@ -258,9 +258,10 @@ type ReadyCheck struct {
 }
 
 // Words says a check's outcome as a sentence: "Claude Code isn't installed. Install it,
-// then Check again." or "The work profile is signed out. Run `claude auth login`."
+// then Check again." or "The work profile is signed out. Run `claude auth login`." Its
+// label is a name, kept as it is spelled ("iTerm2", "gh"), never upper-cased to start it.
 func (c ReadyCheck) Words() string {
-	text := textutil.Sentence(c.Label + " " + c.Found)
+	text := textutil.EndSentence(c.Label + " " + c.Found)
 
 	switch {
 	case c.Fix == "":

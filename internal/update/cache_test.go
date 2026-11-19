@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/update"
 )
 
@@ -185,4 +186,106 @@ func TestPutRefusesAManifestNamingNoReleasesFile(t *testing.T) {
 	_, err := update.NewCache(t.TempDir(), public).Put(m, func(io.Writer) error { return nil }, nil)
 	require.ErrorIs(t, err, update.ErrInvalid)
 	assert.NotErrorIs(t, err, update.ErrMismatch)
+}
+
+func TestLoadKeepsTheNewestByVersionNotByName(t *testing.T) {
+	t.Parallel()
+
+	public, private := testKey(7)
+	dir := t.TempDir()
+	cache := update.NewCache(dir, public)
+
+	// "0.10.0" lists before "0.9.0", and is the newer.
+	newest := putIn(t, cache, "0.10.0", private)
+	putIn(t, cache, "0.9.0", private)
+
+	entry, ok, err := cache.Load(running)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, newest, entry)
+	assert.Equal(t, []string{"0.10.0"}, folders(t, dir), "the older is dropped")
+}
+
+func TestLoadDropsAnUpdateWhoseManifestCantBeRead(t *testing.T) {
+	t.Parallel()
+
+	public, private := testKey(7)
+	dir := t.TempDir()
+	cache := update.NewCache(dir, public)
+
+	entry := putIn(t, cache, next, private)
+	require.NoError(t, os.WriteFile(filepath.Join(filepath.Dir(entry.Zip), update.ManifestName), []byte("{"), 0o600))
+
+	_, ok, err := cache.Load(running)
+	require.NoError(t, err)
+	assert.False(t, ok)
+	assert.Empty(t, folders(t, dir))
+}
+
+func TestACacheThatIsntAFolderCantBeLoadedOrPruned(t *testing.T) {
+	t.Parallel()
+
+	public, _ := testKey(7)
+	file := filepath.Join(t.TempDir(), "updates")
+	require.NoError(t, os.WriteFile(file, []byte("a file"), 0o600))
+
+	cache := update.NewCache(file, public)
+
+	_, ok, err := cache.Load(running)
+	require.Error(t, err)
+	assert.False(t, ok)
+	require.Error(t, cache.Prune(""))
+}
+
+func TestPutLeavesNothingWhenSomethingTakesTheZipsOrManifestsPlace(t *testing.T) {
+	t.Parallel()
+
+	public, private := testKey(7)
+	m := sign(t, next, zipOf(next), private)
+
+	for _, name := range []string{m.File, update.ManifestName} {
+		dir := t.TempDir()
+
+		_, err := update.NewCache(dir, public).Put(m, func(w io.Writer) error {
+			// A folder, not empty, where the file goes.
+			if err := os.MkdirAll(filepath.Join(dir, next, name, "inside"), 0o700); err != nil {
+				return err
+			}
+
+			_, err := w.Write(zipOf(next))
+
+			return err
+		}, nil)
+		require.Error(t, err, name)
+		assert.Empty(t, folders(t, dir), "nothing of the version is left: %s", name)
+	}
+}
+
+func TestPutSaysWhatItCouldntSaveInAFolderItCantWrite(t *testing.T) {
+	t.Parallel()
+	testutil.SkipAsRoot(t)
+
+	public, private := testKey(7)
+	m := sign(t, next, zipOf(next), private)
+	fetch := func(w io.Writer) error {
+		_, err := w.Write(zipOf(next))
+
+		return err
+	}
+
+	root := t.TempDir()
+	kept := filepath.Join(root, "kept")
+	putIn(t, update.NewCache(kept, public), next, private)
+
+	require.NoError(t, os.Chmod(root, 0o500))       //nolint:gosec // the test's own folder, made read-only
+	require.NoError(t, os.Chmod(kept, 0o500))       //nolint:gosec // the test's own folder, made read-only
+	t.Cleanup(func() { _ = os.Chmod(root, 0o700) }) //nolint:gosec // put back for t.TempDir's removal
+	t.Cleanup(func() { _ = os.Chmod(kept, 0o700) }) //nolint:gosec // put back for t.TempDir's removal
+
+	_, err := update.NewCache(filepath.Join(root, "missing"), public).Put(m, fetch, nil)
+	require.ErrorContains(t, err, "make the update's folder")
+
+	_, err = update.NewCache(kept, public).Put(m, fetch, nil)
+	require.ErrorContains(t, err, "remove "+next+" from the updates kept", "the copy kept before can't be cleared")
+	assert.Equal(t, []string{next}, folders(t, kept))
 }

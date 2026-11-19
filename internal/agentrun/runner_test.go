@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -50,18 +51,30 @@ type rig struct {
 	sweeper  *fakeSweeper
 	limits   LimitReader
 
+	// engineClock is the clock the next build's run engine reads; nil is the real one.
+	engineClock clock.Clock
+
+	// timeLimit is the next build's run engine's timer for a run's time limit (its
+	// Config.TimeLimit); nil is the real one.
+	timeLimit func(time.Duration) (<-chan time.Time, func() bool)
+
 	mu     sync.Mutex
 	ends   map[int64]End
 	nextID atomic.Int64
 }
 
-// newRig returns a runner over a fresh database, its engine stopped when the test ends.
-func newRig(t *testing.T) *rig {
+// newRig returns a runner over a fresh database, its engine stopped when the test ends;
+// edit changes the rig before its engine is built.
+func newRig(t *testing.T, edit ...func(*rig)) *rig {
 	t.Helper()
 
 	r := &rig{
 		t: t, db: testutil.DB(t), logs: filepath.Join(t.TempDir(), "script-runs"), folders: t.TempDir(),
 		sessions: &fakeSessions{states: map[string][]SessionState{}}, sweeper: &fakeSweeper{}, ends: map[int64]End{},
+	}
+
+	for _, fn := range edit {
+		fn(r)
 	}
 
 	r.engine, r.service, r.runner = r.build()
@@ -74,7 +87,8 @@ func newRig(t *testing.T) *rig {
 // build returns a run engine, its service, and a runner over the rig's database.
 func (r *rig) build() (*scriptrun.Engine, *scriptrun.Service, *Runner) {
 	engine := scriptrun.NewEngine(scriptrun.Config{
-		DB: r.db, Locks: clonelock.New(), LogDir: r.logs, Folders: r.folders,
+		DB: r.db, Locks: clonelock.New(), LogDir: r.logs, Folders: r.folders, Clock: r.engineClock,
+		TimeLimit: r.timeLimit,
 	})
 	service := scriptrun.NewService(engine)
 	runner := New(Config{
@@ -150,6 +164,61 @@ func (r *rig) record(id int64) scriptrun.Run {
 	require.NoError(r.t, err)
 
 	return run
+}
+
+// awaitEvents waits until the ledger's run's log has been read into events.
+func (r *rig) awaitEvents(runID int64) {
+	r.t.Helper()
+
+	require.Eventually(r.t, func() bool {
+		page, err := r.runner.Events(r.t.Context(), runID, 0)
+
+		return err == nil && len(page.Events) > 0
+	}, waitFor, 10*time.Millisecond, "run %d's first lines are read", runID)
+}
+
+// heldLimit holds the time limits the rig's engine sets (its Config.TimeLimit) until the
+// test reaches them, so no test waits out a real one.
+type heldLimit struct {
+	asked chan time.Duration
+	fire  chan time.Time
+}
+
+// newHeldLimit returns a held limit no run has asked for yet.
+func newHeldLimit() *heldLimit {
+	return &heldLimit{asked: make(chan time.Duration, scriptrun.Slots), fire: make(chan time.Time)}
+}
+
+// hold makes the rig's next engine hold its runs' limits here.
+func (l *heldLimit) hold(r *rig) {
+	r.timeLimit = l.set
+}
+
+// set is the engine's Config.TimeLimit: it hands the test the limit d, and fires once the
+// test reaches it.
+func (l *heldLimit) set(d time.Duration) (<-chan time.Time, func() bool) {
+	l.asked <- d
+
+	return l.fire, func() bool { return true }
+}
+
+// await returns the next limit a run was held to, failing the test when none is set.
+func (l *heldLimit) await(t *testing.T) time.Duration {
+	t.Helper()
+
+	select {
+	case d := <-l.asked:
+		return d
+	case <-time.After(waitFor):
+		require.FailNow(t, "no run was held to a time limit")
+
+		return 0
+	}
+}
+
+// reach fires every limit set, as though its time had come.
+func (l *heldLimit) reach() {
+	close(l.fire)
 }
 
 // lines returns the first n lines of a fixture.
@@ -259,15 +328,22 @@ func TestConformanceACrashMidRun(t *testing.T) {
 func TestConformanceAHangUntilTheTimeLimit(t *testing.T) {
 	t.Parallel()
 
-	r := newRig(t)
+	limit := newHeldLimit()
+	r := newRig(t, limit.hold)
 	plan := r.plan(testutil.FakeRun{Stdout: lines(t, "success-structured.jsonl", 3), Sleep: time.Minute})
-	plan.Fence.Timeout = time.Second
+	plan.Fence.Timeout = 20 * time.Minute
 
 	r.start(plan)
+	assert.Equal(t, 20*time.Minute, limit.await(t), "the run is held to its fence's time limit")
+
+	r.awaitEvents(plan.RunID)
+	limit.reach()
+
 	end := r.end(plan.RunID)
 
-	assert.Equal(t, StatusTimedOut, end.Outcome.Status)
-	assert.Equal(t, "Stopped after 1s.", end.Outcome.Summary)
+	assert.Equal(t, StatusTimedOut, end.Outcome.Status, "it hung mid-run until its limit came")
+	assert.Equal(t, "Stopped after 20 minutes.", end.Outcome.Summary)
+	assert.Equal(t, []SessionState{SessionWorking, SessionFailed}, r.sessions.of(plan.SessionID))
 }
 
 func TestConformanceAResultEndsARunWhoseShellLingers(t *testing.T) {
@@ -429,7 +505,14 @@ func TestReconcileFollowsAnOrphanAgainAndJudgesTheEnded(t *testing.T) {
 	exited := r.plan(testutil.FakeRun{Stdout: partial, Sleep: time.Minute, OnInterrupt: onInt})
 	gone := r.plan(testutil.FakeRun{Stdout: partial, Sleep: time.Minute, OnInterrupt: onInt})
 	late := r.plan(testutil.FakeRun{Stdout: partial, Sleep: time.Minute, OnInterrupt: onInt})
-	late.Fence.Timeout = 2 * time.Second
+
+	// The next start reads the time an hour on: late's limit has passed by then, and the
+	// others' have not.
+	for _, p := range []*Plan{&alive, &exited, &gone} {
+		p.Fence.Timeout = 24 * time.Hour
+	}
+
+	late.Fence.Timeout = 10 * time.Minute
 
 	for _, p := range []Plan{alive, exited, gone, late} {
 		r.start(p)
@@ -467,13 +550,13 @@ func TestReconcileFollowsAnOrphanAgainAndJudgesTheEnded(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return !procs.Alive(pids[exited.Dir]) && !procs.Alive(pids[gone.Dir])
 	}, waitFor, 10*time.Millisecond)
-	time.Sleep(2 * time.Second) // past late's time limit
 
-	// The next start follows them again.
+	// The next start, an hour on, follows them again.
 	r.mu.Lock()
 	clear(r.ends)
 	r.mu.Unlock()
 
+	r.engineClock = testutil.NewClock(time.Now().Add(time.Hour))
 	engine, _, runner := r.build()
 	r.engine, r.runner = engine, runner
 
@@ -494,15 +577,17 @@ func TestReconcileFollowsAnOrphanAgainAndJudgesTheEnded(t *testing.T) {
 	assert.Equal(t, StatusInterrupted, r.end(gone.RunID).Outcome.Status, "a gone one, without a result, is interrupted")
 	assert.Equal(t, StatusTimedOut, r.end(late.RunID).Outcome.Status, "an orphan past its time limit is stopped at once")
 
+	// The orphan is alive as soon as it is followed again, and its log is read on the
+	// follow's first tick after that, so the test waits on the events themselves.
 	require.Eventually(t, func() bool {
-		live, err := runner.Alive(t.Context(), alive.RunID)
+		page, err := runner.Events(t.Context(), alive.RunID, 0)
 
-		return err == nil && live == LiveAlive
-	}, waitFor, 10*time.Millisecond, "an orphan still running is followed again")
+		return err == nil && len(page.Events) > 0
+	}, waitFor, 10*time.Millisecond, "an orphan still running is followed again, its log read again from its start")
 
-	page, err := runner.Events(t.Context(), alive.RunID, 0)
+	live, err := runner.Alive(t.Context(), alive.RunID)
 	require.NoError(t, err)
-	assert.NotEmpty(t, page.Events, "its log is read again from its start")
+	assert.Equal(t, LiveAlive, live, "an orphan still running is followed again")
 
 	require.NoError(t, runner.Stop(t.Context(), alive.RunID))
 	assert.Equal(t, StatusStopped, r.end(alive.RunID).Outcome.Status)

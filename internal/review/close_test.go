@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -205,14 +206,14 @@ func TestACommentPostedBeforeACloseThatFailedSaysBoth(t *testing.T) {
 		},
 		{
 			name:     "the fresh token refused too",
-			setup:    func(h *harness) { h.github.closeErr = badCredentials() },
+			setup:    func(h *harness) { h.github.closeErr = githubtest.BadCredentials() },
 			requests: []string{callState, callSubmit, callClose, callState, callClose},
-			reason:   trimmed(badCredentials()),
+			reason:   trimmed(githubtest.BadCredentials()),
 		},
 		{
 			name: "pushed to before the fresh token's try",
 			setup: func(h *harness) {
-				h.github.closeOnce = badCredentials()
+				h.github.closeOnce = githubtest.BadCredentials()
 				h.github.states = []*github.MergeState{open(github.MergeStateBlocked, headA), open(github.MergeStateBlocked, headB)}
 			},
 			requests: []string{callState, callSubmit, callClose, callState},
@@ -221,7 +222,7 @@ func TestACommentPostedBeforeACloseThatFailedSaysBoth(t *testing.T) {
 		{
 			name: "the fresh token's account check failing",
 			setup: func(h *harness) {
-				h.github.closeOnce, h.inbox.retryErr = badCredentials(), signedOut
+				h.github.closeOnce, h.inbox.retryErr = githubtest.BadCredentials(), signedOut
 			},
 			requests: []string{callState, callSubmit, callClose},
 			reason:   "You're signed in to another account now",
@@ -268,7 +269,7 @@ func TestARetriedTokenNeverCommentsTwiceBeforeAClose(t *testing.T) {
 	t.Parallel()
 
 	h := readHarness(t, github.MergeStateBlocked)
-	h.github.closeOnce = badCredentials()
+	h.github.closeOnce = githubtest.BadCredentials()
 
 	res := h.act(t, ActRequest{Action: ActionClose, Body: closeText})
 	assert.Equal(t, OutcomeClosed, res.Outcome)
@@ -283,7 +284,7 @@ func TestARetriedCloseWithoutTextReadsTheHeadAgain(t *testing.T) {
 	t.Parallel()
 
 	h := readHarness(t, github.MergeStateBlocked)
-	h.github.closeOnce = badCredentials()
+	h.github.closeOnce = githubtest.BadCredentials()
 	h.github.states = []*github.MergeState{open(github.MergeStateBlocked, headA), open(github.MergeStateBlocked, headB)}
 
 	res := h.act(t, ActRequest{Action: ActionClose})

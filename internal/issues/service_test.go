@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/timeline"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -293,7 +294,7 @@ func TestATokenGitHubRefusesIsTriedAgainForARead(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.github.viewErr = badCredentials()
+	h.github.viewErr = githubtest.BadCredentials()
 
 	_, err := h.svc.Refresh(t.Context(), issueID)
 	require.Error(t, err)

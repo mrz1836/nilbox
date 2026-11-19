@@ -249,9 +249,9 @@ func (s *Service) matchByID(ctx context.Context, id int64) (Match, error) {
 }
 
 // RunNow runs the routine id on the item now, as the user asked from the item's menu, and
-// returns its match: once per click, whatever its trigger says, on an item its conditions
-// match, or, with anyway (the menu's Run anyway, which the user chose knowing why it
-// doesn't match), on any item of a kind it acts on. It counts toward no daily cap or try,
+// returns its match: once per click, whatever its trigger says, on an item of a kind it acts
+// on that its conditions match, or, with anyway (the menu's Run anyway, which the user chose
+// knowing why it doesn't match), on any item of such a kind. It counts toward no daily cap or try,
 // needs no OK, and keeps to the routine's mode, so a Dry run records what it would have
 // done. Every limit that keeps a start from happening still holds it, as for any match:
 // the outside contributor rule, this Mac's readiness, the item read fresh, the holds. On
@@ -304,12 +304,14 @@ func (e *Engine) runNow(ctx context.Context, id, itemID int64, anyway bool) (int
 	token := strconv.FormatInt(now.UnixNano(), 36)
 	d := eval.Evaluate(l.spec, all[0], eval.History{Manual: token, OwnHeads: []string{}}, now)
 
+	// A click holds whatever the trigger, its kinds too, so the kinds the routine acts on
+	// are checked first, with Run anyway or without.
 	switch {
+	case !slices.Contains(actsOn(l.spec), all[0].Item.Kind):
+		return 0, uierr.New(fmt.Sprintf("It acts only on %s.", kindsWords(actsOn(l.spec))), ErrNoMatch)
 	case d.Match == eval.Yes:
 	case !anyway:
 		return 0, newRefusal(RefusalNoMatch, uierr.New(textutil.Sentence("It doesn't match it: "+firstNo(d)), ErrNoMatch))
-	case !slices.Contains(actsOn(l.spec), all[0].Item.Kind):
-		return 0, uierr.New(fmt.Sprintf("It acts only on %s.", kindsWords(actsOn(l.spec))), ErrNoMatch)
 	default:
 		d.FireKey = "manual:" + token
 	}

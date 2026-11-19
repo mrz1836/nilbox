@@ -13,14 +13,11 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
-
-	"github.com/magefile/mage/sh"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/update"
@@ -58,13 +55,6 @@ const (
 	// PEM block.
 	maxSigningKeyBytes = 64 << 10
 )
-
-// pinnedReleaseKey is the release key app:package and app:verify check against:
-// update.ReleaseKey, which tests replace with a throwaway key of their own, so the targets'
-// wiring stays tested once a key is pinned.
-//
-//nolint:gochecknoglobals // tests swap in a throwaway key
-var pinnedReleaseKey = update.ReleaseKey
 
 // releaseArches are the architectures a release's universal binary holds: Apple silicon
 // and Intel.
@@ -146,12 +136,19 @@ func (App) Package() error {
 		return errNeedsMacOS
 	}
 
-	cfg, err := packageConfigFromEnv(pinnedReleaseKey)
+	return hostRunner().packageFromEnv(update.ReleaseKey)
+}
+
+// packageFromEnv does App.Package's work once it knows it is on macOS: it packages the
+// release app:package's environment describes, checked against releaseKey, the key the
+// app pins.
+func (r runner) packageFromEnv(releaseKey string) error {
+	cfg, err := r.packageConfigFromEnv(releaseKey)
 	if err != nil {
 		return err
 	}
 
-	return packageRelease(cfg)
+	return r.packageRelease(cfg)
 }
 
 // BuildRelease builds the first half of app:package, which needs no secret: the
@@ -166,7 +163,14 @@ func (App) BuildRelease() error {
 		return errNeedsMacOS
 	}
 
-	_, err := buildReleaseBundle(os.Getenv(envReleaseVersion), pinnedReleaseKey)
+	return hostRunner().buildReleaseFromEnv(update.ReleaseKey)
+}
+
+// buildReleaseFromEnv does App.BuildRelease's work once it knows it is on macOS: it builds
+// the unsigned bundle of the version RELEASE_VERSION names, refusing while releaseKey, the
+// key the app pins, is "".
+func (r runner) buildReleaseFromEnv(releaseKey string) error {
+	_, err := r.buildReleaseBundle(r.getenv(envReleaseVersion), releaseKey)
 
 	return err
 }
@@ -185,12 +189,19 @@ func (App) SignRelease() error {
 		return errNeedsMacOS
 	}
 
-	cfg, err := packageConfigFromEnv(pinnedReleaseKey)
+	return hostRunner().signReleaseFromEnv(update.ReleaseKey)
+}
+
+// signReleaseFromEnv does App.SignRelease's work once it knows it is on macOS: it signs
+// the bundle its bundle= argument names and packages the release app:package's
+// environment describes, checked against releaseKey, the key the app pins.
+func (r runner) signReleaseFromEnv(releaseKey string) error {
+	cfg, err := r.packageConfigFromEnv(releaseKey)
 	if err != nil {
 		return err
 	}
 
-	return signReleaseBundle(cfg, mageArg("bundle"))
+	return r.signReleaseBundle(cfg, r.mageArg("bundle"))
 }
 
 // Verify checks a release's files as the app will: the update manifest in dir, against
@@ -201,7 +212,14 @@ func (App) SignRelease() error {
 //	magex app:verify dir=bin/release/<version>
 //	magex app:verify dir=<folder> version=0.3.0
 func (App) Verify() error {
-	return verifyPinned(mageArg("dir"), mageArg("version"), pinnedReleaseKey)
+	return hostRunner().verifyFromArgs(update.ReleaseKey)
+}
+
+// verifyFromArgs does App.Verify's work: it checks the release in the folder its dir=
+// argument names, held to its version= argument's version, against releaseKey, the key
+// the app pins.
+func (r runner) verifyFromArgs(releaseKey string) error {
+	return r.verifyPinned(r.mageArg("dir"), r.mageArg("version"), releaseKey)
 }
 
 // packageConfig is what packageRelease builds a release from.
@@ -223,16 +241,16 @@ type releaseKeys struct {
 // packageConfigFromEnv reads app:package's environment, with releaseKey as the key the
 // manifest must verify with. It refuses while no key is pinned, and names every required
 // variable that is missing.
-func packageConfigFromEnv(releaseKey string) (packageConfig, error) {
+func (r runner) packageConfigFromEnv(releaseKey string) (packageConfig, error) {
 	if releaseKey == "" {
 		return packageConfig{}, errNoReleaseKey
 	}
 
 	cfg := packageConfig{
-		version:    os.Getenv(envReleaseVersion),
-		identity:   os.Getenv(envCodesignIdentity),
-		keychain:   cleanPath(os.Getenv(envCodesignKeychain)),
-		signingKey: os.Getenv(envUpdateSigningKey),
+		version:    r.getenv(envReleaseVersion),
+		identity:   r.getenv(envCodesignIdentity),
+		keychain:   cleanPath(r.getenv(envCodesignKeychain)),
+		signingKey: r.getenv(envUpdateSigningKey),
 		releaseKey: releaseKey,
 	}
 
@@ -266,26 +284,26 @@ func cleanPath(path string) string {
 // knows it is on macOS: app:buildRelease's, then app:signRelease's. Everything it can
 // check without building, the version, the identity, the keychain, the keys, the tag, and
 // the working tree, it checks before any tool but git runs.
-func packageRelease(cfg packageConfig) error {
+func (r runner) packageRelease(cfg packageConfig) error {
 	keys, err := cfg.check()
 	if err != nil {
 		return err
 	}
 
-	if err = checkReleaseTag(cfg.version); err != nil {
+	if err = r.checkReleaseTag(cfg.version); err != nil {
 		return err
 	}
 
-	if err = checkCleanTree(); err != nil {
+	if err = r.checkCleanTree(); err != nil {
 		return err
 	}
 
-	bundle, err := buildUnsignedRelease(cfg.version)
+	bundle, err := r.buildUnsignedRelease(cfg.version)
 	if err != nil {
 		return err
 	}
 
-	return signRelease(cfg, keys, bundle)
+	return r.signRelease(cfg, keys, bundle)
 }
 
 // buildReleaseBundle builds the unsigned bundle of the release of version, the steps
@@ -293,7 +311,7 @@ func packageRelease(cfg packageConfig) error {
 // while no release key is pinned (releaseKey, as app:package does, so a release that could
 // never ship isn't built), a version out of form, a tag that doesn't name HEAD, and a
 // working tree with changes, before any tool but git runs.
-func buildReleaseBundle(version, releaseKey string) (string, error) {
+func (r runner) buildReleaseBundle(version, releaseKey string) (string, error) {
 	switch {
 	case releaseKey == "":
 		return "", errNoReleaseKey
@@ -301,50 +319,50 @@ func buildReleaseBundle(version, releaseKey string) (string, error) {
 		return "", fmt.Errorf("%w: %q", errBadVersion, version)
 	}
 
-	if err := checkReleaseTag(version); err != nil {
+	if err := r.checkReleaseTag(version); err != nil {
 		return "", err
 	}
 
-	if err := checkCleanTree(); err != nil {
+	if err := r.checkCleanTree(); err != nil {
 		return "", err
 	}
 
-	return buildUnsignedRelease(version)
+	return r.buildUnsignedRelease(version)
 }
 
 // signReleaseBundle signs the unsigned bundle at bundle and packages the release cfg
 // describes, the steps App.SignRelease runs once it knows it is on macOS. Before the
 // keychain search list is touched, it checks what packageRelease checks, and that bundle
 // is an absolute path outside the release's own folder, which packaging empties first.
-func signReleaseBundle(cfg packageConfig, bundle string) error {
+func (r runner) signReleaseBundle(cfg packageConfig, bundle string) error {
 	keys, err := cfg.check()
 	if err != nil {
 		return err
 	}
 
-	if err = checkBundlePath(bundle, cfg.version); err != nil {
+	if err = r.checkBundlePath(bundle, cfg.version); err != nil {
 		return err
 	}
 
-	if err = checkReleaseTag(cfg.version); err != nil {
+	if err = r.checkReleaseTag(cfg.version); err != nil {
 		return err
 	}
 
-	if err = checkCleanTree(); err != nil {
+	if err = r.checkCleanTree(); err != nil {
 		return err
 	}
 
-	return signRelease(cfg, keys, filepath.Clean(bundle))
+	return r.signRelease(cfg, keys, filepath.Clean(bundle))
 }
 
 // checkBundlePath fails unless bundle is an absolute path outside the release folder of
 // version, which packaging the release empties before it copies the bundle in.
-func checkBundlePath(bundle, version string) error {
+func (r runner) checkBundlePath(bundle, version string) error {
 	if bundle == "" || !filepath.IsAbs(bundle) {
 		return fmt.Errorf("%w: %q", errBundlePath, bundle)
 	}
 
-	out, err := filepath.Abs(filepath.Join(filepath.FromSlash(releaseRoot), version))
+	out, err := filepath.Abs(filepath.Join(r.path(releaseRoot), version))
 	if err != nil {
 		return fmt.Errorf("find the release's folder: %w", err)
 	}
@@ -360,24 +378,24 @@ func checkBundlePath(bundle, version string) error {
 // buildUnsignedRelease checks the brand files, builds the frontend, and builds the release
 // of version's universal bundle, unsigned, into a fresh bin/unsigned/<version>/, alone in
 // it. It returns the bundle's path.
-func buildUnsignedRelease(version string) (string, error) {
-	if err := prepareBuild(); err != nil {
+func (r runner) buildUnsignedRelease(version string) (string, error) {
+	if err := r.prepareBuild(); err != nil {
 		return "", err
 	}
 
-	dir := filepath.Join(filepath.FromSlash(unsignedRoot), version)
+	dir := filepath.Join(r.path(unsignedRoot), version)
 	bundle := filepath.Join(dir, bundleName)
 
 	if err := freshFolder(dir); err != nil {
 		return "", err
 	}
 
-	spec := bundleSpec{bundle: bundle, meta: releaseMeta(readBuildMeta(), version), arches: releaseArches()}
-	if _, err := buildUnsignedBundle(spec); err != nil {
+	spec := bundleSpec{bundle: bundle, meta: releaseMeta(r.readBuildMeta(context.Background()), version), arches: releaseArches()}
+	if _, err := r.buildUnsignedBundle(spec); err != nil {
 		return "", err
 	}
 
-	say("✅ Built the unsigned bundle " + bundle)
+	r.say("✅ Built the unsigned bundle " + bundle)
 
 	return bundle, nil
 }
@@ -385,12 +403,12 @@ func buildUnsignedRelease(version string) (string, error) {
 // signRelease checks the unsigned bundle at unsigned, then, with cfg's keychain first on
 // the search list, signs a copy of it and builds the release's other files with it, as
 // buildRelease does.
-func signRelease(cfg packageConfig, keys releaseKeys, unsigned string) error {
-	if err := checkUnsignedBundle(unsigned); err != nil {
+func (r runner) signRelease(cfg packageConfig, keys releaseKeys, unsigned string) error {
+	if err := r.checkUnsignedBundle(unsigned); err != nil {
 		return err
 	}
 
-	return withKeychain(cfg.keychain, func() error { return buildRelease(cfg, keys, unsigned) })
+	return r.withKeychain(cfg.keychain, func() error { return r.buildRelease(cfg, keys, unsigned) })
 }
 
 // checkUnsignedBundle fails unless bundle is an unsigned bundle as app:buildRelease builds
@@ -398,7 +416,7 @@ func signRelease(cfg packageConfig, keys releaseKeys, unsigned string) error {
 // and regular files (no link, which is the one way out of it), its Info.plist and binary
 // among them, no code signature yet, and a binary lipo reads both release architectures
 // in. A workflow's build artifact is checked so before it is signed.
-func checkUnsignedBundle(bundle string) error {
+func (r runner) checkUnsignedBundle(bundle string) error {
 	info, err := os.Lstat(bundle)
 
 	switch {
@@ -418,7 +436,7 @@ func checkUnsignedBundle(bundle string) error {
 		return err
 	}
 
-	return checkArches(bundleExecutable(bundle), releaseArches())
+	return r.checkArches(bundleExecutable(bundle), releaseArches())
 }
 
 // checkAlone fails unless bundle is the only entry of its folder, as it is in
@@ -585,24 +603,24 @@ func checkKeychain(keychain string) error {
 
 // checkReleaseTag fails unless the tag v<version> names HEAD's commit. HEAD may carry
 // other tags beside it, as a release does that follows its own release candidate.
-func checkReleaseTag(version string) error {
+func (r runner) checkReleaseTag(version string) error {
 	tag := "v" + version
-	tagged := gitOutput("rev-parse", "--verify", "--quiet", "refs/tags/"+tag+"^{commit}")
-	head := gitOutput("rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+	tagged := r.gitOutput(context.Background(), "rev-parse", "--verify", "--quiet", "refs/tags/"+tag+"^{commit}")
+	head := r.gitOutput(context.Background(), "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
 
 	switch {
 	case tagged == "":
-		return fmt.Errorf("%w: there is no tag %s (HEAD's tags: %s)", errNoReleaseTag, tag, headTags())
+		return fmt.Errorf("%w: there is no tag %s (HEAD's tags: %s)", errNoReleaseTag, tag, r.headTags())
 	case tagged != head:
-		return fmt.Errorf("%w: check out %s, or tag HEAD (HEAD's tags: %s)", errTagMismatch, tag, headTags())
+		return fmt.Errorf("%w: check out %s, or tag HEAD (HEAD's tags: %s)", errTagMismatch, tag, r.headTags())
 	}
 
 	return nil
 }
 
 // headTags names the tags on HEAD, for an error, or says there are none.
-func headTags() string {
-	tags := strings.Fields(gitOutput("tag", "--points-at", "HEAD"))
+func (r runner) headTags() string {
+	tags := strings.Fields(r.gitOutput(context.Background(), "tag", "--points-at", "HEAD"))
 	if len(tags) == 0 {
 		return "none"
 	}
@@ -617,8 +635,8 @@ const maxDirtyNamed = 5
 // with no untracked file either (one in a package would be built into the release). Its
 // flags beat the user's config (status.showUntrackedFiles, a submodule's ignore setting),
 // which could otherwise hide a change. A status git can't read fails too.
-func checkCleanTree() error {
-	out, err := exec.CommandContext(context.Background(), "git", "status", "--porcelain",
+func (r runner) checkCleanTree() error {
+	out, err := r.cmd(context.Background(), nil, "git", "status", "--porcelain",
 		"--untracked-files=normal", "--ignore-submodules=none").Output()
 	if err != nil {
 		return fmt.Errorf("read the working tree's changes with git status: %w", err)
@@ -656,8 +674,8 @@ func releaseMeta(meta buildMeta, version string) buildMeta {
 // from the unsigned bundle at unsigned, which it leaves as it is: a copy of the bundle,
 // signed, then its zip, the disk image, SHA256SUMS, and the manifest, signed with keys.
 // Last, it checks them as the app and app:verify will, and reports their sizes.
-func buildRelease(cfg packageConfig, keys releaseKeys, unsigned string) error {
-	out := filepath.Join(filepath.FromSlash(releaseRoot), cfg.version)
+func (r runner) buildRelease(cfg packageConfig, keys releaseKeys, unsigned string) error {
+	out := filepath.Join(r.path(releaseRoot), cfg.version)
 	names := update.AssetNames(cfg.version)
 	bundle := filepath.Join(out, bundleName)
 	zipPath := filepath.Join(out, names.Zip)
@@ -667,14 +685,14 @@ func buildRelease(cfg packageConfig, keys releaseKeys, unsigned string) error {
 	steps := []func() error{
 		func() error { return freshFolder(out) },
 		func() error { return copyBundle(unsigned, bundle) },
-		func() error { return signBundle(bundle, bundleExecutable(bundle), sign) },
-		func() error { return verifySignature(bundle, "--deep") },
-		func() error { return zipBundle(bundle, zipPath) },
-		func() error { return makeDMG(bundle, dmgPath, sign) },
+		func() error { return r.signBundle(bundle, bundleExecutable(bundle), sign) },
+		func() error { return r.verifySignature(bundle, "--deep") },
+		func() error { return r.zipBundle(bundle, zipPath) },
+		func() error { return r.makeDMG(bundle, dmgPath, sign) },
 		func() error { return writeSums(filepath.Join(out, names.Sums), zipPath, dmgPath) },
 		func() error { return writeManifest(filepath.Join(out, names.Manifest), cfg.version, zipPath, keys) },
-		func() error { return verifyRelease(out, cfg.version, keys.public) },
-		func() error { return reportRelease(out, names) },
+		func() error { return r.verifyRelease(out, cfg.version, keys.public) },
+		func() error { return r.reportRelease(out, names) },
 	}
 
 	for _, step := range steps {
@@ -690,7 +708,7 @@ func buildRelease(cfg packageConfig, keys releaseKeys, unsigned string) error {
 // always bin/release/<version> or bin/unsigned/<version>, for a version its caller has
 // held to update.ValidVersion, so it names no folder outside them.
 func freshFolder(dir string) error {
-	if err := os.RemoveAll(dir); err != nil { //nolint:gosec // a release folder under bin/, named for a checked version
+	if err := os.RemoveAll(dir); err != nil {
 		return fmt.Errorf("remove the earlier files in %s: %w", dir, err)
 	}
 
@@ -703,10 +721,10 @@ func freshFolder(dir string) error {
 
 // verifySignature checks the code signature of path, a bundle or a disk image, strictly,
 // with extra options before the path (--deep for a bundle).
-func verifySignature(path string, extra ...string) error {
+func (r runner) verifySignature(path string, extra ...string) error {
 	args := append(append([]string{"--verify"}, extra...), "--strict", path)
 
-	if err := sh.RunV("codesign", args...); err != nil {
+	if err := r.runV("codesign", args...); err != nil {
 		return fmt.Errorf("verify the signature of %s: %w", path, err)
 	}
 
@@ -715,8 +733,8 @@ func verifySignature(path string, extra ...string) error {
 
 // zipBundle zips bundle into zipPath, the bundle's folder as the zip's one entry, without
 // resource forks, and checks the zip holds exactly the bundle.
-func zipBundle(bundle, zipPath string) error {
-	if err := sh.RunV("ditto", "-c", "-k", "--norsrc", "--keepParent", bundle, zipPath); err != nil {
+func (r runner) zipBundle(bundle, zipPath string) error {
+	if err := r.runV("ditto", "-c", "-k", "--norsrc", "--keepParent", bundle, zipPath); err != nil {
 		return fmt.Errorf("zip the bundle: %w", err)
 	}
 
@@ -791,7 +809,7 @@ func checkZipEntry(f *zip.File, top string) (string, error) {
 // makeDMG makes the disk image first installs open, at dmg: the bundle beside a link to
 // /Applications to drag it onto, in a volume named for the app, compressed, then signed
 // with sign and its signature checked.
-func makeDMG(bundle, dmg string, sign signer) error {
+func (r runner) makeDMG(bundle, dmg string, sign signer) error {
 	staging, err := os.MkdirTemp(filepath.Dir(dmg), ".dmg-")
 	if err != nil {
 		return fmt.Errorf("create the disk image's folder: %w", err)
@@ -803,7 +821,7 @@ func makeDMG(bundle, dmg string, sign signer) error {
 		return fmt.Errorf("open the disk image's folder to everyone: %w", err)
 	}
 
-	if err = sh.RunV("ditto", bundle, filepath.Join(staging, filepath.Base(bundle))); err != nil {
+	if err = r.runV("ditto", bundle, filepath.Join(staging, filepath.Base(bundle))); err != nil {
 		return fmt.Errorf("copy the bundle for the disk image: %w", err)
 	}
 
@@ -811,16 +829,16 @@ func makeDMG(bundle, dmg string, sign signer) error {
 		return fmt.Errorf("link Applications for the disk image: %w", err)
 	}
 
-	err = sh.RunV("hdiutil", "create", "-volname", brand.Name, "-srcfolder", staging, "-ov", "-format", dmgFormat, dmg)
+	err = r.runV("hdiutil", "create", "-volname", brand.Name, "-srcfolder", staging, "-ov", "-format", dmgFormat, dmg)
 	if err != nil {
 		return fmt.Errorf("make the disk image: %w", err)
 	}
 
-	if err = sign.sign(dmg); err != nil {
+	if err = r.sign(sign, dmg); err != nil {
 		return fmt.Errorf("sign the disk image %s: %w", sign, err)
 	}
 
-	return verifySignature(dmg)
+	return r.verifySignature(dmg)
 }
 
 // writeSums writes the SHA-256 of each file to path, one "<hex>  <name>" line each,
@@ -903,7 +921,7 @@ func writeManifest(path, version, zipPath string, keys releaseKeys) error {
 // verifyPinned checks the release in dir as verifyRelease does, against releaseKey, the
 // key the app pins, and, when version isn't "", holds it to that version (with or without
 // its v).
-func verifyPinned(dir, version, releaseKey string) error {
+func (r runner) verifyPinned(dir, version, releaseKey string) error {
 	version = strings.TrimPrefix(version, "v")
 
 	switch {
@@ -920,14 +938,14 @@ func verifyPinned(dir, version, releaseKey string) error {
 		return fmt.Errorf("read the release key the app pins: %w", err)
 	}
 
-	return verifyRelease(dir, version, key)
+	return r.verifyRelease(dir, version, key)
 }
 
 // verifyRelease checks the release in dir as the app will: its update manifest, at most
 // update.MaxManifestBytes, in form, for the platform releases ship (and for version, when
 // it isn't ""), and signed by key's private half; then the zip it names, by its size and
 // SHA-512.
-func verifyRelease(dir, version string, key ed25519.PublicKey) error {
+func (r runner) verifyRelease(dir, version string, key ed25519.PublicKey) error {
 	m, err := readManifest(filepath.Join(dir, update.ManifestName))
 	if err != nil {
 		return err
@@ -956,7 +974,7 @@ func verifyRelease(dir, version string, key ed25519.PublicKey) error {
 		return err
 	}
 
-	say("✅ " + m.File + " matches its signed manifest (" + m.Version + ", " + m.Platform + ")")
+	r.say("✅ " + m.File + " matches its signed manifest (" + m.Version + ", " + m.Platform + ")")
 
 	return nil
 }
@@ -979,8 +997,8 @@ func readManifest(path string) (update.Manifest, error) {
 }
 
 // reportRelease prints the release's files in out with their sizes.
-func reportRelease(out string, names update.Assets) error {
-	say("✅ Packaged the release in " + out + ":")
+func (r runner) reportRelease(out string, names update.Assets) error {
+	r.say("✅ Packaged the release in " + out + ":")
 
 	for _, name := range []string{names.Zip, names.DMG, names.Sums, names.Manifest} {
 		info, err := os.Stat(filepath.Join(out, name))
@@ -988,7 +1006,7 @@ func reportRelease(out string, names update.Assets) error {
 			return fmt.Errorf("read the size of %s: %w", name, err)
 		}
 
-		say(fmt.Sprintf("  %s (%d bytes, %.1f MB)", name, info.Size(), float64(info.Size())/1e6))
+		r.say(fmt.Sprintf("  %s (%d bytes, %.1f MB)", name, info.Size(), float64(info.Size())/1e6))
 	}
 
 	return nil

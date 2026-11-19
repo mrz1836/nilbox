@@ -2,11 +2,14 @@ package store_test
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -20,6 +23,10 @@ import (
 // setPref stores value under example.key in the database at path, opened and closed.
 func setPref(t *testing.T, path, value string) {
 	t.Helper()
+
+	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+		testutil.DBFile(t, path) // migrated once per test binary, not once per test
+	}
 
 	opened, err := store.Open(t.Context(), path)
 	require.NoError(t, err)
@@ -193,33 +200,39 @@ func TestRestoreBackupRefusesWhileTheDatabaseIsOpen(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "app.db")
-	db := testutil.DBAt(t, path)
+	testutil.DBFile(t, path)
 
-	backup, err := store.Backup(t.Context(), db, path)
-	require.NoError(t, err)
+	// Each check waits out its busy timeout for the lock, which the bubble's clock passes
+	// at once.
+	synctest.Test(t, func(t *testing.T) {
+		db := testutil.DBAt(t, path)
 
-	conn, err := db.Conn(t.Context())
-	require.NoError(t, err)
+		backup, err := store.Backup(t.Context(), db, path)
+		require.NoError(t, err)
 
-	t.Cleanup(func() { _ = conn.Close() })
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
 
-	_, err = conn.ExecContext(t.Context(), "BEGIN IMMEDIATE")
-	require.NoError(t, err)
+		t.Cleanup(func() { _ = conn.Close() })
 
-	t.Cleanup(func() { _, _ = conn.ExecContext(t.Context(), "ROLLBACK") })
+		_, err = conn.ExecContext(t.Context(), "BEGIN IMMEDIATE")
+		require.NoError(t, err)
 
-	waits := 0
+		t.Cleanup(func() { _, _ = conn.ExecContext(t.Context(), "ROLLBACK") })
 
-	_, err = store.RestoreBackupWith(t.Context(), path, backup, 3, func(context.Context) error {
-		waits++
+		waits := 0
 
-		return nil
+		_, err = store.RestoreBackupWith(t.Context(), path, backup, 3, func(context.Context) error {
+			waits++
+
+			return nil
+		})
+		require.Error(t, err)
+		assert.True(t, store.IsBusy(err), "the database is busy: %v", err)
+		assert.Equal(t, 2, waits, "it waits between its tries for the other copy to let go")
+		assert.Empty(t, setAsideFiles(t, path), "nothing moved while the database is open")
+		assert.Empty(t, restoreCopies(t, path), "the copy made first is removed")
 	})
-	require.Error(t, err)
-	assert.True(t, store.IsBusy(err), "the database is busy: %v", err)
-	assert.Equal(t, 2, waits, "it waits between its tries for the other copy to let go")
-	assert.Empty(t, setAsideFiles(t, path), "nothing moved while the database is open")
-	assert.Empty(t, restoreCopies(t, path), "the copy made first is removed")
 }
 
 func TestRestoreBackupCopiesBeforeItMovesAnything(t *testing.T) {
@@ -301,6 +314,78 @@ func TestRestoreBackupWithNoDatabaseRemovesTheLogsLeftBehind(t *testing.T) {
 	assert.NoFileExists(t, path+"-wal", "the copy isn't paired with another database's log")
 	assert.NoFileExists(t, path+"-shm")
 	assert.Equal(t, "kept", prefIn(t, path))
+}
+
+// backedUp makes a database at path holding value, backs it up, and returns the backup.
+func backedUp(t *testing.T, path, value string) string {
+	t.Helper()
+
+	setPref(t, path, value)
+
+	opened, err := store.Open(t.Context(), path)
+	require.NoError(t, err)
+
+	backup, err := store.Backup(t.Context(), opened.DB, path)
+	require.NoError(t, err)
+	require.NoError(t, opened.DB.Close())
+
+	return backup
+}
+
+func TestRestoreBackupWithNoDatabaseStopsAtALogItCantRemove(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "app.db")
+	backup := backedUp(t, path, "kept")
+
+	require.NoError(t, os.Remove(path))
+	require.NoError(t, os.Mkdir(path+"-wal", 0o700))
+	testutil.WriteFile(t, filepath.Join(path+"-wal", "inside"), "x")
+
+	_, err := store.RestoreBackup(t.Context(), path, backup)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "remove a log with no database")
+	assert.NoFileExists(t, path, "the copy is never paired with a log it couldn't remove")
+	assert.Empty(t, restoreCopies(t, path), "and is removed")
+	assert.FileExists(t, backup)
+}
+
+func TestRestoreBackupLeavesTheDatabaseWhereNoCopyFitsBesideIt(t *testing.T) {
+	t.Parallel()
+	testutil.SkipAsRoot(t)
+
+	dir := filepath.Join(t.TempDir(), "data")
+	path := filepath.Join(dir, "app.db")
+	backup := backedUp(t, path, "before the update")
+	setPref(t, path, "after the update")
+
+	require.NoError(t, os.Chmod(dir, 0o500))       //nolint:gosec // a read-only folder is the case under test
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) }) //nolint:gosec // restore so the temp dir can be removed
+
+	_, err := store.RestoreBackup(t.Context(), path, backup)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "restore the backup")
+
+	require.NoError(t, os.Chmod(dir, 0o700)) //nolint:gosec // the folder is the user's again
+	assert.Equal(t, "after the update", prefIn(t, path), "nothing changed")
+	assert.Empty(t, setAsideFiles(t, path))
+}
+
+func TestRestoreBackupRefusesABackupItCantRead(t *testing.T) {
+	t.Parallel()
+	testutil.SkipAsRoot(t)
+
+	path := filepath.Join(t.TempDir(), "app.db")
+	backup := backedUp(t, path, "kept")
+
+	require.NoError(t, os.Chmod(backup, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(backup, 0o600) })
+
+	_, err := store.RestoreBackup(t.Context(), path, backup)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read the backup")
+	assert.Empty(t, setAsideFiles(t, path), "nothing moved")
+	assert.Empty(t, restoreCopies(t, path))
 }
 
 func TestOpenSweepsTheCopiesARestoreCutShortLeft(t *testing.T) {

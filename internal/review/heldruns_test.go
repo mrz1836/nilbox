@@ -15,7 +15,7 @@ func (g *fakeGitHub) sentAll() int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	return len(g.order)
+	return g.calls.Len()
 }
 
 // offersApproval reports whether r offers to approve its held runs.

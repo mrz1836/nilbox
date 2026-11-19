@@ -387,7 +387,7 @@ opened without waiting and checked again once open, so a named pipe swapped in i
 `internal/testutil` holds the fakes and fixtures the test suites share (a fresh database, an
 isolated git, `Commit` for a fixture file, git templates built once per test binary, the
 `Planter`, which plants fake programs in a clone's own config for the guard tests, recorded
-runs of real tools, a runner, finder, clock, event sink, log, fake tools, and
+runs of real tools, a runner, finder, process lister, clock, event sink, log, fake tools, and
 `TerminalScript`, the shell a fake terminal runs a run's command under); only tests
 may import it. `internal/scriptrun/scriptruntest` holds the runner the
 hooks, scripts, and release suites share, built on it: a real `scriptrun.Engine` and its
@@ -396,9 +396,16 @@ a fake terminal app that runs each run meant for the user's terminal under `/bin
 (`Terminal`, through `WithTerminal`; `Close` hangs it up mid-run), and `Ended` and `Await`,
 which look again only when the engine's `Changed` says the runs changed, never on a timer
 (`AwaitShell`, for the shell the engine notes without telling, alone polls); only tests
-may import it either. The repoguard guards on SQL and
-on the git verbs the app runs treat both test-support packages as they treat `_test.go`
-files.
+may import it either. `internal/github/githubtest` holds the fakes of `internal/github` the
+suites share, which `internal/testutil` cannot hold as `internal/github` imports it: `Tokens`,
+a token source that lends in turn, fails as told, and records what it was told to forget;
+`Calls`, a fake GitHub's requests counted by name and in order; and `BadCredentials`,
+GitHub refusing the token; only tests may import it too.
+`internal/localrepos/localrepostest` holds the fake clone root the hooks, scripts, and
+release suites share (`Clones`: the roots, the clones listed in them, and each clone's
+origin, each read counted, failed, or hooked as a test says); only tests may import it as
+well. The repoguard guards on SQL and on the git verbs the app runs treat every
+test-support package as they treat `_test.go` files.
 
 ## internal/budget and internal/github
 
@@ -3266,7 +3273,10 @@ What the user sees is in `docs/desktop.md`'s *Merge it and Post the agent's revi
   method) or `auto_merge`, and only `comment`, `request_changes`, or `approve`;
   `TestMergeAndReviewReachNoForbiddenAction` parses the adapter and fails on
   `merge_bypass`, `approve_auto_merge`, a close, approving workflow runs, or sending
-  `approve_merge`, whose offer it only reads.
+  `approve_merge`, whose offer it only reads. A merge GitHub refuses, by the merge state the
+  sheet reads right before it or by the merge itself (`github.ErrNotMergeable`), merged
+  nothing, so `mergeSent` makes it not offered, in the sheet's words, never a failure after
+  which GitHub may have taken it.
 - **Ask first** (`askFirst`): both steps ask again once reached (`followsRun`, the wait's
   words from `followWords`), whatever the routine's OK to start, and `Approve` records the
   OK on the step (`stepRun.OK`), so the card shows what the run came to. The window's card
@@ -3374,14 +3384,15 @@ open matches that haven't started (waiting, blocked, queued), real ones alone, n
 for that section.
 
 **Run a routine** (`RunNow(id, itemID, anyway)`): a manual match, once per click, counting
-toward no cap or try; with `anyway`, on an item its conditions don't match but of a kind it acts
-on, under a manual fire key. Every limit of a start still holds it. Without `anyway`, an item its
+toward no cap or try, only on an item of a kind it acts on (a click holds whatever the trigger,
+so the kinds are checked first); with `anyway`, on such an item its conditions don't match too,
+under a manual fire key. Every limit of a start still holds it. Without `anyway`, an item its
 conditions don't match is refused with a `RefusalError` (`refusal.go`) whose code is
 `RefusalNoMatch`, its words naming the first condition that fails and its chain holding
 `ErrNoMatch`; `desktop.MarshalError` sends the window `{"code": "noMatch"}` beside them, as
 `update.RefusalError`'s codes go, so the window offers Run anyway from the code, never the
 words, and never asks `Explain` for it. Every other refusal, the same `ErrNoMatch` for a match
-that is gone and a Run anyway on a kind it doesn't act on among them, carries no code.
+that is gone and a run, anyway or not, on a kind it doesn't act on among them, carries no code.
 
 **Preview** (`PreviewRun(draft, itemID)`) is `Previewer` (core's `runPreviews`): the launcher's
 own `Preview` of the same `routineRequest` a start would launch, with where each setting came

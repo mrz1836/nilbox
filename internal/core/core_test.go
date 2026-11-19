@@ -51,10 +51,22 @@ func programNames(r *testutil.Runner) []string {
 	return names
 }
 
-// testOptions returns the Options a test starts a Core with: a fresh data directory, a
-// fresh home holding dirs (made as testutil.ClaudeHome makes them), and a runner that
-// runs no program. A test sets whatever else it needs on the result.
+// testOptions returns the Options a test starts a Core with: a fresh data directory
+// holding a migrated database (testutil.DBFile, so a start runs no migration), a fresh
+// home holding dirs (made as testutil.ClaudeHome makes them), and a runner that runs no
+// program. A test sets whatever else it needs on the result.
 func testOptions(t *testing.T, dirs ...string) Options {
+	t.Helper()
+
+	opts := noDataOptions(t, dirs...)
+	testutil.DBFile(t, opts.Paths.DB)
+
+	return opts
+}
+
+// noDataOptions returns testOptions with a data directory that doesn't exist yet, for a
+// test of a start with no database.
+func noDataOptions(t *testing.T, dirs ...string) Options {
 	t.Helper()
 
 	return Options{

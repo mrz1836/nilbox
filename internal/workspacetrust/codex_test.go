@@ -215,6 +215,105 @@ func TestCodexTrustRefusesRelativePaths(t *testing.T) {
 	require.NoError(t, workspacetrust.Codex{}.Trust(t.Context(), "", []string{worktree}), "no home, no default profile")
 }
 
+func TestCodexTrustEscapesControlCharactersInAPath(t *testing.T) {
+	t.Parallel()
+
+	home := testutil.RealTempDir(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".codex"), 0o700))
+
+	odd := filepath.Join(home, "a\nnew line, a\ttab, and a \x01 bell")
+	require.NoError(t, os.MkdirAll(odd, 0o700))
+
+	require.NoError(t, workspacetrust.Codex{Home: home}.Trust(t.Context(), "", []string{odd}))
+
+	data, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml")) //nolint:gosec // the test's own file
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `a\nnew line, a\ttab, and a \u0001 bell`, "escaped, so the key stays on one line")
+	assert.Equal(t, map[string]string{odd: "trusted"}, trustLevels(t, filepath.Join(home, ".codex", "config.toml")))
+}
+
+func TestCodexTrustLeavesProjectsItCantReadAlone(t *testing.T) {
+	t.Parallel()
+
+	home, _, clone := codexDirs(t)
+	config := filepath.Join(home, ".codex", "config.toml")
+
+	for content, logged := range map[string]string{
+		"projects = 5\n": "Codex's config could not be read",
+		"[projects]\n" + strconv.Quote(clone) + " = \"trusted\"\n": "left a Codex project's own trust setting as it is",
+	} {
+		require.NoError(t, os.WriteFile(config, []byte(content), 0o600))
+
+		var logs testutil.Logs
+
+		require.NoError(t, workspacetrust.Codex{Home: home, Logger: logs.Logger()}.Trust(t.Context(), "", []string{clone}),
+			content)
+
+		data, err := os.ReadFile(config) //nolint:gosec // the test's own file
+		require.NoError(t, err)
+		assert.Equal(t, content, string(data), "nothing is written")
+		assert.Contains(t, logs.String(), logged, content)
+	}
+}
+
+func TestCodexTrustReportsWhatItCantResolveReadOrWrite(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a folder that is gone", func(t *testing.T) {
+		t.Parallel()
+
+		home, _, _ := codexDirs(t)
+
+		err := workspacetrust.Codex{Home: home}.Trust(t.Context(), "", []string{filepath.Join(home, "gone")})
+		require.ErrorIs(t, err, os.ErrNotExist)
+		require.ErrorContains(t, err, "resolve")
+		assert.NoFileExists(t, filepath.Join(home, ".codex", "config.toml"))
+	})
+
+	t.Run("a config that is a link to itself", func(t *testing.T) {
+		t.Parallel()
+
+		home, worktree, _ := codexDirs(t)
+		config := filepath.Join(home, ".codex", "config.toml")
+		require.NoError(t, os.Symlink(config, config))
+
+		require.ErrorContains(t, workspacetrust.Codex{Home: home}.Trust(t.Context(), "", []string{worktree}), "resolve "+config)
+	})
+
+	t.Run("a config it can't read", func(t *testing.T) {
+		t.Parallel()
+		testutil.SkipAsRoot(t)
+
+		home, worktree, _ := codexDirs(t)
+		config := filepath.Join(home, ".codex", "config.toml")
+		require.NoError(t, os.WriteFile(config, []byte("model = \"x\"\n"), 0o600))
+		require.NoError(t, os.Chmod(config, 0o000))
+		t.Cleanup(func() { _ = os.Chmod(config, 0o600) })
+
+		require.ErrorIs(t, workspacetrust.Codex{Home: home}.Trust(t.Context(), "", []string{worktree}), os.ErrPermission)
+	})
+
+	t.Run("a config folder it can't write", func(t *testing.T) {
+		t.Parallel()
+		testutil.SkipAsRoot(t)
+
+		home, worktree, _ := codexDirs(t)
+		dir := filepath.Join(home, ".codex")
+		config := filepath.Join(dir, "config.toml")
+		require.NoError(t, os.WriteFile(config, []byte("model = \"x\"\n"), 0o600))
+		require.NoError(t, os.Chmod(dir, 0o500))       //nolint:gosec // read-only, so nothing can be created in it
+		t.Cleanup(func() { _ = os.Chmod(dir, 0o700) }) //nolint:gosec // restoring the test's own directory
+
+		err := workspacetrust.Codex{Home: home}.Trust(t.Context(), "", []string{worktree})
+		require.ErrorIs(t, err, os.ErrPermission)
+		require.ErrorContains(t, err, "write "+config)
+
+		data, readErr := os.ReadFile(config) //nolint:gosec // the test's own file
+		require.NoError(t, readErr)
+		assert.Equal(t, "model = \"x\"\n", string(data), "the config is left as it was")
+	})
+}
+
 func TestClaudeTrustGrantsEachFolder(t *testing.T) {
 	t.Parallel()
 

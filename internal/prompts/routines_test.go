@@ -108,3 +108,48 @@ func TestARenameIsFollowed(t *testing.T) {
 
 	assert.Equal(t, [][2]string{{"mine", "ours"}}, told.told)
 }
+
+// errRoutinesUnreadable is the error unreadableRoutines returns.
+var errRoutinesUnreadable = errors.New("routines unreadable")
+
+// unreadableRoutines is a list of routines that cannot be read.
+type unreadableRoutines struct{}
+
+func (unreadableRoutines) RoutineUses(context.Context) ([]RoutineUse, error) {
+	return nil, errRoutinesUnreadable
+}
+
+func TestDeleteSaysHowManyRoutinesRunThePrompt(t *testing.T) {
+	t.Parallel()
+
+	s := withRoutines(t, routineUses{
+		{Routine: "Fix my checks", Starter: "fix-checks"}, {Routine: "Fix theirs", Nickname: "fix checks"},
+	}, nil)
+	require.NoError(t, s.SetSlotDefault(t.Context(), DefaultSlotChecksFailing, 0))
+
+	err := s.Delete(t.Context(), byNickname(t, s, "Fix checks").ID)
+	require.ErrorIs(t, err, ErrPromptInUse)
+	assert.Contains(t, err.Error(), "used by 2 routines")
+}
+
+func TestRoutinesThatCannotBeReadAreReported(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.DB(t)
+	s := NewService(Config{Store: NewStore(db, nil), Usage: launchDefaults{db: db}, Routines: unreadableRoutines{}})
+	require.NoError(t, Seed(t.Context(), s.store))
+
+	all, err := s.store.All(t.Context())
+	require.NoError(t, err)
+
+	_, err = s.List(t.Context())
+	require.ErrorIs(t, err, errRoutinesUnreadable)
+	require.ErrorContains(t, err, "read where the routines use the prompts")
+
+	err = s.Delete(t.Context(), all[0].ID)
+	require.ErrorIs(t, err, errRoutinesUnreadable, "a prompt a routine may run is never deleted unchecked")
+
+	after, err := s.store.All(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, all, after)
+}

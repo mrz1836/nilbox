@@ -2,13 +2,16 @@ package repoguard_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -377,22 +380,84 @@ type listedPackage struct {
 	Imports    []string `json:"Imports"`
 }
 
-// listPackages returns how go list describes each of pkgs when built for goos: what it
-// depends on, directly or not, and what it imports itself.
-func listPackages(t *testing.T, root, goos string, pkgs []string) []listedPackage {
+// listing is how go list describes the packages the boundaries and the leaves name, for
+// each OS in buildOSes, keyed by OS and then by import path, and the module's path.
+type listing struct {
+	module string
+	byOS   map[string]map[string]listedPackage
+}
+
+// sharedListing runs go list once per OS per test binary, for TestPackageBoundaries and
+// TestLeafImports alike.
+var sharedListing = sync.OnceValues(listGuarded) //nolint:gochecknoglobals // one read-only listing per test binary
+
+// listed returns the shared listing, skipping t when the go command is not available
+// and failing it when go list fails.
+func listed(t *testing.T) listing {
 	t.Helper()
 
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("the go command is not available")
+	}
+
+	l, err := sharedListing()
+	require.NoError(t, err)
+
+	return l
+}
+
+// listGuarded lists every package a boundary or a leaf names, for each OS in buildOSes.
+func listGuarded() (listing, error) {
+	root, err := findModuleRoot()
+	if err != nil {
+		return listing{}, err
+	}
+
+	module, err := readModulePath(root)
+	if err != nil {
+		return listing{}, err
+	}
+
+	var pkgs []string
+
+	for _, r := range boundaries() {
+		pkgs = append(pkgs, module+"/"+r.pkg)
+	}
+
+	for _, l := range leaves() {
+		pkgs = append(pkgs, module+"/"+l.pkg)
+	}
+
+	slices.Sort(pkgs)
+	pkgs = slices.Compact(pkgs)
+
+	l := listing{module: module, byOS: map[string]map[string]listedPackage{}}
+
+	for _, goos := range buildOSes() {
+		if l.byOS[goos], err = listPackages(root, goos, pkgs); err != nil {
+			return listing{}, err
+		}
+	}
+
+	return l, nil
+}
+
+// listPackages returns how go list describes each of pkgs when built for goos, keyed by
+// import path: what it depends on, directly or not, and what it imports itself.
+func listPackages(root, goos string, pkgs []string) (map[string]listedPackage, error) {
 	args := append([]string{"list", "-json=ImportPath,Deps,Imports"}, pkgs...)
 
-	list := exec.CommandContext(t.Context(), "go", args...) //nolint:gosec // argv only, no shell
+	list := exec.CommandContext(context.Background(), "go", args...) //nolint:gosec // argv only, no shell
 	list.Dir = root
 
 	list.Env = append(os.Environ(), "GOOS="+goos)
 
 	out, err := list.Output()
-	require.NoError(t, err, "go list %s for %s", strings.Join(pkgs, " "), goos)
+	if err != nil {
+		return nil, fmt.Errorf("go list %s for %s: %w", strings.Join(pkgs, " "), goos, err)
+	}
 
-	var listed []listedPackage
+	listed := make(map[string]listedPackage, len(pkgs))
 
 	dec := json.NewDecoder(bytes.NewReader(out))
 
@@ -401,29 +466,15 @@ func listPackages(t *testing.T, root, goos string, pkgs []string) []listedPackag
 
 		err = dec.Decode(&p)
 		if errors.Is(err, io.EOF) {
-			break
+			return listed, nil
 		}
 
-		require.NoError(t, err)
+		if err != nil {
+			return nil, fmt.Errorf("read go list for %s: %w", goos, err)
+		}
 
-		listed = append(listed, p)
+		listed[p.ImportPath] = p
 	}
-
-	return listed
-}
-
-// packageDeps returns every package each of pkgs depends on, directly or not, when built
-// for goos, keyed by import path.
-func packageDeps(t *testing.T, root, goos string, pkgs []string) map[string][]string {
-	t.Helper()
-
-	deps := make(map[string][]string, len(pkgs))
-
-	for _, p := range listPackages(t, root, goos, pkgs) {
-		deps[p.ImportPath] = p.Deps
-	}
-
-	return deps
 }
 
 // strayImports returns "pkg imports dep (why)" for every import of a leaf's package that
@@ -460,17 +511,17 @@ func dependsOn(deps []string, forbidden string) []string {
 }
 
 // crossings returns "pkg depends on dep (why)" for every forbidden dependency of the
-// rule's package, given deps keyed by import path.
-func crossings(t *testing.T, module string, r boundary, deps map[string][]string) []string {
+// rule's package, given the packages go list described, keyed by import path.
+func crossings(t *testing.T, module string, r boundary, pkgs map[string]listedPackage) []string {
 	t.Helper()
 
-	pkgDeps, ok := deps[module+"/"+r.pkg]
+	p, ok := pkgs[module+"/"+r.pkg]
 	require.True(t, ok, "%s is gone; update this guard", r.pkg)
 
 	var found []string
 
 	for _, f := range r.forbidden {
-		for _, dep := range dependsOn(pkgDeps, module+"/"+f) {
+		for _, dep := range dependsOn(p.Deps, module+"/"+f) {
 			found = append(found, r.pkg+" depends on "+strings.TrimPrefix(dep, module+"/")+" ("+r.why+")")
 		}
 	}
@@ -481,26 +532,13 @@ func crossings(t *testing.T, module string, r boundary, deps map[string][]string
 func TestPackageBoundaries(t *testing.T) {
 	t.Parallel()
 
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("the go command is not available")
-	}
-
-	root := moduleRoot(t)
-	module := modulePath(t, root)
-	rules := boundaries()
-
-	pkgs := make([]string, 0, len(rules))
-	for _, r := range rules {
-		pkgs = append(pkgs, module+"/"+r.pkg)
-	}
+	l := listed(t)
 
 	var found []string
 
 	for _, goos := range buildOSes() {
-		deps := packageDeps(t, root, goos, pkgs)
-
-		for _, r := range rules {
-			for _, c := range crossings(t, module, r, deps) {
+		for _, r := range boundaries() {
+			for _, c := range crossings(t, l.module, r, l.byOS[goos]) {
 				found = append(found, goos+": "+c)
 			}
 		}
@@ -513,30 +551,16 @@ func TestPackageBoundaries(t *testing.T) {
 func TestLeafImports(t *testing.T) {
 	t.Parallel()
 
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("the go command is not available")
-	}
-
-	root := moduleRoot(t)
-	module := modulePath(t, root)
-	rules := leaves()
-
-	pkgs := make([]string, 0, len(rules))
-	byPath := make(map[string]leaf, len(rules))
-
-	for _, l := range rules {
-		pkgs = append(pkgs, module+"/"+l.pkg)
-		byPath[module+"/"+l.pkg] = l
-	}
+	l := listed(t)
 
 	var found []string
 
 	for _, goos := range buildOSes() {
-		listed := listPackages(t, root, goos, pkgs)
-		require.Len(t, listed, len(rules), "a leaf is gone; update this guard")
+		for _, rule := range leaves() {
+			p, ok := l.byOS[goos][l.module+"/"+rule.pkg]
+			require.True(t, ok, "%s is gone; update this guard", rule.pkg)
 
-		for _, p := range listed {
-			for _, s := range strayImports(module, byPath[p.ImportPath], p.Imports) {
+			for _, s := range strayImports(l.module, rule, p.Imports) {
 				found = append(found, goos+": "+s)
 			}
 		}

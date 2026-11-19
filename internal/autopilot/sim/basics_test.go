@@ -212,3 +212,21 @@ func TestDryRunRecordsWhatWouldRunAndBlocksNothingReal(t *testing.T) {
 		assert.Len(t, s.Runner.Started(), 1)
 	})
 }
+
+func TestTheBuilderSuggestsWhatTheInboxStored(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		s := sim.New(t)
+		s.World.Add(sim.Item{Number: 1, Listed: true, Labels: []string{"dependencies"}, Checks: passing, Passed: 2})
+		s.Begin()
+		s.Refresh()
+
+		got, err := s.Service.Suggest(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, autopilot.Suggestions{
+			Authors: []string{}, Bots: []string{"dependabot"}, Owners: []string{sim.Owner}, Labels: []string{"dependencies"},
+			Checks: []string{},
+		}, got, "the bot that opened it, its repository's owner, and its label; no check was read")
+	})
+}

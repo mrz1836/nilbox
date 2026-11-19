@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -407,7 +408,7 @@ func TestCheckNowNeverOverlapsAPass(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		client := newGatedClient(1)
 		svc := NewService(Config{
-			Pool: db, Tokens: &fakeTokens{value: "test-token-not-real"}, Client: client, Rules: &fakeRules{},
+			Pool: db, Tokens: githubtest.NewTokens(), Client: client, Rules: &fakeRules{},
 		})
 
 		stop := runSyncer(t, NewSyncer(svc, nil, nil))
@@ -448,7 +449,7 @@ func TestSyncerSkipsATimerThatFiresDuringCheckNow(t *testing.T) {
 		// The Syncer's first listing goes through; the second, CheckNow's, waits.
 		client := newGatedClient(2)
 		svc := NewService(Config{
-			Pool: db, Tokens: &fakeTokens{value: "test-token-not-real"}, Client: client, Rules: &fakeRules{},
+			Pool: db, Tokens: githubtest.NewTokens(), Client: client, Rules: &fakeRules{},
 		})
 
 		stop := runSyncer(t, NewSyncer(svc, nil, nil))

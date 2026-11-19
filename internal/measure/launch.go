@@ -88,6 +88,10 @@ type LaunchOptions struct {
 	// uses the app's default.
 	Runner execpath.Runner
 
+	// Finder finds the agent's program, for the launch and for the process it looks for;
+	// nil searches the PATH and the well-known directories under Home, as the app does.
+	Finder execpath.Finder
+
 	// Logger receives the app's log records; nil discards them.
 	Logger *slog.Logger
 }
@@ -175,7 +179,12 @@ func RunLaunch(ctx context.Context, opts LaunchOptions) (LaunchReport, error) {
 		return LaunchReport{}, err
 	}
 
-	binary, err := execpath.Search{Home: opts.Home}.Find(a.Command)
+	finder := opts.Finder
+	if finder == nil {
+		finder = execpath.Search{Home: opts.Home}
+	}
+
+	binary, err := finder.Find(a.Command)
 	if err != nil {
 		return LaunchReport{}, fmt.Errorf("find %s: %w", a.Name, err)
 	}
@@ -236,11 +245,12 @@ func newLaunchFixture(ctx context.Context, dir string, opts LaunchOptions, runne
 	}
 
 	c, err := core.Bootstrap(ctx, core.Options{
-		Paths:   appdata.NewPaths(filepath.Join(dir, "data")),
-		Home:    opts.Home,
-		Version: opts.Version,
-		Runner:  stepRunner{inner: runner, steps: steps},
-		Logger:  opts.Logger,
+		Paths:       appdata.NewPaths(filepath.Join(dir, "data")),
+		Home:        opts.Home,
+		Version:     opts.Version,
+		Runner:      stepRunner{inner: runner, steps: steps},
+		AgentFinder: opts.Finder,
+		Logger:      opts.Logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("start the app on the scratch database: %w", err)

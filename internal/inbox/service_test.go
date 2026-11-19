@@ -17,54 +17,22 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/trust"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
-// fakeToken is a placeholder that matches no real token format.
-const fakeToken = "test-token-not-real"
+// fakeToken is the token the fake token source lends: a placeholder that matches no real
+// token format.
+const fakeToken = githubtest.Token
 
 var (
 	errFakeNetwork = errors.New("network unreachable")
 	errFakeBroken  = errors.New("refresher broke")
 	errNotParallel = errors.New("the inbox query waited for a details request that never started")
 )
-
-// fakeTokens hands out a fixed token, or fails, and records the tokens it is told to
-// forget. It is safe for concurrent use; a test reads its fields once the calls it made
-// have returned.
-type fakeTokens struct {
-	mu     sync.Mutex
-	err    error
-	calls  int
-	forgot []string
-}
-
-func (f *fakeTokens) Token(ctx context.Context) (github.Token, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.calls++
-
-	if err := ctx.Err(); err != nil {
-		return github.Token{}, err
-	}
-
-	if f.err != nil {
-		return github.Token{}, f.err
-	}
-
-	return github.NewToken(fakeToken), nil
-}
-
-func (f *fakeTokens) Forget(tok github.Token) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.forgot = append(f.forgot, tok.Reveal())
-}
 
 // fakeClient returns canned results. The inbox and rate-limit fetches run concurrently.
 // Like the real client, it scrubs the token out of every error it returns, so a canned
@@ -465,7 +433,7 @@ type harness struct {
 	svc    *Service
 	pool   *sql.DB
 	path   string
-	tokens *fakeTokens
+	tokens *githubtest.Tokens
 	client *fakeClient
 	clock  *testutil.Clock
 	events *inboxEvents
@@ -504,7 +472,7 @@ func newHarness(t *testing.T) *harness {
 	h := &harness{
 		pool:   testutil.DBAt(t, path),
 		path:   path,
-		tokens: &fakeTokens{},
+		tokens: githubtest.NewTokens(),
 		client: &fakeClient{limits: restLimits(), avatar: fakeAvatar()},
 		clock:  testutil.NewClock(time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)),
 		events: &inboxEvents{},
@@ -1258,7 +1226,7 @@ func TestRefreshRecordsTokenErrors(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.tokens.err = uierr.New("Install the GitHub CLI.", github.ErrGHNotFound)
+	h.tokens.Fail(uierr.New("Install the GitHub CLI.", github.ErrGHNotFound))
 
 	// The error keeps its whole chain for the logs; the snapshot keeps what the user is
 	// told.
@@ -1322,11 +1290,11 @@ func TestRefreshNotifies(t *testing.T) {
 	h := newHarness(t)
 	h.seed(t, nil, nil, nil)
 	assert.Equal(t, 1, h.events.Count())
-	assert.Equal(t, 1, h.tokens.calls, "the token is borrowed on every refresh")
+	assert.Equal(t, 1, h.tokens.Loans(), "the token is borrowed on every refresh")
 
 	h.refresh(t)
 	assert.Equal(t, 2, h.events.Count())
-	assert.Equal(t, 2, h.tokens.calls)
+	assert.Equal(t, 2, h.tokens.Loans())
 }
 
 func TestSnapshotBeforeFirstRefresh(t *testing.T) {

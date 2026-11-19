@@ -91,7 +91,7 @@ func TestAScheduleFiresOnTheTickOnceItsTimeComes(t *testing.T) {
 		assert.Empty(t, s.Ledger(), "at 09:00 it isn't due")
 
 		monday := sim.Start()
-		until(s, monday.Add(59*time.Minute), true)
+		s.Reach(monday.Add(59*time.Minute), true)
 		assert.Empty(t, s.Ledger(), "at 09:59 it still isn't")
 
 		// The tick after 10:00 fires it, with no refresh between: the clock alone decides.
@@ -99,12 +99,14 @@ func TestAScheduleFiresOnTheTickOnceItsTimeComes(t *testing.T) {
 		assert.Equal(t, []string{"schedule:2026-11-16", "schedule:2026-11-16"}, keys(s))
 		assert.Len(t, s.Notices.Told(), 2, "each match is told of on its own")
 
-		// The rest of the day, every tick and refresh finds its occurrence recorded.
-		until(s, monday.Add(14*time.Hour), true)
+		// The rest of the day, every tick and refresh finds its occurrence recorded: the
+		// half hour after it fired, and the evening, woken from a sleep.
+		s.Advance(30*time.Minute, true)
+		s.Reach(monday.Add(14*time.Hour), true)
 		assert.Len(t, s.Ledger(), 2, "once a day")
 
 		// The next day at its time, it fires again, on the new day's key.
-		until(s, monday.Add(25*time.Hour+2*time.Minute), true)
+		s.Reach(monday.Add(25*time.Hour+2*time.Minute), true)
 		assert.Equal(t, []string{
 			"schedule:2026-11-16", "schedule:2026-11-16", "schedule:2026-11-17", "schedule:2026-11-17",
 		}, keys(s))
@@ -137,7 +139,7 @@ func TestAScheduleMissedOnADayGoneWaitsForItsNextTime(t *testing.T) {
 		s.Refresh()
 		assert.Empty(t, s.Ledger(), "Monday's time is gone, and Tuesday's hasn't come")
 
-		until(s, sim.Start().Add(25*time.Hour+2*time.Minute), true)
+		s.Reach(sim.Start().Add(25*time.Hour+2*time.Minute), true)
 		assert.Equal(t, []string{"schedule:2026-11-17"}, keys(s), "Tuesday's, once")
 	})
 }
@@ -150,7 +152,7 @@ func TestAWeekdayScheduleSkipsTheWeekend(t *testing.T) {
 		friday := time.Date(2026, time.November, 20, 9, 0, 0, 0, time.UTC)
 		s, _ := scheduleRig(t, friday, 1, scheduled(catalog.EveryWeekday, "09:30", "", notifyStep()))
 
-		until(s, friday.Add(32*time.Minute), true)
+		s.Reach(friday.Add(32*time.Minute), true)
 		require.Equal(t, []string{"schedule:2026-11-20"}, keys(s))
 
 		// Saturday and Sunday around 09:30 the Mac is awake, and nothing fires.
@@ -180,7 +182,7 @@ func TestAScheduleKeepsItsTimeOfDayAcrossTheChangeOfClocks(t *testing.T) {
 		// A day between two refreshes asks before catching up; this timeline is about clocks.
 		s.Change(func(c *autopilotprefs.Config) { c.CatchUpHours = autopilotprefs.MaxCatchUpHours })
 
-		until(s, time.Date(2026, time.October, 31, 10, 2, 0, 0, ny), false)
+		s.Reach(time.Date(2026, time.October, 31, 10, 2, 0, 0, ny), false)
 		require.Equal(t, []string{"schedule:2026-10-31"}, keys(s))
 
 		// Sunday at 09:30 EST is 14:30 UTC, past Saturday's 10:00 EDT by a day in UTC: a
@@ -201,17 +203,17 @@ func TestAScheduleNeverFiresTwiceInADayWhenTheClockIsSetBack(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s, _ := scheduleRig(t, time.Time{}, 1, scheduled(catalog.EveryDay, "10:00", "", notifyStep()))
 
-		until(s, sim.Start().Add(62*time.Minute), false)
+		s.Reach(sim.Start().Add(62*time.Minute), false)
 		require.Len(t, s.Ledger(), 1)
 
-		// The user sets the Mac's clock back an hour, past 10:00 again.
+		// The user sets the Mac's clock back an hour, and its ticks pass 10:00 again.
 		s.Clock.Turn(-time.Hour)
-		s.Advance(70*time.Minute, true)
+		s.Reach(sim.Start().Add(65*time.Minute), true)
 		assert.Len(t, s.Ledger(), 1, "the day has had its run")
 
 		// Set forward past midnight, the new day's time fires it once.
 		s.Clock.Turn(14 * time.Hour)
-		until(s, sim.Start().Add(25*time.Hour+2*time.Minute), true)
+		s.Reach(sim.Start().Add(25*time.Hour+2*time.Minute), true)
 		assert.Equal(t, []string{"schedule:2026-11-16", "schedule:2026-11-17"}, keys(s))
 	})
 }
@@ -230,16 +232,17 @@ func TestAScheduleFollowsTheTimeZoneTheMacIsIn(t *testing.T) {
 		s, _ := scheduleRig(t, time.Date(2026, time.November, 16, 9, 0, 0, 0, ny), 1,
 			scheduled(catalog.EveryDay, "10:00", "", notifyStep()))
 
-		until(s, time.Date(2026, time.November, 16, 10, 2, 0, 0, ny), true)
+		s.Reach(time.Date(2026, time.November, 16, 10, 2, 0, 0, ny), true)
 		require.Equal(t, []string{"schedule:2026-11-16"}, keys(s))
 
 		// Flying west, it is 07:02 again in Los Angeles: the same day, already run.
 		s.Clock.Travel(la)
-		until(s, time.Date(2026, time.November, 16, 10, 5, 0, 0, la), true)
+		s.Reach(time.Date(2026, time.November, 16, 10, 5, 0, 0, la), true)
 		assert.Len(t, s.Ledger(), 1, "a day runs once, wherever the Mac is")
 
-		// Tuesday, it fires at 10:00 in Los Angeles, the zone the Mac is in now.
-		until(s, time.Date(2026, time.November, 17, 9, 55, 0, 0, la), true)
+		// Tuesday, it fires at 10:00 in Los Angeles, the zone the Mac is in now: by 09:55
+		// there, three hours past 10:00 in New York, it hasn't.
+		s.Reach(time.Date(2026, time.November, 17, 9, 55, 0, 0, la), true)
 		assert.Len(t, s.Ledger(), 1)
 
 		until(s, time.Date(2026, time.November, 17, 10, 2, 0, 0, la), true)
@@ -258,7 +261,7 @@ func TestADigestTellsOnceWithTheList(t *testing.T) {
 		s.World.Fail(2)
 		s.Refresh()
 
-		until(s, sim.Start().Add(62*time.Minute), false)
+		s.Reach(sim.Start().Add(62*time.Minute), false)
 
 		told := s.Notices.Told()
 		require.Len(t, told, 1, "one notice for the three")

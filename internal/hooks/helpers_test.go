@@ -20,7 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
-	"github.com/mrz1836/nilbox/internal/localrepos"
+	"github.com/mrz1836/nilbox/internal/localrepos/localrepostest"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/scriptrun/scriptruntest"
@@ -82,7 +82,7 @@ type rig struct {
 	root   string
 	env    []string
 	git    *gitread.Git
-	clones *fakeClones
+	clones *localrepostest.Clones
 	tools  *fakeTools
 	status *fakeStatus
 	memory *fakeMemory
@@ -120,7 +120,7 @@ func newRig(t *testing.T) *rig {
 	require.NoError(t, os.MkdirAll(r.root, 0o700))
 
 	r.git = gitread.New(gitread.Config{Env: func() []string { return r.env }})
-	r.clones = &fakeClones{root: r.root, origins: map[string]repo.Name{}}
+	r.clones = localrepostest.New(r.root)
 
 	r.tool("1.13.1", testutil.FakeRun{})
 
@@ -147,7 +147,7 @@ func newLightRig(t *testing.T) *rig {
 	r := &rig{t: t, home: home, root: filepath.Join(home, "projects")}
 	require.NoError(t, os.MkdirAll(r.root, 0o700))
 
-	r.clones = &fakeClones{root: r.root, origins: map[string]repo.Name{}}
+	r.clones = localrepostest.New(r.root)
 
 	return r
 }
@@ -193,17 +193,17 @@ type cloneOpts struct {
 	origin string
 }
 
-// cloneRepos are the repositories rig.clone starts its clones from, one for each name,
-// built once for the test binary by buildClone and copied into each rig that makes one.
-var cloneRepos = testutil.NewGitTemplates(buildClone) //nolint:gochecknoglobals // built once for the whole test binary
+// cloneRepo is the repository rig.clone starts every clone from, whatever its name, built
+// once for the test binary by buildClone and copied into the clone's folder.
+var cloneRepo = testutil.NewGitTemplate(buildClone) //nolint:gochecknoglobals // built once for the whole test binary
 
-// buildClone builds a repository called name, on main, whose one commit, first, holds
-// README.md.
-func buildClone(b *testutil.GitBuild, name string) struct{} {
-	b.WriteFile(filepath.Join(name, "README.md"), "# "+name+"\n")
-	b.Git(name, "-c", "init.defaultBranch=main", "init", "-q")
-	b.Git(name, "add", "README.md")
-	b.Git(name, "commit", "-q", "-m", "first")
+// buildClone builds, at the template's root, a repository on main whose one commit,
+// first, holds README.md.
+func buildClone(b *testutil.GitBuild) struct{} {
+	b.WriteFile("README.md", "# clone\n")
+	b.Git(".", "-c", "init.defaultBranch=main", "init", "-q")
+	b.Git(".", "add", "README.md")
+	b.Git(".", "commit", "-q", "-m", "first")
 
 	return struct{}{}
 }
@@ -212,7 +212,7 @@ func buildClone(b *testutil.GitBuild, name string) struct{} {
 func (r *rig) clone(name string, o cloneOpts) string {
 	r.t.Helper()
 
-	cloneRepos.Copy(r.t, name, r.root)
+	cloneRepo.Copy(r.t, filepath.Join(r.root, name))
 
 	return r.setUp(name, o)
 }
@@ -265,7 +265,7 @@ func (r *rig) setUp(name string, o cloneOpts) string {
 	if o.origin != "" {
 		name, err := repo.Parse(o.origin)
 		require.NoError(r.t, err)
-		r.clones.setOrigin(dir, name)
+		r.clones.SetOrigin(dir, name)
 	}
 
 	return dir
@@ -323,112 +323,6 @@ func cmpMode(mode os.FileMode) os.FileMode {
 	}
 
 	return mode
-}
-
-// fakeClones is the clone root: its folder, the clones made under it, and their origins,
-// with the other locations extra.
-type fakeClones struct {
-	mu      sync.Mutex
-	root    string
-	extra   []localrepos.Location
-	rootErr error
-	dirsErr error
-	origins map[string]repo.Name
-	listed  int
-
-	// rooted and asked count the reads of the root and of an origin; onDirs, when set, is
-	// called as the clones are listed, and onOrigin as an origin is read.
-	rooted   int
-	asked    int
-	onDirs   func()
-	onOrigin func()
-}
-
-func (f *fakeClones) Roots(context.Context) (localrepos.Roots, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.rooted++
-
-	if f.rootErr != nil {
-		return localrepos.Roots{}, f.rootErr
-	}
-
-	return localrepos.NewRoots(f.root, f.extra, "")
-}
-
-// Dirs lists the clones in roots, as localrepos.Roots.Clones does.
-func (f *fakeClones) Dirs(ctx context.Context, roots localrepos.Roots) ([]string, error) {
-	f.mu.Lock()
-	f.listed++
-	err, hook := f.dirsErr, f.onDirs
-	f.mu.Unlock()
-
-	if hook != nil {
-		hook()
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	found, err := roots.Clones(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return found.Dirs, nil
-}
-
-func (f *fakeClones) Origin(_ context.Context, dir string) (repo.Name, bool, error) {
-	f.mu.Lock()
-	f.asked++
-	name, ok := f.origins[dir]
-	hook := f.onOrigin
-	f.mu.Unlock()
-
-	if hook != nil {
-		hook()
-	}
-
-	return name, ok, nil
-}
-
-// counts returns how often the root and an origin were read.
-func (f *fakeClones) counts() (rooted, asked int) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	return f.rooted, f.asked
-}
-
-// hook sets what is called as the clones are listed, and as an origin is read.
-func (f *fakeClones) hook(onDirs, onOrigin func()) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.onDirs, f.onOrigin = onDirs, onOrigin
-}
-
-func (f *fakeClones) setOrigin(dir string, name repo.Name) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.origins[dir] = name
-}
-
-func (f *fakeClones) setDirsErr(err error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	f.dirsErr = err
-}
-
-func (f *fakeClones) listings() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	return f.listed
 }
 
 // fakeTools is what the app knows of go-pre-commit, and the environment entry its fake

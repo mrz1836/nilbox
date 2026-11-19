@@ -46,13 +46,28 @@ func moduleRoot(t *testing.T) string {
 func modulePath(t *testing.T, root string) string {
 	t.Helper()
 
-	body, err := os.ReadFile(filepath.Join(root, "go.mod")) //nolint:gosec // reading this repo's own go.mod
+	module, err := readModulePath(root)
 	require.NoError(t, err)
 
-	m := regexp.MustCompile(`(?m)^module\s+(\S+)`).FindSubmatch(body)
-	require.NotNil(t, m, "go.mod has no module line")
+	return module
+}
 
-	return string(m[1])
+// errNoModuleLine is returned for a go.mod with no module line.
+var errNoModuleLine = errors.New("go.mod has no module line")
+
+// readModulePath reads the module path from the go.mod in root.
+func readModulePath(root string) (string, error) {
+	body, err := os.ReadFile(filepath.Join(root, "go.mod")) //nolint:gosec // reading this repo's own go.mod
+	if err != nil {
+		return "", fmt.Errorf("read go.mod: %w", err)
+	}
+
+	m := regexp.MustCompile(`(?m)^module\s+(\S+)`).FindSubmatch(body)
+	if m == nil {
+		return "", errNoModuleLine
+	}
+
+	return string(m[1]), nil
 }
 
 // readTextFile returns a file's contents, or ok=false for a binary or missing file, with
@@ -941,9 +956,13 @@ func TestWailsAllowed(t *testing.T) {
 
 // testSupportDirs hold the test-support packages, which must never reach the app: the
 // helpers and fakes the test suites share, the runner the suites of scriptrun's kinds
-// share, which builds on them, and Autopilot's simulator.
+// share, which builds on them, Autopilot's simulator, the fakes of internal/github, and
+// the fake clone root.
 func testSupportDirs() []string {
-	return []string{"internal/testutil", "internal/scriptrun/scriptruntest", "internal/autopilot/sim"}
+	return []string{
+		"internal/testutil", "internal/scriptrun/scriptruntest", "internal/autopilot/sim", "internal/github/githubtest",
+		"internal/localrepos/localrepostest",
+	}
 }
 
 // inTestSupport reports whether rel, a path relative to the module, is in a test-support
@@ -1003,7 +1022,11 @@ func TestTestSupportImports(t *testing.T) {
 		"internal/testutil/db.go":                           true,
 		"internal/scriptrun/scriptruntest":                  true,
 		"internal/scriptrun/scriptruntest/scriptruntest.go": true,
+		"internal/github/githubtest/githubtest.go":          true,
+		"internal/github/tokencache.go":                     false,
+		"internal/localrepos/localrepostest/clones.go":      true,
 		"internal/scriptrun/engine.go":                      false,
+		"internal/localrepos/roots.go":                      false,
 		"internal/scriptrun":                                false,
 		"internal/testutilx/a.go":                           false,
 		"internal/hooks/helpers_test.go":                    false,

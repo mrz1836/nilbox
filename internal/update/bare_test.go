@@ -445,6 +445,34 @@ func TestABareBuildFromSourceReadsNothing(t *testing.T) {
 	assert.Zero(t, restarts)
 }
 
+func TestTheBareUpdateSaysWhereTheAppRuns(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, newBareRig(t).bare.Location().OK, "in Applications")
+
+	away := newBareRig(t, func(c *update.BareConfig) {
+		c.Bundle = filepath.Join(filepath.Dir(c.Applications), "Downloads", brand.Name+".app")
+	})
+	assert.False(t, away.bare.Location().OK, "in Downloads")
+}
+
+func TestABareBuildWithNowhereToKeepTheDownloadReadsNothing(t *testing.T) {
+	t.Parallel()
+
+	r := newBareRig(t, func(c *update.BareConfig) { c.Cache = "" })
+	m := r.release(t, next)
+
+	_, found, err := r.bare.Latest(t.Context())
+	require.ErrorIs(t, err, update.ErrOff)
+	assert.False(t, found)
+	assert.Equal(t, "Updates are off: this build has nowhere to read them from.", uierr.Message(err))
+
+	_, err = r.update(t, m)
+	require.ErrorIs(t, err, update.ErrOff)
+	assert.Zero(t, r.feed.manifests.Load())
+	assert.Zero(t, r.feed.downloads.Load())
+}
+
 func TestABareReleaseOutsideApplicationsReadsNothing(t *testing.T) {
 	t.Parallel()
 

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
@@ -94,22 +95,29 @@ func (App) Rehearse() error {
 		return errNeedsMacOS
 	}
 
-	root, err := filepath.Abs(filepath.FromSlash(rehearsalRoot))
+	return hostRunner().rehearseFromEnv(os.UserHomeDir)
+}
+
+// rehearseFromEnv does App.Rehearse's work once it knows it is on macOS: it builds the
+// rehearsal its case= argument and app:rehearse's environment describe in the checkout's
+// bin/rehearsal, its steps naming the data directory under the home folder home finds.
+func (r runner) rehearseFromEnv(home func() (string, error)) error {
+	root, err := filepath.Abs(r.path(rehearsalRoot))
 	if err != nil {
 		return fmt.Errorf("find the rehearsal's folder: %w", err)
 	}
 
-	home, err := os.UserHomeDir()
+	dir, err := home()
 	if err != nil {
 		return fmt.Errorf("find the home folder: %w", err)
 	}
 
-	return rehearse(rehearsalConfig{
-		kase:     mageArg("case"),
-		identity: os.Getenv(envCodesignIdentity),
-		keychain: cleanPath(os.Getenv(envCodesignKeychain)),
+	return r.rehearse(rehearsalConfig{
+		kase:     r.mageArg("case"),
+		identity: r.getenv(envCodesignIdentity),
+		keychain: cleanPath(r.getenv(envCodesignKeychain)),
 		root:     root,
-		home:     home,
+		home:     dir,
 	})
 }
 
@@ -162,7 +170,7 @@ func (c rehearsalConfig) paths() rehearsalPaths {
 // rehearse builds the rehearsal cfg describes, the steps App.Rehearse runs once it knows
 // it is on macOS: it checks cfg before any tool runs, makes the key pair, builds the
 // frontend once, and builds both versions with the identity's keychain on the search list.
-func rehearse(cfg rehearsalConfig) error {
+func (r runner) rehearse(cfg rehearsalConfig) error {
 	if err := cfg.check(); err != nil {
 		return err
 	}
@@ -172,13 +180,13 @@ func rehearse(cfg rehearsalConfig) error {
 		return fmt.Errorf("make the rehearsal's key pair: %w", err)
 	}
 
-	if err = prepareBuild(); err != nil {
+	if err = r.prepareBuild(); err != nil {
 		return err
 	}
 
 	keys := releaseKeys{private: private, public: public}
 
-	return withKeychain(cfg.keychain, func() error { return buildRehearsal(cfg, keys) })
+	return r.withKeychain(cfg.keychain, func() error { return r.buildRehearsal(cfg, keys) })
 }
 
 // rehearsalMeta is the version metadata of a rehearsal build of version: meta, git's,
@@ -197,33 +205,33 @@ func rehearsalMeta(meta buildMeta, version, feed string, key ed25519.PublicKey) 
 // buildRehearsal builds A and B into cfg's folder, signed by cfg's identity, B's zip and
 // manifest signed with keys, breaks what cfg's case breaks, checks each step, and prints
 // the steps to rehearse.
-func buildRehearsal(cfg rehearsalConfig, keys releaseKeys) error {
+func (r runner) buildRehearsal(cfg rehearsalConfig, keys releaseKeys) error {
 	p := cfg.paths()
 	sign := signer{identity: cfg.identity, keychain: cfg.keychain}
-	base := readBuildMeta()
+	base := r.readBuildMeta(context.Background())
 
 	steps := []func() error{
 		func() error { return freshFolder(cfg.root) },
 		func() error {
-			return assembleBundle(bundleSpec{
+			return r.assembleBundle(bundleSpec{
 				bundle: p.a, meta: rehearsalMeta(base, rehearsalFrom, p.feed, keys.public), signer: sign,
 			})
 		},
-		func() error { return verifySignature(p.a, "--deep") },
+		func() error { return r.verifySignature(p.a, "--deep") },
 		func() error {
-			return assembleBundle(bundleSpec{
+			return r.assembleBundle(bundleSpec{
 				bundle: p.b, meta: rehearsalMeta(base, rehearsalTo, p.feed, keys.public), signer: sign,
 			})
 		},
-		func() error { return verifySignature(p.b, "--deep") },
-		func() error { return breakBundle(cfg.kase, p.b) },
+		func() error { return r.verifySignature(p.b, "--deep") },
+		func() error { return r.breakBundle(cfg.kase, p.b) },
 		func() error { return os.MkdirAll(p.feed, 0o755) }, //nolint:gosec // build output, world-readable
-		func() error { return zipBundle(p.b, p.zip) },
+		func() error { return r.zipBundle(p.b, p.zip) },
 		func() error { return writeManifest(p.manifest, rehearsalTo, p.zip, keys) },
-		func() error { return verifyRelease(p.feed, rehearsalTo, keys.public) },
-		func() error { return tamperZip(cfg.kase, p, keys.public) },
+		func() error { return r.verifyRelease(p.feed, rehearsalTo, keys.public) },
+		func() error { return r.tamperZip(cfg.kase, p, keys.public) },
 		func() error { return os.RemoveAll(p.stage) },
-		func() error { return printRehearsal(cfg, p) },
+		func() error { return r.printRehearsal(cfg, p) },
 	}
 
 	for _, step := range steps {
@@ -238,7 +246,7 @@ func buildRehearsal(cfg rehearsalConfig, keys releaseKeys) error {
 // breakBundle, for case=broken, appends brokenMark to the app icon in bundle, a file its
 // signature seals, and checks the signature now fails, as the update's helper will find
 // once it has swapped the bundle in. Any other case leaves the bundle as it is.
-func breakBundle(kase, bundle string) error {
+func (r runner) breakBundle(kase, bundle string) error {
 	if kase != caseBroken {
 		return nil
 	}
@@ -255,11 +263,11 @@ func breakBundle(kase, bundle string) error {
 		return fmt.Errorf("break the bundle: %w", err)
 	}
 
-	if verifySignature(bundle, "--deep") == nil {
+	if r.verifySignature(bundle, "--deep") == nil {
 		return errStillSigned
 	}
 
-	say("Broke " + bundle + " after signing it, as case=broken means: its signature check fails, as it should.")
+	r.say("Broke " + bundle + " after signing it, as case=broken means: its signature check fails, as it should.")
 
 	return nil
 }
@@ -267,7 +275,7 @@ func breakBundle(kase, bundle string) error {
 // tamperZip, for case=tampered, changes one byte in the middle of B's zip, after its
 // manifest was signed, and checks the zip no longer matches the manifest, as the app will
 // find once it downloads it. Any other case leaves the zip as it is.
-func tamperZip(kase string, p rehearsalPaths, key ed25519.PublicKey) error {
+func (r runner) tamperZip(kase string, p rehearsalPaths, key ed25519.PublicKey) error {
 	if kase != caseTampered {
 		return nil
 	}
@@ -287,19 +295,19 @@ func tamperZip(kase string, p rehearsalPaths, key ed25519.PublicKey) error {
 		return fmt.Errorf("tamper with the zip: %w", err)
 	}
 
-	if verifyRelease(p.feed, rehearsalTo, key) == nil {
+	if r.verifyRelease(p.feed, rehearsalTo, key) == nil {
 		return errStillMatches
 	}
 
-	say("Changed one byte of " + filepath.Base(p.zip) + " after signing its manifest, as case=tampered means: " +
+	r.say("Changed one byte of " + filepath.Base(p.zip) + " after signing its manifest, as case=tampered means: " +
 		"it no longer matches, as it should.")
 
 	return nil
 }
 
 // printRehearsal prints the rehearsal's builds and the steps to rehearse its case.
-func printRehearsal(cfg rehearsalConfig, p rehearsalPaths) error {
-	data, err := appdata.RehearsalDir(runtime.GOOS, cfg.home, os.Getenv)
+func (r runner) printRehearsal(cfg rehearsalConfig, p rehearsalPaths) error {
+	data, err := appdata.RehearsalDir(runtime.GOOS, cfg.home, r.getenv)
 	if err != nil {
 		return fmt.Errorf("find the rehearsal's data directory: %w", err)
 	}
@@ -334,7 +342,7 @@ func printRehearsal(cfg rehearsalConfig, p rehearsalPaths) error {
 	}
 
 	for _, line := range lines {
-		say(line)
+		r.say(line)
 	}
 
 	return nil

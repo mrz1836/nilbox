@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/magefile/mage/mg"
-	"github.com/magefile/mage/sh"
 )
 
 const (
@@ -29,7 +28,7 @@ type DB mg.Namespace
 //
 //	magex db:generate
 func (DB) Generate() error {
-	return runSQLC("generate")
+	return hostRunner().runSQLC("generate")
 }
 
 // Check fails when the committed queries differ from what sqlc generates, or when a query
@@ -37,27 +36,32 @@ func (DB) Generate() error {
 //
 //	magex db:check
 func (DB) Check() error {
-	if err := runSQLC("diff"); err != nil {
+	return hostRunner().checkQueries()
+}
+
+// checkQueries does DB.Check's work.
+func (r runner) checkQueries() error {
+	if err := r.runSQLC("diff"); err != nil {
 		return fmt.Errorf("%w; run magex db:generate", err)
 	}
 
-	if err := runSQLC("vet"); err != nil {
+	if err := r.runSQLC("vet"); err != nil {
 		return err
 	}
 
-	fmt.Println("✅ the generated queries are up to date and every query prepares") //nolint:forbidigo // mage target output
+	r.say("✅ the generated queries are up to date and every query prepares")
 
 	return nil
 }
 
-// runSQLC runs one sqlc command, from the repository root, at the pinned version.
-func runSQLC(command string) error {
-	version, err := pinnedVersion(projectEnvFile, sqlcVersionKey)
+// runSQLC runs one sqlc command, from the checkout's root, at the pinned version.
+func (r runner) runSQLC(command string) error {
+	version, err := r.pinnedVersion(projectEnvFile, sqlcVersionKey)
 	if err != nil {
 		return err
 	}
 
-	if err = sh.RunV("go", "run", sqlcCommand+"@"+version, command); err != nil {
+	if err = r.runV("go", "run", sqlcCommand+"@"+version, command); err != nil {
 		return fmt.Errorf("sqlc %s: %w", command, err)
 	}
 

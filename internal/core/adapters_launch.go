@@ -6,6 +6,7 @@ import (
 	"maps"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/sensitive"
@@ -28,6 +29,16 @@ func launchSettings(s settings.Settings) launcher.LaunchSettings {
 		FastMode:        s.CodexFast,
 		APIKeys:         s.APIKeys(),
 	}
+}
+
+// agentFinder is what a launch finds the agent's program with: opts' AgentFinder, else
+// search.
+func agentFinder(opts Options, search execpath.Search) execpath.Finder {
+	if opts.AgentFinder != nil {
+		return opts.AgentFinder
+	}
+
+	return search
 }
 
 // launchFiles checks the files of the pull requests a launch is for (launcher.FileChecker):

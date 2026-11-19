@@ -230,7 +230,7 @@ func TestRefreshNowJoinsTheRefreshInFlight(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		h, _ := itemHarness(t)
 		c := h.gated()
-		tokens := h.tokens.calls
+		tokens := h.tokens.Loans()
 
 		first := refreshUntilGate(t, h, c)
 		second := async(func() (Snapshot, error) { return h.svc.Refresh(t.Context()) })
@@ -243,7 +243,7 @@ func TestRefreshNowJoinsTheRefreshInFlight(t *testing.T) {
 		require.NoError(t, b.err)
 		assert.Equal(t, a.snap, b.snap, "both callers get the one refresh's snapshot")
 		assert.Equal(t, int32(1), c.inboxCalls.Load(), "GitHub was asked once")
-		assert.Equal(t, tokens+1, h.tokens.calls, "the token was borrowed once")
+		assert.Equal(t, tokens+1, h.tokens.Loans(), "the token was borrowed once")
 	})
 }
 
@@ -441,12 +441,12 @@ func TestARefreshBorrowsTheTokenAgainWhenGitHubRefusesIt(t *testing.T) {
 	c := h.gated()
 	c.refusals.Store(1)
 
-	tokens := h.tokens.calls
+	tokens := h.tokens.Loans()
 	snap := h.refresh(t)
 
 	assert.Empty(t, snap.LastError)
-	assert.Equal(t, []string{fakeToken}, h.tokens.forgot, "the refused token was given back")
-	assert.Equal(t, tokens+2, h.tokens.calls, "a fresh token was borrowed for the one retry")
+	assert.Equal(t, []string{fakeToken}, h.tokens.Forgot(), "the refused token was given back")
+	assert.Equal(t, tokens+2, h.tokens.Loans(), "a fresh token was borrowed for the one retry")
 	assert.Equal(t, int32(2), c.inboxCalls.Load())
 }
 
@@ -461,7 +461,7 @@ func TestARefreshRefusedTwiceFails(t *testing.T) {
 	require.ErrorIs(t, err, github.ErrUnexpectedStatus)
 	assert.True(t, github.IsBadCredentials(err))
 	assert.Contains(t, snap.LastError, "HTTP 401")
-	assert.Equal(t, []string{fakeToken}, h.tokens.forgot, "the token is given back once, and retried once")
+	assert.Equal(t, []string{fakeToken}, h.tokens.Forgot(), "the token is given back once, and retried once")
 	assert.Equal(t, int32(2), c.inboxCalls.Load())
 }
 
@@ -473,7 +473,7 @@ func TestRefreshItemBorrowsTheTokenAgainWhenGitHubRefusesIt(t *testing.T) {
 
 	_, err := h.svc.RefreshItem(t.Context(), id)
 	require.ErrorIs(t, err, github.ErrUnexpectedStatus)
-	assert.Equal(t, []string{fakeToken}, h.tokens.forgot)
+	assert.Equal(t, []string{fakeToken}, h.tokens.Forgot())
 	assert.Len(t, h.client.itemIDs, 2, "the item was asked about once more with a fresh token")
 }
 

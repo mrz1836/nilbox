@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -452,6 +453,18 @@ func TestEveryRefusalLeavesNothingBehind(t *testing.T) {
 		want    error
 	}{
 		{name: "no checksums file", change: func(_ *setup, req *Request) { req.Checksums = "missing.txt" }, want: ErrNoChecksums},
+		{name: "an asset name that reaches out", change: func(s *setup, req *Request) {
+			s.d.r.assets[0].Name, req.Archive = "../"+archiveName, "../"+archiveName
+		}, want: ErrArchive},
+		{name: "an archive listed with no size", change: func(s *setup, _ *Request) { s.d.r.assets[0].Size = 0 }, want: ErrArchive},
+		{name: "an archive that isn't gzip", archive: func(*testing.T) []byte { return []byte("not a gzip stream") }, want: ErrArchive},
+		{name: "an archive cut off in the program", archive: func(t *testing.T) []byte {
+			t.Helper()
+
+			whole := makeArchive(t, entry{name: testBinary, body: goodProgram, size: 256 << 10})
+
+			return whole[:len(whole)/2]
+		}, want: ErrArchive},
 		{name: "no build for this machine", change: func(_ *setup, req *Request) { req.Archive = "mage-x_1.30.2_plan9_386.tar.gz" }, want: ErrNoBuild},
 		{
 			name:   "a checksum mismatch",
@@ -594,11 +607,15 @@ func TestACancelLeavesNothingBehind(t *testing.T) {
 	s := newSetup(t, goodArchive(t))
 	s.d.hang = true
 
-	ctx, cancel := context.WithCancel(t.Context())
-	time.AfterFunc(20*time.Millisecond, cancel)
+	// The cancel comes while the download waits, on the bubble's clock.
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		time.AfterFunc(20*time.Millisecond, cancel)
 
-	_, err := s.in.Install(ctx, s.request(""))
-	require.ErrorIs(t, err, context.Canceled)
+		_, err := s.in.Install(ctx, s.request(""))
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
 	assert.Empty(t, s.leftovers(t))
 	assert.NoFileExists(t, filepath.Join(s.dir, testBinary))
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/event"
@@ -165,4 +166,27 @@ func (s *Events) Count() int {
 	defer s.mu.Unlock()
 
 	return len(s.got)
+}
+
+// Lister is a fake lister of running processes, a procs.Lister as Lister[procs.Process]:
+// Processes answers List, or fails with Err, and counts its calls. A test sets List and
+// Err before the code under test asks, or between its asks. It takes the process type as
+// a parameter so testutil needs no import of procs, whose own tests import testutil.
+type Lister[P any] struct {
+	List []P
+	Err  error
+
+	calls atomic.Int32
+}
+
+// Processes answers List and Err.
+func (l *Lister[P]) Processes(context.Context) ([]P, error) {
+	l.calls.Add(1)
+
+	return l.List, l.Err
+}
+
+// Calls returns how often Processes was asked so far.
+func (l *Lister[P]) Calls() int {
+	return int(l.calls.Load())
 }

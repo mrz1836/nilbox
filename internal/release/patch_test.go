@@ -349,9 +349,9 @@ func TestAListThatCantBePatchedGoesOutOfDate(t *testing.T) {
 			before: func(t *testing.T, r *rig) {
 				t.Helper()
 				read(t, r)
-				r.clones.moveTo("/Users/example/work")
+				r.clones.SetRoot("/Users/example/work")
 			},
-			after:    func(r *rig) { r.clones.moveTo("/Users/example/projects") },
+			after:    func(r *rig) { r.clones.SetRoot("/Users/example/projects") },
 			released: name("web"),
 		},
 		{

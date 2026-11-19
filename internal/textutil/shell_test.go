@@ -64,36 +64,50 @@ func splitBack(words ...string) string {
 	return strconv.Itoa(len(words)) + "\x00" + strings.Join(append(words, ""), "\x00")
 }
 
-// quotingSeeds are strings that exercise both quoters: empty, plain, every special
-// character, newlines, unicode, invalid UTF-8, and a long run of quotes.
-func quotingSeeds() []string {
-	return []string{
-		"",
-		"plain",
-		"it's",
-		`'`,
-		`a "b" \c \\d`,
-		"line\nbreak\r\ttab",
-		"$(echo hi) `id` ; | & * ? ~ $HOME",
-		"unicode: h\u00e9llo \u4e16\u754c \U0001F600 \u202e",
-		`\n \t \r \"`,
-		strings.Repeat(`'"\`, 64),
-		"=ls",
-		"key=value",
-		"a/b.c-d_e=f:g,h+i@j%k",
-		"-n",
-		"*",
-		"\xff\xfe",
+// quoteSeeds start FuzzShellQuote, two strings to a seed so each is one shell run: what
+// TestShellQuote's table doesn't hold, heavy in what a shell reads as more than itself
+// (a lone quote, backslashes, carriage returns, every operator at once, literal escapes,
+// and a long run of quotes).
+func quoteSeeds() [][2]string {
+	return [][2]string{
+		{`'`, `a "b" \c \\d`},
+		{"line\nbreak\r\ttab", "$(echo hi) `id` ; | & * ? ~ $HOME"},
+		{"unicode: h\u00e9llo \u4e16\u754c \U0001F600 \u202e", `\n \t \r \"`},
+		{strings.Repeat(`'"\`, 64), "--flag"},
 	}
+}
+
+// wordSeeds start FuzzShellWord, two strings to a seed: what TestShellWord's table
+// doesn't hold, beside the line ShellSafe draws (an option and a setting it passes, a
+// glob the planted files would match, and invalid UTF-8 it doesn't).
+func wordSeeds() [][2]string {
+	return [][2]string{
+		{"-n", "key=value"},
+		{"*", "\xff\xfe"},
+	}
+}
+
+// readBack checks that a POSIX shell reads the words a quoter made of inputs, joined into
+// one command line, back as exactly inputs, so one shell run checks a whole table.
+func readBack(t *testing.T, quote func(string) string, inputs []string) {
+	t.Helper()
+
+	words := make([]string, 0, len(inputs))
+	for _, s := range inputs {
+		words = append(words, quote(s))
+	}
+
+	assert.Equal(t, splitBack(inputs...), shellWords(t, strings.Join(words, " ")),
+		"the shell reads back exactly the inputs, each one word")
 }
 
 func TestShellWordsSeesAnUnquotedGlobMatch(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, splitBack(plantedFiles()...), shellWords(t, "*"), "a glob left unquoted comes back as the planted files")
-	assert.Equal(t, splitBack("a"), shellWords(t, "?"))
-	assert.Equal(t, splitBack("/usr/bin:/bin", "C"), shellWords(t, `"$PATH" "$LC_ALL"`),
-		"the shell runs with the test's own environment, not the developer's")
+	assert.Equal(t, splitBack(append(plantedFiles(), "a", "/usr/bin:/bin", "C")...),
+		shellWords(t, `* ? "$PATH" "$LC_ALL"`),
+		"a glob left unquoted comes back as the planted files, and the shell runs with the test's own environment, "+
+			"not the developer's")
 }
 
 func TestShellQuote(t *testing.T) {
@@ -120,15 +134,15 @@ func TestShellQuote(t *testing.T) {
 		{name: "globs and tilde", input: "~/x/*.go [ab]?", want: "'~/x/*.go [ab]?'"},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	inputs := make([]string, 0, len(tests))
 
-			got := textutil.ShellQuote(tt.input)
-			assert.Equal(t, tt.want, got)
-			assert.Equal(t, splitBack(tt.input), shellWords(t, got), "the shell reads back exactly the input")
-		})
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, textutil.ShellQuote(tt.input), tt.name)
+
+		inputs = append(inputs, tt.input)
 	}
+
+	readBack(t, textutil.ShellQuote, inputs)
 }
 
 func TestShellWord(t *testing.T) {
@@ -165,24 +179,25 @@ func TestShellWord(t *testing.T) {
 		{name: "tab", input: "a\tb", want: "'a\tb'"},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	inputs := make([]string, 0, len(tests))
 
-			got := textutil.ShellWord(tt.input)
-			assert.Equal(t, tt.want, got)
-			assert.Equal(t, got == tt.input, textutil.ShellSafe(tt.input), "plain exactly when ShellSafe passes it")
-			assert.Equal(t, splitBack(tt.input), shellWords(t, got), "the shell reads back exactly the input")
-		})
+	for _, tt := range tests {
+		got := textutil.ShellWord(tt.input)
+		assert.Equal(t, tt.want, got, tt.name)
+		assert.Equal(t, got == tt.input, textutil.ShellSafe(tt.input), "%s: plain exactly when ShellSafe passes it", tt.name)
+
+		inputs = append(inputs, tt.input)
 	}
+
+	readBack(t, textutil.ShellWord, inputs)
 }
 
 // FuzzShellQuote checks that two quoted words reach a POSIX shell as exactly the two
 // strings they were built from, whatever quotes, dollar signs, backslashes, or newlines
 // they hold.
 func FuzzShellQuote(f *testing.F) {
-	for _, seed := range quotingSeeds() {
-		f.Add(seed, "--flag")
+	for _, seed := range quoteSeeds() {
+		f.Add(seed[0], seed[1])
 	}
 
 	f.Fuzz(func(t *testing.T, a, b string) {
@@ -199,8 +214,8 @@ func FuzzShellQuote(f *testing.F) {
 // passes it, quotes it as ShellQuote does otherwise, and that two such words reach a
 // POSIX shell as exactly the two strings they were built from.
 func FuzzShellWord(f *testing.F) {
-	for _, seed := range quotingSeeds() {
-		f.Add(seed, "--flag")
+	for _, seed := range wordSeeds() {
+		f.Add(seed[0], seed[1])
 	}
 
 	f.Fuzz(func(t *testing.T, a, b string) {

@@ -19,8 +19,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/magefile/mage/sh"
-
 	"github.com/mrz1836/nilbox/internal/brand"
 )
 
@@ -53,19 +51,21 @@ var (
 	enumKey = regexp.MustCompile(`^\s+([\w$]+): .+,$`)
 )
 
-// generateBindings writes the TypeScript bindings for the desktop command into out,
-// running the wails3 CLI at the version go.mod pins.
-func generateBindings(out string) error {
-	if err := ensureDist(); err != nil {
+// generateBindings writes the TypeScript bindings for the desktop command into out, in
+// the checkout when it is relative, running the wails3 CLI at the version go.mod pins.
+func (r runner) generateBindings(out string) error {
+	if err := r.ensureDist(); err != nil {
 		return err
 	}
 
-	cli, err := wailsCLI()
+	cli, err := r.wailsCLI()
 	if err != nil {
 		return err
 	}
 
-	err = sh.RunV("go", "run", cli, "generate", "bindings",
+	out = r.path(out)
+
+	err = r.runV("go", "run", cli, "generate", "bindings",
 		"-ts", "-i", "-f", "-tags "+desktopTag, "-d", out, "./cmd/"+brand.Slug)
 	if err != nil {
 		return fmt.Errorf("generate bindings: %w", err)
@@ -75,7 +75,7 @@ func generateBindings(out string) error {
 		return err
 	}
 
-	return checkEnumFiles(out)
+	return r.checkEnumFiles(out)
 }
 
 // checkEnumFiles fails, naming each one, when an enum the bindings under root render has
@@ -88,8 +88,9 @@ func generateBindings(out string) error {
 // sit in two files comes out in either order from one run to the next, and the drift
 // check fails on a tree that regenerating doesn't change. Within one file the order is the
 // source order every time, so holding each enum to one file makes the bindings the same
-// on every run. Only this module's packages are checked: they are the ones it can change.
-func checkEnumFiles(root string) error {
+// on every run. Only this module's packages are checked, the checkout's: they are the
+// ones it can change.
+func (r runner) checkEnumFiles(root string) error {
 	files, err := treeFiles(root)
 	if err != nil {
 		return err
@@ -100,7 +101,7 @@ func checkEnumFiles(root string) error {
 		return nil
 	}
 
-	module, err := modulePath(goModFile)
+	module, err := modulePath(r.path(goModFile))
 	if err != nil {
 		return err
 	}
@@ -113,7 +114,7 @@ func checkEnumFiles(root string) error {
 			continue
 		}
 
-		consts, err := constFiles(dir)
+		consts, err := r.constFiles(dir)
 		if err != nil {
 			return err
 		}
@@ -222,12 +223,15 @@ func moduleDir(module, pkg string) (string, bool) {
 }
 
 // constFiles returns, by name, the file that declares each package-level constant of the
-// package in dir, reading the files the desktop build compiles, as the generator does.
-func constFiles(dir string) (map[string]string, error) {
+// package in dir, in the checkout, reading the files the desktop build compiles, as the
+// generator does.
+func (r runner) constFiles(dir string) (map[string]string, error) {
 	ctxt := build.Default
 	ctxt.BuildTags = append(slices.Clone(ctxt.BuildTags), desktopTag)
 
-	pkg, err := ctxt.ImportDir(dir, 0)
+	pkgDir := r.path(dir)
+
+	pkg, err := ctxt.ImportDir(pkgDir, 0)
 	if err != nil {
 		return nil, fmt.Errorf("read the package in %s: %w", dir, err)
 	}
@@ -236,7 +240,7 @@ func constFiles(dir string) (map[string]string, error) {
 	consts := map[string]string{}
 
 	for _, name := range slices.Concat(pkg.GoFiles, pkg.CgoFiles) {
-		file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.SkipObjectResolution)
+		file, err := parser.ParseFile(fset, filepath.Join(pkgDir, name), nil, parser.SkipObjectResolution)
 		if err != nil {
 			return nil, fmt.Errorf("read the constants in %s: %w", dir, err)
 		}
@@ -406,8 +410,8 @@ func unionEnum(name string, body []string) []string {
 }
 
 // wailsCLI returns the go-run package path of the wails3 CLI at the pinned version.
-func wailsCLI() (string, error) {
-	version, err := sh.Output("go", "list", "-m", "-f", "{{.Version}}", wailsModule)
+func (r runner) wailsCLI() (string, error) {
+	version, err := r.output("go", "list", "-m", "-f", "{{.Version}}", wailsModule)
 	if err != nil {
 		return "", fmt.Errorf("read the pinned %s version: %w", wailsModule, err)
 	}

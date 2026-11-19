@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 )
 
 func TestEditLabelsSendsEachChangeOnceAtTheHeadSeen(t *testing.T) {
@@ -41,7 +42,7 @@ func TestEditLabelsNeverSendsAStepTwiceAcrossTheTokenRetry(t *testing.T) {
 	t.Parallel()
 
 	h := readHarness(t, github.MergeStateBlocked)
-	h.github.unlabelErrs = map[string]error{"bug": badCredentials()}
+	h.github.unlabelErrs = map[string]error{"bug": githubtest.BadCredentials()}
 
 	got, err := h.svc.EditLabels(t.Context(), LabelsRequest{
 		ItemID: pullID, Head: headA, Add: []string{"needs-repro"}, Remove: []string{"bug"},

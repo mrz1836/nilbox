@@ -93,6 +93,12 @@ type Config struct {
 	// Clock stamps the runs. It defaults to the system clock.
 	Clock clock.Clock
 
+	// TimeLimit makes the timer that stops a run the engine started in the app at its
+	// time limit: what fires once d has passed, and what stops it early. nil is the
+	// system clock's timer; a test holds the limit and fires it itself, so no test waits
+	// out a real one.
+	TimeLimit func(d time.Duration) (fire <-chan time.Time, stop func() bool)
+
 	// Logger gets one record per run that ends.
 	Logger *slog.Logger
 
@@ -148,6 +154,7 @@ type Engine struct {
 	files      logFiles
 	home       string
 	clock      clock.Clock
+	timeLimit  func(time.Duration) (<-chan time.Time, func() bool)
 	logger     *slog.Logger
 	changed    func()
 	progressed func(id int64)
@@ -213,11 +220,16 @@ func NewEngine(cfg Config) *Engine {
 		locks = clonelock.New()
 	}
 
+	timeLimit := cfg.TimeLimit
+	if timeLimit == nil {
+		timeLimit = systemTimer
+	}
+
 	return &Engine{
 		store: runStore{db: cfg.DB, q: queries.New(cfg.DB)}, locks: locks, files: logFiles{dir: cfg.LogDir}, home: cfg.Home,
-		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), changed: cfg.Changed, progressed: cfg.Progressed,
-		failed: cfg.Failed, terminal: cfg.Terminal, reveal: cfg.Reveal, quit: cfg.Quit, kept: cfg.Kept,
-		folders: cfg.Folders, logsFor: cfg.AgentLogsFor,
+		clock: clock.Or(cfg.Clock), timeLimit: timeLimit, logger: logging.Or(cfg.Logger), changed: cfg.Changed,
+		progressed: cfg.Progressed, failed: cfg.Failed, terminal: cfg.Terminal, reveal: cfg.Reveal, quit: cfg.Quit,
+		kept: cfg.Kept, folders: cfg.Folders, logsFor: cfg.AgentLogsFor,
 		slots:      make(chan struct{}, Slots),
 		keep:       retention{runs: KeepRuns, bytes: KeepLogBytes},
 		agentKeep:  retention{runs: KeepAgentRuns, bytes: KeepAgentLogBytes},
@@ -227,6 +239,13 @@ func NewEngine(cfg Config) *Engine {
 		signal: signalGroup, live: map[int64]*live{}, rerunners: map[Kind]Rerunner{}, verifiers: map[Kind]Verifier{},
 		closing: make(chan struct{}),
 	}
+}
+
+// systemTimer is the system clock's timer that fires once d has passed, and what stops it.
+func systemTimer(d time.Duration) (<-chan time.Time, func() bool) {
+	timer := time.NewTimer(d)
+
+	return timer.C, timer.Stop
 }
 
 // RegisterRerunner makes r work out Run again for runs of kind. A release takes none:
