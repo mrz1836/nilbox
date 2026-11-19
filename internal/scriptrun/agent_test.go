@@ -8,6 +8,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -240,27 +241,36 @@ func TestAnOrphanPastItsTimeLimitIsStoppedAtOnce(t *testing.T) {
 func TestAnOrphanWithinItsTimeLimitGoesOn(t *testing.T) {
 	t.Parallel()
 
-	h := newHarness(t)
-	procs := newFakeProcs()
-	procs.install(h.e)
+	synctest.Test(t, func(t *testing.T) {
+		h := newHarness(t)
+		procs := newFakeProcs()
+		procs.install(h.e)
 
-	h.e.RegisterVerifier(KindAgent, verifierFunc(func(Record) Verification {
-		return Verification{Timeout: time.Hour}
-	}))
+		h.e.RegisterVerifier(KindAgent, verifierFunc(func(Record) Verification {
+			return Verification{Timeout: time.Hour}
+		}))
 
-	started := time.Now().Add(-time.Minute)
-	procs.run(4646, started)
+		// It started 59 minutes before the restart: its limit, counted from its start, is a
+		// minute away.
+		started := time.Now().Add(-59 * time.Minute)
+		procs.run(4646, started)
 
-	id := h.insertAgentRow(h.clone(), 4646, started)
-	h.e.reconcile(t.Context())
+		id := h.insertAgentRow(h.clone(), 4646, started)
+		h.e.reconcile(t.Context())
 
-	time.Sleep(3 * tailEvery)
+		time.Sleep(time.Minute - time.Second)
+		synctest.Wait()
 
-	assert.Equal(t, StatusOrphaned, h.record(id).Status)
-	assert.Empty(t, procs.sent(), "nothing stops it before its limit")
+		assert.Equal(t, StatusOrphaned, h.record(id).Status)
+		assert.Empty(t, procs.sent(), "nothing stops it before its limit")
 
-	procs.end(4646)
-	assert.Equal(t, StatusInterrupted, h.ended(id).Status)
+		procs.end(4646)
+		time.Sleep(tailEvery)
+		synctest.Wait()
+
+		assert.Equal(t, StatusInterrupted, h.record(id).Status)
+		assert.Empty(t, procs.sent(), "an orphan that ends within its limit is never signaled")
+	})
 }
 
 func TestAgentRunsKeepTheirOwnHistory(t *testing.T) {

@@ -103,17 +103,22 @@ func TestAFailedRunIsToldOnceItsEndIsKeptAndItsCloneFree(t *testing.T) {
 func TestARunPastItsLimitIsToldAsTimedOut(t *testing.T) {
 	t.Parallel()
 
-	h, got := failingHarness(t)
+	limit := newHeldLimit()
+	h, got := failingHarness(t, func(cfg *Config) { cfg.TimeLimit = limit.set })
 
 	spec := h.spec(testutil.FakeRun{Sleep: time.Minute})
-	spec.Kind, spec.Title, spec.Timeout = KindChecks, "Checks · all files", 300*time.Millisecond
+	spec.Kind, spec.Title = KindChecks, "Checks · all files"
 
 	id := h.start(spec)
+
+	assert.Equal(t, KindChecks.Timeout(), limit.await(t), "a run with no limit of its own is held to its kind's")
+
+	limit.reach()
 	h.ended(id)
 	h.settle()
 
 	assert.Equal(t, []failedCall{told(Failure{
-		ID: id, Repo: testRepo(), Title: "Checks failed: Checks · all files", Body: "Timed out after 300ms.",
+		ID: id, Repo: testRepo(), Title: "Checks failed: Checks · all files", Body: "Timed out after 30 minutes.",
 	})}, got.all())
 }
 

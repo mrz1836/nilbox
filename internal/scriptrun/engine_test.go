@@ -233,14 +233,24 @@ func TestStopEndsARunWithTheLadder(t *testing.T) {
 func TestARunPastItsLimitIsStopped(t *testing.T) {
 	t.Parallel()
 
-	h := newHarness(t)
-	spec := h.spec(testutil.FakeRun{Sleep: time.Minute})
-	spec.Timeout = 300 * time.Millisecond
+	limit := newHeldLimit()
+	h := newHarness(t, func(cfg *Config) { cfg.TimeLimit = limit.set })
+	spec := h.spec(testutil.FakeRun{Stdout: readyLine, Sleep: time.Minute})
+	spec.Timeout = 20 * time.Minute
 
-	rec := h.ended(h.start(spec))
+	id := h.start(spec)
+
+	assert.Equal(t, 20*time.Minute, limit.await(t), "the run is held to its own limit")
+
+	h.waitReady(id)
+	assert.Equal(t, StatusRunning, h.record(id).Status, "it goes on until its limit")
+
+	limit.reach()
+
+	rec := h.ended(id)
 
 	assert.Equal(t, StatusFailed, rec.Status)
-	assert.Equal(t, "It ran past its limit of 300ms, so it was stopped.", rec.Summary)
+	assert.Equal(t, "It ran past its limit of 20 minutes, so it was stopped.", rec.Summary)
 }
 
 func TestEachKindHasItsLimit(t *testing.T) {
@@ -435,13 +445,8 @@ func TestTheSlotLimitHoldsAndAReleaseNeverWaits(t *testing.T) {
 	_, held := h.locks.Holder(release.Dir)
 	assert.False(t, held, "the release let go of its clone")
 
-	short, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
-	defer cancel()
-
-	_, err = h.e.Start(short, h.spec(testutil.FakeRun{}))
-	require.ErrorIs(t, err, context.DeadlineExceeded, "another run waits for a slot until its context ends")
-	assert.Equal(t, Slots, h.count(), "only the runs with a slot were recorded")
-
+	// A run that waits for as long as it takes starts beside one whose context ends: the
+	// wait for that one is the wait in which neither may start.
 	waiting := h.spec(testutil.FakeRun{Stdout: "got a slot\n"})
 	started := make(chan int64, 1)
 
@@ -454,10 +459,17 @@ func TestTheSlotLimitHoldsAndAReleaseNeverWaits(t *testing.T) {
 		started <- id
 	})
 
+	short, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	defer cancel()
+
+	_, err = h.e.Start(short, h.spec(testutil.FakeRun{}))
+	require.ErrorIs(t, err, context.DeadlineExceeded, "another run waits for a slot until its context ends")
+	assert.Equal(t, Slots, h.count(), "only the runs with a slot were recorded")
+
 	select {
 	case <-started:
 		require.FailNow(t, "a fifth run started while four went")
-	case <-time.After(300 * time.Millisecond):
+	default:
 	}
 
 	_, held = h.locks.Holder(waiting.Dir)
