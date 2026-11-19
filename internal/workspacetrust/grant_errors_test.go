@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,6 +40,47 @@ func TestGrantStopsWhileAnotherProcessHoldsTheLock(t *testing.T) {
 	data, err := os.ReadFile(file) //nolint:gosec // a test file under a temp dir
 	require.NoError(t, err)
 	assert.Equal(t, untrusted(clone), string(data))
+}
+
+func TestGrantWritesNothingWhenAnotherProcessTrustedTheCloneWhileItWaited(t *testing.T) {
+	t.Parallel()
+
+	home := testutil.RealTempDir(t)
+	clone := makeDir(t, filepath.Join(home, "example-repo"))
+	file := filepath.Join(home, ".claude.json")
+	trusted := `{"projects": {"` + clone + `": {"hasTrustDialogAccepted": true}}}`
+	testutil.WriteFile(t, file, untrusted(clone))
+	makeDir(t, file+".lock")
+
+	// The bubble's clock starts years before the lock's real modification time, so the
+	// holder looks live, and the wait for it takes no real time.
+	synctest.Test(t, func(t *testing.T) {
+		type result struct {
+			changed bool
+			err     error
+		}
+
+		done := make(chan result, 1)
+
+		go func() {
+			changed, err := workspacetrust.Grant(t.Context(), file, clone)
+			done <- result{changed: changed, err: err}
+		}()
+
+		// The grant waits for the lock; the holder trusts the clone, then lets go.
+		synctest.Wait()
+		testutil.WriteFile(t, file, trusted)
+		require.NoError(t, os.Remove(file+".lock"))
+
+		got := <-done
+		require.NoError(t, got.err)
+		assert.False(t, got.changed, "the clone it read under the lock was trusted already")
+	})
+
+	data, err := os.ReadFile(file) //nolint:gosec // a test file under a temp dir
+	require.NoError(t, err)
+	assert.Equal(t, trusted, string(data), "the file is not rewritten")
+	assert.ElementsMatch(t, []string{".claude.json", "example-repo"}, dirNames(t, home), "the lock is released")
 }
 
 func TestGrantReportsAConfigItCannotRead(t *testing.T) {
