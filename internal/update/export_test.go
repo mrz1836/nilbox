@@ -68,3 +68,9 @@ const StageMarker = stageMarker
 func BundleID(bundle string) (string, error) {
 	return bundleID(bundle)
 }
+
+// RenameAfterLook renames from to to once nothing is at to, as a file system that can't
+// rename exclusively does.
+func RenameAfterLook(from, to string) error {
+	return renameAfterLook(from, to)
+}

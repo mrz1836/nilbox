@@ -306,3 +306,120 @@ func TestHelperReasonWordsEachEnding(t *testing.T) {
 		assert.Equal(t, want, update.HelperReason(log), lines)
 	}
 }
+
+// validationFailed is the helper's log of an install whose new version failed its signature
+// check, and the words it is told with.
+const (
+	validationFailed = "2026-11-15T12:00:01Z: installed application failed validation: sealed — restoring backup"
+	validationWords  = "The new version failed its signature check, so the old one was put back."
+)
+
+func TestAFailedInstallIsWordedWhereItsLogCantBeKept(t *testing.T) {
+	t.Parallel()
+
+	for name, tt := range map[string]struct {
+		logs   func(t *testing.T, root string) string
+		logged string
+	}{
+		"no logs folder": {logs: func(*testing.T, string) string { return "" }},
+		"a logs folder that is a file": {
+			logs: func(t *testing.T, root string) string {
+				t.Helper()
+
+				path := filepath.Join(root, "logs-file")
+				testutil.WriteFile(t, path, "")
+
+				return path
+			},
+			logged: "could not keep the update's log",
+		},
+	} {
+		root := t.TempDir()
+		r, logs := loggedRig(t, func(c *update.Config) { c.Logs = tt.logs(t, root) })
+		pending(t, r, next)
+		helperLogIn(t, r, "2026-11-15T12:00:00Z: helper start", validationFailed)
+
+		require.Zero(t, r.engine.Settle(t.Context()), name)
+
+		assert.Equal(t, update.InstallFailure{Version: next, Reason: validationWords}, r.status(t).InstallFailed,
+			"told, with no log to show: %s", name)
+		assert.Contains(t, logs.String(), tt.logged, name)
+
+		err := r.service.ShowInstallLog(t.Context())
+		require.ErrorIs(t, err, update.ErrNoLog, name)
+	}
+}
+
+func TestShowInstallLogSaysWhyItCantShowTheLog(t *testing.T) {
+	t.Parallel()
+
+	gone := newRig(t)
+	pending(t, gone, next)
+	helperLogIn(t, gone, "2026-11-15T12:00:00Z: helper start", validationFailed)
+	require.Zero(t, gone.engine.Settle(t.Context()))
+	require.NoError(t, os.Remove(filepath.Join(gone.cfg.Logs, "update-"+next+".log")))
+
+	err := gone.service.ShowInstallLog(t.Context())
+	require.ErrorIs(t, err, update.ErrNoLog)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	assert.Equal(t, "The update's log is gone from the logs folder.", uierr.Message(err))
+	assert.Empty(t, gone.reveal.shown)
+
+	blind := newRig(t, func(c *update.Config) { c.Reveal = nil })
+	pending(t, blind, next)
+	helperLogIn(t, blind, "2026-11-15T12:00:00Z: helper start", validationFailed)
+	require.Zero(t, blind.engine.Settle(t.Context()))
+
+	err = blind.service.ShowInstallLog(t.Context())
+	require.ErrorIs(t, err, update.ErrNoLog)
+	assert.Equal(t, "This build can't show files in Finder; the log is in the logs folder.", uierr.Message(err))
+}
+
+func TestAHelperLogThatIsntAFileIsNoLog(t *testing.T) {
+	t.Parallel()
+
+	r, logs := loggedRig(t)
+	pending(t, r, next)
+	require.NoError(t, os.Mkdir(filepath.Join(r.cfg.TempDir, "wails-update-"+strconv.Itoa(oldPID)+".log"), 0o700))
+
+	require.Zero(t, r.engine.Settle(t.Context()))
+
+	failed := r.status(t).InstallFailed
+	assert.Equal(t, next, failed.Version)
+	assert.Equal(t, "The update didn't install, and left no log saying why.", failed.Reason)
+	assert.True(t, failed.Retryable)
+	assert.Contains(t, logs.String(), "could not read the update's log")
+}
+
+func TestALongHelperLogKeepsItsEnd(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	pending(t, r, next)
+
+	filler := strings.Repeat("2026-11-15T12:00:00Z: replace (attempt 1): busy\n", (1<<20)/40)
+	helperLogIn(t, r, "2026-11-15T12:00:00Z: helper start", filler+validationFailed)
+
+	require.Zero(t, r.engine.Settle(t.Context()))
+
+	failed := r.status(t).InstallFailed
+	assert.Equal(t, validationWords, failed.Reason, "worded from the log's end")
+	assert.True(t, failed.Log)
+
+	kept, err := os.ReadFile(filepath.Join(r.cfg.Logs, "update-"+next+".log"))
+	require.NoError(t, err)
+	assert.Len(t, kept, 1<<20, "a mebibyte of it is kept")
+	assert.True(t, strings.HasSuffix(string(kept), validationFailed+"\n"), "its end")
+	assert.NotContains(t, string(kept), "helper start", "not its start")
+}
+
+func TestAStartThatCantCleanUpStillSettles(t *testing.T) {
+	t.Parallel()
+
+	r, logs := loggedRig(t, func(c *update.Config) { c.TempDir = filepath.Join(c.TempDir, "missing") })
+	pending(t, r, running)
+
+	require.Zero(t, r.engine.Settle(t.Context()))
+	assert.Equal(t, running, r.status(t).JustUpdated)
+	assert.Contains(t, logs.String(), "could not clean up after an update")
+}

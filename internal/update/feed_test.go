@@ -3,6 +3,7 @@ package update_test
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -61,4 +62,26 @@ func TestAFolderFeed(t *testing.T) {
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()
 	require.ErrorIs(t, feed.Download(canceled, next, file, &out), context.Canceled)
+}
+
+func TestAFolderFeedWordsWhatItCantRead(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, update.ManifestName), 0o700))
+
+	_, err := update.FolderFeed{Dir: dir}.Manifest(t.Context())
+	require.Error(t, err, "a manifest that is a folder can't be read")
+	require.NotErrorIs(t, err, update.ErrNoRelease)
+	assert.Equal(t, "The rehearsal's folder can't be read.", uierr.Message(err))
+
+	file := filepath.Join(dir, "a-file")
+	testutil.WriteFile(t, file, "")
+
+	var out bytes.Buffer
+
+	err = update.FolderFeed{Dir: file}.Download(t.Context(), next, update.FileName(update.Platform, next), &out)
+	require.Error(t, err, "a folder that is a file holds no zip")
+	assert.Equal(t, "The rehearsal's folder can't be read.", uierr.Message(err))
+	assert.Zero(t, out.Len())
 }

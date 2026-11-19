@@ -170,6 +170,7 @@ func TestRunsGoingWordsTheRuns(t *testing.T) {
 	for want, going := range map[string][]update.Run{
 		"Restarting stops the runs going in " + brand.Name + ".": nil,
 		"Restarting stops Checks in ~/projects/tool.":            {{Title: "Checks", Dir: "~/projects/tool"}},
+		"Restarting stops Checks.":                               {{Title: "Checks"}},
 		"Restarting stops the 2 runs going in " + brand.Name + ": Release v1.2.0, Pull main.": {
 			{Title: "Release v1.2.0"}, {Title: "Pull main"},
 		},
@@ -469,4 +470,57 @@ func TestRestartNeedsTheAppInApplicationsAnUpdateReadyAndAnInstaller(t *testing.
 	_, err = away.service.Restart(t.Context(), true)
 	require.ErrorIs(t, err, update.ErrLocation)
 	assert.Equal(t, "Move "+brand.Name+" to Applications to update it.", uierr.Message(err))
+}
+
+func TestRestartRefusesAnUpdateThatFailedForGood(t *testing.T) {
+	t.Parallel()
+
+	r, m := ready(t)
+	r.memory.put(update.KeyUninstallable, uninstallableEntry(m))
+
+	_, err := r.service.Restart(t.Context(), true)
+	require.ErrorIs(t, err, update.ErrUninstallable)
+	assert.JSONEq(t, `{"code":"uninstallable"}`, refusalDetail(t, err), "the window offers its release page alone")
+	assert.Equal(t, next+" didn't install before, and would fail the same way again. Download it from its release "+
+		"page instead.", uierr.Message(err))
+	require.EqualError(t, err, update.ErrUninstallable.Error(), "the logs get the cause")
+
+	installs, restarts := r.installer.calls()
+	assert.Empty(t, installs)
+	assert.Zero(t, restarts)
+	assert.Zero(t, r.backup.calls.Load(), "nothing is backed up for an update that won't install")
+}
+
+func TestRunsThatCantBeListedAreSpokenOfAsAWhole(t *testing.T) {
+	t.Parallel()
+
+	r, logs := loggedRig(t)
+	r.release(t, next)
+	require.NoError(t, r.engine.Tick(t.Context()))
+
+	r.runs.active.Store(true)
+	r.runs.listErr = errFakeDisk
+
+	_, err := r.service.Restart(t.Context(), false)
+	require.ErrorIs(t, err, update.ErrRunsGoing)
+	assert.Equal(t, "Restarting stops the runs going in "+brand.Name+".", uierr.Message(err))
+	require.EqualError(t, err, update.ErrRunsGoing.Error(), "the logs get the cause")
+	assert.Contains(t, logs.String(), "could not list the runs a restart would stop")
+}
+
+func TestABuildThatBacksNothingUpInstallsNothing(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t, func(c *update.Config) { c.Backup = nil })
+	r.release(t, next)
+	require.NoError(t, r.engine.Tick(t.Context()))
+
+	_, err := r.service.Restart(t.Context(), true)
+	require.Error(t, err)
+	assert.Equal(t, "Couldn't back up your data first, so nothing was installed.", uierr.Message(err))
+
+	installs, restarts := r.installer.calls()
+	assert.Empty(t, installs)
+	assert.Zero(t, restarts)
+	assert.Equal(t, update.StateReady, r.status(t).State)
 }

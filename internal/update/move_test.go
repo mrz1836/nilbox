@@ -1183,6 +1183,67 @@ func TestALaterMoveRemovesWhatACutOffMoveLeft(t *testing.T) {
 	require.NoError(t, err, "nor removed")
 }
 
+// What an earlier move left that can't be read is left as it is, and one that can't be
+// removed is logged: neither stops the move.
+func TestAMoveLeavesWhatItCantReadOfEarlierMovesAndLogsWhatItCantRemove(t *testing.T) {
+	t.Parallel()
+	testutil.SkipAsRoot(t)
+
+	logs := &testutil.Logs{}
+	r, m := newMoveRig(t, func(c *update.Config) { c.Logger = logs.Logger() })
+	apps := r.cfg.Applications
+
+	// stage makes a leftover of this run's, named name, holding a whole copy.
+	stage := func(name string) string {
+		path := filepath.Join(apps, name)
+		writeBundle(t, filepath.Join(path, app), brand.BundleID, running)
+		require.NoError(t, os.WriteFile(filepath.Join(path, update.StageMarker), []byte(brand.BundleID+"\n4242\n"), 0o600))
+
+		return path
+	}
+
+	unreadable := stage("." + app + ".moving-1")
+	unmarked := stage("." + app + ".moving-2")
+	stuck := stage("." + app + ".moving-3")
+	contents := filepath.Join(stuck, app, "Contents")
+
+	require.NoError(t, os.Chmod(unreadable, 0o000))
+	require.NoError(t, os.Chmod(filepath.Join(unmarked, update.StageMarker), 0o000))
+	require.NoError(t, os.Chmod(contents, 0o500)) //nolint:gosec // the test's own folder, made read-only
+	t.Cleanup(func() {
+		_ = os.Chmod(unreadable, 0o700) //nolint:gosec // put back for t.TempDir's removal
+		_ = os.Chmod(contents, 0o700)   //nolint:gosec // put back for t.TempDir's removal
+	})
+
+	got, err := r.service.MoveToApplications(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, update.MoveMoved, got.Outcome)
+	assert.Len(t, m.all(), 3)
+
+	assert.DirExists(t, unreadable, "a folder it can't look in")
+	assert.FileExists(t, filepath.Join(unmarked, update.StageMarker), "a marker it can't read")
+	assert.DirExists(t, contents)
+	assert.Contains(t, logs.String(), "could not remove what an earlier move left")
+}
+
+// A move that can't list where the app goes looks for no leftovers, and moves.
+func TestAMoveThatCantListTheFolderStillMoves(t *testing.T) {
+	t.Parallel()
+	testutil.SkipAsRoot(t)
+
+	logs := &testutil.Logs{}
+	r, m := newMoveRig(t, func(c *update.Config) { c.Logger = logs.Logger() })
+
+	require.NoError(t, os.Chmod(r.cfg.Applications, 0o300))       //nolint:gosec // the test's own folder, made unlistable
+	t.Cleanup(func() { _ = os.Chmod(r.cfg.Applications, 0o700) }) //nolint:gosec // put back for t.TempDir's removal
+
+	got, err := r.service.MoveToApplications(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, update.MoveMoved, got.Outcome)
+	assert.Len(t, m.all(), 3)
+	assert.Contains(t, logs.String(), "could not look for what earlier moves left")
+}
+
 // A move marks its hidden folder before it copies anything there, with the app's bundle ID
 // and its process, and leaves no marker behind.
 func TestAMoveMarksItsFolderBeforeItCopies(t *testing.T) {

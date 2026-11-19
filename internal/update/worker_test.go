@@ -369,6 +369,44 @@ func TestAnUpdateKeptIsReadyAtOnceAfterARelaunch(t *testing.T) {
 	})
 }
 
+func TestTheWorkerWaitsOutAHelperStillAtWorkBeforeItsFirstCheck(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		r.release(t, next)
+		record(t, r, running, next, time.Minute)
+
+		_, stop := runWorker(t, r)
+		defer stop()
+
+		assert.NotEmpty(t, r.memory.get(update.KeyPendingInstall), "the start waits while the helper may be at work")
+
+		after(update.HelperWindow - time.Minute)
+		assert.Empty(t, r.memory.get(update.KeyPendingInstall), "and settles once it can't be")
+		assert.Equal(t, next, r.status(t).InstallFailed.Version)
+		assert.Zero(t, r.feed.manifests.Load())
+
+		after(update.FirstCheckAfter)
+		assert.Equal(t, int32(1), r.feed.manifests.Load(), "the first check comes a minute after the start settled")
+	})
+}
+
+func TestAWorkerStoppedWhileItWaitsOutAHelperReturns(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		record(t, r, running, next, time.Minute)
+
+		_, stop := runWorker(t, r)
+		stop()
+
+		assert.NotEmpty(t, r.memory.get(update.KeyPendingInstall), "nothing settled")
+		assert.Zero(t, r.feed.manifests.Load(), "nothing checked")
+	})
+}
+
 func TestTheWorkerOfABuildThatDoesntUpdateReturnsAtOnce(t *testing.T) {
 	t.Parallel()
 

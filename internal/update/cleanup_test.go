@@ -121,3 +121,61 @@ func TestCleanUpOutsideABundleCleansTheTemporaryFolderAlone(t *testing.T) {
 	errs := update.CleanUp("", filepath.Join(tmp, "missing"), 5, time.Now())
 	assert.Len(t, errs, 1, "a temporary folder it can't read is told")
 }
+
+func TestCleanUpSaysWhereItCouldntLook(t *testing.T) {
+	t.Parallel()
+
+	missing := filepath.Join(t.TempDir(), "missing")
+
+	errs := update.CleanUp(filepath.Join(missing, "Applications", brand.Name+".app"), filepath.Join(missing, "tmp"), 5,
+		time.Now())
+	require.Len(t, errs, 2)
+	require.ErrorContains(t, errs[0], "look beside the app for an update's leftovers")
+	require.ErrorContains(t, errs[1], "look for an update's leftovers in the temporary folder")
+}
+
+func TestCleanUpLeavesWhatItCantReadAndSaysWhatItCantRemove(t *testing.T) {
+	t.Parallel()
+	testutil.SkipAsRoot(t)
+
+	now := time.Date(2026, time.November, 15, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-2 * time.Hour)
+	apps := t.TempDir()
+	bundle := filepath.Join(apps, brand.Name+".app")
+	tmp := t.TempDir()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(bundle, "Contents"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(bundle+".bak", "Contents"), 0o700))
+	require.NoError(t, os.MkdirAll(filepath.Join(apps, "wails-update-1", brand.Name+".app"), 0o700))
+
+	// A staging folder it can't look in, which may be another app's, and a helper log it
+	// can't read, which may name another app's bundle.
+	unreadable := filepath.Join(apps, "wails-update-2")
+	require.NoError(t, os.Mkdir(unreadable, 0o700))
+
+	log := filepath.Join(tmp, "wails-update-77.log")
+	testutil.WriteFile(t, log, "2026-11-15T09:00:00Z: helper start: target="+bundle+" new=/x pid=77\n")
+	require.NoError(t, os.Chtimes(log, old, old))
+
+	for _, path := range []string{unreadable, log} {
+		require.NoError(t, os.Chmod(path, 0o000))
+	}
+
+	require.NoError(t, os.Chmod(apps, 0o500)) //nolint:gosec // the test's own folder, made read-only
+	t.Cleanup(func() {
+		_ = os.Chmod(apps, 0o700)       //nolint:gosec // put back for t.TempDir's removal
+		_ = os.Chmod(unreadable, 0o700) //nolint:gosec // put back for t.TempDir's removal
+	})
+
+	errs := update.CleanUp(bundle, tmp, 4242, now)
+	require.Len(t, errs, 2, "the staging folder and the copy of the old app it couldn't remove")
+
+	for _, err := range errs {
+		require.ErrorContains(t, err, "remove an update's leftover")
+	}
+
+	assert.DirExists(t, bundle+".bak")
+	assert.DirExists(t, filepath.Join(apps, "wails-update-1"))
+	assert.DirExists(t, unreadable, "what it can't look in is left alone")
+	assert.FileExists(t, log, "and what it can't read")
+}

@@ -1,6 +1,7 @@
 package update_test
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
@@ -469,6 +470,10 @@ func TestAFailedReadOfTheReleasesNeverShowsTheRawError(t *testing.T) {
 		},
 		"a download saved to a path": {
 			download: private, words: "Couldn't download " + next + ": it couldn't be saved on this Mac.",
+		},
+		"a download that ran out of time": {
+			download: context.DeadlineExceeded,
+			words:    "Couldn't download " + next + ": it took longer than " + update.DownloadLimit.String() + ".",
 		},
 	} {
 		r := newRig(t)
