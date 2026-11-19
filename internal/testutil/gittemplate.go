@@ -26,6 +26,10 @@ const templateDate = "1767323045 +0000"
 // templateBuildLimit bounds how long a template's build may run.
 const templateBuildLimit = 2 * time.Minute
 
+// templateConfig is the global config every git a template's build runs reads: automatic
+// maintenance, and gc's, off.
+const templateConfig = "[maintenance]\n\tauto = false\n[gc]\n\tauto = 0\n"
+
 // The ways a template's build fails once its steps have run: it holds something other
 // than folders and regular files, a file other than text names the folder it was built
 // in, which a copy can't rewrite without breaking the file, or an index whose work tree a
@@ -226,13 +230,18 @@ func buildTree[V any](build func(b *GitBuild) V) (tree *gitTree[V], err error) {
 		}
 	}
 
-	// Automatic maintenance stays off: a commit may start it detached, and its
-	// objects/maintenance.lock would come and go while readTree walks the folder.
+	// Automatic maintenance stays off: a commit, or a push's receiving side, may start it
+	// detached, and its objects/maintenance.lock would come and go while readTree walks
+	// the folder. The settings are in a global config, as git runs the receiving side of
+	// a push into a local repository without GIT_CONFIG_COUNT's; the later
+	// GIT_CONFIG_GLOBAL takes the place of GitEnv's.
+	global := filepath.Join(tmp, "gitconfig")
+	if err = os.WriteFile(global, []byte(templateConfig), 0o600); err != nil {
+		return nil, err
+	}
+
 	b := &GitBuild{Root: root, env: append(GitEnv(home),
-		"GIT_AUTHOR_DATE="+templateDate, "GIT_COMMITTER_DATE="+templateDate,
-		"GIT_CONFIG_COUNT=2",
-		"GIT_CONFIG_KEY_0=maintenance.auto", "GIT_CONFIG_VALUE_0=false",
-		"GIT_CONFIG_KEY_1=gc.auto", "GIT_CONFIG_VALUE_1=0",
+		"GIT_AUTHOR_DATE="+templateDate, "GIT_COMMITTER_DATE="+templateDate, "GIT_CONFIG_GLOBAL="+global,
 	)}
 
 	value := build(b)
