@@ -11,6 +11,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -72,11 +73,22 @@ func Ask(ctx context.Context, socket string, req Request, each func(Line) error)
 		return nil
 	}
 
-	if err = scanner.Err(); err != nil {
+	return cutShort(scanner.Err())
+}
+
+// cutShort is why an answer ended before its end line, given the error reading it
+// stopped with (nil at the connection's end): ErrCutShort when the app went away, which
+// reads as the end on one system and as the connection reset on another (Linux resets
+// it when the app closes it before reading all the client sent), or else the error.
+func cutShort(err error) error {
+	switch {
+	case err == nil:
+		return ErrCutShort
+	case errors.Is(err, syscall.ECONNRESET):
+		return fmt.Errorf("%w: %w", ErrCutShort, err)
+	default:
 		return fmt.Errorf("read the answer: %w", err)
 	}
-
-	return ErrCutShort
 }
 
 // handleLine decodes one line of an answer and hands it to each, reporting whether the

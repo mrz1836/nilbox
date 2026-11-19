@@ -7,8 +7,10 @@ import (
 	"errors"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -499,6 +501,41 @@ func TestListen(t *testing.T) {
 	})
 }
 
+// goAwayMidAnswer plays an app that goes away mid-answer: it takes the first client on ln,
+// reads its whole request, or only its first byte, so the request has arrived but some of
+// it is left unread, sends one line, and closes.
+func goAwayMidAnswer(ln net.Listener, readsAll bool) {
+	conn, err := ln.Accept()
+	if err != nil {
+		return
+	}
+
+	if readsAll {
+		_, _ = bufio.NewReader(conn).ReadString('\n')
+	} else {
+		_, _ = conn.Read(make([]byte, 1))
+	}
+
+	_, _ = conn.Write([]byte(`{"t":"text","v":"half"}` + "\n"))
+	_ = conn.Close()
+}
+
+func TestCutShort(t *testing.T) {
+	t.Parallel()
+
+	require.ErrorIs(t, devtools.CutShort(nil), devtools.ErrCutShort, "the connection's end")
+
+	reset := &net.OpError{Op: "read", Net: "unix", Err: os.NewSyscallError("read", syscall.ECONNRESET)}
+	err := devtools.CutShort(reset)
+	require.ErrorIs(t, err, devtools.ErrCutShort, "the connection reset, as Linux ends it")
+	require.ErrorIs(t, err, syscall.ECONNRESET, "keeping why")
+
+	err = devtools.CutShort(bufio.ErrTooLong)
+	require.ErrorIs(t, err, bufio.ErrTooLong)
+	require.NotErrorIs(t, err, devtools.ErrCutShort, "any other failure is its own")
+	assert.ErrorContains(t, err, "read the answer")
+}
+
 func TestAsk(t *testing.T) {
 	t.Parallel()
 
@@ -509,28 +546,27 @@ func TestAsk(t *testing.T) {
 		require.ErrorIs(t, err, devtools.ErrNotRunning)
 	})
 
-	t.Run("says when the answer stops before its end", func(t *testing.T) {
-		t.Parallel()
+	// An app that goes away mid-answer, having read all the request or only part: Linux
+	// resets the connection when it closes with some of it unread, where macOS ends it.
+	for _, readsAll := range []bool{true, false} {
+		t.Run("says when the answer stops before its end, the whole request read: "+strconv.FormatBool(readsAll),
+			func(t *testing.T) {
+				t.Parallel()
 
-		socket := devtools.SocketPath(testutil.SocketDir(t))
+				socket := devtools.SocketPath(testutil.SocketDir(t))
 
-		ln, err := devtools.Listen(t.Context(), socket)
-		require.NoError(t, err)
+				ln, err := devtools.Listen(t.Context(), socket)
+				require.NoError(t, err)
 
-		defer func() { _ = ln.Close() }()
+				defer func() { _ = ln.Close() }()
 
-		go func() {
-			conn, acceptErr := ln.Accept()
-			if acceptErr == nil {
-				_, _ = conn.Write([]byte(`{"t":"text","v":"half"}` + "\n"))
-				_ = conn.Close()
-			}
-		}()
+				go goAwayMidAnswer(ln, readsAll)
 
-		lines, err := ask(t, socket, "status", nil)
-		require.ErrorIs(t, err, devtools.ErrCutShort)
-		assert.Len(t, lines, 1)
-	})
+				lines, err := ask(t, socket, "status", nil)
+				require.ErrorIs(t, err, devtools.ErrCutShort)
+				assert.Len(t, lines, 1, "what came before the end is read")
+			})
+	}
 
 	t.Run("stops at the first line its reader refuses", func(t *testing.T) {
 		t.Parallel()
