@@ -15,20 +15,31 @@ import (
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
+// originRepos are the bare repository and its clone originAndClone makes, built once for
+// the test binary by buildOrigin and copied into each test that asks for them.
+var originRepos = testutil.NewGitTemplate(buildOrigin) //nolint:gochecknoglobals // built once for the whole test binary
+
+// buildOrigin builds origin.git, an empty bare repository on main, and example-repo, a
+// clone of it.
+func buildOrigin(b *testutil.GitBuild) struct{} {
+	origin := filepath.Join(b.Root, "origin.git")
+
+	b.Git(".", "-c", "init.defaultBranch=main", "init", "-q", "--bare", origin)
+	b.Git(".", "clone", "-q", origin, filepath.Join(b.Root, "example-repo"))
+
+	return struct{}{}
+}
+
 // originAndClone makes a bare repository standing in for GitHub, and a clone of it, as
 // the clone's folder name, under a fresh folder, and returns the bare one's and the
-// clone's paths. extra are words for the clone command, such as a ref format.
-func originAndClone(t *testing.T, extra ...string) (origin, clone string) {
+// clone's paths.
+func originAndClone(t *testing.T) (origin, clone string) {
 	t.Helper()
 
 	base := t.TempDir()
-	origin = filepath.Join(base, "origin.git")
-	clone = filepath.Join(base, "example-repo")
+	originRepos.Copy(t, base)
 
-	testutil.RunGit(t, base, "-c", "init.defaultBranch=main", "init", "-q", "--bare", origin)
-	testutil.RunGit(t, base, append(append([]string{"clone", "-q"}, extra...), origin, clone)...)
-
-	return origin, clone
+	return filepath.Join(base, "origin.git"), filepath.Join(base, "example-repo")
 }
 
 // push commits a file named name on the clone's current branch and pushes the branch to
