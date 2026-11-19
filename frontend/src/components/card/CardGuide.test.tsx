@@ -389,5 +389,16 @@ describe('CardGuide', () => {
     expect(markers()).toEqual([])
     expect(screen.queryByRole('list', { name: 'The parts of a card' })).not.toBeInTheDocument()
     expect(key().map(([caption]) => caption)).toEqual(['Whose move', 'The track', 'Who', 'Everything else'])
+    expect(screen.queryByRole('region', { name: 'When the author goes quiet' })).not.toBeInTheDocument()
+  })
+
+  it('shows, in full, a card whose quiet author it offers to nudge', () => {
+    showGuide('full')
+
+    const nudge = within(screen.getByRole('region', { name: 'When the author goes quiet' }))
+    const card = nudge.getByRole('listitem')
+    expect(card).toHaveAttribute('data-rule', 'awaiting_author')
+    expect(card).toHaveTextContent('Waiting on the author · you requested changes, quiet for 2d')
+    expect(nudge.getByRole('button', { name: 'Nudge', hidden: true })).toHaveAttribute('data-verb', 'nudge')
   })
 })

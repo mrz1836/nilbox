@@ -1,6 +1,7 @@
 import { use } from 'react'
 
 import { CardPrefsContext } from '../lib/cardPrefs'
+import { nudgeable } from '../lib/nudge'
 import { orgOf, ownRule } from '../lib/repoRules'
 import { leaving, workWords, type RowWork, type StartWork } from '../lib/rowWork'
 import { isPinnedItself, type TriageTab } from '../lib/triage'
@@ -10,6 +11,7 @@ import {
   ArchiveIcon,
   AutopilotIcon,
   ClockIcon,
+  CommentIcon,
   DotIcon,
   ExternalIcon,
   EyeIcon,
@@ -42,6 +44,10 @@ export interface EditActions {
   // and reports its own failures, so it never rejects.
   onUnassign: (item: InboxItem) => Promise<void>
   onRemoveReview: (item: InboxItem) => Promise<void>
+  // onNudge opens the Nudge dialog for a pull request waiting on its author, where the user
+  // sees the comment before it is posted. Without it the menu offers no nudge, and no card
+  // offers one as its primary.
+  onNudge?: ((item: InboxItem) => void) | undefined
   // onOpen opens the item in its sheet, from the row's tab: the review sheet for a pull
   // request, the issue sheet for an issue. Without it the menu offers neither.
   onOpen?: ((item: InboxItem, tab: TriageTab) => void) | undefined
@@ -305,13 +311,27 @@ function autopilotItems(item: InboxItem, autopilot: AutopilotMenu): MenuItem[] {
   ]
 }
 
-// githubEdits are the edits the user can make to the item on GitHub: off its assignees
-// when it is assigned to them, and off its requested reviewers when it asks for their
-// review. A pull request that asks only a team cannot take one member off, so its item
-// says why instead. Each spends one REST request of the API budget.
+// githubEdits are the edits the user can make to the item on GitHub: a nudge of the
+// author of a pull request waiting on them, in any tab and however long it has been quiet;
+// off its assignees when it is assigned to them; and off its requested reviewers when it
+// asks for their review. A pull request that asks only a team cannot take one member off,
+// so its item says why instead. Each spends one REST request of the API budget.
 function githubEdits(item: InboxItem, edits: EditActions, work: RowWork, start: StartWork): MenuItem[] {
   const out: MenuItem[] = []
   const busy = work !== null
+  const onNudge = edits.onNudge
+
+  if (onNudge !== undefined && nudgeable(item)) {
+    out.push({
+      label: `Nudge @${item.author}…`,
+      icon: <CommentIcon className={iconClass} />,
+      title: 'Post a comment asking the author about the changes you requested. Uses one REST request.',
+      disabled: busy,
+      onSelect: () => {
+        onNudge(item)
+      },
+    })
+  }
 
   if (item.assigned) {
     out.push({
@@ -356,8 +376,9 @@ function githubEdits(item: InboxItem, edits: EditActions, work: RowWork, start: 
 // ItemMenu is a row's menu of everything it can do with its item: open it on GitHub or
 // copy its link; the inbox actions of its quiet controls, gathered in a submenu, so each
 // is a click away even without the pointer on the row; Autopilot's, where the window
-// provides them (AutopilotMenuContext); and, when they apply, the edits that take the
-// user off the item on GitHub. Its button shows with the row's quiet
+// provides them (AutopilotMenuContext); and, when they apply, the edits on GitHub: a
+// nudge of a quiet author, and those that take the user off the item. Its button shows
+// with the row's quiet
 // controls, and stays in sight, turning to a spinner, while the row is busy with GitHub.
 // Its items are built only as it opens.
 export function ItemMenu({ item, tab, triage, edits, work, start }: ItemMenuProps) {

@@ -6,6 +6,7 @@ import { labelsShown, useLabelRoom } from '../lib/labelFit'
 import { HiddenLabelsContext } from '../lib/labels'
 import { agentName } from '../lib/launch'
 import { autopilotState, nextStep } from '../lib/nextStep'
+import { nudgeDue, nudgeWords } from '../lib/nudge'
 import { leaving, useRowWork, workWords } from '../lib/rowWork'
 import { cardSession, endedShownMs, sinceWhen } from '../lib/sessions'
 import { formatAge, formatAgo } from '../lib/time'
@@ -346,9 +347,9 @@ function Byline({
 // (CardPrefsContext), the card is CompactRow instead: one line from the same step, with
 // the same toggle, peek, agent slot, and busy note.
 //
-// The card reads the clock only for three plain values (its session, whether a failed
-// session is fresh, and whether it is back from a snooze), so a tick renders it only when
-// one changes, and never reads the rows' Autopilot itself: its list hands it the plain
+// The card reads the clock only for plain values (its session, whether a failed session
+// is fresh, whether it is back from a snooze, and whether a nudge of a quiet author is due,
+// with what its story says of the wait), so a tick renders it only when one changes, and never reads the rows' Autopilot itself: its list hands it the plain
 // autopilot string. The row is wrapped in memo: the inbox renders its rows in a loop,
 // where the React Compiler can't keep each row's element from one render to the next, so
 // without memo a change to one item would render every row in its list again.
@@ -381,6 +382,12 @@ export const ItemRow = memo(function ItemRow({
   })
   const backFromSnooze = useNowAs((now) => item.snoozedUntil !== '' && isBackFromSnooze(item, now))
   const prefs = use(CardPrefsContext)
+  // A nudge is due only where the card can post one (its edits' onNudge), and never while
+  // Settings → Reviewing's Offer a nudge after is Off.
+  const onNudge = edits?.onNudge
+  const nudgeAfter = onNudge === undefined ? 0 : prefs.nudgeAfterHours
+  const nudgeIsDue = useNowAs((now) => nudgeDue(item, now, nudgeAfter))
+  const nudgeSaid = useNowAs((now) => nudgeWords(item, now, nudgeAfter))
   const unread = prefs.unread && item.unread
   const session = sessions?.find((s) => s.id === sessionId) ?? null
   const agents = launch?.agents ?? []
@@ -391,6 +398,7 @@ export const ItemRow = memo(function ItemRow({
     session,
     sessionFresh,
     backFromSnooze,
+    nudge: { due: nudgeIsDue, words: nudgeSaid },
     autopilot: routine,
     agent: session === null ? (resolution?.agent.name ?? '') : agentName(agents, session.agent),
     mutedTarget: tab !== 'muted' ? '' : triage === undefined ? item.repo : mutedTarget(item, triage.repoRules),
@@ -423,6 +431,7 @@ export const ItemRow = memo(function ItemRow({
       agents={agents}
       triage={triage}
       onOpen={onOpen}
+      onNudge={onNudge}
       agent={agent}
     />
   )
@@ -438,6 +447,7 @@ export const ItemRow = memo(function ItemRow({
       agents={agents}
       triage={triage}
       onOpen={onOpen}
+      onNudge={onNudge}
       onFilterBy={onFilterBy}
       launch={launchButton}
     />

@@ -100,7 +100,8 @@ type reviewReplies struct {
 }
 
 // Offered returns the replies for action, with the defaults for a person's and a bot's
-// pull request. A bot's falls back to the person's default when none is chosen.
+// pull request, and, among the comment replies, the default for a nudge. A bot's falls
+// back to the person's default when none is chosen.
 func (r reviewReplies) Offered(ctx context.Context, action review.ReplyAction) (review.ReplyList, error) {
 	lib, err := r.store.Library(ctx)
 	if err != nil {
@@ -128,7 +129,7 @@ func (r reviewReplies) Offered(ctx context.Context, action review.ReplyAction) (
 	case review.ReplyRequestChanges:
 		out.Default, out.DefaultBots = d.RequestChanges, d.RequestChanges
 	case review.ReplyComment:
-		out.Default, out.DefaultBots = d.Comment, d.Comment
+		out.Default, out.DefaultBots, out.Nudge = d.Comment, d.Comment, d.Nudge
 	}
 
 	return out, nil

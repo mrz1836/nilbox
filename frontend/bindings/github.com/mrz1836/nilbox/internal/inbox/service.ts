@@ -78,6 +78,19 @@ export function MarkUnseen(id: number): $CancellablePromise<void> {
 }
 
 /**
+ * Nudge posts req's text as a comment on the conversation of a pull request someone else
+ * opened, on GitHub, to ask its author about the changes the user requested, and returns
+ * the new snapshot with the comment's address. The item keeps when GitHub posted it, as
+ * its NudgedAt, and counts the comment among its own, so its card says so at once with no
+ * read. It is one REST request, paced and counted against the API budget, and it waits for
+ * nothing but other work on the same item. GitHub having posted it, a failure to store it
+ * is returned, and the next refresh catches the comment count up.
+ */
+export function Nudge(req: $models.NudgeRequest): $CancellablePromise<$models.Nudged> {
+    return $Call.ByID(3703560281, req);
+}
+
+/**
  * Pin keeps an item at the top of every list it is in, above the items not pinned, the
  * most recently pinned first, and returns the new snapshot. A snoozed or dismissed item
  * stays set aside and comes back pinned. Pinning a pinned item keeps its place, and makes

@@ -83,6 +83,7 @@ const labels: Readonly<Record<Verb, string>> = {
   unsnooze: 'Unsnooze',
   restore: 'Restore',
   unmute: 'Unmute',
+  nudge: 'Nudge',
 }
 
 export interface PrimaryVerbProps {
@@ -94,15 +95,24 @@ export interface PrimaryVerbProps {
   agents: readonly AgentInfo[]
   triage: TriageActions | undefined
   onOpen: ((item: InboxItem, tab: TriageTab) => void) | undefined
+  // onNudge opens the Nudge dialog for the item, for the nudge verb; without it the verb
+  // opens the item, as Open does.
+  onNudge?: ((item: InboxItem) => void) | undefined
   onError: (message: string) => void
   // compact draws the primary as a compact card's go button (goShape): its words alone,
   // in its tone, even for an agent's pill.
   compact?: boolean
 }
 
+// loudEdge is the edge whose color a loud primary takes: its card's, but the user's own
+// for a nudge, which is the user's move on a card that still waits on its author.
+function loudEdge(step: Step): Edge {
+  return step.primary === 'nudge' ? 'yours' : step.edge
+}
+
 // tone is a primary's colors: quiet, or loud in its edge's color.
 function tone(step: Step): string {
-  return step.quiet ? quiet : loud[step.edge]
+  return step.quiet ? quiet : loud[loudEdge(step)]
 }
 
 // verbClass is a primary's shape and colors: in a compact card, the go button in the
@@ -110,7 +120,7 @@ function tone(step: Step): string {
 // of an agent's pill.
 function verbClass(step: Step, compact: boolean, pill?: string): string {
   if (compact) {
-    return `${goShape} ${goTones[step.quiet ? 'waiting' : step.edge]}`
+    return `${goShape} ${goTones[step.quiet ? 'waiting' : loudEdge(step)]}`
   }
 
   return `${verbShape} ${pill ?? tone(step)}`
@@ -220,10 +230,46 @@ function WatchVerb({
 // PrimaryVerb is the card's primary button for its step's verb, in its action column and
 // in its peek. The verbs for an agent's session have none without the session.
 export function PrimaryVerb(props: PrimaryVerbProps) {
-  const { item, tab, step, session, sessions, agents, triage, onOpen, onError, compact = false } = props
+  const { item, tab, step, session, sessions, agents, triage, onOpen, onNudge, onError, compact = false } = props
   const verb = step.primary
 
+  // opens is the primary that opens the item, in its sheet or on GitHub, with shown's
+  // words.
+  const opens = (shown: Verb) => (
+    <button
+      type="button"
+      data-verb={shown}
+      onClick={() => {
+        if (onOpen === undefined) {
+          openExternal(item.url)
+        } else {
+          onOpen(item, tab)
+        }
+      }}
+      className={verbClass(step, compact)}
+    >
+      {shown === 'merge' && !compact && <MergeIcon className="size-3.5" />}
+      {labels[shown]}
+    </button>
+  )
+
   switch (verb) {
+    case 'nudge':
+      return onNudge === undefined ? (
+        opens('open')
+      ) : (
+        <button
+          type="button"
+          data-verb="nudge"
+          title={`Ask @${item.author} about the changes you requested, in a comment you see before it’s posted`}
+          onClick={() => {
+            onNudge(item)
+          }}
+          className={verbClass(step, compact)}
+        >
+          {labels.nudge}
+        </button>
+      )
     case 'decide':
       return <DecideVerb {...props} />
     case 'terminal':
@@ -265,23 +311,7 @@ export function PrimaryVerb(props: PrimaryVerbProps) {
       )
     }
     default:
-      return (
-        <button
-          type="button"
-          data-verb={verb}
-          onClick={() => {
-            if (onOpen === undefined) {
-              openExternal(item.url)
-            } else {
-              onOpen(item, tab)
-            }
-          }}
-          className={verbClass(step, compact)}
-        >
-          {verb === 'merge' && !compact && <MergeIcon className="size-3.5" />}
-          {labels[verb]}
-        </button>
-      )
+      return opens(verb)
   }
 }
 
@@ -301,6 +331,8 @@ export interface CardActionsProps {
   // onOpen opens the item in its sheet, from the card's tab; without it the primaries that
   // open the item open it on GitHub.
   onOpen?: ((item: InboxItem, tab: TriageTab) => void) | undefined
+  // onNudge opens the Nudge dialog for the item, which the nudge verb asks for.
+  onNudge?: ((item: InboxItem) => void) | undefined
   // agent is the agent's slot beside the primary (LaunchControls in its card variant).
   agent?: ReactNode
   // compact draws the column as a compact card's go button, whose failure shows under the
@@ -332,6 +364,7 @@ export function CardActions({
   agents,
   triage,
   onOpen,
+  onNudge,
   agent,
   compact = false,
 }: CardActionsProps) {
@@ -346,6 +379,7 @@ export function CardActions({
       agents={agents}
       triage={triage}
       onOpen={onOpen}
+      onNudge={onNudge}
       onError={setError}
       compact={compact}
     />

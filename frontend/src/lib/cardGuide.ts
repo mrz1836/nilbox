@@ -2,6 +2,7 @@ import type {
   AgentInfo,
   AgentSession,
   InboxItem,
+  ItemDetails,
   ItemResolution,
   LaunchDefaults,
   Profile,
@@ -70,6 +71,34 @@ const guideAgent: AgentInfo = {
   path: '',
 }
 
+// guideDetails are the sample's details, as they stand at now: its labels, checks passed,
+// changes requested, pushed since the user's review, mergeable, and size L.
+function guideDetails(now: Date): ItemDetails {
+  return {
+    labels: [
+      { name: 'feature', color: '#2da44e' },
+      { name: 'fork-pr', color: '#6e40c9' },
+    ],
+    projects: [],
+    subIssues: { total: 0, completed: 0 },
+    issue: { type: '', typeColor: '', fields: [], milestone: null, parent: null, blockedBy: 0, blocking: 0 },
+    closingPulls: [],
+    comments: 1,
+    additions: 455,
+    deletions: 8,
+    changedFiles: 5,
+    commits: 2,
+    mergeable: 'MERGEABLE',
+    checks: { state: 'SUCCESS', passed: 22, failed: 0, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
+    reviews: { decision: 'CHANGES_REQUESTED', reviewers: 1, reviewed: 1, approvals: 0, changesRequested: 1 },
+    autoMerge: '',
+    fetchedAt: ago(now, 2),
+    pushedSinceReview: true,
+    reviewRequestedAgain: false,
+    viewerVerdict: 'changes',
+  }
+}
+
 // guideItem is the sample pull request, as it stands at now: #150 of acme-org/example-repo,
 // last moved 18 minutes before.
 export function guideItem(now: Date): InboxItem {
@@ -91,29 +120,7 @@ export function guideItem(now: Date): InboxItem {
     authorAssociation: 'CONTRIBUTOR',
     branch: 'connection-gater',
     isDraft: false,
-    details: {
-      labels: [
-        { name: 'feature', color: '#2da44e' },
-        { name: 'fork-pr', color: '#6e40c9' },
-      ],
-      projects: [],
-      subIssues: { total: 0, completed: 0 },
-      issue: { type: '', typeColor: '', fields: [], milestone: null, parent: null, blockedBy: 0, blocking: 0 },
-      closingPulls: [],
-      comments: 1,
-      additions: 455,
-      deletions: 8,
-      changedFiles: 5,
-      commits: 2,
-      mergeable: 'MERGEABLE',
-      checks: { state: 'SUCCESS', passed: 22, failed: 0, pending: 0, skipped: 0, awaiting: 0, awaitingOnGitHub: 0 },
-      reviews: { decision: 'CHANGES_REQUESTED', reviewers: 1, reviewed: 1, approvals: 0, changesRequested: 1 },
-      autoMerge: '',
-      fetchedAt: ago(now, 2),
-      pushedSinceReview: true,
-      reviewRequestedAgain: false,
-      viewerVerdict: 'changes',
-    },
+    details: guideDetails(now),
     files: {
       status: 'flagged',
       head,
@@ -144,6 +151,7 @@ export function guideItem(now: Date): InboxItem {
     dismissedAt: '',
     snoozedUntil: '',
     wokeBy: null,
+    nudgedAt: '',
     pinnedAt: '',
     setAsideBy: 0,
     pinnedBy: 0,
@@ -152,6 +160,41 @@ export function guideItem(now: Date): InboxItem {
     assigned: false,
     reviewRequest: 'you',
     reviewTeams: [],
+  }
+}
+
+// guideNudgeItem is the guide's second sample, as it stands at now: #148 of
+// acme-org/example-repo, from one of the repository's own people, which the user asked to
+// change two days before and whose author has been quiet since, so its card offers Nudge.
+export function guideNudgeItem(now: Date): InboxItem {
+  const base = guideItem(now)
+
+  return {
+    ...base,
+    number: 148,
+    title: 'fix(cache): evict a widget once its source changes',
+    url: 'https://github.com/acme-org/example-repo/pull/148',
+    author: 'contributor-b',
+    updatedAt: ago(now, 2 * 24 * 60),
+    unread: false,
+    trust: 'member',
+    trusted: true,
+    isCrossRepository: false,
+    authorAssociation: 'MEMBER',
+    branch: 'cache-eviction',
+    details: {
+      ...guideDetails(now),
+      labels: [{ name: 'bug', color: '#d73a4a' }],
+      comments: 2,
+      additions: 64,
+      deletions: 12,
+      changedFiles: 3,
+      commits: 1,
+      pushedSinceReview: false,
+      viewerVerdict: 'changes',
+    },
+    files: null,
+    reviewRequest: 'none',
   }
 }
 

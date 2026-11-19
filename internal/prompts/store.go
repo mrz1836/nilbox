@@ -43,6 +43,7 @@ const (
 	prefReplyApproveBots    = "prompts.default.reply.approve.bots"
 	prefReplyRequestChanges = "prompts.default.reply.request_changes"
 	prefReplyComment        = "prompts.default.reply.comment"
+	prefReplyNudge          = "prompts.default.reply.nudge"
 )
 
 // replyPrefKey returns the preference holding slot's default reply.
@@ -56,6 +57,8 @@ func replyPrefKey(slot ReplySlot) string {
 		return prefReplyRequestChanges
 	case SlotComment:
 		return prefReplyComment
+	case SlotNudge:
+		return prefReplyNudge
 	default:
 		return prefReplyApprove
 	}
@@ -74,7 +77,7 @@ func situationPrefKey(slot DefaultSlot) string {
 	case DefaultSlotRereview:
 		return prefDefaultRereview
 	case DefaultSlotPR, DefaultSlotIssue, DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges,
-		DefaultSlotComment:
+		DefaultSlotComment, DefaultSlotNudge:
 		return prefDefaultChecksFailing
 	default:
 		return prefDefaultChecksFailing
@@ -409,7 +412,7 @@ func (s *Store) storedReplies(ctx context.Context) (ReplyDefaults, error) {
 
 	return ReplyDefaults{
 		Approve: ids[SlotApprove], ApproveBots: ids[SlotApproveBots], RequestChanges: ids[SlotRequestChanges],
-		Comment: ids[SlotComment],
+		Comment: ids[SlotComment], Nudge: ids[SlotNudge],
 	}, nil
 }
 
@@ -579,7 +582,7 @@ func pickReplies(all []Prompt, stored ReplyDefaults) ReplyDefaults {
 
 	return ReplyDefaults{
 		Approve: keep(SlotApprove), ApproveBots: keep(SlotApproveBots), RequestChanges: keep(SlotRequestChanges),
-		Comment: keep(SlotComment),
+		Comment: keep(SlotComment), Nudge: keep(SlotNudge),
 	}
 }
 

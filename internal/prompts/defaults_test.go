@@ -61,7 +61,7 @@ func TestExportHoldsEveryKindOfPromptAndEveryDefault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "all.json")
 	n, err := s.Export(ctx, path, nil)
 	require.NoError(t, err)
-	assert.Equal(t, ExportResult{Prompts: 10, Replies: 6}, n)
+	assert.Equal(t, ExportResult{Prompts: 10, Replies: 7}, n)
 
 	b, err := readBundleFile(path)
 	require.NoError(t, err)
@@ -77,6 +77,7 @@ func TestExportHoldsEveryKindOfPromptAndEveryDefault(t *testing.T) {
 		"Question": "reply comment pr", "Looking": "reply comment issue", "Fix dep security": "agent  pr",
 		"Heal Dependabot PR": "agent  pr", "Address review": "agent  pr", "Resolve conflicts": "agent  pr",
 		"Re-run failed jobs": "agent  pr", "Needs repro": "reply comment issue", "Re-review": "agent  pr",
+		"Nudge": "reply comment pr",
 	}, kinds, "every purpose, review, and kind of item is written, a comment reply for issues too")
 
 	for _, slot := range DefaultSlots() {
@@ -125,6 +126,41 @@ func TestPreviewOffersTheFilesDefaultsThatFit(t *testing.T) {
 	assert.Equal(t, byNickname(t, s, "Needs changes").ID, defaults.Replies.RequestChanges, "an agent prompt is never a reply")
 	assert.Equal(t, byNickname(t, s, "Question").ID, defaults.Replies.Comment, "a reply for issues is never the default")
 	assert.Equal(t, byNickname(t, s, "Work on it").ID, defaults.Issue, "a prompt for pull requests is never the issues' default")
+}
+
+// TestImportOffersTheNudgesDefault checks a file that names a nudge's default: a comment
+// reply for pull requests is offered, and becomes the default, where one written for
+// another review is not.
+func TestImportOffersTheNudgesDefault(t *testing.T) {
+	t.Parallel()
+
+	s, _ := seeded(t, nil)
+	ctx := t.Context()
+
+	b := bundleOf(
+		replyOf("Ping", ReplyComment, AppliesToPR),
+		replyOf("Ship it", ReplyApprove, AppliesToPR),
+		replyOf("Poke", ReplyComment, AppliesToIssue),
+	)
+	b.Defaults = BundleDefaults{Replies: map[ReplySlot]string{SlotNudge: "Ping", SlotComment: "Ship it"}}
+
+	got := previewAll(t, s, b)
+	assert.Equal(t, []DefaultOffer{{Slot: DefaultSlotNudge, Nickname: "Ping", Current: "Nudge", Entry: 0}}, got.Defaults,
+		"an approval is never a comment's default")
+
+	res, err := s.Import(ctx, got.prompts(0, 1, 2), chosen(got, got.Defaults...))
+	require.NoError(t, err)
+	assert.Equal(t, 1, res.Defaults)
+
+	defaults, err := s.Defaults(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, byNickname(t, s, "Ping").ID, defaults.Replies.Nudge)
+	assert.Equal(t, byNickname(t, s, "Question").ID, defaults.Replies.Comment)
+
+	// A reply for issues never fits the nudge, which comments on a pull request.
+	b.Prompts = []BundlePrompt{replyOf("Prod", ReplyComment, AppliesToIssue)}
+	b.Defaults = BundleDefaults{Replies: map[ReplySlot]string{SlotNudge: "Prod"}}
+	assert.Empty(t, previewAll(t, s, b).Defaults)
 }
 
 func TestPreviewOffersNoDefaultTheLibraryAlreadyHas(t *testing.T) {
@@ -196,6 +232,7 @@ func TestDefaultSlotsCoverTheKindsTheSituationsAndTheReplies(t *testing.T) {
 	assert.Equal(t, []DefaultSlot{
 		DefaultSlotPR, DefaultSlotIssue, DefaultSlotChecksFailing, DefaultSlotConflicts, DefaultSlotChangesRequested,
 		DefaultSlotRereview, DefaultSlotApprove, DefaultSlotApproveBots, DefaultSlotRequestChanges, DefaultSlotComment,
+		DefaultSlotNudge,
 	}, DefaultSlots())
 
 	for _, slot := range ReplySlots() {

@@ -101,6 +101,35 @@ function openPeek(it: InboxItem, { rows, links, unreadDots = true, ...props }: S
 }
 
 describe('CardPeek', () => {
+  it('offers to nudge the author of a pull request waiting on them, however long it has been quiet', async () => {
+    const onNudge = vi.fn()
+    const waiting = item({ author: 'contributor-a', details: details({ viewerVerdict: 'changes' }) })
+    const peek = openPeek(waiting, { onNudge })
+
+    await userEvent.click(peek.getByRole('button', { name: 'Nudge' }))
+
+    expect(onNudge).toHaveBeenCalledExactlyOnceWith(waiting)
+  })
+
+  it('offers no second Nudge beside a Nudge primary, nor one for a bot or without a way to post', () => {
+    const waiting = item({ author: 'contributor-a', details: details({ viewerVerdict: 'changes' }) })
+    const nudge: Step = { ...open, rule: 'awaiting_author', primary: 'nudge', quiet: false }
+
+    const peek = openPeek(waiting, { onNudge: vi.fn(), step: nudge })
+    expect(peek.getAllByRole('button', { name: 'Nudge' })).toHaveLength(1)
+    expect(peek.getByRole('button', { name: 'Nudge' })).toHaveAttribute('data-verb', 'nudge')
+  })
+
+  it('offers no nudge for a bot’s pull request, or where the card can’t post one', () => {
+    const peek = openPeek(
+      item({ author: 'dependabot[bot]', authorIsBot: true, details: details({ viewerVerdict: 'changes' }) }),
+      {
+        onNudge: vi.fn(),
+      },
+    )
+    expect(peek.queryByRole('button', { name: 'Nudge' })).not.toBeInTheDocument()
+  })
+
   it('names a review’s reviewers once the author pushed, before anyone has reviewed', () => {
     const peek = openPeek(
       item({

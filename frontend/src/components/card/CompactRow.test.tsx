@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { CardPrefsContext } from '../../lib/cardPrefs'
+import { CardPrefsContext, defaultCardPrefs } from '../../lib/cardPrefs'
 import { HiddenLabelsContext, labelMatcher } from '../../lib/labels'
 import type { TriageTab } from '../../lib/triage'
 import type { InboxItem } from '../../platform'
@@ -63,7 +63,7 @@ function compact(ui: ReactElement, hidden: readonly string[] = []) {
   return renderPlain(
     <Clock>
       <HiddenLabelsContext value={labelMatcher(hidden)}>
-        <CardPrefsContext value={{ avatars: true, density: 'compact', unread: true }}>{ui}</CardPrefsContext>
+        <CardPrefsContext value={{ ...defaultCardPrefs, density: 'compact' }}>{ui}</CardPrefsContext>
       </HiddenLabelsContext>
     </Clock>,
   )
@@ -504,7 +504,7 @@ describe('CompactRow', () => {
 
   it('shows no unread dot while the cards show none', () => {
     renderPlain(
-      <CardPrefsContext value={{ avatars: true, density: 'compact', unread: false }}>
+      <CardPrefsContext value={{ ...defaultCardPrefs, density: 'compact', unread: false }}>
         <ul>
           <ItemRow item={asked({ unread: true })} launch={null} />
         </ul>

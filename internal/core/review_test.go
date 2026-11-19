@@ -96,6 +96,19 @@ func TestTheReviewSheetsRepliesFallBackToThePersonsDefaultForABot(t *testing.T) 
 	assert.Contains(t, nicknames, "Needs changes", "a request for changes offers only its own replies")
 	assert.NotContains(t, nicknames, "Question")
 	assert.Equal(t, changes.Default, changes.DefaultBots, "one default for a person's and a bot's alike")
+	assert.Zero(t, changes.Nudge, "only the comments say a nudge's default")
+
+	comments, err := replies.Offered(ctx, review.ReplyComment)
+	require.NoError(t, err)
+
+	byNickname := map[string]int64{}
+	for _, p := range comments.Replies {
+		byNickname[p.Nickname] = p.ID
+	}
+
+	require.NotZero(t, byNickname["Nudge"], "the nudge is one of the comment replies")
+	assert.Equal(t, byNickname["Nudge"], comments.Nudge, "the comments carry the nudge's default")
+	assert.Equal(t, byNickname["Question"], comments.Default)
 
 	_, err = reviewReplies{replyFiller{store: prompts.NewStore(testutil.ClosedDB(t), nil)}}.Offered(ctx, review.ReplyApprove)
 	require.Error(t, err, "a library that can't be read offers nothing")

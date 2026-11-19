@@ -204,7 +204,7 @@ func TestExportWritesTheWholeLibrary(t *testing.T) {
 
 	n, err := s.Export(t.Context(), path, nil)
 	require.NoError(t, err)
-	assert.Equal(t, ExportResult{Prompts: 10, Replies: 5}, n, "the starters are ten agent prompts and five replies")
+	assert.Equal(t, ExportResult{Prompts: 10, Replies: 6}, n, "the starters are ten agent prompts and six replies")
 
 	got, err := readBundleFile(path)
 	require.NoError(t, err)
@@ -214,13 +214,14 @@ func TestExportWritesTheWholeLibrary(t *testing.T) {
 		PR: "Review", Issue: "Work on it", ChecksFailing: "Fix checks", Conflicts: "Resolve conflicts",
 		ChangesRequested: "Address review", Rereview: "Re-review", Replies: map[ReplySlot]string{
 			SlotApprove: "LGTM", SlotApproveBots: "Update OK", SlotRequestChanges: "Needs changes", SlotComment: "Question",
+			SlotNudge: "Nudge",
 		},
 	}, got.Defaults)
 	assert.ElementsMatch(t, []string{
 		StarterReviewPR, StarterWorkOnIssue, StarterQuickLook, StarterFixChecks,
 		StarterReplyLGTM, StarterReplyUpdateOK, StarterReplyNeedsChanges, StarterReplyQuestion,
 		StarterFixDependencySecurity, StarterRereview, StarterHealDependabot, StarterAddressReview, StarterResolveConflicts,
-		StarterRerunFailedJobs, StarterReplyNeedsRepro,
+		StarterRerunFailedJobs, StarterReplyNeedsRepro, StarterReplyNudge,
 	}, got.StartersAdded)
 	assert.Equal(t, []string{"checks_failing", "conflicts", "changes_requested", "rereview"}, got.SlotsSeeded,
 		"the situations' slots the library filled travel with it")
@@ -739,8 +740,8 @@ func TestRestoreBringsBackTheLibraryFromTheDatabaseSetAside(t *testing.T) {
 
 	require.NoError(t, Seed(t.Context(), s.store))
 	assert.ElementsMatch(t, []string{
-		"Address review", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro", "Question",
-		"Quick look", "Re-review",
+		"Address review", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro", "Nudge",
+		"Question", "Quick look", "Re-review",
 		"Re-run failed jobs", "Resolve conflicts", "Review", "Security", "Update OK", "Work on it",
 	}, nicknames(t, s), "the deleted starter stays deleted")
 	assert.Equal(t, byNickname(t, s, "Security").ID, restored.IDs["Security"], "each nickname finds its restored prompt")

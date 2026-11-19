@@ -109,16 +109,16 @@ func TestReplaceMatchesByNicknameAndDeletesTheRest(t *testing.T) {
 	assert.Equal(t, []string{
 		"update Review", "same LGTM", "add Fresh", "add Fix checks",
 		"remove Address review", "remove Fix checks", "remove Fix dep security", "remove Heal Dependabot PR",
-		"remove Needs changes", "remove Needs repro", "remove Question", "remove Re-review", "remove Re-run failed jobs",
-		"remove Resolve conflicts", "remove Update OK", "remove Work on it",
+		"remove Needs changes", "remove Needs repro", "remove Nudge", "remove Question", "remove Re-review",
+		"remove Re-run failed jobs", "remove Resolve conflicts", "remove Update OK", "remove Work on it",
 		"update Default prompt for issues", "update Default prompt when checks fail",
 		"update Default prompt when it has conflicts", "update Default prompt when changes are requested",
 		"update Default prompt when you're asked to review again", "update Default approval reply for bots",
-		"update Default reply for requested changes", "update Default comment reply",
+		"update Default reply for requested changes", "update Default comment reply", "update Default nudge reply",
 	}, items(plan.Plan))
 	assert.Equal(t, []string{"“Quick look” is kept: the launch defaults for acme-org use it."}, plan.Notes)
-	assert.Equal(t, backup.Count{Add: 2, Update: 1 + 8, Same: 1, Remove: 12}, count,
-		"the prompts, and the eight defaults the file changes or leaves with none")
+	assert.Equal(t, backup.Count{Add: 2, Update: 1 + 9, Same: 1, Remove: 13}, count,
+		"the prompts, and the nine defaults the file changes or leaves with none")
 
 	assert.Equal(t, []string{"Fix checks", "Fresh", lgtmNick, "Quick look", reviewNick}, nicknames(t, s),
 		"exactly the file's prompts, and the one a launch default keeps")

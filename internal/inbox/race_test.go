@@ -166,6 +166,10 @@ func (c *raceClient) RemoveReviewRequest(context.Context, github.Token, item.Ref
 	return nil, errNotAsked
 }
 
+func (c *raceClient) AddComment(context.Context, github.Token, item.Ref, string) (*github.Comment, error) {
+	return nil, errNotAsked
+}
+
 func (c *raceClient) FetchCommitAuthors(context.Context, github.Token, []string) (map[string][]github.CommitAuthor, error) {
 	return map[string][]github.CommitAuthor{}, nil
 }

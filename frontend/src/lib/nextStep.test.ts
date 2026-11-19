@@ -421,6 +421,48 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     },
   ],
   [
+    'after 6 waiting on the author, quiet past the nudge threshold',
+    input({ item: theirs(), nudge: { due: true, words: 'quiet for 2d' } }),
+    {
+      rule: 'awaiting_author',
+      edge: 'waiting',
+      text: 'Waiting on the author',
+      detail: 'you requested changes, quiet for 2d',
+      primary: 'nudge',
+      quiet: false,
+    },
+  ],
+  [
+    'after 6 waiting on the author, just nudged',
+    input({
+      item: theirs({ nudgedAt: '2026-06-15T10:00:00Z' }),
+      nudge: { due: false, words: 'you nudged them 5h ago' },
+    }),
+    {
+      rule: 'awaiting_author',
+      edge: 'waiting',
+      text: 'Waiting on the author',
+      detail: 'you nudged them 5h ago',
+      primary: 'open',
+      quiet: true,
+    },
+  ],
+  [
+    'after 6 waiting on the author, nudged and quiet again past the threshold, checks failing',
+    input({
+      item: theirs({ nudgedAt: '2026-06-13T10:00:00Z' }, failing),
+      nudge: { due: true, words: 'you nudged them 2d ago' },
+    }),
+    {
+      rule: 'awaiting_author',
+      edge: 'waiting',
+      text: 'Waiting on the author',
+      detail: 'you nudged them 2d ago, checks failing',
+      primary: 'nudge',
+      quiet: false,
+    },
+  ],
+  [
     'a review asked of the user again without a push, after they requested changes',
     input({ item: asked({ author: 'contributor-a' }, { ...changes, viewerVerdict: 'changes' }) }),
     { rule: 'review', edge: 'yours', text: 'Your review', primary: 'review' },

@@ -1371,11 +1371,20 @@ describe('PromptsView review replies', () => {
     await userEvent.keyboard('{Escape}')
     await userEvent.click(replyLibrary().getByRole('button', { name: /Question/ }))
 
-    expect(await menuOf('Question')).toContain('Make the default for comments')
+    expect((await menuOf('Question')).slice(0, 2)).toEqual([
+      'Make the default for comments',
+      'Make the default for nudges',
+    ])
 
     await userEvent.click(screen.getByRole('menuitem', { name: 'Make the default for comments' }))
 
     expect(platform.setReplyDefault).toHaveBeenLastCalledWith('comment', 24)
+
+    await menuOf('Question')
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Make the default for nudges' }))
+
+    expect(platform.setReplyDefault).toHaveBeenLastCalledWith('nudge', 24)
+    expect(await screen.findByText('“Question” is now the default for nudges.')).toBeInTheDocument()
   })
 
   it('offers both approval defaults to an approval that is neither', async () => {

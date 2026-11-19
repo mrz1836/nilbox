@@ -81,13 +81,15 @@ type fakeClient struct {
 	// viewer is the account FetchViewer reports, octoUser when "", and viewerErr fails
 	// it; viewerReads counts its calls. edited is what an edit answers (an empty answer
 	// when nil), editErr fails every edit, and edits records each as "unassign <ref>
-	// <login>" or "unreview <ref> <login>".
+	// <login>", "unreview <ref> <login>", or "comment <ref> <body>". comment is what a
+	// comment answers (one posted at the zero time when nil).
 	viewer      string
 	viewerErr   error
 	viewerReads int
 	edited      *github.Edited
 	editErr     error
 	edits       []string
+	comment     *github.Comment
 
 	// watches holds each routine search's canned result by query, and watchErr fails the
 	// whole watch request; watchRate is its budget reading, watchCalls records the searches

@@ -286,6 +286,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     unpinItem: inbox,
     unassignItem: inbox,
     removeReviewRequest: inbox,
+    nudgeAuthor: () =>
+      Promise.resolve({ snapshot: snapshot(), url: 'https://github.com/acme-org/example-repo/pull/7#issuecomment-1' }),
     markItemsSeen: done,
     markItemUnseen: done,
     checkItemFiles: () => Promise.resolve(fileCheck()),
@@ -446,6 +448,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setBranchRules: (branches) => stored({ branches: { ...branches, protected: branches.protected ?? [] } }),
     setRepoRule: (target, rule) => stored({ repoRules: withRepoRule(settings().repoRules, target, rule) }),
     setMergeMethod: (mergeMethod) => stored({ mergeMethod }),
+    setNudgeAfterHours: (nudgeAfterHours) => stored({ nudgeAfterHours }),
+    setNudgeSnooze: (nudgeSnooze) => stored({ nudgeSnooze }),
     setIntegrationEnabled: (id, state) =>
       stored({ integrations: integrationsConfig({ switches: { ...integrationsConfig().switches, [id]: state } }) }),
     setIntegrationPath: (id, path) =>

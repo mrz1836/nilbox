@@ -658,6 +658,12 @@ export interface ReplyList {
      */
     "default": number;
     "defaultBots": number;
+
+    /**
+     * Nudge is the comment reply a nudge of a pull request's author starts with, among the
+     * comment replies; 0 for none, and for every other review.
+     */
+    "nudge": number;
 }
 
 /**

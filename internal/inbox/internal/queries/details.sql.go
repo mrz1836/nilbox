@@ -10,6 +10,20 @@ import (
 	"time"
 )
 
+const countOwnComment = `-- name: CountOwnComment :exec
+UPDATE item_details SET comments = comments + 1 WHERE item_id = ?
+`
+
+// CountOwnComment counts one more comment on the conversation of the item with id, the one
+// the user just posted from the inbox, so its card says so before the next read of its
+// details, and a snooze taken right after counts it in its baseline (activityBaseline),
+// never as new activity that wakes it. An item whose details no refresh has read yet
+// is left as it is: the first read counts it.
+func (q *Queries) CountOwnComment(ctx context.Context, itemID int64) error {
+	_, err := q.db.ExecContext(ctx, countOwnComment, itemID)
+	return err
+}
+
 const getActivity = `-- name: GetActivity :one
 SELECT d.head_oid, d.commits, d.comments, d.review_decision, d.reviewed, d.approvals, d.changes_requested,
     i.is_draft

@@ -24,6 +24,8 @@ export type {
     Label,
     List,
     Milestone,
+    NudgeRequest,
+    Nudged,
     Project,
     ProjectField,
     Rate,

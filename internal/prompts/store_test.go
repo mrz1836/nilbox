@@ -62,8 +62,8 @@ func TestSeedRecordsWhatItAddedAndTheDefaults(t *testing.T) {
 
 	assert.Equal(t, map[string]string{
 		"prompts.seeded": `["review-pr","work-on-issue","quick-look","fix-checks","reply-lgtm","reply-update-ok",` +
-			`"reply-needs-changes","reply-question","fix-dependency-security","re-review","heal-dependabot-pr",` +
-			`"address-review","resolve-conflicts","rerun-failed-jobs","reply-needs-repro"]`,
+			`"reply-needs-changes","reply-question","fix-dependency-security","re-review","reply-nudge",` +
+			`"heal-dependabot-pr","address-review","resolve-conflicts","rerun-failed-jobs","reply-needs-repro"]`,
 		"prompts.seededSlots":                   `["checks_failing","conflicts","changes_requested","rereview"]`,
 		"prompts.default.pr":                    strconv.FormatInt(review.ID, 10),
 		"prompts.default.issue":                 strconv.FormatInt(work.ID, 10),
@@ -75,6 +75,7 @@ func TestSeedRecordsWhatItAddedAndTheDefaults(t *testing.T) {
 		"prompts.default.reply.approve.bots":    id("Update OK"),
 		"prompts.default.reply.request_changes": id("Needs changes"),
 		"prompts.default.reply.comment":         id("Question"),
+		"prompts.default.reply.nudge":           id("Nudge"),
 	}, promptPrefs(t, db))
 }
 
@@ -620,7 +621,7 @@ func TestLibraryHoldsEveryPromptAndTheDefaults(t *testing.T) {
 		Conflicts: idOf(t, s, "Resolve conflicts"), ChangesRequested: idOf(t, s, "Address review"),
 		Rereview: idOf(t, s, "Re-review"), Replies: ReplyDefaults{
 			Approve: idOf(t, s, "LGTM"), ApproveBots: idOf(t, s, "Update OK"), RequestChanges: idOf(t, s, "Needs changes"),
-			Comment: idOf(t, s, "Question"),
+			Comment: idOf(t, s, "Question"), Nudge: idOf(t, s, "Nudge"),
 		},
 	}, lib.Defaults)
 }

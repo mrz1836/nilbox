@@ -58,3 +58,11 @@ WHERE d.item_id = ?;
 -- answered an edit to its review requests. Nothing changes when no refresh has read its
 -- details.
 UPDATE item_details SET review_users = ?, review_teams = ? WHERE item_id = ?;
+
+-- name: CountOwnComment :exec
+-- CountOwnComment counts one more comment on the conversation of the item with id, the one
+-- the user just posted from the inbox, so its card says so before the next read of its
+-- details, and a snooze taken right after counts it in its baseline (activityBaseline),
+-- never as new activity that wakes it. An item whose details no refresh has read yet
+-- is left as it is: the first read counts it.
+UPDATE item_details SET comments = comments + 1 WHERE item_id = ?;

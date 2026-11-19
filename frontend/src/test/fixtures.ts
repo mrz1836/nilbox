@@ -266,6 +266,7 @@ export function item(overrides: Partial<InboxItem> = {}): InboxItem {
     dismissedAt: '',
     snoozedUntil: '',
     wokeBy: null,
+    nudgedAt: '',
     pinnedAt: '',
     setAsideBy: 0,
     pinnedBy: 0,
@@ -1270,6 +1271,8 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     cardUnread: true,
     ignoredWorkflows: [],
     mergeMethod: 'repo',
+    nudgeAfterHours: 24,
+    nudgeSnooze: false,
     integrations: integrationsConfig(),
     githubNotifications: {
       read: true,
@@ -1800,7 +1803,7 @@ export function defaultPrompts(overrides: Partial<DefaultPrompts> = {}): Default
     conflicts: 0,
     changesRequested: 0,
     rereview: 0,
-    replies: { approve: 0, approveBots: 0, requestChanges: 0, comment: 0 },
+    replies: { approve: 0, approveBots: 0, requestChanges: 0, comment: 0, nudge: 0 },
     ...overrides,
   }
 }
@@ -3206,6 +3209,7 @@ export function replyList(overrides: Partial<ReviewReplyList> = {}): ReviewReply
     ],
     default: 21,
     defaultBots: 22,
+    nudge: 0,
     ...overrides,
   }
 }

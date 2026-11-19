@@ -70,6 +70,8 @@ type Portable struct {
 	WatchPushes         *bool                `json:"watchPushes,omitempty"`
 	ServiceStatus       *PortableStatus      `json:"serviceStatus,omitempty"`
 	MergeMethod         *MergeMethod         `json:"mergeMethod,omitempty"`
+	NudgeAfterHours     *int                 `json:"nudgeAfterHours,omitempty"`
+	NudgeSnooze         *bool                `json:"nudgeSnooze,omitempty"`
 	Theme               *Theme               `json:"theme,omitempty"`
 	TextSize            *TextSize            `json:"textSize,omitempty"`
 	ToastSeconds        *int                 `json:"toastSeconds,omitempty"`
@@ -200,7 +202,8 @@ func portableOf(set Settings) Portable {
 		},
 		WatchPushes:   &set.WatchPushes,
 		ServiceStatus: &PortableStatus{Off: &off, Parts: &picked},
-		MergeMethod:   &set.MergeMethod, Theme: &set.Theme, TextSize: &set.TextSize, ToastSeconds: &set.ToastSeconds,
+		MergeMethod:   &set.MergeMethod, NudgeAfterHours: &set.NudgeAfterHours, NudgeSnooze: &set.NudgeSnooze,
+		Theme: &set.Theme, TextSize: &set.TextSize, ToastSeconds: &set.ToastSeconds,
 		InboxOrder: &set.InboxOrder, HiddenLabels: &set.HiddenLabels, CardAvatars: &set.CardAvatars,
 		CardDensity: &set.CardDensity, CardUnread: &set.CardUnread, IgnoredWorkflows: &set.IgnoredWorkflows,
 		Integrations: &PortableIntegration{
@@ -480,6 +483,9 @@ func (s *Service) portableFields() []portableField {
 		pointerField("Merge method", tellsNothing, func(p Portable) *MergeMethod { return p.MergeMethod },
 			func(_ context.Context, m MergeMethod) (map[string]string, error) { return checkMergeMethod(m) },
 			func(m MergeMethod) string { return string(m) }),
+		pointerField("Offer a nudge after", tellsNothing, func(p Portable) *int { return p.NudgeAfterHours },
+			func(_ context.Context, n int) (map[string]string, error) { return checkNudgeAfterHours(n) }, nudgeHours),
+		boolField("Snooze after a nudge", tellsNothing, KeyNudgeSnooze, func(p Portable) *bool { return p.NudgeSnooze }),
 		pointerField("Theme", tellsTheme, func(p Portable) *Theme { return p.Theme },
 			func(_ context.Context, theme Theme) (map[string]string, error) { return checkTheme(theme) },
 			func(theme Theme) string { return string(theme) }),
@@ -719,6 +725,23 @@ func seconds(n int) string {
 		return strconv.Itoa(n/60) + " min"
 	default:
 		return strconv.Itoa(n) + " s"
+	}
+}
+
+// nudgeHours words the hours before a nudge, "off" for 0: in days when they are whole
+// days, as "1 day" or "7 days", and in hours otherwise.
+func nudgeHours(n int) string {
+	switch {
+	case n == 0:
+		return "off"
+	case n == 24:
+		return "1 day"
+	case n%24 == 0:
+		return strconv.Itoa(n/24) + " days"
+	case n == 1:
+		return "1 hour"
+	default:
+		return strconv.Itoa(n) + " hours"
 	}
 }
 

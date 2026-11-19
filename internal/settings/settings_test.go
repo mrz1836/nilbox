@@ -106,6 +106,7 @@ func TestPrefDefaults(t *testing.T) {
 		CardUnread:          true,
 		IgnoredWorkflows:    []string{},
 		MergeMethod:         DefaultMergeMethod,
+		NudgeAfterHours:     DefaultNudgeAfterHours,
 		ReviewTab:           DefaultReviewTab,
 		NotificationsTab:    DefaultNotificationsTab,
 		ConversationOrder:   DefaultConversationOrder,
@@ -306,6 +307,7 @@ func TestSettersPersist(t *testing.T) {
 		CardUnread:          false,
 		IgnoredWorkflows:    []string{"Auto-merge Trigger"},
 		MergeMethod:         DefaultMergeMethod,
+		NudgeAfterHours:     DefaultNudgeAfterHours,
 		ReviewTab:           DefaultReviewTab,
 		NotificationsTab:    DefaultNotificationsTab,
 		ConversationOrder:   DefaultConversationOrder,
@@ -382,6 +384,8 @@ func TestSetRejectsInvalid(t *testing.T) {
 		{name: "toast too short", set: func() error { return testutil.ErrOf(svc.SetToastSeconds(t.Context(), 4)) }, wantErr: ErrInvalidToastSeconds, wantMsg: "4 seconds; choose 5 to 60"},
 		{name: "toast too long", set: func() error { return testutil.ErrOf(svc.SetToastSeconds(t.Context(), 61)) }, wantErr: ErrInvalidToastSeconds},
 		{name: "no toast", set: func() error { return testutil.ErrOf(svc.SetToastSeconds(t.Context(), 0)) }, wantErr: ErrInvalidToastSeconds},
+		{name: "nudge before now", set: func() error { return testutil.ErrOf(svc.SetNudgeAfterHours(t.Context(), -1)) }, wantErr: ErrInvalidNudgeAfterHours, wantMsg: "-1 hours; choose 0 (never) to 720"},
+		{name: "nudge past a month", set: func() error { return testutil.ErrOf(svc.SetNudgeAfterHours(t.Context(), 721)) }, wantErr: ErrInvalidNudgeAfterHours},
 		{name: "unknown review rule", set: func() error {
 			return testutil.ErrOf(svc.SetSnoozeWake(t.Context(), snooze.Rules{Reviews: "sometimes"}))
 		}, wantErr: snooze.ErrInvalidRules, wantMsg: `"sometimes"`},
@@ -431,6 +435,8 @@ func TestGetFallsBackOnBadStoredValues(t *testing.T) {
 	setPref(t, db, KeyCloneRoot, "   ")
 	setPref(t, db, KeySnoozeDays, "-2")
 	setPref(t, db, KeyToastSeconds, "61")
+	setPref(t, db, KeyNudgeAfterHours, "721")
+	setPref(t, db, KeyNudgeSnooze, "maybe")
 	setPref(t, db, snooze.PrefWakeReviews, "sometimes")
 	setPref(t, db, snooze.PrefWakeCommits, "lots")
 
@@ -683,6 +689,14 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"toast seconds", func() (Settings, error) { return svc.SetToastSeconds(ctx, 5) },
 			func(s Settings) any { return s.ToastSeconds }, 5,
+		},
+		{
+			"nudge after hours", func() (Settings, error) { return svc.SetNudgeAfterHours(ctx, 0) },
+			func(s Settings) any { return s.NudgeAfterHours }, 0,
+		},
+		{
+			"nudge snooze", func() (Settings, error) { return svc.SetNudgeSnooze(ctx, true) },
+			func(s Settings) any { return s.NudgeSnooze }, true,
 		},
 		{
 			"snooze wake", func() (Settings, error) { return svc.SetSnoozeWake(ctx, wake) },

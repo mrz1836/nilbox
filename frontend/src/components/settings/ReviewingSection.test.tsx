@@ -9,12 +9,16 @@ import { ReviewingSection } from './ReviewingSection'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
-function renderSection(current: Settings = settings()) {
+function renderSection(current: Settings = settings(), onManageReplies?: () => void) {
   const onSaved = vi.fn()
 
-  render(<ReviewingSection settings={current} onSaved={onSaved} />)
+  render(<ReviewingSection settings={current} onSaved={onSaved} onManageReplies={onManageReplies} />)
 
   return { onSaved }
+}
+
+function nudgeAfter() {
+  return within(screen.getByRole('radiogroup', { name: 'Offer a nudge after' }))
 }
 
 function methods() {
@@ -47,7 +51,97 @@ describe('ReviewingSection', () => {
     renderSection()
 
     expect(screen.getByRole('heading', { name: 'Review replies' }).parentElement).toHaveTextContent(
-      'Reply templates for approvals, requests for changes, and comments live in Prompts → Review replies.',
+      'Reply templates for approvals, requests for changes, comments, and nudges live in Prompts → Review replies.',
+    )
+  })
+
+  it('offers each quiet time before a nudge, with the stored one chosen', () => {
+    renderSection(settings({ nudgeAfterHours: 48 }))
+
+    expect(
+      nudgeAfter()
+        .getAllByRole('radio')
+        .map((r) => r.closest('label')?.textContent),
+    ).toEqual(['Off', '12 hours', '1 day', '2 days', '3 days', '1 week'])
+    expect(nudgeAfter().getByRole('radio', { name: '2 days' })).toBeChecked()
+  })
+
+  it('offers a stored quiet time that is none of the usual ones, in its place', () => {
+    renderSection(settings({ nudgeAfterHours: 36 }))
+
+    expect(
+      nudgeAfter()
+        .getAllByRole('radio')
+        .map((r) => r.closest('label')?.textContent),
+    ).toEqual(['Off', '12 hours', '1 day', '36 hours', '2 days', '3 days', '1 week'])
+    expect(nudgeAfter().getByRole('radio', { name: '36 hours' })).toBeChecked()
+  })
+
+  it('saves a quiet time as soon as it is chosen, Off among them', async () => {
+    const { onSaved } = renderSection()
+
+    expect(nudgeAfter().getByRole('radio', { name: '1 day' })).toBeChecked()
+
+    await userEvent.click(nudgeAfter().getByRole('radio', { name: 'Off' }))
+
+    expect(platform.setNudgeAfterHours).toHaveBeenCalledWith(0)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ nudgeAfterHours: 0 }))
+    })
+  })
+
+  it('shows a quiet time the backend refused, and goes back to the stored one', async () => {
+    platform.setNudgeAfterHours.mockRejectedValue(new Error('unknown time before a nudge'))
+    const { onSaved } = renderSection()
+
+    await userEvent.click(nudgeAfter().getByRole('radio', { name: '1 week' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('unknown time before a nudge')
+    expect(screen.getByRole('radiogroup', { name: 'Offer a nudge after' })).toHaveAccessibleDescription(
+      'unknown time before a nudge',
+    )
+    await waitFor(() => {
+      expect(nudgeAfter().getByRole('radio', { name: '1 day' })).toBeChecked()
+    })
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
+  it('saves whether a nudge snoozes, naming the snooze length', async () => {
+    const { onSaved } = renderSection(settings({ snoozeDays: 3 }))
+    const snooze = screen.getByRole('switch', { name: 'Snooze after a nudge' })
+
+    expect(snooze).not.toBeChecked()
+    expect(snooze).toHaveAccessibleDescription(
+      'Start each nudge with “Then snooze for 3 days” ticked. The pull request comes back early when its author pushes.',
+    )
+
+    await userEvent.click(snooze)
+
+    expect(platform.setNudgeSnooze).toHaveBeenCalledWith(true)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ snoozeDays: 3, nudgeSnooze: true }))
+    })
+  })
+
+  it('points at the Nudge reply, and opens the replies from there', async () => {
+    const onManageReplies = vi.fn()
+    renderSection(settings(), onManageReplies)
+
+    expect(screen.getByText(/The comment starts from your/)).toHaveTextContent(
+      'The comment starts from your Nudge reply in Prompts › Review replies.',
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Prompts › Review replies' }))
+
+    expect(onManageReplies).toHaveBeenCalledOnce()
+  })
+
+  it('names where the Nudge reply is kept without a way there', () => {
+    renderSection()
+
+    expect(screen.queryByRole('button', { name: 'Prompts › Review replies' })).not.toBeInTheDocument()
+    expect(screen.getByText(/The comment starts from your/)).toHaveTextContent(
+      'The comment starts from your Nudge reply in Prompts › Review replies.',
     )
   })
 

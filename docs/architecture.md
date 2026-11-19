@@ -312,9 +312,16 @@ text: a change to a starter's text keeps the text it replaces, byte for byte, in
 starter's `Earlier` (pinned by SHA-256 in `TestEarlierStarterTextsAreAsShipped`), and
 `Seed` gives every copy still holding one the new text, keeping its title, nickname, and
 settings, as an import does a file's; a copy whose text the user changed, or a duplicate, is
-never touched. After the starters, `Seed` fills the app's prompt for each situation a pull
-request can be in (`prompts.DefaultSlot`'s `checks_failing`, `conflicts`, `changes_requested`,
-and `rereview`, the prefs `prompts.default.<slot>`) once, from the library's copy of the
+never touched. A starter reply becomes its slot's default reply (`prompts.ReplySlot`: `approve`,
+`approve_bots`, `request_changes`, `comment`, and `nudge`, each in the pref
+`prompts.default.reply.<slot>`, `approve_bots` as `approve.bots`) as `Seed` adds it, when the slot
+has none, so a library from a build before a slot existed gets the slot's starter and its
+default once: the **Nudge** reply (`reply-nudge`, a comment reply for pull requests) that a
+card's Nudge posts, which the review sheet's comment replies carry as `review.ReplyList.Nudge`,
+so the nudge dialog fills it in through the same `FillReply`. After the starters, `Seed` fills
+the app's prompt for each situation a pull request can be in (`prompts.DefaultSlot`'s
+`checks_failing`, `conflicts`, `changes_requested`, and `rereview`, the prefs
+`prompts.default.<slot>`) once, from the library's copy of the
 slot's starter when it has one, and records the slot in `prompts.seededSlots` either way, so a
 slot the user cleared, or whose starter they deleted, stays as they left it; unlike a kind's, a
 situation's default never falls back to another prompt. The record travels with the library
@@ -606,6 +613,24 @@ list (`settings.ListKey`); `settings.AdoptSections` carried the former Authored 
 lists' window keys over to Yours once, and an older backup's inbox order is read the same way
 (`adoptFormerOrder`). Autopilot's sources and conditions keep the three reasons
 (`catalog.ListSource`), worded as reasons rather than lists.
+
+**Nudges.** `Nudge` (`edits.go`), on the user's click alone, posts a comment on the
+conversation of an open pull request someone else opened (`(*github.Client).AddComment`, one
+REST request through the `WriteGate`'s `edit`, and no read: the account check is the one every
+edit makes, a request only for a token no refresh has used). It runs under the item's lock,
+like `Unassign`, and refuses an issue (`ErrNotPull`), the user's own pull request or one closed
+or merged (`ErrNotNudgeable`), and an empty text (`ErrEmptyNudge`). Once GitHub has posted it,
+one transaction records when (`NoteNudge`, `items.nudged_at`, migration `0107_nudges`; GitHub's
+time for the comment, now without one) and counts the comment on the card at once
+(`CountOwnComment`, `item_details.comments + 1`), so a snooze the user takes right after
+records a baseline that already holds it, and a comments wake rule never wakes on the user's
+own comment. A store that fails after GitHub posted says so in the window ("GitHub posted the
+comment, but…"), and the next refresh catches the count up. `Item.NudgedAt` shows `nudged_at`
+only while it is later than the user's standing verdict (`viewer_review_at`), so a nudge from a
+past round of review reads as none. The result, `Nudged`, holds the snapshot and the
+comment's address. The window decides when to offer one (`lib/nudge.ts`) and fills the text
+in locally from the prompt library's default **Nudge** reply, so a nudge spends one REST
+request and nothing else.
 
 **A refresh the window can watch.** `runRefresh` sets `Service.refreshing`, which every
 snapshot read reports (`Snapshot.Refreshing`, set on the copy returned, never on the one kept),
@@ -4728,16 +4753,27 @@ function that decides what a card puts first, the first matching rule winning: i
 story (`card/CardStory`), its primary verb, whether that is quiet, and the situation (the
 generated `launcher.Situation`) that picks the agent button's prompt. A pull request someone
 else opened whose user's own verdict (`Details.viewerVerdict`) requests changes waits on its
-author (`awaiting_author`, quiet, no situation) until the author pushes, and then asks for a
-re-review (`rereview`) before the rules for the user's own pull request can call it theirs to
-fix. One the user approved says so (`approved_by_you`, quiet, no situation; with auto-merge
+author (`awaiting_author`, quiet, no situation; `lib/nudge.ts`' `awaitsAuthor`) until the
+author pushes, and then asks for a re-review (`rereview`) before the rules for the user's own
+pull request can call it theirs to fix. While it waits, its primary is `nudge`, loud in the
+accent color on its grey edge, once a nudge is due (`StepInput.nudge`: `nudgeDue`, quiet for
+`CardPrefs.nudgeAfterHours`, measured from the later of `updatedAt` and `nudgedAt`, never for a
+bot), and its story says how long it has been quiet or when the user nudged them
+(`nudgeWords`). The row reads both through `useNowAs`, and only where its edits can post a
+nudge (`EditActions.onNudge`), so a host without one never shows the verb. `useItemActions`
+holds the dialog (`components/NudgeDialog`'s `useNudge`, rendered by `InboxView` and
+`useSheetHost`): it starts from the default Nudge reply (`ReplyList.nudge`, filled by
+`FillReply`), posts through `InboxState.nudge`, which shows the snapshot it answers with,
+marks the item read, and says so in a toast with View comment, or, with Then snooze ticked
+(`CardPrefs.nudgeSnooze` starts it), snoozes it, the snooze's toast saying both. One the user approved says so (`approved_by_you`, quiet, no situation; with auto-merge
 on, rule 16's story) until it is ready to merge, when rule 15 offers the merge, and its held
 workflow runs ask for the user's approval as a review's do (`runs_held`, with Open). Neither
 rule applies while a review request of the user's is open: the author asked again, so the
 review rules decide. In the Snoozed and Dismissed tabs the story is the triage tag, then its
 `state`, muted: the lead rules 1 to 19 give the item in its list. The row passes it every
-input, and the three that depend on the time (the card's session, whether a failed one is
-fresh, back from a snooze) come from `useNowAs` as primitives, so a clock tick renders no row.
+input, and those that depend on the time (the card's session, whether a failed one is fresh,
+back from a snooze, whether a nudge is due and its words) come from `useNowAs` as primitives,
+so a clock tick renders no row.
 The state column is `card/StateTrack` over `card/SizeGlyph` for a pull request, or
 `card/IssueState`, without tooltips (the numbers are in the peek and the screen-reader
 sentence), and `card/RiskChip` is the one chip for trust and sensitive files.
@@ -4851,7 +4887,7 @@ following a link, closing), mark the item it left and the one it opened in one c
 (`useItemActions`' `seen`, which writes a failure to the console, since the user asked for
 none of it); `openOnGitHub` (`TriageControls`) marks a card opened on GitHub from its title's
 ⌘-click, its ↗, the menu's Open on GitHub, or the peek's GitHub; and `useItemActions` marks a
-card once Unassign me or Remove me as reviewer succeeds. Mark as read, Mark as unread, and the
+card once Unassign me, Remove me as reviewer, or a nudge succeeds. Mark as read, Mark as unread, and the
 opens on GitHub say a failure in a toast.
 `card/CardGuide` teaches the card, a legend rather than a tour: the real `ItemRow`, drawn
 from `lib/cardGuide.ts`'s fixed sample (`guideItem` and `guideSession`, their times counted
@@ -4869,7 +4905,9 @@ transform changes no size, so each distance is divided by the box's scale (its m
 size over its `offsetWidth` and `offsetHeight`), or the markers furthest right would land
 short of their parts.
 Both variants end with the key (its track symbols take `card/StateTrack`'s
-`trackStepClass`). `card/CardGuideDialog` shows the full guide in a modal; App owns whether it is
+`trackStepClass`); in full, a second sample follows it (`NudgeSample`, `guideNudgeItem`): a
+pull request whose author has been quiet two days since the user asked for changes, on a card
+given inert edits with an `onNudge` and a threshold of a day, so it shows Nudge. `card/CardGuideDialog` shows the full guide in a modal; App owns whether it is
 open, loads it on its first opening, so the inbox's chunk holds none of the guide, and
 hands `onShowCardGuide` to `InboxView` (How to read a card, beside the last-refreshed time)
 and `SettingsView` (Settings → Cards' row). Setup's Finish step shows the compact guide, and

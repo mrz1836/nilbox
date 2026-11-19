@@ -97,11 +97,15 @@ const (
 	SlotApproveBots    ReplySlot = "approve_bots"
 	SlotRequestChanges ReplySlot = "request_changes"
 	SlotComment        ReplySlot = "comment"
+
+	// SlotNudge is the comment a nudge posts to the author of a pull request the user
+	// requested changes on, who has been quiet since.
+	SlotNudge ReplySlot = "nudge"
 )
 
 // ReplySlots returns every default reply, in the order the editor lists them.
 func ReplySlots() []ReplySlot {
-	return []ReplySlot{SlotApprove, SlotApproveBots, SlotRequestChanges, SlotComment}
+	return []ReplySlot{SlotApprove, SlotApproveBots, SlotRequestChanges, SlotComment, SlotNudge}
 }
 
 // Action is the review a slot's reply must be written for.
@@ -111,7 +115,7 @@ func (s ReplySlot) Action() ReplyAction {
 		return ReplyApprove
 	case SlotRequestChanges:
 		return ReplyRequestChanges
-	case SlotComment:
+	case SlotComment, SlotNudge:
 		return ReplyComment
 	default:
 		return ""
@@ -152,6 +156,8 @@ func (s ReplySlot) describe() string {
 		return "the default for requests for changes"
 	case SlotComment:
 		return "the default for comments"
+	case SlotNudge:
+		return "the default for nudges"
 	default:
 		return "the default for approvals"
 	}
@@ -356,6 +362,9 @@ type ReplyDefaults struct {
 	ApproveBots    int64 `json:"approveBots"`
 	RequestChanges int64 `json:"requestChanges"`
 	Comment        int64 `json:"comment"`
+
+	// Nudge is the comment a nudge of a pull request's author starts with.
+	Nudge int64 `json:"nudge"`
 }
 
 // For returns the default reply for slot.
@@ -369,6 +378,8 @@ func (r ReplyDefaults) For(slot ReplySlot) int64 {
 		return r.RequestChanges
 	case SlotComment:
 		return r.Comment
+	case SlotNudge:
+		return r.Nudge
 	default:
 		return 0
 	}

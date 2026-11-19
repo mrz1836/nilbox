@@ -48,6 +48,25 @@ func (c *fakeClient) RemoveReviewRequest(
 	return c.recordEdit(tok, "unreview "+ref.String()+" "+login)
 }
 
+// AddComment records the comment and answers with the canned comment.
+func (c *fakeClient) AddComment(_ context.Context, tok github.Token, ref item.Ref, body string) (*github.Comment, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.gotTokens = append(c.gotTokens, tok.Reveal())
+	c.edits = append(c.edits, "comment "+ref.String()+" "+body)
+
+	if c.editErr != nil {
+		return nil, github.Redact(c.editErr, tok)
+	}
+
+	if c.comment == nil {
+		return &github.Comment{}, nil
+	}
+
+	return new(*c.comment), nil
+}
+
 // recordEdit records one edit and answers it.
 func (c *fakeClient) recordEdit(tok github.Token, edit string) (*github.Edited, error) {
 	c.mu.Lock()

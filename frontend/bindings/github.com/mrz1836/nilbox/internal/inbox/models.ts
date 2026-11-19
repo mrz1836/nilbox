@@ -356,6 +356,14 @@ export interface Item {
     "wokeBy": snooze$0.Reasons | null;
 
     /**
+     * NudgedAt is when the user last nudged the author of a pull request from the inbox
+     * (Nudge), as RFC 3339, or "" when they haven't since their standing verdict: a nudge
+     * from before the user's latest review is a past round's, and shows as none. The card
+     * measures how long the author has been quiet from the later of it and UpdatedAt.
+     */
+    "nudgedAt": string;
+
+    /**
      * PinnedAt is when the item was pinned, as RFC 3339, or "" when it is not. Pinned
      * items come first in each list, the most recently pinned first. A pin outlasts a
      * snooze or a dismissal.
@@ -449,6 +457,24 @@ export interface Milestone {
      * closed, from 0 to 100.
      */
     "progress": number;
+}
+
+/**
+ * NudgeRequest is a nudge to post: the pull request it is for, by its id in the inbox, and
+ * the comment's text, as the user left it.
+ */
+export interface NudgeRequest {
+    "itemId": number;
+    "body": string;
+}
+
+/**
+ * Nudged is what a nudge GitHub posted leaves: the new snapshot, in which the item says
+ * when it was nudged, and the comment's address on GitHub.
+ */
+export interface Nudged {
+    "snapshot": Snapshot;
+    "url": string;
 }
 
 /**

@@ -316,6 +316,18 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
       keywords: ['squash', 'merge commit', 'rebase', 'approve and merge', 'merge button', 'review sheet'],
     },
     {
+      label: 'Nudges',
+      keywords: ['nudge', 'follow up', 'ping', 'remind', 'waiting on the author', 'quiet', 'requested changes'],
+    },
+    {
+      label: 'Offer a nudge after',
+      keywords: ['nudge', 'quiet', 'hours', 'days', 'waiting on the author', 'follow up', 'remind', 'off'],
+    },
+    {
+      label: 'Snooze after a nudge',
+      keywords: ['nudge', 'snooze', 'then snooze', 'until the author responds', 'set aside'],
+    },
+    {
       label: 'Ignored workflows',
       keywords: [
         'held runs',

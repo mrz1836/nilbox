@@ -6,6 +6,7 @@ import {
   getInboxSnapshot,
   markItemsSeen,
   markItemUnseen,
+  nudgeAuthor,
   on,
   pinItem,
   refreshInbox,
@@ -16,6 +17,7 @@ import {
   unpinItem,
   type InboxProgress,
   type InboxSnapshot,
+  type Nudged,
 } from '../platform'
 import { attempt, type Result } from './call'
 import { shareSnapshot } from './share'
@@ -66,6 +68,11 @@ export interface InboxState {
   // shown, the item gone from that list, or with why it failed.
   unassign: (id: number) => Promise<Result<InboxSnapshot>>
   removeReviewRequest: (id: number) => Promise<Result<InboxSnapshot>>
+  // nudge posts body as a comment on a pull request's conversation, on GitHub, asking its
+  // author about the changes the user requested. Like the edits above, nothing shows until
+  // GitHub has posted it; then it resolves with the new inbox once it is shown, the item
+  // saying when it was nudged, and the comment's address, or with why it failed.
+  nudge: (id: number, body: string) => Promise<Result<Nudged>>
   // markRead marks items read, and markUnread one unread, on this Mac alone, whatever
   // Settings → Cards' Unread dots says: the window marks what the user saw and did (an
   // item's sheet opening, stepping away, or closing, the item opened on GitHub, a card's
@@ -154,6 +161,14 @@ export function useInbox(): InboxState {
     show(got)
 
     return got.snapshot
+  }
+
+  // nudged posts a nudge and shows the inbox it answers with, numbered as it starts.
+  const nudged = async (id: number, body: string): Promise<Nudged> => {
+    const n = next()
+    const answer = await nudgeAuthor({ itemId: id, body })
+
+    return { ...answer, snapshot: await record(n, Promise.resolve(answer.snapshot)) }
   }
 
   const loaded = useQuery(() => ask(next(), getInboxSnapshot()), [])
@@ -280,6 +295,7 @@ export function useInbox(): InboxState {
     // update while it runs.
     unassign: (id) => attempt(record(next(), unassignItem(id))),
     removeReviewRequest: (id) => attempt(record(next(), removeItemReviewRequest(id))),
+    nudge: (id, body) => attempt(nudged(id, body)),
     markRead: (ids) => mark(ids, false, () => markItemsSeen([...ids])),
     markUnread: (id) => mark([id], true, () => markItemUnseen(id)),
     marks,
