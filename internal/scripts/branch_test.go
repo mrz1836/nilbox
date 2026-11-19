@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -41,29 +42,115 @@ type gitRig struct {
 	plants *testutil.Planter
 }
 
-// gitRigRepos are a gitRig's origin and clones, under its home, built once for the test
-// binary by buildGitRigRepos and copied into each rig.
-var gitRigRepos = testutil.NewGitTemplate(buildGitRigRepos) //nolint:gochecknoglobals // built once for the whole test binary
+// gitRigShape is what a gitRig's repositories hold past buildGitRigRepos's own: with
+// blobless, sdk is a partial clone that has none of its files' contents but those its
+// checkout fetched, from an origin that allows filters; with plain, plain, another clone
+// of origin, in the rig's home, made as sdk is; then a commit of each of pushed's
+// space-separated files, in order, that the other clone pushed to origin's main, as
+// gitRig.pushed does; and then, with signed, the signed commit buildSigned pushes.
+type gitRigShape struct {
+	blobless bool
+	plain    bool
+	pushed   string
+	signed   bool
+}
+
+// gitRigCommits are the commits a gitRig's build makes: first, which origin and the
+// clones start at, and last, the last commit it pushed past first to origin's main, ""
+// for none.
+type gitRigCommits struct {
+	first string
+	last  string
+}
+
+// gitRigRepos are a gitRig's origin and clones, under its home, one for each shape, built
+// once for the test binary by buildGitRigRepos and copied into each rig of the shape.
+var gitRigRepos = testutil.NewGitTemplates(buildGitRigRepos) //nolint:gochecknoglobals // built once for the whole test binary
 
 // buildGitRigRepos builds, under what becomes a rig's home, a local bare origin on main,
 // origin.git; other, a clone of it that pushed one commit, one.txt, to origin's main; and
-// sdk under the clone root, projects, cloned after it. Both clones reach origin over
-// file://. It returns the commit.
-func buildGitRigRepos(b *testutil.GitBuild) string {
+// sdk under the clone root, projects, cloned after it, all as shape adds to. Every clone
+// reaches origin over file://.
+func buildGitRigRepos(b *testutil.GitBuild, shape gitRigShape) gitRigCommits {
 	origin := filepath.Join(b.Root, "origin.git")
 	url := "file://" + filepath.ToSlash(origin)
 
 	b.Git(".", "-c", "init.defaultBranch=main", "init", "-q", "--bare", origin)
 	b.Git(".", "clone", "-q", url, "other")
-	first := b.Commit("other", "one.txt", "one.txt\n")
+	c := gitRigCommits{first: b.Commit("other", "one.txt", "one.txt\n")}
 	b.Git("other", "push", "-q", "origin", "HEAD:main")
-	b.Git(".", "clone", "-q", url, filepath.Join("projects", "sdk"))
 
-	return first
+	if shape.blobless {
+		b.Git("origin.git", "config", "uploadpack.allowFilter", "true")
+		b.Git(".", "clone", "-q", "--filter=blob:none", url, filepath.Join("projects", "sdk"))
+	} else {
+		b.Git(".", "clone", "-q", url, filepath.Join("projects", "sdk"))
+	}
+
+	if shape.plain {
+		b.Git(".", "clone", "-q", url, "plain")
+	}
+
+	for _, name := range strings.Fields(shape.pushed) {
+		c.last = b.Commit("other", name, name+"\n")
+		b.Git("other", "push", "-q", "origin", "HEAD:main")
+	}
+
+	if shape.signed {
+		c.last = buildSigned(b)
+	}
+
+	return c
+}
+
+// buildSigned pushes to origin's main, from the other clone, a commit that names the
+// filter driver evil for its text files in its .gitattributes, and carries a signature,
+// which a signature check hands to gpg.program, and returns it.
+func buildSigned(b *testutil.GitBuild) string {
+	b.WriteFile(filepath.Join("other", ".gitattributes"), "*.txt filter=evil\n")
+	b.WriteFile(filepath.Join("other", "a.txt"), "a\n")
+	b.Git("other", "add", ".gitattributes", "a.txt")
+	b.Git("other", "commit", "-q", "-m", "attributes")
+
+	tree := b.Git("other", "rev-parse", "HEAD^{tree}")
+	parent := b.Git("other", "rev-parse", "HEAD")
+	body := "tree " + tree + "\nparent " + parent + "\n" +
+		"author " + testutil.GitName + " <" + testutil.GitEmail + "> 1700000000 +0000\n" +
+		"committer " + testutil.GitName + " <" + testutil.GitEmail + "> 1700000000 +0000\n" +
+		"gpgsig -----BEGIN PGP SIGNATURE-----\n \n iQEzBAABCAAdFiEEexample\n -----END PGP SIGNATURE-----\n\nsigned\n"
+
+	// The commit's text is kept in the other clone's git folder, where nothing reads it.
+	file := filepath.Join("other", ".git", "signed-commit")
+	b.WriteFile(file, body)
+
+	oid := b.Git("other", "hash-object", "-t", "commit", "-w", filepath.Join(b.Root, file))
+	b.Git("other", "push", "-q", "origin", oid+":refs/heads/main")
+
+	return oid
 }
 
 // newGitRig builds a gitRig, or skips the test without git.
 func newGitRig(t *testing.T) *gitRig {
+	t.Helper()
+
+	g, _ := newGitRigAs(t, gitRigShape{})
+
+	return g
+}
+
+// newBehindGitRig builds a gitRig whose origin went on past its clone: the other clone
+// committed each of files, a commit each, and pushed them to origin's main once the clone
+// was made, as pushed does. It returns the rig and the last of those commits.
+func newBehindGitRig(t *testing.T, files ...string) (*gitRig, string) {
+	t.Helper()
+
+	return newGitRigAs(t, gitRigShape{pushed: strings.Join(files, " ")})
+}
+
+// newGitRigAs builds a gitRig whose repositories hold what shape says, and returns it and
+// the last commit its build pushed past the first, "" for none, or skips the test without
+// git.
+func newGitRigAs(t *testing.T, shape gitRigShape) (*gitRig, string) {
 	t.Helper()
 
 	testutil.RequireGit(t)
@@ -75,7 +162,8 @@ func newGitRig(t *testing.T) *gitRig {
 		plants: testutil.NewPlanter(t, r.home),
 	}
 
-	g.first = gitRigRepos.Copy(t, r.home)
+	c := gitRigRepos.Copy(t, shape, r.home)
+	g.first = c.first
 
 	// The clone's origin is on GitHub, as the clones list reads it, so its status asks
 	// origin unasked (a local bare repository stands in for GitHub's).
@@ -88,7 +176,7 @@ func newGitRig(t *testing.T) *gitRig {
 	})
 	r.engine.RegisterRerunner(scriptrun.KindPull, NewRerunner(g.branch))
 
-	return g
+	return g, c.last
 }
 
 // url is origin's address.
@@ -221,9 +309,8 @@ func TestBranchStatusAhead(t *testing.T) {
 func TestBranchStatusDiverged(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
+	g, _ := newBehindGitRig(t, "theirs.txt")
 	g.commit(g.dir, "mine.txt")
-	g.pushed("theirs.txt")
 
 	assert.Equal(t, BranchBehind, g.status(false).State,
 		"before a fetch only the pull can tell, and it refuses to do more than fast-forward")
@@ -382,8 +469,7 @@ func TestBranchStatusReadsNothingWhileScriptsAreOff(t *testing.T) {
 func TestBranchStatusOffersNoPullItWouldRefuse(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	g.pushed("two.txt")
+	g, _ := newBehindGitRig(t, "two.txt")
 	testutil.RunGit(t, g.dir, "config", "hook.evil.command", "touch /nonexistent/owned")
 
 	st := g.status(true)

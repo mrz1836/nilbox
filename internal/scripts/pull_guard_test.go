@@ -3,7 +3,6 @@ package scripts
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -48,31 +47,6 @@ func refusedPlantings() []testutil.Planting {
 	}
 }
 
-// pushSigned pushes to origin's main a commit that names the filter driver evil for its
-// text files in its .gitattributes, and carries a signature, which a signature check hands
-// to gpg.program.
-func (g *gitRig) pushSigned() {
-	g.t.Helper()
-
-	require.NoError(g.t, os.WriteFile(filepath.Join(g.other, ".gitattributes"), []byte("*.txt filter=evil\n"), 0o600))
-	require.NoError(g.t, os.WriteFile(filepath.Join(g.other, "a.txt"), []byte("a\n"), 0o600))
-	testutil.RunGit(g.t, g.other, "add", ".gitattributes", "a.txt")
-	testutil.RunGit(g.t, g.other, "commit", "-q", "-m", "attributes")
-
-	tree := strings.TrimSpace(testutil.RunGit(g.t, g.other, "rev-parse", "HEAD^{tree}"))
-	parent := g.head(g.other)
-	body := "tree " + tree + "\nparent " + parent + "\n" +
-		"author " + testutil.GitName + " <" + testutil.GitEmail + "> 1700000000 +0000\n" +
-		"committer " + testutil.GitName + " <" + testutil.GitEmail + "> 1700000000 +0000\n" +
-		"gpgsig -----BEGIN PGP SIGNATURE-----\n \n iQEzBAABCAAdFiEEexample\n -----END PGP SIGNATURE-----\n\nsigned\n"
-
-	file := filepath.Join(g.t.TempDir(), "commit")
-	require.NoError(g.t, os.WriteFile(file, []byte(body), 0o600))
-
-	oid := strings.TrimSpace(testutil.RunGit(g.t, g.other, "hash-object", "-t", "commit", "-w", file))
-	testutil.RunGit(g.t, g.other, "push", "-q", "origin", oid+":refs/heads/main")
-}
-
 // TestPullRefusesAClonesOwnProgramsBeforeGitRuns plants, in the clone's own config, each
 // program a planted config could make a pull run, a fake that writes a marker file, and
 // pulls a signed commit whose .gitattributes names the planted filter driver: the pull is
@@ -84,8 +58,7 @@ func TestPullRefusesAClonesOwnProgramsBeforeGitRuns(t *testing.T) {
 		t.Run(p.Name, func(t *testing.T) {
 			t.Parallel()
 
-			g := newGitRig(t)
-			g.pushSigned()
+			g, _ := newGitRigAs(t, gitRigShape{signed: true})
 			require.Equal(t, BranchBehind, g.status(false).State)
 
 			marker := g.plants.Plant(g.dir, p)
@@ -123,8 +96,7 @@ func TestPullNamesEveryRefusedSetting(t *testing.T) {
 func TestPullWithTheClonesOwnTransportSettings(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	two := g.pushed("two.txt")
+	g, two := newBehindGitRig(t, "two.txt")
 	markers := map[string]string{}
 
 	for _, p := range []testutil.Planting{
@@ -182,8 +154,7 @@ func TestPullSaysWhichOfTheClonesOwnSettingsItWentWithout(t *testing.T) {
 func TestPullNeverWritesOutsideTheClone(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	g.pushed("two.txt")
+	g, _ := newBehindGitRig(t, "two.txt")
 	g.status(false)
 
 	elsewhere := filepath.Join(g.home, "elsewhere")
@@ -215,8 +186,7 @@ func TestPullNeverWritesOutsideTheClone(t *testing.T) {
 func TestPullRunsNoHookOrMonitorOfTheClonesOwn(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	two := g.pushed("two.txt")
+	g, two := newBehindGitRig(t, "two.txt")
 
 	markers := map[string]string{
 		"hooks":     g.plants.PlantHooks(g.dir, "post-merge"),
@@ -240,8 +210,7 @@ func TestPullRunsNoHookOrMonitorOfTheClonesOwn(t *testing.T) {
 func TestPullOfACloneWithWhatGitAndItsToolsWrite(t *testing.T) {
 	t.Parallel()
 
-	g := newGitRig(t)
-	two := g.pushed("two.txt")
+	g, two := newBehindGitRig(t, "two.txt")
 
 	for _, kv := range [][2]string{
 		{"remote.upstream.url", "https://example.invalid/acme-org/example-repo.git"},
@@ -290,10 +259,8 @@ func TestAPlainPullWouldRunThePlantedPrograms(t *testing.T) {
 		t.Run(p.Name, func(t *testing.T) {
 			t.Parallel()
 
-			g := newGitRig(t)
+			g, _ := newGitRigAs(t, gitRigShape{plain: true, signed: true})
 			plain := filepath.Join(g.home, "plain")
-			testutil.RunGit(t, g.home, "clone", "-q", g.url(), plain)
-			g.pushSigned()
 
 			marker := g.plants.Plant(plain, p)
 
@@ -306,10 +273,8 @@ func TestAPlainPullWouldRunThePlantedPrograms(t *testing.T) {
 	t.Run("hooks", func(t *testing.T) {
 		t.Parallel()
 
-		g := newGitRig(t)
+		g, _ := newGitRigAs(t, gitRigShape{plain: true, pushed: "two.txt"})
 		plain := filepath.Join(g.home, "plain")
-		testutil.RunGit(t, g.home, "clone", "-q", g.url(), plain)
-		g.pushed("two.txt")
 
 		marker := g.plants.PlantHooks(plain, "post-merge")
 
@@ -321,10 +286,8 @@ func TestAPlainPullWouldRunThePlantedPrograms(t *testing.T) {
 	t.Run("core.worktree", func(t *testing.T) {
 		t.Parallel()
 
-		g := newGitRig(t)
+		g, _ := newGitRigAs(t, gitRigShape{plain: true, pushed: "two.txt"})
 		plain := filepath.Join(g.home, "plain")
-		testutil.RunGit(t, g.home, "clone", "-q", g.url(), plain)
-		g.pushed("two.txt")
 
 		elsewhere := filepath.Join(g.home, "elsewhere")
 		require.NoError(t, os.Mkdir(elsewhere, 0o700))
