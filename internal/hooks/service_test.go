@@ -289,27 +289,27 @@ func TestReposServesTheLastScanWhileItsFresh(t *testing.T) {
 
 	r.page(false)
 	r.page(false)
-	assert.Equal(t, 1, r.clones.listings(), "a fresh scan is served")
+	assert.Equal(t, 1, r.clones.Reads().Dirs, "a fresh scan is served")
 
 	r.page(true)
-	assert.Equal(t, 2, r.clones.listings(), "refresh scans again")
+	assert.Equal(t, 2, r.clones.Reads().Dirs, "refresh scans again")
 
 	clk.Advance(FreshFor)
 	r.page(false)
-	assert.Equal(t, 3, r.clones.listings(), "an old scan is scanned again")
+	assert.Equal(t, 3, r.clones.Reads().Dirs, "an old scan is scanned again")
 
 	r.tool("1.14.0", testutil.FakeRun{})
 	r.page(false)
-	assert.Equal(t, 4, r.clones.listings(), "another copy of go-pre-commit judges again")
+	assert.Equal(t, 4, r.clones.Reads().Dirs, "another copy of go-pre-commit judges again")
 
 	// A failed scan keeps the last page, with why.
-	r.clones.setDirsErr(errFake)
+	r.clones.FailDirs(errFake)
 
 	p := r.page(true)
 	assert.Equal(t, "Couldn't list the clones in ~/projects.", p.Error)
 	assert.Equal(t, StateMissing, row(t, p, dir).State)
 
-	r.clones.setDirsErr(nil)
+	r.clones.FailDirs(nil)
 	assert.Empty(t, r.page(true).Error)
 }
 
@@ -325,31 +325,27 @@ func TestReposScansAgainWhenTheLocationsChange(t *testing.T) {
 
 	assert.Len(t, r.page(false).Repos, 1)
 
-	r.clones.mu.Lock()
-	r.clones.extra = []localrepos.Location{{Path: work, Kind: localrepos.KindFolder}}
-	r.clones.mu.Unlock()
+	r.clones.SetExtra(localrepos.Location{Path: work, Kind: localrepos.KindFolder})
 
 	p := r.page(false)
-	assert.Equal(t, 2, r.clones.listings(), "a scan of other locations isn't served")
+	assert.Equal(t, 2, r.clones.Reads().Dirs, "a scan of other locations isn't served")
 	assert.Len(t, p.Repos, 2, "a folder location's clones are scanned")
 	assert.Equal(t, "~/projects", p.Root, "the page names the clone root")
 
 	r.page(false)
-	assert.Equal(t, 2, r.clones.listings(), "the scan of the same locations is")
+	assert.Equal(t, 2, r.clones.Reads().Dirs, "the scan of the same locations is")
 }
 
 func TestReposFailsWithoutAScanToShow(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t)
-	r.clones.setDirsErr(errFake)
+	r.clones.FailDirs(errFake)
 
 	_, err := r.svc.Repos(t.Context(), false)
 	require.ErrorIs(t, err, errFake)
 
-	r.clones.mu.Lock()
-	r.clones.rootErr = errFake
-	r.clones.mu.Unlock()
+	r.clones.FailRoots(errFake)
 
 	_, err = r.svc.Repos(t.Context(), false)
 	require.ErrorIs(t, err, errFake)
@@ -389,7 +385,7 @@ func TestReposScansAgainOnlyTheClonesThatChanged(t *testing.T) {
 	p := r.page(false)
 	assert.Equal(t, StateOther, row(t, p, api).State, "a clone marked stale is scanned again")
 	assert.Equal(t, StateMissing, row(t, p, web).State, "the others are served from the last scan")
-	assert.Equal(t, 1, r.clones.listings())
+	assert.Equal(t, 1, r.clones.Reads().Dirs)
 }
 
 func TestReposReadsWhatHoldsEachCloneAndItsLastChecks(t *testing.T) {
@@ -516,9 +512,9 @@ func TestAMarkSetDuringAScanStays(t *testing.T) {
 	// One mark was there when the scan began; the other comes while it runs, after the
 	// clones were listed, so the scan may have read the clone before the change.
 	r.svc.markStale(api)
-	r.clones.hook(func() { r.svc.markStale(web) }, nil)
+	r.clones.Hook(func() { r.svc.markStale(web) }, nil)
 	r.page(true)
-	r.clones.hook(nil, nil)
+	r.clones.Hook(nil, nil)
 
 	r.svc.mu.Lock()
 	_, apiMarked := r.svc.stale[paths.Resolved(api)]
@@ -556,12 +552,12 @@ func TestConcurrentReadsRescanAStaleCloneOnce(t *testing.T) {
 	r.page(false)
 	r.svc.markStale(dir)
 
-	_, before := r.clones.counts()
+	before := r.clones.Reads().Origins
 	entered, gate := make(chan struct{}), make(chan struct{})
 
 	var once sync.Once
 
-	r.clones.hook(nil, func() {
+	r.clones.Hook(nil, func() {
 		once.Do(func() { close(entered) })
 		<-gate
 	})
@@ -578,20 +574,20 @@ func TestConcurrentReadsRescanAStaleCloneOnce(t *testing.T) {
 
 	<-entered
 
-	rootedBefore, _ := r.clones.counts()
+	rootedBefore := r.clones.Reads().Roots
 
 	go read()
 
 	// The second read has asked for the clone root, so it is on its way to the rescan the
 	// first one runs.
-	require.Eventually(t, func() bool { rooted, _ := r.clones.counts(); return rooted > rootedBefore }, runWait, runPoll)
+	require.Eventually(t, func() bool { return r.clones.Reads().Roots > rootedBefore }, runWait, runPoll)
 	close(gate)
 
 	for range 2 {
 		assert.Equal(t, StateMissing, row(t, <-pages, dir).State)
 	}
 
-	_, after := r.clones.counts()
+	after := r.clones.Reads().Origins
 	assert.Equal(t, 1, after-before, "the stale clone's origin is read once")
 }
 
@@ -606,23 +602,17 @@ func TestReposScanOutlivesTheCallerThatStartedIt(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 
-	r.clones.mu.Lock()
-	r.clones.onDirs = cancel // the caller goes while the clones are listed
-	r.clones.mu.Unlock()
+	r.clones.Hook(cancel, nil) // the caller goes while the clones are listed
 
 	_, err := r.svc.Repos(ctx, false)
 	require.ErrorIs(t, err, context.Canceled)
 
-	r.clones.mu.Lock()
-	r.clones.onDirs = nil
-	r.clones.mu.Unlock()
+	r.clones.Hook(nil, nil)
 
 	page, err := r.svc.Repos(t.Context(), false)
 	require.NoError(t, err)
 	require.Len(t, page.Repos, 1)
 
-	r.clones.mu.Lock()
-	listed := r.clones.listed
-	r.clones.mu.Unlock()
+	listed := r.clones.Reads().Dirs
 	assert.Equal(t, 1, listed, "the first scan went on and was kept, so the clones were listed once")
 }

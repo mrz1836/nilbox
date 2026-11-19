@@ -92,7 +92,7 @@ func TestTheAppsQuitEndsAScanAndWaitsForIt(t *testing.T) {
 	// Once the app is quitting, no scan starts.
 	_, err := r.svc.Repos(t.Context(), true)
 	require.ErrorIs(t, err, errQuitting)
-	assert.Equal(t, 1, r.clones.listings())
+	assert.Equal(t, 1, r.clones.Reads().Dirs)
 }
 
 // stuckHistory is the runner's history whose read of the runs waits until its context

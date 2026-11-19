@@ -92,7 +92,7 @@ func openRig(t *testing.T, tt openCase) (*rig, *fakeOpener) {
 	t.Helper()
 
 	r := newLightRig(t)
-	r.clones.rootErr = tt.rootErr
+	r.clones.FailRoots(tt.rootErr)
 
 	if tt.clone != "" {
 		r.lightClone(tt.clone, tt.opts)
