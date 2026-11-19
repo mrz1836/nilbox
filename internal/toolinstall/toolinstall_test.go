@@ -452,6 +452,18 @@ func TestEveryRefusalLeavesNothingBehind(t *testing.T) {
 		want    error
 	}{
 		{name: "no checksums file", change: func(_ *setup, req *Request) { req.Checksums = "missing.txt" }, want: ErrNoChecksums},
+		{name: "an asset name that reaches out", change: func(s *setup, req *Request) {
+			s.d.r.assets[0].Name, req.Archive = "../"+archiveName, "../"+archiveName
+		}, want: ErrArchive},
+		{name: "an archive listed with no size", change: func(s *setup, _ *Request) { s.d.r.assets[0].Size = 0 }, want: ErrArchive},
+		{name: "an archive that isn't gzip", archive: func(*testing.T) []byte { return []byte("not a gzip stream") }, want: ErrArchive},
+		{name: "an archive cut off in the program", archive: func(t *testing.T) []byte {
+			t.Helper()
+
+			whole := makeArchive(t, entry{name: testBinary, body: goodProgram, size: 256 << 10})
+
+			return whole[:len(whole)/2]
+		}, want: ErrArchive},
 		{name: "no build for this machine", change: func(_ *setup, req *Request) { req.Archive = "mage-x_1.30.2_plan9_386.tar.gz" }, want: ErrNoBuild},
 		{
 			name:   "a checksum mismatch",
