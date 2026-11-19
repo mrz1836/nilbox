@@ -104,8 +104,9 @@ func (s *Service) followRound(ctx context.Context) ([]Outcome, []int64, error) {
 	return res.told, res.wrote, err
 }
 
-// followRow is a pull request a follow reads again: its item, account, node ID, number,
-// and repository, and whether it is listed and whether a routine's search follows it.
+// followRow is an item a follow reads again, a pull request but for the issues a merge
+// closes: its item, account, node ID, number, and repository, whether it is listed and
+// whether a routine's search follows it, and its kind.
 type followRow struct {
 	ID        int64
 	AccountID int64
@@ -115,15 +116,18 @@ type followRow struct {
 	RepoName  string
 	Listed    bool
 	Followed  bool
+	Kind      string
 }
 
 // followResult is what a follow's round stored: what to tell once it has let go of the
-// pull requests, the items it stored, and whether an answer it stored left GitHub still
-// working out whether the pull request merges (mergeable UNKNOWN).
+// items, the items it stored, whether an answer it stored left GitHub still working out
+// whether a pull request merges (mergeable UNKNOWN), and whether one found its item still
+// open.
 type followResult struct {
 	told    []Outcome
 	wrote   []int64
 	unknown bool
+	open    bool
 }
 
 // followRows reads rows again, the pull requests of the account login, under their locks,
@@ -270,10 +274,11 @@ func (s *Service) storeFollowed(
 			continue
 		}
 
-		ref := refOf(r.RepoOwner, r.RepoName, r.Number, item.KindPR)
+		ref := refOf(r.RepoOwner, r.RepoName, r.Number, item.Kind(r.Kind))
 		res.told = append(res.told, seenClosed(w, login, ref, s.now())...)
 		res.wrote = append(res.wrote, r.ID)
 		res.unknown = res.unknown || stillWorkingOut(update)
+		res.open = res.open || (update.Found && !update.Item.Closed())
 
 		s.noteMergedRead(w, ref)
 	}

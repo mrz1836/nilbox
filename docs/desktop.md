@@ -1952,7 +1952,12 @@ Cards** can make every card one line instead (**Compact cards**, below).
   still open. Anyone can say their pull request closes an issue, from a fork too, so one from
   an outside contributor or an untrusted bot only links, marked **from outside the project**,
   and the issue's story stays its own (**Assigned to you**). The link costs nothing: the
-  issue's details ask GitHub for it, at no extra point.
+  issue's details ask GitHub for it, at no extra point. Once the pull request merges, in
+  Nilbox or anywhere a read sees it, the issues in your inbox it closes are read again five
+  seconds later, and every five seconds while GitHub still has one open, three times at most,
+  so a closed issue leaves your inbox with its fix rather than at the next refresh. An issue
+  GitHub keeps open, as one whose fix merged into a branch other than the default, stays and
+  says **Fix merged**.
 
 **Hover a card** for its triage over the track: **Show details**, refresh it, snooze it,
 dismiss it, pin or unpin it, and the menu of everything else. They stay while the card is busy

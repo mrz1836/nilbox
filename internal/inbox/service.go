@@ -257,8 +257,10 @@ type Service struct {
 	// changes (see ownpushes.go).
 	own ownPushes
 
-	// merges holds the follows the merges the inbox learned of are owed (see merges.go).
+	// merges holds the follows the merges the inbox learned of are owed (see merges.go),
+	// and closes those the issues they close are owed (see closes.go).
 	merges *mergeQueue
+	closes *closeQueue
 
 	// refreshes runs one whole refresh at a time; a refresh asked for while one runs
 	// joins it.
@@ -291,14 +293,15 @@ type Service struct {
 // NewService returns a Service. A nil Clock uses the system clock.
 func NewService(cfg Config) *Service {
 	c := clock.Or(cfg.Clock)
+	merges := newMergeQueue()
 
 	return &Service{
 		db: cfg.Pool, q: queries.New(cfg.Pool), prefs: prefs.New(cfg.Pool, c), tokens: cfg.Tokens,
 		client: cfg.Client, clock: c, events: event.Or(cfg.Events), arrivals: cfg.Arrivals, outcomes: cfg.Outcomes,
 		usage: cfg.Usage, logger: logging.Or(cfg.Logger), watchSource: cfg.Watches, changedSink: cfg.Changed,
 		keep: cfg.Keep, marks: cfg.Marks, passes: watchPasses{jobs: make(chan *watchJob, 1), ended: make(chan struct{})},
-		merges: newMergeQueue(),
-		order:  orderOf(cfg.Store), progressEvery: progress.Every,
+		merges: merges, closes: newCloseQueue(merges.wake),
+		order: orderOf(cfg.Store), progressEvery: progress.Every,
 	}
 }
 

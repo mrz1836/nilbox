@@ -187,9 +187,11 @@ runs GitHub holds for approval, `item_details.checks_awaiting` and
 `checks_awaiting_on_github`, which its card marks held in place of the rollup's state,
 isn't running, and waits for the whole refresh), the
 merge follower (`inbox.MergeFollower`: a few seconds after each merge the inbox learns of,
-its own through the Actor or one a read finds, the repository's other open pull requests on
-the branch merged into, read again as the checks follower reads its own, and again while
-GitHub answers `UNKNOWN`, three rounds at most, and nothing while no merge happened), the
+its own through the Actor or one a read finds, the listed issues the merged pull request
+closes, read again every five seconds while GitHub still has one open, and the repository's
+other open pull requests on the branch merged into, read again as the checks follower reads
+its own, and again while GitHub answers `UNKNOWN`, three rounds each at most, and nothing
+while no merge happened), the
 Release page's checks follower (`release.ChecksFollower`, below), the sweeper (these four
 as often as Settings → Refreshing says, through `periodic.RunEvery`, which core wakes on the Go-only
 `event.IntervalsChanged` the settings setter emits, so a change applies at once), the GitHub
@@ -719,6 +721,24 @@ round does. A round whose stored answers left GitHub still working one out, or t
 has the follow read again `mergeRetry` (30 s) later, at most `mergeRounds` (3) rounds in all;
 a merge noted while a round ran keeps its own round. It costs about a point per 25 pull
 requests a round, and nothing while no merge happened.
+
+**The issues a merge closes** (`closes.go`). GitHub closes an issue a merged pull request
+closes (its `ClosingPull`) a second or two after the merge, so the issue's card would say a
+fix is on its way to an issue already closed until the next whole refresh. Every merge
+`noteMerged` notes the first time also owes its issues a follow in the `closeQueue`, one per
+account and merged pull request (its `item.Ref.Key`), which wakes the `MergeFollower` on the
+merge queue's channel; the follower runs these rounds first, since a card waits on them. A
+round is due `closeSettle` (5 s) after the merge: `ListClosingIssues` lists the account's open
+listed issues, whatever their triage, since a closed one leaves every tab, whose
+`closing_pulls` are not empty, `closedBy` keeps those naming the merged pull request (its
+repository compared ignoring case, so an issue in another repository counts too), and
+`followRows` reads and stores them as the merge's own follow reads its pull requests
+(`followRow.Kind` names an issue, so the outcome told is one). A stored answer that finds an
+issue closed takes it out of the lists, as any read does; one that finds it still open, or a
+round that failed, has the follow read again `closeRetry` (5 s) later, at most `closeRounds`
+(3) rounds, so an issue a merge into a branch other than the default leaves open waits for the
+whole refresh. The inbox's own store says which issues name the pull request, so a merge none
+names asks GitHub nothing, and one some name costs about a point a round.
 
 **A bot author's picture.** The item fields every inbox read shares (`ItemFields`) ask a bot
 author for its picture's URL, at no point more, and `items.author_avatar_url` keeps it, `''` for
