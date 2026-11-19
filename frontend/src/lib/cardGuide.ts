@@ -99,6 +99,7 @@ export function guideItem(now: Date): InboxItem {
       projects: [],
       subIssues: { total: 0, completed: 0 },
       issue: { type: '', typeColor: '', fields: [], milestone: null, parent: null, blockedBy: 0, blocking: 0 },
+      closingPulls: [],
       comments: 1,
       additions: 455,
       deletions: 8,

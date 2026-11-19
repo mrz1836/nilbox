@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { AgentSession, InboxItem, ItemDetails } from '../platform'
-import { agentSession, details, item, project } from '../test/fixtures'
+import { agentSession, closingPull, details, item, project } from '../test/fixtures'
 import { autopilotState, nextStep, type Step, type StepInput } from './nextStep'
 
 // input is what a card in the inbox tab reads, with no session, no routine, and the agent
@@ -660,6 +660,59 @@ const cases: readonly (readonly [string, StepInput, Want])[] = [
     '14 an issue with a project status',
     input({ item: issue({ authored: true }, { projects: [project()] }) }),
     { rule: 'issue', edge: 'yours', text: 'In progress', primary: 'read' },
+  ],
+  [
+    '14 an issue a trusted pull request is fixing, which leads over a project status',
+    input({ item: issue({ assigned: true }, { projects: [project()], closingPulls: [closingPull()] }) }),
+    { rule: 'issue_fix', edge: 'waiting', text: 'Fix in progress', primary: 'read', quiet: true },
+  ],
+  [
+    '14 an issue a trusted draft is fixing',
+    input({ item: issue({ assigned: true }, { closingPulls: [closingPull({ isDraft: true })] }) }),
+    { rule: 'issue_fix', edge: 'waiting', text: 'Fix in progress', detail: 'draft', primary: 'read', quiet: true },
+  ],
+  [
+    '14 an issue whose trusted fix merged, ahead of one still open',
+    input({
+      item: issue(
+        { assigned: true },
+        { closingPulls: [closingPull(), closingPull({ number: 9, merged: true }), closingPull({ number: 10 })] },
+      ),
+    }),
+    { rule: 'issue_fix', edge: 'waiting', text: 'Fix merged', primary: 'read', quiet: true },
+  ],
+  [
+    '14 an issue only an untrusted pull request says it fixes stays the user’s',
+    input({
+      item: issue(
+        { assigned: true },
+        { closingPulls: [closingPull({ trusted: false }), closingPull({ trusted: false, merged: true })] },
+      ),
+    }),
+    { rule: 'issue', edge: 'yours', text: 'Assigned to you', primary: 'read' },
+  ],
+  [
+    '14 an issue skips an untrusted fix for a trusted one',
+    input({
+      item: issue(
+        { assigned: true },
+        { closingPulls: [closingPull({ trusted: false, merged: true }), closingPull({ isDraft: true })] },
+      ),
+    }),
+    { rule: 'issue_fix', edge: 'waiting', text: 'Fix in progress', detail: 'draft', primary: 'read', quiet: true },
+  ],
+  [
+    '14 an issue being fixed, back from snooze',
+    input({ item: issue({ assigned: true }, { closingPulls: [closingPull()] }), backFromSnooze: true }),
+    {
+      rule: 'issue_fix',
+      edge: 'waiting',
+      text: 'Fix in progress',
+      detail: 'back from snooze',
+      icon: 'clock',
+      primary: 'read',
+      quiet: true,
+    },
   ],
   [
     '14 an issue in a project without a status',

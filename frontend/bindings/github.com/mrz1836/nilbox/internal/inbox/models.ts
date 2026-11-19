@@ -75,6 +75,34 @@ export interface Checks {
 }
 
 /**
+ * ClosingPull is a pull request that closes an issue once it merges, open or merged: one
+ * whose description says it closes the issue, or one someone linked to it by hand.
+ */
+export interface ClosingPull {
+    /**
+     * Repo is its repository as "owner/name", which may be another than the issue's.
+     */
+    "repo": string;
+    "number": number;
+    "title": string;
+    "url": string;
+
+    /**
+     * Merged reports one that merged; it is open otherwise.
+     */
+    "merged": boolean;
+    "isDraft": boolean;
+
+    /**
+     * Trusted reports one the signed-in user opened, or one from someone trusted with its
+     * repository, as an item's trust is decided (see the trust package): anyone can say a
+     * pull request of theirs closes an issue, from a fork too, so only a trusted one tells
+     * the issue's card that the work moved to it.
+     */
+    "trusted": boolean;
+}
+
+/**
  * Details is what an item's inbox card shows beyond its title. The pull request fields
  * are zero, or "", for an issue.
  */
@@ -100,6 +128,13 @@ export interface Details {
      * for a pull request.
      */
     "issue": IssueInfo;
+
+    /**
+     * ClosingPulls are the first five open or merged pull requests that close an issue once
+     * they merge, in GitHub's order. It is empty for a pull request, whose card finds the
+     * listed issues it closes in theirs.
+     */
+    "closingPulls": ClosingPull[] | null;
 
     /**
      * Comments counts the conversation's comments, review comments included for a pull

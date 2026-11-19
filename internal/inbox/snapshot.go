@@ -261,6 +261,11 @@ type Details struct {
 	// for a pull request.
 	Issue IssueInfo `json:"issue"`
 
+	// ClosingPulls are the first five open or merged pull requests that close an issue once
+	// they merge, in GitHub's order. It is empty for a pull request, whose card finds the
+	// listed issues it closes in theirs.
+	ClosingPulls []ClosingPull `json:"closingPulls"`
+
 	// Comments counts the conversation's comments, review comments included for a pull
 	// request.
 	Comments int `json:"comments"`
@@ -403,6 +408,26 @@ type IssueRef struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
 	URL    string `json:"url"`
+}
+
+// ClosingPull is a pull request that closes an issue once it merges, open or merged: one
+// whose description says it closes the issue, or one someone linked to it by hand.
+type ClosingPull struct {
+	// Repo is its repository as "owner/name", which may be another than the issue's.
+	Repo   string `json:"repo"`
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	URL    string `json:"url"`
+
+	// Merged reports one that merged; it is open otherwise.
+	Merged  bool `json:"merged"`
+	IsDraft bool `json:"isDraft"`
+
+	// Trusted reports one the signed-in user opened, or one from someone trusted with its
+	// repository, as an item's trust is decided (see the trust package): anyone can say a
+	// pull request of theirs closes an issue, from a fork too, so only a trusted one tells
+	// the issue's card that the work moved to it.
+	Trusted bool `json:"trusted"`
 }
 
 // SubIssues counts an issue's sub-issues.
@@ -710,6 +735,7 @@ type itemRow struct {
 	ChangesRequested int
 	SubIssues        SubIssues
 	IssueInfo        storedIssueInfo
+	ClosingPulls     []storedClosingPull
 	DetailsFetchedAt *time.Time
 	HeadOID          string
 	AutoMerge        string
@@ -763,6 +789,11 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		return itemRow{}, fmt.Errorf("read how issue %d is planned: %w", r.ID, err)
 	}
 
+	closingPulls, err := decodeColumn[storedClosingPull](r.ClosingPulls)
+	if err != nil {
+		return itemRow{}, fmt.Errorf("read the pull requests that close issue %d: %w", r.ID, err)
+	}
+
 	stored, err := filesColumns{
 		itemID: r.FilesItemID, head: r.FilesHeadOID, total: r.FilesTotal, files: r.Files,
 		complete: r.FilesComplete, err: r.FilesError, checkedAt: r.FilesCheckedAt,
@@ -797,8 +828,9 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		SubIssues: SubIssues{
 			Total: int(store.Deref(r.SubIssuesTotal)), Completed: int(store.Deref(r.SubIssuesCompleted)),
 		},
-		IssueInfo:   issueInfo,
-		ReviewUsers: reviewUsers, ReviewTeams: reviewTeams,
+		IssueInfo:    issueInfo,
+		ClosingPulls: closingPulls,
+		ReviewUsers:  reviewUsers, ReviewTeams: reviewTeams,
 
 		Stored: stored,
 
@@ -833,7 +865,7 @@ func (r *itemRow) item(scope fileScope, viewer string, ignored []string) Item {
 		AuthorAssociation: r.AuthorAssociation,
 		Branch:            r.HeadRef,
 		IsDraft:           r.IsDraft,
-		Details:           r.details(viewer, ignored),
+		Details:           r.details(scope.policy, viewer, ignored),
 		Files:             r.checkedFiles(scope, isPR, author),
 		DismissedAt:       formatOptionalTime(r.DismissedAt),
 		SnoozedUntil:      formatOptionalTime(r.SnoozedUntil),
@@ -928,6 +960,24 @@ func (s storedIssueInfo) issueInfo() IssueInfo {
 	return info
 }
 
+// closingPulls converts an issue's stored closing pull requests, deciding each one's trust
+// with policy: viewer's own are trusted however they were opened. Never nil.
+func closingPulls(stored []storedClosingPull, policy trust.Policy, viewer string) []ClosingPull {
+	out := make([]ClosingPull, 0, len(stored))
+
+	for _, p := range stored {
+		author := trust.Author{Login: p.AuthorLogin, Type: p.AuthorType, Association: p.AuthorAssociation}
+		mine := viewer != "" && strings.EqualFold(p.AuthorLogin, viewer)
+
+		out = append(out, ClosingPull{
+			Repo: p.Repo, Number: p.Number, Title: p.Title, URL: p.URL, Merged: p.Merged, IsDraft: p.Draft,
+			Trusted: mine || policy.Trusted(author, true, p.Fork),
+		})
+	}
+
+	return out
+}
+
 // decodeColumn reads a nullable JSON array column, nil when it is NULL.
 func decodeColumn[T any](raw *string) ([]T, error) {
 	if raw == nil {
@@ -972,9 +1022,10 @@ func decodeReasons(raw *string) *snooze.Reasons {
 }
 
 // details converts the row's details, or nil when no refresh has read them, telling whether
-// the pull request asks viewer to review it again after a push, and counting its held runs
-// as heldruns.Count does with ignored, the workflows the user ignores.
-func (r *itemRow) details(viewer string, ignored []string) *Details {
+// the pull request asks viewer to review it again after a push, counting its held runs
+// as heldruns.Count does with ignored, the workflows the user ignores, and deciding with
+// policy which of an issue's closing pull requests are trusted.
+func (r *itemRow) details(policy trust.Policy, viewer string, ignored []string) *Details {
 	if !r.HasDetails {
 		return nil
 	}
@@ -1016,10 +1067,11 @@ func (r *itemRow) details(viewer string, ignored []string) *Details {
 			Decision: r.ReviewDecision, Reviewers: r.Reviewers, Reviewed: r.Reviewed,
 			Approvals: r.Approvals, ChangesRequested: r.ChangesRequested,
 		},
-		SubIssues: r.SubIssues,
-		Issue:     r.IssueInfo.issueInfo(),
-		AutoMerge: r.AutoMerge,
-		FetchedAt: formatOptionalTime(r.DetailsFetchedAt),
+		SubIssues:    r.SubIssues,
+		Issue:        r.IssueInfo.issueInfo(),
+		ClosingPulls: closingPulls(r.ClosingPulls, policy, viewer),
+		AutoMerge:    r.AutoMerge,
+		FetchedAt:    formatOptionalTime(r.DetailsFetchedAt),
 
 		PushedSinceReview:    pushed,
 		ReviewRequestedAgain: pushed && github.ReviewRequests{Users: r.ReviewUsers}.Asks(viewer),

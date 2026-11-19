@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useEffectEvent, useLayoutEffect, useRef, use
 
 import type { IgnoredWorkflows } from '../lib/ignoredWorkflows'
 import { attempt } from '../lib/call'
+import { CardLinksContext, linkIndex, type CardLinks } from '../lib/cardLinks'
 import { refText } from '../lib/format'
 import type { InboxFilter } from '../lib/inboxFilter'
 import { progressStep } from '../lib/inboxProgress'
@@ -109,6 +110,9 @@ export interface InboxViewProps {
   onCollapse: (section: ListKey, collapsed: boolean) => void
   // reveal is the item the menu bar or a notification last asked to show, or null.
   reveal?: Reveal | null
+  // onReveal shows another card in the inbox, as a card's links ask (LinkChip); without
+  // it, an issue's card links its fixes to GitHub, and a pull request's links nothing.
+  onReveal?: (itemId: number) => void
   // showing reports whether the page is on screen; App keeps it mounted, hidden, while
   // another page shows.
   showing?: boolean
@@ -282,6 +286,7 @@ export function InboxView({
   collapsed,
   onCollapse,
   reveal = null,
+  onReveal,
   showing = true,
   offerProjects = false,
   onDismissProjects,
@@ -606,6 +611,11 @@ export function InboxView({
   }
   const initialFocus = viewing === null || viewing.arrow === '' ? undefined : `[data-step="${viewing.arrow}"]`
 
+  // cardLinks are the links between the lists' cards, an issue and the pull requests that
+  // close it, which show the linked card here (LinkChip).
+  const cardLinks: CardLinks | null =
+    snapshot === null || onReveal === undefined ? null : { index: linkIndex(snapshot), reveal: onReveal }
+
   // links open a card a sheet links to in its own sheet, at its place in the first list
   // that holds it, with one step back to the sheet the link was in, while its card is
   // still in the inbox to name it.
@@ -841,40 +851,42 @@ export function InboxView({
       ) : triaged === null || collapsed === null || order === null ? (
         loadError === '' && <p className="text-sm text-muted">Loading the inbox…</p>
       ) : (
-        sections.map(({ key, title }) => (
-          <ListSection
-            key={key}
-            title={title}
-            triaged={triaged.lists[key]}
-            launch={launch}
-            resolutions={resolutions}
-            worktrees={worktrees}
-            sessions={sessions}
-            triage={triage}
-            edits={edits}
-            collapsed={filter === null && collapsed.has(key)}
-            onCollapse={(on) => {
-              onCollapse(key, on)
-            }}
-            onFilesSettings={onFilesSettings}
-            reveal={key === revealIn ? reveal : null}
-            order={{
-              ...shownOrder(order, key),
-              onSortChange: (on) => {
-                setStatusSort(key, on)
-              },
-              onOrderChange: setStatusOrder,
-              onKindChange: (kind) => {
-                setListKind(key, kind)
-              },
-            }}
-            matched={filter?.lists[key]}
-            marks={filter?.marks ?? ''}
-            onFilterBy={onFilterBy}
-            onOpen={sheets ? openIn[key] : undefined}
-            onTabChange={chooseTab}
-          />
-        ))
+        <CardLinksContext value={cardLinks}>
+          {sections.map(({ key, title }) => (
+            <ListSection
+              key={key}
+              title={title}
+              triaged={triaged.lists[key]}
+              launch={launch}
+              resolutions={resolutions}
+              worktrees={worktrees}
+              sessions={sessions}
+              triage={triage}
+              edits={edits}
+              collapsed={filter === null && collapsed.has(key)}
+              onCollapse={(on) => {
+                onCollapse(key, on)
+              }}
+              onFilesSettings={onFilesSettings}
+              reveal={key === revealIn ? reveal : null}
+              order={{
+                ...shownOrder(order, key),
+                onSortChange: (on) => {
+                  setStatusSort(key, on)
+                },
+                onOrderChange: setStatusOrder,
+                onKindChange: (kind) => {
+                  setListKind(key, kind)
+                },
+              }}
+              matched={filter?.lists[key]}
+              marks={filter?.marks ?? ''}
+              onFilterBy={onFilterBy}
+              onOpen={sheets ? openIn[key] : undefined}
+              onTabChange={chooseTab}
+            />
+          ))}
+        </CardLinksContext>
       )}
       <LinksContext value={links}>
         <Suspense fallback={null}>

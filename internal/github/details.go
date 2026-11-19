@@ -37,8 +37,9 @@ const (
 const MaxReviewRequests = 50
 
 // detailsQuery reads what an inbox card shows about each pull request and issue, by node
-// ID: its labels and comment count and, for a pull request, its size, commits, merge
-// state, check results, and reviews. It is a separate request from the inbox query
+// ID: its labels and comment count; for a pull request, its size, commits, merge state,
+// check results, and reviews; and for an issue, how it is planned and the pull requests
+// that close it (closingPullsField). It is a separate request from the inbox query
 // because GitHub prices nested lists per result slot: inside the three 100-result
 // searches these fields would cost about 12 points, while asking only for the items the
 // inbox returned costs one or two.
@@ -150,7 +151,7 @@ fragment DetailFields on Node {
     id
     comments { totalCount }
     labels(first: 50) { nodes { name color } }
-    subIssuesSummary { total completed }` + issueInfoFields
+    subIssuesSummary { total completed }` + issueInfoFields + closingPullsField
 
 // detailFieldsTail closes detailFieldsHead.
 const detailFieldsTail = `
@@ -306,6 +307,11 @@ type ItemDetails struct {
 	// milestone, parent, and the open issues blocking it and that it blocks. It is zero for
 	// a pull request.
 	Issue IssueInfo
+
+	// ClosingPulls are the first five open or merged pull requests that close an issue once
+	// they merge, in GitHub's order (see closingPullsField); nil when none do, and for a
+	// pull request.
+	ClosingPulls []ClosingPull
 
 	// Repo is the item's repository, read whole, when DetailOptions.Repository asked for it;
 	// nil otherwise.
@@ -664,6 +670,9 @@ type detailsNode struct {
 	ProjectItems       graphQLProjects    `json:"projectItems"`
 	SubIssuesSummary   graphQLSubIssues   `json:"subIssuesSummary"`
 
+	// An issue's closing pull requests (closingPullsField).
+	LinkedPulls graphQLClosingPulls `json:"linkedPulls"`
+
 	// An issue's planning (issueInfoFields).
 	IssueType                *graphQLIssueType   `json:"issueType"`
 	Milestone                *graphQLMilestone   `json:"milestone"`
@@ -802,6 +811,7 @@ func (n *detailsNode) details() (id string, item ItemDetails, ok bool) {
 		return n.ID, ItemDetails{
 			Labels: n.Labels.labels(), Comments: n.Comments.TotalCount, Projects: n.ProjectItems.projects(),
 			SubIssues: n.SubIssuesSummary.subIssues(), Issue: n.issueInfo(),
+			ClosingPulls: n.LinkedPulls.closingPulls(),
 		}, true
 	case typePullRequest:
 		author := ""

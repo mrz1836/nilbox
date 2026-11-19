@@ -105,6 +105,7 @@ import type {
   IntegrationTools,
   ItemDetails,
   IssueInfo,
+  ClosingPull,
   ItemResolution,
   LaunchDefaults,
   LaunchHold,
@@ -1016,6 +1017,21 @@ export function issueInfo(overrides: Partial<IssueInfo> = {}): IssueInfo {
   }
 }
 
+// closingPull is an open pull request from someone trusted that closes an issue once it
+// merges: #8 in the item fixture's repository, unless overridden.
+export function closingPull(overrides: Partial<ClosingPull> = {}): ClosingPull {
+  return {
+    repo: 'acme-org/example-repo',
+    number: 8,
+    title: 'Fix the flaky retry test',
+    url: 'https://github.com/acme-org/example-repo/pull/8',
+    merged: false,
+    isDraft: false,
+    trusted: true,
+    ...overrides,
+  }
+}
+
 // details are a pull request's details: passing checks, an approval out of two
 // reviewers, a few comments, and two labels.
 export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
@@ -1027,6 +1043,7 @@ export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
     projects: [],
     subIssues: { total: 0, completed: 0 },
     issue: issueInfo(),
+    closingPulls: [],
     comments: 4,
     additions: 120,
     deletions: 30,

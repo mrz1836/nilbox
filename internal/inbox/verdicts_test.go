@@ -10,6 +10,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/trust"
 )
 
 // verdict is the user's verdict state on commit, submitted at.
@@ -433,5 +434,5 @@ func TestAnIssueHoldsNoVerdict(t *testing.T) {
 	assert.Equal(t, ViewerVerdictNone, viewerVerdict(github.ReviewStateDismissed))
 
 	row := itemRow{Kind: item.KindIssue, HasDetails: true, ViewerReviewState: github.ReviewStateChangesRequested}
-	assert.Equal(t, ViewerVerdictNone, row.details(octoUser, nil).ViewerVerdict, "only a pull request is reviewed")
+	assert.Equal(t, ViewerVerdictNone, row.details(trust.NewPolicy(nil), octoUser, nil).ViewerVerdict, "only a pull request is reviewed")
 }

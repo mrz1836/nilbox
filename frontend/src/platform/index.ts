@@ -179,6 +179,7 @@ export type ResetStarted = NonNullLists<setup.ResetStarted>
 
 export type Account = NonNullLists<inbox.Account>
 export type Checks = NonNullLists<inbox.Checks>
+export type ClosingPull = NonNullLists<inbox.ClosingPull>
 export type ItemDetails = NonNullLists<inbox.Details>
 export type IssueInfo = NonNullLists<inbox.IssueInfo>
 export type IssueField = NonNullLists<inbox.IssueField>

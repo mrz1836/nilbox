@@ -749,6 +749,10 @@ export function App() {
     setup.showing,
   )
   const { clear: clearReveal, show: showItem } = revealer
+  // revealItem shows a card a card links to, as the menu bar shows one.
+  const revealItem = (itemId: number) => {
+    showItem(itemId, '')
+  }
 
   const changeView = (next: View) => {
     clearReveal()
@@ -1305,6 +1309,7 @@ export function App() {
                           collapsed={sections.collapsed}
                           onCollapse={sections.setCollapsed}
                           reveal={revealer.reveal}
+                          onReveal={revealItem}
                           showing={view === 'inbox'}
                           offerProjects={offersProjects(inbox.snapshot, config.settings)}
                           onDismissProjects={dismissProjects}

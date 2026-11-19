@@ -26,6 +26,7 @@ import {
 import { AutopilotChip } from './autopilot/AutopilotChip'
 import { CardActions, cardOutcomeClass } from './card/CardActions'
 import { CardAvatar } from './card/CardAvatar'
+import { LinkChip } from './card/CardLinks'
 import { CompactRow } from './card/CompactRow'
 import { edgeBar, FilterText, PinGlyph, tagClass, TriageTag, UnreadDot } from './card/CardParts'
 import { CardPeek } from './card/CardPeek'
@@ -321,7 +322,8 @@ function Byline({
 // activity the user hasn't seen (and Settings → Cards' Unread dots is on) and a pin when
 // pinned, with up to two labels; its second, the story in the edge's color (CardStory: one sentence of why it is
 // here, or, in the Snoozed and Dismissed tabs, when it comes back or was dismissed, then,
-// muted, where it stands), the byline, then the risk chip, the ⚡ chip (AutopilotChip), and the worktree chip. The state
+// muted, where it stands), the byline, then the risk chip, the link to the item GitHub links it to (LinkChip: an
+// issue's fix, or the issue a pull request closes), the ⚡ chip (AutopilotChip), and the worktree chip. The state
 // column shows where a pull request stands (StateTrack, over its size, SizeGlyph) or an
 // issue (IssueState); the action column, the human's next move and the agent's slot beside
 // it (CardActions, with LaunchControls' card variant), each in a slot of its own: the
@@ -582,6 +584,7 @@ export const ItemRow = memo(function ItemRow({
           <Byline item={item} onFilterBy={onFilterBy} />
           <span className="relative z-10 inline-flex shrink-0 items-center gap-1.5 empty:hidden has-[[aria-expanded=true]]:z-30">
             <RiskChip item={item} onFilesSettings={onFilesSettings} />
+            <LinkChip item={item} />
             <CardChips chips={chips} />
           </span>
         </div>

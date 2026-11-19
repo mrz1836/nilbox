@@ -28,6 +28,7 @@ import { clockAt, FIXED_NOW, fixedNow, fromNow } from '../test/clock'
 import {
   afterMerge,
   agents,
+  closingPull,
   details,
   issue,
   issueRef,
@@ -77,6 +78,8 @@ interface HarnessProps {
   clock: () => Date
   snoozeDays?: number
   reveal?: Reveal | null
+  // onReveal shows a card a card's link asks for, as App does.
+  onReveal?: (itemId: number) => void
   // query filters the inbox, as the toolbar's field does.
   query?: string
   // reviews turns the review sheet on, as App does, and releases the offer of a release
@@ -105,6 +108,7 @@ function Inbox({
   launch,
   snoozeDays = 3,
   reveal = null,
+  onReveal,
   query = '',
   reviews = false,
   releases = true,
@@ -132,6 +136,7 @@ function Inbox({
       collapsed={sections.collapsed}
       onCollapse={sections.setCollapsed}
       reveal={reveal}
+      {...(onReveal === undefined ? {} : { onReveal })}
       offerProjects={offersProjects(inbox.snapshot, settings({ projectsTipDismissed: tipDismissed }))}
       onDismissProjects={() => {
         dismissProjects()
@@ -172,6 +177,36 @@ afterEach(() => {
 })
 
 describe('InboxView', () => {
+  it('links an issue and the pull request fixing it, each card showing the other', async () => {
+    const fix = item({ id: 1, number: 8, title: 'Fix the flaky retry test', authored: true, details: details() })
+    const flaky = item({
+      id: 2,
+      kind: 'issue',
+      number: 5,
+      title: 'The retry test is flaky',
+      assigned: true,
+      details: details({ closingPulls: [closingPull()] }),
+    })
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([fix, flaky]) }))
+    const onReveal = vi.fn()
+
+    render(<Harness launch={launchOptions} clock={fixedNow} onReveal={onReveal} />)
+
+    const yours = await section('Yours')
+    const issueCard = within(
+      yours.getByRole('button', { name: 'The retry test is flaky' }).closest('li') ?? document.body,
+    )
+    expect(issueCard.getByText('Fix in progress')).toBeInTheDocument()
+    await userEvent.click(issueCard.getByRole('button', { name: /^Fix in progress: #8 .*Show it in the inbox$/ }))
+    expect(onReveal).toHaveBeenLastCalledWith(1)
+
+    const pullCard = within(
+      yours.getByRole('button', { name: 'Fix the flaky retry test' }).closest('li') ?? document.body,
+    )
+    await userEvent.click(pullCard.getByRole('button', { name: /^Closes #5 .*Show it in the inbox$/ }))
+    expect(onReveal).toHaveBeenLastCalledWith(2)
+  })
+
   it('renders the two lists from the snapshot', async () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({
