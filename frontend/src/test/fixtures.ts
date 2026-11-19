@@ -51,6 +51,7 @@ import type {
   DefaultPrompts,
   Review,
   ReviewCommit,
+  Reviewers,
   ReviewFile,
   ReviewOffer,
   ReviewReplyList,
@@ -2811,6 +2812,52 @@ export function review(overrides: Partial<Review> = {}): Review {
     autoMerge: '',
     head: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     fetchedAt: '2026-06-15T11:59:00Z',
+    stale: false,
+    canEditReviewers: false,
+    ...overrides,
+  }
+}
+
+// reviewerCandidates is who the reviewer picker offers for pull request #7: GitHub suggests
+// octo-suggested, who changed its files, then octo-member and octo-helper work on
+// acme-org/example-repo, which has the web and api teams, learned from 50 pull requests.
+export function reviewerCandidates(overrides: Partial<Reviewers> = {}): Reviewers {
+  return {
+    people: [
+      {
+        login: 'octo-suggested',
+        name: 'Octo Suggested',
+        suggestion: 'changed_files',
+        reviewed: 2,
+        authored: 0,
+        committed: 3,
+        lastAt: '2026-06-14T12:00:00Z',
+      },
+      {
+        login: 'octo-member',
+        name: 'Octo Member',
+        suggestion: '',
+        reviewed: 12,
+        authored: 4,
+        committed: 0,
+        lastAt: '2026-06-12T12:00:00Z',
+      },
+      {
+        login: 'octo-helper',
+        name: '',
+        suggestion: '',
+        reviewed: 0,
+        authored: 3,
+        committed: 0,
+        lastAt: '2026-05-01T12:00:00Z',
+      },
+    ],
+    teams: [
+      { slug: 'web', name: 'Web' },
+      { slug: 'api', name: 'API' },
+    ],
+    pulls: 50,
+    readAt: '2026-06-13T12:00:00Z',
     stale: false,
     ...overrides,
   }

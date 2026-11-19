@@ -65,7 +65,7 @@ func (s *Service) EditLabels(ctx context.Context, req LabelsRequest) (LabelsResu
 		)
 	}
 
-	add, remove := labelsApart(labelNames(req.Add), labelNames(req.Remove))
+	add, remove := namesApart(namesOnce(req.Add), namesOnce(req.Remove))
 	if len(add)+len(remove) == 0 {
 		return LabelsResult{}, nil
 	}
@@ -116,8 +116,9 @@ func sendLabels(ctx context.Context, gh GitHub, tok github.Token, t Target, add,
 	return nil
 }
 
-// labelsApart is add and remove without the names, ignoring case, that both hold.
-func labelsApart(add, remove []string) ([]string, []string) {
+// namesApart is add and remove without the names, ignoring case, that both hold: the
+// labels, people, or teams an edit both adds and takes off, which it sends not at all.
+func namesApart(add, remove []string) ([]string, []string) {
 	in := func(list []string) func(string) bool {
 		return func(name string) bool {
 			return slices.ContainsFunc(list, func(n string) bool { return strings.EqualFold(n, name) })
@@ -127,9 +128,9 @@ func labelsApart(add, remove []string) ([]string, []string) {
 	return slices.DeleteFunc(slices.Clone(add), in(remove)), slices.DeleteFunc(slices.Clone(remove), in(add))
 }
 
-// labelNames is list trimmed, without the empty names, and with each name once, ignoring
-// case.
-func labelNames(list []string) []string {
+// namesOnce is list trimmed, without the empty names, and with each name once, ignoring
+// case: the labels, logins, or team slugs an edit names.
+func namesOnce(list []string) []string {
 	out := []string{}
 
 	for _, n := range list {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -169,8 +170,9 @@ type Edited struct {
 	// UpdatedAt is the item's last update on GitHub, the edit included.
 	UpdatedAt time.Time
 
-	// ReviewRequests is who a pull request asks to review after RemoveReviewRequest or
-	// RequestReview. It is zero after RemoveAssignee.
+	// ReviewRequests is who a pull request asks to review after RemoveReviewRequest,
+	// RequestReview, RequestReviewers, or RemoveReviewRequests. It is zero after
+	// RemoveAssignee.
 	ReviewRequests ReviewRequests
 }
 
@@ -203,6 +205,30 @@ func (c *Client) RemoveReviewRequest(ctx context.Context, tok Token, ref item.Re
 // the user's standing review stays until their next one replaces it.
 func (c *Client) RequestReview(ctx context.Context, tok Token, ref item.Ref, login string) (*Edited, error) {
 	edited, err := c.requestReview(ctx, tok, ref, login)
+
+	return edited, Redact(err, tok)
+}
+
+// RequestReviewers asks the people and teams want names to review a pull request, with
+// one REST request (POST /repos/{owner}/{repo}/pulls/{number}/requested_reviewers, with
+// reviewers and team_reviewers): the review sheet's reviewer edit. GitHub answers with who
+// the pull request asks now: a login or slug missing from it is one GitHub didn't ask, and
+// ErrEditIgnored is returned naming them. GitHub refuses someone without access to the
+// repository, or the pull request's author, as unprocessable, in its own words.
+func (c *Client) RequestReviewers(ctx context.Context, tok Token, ref item.Ref, want ReviewRequests) (*Edited, error) {
+	edited, err := c.requestReviewers(ctx, tok, ref, want)
+
+	return edited, Redact(err, tok)
+}
+
+// RemoveReviewRequests takes the review requests of the people and teams drop names off a
+// pull request, with one REST request (DELETE
+// /repos/{owner}/{repo}/pulls/{number}/requested_reviewers, with reviewers and
+// team_reviewers). GitHub answers with who the pull request still asks: anyone dropped
+// still among them is a change GitHub ignored, and ErrEditIgnored is returned naming them.
+// A review someone already left stays.
+func (c *Client) RemoveReviewRequests(ctx context.Context, tok Token, ref item.Ref, drop ReviewRequests) (*Edited, error) {
+	edited, err := c.removeReviewRequests(ctx, tok, ref, drop)
 
 	return edited, Redact(err, tok)
 }
@@ -312,19 +338,9 @@ func (c *Client) removeReviewRequest(ctx context.Context, tok Token, ref item.Re
 		return nil, err
 	}
 
-	body, err := json.Marshal(map[string][]string{"reviewers": {login}})
-	if err != nil {
-		return nil, fmt.Errorf("encode the edit: %w", err)
-	}
-
-	raw, err := c.edit(ctx, tok, http.MethodDelete, pullPath(ref)+"/requested_reviewers", body)
+	answer, err := c.reviewEdit(ctx, tok, ref, http.MethodDelete, ReviewRequests{Users: []string{login}})
 	if err != nil {
 		return nil, editError(ref, fmt.Errorf("remove %s from the reviewers of %s: %w", login, ref, err))
-	}
-
-	var answer restReviewAnswer
-	if err = json.Unmarshal(raw, &answer); err != nil {
-		return nil, fmt.Errorf("%w: decode %s: %w", ErrMalformedResponse, ref, err)
 	}
 
 	still := answer.requests()
@@ -344,19 +360,9 @@ func (c *Client) requestReview(ctx context.Context, tok Token, ref item.Ref, log
 		return nil, err
 	}
 
-	body, err := json.Marshal(map[string][]string{"reviewers": {login}})
-	if err != nil {
-		return nil, fmt.Errorf("encode the edit: %w", err)
-	}
-
-	raw, err := c.edit(ctx, tok, http.MethodPost, pullPath(ref)+"/requested_reviewers", body)
+	answer, err := c.reviewEdit(ctx, tok, ref, http.MethodPost, ReviewRequests{Users: []string{login}})
 	if err != nil {
 		return nil, requestError(ref, fmt.Errorf("ask %s to review %s: %w", login, ref, err))
-	}
-
-	var answer restReviewAnswer
-	if err = json.Unmarshal(raw, &answer); err != nil {
-		return nil, fmt.Errorf("%w: decode %s: %w", ErrMalformedResponse, ref, err)
 	}
 
 	asks := answer.requests()
@@ -368,6 +374,87 @@ func (c *Client) requestReview(ctx context.Context, tok Token, ref item.Ref, log
 	}
 
 	return &Edited{UpdatedAt: answer.UpdatedAt.UTC(), ReviewRequests: asks}, nil
+}
+
+// requestReviewers sends the request and checks GitHub's answer.
+func (c *Client) requestReviewers(ctx context.Context, tok Token, ref item.Ref, want ReviewRequests) (*Edited, error) {
+	if err := validateReviewers(ref, want); err != nil {
+		return nil, err
+	}
+
+	answer, err := c.reviewEdit(ctx, tok, ref, http.MethodPost, want)
+	if err != nil {
+		return nil, reviewersError(ref, want, fmt.Errorf("ask for reviews of %s: %w", ref, err))
+	}
+
+	asks := answer.requests()
+
+	missing := ReviewRequests{Users: missingNames(want.Users, asks.Users), Teams: missingNames(want.Teams, asks.Teams)}
+	if len(missing.Users)+len(missing.Teams) > 0 {
+		return nil, uierr.New(
+			fmt.Sprintf("GitHub didn't ask %s to review %s. They may need access to the repository.",
+				reviewerList(ref, missing), ref),
+			fmt.Errorf("ask for reviews of %s: %w", ref, ErrEditIgnored),
+		)
+	}
+
+	return &Edited{UpdatedAt: answer.UpdatedAt.UTC(), ReviewRequests: asks}, nil
+}
+
+// removeReviewRequests sends the edit and checks GitHub's answer.
+func (c *Client) removeReviewRequests(ctx context.Context, tok Token, ref item.Ref, drop ReviewRequests) (*Edited, error) {
+	if err := validateReviewers(ref, drop); err != nil {
+		return nil, err
+	}
+
+	answer, err := c.reviewEdit(ctx, tok, ref, http.MethodDelete, drop)
+	if err != nil {
+		return nil, editError(ref, fmt.Errorf("remove review requests of %s: %w", ref, err))
+	}
+
+	still := answer.requests()
+
+	kept := ReviewRequests{Users: keptNames(drop.Users, still.Users), Teams: keptNames(drop.Teams, still.Teams)}
+	if len(kept.Users)+len(kept.Teams) > 0 {
+		return nil, uierr.New(
+			fmt.Sprintf("GitHub still asks %s to review %s. Your account may not be allowed to change its reviewers.",
+				reviewerList(ref, kept), ref),
+			fmt.Errorf("remove review requests of %s: %w", ref, ErrEditIgnored),
+		)
+	}
+
+	return &Edited{UpdatedAt: answer.UpdatedAt.UTC(), ReviewRequests: still}, nil
+}
+
+// reviewEdit sends one edit of the review requests of ref, method POST to ask the people and
+// teams r names or DELETE to take their requests off, and decodes GitHub's answer, the pull
+// request as it stands after. The people are always sent, empty or not, as GitHub's DELETE
+// requires reviewers, and the teams when there are any. An error is the edit's own, for the
+// caller to word.
+func (c *Client) reviewEdit(
+	ctx context.Context, tok Token, ref item.Ref, method string, r ReviewRequests,
+) (restReviewAnswer, error) {
+	fields := map[string][]string{"reviewers": nonNilNames(r.Users)}
+	if len(r.Teams) > 0 {
+		fields["team_reviewers"] = r.Teams
+	}
+
+	body, err := json.Marshal(fields)
+	if err != nil {
+		return restReviewAnswer{}, fmt.Errorf("encode the edit: %w", err)
+	}
+
+	raw, err := c.edit(ctx, tok, method, pullPath(ref)+"/requested_reviewers", body)
+	if err != nil {
+		return restReviewAnswer{}, err
+	}
+
+	var answer restReviewAnswer
+	if err = json.Unmarshal(raw, &answer); err != nil {
+		return restReviewAnswer{}, fmt.Errorf("%w: decode %s: %w", ErrMalformedResponse, ref, err)
+	}
+
+	return answer, nil
 }
 
 // requestError gives a refused review request of ref a message the user can act on,
@@ -386,6 +473,116 @@ func requestError(ref item.Ref, err error) error {
 	}
 
 	return uierr.New(fmt.Sprintf("GitHub didn't ask you to review %s again: %s", ref, sentence(status.Message)), err)
+}
+
+// reviewersError is requestError for a request that asks others, the people and teams
+// asked: GitHub's 422, as for someone who isn't a collaborator on the repository or the
+// pull request's author, names them, in GitHub's own words when it gives some.
+func reviewersError(ref item.Ref, asked ReviewRequests, err error) error {
+	status, ok := errors.AsType[*StatusError](err)
+	if !ok || status.StatusCode != http.StatusUnprocessableEntity {
+		return editError(ref, err)
+	}
+
+	who := reviewerList(ref, asked)
+	if status.Message == "" {
+		return uierr.New(fmt.Sprintf("GitHub didn't ask %s to review %s. They may need access to the repository.",
+			who, ref), err)
+	}
+
+	return uierr.New(fmt.Sprintf("GitHub didn't ask %s to review %s: %s", who, ref, sentence(status.Message)), err)
+}
+
+// reviewerList names people and teams in a sentence, a team as "owner/slug" with the
+// owner of ref's repository: "alice, acme-org/web".
+func reviewerList(ref item.Ref, r ReviewRequests) string {
+	names := slices.Clone(r.Users)
+	for _, slug := range r.Teams {
+		names = append(names, ref.Repo.Owner+"/"+slug)
+	}
+
+	return strings.Join(names, ", ")
+}
+
+// keptNames are the names dropped that, ignoring case, still has.
+func keptNames(dropped, still []string) []string {
+	var kept []string
+
+	for _, name := range dropped {
+		if slices.ContainsFunc(still, func(s string) bool { return strings.EqualFold(s, name) }) {
+			kept = append(kept, name)
+		}
+	}
+
+	return kept
+}
+
+// nonNilNames is names, or an empty list for nil, so it encodes as [] rather than null.
+func nonNilNames(names []string) []string {
+	if names == nil {
+		return []string{}
+	}
+
+	return names
+}
+
+// maxTeamSlug is the longest team slug the client sends.
+const maxTeamSlug = 255
+
+// ErrInvalidTeam is returned for an edit about a team slug GitHub could not have issued.
+var ErrInvalidTeam = errors.New("invalid GitHub team slug")
+
+// validateReviewers checks a reviewers edit's pull request, logins, and team slugs before
+// anything is sent: at least one of either, each login one GitHub could have issued, and
+// each slug letters, digits, dots, hyphens, and underscores.
+func validateReviewers(ref item.Ref, r ReviewRequests) error {
+	if err := validateRef(ref); err != nil {
+		return err
+	}
+
+	if len(r.Users)+len(r.Teams) == 0 {
+		return fmt.Errorf("%w: no one to ask", ErrInvalidLogin)
+	}
+
+	for _, login := range r.Users {
+		if !repo.ValidOwner(login) {
+			return fmt.Errorf("%w: %q", ErrInvalidLogin, login)
+		}
+	}
+
+	for _, slug := range r.Teams {
+		if !validTeamSlug(slug) {
+			return fmt.Errorf("%w: %q", ErrInvalidTeam, slug)
+		}
+	}
+
+	return nil
+}
+
+// validTeamSlug reports a slug GitHub could have given a team.
+func validTeamSlug(slug string) bool {
+	if slug == "" || len(slug) > maxTeamSlug {
+		return false
+	}
+
+	for i := range len(slug) {
+		if !slugByte(slug[i]) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// slugByte reports a byte a team slug may hold: a letter, a digit, a dot, a hyphen, or an
+// underscore.
+func slugByte(c byte) bool {
+	switch {
+	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		return true
+	default:
+		return c == '-' || c == '_' || c == '.'
+	}
 }
 
 // restReviewAnswer is GitHub's answer to an edit of a pull request's review requests: the

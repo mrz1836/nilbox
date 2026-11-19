@@ -255,9 +255,15 @@ func boundaries() []boundary {
 		},
 		{
 			pkg:       "internal/review",
-			forbidden: append(slices.Clone(sheets), "internal/issues"),
-			why: "the review sheet reaches the inbox, the settings, and the replies through its own Inbox, Settings, " +
-				"and Replies interfaces, and knows nothing of the issue sheet",
+			forbidden: append(slices.Clone(sheets), "internal/issues", "internal/people"),
+			why: "the review sheet reaches the inbox, the settings, the replies, and the people directory through its own " +
+				"Inbox, Settings, Replies, and People interfaces, and knows nothing of the issue sheet",
+		},
+		{
+			pkg:       "internal/people",
+			forbidden: append(slices.Clone(services), "internal/review", "internal/issues", "internal/avatars"),
+			why: "people is the local directory of who works on each repository: it keeps the plain values the review " +
+				"sheet hands it in its own tables, and knows no GitHub client, no service, and neither sheet",
 		},
 		{
 			pkg: "internal/timeline",

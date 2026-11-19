@@ -42,8 +42,11 @@ const (
 	typePullRequest = "PullRequest"
 	typeIssue       = "Issue"
 
-	// typeBot is the GraphQL type of an author that is a GitHub App or bot.
-	typeBot = "Bot"
+	// typeBot is the GraphQL type of an author that is a GitHub App or bot, typeUser of one
+	// that is a person, and typeTeam of a team asked to review.
+	typeBot  = "Bot"
+	typeUser = "User"
+	typeTeam = "Team"
 
 	// errorInsufficientScopes is GitHub's error type for a field the token's scopes do
 	// not reach, such as an issue's projects without the read:project scope.
@@ -877,10 +880,12 @@ func (d *graphQLData) inbox() *Inbox {
 }
 
 // graphQLActor is a user, bot, or other actor. TypeName is only asked for on an item's
-// author, and AvatarURL only on an item's author that is a bot.
+// author and a review's, AvatarURL only on an item's author that is a bot, and Name only on
+// a review's author that is a person.
 type graphQLActor struct {
 	TypeName  string `json:"__typename"`
 	Login     string `json:"login"`
+	Name      string `json:"name"`
 	AvatarURL string `json:"avatarUrl"`
 }
 

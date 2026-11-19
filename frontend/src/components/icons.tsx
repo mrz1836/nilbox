@@ -75,6 +75,16 @@ export function PersonIcon(props: IconProps) {
   )
 }
 
+// PeopleIcon stands for a team: two people, one behind the other.
+export function PeopleIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="9.5" cy="9" r="3" />
+      <path d="M3.5 19a6 6 0 0 1 12 0M15.5 6.2a3 3 0 0 1 0 5.6M17.5 14.2a6 6 0 0 1 3 4.8" />
+    </Icon>
+  )
+}
+
 // ChevronLeftIcon stands for going back.
 export function ChevronLeftIcon(props: IconProps) {
   return (

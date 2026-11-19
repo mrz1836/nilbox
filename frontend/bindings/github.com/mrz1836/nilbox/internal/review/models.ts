@@ -813,6 +813,13 @@ export interface Review {
     "reviews": ReviewEntry[] | null;
 
     /**
+     * CanEditReviewers reports that the user may change who it asks to review
+     * (EditReviewers): it is open, the sheet has read it, and their account has triage
+     * access or more.
+     */
+    "canEditReviewers": boolean;
+
+    /**
      * Timeline is the newest page of the conversation, oldest first: its comments, its
      * reviews with their line comments, and its events.
      */
@@ -918,6 +925,13 @@ export interface ReviewEntry {
     "team": boolean;
 
     /**
+     * Mine reports the signed-in user's own entry, and Bot a review a bot left, as the sheet
+     * read it; false in a context an older build cached, until the sheet reads it again.
+     */
+    "mine": boolean;
+    "bot": boolean;
+
+    /**
      * SubmittedAt is when it was submitted, as RFC 3339, or "".
      */
     "submittedAt": string;
@@ -926,6 +940,79 @@ export interface ReviewEntry {
      * Outdated reports a review left on an earlier head.
      */
     "outdated": boolean;
+}
+
+/**
+ * ReviewerCandidate is someone the picker offers to ask for a review.
+ */
+export interface ReviewerCandidate {
+    "login": string;
+    "name": string;
+
+    /**
+     * Suggestion is why GitHub suggests them for this pull request, or SuggestionNone.
+     */
+    "suggestion": Suggestion;
+
+    /**
+     * Reviewed, Authored, and Committed count the repository's pull requests they reviewed,
+     * opened, and committed to, of those the app knows.
+     */
+    "reviewed": number;
+    "authored": number;
+    "committed": number;
+
+    /**
+     * LastAt is when they were last seen working on the repository, as RFC 3339, or "".
+     */
+    "lastAt": string;
+}
+
+/**
+ * Reviewers is who the picker offers to ask for a review of a pull request.
+ */
+export interface Reviewers {
+    /**
+     * People are the people, GitHub's suggestions first in its order, then those who work
+     * on the repository, the highest ranked first: never the pull request's author, the
+     * signed-in user, or a bot, at most 100, never nil.
+     */
+    "people": ReviewerCandidate[] | null;
+
+    /**
+     * Teams are the repository's teams the app knows, never nil.
+     */
+    "teams": TeamCandidate[] | null;
+
+    /**
+     * Pulls is how many pull requests the last read of the repository read, ReadAt when it
+     * was, as RFC 3339, or "" before one was, and Stale whether one is due (LearnReviewers).
+     */
+    "pulls": number;
+    "readAt": string;
+    "stale": boolean;
+}
+
+/**
+ * ReviewersRequest asks to change who the pull request with ItemID asks to review: the
+ * people to ask (Add) and to take off (Remove), by login, and the teams, by slug.
+ */
+export interface ReviewersRequest {
+    "itemId": number;
+    "add": string[] | null;
+    "remove": string[] | null;
+    "addTeams": string[] | null;
+    "removeTeams": string[] | null;
+}
+
+/**
+ * ReviewersResult is what a reviewer edit made of a pull request on GitHub: Sent counts the
+ * requests GitHub made, and Failed says why the one after them failed, or "" when every one
+ * went.
+ */
+export interface ReviewersResult {
+    "sent": number;
+    "failed": string;
 }
 
 /**
@@ -988,6 +1075,43 @@ export const Since = {
      */
     SinceRewritten: "rewritten",
 } as const;
+
+/**
+ * Suggestion is why GitHub suggests someone to review a pull request.
+ */
+export type Suggestion = "" | "changed_files" | "commented";
+
+/**
+ * The values of Suggestion, by the names of their Go constants.
+ */
+export const Suggestion = {
+    /**
+     * The suggestions.
+     *
+     * SuggestionNone is someone GitHub doesn't suggest.
+     */
+    SuggestionNone: "",
+
+    /**
+     * SuggestionChangedFiles is someone whose commits changed the files the pull request
+     * changes.
+     */
+    SuggestionChangedFiles: "changed_files",
+
+    /**
+     * SuggestionCommented is someone who commented in reviews of those files.
+     */
+    SuggestionCommented: "commented",
+} as const;
+
+/**
+ * TeamCandidate is a team the picker offers to ask for a review: its slug, which a request
+ * names it by, and its display name, or "".
+ */
+export interface TeamCandidate {
+    "slug": string;
+    "name": string;
+}
 
 /**
  * Unrun is a workflow run on the head commit that ended without any check and without

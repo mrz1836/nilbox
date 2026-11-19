@@ -119,6 +119,28 @@ describe('LabelPicker', () => {
     expect(screen.queryByRole('dialog', { name: 'Labels' })).not.toBeInTheDocument()
   })
 
+  it('checks the label the field’s filter finds first with Enter, and moves with ↑ and ↓', async () => {
+    const onEdit = vi.fn().mockResolvedValue('')
+    render(<IssueSummary issue={issue()} onEdit={onEdit} />)
+
+    const panel = await picker('Edit labels', 'Labels')
+    const field = panel.getByRole('searchbox', { name: 'Filter labels' })
+    await panel.findAllByRole('checkbox')
+
+    await userEvent.type(field, 'tri{Enter}')
+    expect(panel.getByRole('checkbox', { name: 'triage Needs a first look' })).toBeChecked()
+
+    await userEvent.clear(field)
+    await userEvent.keyboard('{ArrowDown}{Enter}')
+    expect(
+      panel.getByRole('checkbox', { name: 'bug Something isn’t working' }),
+      'the first row, taken off',
+    ).not.toBeChecked()
+
+    await userEvent.keyboard('{ArrowUp}{ArrowDown}{Enter}{Meta>}{Enter}{/Meta}')
+    expect(onEdit).toHaveBeenCalledExactlyOnceWith({ addLabels: ['triage', 'p1'], removeLabels: ['bug'] })
+  })
+
   it('says how the labels are coming, and when there are more than it shows', async () => {
     let answer: (labels: ReturnType<typeof repoLabels>) => void = () => undefined
     platform.issueLabels.mockReturnValueOnce(

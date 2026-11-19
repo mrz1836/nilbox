@@ -628,6 +628,15 @@ export type ReviewReadiness = NonNullLists<review.Readiness>
 export type ReviewReply = NonNullLists<review.Reply>
 export type ReviewReplyList = NonNullLists<review.ReplyList>
 export type ReviewResult = NonNullLists<review.Result>
+// The reviewer picker's: who it offers to ask for a review of a pull request (GitHub's
+// suggestions first, then those who work on the repository), why GitHub suggests someone,
+// and a change of who a pull request asks, with what GitHub made of it.
+export type Reviewers = NonNullLists<review.Reviewers>
+export type ReviewerCandidate = NonNullLists<review.ReviewerCandidate>
+export type ReviewerSuggestion = review.Suggestion
+export type TeamCandidate = NonNullLists<review.TeamCandidate>
+export type ReviewersRequest = NonNullLists<review.ReviewersRequest>
+export type ReviewersResult = NonNullLists<review.ReviewersResult>
 export type MergeMethod = review.MergeMethod
 export type PatchState = review.PatchState
 export type ReadyState = review.ReadyState
@@ -845,6 +854,12 @@ export const {
   Act: actOnReview,
   Replies: reviewReplies,
   FillReply: fillReply,
+  // ReviewerCandidates reads who the reviewer picker offers from what the app learned,
+  // asking GitHub nothing; LearnReviewers reads the repository's recent pull requests first,
+  // when a read is due (Reviewers.stale); EditReviewers asks and takes off reviewers.
+  ReviewerCandidates: reviewerCandidates,
+  LearnReviewers: learnReviewers,
+  EditReviewers: editReviewers,
 } = narrow(review.Service)
 
 export const {

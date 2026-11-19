@@ -573,6 +573,10 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			// No people and a bot with no URL ask nothing of the avatar host.
 			return c.Avatars.PicturesFor(ctx, nil, []avatars.Bot{{Login: "dependabot"}})
 		},
+		"review.Service.ReviewerCandidates": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			// The directory knows no one yet, so the lists are empty, never null.
+			return c.Review.ReviewerCandidates(ctx, ids.item)
+		},
 		"review.Service.Replies": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Review.Replies(ctx, review.ReplyApprove)
 			require.NotEmpty(t, got.Replies)
@@ -957,6 +961,7 @@ func unreachedBound() map[string]string {
 		"review.Service.Refresh":            "reads GitHub; its review is built as Open's",
 		"review.Service.ReadAgain":          "reads GitHub; its review is built as Open's",
 		"review.Service.Act":                "edits GitHub; its steps start empty",
+		"review.Service.LearnReviewers":     "reads GitHub; its result is built as ReviewerCandidates'",
 		"issues.Service.Refresh":            "reads GitHub; its issue is built as Open's",
 		"issues.Service.ReadAgain":          "reads GitHub; its issue is built as Open's",
 		"issues.Service.Earlier":            "reads GitHub; its items are converted as Open's",

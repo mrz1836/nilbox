@@ -4,6 +4,7 @@ import { commitsSinceAnchor } from '../../lib/commits'
 import { refText } from '../../lib/format'
 import { ignoreKey, type IgnoredWorkflows } from '../../lib/ignoredWorkflows'
 import { PicturesContext, reviewPictureLogins, usePictures } from '../../lib/pictures'
+import { reviewersRequest } from '../../lib/reviewers'
 import type { ReviewDrafts } from '../../lib/reviewDrafts'
 import {
   placeIn,
@@ -15,12 +16,16 @@ import {
   type SheetBack,
 } from '../../lib/sheet'
 import { commentCount, entryAnchor, quoteInto } from '../../lib/timeline'
+import { attempt } from '../../lib/call'
 import { useMutation } from '../../lib/useMutation'
 import { useNowAs } from '../../lib/useNow'
+import { useQuery } from '../../lib/useQuery'
 import { cardKey, heldRuns, listMark, useReview } from '../../lib/useReview'
 import {
   actOnReview,
+  editReviewers,
   openExternal,
+  reviewerCandidates,
   type AgentSession,
   type ConversationOrder,
   type InboxItem,
@@ -219,6 +224,13 @@ export function ReviewSheet({
     review === null ? 'current' : listMark(review, now, loaded.checking, loaded.error !== ''),
   )
   const pictures = usePictures(review === null ? [] : reviewPictureLogins(review))
+  // reviewers is who the reviewer picker offers, read from what the app learned, asking
+  // GitHub nothing, while the user may change who the pull request asks.
+  const canEditReviewers = review?.canEditReviewers === true
+  const reviewers = useQuery(() => reviewerCandidates(id), [id], {
+    enabled: canEditReviewers,
+    log: 'Read who to suggest as reviewers',
+  })
   const draft = drafts.get(id)
   // tab shows at once on a click, and the window remembers it (onTab) behind it.
   const [tab, setTab] = useState<ReviewTab>(openOn)
@@ -332,6 +344,25 @@ export function ReviewSheet({
     }
 
     onDone(result.data, r)
+  }
+
+  // changeReviewers asks and takes off reviewers, by the picker's keys, then builds the sheet
+  // again from the card, which the inbox rewrote from GitHub's answer, asking GitHub nothing,
+  // once GitHub made any of it, since what it made before a step that failed stands. It
+  // resolves with why it couldn't, or '' once it did.
+  const changeReviewers = async (add: string[], remove: string[]): Promise<string> => {
+    const result = await attempt(editReviewers(reviewersRequest(id, add, remove)))
+
+    if (!result.ok) {
+      return result.error
+    }
+
+    if (result.data.sent > 0) {
+      loaded.rebuild()
+      void reviewers.refetch()
+    }
+
+    return result.data.failed
   }
 
   // ignoreWorkflow adds a workflow to the ignored workflows, after which its held runs no
@@ -772,6 +803,17 @@ export function ReviewSheet({
                         ignored={ignoring?.names}
                         onIgnore={ignoreWorkflow}
                         mark={mark}
+                        reviewers={
+                          canEditReviewers
+                            ? {
+                                candidates: reviewers.data,
+                                onLearned: (learned) => {
+                                  reviewers.set(() => learned)
+                                },
+                                onEdit: changeReviewers,
+                              }
+                            : undefined
+                        }
                       />
                     )}
                     <AgentVerdict

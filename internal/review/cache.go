@@ -134,6 +134,32 @@ type pullContext struct {
 	// couldn't compare them, and in a context an older build cached, until the sheet reads
 	// it again.
 	BehindBy int `json:"behindBy,omitempty"`
+
+	// Suggested are the reviewers GitHub suggests, in its order, which the reviewer picker
+	// offers first; none in a context an older build cached, until the sheet reads it again.
+	Suggested []contextSuggestion `json:"suggested,omitempty"`
+}
+
+// contextSuggestion is a reviewer GitHub suggests, as the cache keeps them: their commits
+// changed the files the pull request changes (ChangedFiles), or they commented in reviews
+// of them (Commented).
+type contextSuggestion struct {
+	Login        string `json:"login"`
+	Name         string `json:"name,omitempty"`
+	ChangedFiles bool   `json:"changedFiles,omitempty"`
+	Commented    bool   `json:"commented,omitempty"`
+}
+
+// suggestion is why GitHub suggests them: their commits first.
+func (s contextSuggestion) suggestion() Suggestion {
+	switch {
+	case s.ChangedFiles:
+		return SuggestionChangedFiles
+	case s.Commented:
+		return SuggestionCommented
+	default:
+		return SuggestionNone
+	}
 }
 
 // behind reports an open pull request whose branch is behind its base, as the read found
@@ -205,6 +231,9 @@ type contextReview struct {
 	URL         string    `json:"url"`
 	Commit      string    `json:"commit"`
 	SubmittedAt time.Time `json:"submittedAt"`
+
+	// Bot reports a review a bot left; false in a context an older build cached.
+	Bot bool `json:"bot,omitempty"`
 }
 
 // contextOf converts what FetchPullReview read, the entries of viewer, the signed-in
@@ -241,7 +270,7 @@ func contextOf(r *github.PullReview, viewer string) pullContext {
 	for _, rev := range r.Reviews {
 		c.Reviews = append(c.Reviews, contextReview{
 			Author: rev.Author, State: rev.State, URL: rev.URL, Commit: rev.Commit,
-			SubmittedAt: rev.SubmittedAt,
+			SubmittedAt: rev.SubmittedAt, Bot: rev.AuthorType == "Bot",
 		})
 	}
 
@@ -262,6 +291,12 @@ func contextOf(r *github.PullReview, viewer string) pullContext {
 
 	if v := r.Verdict; v != nil {
 		c.Opinion = &contextReview{State: v.State, URL: v.URL, Commit: v.Commit, SubmittedAt: v.SubmittedAt}
+	}
+
+	for _, sug := range r.Suggested {
+		c.Suggested = append(c.Suggested, contextSuggestion{
+			Login: sug.Login, Name: sug.Name, ChangedFiles: sug.ChangedFiles, Commented: sug.Commented,
+		})
 	}
 
 	return c

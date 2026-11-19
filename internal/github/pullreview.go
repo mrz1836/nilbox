@@ -26,6 +26,14 @@ import (
 // DetailFields' own alias and arguments (headSuites), which GraphQL merges into one field,
 // so they are read once whatever each fragment selects of them.
 //
+// ReviewFields also asks for the reviewers GitHub suggests, each review author's association
+// with the repository and their name, and the names of the people and teams asked to
+// review, under the same reviewRequests(first: 50) DetailFields reads, which GraphQL merges
+// into one field: what the review sheet learns of who works on the repository (see
+// internal/people), and its reviewer picker suggests first. The whole read still cost one
+// point with them (measured in November 2026 on a pull request with a review and a review
+// request).
+//
 // GitHub prices the whole read at one point, the conversation's newest hundred items and
 // each review's first twenty line comments included (measured in November 2026 on a pull
 // request with reviews, line comments, force pushes, and review requests), and still at one
@@ -60,7 +68,11 @@ fragment ReviewFields on PullRequest {
   pendingReviews: reviews(states: [PENDING]) { totalCount }
   autoMergeRequest { mergeMethod enabledAt enabledBy { login } }
   reviewBodies: latestReviews(first: 50) {
-    nodes { state url submittedAt author { login } commit { oid } }
+    nodes { state url submittedAt authorAssociation author { __typename login ... on User { name } } commit { oid } }
+  }
+  suggestedReviewers { isAuthor isCommenter reviewer { login name } }
+  reviewRequests(first: 50) {
+    nodes { requestedReviewer { __typename ... on User { login name } ... on Team { slug name } } }
   }
   reactionGroups { content reactors { totalCount } }
   closes: closingIssuesReferences(first: 10) { totalCount nodes { ...RefFields } }
@@ -226,6 +238,35 @@ type PullReview struct {
 	// compares them; 0 when the read asked for no compare, and when GitHub couldn't compare
 	// them, as for a base branch deleted since.
 	BehindBy int
+
+	// Suggested are the reviewers GitHub suggests for the pull request, in its order, never
+	// nil.
+	Suggested []SuggestedReviewer
+
+	// Requested are the people the pull request asks to review, with their names: those
+	// of Update.Details.ReviewRequests.Users that are people, not bots or mannequins. And
+	// RequestedTeams are the teams it asks, with their names. Both are never nil.
+	Requested      []Person
+	RequestedTeams []Team
+}
+
+// Person is a GitHub user an answer named: their login, and their profile's display name,
+// "" when it gives none.
+type Person struct {
+	Login string
+	Name  string
+}
+
+// SuggestedReviewer is someone GitHub suggests to review a pull request.
+type SuggestedReviewer struct {
+	Login string
+	Name  string
+
+	// ChangedFiles reports a suggestion from their commits to the files the pull request
+	// changes (GitHub's isAuthor), and Commented one from their review comments on them
+	// (isCommenter).
+	ChangedFiles bool
+	Commented    bool
 }
 
 // PullHeadRef is the ref GitHub keeps a pull request's head under in its base repository,
@@ -266,6 +307,14 @@ type Review struct {
 	State  string
 	URL    string
 	Commit string
+
+	// AuthorType is the author's GraphQL type (User, Bot, Mannequin, ...), "" when the read
+	// didn't say, AuthorName a person's profile name, or "", and Association their
+	// association with the repository as of the review: OWNER, MEMBER, COLLABORATOR,
+	// CONTRIBUTOR, FIRST_TIMER, FIRST_TIME_CONTRIBUTOR, MANNEQUIN, or NONE.
+	AuthorType  string
+	AuthorName  string
+	Association string
 
 	// SubmittedAt is zero for a review not submitted.
 	SubmittedAt time.Time
@@ -498,13 +547,32 @@ type reviewNode struct {
 	AutoMergeRequest *graphQLAutoMerge `json:"autoMergeRequest"`
 	ReviewBodies     struct {
 		Nodes []*struct {
-			State       string         `json:"state"`
-			URL         string         `json:"url"`
-			SubmittedAt time.Time      `json:"submittedAt"`
-			Author      *graphQLActor  `json:"author"`
-			Commit      *graphQLCommit `json:"commit"`
+			State             string         `json:"state"`
+			URL               string         `json:"url"`
+			SubmittedAt       time.Time      `json:"submittedAt"`
+			AuthorAssociation string         `json:"authorAssociation"`
+			Author            *graphQLActor  `json:"author"`
+			Commit            *graphQLCommit `json:"commit"`
 		} `json:"nodes"`
 	} `json:"reviewBodies"`
+	SuggestedReviewers []*struct {
+		IsAuthor    bool `json:"isAuthor"`
+		IsCommenter bool `json:"isCommenter"`
+		Reviewer    *struct {
+			Login string `json:"login"`
+			Name  string `json:"name"`
+		} `json:"reviewer"`
+	} `json:"suggestedReviewers"`
+	ReviewRequests struct {
+		Nodes []*struct {
+			RequestedReviewer *struct {
+				TypeName string `json:"__typename"`
+				Login    string `json:"login"`
+				Slug     string `json:"slug"`
+				Name     string `json:"name"`
+			} `json:"requestedReviewer"`
+		} `json:"nodes"`
+	} `json:"reviewRequests"`
 	CheckList *struct {
 		Contexts struct {
 			Nodes []*graphQLCheck `json:"nodes"`
@@ -758,6 +826,57 @@ func (n *reviewNode) fill(r *PullReview, self ItemRef, head string) {
 	r.Commits = n.commits()
 	r.CommitTotal = max(n.CommitList.TotalCount, len(r.Commits))
 	r.BehindBy = n.behindBy()
+	r.Suggested = n.suggested()
+	r.Requested, r.RequestedTeams = n.requested()
+}
+
+// suggested converts the reviewers GitHub suggests, skipping nulls and those without a
+// login.
+func (n *reviewNode) suggested() []SuggestedReviewer {
+	out := make([]SuggestedReviewer, 0, len(n.SuggestedReviewers))
+
+	for _, s := range n.SuggestedReviewers {
+		if s == nil || s.Reviewer == nil || s.Reviewer.Login == "" {
+			continue
+		}
+
+		out = append(out, SuggestedReviewer{
+			Login: s.Reviewer.Login, Name: s.Reviewer.Name, ChangedFiles: s.IsAuthor, Commented: s.IsCommenter,
+		})
+	}
+
+	return out
+}
+
+// requested converts who the pull request asks to review: the people, with their names,
+// and the teams, each once, skipping nulls, bots, and mannequins.
+func (n *reviewNode) requested() ([]Person, []Team) {
+	people, teams := []Person{}, []Team{}
+	seen := map[string]bool{}
+
+	for _, req := range n.ReviewRequests.Nodes {
+		if req == nil || req.RequestedReviewer == nil {
+			continue
+		}
+
+		who := req.RequestedReviewer
+
+		key := reviewerKey(who.TypeName, who.Login, who.Slug)
+		if key == "" || seen[key] {
+			continue
+		}
+
+		seen[key] = true
+
+		switch who.TypeName {
+		case typeUser:
+			people = append(people, Person{Login: who.Login, Name: who.Name})
+		case typeTeam:
+			teams = append(teams, Team{Slug: who.Slug, Name: who.Name})
+		}
+	}
+
+	return people, teams
 }
 
 // behindBy is how many commits the base branch is ahead of the head, 0 when the read asked
@@ -809,7 +928,8 @@ func (n *reviewNode) reviews() []Review {
 
 		out = append(out, Review{
 			Author: rev.Author.Login, State: rev.State, URL: rev.URL, Commit: rev.Commit.oid(),
-			SubmittedAt: rev.SubmittedAt.UTC(),
+			SubmittedAt: rev.SubmittedAt.UTC(), AuthorType: rev.Author.TypeName, AuthorName: rev.Author.Name,
+			Association: rev.AuthorAssociation,
 		})
 	}
 

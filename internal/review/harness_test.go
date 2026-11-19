@@ -147,7 +147,7 @@ func (f *fakeInbox) Act(
 		tries++
 	}
 
-	if f.recordErr != nil && (acted.Reviewed || acted.Merged || acted.Closed || acted.Rerequested) {
+	if f.recordErr != nil && (acted.Reviewed || acted.Merged || acted.Closed || acted.Rerequested || acted.RequestsEdited) {
 		err = errors.Join(err, uierr.New(
 			"GitHub made the change, but the inbox could not record it. The next refresh catches it up.", f.recordErr,
 		))
@@ -194,6 +194,10 @@ const (
 	callLabel   = "label"
 	callUnlabel = "unlabel"
 	callRequest = "request"
+	callAsk     = "ask"
+	callUnask   = "unask"
+	callPeople  = "people"
+	callTeams   = "teams"
 )
 
 // fakeGitHub answers the sheet's requests and counts them.
@@ -257,6 +261,25 @@ type fakeGitHub struct {
 	asked      []string
 	asks       []string
 	requestErr error
+
+	// reviewers is who the pull request asks to review, which RequestReviewers adds to and
+	// RemoveReviewRequests takes from, answering with it; askErr and unaskErr fail the next
+	// of each once; askBadToken and unaskBadToken refuse the token of the next of each once,
+	// as GitHub refuses one that expired.
+	reviewers     github.ReviewRequests
+	askErr        error
+	unaskErr      error
+	askBadToken   bool
+	unaskBadToken bool
+
+	// repoPeople is what the read of the repository's recent pull requests answers,
+	// peopleErr its failure, and peopleWait, when set, holds it until closed; repoTeams and
+	// teamsErr answer the read of its teams.
+	repoPeople *github.RepoPeople
+	peopleErr  error
+	peopleWait chan struct{}
+	repoTeams  []github.Team
+	teamsErr   error
 }
 
 func (g *fakeGitHub) FetchPullReview(_ context.Context, _ github.Token, _, compareHead string) (*github.PullReview, error) {
@@ -530,6 +553,99 @@ func (g *fakeGitHub) FetchTimeline(
 	}
 }
 
+func (g *fakeGitHub) RequestReviewers(
+	_ context.Context, _ github.Token, _ item.Ref, want github.ReviewRequests,
+) (*github.Edited, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callAsk)
+
+	switch {
+	case g.askBadToken:
+		g.askBadToken = false
+
+		return nil, githubtest.BadCredentials()
+	case g.askErr != nil:
+		err := g.askErr
+		g.askErr = nil
+
+		return nil, err
+	}
+
+	g.reviewers.Users = append(slices.Clone(g.reviewers.Users), want.Users...)
+	g.reviewers.Teams = append(slices.Clone(g.reviewers.Teams), want.Teams...)
+
+	return &github.Edited{UpdatedAt: testNow, ReviewRequests: g.answered()}, nil
+}
+
+func (g *fakeGitHub) RemoveReviewRequests(
+	_ context.Context, _ github.Token, _ item.Ref, drop github.ReviewRequests,
+) (*github.Edited, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callUnask)
+
+	switch {
+	case g.unaskBadToken:
+		g.unaskBadToken = false
+
+		return nil, githubtest.BadCredentials()
+	case g.unaskErr != nil:
+		err := g.unaskErr
+		g.unaskErr = nil
+
+		return nil, err
+	}
+
+	g.reviewers.Users = slices.DeleteFunc(slices.Clone(g.reviewers.Users), func(u string) bool { return slices.Contains(drop.Users, u) })
+	g.reviewers.Teams = slices.DeleteFunc(slices.Clone(g.reviewers.Teams), func(t string) bool { return slices.Contains(drop.Teams, t) })
+
+	return &github.Edited{UpdatedAt: testNow, ReviewRequests: g.answered()}, nil
+}
+
+func (g *fakeGitHub) FetchRepoPeople(ctx context.Context, _ github.Token, _ string) (*github.RepoPeople, error) {
+	g.mu.Lock()
+	g.count(callPeople)
+	wait, read, err := g.peopleWait, g.repoPeople, g.peopleErr
+	g.mu.Unlock()
+
+	if wait != nil {
+		select {
+		case <-wait:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	switch {
+	case err != nil:
+		return nil, err
+	case read == nil:
+		return nil, errNotCalled
+	default:
+		return read, nil
+	}
+}
+
+func (g *fakeGitHub) FetchRepoTeams(context.Context, github.Token, repo.Name) ([]github.Team, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callTeams)
+
+	return g.repoTeams, g.teamsErr
+}
+
+// answered is who the pull request asks to review, as GitHub answers an edit: both lists,
+// never nil. The caller holds mu.
+func (g *fakeGitHub) answered() github.ReviewRequests {
+	return github.ReviewRequests{
+		Users: append([]string{}, g.reviewers.Users...), Teams: append([]string{}, g.reviewers.Teams...),
+	}
+}
+
 // count records a request named name.
 func (g *fakeGitHub) count(name string) { g.calls.Add(name) }
 
@@ -614,6 +730,7 @@ type harness struct {
 	events *testutil.Events
 	logs   *testutil.Logs
 	merges *fakeMerges
+	people *fakePeople
 
 	// ignored is the workflows whose held runs never count, as the settings say.
 	ignored *ignoredWorkflows
@@ -630,7 +747,7 @@ func newHarness(t *testing.T) *harness {
 		db: db, inbox: &fakeInbox{pull: storedPull()}, clock: testutil.NewClock(testNow), events: &testutil.Events{},
 		github: &fakeGitHub{review: pullReview(headA, github.MergeStateClean), diff: pullDiff(headA)},
 		logs:   &testutil.Logs{},
-		merges: &fakeMerges{}, ignored: &ignoredWorkflows{},
+		merges: &fakeMerges{}, ignored: &ignoredWorkflows{}, people: newFakePeople(),
 	}
 
 	h.svc = h.service(fakeSettings{ignored: h.ignored}, fakeReplies{})
@@ -642,7 +759,7 @@ func newHarness(t *testing.T) *harness {
 func (h *harness) service(settings Settings, replies Replies) *Service {
 	return NewService(Config{
 		Pool: h.db, Inbox: h.inbox, GitHub: h.github, Settings: settings, Replies: replies, Events: h.events,
-		Merges: h.merges, Clock: h.clock, Logger: h.logs.Logger(),
+		Merges: h.merges, People: h.people, Clock: h.clock, Logger: h.logs.Logger(),
 	})
 }
 
@@ -706,4 +823,122 @@ func (f *fakeMerges) heard() []repo.Name {
 	defer f.mu.Unlock()
 
 	return slices.Clone(f.names)
+}
+
+// fakePeople is the People directory, in memory: what Ranked answers, and what the sheet
+// handed it.
+type fakePeople struct {
+	mu sync.Mutex
+
+	// dir is what Ranked answers; a read recorded makes it current, and a failure recorded
+	// holds the next read off.
+	dir Directory
+
+	// learned is everything Learn kept, in order; listed and asked each team list SetTeams
+	// kept, as its teams list and as asked to review; reads and failed count the reads it
+	// recorded, each read as "pulls org".
+	learned []PersonSeen
+	listed  [][]TeamCandidate
+	asked   [][]TeamCandidate
+	reads   []string
+	failed  int
+
+	// err fails every call.
+	err error
+}
+
+// newFakePeople is a directory that knows no one, with a read due.
+func newFakePeople() *fakePeople {
+	return &fakePeople{dir: Directory{People: []KnownPerson{}, Teams: []TeamCandidate{}, Stale: true}}
+}
+
+func (f *fakePeople) Learn(_ context.Context, _ repo.Name, seen []PersonSeen) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.err != nil {
+		return f.err
+	}
+
+	f.learned = append(f.learned, seen...)
+
+	return nil
+}
+
+func (f *fakePeople) SetTeams(_ context.Context, _ repo.Name, teams []TeamCandidate, listed bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.err != nil {
+		return f.err
+	}
+
+	if listed {
+		f.listed = append(f.listed, teams)
+	} else {
+		f.asked = append(f.asked, teams)
+	}
+
+	return nil
+}
+
+func (f *fakePeople) MarkRead(_ context.Context, _ repo.Name, pulls int, org bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.err != nil {
+		return f.err
+	}
+
+	f.reads = append(f.reads, strconv.Itoa(pulls)+" "+strconv.FormatBool(org))
+	f.dir.Stale, f.dir.ReadAt, f.dir.Pulls, f.dir.Org = false, testNow, pulls, org
+
+	return nil
+}
+
+func (f *fakePeople) MarkFailed(context.Context, repo.Name) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.failed++
+	f.dir.Stale = false
+
+	return f.err
+}
+
+func (f *fakePeople) Ranked(context.Context, repo.Name) (Directory, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.err != nil {
+		return Directory{}, f.err
+	}
+
+	d := f.dir
+	d.People, d.Teams = slices.Clone(d.People), slices.Clone(d.Teams)
+
+	return d, nil
+}
+
+// seenAs lists what the directory learned in role, as "login #number" with "+" for access.
+func (f *fakePeople) seenAs(role string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	var out []string
+
+	for _, s := range f.learned {
+		if s.Role != role {
+			continue
+		}
+
+		entry := s.Login + " #" + strconv.Itoa(s.Number)
+		if s.Access {
+			entry += "+"
+		}
+
+		out = append(out, entry)
+	}
+
+	return out
 }

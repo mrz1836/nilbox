@@ -44,6 +44,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/people"
 	prefsstore "github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/procs"
 	"github.com/mrz1836/nilbox/internal/profiles"
@@ -785,10 +786,14 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// itself), so a picture is downloaded, kept, and backed off once for both.
 	actor := inbox.NewActor(inboxSvc)
 	pictures := avatars.NewService(avatars.Config{Pool: pool, Fetcher: client, Clock: opts.Clock, Logger: logger})
+	// The review sheet learns who works on each repository into the people directory, and
+	// its reviewer picker suggests from it.
+	directory := people.NewService(people.Config{Pool: pool, Clock: opts.Clock})
 	reviewSheet := review.NewService(review.Config{
 		Pool: pool, Inbox: reviewInbox{store: inboxStore, actor: actor}, GitHub: client,
 		Settings: reviewSettings{settings: prefs}, Replies: reviewReplies{replyFiller{store: promptStore, source: previews}},
-		Events: opts.Events, Merges: releaseRefresher, Clock: opts.Clock, Logger: logger,
+		Events: opts.Events, Merges: releaseRefresher, People: reviewPeople{directory: directory}, Clock: opts.Clock,
+		Logger: logger,
 	})
 	issueSheet := issues.NewService(issues.Config{
 		Pool: pool, Inbox: issuesInbox{store: inboxStore, actor: actor}, GitHub: client,
