@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -199,33 +200,39 @@ func TestRestoreBackupRefusesWhileTheDatabaseIsOpen(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "app.db")
-	db := testutil.DBAt(t, path)
+	testutil.DBFile(t, path)
 
-	backup, err := store.Backup(t.Context(), db, path)
-	require.NoError(t, err)
+	// Each check waits out its busy timeout for the lock, which the bubble's clock passes
+	// at once.
+	synctest.Test(t, func(t *testing.T) {
+		db := testutil.DBAt(t, path)
 
-	conn, err := db.Conn(t.Context())
-	require.NoError(t, err)
+		backup, err := store.Backup(t.Context(), db, path)
+		require.NoError(t, err)
 
-	t.Cleanup(func() { _ = conn.Close() })
+		conn, err := db.Conn(t.Context())
+		require.NoError(t, err)
 
-	_, err = conn.ExecContext(t.Context(), "BEGIN IMMEDIATE")
-	require.NoError(t, err)
+		t.Cleanup(func() { _ = conn.Close() })
 
-	t.Cleanup(func() { _, _ = conn.ExecContext(t.Context(), "ROLLBACK") })
+		_, err = conn.ExecContext(t.Context(), "BEGIN IMMEDIATE")
+		require.NoError(t, err)
 
-	waits := 0
+		t.Cleanup(func() { _, _ = conn.ExecContext(t.Context(), "ROLLBACK") })
 
-	_, err = store.RestoreBackupWith(t.Context(), path, backup, 3, func(context.Context) error {
-		waits++
+		waits := 0
 
-		return nil
+		_, err = store.RestoreBackupWith(t.Context(), path, backup, 3, func(context.Context) error {
+			waits++
+
+			return nil
+		})
+		require.Error(t, err)
+		assert.True(t, store.IsBusy(err), "the database is busy: %v", err)
+		assert.Equal(t, 2, waits, "it waits between its tries for the other copy to let go")
+		assert.Empty(t, setAsideFiles(t, path), "nothing moved while the database is open")
+		assert.Empty(t, restoreCopies(t, path), "the copy made first is removed")
 	})
-	require.Error(t, err)
-	assert.True(t, store.IsBusy(err), "the database is busy: %v", err)
-	assert.Equal(t, 2, waits, "it waits between its tries for the other copy to let go")
-	assert.Empty(t, setAsideFiles(t, path), "nothing moved while the database is open")
-	assert.Empty(t, restoreCopies(t, path), "the copy made first is removed")
 }
 
 func TestRestoreBackupCopiesBeforeItMovesAnything(t *testing.T) {

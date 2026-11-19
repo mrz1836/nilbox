@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 	"testing/fstest"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -494,27 +495,34 @@ func TestOpenLeavesADatabaseAnotherConnectionLocks(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "app.db")
 
-	// A database with a table the migrations did not create is set aside when it can be
-	// read; locked, it must not be.
-	raw := rawDB(t, path)
-	conn, err := raw.Conn(t.Context())
-	require.NoError(t, err)
+	// The open waits out its whole busy timeout for the lock, which the bubble's clock
+	// passes at once.
+	synctest.Test(t, func(t *testing.T) {
+		// A database with a table the migrations did not create is set aside when it can
+		// be read; locked, it must not be.
+		raw := rawDB(t, path)
+		conn, err := raw.Conn(t.Context())
+		require.NoError(t, err)
 
-	_, err = conn.ExecContext(t.Context(), "CREATE TABLE notes (id INTEGER PRIMARY KEY)")
-	require.NoError(t, err)
-	_, err = conn.ExecContext(t.Context(), "BEGIN EXCLUSIVE")
-	require.NoError(t, err)
+		_, err = conn.ExecContext(t.Context(), "CREATE TABLE notes (id INTEGER PRIMARY KEY)")
+		require.NoError(t, err)
+		_, err = conn.ExecContext(t.Context(), "BEGIN EXCLUSIVE")
+		require.NoError(t, err)
 
-	t.Cleanup(func() {
-		_, _ = conn.ExecContext(t.Context(), "ROLLBACK")
-		_ = conn.Close()
+		t.Cleanup(func() {
+			_, _ = conn.ExecContext(t.Context(), "ROLLBACK")
+			_ = conn.Close()
+		})
+
+		start := time.Now()
+
+		_, err = store.Open(t.Context(), path)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "locked")
+		assert.True(t, store.IsBusy(err), "the startup dialog tells a lock apart: %v", err)
+		assert.GreaterOrEqual(t, time.Since(start), 5*time.Second, "it waits its busy timeout for the lock first")
+		assert.Empty(t, setAsideFiles(t, path), "a lock is not mistaken for an unusable file")
 	})
-
-	_, err = store.Open(t.Context(), path)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "locked")
-	assert.True(t, store.IsBusy(err), "the startup dialog tells a lock apart: %v", err)
-	assert.Empty(t, setAsideFiles(t, path), "a lock is not mistaken for an unusable file")
 }
 
 func TestOpenLeavesAWALDatabaseAnotherConnectionHasOpen(t *testing.T) {
