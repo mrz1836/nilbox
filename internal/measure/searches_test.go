@@ -1,13 +1,20 @@
 package measure
 
 import (
+	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/watch"
+	"github.com/mrz1836/nilbox/internal/core"
+	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 func TestSearchesArg(t *testing.T) {
@@ -60,4 +67,55 @@ func TestTheReportSaysWhatTheWatchPassesDid(t *testing.T) {
 
 	assert.NotContains(t, RefreshReport{Runs: report.Runs, Cost: 3}.Lines(), "watch.searches=0",
 		"no searches, no watch lines")
+}
+
+// scratchCore starts the app over a scratch data directory with a runner that runs
+// nothing, so no token can be borrowed and no request reaches GitHub, and closes it when
+// the test ends.
+func scratchCore(t *testing.T) *core.Core {
+	t.Helper()
+
+	c, err := core.Bootstrap(t.Context(), core.Options{
+		Paths: appdata.NewPaths(filepath.Join(t.TempDir(), "data")), Home: t.TempDir(), Version: "test",
+		Runner: &testutil.Runner{Stderr: "not run", Err: errNotRun},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = c.Close() })
+
+	return c
+}
+
+func TestAddRoutinesSwitchesOnARoutineForEachTypicalSearch(t *testing.T) {
+	t.Parallel()
+
+	for _, n := range []int{2, MaxSearches} {
+		t.Run(strconv.Itoa(n), func(t *testing.T) {
+			t.Parallel()
+
+			c := scratchCore(t)
+
+			require.NoError(t, addRoutines(t.Context(), c.Autopilot, n))
+
+			routines, err := c.Autopilot.List(t.Context())
+			require.NoError(t, err)
+			require.Len(t, routines, n, "one for each of the first searches")
+
+			for i, r := range routines {
+				search := typicalSearchesList[i]
+
+				assert.Equal(t, "Measure "+strconv.Itoa(i+1), r.Name)
+				assert.True(t, r.Enabled, "switched on")
+				require.Len(t, r.Spec.Watch.Sources, 1)
+				require.NotNil(t, r.Spec.Watch.Sources[0].Search)
+				assert.Equal(t, search, *r.Spec.Watch.Sources[0].Search, "routine %d watches search %d", i+1, i+1)
+
+				want := catalog.EventChecksFailed // so its search follows the checks
+				if search.Kind == item.KindIssue {
+					want = catalog.EventAppears // Checks fail never fires for an issue
+				}
+
+				assert.Equal(t, want, r.Spec.Trigger.Event, "routine %d", i+1)
+			}
+		})
+	}
 }
