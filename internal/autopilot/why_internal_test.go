@@ -12,9 +12,6 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 )
 
-// whyViewer is the account signed in as Why didn't it run? reads it.
-const whyViewer = "octo-user"
-
 // stored is the facts of a pull request in repo with values, as the inbox stored them.
 func stored(kind item.Kind, repo string, values map[catalog.FieldID]facts.Value) facts.Facts {
 	return facts.Facts{Item: facts.Item{ID: 1, Kind: kind, Repo: repo, Number: 1}, Values: values}
@@ -141,7 +138,7 @@ func TestWhyItIsntInASearchSaysTheFirstFieldItDoesntFit(t *testing.T) {
 			fits,
 		},
 	} {
-		assert.Equal(t, []string{c.want}, watchMisses(searching(c.search), c.f, whyViewer), c.name)
+		assert.Equal(t, []string{c.want}, watchMisses(searching(c.search), c.f, galleryViewer), c.name)
 	}
 }
 
@@ -158,11 +155,11 @@ func TestWhyItIsntInAnInboxListSaysWhyItIsInTheInboxInstead(t *testing.T) {
 	}
 
 	assert.Equal(t, []string{"It isn't in your inbox."},
-		watchMisses(lists(catalog.SourceReviewRequested), inLists(), whyViewer))
+		watchMisses(lists(catalog.SourceReviewRequested), inLists(), galleryViewer))
 	assert.Equal(t, []string{"It isn't asking for your review or assigned to you: it's in your inbox, opened by you."},
 		watchMisses(lists(catalog.SourceReviewRequested, catalog.SourceAssigned), inLists(string(catalog.SourceAuthored)),
-			whyViewer))
+			galleryViewer))
 	assert.Equal(t, []string{"It isn't asking for your review: it's in your inbox, opened by you and mentioned."},
-		watchMisses(lists(catalog.SourceReviewRequested), inLists(string(catalog.SourceAuthored), "mentioned"), whyViewer),
+		watchMisses(lists(catalog.SourceReviewRequested), inLists(string(catalog.SourceAuthored), "mentioned"), galleryViewer),
 		"a reason the catalog doesn't name is said as it is")
 }

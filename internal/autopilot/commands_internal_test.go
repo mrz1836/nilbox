@@ -3,6 +3,7 @@ package autopilot
 import (
 	"context"
 	"database/sql"
+	"maps"
 	"strconv"
 	"sync"
 	"testing"
@@ -31,13 +32,15 @@ const (
 )
 
 // cmdItems is the inbox as the engine's commands read it: the facts of the items it holds,
-// by ID, or err for every read of them and of their states; the rest is quiet's.
+// and the states stored of them, by ID, or err for every read of them and of their states;
+// the rest is quiet's.
 type cmdItems struct {
 	quiet
 
-	mu    sync.Mutex
-	facts map[int64]facts.Facts
-	err   error
+	mu     sync.Mutex
+	facts  map[int64]facts.Facts
+	states map[int64]ItemState
+	err    error
 }
 
 func (c *cmdItems) Facts(_ context.Context, ids []int64, _ time.Time) ([]facts.Facts, error) {
@@ -63,7 +66,19 @@ func (c *cmdItems) ItemStates(context.Context, []int64) (map[int64]ItemState, er
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return map[int64]ItemState{}, c.err
+	return maps.Clone(c.states), c.err
+}
+
+// list has the item id stored as listed in the inbox, so the ledger keeps its matches.
+func (c *cmdItems) list(id int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.states == nil {
+		c.states = map[int64]ItemState{}
+	}
+
+	c.states[id] = ItemState{State: "OPEN", FetchedAt: cmdNow(), Listed: true}
 }
 
 // fail has every read fail with err, or answer again for nil.
@@ -163,7 +178,7 @@ func (r *cmdRig) brokenRoutine() int64 {
 	r.t.Helper()
 
 	id, err := queries.New(r.db).InsertRoutine(r.t.Context(), queries.InsertRoutineParams{
-		AccountLogin: "octo-user", Name: "Broken", NameKey: "broken", Mode: "auto", Spec: "not a spec", SpecVersion: 2,
+		AccountLogin: galleryViewer, Name: "Broken", NameKey: "broken", Mode: "auto", Spec: "not a spec", SpecVersion: 2,
 		CreatedAt: cmdNow(), UpdatedAt: cmdNow(),
 	})
 	require.NoError(r.t, err)
@@ -180,7 +195,7 @@ func (r *cmdRig) match(routine int64, state State, blocker Blocker, steps ...ste
 	now := cmdNow()
 	m := &match{
 		AutopilotMatch: queries.AutopilotMatch{
-			RoutineID: routine, ItemID: new(cmdPR), AccountLogin: "octo-user", RepoOwner: "acme-org",
+			RoutineID: routine, ItemID: new(cmdPR), AccountLogin: galleryViewer, RepoOwner: "acme-org",
 			RepoName: "example-repo", Kind: "pr", Number: 5, FireKey: "appears:item:" + strconv.Itoa(r.matches),
 			State: string(state), BlockedBy: string(blocker), CreatedAt: now, UpdatedAt: now, DecidedAt: now,
 		},
