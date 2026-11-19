@@ -341,11 +341,15 @@ The app keeps its data in one local SQLite database. `internal/store` opens it w
 package imports the driver, and nothing imports an ORM (`internal/repoguard` enforces both).
 
 - **Migrations.** The schema lives in `internal/store/migrate/migrations/`: forward-only,
-  checksummed SQL files, starting from the squashed `0001_init.sql`. Never edit an applied
-  migration; change the schema with a new `NNNN_<name>.sql`. Nothing else creates, alters, or
-  drops a table. Never squash or edit a migration a build has shipped: every existing database
-  then reads as a history this build disagrees with and is set aside, and only the prompt
-  library, the launch defaults, and the user's own scripts come back on their own.
+  checksummed SQL files, starting from the base the last squash wrote (`0100_settings.sql` to
+  `0103_autopilot.sql`). Never edit an applied migration; change the schema with a new
+  `NNNN_<name>.sql`. Nothing else creates, alters, or drops a table. Never edit, renumber, or
+  delete a migration a build has shipped: every database that ran it then reads as a history
+  this build disagrees with and is set aside, and only the prompt library, the launch defaults,
+  the routines, and the user's own scripts come back on their own. Combine shipped migrations
+  only by a squash, which carries every database over untouched: freeze each history
+  (`-freeze`), write the base at the next hundred, and prove it builds the frozen schema; the
+  steps are in [`internal/store`](docs/architecture.md#internalstore).
 - **Ownership.** Every table has one owner package (`tableOwners` in
   `internal/repoguard/datalayer_test.go`): profiles owns `agent_profiles`, keyed by `(agent,
   name)`, and worklog owns `worktree_records` and `worktree_cleanups`, for instance. The owner

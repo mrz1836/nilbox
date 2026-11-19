@@ -3,6 +3,7 @@ package store_test
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -239,7 +240,7 @@ func TestOpenSetsAsideADatabaseItCannotUse(t *testing.T) {
 		{
 			name: "edited checksum",
 			setup: func(t *testing.T, path string) {
-				migrated(t, path, "UPDATE schema_migrations SET checksum = 'edited' WHERE version = 1")
+				migrated(t, path, "UPDATE schema_migrations SET checksum = 'edited' WHERE version = (SELECT min(version) FROM schema_migrations)")
 			},
 			reason: store.ResetHistory,
 			cause:  migrate.ErrChecksumMismatch,
@@ -249,14 +250,21 @@ func TestOpenSetsAsideADatabaseItCannotUse(t *testing.T) {
 			name:   "pre-squash history",
 			setup:  recordedHistory(preSquashHistory()),
 			reason: store.ResetHistory,
-			cause:  migrate.ErrChecksumMismatch,
+			cause:  migrate.ErrSquashedHistory,
 			kept:   assertPrefKept,
 		},
 		{
 			name:   "history from before the second squash",
 			setup:  recordedHistory(secondPreSquashHistory()),
 			reason: store.ResetHistory,
-			cause:  migrate.ErrChecksumMismatch,
+			cause:  migrate.ErrSquashedHistory,
+			kept:   assertPrefKept,
+		},
+		{
+			name:   "history from before the newest release the third squash froze",
+			setup:  recordedHistory(squashedHistory(t, "0024.json")[:4]),
+			reason: store.ResetHistory,
+			cause:  migrate.ErrSquashedHistory,
 			kept:   assertPrefKept,
 		},
 	}
@@ -554,7 +562,7 @@ VALUES ('example.other', 'written', CURRENT_TIMESTAMP)`)
 			// The history disagrees with this build's, so with no one else using it the
 			// database would be set aside.
 			path := filepath.Join(t.TempDir(), "app.db")
-			migrated(t, path, "UPDATE schema_migrations SET checksum = 'edited' WHERE version = 1")
+			migrated(t, path, "UPDATE schema_migrations SET checksum = 'edited' WHERE version = (SELECT min(version) FROM schema_migrations)")
 
 			conn, err := rawDB(t, path).Conn(t.Context())
 			require.NoError(t, err)
@@ -703,4 +711,94 @@ func TestResetReasonPutsAFailedMigrationFirst(t *testing.T) {
 
 	_, unusable = store.ResetReasonOf(fmt.Errorf("%w: apply 0002_example.sql: %w", migrate.ErrMigrationFailed, damaged))
 	assert.False(t, unusable, "a migration that failed is never a reason to set the database aside")
+}
+
+// squashedHistory reads the history a squash froze in file, in migrate/squashed, as rows of
+// version, name, and checksum.
+func squashedHistory(t *testing.T, file string) [][3]any {
+	t.Helper()
+
+	body, err := os.ReadFile(filepath.Join("migrate", "squashed", file)) //nolint:gosec // a file of this module's own
+	require.NoError(t, err)
+
+	var h struct {
+		Migrations []struct {
+			Version  int    `json:"version"`
+			Name     string `json:"name"`
+			Checksum string `json:"checksum"`
+		} `json:"migrations"`
+	}
+	require.NoError(t, json.Unmarshal(body, &h))
+
+	rows := make([][3]any, 0, len(h.Migrations))
+	for _, m := range h.Migrations {
+		rows = append(rows, [3]any{m.Version, m.Name, m.Checksum})
+	}
+
+	return rows
+}
+
+// A database the newest release before the squash migrated, as the users' are, opens with
+// its data, carried over and brought up to date, never set aside.
+func TestOpenCarriesOverTheHistoryOfTheReleaseASquashFroze(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "app.db")
+
+	// That release's schema is the base's through 0103, as the migrate tests prove, with
+	// its own history recorded.
+	all, err := migrate.Load(migrate.Embedded())
+	require.NoError(t, err)
+
+	base := fstest.MapFS{}
+
+	for _, m := range all {
+		if m.Version <= 103 {
+			base[m.File] = &fstest.MapFile{Data: []byte(m.SQL)}
+		}
+	}
+
+	opened, err := store.OpenWith(t.Context(), path, base, nil)
+	require.NoError(t, err)
+	require.NoError(t, opened.DB.Close())
+
+	raw := rawDB(t, path)
+	stmts := []string{
+		`DELETE FROM schema_migrations`,
+		`INSERT INTO prefs (key, value, updated_at) VALUES ('example.key', 'kept', CURRENT_TIMESTAMP)`,
+	}
+
+	for _, stmt := range stmts {
+		_, err = raw.ExecContext(t.Context(), stmt)
+		require.NoError(t, err, stmt)
+	}
+
+	for _, row := range squashedHistory(t, "0024.json") {
+		_, err = raw.ExecContext(t.Context(), `INSERT INTO schema_migrations (version, name, checksum, applied_at)
+VALUES (?, ?, ?, '2026-11-18 20:00:00+00:00')`, row[0], row[1], row[2])
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, raw.Close())
+
+	opened, err = store.OpenWith(t.Context(), path, nil, setAsideAt)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = opened.DB.Close() })
+
+	assert.Nil(t, opened.Reset, "nothing is set aside")
+	assert.Equal(t, all[len(all)-1].Version, newestVersion(t, opened.DB), "brought up to date")
+
+	var value string
+	require.NoError(t, opened.DB.QueryRowContext(t.Context(),
+		"SELECT value FROM prefs WHERE key = 'example.key'").Scan(&value))
+	assert.Equal(t, "kept", value, "the data is kept")
+
+	var issueInfo string
+	require.NoError(t, opened.DB.QueryRowContext(t.Context(),
+		"SELECT dflt_value FROM pragma_table_info('item_details') WHERE name = 'issue_info'").Scan(&issueInfo))
+	assert.Equal(t, "'{}'", issueInfo, "the migration after the base ran")
+
+	backups, err := filepath.Glob(path + migrate.BackupInfix + "*-v24")
+	require.NoError(t, err)
+	assert.Len(t, backups, 1, "backed up first, named for the history the older build opens")
 }

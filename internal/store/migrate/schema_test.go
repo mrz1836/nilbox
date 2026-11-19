@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/store/migrate"
@@ -59,6 +60,19 @@ func TestSchemaConstraints(t *testing.T) {
 	seedClear := `INSERT INTO gh_thread_clears (account_login, thread_id, repo_owner, repo_name, item_kind, number,
 		trigger, action, state, thread_updated_at, queued_at, send_after) VALUES ('octo-user', 20000000001, 'acme-org',
 		'example-repo', 'pr', 7, 'dismissed', 'done', 'queued', ` + at + `, ` + at + `, ` + at + `)`
+	seedDetails := `INSERT INTO accounts (login, created_at, updated_at) VALUES ('octo-user', ` + at + `, ` + at + `);
+		INSERT INTO repos (owner, name, created_at, updated_at) VALUES ('acme-org', 'example-repo', ` + at + `, ` + at + `);
+		INSERT INTO items (account_id, repo_id, kind, number, item_created_at, item_updated_at, fetched_at)
+			VALUES (1, 1, 'pr', 7, ` + at + `, ` + at + `, ` + at + `);
+		INSERT INTO item_details (item_id, fetched_at) VALUES (1, ` + at + `)`
+	seedMatch := `INSERT INTO autopilot_routines (name, name_key, mode, spec, created_at, updated_at)
+			VALUES ('Fix checks', 'fix checks', 'ask', '{}', ` + at + `, ` + at + `);
+		INSERT INTO autopilot_matches (routine_id, fire_key, state, created_at, updated_at, decided_at)
+			VALUES (1, 'checks-failed', 'running', ` + at + `, ` + at + `, ` + at + `)`
+	run := func(runner string) string {
+		return `INSERT INTO autopilot_runs (match_id, routine_id, runner, status, queued_at, updated_at)
+			VALUES (1, 1, '` + runner + `', 'queued', ` + at + `, ` + at + `)`
+	}
 
 	tests := []struct {
 		name string
@@ -172,6 +186,34 @@ func TestSchemaConstraints(t *testing.T) {
 			accepted: `INSERT INTO gh_thread_moments (account_login, repo_owner, repo_name, item_kind, number, trigger, at,
 				created_at) VALUES ('octo-user', 'acme-org', 'example-repo', 'pr', 7, 'merged', ` + at + `, ` + at + `)`,
 		},
+		{
+			name:     "held runs that are an object",
+			seed:     seedDetails,
+			refused:  `UPDATE item_details SET checks_held = '{}'`,
+			want:     check + "json_valid(checks_held) AND json_type(checks_held) = 'array'",
+			accepted: `UPDATE item_details SET checks_held = '[{"workflow":"CI","onGitHub":true}]'`,
+		},
+		{
+			name:     "a negative count of runs held on GitHub",
+			seed:     seedDetails,
+			refused:  `UPDATE item_details SET checks_awaiting_on_github = -1`,
+			want:     check + "checks_awaiting_on_github >= 0",
+			accepted: `UPDATE item_details SET checks_awaiting_on_github = 2`,
+		},
+		{
+			name:     "an issue's planning that is a list",
+			seed:     seedDetails,
+			refused:  `UPDATE item_details SET issue_info = '[]'`,
+			want:     jsonObject("issue_info"),
+			accepted: `UPDATE item_details SET issue_info = '{"type":"Task"}'`,
+		},
+		{
+			name:     "a run by no runner there is",
+			seed:     seedMatch,
+			refused:  run("cron"),
+			want:     check + "runner IN ('terminal', 'background', 'github', 'script')",
+			accepted: run("script"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -191,5 +233,56 @@ func TestSchemaConstraints(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, int64(1), changed, "the accepted statement changes the seeded row or adds one")
 		})
+	}
+}
+
+// Each situation a pull request can be in has a default prompt of its own, a foreign key
+// that keeps the prompt it names, as pr_prompt_id and issue_prompt_id do.
+func TestLaunchDefaultsKeepTheirSituationPrompts(t *testing.T) {
+	t.Parallel()
+
+	db := migratedDB(t)
+
+	run := func(stmt string, args ...any) error {
+		_, err := db.ExecContext(t.Context(), stmt, args...)
+
+		return err
+	}
+
+	exec := func(stmt string, args ...any) {
+		t.Helper()
+
+		require.NoError(t, run(stmt, args...), stmt)
+	}
+
+	exec(`INSERT INTO launch_defaults (owner, name, created_at, updated_at) VALUES ('acme-org', '', ` + at + `, ` + at + `)`)
+
+	for _, column := range []string{"checks_prompt_id", "conflicts_prompt_id", "changes_prompt_id", "rereview_prompt_id"} {
+		var (
+			stored *int64
+			index  int
+			id     int64
+		)
+
+		require.NoError(t, db.QueryRowContext(t.Context(),
+			`SELECT `+column+` FROM launch_defaults WHERE owner = 'acme-org'`).Scan(&stored))
+		assert.Nil(t, stored, "%s: a new row inherits", column)
+
+		require.NoError(t, db.QueryRowContext(t.Context(),
+			`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?`, "launch_defaults_"+column).Scan(&index))
+		assert.Equal(t, 1, index, "%s has an index named like the others", column)
+
+		exec(`INSERT INTO prompts (name, nickname, applies_to, body, created_at, updated_at)
+			VALUES ('Fix', ?, 'pr', 'x', `+at+`, `+at+`)`, column)
+		require.NoError(t, db.QueryRowContext(t.Context(), `SELECT id FROM prompts WHERE nickname = ?`, column).Scan(&id))
+		exec(`UPDATE launch_defaults SET `+column+` = ? WHERE owner = 'acme-org'`, id)
+
+		require.ErrorContains(t, run(`DELETE FROM prompts WHERE id = ?`, id), "FOREIGN KEY constraint failed",
+			"%s: a prompt it names stays", column)
+		require.ErrorContains(t, run(`UPDATE launch_defaults SET `+column+` = 999 WHERE owner = 'acme-org'`),
+			"FOREIGN KEY constraint failed", "%s names only a stored prompt", column)
+
+		exec(`UPDATE launch_defaults SET ` + column + ` = NULL WHERE owner = 'acme-org'`)
+		exec(`DELETE FROM prompts WHERE id = ?`, id)
 	}
 }

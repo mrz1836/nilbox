@@ -144,18 +144,21 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	res, err := migrate.Apply(t.Context(), db, path, migrate.Options{})
 	require.NoError(t, err)
 
-	// Every migration shipped in migrations/, in order.
+	// Every migration shipped in migrations/, in order, numbered on from the first.
 	files, err := filepath.Glob(filepath.Join("migrations", "*.sql"))
 	require.NoError(t, err)
 	require.NotEmpty(t, files)
 	slices.Sort(files)
 
+	first, err := strconv.Atoi(filepath.Base(files[0])[:4])
+	require.NoError(t, err)
+
 	applied := make([]int, 0, len(files))
 	for i := range files {
-		applied = append(applied, i+1)
+		applied = append(applied, first+i)
 	}
 
-	assert.Equal(t, migrate.Result{From: 0, To: len(files), Applied: applied}, res)
+	assert.Equal(t, migrate.Result{From: 0, To: applied[len(applied)-1], Applied: applied}, res)
 	assert.Equal(t, []string{
 		"accounts", "agent_profiles", "agent_sessions", "autopilot_baselines", "autopilot_effects", "autopilot_hands_off",
 		"autopilot_matches", "autopilot_routines", "autopilot_runs", "autopilot_tries", "avatars", "gh_thread_clears",
@@ -190,7 +193,7 @@ func TestMigrateFreshDatabase(t *testing.T) {
 		sum := sha256.Sum256(body)
 		wantName := strings.TrimSuffix(filepath.Base(files[seen])[len("0001_"):], ".sql")
 
-		assert.Equal(t, seen+1, version)
+		assert.Equal(t, first+seen, version)
 		assert.Equal(t, wantName, name)
 		assert.Equal(t, hex.EncodeToString(sum[:]), checksum)
 
@@ -282,8 +285,9 @@ func TestMigrateReportsAChangedMigrationBeforeANewerSchema(t *testing.T) {
 	db, path := openDB(t)
 	now := clock()
 
-	// Two migrations ran; this build has the first, edited, and not the second, as when
-	// a build combines earlier migrations into one file.
+	// Two migrations ran; this build has the first, edited, and not the second, as when a
+	// build combines shipped migrations into one file in place (a squash numbers its base
+	// above them instead).
 	apply(t, db, path, firstN(2), now)
 
 	combined := source(map[string]string{firstFile: firstSQL + secondSQL})
@@ -521,11 +525,11 @@ func TestEmbeddedMigrations(t *testing.T) {
 	migrations, err := migrate.Load(migrate.Embedded())
 	require.NoError(t, err)
 	require.NotEmpty(t, migrations)
-	assert.Equal(t, 1, migrations[0].Version)
-	assert.Equal(t, "init", migrations[0].Name)
+	assert.Equal(t, 100, migrations[0].Version, "the base starts at 0100, above every version a build shipped before")
+	assert.Equal(t, "settings", migrations[0].Name)
 
 	for i, m := range migrations {
-		assert.Equal(t, i+1, m.Version, "embedded migrations are contiguous from 0001")
+		assert.Equal(t, migrations[0].Version+i, m.Version, "embedded migrations are contiguous from the base")
 		assert.True(t, strings.HasSuffix(m.File, ".sql"))
 	}
 }

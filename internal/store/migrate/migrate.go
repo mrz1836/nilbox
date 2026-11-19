@@ -8,17 +8,26 @@
 //
 //   - application tables with no schema_migrations table (an unmanaged schema)
 //   - an applied migration whose file has changed since it ran
+//   - an applied version older than the oldest embedded one (a history squashed away)
 //   - an applied version that is not embedded (a database from a newer build)
 //   - an embedded version below the newest applied one that never ran
 //
-// Changed files are looked for before unknown versions, so a database migrated by an
-// older build whose migrations were since combined into fewer files reads as changed,
-// not as one from a newer build.
+// A squash combines migrations builds have shipped into base migrations numbered above
+// every version a build ever shipped, so no version means two things. The histories users'
+// databases recorded of the migrations it combined are frozen beside them (squashed/,
+// NNNN.json, NNNN the history's newest version), each naming the newest base migration
+// whose schema equals the one the history built (Through). A database whose history is
+// exactly one of them is carried over: its record is rewritten, in one transaction, to the
+// base migrations through Through, and nothing runs against its tables; any later
+// migration then applies as usual. Any other history of versions older than the base is
+// refused with ErrSquashedHistory. An older build that opens a database carried over
+// finds versions it doesn't have, above its own, and refuses it as one from a newer build,
+// leaving it as it is.
 //
-// Before applying anything to a database that already holds migrated data, Apply copies
-// the database to a timestamped backup file next to it with VACUUM INTO, and keeps only
-// the newest few backups. A brand-new, empty database has nothing to protect and is not
-// backed up.
+// Before applying anything to a database that already holds migrated data, carrying a
+// history over included, Apply copies the database to a timestamped backup file next to it
+// with VACUUM INTO, and keeps only the newest few backups. A brand-new, empty database has
+// nothing to protect and is not backed up.
 package migrate
 
 import (
@@ -79,6 +88,12 @@ var (
 	// never been applied.
 	ErrOutOfOrder = errors.New("migration is older than the newest applied migration")
 
+	// ErrSquashedHistory is returned when the database records migrations older than this
+	// build's oldest, which a squash combined into its base, in a history it can't carry
+	// over: one no squashed history matches, such as a build's from before the newest
+	// release a squash froze.
+	ErrSquashedHistory = errors.New("database records migrations this build has squashed and cannot carry over")
+
 	// ErrMigrationFailed wraps the error of a pending migration that could not be applied.
 	// The migration was rolled back, and a database that held migrated data was backed up
 	// before it ran.
@@ -114,6 +129,10 @@ type Options struct {
 	// Source holds NNNN_<name>.sql files at its root. Nil means the embedded migrations.
 	Source fs.FS
 
+	// Squashed holds the squashed histories, NNNN.json files, at its root. Nil means the
+	// embedded ones when Source is nil too, and none beside a Source of the caller's own.
+	Squashed fs.FS
+
 	// Now returns the current time for applied_at and backup names. Nil means time.Now.
 	Now func() time.Time
 
@@ -124,10 +143,11 @@ type Options struct {
 
 // Result reports what Apply did.
 type Result struct {
-	From    int    // the newest applied version before Apply (0 for a new database)
-	To      int    // the newest applied version after Apply
-	Applied []int  // the versions applied by this call, in order
-	Backup  string // the backup file written before applying, or "" when none was needed
+	From        int    // the newest applied version before Apply (0 for a new database)
+	To          int    // the newest applied version after Apply
+	CarriedOver bool   // the database's squashed history was carried over to the base migrations
+	Applied     []int  // the versions applied by this call, in order
+	Backup      string // the backup file written before applying, or "" when none was needed
 }
 
 // Embedded returns the migrations shipped with the binary.
@@ -179,7 +199,7 @@ func Load(src fs.FS) ([]Migration, error) {
 func Apply(ctx context.Context, db *sql.DB, dbPath string, opts Options) (Result, error) {
 	opts = opts.withDefaults()
 
-	migrations, err := Load(opts.Source)
+	migrations, histories, err := loadAll(opts)
 	if err != nil {
 		return Result{}, err
 	}
@@ -196,29 +216,49 @@ func Apply(ctx context.Context, db *sql.DB, dbPath string, opts Options) (Result
 	from := newestVersion(applied)
 	result := Result{From: from, To: from}
 
-	pending, err := verify(migrations, applied, from)
-	if err != nil || len(pending) == 0 {
+	p, err := makePlan(migrations, histories, applied)
+	if err != nil || p.empty() {
 		return result, err
 	}
 
+	return carryOut(ctx, db, dbPath, migrations, p, opts, result)
+}
+
+// carryOut carries out p on the database whose newest applied version is result.From:
+// it backs the database up, carries its squashed history over, and applies the pending
+// migrations.
+func carryOut(ctx context.Context, db *sql.DB, dbPath string, migrations []Migration, p plan, opts Options,
+	result Result,
+) (Result, error) {
+	var err error
+
 	// A brand-new database has no data to protect, so only a migrated one is backed up.
-	if from > 0 {
-		if result.Backup, err = backup(ctx, db, dbPath, from, opts); err != nil {
+	if result.From > 0 {
+		if result.Backup, err = backup(ctx, db, dbPath, result.From, opts); err != nil {
 			return result, fmt.Errorf("back up database before migrating: %w", err)
 		}
 	}
 
-	return applyPending(ctx, db, pending, opts, result)
+	if p.squashed != nil {
+		if err = carryOver(ctx, db, *p.squashed, migrations, opts.Now()); err != nil {
+			return result, fmt.Errorf("%w: %w", ErrMigrationFailed, err)
+		}
+
+		result.CarriedOver = true
+		result.To = p.squashed.Through
+	}
+
+	return applyPending(ctx, db, p.pending, opts, result)
 }
 
 // Check reports whether Apply would refuse the database, without writing to it: it
 // returns the error Apply would for an unmanaged schema or a history that does not match
 // the migrations in opts.Source, and nil for a database Apply can bring up to date,
-// including a new, empty one.
+// including a new, empty one and one whose squashed history it carries over.
 func Check(ctx context.Context, db *sql.DB, opts Options) error {
 	opts = opts.withDefaults()
 
-	migrations, err := Load(opts.Source)
+	migrations, histories, err := loadAll(opts)
 	if err != nil {
 		return err
 	}
@@ -238,7 +278,7 @@ func Check(ctx context.Context, db *sql.DB, opts Options) error {
 		return err
 	}
 
-	_, err = verify(migrations, applied, newestVersion(applied))
+	_, err = makePlan(migrations, histories, applied)
 
 	return err
 }
@@ -247,6 +287,10 @@ func Check(ctx context.Context, db *sql.DB, opts Options) error {
 func (o Options) withDefaults() Options {
 	if o.Source == nil {
 		o.Source = Embedded()
+
+		if o.Squashed == nil {
+			o.Squashed = embeddedSquashed()
+		}
 	}
 
 	if o.Now == nil {
@@ -292,11 +336,12 @@ func loadFile(src fs.FS, file string) (Migration, error) {
 	}, nil
 }
 
-// appliedMigration is one row of schema_migrations.
+// appliedMigration is one row of schema_migrations, and one migration of a squashed
+// history, as its file spells it.
 type appliedMigration struct {
-	Version  int
-	Name     string
-	Checksum string
+	Version  int    `json:"version"`
+	Name     string `json:"name"`
+	Checksum string `json:"checksum"`
 }
 
 // ensureManaged creates schema_migrations on a new database and refuses a database whose
@@ -406,12 +451,14 @@ func newestVersion(applied map[int]appliedMigration) int {
 	return newest
 }
 
-// verify checks the recorded history against the available migrations and returns the
-// ones still to apply, in order.
-func verify(migrations []Migration, applied map[int]appliedMigration, newest int) ([]Migration, error) {
+// verify checks the recorded history against the available migrations, sorted by version,
+// and returns the ones still to apply, in order.
+func verify(migrations []Migration, applied map[int]appliedMigration) ([]Migration, error) {
 	if err := verifyHistory(migrations, applied); err != nil {
 		return nil, err
 	}
+
+	newest := newestVersion(applied)
 
 	var pending []Migration
 
@@ -431,9 +478,10 @@ func verify(migrations []Migration, applied map[int]appliedMigration, newest int
 }
 
 // verifyHistory checks that every applied migration is still available, unchanged. Every
-// changed migration is reported before any unknown version: a database whose recorded
-// history this build disagrees with is not one from a newer build, even when it also
-// records versions this build does not have.
+// changed migration is reported before any unknown version, and a version older than the
+// oldest migration before a newer one: a database whose recorded history this build
+// disagrees with, or whose migrations it squashed, is not one from a newer build, even when
+// it also records versions this build does not have.
 func verifyHistory(migrations []Migration, applied map[int]appliedMigration) error {
 	known := make(map[int]Migration, len(migrations))
 	for _, m := range migrations {
@@ -448,14 +496,22 @@ func verifyHistory(migrations []Migration, applied map[int]appliedMigration) err
 		}
 	}
 
-	for _, v := range versions {
-		if _, ok := known[v]; !ok {
-			return fmt.Errorf("%w: it records version %d (%s), which this build does not have",
-				ErrNewerSchema, v, applied[v].Name)
-		}
+	// The oldest unknown version tells which: one older than every migration this build
+	// has was squashed away, and otherwise every unknown one is newer.
+	i := slices.IndexFunc(versions, func(v int) bool { _, ok := known[v]; return !ok })
+	if i < 0 {
+		return nil
 	}
 
-	return nil
+	v := versions[i]
+
+	if len(migrations) > 0 && v < migrations[0].Version {
+		return fmt.Errorf("%w: it records version %d (%s), older than this build's oldest migration, %s",
+			ErrSquashedHistory, v, applied[v].Name, migrations[0].File)
+	}
+
+	return fmt.Errorf("%w: it records version %d (%s), which this build does not have",
+		ErrNewerSchema, v, applied[v].Name)
 }
 
 // Backup copies the migrated database db, whose file is dbPath, to a backup beside it named

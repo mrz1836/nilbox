@@ -40,21 +40,21 @@ func Backup(ctx context.Context, db *sql.DB, path string) (string, error) {
 	return backup, nil
 }
 
-// LatestSchema returns the newest migration this build has. A database whose own newest is
-// newer was saved by a newer build, which Open refuses (ErrNewerSchema); a backup whose
-// schema (SnapshotFile.Schema) is no newer opens here, brought up to date.
-func LatestSchema() (int, error) {
-	migrations, err := migrate.Load(migrate.Embedded())
+// Schemas says which databases this build opens, by the newest migration each records, as
+// a backup's name gives it (SnapshotFile.Schema).
+type Schemas = migrate.Schemas
+
+// KnownSchemas returns the Schemas of this build's migrations. A database whose newest is
+// past Newest was saved by a newer build, which Open refuses (ErrNewerSchema); a backup
+// whose schema Opens opens here, brought up to date, carried over first when a squash froze
+// its history.
+func KnownSchemas() (Schemas, error) {
+	known, err := migrate.KnownSchemas(migrate.Options{})
 	if err != nil {
-		return 0, fmt.Errorf("read the migrations: %w", err)
+		return Schemas{}, fmt.Errorf("read the migrations: %w", err)
 	}
 
-	newest := 0
-	for _, m := range migrations {
-		newest = max(newest, m.Version)
-	}
-
-	return newest, nil
+	return known, nil
 }
 
 // RestoreBackup puts backup, one of the backups beside the database at path (a

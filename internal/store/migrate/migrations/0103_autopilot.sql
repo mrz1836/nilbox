@@ -1,10 +1,9 @@
--- 0007_autopilot_ledger: what Autopilot's routines did with the items they matched.
+-- 0103_autopilot: what Autopilot's routines did with the items they matched.
 --
--- The conventions are 0001_init's: DATETIME stamps the application writes in UTC, BOOLEAN
--- columns kept to 0 or 1, and NOCASE for GitHub logins. Autopilot owns every table here. A
--- row names its routine, which is deleted softly, so no row here goes with its routine;
--- one that names an item keeps a copy of it (its repository, kind, number, title, and
--- URL), so it still reads once the item is gone, and its item_id is set NULL then.
+-- The conventions are 0100_settings's. Autopilot owns every table here. A row names its
+-- routine, which is deleted softly, so no row here goes with its routine; one that names an
+-- item keeps a copy of it (its repository, kind, number, title, and URL), so it still reads
+-- once the item is gone, and its item_id is set NULL then.
 
 -- == autopilot ===========================================================================
 
@@ -66,6 +65,11 @@ CREATE INDEX autopilot_matches_routine_item ON autopilot_matches (routine_id, it
 
 CREATE INDEX autopilot_matches_created ON autopilot_matches (created_at);
 
+-- The window reads the newest match of each item a row shows (its chip) and an item's
+-- history whenever Autopilot changes, up to four times a second, which read the matches by
+-- item alone.
+CREATE INDEX autopilot_matches_item ON autopilot_matches (item_id);
+
 -- The items a routine leaves alone, since the user reversed what it did to them.
 CREATE TABLE autopilot_hands_off (
     routine_id INTEGER  NOT NULL REFERENCES autopilot_routines (id),
@@ -95,17 +99,20 @@ CREATE TABLE autopilot_baselines (
     PRIMARY KEY (routine_id, item_id)
 );
 
--- One row per run a match started: an agent's, in the background or in the user's
--- terminal, or a GitHub action the app sent (runner), with everything the run view and the
--- stats read. status is queued, starting, running, stopping, or ended; outcome how it
--- ended, and verdict, for a run that pushed, what its commit's checks said. agent is the
--- agent's ID, github_action the action sent; script_run_id is the run engine's run, 0 for
--- none; session_id the sessions ledger's, and agent_session_id the agent's own.
+-- One row per run a match started, named by who ran it (runner): an agent, in the
+-- background or in the user's terminal; a GitHub action the app sent (github); or one of
+-- the user's own Repo scripts, which Repo scripts runs in the app (script), with everything
+-- the run view and the stats read. status is queued, starting, running, stopping, or ended;
+-- outcome how it ended, and verdict, for a run that pushed, what its commit's checks said.
+-- agent is the agent's ID, github_action the action sent; script_run_id is the run engine's
+-- run, 0 for none; session_id the sessions ledger's, and agent_session_id the agent's own.
 -- head_before is the head commit at the start, run_commit the commit the run pushed, and
 -- head_after the head at its end. budget_reserved is what the start reserved of the daily
 -- cap, in budget_unit (usd or tokens), until the run reports cost (NULL when it reports
--- none) and its tokens. manual is a run the user started by hand, which counts toward no
--- cap or try; counted says it counts as a try. log_cleared says its log was cleared.
+-- none) and its tokens; cost_estimated says the cost is the agent's estimate of what the
+-- API would have charged, as it reports for a run signed in with the user's plan rather
+-- than an API key. manual is a run the user started by hand, which counts toward no cap or
+-- try; counted says it counts as a try. log_cleared says its log was cleared.
 CREATE TABLE autopilot_runs (
     id                INTEGER  PRIMARY KEY,
     match_id          INTEGER  NOT NULL REFERENCES autopilot_matches (id) ON DELETE CASCADE,
@@ -118,7 +125,7 @@ CREATE TABLE autopilot_runs (
     title             TEXT     NOT NULL DEFAULT '',
     url               TEXT     NOT NULL DEFAULT '',
     step              INTEGER  NOT NULL DEFAULT 0 CHECK (step >= 0),
-    runner            TEXT     NOT NULL CHECK (runner IN ('terminal', 'background', 'github')),
+    runner            TEXT     NOT NULL CHECK (runner IN ('terminal', 'background', 'github', 'script')),
     agent             TEXT     NOT NULL DEFAULT '',
     github_action     TEXT     NOT NULL DEFAULT '',
     script_run_id     INTEGER  NOT NULL DEFAULT 0,
@@ -140,6 +147,7 @@ CREATE TABLE autopilot_runs (
     budget_reserved   REAL     NOT NULL DEFAULT 0 CHECK (budget_reserved >= 0),
     budget_unit       TEXT     NOT NULL DEFAULT '',
     cost              REAL,
+    cost_estimated    BOOLEAN  NOT NULL DEFAULT 0 CHECK (cost_estimated IN (0, 1)),
     tokens_in         INTEGER  NOT NULL DEFAULT 0,
     tokens_out        INTEGER  NOT NULL DEFAULT 0,
     cache_read_tokens INTEGER  NOT NULL DEFAULT 0,
@@ -165,3 +173,36 @@ CREATE INDEX autopilot_runs_routine_started ON autopilot_runs (routine_id, start
 CREATE INDEX autopilot_runs_started ON autopilot_runs (started_at);
 
 CREATE INDEX autopilot_runs_match ON autopilot_runs (match_id);
+
+-- The run engine's run a run started, by which a background agent's session finds its
+-- run's tokens for the session panel.
+CREATE INDEX autopilot_runs_script_run ON autopilot_runs (script_run_id) WHERE script_run_id > 0;
+
+-- One row per local step a match ran that changed its item's triage: the match and the
+-- step, its routine, the item (NULL once it is gone), and the action (pin, snooze,
+-- dismiss, or restore, checked in Go). state_before is the item's local state before the
+-- step and state_after the state it left, both as the inbox writes them (JSON): what Undo
+-- puts back, only while the item is still as the step left it. The row is written in the
+-- same transaction as the triage it records, before the triage's own write, so the two
+-- are stored together or not at all. undone_at is when Undo put the item back, and
+-- reversed_at when the user's own triage took the step back (a restore of what it set
+-- aside, an unpin of what it pinned, a snooze over it), which also leaves the routine hands
+-- off the item.
+CREATE TABLE autopilot_effects (
+    id           INTEGER  PRIMARY KEY,
+    match_id     INTEGER  NOT NULL REFERENCES autopilot_matches (id) ON DELETE CASCADE,
+    step         INTEGER  NOT NULL DEFAULT 0 CHECK (step >= 0),
+    routine_id   INTEGER  NOT NULL REFERENCES autopilot_routines (id),
+    item_id      INTEGER  REFERENCES items (id) ON DELETE SET NULL,
+    action       TEXT     NOT NULL CHECK (action <> ''),
+    state_before TEXT     NOT NULL DEFAULT '{}' CHECK (json_valid(state_before)),
+    state_after  TEXT     NOT NULL DEFAULT '{}' CHECK (json_valid(state_after)),
+    applied_at   DATETIME NOT NULL,
+    undone_at    DATETIME,
+    reversed_at  DATETIME,
+    UNIQUE (match_id, step)
+);
+
+CREATE INDEX autopilot_effects_item ON autopilot_effects (item_id);
+
+CREATE INDEX autopilot_effects_applied ON autopilot_effects (applied_at);
