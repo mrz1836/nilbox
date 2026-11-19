@@ -37,6 +37,10 @@ export interface ReviewState extends Omit<TimelineState, 'timeline'> {
   // reload reads the pull request from GitHub again, however recently it was read: the
   // user asked for it.
   reload: () => void
+  // rebuild builds the sheet again from what it read and what the inbox stored since,
+  // asking GitHub nothing: after an edit whose answer the inbox recorded on the card, as a
+  // change of who the pull request asks to review.
+  rebuild: () => void
   // followRuns reads the pull request again after the sheet approved its held workflow runs,
   // held of them when it did, until their checks start (approvalRetries), and following
   // reports those reads under way or waiting.
@@ -351,6 +355,9 @@ export function useReview(id: number, settingsKey = '', card = ''): ReviewState 
       // A read the user asked for ends a follow of approved runs: they read it themselves.
       setFollow(null)
       setRound((r) => ({ id, n: r.n + 1, force: true, rebuild: false }))
+    },
+    rebuild: () => {
+      setRound((r) => ({ id, n: r.id === id ? r.n + 1 : 0, force: false, rebuild: true }))
     },
     followRuns: (heldNow) => {
       setFollow({ id, count: 0, held: heldNow })

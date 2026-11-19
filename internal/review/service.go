@@ -17,8 +17,11 @@
 // can merge now. Agents never approve or merge; only the user's click does.
 //
 // Line comments are checked against the cached diff (hunks.go) before GitHub sees them.
-// The package reaches the inbox, the settings, and the prompt library only through the
-// interfaces it declares, which the app's core adapts.
+// The sheet also manages who a pull request asks to review (reviewers.go): it suggests
+// reviewers from the People directory, with no request, learns into it from every read, and
+// asks or takes requests off with at most two REST requests.
+// The package reaches the inbox, the settings, the prompt library, and the People
+// directory only through the interfaces it declares, which the app's core adapts.
 package review
 
 import (
@@ -164,7 +167,8 @@ type Target struct {
 // ReviewEvent is the review's event, as the action sent it (github.ReviewApprove,
 // github.ReviewRequestChanges, or github.ReviewComment). Rerequested reports the user's
 // review requested again, with who the pull request asks now (ReviewRequests), as of
-// GitHub's time of the edit (RerequestedAt).
+// GitHub's time of the edit (RerequestedAt). RequestsEdited reports a reviewer edit GitHub
+// made, with who the pull request asks after it (ReviewRequests).
 type Acted struct {
 	Reviewed       bool
 	ReviewedAt     time.Time
@@ -174,6 +178,7 @@ type Acted struct {
 	Rerequested    bool
 	ReviewRequests github.ReviewRequests
 	RerequestedAt  time.Time
+	RequestsEdited bool
 }
 
 // PullRead is what a read found. Its fields match inbox.PullRead's.
@@ -211,6 +216,12 @@ type GitHub interface {
 	AddLabels(ctx context.Context, tok github.Token, ref item.Ref, names []string) ([]github.Label, error)
 	RemoveLabel(ctx context.Context, tok github.Token, ref item.Ref, name string) ([]github.Label, error)
 	RequestReview(ctx context.Context, tok github.Token, ref item.Ref, login string) (*github.Edited, error)
+	RequestReviewers(ctx context.Context, tok github.Token, ref item.Ref, want github.ReviewRequests) (*github.Edited, error)
+	RemoveReviewRequests(
+		ctx context.Context, tok github.Token, ref item.Ref, drop github.ReviewRequests,
+	) (*github.Edited, error)
+	FetchRepoPeople(ctx context.Context, tok github.Token, id string) (*github.RepoPeople, error)
+	FetchRepoTeams(ctx context.Context, tok github.Token, name repo.Name) ([]github.Team, error)
 }
 
 // Settings reads the settings the sheet follows: how to merge, which files are sensitive,
@@ -235,8 +246,8 @@ type Merges interface {
 	Merged(name repo.Name)
 }
 
-// Config holds a Service's dependencies. Every one but Merges, Clock, and Logger is
-// required.
+// Config holds a Service's dependencies. Every one but Merges, People, Clock, and Logger
+// is required.
 type Config struct {
 	// Pool is the database, which holds the sheet's cache.
 	Pool *sql.DB
@@ -253,6 +264,11 @@ type Config struct {
 	// Merges hears of each merge the sheet makes; without it, no one does.
 	Merges Merges
 
+	// People is the directory of who works on each repository, which the sheet learns
+	// into and suggests reviewers from; without it, the sheet learns no one and suggests
+	// only GitHub's suggestions.
+	People People
+
 	Clock  clock.Clock
 	Logger *slog.Logger
 }
@@ -266,11 +282,14 @@ type Service struct {
 	cache    *cacheStore
 	events   event.Sink
 	merges   Merges
+	people   People
 	clock    clock.Clock
 	logger   *slog.Logger
 
-	// refreshes reads each pull request once at a time.
+	// refreshes reads each pull request once at a time, and learns each repository's
+	// recent pull requests once at a time, by its key.
 	refreshes flight.Group[Review]
+	learns    flight.Group[struct{}]
 
 	// onGitHub holds the workflow runs GitHub refused to approve from the sheet for what
 	// they are (github.ErrRunNotApprovable), by run ID, which GitHub numbers across every
@@ -284,7 +303,7 @@ type Service struct {
 func NewService(cfg Config) *Service {
 	return &Service{
 		inbox: cfg.Inbox, github: cfg.GitHub, settings: cfg.Settings, replies: cfg.Replies,
-		cache: newCacheStore(cfg.Pool), events: event.Or(cfg.Events), merges: cfg.Merges,
+		cache: newCacheStore(cfg.Pool), events: event.Or(cfg.Events), merges: cfg.Merges, people: cfg.People,
 		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), onGitHub: map[int64]bool{},
 	}
 }
@@ -624,6 +643,8 @@ func (s *Service) read(ctx context.Context, id int64, force bool) (*cached, erro
 		return nil, err
 	}
 
+	s.learn(ctx, pull, got.review)
+
 	return endedRead(got.review, c, pull.Viewer, s.now()), nil
 }
 
@@ -804,6 +825,7 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 
 	r.Change = changeOf(r.Files, r.Bump != nil)
 	r.Reviews = withRequests(r.Reviews, pull)
+	r.CanEditReviewers = canEditReviewers(pull, c)
 
 	plan := Decide(factsOf(pull, c, r), pref)
 	r.Offers, r.Primary, r.Readiness = textutil.NonNil(plan.Offers), plan.Primary, plan.Readiness
@@ -855,7 +877,7 @@ func (r *Review) fill(c *cached, matcher *sensitive.Matcher, viewer string) {
 
 	for _, rev := range pc.Reviews {
 		entry := ReviewEntry{
-			Author: rev.Author, State: rev.State, URL: rev.URL,
+			Author: rev.Author, State: rev.State, URL: rev.URL, Bot: rev.Bot,
 			Outdated: rev.Commit != "" && !strings.EqualFold(rev.Commit, c.head),
 		}
 
@@ -870,7 +892,7 @@ func (r *Review) fill(c *cached, matcher *sensitive.Matcher, viewer string) {
 // withRequests adds who pull asks to review to reviews, each reviewer's latest review: a
 // reviewer asked again is marked on their review, and each person and team asked who hasn't
 // reviewed follows the reviews, people first, in GitHub's order. A team is named
-// "org/team", its org the repository's owner.
+// "org/team", its org the repository's owner. The signed-in user's own entry is marked.
 func withRequests(reviews []ReviewEntry, pull StoredPull) []ReviewEntry {
 	out := slices.Clone(reviews)
 
@@ -887,6 +909,10 @@ func withRequests(reviews []ReviewEntry, pull StoredPull) []ReviewEntry {
 
 	for _, slug := range pull.ReviewTeams {
 		out = append(out, ReviewEntry{Author: pull.Owner + "/" + slug, Requested: true, Team: true})
+	}
+
+	for i := range out {
+		out[i].Mine = !out[i].Team && pull.Viewer != "" && strings.EqualFold(out[i].Author, pull.Viewer)
 	}
 
 	return textutil.NonNil(out)

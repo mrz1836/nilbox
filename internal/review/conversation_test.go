@@ -283,9 +283,9 @@ func TestTheReviewersListWhoIsStillAskedToReview(t *testing.T) {
 	assert.Equal(t, []ReviewEntry{
 		{Author: "octo-reviewer", State: "CHANGES_REQUESTED", URL: "u1", Requested: true},
 		{Author: "octo-third", State: "APPROVED", URL: "u2"},
-		{Author: octoUser, Requested: true},
+		{Author: octoUser, Requested: true, Mine: true},
 		{Author: "acme-org/maintainers", Requested: true, Team: true},
-	}, got, "a reviewer asked again is marked on their review; the rest follow, people first")
+	}, got, "a reviewer asked again is marked on their review; the rest follow, people first, the user's own marked")
 
 	assert.Equal(t, []ReviewEntry{}, withRequests(nil, storedPull()), "never nil")
 

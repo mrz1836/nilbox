@@ -79,6 +79,11 @@ type Acted struct {
 	Rerequested    bool
 	ReviewRequests github.ReviewRequests
 	RerequestedAt  time.Time
+
+	// RequestsEdited reports a reviewer edit GitHub made, at the user's click, with who the
+	// pull request asks after it as GitHub answered (ReviewRequests), which the card shows
+	// at once.
+	RequestsEdited bool
 }
 
 // with returns what a and b made happen together, as two tries of one action do.
@@ -89,11 +94,12 @@ func (a Acted) with(b Acted) Acted {
 	a.Merged = a.Merged || b.Merged
 	a.Closed = a.Closed || b.Closed
 
-	if b.Rerequested {
+	if b.Rerequested || b.RequestsEdited {
 		a.ReviewRequests = b.ReviewRequests
 	}
 
 	a.Rerequested = a.Rerequested || b.Rerequested
+	a.RequestsEdited = a.RequestsEdited || b.RequestsEdited
 	a.RerequestedAt = later(a.RerequestedAt, b.RerequestedAt)
 
 	return a
@@ -111,7 +117,7 @@ func strongerEvent(a, b string) string {
 
 // any reports whether the action changed anything the inbox records.
 func (a Acted) any() bool {
-	return a.Reviewed || a.Merged || a.Closed || a.Rerequested
+	return a.Reviewed || a.Merged || a.Closed || a.Rerequested || a.RequestsEdited
 }
 
 // PullRead is what a caller's read of a pull request found: the item as GitHub answered,
@@ -610,7 +616,8 @@ func pullTargetOfRow(row editRow) PullTarget {
 // asked or was pushed to since the user requested changes, and one that approves or
 // requests changes is the user's verdict at the head they saw (see recordReview); the
 // user's review requested again puts it back in Review requested (see recordRerequest); a
-// merge or a close takes it out of every list, as an item write numbered now, after
+// reviewer edit rewrites who it asks to review (see recordRequests); a merge or a close
+// takes it out of every list, as an item write numbered now, after
 // GitHub's answer, so a refresh that was fetching applies it again. A merge has the
 // repository's other open pull requests on its base read again (see noteMerged).
 func (s *Service) recordActed(ctx context.Context, row editRow, acted Acted) error {
@@ -622,9 +629,14 @@ func (s *Service) recordActed(ctx context.Context, row editRow, acted Acted) err
 		}
 	}
 
-	if acted.Rerequested {
+	switch {
+	case acted.Rerequested:
 		if err := s.recordRerequest(ctx, target, acted); err != nil {
 			return fmt.Errorf("record the review request: %w", err)
+		}
+	case acted.RequestsEdited:
+		if err := s.recordRequests(ctx, target, acted); err != nil {
+			return fmt.Errorf("record the review requests: %w", err)
 		}
 	}
 
@@ -649,6 +661,15 @@ func (s *Service) recordRerequest(ctx context.Context, target PullTarget, acted 
 		}
 
 		return q.RejoinReview(ctx, queries.RejoinReviewParams{ReviewRequestedAt: &stamp, ID: target.ID})
+	})
+}
+
+// recordRequests records who target asks to review after a reviewer edit, as GitHub
+// answered, so its card shows them at once, before the next refresh reads them. Nothing
+// else moves: the edit asked others, so the pull request stays in whatever list it was in.
+func (s *Service) recordRequests(ctx context.Context, target PullTarget, acted Acted) error {
+	return store.InTx(ctx, s.db, func(tx *sql.Tx) error {
+		return setReviewRequests(ctx, s.q.WithTx(tx), target.ID, acted.ReviewRequests)
 	})
 }
 

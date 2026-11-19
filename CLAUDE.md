@@ -274,6 +274,8 @@ bytes).
   show.
 - [`internal/avatars`](docs/architecture.md#internalavatars): the profile pictures the sheets
   and the inbox's cards show, people's and bots'.
+- [`internal/people`](docs/architecture.md#internalpeople): the local directory of who works on
+  each repository, which the review sheet's reviewer picker suggests from.
 - [`internal/bump`](docs/architecture.md#internalbump): reads a dependency update from a bot's
   pull request.
 

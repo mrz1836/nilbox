@@ -6,6 +6,8 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/people"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/review"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -135,4 +137,68 @@ func (r reviewReplies) Offered(ctx context.Context, action review.ReplyAction) (
 // Fill fills in the reply with replyID for the pull request with itemID.
 func (r reviewReplies) Fill(ctx context.Context, replyID, itemID int64) (string, error) {
 	return r.fill(ctx, replyID, itemID)
+}
+
+// reviewPeople hands the review sheet the people directory: who works on each repository,
+// which the sheet learns into and suggests reviewers from.
+type reviewPeople struct {
+	directory *people.Service
+}
+
+// Learn keeps what a read saw people do on the pull requests of the repository name.
+func (r reviewPeople) Learn(ctx context.Context, name repo.Name, seen []review.PersonSeen) error {
+	out := make([]people.Seen, 0, len(seen))
+	for _, s := range seen {
+		out = append(out, people.Seen{
+			Login: s.Login, Name: s.Name, Number: s.Number, Role: people.Role(s.Role), Access: s.Access, At: s.At,
+		})
+	}
+
+	return r.directory.Learn(ctx, name, out)
+}
+
+// SetTeams keeps teams of the repository name: its teams list when listed, else teams a
+// pull request asked to review.
+func (r reviewPeople) SetTeams(ctx context.Context, name repo.Name, teams []review.TeamCandidate, listed bool) error {
+	out := make([]people.Team, 0, len(teams))
+	for _, t := range teams {
+		out = append(out, people.Team(t))
+	}
+
+	return r.directory.SetTeams(ctx, name, out, listed)
+}
+
+// MarkRead records a read of the repository name's recent pull requests that went through.
+func (r reviewPeople) MarkRead(ctx context.Context, name repo.Name, pulls int, org bool) error {
+	return r.directory.MarkRead(ctx, name, pulls, org)
+}
+
+// MarkFailed records a read of the repository name's recent pull requests that failed.
+func (r reviewPeople) MarkFailed(ctx context.Context, name repo.Name) error {
+	return r.directory.MarkFailed(ctx, name)
+}
+
+// Ranked returns who works on the repository name.
+func (r reviewPeople) Ranked(ctx context.Context, name repo.Name) (review.Directory, error) {
+	got, err := r.directory.Ranked(ctx, name)
+	if err != nil {
+		return review.Directory{}, err
+	}
+
+	out := review.Directory{
+		People: make([]review.KnownPerson, 0, len(got.People)), Teams: make([]review.TeamCandidate, 0, len(got.Teams)),
+		ReadAt: got.ReadAt, Pulls: got.Pulls, Org: got.Org, Stale: got.Stale,
+	}
+
+	for _, p := range got.People {
+		out.People = append(out.People, review.KnownPerson{
+			Login: p.Login, Name: p.Name, Reviewed: p.Reviewed, Authored: p.Authored, Committed: p.Committed, LastAt: p.LastAt,
+		})
+	}
+
+	for _, t := range got.Teams {
+		out.Teams = append(out.Teams, review.TeamCandidate(t))
+	}
+
+	return out, nil
 }

@@ -321,6 +321,11 @@ type Review struct {
 	// is in Timeline, then who the pull request still asks to review and hasn't (Requested).
 	Reviews []ReviewEntry `json:"reviews"`
 
+	// CanEditReviewers reports that the user may change who it asks to review
+	// (EditReviewers): it is open, the sheet has read it, and their account has triage
+	// access or more.
+	CanEditReviewers bool `json:"canEditReviewers"`
+
 	// Timeline is the newest page of the conversation, oldest first: its comments, its
 	// reviews with their line comments, and its events.
 	Timeline timeline.Page `json:"timeline"`
@@ -533,6 +538,11 @@ type ReviewEntry struct {
 	URL       string `json:"url"`
 	Requested bool   `json:"requested"`
 	Team      bool   `json:"team"`
+
+	// Mine reports the signed-in user's own entry, and Bot a review a bot left, as the sheet
+	// read it; false in a context an older build cached, until the sheet reads it again.
+	Mine bool `json:"mine"`
+	Bot  bool `json:"bot"`
 
 	// SubmittedAt is when it was submitted, as RFC 3339, or "".
 	SubmittedAt string `json:"submittedAt"`

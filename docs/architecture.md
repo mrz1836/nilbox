@@ -22,7 +22,7 @@ The sections follow the guide's Layout:
   [`internal/statusprefs`](#internalstatusprefs), [`internal/svcstatus`](#internalsvcstatus)
 - **The sheets**: [`internal/review`](#internalreview), [`internal/issues`](#internalissues),
   [`internal/timeline`](#internaltimeline), [`internal/avatars`](#internalavatars),
-  [`internal/bump`](#internalbump)
+  [`internal/people`](#internalpeople), [`internal/bump`](#internalbump)
 - **Agents and launches**: [`internal/launcher`](#internallauncher),
   [`internal/sessions`](#internalsessions)
 - **Clones and worktrees**: [`internal/localrepos`](#internallocalrepos),
@@ -487,6 +487,36 @@ requests, and a pull request's card finds the listed issues that name it, so a p
 request's own read asks for nothing. A trusted fix turns an issue's story to **Fix in
 progress** or **Fix merged** (`nextStep`); an untrusted one only links.
 
+**Reviewers.** The review sheet's reviewer edit asks everyone it adds with one REST request
+and takes every request it drops off with one more (`RequestReviewers`, `POST
+.../requested_reviewers`, and `RemoveReviewRequests`, `DELETE` at the same path), each through
+`edit`, people and teams together: `reviewers` always, empty or not, since GitHub's `DELETE`
+requires it, and `team_reviewers` when there are any. Both share one sender (`reviewEdit`) with
+the sheet's own `RequestReview` and `RemoveReviewRequest`, whose bodies stay as they were and
+keep their words about "you". Nothing is sent without someone to ask, a login GitHub could have
+issued (`ErrInvalidLogin`), and a team slug of letters, digits, dots, hyphens, and underscores
+(`ErrInvalidTeam`). GitHub answers with who the pull request asks after the edit: a login or
+slug asked for that it doesn't list, or dropped that it still lists, is a change GitHub ignored
+(`ErrEditIgnored`), named in the user's words ("GitHub didn't ask octo-other, acme-org/web to
+review acme-org/example-repo#42.", a team as owner/slug), and a 422, as for someone without
+access to the repository or the pull request's author, is worded with GitHub's own message
+(`reviewersError`). The sheet's one read (`FetchPullReview`) also reads, at no extra point
+(measured in November 2026), the reviewers GitHub suggests (`suggestedReviewers`, whose
+`isAuthor` is `SuggestedReviewer.ChangedFiles` and `isCommenter` `Commented`), each latest
+review's author with their type, name, and association (`Review.AuthorType`, `AuthorName`,
+`Association`), and the names of who it asks to review, under the same `reviewRequests(first:
+50)` the details fragment asks for, which GraphQL merges into one field: `PullReview.Requested`
+holds the people of them (never a bot or a mannequin) and `RequestedTeams` the teams.
+`FetchRepoPeople` reads who works on a pull request's repository, by the pull request's node:
+whether an organization owns it, and its 50 most recently updated pull requests, each with its
+author, each reviewer's latest review (`latestReviews(first: 10)`), and who it asks
+(`reviewRequests(first: 10)`), every author with their association; people only, and a pull
+request GitHub can't find is `ErrPullGone`. It costs one point (measured in November 2026: 101
+connection nodes, which GitHub's formula rounds to one). `FetchRepoTeams` reads an
+organization's repository's teams (`GET /repos/{owner}/{repo}/teams?per_page=100`, through
+`do`, one REST point); GitHub refuses (403) or hides (404) them from an account it won't show
+them to, as it hides them from one that isn't a member, which is `ErrTeamsHidden`.
+
 ## internal/inbox
 
 These notes cover what the inbox does for Autopilot: the routines' searches, which each
@@ -555,7 +585,11 @@ alone, asks GitHub for the user's review again through the `Actor`, which record
 request asks now (`setReviewRequests`), and `RejoinReview`, which sets
 `reason_review_requested`, clears `review_left_at`, and stamps `review_requested_at` with the
 later of GitHub's time of the edit and the item's, leaving `reason_pushed`, so the card reads
-as an ordinary request (`ReviewRequestYou`). A pull request pushed to since that asks the user
+as an ordinary request (`ReviewRequestYou`). The sheet's reviewer edit, which asks others, is
+recorded at once too, but only its answer (`Acted.RequestsEdited`, `recordRequests`, one
+transaction): who GitHub answered the pull request asks after the edit's last step
+(`setReviewRequests`), and nothing else, so it stays in whatever list it was in; two tries of
+one edit keep the later answer (`Acted.with`). A pull request pushed to since that asks the user
 by name again, as the details last read it (`review_users`), whoever asked, is
 `Details.ReviewRequestedAgain`, and its card says **Review re-requested** in place of
 **Pushed since your review**: at once after the user's own re-request, and through a refresh
@@ -1376,6 +1410,46 @@ again. A read replaces the whole context (`SetDiffContext`), its checks list wit
 is the rollup's first hundred (`contexts(first: 100)`), so `Review.MoreChecks` counts what the
 read's rollup counted past it, which the summary links to on GitHub.
 
+**Who reviews it** (`reviewers.go`). The sheet asks people and teams to review a pull request,
+and takes their requests off, from a picker that suggests the right people with no request
+and offers only people who work on the repository, from the `People` directory it declares
+(core adapts `*people.Service`, `reviewPeople` in `internal/core/review.go`; review never
+imports it, and without one the sheet learns no one and suggests only GitHub's suggestions).
+Every read of the sheet learns for free (`learn`, after `store`): who opened the pull request
+and who reviewed it, people only, each with whether GitHub's association gives them access
+(`hasAccess`: OWNER, MEMBER, or COLLABORATOR), who committed to it (each linked account once),
+who and which teams it asks, and whom GitHub suggests; a failure is logged and never fails the
+read. The cache keeps GitHub's suggestions (`pullContext.Suggested`, none in an older build's).
+`ReviewerCandidates` is local alone, with no request: the suggestions first, in GitHub's
+order, with what the directory knows of each, then the directory's people, the highest ranked
+first, never the pull request's author, the signed-in user (who keeps Re-request my review and
+Remove me as reviewer), or a login only a bot has, each once and at most 100 (`maxCandidates`,
+the avatars' `MaxLogins`), with the repository's teams, how many pull requests its last read
+read, when, and whether one is due (`Reviewers.Stale`). `LearnReviewers` is the seed: when the
+directory says a read is due (never read, or a week old, and not within 30 minutes of a failed
+one), it makes one `FetchRepoPeople` through the inbox's `Peek`, and, for an organization's
+repository, one `FetchRepoTeams`, whose refusal or failure leaves the teams the app saw asked;
+one runs at a time per repository (`Service.learns`, a `flight.Group` keyed by its name), so
+the picker opened on two of its pull requests reads it once. It keeps who opened, reviewed, and
+was asked on each pull request read, the teams list when GitHub gave it, the teams asked, and
+the read (`MarkRead`), or records a failure (`MarkFailed`) and says so ("Couldn't learn who
+works on acme-org/example-repo: ..."), then returns `ReviewerCandidates`. The sheet's extended
+read and the seed read each cost one point (measured in November 2026). `EditReviewers` changes
+who the pull request asks: names trimmed and taken once ignoring case (`namesOnce`), one both
+added and taken off sent not at all (`namesApart`), people and teams apart, and at most two REST
+requests through the Actor (`sendReviewers`: `"+"`, `RequestReviewers` for everyone added, then
+`"-"`, `RemoveReviewRequests` for everyone taken off), each never sent twice across the token
+retry. A review request depends on no commit, so it isn't pinned to the head, but it needs
+`Review.CanEditReviewers`: open, read by the sheet, and triage access or more
+(`github.CanTriage`, as GitHub's roles give the right to request reviews), else
+`ErrCannotEditReviewers` with why; the user is refused (`ErrOwnReviewRequest`, with the sheet's
+own action to use) and so is the author (`ErrAuthorReview`), before anything is sent. Each step
+GitHub made hands the inbox who the pull request asks after it (`Acted.RequestsEdited`,
+`ReviewRequests`), which rewrites the card at once, so the window rebuilds the sheet with no
+read; nothing is `settle`d, since the cache holds no requests. A step that fails after one went
+is the result's `Failed`, as a label edit's is, and a failure before any is the error. Each
+person asked is kept as `picked` in the directory, so the people the user asks most rank up.
+
 ## internal/issues
 
 `internal/issues/` is the issue sheet's service, beside the review sheet's: neither imports
@@ -1461,6 +1535,42 @@ four at a time, each once until it is a week old and shown again, a failed one (
 included) not tried again for 30 minutes, and bounded (30 days unused, 2,000 rows, 16 MiB),
 pruned in the transaction that writes. The window gets them as data: URLs (`PersonAvatar` and
 `card/CardAvatar`, `frontend/src/lib/pictures.ts`), so it loads nothing remote itself.
+
+## internal/people
+
+`internal/people/` is the app's local directory of who works on each repository, which the
+review sheet's reviewer picker suggests from with no request (see internal/review). It takes
+plain values, people only (the review sheet leaves bots and mannequins out), keyed by the
+repository's `repo.Name`, and imports no GitHub client and no service; the sheet learns into it
+from every read of a pull request (`Learn`) and from one read of the repository's recent pull
+requests at most weekly (`LearnReviewers`). It owns four tables (migration `0106_people`):
+`people`, one row per login, lower-cased as GitHub compares them, with the login as GitHub
+spells it now and the name, which an empty one never overwrites; `people_seen`, what a person
+was seen doing, keyed by repository, person, pull request number, and role (`author`,
+`reviewer`, `committer`, `requested`, `suggested`, or `picked`, the last when the user asked
+them from the app), so reading one pull request again never counts anything twice, with
+whether GitHub gave them access and GitHub's time of it (a row seen again keeps the access
+either saw and the later time); `people_teams`, a repository's teams, as its teams list named
+them (`listed`, which a new list replaces) or as a pull request asked one (`requested_at`); and
+`people_reads`, when a repository's recent pull requests were last read, how many, and whether
+an organization owns it, and when a read last failed.
+
+A person counts as working on a repository (`Ranked` lists them) only with a row that has
+access, an association of OWNER, MEMBER, or COLLABORATOR on a pull request they opened or a
+review they left, or a `requested`, `suggested`, or `picked` row: someone with access asked
+them, GitHub suggested them, or the user did. Commits and reviews without access add weight but
+never count on their own, which keeps out the people GitHub would refuse to ask. `rank` is pure:
+each row counts its role's weight (reviewer 3, picked 2.5, requested 2, author 2, suggested 1,
+committer 1), halved every 60 days of its age (a time ahead of now counts as now), and people
+sort by score, then the latest seen, then login, with the pull requests they reviewed, opened,
+and committed to counted. Teams list the most recently asked first, then by slug. `Ranked.Stale`
+says a read is due: never read, or read a week ago, but never within 30 minutes of a failed
+read. It is bounded, pruned in the transaction that writes: per repository the rows of its
+newest 400 pull request numbers, rows a year old at most, the latest 100,000 rows in all (by
+row, so rows that share a time are cut too), and no person nothing names; a team neither listed
+nor asked for in a year, and a read neither made nor failed in a year, go. Every stamp comes
+from its injected clock, and an entry without a valid login, a pull request number, or a known
+role is skipped.
 
 ## internal/bump
 
@@ -4586,6 +4696,28 @@ font size, which only rem follows, and the shell passes the stored size in the p
 (`internal/desktop.PageURL`) so the first frame is already at it. A repoguard test fails
 on px text. Only chrome lined up with the native window, such as the toolbar's height and
 its inset beside the window controls, and hairlines stay in px.
+
+**Pickers and reviewers.** `components/Picker.tsx` is the one picker both sheets edit with: an
+Edit button that opens a modal of rows to check and uncheck, filtered by its field, which
+sends only what differs from the item (`changes`, by `Wanted`, what to have rather than what to
+flip), moved out of `issue/IssuePickers.tsx`, whose label and assignee pickers build on it. A
+row may carry an icon (an avatar) and a section heading; ↑ and ↓ move the active row from the
+field (`aria-activedescendant`), Enter checks or unchecks it, ⌘↩ applies, and a busy note shows
+under the `loading-bar`. `review/ReviewerPicker.tsx` builds the review sheet's on it, from
+`ReviewerCandidates` (a local read the sheet makes while `canEditReviewers`): who the pull
+request asks, GitHub's suggestions, the people who work on the repository, and its teams (keyed
+`team:<slug>`), each with its picture and a hint from `lib/reviewers.ts` (what they did there),
+filtered on the window alone by login, name, or slug, prefix matches first. Opened while the
+directory says a read is due, it asks `LearnReviewers` once and says it is learning, keeping what
+it knows and what the user checked; a failure is a quiet note. `lib/reviewers.ts` also turns the
+checks into the edit's request, people and teams apart. The summary's reviewers offer the edit
+inline too: a requested person's or team's row offers × to take the request off, and a
+reviewer's (not the user's, the author's, or a bot's, which `ReviewEntry.mine` and `bot` tell)
+↻ to ask them again, each row busy while its edit runs, and with no one asked it suggests up to
+three people to ask in one click, with More… to open the picker. After an edit that GitHub made
+any of, `ReviewSheet` builds the sheet again through `useReview`'s rebuild, which asks GitHub
+nothing, since the inbox rewrote the card from GitHub's answer, and reads the candidates again
+from the directory, which now ranks the people the user picked.
 
 **The inbox cards.** `ItemRow` (a `memo` export, which the render check counts) is a Signal
 card: a grid of the edge, `card/CardAvatar`, the two-line body, the state column, and the

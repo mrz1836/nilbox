@@ -400,6 +400,42 @@ func TestReRequestingYourReviewPutsItBackInReviewRequestedAtOnce(t *testing.T) {
 	assert.Len(t, sink.calls, calls, "nothing arrives: it was in Review requested all along")
 }
 
+func TestAReviewerEditRewritesWhoTheCardAsksAtOnce(t *testing.T) {
+	t.Parallel()
+
+	h, _ := arrivalHarness(t)
+	h.client.details = detailsOf(5)
+	h.client.inbox = withReviewed(fetched(nil, nil, nil), pushed(5))
+
+	it := itemByNumber(t, h.refresh(t).ReviewRequested, 5)
+	left := h.reviewLeftAt(t, it.ID)
+
+	snap, err := NewActor(h.svc).Act(t.Context(), it.ID, acting(Acted{
+		RequestsEdited: true,
+		ReviewRequests: github.ReviewRequests{Users: []string{"octo-reviewer", "octo-other"}, Teams: []string{"web"}},
+	}))
+	require.NoError(t, err)
+
+	require.Equal(t, []int{5}, numbers(snap.ReviewRequested), "it stays in the list it was in")
+	assert.Equal(t, []string{`["octo-reviewer","octo-other"]`},
+		h.column(t, "SELECT review_users FROM item_details WHERE item_id = ?", it.ID), "who GitHub asks now")
+	assert.Equal(t, []string{`["web"]`}, h.column(t, "SELECT review_teams FROM item_details WHERE item_id = ?", it.ID))
+	assert.Equal(t, left, h.reviewLeftAt(t, it.ID), "nothing else moves")
+	assert.Empty(t, h.client.itemIDs, "with no request")
+	assert.Empty(t, h.client.itemsIDs)
+}
+
+func TestAReviewerEditIsRecordedWithItsTryAndRetry(t *testing.T) {
+	t.Parallel()
+
+	first := Acted{RequestsEdited: true, ReviewRequests: github.ReviewRequests{Users: []string{"octo-a"}, Teams: []string{}}}
+	second := Acted{RequestsEdited: true, ReviewRequests: github.ReviewRequests{Users: []string{}, Teams: []string{}}}
+
+	assert.Equal(t, first, first.with(Acted{}), "a later try that sent nothing keeps what the first made happen")
+	assert.Equal(t, second, first.with(second), "the later answer says who it asks now")
+	assert.True(t, first.any(), "a reviewer edit is something the inbox records")
+}
+
 func TestAReRequestIsRecordedWithItsTryAndRetry(t *testing.T) {
 	t.Parallel()
 

@@ -68,11 +68,42 @@ export function EditLabels(req: $models.LabelsRequest): $CancellablePromise<$mod
 }
 
 /**
+ * EditReviewers changes who the pull request with req.ItemID asks to review as req asks:
+ * one REST request asks every person and team added, and one takes every request taken off,
+ * through the inbox's Actor (the item's lock, the account check, and a token borrowed again
+ * once when GitHub refuses one, which never sends a step twice). A review request depends
+ * on no commit, so it is not pinned to the head, but it needs the sheet to have read the
+ * pull request, open, and the user's account to have triage access or more. A name given
+ * twice is sent once, and one both added and taken off not at all; the user and the pull
+ * request's author are refused, before anything is sent. GitHub's answers say who the pull
+ * request asks after each step, which the inbox records on its card, so the sheet rebuilds
+ * with no read. Once GitHub made a step, the result counts it and says why the next failed,
+ * while a failure before any is the error. Each person asked counts as picked by the user in
+ * the People directory, so the people the user asks most rank first.
+ */
+export function EditReviewers(req: $models.ReviewersRequest): $CancellablePromise<$models.ReviewersResult> {
+    return $Call.ByID(640653220, req);
+}
+
+/**
  * FillReply fills in the reply with replyID for the pull request with itemID, as the
  * text the review starts with.
  */
 export function FillReply(itemID: number, replyID: number): $CancellablePromise<string> {
     return $Call.ByID(2928118299, itemID, replyID);
+}
+
+/**
+ * LearnReviewers reads who works on the repository of the pull request with id, when a read
+ * is due (Reviewers.Stale), and returns ReviewerCandidates with what it learned: one GraphQL
+ * request of one point for the repository's most recently updated pull requests, and, for
+ * an organization's repository, one REST request for its teams, whose refusal leaves the
+ * teams the app saw asked. One read runs at a time per repository, so the picker opened on
+ * two of its pull requests at once reads it once. A read that fails is recorded, so none is
+ * due for 30 minutes, and is the error; one not due sends nothing.
+ */
+export function LearnReviewers(id: number): $CancellablePromise<$models.Reviewers> {
+    return $Call.ByID(1737475310, id);
 }
 
 /**
@@ -130,4 +161,14 @@ export function Refresh(id: number): $CancellablePromise<$models.Review> {
  */
 export function Replies(action: $models.ReplyAction): $CancellablePromise<$models.ReplyList> {
     return $Call.ByID(81506496, action);
+}
+
+/**
+ * ReviewerCandidates returns who the picker offers to ask for a review of the pull request
+ * with id, from the sheet's cache and the People directory alone, with no request: GitHub's
+ * suggestions for it first, as the sheet last read them, then the people who work on the
+ * repository.
+ */
+export function ReviewerCandidates(id: number): $CancellablePromise<$models.Reviewers> {
+    return $Call.ByID(1708857317, id);
 }

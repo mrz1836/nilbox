@@ -30,6 +30,13 @@ func TestAnActionGitHubTookButTheInboxCouldNotRecordIsReported(t *testing.T) {
 			}},
 			event: "BEFORE UPDATE OF review_users ON item_details", want: "record the review request",
 		},
+		{
+			name: "a reviewer edit",
+			acted: Acted{RequestsEdited: true, ReviewRequests: github.ReviewRequests{
+				Users: []string{"octo-reviewer"}, Teams: []string{"web"},
+			}},
+			event: "BEFORE UPDATE OF review_users ON item_details", want: "record the review requests",
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()

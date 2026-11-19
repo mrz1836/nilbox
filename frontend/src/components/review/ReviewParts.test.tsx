@@ -102,6 +102,8 @@ describe('ReviewSummary', () => {
               url: '',
               requested: false,
               team: false,
+              mine: false,
+              bot: false,
               submittedAt: '',
               outdated: false,
             },
@@ -111,6 +113,8 @@ describe('ReviewSummary', () => {
               url: '',
               requested: false,
               team: false,
+              mine: false,
+              bot: false,
               submittedAt: '',
               outdated: false,
             },
@@ -120,6 +124,8 @@ describe('ReviewSummary', () => {
               url: '',
               requested: false,
               team: false,
+              mine: false,
+              bot: false,
               submittedAt: '',
               outdated: false,
             },
@@ -1033,7 +1039,18 @@ describe('ReviewSummary with many checks and reviewers', () => {
 
   // reviewer is a reviewer's line of the summary.
   function reviewer(author: string, state: string, more: { requested?: boolean; team?: boolean; url?: string } = {}) {
-    return { author, state, url: '', requested: false, team: false, submittedAt: '', outdated: false, ...more }
+    return {
+      author,
+      state,
+      url: '',
+      requested: false,
+      team: false,
+      mine: false,
+      bot: false,
+      submittedAt: '',
+      outdated: false,
+      ...more,
+    }
   }
 
   it('keeps the reviewers above the checks, and folds the checks that pass once they run long', async () => {

@@ -141,6 +141,8 @@ describe('ReviewSheet', () => {
             url: '',
             requested: false,
             team: false,
+            mine: false,
+            bot: false,
             submittedAt: '',
             outdated: true,
           },
@@ -1986,6 +1988,8 @@ describe('ReviewSheet tabs', () => {
           url: 'https://github.com/acme-org/example-repo/pull/7#pullrequestreview-1',
           requested: false,
           team: false,
+          mine: false,
+          bot: false,
           submittedAt: '',
           outdated: false,
         },
@@ -1995,6 +1999,8 @@ describe('ReviewSheet tabs', () => {
           url: 'https://github.com/acme-org/example-repo/pull/7#pullrequestreview-9',
           requested: false,
           team: false,
+          mine: false,
+          bot: false,
           submittedAt: '',
           outdated: false,
         },
@@ -2094,6 +2100,93 @@ describe('ReviewSheet tabs', () => {
     expect(platform.openExternal).toHaveBeenCalledWith(
       'https://github.com/acme-org/example-repo/pull/7#pullrequestreview-9',
     )
+  })
+
+  it('changes the reviewers, then builds the sheet again from the card, asking GitHub nothing', async () => {
+    const editable = review({
+      canEditReviewers: true,
+      reviews: [
+        {
+          author: 'octo-asked',
+          state: '',
+          url: '',
+          requested: true,
+          team: false,
+          mine: false,
+          bot: false,
+          submittedAt: '',
+          outdated: false,
+        },
+      ],
+    })
+    platform.openReview.mockResolvedValue(editable)
+    platform.refreshReview.mockResolvedValue(editable)
+    platform.rebuildReview.mockResolvedValue(
+      review({
+        canEditReviewers: true,
+        reviews: [
+          {
+            author: 'octo-member',
+            state: '',
+            url: '',
+            requested: true,
+            team: false,
+            mine: false,
+            bot: false,
+            submittedAt: '',
+            outdated: false,
+          },
+        ],
+      }),
+    )
+    platform.editReviewers.mockResolvedValue({ sent: 2, failed: '' })
+    render(<Harness />)
+
+    const reviewers = await screen.findByRole('region', { name: 'Reviewers' })
+    await waitFor(() => {
+      expect(platform.reviewerCandidates).toHaveBeenCalledWith(1)
+    })
+
+    await userEvent.click(within(reviewers).getByRole('button', { name: 'Edit reviewers' }))
+
+    const picker = within(await screen.findByRole('dialog', { name: 'Reviewers' }))
+    await userEvent.click(picker.getByRole('checkbox', { name: /octo-asked/ }))
+    await userEvent.click(picker.getByRole('checkbox', { name: /octo-member/ }))
+    await userEvent.click(picker.getByRole('checkbox', { name: /acme-org\/web/ }))
+
+    const reads = platform.readReviewAgain.mock.calls.length + platform.refreshReview.mock.calls.length
+    await userEvent.click(picker.getByRole('button', { name: 'Request 2 · Remove 1' }))
+
+    expect(platform.editReviewers).toHaveBeenCalledExactlyOnceWith({
+      itemId: 1,
+      add: ['octo-member'],
+      remove: ['octo-asked'],
+      addTeams: ['web'],
+      removeTeams: [],
+    })
+    expect(await within(reviewers).findByText('octo-member')).toBeInTheDocument()
+    expect(platform.rebuildReview).toHaveBeenCalledWith(1)
+    expect(platform.readReviewAgain.mock.calls.length + platform.refreshReview.mock.calls.length, 'no read').toBe(reads)
+    await waitFor(() => {
+      expect(platform.reviewerCandidates, 'the picker’s people again, as the edit ranked them').toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('says why GitHub didn’t change the reviewers, and reads nothing again', async () => {
+    const editable = review({ canEditReviewers: true })
+    platform.openReview.mockResolvedValue(editable)
+    platform.refreshReview.mockResolvedValue(editable)
+    platform.editReviewers.mockRejectedValue(new Error('Your account can’t change this pull request’s reviewers.'))
+    render(<Harness />)
+
+    const reviewers = await screen.findByRole('region', { name: 'Reviewers' })
+    const chips = within(await within(reviewers).findByRole('group', { name: 'Suggested reviewers' }))
+    await userEvent.click(chips.getByRole('button', { name: 'Ask octo-member to review' }))
+
+    expect(await within(reviewers).findByRole('alert')).toHaveTextContent(
+      'Your account can’t change this pull request’s reviewers.',
+    )
+    expect(platform.rebuildReview).not.toHaveBeenCalled()
   })
 
   it('quotes a comment into the review, as a comment, and focuses it', async () => {

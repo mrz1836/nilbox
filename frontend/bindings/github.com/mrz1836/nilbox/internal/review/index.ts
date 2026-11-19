@@ -17,7 +17,8 @@ export {
     ReadyState,
     ReplyAction,
     Side,
-    Since
+    Since,
+    Suggestion
 } from "./models.js";
 
 export type {
@@ -39,6 +40,11 @@ export type {
     Result,
     Review,
     ReviewEntry,
+    ReviewerCandidate,
+    Reviewers,
+    ReviewersRequest,
+    ReviewersResult,
+    TeamCandidate,
     Unrun,
     YourReview
 } from "./models.js";

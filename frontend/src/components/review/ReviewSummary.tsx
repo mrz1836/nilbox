@@ -1,10 +1,13 @@
-import { Fragment } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 
 import { counted } from '../../lib/format'
 import { refText } from '../../lib/format'
 import { workflowsOf } from '../../lib/ignoredWorkflows'
 import { issueLook } from '../../lib/issues'
+import { PicturesContext, usePictures } from '../../lib/pictures'
+import { candidateHint, teamKey } from '../../lib/reviewers'
 import { toneDot, toneText, type Tone } from '../../lib/signals'
+import { useNow } from '../../lib/useNow'
 import { ignoredRuns, type ListMark } from '../../lib/useReview'
 import type {
   InboxItem,
@@ -13,16 +16,27 @@ import type {
   ReviewCheck,
   ReviewCheckCounts,
   ReviewEntry,
+  Reviewers as ReviewerCandidates,
   ReviewUnrun,
 } from '../../platform'
 import { openExternal } from '../../platform'
 import { PersonAvatar } from '../Avatar'
 import { chipClass, quietButtonClass } from '../controls'
-import { ExternalIcon } from '../icons'
+import { ExternalIcon, RereviewIcon, XIcon } from '../icons'
 import { ItemLink } from '../ItemLink'
 import { SensitiveFiles } from '../SensitiveFiles'
 import { StatusDot } from '../StatusDot'
+import { ReviewerPicker, type OnReviewers } from './ReviewerPicker'
 import { ReadAge } from './ReviewLoading'
+
+// ReviewersEditing is what the summary needs to change who the pull request asks to review:
+// who the picker offers, as the sheet read them (candidates, undefined while that read
+// runs), a hook for what the picker learned since, and the edit itself.
+export interface ReviewersEditing {
+  candidates: ReviewerCandidates | undefined
+  onLearned: (learned: ReviewerCandidates) => void
+  onEdit: OnReviewers
+}
 
 export interface ReviewSummaryProps extends IgnoreProps {
   review: Review
@@ -35,6 +49,9 @@ export interface ReviewSummaryProps extends IgnoreProps {
   // mark is how the checks the sheet listed stand against what it shows of them (listMark):
   // current, unless given.
   mark?: ListMark
+  // reviewers changes who the pull request asks to review, while the user may
+  // (review.canEditReviewers); without it, the reviewers only show.
+  reviewers?: ReviewersEditing | undefined
 }
 
 // readyTone is each readiness's color.
@@ -465,51 +482,252 @@ function ReviewerLine({ r }: { r: ReviewEntry }) {
   )
 }
 
+// suggestionChips is how many of the people the picker offers the summary shows as one-click
+// requests while no one is asked.
+const suggestionChips = 3
+
+// RowAction is the quiet button at the end of a reviewer's line, shown while the line is
+// hovered or holds focus: take a request off, or ask someone who reviewed again.
+function RowAction({
+  label,
+  title,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string
+  title: string
+  disabled: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={title}
+      disabled={disabled}
+      onClick={onClick}
+      className={`${quietButtonClass} shrink-0 p-0.5 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100`}
+    >
+      {children}
+    </button>
+  )
+}
+
+// requestKey is the picker's key for a reviewer's request: their login, or a team's teamKey.
+function requestKey(r: ReviewEntry): string {
+  return r.team ? teamKey(r.author.slice(r.author.indexOf('/') + 1)) : r.author
+}
+
+// Suggestions offers, while no one is asked to review, up to three of the people the picker
+// would, each a one-click request, and More…, which opens the picker.
+function Suggestions({
+  candidates,
+  busy,
+  onAsk,
+  onMore,
+}: {
+  candidates: ReviewerCandidates | undefined
+  busy: string
+  onAsk: (login: string) => void
+  onMore: () => void
+}) {
+  const now = useNow()
+  const chips = (candidates?.people ?? []).slice(0, suggestionChips)
+  const pictures = usePictures(chips.map((c) => c.login))
+
+  if (chips.length === 0) {
+    return null
+  }
+
+  return (
+    <PicturesContext value={pictures}>
+      <div aria-label="Suggested reviewers" role="group" className="flex flex-wrap items-center gap-1.5">
+        {chips.map((c) => (
+          <button
+            key={c.login}
+            type="button"
+            aria-label={`Ask ${c.login} to review`}
+            aria-busy={busy === c.login || undefined}
+            title={[c.name, candidateHint(c, now)].filter((w) => w !== '').join(' · ')}
+            disabled={busy !== ''}
+            onClick={() => {
+              onAsk(c.login)
+            }}
+            className={`${chipClass} inline-flex items-center gap-1.5 text-text enabled:hover:border-accent/60 enabled:hover:text-accent disabled:opacity-60`}
+          >
+            <PersonAvatar login={c.login} />
+            {c.login}
+          </button>
+        ))}
+        <button type="button" onClick={onMore} className={quietButtonClass}>
+          More…
+        </button>
+      </div>
+    </PicturesContext>
+  )
+}
+
 // Reviewers lists each reviewer in a line: those who reviewed, each with their latest
 // review, then the people and teams still asked to review. A review shows in the
 // conversation, where its words are (onShow), or on GitHub; a request has nothing to show.
+// While the user may change who the pull request asks (editing), the list always shows, with
+// Edit, which opens the reviewer picker; a request offers × to take it off, and someone who
+// reviewed and isn't asked now ↻ to ask again (never the user, the author, or a bot), a
+// line fading while its edit runs; and with no one asked, it offers its first few
+// suggestions as one-click requests.
 function Reviewers({
-  reviews,
+  review,
   onShow,
+  editing,
 }: {
-  reviews: readonly ReviewEntry[]
+  review: Review
   onShow?: ((url: string) => void) | undefined
+  editing?: ReviewersEditing | undefined
 }) {
-  if (reviews.length === 0) {
+  const [picking, setPicking] = useState(false)
+  // busy is the key of the request whose edit runs, or ''; failed why the last one failed.
+  const [busy, setBusy] = useState('')
+  const [failed, setFailed] = useState('')
+  const reviews = review.reviews
+  const canEdit = editing !== undefined && review.canEditReviewers
+
+  if (reviews.length === 0 && !canEdit) {
     return null
+  }
+
+  const quick = async (key: string, add: string[], remove: string[]) => {
+    if (editing === undefined) {
+      return
+    }
+
+    setBusy(key)
+    setFailed('')
+
+    const why = await editing.onEdit(add, remove)
+
+    setBusy('')
+    setFailed(why)
   }
 
   const line = 'flex w-full min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left text-muted'
 
   return (
     <section aria-label="Reviewers" className="space-y-1 text-xs">
-      <p className="text-muted">Reviewers</p>
-      <ul className="space-y-0.5">
-        {reviews.map((r) => (
-          <li key={`${r.team ? 'team' : 'user'}:${r.author}`}>
-            {r.url === '' ? (
-              <p className={line}>
-                <ReviewerLine r={r} />
-              </p>
-            ) : (
-              <button
-                type="button"
-                title={onShow === undefined ? r.url : 'Show the review in Comments'}
-                onClick={() => {
-                  if (onShow === undefined) {
-                    openExternal(r.url)
-                  } else {
-                    onShow(r.url)
-                  }
-                }}
-                className={`${line} hover:bg-raised`}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-muted">Reviewers</p>
+        {canEdit && (
+          <button
+            type="button"
+            aria-label="Edit reviewers"
+            title="Edit reviewers"
+            aria-haspopup="dialog"
+            aria-expanded={picking}
+            onClick={(e) => {
+              // The desktop's WebKit focuses no button on a click. Focusing this one first
+              // makes it where the picker gives focus back as it closes.
+              e.currentTarget.focus()
+              setPicking(true)
+            }}
+            className={quietButtonClass}
+          >
+            Edit
+          </button>
+        )}
+      </div>
+      {reviews.length === 0 ? (
+        <div className="space-y-1.5">
+          <p className="text-muted">No one is asked to review yet.</p>
+          <Suggestions
+            candidates={editing?.candidates}
+            busy={busy}
+            onAsk={(login) => {
+              void quick(login, [login], [])
+            }}
+            onMore={() => {
+              setPicking(true)
+            }}
+          />
+        </div>
+      ) : (
+        <ul className="space-y-0.5">
+          {reviews.map((r) => {
+            const key = requestKey(r)
+            const askAgain =
+              !r.requested && r.state !== '' && !r.mine && !r.bot && !r.team && r.author !== review.author
+
+            return (
+              <li
+                key={`${r.team ? 'team' : 'user'}:${r.author}`}
+                aria-busy={busy === key || undefined}
+                className={`group flex min-w-0 items-center gap-1 ${busy === key ? 'opacity-50' : ''}`}
               >
-                <ReviewerLine r={r} />
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
+                {r.url === '' ? (
+                  <p className={line}>
+                    <ReviewerLine r={r} />
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    title={onShow === undefined ? r.url : 'Show the review in Comments'}
+                    onClick={() => {
+                      if (onShow === undefined) {
+                        openExternal(r.url)
+                      } else {
+                        onShow(r.url)
+                      }
+                    }}
+                    className={`${line} hover:bg-raised`}
+                  >
+                    <ReviewerLine r={r} />
+                  </button>
+                )}
+                {canEdit && r.requested && !r.mine && (
+                  <RowAction
+                    label={`Remove the review request for ${r.author}`}
+                    title="Remove request"
+                    disabled={busy !== ''}
+                    onClick={() => {
+                      void quick(key, [], [key])
+                    }}
+                  >
+                    <XIcon className="size-3" />
+                  </RowAction>
+                )}
+                {canEdit && askAgain && (
+                  <RowAction
+                    label={`Ask ${r.author} to review again`}
+                    title="Ask again"
+                    disabled={busy !== ''}
+                    onClick={() => {
+                      void quick(key, [key], [])
+                    }}
+                  >
+                    <RereviewIcon className="size-3" />
+                  </RowAction>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {failed !== '' && (
+        <p role="alert" className="text-danger">
+          {failed}
+        </p>
+      )}
+      {picking && editing !== undefined && (
+        <ReviewerPicker
+          review={review}
+          candidates={editing.candidates}
+          onLearned={editing.onLearned}
+          onEdit={editing.onEdit}
+          onClose={() => {
+            setPicking(false)
+          }}
+        />
+      )}
     </section>
   )
 }
@@ -564,6 +782,7 @@ export function ReviewSummary({
   ignored,
   onIgnore,
   mark = 'current',
+  reviewers,
 }: ReviewSummaryProps) {
   const { change } = review
 
@@ -576,7 +795,7 @@ export function ReviewSummary({
         {change.areas.length > 0 && <span className="text-xs text-muted">in {areasText(change.areas)}</span>}
       </div>
       <Closes review={review} />
-      <Reviewers reviews={review.reviews} onShow={onShowReview} />
+      <Reviewers review={review} onShow={onShowReview} editing={reviewers} />
       <Checks review={review} mark={mark} ignored={ignored} onIgnore={onIgnore} />
     </section>
   )
