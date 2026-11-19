@@ -114,6 +114,7 @@ func TestSeedAddsNothingWhenAWriteFails(t *testing.T) {
 	}{
 		{name: "a starter cannot be added", trigger: refusePromptInserts, want: `add the "Review a pull request" starter prompt`},
 		{name: "a default cannot be saved", trigger: refusePrefInserts, want: "save setting " + prefDefaultPR},
+		{name: "the record of starters cannot be saved", trigger: refusePref(prefSeeded), want: "save setting " + prefSeeded},
 	}
 
 	for _, tt := range tests {
@@ -131,6 +132,47 @@ func TestSeedAddsNothingWhenAWriteFails(t *testing.T) {
 			assert.Empty(t, promptPrefs(t, db))
 		})
 	}
+}
+
+func TestSeedOfALibraryLeavesItAsItWasWhenAStepFails(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a starter's earlier text cannot be brought up to date", func(t *testing.T) {
+		t.Parallel()
+
+		s, db := seeded(t, nil)
+		fix := byNickname(t, s, "Fix dep security")
+		earlier := fix
+		earlier.Body = fixDependencySecurityBodyV1
+		require.NoError(t, s.store.update(t.Context(), fix.ID, earlier))
+
+		testutil.Exec(t, db, refusePromptUpdates)
+
+		require.ErrorContains(t, Seed(t.Context(), s.store), `bring the "Fix dep security" starter prompt up to date`)
+		assert.Equal(t, fixDependencySecurityBodyV1, promptBody(t, db, fix.ID))
+	})
+
+	t.Run("a situation's default cannot be filled", func(t *testing.T) {
+		t.Parallel()
+
+		s, db := earlierLibrary(t)
+		before := nicknames(t, s)
+
+		testutil.Exec(t, db, refusePref(prefDefaultChecksFailing))
+
+		require.ErrorContains(t, Seed(t.Context(), s.store), `make "Fix checks" the default when checks fail`)
+		assert.Empty(t, situationPrefs(t, db), "no situation is filled")
+		assert.Equal(t, before, nicknames(t, s), "and the starter added before it is rolled back")
+	})
+
+	t.Run("the record of the situations filled cannot be read", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := seeded(t, nil)
+		require.NoError(t, s.store.prefs.Set(t.Context(), prefSeededSlots, "not a list"))
+
+		require.ErrorContains(t, Seed(t.Context(), s.store), prefSeededSlots)
+	})
 }
 
 func TestWritesReportWhatFailed(t *testing.T) {
@@ -180,6 +222,22 @@ func TestWritesReportWhatFailed(t *testing.T) {
 				return s.SetDefault(t.Context(), item.KindPR, byNickname(t, s, "Fix checks").ID)
 			},
 		},
+		{
+			name: "set a default reply", trigger: refusePrefInserts, want: "save setting " + prefReplyComment,
+			run: func(t *testing.T, s *Service) error {
+				return s.SetReplyDefault(t.Context(), SlotComment, 0)
+			},
+		},
+		{
+			name: "set a situation's default", trigger: refusePrefInserts, want: "save setting " + prefDefaultRereview,
+			run: func(t *testing.T, s *Service) error {
+				return s.SetSlotDefault(t.Context(), DefaultSlotRereview, byNickname(t, s, "Quick look").ID)
+			},
+		},
+		{
+			name: "delete a default reply", trigger: refusePrefInserts, want: "save setting " + prefReplyApprove,
+			run: func(t *testing.T, s *Service) error { return s.Delete(t.Context(), byNickname(t, s, lgtmNick).ID) },
+		},
 	}
 
 	for _, tt := range tests {
@@ -187,11 +245,13 @@ func TestWritesReportWhatFailed(t *testing.T) {
 			t.Parallel()
 
 			s, db := seeded(t, nil)
+			before := nicknames(t, s)
 			testutil.Exec(t, db, tt.trigger)
 
 			err := tt.run(t, s)
 			require.ErrorContains(t, err, tt.want)
 			require.NotErrorIs(t, err, ErrInvalidPrompt, "a failed write is not a validation problem")
+			assert.Equal(t, before, nicknames(t, s), "nothing is added or deleted")
 		})
 	}
 }

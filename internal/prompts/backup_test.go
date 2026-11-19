@@ -9,6 +9,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/backup"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // applyBundle plans b under mode and applies it as an import does, returning the plan,
@@ -178,4 +179,221 @@ func TestReplaceOfTheSameLibraryChangesNothing(t *testing.T) {
 	assert.False(t, plan.Count.Changes(), "%v", items(plan.Plan))
 	assert.False(t, count.Changes())
 	assert.Equal(t, before, nicknames(t, s))
+}
+
+// planOnly plans b under mode as an import does, with the launch defaults kept.
+func planOnly(t *testing.T, s *Service, b Bundle, mode backup.Mode) BackupPlan {
+	t.Helper()
+
+	plan, err := NewBackupPart(s).PlanBackup(t.Context(), b, mode, false)
+	require.NoError(t, err)
+
+	return plan
+}
+
+// applyErr applies plan as an import does and returns what failed.
+func applyErr(t *testing.T, s *Service, db *sql.DB, plan BackupPlan) error {
+	t.Helper()
+
+	return store.InTx(t.Context(), db, func(tx *sql.Tx) error {
+		_, err := NewBackupPart(s).ApplyBackup(t.Context(), tx, plan, map[string]int64{})
+
+		return err
+	})
+}
+
+func TestBackupPartBundleReportsALibraryItCannotRead(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewBackupPart(closedService(t)).Bundle(t.Context())
+	require.ErrorContains(t, err, "read setting "+prefDefaultPR)
+
+	for _, key := range []string{prefSeeded, prefSeededSlots} {
+		s, _ := seeded(t, nil)
+		require.NoError(t, s.store.prefs.Set(t.Context(), key, "not a list"))
+
+		_, err = NewBackupPart(s).Bundle(t.Context())
+		require.ErrorContains(t, err, "read setting "+key, "a damaged record of the library's history")
+	}
+}
+
+func TestPlanBackupReportsWhatItCannotPlan(t *testing.T) {
+	t.Parallel()
+
+	s, _ := seeded(t, nil)
+
+	_, err := NewBackupPart(s).PlanBackup(t.Context(), bundleOf(make([]BundlePrompt, maxBundlePrompts+1)...),
+		backup.ModeMerge, false)
+	require.ErrorIs(t, err, ErrBundleTooLarge)
+
+	for table, want := range map[string]string{
+		"prefs":           "read setting " + prefDefaultPR,
+		"launch_defaults": "read where the prompts are used",
+	} {
+		s, db := seeded(t, nil)
+		testutil.Exec(t, db, "DROP TABLE "+table)
+
+		_, err = NewBackupPart(s).PlanBackup(t.Context(), bundleOf(mine("Fresh")), backup.ModeReplace, false)
+		require.ErrorContains(t, err, want, table)
+	}
+}
+
+func TestApplyBackupWritesAllOfTheLibraryOrNothing(t *testing.T) {
+	t.Parallel()
+
+	const dropPrefs = "DROP TABLE prefs"
+
+	edited := func(t *testing.T) Bundle {
+		t.Helper()
+
+		return bundleOf(starterAsBundled(t, StarterReviewPR, func(p *BundlePrompt) { p.Body = "Review {{.URL}} my way." }))
+	}
+
+	fresh := func(*testing.T) Bundle { return bundleOf(mine("Fresh")) }
+
+	freshDefault := func(*testing.T) Bundle {
+		b := bundleOf(mine("Fresh"))
+		b.Defaults = BundleDefaults{Issue: "Fresh"}
+
+		return b
+	}
+
+	tests := []struct {
+		name    string
+		mode    backup.Mode
+		refuse  string
+		bundle  func(t *testing.T) Bundle
+		wantErr string
+	}{
+		{
+			name: "merge, a prompt that cannot be added", mode: backup.ModeMerge, refuse: refusePromptInserts,
+			bundle: fresh, wantErr: `import "Fresh"`,
+		},
+		{
+			name: "merge, a starter that cannot be saved over", mode: backup.ModeMerge, refuse: refusePromptUpdates,
+			bundle: edited, wantErr: `import "Review"`,
+		},
+		{
+			name: "merge, a default that cannot be stored", mode: backup.ModeMerge, refuse: refusePrefInserts,
+			bundle: freshDefault, wantErr: "refused by the test",
+		},
+		{
+			name: "replace, a prompt that cannot be deleted", mode: backup.ModeReplace, refuse: refusePromptDeletes,
+			bundle: fresh, wantErr: "refused by the test",
+		},
+		{
+			name: "replace, a prompt that cannot be saved over", mode: backup.ModeReplace, refuse: refusePromptUpdates,
+			bundle: edited, wantErr: `import "Review"`,
+		},
+		{
+			name: "replace, a prompt that cannot be added", mode: backup.ModeReplace, refuse: refusePromptInserts,
+			bundle: fresh, wantErr: `import "Fresh"`,
+		},
+		{
+			name: "replace, a default that cannot be stored", mode: backup.ModeReplace, refuse: refusePrefInserts,
+			bundle: freshDefault, wantErr: "refused by the test",
+		},
+		{
+			name: "replace, a library gone unreadable", mode: backup.ModeReplace, refuse: dropPrefs,
+			bundle: fresh, wantErr: "read setting " + prefDefaultPR,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s, db := seeded(t, nil)
+			before := mustList(t, s)
+			plan := planOnly(t, s, tt.bundle(t), tt.mode)
+
+			testutil.Exec(t, db, tt.refuse)
+
+			require.ErrorContains(t, applyErr(t, s, db, plan), tt.wantErr)
+
+			if tt.refuse != dropPrefs {
+				assert.Equal(t, before, mustList(t, s), "the import's transaction rolled back")
+			}
+		})
+	}
+}
+
+func TestMergeSavesOverAStarterStillAsTheAppAddedIt(t *testing.T) {
+	t.Parallel()
+
+	s, db := seeded(t, nil)
+	review := byNickname(t, s, reviewNick)
+	edit := starterAsBundled(t, StarterReviewPR, func(p *BundlePrompt) { p.Body = "Review {{.URL}} my way." })
+
+	plan, count, links := applyBundle(t, s, db, bundleOf(edit), backup.ModeMerge, false)
+	assert.Equal(t, []backup.Item{{Label: reviewNick, Change: backup.ChangeUpdate, Detail: "saved over the starter"}},
+		plan.Items)
+	assert.Equal(t, backup.Count{Update: 1}, count)
+	assert.Equal(t, review.ID, links[reviewNick])
+	assert.Equal(t, "Review {{.URL}} my way.", byNickname(t, s, reviewNick).Body)
+}
+
+func TestBackupPlansNoteWhatCleaningAPromptChanged(t *testing.T) {
+	t.Parallel()
+
+	odd := mine("Fresh")
+	odd.Effort = "warp"
+
+	for _, mode := range []backup.Mode{backup.ModeMerge, backup.ModeReplace} {
+		s, _ := seeded(t, nil)
+
+		plan := planOnly(t, s, bundleOf(odd), mode)
+		assert.Contains(t, plan.Notes, `“Fresh”: Its effort, "warp", was left out: it isn’t one of the levels.`, mode)
+	}
+}
+
+func TestReplaceRenamesAPromptWhoseNicknameTheFileHoldsTwice(t *testing.T) {
+	t.Parallel()
+
+	s, db := seeded(t, nil)
+
+	other := mine("Fresh")
+	other.Body = "Another text for {{.URL}}"
+
+	plan, count, links := applyBundle(t, s, db, bundleOf(mine("Fresh"), other), backup.ModeReplace, true)
+	require.GreaterOrEqual(t, len(plan.Items), 2)
+	assert.Equal(t, []backup.Item{
+		{Label: "Fresh", Change: backup.ChangeAdd},
+		{Label: "Fresh 2", Change: backup.ChangeAdd, Detail: "renamed from “Fresh”"},
+	}, plan.Items[:2])
+	assert.Equal(t, 2, count.Add)
+	assert.Equal(t, byNickname(t, s, "Fresh").ID, links["Fresh"], "the file's nickname links to the first")
+	assert.Equal(t, "Another text for {{.URL}}", byNickname(t, s, "Fresh 2").Body)
+}
+
+func TestReplaceKeepsAPromptALaunchDefaultStillNames(t *testing.T) {
+	t.Parallel()
+
+	s, db := seeded(t, nil)
+	quick := byNickname(t, s, "Quick look")
+
+	part := NewBackupPart(s)
+	plan, err := part.PlanBackup(t.Context(), bundleOf(mine("Only")), backup.ModeReplace, true)
+	require.NoError(t, err)
+	assert.Contains(t, items(plan.Plan), "remove Quick look", "the plan expects the launch defaults to be replaced")
+
+	// The launch defaults the import was to replace still name the prompt as it applies.
+	addLaunchDefault(t, db, "acme-org", "", quick.ID)
+
+	var count backup.Count
+
+	require.NoError(t, store.InTx(t.Context(), db, func(tx *sql.Tx) error {
+		count, err = part.ApplyBackup(t.Context(), tx, plan, map[string]int64{})
+
+		return err
+	}))
+	assert.Equal(t, plan.Count.Remove-1, count.Remove, "the prompt a launch default names is not counted removed")
+	assert.Equal(t, []string{"Only", "Quick look"}, nicknames(t, s), "its foreign key keeps it")
+}
+
+func TestADefaultSlotOfAnotherBuildIsNamedPlainly(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "Default", DefaultSlot("later").Label())
+	assert.Equal(t, "Default approval reply", DefaultSlotApprove.Label())
 }
