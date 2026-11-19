@@ -15,6 +15,7 @@ export {
 export type {
     Account,
     Checks,
+    ClosingPull,
     Details,
     IssueField,
     IssueInfo,

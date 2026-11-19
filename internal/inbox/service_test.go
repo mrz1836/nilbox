@@ -1523,6 +1523,21 @@ func TestRefreshStoresEachItemsDetails(t *testing.T) {
 				BlockedBy: 1,
 				Blocking:  2,
 			},
+			ClosingPulls: []github.ClosingPull{
+				{
+					Repo: "acme-org/docs-repo", Number: 4, Title: "Fix the docs", URL: "https://github.com/acme-org/docs-repo/pull/4",
+					AuthorLogin: "octo-member", AuthorType: "User", AuthorAssociation: "MEMBER",
+				},
+				{
+					Repo: "acme-org/docs-repo", Number: 5, Title: "A stranger's fix", URL: "https://github.com/acme-org/docs-repo/pull/5",
+					IsDraft: true, AuthorLogin: "stranger", AuthorType: "User", AuthorAssociation: "MEMBER", IsCrossRepository: true,
+				},
+				{
+					Repo: "acme-org/other-repo", Number: 6, Title: "My fix", URL: "https://github.com/acme-org/other-repo/pull/6",
+					Merged: true, AuthorLogin: "Octo-User", AuthorType: "User", AuthorAssociation: "CONTRIBUTOR",
+					IsCrossRepository: true,
+				},
+			},
 		},
 	}
 
@@ -1542,6 +1557,7 @@ func TestRefreshStoresEachItemsDetails(t *testing.T) {
 		Checks:       Checks{State: "SUCCESS", Passed: 12, Skipped: 3},
 		Reviews:      Reviews{Decision: "APPROVED", Reviewers: 2, Reviewed: 1, Approvals: 1},
 		Issue:        IssueInfo{Fields: []IssueField{}},
+		ClosingPulls: []ClosingPull{},
 		FetchedAt:    "2026-01-10T12:00:00Z",
 	}, itemByNumber(t, snap.ReviewRequested, 1).Details)
 
@@ -1563,8 +1579,24 @@ func TestRefreshStoresEachItemsDetails(t *testing.T) {
 			BlockedBy: 1,
 			Blocking:  2,
 		},
+		ClosingPulls: []ClosingPull{
+			{
+				Repo: "acme-org/docs-repo", Number: 4, Title: "Fix the docs", URL: "https://github.com/acme-org/docs-repo/pull/4",
+				Trusted: true,
+			},
+			{
+				Repo: "acme-org/docs-repo", Number: 5, Title: "A stranger's fix", URL: "https://github.com/acme-org/docs-repo/pull/5",
+				IsDraft: true,
+			},
+			{
+				Repo: "acme-org/other-repo", Number: 6, Title: "My fix", URL: "https://github.com/acme-org/other-repo/pull/6",
+				Merged: true, Trusted: true,
+			},
+		},
 		FetchedAt: "2026-01-10T12:00:00Z",
-	}, itemByNumber(t, snap.Yours, 3).Details, "an issue's planning comes back as it was read, its milestone due on its day")
+	}, itemByNumber(t, snap.Yours, 3).Details,
+		"an issue's planning comes back as it was read, its milestone due on its day, and its closing pull requests "+
+			"with their trust: a fork's is never trusted, unless it is the user's own")
 
 	assert.Nil(t, itemByNumber(t, snap.Yours, 2).Details, "GitHub sent nothing for it")
 }

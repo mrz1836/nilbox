@@ -55,6 +55,7 @@ export type Rule =
   | 'review_draft'
   | 'review'
   | 'issue'
+  | 'issue_fix'
   | 'ready'
   | 'auto_merge'
   | 'assigned_pr'
@@ -299,8 +300,18 @@ function itemStep({ item, backFromSnooze }: StepInput): Step {
     return step('review', 'yours', story('Your review', worst, 'dot'), 'review')
   }
 
-  // 14. An issue.
+  // 14. An issue. A trusted pull request on its way to closing it carries the work, so the
+  // issue waits on it, quietly, a merged one first; the card links to it (LinkChip).
+  // Otherwise its first project's status leads, or that it is assigned to the user.
   if (!isPR) {
+    const fix = d.closingPulls.find((p) => p.trusted && p.merged) ?? d.closingPulls.find((p) => p.trusted)
+
+    if (fix !== undefined) {
+      const text = fix.merged ? 'Fix merged' : 'Fix in progress'
+
+      return step('issue_fix', 'waiting', woken(text, fix.isDraft ? 'draft' : '', 'dot'), 'read', true)
+    }
+
     const status = d.projects[0]?.status ?? ''
     const yours = item.assigned || status !== ''
     const text = status !== '' ? status : item.assigned ? 'Assigned to you' : 'Opened by you'

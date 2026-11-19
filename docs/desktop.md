@@ -1880,8 +1880,10 @@ Cards** can make every card one line instead (**Compact cards**, below).
   opened it (**Unread dots**, below) and a pin when the item is pinned (hover the pin for who
   pinned it: you, a routine, or a rule for its repository or org) and **Draft** before a draft's
   title,
-  then up to two labels in their GitHub colors and **+N** for the rest, which give way before
-  the title does. A long title is cut short; hover it for all of it. Clicking a pull request's
+  then up to two labels in their GitHub colors and **+N** for the rest (hover it for their
+  names). A label shows whole or folds into the **+N**, never cut off: the labels take the room
+  the title leaves, or up to a third of the line beside a long title, and the first always
+  shows. A long title is cut short; hover it for all of it. Clicking a pull request's
   title opens it in the [review sheet](#reviewing-a-pull-request), and an issue's in the
   [issue sheet](#reading-an-issue); **⌘-click** it, or click the small **↗** beside it, to open
   it on GitHub instead.
@@ -1896,7 +1898,8 @@ Cards** can make every card one line instead (**Compact cards**, below).
   **assigned** when it is assigned to you, in either list), and how long ago it last changed. Then, only when there is something to say, one
   risk chip for who opened it and the [sensitive files](#sensitive-files) it changes (such as
   **Outside · Workflows**, or **Untrusted bot · Not all files checked**; click it for the
-  files), the routine's ⚡ chip, and a worktree chip when the item's worktree, as the
+  files), a link to the item GitHub ties it to (see **An issue and its fix**, below), the
+  routine's ⚡ chip, and a worktree chip when the item's worktree, as the
   [Worktrees view](#the-worktrees-view) last listed it, has uncommitted changes or a session
   running in it (hover it for the worktree's path). The card says nothing of your
   [notifications on GitHub](#github-notifications): the toolbar's GitHub button lists them.
@@ -1935,6 +1938,21 @@ Cards** can make every card one line instead (**Compact cards**, below).
   amber: **1 run awaits your approval · you approved**, with **Open**.
 - **Asked again.** Either way, once your review is requested again it is an ordinary review
   request: **Your review** (or **Re-review** after a push).
+- **An issue and its fix.** GitHub ties a pull request to the issue it closes once it merges
+  when its description says so (**Closes #12**, **Fixes #12**) or someone links them in its
+  Development panel. An issue's card then links to the pull request: **#14** after the
+  byline, with the pull request's mark in its state's color (green while open, grey for a
+  draft, blue once merged), **+1** for each more, and **↗** when your inbox doesn't hold it.
+  A pull request's card links the same way to an issue in your inbox it closes. Hover the
+  link for what it is (**Fix in progress: #14 Retry the upload**); click it to show that card
+  in the inbox, highlighted, or open it on GitHub. While a pull request from you or from
+  someone trusted with its repository is on its way to closing the issue, the issue's story
+  says so, in grey with a quiet **Read**, since the work is the pull request's now: **Fix in
+  progress** (**· draft** for a draft), or **Fix merged** once one merged and the issue is
+  still open. Anyone can say their pull request closes an issue, from a fork too, so one from
+  an outside contributor or an untrusted bot only links, marked **from outside the project**,
+  and the issue's story stays its own (**Assigned to you**). The link costs nothing: the
+  issue's details ask GitHub for it, at no extra point.
 
 **Hover a card** for its triage over the track: **Show details**, refresh it, snooze it,
 dismiss it, pin or unpin it, and the menu of everything else. They stay while the card is busy
@@ -1950,8 +1968,9 @@ issue, how it is planned, as GitHub's sidebar shows it (its type, such as **Task
 values in its organization's issue fields, such as **Priority** and **Effort**, its milestone
 with its due day, in amber once it has passed, and how far along it is, the issue it is a
 sub-issue of, and how many open issues block it and it blocks), and what is around it (the
-agent session and how it started, what the routines did with it, why it is here, and every
-label). An area with nothing to say is left out. Its buttons repeat your next move, offer **Review**
+agent session and how it started, what the routines did with it, an issue's **Development**,
+the pull requests that close it with where each stands, or the issues in your inbox a pull
+request **Closes**, why it is here, and every label). An area with nothing to say is left out. Its buttons repeat your next move, offer **Review**
 or **Read** when that move doesn't open the item, open the agent's launch options, and snooze,
 dismiss, pin, or open it on GitHub, and, with **Unread dots** on, **Mark as read** or **Mark as
 unread**. Click again to close it.
@@ -1978,7 +1997,7 @@ two-line card above, and **Compact** fits about three times as many, one line ea
 per question so you can read down each one. From the left: the edge; the pull request or
 issue mark (grey for a draft); the repository, its org dimmed; the title and number, the
 labels as up to six dots in their colors (hover them for their names; hidden labels stay
-hidden), the pin, and the unread dot; the story as a chip tinted with the edge's color (in the
+hidden), the link to an issue's fix or a pull request's issue, the pin, and the unread dot; the story as a chip tinted with the edge's color (in the
 Snoozed and Dismissed tabs, when it comes back or was dismissed, then where it stands); the risk as its
 shield alone (hover it for who opened it and the sensitive files); the track as three dots,
 filled for a tick, a cross, or ↻, half-filled for runs held, pinging while checks run,

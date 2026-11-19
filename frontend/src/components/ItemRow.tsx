@@ -2,6 +2,7 @@ import { Fragment, memo, use, useId, useState, type ReactNode } from 'react'
 
 import { CardPrefsContext } from '../lib/cardPrefs'
 import { counted } from '../lib/format'
+import { labelsShown, useLabelRoom } from '../lib/labelFit'
 import { HiddenLabelsContext } from '../lib/labels'
 import { agentName } from '../lib/launch'
 import { autopilotState, nextStep } from '../lib/nextStep'
@@ -25,6 +26,7 @@ import {
 import { AutopilotChip } from './autopilot/AutopilotChip'
 import { CardActions, cardOutcomeClass } from './card/CardActions'
 import { CardAvatar } from './card/CardAvatar'
+import { LinkChip } from './card/CardLinks'
 import { CompactRow } from './card/CompactRow'
 import { edgeBar, FilterText, PinGlyph, tagClass, TriageTag, UnreadDot } from './card/CardParts'
 import { CardPeek } from './card/CardPeek'
@@ -207,8 +209,15 @@ const cardLabels = 2
 // CardLabels are the first labels of a card after its title, with their GitHub colors,
 // and the count of the rest, named in its tooltip. The labels the user hid (Settings →
 // Cards) are left out before the first are taken, so a hidden one never takes a visible
-// one's place or counts in the +N. They give way before the title does, and a list
-// narrower than 56rem leaves them out.
+// one's place or counts in the +N. A label shows whole or folds into the +N, never cut
+// off: they take the room the title leaves, or a third of the line from a long title,
+// which is cut short for them, and the first always shows (labelsShown). A list narrower
+// than 56rem leaves them out.
+//
+// A label that folds stays laid out at its whole width, out of the line's flow, unseen,
+// and out of reach of the keyboard and a screen reader, and so does the +N when none
+// fold, as a "+1" drawn by CSS rather than written in the card's text: the line measures
+// them as they are wherever they would be (useLabelRoom).
 function CardLabels({
   labels: all,
   onFilterBy,
@@ -217,26 +226,41 @@ function CardLabels({
   onFilterBy: ((key: string, value: string) => void) | undefined
 }) {
   const hidden = use(HiddenLabelsContext)
+  const [fit, room] = useLabelRoom()
   const labels = all.filter((label) => !hidden(label.name))
 
   if (labels.length === 0) {
     return null
   }
 
-  const rest = labels.slice(cardLabels)
+  const shown = labelsShown(room, labels.length, cardLabels)
+  const rest = labels.slice(shown)
   const names = rest.map((label) => label.name).join(', ')
 
   return (
-    <span className="relative z-10 flex min-w-0 shrink-[10] items-center gap-1 overflow-hidden @max-4xl:hidden">
+    <span ref={fit} className="relative z-10 flex shrink-0 items-center gap-1 @max-4xl:hidden">
       <span className="sr-only">Labels:</span>
-      {labels.slice(0, cardLabels).map((label) => (
-        <LabelChip key={label.name} label={label} onFilterBy={onFilterBy} />
+      {labels.slice(0, cardLabels).map((label, i) => (
+        <span
+          key={label.name}
+          data-label-chip
+          inert={i >= shown}
+          className={i < shown ? 'flex shrink-0' : 'invisible absolute flex w-max'}
+        >
+          <LabelChip label={label} onFilterBy={onFilterBy} />
+        </span>
       ))}
-      {rest.length > 0 && (
-        <span title={names} className="shrink-0 text-[0.6875rem] text-muted">
+      {rest.length > 0 ? (
+        <span data-label-count title={names} className="shrink-0 text-[0.6875rem] text-muted tabular-nums">
           +{rest.length}
           <span className="sr-only"> more: {names}</span>
         </span>
+      ) : (
+        <span
+          data-label-count
+          aria-hidden="true"
+          className="invisible absolute w-max text-[0.6875rem] tabular-nums before:content-['+1']"
+        />
       )}
     </span>
   )
@@ -298,7 +322,8 @@ function Byline({
 // activity the user hasn't seen (and Settings → Cards' Unread dots is on) and a pin when
 // pinned, with up to two labels; its second, the story in the edge's color (CardStory: one sentence of why it is
 // here, or, in the Snoozed and Dismissed tabs, when it comes back or was dismissed, then,
-// muted, where it stands), the byline, then the risk chip, the ⚡ chip (AutopilotChip), and the worktree chip. The state
+// muted, where it stands), the byline, then the risk chip, the link to the item GitHub links it to (LinkChip: an
+// issue's fix, or the issue a pull request closes), the ⚡ chip (AutopilotChip), and the worktree chip. The state
 // column shows where a pull request stands (StateTrack, over its size, SizeGlyph) or an
 // issue (IssueState); the action column, the human's next move and the agent's slot beside
 // it (CardActions, with LaunchControls' card variant), each in a slot of its own: the
@@ -506,6 +531,7 @@ export const ItemRow = memo(function ItemRow({
           <button
             type="button"
             data-guide="title"
+            data-card-title
             title={
               opens
                 ? `${item.title}\n${item.kind === 'pr' ? 'Review' : 'Read'} it here; ⌘-click opens GitHub`
@@ -558,6 +584,7 @@ export const ItemRow = memo(function ItemRow({
           <Byline item={item} onFilterBy={onFilterBy} />
           <span className="relative z-10 inline-flex shrink-0 items-center gap-1.5 empty:hidden has-[[aria-expanded=true]]:z-30">
             <RiskChip item={item} onFilesSettings={onFilesSettings} />
+            <LinkChip item={item} />
             <CardChips chips={chips} />
           </span>
         </div>

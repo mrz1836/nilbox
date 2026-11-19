@@ -29,6 +29,7 @@ import { RelativeTime } from '../RelativeTime'
 import { SensitiveFilesGroup } from '../SensitiveFiles'
 import { openOnGitHub, type TriageActions } from '../TriageControls'
 import { PrimaryVerb } from './CardActions'
+import { LinkList, useCardLinks } from './CardLinks'
 import { mergeStepText, reviewStepText } from './StateTrack'
 
 // buttonClass is each button of the peek's action bar but its primary.
@@ -396,8 +397,25 @@ function AutopilotFact({ item }: { item: InboxItem }) {
   )
 }
 
-// Around is what surrounds an item: its agent session, what the routines did with it, why
-// it is here, and every label.
+// LinksFact is the items GitHub links an item to (useCardLinks): an issue's Development,
+// the pull requests that close it once they merge, or the listed issues a pull request
+// Closes, as the sheets name them. An item with none has no fact.
+function LinksFact({ item }: { item: InboxItem }) {
+  const { links, open } = useCardLinks(item)
+
+  if (links.length === 0) {
+    return null
+  }
+
+  return (
+    <Fact term={item.kind === 'pr' ? 'Closes' : 'Development'}>
+      <LinkList item={item} links={links} open={open} />
+    </Fact>
+  )
+}
+
+// Around is what surrounds an item: its agent session, what the routines did with it, the
+// items GitHub links it to, why it is here, and every label.
 function Around({
   item,
   session,
@@ -425,6 +443,7 @@ function Around({
         </Fact>
       )}
       <AutopilotFact item={item} />
+      <LinksFact item={item} />
       {why !== '' && <Fact term="Why it’s here">{why}</Fact>}
       {labels.length > 0 && (
         <Fact term="Labels">
@@ -468,9 +487,9 @@ export interface CardPeekProps {
 // (each step of the track with its numbers, or an issue's projects, with every field, and
 // sub-issues), the change (a pull request's size, branch, and sensitive files) or the
 // issue (its type, issue fields, milestone, parent, and what blocks it), and what is
-// around it (the agent session, the routines, why it is here, every label), as three
-// columns that become two,
-// then one, as the list narrows; an area with nothing to say is left out. Its action bar
+// around it (the agent session, the routines, the items GitHub links it to, why it is
+// here, every label), as three columns that become two, then one, as the list narrows; an
+// area with nothing to say is left out. Its action bar
 // repeats the primary, offers Review or Read beside a primary that doesn't open the item,
 // the agent's launch options, the triage actions, GitHub, and, while Settings → Cards'
 // Unread dots is on, Mark as read or Mark as unread.

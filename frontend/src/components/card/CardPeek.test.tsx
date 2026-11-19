@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { CardLinksContext, linkIndex, type CardLinks } from '../../lib/cardLinks'
 import { CardPrefsContext, defaultCardPrefs } from '../../lib/cardPrefs'
 import type { Step } from '../../lib/nextStep'
 import type { AgentSession, InboxItem, RepoRules } from '../../platform'
@@ -11,10 +12,13 @@ import {
   agentSession,
   agents,
   autopilotMatch,
+  closingPull,
   details,
   fileCheck,
   item,
+  list,
   project,
+  snapshot,
   workflowsGroup,
 } from '../../test/fixtures'
 import { platform } from '../../test/platform'
@@ -55,13 +59,15 @@ function triageActions(repoRules: RepoRules = { pinned: [], muted: [] }): Triage
 
 interface Setup extends Partial<CardPeekProps> {
   rows?: AutopilotRows
+  // links are the inbox's links around the card, none unless given.
+  links?: CardLinks
   // unreadDots is Settings → Cards' Unread dots, on unless the test turns it off.
   unreadDots?: boolean
 }
 
 // openPeek renders an item's peek in a card's grid, and returns the queries scoped to
 // it.
-function openPeek(it: InboxItem, { rows, unreadDots = true, ...props }: Setup = {}) {
+function openPeek(it: InboxItem, { rows, links, unreadDots = true, ...props }: Setup = {}) {
   const Clock = at()
   const peek = (
     <CardPeek
@@ -82,9 +88,11 @@ function openPeek(it: InboxItem, { rows, unreadDots = true, ...props }: Setup = 
   render(
     <Clock>
       <CardPrefsContext value={{ ...defaultCardPrefs, unread: unreadDots }}>
-        <ul>
-          <li className="group grid">{wrapped}</li>
-        </ul>
+        <CardLinksContext value={links ?? null}>
+          <ul>
+            <li className="group grid">{wrapped}</li>
+          </ul>
+        </CardLinksContext>
       </CardPrefsContext>
     </Clock>,
   )
@@ -185,6 +193,66 @@ describe('CardPeek', () => {
     expect(peek.getByText('Size').nextElementSibling?.firstElementChild).not.toHaveClass('rounded-full')
     expect(peek.getByRole('button', { name: 'Project Sprint. Open it on GitHub' })).toBeInTheDocument()
     expect(peek.queryByText('Sub-issues')).not.toBeInTheDocument()
+  })
+
+  it('lists an issue’s Development, each pull request with where it stands, and shows a listed one’s card', async () => {
+    const pull = item({ id: 1, number: 8 })
+    const issue = item({
+      id: 2,
+      kind: 'issue',
+      number: 5,
+      details: details({
+        closingPulls: [
+          closingPull({ isDraft: true }),
+          closingPull({
+            repo: 'octo-org/tool',
+            number: 3,
+            title: 'A stranger’s fix',
+            url: 'https://github.com/octo-org/tool/pull/3',
+            merged: true,
+            trusted: false,
+          }),
+        ],
+      }),
+    })
+    const links = { index: linkIndex(snapshot({ yours: list([pull, issue]) })), reveal: vi.fn() }
+    const peek = openPeek(issue, { links })
+
+    const development = peek.getByText('Development').nextElementSibling
+    expect(development).not.toBeNull()
+    const rows = within(development as HTMLElement).getAllByRole('listitem')
+    expect(rows.map((row) => row.textContent)).toEqual([
+      '#8 Fix the flaky retry testdraft',
+      'octo-org/tool#3 A stranger’s fixmerged · from outside the project',
+    ])
+    expect(within(rows[1] as HTMLElement).getByText('merged · from outside the project')).toHaveClass('text-warning')
+
+    await userEvent.click(within(rows[0] as HTMLElement).getByRole('button'))
+    expect(links.reveal).toHaveBeenCalledExactlyOnceWith(1)
+    await userEvent.click(within(rows[1] as HTMLElement).getByRole('button'))
+    expect(platform.openExternal).toHaveBeenCalledExactlyOnceWith('https://github.com/octo-org/tool/pull/3')
+  })
+
+  describe('a pull request', () => {
+    const pull = item({ id: 1, number: 8 })
+    const issue = item({
+      id: 2,
+      kind: 'issue',
+      number: 5,
+      title: 'The retry test is flaky',
+      details: details({ closingPulls: [closingPull()] }),
+    })
+    const links = (): CardLinks => ({ index: linkIndex(snapshot({ yours: list([pull, issue]) })), reveal: vi.fn() })
+
+    it('lists the listed issues it Closes', () => {
+      expect(openPeek(pull, { links: links() }).getByText('Closes').nextElementSibling).toHaveTextContent(
+        '#5 The retry test is flaky',
+      )
+    })
+
+    it('lists nothing when it closes no listed issue', () => {
+      expect(openPeek(item({ id: 3, number: 9 }), { links: links() }).queryByText('Closes')).not.toBeInTheDocument()
+    })
   })
 
   it('names the teams a review is asked of', () => {
