@@ -1,6 +1,7 @@
 package worktrees
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -135,14 +136,7 @@ func worktreeItem(wt *Worktree) (item.Kind, int, bool) {
 // origin's first, then the others by remote name, each repository once.
 func remoteRefs(remotes map[string]repo.Name, kind item.Kind, number int) []item.Ref {
 	names := slices.SortedFunc(maps.Keys(remotes), func(a, b string) int {
-		switch {
-		case a == originRemote:
-			return -1
-		case b == originRemote:
-			return 1
-		default:
-			return strings.Compare(a, b)
-		}
+		return cmp.Or(cmp.Compare(remoteRank(a), remoteRank(b)), strings.Compare(a, b))
 	})
 
 	refs := make([]item.Ref, 0, len(names))
@@ -152,6 +146,15 @@ func remoteRefs(remotes map[string]repo.Name, kind item.Kind, number int) []item
 	}
 
 	return refs
+}
+
+// remoteRank orders the remote name among a clone's remotes: origin before every other.
+func remoteRank(name string) int {
+	if name == originRemote {
+		return 0
+	}
+
+	return 1
 }
 
 // uniqueRefs lists every ref the targets may be, each once.

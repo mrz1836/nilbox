@@ -499,6 +499,30 @@ func TestListPicksTheRightRemote(t *testing.T) {
 	assert.Equal(t, "upstream-org", row.Item.Owner, "origin's #2 is a pull request, not an issue")
 }
 
+func TestAnItemIsLookedForInOriginFirstThenTheOtherRemotesByNameEachRepositoryOnce(t *testing.T) {
+	t.Parallel()
+
+	origin := exampleRepo()
+	upstream := repo.Name{Owner: "upstream-org", Repo: origin.Repo}
+	fork := repo.Name{Owner: "octo-fork", Repo: origin.Repo}
+
+	remotes := map[string]repo.Name{
+		"upstream": upstream,
+		"origin":   origin,
+		"fork":     fork,
+		"backup":   {Owner: strings.ToUpper(origin.Owner), Repo: strings.ToUpper(origin.Repo)}, // origin's, cased otherwise
+	}
+
+	got := remoteRefs(remotes, item.KindPR, 7)
+
+	assert.Equal(t, []string{
+		refKey(origin.Owner, origin.Repo, 7), refKey(fork.Owner, fork.Repo, 7), refKey(upstream.Owner, upstream.Repo, 7),
+	}, refKeys(got), "origin first, then the others by name, and backup's not again")
+	assert.Equal(t, origin, got[0].Repo, "as origin names it")
+	assert.Equal(t, item.KindPR, got[0].Kind)
+	assert.Empty(t, remoteRefs(map[string]repo.Name{}, item.KindPR, 7), "a clone with no GitHub remote has none")
+}
+
 func TestListWithoutGitHub(t *testing.T) {
 	t.Parallel()
 
