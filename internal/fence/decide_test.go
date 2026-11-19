@@ -354,3 +354,43 @@ func TestACommandItCantReadIsRefused(t *testing.T) {
 	assert.True(t, v.Deny)
 	assert.Contains(t, v.Reason, "can't read")
 }
+
+func TestGitsListingsRunOnlyWhileTheyList(t *testing.T) {
+	t.Parallel()
+
+	runCases(t, fence.GitHubTasks, []verdictCase{
+		{name: "branches with a commit", call: bash("git branch --contains 0123abc"), deny: false},
+		{name: "branches sorted", call: bash("git branch -a -vv --sort=-committerdate"), deny: false},
+		{name: "branches merged, formatted", call: bash("git branch --merged=main --format '%(refname)'"), deny: false},
+		{name: "a new branch", call: bash("git branch feature"), deny: true},
+		{name: "a renamed branch", call: bash("git branch -m old new"), deny: true},
+		{name: "a branch pointed elsewhere", call: bash("git branch -f main HEAD~3"), deny: true},
+		{name: "tags", call: bash("git tag"), deny: false},
+		{name: "tags listed", call: bash("git tag -l -n --sort=-v:refname"), deny: false},
+		{name: "tags at a commit", call: bash("git tag --points-at HEAD --no-column"), deny: false},
+		{name: "tags containing one", call: bash("git tag --contains=0123abc"), deny: false},
+		{name: "a deleted tag", call: bash("git tag -d v1.0.0"), deny: true},
+		{name: "remotes", call: bash("git remote"), deny: false},
+		{name: "a remote's URL", call: bash("git remote get-url origin"), deny: false},
+		{name: "a remote shown", call: bash("git remote show origin"), deny: false},
+		{name: "a remote pruned", call: bash("git remote prune origin"), deny: true},
+		{name: "the config listed", call: bash("git config --list --show-origin"), deny: false},
+		{name: "a config value read", call: bash("git config get user.name"), deny: false},
+		{name: "a bare git config", call: bash("git config"), deny: true},
+		{name: "a config value set", call: bash("git config user.name x"), deny: true},
+	})
+}
+
+func TestACommandsHomeIsTheUsers(t *testing.T) {
+	t.Parallel()
+
+	runCases(t, fence.EditTest, []verdictCase{
+		{name: "a key under $HOME", call: bash("cat $HOME/.ssh/id_ed25519"), deny: true},
+		{name: "a key under ${HOME}", call: bash("cat ${HOME}/.aws/credentials"), deny: true},
+		{name: "a key under ~", call: bash("head ~/.netrc"), deny: true},
+		{name: "a key through cd", call: bash("cd ~/.ssh && cat id_ed25519"), deny: true},
+		{name: "home itself", call: bash("ls ~"), deny: false},
+		{name: "home by name", call: bash("ls $HOME"), deny: false},
+		{name: "a module under ${HOME}", call: bash("ls ${HOME}/go/pkg/mod"), deny: false},
+	})
+}
