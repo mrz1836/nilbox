@@ -1939,10 +1939,15 @@ with GitHub.
 **Show details.** Click a card's empty space, or **Show details**, to open it in place, under
 its two lines, with everything the card leaves out, read from what the inbox already has, so it
 costs no request: where it stands (the checks as a bar with their counts, the review, the
-merge, or an issue's projects and sub-issues), the change (lines added and removed, files,
-commits, the head branch and whether it comes from a fork, and the sensitive files by
-category), and what is around it (the agent session and how it started, what the routines did
-with it, why it is here, and every label). Its buttons repeat your next move, offer **Review**
+merge, or an issue's projects, each with its status and every field it has a value in, such as
+Size or Estimate, and its sub-issues), the change (lines added and removed, files, commits, the
+head branch and whether it comes from a fork, and the sensitive files by category) or, for an
+issue, how it is planned, as GitHub's sidebar shows it (its type, such as **Task**, its
+values in its organization's issue fields, such as **Priority** and **Effort**, its milestone
+with its due day, in amber once it has passed, and how far along it is, the issue it is a
+sub-issue of, and how many open issues block it and it blocks), and what is around it (the
+agent session and how it started, what the routines did with it, why it is here, and every
+label). An area with nothing to say is left out. Its buttons repeat your next move, offer **Review**
 or **Read** when that move doesn't open the item, open the agent's launch options, and snooze,
 dismiss, pin, or open it on GitHub, and, with **Unread dots** on, **Mark as read** or **Mark as
 unread**. Click again to close it.

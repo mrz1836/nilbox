@@ -14,6 +14,7 @@ import {
   autopilotMatch,
   details,
   fileCheck,
+  issueInfo,
   item,
   itemResolution,
   profile,
@@ -1043,20 +1044,117 @@ describe('ItemRow peek', () => {
   })
 
   it('shows where an issue stands, and leaves out what it hasn’t', async () => {
+    const roadmap = project({
+      fields: [
+        { name: 'Priority', value: 'High', color: '#fa4549' },
+        { name: 'Pillar', value: '19 Web surfaces', color: '#2da44e' },
+        { name: 'Estimate', value: '0.5', color: '' },
+      ],
+    })
     const it = item({
       kind: 'issue',
       authored: true,
-      details: details({ comments: 0, labels: [], projects: [project()], subIssues: { total: 8, completed: 6 } }),
+      details: details({ comments: 0, labels: [], projects: [roadmap], subIssues: { total: 8, completed: 6 } }),
     })
     const row = mountCard(it)
     await userEvent.click(toggles(row).stretched)
 
-    expect(peek().getByText('6 of 8 done')).toBeInTheDocument()
-    await userEvent.click(peek().getByRole('button', { name: /^Project Roadmap/ }))
+    const stands = within(peek().getByRole('region', { name: 'Where it stands' }))
+    expect(stands.getByText('6 of 8 done')).toBeInTheDocument()
+    // Every field the project has a value in, by name, rather than the card's featured few.
+    for (const [name, value] of [
+      ['Priority', 'High'],
+      ['Pillar', '19 Web surfaces'],
+      ['Estimate', '0.5'],
+    ] as const) {
+      expect(stands.getByText(name).nextElementSibling).toHaveTextContent(value)
+    }
+    expect(stands.getByRole('button', { name: /^Project Roadmap/ })).not.toHaveTextContent('High')
+
+    await userEvent.click(stands.getByRole('button', { name: /^Project Roadmap/ }))
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/orgs/acme-org/projects/1')
     expect(peek().queryByRole('region', { name: 'The change' })).not.toBeInTheDocument()
+    // Planned in no way, it has no area for it.
+    expect(peek().queryByRole('region', { name: 'The issue' })).not.toBeInTheDocument()
     expect(peek().getByText('You opened it')).toBeInTheDocument()
     expect(peek().queryByText('Labels')).not.toBeInTheDocument()
+  })
+
+  it('shows how an issue is planned, as GitHub’s sidebar does', async () => {
+    const planned = issueInfo({
+      type: 'Task',
+      typeColor: '#bf8700',
+      fields: [
+        { name: 'Priority', value: 'Low', color: '#2da44e' },
+        { name: 'Target', value: 'Jun 27, 2026', color: '' },
+      ],
+      milestone: {
+        title: 'v1.2',
+        url: 'https://github.com/acme-org/example-repo/milestone/3',
+        dueOn: '2026-06-30',
+        closed: false,
+        progress: 42.5,
+      },
+      parent: {
+        repo: 'acme-org/example-repo',
+        number: 12,
+        title: 'Ship the widget',
+        url: 'https://github.com/acme-org/example-repo/issues/12',
+      },
+      blockedBy: 2,
+      blocking: 1,
+    })
+    const row = mountCard(item({ kind: 'issue', details: details({ labels: [], issue: planned }) }))
+    await userEvent.click(toggles(row).stretched)
+
+    // It fills the column a pull request's change does.
+    expect(
+      peek()
+        .getAllByRole('region')
+        .map((r) => r.getAttribute('aria-label')),
+    ).toEqual(['The issue', 'Around it'])
+
+    const plan = within(peek().getByRole('region', { name: 'The issue' }))
+    expect(plan.getByText('Type').nextElementSibling).toHaveTextContent('Task')
+    expect(plan.getByText('Priority').nextElementSibling).toHaveTextContent('Low')
+    expect(plan.getByText('Target').nextElementSibling).toHaveTextContent('Jun 27, 2026')
+    expect(plan.getByText('Due Jun 30, 2026')).toBeInTheDocument()
+    expect(plan.getByText('43% done')).toBeInTheDocument()
+    expect(plan.getByText('Blocked by 2 open issues')).toHaveClass('text-warning')
+    expect(plan.getByText('Blocking 1 open issue')).toBeInTheDocument()
+
+    await userEvent.click(plan.getByRole('button', { name: 'v1.2' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/milestone/3')
+
+    // A parent in the issue's own repository goes by its number alone.
+    await userEvent.click(plan.getByRole('button', { name: '#12 Ship the widget' }))
+    expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/issues/12')
+  })
+
+  it('says when an issue’s milestone is overdue, closed, or in another repository’s parent', async () => {
+    const milestone = { title: 'v1.0', url: 'https://github.com/acme-org/example-repo/milestone/1', progress: 100 }
+    const overdue = issueInfo({
+      milestone: { ...milestone, dueOn: '2026-06-01', closed: false },
+      parent: { repo: 'acme-org/plans', number: 4, title: 'Q3', url: 'https://github.com/acme-org/plans/issues/4' },
+    })
+    const closed = issueInfo({ milestone: { ...milestone, dueOn: '2026-06-01', closed: true } })
+
+    render(
+      <ul>
+        <ItemRow item={item({ kind: 'issue', details: details({ issue: overdue }) })} launch={null} />
+        <ItemRow item={item({ id: 2, kind: 'issue', details: details({ issue: closed }) })} launch={null} />
+      </ul>,
+    )
+    const [late, done] = screen.getAllByRole('listitem') as [HTMLElement, HTMLElement]
+
+    await userEvent.click(toggles(late).stretched)
+    expect(peek().getByText('Overdue since Jun 1, 2026')).toHaveClass('text-warning')
+    expect(peek().getByRole('button', { name: 'acme-org/plans#4 Q3' })).toBeInTheDocument()
+    await userEvent.click(toggles(late).chevron)
+
+    await userEvent.click(toggles(done).stretched)
+    expect(peek().getByText('Closed')).toBeInTheDocument()
+    expect(peek().queryByText(/Overdue/)).not.toBeInTheDocument()
   })
 
   it('leaves out where an item stands while it has nothing to say', async () => {

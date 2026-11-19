@@ -324,6 +324,68 @@ func (p storedProject) githubProject() github.ProjectItem {
 	return github.ProjectItem{Title: p.Title, URL: p.URL, Status: p.Status, StatusColor: p.StatusColor, Fields: fields}
 }
 
+// storedIssueInfo is how an issue is planned as the issue_info column of item_details
+// stores it (see 0025_issue_info). A row stored before it holds '{}', which reads as an
+// issue planned in no way.
+type storedIssueInfo struct {
+	Type      string             `json:"type"`
+	TypeColor string             `json:"typeColor"`
+	Fields    []storedField      `json:"fields"`
+	Milestone *storedMilestone   `json:"milestone"`
+	Parent    *storedIssueParent `json:"parent"`
+	BlockedBy int                `json:"blockedBy"`
+	Blocking  int                `json:"blocking"`
+}
+
+// storedMilestone is an issue's milestone, as storedIssueInfo keeps it: DueOn is its due
+// day as "2006-01-02", "" when it has none.
+type storedMilestone struct {
+	Title    string  `json:"title"`
+	URL      string  `json:"url"`
+	DueOn    string  `json:"dueOn"`
+	Closed   bool    `json:"closed"`
+	Progress float64 `json:"progress"`
+}
+
+// storedIssueParent is the issue an issue is a sub-issue of, as storedIssueInfo keeps it.
+type storedIssueParent struct {
+	Repo   string `json:"repo"`
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	URL    string `json:"url"`
+}
+
+// storedIssueInfoOf converts how a fetched issue is planned for storing. Its fields are
+// never nil, so the column always holds an array there.
+func storedIssueInfoOf(info github.IssueInfo) storedIssueInfo {
+	fields := make([]storedField, 0, len(info.Fields))
+	for _, f := range info.Fields {
+		fields = append(fields, storedField(f))
+	}
+
+	stored := storedIssueInfo{
+		Type: info.Type.Name, TypeColor: info.Type.Color, Fields: fields,
+		BlockedBy: info.BlockedBy, Blocking: info.Blocking,
+	}
+
+	if m := info.Milestone; m != nil {
+		dueOn := ""
+		if !m.DueOn.IsZero() {
+			dueOn = m.DueOn.UTC().Format(time.DateOnly)
+		}
+
+		stored.Milestone = &storedMilestone{
+			Title: m.Title, URL: m.URL, DueOn: dueOn, Closed: m.State == github.StateClosed, Progress: m.Progress,
+		}
+	}
+
+	if p := info.Parent; p != nil {
+		stored.Parent = &storedIssueParent{Repo: p.Repo, Number: p.Number, Title: p.Title, URL: p.URL}
+	}
+
+	return stored
+}
+
 // detailsRow converts fetched details to their row.
 func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.UpsertDetailsParams, error) {
 	labels := make([]storedLabel, 0, len(d.Labels))
@@ -361,6 +423,11 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		return queries.UpsertDetailsParams{}, err
 	}
 
+	encodedIssueInfo, err := store.EncodeJSON(storedIssueInfoOf(d.Issue))
+	if err != nil {
+		return queries.UpsertDetailsParams{}, err
+	}
+
 	return queries.UpsertDetailsParams{
 		ItemID:                 itemID,
 		Labels:                 encodedLabels,
@@ -393,6 +460,7 @@ func detailsRow(itemID int64, d github.ItemDetails, now time.Time) (queries.Upse
 		ReviewTeams:            reviewTeams,
 		AutoMergeMethod:        d.AutoMerge.Method,
 		AutoMergeAt:            autoMergeAt(d.AutoMerge),
+		IssueInfo:              encodedIssueInfo,
 		FetchedAt:              now,
 	}, nil
 }

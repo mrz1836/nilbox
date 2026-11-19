@@ -256,6 +256,11 @@ type Details struct {
 	// request and an issue without sub-issues.
 	SubIssues SubIssues `json:"subIssues"`
 
+	// Issue is how an issue is planned beyond its projects: its type, issue fields,
+	// milestone, parent, and the open issues blocking it and that it blocks. It is empty
+	// for a pull request.
+	Issue IssueInfo `json:"issue"`
+
 	// Comments counts the conversation's comments, review comments included for a pull
 	// request.
 	Comments int `json:"comments"`
@@ -336,6 +341,68 @@ type ProjectField struct {
 
 	// Color is a single-select option's color as "#rrggbb", and "" for any other value.
 	Color string `json:"color"`
+}
+
+// IssueInfo is how an issue is planned, beyond the projects it is in, as GitHub's sidebar
+// shows it.
+type IssueInfo struct {
+	// Type is the issue's type, such as "Task", and TypeColor its color as "#rrggbb"; both
+	// "" when it has none.
+	Type      string `json:"type"`
+	TypeColor string `json:"typeColor"`
+
+	// Fields are the issue's values in its organization's issue fields, such as Priority,
+	// in GitHub's order.
+	Fields []IssueField `json:"fields"`
+
+	// Milestone is the milestone the issue is in, null when it is in none.
+	Milestone *Milestone `json:"milestone"`
+
+	// Parent is the issue it is a sub-issue of, null when it is none's.
+	Parent *IssueRef `json:"parent"`
+
+	// BlockedBy counts the open issues that block it, and Blocking the open issues it
+	// blocks.
+	BlockedBy int `json:"blockedBy"`
+	Blocking  int `json:"blocking"`
+}
+
+// IssueField is an issue's value in one of its organization's issue fields.
+type IssueField struct {
+	// Name is the field's name, such as "Priority".
+	Name string `json:"name"`
+
+	// Value is the value as GitHub shows it: an option's name, the options' names joined
+	// by commas, a number, text, or a date such as "Jun 27, 2026".
+	Value string `json:"value"`
+
+	// Color is a single-select option's color as "#rrggbb", and "" for any other value.
+	Color string `json:"color"`
+}
+
+// Milestone is the milestone an issue is in.
+type Milestone struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+
+	// DueOn is its due day as "2006-01-02", a day in no time zone, or "" when it has none.
+	DueOn string `json:"dueOn"`
+
+	// Closed reports a closed milestone.
+	Closed bool `json:"closed"`
+
+	// Progress is how far along it is, as the percentage of its issues and pull requests
+	// closed, from 0 to 100.
+	Progress float64 `json:"progress"`
+}
+
+// IssueRef names another issue: the one an issue is a sub-issue of.
+type IssueRef struct {
+	// Repo is its repository as "owner/name".
+	Repo   string `json:"repo"`
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	URL    string `json:"url"`
 }
 
 // SubIssues counts an issue's sub-issues.
@@ -642,6 +709,7 @@ type itemRow struct {
 	Approvals        int
 	ChangesRequested int
 	SubIssues        SubIssues
+	IssueInfo        storedIssueInfo
 	DetailsFetchedAt *time.Time
 	HeadOID          string
 	AutoMerge        string
@@ -690,6 +758,11 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		return itemRow{}, fmt.Errorf("read the held workflow runs of item %d: %w", r.ID, err)
 	}
 
+	issueInfo, err := decodeIssueInfo(r.IssueInfo)
+	if err != nil {
+		return itemRow{}, fmt.Errorf("read how issue %d is planned: %w", r.ID, err)
+	}
+
 	stored, err := filesColumns{
 		itemID: r.FilesItemID, head: r.FilesHeadOID, total: r.FilesTotal, files: r.Files,
 		complete: r.FilesComplete, err: r.FilesError, checkedAt: r.FilesCheckedAt,
@@ -724,6 +797,7 @@ func itemRowOf(r queries.ListItemsRow) (itemRow, error) {
 		SubIssues: SubIssues{
 			Total: int(store.Deref(r.SubIssuesTotal)), Completed: int(store.Deref(r.SubIssuesCompleted)),
 		},
+		IssueInfo:   issueInfo,
 		ReviewUsers: reviewUsers, ReviewTeams: reviewTeams,
 
 		Stored: stored,
@@ -829,6 +903,31 @@ func (p storedProject) project() Project {
 	return Project{Title: p.Title, URL: p.URL, Status: p.Status, StatusColor: p.StatusColor, Fields: fields}
 }
 
+// issueInfo converts how a stored issue is planned to its DTO, whose fields are never nil.
+func (s storedIssueInfo) issueInfo() IssueInfo {
+	fields := make([]IssueField, 0, len(s.Fields))
+	for _, f := range s.Fields {
+		fields = append(fields, IssueField(f))
+	}
+
+	info := IssueInfo{
+		Type: s.Type, TypeColor: s.TypeColor, Fields: fields,
+		BlockedBy: max(s.BlockedBy, 0), Blocking: max(s.Blocking, 0),
+	}
+
+	if m := s.Milestone; m != nil {
+		info.Milestone = &Milestone{
+			Title: m.Title, URL: m.URL, DueOn: m.DueOn, Closed: m.Closed, Progress: min(max(m.Progress, 0), 100),
+		}
+	}
+
+	if p := s.Parent; p != nil {
+		info.Parent = &IssueRef{Repo: p.Repo, Number: p.Number, Title: p.Title, URL: p.URL}
+	}
+
+	return info
+}
+
 // decodeColumn reads a nullable JSON array column, nil when it is NULL.
 func decodeColumn[T any](raw *string) ([]T, error) {
 	if raw == nil {
@@ -836,6 +935,15 @@ func decodeColumn[T any](raw *string) ([]T, error) {
 	}
 
 	return store.DecodeJSON[[]T](*raw)
+}
+
+// decodeIssueInfo reads a stored issue_info column, or none when the item has no details.
+func decodeIssueInfo(raw *string) (storedIssueInfo, error) {
+	if raw == nil {
+		return storedIssueInfo{}, nil
+	}
+
+	return store.DecodeJSON[storedIssueInfo](*raw)
 }
 
 // decodeReasons reads stored wake reasons, or nil when there are none or they cannot be
@@ -909,6 +1017,7 @@ func (r *itemRow) details(viewer string, ignored []string) *Details {
 			Approvals: r.Approvals, ChangesRequested: r.ChangesRequested,
 		},
 		SubIssues: r.SubIssues,
+		Issue:     r.IssueInfo.issueInfo(),
 		AutoMerge: r.AutoMerge,
 		FetchedAt: formatOptionalTime(r.DetailsFetchedAt),
 

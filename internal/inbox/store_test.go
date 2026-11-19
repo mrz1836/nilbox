@@ -309,6 +309,30 @@ func TestStoredJSONThatCannotBeReadIsAnError(t *testing.T) {
 	}
 }
 
+func TestAnIssueStoredBeforeItsPlanningReadsAsPlannedInNoWay(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.client.inbox = fetched(nil, nil, []github.Item{issue("docs-repo", 3, "COLLABORATOR")})
+	h.client.details = map[string]github.ItemDetails{
+		nodeID(3): {Issue: github.IssueInfo{Type: github.IssueType{Name: "Bug"}, BlockedBy: 1}},
+	}
+	h.refresh(t)
+
+	// A row a build before the column stored holds its default.
+	h.exec(t, "UPDATE item_details SET issue_info = '{}'")
+
+	snap, err := h.svc.Snapshot(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, IssueInfo{Fields: []IssueField{}}, itemByNumber(t, snap.Yours, 3).Details.Issue)
+
+	// An object the column takes, but whose fields aren't a list, can't be read.
+	h.exec(t, `UPDATE item_details SET issue_info = '{"fields": 1}'`)
+
+	_, err = h.svc.Snapshot(t.Context())
+	require.ErrorContains(t, err, "read the inbox items")
+}
+
 func TestStoreFixtureReportsEachRefusedWrite(t *testing.T) {
 	t.Parallel()
 

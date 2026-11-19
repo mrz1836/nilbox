@@ -418,6 +418,18 @@ check counts as running. A refusal for what the run is still comes back
 as a 403 or 422 like any other, with no code of its own, so `approveError` tells it by GitHub's
 message ("fork pull request") and wraps `ErrRunNotApprovable`, keeping GitHub's words.
 
+**How an issue is planned.** The details fragment reads, of each issue, what GitHub's sidebar
+shows beyond its projects (`issueInfoFields`, `github.IssueInfo`): its type, milestone, parent,
+the open issues it is blocked by and blocking (`issueDependenciesSummary`), and its values in
+its organization's issue fields (`issueFieldValues`, single select, multi select, number,
+text, and date). All are single objects but the field values, one connection per issue, and a
+batch's price stays where it was (measured in November 2026: 1 point for 25 issues with them
+and without, 2 with the projects either way). Each kind of field value aliases its value apart
+(`number`, `text`, `date`) so values of different types never share a name. Because the
+fragment is shared, a card's own read and the issue sheet's view read them too. The inbox
+stores them as one JSON object, `item_details.issue_info` (migration 0025), and the card's
+peek shows them as **The issue**, in the column a pull request's change takes.
+
 ## internal/inbox
 
 These notes cover what the inbox does for Autopilot: the routines' searches, which each

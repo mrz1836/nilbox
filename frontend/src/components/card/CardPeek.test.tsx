@@ -147,7 +147,7 @@ describe('CardPeek', () => {
     expect(assigned.getByText('Assigned to you · 1 comment')).toBeInTheDocument()
   })
 
-  it('names every project an issue is in, with its status and featured fields', () => {
+  it('names every project an issue is in, with its status and every field by name', () => {
     const fields = [
       { name: 'Phase', value: 'Beta', color: '' },
       { name: 'Size', value: 'XL', color: '' },
@@ -170,11 +170,19 @@ describe('CardPeek', () => {
       }),
     )
 
-    const roadmap = peek.getByRole('button', {
-      name: 'Project Roadmap: In progress, Priority High, Size XL. Open it on GitHub',
+    // The peek lists each field under its name, so the link leaves the card's featured pills
+    // out.
+    const roadmap = peek.getByRole('button', { name: 'Project Roadmap: In progress. Open it on GitHub' })
+    expect(within(roadmap).queryByText('High')).not.toBeInTheDocument()
+    expect(peek.getAllByRole('term').map((term) => term.textContent)).toEqual(
+      expect.arrayContaining(['Phase', 'Size', 'Priority']),
+    )
+    // A single-select option is a pill outlined in its color; any other value is text.
+    expect(peek.getByText('Priority').nextElementSibling?.firstElementChild).toHaveStyle({
+      borderColor: '#fa4549b3',
     })
-    expect(within(roadmap).getByText('High').parentElement).toHaveStyle({ borderColor: '#fa4549b3' })
-    expect(within(roadmap).getByText('XL').parentElement).toHaveClass('border-border')
+    expect(peek.getByText('Size').nextElementSibling).toHaveTextContent('XL')
+    expect(peek.getByText('Size').nextElementSibling?.firstElementChild).not.toHaveClass('rounded-full')
     expect(peek.getByRole('button', { name: 'Project Sprint. Open it on GitHub' })).toBeInTheDocument()
     expect(peek.queryByText('Sub-issues')).not.toBeInTheDocument()
   })

@@ -1539,7 +1539,23 @@ func TestRefreshStoresEachItemsDetails(t *testing.T) {
 	h.client.inbox = fetched([]github.Item{a}, []github.Item{b}, []github.Item{a, c})
 	h.client.details = map[string]github.ItemDetails{
 		nodeID(1): prDetails(),
-		nodeID(3): {Labels: []github.Label{{Name: "bug", Color: "#d73a4a"}}, Comments: 7},
+		nodeID(3): {
+			Labels: []github.Label{{Name: "bug", Color: "#d73a4a"}}, Comments: 7,
+			Issue: github.IssueInfo{
+				Type:   github.IssueType{Name: "Bug", Color: "#fa4549"},
+				Fields: []github.IssueField{{Name: "Priority", Value: "High", Color: "#fa4549"}, {Name: "Estimate", Value: "3"}},
+				Milestone: &github.Milestone{
+					Title: "v2", URL: "https://github.com/acme-org/docs-repo/milestone/2",
+					DueOn: time.Date(2026, 7, 1, 7, 0, 0, 0, time.UTC), State: github.StateClosed, Progress: 100,
+				},
+				Parent: &github.ItemRef{
+					Repo: "acme-org/docs-repo", Number: 1, Title: "Docs overhaul",
+					URL: "https://github.com/acme-org/docs-repo/issues/1",
+				},
+				BlockedBy: 1,
+				Blocking:  2,
+			},
+		},
 	}
 
 	snap := h.refresh(t)
@@ -1557,15 +1573,30 @@ func TestRefreshStoresEachItemsDetails(t *testing.T) {
 		Mergeable:    "MERGEABLE",
 		Checks:       Checks{State: "SUCCESS", Passed: 12, Skipped: 3},
 		Reviews:      Reviews{Decision: "APPROVED", Reviewers: 2, Reviewed: 1, Approvals: 1},
+		Issue:        IssueInfo{Fields: []IssueField{}},
 		FetchedAt:    "2026-01-10T12:00:00Z",
 	}, itemByNumber(t, snap.ReviewRequested, 1).Details)
 
 	assert.Equal(t, &Details{
-		Labels:    []Label{{Name: "bug", Color: "#d73a4a"}},
-		Projects:  []Project{},
-		Comments:  7,
+		Labels:   []Label{{Name: "bug", Color: "#d73a4a"}},
+		Projects: []Project{},
+		Comments: 7,
+		Issue: IssueInfo{
+			Type: "Bug", TypeColor: "#fa4549",
+			Fields: []IssueField{{Name: "Priority", Value: "High", Color: "#fa4549"}, {Name: "Estimate", Value: "3"}},
+			Milestone: &Milestone{
+				Title: "v2", URL: "https://github.com/acme-org/docs-repo/milestone/2", DueOn: "2026-07-01",
+				Closed: true, Progress: 100,
+			},
+			Parent: &IssueRef{
+				Repo: "acme-org/docs-repo", Number: 1, Title: "Docs overhaul",
+				URL: "https://github.com/acme-org/docs-repo/issues/1",
+			},
+			BlockedBy: 1,
+			Blocking:  2,
+		},
 		FetchedAt: "2026-01-10T12:00:00Z",
-	}, itemByNumber(t, snap.Yours, 3).Details)
+	}, itemByNumber(t, snap.Yours, 3).Details, "an issue's planning comes back as it was read, its milestone due on its day")
 
 	assert.Nil(t, itemByNumber(t, snap.Yours, 2).Details, "GitHub sent nothing for it")
 }

@@ -104,6 +104,7 @@ import type {
   IntegrationTool,
   IntegrationTools,
   ItemDetails,
+  IssueInfo,
   ItemResolution,
   LaunchDefaults,
   LaunchHold,
@@ -1001,6 +1002,20 @@ export function project(overrides: Partial<Project> = {}): Project {
   }
 }
 
+// issueInfo is how an issue is planned: in no way, unless overridden.
+export function issueInfo(overrides: Partial<IssueInfo> = {}): IssueInfo {
+  return {
+    type: '',
+    typeColor: '',
+    fields: [],
+    milestone: null,
+    parent: null,
+    blockedBy: 0,
+    blocking: 0,
+    ...overrides,
+  }
+}
+
 // details are a pull request's details: passing checks, an approval out of two
 // reviewers, a few comments, and two labels.
 export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
@@ -1011,6 +1026,7 @@ export function details(overrides: Partial<ItemDetails> = {}): ItemDetails {
     ],
     projects: [],
     subIssues: { total: 0, completed: 0 },
+    issue: issueInfo(),
     comments: 4,
     additions: 120,
     deletions: 30,

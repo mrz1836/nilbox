@@ -95,6 +95,13 @@ export interface Details {
     "subIssues": SubIssues;
 
     /**
+     * Issue is how an issue is planned beyond its projects: its type, issue fields,
+     * milestone, parent, and the open issues blocking it and that it blocks. It is empty
+     * for a pull request.
+     */
+    "issue": IssueInfo;
+
+    /**
      * Comments counts the conversation's comments, review comments included for a pull
      * request.
      */
@@ -147,6 +154,76 @@ export interface Details {
      * PushedSinceReview.
      */
     "viewerVerdict": ViewerVerdict;
+}
+
+/**
+ * IssueField is an issue's value in one of its organization's issue fields.
+ */
+export interface IssueField {
+    /**
+     * Name is the field's name, such as "Priority".
+     */
+    "name": string;
+
+    /**
+     * Value is the value as GitHub shows it: an option's name, the options' names joined
+     * by commas, a number, text, or a date such as "Jun 27, 2026".
+     */
+    "value": string;
+
+    /**
+     * Color is a single-select option's color as "#rrggbb", and "" for any other value.
+     */
+    "color": string;
+}
+
+/**
+ * IssueInfo is how an issue is planned, beyond the projects it is in, as GitHub's sidebar
+ * shows it.
+ */
+export interface IssueInfo {
+    /**
+     * Type is the issue's type, such as "Task", and TypeColor its color as "#rrggbb"; both
+     * "" when it has none.
+     */
+    "type": string;
+    "typeColor": string;
+
+    /**
+     * Fields are the issue's values in its organization's issue fields, such as Priority,
+     * in GitHub's order.
+     */
+    "fields": IssueField[] | null;
+
+    /**
+     * Milestone is the milestone the issue is in, null when it is in none.
+     */
+    "milestone": Milestone | null;
+
+    /**
+     * Parent is the issue it is a sub-issue of, null when it is none's.
+     */
+    "parent": IssueRef | null;
+
+    /**
+     * BlockedBy counts the open issues that block it, and Blocking the open issues it
+     * blocks.
+     */
+    "blockedBy": number;
+    "blocking": number;
+}
+
+/**
+ * IssueRef names another issue: the one an issue is a sub-issue of.
+ */
+export interface IssueRef {
+    /**
+     * Repo is its repository as "owner/name".
+     */
+    "repo": string;
+    "number": number;
+    "title": string;
+    "url": string;
 }
 
 /**
@@ -313,6 +390,30 @@ export interface List {
     "items": Item[] | null;
     "shown": number;
     "total": number;
+}
+
+/**
+ * Milestone is the milestone an issue is in.
+ */
+export interface Milestone {
+    "title": string;
+    "url": string;
+
+    /**
+     * DueOn is its due day as "2006-01-02", a day in no time zone, or "" when it has none.
+     */
+    "dueOn": string;
+
+    /**
+     * Closed reports a closed milestone.
+     */
+    "closed": boolean;
+
+    /**
+     * Progress is how far along it is, as the percentage of its issues and pull requests
+     * closed, from 0 to 100.
+     */
+    "progress": number;
 }
 
 /**

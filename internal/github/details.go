@@ -106,7 +106,7 @@ const (
 )
 
 // detailFieldsHead is the DetailFields fragment up to the end of an issue's fields, which
-// detailFieldsTail closes.
+// detailFieldsTail closes. An issue's fields end with how it is planned (issueInfoFields).
 const detailFieldsHead = `
 fragment DetailFields on Node {
   __typename
@@ -150,7 +150,7 @@ fragment DetailFields on Node {
     id
     comments { totalCount }
     labels(first: 50) { nodes { name color } }
-    subIssuesSummary { total completed }`
+    subIssuesSummary { total completed }` + issueInfoFields
 
 // detailFieldsTail closes detailFieldsHead.
 const detailFieldsTail = `
@@ -301,6 +301,11 @@ type ItemDetails struct {
 	// SubIssues counts an issue's sub-issues, and those closed as done. It is zero for a
 	// pull request and for an issue without sub-issues.
 	SubIssues SubIssues
+
+	// Issue is how an issue is planned beyond its projects: its type, issue fields,
+	// milestone, parent, and the open issues blocking it and that it blocks. It is zero for
+	// a pull request.
+	Issue IssueInfo
 
 	// Repo is the item's repository, read whole, when DetailOptions.Repository asked for it;
 	// nil otherwise.
@@ -658,6 +663,13 @@ type detailsNode struct {
 	AutoMergeRequest   *graphQLAutoMerge  `json:"autoMergeRequest"`
 	ProjectItems       graphQLProjects    `json:"projectItems"`
 	SubIssuesSummary   graphQLSubIssues   `json:"subIssuesSummary"`
+
+	// An issue's planning (issueInfoFields).
+	IssueType                *graphQLIssueType   `json:"issueType"`
+	Milestone                *graphQLMilestone   `json:"milestone"`
+	Parent                   *graphQLRef         `json:"parent"`
+	IssueDependenciesSummary graphQLDependencies `json:"issueDependenciesSummary"`
+	IssueFieldValues         graphQLIssueFields  `json:"issueFieldValues"`
 }
 
 // graphQLAutoMerge is a pull request's auto-merge request, null when auto-merge is off.
@@ -789,7 +801,7 @@ func (n *detailsNode) details() (id string, item ItemDetails, ok bool) {
 	case typeIssue:
 		return n.ID, ItemDetails{
 			Labels: n.Labels.labels(), Comments: n.Comments.TotalCount, Projects: n.ProjectItems.projects(),
-			SubIssues: n.SubIssuesSummary.subIssues(),
+			SubIssues: n.SubIssuesSummary.subIssues(), Issue: n.issueInfo(),
 		}, true
 	case typePullRequest:
 		author := ""

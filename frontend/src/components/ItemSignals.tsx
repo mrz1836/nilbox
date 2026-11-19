@@ -53,12 +53,13 @@ export function LabelChip({ label, onFilterBy }: { label: Label; onFilterBy?: Fi
   )
 }
 
-// FieldPill is one of a project's featured fields, such as Priority High, outlined in the
-// option's color, as a project board draws it.
-export function FieldPill({ field }: { field: ProjectField }) {
+// FieldPill is a field's value, such as a project's Priority High, outlined in the
+// option's color, as a project board draws it. On a card it is cut short; wide lets it
+// run as long as its line.
+export function FieldPill({ field, wide = false }: { field: ProjectField; wide?: boolean }) {
   return (
     <span
-      className={`inline-flex max-w-24 shrink-0 items-center rounded-full border px-1.5 text-[0.6875rem] leading-4 font-medium text-text ${field.color === '' ? 'border-border' : ''}`}
+      className={`inline-flex ${wide ? 'max-w-full' : 'max-w-24'} shrink-0 items-center rounded-full border px-1.5 text-[0.6875rem] leading-4 font-medium text-text ${field.color === '' ? 'border-border' : ''}`}
       style={field.color === '' ? undefined : { borderColor: field.color + fieldEdge }}
     >
       <span className="truncate">{field.value}</span>
@@ -86,10 +87,11 @@ export function StatusPill({ project }: { project: Project }) {
 
 // ProjectLink names the project an issue is in, with its status there as a pill in the
 // status's color (StatusPill) and its featured fields (see featuredFields) as outlined
-// pills, and opens the project on GitHub. Its tooltip lists every field.
-export function ProjectLink({ project }: { project: Project }) {
+// pills, and opens the project on GitHub. Its tooltip lists every field. Without
+// featuring, it leaves the fields to whatever lists them beside it.
+export function ProjectLink({ project, featuring = true }: { project: Project; featuring?: boolean }) {
   const where = projectText(project)
-  const featured = featuredFields(project)
+  const featured = featuring ? featuredFields(project) : []
   const spoken = featured.map((f) => `, ${f.name} ${f.value}`).join('')
 
   return (

@@ -1,4 +1,4 @@
-import { use, useState, type ReactNode } from 'react'
+import { Fragment, use, useState, type ReactNode } from 'react'
 
 import { chipOf } from '../../lib/autopilot'
 import { CardPrefsContext } from '../../lib/cardPrefs'
@@ -8,12 +8,23 @@ import type { Step, Verb } from '../../lib/nextStep'
 import { sensitiveCount } from '../../lib/sensitive'
 import { setupWords, sinceWhen, stateLabel, stateText } from '../../lib/sessions'
 import { checksSignal, sizeOf } from '../../lib/signals'
-import { capitalize, formatAge } from '../../lib/time'
+import { capitalize, dayPassed, formatAge, formatDay } from '../../lib/time'
 import { isPinnedItself, isPinned, snoozeLength, type TriageTab } from '../../lib/triage'
-import { openExternal, type AgentInfo, type AgentSession, type InboxItem, type ItemDetails } from '../../platform'
+import { useNowAs } from '../../lib/useNow'
+import {
+  openExternal,
+  type AgentInfo,
+  type AgentSession,
+  type InboxItem,
+  type IssueField,
+  type IssueRef,
+  type ItemDetails,
+  type ItemMilestone,
+  type ProjectField,
+} from '../../platform'
 import { AutopilotRowsContext, useMarkedBy, useRoutineName } from '../autopilot/AutopilotChip'
 import { ArchiveIcon, AutopilotIcon, ClockIcon, DotIcon, ExternalIcon, PinIcon, RingIcon } from '../icons'
-import { LabelChip, ProgressBar, ProjectLink } from '../ItemSignals'
+import { FieldPill, LabelChip, ProgressBar, ProjectLink } from '../ItemSignals'
 import { RelativeTime } from '../RelativeTime'
 import { SensitiveFilesGroup } from '../SensitiveFiles'
 import { openOnGitHub, type TriageActions } from '../TriageControls'
@@ -122,8 +133,27 @@ function StandsPR({ d }: { d: ItemDetails }) {
   )
 }
 
+// FieldGrid lists a project's or an issue's fields, each name beside its value: a
+// single-select option outlined in its color, as GitHub draws it, and any other value as
+// plain text.
+function FieldGrid({ fields }: { fields: readonly (ProjectField | IssueField)[] }) {
+  return (
+    <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
+      {fields.map((field, i) => (
+        <Fragment key={`${String(i)}:${field.name}`}>
+          <dt className="text-muted">{field.name}</dt>
+          <dd className="min-w-0">
+            {field.color === '' ? <span className="break-words">{field.value}</span> : <FieldPill field={field} wide />}
+          </dd>
+        </Fragment>
+      ))}
+    </dl>
+  )
+}
+
 // StandsIssue is where an issue stands: the projects it is in, each with its status and
-// featured fields, and how far its sub-issues are. An issue with neither has no area.
+// every field it has a value in, and how far its sub-issues are. An issue with neither has
+// no area.
 function StandsIssue({ d }: { d: ItemDetails }) {
   const { total, completed } = d.subIssues
 
@@ -135,9 +165,16 @@ function StandsIssue({ d }: { d: ItemDetails }) {
     <Area heading="Where it stands">
       {d.projects.length > 0 && (
         <Fact term="Project">
-          <span className="flex flex-col items-start gap-1">
+          <span className="flex flex-col items-start gap-2">
             {d.projects.map((project) => (
-              <ProjectLink key={project.url} project={project} />
+              <span key={project.url} className="flex w-full min-w-0 flex-col items-start gap-1.5">
+                <ProjectLink project={project} featuring={false} />
+                {project.fields.length > 0 && (
+                  <span className="block w-full border-l border-border pl-3">
+                    <FieldGrid fields={project.fields} />
+                  </span>
+                )}
+              </span>
             ))}
           </span>
         </Fact>
@@ -148,6 +185,111 @@ function StandsIssue({ d }: { d: ItemDetails }) {
             <ProgressBar done={completed} total={total} className="w-24" />
             {`${formatCount(completed)} of ${formatCount(total)} done`}
           </span>
+        </Fact>
+      )}
+    </Area>
+  )
+}
+
+// MilestoneFact is an issue's milestone: its title, which opens it on GitHub, when it is due,
+// in the color of a warning once that day has passed while it is open, and how far along
+// it is, as the issue sheet shows it.
+function MilestoneFact({ milestone }: { milestone: ItemMilestone }) {
+  const { title, url, dueOn, closed, progress } = milestone
+  const overdue = useNowAs((now) => !closed && dueOn !== '' && dayPassed(now, dueOn))
+
+  return (
+    <Fact term="Milestone">
+      <button
+        type="button"
+        title="Open the milestone on GitHub"
+        onClick={() => {
+          openExternal(url)
+        }}
+        className="max-w-full truncate text-left text-text hover:text-accent hover:underline"
+      >
+        {title}
+      </button>
+      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted">
+        {closed ? (
+          <span>Closed</span>
+        ) : (
+          dueOn !== '' && (
+            <span className={overdue ? 'text-warning' : ''}>
+              {overdue ? 'Overdue since' : 'Due'} {formatDay(dueOn)}
+            </span>
+          )
+        )}
+        <span className="flex items-center gap-1.5">
+          <ProgressBar done={progress} total={100} className="w-16" />
+          {`${String(Math.round(progress))}% done`}
+        </span>
+      </span>
+    </Fact>
+  )
+}
+
+// refText names an issue another refers to: "#12 Title" in the item's own repository, and
+// "owner/name#12 Title" in another.
+function refText(ref: IssueRef, repo: string): string {
+  const where = ref.repo.toLowerCase() === repo.toLowerCase() ? '' : ref.repo
+
+  return `${where}#${String(ref.number)} ${ref.title}`
+}
+
+// Planning is how an issue is planned, as GitHub's sidebar shows it: its type, its values in
+// its organization's issue fields, its milestone, the issue it is a sub-issue of, and how
+// many open issues block it and it blocks. An issue planned in none of these ways has no
+// area.
+function Planning({ item, d }: { item: InboxItem; d: ItemDetails }) {
+  const { type, typeColor, fields, milestone, parent, blockedBy, blocking } = d.issue
+
+  if (
+    type === '' &&
+    fields.length === 0 &&
+    milestone === null &&
+    parent === null &&
+    blockedBy === 0 &&
+    blocking === 0
+  ) {
+    return null
+  }
+
+  return (
+    <Area heading="The issue">
+      {type !== '' && (
+        <Fact term="Type">
+          <FieldPill field={{ name: 'Type', value: type, color: typeColor }} wide />
+        </Fact>
+      )}
+      {fields.length > 0 && (
+        <Fact term="Fields">
+          <span className="mt-0.5 block">
+            <FieldGrid fields={fields} />
+          </span>
+        </Fact>
+      )}
+      {milestone !== null && <MilestoneFact milestone={milestone} />}
+      {parent !== null && (
+        <Fact term="Sub-issue of">
+          <button
+            type="button"
+            title="Open it on GitHub"
+            onClick={() => {
+              openExternal(parent.url)
+            }}
+            className="max-w-full truncate text-left text-text hover:text-accent hover:underline"
+          >
+            {refText(parent, item.repo)}
+          </button>
+        </Fact>
+      )}
+      {(blockedBy > 0 || blocking > 0) && (
+        <Fact term="Relationships">
+          {blockedBy > 0 && (
+            <span className="block text-warning">Blocked by {counted(blockedBy, 'open issue', 'open issues')}</span>
+          )}
+          {blocking > 0 && <span className="block">Blocking {counted(blocking, 'open issue', 'open issues')}</span>}
         </Fact>
       )}
     </Area>
@@ -323,9 +465,11 @@ export interface CardPeekProps {
 
 // CardPeek is a card opened in place: everything the card leaves out, under its two lines,
 // read from what the card already has, so it asks GitHub for nothing. Where it stands
-// (each step of the track with its numbers, or an issue's projects and sub-issues), the
-// change (its size, branch, and sensitive files), and what is around it (the agent
-// session, the routines, why it is here, every label), as three columns that become two,
+// (each step of the track with its numbers, or an issue's projects, with every field, and
+// sub-issues), the change (a pull request's size, branch, and sensitive files) or the
+// issue (its type, issue fields, milestone, parent, and what blocks it), and what is
+// around it (the agent session, the routines, why it is here, every label), as three
+// columns that become two,
 // then one, as the list narrows; an area with nothing to say is left out. Its action bar
 // repeats the primary, offers Review or Read beside a primary that doesn't open the item,
 // the agent's launch options, the triage actions, GitHub, and, while Settings → Cards'
@@ -363,7 +507,7 @@ export function CardPeek({
       className="relative z-10 col-span-full row-start-2 mt-3 grid grid-cols-3 gap-5.5 border-t border-dashed border-border bg-linear-to-b from-accent/4 to-transparent pt-4 pl-15.25 text-xs @max-4xl:grid-cols-2 @max-4xl:pl-4 @max-xl:grid-cols-1"
     >
       {d !== null && (isPR ? <StandsPR d={d} /> : <StandsIssue d={d} />)}
-      {d !== null && isPR && <Change item={item} d={d} />}
+      {d !== null && (isPR ? <Change item={item} d={d} /> : <Planning item={item} d={d} />)}
       <Around item={item} session={session} agents={agents} onFilterBy={onFilterBy} />
       <div className="col-span-full flex flex-wrap items-center gap-1.5 border-t border-border pt-3">
         <PrimaryVerb

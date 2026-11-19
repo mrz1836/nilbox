@@ -7,8 +7,8 @@ INSERT INTO item_details (
     checks_state, checks_passed, checks_failed, checks_pending, checks_skipped, checks_awaiting,
     checks_awaiting_on_github, checks_held,
     review_decision, reviewers, reviewed, approvals, changes_requested, sub_issues_total, sub_issues_completed,
-    review_users, review_teams, auto_merge_method, auto_merge_at, fetched_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    review_users, review_teams, auto_merge_method, auto_merge_at, issue_info, fetched_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (item_id) DO UPDATE SET
     labels = excluded.labels,
     projects = excluded.projects,
@@ -40,6 +40,7 @@ ON CONFLICT (item_id) DO UPDATE SET
     review_teams = excluded.review_teams,
     auto_merge_method = excluded.auto_merge_method,
     auto_merge_at = excluded.auto_merge_at,
+    issue_info = excluded.issue_info,
     fetched_at = excluded.fetched_at;
 
 -- name: GetActivity :one
