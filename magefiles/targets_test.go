@@ -131,7 +131,7 @@ func TestTheTargetsWorkInTheWorkingDirectory(t *testing.T) {
 		require.NoError(t, brandgen.Check(dir), "every generated file is written and current")
 	})
 
-	t.Run("brand:icons generates the brand files and renders every icon into the checkout", func(t *testing.T) {
+	t.Run("brand:icons renders every icon into the checkout", func(t *testing.T) {
 		onlyOnMacOS(t)
 
 		// The fakes write the icons the checkout keeps, wherever a call names its output.
@@ -141,6 +141,10 @@ func TestTheTargetsWorkInTheWorkingDirectory(t *testing.T) {
 		dir := inWorkingDir(t, map[string]testutil.FakeRun{svgRenderer: renders, "iconutil": iconSet})
 		mkdir(t, filepath.Join(dir, "cmd", brand.Slug))
 
+		// Icons has mage run Generate first, but mage runs a dependency once per process,
+		// so a second run of this test in the same binary (-count) would skip it: the test
+		// generates the brand files itself, which Generate's idempotence makes no change.
+		require.NoError(t, Brand{}.Generate())
 		require.NoError(t, Brand{}.Icons())
 
 		r, _ := realRunner(t, dir, nil)
