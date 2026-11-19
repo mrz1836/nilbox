@@ -56,8 +56,8 @@ pins.
 | `magex brand:icons` | Renders `build/appicon.svg` into the bundle's icon set `build/darwin/icons.icns` and the development Dock icon `cmd/nilbox/appicon.png`, and `build/trayicon.svg` into the menu bar icon `cmd/nilbox/trayicon.png` (needs `rsvg-convert`: `brew install librsvg`); run it after changing the mark or the artwork |
 | `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings`, writing each Go string type with constants as a union of its values; fails, naming it, on a bound type whose constants are declared in more than one file, since the generator orders those differently from run to run |
 | `magex app:bindingsCheck` | Regenerates the bindings into a temporary directory and fails on any drift, or on such a type |
-| `magex app:lint` | Lints the desktop-tagged Go code (the desktop shell and the frontend embed) |
-| `magex app:test` | Runs the desktop-tagged tests, which run the desktop runtime itself (a bound method's error reaching the window worded); `magex test` builds without the tag |
+| `magex app:lint` | Lints the desktop-tagged Go code (the desktop shell and the frontend embed), as a release builds it and again with [the inspector](#the-inspector) |
+| `magex app:test` | Runs the desktop-tagged tests, which run the desktop runtime itself (a bound method's error reaching the window worded), as a release builds it and again with [the inspector](#the-inspector); `magex test` builds without the tag |
 | `magex app:dev` | Runs the app against the Vite dev server with hot reload; `magex app:dev fresh=true` runs it on a fresh [sandbox](#a-sandbox-on-fresh-data) data folder, so the [first-run setup](#first-run-setup) shows |
 | `magex app:build` | Builds the production bundle from source, [Nilbox Dev](#nilbox-dev-a-build-from-source), as `bin/Nilbox Dev.app`, and signs it ad hoc for local use |
 | `magex app:open` | Opens `bin/Nilbox Dev.app` as it is, building it first when it is missing; a running copy is only brought to the front |
@@ -65,6 +65,7 @@ pins.
 | `magex app:fresh` | Opens `bin/Nilbox Dev.app` on a fresh [sandbox](#a-sandbox-on-fresh-data) data folder, your prompts and launch defaults copied in, leaving your own data as it is; `magex app:run` goes back to it |
 | `magex app:reset` | [Starts Nilbox Dev over](#starting-over) on your own data, which the release shares: quits it, asks for the reset, and opens it again, which carries the reset out |
 | `magex app:check` | Runs `app:bindingsCheck`, `app:lint`, `app:test`, and `app:build` |
+| `magex inspect:<command>` | Looks inside a running build from source through [the inspector](#the-inspector) it carries: its log, events, page console, your trail of clicks, the live database, the window's page, and a picture of the window |
 | `magex app:package` | Builds a release into `bin/release/<version>/`: a universal bundle (Apple silicon and Intel) signed with a code-signing identity, its zip, a signed `Nilbox.dmg`, `SHA256SUMS`, and the signed update manifest, checked against the release key the app pins ([Packaging a release](#packaging-a-release)); `app:buildRelease`, then `app:signRelease`, in one target |
 | `magex app:buildRelease` | The first half of `app:package`, which needs no secret: builds the release's universal bundle, unsigned, alone in `bin/unsigned/<version>/` |
 | `magex app:signRelease bundle=<path>` | The second half: checks the unsigned bundle at the absolute `<path>` that `app:buildRelease` built, signs a copy of it, and builds the release's other files in `bin/release/<version>/`, as `app:package` does |
@@ -155,6 +156,46 @@ first. `magex app:dev` runs a bare binary, with no bundle, on that same data too
 A bundle a build before Nilbox Dev left at `bin/Nilbox.app`, under the release's name and ID,
 is removed by the next `magex app:build` once nothing runs from it, so Spotlight stops offering
 it.
+
+### The inspector
+
+A build from source carries an inspector, so you, or an agent helping you, can look inside the
+app while it runs, from the terminal: Nilbox Dev (`magex app:build`, `app:run`, `app:fresh`)
+and `magex app:dev` alike. A release never does, nor a rehearsal: magex compiles it in only with
+the `devtools` build tag, which it passes to a build from source alone, and a guard test fails
+on any file that would take it into a release (`internal/devtools`).
+
+From the moment the app starts, the inspector keeps the log, every record from Debug up whatever
+the log file keeps, and the events the services emit. Once the window opens, a small agent it
+runs in the page on every load keeps the page's console and its uncaught errors, and the trail
+of what you do there: each click, key, field typed in (never what you type), and choice
+changed, with the card, dialog, or list it happened in. So when something goes wrong, there's
+no need to retrace the steps: `magex inspect:trail` already has them.
+
+It answers on a socket in the data folder (`devtools.sock`), which only your account can open,
+and sends nothing anywhere. It reads the database read-only: a statement that would write is
+refused, and the connection can't write besides.
+
+| Target | What it shows |
+|---|---|
+| `magex inspect:status` | The build, the process and its Go runtime, the data's paths, the window, the page, and how much each feed keeps |
+| `magex inspect:logs [n=] [level=] [grep=] [follow=true]` | The log, the last `n` (100) records at `level` and up holding `grep`; `follow=true` keeps printing until interrupted |
+| `magex inspect:events`, `inspect:console`, `inspect:trail` | The services' events, the page's console, and your trail, read the same way |
+| `magex inspect:watch [level=] [grep=]` | The log, the events, the console, and the trail together, live, until interrupted |
+| `magex inspect:sql q="SELECT …" [max=]` | One statement that reads, against the live database, at most `max` (200) rows; a long value is cut short (`json=true` prints it whole) |
+| `magex inspect:tables` | The database's tables and their row counts |
+| `magex inspect:js code="…"` or `file=probe.js` | Runs JavaScript in the window's page and prints what it returns, once a promise settles: an expression, or statements that `return`. `nb` holds helpers: `nb.$`, `nb.$$`, `nb.find`, `nb.describe`, `nb.dom`, `nb.text`, `nb.cards`, `nb.click`, `nb.type`, `nb.press`, `nb.scroll`, `nb.wait`, and `nb.waitFor`, each taking a selector or the name a control shows |
+| `magex inspect:dom sel="…" [styles=true] [html=true]` | The elements a selector matches as the web view lays them out: where each is, whether it is on screen and drawn, and its computed styles and HTML when asked |
+| `magex inspect:cards` | The inbox's cards: each one's list, rule, and place, and whether the web view draws it and what is inside it |
+| `magex inspect:click target="…"` | Clicks a control, by selector or by the name it shows |
+| `magex inspect:shot [out=]` | Saves a picture of the window as its web view draws it, to `out` or `bin/inspect/shot-<time>.png` |
+| `magex inspect:stacks [debug=2]` | Every goroutine's stack |
+| `magex inspect:reload` | Reloads the page |
+| `magex inspect:help` | Lists what the inspector does |
+
+Each target finds the app by your own data folder; `data=<folder>` names a sandbox's instead,
+as `app:fresh` and `app:dev fresh=true` make. `json=true` prints the answer's lines as JSON.
+A script that holds `$`, or runs long, reads better from a file with `file=`.
 
 <br>
 

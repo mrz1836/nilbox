@@ -51,6 +51,20 @@ func RealTempDir(t testing.TB) string {
 	return dir
 }
 
+// SocketDir returns a new temporary directory with a short path, removed when the test
+// ends, to hold a Unix socket: macOS caps a socket's path at 104 bytes, which a folder
+// t.TempDir names for a long test name can pass on its own.
+func SocketDir(t testing.TB) string {
+	t.Helper()
+
+	dir, err := os.MkdirTemp("", "sock") //nolint:usetesting // t.TempDir's folder is named for the test, too long a path for a socket
+	require.NoError(t, err)
+
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+	return dir
+}
+
 // SkipAsRoot skips a test that relies on file permissions, which root ignores.
 func SkipAsRoot(t testing.TB) {
 	t.Helper()

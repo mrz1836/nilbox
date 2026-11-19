@@ -39,6 +39,11 @@ const (
 	// desktopTag selects the desktop shell; without it the command builds headless.
 	desktopTag = "desktop"
 
+	// devtoolsTag compiles in the inspector (internal/devtools), which only a build from
+	// source carries: app:dev's and the bundle app:build makes. A release, or a rehearsal
+	// of one, never does (buildTags).
+	devtoolsTag = "devtools"
+
 	// devServerURL is the frontend dev server (see frontend/vite.config.ts).
 	devServerURL = "http://127.0.0.1:9245"
 
@@ -160,16 +165,35 @@ func (r runner) lintDesktop() error {
 		return err
 	}
 
-	args := []string{
-		"run", "--build-tags", desktopTag, "--config", ".golangci.json", "--timeout", "10m",
-		"./cmd/" + brand.Slug + "/...", "./frontend/",
+	onPath := r.lintOnPath(version)
+
+	// The desktop code builds two ways, with the inspector and without it, and each is
+	// linted.
+	for _, tags := range desktopTagSets() {
+		args := []string{
+			"run", "--build-tags", tags, "--config", ".golangci.json", "--timeout", "10m",
+			"./cmd/" + brand.Slug + "/...", "./frontend/",
+		}
+
+		if onPath {
+			err = r.runV("golangci-lint", args...)
+		} else {
+			err = r.runV("go", append([]string{"run", "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@" + version}, args...)...)
+		}
+
+		if err != nil {
+			return err
+		}
 	}
 
-	if r.lintOnPath(version) {
-		return r.runV("golangci-lint", args...)
-	}
+	return nil
+}
 
-	return r.runV("go", append([]string{"run", "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@" + version}, args...)...)
+// desktopTagSets are the build tags the desktop code is linted and tested with: the
+// desktop shell as a release builds it, and with the inspector a build from source
+// carries.
+func desktopTagSets() []string {
+	return []string{desktopTag, desktopTag + "," + devtoolsTag}
 }
 
 // Dev runs the desktop app against the frontend dev server, with hot reload, and stops
@@ -227,7 +251,7 @@ func (r runner) runDev(ctx context.Context, appArgs []string) error {
 
 	ldflags := versionFlags(r.readBuildMeta(ctx)) + r.quietLinkerFlags(ctx)
 
-	goArgs := append([]string{"run", "-tags", desktopTag, "-ldflags", ldflags, "./cmd/" + brand.Slug}, appArgs...)
+	goArgs := append([]string{"run", "-tags", buildTags(""), "-ldflags", ldflags, "./cmd/" + brand.Slug}, appArgs...)
 	app := r.cmd(ctx, []string{"FRONTEND_DEVSERVER_URL=" + devServerURL, "CGO_ENABLED=1"}, "go", goArgs...)
 
 	app.Stdout = r.stdout
@@ -411,7 +435,13 @@ func (r runner) testDesktop() error {
 		return err
 	}
 
-	return r.runV("go", "test", "-tags", desktopTag, "./cmd/"+brand.Slug+"/")
+	for _, tags := range desktopTagSets() {
+		if err := r.runV("go", "test", "-tags", tags, "./cmd/"+brand.Slug+"/"); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Check runs every desktop check: the bindings drift check, the desktop lint, the

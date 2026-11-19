@@ -13,6 +13,8 @@
 //   - app: generate bindings, lint, run, and bundle the desktop app
 //   - db: generate and check the typed queries sqlc builds from the SQL
 //   - measure: record startup, refresh, launch, and size numbers
+//   - inspect: look inside a running build from source, through the inspector it
+//     carries (internal/devtools)
 //
 // The desktop shell itself builds only with the desktop build tag; these
 // targets compile on every OS and guard macOS-only steps at run time.
