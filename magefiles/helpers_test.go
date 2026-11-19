@@ -182,7 +182,7 @@ func (g *rig) command(ctx context.Context, name string, args ...string) *exec.Cm
 
 	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // the fake this test made, run as the step named the tool
 
-	cmd.Env = append(fakeEnv(), entry)
+	cmd.Env = append(fakeEnv(g.t.TempDir()), entry)
 
 	return cmd
 }
@@ -222,9 +222,23 @@ func (g *rig) linesOf(name string) []string {
 
 // fakeEnv is the environment a fake tool starts with: the test's, but GOARCH, which a
 // step sets only for a build for another processor, so a fake reports only what the step
-// gave it.
-func fakeEnv() []string {
-	return slices.DeleteFunc(os.Environ(), func(entry string) bool { return strings.HasPrefix(entry, "GOARCH=") })
+// gave it, and with coverDir, a folder of the fake's own, as GOCOVERDIR. Under go test
+// -cover a fake, the test binary itself, writes its coverage into GOCOVERDIR as it exits,
+// and two fakes ending in the same microsecond (the clock's step on macOS) name the same
+// temporary file in a folder they share, so one writes "coverage meta-data emit failed"
+// into the standard error a test checks; without GOCOVERDIR it warns there instead. A
+// fake runs only testutil's code, which other packages' fakes cover, so what it writes is
+// left in its folder.
+func fakeEnv(coverDir string) []string {
+	env := slices.DeleteFunc(os.Environ(), func(entry string) bool {
+		return strings.HasPrefix(entry, "GOARCH=") || strings.HasPrefix(entry, "GOCOVERDIR=")
+	})
+
+	if os.Getenv("GOCOVERDIR") == "" {
+		return env
+	}
+
+	return append(env, "GOCOVERDIR="+coverDir)
 }
 
 // argAfter returns the argument after flag in args, or "" when there is none.
