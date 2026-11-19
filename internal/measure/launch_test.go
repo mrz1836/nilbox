@@ -352,17 +352,15 @@ func TestDeadlineRunner(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
-// fakeAgent puts an executable named claude first on PATH and returns its path.
-func fakeAgent(t *testing.T) string {
+// fakeAgent makes a fake claude program (testutil.FakeTool), which nothing runs, and
+// returns its path and a finder that finds it and no other program, as the launch looks
+// the agent up.
+func fakeAgent(t *testing.T) (string, testutil.Finder) {
 	t.Helper()
 
-	bin := t.TempDir()
-	agent := filepath.Join(bin, "claude")
-	require.NoError(t, os.WriteFile(agent, []byte("#!/bin/sh\n"), 0o700)) //nolint:gosec // a test executable
+	agent, _ := testutil.FakeTool(t, "claude", testutil.FakeRun{})
 
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-
-	return agent
+	return agent, testutil.Finder{Paths: map[string]string{"claude": agent}}
 }
 
 // launchRunner runs git for real, isolated from the user's and the system's configuration
@@ -418,14 +416,15 @@ func launchRunner(t *testing.T, agent string, osascript func() ([]byte, []byte, 
 	})
 }
 
-//nolint:paralleltest // fakeAgent puts the agent on the process's PATH, where the launch looks it up
 func TestRunLaunch(t *testing.T) {
-	agent := fakeAgent(t)
+	t.Parallel()
+
+	agent, finder := fakeAgent(t)
 	tmp := t.TempDir()
 	runner := launchRunner(t, agent, func() ([]byte, []byte, error) { return nil, nil, nil })
 
 	report, err := RunLaunch(t.Context(), LaunchOptions{
-		Home: t.TempDir(), Version: "test", TempDir: tmp, Runner: runner,
+		Home: t.TempDir(), Version: "test", TempDir: tmp, Runner: runner, Finder: finder,
 		AgentTimeout: 2 * time.Second, Poll: 5 * time.Millisecond,
 	})
 
@@ -451,20 +450,22 @@ func TestRunLaunch(t *testing.T) {
 	assert.Equal(t, report.Elapsed, steps.Held+steps.Confirmed+steps.Terminal+steps.Agent, "the steps add up to the launch")
 }
 
-//nolint:paralleltest // fakeAgent puts the agent on the process's PATH, where the launch looks it up
 func TestRunLaunchAutomationDenied(t *testing.T) {
+	t.Parallel()
+
 	if runtime.GOOS != "darwin" {
 		t.Skip("terminal drivers exist only on macOS")
 	}
 
-	agent := fakeAgent(t)
+	agent, finder := fakeAgent(t)
 	runner := launchRunner(t, agent, func() ([]byte, []byte, error) {
 		return nil, []byte("execution error: Not authorized to send Apple events to iTerm. (-1743)"), errExecFailed
 	})
 
-	report, err := RunLaunch(t.Context(), LaunchOptions{Home: t.TempDir(), TempDir: t.TempDir(), Runner: runner})
+	report, err := RunLaunch(t.Context(), LaunchOptions{Home: t.TempDir(), TempDir: t.TempDir(), Runner: runner, Finder: finder})
 	require.NoError(t, err)
 	assert.True(t, report.NeedsAutomation)
+	assert.Zero(t, report.PID, "nothing was measured")
 }
 
 func TestRunLaunchSetupErrors(t *testing.T) {
@@ -496,11 +497,19 @@ func TestRunLaunchSetupErrors(t *testing.T) {
 }
 
 func TestRunLaunchWithoutAnAgent(t *testing.T) {
-	// The launch looks the agent up on the process's search path, so only that can hide it.
-	t.Setenv("PATH", filepath.Dir(testutil.RequireGit(t)))
+	t.Parallel()
 
 	runner := launchRunner(t, "/opt/agent/claude", func() ([]byte, []byte, error) { return nil, nil, nil })
+	tmp := t.TempDir()
 
-	_, err := RunLaunch(t.Context(), LaunchOptions{Home: t.TempDir(), TempDir: t.TempDir(), Runner: runner})
+	_, err := RunLaunch(t.Context(), LaunchOptions{
+		Home: t.TempDir(), TempDir: tmp, Runner: runner, Finder: testutil.Finder{Err: execpath.ErrNotFound},
+	})
 	require.ErrorIs(t, err, execpath.ErrNotFound)
+	assert.Contains(t, err.Error(), "find Claude", "the error names the agent")
+	assert.NotContains(t, ran(runner), "osascript", "nothing is launched")
+
+	entries, readErr := os.ReadDir(tmp)
+	require.NoError(t, readErr)
+	assert.Empty(t, entries, "the scratch clone and data directory are deleted")
 }
