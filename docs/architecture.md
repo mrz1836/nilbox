@@ -2275,12 +2275,15 @@ GitHub remotes, and every remote-tracking branch and where it points
 compare, and a worktree that is gone is forgotten; git that couldn't be run at all is tried
 again next time. `Details` marks each of its commits not on GitHub with its copy
 (`UnpushedCommit.Copy`, `identical` or `edited`, and `CopyOID`): what the listing found,
-when one read of the clone's refs says nothing changed since, or else a comparison of its
-own; none when the refs can't be read. `Details.Copies` (`CopyComparison`) says how that
+when one read of the clone's refs and one of its remotes say nothing changed since (the
+listing's key: its HEAD, the commit it was made at, the GitHub remotes and every remote's
+name, and the refs' fingerprint), or else a comparison of its own; none when the refs or the
+remotes can't be read. `Details.Copies` (`CopyComparison`) says how that
 went, so a blank mark is never mistaken for an unknown one: `compared` is true when the
 comparison ran to completion (the pushed commits read, every branch holding likely copies
 compared and confirmed byte for byte), or there was no pushed branch to compare with;
-`ref` is the branch compared with, `""` when no pushed commit was a likely copy of any;
+`ref` is the branch compared with, `""` when no pushed commit was a likely copy of any, and
+`branch` its name on its remote, as `Copies.branch` says it;
 `identical` and `edited` count the commits; and `note` says why it couldn't run. So
 `compared` with `identical` at 0 means no copy is on a pushed branch now (the branch was
 deleted, or force-pushed without them), while `compared` false means only that this is

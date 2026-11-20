@@ -243,8 +243,8 @@ func (s *Service) detailCommits(ctx context.Context, g git, dir string, e Entry,
 }
 
 // copiesNow is how the count commits not on GitHub of the worktree e, of the clone at dir,
-// compare with the pushed branches now: what the listing found, when the clone's refs,
-// read once, say nothing it was worked out from changed since, or else what a comparison of
+// compare with the pushed branches now: what the listing found, when the clone's refs and
+// remotes, read once, say nothing it was worked out from changed since, or else what a comparison of
 // its own finds (see copies.go). It is a result that wasn't compared, with why, when that
 // can't be told.
 func (s *Service) copiesNow(ctx context.Context, g git, dir string, e Entry, fetched string, count int) copyResult {
@@ -252,13 +252,9 @@ func (s *Service) copiesNow(ctx context.Context, g git, dir string, e Entry, fet
 		return uncompared(tooManyToCompare())
 	}
 
-	refs, err := g.readRefs(ctx, dir)
+	read, err := g.readRefs(ctx, dir)
 	if err != nil {
 		return uncompared(compareFailure(err))
-	}
-
-	if kept, ok := s.keptCopies(e, fetched, refs, count); ok {
-		return kept
 	}
 
 	clone, err := localrepos.Inspect(ctx, dir, s.run)
@@ -266,8 +262,15 @@ func (s *Service) copiesNow(ctx context.Context, g git, dir string, e Entry, fet
 		return uncompared(compareFailure(err))
 	}
 
+	refs := withOwners(read, clone.Names)
+	key := copyKey{head: e.HEAD, fetched: fetched, remotes: remotesKey(clone.Remotes, refs.names), refs: refs.fingerprint()}
+
+	if kept, ok := s.keptCopies(e.Path, key, count); ok {
+		return kept
+	}
+
 	wt := &Worktree{Path: e.Path, Head: e.HEAD, Unpushed: count, fetched: fetched}
-	s.detectCloneCopies(ctx, g, dir, []*Worktree{wt}, clone.Remotes, withOwners(refs, clone.Names), false)
+	s.detectCloneCopies(ctx, g, dir, []*Worktree{wt}, clone.Remotes, refs, false)
 
 	if wt.copies.result == nil {
 		return uncompared(compareFailure(nil))
@@ -317,16 +320,17 @@ func (s *Service) detailBase(ctx context.Context, dir, head string) (string, int
 	return base, behind, ""
 }
 
-// keptCopies returns what the listing found of the worktree e's count commits not on
-// GitHub, when nothing it was worked out from changed since: its HEAD, the commit it was
-// made at from GitHub, and its clone's remote-tracking branches, as refs has them now.
-func (s *Service) keptCopies(e Entry, fetched string, refs cloneRefs, count int) (copyResult, bool) {
-	kept, ok := s.copies.entry(paths.Resolved(e.Path))
-	if !ok || kept.key.head != e.HEAD || kept.key.fetched != fetched || kept.key.refs != refs.fingerprint() {
+// keptCopies returns what the listing found of the count commits not on GitHub of the
+// worktree at path, when nothing it was worked out from changed since: key, as the listing
+// keys it, holds its HEAD, the commit it was made at from GitHub, its clone's remotes, and
+// its remote-tracking branches, as they are now.
+func (s *Service) keptCopies(path string, key copyKey, count int) (copyResult, bool) {
+	kept, ok := s.copies.lookup(paths.Resolved(path), key)
+	if !ok {
 		return copyResult{}, false
 	}
 
-	return kept.result, kept.result.copies.Count == 0 || kept.result.copies.Count == count
+	return kept, kept.copies.Count == 0 || kept.copies.Count == count
 }
 
 // readFailure words a read Details couldn't make with the service's own git, for the

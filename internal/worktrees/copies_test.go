@@ -602,8 +602,8 @@ func TestDetailsMarkEachCommitsCopyAsTheListingFoundIt(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, []int{1, 0, 0}, []int{refsReads, compares, remotes},
-		"one read of the refs says nothing changed since the listing, which compared them")
+	assert.Equal(t, []int{1, 0, 1}, []int{refsReads, compares, remotes},
+		"one read of the refs and one of the remotes say nothing changed since the listing, which compared them")
 }
 
 func TestDetailsCompareTheCommitsWhenTheListingDidntForTheirState(t *testing.T) {
@@ -666,6 +666,22 @@ func TestDetailsSayHowTheirComparisonWent(t *testing.T) {
 	for _, c := range d.Commits {
 		assert.Empty(t, c.Copy)
 	}
+}
+
+func TestDetailsCompareAgainOnceTheRemotesChanged(t *testing.T) {
+	t.Parallel()
+
+	r, oids, _ := markedRig(t)
+	require.Equal(t, 1, r.list(t).Copies.Identical)
+
+	// origin now points somewhere that isn't GitHub, its refs as they were.
+	testutil.RunGit(t, r.repo, "remote", "set-url", originRemote, "https://gitlab.example.com/acme-org/example-repo.git")
+
+	d, err := r.svc.Details(t.Context(), r.repo, r.agent)
+	require.NoError(t, err)
+	assert.Equal(t, CopyComparison{Compared: true}, d.Copies,
+		"compared again, as the listing's result was for other remotes: no branch of a GitHub remote holds a copy now")
+	assert.Equal(t, map[string]string{oids[0]: " ", oids[1]: " ", oids[2]: " "}, marksOf(d))
 }
 
 func TestDetailsSayWhyTheirComparisonCouldntRun(t *testing.T) {
