@@ -501,7 +501,8 @@ export function LaunchControls({
   // dialog is the launch options while they show. Its code loads on its own, the dialog and
   // the menu in it under one boundary, so the dialog opens whole, focus starting where it
   // should, with nothing in its place until then: it is drawn in the page's body, so the
-  // card it is opened from holds no room for it.
+  // card it is opened from holds no room for it. The dialog's code waits for the menu's
+  // (launchDialogs), so a menu that replaces Loading later never hides the open dialog.
   const dialog = open && (
     <Suspense fallback={null}>
       <LaunchDialog id={id} title={openLabel} item={item} onClose={close}>

@@ -13,7 +13,14 @@ const loadLaunchMenu = () => import('./LaunchMenu')
 const loadLaunchHoldDialog = () => import('./LaunchHoldDialog')
 const loadTakeOverDialog = () => import('./autopilot/TakeOverDialog')
 
-export const LaunchDialog = lazy(() => loadLaunchDialog().then((m) => ({ default: m.LaunchDialog })))
+// LaunchDialog's load waits for its menu's code too, so the dialog never shows before the
+// menu can follow. The dialog opens on Loading while the launch settings load, and the menu
+// takes its place inside the same boundary once they come: a menu still waiting for its
+// code then would hide the open dialog behind the boundary's empty fallback, and lose its
+// focus, until the code came.
+export const LaunchDialog = lazy(() =>
+  Promise.all([loadLaunchDialog(), loadLaunchMenu()]).then(([m]) => ({ default: m.LaunchDialog })),
+)
 export const LaunchMenu = lazy(() => loadLaunchMenu().then((m) => ({ default: m.LaunchMenu })))
 export const LaunchHoldDialog = lazy(() => loadLaunchHoldDialog().then((m) => ({ default: m.LaunchHoldDialog })))
 export const TakeOverDialog = lazy(() => loadTakeOverDialog().then((m) => ({ default: m.TakeOverDialog })))
