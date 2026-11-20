@@ -9,6 +9,7 @@ import type {
   IntegrationTool,
   ReleaseCandidate,
   ReleaseCandidates,
+  ReleaseCloneState,
   ReleaseSort,
   RepoRules,
   ScriptRun,
@@ -132,6 +133,25 @@ function renderSorted(props: Partial<ReleasePageProps> = {}) {
   }
 }
 
+// renderListed shows the page over repos as read, with props on top.
+function renderListed(repos: ReleaseCandidate[], props: Partial<ReleasePageProps> = {}) {
+  renderSorted({ candidates: listed(repos), ...props })
+}
+
+// cloneState is a clone on master with nothing in the way, as overrides change it.
+function cloneState(overrides: Partial<ReleaseCloneState> = {}): ReleaseCloneState {
+  return {
+    branch: 'master',
+    detached: false,
+    dirty: 0,
+    notPushed: 0,
+    behind: false,
+    localOnly: [],
+    unreadable: false,
+    ...overrides,
+  }
+}
+
 // sorts is the page's choice of order.
 function sorts() {
   return within(screen.getByRole('radiogroup', { name: 'Sort the repositories' }))
@@ -175,14 +195,14 @@ describe('ReleasePage', () => {
       { wrapper: at() },
     )
 
-    expect(group(/^Unreleased changes · 1/)).toHaveAttribute('aria-expanded', 'false')
+    expect(group(/^Unreleased changes · 1: 1 ready$/)).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByRole('list', { name: 'Unreleased changes' })).not.toBeInTheDocument()
     expect(group(/^Up to date · 1/)).toHaveAttribute('aria-expanded', 'true')
 
-    await userEvent.click(group(/^No releases yet · 1/))
+    await userEvent.click(group(/^No releases yet · 1: 1 without checks$/))
 
     expect(onSection).toHaveBeenCalledExactlyOnceWith('release.noReleases', true)
-    expect(group(/^No releases yet · 1/)).toHaveAttribute('aria-expanded', 'true')
+    expect(group(/^No releases yet · 1: 1 without checks$/)).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('lists the unreleased repositories open, and the other groups collapsed with their counts', async () => {
@@ -200,9 +220,9 @@ describe('ReleasePage', () => {
     expect(row).toHaveTextContent('12m ago')
     expect(row).toHaveTextContent('Fix retries on 502 (#45)')
     expect(row).toHaveTextContent('Your clone: on feature-x')
-    expect(group(/^Unreleased changes · 1/)).toHaveAttribute('aria-expanded', 'true')
+    expect(group(/^Unreleased changes · 1: 1 ready$/)).toHaveAttribute('aria-expanded', 'true')
     expect(group(/^Up to date · 1/)).toHaveAttribute('aria-expanded', 'false')
-    expect(group(/^No releases yet · 1/)).toHaveAttribute('aria-expanded', 'false')
+    expect(group(/^No releases yet · 1: 1 without checks$/)).toHaveAttribute('aria-expanded', 'false')
     expect(group(/^Can’t release here · 1/)).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByText(/magex 1\.29\.5/)).toBeInTheDocument()
     expect(screen.getByText('5m ago')).toHaveAttribute('dateTime', '2026-06-15T11:55:00Z')
@@ -285,7 +305,7 @@ describe('ReleasePage', () => {
     await userEvent.click(group(/^Muted · 1/))
 
     const row = within(within(screen.getByRole('list', { name: 'Muted' })).getByRole('listitem'))
-    expect(row.getByText('acme-org/quiet')).toBeInTheDocument()
+    expect(row.getByTitle('acme-org/quiet')).toHaveTextContent('acme-org/quiet')
     expect(row.getByText('~/projects/quiet')).toBeInTheDocument()
     expect(row.queryByRole('button', { name: /^Release/ })).not.toBeInTheDocument()
 
@@ -351,6 +371,7 @@ describe('ReleasePage', () => {
     renderPage()
 
     expect(await screen.findByText('No repository has unreleased changes.')).toBeInTheDocument()
+    expect(group(/^Unreleased changes · 0$/)).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('12 clones without a GitHub origin aren’t listed.')).toBeInTheDocument()
   })
 
@@ -652,6 +673,94 @@ describe('ReleasePage', () => {
 
       expect(sorts().getByRole('radio', { name: 'Commits' })).toBeChecked()
       expect(unreleased()).toEqual(holding('Sdk-kit', 'api', 'zeta', 'Web-kit'))
+    })
+  })
+
+  describe('the rows', () => {
+    it('counts an unreleased group’s rows by readiness in its heading, what needs a look first', () => {
+      renderListed([
+        releaseCandidate({ repo: 'acme-org/ready', clone: null }),
+        releaseCandidate({ repo: 'acme-org/dirty', clone: cloneState({ dirty: 2 }) }),
+        releaseCandidate({ repo: 'acme-org/red', checks: 'FAILURE', clone: null }),
+      ])
+
+      expect(group(/^Unreleased changes · 3: 1 failing, 1 blocked, 1 ready$/)).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    it('counts nothing in the heading of a group without Release…', () => {
+      renderListed(
+        [
+          releaseCandidate({ repo: 'acme-org/web', group: 'upToDate', clone: null }),
+          releaseCandidate({ repo: 'acme-org/red', group: 'upToDate', checks: 'FAILURE', clone: null }),
+        ],
+        { sections: { 'release.upToDate': true } },
+      )
+
+      expect(group(/^Up to date · 2$/)).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    })
+
+    it('shows only the blocker of a clone that blocks a release', () => {
+      renderListed([releaseCandidate({ clone: cloneState({ dirty: 2, behind: true }) })])
+
+      const row = within(screen.getByRole('list', { name: 'Unreleased changes' })).getByRole('listitem')
+
+      expect(row).toHaveTextContent('Your clone: 2 uncommitted')
+      expect(row).not.toHaveTextContent('behind')
+      expect(group(/^Unreleased changes · 1: 1 blocked$/)).toBeInTheDocument()
+    })
+
+    it('badges a headline three of a group’s listed rows share, and drops it when a search leaves two', async () => {
+      const shared = 'Bump the shared workflows (#12)'
+
+      renderListed(
+        [
+          releaseCandidate({ repo: 'acme-org/api' }),
+          releaseCandidate({ repo: 'acme-org/sdk-go', headline: shared }),
+          releaseCandidate({ repo: 'acme-org/sdk-js', headline: shared }),
+          releaseCandidate({ repo: 'acme-org/web', headline: shared }),
+          releaseCandidate({ repo: 'acme-org/docs', group: 'upToDate', headline: shared, clone: null }),
+        ],
+        { sections: { 'release.upToDate': true } },
+      )
+
+      const rows = within(screen.getByRole('list', { name: 'Unreleased changes' })).getAllByRole('listitem')
+      const badges = screen.getAllByTitle(
+        '3 of the listed repositories have this as their newest commit: acme-org/sdk-go, acme-org/sdk-js, acme-org/web',
+      )
+
+      expect(badges).toHaveLength(3)
+      expect(badges.map((b) => b.closest('li'))).toEqual(rows.slice(1))
+      expect(rows[0]).toHaveTextContent('acme-org/api')
+      expect(rows[0]).not.toHaveTextContent('×')
+      expect(within(screen.getByRole('list', { name: 'Up to date' })).getByRole('listitem')).not.toHaveTextContent('×')
+
+      await userEvent.type(screen.getByRole('searchbox', { name: 'Search repositories' }), 'sdk')
+
+      expect(unreleased()).toEqual(holding('sdk-go', 'sdk-js'))
+      expect(screen.getAllByText(shared)).toHaveLength(2)
+      expect(screen.queryByText(/^×/)).not.toBeInTheDocument()
+    })
+
+    it('marks the repositories a rule pins, naming the rule, and no other', () => {
+      renderSorted({ repoRules: { pinned: ['acme-org/zeta'], muted: [] } })
+
+      const list = within(screen.getByRole('list', { name: 'Unreleased changes' }))
+      const pin = list.getByRole('img', { name: 'Pinned with acme-org/zeta' })
+
+      expect(pin.closest('li')).toHaveTextContent('acme-org/zeta')
+      expect(list.getAllByRole('img')).toHaveLength(1)
+      expect(list.getAllByRole('listitem')).toHaveLength(4)
+    })
+
+    it('marks every repository an org’s rule pins with the org', () => {
+      renderSorted({ repoRules: { pinned: ['acme-org'], muted: [] } })
+
+      expect(
+        within(screen.getByRole('list', { name: 'Unreleased changes' })).getAllByRole('img', {
+          name: 'Pinned with acme-org',
+        }),
+      ).toHaveLength(4)
     })
   })
 

@@ -1,10 +1,8 @@
 import { useId, useState, type ReactNode } from 'react'
 
 import { attempt } from '../../lib/call'
-import { counted, formatCount } from '../../lib/format'
+import { counted } from '../../lib/format'
 import {
-  cloneNotes,
-  commitChecksText,
   intentOf,
   listProgressWords,
   matchCandidates,
@@ -12,6 +10,7 @@ import {
   recentWords,
   releasable,
   releaseGroups,
+  sharedHeadlines,
   sortCandidates,
 } from '../../lib/release'
 import { ruleFor } from '../../lib/repoRules'
@@ -22,7 +21,6 @@ import { usable } from '../../lib/scriptsTab'
 import { formatAge, formatAgo } from '../../lib/time'
 import {
   setRepoRule,
-  type CommitChecks,
   type IntegrationTool,
   type ReleaseCandidate,
   type ReleaseGroup,
@@ -34,34 +32,15 @@ import {
 } from '../../platform'
 import { buttonClass, captionClass, quietButtonClass, Segmented, type SegmentOption } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
-import { AlertIcon, CheckIcon, RefreshIcon, RingIcon, XIcon } from '../icons'
+import { AlertIcon, RefreshIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 import { ErrorText } from '../settings/rows'
 import { Spinner } from '../Spinner'
-import { StatusDot } from '../StatusDot'
 import { GroupHeading } from './GroupHeading'
+import { CandidateRow, MutedRow, ReadinessSummary, releaseListClass } from './ReleaseRow'
 import { RepoSearch } from './RepoSearch'
 import { RunStatus } from './RunStatus'
 import { ToolProblem } from './ToolProblem'
-
-// running marks checks still running with the dot a working session has, a ring swelling
-// out of it in the warning colour, in an icon's box.
-const running = (
-  <span data-checks-running className="inline-flex size-3.5 shrink-0 items-center justify-center">
-    <StatusDot color="bg-warning" ping />
-  </span>
-)
-
-// checksIcons mark the checks on a commit beside their words: passed, running, failing,
-// or none at all.
-const checksIcons: Readonly<Record<CommitChecks, ReactNode>> = {
-  SUCCESS: <CheckIcon className="size-3.5 shrink-0 text-success" />,
-  PENDING: running,
-  EXPECTED: running,
-  FAILURE: <XIcon className="size-3.5 shrink-0 text-danger" />,
-  ERROR: <XIcon className="size-3.5 shrink-0 text-danger" />,
-  '': <RingIcon className="size-3.5 shrink-0 text-muted" />,
-}
 
 // releaseSortOptions are the orders a group can list its repositories in, the pinned ones
 // first in each.
@@ -89,90 +68,6 @@ function oldAs(now: Date, iso: string): string {
 // fromAgo says when a list kept from the last start was read: "From 2h ago".
 function fromAgo(now: Date, iso: string): string {
   return `From ${formatAgo(now, iso)}`
-}
-
-// CandidateRow is one repository: its newest version and how many commits came since,
-// the checks on its newest commit and its age, that commit's headline, what matters about
-// its clone, and Release… for a repository with something to release (or, for one that
-// can't be released here, why).
-function CandidateRow({ candidate, onRelease }: { candidate: ReleaseCandidate; onRelease: () => void }) {
-  const notes = cloneNotes(candidate.clone, candidate.defaultBranch)
-
-  return (
-    <li className="flex items-start gap-3 rounded-md px-3 py-2 hover:bg-raised/60">
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
-          <span className="font-medium">{candidate.repo}</span>
-          <span className="font-mono text-xs text-muted">
-            {candidate.version === '' ? 'no version yet' : candidate.version}
-          </span>
-          {candidate.ahead > 0 && (
-            <span className="text-xs text-text" title={counted(candidate.ahead, 'commit since', 'commits since')}>
-              +{formatCount(candidate.ahead)}
-            </span>
-          )}
-          <span className="flex items-center gap-1 text-xs text-muted">
-            {checksIcons[candidate.checks]}
-            {commitChecksText(candidate.checks)}
-          </span>
-          {candidate.headAt !== '' && (
-            <RelativeTime iso={candidate.headAt} show={formatAgo} className="text-xs text-muted" />
-          )}
-        </p>
-        {candidate.headline !== '' && <p className="truncate text-xs text-muted">{candidate.headline}</p>}
-        {candidate.reason !== '' && <p className="text-xs text-text">{candidate.reason}</p>}
-        {notes.length > 0 && (
-          <p className="flex items-center gap-1 text-xs text-warning">
-            <AlertIcon className="size-3.5 shrink-0" />
-            <span className="sr-only">Your clone: </span>
-            {notes.map((n) => (n.kind === 'branch' ? `on ${n.text}` : n.text)).join(' · ')}
-          </p>
-        )}
-      </div>
-      {releasable(candidate.group) && (
-        <button type="button" aria-label={`Release ${candidate.repo}…`} onClick={onRelease} className={buttonClass}>
-          Release…
-        </button>
-      )}
-    </li>
-  )
-}
-
-interface MutedRowProps {
-  candidate: ReleaseCandidate
-  // target is the repository or org whose rule mutes it, or '' once it is unmuted and
-  // read again.
-  target: string
-  busy: boolean
-  onUnmute: () => void
-}
-
-// MutedRow is a muted repository: its name and clone, and Unmute, which unmutes the
-// repository or org that mutes it, so it is read again and listed in its own group. One
-// unmuted already says it is being read again.
-function MutedRow({ candidate, target, busy, onUnmute }: MutedRowProps) {
-  return (
-    <li className="flex items-center gap-3 rounded-md px-3 py-2 hover:bg-raised/60">
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className="text-sm font-medium">{candidate.repo}</p>
-        <p className="truncate font-mono text-xs text-muted">{candidate.dir}</p>
-      </div>
-      {target === '' ? (
-        <span className="text-xs text-muted">Unmuted · reading it again…</span>
-      ) : (
-        <button
-          type="button"
-          disabled={busy}
-          aria-label={`Unmute ${target}`}
-          title={`Unmute ${target}: GitHub is asked about it again, and its items go back to the inbox’s lists`}
-          onClick={onUnmute}
-          className={buttonClass}
-        >
-          Unmute
-        </button>
-      )}
-    </li>
-  )
 }
 
 // RecentRelease is a release in Recent: how it went, its version and repository, and
@@ -226,16 +121,18 @@ export interface ReleasePageProps {
 // noRepoRules are the rules until the settings have loaded.
 const noRepoRules: RepoRules = { pinned: [], muted: [] }
 
-// ReleasePage is the Scripts tab's Release page: every clone with a GitHub origin, in its
-// group (unreleased changes first, then the collapsed rest), each with Release… where
-// there is something to release; a search over every group, and a sort of each (the
-// newest commit first, by name, or the most commits first, the pinned repositories ahead
-// in every one) remembered across starts; a way to read GitHub again, how far a read has
-// got, and how old the list is when it was kept from the last start or the last read
-// failed; and the recent releases, each opening its run. While magex can't be used, the
-// page says why in place of its list. Each group stays open or folded as the user left
-// it, across starts (useSections). The muted repositories sit in their own group, folded
-// at first, each with Unmute.
+// ReleasePage is the Scripts tab's Release page: every clone with a GitHub origin, one line
+// each in its group's columns (ReleaseRow), the unreleased changes first, then the
+// collapsed rest. Each row has Release… where there is something to release, the heading
+// of such a group counts its rows by readiness, and a headline a wave of a group's rows
+// share is badged on each of them. Above the groups sit a search over every group, and a
+// sort of each (the newest commit first, by name, or the most commits first, the pinned
+// repositories ahead in every one) remembered across starts; a way to read GitHub again,
+// how far a read has got, and how old the list is when it was kept from the last start or
+// the last read failed; and below them the recent releases, each opening its run. While
+// magex can't be used, the page says why in place of its list. Each group stays open or
+// folded as the user left it, across starts (useSections). The muted repositories sit in
+// their own group, folded at first, each with Unmute.
 export function ReleasePage({
   candidates,
   tool,
@@ -293,6 +190,13 @@ export function ReleasePage({
     return applied.rule === 'muted' ? applied.target : ''
   }
 
+  // pinnedBy is the target whose rule pins a repository, or '' when none does.
+  const pinnedBy = (repo: string) => {
+    const applied = ruleFor(repoRules, repo)
+
+    return applied.rule === 'pinned' ? applied.target : ''
+  }
+
   let body: ReactNode
 
   if (!usable(tool)) {
@@ -342,6 +246,10 @@ export function ReleasePage({
             return null
           }
 
+          // waves are the repositories each headline is the newest commit of, among the
+          // rows listed here: a search that leaves fewer drops the badge.
+          const waves = sharedHeadlines(rows)
+
           return (
             <section key={group.id} aria-labelledby={`${id}-${group.id}`} className="flex flex-col gap-1">
               <GroupHeading
@@ -353,12 +261,13 @@ export function ReleasePage({
                 onToggle={() => {
                   folds.toggle(stored(group.id))
                 }}
+                note={releasable(group.id) && rows.length > 0 ? <ReadinessSummary rows={rows} /> : undefined}
               />
               {shown &&
                 (rows.length === 0 ? (
                   <p className="px-3 text-sm text-muted">No repository has unreleased changes.</p>
                 ) : (
-                  <ul aria-label={group.title} className="flex flex-col">
+                  <ul aria-label={group.title} className={releaseListClass}>
                     {rows.map((candidate) =>
                       candidate.group === 'muted' ? (
                         <MutedRow
@@ -374,6 +283,8 @@ export function ReleasePage({
                         <CandidateRow
                           key={`${candidate.repo} ${candidate.dir}`}
                           candidate={candidate}
+                          pinnedWith={pinnedBy(candidate.repo)}
+                          wave={waves.get(candidate.headline) ?? []}
                           onRelease={() => {
                             onRelease(candidate)
                           }}
