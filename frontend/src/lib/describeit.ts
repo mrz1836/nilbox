@@ -43,6 +43,8 @@ import {
   type KitOutcomeKind,
   type KitPart,
   type KitRoutineChange,
+  type KitRuleKind,
+  type KitSettingKey,
   type PromptInput,
   type RepoRule,
 } from '../platform'
@@ -512,32 +514,28 @@ export function claudeModeHint(suggested: AutopilotMode | undefined, mode: Autop
   return `Claude suggests ${modeLabels[suggested]}. It starts in ${modeLabels[mode]}, as new routines do: change it here if you like.`
 }
 
-// settingSetters are Autopilot's settings a card can change, each through its own setter,
-// from the settings once the change is applied, in the order Settings lists them: the
-// history before its logs, which never outlast it.
-const settingSetters: readonly (readonly [string, (after: AutopilotConfig) => PromiseLike<unknown>])[] = [
-  ['defaultMode', (a) => setAutopilotDefaultMode(a.defaultMode)],
-  ['agentsAtOnce', (a) => setAutopilotAgentsAtOnce(a.agentsAtOnce)],
-  ['runsPerDay', (a) => setAutopilotRunsPerDay(a.runsPerDay)],
-  ['actionsPerDay', (a) => setAutopilotActionsPerDay(a.actionsPerDay)],
-  ['dailyCap', (a) => setAutopilotDailyCap(a.dailyCap)],
-  ['keepAwake', (a) => setAutopilotKeepAwake(a.keepAwake)],
-  ['holdOnOutage', (a) => setAutopilotHoldOnOutage(a.holdOnOutage)],
-  ['catchUpHours', (a) => setAutopilotCatchUpHours(a.catchUpHours)],
-  ['historyDays', (a) => setAutopilotHistoryDays(a.historyDays)],
-  ['logDays', (a) => setAutopilotLogDays(a.logDays)],
-]
+// settingSetters are Autopilot's settings a card can change, by kit's key for each, each
+// through its own setter, from the settings once the change is applied, in the order
+// Settings lists them (the order a card applies them in): the history before its logs,
+// which never outlast it. Every key kit names has its setter, so a setting the app learns
+// to change can't reach a card before the window can apply it.
+const settingSetters = {
+  defaultMode: (a) => setAutopilotDefaultMode(a.defaultMode),
+  agentsAtOnce: (a) => setAutopilotAgentsAtOnce(a.agentsAtOnce),
+  runsPerDay: (a) => setAutopilotRunsPerDay(a.runsPerDay),
+  actionsPerDay: (a) => setAutopilotActionsPerDay(a.actionsPerDay),
+  dailyCap: (a) => setAutopilotDailyCap(a.dailyCap),
+  keepAwake: (a) => setAutopilotKeepAwake(a.keepAwake),
+  holdOnOutage: (a) => setAutopilotHoldOnOutage(a.holdOnOutage),
+  catchUpHours: (a) => setAutopilotCatchUpHours(a.catchUpHours),
+  historyDays: (a) => setAutopilotHistoryDays(a.historyDays),
+  logDays: (a) => setAutopilotLogDays(a.logDays),
+} satisfies Readonly<Record<KitSettingKey, (after: AutopilotConfig) => PromiseLike<unknown>>>
 
 // applySettings applies a change to Autopilot's settings, one setter for each setting it
 // changes, stopping at the first that fails.
 export async function applySettings(s: KitCheckedSettings): Promise<Result<void>> {
-  const unknown = s.changes.find((c) => !settingSetters.some(([key]) => key === c.key))
-
-  if (unknown !== undefined) {
-    return { ok: false, error: `This build can’t set “${unknown.label}”.` }
-  }
-
-  for (const [key, set] of settingSetters) {
+  for (const [key, set] of Object.entries(settingSetters)) {
     if (!s.changes.some((c) => c.key === key)) {
       continue
     }
@@ -552,37 +550,48 @@ export async function applySettings(s: KitCheckedSettings): Promise<Result<void>
   return { ok: true, data: undefined }
 }
 
-// repoRules are the rules a change of a repository or an org sets.
-const repoRules: Readonly<Record<string, RepoRule>> = { pin: 'pinned', mute: 'muted', clear: '' }
+// RuleApply is how a card applies a kind of rule change: with the trusted bots or the
+// ignored workflows as they are once applied, whole, or as a repository's or an org's own
+// rule.
+type RuleApply = { whole: 'bots' | 'workflows' } | { rule: RepoRule }
 
-// ruleKinds are the kinds of rule change a card applies.
-const ruleKinds = ['trust', 'untrust', 'pin', 'mute', 'clear', 'ignoreWorkflows', 'unignoreWorkflows']
+// ruleApplies says how each kind of rule change kit names applies, so a kind the app learns
+// can't reach a card before the window can apply it.
+const ruleApplies: Readonly<Record<KitRuleKind, RuleApply>> = {
+  trust: { whole: 'bots' },
+  untrust: { whole: 'bots' },
+  pin: { rule: 'pinned' },
+  mute: { rule: 'muted' },
+  clear: { rule: '' },
+  ignoreWorkflows: { whole: 'workflows' },
+  unignoreWorkflows: { whole: 'workflows' },
+}
 
 // applyRules applies a change to the rules routines lean on: the trusted bots as they are
 // once applied, each repository's or org's rule, and the ignored workflows as they are once
 // applied, stopping at the first that fails.
 export async function applyRules(r: KitCheckedRules): Promise<Result<void>> {
-  const unknown = r.changes.find((c) => !ruleKinds.includes(c.kind))
+  const wholly = (whole: 'bots' | 'workflows') =>
+    r.changes.some((c) => {
+      const how = ruleApplies[c.kind]
 
-  if (unknown !== undefined) {
-    return { ok: false, error: `This build can’t apply “${unknown.words}”.` }
-  }
-
+      return 'whole' in how && how.whole === whole
+    })
   const calls: (() => PromiseLike<unknown>)[] = []
 
-  if (r.changes.some((c) => c.kind === 'trust' || c.kind === 'untrust')) {
+  if (wholly('bots')) {
     calls.push(() => setTrustedBots(r.after.trustedBots))
   }
 
   for (const c of r.changes) {
-    const rule = repoRules[c.kind]
+    const how = ruleApplies[c.kind]
 
-    if (rule !== undefined) {
-      calls.push(() => setRepoRule(c.target, rule))
+    if ('rule' in how) {
+      calls.push(() => setRepoRule(c.target, how.rule))
     }
   }
 
-  if (r.changes.some((c) => c.kind === 'ignoreWorkflows' || c.kind === 'unignoreWorkflows')) {
+  if (wholly('workflows')) {
     calls.push(() => setIgnoredWorkflows(r.after.ignoredWorkflows))
   }
 

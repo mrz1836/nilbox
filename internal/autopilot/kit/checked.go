@@ -96,14 +96,49 @@ type CheckedRoutine struct {
 	Risks []Risk `json:"risks"`
 }
 
+// SettingKey is one of Autopilot's settings a proposal may change, by the key the proposal's
+// settings name it with (SettingsChange's JSON names): the window applies each through the
+// setter Settings → Autopilot uses for it.
+type SettingKey string
+
+// The settings a proposal may change, in the order Settings → Autopilot lists them.
+const (
+	SettingDefaultMode   SettingKey = "defaultMode"
+	SettingAgentsAtOnce  SettingKey = "agentsAtOnce"
+	SettingRunsPerDay    SettingKey = "runsPerDay"
+	SettingActionsPerDay SettingKey = "actionsPerDay"
+	SettingDailyCap      SettingKey = "dailyCap"
+	SettingKeepAwake     SettingKey = "keepAwake"
+	SettingHoldOnOutage  SettingKey = "holdOnOutage"
+	SettingCatchUpHours  SettingKey = "catchUpHours"
+	SettingHistoryDays   SettingKey = "historyDays"
+	SettingLogDays       SettingKey = "logDays"
+)
+
 // SettingChange is one of Autopilot's settings a proposal changes, in the window's words.
 type SettingChange struct {
 	// Key is the setting, as the proposal names it ("agentsAtOnce").
-	Key    string `json:"key"`
-	Label  string `json:"label"`
-	Before string `json:"before"`
-	After  string `json:"after"`
+	Key    SettingKey `json:"key"`
+	Label  string     `json:"label"`
+	Before string     `json:"before"`
+	After  string     `json:"after"`
 }
+
+// RuleKind is a kind of change to the rules routines lean on, by the list of the proposal's
+// rules it came from (RulesChange's JSON names): the window applies the bots and the
+// workflows from the rules once applied, and each repository's or org's rule on its own.
+type RuleKind string
+
+// The kinds of rule change.
+const (
+	RuleTrust             RuleKind = "trust"
+	RuleUntrust           RuleKind = "untrust"
+	RulePin               RuleKind = "pin"
+	RuleMute              RuleKind = "mute"
+	RuleClear             RuleKind = "clear"
+	RuleIgnoreWorkflows   RuleKind = "ignoreWorkflows"
+	RuleUnignoreWorkflows RuleKind = "unignoreWorkflows"
+)
 
 // CheckedSettings is a change to Autopilot's settings, checked.
 type CheckedSettings struct {
@@ -120,9 +155,9 @@ type RuleChange struct {
 	// Kind is the proposal's list it came from ("trust", "mute", ...), Target the bot,
 	// repository, org, or workflow, and Words the change as one line ("Trust
 	// renovate[bot]").
-	Kind   string `json:"kind"`
-	Target string `json:"target"`
-	Words  string `json:"words"`
+	Kind   RuleKind `json:"kind"`
+	Target string   `json:"target"`
+	Words  string   `json:"words"`
 }
 
 // CheckedRules is a change to the rules routines lean on, checked.

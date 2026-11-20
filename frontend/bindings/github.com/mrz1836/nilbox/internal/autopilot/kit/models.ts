@@ -73,9 +73,11 @@ export interface CheckedRoutine {
     "spec": spec$0.Spec;
 
     /**
-     * Sentence says it in one sentence, "" while it has problems; Problems keep it from
-     * being saved, and Warnings don't; DryRunOnly are the kinds of step this build runs only
-     * in Dry run.
+     * Sentence says it in one sentence, "" while its spec has problems; Problems keep it
+     * from being saved, and Warnings don't, each where it is in the spec, or, with no Part,
+     * in one of the routine's own fields (its name, description, template, mode, ID, or
+     * base, by its key, or "spec" for a spec that can't be read at all); DryRunOnly are the
+     * kinds of step this build runs only in Dry run.
      */
     "sentence": string;
     "problems": spec$0.Problem[] | null;
@@ -149,7 +151,8 @@ export interface Outcome {
     "kind": OutcomeKind;
 
     /**
-     * Words say it as the next turn tells the agent: `Added "Fix checks", switched off`.
+     * Words say it as the next turn tells the agent, its names in curly quotes and with no
+     * full stop, as the window words it: `Added “Fix checks”, switched off`.
      */
     "words": string;
 
@@ -370,10 +373,33 @@ export interface RuleChange {
      * repository, org, or workflow, and Words the change as one line ("Trust
      * renovate[bot]").
      */
-    "kind": string;
+    "kind": RuleKind;
     "target": string;
     "words": string;
 }
+
+/**
+ * RuleKind is a kind of change to the rules routines lean on, by the list of the proposal's
+ * rules it came from (RulesChange's JSON names): the window applies the bots and the
+ * workflows from the rules once applied, and each repository's or org's rule on its own.
+ */
+export type RuleKind = "trust" | "untrust" | "pin" | "mute" | "clear" | "ignoreWorkflows" | "unignoreWorkflows";
+
+/**
+ * The values of RuleKind, by the names of their Go constants.
+ */
+export const RuleKind = {
+    /**
+     * The kinds of rule change.
+     */
+    RuleTrust: "trust",
+    RuleUntrust: "untrust",
+    RulePin: "pin",
+    RuleMute: "mute",
+    RuleClear: "clear",
+    RuleIgnoreWorkflows: "ignoreWorkflows",
+    RuleUnignoreWorkflows: "unignoreWorkflows",
+} as const;
 
 /**
  * Rules are the rules routines lean on: the bots the user trusts, the repositories and
@@ -408,11 +434,37 @@ export interface SettingChange {
     /**
      * Key is the setting, as the proposal names it ("agentsAtOnce").
      */
-    "key": string;
+    "key": SettingKey;
     "label": string;
     "before": string;
     "after": string;
 }
+
+/**
+ * SettingKey is one of Autopilot's settings a proposal may change, by the key the proposal's
+ * settings name it with (SettingsChange's JSON names): the window applies each through the
+ * setter Settings → Autopilot uses for it.
+ */
+export type SettingKey = "defaultMode" | "agentsAtOnce" | "runsPerDay" | "actionsPerDay" | "dailyCap" | "keepAwake" | "holdOnOutage" | "catchUpHours" | "historyDays" | "logDays";
+
+/**
+ * The values of SettingKey, by the names of their Go constants.
+ */
+export const SettingKey = {
+    /**
+     * The settings a proposal may change, in the order Settings → Autopilot lists them.
+     */
+    SettingDefaultMode: "defaultMode",
+    SettingAgentsAtOnce: "agentsAtOnce",
+    SettingRunsPerDay: "runsPerDay",
+    SettingActionsPerDay: "actionsPerDay",
+    SettingDailyCap: "dailyCap",
+    SettingKeepAwake: "keepAwake",
+    SettingHoldOnOutage: "holdOnOutage",
+    SettingCatchUpHours: "catchUpHours",
+    SettingHistoryDays: "historyDays",
+    SettingLogDays: "logDays",
+} as const;
 
 /**
  * SettingsChange is a change to Autopilot's settings: only what changes is set. It has no

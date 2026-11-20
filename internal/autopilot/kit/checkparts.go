@@ -273,8 +273,9 @@ func (w *templateWalk) unknown(name string) string {
 // names it with, with its label in Settings → Autopilot and its value in the window's
 // words.
 type settingRow struct {
-	key, label string
-	words      func(autopilotprefs.Config) string
+	key   SettingKey
+	label string
+	words func(autopilotprefs.Config) string
 }
 
 // settingRows are the settings a proposal may change, in the window's order.
@@ -284,25 +285,25 @@ func settingRows() []settingRow {
 	}
 
 	return []settingRow{
-		{"defaultMode", "New routines start in", func(c autopilotprefs.Config) string { return c.DefaultMode.Label() }},
-		{"agentsAtOnce", "Agents at once", count(func(c autopilotprefs.Config) int { return c.AgentsAtOnce })},
-		{"runsPerDay", "Agent runs a day", count(func(c autopilotprefs.Config) int { return c.RunsPerDay })},
-		{"actionsPerDay", "GitHub actions a day", count(func(c autopilotprefs.Config) int { return c.ActionsPerDay })},
-		{"dailyCap", "Daily cap", func(c autopilotprefs.Config) string { return capAmount(c.DailyCap) }},
+		{SettingDefaultMode, "New routines start in", func(c autopilotprefs.Config) string { return c.DefaultMode.Label() }},
+		{SettingAgentsAtOnce, "Agents at once", count(func(c autopilotprefs.Config) int { return c.AgentsAtOnce })},
+		{SettingRunsPerDay, "Agent runs a day", count(func(c autopilotprefs.Config) int { return c.RunsPerDay })},
+		{SettingActionsPerDay, "GitHub actions a day", count(func(c autopilotprefs.Config) int { return c.ActionsPerDay })},
+		{SettingDailyCap, "Daily cap", func(c autopilotprefs.Config) string { return capAmount(c.DailyCap) }},
 		{
-			"keepAwake", "Keep the Mac awake while agents work",
+			SettingKeepAwake, "Keep the Mac awake while agents work",
 			func(c autopilotprefs.Config) string { return settingSwitch(c.KeepAwake) },
 		},
 		{
-			"holdOnOutage", "Hold agent starts while their provider reports an outage",
+			SettingHoldOnOutage, "Hold agent starts while their provider reports an outage",
 			func(c autopilotprefs.Config) string { return settingSwitch(c.HoldOnOutage) },
 		},
 		{
-			"catchUpHours", "Ask before catching up after",
+			SettingCatchUpHours, "Ask before catching up after",
 			func(c autopilotprefs.Config) string { return spanHours(c.CatchUpHours) },
 		},
-		{"historyDays", "History kept", func(c autopilotprefs.Config) string { return spanDays(c.HistoryDays) }},
-		{"logDays", "Run logs kept", func(c autopilotprefs.Config) string { return spanDays(c.LogDays) }},
+		{SettingHistoryDays, "History kept", func(c autopilotprefs.Config) string { return spanDays(c.HistoryDays) }},
+		{SettingLogDays, "Run logs kept", func(c autopilotprefs.Config) string { return spanDays(c.LogDays) }},
 	}
 }
 
@@ -402,7 +403,7 @@ func checkRules(before Rules, c RulesChange) CheckedRules {
 // trust.NormalizeBots stores them.
 func (b *rulesCheck) bots(before, trusting, untrusting []string) []string {
 	current := botsOf(before)
-	trusts, untrusts := b.botList("trust", trusting), b.botList("untrust", untrusting)
+	trusts, untrusts := b.botList(RuleTrust, trusting), b.botList(RuleUntrust, untrusting)
 
 	for _, bot := range trusts {
 		switch {
@@ -410,7 +411,7 @@ func (b *rulesCheck) bots(before, trusting, untrusting []string) []string {
 			b.problems = append(b.problems, fmt.Sprintf("rules: %s is in both trust and untrust: keep it in one.", bot))
 		case !slices.Contains(current, bot):
 			current = append(current, bot)
-			b.changes = append(b.changes, RuleChange{Kind: "trust", Target: bot, Words: "Trust " + bot + "[bot]"})
+			b.changes = append(b.changes, RuleChange{Kind: RuleTrust, Target: bot, Words: "Trust " + bot + "[bot]"})
 		}
 	}
 
@@ -418,7 +419,7 @@ func (b *rulesCheck) bots(before, trusting, untrusting []string) []string {
 		if i := slices.Index(current, bot); i >= 0 && !slices.Contains(trusts, bot) {
 			current = slices.Delete(current, i, i+1)
 
-			b.changes = append(b.changes, RuleChange{Kind: "untrust", Target: bot, Words: "Stop trusting " + bot + "[bot]"})
+			b.changes = append(b.changes, RuleChange{Kind: RuleUntrust, Target: bot, Words: "Stop trusting " + bot + "[bot]"})
 		}
 	}
 
@@ -448,7 +449,7 @@ func botsOf(list []string) []string {
 
 // botList returns the bots a rules change's list names, each as trust.NormalizeBots stores
 // it, once; each that isn't one is a problem.
-func (b *rulesCheck) botList(key string, list []string) []string {
+func (b *rulesCheck) botList(key RuleKind, list []string) []string {
 	out := []string{}
 
 	for i, raw := range list {
@@ -475,11 +476,11 @@ func (b *rulesCheck) targets(before Rules, c RulesChange) (pinned, muted []strin
 	seen := map[string]bool{}
 
 	for _, step := range []struct {
-		key  string
+		key  RuleKind
 		list []string
 		rule reporules.Rule
 	}{
-		{"pin", c.Pin, reporules.RulePinned}, {"mute", c.Mute, reporules.RuleMuted}, {"clear", c.Clear, reporules.RuleNone},
+		{RulePin, c.Pin, reporules.RulePinned}, {RuleMute, c.Mute, reporules.RuleMuted}, {RuleClear, c.Clear, reporules.RuleNone},
 	} {
 		for i, raw := range step.list {
 			rules = b.target(rules, seen, fmt.Sprintf("rules.%s[%d]", step.key, i), step.key, raw, step.rule)
@@ -491,7 +492,7 @@ func (b *rulesCheck) targets(before Rules, c RulesChange) (pinned, muted []strin
 
 // target applies rule to the target raw, at where in the change's list key, over rules,
 // and returns the rules it leaves; seen are the targets named before it, by key.
-func (b *rulesCheck) target(rules reporules.Rules, seen map[string]bool, where, key, raw string,
+func (b *rulesCheck) target(rules reporules.Rules, seen map[string]bool, where string, key RuleKind, raw string,
 	rule reporules.Rule,
 ) reporules.Rules {
 	name, err := reporules.ParseTarget(raw)
@@ -530,7 +531,7 @@ func (b *rulesCheck) target(rules reporules.Rules, seen map[string]bool, where, 
 // as heldruns stores them.
 func (b *rulesCheck) workflows(before, ignoring, unignoring []string) []string {
 	current := slices.Clone(before)
-	ignores, unignores := b.workflowList("ignoreWorkflows", ignoring), b.workflowList("unignoreWorkflows", unignoring)
+	ignores, unignores := b.workflowList(RuleIgnoreWorkflows, ignoring), b.workflowList(RuleUnignoreWorkflows, unignoring)
 
 	for _, name := range ignores {
 		switch {
@@ -539,7 +540,7 @@ func (b *rulesCheck) workflows(before, ignoring, unignoring []string) []string {
 				"keep it in one.", name))
 		case !slices.Contains(current, name):
 			current = append(current, name)
-			b.changes = append(b.changes, RuleChange{Kind: "ignoreWorkflows", Target: name, Words: "Ignore " + name})
+			b.changes = append(b.changes, RuleChange{Kind: RuleIgnoreWorkflows, Target: name, Words: "Ignore " + name})
 		}
 	}
 
@@ -547,7 +548,7 @@ func (b *rulesCheck) workflows(before, ignoring, unignoring []string) []string {
 		if i := slices.Index(current, name); i >= 0 && !slices.Contains(ignores, name) {
 			current = slices.Delete(current, i, i+1)
 
-			b.changes = append(b.changes, RuleChange{Kind: "unignoreWorkflows", Target: name, Words: "Stop ignoring " + name})
+			b.changes = append(b.changes, RuleChange{Kind: RuleUnignoreWorkflows, Target: name, Words: "Stop ignoring " + name})
 		}
 	}
 
@@ -560,7 +561,7 @@ func (b *rulesCheck) workflows(before, ignoring, unignoring []string) []string {
 
 // workflowList returns the workflows a rules change's list names, each trimmed, once; each
 // that heldruns refuses, or that isn't one line of plain text, is a problem.
-func (b *rulesCheck) workflowList(key string, list []string) []string {
+func (b *rulesCheck) workflowList(key RuleKind, list []string) []string {
 	out := []string{}
 
 	for i, raw := range list {

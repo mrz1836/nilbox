@@ -2,6 +2,7 @@ package kit
 
 import (
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -54,4 +55,52 @@ func TestARoutineHeldInDryRunSaysForWhichSteps(t *testing.T) {
 	lines := routineLines(CheckedRoutine{DryRunOnly: []catalog.StepKind{catalog.StepMerge, "teleport"}})
 
 	assert.Contains(t, lines, "- This build runs it only in Dry run, whatever its mode, for “Merge it” and “teleport”.")
+}
+
+// jsonNames returns the JSON names of the struct T's fields, in their order.
+func jsonNames[T any]() []string {
+	t := reflect.TypeFor[T]()
+	names := make([]string, 0, t.NumField())
+
+	for i := range t.NumField() {
+		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		names = append(names, name)
+	}
+
+	return names
+}
+
+func TestEverySettingAProposalChangesIsKeyedByItsJSONName(t *testing.T) {
+	t.Parallel()
+
+	keys := make([]string, 0, len(settingRows()))
+	for _, row := range settingRows() {
+		keys = append(keys, string(row.key))
+	}
+
+	assert.Equal(t, jsonNames[SettingsChange](), keys,
+		"a SettingChange's key is the proposal's own name for the setting, which the window applies by")
+}
+
+func TestEveryRuleChangeIsKindedByTheListItCameFrom(t *testing.T) {
+	t.Parallel()
+
+	before := Rules{
+		TrustedBots: []string{"dependabot"}, Pinned: []string{"acme-org/pinned"}, Muted: []string{},
+		IgnoredWorkflows: []string{"Nightly"},
+	}
+	checked := checkRules(before, RulesChange{
+		Trust: []string{"renovate"}, Untrust: []string{"dependabot"}, Pin: []string{"acme-org/new"},
+		Mute: []string{"acme-org/loud"}, Clear: []string{"acme-org/pinned"}, IgnoreWorkflows: []string{"Deploy"},
+		UnignoreWorkflows: []string{"Nightly"},
+	})
+	require.Empty(t, checked.Problems)
+
+	kinds := make([]string, 0, len(checked.Changes))
+	for _, c := range checked.Changes {
+		kinds = append(kinds, string(c.Kind))
+	}
+
+	assert.ElementsMatch(t, jsonNames[RulesChange](), kinds,
+		"a RuleChange's kind is the name of the proposal's list it came from, which the window applies by")
 }

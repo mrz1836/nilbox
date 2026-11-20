@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { AutopilotRunEvent, DescribeCard } from '../platform'
+import type { AutopilotRunEvent, DescribeCard, KitSettingKey } from '../platform'
 import {
   describeCard,
   kitChecked,
@@ -523,20 +523,18 @@ describe('what a card applies', () => {
     order.length = 0
     expect(await applySettings(change)).toEqual({ ok: false, error: 'Keep the cap to $1,000 a day.' })
     expect(order).toEqual(['agents 1'])
-
-    expect(
-      await applySettings(
-        kitCheckedSettings({ changes: [{ key: 'paused', label: 'Pause', before: 'off', after: 'on' }] }),
-      ),
-    ).toEqual({
-      ok: false,
-      error: 'This build can’t set “Pause”.',
-    })
   })
 
   it('applies every kind of setting through its own setter', async () => {
     const after = settings().autopilot
-    const keys = ['defaultMode', 'runsPerDay', 'actionsPerDay', 'keepAwake', 'holdOnOutage', 'catchUpHours']
+    const keys: KitSettingKey[] = [
+      'defaultMode',
+      'runsPerDay',
+      'actionsPerDay',
+      'keepAwake',
+      'holdOnOutage',
+      'catchUpHours',
+    ]
 
     await applySettings(
       kitCheckedSettings({ changes: keys.map((key) => ({ key, label: key, before: '', after: '' })), after }),
@@ -593,12 +591,6 @@ describe('what a card applies', () => {
     ).toEqual({
       ok: true,
       data: undefined,
-    })
-    expect(
-      await applyRules(kitCheckedRules({ changes: [{ kind: 'archive', target: 'x', words: 'Archive x' }] })),
-    ).toEqual({
-      ok: false,
-      error: 'This build can’t apply “Archive x”.',
     })
   })
 

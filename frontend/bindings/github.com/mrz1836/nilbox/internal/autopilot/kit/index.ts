@@ -7,7 +7,9 @@ export {
     Part,
     Purpose,
     ReplyAction,
-    RiskLevel
+    RiskLevel,
+    RuleKind,
+    SettingKey
 } from "./models.js";
 
 export type {
