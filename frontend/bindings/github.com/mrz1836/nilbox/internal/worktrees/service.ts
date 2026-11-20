@@ -123,6 +123,17 @@ export function MergedBranches(): $CancellablePromise<$models.MergedBranch[] | n
 }
 
 /**
+ * OpenTerminal opens the terminal chosen for launches in the worktree at path, one of the
+ * linked worktrees of the clone at repoPath, for its Open in Terminal: the user looks at
+ * the worktree or works in it there. The app runs nothing in it (scriptrun.OpenFolder).
+ * The request is checked as Details checks it, so a worktree whose folder is gone is
+ * refused with ErrPrunable.
+ */
+export function OpenTerminal(repoPath: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(403914312, repoPath, path);
+}
+
+/**
  * Prune clears the repository's entries for worktrees whose directories are gone. It
  * never touches a worktree that still exists or any branch.
  */
@@ -160,6 +171,16 @@ export function Remove(repoPath: string, path: string, branches: string[] | null
  */
 export function RemoveAllClean(picks: $models.Pick[] | null): $CancellablePromise<$models.RemoveResult[] | null> {
     return $Call.ByID(532446488, picks);
+}
+
+/**
+ * Reveal shows the worktree at path, one of the linked worktrees of the clone at repoPath,
+ * in Finder, for its Reveal in Finder. The request is checked as Details checks it, so a
+ * worktree whose folder is gone is refused with ErrPrunable; where Finder can't show it,
+ * the error is ErrNoFinder, in words the window shows.
+ */
+export function Reveal(repoPath: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(1254038269, repoPath, path);
 }
 
 /**

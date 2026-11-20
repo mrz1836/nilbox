@@ -579,6 +579,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
 
     listWorktrees: () => Promise.resolve(worktreesSnapshot()),
     worktreeDetails: () => Promise.resolve(worktreeDetails()),
+    openWorktreeTerminal: done,
+    revealWorktree: done,
     removeWorktree: () => Promise.resolve(removeResult()),
     forceRemoveWorktree: () => Promise.resolve(removeResult()),
     removeAllCleanWorktrees: () => Promise.resolve([]),

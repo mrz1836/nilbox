@@ -10,8 +10,10 @@ import (
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/logging"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/shellenv"
+	"github.com/mrz1836/nilbox/internal/uierr"
 	"github.com/mrz1836/nilbox/internal/worktrees"
 )
 
@@ -20,6 +22,22 @@ import (
 // once rather than waiting for an answer no one can give.
 func worktreeRunner(search execpath.Search) execpath.Exec {
 	return execpath.Exec{Search: search, Env: shellenv.With(os.Environ(), "GIT_TERMINAL_PROMPT", "0")}
+}
+
+// worktreeTerminal opens the terminal in a worktree for the worktree service, once the
+// terminal is built: the service is built before the launcher, whose opener the terminal
+// opens through. It is set once, before any work starts.
+type worktreeTerminal struct {
+	opener scriptrun.FolderOpener
+}
+
+// OpenFolder opens the terminal in dir, once there is one.
+func (w *worktreeTerminal) OpenFolder(ctx context.Context, name, dir string) error {
+	if w.opener == nil {
+		return uierr.New("Your terminal can't be opened here.", scriptrun.ErrNoFolderTerminal)
+	}
+
+	return w.opener.OpenFolder(ctx, name, dir)
 }
 
 // sweepSettings is the part of the settings the worktree service reads.

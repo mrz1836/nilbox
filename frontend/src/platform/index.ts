@@ -1218,6 +1218,8 @@ export function runScript(req: ScriptRunRequest): CancellablePromise<ScriptStart
 export const {
   List: listWorktrees,
   Details: worktreeDetails,
+  OpenTerminal: openWorktreeTerminal,
+  Reveal: revealWorktree,
   Remove: removeWorktree,
   ForceRemove: forceRemoveWorktree,
   RemoveAllClean: removeAllCleanWorktrees,

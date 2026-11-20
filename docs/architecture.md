@@ -2169,6 +2169,15 @@ name one folder, `recordsByDir` picks the newest that holds the commit the workt
 made at, or else the newest, for the listing's count (`fetchedHeads`) and `Details` alike.
 `Details` never asks GitHub, takes no lock, and emits nothing.
 
+`OpenTerminal(repoPath, path)` and `Reveal(repoPath, path)` check the request as `Details`
+does, so a worktree whose folder is gone is refused with `ErrPrunable`, then open the
+terminal chosen for launches in the worktree through `scriptrun.OpenFolder`, which runs
+nothing there, or show it in Finder with `open -R` (off macOS there is no `Revealer`, and
+Reveal fails with `ErrNoFinder`, worded for the window). Core builds the worktree service
+before the terminal, which needs the launcher, which needs the worktrees, so the service's
+`FolderOpener` is a core adapter (`worktreeTerminal`) filled in once the terminal is built,
+before any work starts.
+
 ## internal/gitread
 
 `internal/gitread/` is the read-only git that release, hooks, and Repo scripts share: an exact-argv allowlist
