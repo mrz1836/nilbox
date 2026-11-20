@@ -32,7 +32,9 @@ export function issueLook(state: RefState, reason: IssueStateReason): IssueLook 
       return { color: 'text-muted', words: 'Closed as not planned' }
     case 'DUPLICATE':
       return { color: 'text-muted', words: 'Closed as a duplicate' }
-    default:
+    case '':
+    case 'COMPLETED':
+    case 'REOPENED':
       return { color: 'text-info', words: 'Closed as completed' }
   }
 }
@@ -107,7 +109,8 @@ export function issueTone(result: IssueResult): 'success' | 'warning' {
     case 'new_activity':
     case 'already_closed':
       return 'warning'
-    default:
+    case 'commented':
+    case 'closed':
       return 'success'
   }
 }

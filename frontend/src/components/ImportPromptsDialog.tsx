@@ -102,7 +102,7 @@ function outcomeText(e: ImportEntry): string {
       return `New · saved as “${e.nickname}”`
     case 'replace':
       return `Updates the starter “${e.replaces}”`
-    default:
+    case 'skip':
       return e.nickname === e.prompt.nickname ? 'Already in your library' : `Already in your library as “${e.nickname}”`
   }
 }
@@ -120,7 +120,11 @@ function slotText(slot: DefaultSlot): string {
     case 'changes_requested':
     case 'rereview':
       return `the default prompt ${situationInfo[slot].when}`
-    default:
+    case 'approve':
+    case 'approve_bots':
+    case 'request_changes':
+    case 'comment':
+    case 'nudge':
       return `the default reply for ${replySlotPlaces[slot]}`
   }
 }

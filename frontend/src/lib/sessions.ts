@@ -216,7 +216,8 @@ export function githubEventTone(s: AgentSession): string {
       return 'text-success'
     case 'changes_requested':
       return 'text-warning'
-    default:
+    case 'closed':
+    case '':
       return 'text-muted'
   }
 }

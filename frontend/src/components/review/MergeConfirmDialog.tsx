@@ -44,7 +44,8 @@ export function mergeVerb(method: MergeMethod): string {
       return 'squash-merge'
     case 'REBASE':
       return 'rebase-merge'
-    default:
+    case '':
+    case 'MERGE':
       return 'merge'
   }
 }

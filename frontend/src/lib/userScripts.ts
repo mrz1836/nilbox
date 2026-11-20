@@ -45,7 +45,7 @@ export function runsInLabel(place: RunsIn | ''): string {
       return brand.name
     case 'terminal':
       return 'Terminal'
-    default:
+    case '':
       return 'As set in Settings'
   }
 }
@@ -57,7 +57,7 @@ export function scopeWords(u: UserScript): string {
       return 'All repositories'
     case 'go':
       return 'Go repositories'
-    default:
+    case 'repos':
       return u.repos.join(', ')
   }
 }

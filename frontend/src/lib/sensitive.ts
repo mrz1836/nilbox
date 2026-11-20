@@ -81,7 +81,8 @@ export function filesChip(check: FileCheck): FilesChip {
         short: 'Files not checked yet',
         long: 'Not checked since its last push; the next refresh checks it',
       }
-    default:
+    case 'flagged':
+    case 'clear':
       return {
         tone: 'muted',
         icon: 'clear',

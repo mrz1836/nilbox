@@ -32,7 +32,7 @@ export function refWords(r: AutopilotMissingRef): string {
       return r.reply ? `The reply “${r.name}”` : `The prompt “${r.name}”`
     case 'agent':
       return `The agent ${r.agent}, which this Mac doesn’t have, so it inherits the one a click would use`
-    default:
+    case 'profile':
       return r.agent === 'inherit' ? `The profile “${r.name}”` : `${r.agent}’s profile “${r.name}”`
   }
 }

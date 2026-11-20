@@ -133,7 +133,7 @@ function summary(check: FileCheck): string {
     case 'partial':
     case 'clear':
       return `None of its ${counted(check.checked, 'checked file', 'checked files')} is sensitive.`
-    default:
+    case 'flagged':
       return `${counted(sensitiveCount(check), 'file', 'files')} here deserve a close look before you review or open a session.`
   }
 }

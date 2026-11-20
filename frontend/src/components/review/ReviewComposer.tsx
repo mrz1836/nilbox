@@ -52,7 +52,18 @@ export function replyActionOf(action: ReviewAction): ReplyAction {
       return 'request_changes'
     case 'comment':
       return 'comment'
-    default:
+    case '':
+    case 'approve':
+    case 'approve_merge':
+    case 'approve_auto_merge':
+    case 'merge_now':
+    case 'auto_merge':
+    case 'merge_bypass':
+    case 'update_branch':
+    case 'rebase_bot':
+    case 'close':
+    case 'approve_runs':
+    case 'rerequest_review':
       return 'approve'
   }
 }
