@@ -2378,6 +2378,11 @@ describe('the Autopilot tab’s Describe it', () => {
     await routineList()
     await user.click(nav().getByRole('button', { name: 'New routine' }))
     await user.type(await screen.findByRole('textbox', { name: 'Name' }), ' for bugs')
+    // The name is left first, as a click elsewhere would leave it: a field still focused as
+    // the request's question takes focus has user-event send its change event, in an act of
+    // its own, while React runs the dialog's effects, which React reports as a component
+    // suspended inside an act that wasn't awaited.
+    await user.tab()
 
     view.rerender(<Tab request={{ seq: 1, target: activityTarget, describe: { itemId: 7 } }} />)
     await user.click(await screen.findByRole('button', { name: 'Keep editing' }))
