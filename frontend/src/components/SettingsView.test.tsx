@@ -227,6 +227,7 @@ describe('SettingsView', () => {
     expect(screen.getByText('Octo User')).toBeInTheDocument()
     expect(screen.getByText('@octo-user')).toBeInTheDocument()
     expect(screen.getByText(/gh auth switch/)).toBeInTheDocument()
+    expect(screen.getByText(/gh auth refresh -s repo,read:org/)).toBeInTheDocument()
   })
 
   it('opens the GitHub profile in the browser', async () => {
