@@ -35,7 +35,12 @@ The sections follow the guide's Layout:
   [`internal/semver`](#internalsemver)
 - **Autopilot**: [`internal/autopilot`](#internalautopilot) (its prefs, the background runner
   `internal/agentrun` in [Agents in the background](#agents-in-the-background), and
-  [the Autopilot tab](#the-autopilot-tab)), [`internal/fence`](#internalfence)
+  [the Autopilot tab](#the-autopilot-tab)), [`internal/autopilot/draft`](#internalautopilotdraft),
+  [`internal/agentrun/stream`](#internalagentrunstream), [`internal/fence`](#internalfence)
+- **Describe it**: [`internal/autopilot/kit`](#internalautopilotkit),
+  [`internal/describeit`](#internaldescribeit) (with
+  [what the conversation spike found](#what-the-conversation-spike-found)),
+  [`internal/mcpserver`](#internalmcpserver)
 - **Backup and setup**: [`internal/backup`](#internalbackup), [`internal/setup`](#internalsetup)
 - **The window**: [`frontend`](#frontend)
 
@@ -56,6 +61,12 @@ before anything opens the data, and then, in both builds, `fence.RunHook`: a fen
 run's hook is this binary run again with `--fence-hook-v1=<run folder>`, which decides one
 tool call against the run's policy and exits, reading no setting, opening no data, logging
 nothing, and touching no window (`hookmode_test.go` runs the test binary's own `main` so).
+Right after it comes `mcpserver.Serve`: Describe it's tool server is this binary run again
+too, by Claude Code, with `--mcp-server-v1=<describe folder>` ([the tool
+mode](#internalmcpserver)), which serves its tools on stdin and stdout until the session ends,
+as the hook does opening no data, starting no logging, and touching no window
+(`toolmode_test.go` runs the test binary's own `main` so, with an empty home, and finds
+nothing created but the proposal).
 A rehearsal build (`main.flavor=rehearsal`, `magex
 app:rehearse`) always runs on its own data directory beside the user's
 (`appdata.ResolveRehearsal`, named `brand.RehearsalDataDirName`, or `brand.RehearsalSlug`
@@ -163,7 +174,7 @@ profiles, prompts, launch defaults, inbox, review, issues, the profile pictures,
 worktrees, notifications, app info, the API budget, sessions, integrations, script runs,
 release, hooks, repository scripts, the mirror of the user's GitHub notifications, the
 backup of the user's setup, the service status check, the first-run setup, the app's updates,
-and Autopilot's routines.
+Autopilot's routines, and [Describe it](#internaldescribeit).
 Some building blocks are built once and handed to every service that needs them, so what they
 hold is shared: the clone locks (`clonelock.Set`), the profile pictures (`avatars.Service`), and
 the assignee Finder both sheets offer people to assign through (`assignees.Finder`, over the
@@ -375,7 +386,9 @@ the user asked for (Settings → About, or `magex app:reset`, each writing
 before anything opens the database: `store.OpenFresh` waits about five seconds for another
 copy of the app to let go, then sets the database aside as `<path>.reset-<UTC stamp>`
 (`ResetRequested`, no error) for a fresh one, putting it back when the fresh one fails;
-`store.PruneResetCopies` keeps the newest three, and the request is cleared. A database still
+`store.PruneResetCopies` keeps the newest three, Describe it's conversations and proposals,
+which name routines that are gone, are removed (`forgetConversations`; its plugin, the plugin's
+link, and `agent.json` stay), and the request is cleared. A database still
 held is a busy error, the startup dialog's, with the request kept for the next start; with
 no database file there is nothing to set aside, and a request that can't be read is logged
 and dropped, never carried out. `store.Backup` takes a backup of the open database whenever
@@ -462,7 +475,13 @@ fence hook; `CheckFenced`, the flags no background run's extras set; `KeepsPrese
 spec's own: Codex keeps every preset but GitHub tasks only), its version, sign-in, and
 login commands with their parsers (`ParseVersion`, `ParseSignIn`, which keep no email), the
 API key variables a launch unsets unless the user's setting lets a key through (`KeyEnv`),
-and the status page part it depends on (`StatusPart`), and its headless half for a run
+the status page part it depends on (`StatusPart`), the conversation half Describe it talks
+with Claude Code through (`conversation.go`, `claude_conversation.go`: a turn's flags,
+`ConversationArgs`, which take no extra arguments, its MCP config, `ConversationFiles`, the
+plugin's files and commands, `PluginFiles` and `PluginArgs`, the tool names' prefixes, and
+`claudeConversationFloor`, 2.1.328, which `claudeConversationReviewed` holds every flag,
+command, and file key to; [internal/describeit](#internaldescribeit) has the argv), and its
+headless half for a run
 in the background (`HeadlessArgs` around the fence's own flags, `HeadlessEnv`, `HeadlessFiles`
 for a schema read from a file in its strict form, `StrictSchema`, `Headless` with what it can
 do there, which `Agent.Background` shows the builder, and the version whose flags it needs,
@@ -2942,7 +2961,10 @@ builder renders what it lists. Its parts:
   agent, scripts, verify, merging, or review, whether it runs at once (`Local`) or follows
   the routine's mode (`AsksFirst`), and `Offered`, which every step and action is in this
   build: one a later catalog lists before its dispatcher is built stays unoffered);
-- a schedule's styles (`ScheduleStyles`: each match on its own, or one digest);
+- a schedule's styles (`ScheduleStyles`: each match on its own, or one digest) and how often
+  it fires (`Everies`); the ways and methods Merge it merges (`MergeHows`, `MergeMethods`, the
+  repository's own first), the ways Post the agent's review posts (`ReviewAses`), and what
+  Tell me can say (`TellWhens`), each with its label and help, as `All()` serves them;
 - the Only if outcomes, the tools presets (`MayPush`, `ReadOnly`), the agent step's
   settings (a budget in tokens among them, `budgetTokens`), the other steps' whole-number
   settings (`StepSettings`: `snooze.days`, `waitForChecks.settleMinutes`, and
@@ -3021,7 +3043,14 @@ key and every closed set of values.
   match a key ignoring case, Unicode's folding included (`Trigger` beside `trigger`, or
   `ſteps` for `steps`); and it refuses a key given twice (which encoding/json would read
   as the last), a value of the wrong type, anything after the document, nesting past 16
-  levels, and more than 64 KiB.
+  levels, and more than 64 KiB. `DecodeExact[T]` is the same strict walk for any type, which
+  Describe it's [kit](#internalautopilotkit) reads its files and proposals with.
+- `ClosedSets` gathers every closed set of values the format holds (the watch's, the
+  trigger's, the conditions', the steps', and the limits'), each from the catalog's, watch's,
+  or item's own lists, never a copy: `Validate` checks every value against them, kit's schema
+  enumerates them, and `TestEveryNamedStringTypeHasAClosedSet` holds every field of the format
+  whose type is a named string type to one, so no vocabulary enters the format without its
+  values.
 - `Normalize` trims every text, sorts and dedupes every list that is a set (text compared
   ignoring case, the first spelling kept), writes a choice as the catalog spells it, keeps
   a condition written the same way twice in one list once (its value compared exactly, so
@@ -3110,11 +3139,11 @@ so on, numbered again in the transaction of every change that adds, deletes, or 
 its last error, and the broken reason it was last written with. A delete is soft
 (`deleted_at`, and a check keeps a deleted routine off), so the history that names a routine
 keeps its name and sentence. Names are unique, ignoring case in any alphabet, among the
-routines not deleted: `nameKey` folds a name in Go (each rune to the smallest of its
-`unicode.SimpleFold` orbit, so two names share a key exactly when `strings.EqualFold` says
-they match), every comparison of names uses it, and the row stores it as `name_key` under a
-partial unique index, since SQLite's NOCASE folds ASCII alone; a worded check runs before the
-index would refuse. Its queries are in
+routines not deleted: the [draft leaf](#internalautopilotdraft)'s `NameKey` folds a name in
+Go (each rune to the smallest of its `unicode.SimpleFold` orbit, so two names share a key
+exactly when `strings.EqualFold` says they match), every comparison of names uses it, and the
+row stores it as `name_key` under a partial unique index, since SQLite's NOCASE folds ASCII
+alone; a worded check runs before the index would refuse. Its queries are in
 `internal/autopilot/internal/queries`, generated by sqlc.
 
 **The bound Service** (`List`, `Get`, `Save`, `Delete`, `Duplicate`, `SetEnabled`, `SetMode`,
@@ -3144,7 +3173,7 @@ nil list, and words every refusal with `uierr`.
   fires for), each at the step's prompt field (`Library`, core's `promptLibrary` over the
   prompt library); with no library, or one that can't be read (logged), it refuses none.
   `SetEnabled`, `Duplicate`, a restore, and an import don't check them again; the engine does,
-  right before each start (`promptHold`, the same `stepPromptProblems`), so a prompt deleted,
+  right before each start (`promptHold`, the same `draft.StepPromptProblems`), so a prompt deleted,
   made a reply, or narrowed to the other kind after the save keeps the run from starting
   (`blocked: not_ready`, *Its prompt can't run: ...*). A prompt a routine names can't be deleted
   (the prompt library's `RoutineSource`, core's `routinePrompts` over `PromptFollower.Uses`),
@@ -3153,11 +3182,13 @@ nil list, and words every refusal with `uierr`.
   compared-and-set on the one read); a starter's key follows its prompt on its own.
 - A step's **Where** must be a place this build runs an agent in (`catalog.Places`,
   `Offers.Places`: the background and the terminal, both offered): one it can't is a problem
-  at `steps[i].agent.where` (`placeProblems`), in `Describe` and `Save` alike, never a Dry run
-  hold, so a routine is never saved to wait for a later build; a routine stored before with
-  such a step isn't ready on this Mac (its `place:` need, **Readiness**, below).
-- `Describe(draft)` reads a draft as the builder edits it, saving nothing and asking GitHub
-  nothing: the spec normalized, encoded, and loaded as `Save` does, its problems (the spec's,
+  at `steps[i].agent.where` (the draft leaf's `Offers.placeProblems`), in `Describe` and `Save`
+  alike, never a Dry run hold, so a routine is never saved to wait for a later build; a
+  routine stored before with such a step isn't ready on this Mac (its `place:` need,
+  **Readiness**, below).
+- `Describe(draft)` reads a draft as the builder edits it, through the draft leaf's `Read`,
+  whose checks `Save` shares (`draft.Problems`), saving nothing and asking GitHub nothing:
+  the spec normalized, encoded, and loaded as `Save` does, its problems (the spec's,
   then the prompts'), each with its part and field, the steps this build runs only in Dry run,
   its warnings (a Pin, Snooze, Dismiss, or Restore over a watch that is only searches; on
   Autopilot, an agent in the terminal or with the profile's own permissions, unless the routine
@@ -3222,7 +3253,7 @@ through `NewBackupPart`, a type of its own that core adapts in `adapters_backup.
 method of the bound Service. `PlanBackup` leaves out, with a note, a routine with no name, a
 second of a name, and one whose spec won't load (as a newer build's); a mode this build
 doesn't know takes the mode new routines start in. Routines are matched by name
-(`nameKey`): one whose definition, description, and mode are the file's is left as it is, on
+(`draft.NameKey`): one whose definition, description, and mode are the file's is left as it is, on
 or off, under either mode; any other is saved over and switched off, and one this Mac lacks
 is added, off, at the end (Merge) or in the file's order (Replace, which also deletes,
 softly, every routine the file doesn't name). A routine here that a newer build wrote is
@@ -3337,6 +3368,14 @@ says what the ledger holds of the occurrence it fires for now (`Record`, in the 
 in Activity's own words, *Closed: it merged.*, from `reasonWords`, which a test holds to the
 window's `reasonChips`), read from `ListRoutineMatchKeys`; a match with no record is one it
 would run on.
+
+**`MatchStored(draft)`** counts what a draft matches now among the stored items of the inbox's
+lists it watches (`Items.WatchedItems`), that its routine has no record of and doesn't leave
+alone, by kind (`Matching`: the pull requests and issues apart, `Unknown` for an item whose
+decision waits on a read, and `Incomplete` for a draft that also watches a search, whose
+items are `Test`'s to read, or more than 200 items): a Describe it card's *Matches 3 pull
+requests in your inbox now*. It decides from what the inbox stored alone, asks GitHub nothing,
+works with Autopilot off, and refuses a draft with problems as `Save` does.
 
 **The window's builder** (`frontend/src/components/autopilot/builder`) renders from
 `Catalog`, its pickers fed by `Suggest`, and holds the draft in the Autopilot tab, which stays
@@ -3868,8 +3907,10 @@ takes a step in the background itself and hands one in the terminal to `agentRun
    `Dispatch` returns `Running` with what it started (`Launched`, `ScriptRunID` included), and
    the run's tokens reach the ledger every 30 seconds (`Engine.RunUsage`).
 
-**The stream** (`agentrun/stream.go`, `claude.go`, and Codex's `codex.go`) splits the log into lines itself (one is
-read up to 64 MB, a longer one counted and skipped), keeps the last 2,000 events (each text cut
+**The stream** (the leaf [`internal/agentrun/stream`](#internalagentrunstream): `stream.go`,
+`claude.go`, and Codex's `codex.go`, the runner picking one by the run's agent, `parserFor`)
+splits the log into lines itself (one is read up to 64 MB, a longer one counted and skipped),
+keeps the last 2,000 events (each text cut
 to 8 KB, `runevent.MaxText`) and the progress (the latest step, the todo list, tokens counted
 once per message), and counts a message it doesn't know (`Progress.Unknown`). Each event
 carries where its line starts in the log and which of the line's events it is (`Offset`,
@@ -3886,8 +3927,8 @@ line); a run that ended, or one the runner doesn't follow, is its log's last pag
 `readBack` reads the log back a 256 KB chunk at a time (`scriptrun.Service.Output`) until it
 holds about 200 whole lines, or 1 MB and one (a line longer still is read whole, to its start),
 drops the line the chunk started inside, keeps the last 200 lines, and parses them with a
-parser started at that offset (`stream.from`), so a long log is read a page at a time, never
-whole. A page of an ended run carries its `Ending` (`runevent.Ending`: the record's summary,
+parser started at that offset (`stream.Parser.From`), so a long log is read a page at a time,
+never whole. A page of an ended run carries its `Ending` (`runevent.Ending`: the record's summary,
 the agent's report or last message, whether it needs a person, its turns, time, models, commit,
 changed files, and its last todo list, `Outcome.Todos`), and its progress the record's tokens.
 `RunDiff` is the worktree's changes since the head the run started on, committed or not, with
@@ -3964,7 +4005,7 @@ session (`fenceKeeper`, `Fence.TakenOver`); the run view reads it through its st
 
 Codex runs in the background through the same planner, fence, runner, run view, and Take over
 as Claude Code: everything it does differently is its spec's (`internal/agent/codex_headless.go`,
-`codex_fence.go`) and its parser's (`internal/agentrun/codex.go`), as measured on
+`codex_fence.go`) and its parser's (`internal/agentrun/stream/codex.go`), as measured on
 codex-cli 0.163.0, its version floor (`codexFloor`, `Headless.MinVersion`).
 
 - **The run.** `codex exec --json --ignore-user-config --ignore-rules`, the model and
@@ -4015,7 +4056,7 @@ codex-cli 0.163.0, its version floor (`codexFloor`, `Headless.MinVersion`).
   wrote its proof and was refused its probe, refused `git push origin HEAD:other` and `curl`,
   logged both, and let a write in the worktree through; Codex took the strict schema and the
   note as written.
-- **The stream** (`agentrun/codex.go`): `thread.started` names the thread, which Codex picks,
+- **The stream** (`agentrun/stream/codex.go`): `thread.started` names the thread, which Codex picks,
   so the runner links the run's session to it as soon as it comes
   (`SessionUpdate.AgentSessionID`, `sessions.RunUpdate.AgentSessionID`); items' starts and ends
   are the tools and their results (a command shown without the login shell Codex wraps it in);
@@ -4326,8 +4367,9 @@ blank is a part of the spec quick setup fills: a search's Where (`BlankWhere`, a
 a condition's check names (`BlankChecks`, at a condition, `Required` when the spec is invalid
 until it is filled). Every template names its prompts by starter, so every Mac has them. The
 bound `Templates` serves them as this Mac sees them: the sentence (empty while a required blank
-is), what this build can't run of it (`Offers.needs`: an agent's place, then each step and
-GitHub action the build's `Offers` don't offer, in plain words, and `NeedsWords` as a sentence;
+is), what this build can't run of it (the draft leaf's `Offers.Needs`: an agent's place, then
+each step and GitHub action the build's `Offers` don't offer, in plain words, and `NeedsWords`
+as a sentence;
 none, in this build, which runs every template),
 the starters it runs with whether the library holds each (`TemplatePrompt.InLibrary`, which the
 prompts' `AddStarter` puts back), and why it is suggested (`suggestedWhy` over
@@ -4354,7 +4396,7 @@ agent runs while the background isn't offered.
 `app/<slug>`), in its owner (`@me` for the viewer's own, else `org:<owner>`); Checks fail
 (with `checks.failedNames` *contains any of* the names that failed), else Merge conflicts, else
 Changes requested, else Appears, as the item stands; and an agent step running the item's own
-default prompt (`PromptRef.ItemDefault`) where `Offers.preferredPlace` says (the background
+default prompt (`PromptRef.ItemDefault`) where `Offers.PreferredPlace` says (the background
 once offered, else the first place that is); named apart from the user's routines
 (`itemRoutineName`, `freeName`), in the mode new routines start in. Its labels and its update
 type come as `Suggestions`, and the draft's decision on the item now (`Match`, `Trace`).
@@ -4435,7 +4477,8 @@ contributor's item waiting for the user, and one run per item; it takes no agent
 counts toward neither the agents' caps nor the GitHub actions' (`isAgentRunner`). The user's
 own scripts reach the engine and the builder through `MyScripts` (core's `myScripts`, over
 `scripts.Routines.Mine`), which the bound `MyScripts` lists, and which `Save` and `Describe`
-check a step's ID against (`scriptProblems`). **Ask before running** is the engine's to honor,
+check a step's ID against (the draft leaf's `scriptProblems`). **Ask before running** is the
+engine's to honor,
 since Repo scripts' Run leaves it to its window: the gate's first check (`scriptAsks`) holds a
 script step whose script asks until the step's `Confirmed` holds `ScriptKey(id, look)`, the
 script as the user saw it (its look hashes its name, command, place, and the setting), whatever
@@ -4707,6 +4750,103 @@ The window side lives in `frontend/src/components/autopilot/` (the tab itself,
   one, the background), and the Test
   panel's **Preview** shows `PreviewRun`'s plan with the launch menu's own `PlannedLaunch`
   and the trace (`Trace`).
+- **Describe it** (`describe/`: `DescribeView`, `Composer`, `Transcript`, `ProposalCard` with
+  its rows `RoutineChange`, `PromptChange`, `SettingsChange`, and `RulesChange`, and
+  `OutsideProposals`; the pure `lib/describeit.ts`; and `lib/useConversation.ts`) is the
+  nav's `DESCRIBE` (-3), kept mounted in an `Activity` once it has shown. The empty tab's box
+  (`AskBox`, whose `describeSeesText` the composer shares), a routine's **Change with
+  Claude…** (`routineMenu`, `RoutinePane`), and an item's **Describe a routine for this…** (an
+  `AutopilotRequest` with `describe`) hand it a `DescribeRequest`, a message to send at once or
+  what to attach, which it acts on once (`handled`). `useConversation` reads the conversation
+  as it mounts and on each `describeit:updated`, one read at a time with one more waiting, and
+  each turn's events after the last it has (`Events`) until the turn has ended, as
+  `useRunTimeline` follows a run. `lib/describeit.ts` words a turn's events (`turnEntries`;
+  `toolWords`, which knows the app's tools through either prefix, `mcp__<slug>__` in the app
+  and `mcp__plugin_<slug>_<server>__` from the plugin, and takes a check's or a proposal's line
+  from its result's first sentence), places each card after the line that proposed it
+  (`cardPlaces`), folds the cards a later one revises (`revisedCards`), and applies a part
+  through the bindings the builder, Prompts, and Settings use, never another way:
+  `createPrompt` (`promptInput`, the library's defaults for the rest); `saveRoutine` for a new
+  routine in the mode its row chose (`newRoutineDraft`), or, for a change, `useRoutineChange`'s
+  request, which asks about what a routine that is on matches now (`changeDraft`, keeping the
+  routine's own mode); a `setAutopilot…` setter for each setting it changes (`settingSetters`,
+  a record over kit's `SettingKey`, so a key the window can't apply fails the typecheck); and
+  `setTrustedBots`, `setRepoRule`, and `setIgnoredWorkflows` (`applyRules`, over `RuleKind`
+  likewise). Each part's outcome is `Settle`d with its words (`settleWords`), and `applyAll`
+  runs a card's parts in order and stops at the first that fails, saying which
+  (`appliedWords`). A routine's row is quick setup's review (`DraftReview`'s `useDraftReview`:
+  `Describe` once editing rests, `DraftReadiness`, `TestPanel` over `Test`, and `ModeChoice`
+  with `claudeModeHint`), with `MatchStored`'s count for a draft that watches the inbox's lists
+  alone (`storedMatchWords`). `OutsideProposals` reads `Proposals` again on each
+  `describeit:proposals`, as the nav's count reads `Status.Pending`. Settings → Autopilot's
+  **Claude Code** group is `settings/DescribeItSettings.tsx` (`Agent` and `SetAgent`;
+  `Plugins`, `InstallPlugin`, and `RemovePlugin`).
+
+## internal/autopilot/draft
+
+`internal/autopilot/draft/` is the one validator of a routine's draft: the builder's
+`Describe` and `Save`'s checks in the root package, and whatever checks a routine outside the
+app's own process ([kit](#internalautopilotkit), and so [the tool mode](#internalmcpserver)),
+all read a draft through it, so a routine reads the same wherever it is checked. It is a pure
+leaf, held by `TestLeafImports` to the routines core's `catalog`, `spec`, and `watch`, `item`,
+`agent` (what each agent can keep in the background), `fence`, `autopilotprefs`, `brand`,
+`textutil`, and `uierr`: it reads no database, starts nothing, and never asks GitHub. What a
+draft's checks read beyond the draft comes through the `Setup` it is handed (`Library`, the
+prompts as a routine names them; `Scripts`, the user's own, read only for a spec with a script
+step; `StarterNames`, for the sentence), a read that fails skipping its checks, and what this
+build runs through `Offers` (nil is the catalog's own, `CatalogOffers`; a test hands in fakes).
+
+- **A reading.** `Read(ctx, spec, mode, setup, offers)` returns what the builder shows
+  (`Reading`): the spec as `Save` stores it (`Encode`: a spec of version 0 at this build's,
+  normalized and encoded; `Load` loads it back as every load checks a stored one, returning a
+  `spec.ValidationError`'s problems rather than failing), the spec's own problems or else
+  `Problems`' (an agent step set to run where this build runs none, `Offers.placeProblems`; a
+  background agent step whose own agent can't keep its tools preset; a prompt the library
+  doesn't have, a reply where an agent's prompt goes or the other way about, or one that
+  doesn't fit the kinds the routine acts on, `StepPromptProblems`, which the engine runs again
+  before each start; a script the user no longer has under the name it was picked by), the
+  steps it runs only in Dry run (`Offers.NotOffered`), its warnings, and, only while it has no
+  problem, its sentence. A spec past the size a spec may be is an error, worded.
+- **Names.** `CheckName` (one line of plain text, at most 80 runes, none of them `Hidden`: a
+  control or a bidirectional character), `CheckDescription` (at most 500, line breaks allowed),
+  and `CheckTemplate` check a routine's own fields as `Save` does. `NameKey` is the fold every
+  comparison of routine names uses and the `name_key` column stores, and `FreeName` gives a
+  taken name the first free "<name> 2", cut to fit (`FitName`), as the root does for a copy, an
+  import, or a restore, and kit's check for a proposed routine.
+- **The rest it shares** with the root: `ActsOn` (the kinds a routine acts on: those both its
+  watch and its trigger take), `Offers.Needs` and `NeedsWords` (what a template needs that this
+  build doesn't run), `Offers.PreferredPlace`, `RenamedWords`, and `Series`.
+- **The root's side.** The autopilot package keeps its bound types (`Described`, `MyScript`)
+  and aliases the leaf's unbound ones (`LibraryPrompt`, `ReplyFor`, `Offers`, the caps, and
+  the errors), so no generated binding moved; `serviceSetup` is its live `Setup` (the prompt
+  library and the user's scripts, a read that fails logged). `TestReadingMatchesDescribe` holds
+  `Describe` and `draft.Read` over a `Setup` of plain slices to one reading of every draft the
+  package's tests read and of every template, filled in.
+
+## internal/agentrun/stream
+
+`internal/agentrun/stream/` reads a coding agent's stream as its run writes it, Claude Code's
+`claude -p --output-format stream-json --verbose` and Codex's `codex exec --json`, for the
+background runner ([Agents in the background](#agents-in-the-background)) and Describe it's
+turns alike. It is a leaf: `TestLeafImports` holds it to `runevent` alone, so its readers
+reach no run engine or store. `Claude(dir)` and `Codex(dir)` each return a `Parser`, an
+`io.Writer` fed the log in order that any goroutine may read: its events a page at a time
+(`Page`), its progress, the agent's own end (`Result`), the provider's usage limit (`Limit`),
+Codex's thread (`AgentSessionID`), and, for Claude Code, what its init line says of its own
+setup (`Init`: its model, its version, where its key came from, the session, every tool, and
+every MCP server with its status, neither list ever nil), which Describe it checks before a turn
+goes on. `From` starts a parser at an offset, for the run view's pages, and `Over` says the
+result line came. `agentrun` aliases `Result` and `Limit`, so nothing above it changed.
+
+The conversation spike's recordings (`testdata/conversation/`) hold what a conversation's turns
+add to a headless run's stream, which the parser reads alike: a `session_title_changed` note
+before init when the session is named, which it notes and shows nothing of; several tool uses
+of one message, each on a line of its own; the denials `dontAsk` makes of a tool no rule
+allows, counted in `Result.Denials`; and, for a turn that resumes a conversation, a result whose
+`total_cost_usd` and `modelUsage` are the conversation's running totals, so `Result.Cost` is
+the session's, `Result.TurnCost` the turn's own (summed from
+`model_usage_since_last_result`), and `Models` every turn's. A background run starts its own
+session, so its two costs are one.
 
 ## internal/fence
 
@@ -4850,6 +4990,351 @@ spec's own `keeps`: Claude Code every one, Codex every one but GitHub tasks only
 is in [Codex in the background](#codex-in-the-background)). The launcher's `resolvePermission` chooses a background run's access from its
 `Request.Fence`, below the trust rule: an untrusted item without the override runs Read only,
 whatever the fence says, and a fenced plan takes none of the profile's extra directories.
+
+## internal/autopilot/kit
+
+`internal/autopilot/kit/` is what Describe it hands a coding agent, and how it reads what the
+agent hands back, which the app ([internal/describeit](#internaldescribeit)) and its tool mode
+([internal/mcpserver](#internalmcpserver)) share, so the two never disagree about a format. It
+is a pure leaf, held by `TestLeafImports` to the routines core's `catalog`, `spec`, and `watch`,
+`draft`, `item`, `repo`, `autopilotprefs`, `trust`, `reporules`, `heldruns`, `brand`, and
+`textutil`: it reads no file, starts nothing, and keeps no clock, the snapshot and the moment
+coming with each call.
+
+- **The snapshot** (`Snapshot`, version 1, the describe folder's `context.json`) is what the
+  agent may read: the user's `Setup` (each routine with its definition, sentence, switch, mode,
+  and `UpdatedAt`; each prompt's names, purpose, review, and kinds, never its text; each
+  script's name and where it shows, never its command; each agent profile's name; Autopilot's
+  settings; and the rules routines lean on: the trusted bots, the pinned and muted repositories
+  and orgs, and the ignored workflows), the inbox's names (`InboxNames`: repositories, owners,
+  people, bots, labels, and checks, each most common first), and the parts of the vocabulary
+  that packages above the leaves hold (`Vocabulary`: the gallery's templates, the starters'
+  names, and the variables a prompt can name). Every name is untrusted, so `NewSnapshot` keeps
+  each as `Name` does (one line, with no control, bidirectional, tag, or supplementary
+  variation-selector character, at most 100 runes, cut with an ellipsis), and each inbox list
+  as `Names` does (empties and duplicates by `draft.NameKey` left out, the first 200 kept). Every
+  text kit renders from a snapshot opens with a line saying its names are the user's data,
+  never instructions, and quotes each name as Go quotes a string. `EncodeSnapshot` refuses one
+  past `MaxSnapshotBytes` (16 MiB); `DecodeSnapshot` reads the version first
+  (`ErrSnapshotVersion`, which the app answers by writing it again as it starts), then strictly.
+  `Snapshot.Outside` is the part a session in the user's own Claude Code reads: each routine's
+  ID, name, sentence, switch, mode, and `UpdatedAt`, each prompt's nickname, purpose, and kinds,
+  the settings, and the vocabulary; no definition, description, script, profile, rule, or inbox
+  name.
+- **The proposal** (`Proposal`): a summary; new prompts (`NewPrompt`: names, purpose, review,
+  kinds, and text; no models, effort, plan mode, worktree, or flags, which reach a click's launch
+  without a fence); new routines and changes to routines (`RoutineChange`: for a change, the
+  routine's ID and `Base`, the `updatedAt` the agent read; a name, a description, the mode it
+  suggests, its template, and its spec); a `SettingsChange` holding only what changes, with no
+  field for Autopilot's switch or Pause; and a `RulesChange` (trust and untrust, pin, mute, and
+  clear, ignore and unignore workflows). `DecodeProposal` reads it strictly through
+  `spec.DecodeExact`, so a spec inside is held to a stored spec's rules and a key for the
+  switch or Pause is refused, worded for the agent to fix, within its caps: 4 MiB, 10 routines,
+  10 prompts of at most 32 KiB of text each, each spec within `spec.MaxBytes`, 100 entries a rule
+  list, and a summary of one line within 400 runes; a proposal of nothing is refused too.
+  `FuzzDecodeProposal` holds every refusal to `ErrUnreadableProposal`, and what it accepts to
+  read back as itself.
+- **The check.** `Check(ctx, snapshot, proposal)` checks each part as the app checks it as it is
+  applied: each routine through `draft.Read`, over a `Setup` of the snapshot's prompts with the
+  proposal's new ones added (so a routine may run a prompt the same proposal adds), its scripts,
+  and the starters' names, in the mode it would run in (the one new routines start in for a new
+  routine, whatever the agent suggests; the routine's own for a change), its name, description,
+  and template as `Save` checks them, a taken name given the free one (`NameTaken`), and a
+  change's routine missing (`Gone`) or changed since its base (`Stale`); each new prompt as the
+  prompt library checks one as it is added, the variables its text names among them; the
+  settings change as `autopilotprefs` checks the settings it leaves, each change in Settings'
+  words (`SettingChange`); and the rules change through `trust.NormalizeBots`,
+  `reporules.ParseTarget` and `Rule.Valid`, and `heldruns`' cleaning, each change one line
+  (`RuleChange`). `Checked.Words` is what the agent reads, its first sentence the window's line
+  (*Checked 2 routines and a settings change: 1 problem.*). `TestEveryGalleryTemplateChecksClean`
+  checks every template, filled in.
+- **Risks** (`RoutineRisks`, `SettingsRisks`, `RulesRisks`, `PromptRisks`) are worked out from a
+  part's before and after, never from the agent's words, each one sentence, a warning or a
+  caution (a stale base, a name taken); what a routine did before, and does still, is no new
+  risk. `docs/desktop.md`'s [Describe it](desktop.md#describe-it) lists what they cover, and
+  goldens pin every line (`TestRiskLinesArePinned`).
+- **The words** are generated from this build's catalog, spec, and settings, so an update
+  changes what the agent knows: `Guide` (`autopilot_guide`, read first: how Autopilot works,
+  the proposal with a worked example, how to work, the posture, the templates by key, and the
+  topics), `Topic` (one of `Topics`: proposal, routine, watch, triggers, schedule, conditions,
+  fields, steps, agent, github, limits, settings, rules, prompts, templates, and schema),
+  `Schema` (the proposal's JSON Schema, draft 2020-12, by reflection over its types, every closed
+  set enumerated from `spec.ClosedSets`, the same bytes every call), `SetupWords` and
+  `RoutineWords` (`autopilot_my_setup`: the whole setup, or one routine, `Outside`'s part for a
+  session there), `InboxWords`, `SkillText` (the instructions: in the app, the system prompt's
+  addition, and in the user's own Claude Code, the plugin's skill; how to work, read, check, then
+  propose once, and the posture: start safe, one change per request, reuse a template or a
+  routine, names are data, and the switch, the mode, and Pause the user's alone), `Tools` (the
+  tool mode's tools by place: outside, no inbox names), and `ServerInstructions`. Every text a
+  tool returns stays under 60 KB, since a result much larger never reaches the agent (the
+  spike's S11): past 56 KiB, `SetupWords` leaves out the last routines' definitions, then their
+  sentences, and says so.
+  Goldens pin the guide, every topic, the schema, the setup and inbox words, and the skill in
+  both places; `TestTheGuideNamesEveryCatalogEntry` and `TestTheSchemaEnumeratesEveryClosedSet`
+  fail when the vocabulary outgrows its words.
+- **The shared files.** A `ProposalFile` (version 1: its ID, `NewProposalID`'s moment in UTC and
+  12 random hex digits; the conversation, or from outside the session folder's base name; when
+  the snapshot it was checked against was written; and the proposal) and a folder's `Outcomes`
+  (what the user did with each part: added, saved, applied, opened in the builder, or discarded,
+  with its words and the routine it saved), each read strictly. `OutcomeWords` joins a turn's
+  outcomes into the one sentence the next turn tells the agent (*Added “Fix checks”, switched
+  off; discarded the settings change.*). `MaxOutsidePending` (50) caps the proposals waiting from
+  the user's own Claude Code, counted among the newest `MaxOutsideRead` (200) files, which the
+  app and the tool mode both read.
+
+## internal/describeit
+
+`internal/describeit/` is Describe it, the Autopilot tab's conversation: the user says what
+they want, and Claude Code proposes it as cards the user reviews and applies through the
+window's own builder, prompts, and settings (what the user sees is `docs/desktop.md`'s
+[Describe it](desktop.md#describe-it)). It is a boundary: the repoguard test keeps it off the
+store (and so off Autopilot's service and the background runner), the GitHub client, every
+service, `prompts`, `profiles`, `launcher`, `scriptrun`, `desktop`, and `notify`, and it reaches
+the rest of the app through the interfaces it declares (`Agents`, `Setup`, `Attachments`), which
+`internal/core/adapters_describeit.go` adapts. It owns no table and no prefs key: what it keeps
+is in the data folder's describe folder (`appdata.Paths.Describe`, which `Ensure` makes), every
+folder the user's alone and every file written whole (`appdata.WriteFile`).
+
+```text
+describe/
+  context.json            the snapshot the tool mode reads (kit.Snapshot)
+  instructions.md         kit.SkillText(kit.InApp), each turn's --append-system-prompt-file
+  work/                   the one empty folder every turn runs in
+  agent.json              the agent new conversations start with: {profile, model, effort}, "" inherits
+  bin/<slug>-mcp          the link the plugin runs: the app's executable, in its tool mode
+  plugin/                 the plugin's local marketplace (agent.PluginFiles)
+  conversations/<uuid>/   conversation.json, mcp.json (the turn's --mcp-config), and each turn's
+                          turn-NNNN.prompt.md (its stdin) and turn-NNNN.jsonl (its stream)
+  proposals/<uuid>/       a conversation's proposals (kit.ProposalFile) and outcomes.json
+  proposals/outside/      the same, from the user's own Claude Code
+```
+
+- **The bound methods.** `Status` (Claude Code found, at least `agent.ConversationFloor`, and
+  signed in, else why and the fix, each a sentence; the agent new conversations start with,
+  Inherit resolved; whether a turn runs; and `Pending`, the cards from outside with a part no
+  one dealt with, the nav's count), `Agent` and `SetAgent` (Settings' choice, `agent.json`,
+  refusing a profile Claude Code doesn't have, or a model or effort the agent's own checks
+  refuse), `Conversation`, `NewConversation`, `Send`, `Stop`, `Events`, `Settle`,
+  `DiscardProposal`, `Proposals`, `Plugins`, `InstallPlugin`, and `RemovePlugin`. None reads
+  GitHub, and every refusal is worded with `uierr`.
+- **A conversation** is one current conversation, kept in its `conversation.json` (`record`:
+  its agent as chosen and as resolved, whether its session started, the outcomes a turn already
+  told the agent of, and its turns), whose UUID is the agent's session ID. One that started more
+  than 30 days ago is removed with its proposals as it is read or sent to, or as the worker
+  starts; `NewConversation` sets the current one aside (refused while a turn runs), and a start
+  over removes every conversation and proposal (core's `forgetConversations`).
+- **A turn.** `Send` reserves the one turn that may run (another is refused while it does, and
+  every send once the app quits), plans it before its agent starts (its conversation, or a new
+  one with `Agent`'s choice; the agent through `Agents.Conversation`, held to the floor; the
+  app's own executable; the attachments through `Attachments`; and the snapshot written fresh
+  and the instructions), then writes the turn's files and starts it with `execpath.Start` in a
+  process group of its own: `agent.ConversationArgs` with the conversation's ID (`--session-id`,
+  then `--resume` once the session started), `<brand.Name>: Describe it` as the session's name,
+  the conversation's model and effort, the turn's MCP config (`agent.ConversationFiles`, its one
+  server `brand.Slug`, the app's executable with `mcpserver.Arg` and `mcpserver.ConversationArg`),
+  the instructions' file, and a $2 budget (`turnBudgetUSD`); the prompt on stdin, opened with
+  `paths.OpenRegular`, and stdout and stderr into the turn's log, in `work/`, with the
+  environment core builds as for a background run (`launcher.AgentEnv` over the login shell's,
+  then `agent.HeadlessEnv`). The prompt is first what the user did with the cards since the last
+  turn (`kit.OutcomeWords`; `record.Told` keeps an outcome from being told twice), then their
+  words (at most 20,000 characters), then what they attached (at most 10, each within 64 KB).
+  A turn takes no run slot, no clone lock, no history row, and no quit hold, and counts toward
+  neither the routines' runs a day nor the daily cap.
+- **The follower** (`follow`) reads the turn's log every 100 ms into `stream.Claude`, tells the
+  window (`event.DescribeItUpdated`, `describeit:updated`, with the conversation and the turn)
+  at most every 250 ms, and notes each proposal file that appears in the conversation's folder.
+  As the init line comes it checks the turn's own setup (`initProblem`): the app's server
+  `connected`, and every tool and server its own (`agent.ConversationToolPrefix`), else it stops
+  the turn at once, since a turn whose server failed improvises and spends (the spike's
+  `turn-mcp-failed.jsonl`). It stops the turn with `execpath.StopLadder()` once the result line
+  is in, on the user's `Stop`, or as the app quits (`shutdown`, which kills the group after 3
+  seconds). The end (`finish`) is judged by the result line, never the exit status: done;
+  stopped, by the user or the quit, whose SIGINT still writes a result in error (the spike's
+  S7); or failed, worded (the setup was wrong, the usage limit, the budget, the agent's error,
+  or the last line it wrote that isn't the stream's). A turn's cost is the result's `TurnCost`
+  and the conversation's the latest `Cost`, the session's running total. A turn that got as
+  far as init leaves the session started, so the next resumes it; one whose agent ended before
+  init, on its own, names the session the other way next, so a conversation never sticks on a
+  session Claude Code refused. A turn a crash left running is closed from its log as the worker
+  starts, or before the conversation's next turn.
+- **Events** (`Events(id, turn, after)`) are a turn's events after a sequence number, a page at
+  a time, as a background run's are: from the follower's parser while it runs (none, not done,
+  while it gets ready), and once it ended, from its log read whole by a parser of its own, which
+  numbers them alike.
+- **Cards.** A card is a proposal file read as untrusted, since any process running as the user
+  can write the folder: only a name the tool mode makes (`kit.ValidProposalID`), never a link
+  (`Lstat`), within `kit.MaxProposalFileBytes`, through kit's strict decoder, naming its own ID
+  and the folder it is in; then checked again with `kit.Check` against the live snapshot, so a
+  card says what applying it would do now. `Card.Proposal` is the proposal as written, which a
+  part applies from where `Checked` holds nothing of its own (a description, the mode
+  suggested, the template, a change's routine and base). `Settle` records what the user did
+  with one part in the folder's `outcomes.json` (only a kind that fits the part, the first
+  outcome standing), and `DiscardProposal` every part left; each tells the window
+  (`describeit:updated` for a conversation's turn, `event.DescribeItProposals`,
+  `describeit:proposals`, for one from outside). The window applies a part itself, through the
+  bindings the builder, Prompts, and Settings use ([the Autopilot tab](#the-autopilot-tab)), so
+  nothing here writes the setup.
+- **The snapshot.** Core's `describeSetup` builds it (`kit.NewSnapshot`) from Autopilot's `List`,
+  `MyScripts`, and `Suggest`, the prompt library (no text), the profiles, the settings
+  (Autopilot's, the trusted bots, the repository rules, the ignored workflows),
+  `inbox.Store.KnownRepositories` (the stored repositories that aren't archived, most items
+  first, at most 200), and the vocabulary (`autopilot.Gallery`, `prompts.Starters`,
+  `prompts.Variables`); a part that can't be read fails it whole. The service keeps the live
+  snapshot 2 seconds, forgets it on any change, and falls back on the last one read when the
+  setup can't be read. It writes `context.json` before every turn, as the worker starts, and
+  after each burst of changes: core's `describeOnChanges` passes the app's events on and wakes
+  the worker on `event.AutopilotUpdated`, `AutopilotChanged`, `RepoRulesChanged`, and
+  `InboxUpdated`, which writes once the burst has been quiet for 500 ms, or after 3 seconds in
+  all, so a session in the user's own Claude Code reads it current.
+- **Attachments.** Core's `describeAttachments` words a routine as `kit.RoutineWords` does, and
+  a stored item by its address and short facts (`inbox.Store.FactsRows`: kind, repository,
+  author, labels, and a pull request's failed checks' names at its head), under a line saying
+  its names are data and nothing else of the item is shared.
+- **The agent.** Core's `describeAgents` finds Claude Code as a background run's start does:
+  readiness's own checks of its program, its version, and the profile's sign-in, asked again at
+  once when one holds the turn back, so a fix shows at once; the launch defaults' Claude Code
+  profile for Inherit; and the environment `agentEnv` builds, with no API key unless the user's
+  setting lets one through.
+- **The plugin.** `Plugin(command, args)` is the plugin (`agent.PluginSpec`: `brand.Slug` in the
+  marketplace `<slug>-app`, version 1.0.0, which changes only with the tool mode's protocol; its
+  skill `autopilot`, `kit.SkillText(kit.Outside)`; its server `autopilot`), which `WritePlugin`
+  writes into `plugin/`, each file only when it differs. The worker rewrites it as the app
+  starts, and Claude Code loads it in place from there, so an installed plugin reads this
+  build's words at its next session. Its server runs `bin/<slug>-mcp`, a link to the app's
+  executable that only an app in a stable place re-points (`Config.Stable`, core's `stableApp`:
+  the update engine's location check, never a build from source), through a link renamed over
+  it, so a build from source never leaves it on a temporary binary. `InstallPlugin` writes the
+  folder, points the link (refusing, worded, when the app can't and no stable app did), and runs
+  `claude plugin install <plugin> --marketplace <dir> --json` with the profile's environment;
+  `RemovePlugin` uninstalls (`not_installed` is no failure) and removes the marketplace; and
+  `Plugins` reads `claude plugin list --json` for each profile. Each command is
+  `agent.PluginArgs`, read with `agent.ParsePluginResult` or `ParsePluginList`, within a minute.
+- **From outside.** `Proposals` reads the outside folder's newest `kit.MaxOutsideRead` files,
+  each a card checked against the live snapshot, newest first, leaving out those settled more
+  than a day ago. The worker looks at the folder every 3 seconds (a hash of each file's name,
+  size, and time) and tells the window `describeit:proposals` when it changed, and, as it
+  starts, removes the cards settled more than 30 days ago with their outcomes.
+- **The worker** (`Worker`, a deferred desktop worker, `Core.DescribeItWorker`) readies the
+  folder as the app starts (a turn a crash left running closed from its log, old conversations
+  pruned, and a proposals folder no conversation keeps once it is 30 days old, the instructions
+  and the snapshot written), keeps the plugin and its link current, follows the outside folder,
+  writes the snapshot after each burst of changes, and stops a running turn as the app quits.
+- **The eval suite** (`evals/`: two cases with their graders, and mocks of the plugin's tools)
+  is the plugin's own, run by hand with `magex autopilot:evals` (Claude Code's `claude plugin
+  eval` over this build's plugin in a temporary folder, the baseline arm left out, $5 unless
+  `budget=` says), never by the gate; `EvalText` fills in the names it leaves for the build.
+
+### What the conversation spike found
+
+The conversation half was settled by a spike on Claude Code 2.1.328: real `claude -p` turns in
+empty scratch folders against a stdio MCP server, recorded into the tests' fixtures
+(`internal/agentrun/stream/testdata/conversation/`, `internal/agent/testdata/conversation/`, and
+`internal/mcpserver/testdata/mcp-client.jsonl`). The turn's argv follows from it, which a golden
+pins (`TestTheConversationsArgv`):
+
+```text
+claude -p --output-format stream-json --verbose --permission-prompts none
+  --session-id <uuid> | --resume <uuid>   --name "<brand.Name>: Describe it"
+  [--model <model>] [--effort <effort>]
+  --tools "" --restricted --strict-mcp-config --mcp-config <conversation>/mcp.json
+  --permission-mode dontAsk --allowedTools mcp__<slug>
+  --max-budget-usd 2 --append-system-prompt-file <describe>/instructions.md
+  --system-prompt-snapshot off
+```
+
+- **Tools and isolation.** `--tools "" --restricted --strict-mcp-config --mcp-config` leaves a
+  turn the server's tools alone, connected. A planted project `CLAUDE.md`, project settings with
+  hooks and allow rules, a project `.mcp.json`, and a project skill never reached it, nor the
+  user's own `CLAUDE.md`: `--restricted` drops the user's, the project's, and the local
+  settings, while managed settings and `--settings` still apply. `--strict-mcp-config` drops a
+  `--plugin-dir` plugin's own server, and with no tools there is no Skill tool, so in the app the
+  skill's text is the system prompt's addition.
+- **Permissions.** Under `--permission-mode dontAsk` the server's own tools are denied without
+  an allow rule; `--allowedTools mcp__<server>` allows every one of them. `--tools`,
+  `--mcp-config`, and `--allowedTools` take several values, so the prompt comes on stdin.
+- **Resume and money.** `--resume` takes a session up again in a new process, which takes every
+  flag again; with `--system-prompt-snapshot off` the instructions are read fresh each turn, and
+  the prompt cache still carries across. `--max-budget-usd` holds one process, so one turn, and
+  a resumed turn's result gives the session's running totals beside the turn's own.
+- **Storage.** A session's transcript is kept per working folder in the profile's config, one
+  project each, so every turn runs in the one `work/`.
+- **Stopping.** A SIGINT mid-turn writes a result in error (`error_during_execution`,
+  `aborted_streaming`) and exits 0, the MCP server going with the process group, and the next
+  `--resume` goes on.
+- **The MCP client** probes `server/discover` first (`-32601` makes it fall back to
+  `initialize`), reads the server's `instructions`, sends ids as strings or numbers, shows the
+  agent a result's `structuredContent` in place of its text, and ends the server with a signal,
+  never EOF, so the tool mode never sends `structuredContent` and writes each proposal whole as
+  it is made.
+- **The plugin.** `claude plugin install <plugin> --marketplace <dir> --json` adds a local
+  marketplace and installs from it in one step, asking nothing, and the plugin loads in place
+  from that folder. In a session, its tools are `mcp__plugin_<plugin>_<server>__<tool>`, its
+  server starts with every session, each call asks first, and its skill triggers from its
+  description.
+- **Sizes.** A 57 KB tool list was taken but weighed on every request, so input schemas stay
+  small and the whole schema is a topic; a 400 KB tool result never reached the agent, so every
+  result stays under 60 KB.
+- **Visibility.** A running turn shows in `claude agents --json`; the sessions watcher follows
+  only the sessions the app recorded, so it ignores turns, and `--name` names them in the user's
+  own lists.
+- **A server that failed.** The turn's init showed it `failed` with no tools, and Claude
+  improvised and spent all the same, so the follower stops such a turn at once.
+
+## internal/mcpserver
+
+`internal/mcpserver/` is the app's tool mode: the app's own binary, run again by Claude Code as
+a stdio MCP server (`cmd/nilbox`'s `main` calls `Serve` right after `fence.RunHook`), which
+serves Describe it's tools to the in-app conversation and, through the plugin, to the user's own
+Claude Code. It reads the snapshot the app wrote, answers with kit's words and checks, and writes
+nothing but a proposal, into a folder the app made. It is both a leaf (`TestLeafImports`: `kit`,
+`spec`, `appdata`'s whole-file writes, `paths`' readers, `brand`, and `textutil`) and a boundary
+(no `execpath`, `scriptrun`, `launcher`, `logging`, store, or service), and
+`TestTheToolServerRunsNothing` holds its own files to no `os/exec`, `execpath`, `net`, or
+`database/sql`: it starts nothing, opens no database, reads no environment, makes no network
+call, and writes no log.
+
+- **The call.** `--mcp-server-v1=<describe folder>` (`Arg`), and in the app
+  `--conversation=<uuid>` (`ConversationArg`), which makes it the conversation's (`kit.InApp`);
+  without it, it serves the user's own Claude Code (`kit.Outside`), and names a proposal's
+  `Where` by the base name of the folder the session runs in, as the system reports it, never
+  the environment. The protocol's version is in the flag, and any `--mcp-server` flag is a call
+  (`IsCall`), so a version this build doesn't know, a folder that isn't absolute, or a
+  conversation that isn't a UUID is refused with a line on stderr and status 2 before it reads
+  anything, never started as the app.
+- **The protocol.** JSON-RPC 2.0 over stdin and stdout, one message a line of at most 4 MB (a
+  longer one refused, and the next read whole), each answered as it comes, since the client
+  never closes stdin; ids echoed as they came. It speaks MCP's dated versions up to 2025-11-25,
+  the client's when it can; answers `initialize` (`capabilities: {tools: {}}`, `serverInfo` with
+  `brand.Slug` and the protocol's version, `1`, and `kit.ServerInstructions`), `ping`,
+  `tools/list` (one page), and `tools/call`; refuses every other request, `server/discover`
+  among them, with `-32601`; and answers no notification. A tool's answer is text, with `isError`
+  for a refusal the agent can act on, and never `structuredContent`.
+  `TestTheRecordedClientIsServedInBothPlaces` replays the real client's lines.
+- **The tools** are `kit.Tools(where)`: `autopilot_guide`, `autopilot_reference` (`{topic}`, one
+  of `kit.Topics`), `autopilot_my_setup` (the whole setup, or `{routine}` for one),
+  `autopilot_inbox_names` (in the app alone), `autopilot_check` and `autopilot_propose`
+  (`{proposal}`), and `autopilot_proposal_status`. Each input schema stays small, since every
+  request carries the list: a proposal is an object, its schema the `schema` topic. Arguments
+  are read strictly (one object, the tool's own keys alone), and the snapshot is read again at
+  each call (`paths.ReadHead` within `kit.MaxSnapshotBytes`, then `kit.DecodeSnapshot`); outside,
+  the setup it gives is `Snapshot.Outside`'s, but a proposal is checked against the whole
+  snapshot, as its card checks it again.
+- **A proposal.** `autopilot_propose` decodes the proposal (`kit.DecodeProposal`), checks it
+  (`kit.Check`), and refuses one with any problem, saying each; else it writes a
+  `kit.ProposalFile` (its ID from the time and `crypto/rand`) with `appdata.WriteFile`, never
+  over another file, into `proposals/<conversation>/` in the app or `proposals/outside/`, each
+  only when the app made it and it is a folder, never a link. From outside it refuses one once
+  `kit.MaxOutsidePending` (50) wait, counted as the app counts its cards: among the newest
+  `kit.MaxOutsideRead` files, each one the app reads as a card from outside with a part the
+  user hasn't dealt with. Its answer opens with the window's line (*Proposed a routine and a
+  settings change.*), then gives the ID and says the proposal waits in the Autopilot tab.
+  `autopilot_proposal_status` reads the folder's outcomes and says, newest first and within
+  48 KiB, what the user did with each part and what still waits; outside, only of the proposals
+  from a session in a folder of its own name.
+- **Tests.** `cmd/nilbox`'s `toolmode_test.go` runs the binary in its tool mode with nothing but
+  an empty home, in the app and from outside, and finds nothing created but the proposal; a
+  describeit test serves the tool mode and checks that it refuses exactly when `Status.Pending`
+  reaches 50.
 
 ## internal/backup
 

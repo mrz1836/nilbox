@@ -32,7 +32,10 @@ are Nilbox's own, and they win wherever the two differ.
    of the app itself (`internal/update`, in a release build alone: a build from source never
    checks, and a rehearsal reads a local folder) makes two GETs to GitHub's release download
    hosts, the latest release's manifest and, when it is newer, its zip, with no token and
-   nothing of the user's, and spends no API budget.
+   nothing of the user's, and spends no API budget. The one exception is Describe it
+   (`internal/describeit`), when the user uses it: Claude Code reads their words, their
+   Autopilot setup, and their inbox's names, never an item's text or code, and sends them only
+   to Anthropic.
 5. **Optimize for local-first operation.** Nilbox should minimize network requests and rely on local caches and state wherever possible, ensuring responsiveness and reducing dependency on external services. Try and use the least amount of GitHub requests necessary for any operation.
 6. **No shell or Python scripts.** A build, check, or release step is a `magex` target written in
    Go (`magefiles/`, see Layout), never a `.sh`, `.py`, or other script, and a workflow runs the
@@ -210,7 +213,7 @@ build when broken.
   the `--color-*` tokens; checkboxes and radio buttons take the `checkbox` and `radio` classes;
   text is sized in rem, never px (a repoguard test fails on px text).
 - **magefiles.** `magefiles/` holds the custom `magex` targets: `brand:*`, `frontend:*`,
-  `app:*`, `db:*`, `measure:*`, and `inspect:*`. Its tests build with the `mage` tag and run in parallel.
+  `app:*`, `db:*`, `measure:*`, `inspect:*`, and `autopilot:*`. Its tests build with the `mage` tag and run in parallel.
   A target checks the OS and reads its arguments, then hands the work to methods of a `runner`
   (`magefiles/runner.go`): the checkout, output, environment, and tool lookup they use. A
   target passes `hostRunner()`, this process's own; a test passes a `rig`'s runner
@@ -229,7 +232,8 @@ bytes).
 **The app and its shell**
 
 - [`cmd/nilbox`](docs/architecture.md#cmdnilbox): the entry point; headless by default, the
-  desktop app with the `desktop` tag; `--data-dir`, the update helper, and the fence hook mode.
+  desktop app with the `desktop` tag; `--data-dir`, the update helper, and the fence hook and
+  tool modes.
 - [`internal/brand`](docs/architecture.md#internalbrand): product identity, design tokens, and the
   logo; `brandgen` generates the theme, `Info.plist`, and the icon artwork in `build/`.
 - [`internal/core`](docs/architecture.md#internalcore): assembles the app and builds every
@@ -247,7 +251,7 @@ bytes).
 
 - `internal/repo`, `internal/item`: names for repositories, pull requests, issues, and worktrees.
 - `internal/agent`: the coding agents' registry (Claude Code, Codex): flags, models, fence,
-  headless half, version, and sign-in.
+  headless and conversation halves, version, and sign-in.
 - `internal/procs`, `internal/execpath`, `internal/shellenv`: running processes; finding and
   starting programs; the login shell's environment.
 - `internal/clock`, `periodic`, `flight`, `paths`, `progress`, `textutil`: the clock, the
@@ -318,8 +322,8 @@ bytes).
 
 - [`internal/integrations`](docs/architecture.md#internalintegrations): finds, installs, and
   updates magex and go-pre-commit (`toolinstall` downloads and checks a release).
-- [`internal/scriptrun`](docs/architecture.md#internalscriptrun): runs and follows every command
-  the app starts, and a routine's background agent.
+- [`internal/scriptrun`](docs/architecture.md#internalscriptrun): runs and follows the
+  integrations' commands and a routine's background agent, never Describe it's turns.
 - [`internal/release`](docs/architecture.md#internalrelease): the Release page.
 - [`internal/hooks`](docs/architecture.md#internalhooks): the Hooks page.
 - [`internal/scripts`](docs/architecture.md#internalscripts): Repo scripts, and Pull.
@@ -334,10 +338,23 @@ bytes).
 
 - [`internal/autopilot`](docs/architecture.md#internalautopilot): runs the user's routines; its
   settings are `internal/autopilotprefs`.
+- [`internal/autopilot/draft`](docs/architecture.md#internalautopilotdraft): the one check of a
+  routine's draft, for the builder, Save, and kit.
 - [`internal/agentrun`](docs/architecture.md#agents-in-the-background): runs a routine's agent
   step in the background.
+- [`internal/agentrun/stream`](docs/architecture.md#internalagentrunstream): reads an agent's
+  stream, for background runs and Describe it's turns.
 - [`internal/fence`](docs/architecture.md#internalfence): keeps an unattended agent run inside
   its tools preset.
+
+**Describe it**
+
+- [`internal/autopilot/kit`](docs/architecture.md#internalautopilotkit): what Claude Code reads
+  and proposes: the snapshot, a proposal, its checks and risks, and the words.
+- [`internal/describeit`](docs/architecture.md#internaldescribeit): the conversation, its cards,
+  and the plugin for the user's own Claude Code.
+- [`internal/mcpserver`](docs/architecture.md#internalmcpserver): the tool mode, the app's
+  binary serving Describe it's tools; it writes only proposals.
 
 **Backup and setup**
 

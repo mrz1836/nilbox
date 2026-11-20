@@ -401,7 +401,9 @@ Turn on **Settings → Labs → Autopilot (beta)**, and an **Autopilot** tab app
 template, such as **Fix Dependabot security failures**, fill in where it watches, click
 **Test** to see what it would match now and why, and **Save**. Switch it on in **Dry run**
 first, then **Ask first**, where each match waits for your **Run**, and put it on
-**Autopilot** once you trust it. **Pause Autopilot** stops every new start at once.
+**Autopilot** once you trust it. **Pause Autopilot** stops every new start at once. Or just tell
+the tab what you want, in your own words: [Describe it](docs/desktop.md#describe-it) has Claude
+Code propose the routine, with the prompts and settings it needs, as cards you test and apply.
 
 <br/>
 
@@ -866,13 +868,45 @@ Off until you turn it on in **Settings → Labs**.
 - **Three modes:** **Dry run** records what it would do, **Ask first** waits for your OK, and
   **Autopilot** runs within your limits. Nothing changes a routine's mode but you.
 - **Easy to start:** twelve templates, the ones that fit your clones and inbox suggested
-  first, each a short quick setup; **Make a routine from this…** on any item; **Test** on your
-  own items with a reason for every match and miss; and **Why didn't a routine run?**
+  first, each a short quick setup; **Make a routine from this…** on any item; **Describe it**,
+  where you say what you want; **Test** on your own items with a reason for every match and
+  miss; and **Why didn't a routine run?**
 - **Everything shows:** Activity, with **Undo** for what a routine changed on your Mac, a ⚡
   chip on every row a routine touched, **Needs you** for what waits, This week's counts, and
   the menu bar's Autopilot group with **Pause Autopilot**.
 
 More in [Autopilot](docs/desktop.md#autopilot).
+
+</details>
+
+<details>
+<summary><strong>Describe it</strong>: say what you want, and Claude builds the routine</summary>
+<br/>
+
+- **In your own words:** *"when Dependabot's security scans fail on my Go repositories, fix it
+  in the background and tell me how it went"*. Claude Code reads how Autopilot works and your
+  setup, and proposes the routines, the prompts they run, and the settings and rules they lean
+  on, checked against this version's own catalog before you see them.
+- **Cards you review:** each proposal is a card with what Claude says it does, then each part:
+  the sentence a routine reads as, its problems, what this Mac lacks for it, what it matches in
+  your inbox now, and ⚠ risk lines worked out from what it changes, never from Claude's words.
+  Apply each part on its own (**Add**, **Save changes**, **Apply**), **Test** a routine on your
+  items, finish one in the builder, **Discard** what you don't want, or **Apply all**. A new
+  routine arrives switched off, and Claude can never switch one on or change its mode.
+- **Wherever you'd ask:** the empty Autopilot tab's box, **Describe it** in the tab's list,
+  **Change with Claude…** on a routine, and **Describe a routine for this…** on any item.
+- **No hands:** in the app, Claude Code has no tools but Nilbox's own, which read how Autopilot
+  works and your setup and can only propose: no files, shell, web, or GitHub, and $2 a turn at
+  most. Everything applies on your click, through the builder, Prompts, and Settings.
+- **What Claude sees:** your words, your Autopilot setup, and the names in your inbox
+  (repositories, owners, people, bots, labels, and checks), never an item's title, text,
+  comments, diff, or code.
+- **Your own Claude Code too:** **Settings → Autopilot** installs a plugin per profile, whose
+  proposals wait in the same tab, under *From your Claude Code*. Those sessions see less (no
+  inbox names) and ask before each of its tool calls.
+
+More in [Describe it](docs/desktop.md#describe-it) and
+[Use Nilbox in your own Claude Code](docs/desktop.md#use-nilbox-in-your-own-claude-code).
 
 </details>
 
@@ -1208,6 +1242,7 @@ More in [The window](docs/desktop.md#the-window).
 | ✅ Mute or pin repositories and orgs  | **Supported** | Hide or raise everything from a repository or org at once           |
 | ✅ First-run setup                    | **Supported** | GitHub, clones, agent, terminal, notifications, and tools, in steps |
 | 🧪 Autopilot                         | **Beta**      | Routines that triage, fix, and merge, off until turned on in Labs   |
+| 🧪 Describe it                       | **Beta**      | Say what you want, and Claude Code proposes the routines to apply   |
 | 🚧 Security alert sweeps             | **Planned**   | Sweep security alerts across every repository                       |
 | 🚧 More coding agents and terminals  | **Planned**   | Beyond Claude Code, Codex, iTerm2, and Terminal.app                 |
 | 🚧 More integrations                 | **Planned**   | Beyond mage-x and go-pre-commit                                     |
@@ -1228,7 +1263,7 @@ More in [The window](docs/desktop.md#the-window).
 | **Worktrees**     | Made, resumed, and tracked in Go, one per item per clone and shared by every agent; the launch script only changes into the folder and starts the agent                                         |
 | **Git**           | Every git command Nilbox runs is an argument list, never a shell, and none runs a hook or a program a clone's own config names                                                                  |
 | **Integrations**  | mage-x and go-pre-commit, found and run with your login shell's environment, as your terminal runs them; one runner records every run and its whole log                                         |
-| **Autopilot**     | One engine loop, the only writer of its ledger, so a routine acts once per occurrence across refreshes and restarts; every limit checked in Go before a start; GitHub writes only through the review and issue sheets' own services; background agents held in by a hook on every tool call and the agent's own sandbox |
+| **Autopilot**     | One engine loop, the only writer of its ledger, so a routine acts once per occurrence across refreshes and restarts; every limit checked in Go before a start; GitHub writes only through the review and issue sheets' own services; background agents held in by a hook on every tool call and the agent's own sandbox; Describe it runs Claude Code a turn at a time with no tools but the app's own binary as its tool server, which reads a snapshot of your setup and can only write proposals for you to review |
 
 <br>
 
@@ -1252,7 +1287,10 @@ More in [The window](docs/desktop.md#the-window).
 > remote only to make a worktree, to check a release before and after magex pushes its tag, and
 > for Repo scripts' branch check and **Pull**, which ask an origin that isn't on GitHub only when
 > you click **Check**. Your preferences, triage state, and cache, the diffs of pull requests you
-> review and the conversations of issues you read included, never leave your machine.
+> review and the conversations of issues you read included, never leave your machine. The one
+> exception is [Describe it](docs/desktop.md#describe-it), and only when you use it: it shows
+> Claude Code your words, your Autopilot setup, and the names in your inbox, never an item's text
+> or code, which Claude Code sends only to Anthropic.
 
 <br/>
 
@@ -1496,6 +1534,13 @@ Each one's settings and environment are in the
 >   your budgets and limits, and still with your git and `gh` credentials. A fence reads
 >   command lines, which a determined command can disguise; start in Dry run, and read what a
 >   routine does in Activity before you leave it on Autopilot.
+> - **Describe it reads names others chose:** when you use it, Claude Code reads your setup and
+>   the names in your inbox, and a name someone else chose (a login, a label, a check a fork's
+>   pull request runs) can carry prompt injection. In the app, Claude Code has no tools but
+>   Nilbox's own, which can only propose; nothing applies until you click, and each card's risk
+>   lines come from what it would change, never from Claude's words. A session in your own
+>   Claude Code may hold other tools: the plugin's tools ask before each call, and what it
+>   proposes waits for your review the same way.
 > - **Untrusted content stays untrusted:** pull requests and issues from outside contributors can
 >   carry prompt injection. Plan mode (Codex's read-only sandbox) for outsiders and the
 >   sensitive-file checks reduce that risk; they don't remove it.
