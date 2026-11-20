@@ -2517,7 +2517,7 @@ clearing on: it marks a notification done, or read, when the work behind it is f
 | Approve (with line comments) | The review sheet | 1 GraphQL point to check nothing was pushed, then 1 REST point |
 | Request changes, Comment (with line comments) | The review sheet | 1 REST point |
 | Merge | The review sheet, after you confirm | 1–3 GraphQL points to read the merge state, then 1 REST point |
-| Merge past the rules | The review sheet's menu, when GitHub lets you, after you confirm each rule it skips | 1–3 GraphQL points to read the merge state, then 1 REST point |
+| Merge past the rules | The review sheet's menu, or its button on your own pull request when you turn that on, when GitHub lets you, after you confirm each rule it skips | 1–3 GraphQL points to read the merge state, then 1 REST point |
 | Turn on auto-merge | The review sheet, after you confirm | 1 GraphQL point |
 | Update branch | The review sheet | 1 REST point |
 | Ask Dependabot to rebase (a `@dependabot rebase` comment) | The review sheet | 1 REST point |
@@ -2824,7 +2824,10 @@ acme-org/api#212: …**. Otherwise the toast says **Closed acme-org/api#212 with
 **Merge method.** **Settings → Reviewing** chooses the method the confirmation starts on: **As
 each repository offers first** (the default, GitHub's own first choice for you there), **Squash
 and merge**, **Create a merge commit**, or **Rebase and merge**. A repository that doesn't allow
-the one you chose starts on the one it offers first.
+the one you chose starts on the one it offers first. Beneath it, **Merge your own pull requests
+past the rules** (off by default) makes the button **Squash-merge past the rules** (or your
+method) on a pull request of yours that only an approval from someone else holds back, where
+GitHub lets you merge past the rules; see **Merge past the rules, only on purpose** below.
 
 **Assignees.** The summary lists who the pull request is assigned to, under its reviewers, each
 with their picture, yours marked **(you)**. With triage access or more to an open pull request
@@ -2879,8 +2882,13 @@ each nudge with **Then snooze** ticked, for your snooze length. A note under the
   says why not.
 - **Merge past the rules, only on purpose.** When GitHub lets you merge past a branch's rules,
   as it lets a repository admin, and the rules are what hold the pull request back, the action
-  menu offers **Squash-merge past the rules** (or your method). It is never the main button. Its
-  confirmation lists each rule it skips (**It needs an approval from someone else.**, **1
+  menu offers **Squash-merge past the rules** (or your method). It is never the main button,
+  unless you turn on **Merge your own pull requests past the rules** in **Settings → Reviewing**:
+  then it is the button on a pull request of yours that waits only on an approval from someone
+  else (its required checks passed, no request for changes stands, and GitHub reads it as
+  blocked, not behind or in conflict), where it would otherwise read **Merge when ready** and
+  wait for a review that never comes. Clicking it, or pressing ⌘↩, still opens the same
+  confirmation. Its confirmation lists each rule it skips (**It needs an approval from someone else.**, **1
   required check is failing.**, **It's behind main, and the rules want it up to date.**), and
   merges only once you tick **I'm merging past the rules**. It still reads the merge state first:
   it refuses after a push, on conflicts, or once GitHub no longer lets you, and when GitHub would

@@ -77,6 +77,15 @@ export function AddCloneLocations(dirs: string[] | null): $CancellablePromise<$m
 }
 
 /**
+ * BypassOwn returns whether the review sheet's button merges the user's own pull request
+ * past the rules when it waits only on an approval: the stored setting, or
+ * DefaultBypassOwn when none is stored or it cannot be read.
+ */
+export function BypassOwn(): $CancellablePromise<boolean> {
+    return $Call.ByID(2400320601);
+}
+
+/**
  * CheckCloneLocations reads how the clone root and each of the other repository
  * locations read now, the clone root first: whether each is there, a folder's clones, and
  * a clone's origin (see localrepos.Check).
@@ -291,6 +300,15 @@ export function SetAutopilotRunsPerDay(n: number): $CancellablePromise<$models.S
  */
 export function SetBranchRules(rules: branchrules$0.Rules): $CancellablePromise<$models.Settings> {
     return $Call.ByID(3664504924, rules);
+}
+
+/**
+ * SetBypassOwn stores whether the review sheet's button merges the user's own pull request
+ * past the rules when an approval from someone else is all it lacks, and returns the
+ * settings with it.
+ */
+export function SetBypassOwn(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3312003099, on);
 }
 
 /**

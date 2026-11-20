@@ -71,13 +71,13 @@ func TestRefreshReadsTheConversation(t *testing.T) {
 func TestABuiltReviewHoldsNoNilList(t *testing.T) {
 	t.Parallel()
 
-	r := build(storedPull(), nil, nil, PrefRepo)
+	r := build(storedPull(), nil, nil, Prefs{Method: PrefRepo})
 	assert.NotNil(t, r.Reactions)
 	assert.NotNil(t, r.Timeline.Items)
 
 	// A cached entry from before line comments were read has none, never null.
 	c := &cached{head: headA, context: pullContext{Timeline: []timeline.Entry{{Kind: timeline.KindComment}}}}
-	r = build(storedPull(), c, nil, PrefRepo)
+	r = build(storedPull(), c, nil, Prefs{Method: PrefRepo})
 	assert.NotNil(t, r.Reactions)
 	assert.NotNil(t, r.Timeline.Items[0].LineComments)
 	assert.Equal(t, 1, r.Timeline.Total, "never fewer than the entries held")

@@ -18,8 +18,9 @@ import (
 //   - Nothing merges unless GitHub says it can now (CLEAN or HAS_HOOKS), or UNSTABLE after
 //     the user accepts the failing checks: a merge never goes around branch protection on
 //     its own. Only "merge past the rules" does, offered when GitHub lets the user (as it
-//     does a repository admin), never as the sheet's button, and with every rule it skips
-//     to accept first.
+//     does a repository admin), with every rule it skips to accept first, and never as the
+//     sheet's button unless the user turned that on (Prefs.BypassOwn) and it is their own
+//     pull request, waiting only on an approval from someone else.
 //   - Nothing merges a draft, a pull request on a merge queue, or without write access.
 //   - Nobody approves or requests changes on their own pull request.
 //   - A pending review on GitHub blocks every review.
@@ -152,10 +153,9 @@ func (p Plan) offer(action Action) (Offer, bool) {
 	return p.Offers[i], true
 }
 
-// Decide works out the plan for a pull request from its facts and the user's merge method
-// preference.
-func Decide(f Facts, pref MethodPref) Plan {
-	method := chooseMethod(f.Methods, pref, f.ViewerMethod)
+// Decide works out the plan for a pull request from its facts and the user's settings.
+func Decide(f Facts, prefs Prefs) Plan {
+	method := chooseMethod(f.Methods, prefs.Method, f.ViewerMethod)
 	d := decider{f: f, method: method}
 
 	p := Plan{Method: method, Methods: slices.Clone(f.Methods), Readiness: readiness(f)}
@@ -168,7 +168,7 @@ func Decide(f Facts, pref MethodPref) Plan {
 	}
 
 	p.Offers = d.offers()
-	p.Primary = primary(f, p.Offers)
+	p.Primary = primary(f, p.Offers, prefs.BypassOwn)
 
 	return p
 }
@@ -438,21 +438,26 @@ func (d decider) approveMerge() Offer {
 		Warnings: d.warnings(true),
 	}
 
-	waitsOnReview := f.MergeState == github.MergeStateBlocked && f.ReviewRequired && f.RequiredFailing == 0 &&
-		f.RequiredPending == 0 && !f.ChangesRequested
-
 	switch reason := d.firstOf(d.reviewBlock(ActionApprove), d.mergeBlock()); {
 	case f.ApprovedAtHead:
 		return Offer{}
 	case reason != "":
 		o.Reason = reason
-	case d.mergeableNow() || waitsOnReview:
+	case d.mergeableNow() || waitsOnReview(f):
 		o.Enabled = true
 	default:
 		o.Reason = notNowReason(f)
 	}
 
 	return o
+}
+
+// waitsOnReview reports a pull request that the rules hold back only for an approving
+// review: BLOCKED, needing an approval, with no required check failing or pending and no
+// request for changes standing.
+func waitsOnReview(f Facts) bool {
+	return f.MergeState == github.MergeStateBlocked && f.ReviewRequired && f.RequiredFailing == 0 &&
+		f.RequiredPending == 0 && !f.ChangesRequested
 }
 
 // approveAutoMerge offers to approve and turn on auto-merge: when the pull request waits
@@ -501,8 +506,9 @@ func (d decider) autoMerge() Offer {
 }
 
 // bypass offers to merge past the branch's rules, for a user GitHub lets do so, while the
-// rules are what hold the merge back. It is never the sheet's button, and its warnings,
-// to accept first, name each rule it skips.
+// rules are what hold the merge back. Its warnings, to accept first, name each rule it
+// skips. It is never the sheet's button unless the user turned on Prefs.BypassOwn and it is
+// their own pull request, waiting only on an approval from someone else (primary).
 func (d decider) bypass() Offer {
 	f := d.f
 	if !f.CanBypass || (f.MergeState != github.MergeStateBlocked && f.MergeState != github.MergeStateBehind) {
@@ -650,13 +656,30 @@ func notNowReason(f Facts) string {
 // Dependabot to rebase comes first while its pull request is behind or has conflicts, and
 // Update branch while the rules hold a pull request back for being behind; otherwise both
 // wait in the menu, and are never the button, since each writes to the branch. A close and
-// Re-request my review wait in the menu always. With no primary and offers enabled, the
-// sheet's button only opens the menu.
-func primary(f Facts, offers []Offer) Action {
-	enabled := func(a Action) bool {
-		return slices.ContainsFunc(offers, func(o Offer) bool { return o.Action == a && o.Enabled })
+// Re-request my review wait in the menu always. A merge past the rules waits there too,
+// unless bypassOwn (the user's Prefs.BypassOwn) is on and it is the user's own pull request
+// that waits only on an approval (waitsOnReview), which nobody else may give it: then it
+// comes first, while it is enabled, and still asks the user to accept each rule it skips.
+// With no primary and offers enabled, the sheet's button only opens the menu.
+func primary(f Facts, offers []Offer, bypassOwn bool) Action {
+	order := primaryOrder(f)
+
+	if bypassOwn && f.Mine && waitsOnReview(f) {
+		order = append([]Action{ActionMergeBypass}, order...)
 	}
 
+	for _, a := range order {
+		if slices.ContainsFunc(offers, func(o Offer) bool { return o.Action == a && o.Enabled }) {
+			return a
+		}
+	}
+
+	return ActionNone
+}
+
+// primaryOrder lists the actions the sheet's button may run, the first one enabled
+// winning, before a merge past the rules is put first (primary).
+func primaryOrder(f Facts) []Action {
 	behind := f.MergeState == github.MergeStateBehind
 	order := []Action{}
 
@@ -680,15 +703,7 @@ func primary(f Facts, offers []Offer) Action {
 		order = append(order, ActionUpdateBranch)
 	}
 
-	order = append(order, ActionMerge, ActionAutoMerge, ActionApprove, ActionComment, ActionRequestChanges)
-
-	for _, a := range order {
-		if enabled(a) {
-			return a
-		}
-	}
-
-	return ActionNone
+	return append(order, ActionMerge, ActionAutoMerge, ActionApprove, ActionComment, ActionRequestChanges)
 }
 
 // chooseMethod picks the merge method: the user's choice where the repository allows it,

@@ -1435,8 +1435,12 @@ methods take funcs), is pinned to the head the user saw (an approval reads the h
 since GitHub takes a review of an older commit), and a merge first reads `mergeStateStatus`
 fresh and merges only when GitHub says it can, so an admin's token never merges past branch
 protection on its own: only `merge_bypass`
-("merge past the rules") does, offered when GitHub sets `viewerCanMergeAsAdmin`, never the
-sheet's button, and with each rule it skips to accept. An UNSTABLE pull request's readiness
+("merge past the rules") does, offered when GitHub sets `viewerCanMergeAsAdmin`, with each
+rule it skips to accept, and never the sheet's button unless the user turns on
+`review.bypassOwn` (`Prefs.BypassOwn`, which `Decide` takes with the merge method): then
+`primary` puts it first on the user's own pull request that waits only on an approval
+(`waitsOnReview`: BLOCKED, an approval required, no required check failing or pending, no
+changes requested), and it still asks first. An UNSTABLE pull request's readiness
 line and merge warning say what GitHub counts as not passing: optional checks failing or
 running, and the head commit's workflow runs that ended without a check (`Unrun`, read in
 the review query from the head commit's own check suites, `headSuites: commits(last: 1)`,

@@ -192,7 +192,7 @@ func TestTheReadinessLeavesOutTheHeldRunsThatDontCount(t *testing.T) {
 	} {
 		c.facts.MergeState = github.MergeStateUnstable
 
-		r := Decide(c.facts, PrefRepo).Readiness
+		r := Decide(c.facts, Prefs{Method: PrefRepo}).Readiness
 		assert.Equal(t, c.state, r.State, c.name)
 		assert.Equal(t, c.says, r.Sentence, c.name)
 	}

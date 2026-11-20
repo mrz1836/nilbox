@@ -102,6 +102,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetStatusPart(ctx, "claude.ai", true) },
 		func() (Settings, error) { return svc.SetStatusPart(ctx, "github.actions", false) },
 		func() (Settings, error) { return svc.SetMergeMethod(ctx, MergeMethodSquash) },
+		func() (Settings, error) { return svc.SetBypassOwn(ctx, true) },
 		func() (Settings, error) { return svc.SetNudgeAfterHours(ctx, 72) },
 		func() (Settings, error) { return svc.SetNudgeSnooze(ctx, true) },
 		func() (Settings, error) { return svc.SetTheme(ctx, ThemeDark) },

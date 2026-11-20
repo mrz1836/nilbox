@@ -421,6 +421,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetMergeMethod": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetMergeMethod(ctx, settings.MergeMethodSquash)
 		},
+		"settings.Service.SetBypassOwn": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetBypassOwn(ctx, true)
+		},
 		"settings.Service.SetNudgeAfterHours": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetNudgeAfterHours(ctx, 48)
 		},

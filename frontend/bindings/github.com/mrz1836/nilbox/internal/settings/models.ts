@@ -579,9 +579,12 @@ export interface Settings {
     "ignoredWorkflows": string[] | null;
 
     /**
-     * MergeMethod is how the review sheet merges a pull request.
+     * MergeMethod is how the review sheet merges a pull request, and BypassOwn whether its
+     * button merges the user's own pull request past the rules when an approval from
+     * someone else is all it lacks (see KeyBypassOwn).
      */
     "mergeMethod": MergeMethod;
+    "bypassOwn": boolean;
 
     /**
      * NudgeAfterHours is how many hours a pull request the user requested changes on has

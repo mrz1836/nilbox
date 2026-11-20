@@ -74,9 +74,9 @@ func TestFactsCountTheWorkflowRunsThatRanNoCheck(t *testing.T) {
 	assert.Equal(t, 1, f.NotStarted)
 	assert.Zero(t, f.Failing, "none of them is a check")
 
-	sheet := build(storedPull(), c, nil, PrefRepo)
+	sheet := build(storedPull(), c, nil, Prefs{Method: PrefRepo})
 	assert.Equal(t, c.context.Unrun, sheet.Unrun, "the sheet names them beneath its checks")
-	assert.Equal(t, []Unrun{}, build(storedPull(), nil, nil, PrefRepo).Unrun)
+	assert.Equal(t, []Unrun{}, build(storedPull(), nil, nil, Prefs{Method: PrefRepo}).Unrun)
 }
 
 func TestSmallWords(t *testing.T) {
@@ -131,7 +131,7 @@ func TestTheUpdateBranchOfferNeedsTheRight(t *testing.T) {
 	f := facts(github.MergeStateBehind)
 	f.CanUpdateBranch = false
 
-	o, ok := Decide(f, PrefRepo).offer(ActionUpdateBranch)
+	o, ok := Decide(f, Prefs{Method: PrefRepo}).offer(ActionUpdateBranch)
 	require.True(t, ok)
 	assert.False(t, o.Enabled)
 	assert.Equal(t, "Your account can't update this branch.", o.Reason)

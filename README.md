@@ -667,7 +667,9 @@ More in [Reading an issue](docs/desktop.md#reading-an-issue).
   nothing was pushed before it goes, so you never approve code you didn't see.
 - **No silent admin bypass:** every merge reads the merge state fresh and merges only when GitHub
   says it can, so an admin's token never merges past branch protection on its own. **Merge past
-  the rules** does, only from the menu, after you accept each rule it skips.
+  the rules** does, only from the menu (or from the button on your own pull request that waits
+  only on someone else's approval, once you turn that on in Settings → Reviewing), after you
+  accept each rule it skips.
 - **Your text goes with it:** **Merge**, **Merge when ready**, and **Merge past the rules** post
   your text and line comments as a comment first, at the commit you saw, and only once the merge
   can go ahead. If GitHub then won't merge, the toast says the comment is posted and why, and the

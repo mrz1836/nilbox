@@ -1,6 +1,7 @@
 package review
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -61,7 +62,7 @@ func TestRefreshReadsThePullRequestAndItsFilesOnce(t *testing.T) {
 	assert.Equal(t, PatchNone, r.Files[2].PatchState, "GitHub shows no diff for an image")
 	assert.Equal(t, Change{Kind: ChangeCode, Label: "Code", Areas: []string{".", ".github"}}, r.Change)
 
-	merge, ok := Decide(factsOf(storedPull(), mustCache(t, h), r), PrefRepo).offer(ActionMerge)
+	merge, ok := Decide(factsOf(storedPull(), mustCache(t, h), r), Prefs{Method: PrefRepo}).offer(ActionMerge)
 	require.True(t, ok)
 	assert.Equal(t, []string{"It changes sensitive files: Workflows."}, merge.Warnings)
 
@@ -287,6 +288,32 @@ func TestOpenFollowsTheSettings(t *testing.T) {
 
 	_, err = h.service(fakeSettings{err: errFakeRead}, fakeReplies{}).Open(t.Context(), pullID)
 	require.ErrorIs(t, err, errFakeRead)
+}
+
+func TestOpenMergesYourOwnPastTheRulesWhenTurnedOn(t *testing.T) {
+	t.Parallel()
+
+	// The user's own pull request, which only an approval from someone else holds back, in a
+	// repository GitHub lets them merge past the rules of.
+	h := newHarness(t)
+	h.inbox.pull.AuthorLogin = octoUser
+	h.github.review = pullReview(headA, github.MergeStateBlocked)
+	h.github.review.ViewerCanBypass = true
+	h.refreshed(t)
+
+	r, err := h.service(fakeSettings{}, fakeReplies{}).Open(t.Context(), pullID)
+	require.NoError(t, err)
+	require.True(t, r.Mine)
+	assert.Equal(t, ActionAutoMerge, r.Primary, "off by default")
+
+	r, err = h.service(fakeSettings{bypassOwn: true}, fakeReplies{}).Open(t.Context(), pullID)
+	require.NoError(t, err)
+	assert.Equal(t, ActionMergeBypass, r.Primary)
+
+	i := slices.IndexFunc(r.Offers, func(o Offer) bool { return o.Action == ActionMergeBypass })
+	require.GreaterOrEqual(t, i, 0)
+	assert.True(t, r.Offers[i].Confirm, "it still asks first")
+	assert.Contains(t, r.Offers[i].Warnings, "It needs an approval from someone else.")
 }
 
 func TestABotsDependencyUpdate(t *testing.T) {

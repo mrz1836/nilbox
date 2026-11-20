@@ -119,7 +119,7 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   reviewing: {
     label: 'Reviewing',
     description:
-      'How the review sheet merges a pull request, the workflows whose held runs never count, the people the pickers suggest, and where its replies are kept.',
+      'How the review sheet merges a pull request, and whether it merges your own past the rules, the workflows whose held runs never count, the people the pickers suggest, and where its replies are kept.',
   },
   autopilot: {
     label: 'Autopilot',
@@ -332,6 +332,20 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     {
       label: 'Merge method',
       keywords: ['squash', 'merge commit', 'rebase', 'approve and merge', 'merge button', 'review sheet'],
+    },
+    {
+      label: 'Merge your own pull requests past the rules',
+      keywords: [
+        'bypass',
+        'admin',
+        'branch protection',
+        'rulesets',
+        'required review',
+        'approval',
+        'merge when ready',
+        'my own',
+        'self-merge',
+      ],
     },
     {
       label: 'Nudges',

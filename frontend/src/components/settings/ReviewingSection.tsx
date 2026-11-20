@@ -8,6 +8,7 @@ import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   forgetPeople,
   peopleSummary,
+  setBypassOwn,
   setIgnoredWorkflows,
   setMergeMethod,
   setNudgeAfterHours,
@@ -180,18 +181,21 @@ export interface ReviewingSectionProps extends SectionProps {
   onManageReplies?: (() => void) | undefined
 }
 
-// ReviewingSection holds how the review sheet merges a pull request, saved as soon as it
-// is chosen, when a pull request waiting on its author offers a nudge and whether a nudge
-// snoozes it, each saved as soon as it is chosen, the workflows whose held runs never count
-// (Ignored workflows), each change stored as it is made, the people the app learned, which
-// it forgets on request, and points at where the review replies are kept.
+// ReviewingSection holds how the review sheet merges a pull request and whether its button
+// merges the user's own pull request past the rules when an approval from someone else is
+// all it lacks, when a pull request waiting on its author offers a nudge and whether a
+// nudge snoozes it, each saved as soon as it is chosen, the workflows whose held runs never
+// count (Ignored workflows), each change stored as it is made, the people the app learned,
+// which it forgets on request, and points at where the review replies are kept.
 export function ReviewingSection({ settings: stored, onSaved, onManageReplies }: ReviewingSectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
-  // error is why the last choice of a merge method was refused, and nudgeError and
+  // error is why the last choice of a merge method was refused, bypassError why the last
+  // change of Merge your own pull requests past the rules was, and nudgeError and
   // snoozeError why the last change of Offer a nudge after and of Snooze after a nudge was;
   // a refused ignored workflow shows its own.
   const [error, setError] = useState('')
+  const [bypassError, setBypassError] = useState('')
   const [nudgeError, setNudgeError] = useState('')
   const [snoozeError, setSnoozeError] = useState('')
   const [draft, setDraft] = useState('')
@@ -224,6 +228,14 @@ export function ReviewingSection({ settings: stored, onSaved, onManageReplies }:
     const result = await save({ mergeMethod }, () => setMergeMethod(mergeMethod))
 
     setError(result.ok ? '' : result.error)
+  }
+
+  const chooseBypass = async (bypassOwn: boolean) => {
+    setBypassError('')
+
+    const result = await save({ bypassOwn }, () => setBypassOwn(bypassOwn))
+
+    setBypassError(result.ok ? '' : result.error)
   }
 
   const chooseNudge = async (value: string) => {
@@ -312,6 +324,18 @@ export function ReviewingSection({ settings: stored, onSaved, onManageReplies }:
         <Note id={`${id}-note`}>
           A repository that doesn’t allow the method you choose merges the way it offers first.
         </Note>
+        <Group>
+          <SwitchRow
+            label="Merge your own pull requests past the rules"
+            controlId={`${id}-bypass-own`}
+            description="When an approval from someone else is all your pull request lacks, and GitHub lets you merge past the branch’s rules, the review sheet’s button does that instead of Merge when ready. You still confirm each rule it skips."
+            error={bypassError}
+            checked={settings.bypassOwn}
+            onChange={(on) => {
+              void chooseBypass(on)
+            }}
+          />
+        </Group>
       </div>
       <section aria-labelledby={`${id}-nudges`} className="flex flex-col gap-3">
         <SectionIntro id={`${id}-nudges`} title="Nudges">

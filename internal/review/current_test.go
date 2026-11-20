@@ -262,7 +262,7 @@ func TestTheInboxsNewerHeldRuns(t *testing.T) {
 		"the run of an ignored workflow doesn't count")
 	assert.Equal(t, []Unrun{}, r.Unrun, "the runs the sheet read stay as it read them")
 
-	approve, ok := Decide(factsOf(h.inbox.pull, mustCache(t, h), r), PrefRepo).offer(ActionApproveRuns)
+	approve, ok := Decide(factsOf(h.inbox.pull, mustCache(t, h), r), Prefs{Method: PrefRepo}).offer(ActionApproveRuns)
 	require.True(t, ok)
 	assert.False(t, approve.Enabled, "an approval names runs the sheet read")
 	assert.Equal(t, "Wait for it to load from GitHub.", approve.Reason)

@@ -215,7 +215,7 @@ func TestDecide(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p := Decide(tt.facts(), PrefRepo)
+			p := Decide(tt.facts(), Prefs{Method: PrefRepo})
 			assert.Equal(t, tt.primary, p.Primary)
 			assert.ElementsMatch(t, tt.enabled, enabled(p))
 			assert.Equal(t, tt.ready, p.Readiness.State)
@@ -223,7 +223,7 @@ func TestDecide(t *testing.T) {
 			// A user who may close it gets Close as well, in the menu: the button stays.
 			f := tt.facts()
 			f.CanClose = true
-			withClose := Decide(f, PrefRepo)
+			withClose := Decide(f, Prefs{Method: PrefRepo})
 			assert.Equal(t, tt.primary, withClose.Primary, "a close is never the button")
 
 			if f.Closed {
@@ -244,7 +244,7 @@ func TestDecideOffersACloseToWhoeverMayClose(t *testing.T) {
 	f := facts(github.MergeStateClean)
 	f.CanClose = true
 
-	o, ok := Decide(f, PrefRepo).offer(ActionClose)
+	o, ok := Decide(f, Prefs{Method: PrefRepo}).offer(ActionClose)
 	require.True(t, ok)
 	assert.Equal(t, Offer{
 		Action: ActionClose, Label: "Close pull request", Enabled: true, Confirm: true, Warnings: []string{},
@@ -254,16 +254,16 @@ func TestDecideOffersACloseToWhoeverMayClose(t *testing.T) {
 	// A draft, a merge queue, no merge method, checks failing, and conflicts hold back no
 	// close.
 	f.Draft, f.MergeQueue, f.Methods, f.RequiredFailing, f.MergeState = true, true, nil, 1, github.MergeStateDirty
-	o, ok = Decide(f, PrefRepo).offer(ActionClose)
+	o, ok = Decide(f, Prefs{Method: PrefRepo}).offer(ActionClose)
 	require.True(t, ok)
 	assert.True(t, o.Enabled)
 
 	f.CanClose = false
-	_, ok = Decide(f, PrefRepo).offer(ActionClose)
+	_, ok = Decide(f, Prefs{Method: PrefRepo}).offer(ActionClose)
 	assert.False(t, ok, "never offered to a user GitHub doesn't let close it")
 
 	f.CanClose, f.Closed = true, true
-	_, ok = Decide(f, PrefRepo).offer(ActionClose)
+	_, ok = Decide(f, Prefs{Method: PrefRepo}).offer(ActionClose)
 	assert.False(t, ok, "never offered once merged or closed")
 }
 
@@ -276,11 +276,11 @@ func TestACloseWaitsForTheSheetToReadThePullRequest(t *testing.T) {
 		f := facts("")
 		f.CanClose = canClose
 
-		o, ok := Decide(f, PrefRepo).offer(ActionClose)
+		o, ok := Decide(f, Prefs{Method: PrefRepo}).offer(ActionClose)
 		require.True(t, ok)
 		assert.False(t, o.Enabled)
 		assert.Equal(t, "Wait for it to load from GitHub.", o.Reason)
-		assert.NotEqual(t, ActionClose, Decide(f, PrefRepo).Primary)
+		assert.NotEqual(t, ActionClose, Decide(f, Prefs{Method: PrefRepo}).Primary)
 	}
 }
 
@@ -301,7 +301,7 @@ func TestOnlyGitHubSaysWhoMayClose(t *testing.T) {
 	// say alone counts.
 	ghost := storedPull()
 	ghost.AuthorLogin, ghost.Viewer, ghost.ViewerPermission = "", "", "READ"
-	sheet := build(ghost, c, sensitive.NewMatcher(sensitive.DefaultConfig()), PrefRepo)
+	sheet := build(ghost, c, sensitive.NewMatcher(sensitive.DefaultConfig()), Prefs{Method: PrefRepo})
 	assert.False(t, factsOf(ghost, c, sheet).CanClose)
 	assert.False(t, slices.ContainsFunc(sheet.Offers, func(o Offer) bool { return o.Action == ActionClose }),
 		"so the sheet offers no close")
@@ -320,7 +320,7 @@ func TestACloseIsTheOnlyActionLeft(t *testing.T) {
 	f := facts(github.MergeStateBlocked)
 	f.CanWrite, f.CanAutoMerge, f.PendingReview, f.CanClose = false, false, true, true
 
-	p := Decide(f, PrefRepo)
+	p := Decide(f, Prefs{Method: PrefRepo})
 	assert.Equal(t, []Action{ActionClose}, enabled(p))
 	assert.Equal(t, ActionNone, p.Primary, "the button only opens the menu")
 
@@ -383,7 +383,7 @@ func TestDecideWarnsBeforeARiskyMerge(t *testing.T) {
 	f.Sensitive = []string{"Workflows"}
 	f.Failing = 1
 
-	p := Decide(f, PrefRepo)
+	p := Decide(f, Prefs{Method: PrefRepo})
 
 	merge, ok := p.offer(ActionMerge)
 	require.True(t, ok)
@@ -401,12 +401,12 @@ func TestDecideWarnsBeforeARiskyMerge(t *testing.T) {
 func TestDecideLabelsSayWhatHappens(t *testing.T) {
 	t.Parallel()
 
-	p := Decide(facts(github.MergeStateClean), PrefRepo)
+	p := Decide(facts(github.MergeStateClean), Prefs{Method: PrefRepo})
 
 	o, _ := p.offer(ActionApproveMerge)
 	assert.Equal(t, "Approve & squash-merge", o.Label)
 
-	p = Decide(facts(github.MergeStateClean), PrefMerge)
+	p = Decide(facts(github.MergeStateClean), Prefs{Method: PrefMerge})
 	assert.Equal(t, MethodMerge, p.Method)
 
 	o, _ = p.offer(ActionMerge)
@@ -465,7 +465,7 @@ func TestChooseMethod(t *testing.T) {
 	assert.Equal(t, MethodRebase, chooseMethod([]MergeMethod{MethodRebase}, PrefRepo, ""))
 	assert.Empty(t, chooseMethod(nil, PrefRepo, MethodSquash))
 
-	p := Decide(Facts{MergeState: github.MergeStateClean, CanWrite: true}, PrefRepo)
+	p := Decide(Facts{MergeState: github.MergeStateClean, CanWrite: true}, Prefs{Method: PrefRepo})
 	merge, _ := p.offer(ActionMerge)
 	assert.False(t, merge.Enabled)
 	assert.Equal(t, "The repository allows no merge method.", merge.Reason)
@@ -501,12 +501,21 @@ func FuzzDecide(f *testing.F) {
 			Pending: int(pending % 5), Methods: []MergeMethod{MethodSquash},
 		}
 
-		checkPlan(t, fa, Decide(fa, PrefRepo))
+		off := Decide(fa, Prefs{Method: PrefRepo})
+		checkPlan(t, fa, Prefs{Method: PrefRepo}, off)
+
+		on := Decide(fa, Prefs{Method: PrefRepo, BypassOwn: true})
+		checkPlan(t, fa, Prefs{Method: PrefRepo, BypassOwn: true}, on)
+		assert.Equal(t, off.Offers, on.Offers, "merging your own past the rules changes only the button")
+
+		if on.Primary != ActionMergeBypass {
+			assert.Equal(t, off.Primary, on.Primary, "the button as it is with the switch off")
+		}
 	})
 }
 
-// checkPlan checks the rules every plan keeps.
-func checkPlan(t *testing.T, fa Facts, p Plan) {
+// checkPlan checks the rules every plan keeps, decided with prefs.
+func checkPlan(t *testing.T, fa Facts, prefs Prefs, p Plan) {
 	t.Helper()
 
 	on := enabled(p)
@@ -524,7 +533,7 @@ func checkPlan(t *testing.T, fa Facts, p Plan) {
 		}
 	}
 
-	checkPrimary(t, p, on)
+	checkPrimary(t, fa, prefs, p, on)
 	checkAsksFirst(t, p)
 	checkKeepingUp(t, fa, p, on)
 	checkClose(t, fa, p)
@@ -575,11 +584,19 @@ func checkClose(t *testing.T, fa Facts, p Plan) {
 
 // checkPrimary checks that the primary is an enabled offer, or none, and that with none,
 // only actions the button never runs on its own are enabled: the sheet's button then only
-// opens the menu.
-func checkPrimary(t *testing.T, p Plan, on []Action) {
+// opens the menu. Going past the rules is the button exactly when the user turned that on,
+// it is their own pull request waiting only on an approval, and it is enabled; and it still
+// asks first.
+func checkPrimary(t *testing.T, fa Facts, prefs Prefs, p Plan, on []Action) {
 	t.Helper()
 
-	assert.NotEqual(t, ActionMergeBypass, p.Primary, "going past the rules is never the button")
+	ownWaiting := prefs.BypassOwn && fa.Mine && waitsOnReview(fa) && slices.Contains(on, ActionMergeBypass)
+	assert.Equal(t, ownWaiting, p.Primary == ActionMergeBypass,
+		"going past the rules is the button only on your own pull request waiting on an approval, once turned on")
+
+	if past, ok := p.offer(ActionMergeBypass); ok && p.Primary == ActionMergeBypass {
+		assert.True(t, past.Confirm && len(past.Warnings) > 0, "the button still asks first, naming each rule it skips")
+	}
 
 	if p.Primary != ActionNone {
 		assert.Contains(t, on, p.Primary, "the primary is enabled")
@@ -706,7 +723,7 @@ func TestDecideOffersAMergePastTheRules(t *testing.T) {
 	f := facts(github.MergeStateBlocked)
 	f.Mine, f.ReviewRequired, f.CanBypass = true, true, true
 
-	p := Decide(f, PrefRepo)
+	p := Decide(f, Prefs{Method: PrefRepo})
 
 	past, ok := p.offer(ActionMergeBypass)
 	require.True(t, ok)
@@ -724,7 +741,7 @@ func TestDecideOffersAMergePastTheRules(t *testing.T) {
 
 	// Not offered when GitHub doesn't let the user, nor when the rules hold nothing back.
 	f.CanBypass = false
-	_, ok = Decide(f, PrefRepo).offer(ActionMergeBypass)
+	_, ok = Decide(f, Prefs{Method: PrefRepo}).offer(ActionMergeBypass)
 	assert.False(t, ok)
 
 	for _, status := range []string{
@@ -732,15 +749,68 @@ func TestDecideOffersAMergePastTheRules(t *testing.T) {
 	} {
 		g := facts(status)
 		g.CanBypass = true
-		_, ok = Decide(g, PrefRepo).offer(ActionMergeBypass)
+		_, ok = Decide(g, Prefs{Method: PrefRepo}).offer(ActionMergeBypass)
 		assert.False(t, ok, status)
 	}
 
 	// A draft is held back however the rules stand.
 	f.CanBypass, f.Draft = true, true
-	past, _ = Decide(f, PrefRepo).offer(ActionMergeBypass)
+	past, _ = Decide(f, Prefs{Method: PrefRepo}).offer(ActionMergeBypass)
 	assert.False(t, past.Enabled)
 	assert.Equal(t, "It's a draft.", past.Reason)
+}
+
+func TestDecideMergesYourOwnPastTheRulesWhenTurnedOn(t *testing.T) {
+	t.Parallel()
+
+	on, off := Prefs{Method: PrefRepo, BypassOwn: true}, Prefs{Method: PrefRepo}
+
+	for _, c := range []struct {
+		name  string
+		edit  func(f *Facts)
+		prefs Prefs
+		want  Action
+	}{
+		{"your own, waiting only on an approval", func(*Facts) {}, on, ActionMergeBypass},
+		{"turned off", func(*Facts) {}, off, ActionAutoMerge},
+		{"someone else's", func(f *Facts) { f.Mine = false }, on, ActionApproveMerge},
+		{"required checks running", func(f *Facts) { f.RequiredPending = 1 }, on, ActionAutoMerge},
+		{"a required check failing", func(f *Facts) { f.RequiredFailing = 1 }, on, ActionComment},
+		{"changes requested", func(f *Facts) { f.ChangesRequested = true }, on, ActionAutoMerge},
+		{"held back by another rule", func(f *Facts) { f.ReviewRequired = false }, on, ActionAutoMerge},
+		{
+			"behind", func(f *Facts) { f.MergeState, f.CanUpdateBranch = github.MergeStateBehind, true }, on,
+			ActionUpdateBranch,
+		},
+		{"a draft", func(f *Facts) { f.Draft = true }, on, ActionComment},
+		{"GitHub doesn't let you", func(f *Facts) { f.CanBypass = false }, on, ActionAutoMerge},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := facts(github.MergeStateBlocked)
+			f.Mine, f.ReviewRequired, f.CanBypass = true, true, true
+			c.edit(&f)
+
+			p := Decide(f, c.prefs)
+			assert.Equal(t, c.want, p.Primary)
+			assert.Equal(t, Decide(f, off).Offers, p.Offers, "the switch changes only the button")
+
+			if c.want != ActionMergeBypass {
+				assert.Equal(t, Decide(f, off).Primary, p.Primary, "the button as it is with the switch off")
+
+				return
+			}
+
+			// The button still asks first, naming the rule it skips.
+			past, ok := p.offer(ActionMergeBypass)
+			require.True(t, ok)
+			assert.True(t, past.Enabled)
+			assert.True(t, past.Confirm)
+			assert.Equal(t, []string{"It needs an approval from someone else."}, past.Warnings)
+			assert.Equal(t, "Squash-merge past the rules", past.Label)
+		})
+	}
 }
 
 func TestDecideNamesEachRuleAMergePastThemSkips(t *testing.T) {
@@ -778,7 +848,7 @@ func TestDecideNamesEachRuleAMergePastThemSkips(t *testing.T) {
 			f.CanBypass = true
 			c.edit(&f)
 
-			past, ok := Decide(f, PrefRepo).offer(ActionMergeBypass)
+			past, ok := Decide(f, Prefs{Method: PrefRepo}).offer(ActionMergeBypass)
 			require.True(t, ok)
 			assert.Equal(t, c.want, past.Warnings)
 		})
@@ -793,7 +863,7 @@ func TestEachOfferSaysWhatItsTextGoesWith(t *testing.T) {
 
 	commentsFirst := []Action{ActionMerge, ActionMergeBypass, ActionAutoMerge, ActionClose}
 	reviews := []Action{ActionApproveMerge, ActionApproveAutoMerge, ActionApprove, ActionRequestChanges, ActionComment}
-	plan := Decide(f, PrefRepo)
+	plan := Decide(f, Prefs{Method: PrefRepo})
 
 	for _, a := range commentsFirst {
 		_, ok := plan.offer(a)
@@ -808,7 +878,7 @@ func TestEachOfferSaysWhatItsTextGoesWith(t *testing.T) {
 
 	f.PendingReview = true
 
-	for _, o := range Decide(f, PrefRepo).Offers {
+	for _, o := range Decide(f, Prefs{Method: PrefRepo}).Offers {
 		if !o.CommentsFirst {
 			assert.Empty(t, o.CommentBlocked, o.Action)
 
@@ -869,7 +939,7 @@ func TestDecideAsksDependabotToRebaseInAnyMergeState(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			p := Decide(c.facts, PrefRepo)
+			p := Decide(c.facts, Prefs{Method: PrefRepo})
 
 			rebase, ok := p.offer(ActionRebaseBot)
 			require.True(t, ok)
@@ -882,7 +952,7 @@ func TestDecideAsksDependabotToRebaseInAnyMergeState(t *testing.T) {
 	}
 
 	// Never anyone else's pull request.
-	_, ok := Decide(facts(github.MergeStateBehind), PrefRepo).offer(ActionRebaseBot)
+	_, ok := Decide(facts(github.MergeStateBehind), Prefs{Method: PrefRepo}).offer(ActionRebaseBot)
 	assert.False(t, ok)
 }
 
@@ -909,7 +979,7 @@ func TestDecideOffersTheRebaseOnlyWhenItCanDoSomething(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			p := Decide(c.facts, PrefRepo)
+			p := Decide(c.facts, Prefs{Method: PrefRepo})
 
 			rebase, ok := p.offer(ActionRebaseBot)
 			require.True(t, ok, "in the menu, with why it can't run")
@@ -927,7 +997,7 @@ func TestDecideOffersUpdateBranchWheneverGitHubLets(t *testing.T) {
 	f := facts(github.MergeStateBlocked)
 	f.CanUpdateBranch, f.RequiredFailing, f.Failing = true, 1, 1
 
-	p := Decide(f, PrefRepo)
+	p := Decide(f, Prefs{Method: PrefRepo})
 
 	update, ok := p.offer(ActionUpdateBranch)
 	require.True(t, ok)
@@ -941,13 +1011,13 @@ func TestDecideOffersUpdateBranchWheneverGitHubLets(t *testing.T) {
 	f = facts(github.MergeStateClean)
 	f.Mine, f.CanUpdateBranch = true, true
 
-	p = Decide(f, PrefRepo)
+	p = Decide(f, Prefs{Method: PrefRepo})
 	assert.Contains(t, enabled(p), ActionUpdateBranch)
 	assert.Equal(t, ActionMerge, p.Primary)
 
 	// Up to date, or GitHub doesn't let the user: not offered, but for a branch the rules
 	// hold back for being behind, which says why.
-	_, ok = Decide(facts(github.MergeStateBlocked), PrefRepo).offer(ActionUpdateBranch)
+	_, ok = Decide(facts(github.MergeStateBlocked), Prefs{Method: PrefRepo}).offer(ActionUpdateBranch)
 	assert.False(t, ok)
 }
 
@@ -959,7 +1029,7 @@ func TestDecideOffersUpdateBranchWhileTheCompareSaysItIsBehind(t *testing.T) {
 	f := facts(github.MergeStateClean)
 	f.BehindBy = 3
 
-	p := Decide(f, PrefRepo)
+	p := Decide(f, Prefs{Method: PrefRepo})
 
 	update, ok := p.offer(ActionUpdateBranch)
 	require.True(t, ok)
@@ -971,7 +1041,7 @@ func TestDecideOffersUpdateBranchWhileTheCompareSaysItIsBehind(t *testing.T) {
 	// GitHub lets the user: one click, never the button.
 	f.CanUpdateBranch = true
 
-	p = Decide(f, PrefRepo)
+	p = Decide(f, Prefs{Method: PrefRepo})
 	update, _ = p.offer(ActionUpdateBranch)
 	assert.True(t, update.Enabled)
 	assert.NotEqual(t, ActionUpdateBranch, p.Primary)
@@ -981,7 +1051,7 @@ func TestDecideOffersUpdateBranchWhileTheCompareSaysItIsBehind(t *testing.T) {
 	g := dependabot(github.MergeStateClean)
 	g.BehindBy = 3
 
-	p = Decide(g, PrefRepo)
+	p = Decide(g, Prefs{Method: PrefRepo})
 	_, ok = p.offer(ActionUpdateBranch)
 	assert.False(t, ok, "only the rebase on Dependabot's branch GitHub doesn't let the user update")
 
@@ -1035,7 +1105,7 @@ func TestDecideOffersToAskForYourReviewAgain(t *testing.T) {
 			f := changes()
 			tt.facts(&f)
 
-			p := Decide(f, PrefRepo)
+			p := Decide(f, Prefs{Method: PrefRepo})
 
 			o, ok := p.offer(ActionRerequestReview)
 			require.Equal(t, tt.offered, ok)
@@ -1063,7 +1133,7 @@ func TestAskingForYourReviewAgainIsNeverTheButton(t *testing.T) {
 	f.ChangesRequested, f.ChangesRequestedSince, f.PendingReview = true, true, true
 	f.RequiredFailing, f.Failing, f.CanAutoMerge = 1, 1, false
 
-	p := Decide(f, PrefRepo)
+	p := Decide(f, Prefs{Method: PrefRepo})
 	assert.Equal(t, []Action{ActionRerequestReview}, enabled(p))
 	assert.Equal(t, ActionNone, p.Primary)
 }
@@ -1078,7 +1148,7 @@ func TestDecideOffersBothOnDependabotsBranchAndWarnsBeforeTheUpdate(t *testing.T
 			f := dependabot(status)
 			f.CanUpdateBranch = true
 
-			p := Decide(f, PrefRepo)
+			p := Decide(f, Prefs{Method: PrefRepo})
 
 			rebase := slices.IndexFunc(p.Offers, func(o Offer) bool { return o.Action == ActionRebaseBot })
 			update := slices.IndexFunc(p.Offers, func(o Offer) bool { return o.Action == ActionUpdateBranch })
@@ -1101,7 +1171,7 @@ func TestDecideOffersBothOnDependabotsBranchAndWarnsBeforeTheUpdate(t *testing.T
 	f := dependabot(github.MergeStateBehind)
 	f.CanUpdateBranch = false
 
-	_, ok := Decide(f, PrefRepo).offer(ActionUpdateBranch)
+	_, ok := Decide(f, Prefs{Method: PrefRepo}).offer(ActionUpdateBranch)
 	assert.False(t, ok)
 }
 
@@ -1112,7 +1182,7 @@ func TestDecideOffersNeitherOnceMergedOrClosed(t *testing.T) {
 		f := dependabot(status)
 		f.CanUpdateBranch, f.Closed = true, true
 
-		p := Decide(f, PrefRepo)
+		p := Decide(f, Prefs{Method: PrefRepo})
 		assert.Empty(t, p.Offers, status)
 		assert.Equal(t, ActionNone, p.Primary, status)
 		assert.Equal(t, ReadyClosed, p.Readiness.State, status)
@@ -1128,13 +1198,13 @@ func TestNeitherIsTheButtonWhenNothingElseCanRun(t *testing.T) {
 	f := dependabot(github.MergeStateBlocked)
 	f.PendingReview, f.RequiredFailing, f.Failing, f.CanAutoMerge, f.CanUpdateBranch = true, 1, 1, false, true
 
-	p := Decide(f, PrefRepo)
+	p := Decide(f, Prefs{Method: PrefRepo})
 	assert.ElementsMatch(t, []Action{ActionRebaseBot, ActionUpdateBranch}, enabled(p))
 	assert.Equal(t, ActionNone, p.Primary)
 
 	f.Dependabot = false
 
-	p = Decide(f, PrefRepo)
+	p = Decide(f, Prefs{Method: PrefRepo})
 	assert.Equal(t, []Action{ActionUpdateBranch}, enabled(p))
 	assert.Equal(t, ActionNone, p.Primary)
 
@@ -1142,7 +1212,7 @@ func TestNeitherIsTheButtonWhenNothingElseCanRun(t *testing.T) {
 	f = dependabot(github.MergeStateBehind)
 	f.PendingReview = true
 
-	assert.Equal(t, ActionRebaseBot, Decide(f, PrefRepo).Primary)
+	assert.Equal(t, ActionRebaseBot, Decide(f, Prefs{Method: PrefRepo}).Primary)
 }
 
 // holding are a fork's pull request in merge state status whose n workflow runs wait for a
@@ -1230,7 +1300,7 @@ func TestDecideOffersToApproveHeldRuns(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 
-			p := Decide(c.facts(), PrefRepo)
+			p := Decide(c.facts(), Prefs{Method: PrefRepo})
 
 			o, ok := p.offer(ActionApproveRuns)
 			require.Equal(t, c.offered, ok)
@@ -1260,12 +1330,12 @@ func TestApprovingHeldRunsIsNeverTheButton(t *testing.T) {
 	f := holding(github.MergeStateBlocked, 2)
 	f.PendingReview, f.RequiredFailing, f.Failing, f.CanAutoMerge = true, 1, 1, false
 
-	p := Decide(f, PrefRepo)
+	p := Decide(f, Prefs{Method: PrefRepo})
 	assert.Equal(t, []Action{ActionApproveRuns}, enabled(p))
 	assert.Equal(t, ActionNone, p.Primary)
 
 	f.Closed = true
 
-	_, ok := Decide(f, PrefRepo).offer(ActionApproveRuns)
+	_, ok := Decide(f, Prefs{Method: PrefRepo}).offer(ActionApproveRuns)
 	assert.False(t, ok, "nothing is offered once it was merged or closed")
 }

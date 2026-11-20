@@ -78,7 +78,7 @@ func TestWhenTheSheetCountsItBehind(t *testing.T) {
 func TestASheetNeverReadIsNotBehind(t *testing.T) {
 	t.Parallel()
 
-	r := build(storedPull(), nil, nil, PrefRepo)
+	r := build(storedPull(), nil, nil, Prefs{Method: PrefRepo})
 	assert.False(t, r.Behind)
 	assert.Zero(t, r.BehindBy)
 }
@@ -90,7 +90,7 @@ func TestAClosedPullRequestIsNotBehind(t *testing.T) {
 		Head: headA, State: github.StateClosed, BehindBy: 4, CanUpdateBranch: true, MergeState: github.MergeStateBehind,
 	}}
 
-	r := build(storedPull(), c, nil, PrefRepo)
+	r := build(storedPull(), c, nil, Prefs{Method: PrefRepo})
 	assert.False(t, r.Behind, "only an open pull request is behind")
 	assert.Equal(t, 4, r.BehindBy)
 }
