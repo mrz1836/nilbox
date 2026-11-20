@@ -279,14 +279,15 @@ describe('RunPanel', () => {
 
     it('writes a failure to mark it seen to the console', async () => {
       const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const locked = new Error('database is locked')
 
-      platform.markScriptRunSeen.mockRejectedValue(new Error('database is locked'))
+      platform.markScriptRunSeen.mockRejectedValue(locked)
       renderPanel(ended({ seen: false }))
 
       await shownRun()
 
       await waitFor(() => {
-        expect(logged).toHaveBeenCalledWith('could not mark the run seen:', 'database is locked')
+        expect(logged).toHaveBeenCalledWith('could not mark the run seen:', locked)
       })
     })
   })

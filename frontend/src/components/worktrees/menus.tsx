@@ -1,3 +1,4 @@
+import { logFailure } from '../../lib/call'
 import { counted } from '../../lib/format'
 import { asReadNow, type DetailsRead } from '../../lib/useWorktreeDetails'
 import { itemRef } from '../../lib/worktreeParts'
@@ -27,12 +28,7 @@ const icon = 'size-3.5 shrink-0 text-muted'
 // copy puts text on the clipboard from a menu, which closes as it's chosen, so a copy the
 // clipboard refuses is only logged, naming what.
 function copy(text: string, what: string) {
-  copyText(text).then(
-    () => undefined,
-    (err: unknown) => {
-      console.error(`could not copy the ${what}`, err)
-    },
-  )
+  logFailure(copyText(text), `could not copy the ${what}`)
 }
 
 // why is a disabled item's reason, as its note under it and its tooltip.

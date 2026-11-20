@@ -1,6 +1,7 @@
 import { useId } from 'react'
 
 import { brand } from '../../generated/brand'
+import { logFailure } from '../../lib/call'
 import { counted } from '../../lib/format'
 import { levelDot } from '../../lib/sensitive'
 import { useSettingsSave } from '../../lib/useSettingsSave'
@@ -130,9 +131,7 @@ export function SensitiveFilesSection({ settings: stored, onSaved }: SectionProp
         // Collaborators' pull requests are checked by a refresh: run one now rather than
         // wait for the next.
         if (scope === 'collaborators') {
-          refreshInbox().catch((err: unknown) => {
-            console.error('could not refresh the inbox', err)
-          })
+          logFailure(refreshInbox(), 'could not refresh the inbox')
         }
       },
     })

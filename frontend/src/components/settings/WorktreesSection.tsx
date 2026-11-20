@@ -1,5 +1,6 @@
 import { useId } from 'react'
 
+import { logFailure } from '../../lib/call'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import { setBranchRules, setWorktreeAutoCleanup, sweepWorktrees, type BranchRules } from '../../platform'
 import { quietButtonClass, Switch } from '../controls'
@@ -19,9 +20,7 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
 
 // sweepNow runs the automatic cleanup at once rather than at its next check.
 function sweepNow(): void {
-  sweepWorktrees().catch((err: unknown) => {
-    console.error('could not sweep the worktrees', err)
-  })
+  logFailure(sweepWorktrees(), 'could not sweep the worktrees')
 }
 
 interface RuleSwitch {

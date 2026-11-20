@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { logFailure } from '../../lib/call'
 import { shellQuoted, shortCommit } from '../../lib/git'
 import { branchSummary } from '../../lib/worktreeSummary'
 import { copyText, type BranchResult } from '../../platform'
@@ -24,14 +25,9 @@ function CopyRestore({ results }: { results: readonly BranchResult[] }) {
     <button
       type="button"
       onClick={() => {
-        copyText(restoreCommands(results)).then(
-          () => {
-            setCopied(true)
-          },
-          (err: unknown) => {
-            console.error('could not copy the restore commands', err)
-          },
-        )
+        logFailure(copyText(restoreCommands(results)), 'could not copy the restore commands', () => {
+          setCopied(true)
+        })
       }}
       className={quietButtonClass}
     >

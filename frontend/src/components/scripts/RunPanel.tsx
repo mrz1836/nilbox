@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
 import { plainText } from '../../lib/ansi'
-import { attempt } from '../../lib/call'
+import { logFailure } from '../../lib/call'
 import { counted } from '../../lib/format'
 import { isBumpResult } from '../../lib/release'
 import { formatDuration, isLive, readLog, runDuration, runPlace } from '../../lib/scriptRuns'
@@ -215,11 +215,7 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   }, [id])
 
   const markSeen = useEffectEvent(() => {
-    void attempt(markScriptRunSeen(id)).then((result) => {
-      if (!result.ok) {
-        console.error('could not mark the run seen:', result.error)
-      }
-    })
+    logFailure(markScriptRunSeen(id), 'could not mark the run seen:')
   })
 
   useEffect(() => {
