@@ -1202,10 +1202,10 @@ export default function AutopilotView({
   // Start from scratch, Start from an item, Import, and every template.
   if (empty && !making && !describing && chosen === undefined && selected !== TEMPLATES) {
     return (
-      <div className="flex h-full justify-center overflow-y-auto p-8">
-        {/* The column carries its own room below the buttons: the window's webview drops a
-            scrolling box's bottom padding once its content overflows, which left the last row
-            flush against the window's edge. */}
+      // The column keeps to the top (items-start) so it is as tall as what it holds: stretched
+      // to the box's height, its content overflowed it, and neither the box's padding nor the
+      // column's own came after the last row, which sat flush against the window's edge.
+      <div className="flex h-full items-start justify-center overflow-y-auto p-8">
         <div className="flex w-full max-w-3xl flex-col gap-6 pb-12">
           {/* The intro keeps to a reading width, its lines balanced, so a sentence never
               leaves a word or two alone on its last line. */}
