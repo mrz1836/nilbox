@@ -380,7 +380,8 @@ func resultText(raw json.RawMessage) string {
 	return strings.TrimSpace(strings.Join(parts, "\n"))
 }
 
-// claudeLimit reads the provider's usage limit: a warning or a refusal shows.
+// claudeLimit reads the provider's usage limit: a warning or a refusal shows, worded
+// (limitWords).
 func claudeLimit(s *Parser, rl *claudeRateLimit) {
 	if rl == nil {
 		s.unknown()
@@ -391,7 +392,9 @@ func claudeLimit(s *Parser, rl *claudeRateLimit) {
 	s.limit = &Limit{Status: rl.Status, Type: rl.Type, ResetsAt: rl.ResetsAt}
 
 	if rl.Status != "allowed" {
-		s.emit(runevent.Event{Kind: runevent.KindLimit, Text: rl.Status + " · " + rl.Type, Error: rl.Status == LimitRejected})
+		s.emit(runevent.Event{
+			Kind: runevent.KindLimit, Text: limitWords(rl.Status, rl.Type), Error: rl.Status == LimitRejected,
+		})
 	}
 }
 

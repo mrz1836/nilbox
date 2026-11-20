@@ -377,7 +377,7 @@ func errorWords(r Result) string {
 // when it resets: "Out of usage: its plan's five-hour limit is reached. It resets Mon 15:04."
 func outOfUsageWords(l Limit) string {
 	words := "Out of usage"
-	if name := limitName(l.Type); name != "" {
+	if name := stream.LimitName(l.Type); name != "" {
 		words += ": its plan's " + name + " limit is reached"
 	}
 
@@ -388,26 +388,6 @@ func outOfUsageWords(l Limit) string {
 	}
 
 	return words
-}
-
-// limitName names a usage limit as the agent reports its type: "five_hour" is the
-// five-hour limit, "seven_day" the weekly one, and "seven_day_opus" the weekly Opus one.
-func limitName(kind string) string {
-	switch {
-	case kind == "":
-		return ""
-	case kind == "five_hour":
-		return "five-hour"
-	case strings.HasPrefix(kind, "seven_day"):
-		model := strings.TrimPrefix(strings.TrimPrefix(kind, "seven_day"), "_")
-		if model == "" {
-			return "weekly"
-		}
-
-		return "weekly " + strings.ToUpper(model[:1]) + model[1:]
-	default:
-		return strings.ReplaceAll(kind, "_", " ")
-	}
 }
 
 // dollars writes an amount in dollars: "$0.50".

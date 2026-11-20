@@ -217,7 +217,7 @@ describe('turnEntries', () => {
         { kind: 'tool', tool: tool('autopilot_propose') },
         { kind: 'toolResult', text: 'Proposed 1 routine. It shows in the Autopilot tab.' },
         { kind: 'retry', text: 'Retrying (1 of 10): overloaded' },
-        { kind: 'limit', text: 'rejected · five_hour', error: true },
+        { kind: 'limit', text: "Out of usage: its plan's five-hour limit is reached", error: true },
         { kind: 'denied', tool: 'Bash', text: 'not allowed here' },
         { kind: 'denied', tool: '', text: '' },
         { kind: 'toolResult', text: 'an answer to nothing' },
@@ -237,7 +237,7 @@ describe('turnEntries', () => {
       ['The proposal has 1 problem: no step', 'failed', '', false],
       ['Proposed 1 routine', 'ok', '', true],
       ['note', 'Retrying (1 of 10): overloaded'],
-      ['note', 'rejected · five_hour'],
+      ['note', "Out of usage: its plan's five-hour limit is reached"],
       ['note', 'Claude Code didn’t let it use Bash: not allowed here'],
       ['note', 'Claude Code didn’t let it use a tool'],
     ])

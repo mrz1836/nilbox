@@ -308,7 +308,7 @@ describe('DescribeView', () => {
           { kind: 'tool', tool: tool('autopilot_guide') },
           { kind: 'toolResult', text: '# How Autopilot works' },
           { kind: 'retry', text: 'Retrying (1 of 10): overloaded' },
-          { kind: 'limit', text: 'rejected · five_hour', error: true },
+          { kind: 'limit', text: "Out of usage: its plan's five-hour limit is reached", error: true },
           { kind: 'tool', tool: tool('autopilot_inbox_names') },
           { kind: 'toolResult', text: 'The inbox’s names couldn’t be read. Try again.', error: true },
           { kind: 'text', text: 'Let me *check* it.' },
@@ -324,7 +324,7 @@ describe('DescribeView', () => {
 
     expect(await log.findByText('Read how Autopilot works')).toBeInTheDocument()
     expect(log.getByText('Retrying (1 of 10): overloaded')).toHaveClass('text-muted')
-    expect(log.getByText('rejected · five_hour')).toHaveClass('text-danger')
+    expect(log.getByText("Out of usage: its plan's five-hour limit is reached")).toHaveClass('text-danger')
     expect(log.getByText('Read the names in your inbox').parentElement).toHaveClass('text-danger')
     expect(log.getByRole('img', { name: 'failed' })).toBeInTheDocument()
     expect(log.getByText('The inbox’s names couldn’t be read')).toBeInTheDocument()

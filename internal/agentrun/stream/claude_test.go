@@ -352,6 +352,54 @@ func TestTheParserReadsAToolsResultInEitherShape(t *testing.T) {
 	assert.Zero(t, p.Progress().Unknown)
 }
 
+func TestALimitIsNamedAsThePlanNamesIt(t *testing.T) {
+	t.Parallel()
+
+	for kind, want := range map[string]string{
+		"five_hour": "five-hour", "seven_day": "weekly", "seven_day_opus": "weekly Opus", "monthly_cap": "monthly cap",
+		"": "",
+	} {
+		assert.Equal(t, want, LimitName(kind), kind)
+	}
+}
+
+func TestALimitShowsWordedNeverInTheAgentsCodes(t *testing.T) {
+	t.Parallel()
+
+	limit := func(status, kind string) string {
+		return `{"type":"rate_limit_event","rate_limit_info":{"status":"` + status + `","rateLimitType":"` + kind +
+			`","resetsAt":1795071600}}` + "\n"
+	}
+
+	p := Claude("")
+	_, _ = p.Write([]byte(limit("allowed", "five_hour") + limit(LimitWarning, "seven_day") +
+		limit(LimitRejected, "five_hour") + limit(LimitWarning, "") + limit("allowed_soon", "seven_day_opus")))
+
+	type line struct {
+		Text  string
+		Error bool
+	}
+
+	events := p.Page(0).Events
+	got := make([]line, 0, len(events))
+
+	for _, e := range events {
+		assert.Equal(t, runevent.KindLimit, e.Kind)
+		got = append(got, line{Text: e.Text, Error: e.Error})
+	}
+
+	assert.Equal(t, []line{
+		{Text: "Near its plan's weekly limit"},
+		{Text: "Out of usage: its plan's five-hour limit is reached", Error: true},
+		{Text: "Near its plan's usage limit"},
+		{Text: "Usage limit, allowed soon: its plan's weekly Opus limit"},
+	}, got, "a limit that allows the run shows nothing, and the others are worded")
+
+	require.NotNil(t, p.Limit())
+	assert.Equal(t, Limit{Status: "allowed_soon", Type: "seven_day_opus", ResetsAt: 1795071600}, *p.Limit(),
+		"the limit itself stays as the agent reported it")
+}
+
 func TestTheParserCountsKnownMessagesItCantRead(t *testing.T) {
 	t.Parallel()
 

@@ -46,16 +46,11 @@ func TestEachAgentsReportIsReadFromItsStream(t *testing.T) {
 	assert.Equal(t, "5bc5674913c19eb0aa26d17635645b45b1ff5dbd", pushed.PushedCommit)
 }
 
-func TestALimitIsNamedAsThePlanNamesIt(t *testing.T) {
+func TestARunOutOfUsageSaysWhichLimit(t *testing.T) {
 	t.Parallel()
 
-	for kind, want := range map[string]string{
-		"five_hour": "five-hour", "seven_day": "weekly", "seven_day_opus": "weekly Opus", "monthly_cap": "monthly cap",
-		"": "",
-	} {
-		assert.Equal(t, want, limitName(kind), kind)
-	}
-
+	assert.Equal(t, "Out of usage: its plan's weekly Opus limit is reached.",
+		outOfUsageWords(Limit{Status: "rejected", Type: "seven_day_opus"}), "named as the plan names it")
 	assert.Equal(t, "Out of usage.", outOfUsageWords(Limit{Status: "rejected"}), "with nothing more to say")
 }
 

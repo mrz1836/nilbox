@@ -1,6 +1,9 @@
 package stream
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // Result is the agent's own end of a run, from its result line.
 type Result struct {
@@ -47,8 +50,51 @@ type Result struct {
 	Denials        int      `json:"denials"`
 }
 
-// LimitRejected is a usage limit's status that refused the run.
-const LimitRejected = "rejected"
+// The statuses of a usage limit the agent reports: LimitRejected refused the run, and
+// LimitWarning lets it go on near the limit.
+const (
+	LimitRejected = "rejected"
+	LimitWarning  = "allowed_warning"
+)
+
+// LimitName names a usage limit as the agent reports its type: "five_hour" is the
+// five-hour limit, "seven_day" the weekly one, and "seven_day_opus" the weekly Opus one.
+func LimitName(kind string) string {
+	switch {
+	case kind == "":
+		return ""
+	case kind == "five_hour":
+		return "five-hour"
+	case strings.HasPrefix(kind, "seven_day"):
+		model := strings.TrimPrefix(strings.TrimPrefix(kind, "seven_day"), "_")
+		if model == "" {
+			return "weekly"
+		}
+
+		return "weekly " + strings.ToUpper(model[:1]) + model[1:]
+	default:
+		return strings.ReplaceAll(kind, "_", " ")
+	}
+}
+
+// limitWords says what a usage limit the agent reports means, as its run's line words it:
+// near its plan's limit, out of usage for it, and which limit, never the agent's own codes
+// ("Near its plan's weekly limit").
+func limitWords(status, kind string) string {
+	limit := "its plan's usage limit"
+	if name := LimitName(kind); name != "" {
+		limit = "its plan's " + name + " limit"
+	}
+
+	switch status {
+	case LimitWarning:
+		return "Near " + limit
+	case LimitRejected:
+		return "Out of usage: " + limit + " is reached"
+	default:
+		return "Usage limit, " + strings.ReplaceAll(status, "_", " ") + ": " + limit
+	}
+}
 
 // Limit is the provider's usage limit, as the agent last reported it.
 type Limit struct {
