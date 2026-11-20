@@ -2,7 +2,8 @@ import { useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 
 import { brand } from '../generated/brand'
-import { counted, errorMessage, fileDate, fileName } from '../lib/format'
+import { pickFileToOpen, pickFileToSave } from '../lib/dialogs'
+import { counted, fileDate, fileName } from '../lib/format'
 import { isFindKey, isPreviewKey, isSaveKey, useKeyDown } from '../lib/keys'
 import { kindPlural, promptApplies, routinePlaces, usageCount, usagePlaces } from '../lib/launch'
 import { replyDefaultsText, replySlotPlaces, replySlots } from '../lib/replies'
@@ -10,8 +11,6 @@ import { useMutation } from '../lib/useMutation'
 import { useDebouncedQuery } from '../lib/useQuery'
 import {
   checkPrompt,
-  chooseFileToOpen,
-  chooseFileToSave,
   createPrompt,
   deletePrompt,
   duplicatePrompt,
@@ -507,15 +506,15 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
   const exportTo = async (ids: number[], filename: string) => {
     setStatus(null)
 
-    let path: string
+    const chosen = await pickFileToSave({ title: 'Export prompts', button: 'Export', filters: promptFiles, filename })
 
-    try {
-      path = await chooseFileToSave({ title: 'Export prompts', button: 'Export', filters: promptFiles, filename })
-    } catch (err) {
-      setStatus({ tone: 'error', text: `Couldn’t open the save dialog: ${errorMessage(err)}` })
+    if (!chosen.ok) {
+      setStatus({ tone: 'error', text: chosen.error })
 
       return
     }
+
+    const path = chosen.data
 
     if (path === '') {
       return
@@ -532,14 +531,12 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
   const importFile = async () => {
     setStatus(null)
 
-    try {
-      const path = await chooseFileToOpen({ title: 'Import prompts', button: 'Import', filters: importFiles })
+    const chosen = await pickFileToOpen({ title: 'Import prompts', button: 'Import', filters: importFiles })
 
-      if (path !== '') {
-        setImporting({ kind: 'file', path })
-      }
-    } catch (err) {
-      setStatus({ tone: 'error', text: `Couldn’t open the file dialog: ${errorMessage(err)}` })
+    if (!chosen.ok) {
+      setStatus({ tone: 'error', text: chosen.error })
+    } else if (chosen.data !== '') {
+      setImporting({ kind: 'file', path: chosen.data })
     }
   }
 
