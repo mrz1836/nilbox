@@ -34,7 +34,23 @@ describe('errorMessage', () => {
     expect(errorMessage(new Error('no local clone', { cause: { message: '' } }))).toBe('no local clone')
     expect(errorMessage(new Error('no local clone', { cause: { message: 7 } }))).toBe('no local clone')
     expect(errorMessage(new Error('no local clone', { cause: 'text' }))).toBe('no local clone')
+    expect(errorMessage(new Error('no local clone', { cause: 7 }))).toBe('no local clone')
+    expect(errorMessage(new Error('no local clone', { cause: undefined }))).toBe('no local clone')
     expect(errorMessage(new Error('', { cause: null }))).toBe('Something went wrong.')
+    expect(errorMessage(new Error('', { cause: { message: 7, detail: 'x' } }))).toBe('Something went wrong.')
+  })
+
+  it('reads the words beside any detail the cause carries', () => {
+    const err = new Error('the command needs the user’s trust', {
+      cause: { message: 'Confirm “Test” before it runs.', detail: { ref: 't3:Test' } },
+    })
+    expect(errorMessage(err)).toBe('Confirm “Test” before it runs.')
+  })
+
+  it('reads only an Error’s cause', () => {
+    expect(errorMessage({ message: 'no local clone', cause: { message: 'Could not reach GitHub.' } })).toBe(
+      'Something went wrong.',
+    )
   })
 
   it('uses a string error as is', () => {

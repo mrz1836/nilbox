@@ -1221,17 +1221,26 @@ export const duplicateUserScript: (id: number) => CancellablePromise<UserScript>
 // questionFields are the fields every ScriptQuestion holds, each a string.
 const questionFields = ['ref', 'name', 'source', 'command', 'trust', 'trusted', 'trustNote', 'sha256'] as const
 
-// refusal reads what a failed call's cause carries beside its message: the backend's words
-// for the user, and the question to ask, or null when it holds none.
-function refusal(err: unknown): { question: ScriptQuestion; message: string } | null {
+// causeOf reads what a failed call's cause carries beside its message: the backend's words
+// for the user, and its detail, or null when the failure carries no cause.
+function causeOf(err: unknown): { detail: unknown; message: string } | null {
   if (!(err instanceof Error) || typeof err.cause !== 'object' || err.cause === null) {
     return null
   }
 
   const { cause } = err
-  const detail: unknown = 'detail' in cause ? cause.detail : undefined
+  const message = 'message' in cause && typeof cause.message === 'string' ? cause.message : ''
 
-  if (typeof detail !== 'object' || detail === null) {
+  return { detail: 'detail' in cause ? cause.detail : undefined, message }
+}
+
+// refusal reads what a failed call's cause carries beside its message: the backend's words
+// for the user, and the question to ask, or null when it holds none.
+function refusal(err: unknown): { question: ScriptQuestion; message: string } | null {
+  const cause = causeOf(err)
+  const detail = cause?.detail
+
+  if (cause === null || typeof detail !== 'object' || detail === null) {
     return null
   }
 
@@ -1241,9 +1250,7 @@ function refusal(err: unknown): { question: ScriptQuestion; message: string } | 
     return null
   }
 
-  const message = 'message' in cause && typeof cause.message === 'string' ? cause.message : ''
-
-  return { question: detail as ScriptQuestion, message }
+  return { question: detail as ScriptQuestion, message: cause.message }
 }
 
 // runScript asks to run a script in its clone. It resolves with the run's ID once it
@@ -1662,19 +1669,6 @@ export type RestartAnswer =
 // DownloadAnswer is how asking to download the newer version ended: downloaded and
 // checked, with the status, ready; or refused for a reason the window answers on its own.
 export type DownloadAnswer = { downloaded: true; status: UpdateStatus } | ({ downloaded: false } & Refused)
-
-// causeOf reads what a failed call's cause carries beside its message: the backend's words
-// for the user, and its detail, or null when the failure carries no cause.
-function causeOf(err: unknown): { detail: unknown; message: string } | null {
-  if (!(err instanceof Error) || typeof err.cause !== 'object' || err.cause === null) {
-    return null
-  }
-
-  const { cause } = err
-  const message = 'message' in cause && typeof cause.message === 'string' ? cause.message : ''
-
-  return { detail: 'detail' in cause ? cause.detail : undefined, message }
-}
 
 // runFields are the fields of a RunGoing, with the type each holds.
 const runFields = {

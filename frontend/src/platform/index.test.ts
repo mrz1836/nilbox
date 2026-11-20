@@ -326,14 +326,31 @@ describe('runScript', () => {
     await expect(platform.runScript(request)).resolves.toEqual({ started: false, question, message: '' })
   })
 
+  it('reads only a string as the backend’s words', async () => {
+    mocks.scripts.Run.mockRejectedValueOnce(refused({ message: 7, detail: question }))
+    mocks.scripts.Run.mockRejectedValueOnce(refused({ message: null, detail: question }))
+
+    await expect(platform.runScript(request)).resolves.toEqual({ started: false, question, message: '' })
+    await expect(platform.runScript(request)).resolves.toEqual({ started: false, question, message: '' })
+  })
+
   it('rejects with any other failure', async () => {
     const failures = [
       new Error('plain'),
       'not an error',
       refused(null),
+      refused(undefined),
+      refused('Confirm “Test” before it runs.'),
+      refused(7),
       refused({ message: 'A release is using acme-org/sdk right now.' }),
       refused({ message: 'odd', detail: 'a string' }),
+      refused({ message: 'odd', detail: null }),
       refused({ message: 'odd', detail: { ...question, sha256: 7 } }),
+      // Only an Error's cause is read: a value shaped like one is not.
+      {
+        message: 'Confirm “Test” before it runs.',
+        cause: { message: 'Confirm “Test” before it runs.', detail: question },
+      },
     ]
 
     for (const failure of failures) {
@@ -563,6 +580,22 @@ describe('restartToUpdateNow', () => {
     })
   })
 
+  it('reads only a string as the backend’s words', async () => {
+    mocks.update.Restart.mockRejectedValueOnce(refused({ message: 7, detail: { runsGoing: [release] } }))
+    mocks.update.Restart.mockRejectedValueOnce(refused({ message: null, detail: { code: 'settling' } }))
+
+    await expect(platform.restartToUpdateNow(false)).resolves.toEqual({
+      restarted: false,
+      runsGoing: [release],
+      message: '',
+    })
+    await expect(platform.restartToUpdateNow(false)).resolves.toEqual({
+      restarted: false,
+      refusal: 'settling',
+      message: '',
+    })
+  })
+
   it('reads the runs defensively: an entry it can’t read is left out, a list it can’t read is none', async () => {
     mocks.update.Restart.mockRejectedValueOnce(
       refused({
@@ -617,6 +650,11 @@ describe('restartToUpdateNow', () => {
       new Error('plain'),
       'not an error',
       refused(null),
+      refused(undefined),
+      refused('Restarting stops Release v1.2.0 in acme-org/sdk.'),
+      refused(7),
+      // Only an Error's cause is read: a value shaped like one is not.
+      { message: 'runs are going in the app', cause: { message: 'Runs are going.', detail: { runsGoing: [release] } } },
       refused({ message: 'Couldn’t install 0.3.0: no space.' }),
       refused({ message: 'odd', detail: 'a string' }),
       refused({ message: 'odd', detail: { question: 'not runs' } }),
