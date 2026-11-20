@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 
 import { brand } from '../generated/brand'
 import { counted, errorMessage, fileDate, fileName } from '../lib/format'
-import { isFindKey, isPreviewKey } from '../lib/keys'
+import { isFindKey, isPreviewKey, isSaveKey } from '../lib/keys'
 import { kindPlural, promptApplies, routinePlaces, usageCount, usagePlaces } from '../lib/launch'
 import { replyDefaultsText, replySlotPlaces, replySlots } from '../lib/replies'
 import { useMutation } from '../lib/useMutation'
@@ -467,7 +467,7 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
   // even while typing, and ⌘F finds a prompt in the library: a page hidden behind
   // another runs no effects, so it stops listening.
   const saveOnKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
-    if (e.metaKey && e.key === 's') {
+    if (isSaveKey(e)) {
       e.preventDefault()
 
       if (canSave) {

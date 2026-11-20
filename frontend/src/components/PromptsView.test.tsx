@@ -293,6 +293,25 @@ describe('PromptsView', () => {
     )
   })
 
+  it('saves with ⌘S while Caps Lock is on, and not with ⌃⌘S or ⌥⌘S', async () => {
+    render(<Harness />)
+    await waitForCheck()
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Title' }), '!')
+    await userEvent.keyboard('{Control>}{Meta>}s{/Meta}{/Control}')
+    await userEvent.keyboard('{Alt>}{Meta>}s{/Meta}{/Alt}')
+
+    expect(platform.updatePrompt).not.toHaveBeenCalled()
+
+    // Caps Lock makes the key S, with no Shift held.
+    await userEvent.keyboard('{Meta>}S{/Meta}')
+
+    expect(platform.updatePrompt).toHaveBeenCalledExactlyOnceWith(
+      3,
+      expect.objectContaining({ name: 'Fix a pull request’s failing checks!' }),
+    )
+  })
+
   it('blocks saving while the check finds problems', async () => {
     platform.checkPrompt.mockResolvedValue(
       checkResult({
