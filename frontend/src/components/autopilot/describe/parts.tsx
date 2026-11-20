@@ -10,6 +10,7 @@ import type {
   KitOutcomeKind,
   KitPart,
   KitRisk,
+  Settings,
 } from '../../../platform'
 import { buttonClass, primaryButtonClass, quietButtonClass } from '../../controls'
 import { AlertIcon, CheckIcon } from '../../icons'
@@ -27,6 +28,9 @@ export interface CardKit {
   onShowRoutine: (id: number) => void
   // onSettled hears a part dealt with, so what shows the card reads it again.
   onSettled: () => void
+  // onSettingsSaved hears the settings as a card's settings or rules change left them, so
+  // the window's own (Settings, the tab's Pause Autopilot) show the change.
+  onSettingsSaved: (settings: Settings) => void
   // describeDelay is how long a routine's draft rests before it is read, in milliseconds.
   describeDelay: number
 }

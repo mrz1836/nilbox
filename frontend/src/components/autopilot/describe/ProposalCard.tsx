@@ -141,6 +141,7 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
       modeOf,
       saveChange,
       onSettled: record,
+      onSettingsSaved: kit.onSettingsSaved,
     })
 
     setApplying(false)

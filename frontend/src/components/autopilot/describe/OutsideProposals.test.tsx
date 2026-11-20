@@ -32,6 +32,7 @@ function show() {
         catalog: autopilotCatalog(),
         onEditInBuilder: vi.fn(),
         onShowRoutine: vi.fn(),
+        onSettingsSaved: vi.fn(),
         describeDelay: 0,
       }}
     />,

@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi, type Mock } from 'vitest'
 
-import type { AutopilotDraft, AutopilotSpec, DescribeCard } from '../../../platform'
+import type { AutopilotDraft, AutopilotSpec, DescribeCard, Settings } from '../../../platform'
 import {
   autopilotCatalog,
   described,
@@ -19,6 +19,7 @@ import {
   routine,
   routineReady,
   routineSpec,
+  settings,
 } from '../../../test/fixtures'
 import { at } from '../../../test/clock'
 import { platform } from '../../../test/platform'
@@ -32,6 +33,7 @@ type Kit = CardKit & {
   onEditInBuilder: Mock<(draft: AutopilotDraft) => void>
   onShowRoutine: Mock<(id: number) => void>
   onSettled: Mock<() => void>
+  onSettingsSaved: Mock<(settings: Settings) => void>
 }
 
 // kitOf is a card's kit: new routines start in Ask first, and a draft is read at once.
@@ -42,6 +44,7 @@ function kitOf(overrides: Partial<CardKit> = {}): Kit {
     onEditInBuilder: vi.fn<(draft: AutopilotDraft) => void>(),
     onShowRoutine: vi.fn<(id: number) => void>(),
     onSettled: vi.fn<() => void>(),
+    onSettingsSaved: vi.fn<(settings: Settings) => void>(),
     describeDelay: 0,
     ...overrides,
   } as Kit
@@ -536,8 +539,11 @@ describe('ProposalCard', () => {
 
   it('shows a settings change, and applies each setting through its own setter', async () => {
     const user = userEvent.setup()
+    const stored = settings({ trustedBots: ['stored'] })
 
-    show(
+    platform.setAutopilotAgentsAtOnce.mockResolvedValue(stored)
+
+    const kit = show(
       describeCard({
         proposal: { summary: 'One at a time.', settings: { agentsAtOnce: 1 } },
         checked: kitChecked({
@@ -556,9 +562,12 @@ describe('ProposalCard', () => {
     await user.click(row.getByRole('button', { name: 'Apply' }))
     expect(await row.findByRole('alert')).toHaveTextContent('Keep it to 8 at once.')
 
+    expect(kit.onSettingsSaved).not.toHaveBeenCalled()
+
     await user.click(row.getByRole('button', { name: 'Apply' }))
     expect(await row.findByText('Applied')).toBeInTheDocument()
     expect(platform.setAutopilotAgentsAtOnce).toHaveBeenLastCalledWith(1)
+    expect(kit.onSettingsSaved).toHaveBeenCalledExactlyOnceWith(stored)
     expect(platform.settleDescribeItCard.mock.lastCall?.[0]).toMatchObject({
       part: 'settings',
       index: 0,
@@ -594,8 +603,11 @@ describe('ProposalCard', () => {
 
   it('shows a rules change with its warning, and applies it', async () => {
     const user = userEvent.setup()
+    const stored = settings({ trustedBots: ['stored'] })
 
-    show(
+    platform.setRepoRule.mockResolvedValue(stored)
+
+    const kit = show(
       describeCard({
         proposal: { summary: 'Trust Renovate.', rules: { trust: ['renovate[bot]'], mute: ['acme-org/legacy'] } },
         checked: kitChecked({ routines: [], rules: kitCheckedRules() }),
@@ -624,6 +636,7 @@ describe('ProposalCard', () => {
       'renovate[bot]',
     ])
     expect(platform.setRepoRule).toHaveBeenLastCalledWith('acme-org/legacy', 'muted')
+    expect(kit.onSettingsSaved).toHaveBeenCalledExactlyOnceWith(stored)
     expect(platform.settleDescribeItCard.mock.lastCall?.[0]).toMatchObject({
       part: 'rules',
       words: 'Applied the rules change',
@@ -661,6 +674,7 @@ describe('ProposalCard', () => {
     expect(platform.saveRoutine.mock.lastCall?.[0]).toMatchObject({ name: 'Fix checks', mode: 'auto' })
     expect(screen.queryByRole('button', { name: 'Apply all' })).not.toBeInTheDocument()
     expect(kit.onSettled).toHaveBeenCalled()
+    expect(kit.onSettingsSaved).toHaveBeenCalledTimes(2)
   })
 
   it('stops Apply all at the first part that fails, saying which and why', async () => {

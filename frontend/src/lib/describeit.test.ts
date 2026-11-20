@@ -510,14 +510,17 @@ describe('what a card applies', () => {
 
       return Promise.resolve(settings())
     })
+    const last = settings({ trustedBots: ['stored-last'] })
+
     platform.setAutopilotLogDays.mockImplementation((days) => {
       order.push(`logs ${String(days)}`)
 
-      return Promise.resolve(settings())
+      return Promise.resolve(last)
     })
 
-    expect(await applySettings(change)).toEqual({ ok: true, data: undefined })
+    expect(await applySettings(change)).toEqual({ ok: true, data: last })
     expect(order).toEqual(['agents 1', 'cap 5', 'history 30', 'logs 7'])
+    expect(await applySettings(kitCheckedSettings({ changes: [] }))).toEqual({ ok: true, data: undefined })
 
     platform.setAutopilotDailyCap.mockRejectedValueOnce(new Error('Keep the cap to $1,000 a day.'))
     order.length = 0
@@ -566,7 +569,10 @@ describe('what a card applies', () => {
       },
     })
 
-    expect(await applyRules(change)).toEqual({ ok: true, data: undefined })
+    const last = settings({ ignoredWorkflows: ['Deploy'] })
+
+    platform.setIgnoredWorkflows.mockResolvedValueOnce(last)
+    expect(await applyRules(change)).toEqual({ ok: true, data: last })
     expect(platform.setTrustedBots).toHaveBeenCalledWith(['renovate[bot]'])
     expect(platform.setRepoRule.mock.calls).toEqual([
       ['acme-org/api', 'pinned'],
@@ -582,16 +588,11 @@ describe('what a card applies', () => {
       await applyRules(
         kitCheckedRules({ changes: [{ kind: 'unignoreWorkflows', target: 'Deploy', words: 'Count Deploy again' }] }),
       ),
-    ).toEqual({
-      ok: true,
-      data: undefined,
-    })
+    ).toMatchObject({ ok: true, data: { ignoredWorkflows: [] } })
     expect(
       await applyRules(kitCheckedRules({ changes: [{ kind: 'untrust', target: 'x[bot]', words: 'Untrust x[bot]' }] })),
-    ).toEqual({
-      ok: true,
-      data: undefined,
-    })
+    ).toMatchObject({ ok: true, data: { trustedBots: kitCheckedRules().after.trustedBots } })
+    expect(await applyRules(kitCheckedRules({ changes: [] }))).toEqual({ ok: true, data: undefined })
   })
 
   it('records what the user did with a part', async () => {
@@ -627,6 +628,7 @@ describe('applyAll', () => {
       modeOf: () => 'ask',
       saveChange: () => Promise.resolve({ ok: true, data: routine({ id: 3 }) }),
       onSettled: vi.fn(),
+      onSettingsSaved: vi.fn(),
       ...overrides,
     }
   }
@@ -644,16 +646,21 @@ describe('applyAll', () => {
 
       return Promise.resolve(routine({ id: 12, name: d.name }))
     })
+
+    const capped = settings({ trustedBots: ['capped'] })
+    const trusted = settings({ trustedBots: ['renovate'], repoRules: { pinned: [], muted: ['acme-org/legacy'] } })
+
     platform.setAutopilotAgentsAtOnce.mockImplementation(() => {
       order.push('settings')
 
-      return Promise.resolve(settings())
+      return Promise.resolve(capped)
     })
     platform.setTrustedBots.mockImplementation(() => {
       order.push('rules')
 
       return Promise.resolve(settings())
     })
+    platform.setRepoRule.mockResolvedValue(trusted)
     platform.settleDescribeItCard.mockImplementation((req) => {
       order.push(`settle ${req.part}:${String(req.index)} ${req.kind}`)
 
@@ -692,6 +699,8 @@ describe('applyAll', () => {
       ['settings:0', { kind: 'applied', words: 'Applied the settings change', routineId: 0 }],
       ['rules:0', { kind: 'applied', words: 'Applied the rules change', routineId: 0 }],
     ])
+    // As the last setter of each left them.
+    expect(vi.mocked(kit.onSettingsSaved).mock.calls).toEqual([[capped], [trusted]])
   })
 
   it('leaves the parts already dealt with alone', async () => {

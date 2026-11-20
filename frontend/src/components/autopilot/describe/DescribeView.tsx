@@ -14,6 +14,7 @@ import {
   type AutopilotDraft,
   type DescribeAgentChoice,
   type DescribeAttachRef,
+  type Settings,
 } from '../../../platform'
 import { ConfirmDialog } from '../../ConfirmDialog'
 import { buttonClass, fieldClass, primaryButtonClass, quietButtonClass } from '../../controls'
@@ -45,6 +46,10 @@ export interface DescribeViewProps {
 
   // onShowRoutine selects one of the user's routines in the tab: a card's Show it.
   onShowRoutine: (id: number) => void
+
+  // onSettingsSaved hears the settings as a card's settings or rules change left them, so
+  // the window's own show the change (AutopilotView's onSettingsSaved).
+  onSettingsSaved: (settings: Settings) => void
 }
 
 // handled are the requests Describe it has acted on, kept while it is away: the tab hands
@@ -164,7 +169,12 @@ function AgentForm({ initial, busy, error, onStart, onCancel }: AgentFormProps) 
 // it has used and cost, and New conversation; the cards from the user's own Claude Code
 // come first; then the conversation, and the composer. A request from elsewhere sends its
 // message at once, or puts what it attaches in the composer, once per request.
-export function DescribeView({ request, onEditInBuilder, onShowRoutine }: DescribeViewProps): ReactElement {
+export function DescribeView({
+  request,
+  onEditInBuilder,
+  onShowRoutine,
+  onSettingsSaved,
+}: DescribeViewProps): ReactElement {
   const talk = useConversation()
   const status = useQuery(() => describeItStatus(), [])
   const settings = useQuery(() => getSettings(), [], { log: 'could not read the settings for Describe it' })
@@ -185,6 +195,12 @@ export function DescribeView({ request, onEditInBuilder, onShowRoutine }: Descri
     catalog: catalog.data,
     onEditInBuilder,
     onShowRoutine,
+    // The settings a card leaves reach the window's own, and this view reads its own again,
+    // for the mode new routines start in.
+    onSettingsSaved: (saved: Settings) => {
+      onSettingsSaved(saved)
+      void settings.refetch()
+    },
     describeDelay,
   } satisfies Omit<CardKit, 'onSettled'>
 

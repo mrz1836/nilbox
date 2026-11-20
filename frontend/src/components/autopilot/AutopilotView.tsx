@@ -1440,6 +1440,7 @@ export default function AutopilotView({
 
                   go(routineId)
                 }}
+                onSettingsSaved={onSettingsSaved}
               />
             </Activity>
           )}

@@ -34,6 +34,10 @@ export function SettingsChange({ p, outcome, held, onSettle, kit }: RowProps<Set
             void act.act('applied', async () => {
               const done = await applySettings(p.checked)
 
+              if (done.ok && done.data !== undefined) {
+                kit.onSettingsSaved(done.data)
+              }
+
               return done.ok ? { ok: true, data: 0 } : done
             })
           }}

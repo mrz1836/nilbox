@@ -47,6 +47,7 @@ import {
   type KitSettingKey,
   type PromptInput,
   type RepoRule,
+  type Settings,
 } from '../platform'
 import { modeLabels } from './autopilot'
 import { all, attempt, type Result } from './call'
@@ -530,11 +531,15 @@ const settingSetters = {
   catchUpHours: (a) => setAutopilotCatchUpHours(a.catchUpHours),
   historyDays: (a) => setAutopilotHistoryDays(a.historyDays),
   logDays: (a) => setAutopilotLogDays(a.logDays),
-} satisfies Readonly<Record<KitSettingKey, (after: AutopilotConfig) => PromiseLike<unknown>>>
+} satisfies Readonly<Record<KitSettingKey, (after: AutopilotConfig) => PromiseLike<Settings>>>
 
 // applySettings applies a change to Autopilot's settings, one setter for each setting it
-// changes, stopping at the first that fails.
-export async function applySettings(s: KitCheckedSettings): Promise<Result<void>> {
+// changes, stopping at the first that fails, and resolves with the settings as the last
+// one stored them, which the window's own settings take up (undefined when it changed
+// none).
+export async function applySettings(s: KitCheckedSettings): Promise<Result<Settings | undefined>> {
+  let saved: Settings | undefined
+
   for (const [key, set] of Object.entries(settingSetters)) {
     if (!s.changes.some((c) => c.key === key)) {
       continue
@@ -545,9 +550,11 @@ export async function applySettings(s: KitCheckedSettings): Promise<Result<void>
     if (!done.ok) {
       return done
     }
+
+    saved = done.data
   }
 
-  return { ok: true, data: undefined }
+  return { ok: true, data: saved }
 }
 
 // RuleApply is how a card applies a kind of rule change: with the trusted bots or the
@@ -569,15 +576,17 @@ const ruleApplies: Readonly<Record<KitRuleKind, RuleApply>> = {
 
 // applyRules applies a change to the rules routines lean on: the trusted bots as they are
 // once applied, each repository's or org's rule, and the ignored workflows as they are once
-// applied, stopping at the first that fails.
-export async function applyRules(r: KitCheckedRules): Promise<Result<void>> {
+// applied, stopping at the first that fails, and resolves with the settings as the last
+// change stored them, which the window's own settings take up (undefined when it changed
+// none).
+export async function applyRules(r: KitCheckedRules): Promise<Result<Settings | undefined>> {
   const wholly = (whole: 'bots' | 'workflows') =>
     r.changes.some((c) => {
       const how = ruleApplies[c.kind]
 
       return 'whole' in how && how.whole === whole
     })
-  const calls: (() => PromiseLike<unknown>)[] = []
+  const calls: (() => PromiseLike<Settings>)[] = []
 
   if (wholly('bots')) {
     calls.push(() => setTrustedBots(r.after.trustedBots))
@@ -595,15 +604,19 @@ export async function applyRules(r: KitCheckedRules): Promise<Result<void>> {
     calls.push(() => setIgnoredWorkflows(r.after.ignoredWorkflows))
   }
 
+  let saved: Settings | undefined
+
   for (const call of calls) {
     const done = await attempt(call())
 
     if (!done.ok) {
       return done
     }
+
+    saved = done.data
   }
 
-  return { ok: true, data: undefined }
+  return { ok: true, data: saved }
 }
 
 // settlePart records what the user did with a part of card, which Claude's next turn
@@ -632,6 +645,8 @@ export interface ApplyAllKit {
   saveChange: (p: RoutinePart) => Promise<Result<AutopilotRoutine>>
   // onSettled hears each part as it is applied and recorded.
   onSettled: (p: CardPart, s: Settled) => void
+  // onSettingsSaved hears the settings as a settings or rules change applied left them.
+  onSettingsSaved: (settings: Settings) => void
 }
 
 // Applied is how Apply all ended: every part applied, or the part it stopped at and why.
@@ -655,15 +670,19 @@ async function applyPart(p: CardPart, kit: ApplyAllKit): Promise<Result<Settled>
 
       return saved.ok ? settled(isEdit(p) ? 'saved' : 'added', saved.data.id) : saved
     }
-    case 'settings': {
-      const done = await applySettings(p.checked)
-
-      return done.ok ? settled('applied') : done
-    }
+    case 'settings':
     case 'rules': {
-      const done = await applyRules(p.checked)
+      const done = p.part === 'settings' ? await applySettings(p.checked) : await applyRules(p.checked)
 
-      return done.ok ? settled('applied') : done
+      if (!done.ok) {
+        return done
+      }
+
+      if (done.data !== undefined) {
+        kit.onSettingsSaved(done.data)
+      }
+
+      return settled('applied')
     }
   }
 }

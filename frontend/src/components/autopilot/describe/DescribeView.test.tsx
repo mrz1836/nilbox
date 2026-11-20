@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../../generated/brand'
-import type { AutopilotDraft, AutopilotRunEvent, DescribeConversation } from '../../../platform'
+import type { AutopilotDraft, AutopilotRunEvent, DescribeConversation, Settings } from '../../../platform'
 import { at } from '../../../test/clock'
 import {
   describeAttachment,
@@ -13,9 +13,11 @@ import {
   describeTurn,
   kitChecked,
   kitCheckedRoutine,
+  kitCheckedSettings,
   routineSpec,
   runEvent,
   runEventsPage,
+  settings,
 } from '../../../test/fixtures'
 import { emit, platform } from '../../../test/platform'
 import { DescribeView, type DescribeRequest } from './DescribeView'
@@ -44,6 +46,7 @@ function show(request?: DescribeRequest) {
   const calls = {
     onEditInBuilder: vi.fn<(draft: AutopilotDraft) => void>(),
     onShowRoutine: vi.fn<(id: number) => void>(),
+    onSettingsSaved: vi.fn<(settings: Settings) => void>(),
   }
   const view = render(<DescribeView {...(request === undefined ? {} : { request })} {...calls} />, { wrapper: at() })
 
@@ -199,7 +202,9 @@ describe('DescribeView', () => {
     })
     expect(await screen.findByText('Claude is working on it…')).toBeInTheDocument()
 
-    rerender(<DescribeView request={request} onEditInBuilder={vi.fn()} onShowRoutine={vi.fn()} />)
+    rerender(
+      <DescribeView request={request} onEditInBuilder={vi.fn()} onShowRoutine={vi.fn()} onSettingsSaved={vi.fn()} />,
+    )
     unmount()
     show(request)
     await screen.findByText('Claude · default · sonnet')
@@ -215,7 +220,12 @@ describe('DescribeView', () => {
 
     platform.sendToDescribeIt.mockRejectedValueOnce(new Error('A turn is running.'))
     rerender(
-      <DescribeView request={{ seq: 2, text: 'Skip drafts.' }} onEditInBuilder={vi.fn()} onShowRoutine={vi.fn()} />,
+      <DescribeView
+        request={{ seq: 2, text: 'Skip drafts.' }}
+        onEditInBuilder={vi.fn()}
+        onShowRoutine={vi.fn()}
+        onSettingsSaved={vi.fn()}
+      />,
     )
     expect(await composer().findByRole('alert')).toHaveTextContent('A turn is running.')
     expect(composer().getByRole('textbox', { name: 'Tell Autopilot what you want' })).toHaveValue('Skip drafts.')
@@ -257,6 +267,7 @@ describe('DescribeView', () => {
         }}
         onEditInBuilder={vi.fn()}
         onShowRoutine={vi.fn()}
+        onSettingsSaved={vi.fn()}
       />,
     )
     expect(await within(chips).findByText('Item 42')).toBeInTheDocument()
@@ -453,6 +464,29 @@ describe('DescribeView', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Edit in builder' }))
     expect(onEditInBuilder).toHaveBeenCalledWith(expect.objectContaining({ name: 'Snooze passing bot PRs', id: 0 }))
+  })
+
+  it('hands the window the settings a card’s settings change left, and reads its own again', async () => {
+    const user = userEvent.setup()
+    const card = describeCard({
+      proposal: { summary: 'One at a time.', settings: { agentsAtOnce: 1 } },
+      checked: kitChecked({ routines: [], settings: kitCheckedSettings() }),
+    })
+    const stored = settings({ trustedBots: ['stored'] })
+
+    platform.describeItConversation.mockResolvedValue(conversation([describeTurn({ cards: [card] })]))
+    platform.setAutopilotAgentsAtOnce.mockResolvedValue(stored)
+
+    const { onSettingsSaved } = show()
+    const row = within(await screen.findByRole('group', { name: 'Autopilot’s settings' }))
+    const reads = platform.getSettings.mock.calls.length
+
+    await user.click(row.getByRole('button', { name: 'Apply' }))
+    expect(await row.findByText('Applied')).toBeInTheDocument()
+    expect(onSettingsSaved).toHaveBeenCalledExactlyOnceWith(stored)
+    await waitFor(() => {
+      expect(platform.getSettings.mock.calls.length).toBeGreaterThan(reads)
+    })
   })
 
   it('starts a new conversation with the profile, model, and effort chosen', async () => {
