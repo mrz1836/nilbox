@@ -197,6 +197,17 @@ func (s *Service) SetShowRuns(ctx context.Context, on bool) (Settings, error) {
 	return s.save(ctx, setting(integrationprefs.KeyShowRuns, prefval.EncodeBool(on)))
 }
 
+// SetReleaseSort stores the order the Release page lists each group in, and returns the
+// settings with it. An order that isn't one of the page's is refused.
+func (s *Service) SetReleaseSort(ctx context.Context, sort integrationprefs.ReleaseSort) (Settings, error) {
+	stored, err := integrationprefs.EncodeReleaseSort(sort)
+	if err != nil {
+		return Settings{}, fmt.Errorf("%w: %q", err, sort)
+	}
+
+	return s.save(ctx, setting(integrationprefs.KeyReleaseSort, stored))
+}
+
 // toolPath expands a ~ in path and checks that it names an executable file, worded for
 // the user when it doesn't.
 func (s *Service) toolPath(path string) (string, error) {

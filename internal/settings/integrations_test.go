@@ -274,3 +274,26 @@ func TestTheScriptsTabsSectionsAndRunsAreKept(t *testing.T) {
 	assert.True(t, reread.Integrations.ShowRuns)
 	assert.Zero(t, events.Count(), "only the window reads them")
 }
+
+func TestTheReleaseSortIsKept(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	svc := serviceOver(t, testutil.DB(t), t.TempDir(), WithEvents(events))
+
+	fresh, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.ReleaseSortNewest, fresh.Integrations.ReleaseSort, "the newest first until changed")
+
+	got, err := svc.SetReleaseSort(t.Context(), integrationprefs.ReleaseSortName)
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.ReleaseSortName, got.Integrations.ReleaseSort)
+
+	_, err = svc.SetReleaseSort(t.Context(), "oldest")
+	require.ErrorIs(t, err, integrationprefs.ErrInvalidReleaseSort)
+
+	reread, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.ReleaseSortName, reread.Integrations.ReleaseSort, "a refused order stored nothing")
+	assert.Zero(t, events.Count(), "only the window reads it")
+}

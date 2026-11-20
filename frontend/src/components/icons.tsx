@@ -560,6 +560,15 @@ export function SortIcon(props: IconProps) {
   )
 }
 
+// ArrowDownIcon stands for commits to pull: an arrow down.
+export function ArrowDownIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 5v14M6.5 13.5 12 19l5.5-5.5" />
+    </Icon>
+  )
+}
+
 // StopIcon stands for stopping something under way, and marks something that was stopped.
 export function StopIcon(props: IconProps) {
   return (

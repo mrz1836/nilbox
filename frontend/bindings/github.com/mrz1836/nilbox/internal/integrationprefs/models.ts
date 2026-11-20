@@ -56,6 +56,12 @@ export interface Config {
      * off, the page says the run started, with a way to show it.
      */
     "showRuns": boolean;
+
+    /**
+     * ReleaseSort is the order the Release page lists each group in, as the user last chose
+     * it: newest until they choose another.
+     */
+    "releaseSort": ReleaseSort;
 }
 
 /**
@@ -83,6 +89,33 @@ export const ID = {
      * Scripts is the user's and the repositories' own scripts.
      */
     Scripts: "scripts",
+} as const;
+
+/**
+ * ReleaseSort is an order the Release page lists each group of repositories in.
+ */
+export type ReleaseSort = "newest" | "name" | "commits";
+
+/**
+ * The values of ReleaseSort, by the names of their Go constants.
+ */
+export const ReleaseSort = {
+    /**
+     * The Release page's orders.
+     *
+     * ReleaseSortNewest lists the newest commit first. It is the default.
+     */
+    ReleaseSortNewest: "newest",
+
+    /**
+     * ReleaseSortName lists by owner/name, ignoring case.
+     */
+    ReleaseSortName: "name",
+
+    /**
+     * ReleaseSortCommits lists the most commits since the newest version first.
+     */
+    ReleaseSortCommits: "commits",
 } as const;
 
 /**

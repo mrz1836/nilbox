@@ -1331,6 +1331,7 @@ export function integrationsConfig(overrides: Partial<IntegrationsConfig> = {}):
     lastRepo: '',
     sections: {},
     showRuns: false,
+    releaseSort: 'newest',
     ...overrides,
   }
 }

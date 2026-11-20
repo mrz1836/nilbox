@@ -198,7 +198,8 @@ stored as the app writes one, its lists sorted and its texts trimmed.
 - **Script trust.** A file from elsewhere could otherwise pre-approve a repository's command,
   so each repository command asks again before its first run.
 - **The window's memory.** Its size, folded sections, tips put away, the Notifications page's
-  tab, and the Scripts tab's last page and clone.
+  tab, the Scripts tab's last page and clone, and the order the Release page lists its
+  repositories in.
 - **Tool detection and install records.** The app finds the tools again.
 - **The app's own updates.** When it last checked, the version it last told you of, Later, and
   the downloaded update: the next check finds them again.

@@ -14,6 +14,7 @@ import type { OnSection, StoredSections } from '../../lib/useSections'
 import type {
   IntegrationSwitch,
   IntegrationTool,
+  ReleaseSort,
   RepoRules,
   RunsIn,
   ScriptsPage as StoredPage,
@@ -143,6 +144,10 @@ export interface ScriptsViewProps {
   // unmute; onSettingsSaved receives the settings as stored after each change.
   repoRules?: RepoRules | undefined
   onSettingsSaved?: ((settings: Settings) => void) | undefined
+  // releaseSort is the order Release's groups list their repositories in, as the settings
+  // remember it, and onReleaseSort stores another.
+  releaseSort?: ReleaseSort
+  onReleaseSort?: (sort: ReleaseSort) => void
 }
 
 // ScriptsView is the Scripts tab: a rail of its pages, each with what it counts, and at
@@ -173,6 +178,8 @@ export default function ScriptsView({
   onShowRuns = () => undefined,
   repoRules,
   onSettingsSaved,
+  releaseSort = 'newest',
+  onReleaseSort = () => undefined,
 }: ScriptsViewProps) {
   const { tools, error } = integrations
   const mageX = toolOf(tools, 'mage-x')
@@ -375,6 +382,8 @@ export default function ScriptsView({
             onSection={onSection}
             repoRules={repoRules}
             onSettingsSaved={onSettingsSaved}
+            releaseSort={releaseSort}
+            onReleaseSort={onReleaseSort}
           />
         ) : shown === 'hooks' ? (
           <HooksPage

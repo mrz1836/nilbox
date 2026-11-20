@@ -3,10 +3,10 @@
 // a tool to use, where the runs go, whether a merge offers a release, which sources Repo
 // scripts lists, whether a run Repo scripts starts shows beside its scripts, and the
 // window's memory of the Scripts tab (whether it was announced, the page and clone it
-// reopens on, and the sections the user opened or folded). The settings package writes them, and the
-// integrations, release, and scripts packages read them. It imports nothing of the app's
-// but the prefval leaf, so settings never depends on the integrations package, nor through
-// it on the GitHub client.
+// reopens on, the sections the user opened or folded, and the Release page's sort). The
+// settings package writes them, and the integrations, release, and scripts packages read
+// them. It imports nothing of the app's but the prefval leaf, so settings never depends on
+// the integrations package, nor through it on the GitHub client.
 package integrationprefs
 
 import (
@@ -64,6 +64,10 @@ const (
 	// script's or a pull's, shows beside its scripts at once: "true" or "false", off when
 	// unset.
 	KeyShowRuns = "scripts.showRuns"
+
+	// KeyReleaseSort is the preference key holding the order the Release page lists each
+	// group in: one of ReleaseSort's, newest when unset.
+	KeyReleaseSort = "scripts.releaseSort"
 
 	// maxRepoLen is the longest clone folder KeyLastRepo holds.
 	maxRepoLen = 4096
@@ -149,6 +153,21 @@ const (
 	PageRuns ScriptsPage = "runs"
 )
 
+// ReleaseSort is an order the Release page lists each group of repositories in.
+type ReleaseSort string
+
+// The Release page's orders.
+const (
+	// ReleaseSortNewest lists the newest commit first. It is the default.
+	ReleaseSortNewest ReleaseSort = "newest"
+
+	// ReleaseSortName lists by owner/name, ignoring case.
+	ReleaseSortName ReleaseSort = "name"
+
+	// ReleaseSortCommits lists the most commits since the newest version first.
+	ReleaseSortCommits ReleaseSort = "commits"
+)
+
 // ID names an integration: a tool the app finds and runs, or the scripts.
 type ID string
 
@@ -219,6 +238,10 @@ var (
 
 	// ErrInvalidSection is returned for a ScriptsSection that is not one of Sections.
 	ErrInvalidSection = errors.New("unknown Scripts section")
+
+	// ErrInvalidReleaseSort is returned for a ReleaseSort that is not one of the Release
+	// page's orders.
+	ErrInvalidReleaseSort = errors.New("unknown Release sort")
 )
 
 // Config is how the user set the integrations up, as the settings show it. Every
@@ -256,6 +279,10 @@ type Config struct {
 	// ShowRuns reports whether a run Repo scripts starts shows beside its scripts at once;
 	// off, the page says the run started, with a way to show it.
 	ShowRuns bool `json:"showRuns"`
+
+	// ReleaseSort is the order the Release page lists each group in, as the user last chose
+	// it: newest until they choose another.
+	ReleaseSort ReleaseSort `json:"releaseSort"`
 }
 
 // ScriptSources are the sources Repo scripts lists besides the user's own scripts: magex's
@@ -319,15 +346,16 @@ func Keys() []string {
 	}
 
 	return append(keys, KeyRunsIn, KeyOfferAfterMerge, KeyMagexTargets, KeyRepoFiles, KeyAnnounced, KeyLastPage,
-		KeyLastRepo, KeySections, KeyShowRuns)
+		KeyLastRepo, KeySections, KeyShowRuns, KeyReleaseSort)
 }
 
 // Decode reads the integrations' settings from the stored preferences. A switch that is
 // unset or holds an unknown value is automatic, a path that is not absolute is none, runs
 // go in the app unless the terminal is stored, and a merge offers a release, and Repo
 // scripts lists each of its sources, unless that is stored as off. The Scripts tab is
-// announced only once that is stored, and a page or clone to reopen on that isn't one
-// reads as none.
+// announced only once that is stored, a page or clone to reopen on that isn't one reads as
+// none, and the Release page lists the newest commit first unless another of its orders is
+// stored.
 func Decode(stored map[string]string) Config {
 	out := Config{
 		Switches: map[ID]Switch{}, Paths: map[ID]string{}, RunsIn: DecodeRunsIn(stored[KeyRunsIn]),
@@ -335,11 +363,12 @@ func Decode(stored map[string]string) Config {
 		ScriptSources: ScriptSources{
 			MagexTargets: prefval.Bool(stored[KeyMagexTargets], true), RepoFiles: prefval.Bool(stored[KeyRepoFiles], true),
 		},
-		Announced: prefval.Bool(stored[KeyAnnounced], false),
-		LastPage:  DecodeLastPage(stored[KeyLastPage]),
-		LastRepo:  DecodeLastRepo(stored[KeyLastRepo]),
-		Sections:  DecodeSections(stored[KeySections]),
-		ShowRuns:  prefval.Bool(stored[KeyShowRuns], false),
+		Announced:   prefval.Bool(stored[KeyAnnounced], false),
+		LastPage:    DecodeLastPage(stored[KeyLastPage]),
+		LastRepo:    DecodeLastRepo(stored[KeyLastRepo]),
+		Sections:    DecodeSections(stored[KeySections]),
+		ShowRuns:    prefval.Bool(stored[KeyShowRuns], false),
+		ReleaseSort: DecodeReleaseSort(stored[KeyReleaseSort]),
 	}
 
 	for _, id := range IDs() {
@@ -438,6 +467,31 @@ func EncodeLastPage(p ScriptsPage) (string, error) {
 	}
 
 	return string(p), nil
+}
+
+// Valid reports whether s is one of the Release page's orders.
+func (s ReleaseSort) Valid() bool {
+	return slices.Contains([]ReleaseSort{ReleaseSortNewest, ReleaseSortName, ReleaseSortCommits}, s)
+}
+
+// DecodeReleaseSort reads the order the Release page lists each group in: as stored, when
+// it is one of the page's orders, else newest.
+func DecodeReleaseSort(stored string) ReleaseSort {
+	if s := ReleaseSort(stored); s.Valid() {
+		return s
+	}
+
+	return ReleaseSortNewest
+}
+
+// EncodeReleaseSort returns the stored form of the order the Release page lists each group
+// in. An order that is not one of the page's is refused.
+func EncodeReleaseSort(s ReleaseSort) (string, error) {
+	if !s.Valid() {
+		return "", ErrInvalidReleaseSort
+	}
+
+	return string(s), nil
 }
 
 // DecodeSections reads the sections the user opened or folded: each of Sections the stored

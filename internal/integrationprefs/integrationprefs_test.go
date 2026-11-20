@@ -27,9 +27,10 @@ func TestDecodeDefaultsToAutomatic(t *testing.T) {
 		OfferAfterMerge: true,
 		ScriptSources:   integrationprefs.ScriptSources{MagexTargets: true, RepoFiles: true},
 		Sections:        map[integrationprefs.ScriptsSection]bool{},
+		ReleaseSort:     integrationprefs.ReleaseSortNewest,
 	}, got, "a fresh database: every switch automatic, no copy chosen, runs in the app, a merge offers a release, "+
-		"Repo scripts lists every source and shows no run at once, every section as its page starts it, and no nil "+
-		"map")
+		"Repo scripts lists every source and shows no run at once, every section as its page starts it, Release "+
+		"lists the newest first, and no nil map")
 }
 
 func TestDecodeReadsTheStoredValues(t *testing.T) {
@@ -138,7 +139,7 @@ func TestIDs(t *testing.T) {
 		"integrations.mage-x.enabled", "integrations.go-pre-commit.enabled", "integrations.scripts.enabled",
 		"integrations.mage-x.path", "integrations.go-pre-commit.path", "integrations.runsIn",
 		"integrations.offerAfterMerge", "scripts.magexTargets", "scripts.repoFiles", "integrations.announced",
-		"scripts.lastPage", "scripts.lastRepo", "scripts.sections", "scripts.showRuns",
+		"scripts.lastPage", "scripts.lastRepo", "scripts.sections", "scripts.showRuns", "scripts.releaseSort",
 	}, integrationprefs.Keys())
 }
 
@@ -173,20 +174,44 @@ func TestTheScriptsTabsMemory(t *testing.T) {
 	assert.False(t, fresh.Announced, "a fresh database hasn't announced the tab")
 	assert.Equal(t, integrationprefs.PageNone, fresh.LastPage)
 	assert.Empty(t, fresh.LastRepo)
+	assert.Equal(t, integrationprefs.ReleaseSortNewest, fresh.ReleaseSort, "Release lists the newest first")
 
 	got := integrationprefs.Decode(map[string]string{
 		"integrations.announced": "true", "scripts.lastPage": "hooks", "scripts.lastRepo": "~/projects/example-repo",
+		"scripts.releaseSort": "name",
 	})
 	assert.True(t, got.Announced)
 	assert.Equal(t, integrationprefs.PageHooks, got.LastPage)
 	assert.Equal(t, "~/projects/example-repo", got.LastRepo)
+	assert.Equal(t, integrationprefs.ReleaseSortName, got.ReleaseSort)
 
 	odd := integrationprefs.Decode(map[string]string{
 		"integrations.announced": "yes", "scripts.lastPage": "settings", "scripts.lastRepo": "projects/example-repo",
+		"scripts.releaseSort": "Name",
 	})
 	assert.False(t, odd.Announced, "only true announces")
 	assert.Equal(t, integrationprefs.PageNone, odd.LastPage, "a page the tab doesn't have is none")
 	assert.Empty(t, odd.LastRepo, "a folder that isn't an absolute or ~ path is none")
+	assert.Equal(t, integrationprefs.ReleaseSortNewest, odd.ReleaseSort, "an order isn't matched ignoring case")
+	assert.Equal(t, integrationprefs.ReleaseSortNewest, integrationprefs.DecodeReleaseSort("oldest"),
+		"an order the page doesn't have is newest")
+}
+
+func TestEncodeReleaseSort(t *testing.T) {
+	t.Parallel()
+
+	for _, sort := range []integrationprefs.ReleaseSort{
+		integrationprefs.ReleaseSortNewest, integrationprefs.ReleaseSortName, integrationprefs.ReleaseSortCommits,
+	} {
+		stored, err := integrationprefs.EncodeReleaseSort(sort)
+		require.NoError(t, err)
+		assert.Equal(t, sort, integrationprefs.DecodeReleaseSort(stored), "%s round-trips", sort)
+	}
+
+	for _, sort := range []integrationprefs.ReleaseSort{"", "oldest", "Name"} {
+		_, err := integrationprefs.EncodeReleaseSort(sort)
+		require.ErrorIs(t, err, integrationprefs.ErrInvalidReleaseSort, "%q", sort)
+	}
 }
 
 func TestEncodeLastPage(t *testing.T) {

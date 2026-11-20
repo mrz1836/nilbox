@@ -1258,6 +1258,9 @@ isn't shown on Scripts: each page searches in itself.
 - **It opens** on the page you picked last, even after a restart, or the first page that's on
   when that one is off now. The tab keeps its page and an open release sheet while you switch
   tabs.
+- **Headings stay in view:** a group's heading on Release and Hooks, and a section's on Repo
+  scripts, stays at the top of the page while its rows scroll under it, so you can still see
+  which group you're in, and fold it, from anywhere in its list.
 - **A page whose tool can't be used** says why in place of its list (*magex isn't on this
   Mac.*), with the way to fix it in Settings.
 
@@ -1276,13 +1279,19 @@ names the version.
   tag), open; **Up to date**, **No releases yet** (no `vX.Y.Z` tag), **Can't release here**
   (archived, read-only to you, not found, or with no commits on GitHub yet), and **Muted** (the
   repositories you [muted](#pinned-and-muted-repositories-and-orgs), each with **Unmute**, which
-  GitHub isn't asked about), collapsed, each with its count. A pinned repository comes first in
-  its group. A group you open or fold stays that way, when you come back and after a restart.
-- **Each row** shows the repository and its newest version, **+N** commits since it, the checks
-  on the default branch's newest commit (passed, running, failing, or none) and that commit's
-  age and headline, and what matters about your clone: the branch it's on when that isn't the
-  default, uncommitted files, commits not on GitHub, commits it lacks, or a version only it has.
-  Those come from read-only git checks of the unreleased clones. **Release…** opens the sheet.
+  GitHub isn't asked about), collapsed, each with its count. A group you open or fold stays that
+  way, when you come back and after a restart.
+- **Readiness at a glance:** the heading of a group with **Release…** (Unreleased changes and No
+  releases yet) sums up its rows after the count, what needs a look first: *2 failing*, *3
+  blocked*, *1 running*, *13 ready*, *1 without checks*, in that order, each after a dot in the
+  color of those rows' edges (below). A count of zero is left out, and one that doesn't fit on
+  the heading's line is dropped whole rather than cut short.
+- **Sort:** **Newest** (the newest commit first, to start with), **A–Z** (by `owner/name`,
+  ignoring case), or **Commits** (the most commits since the newest version first) orders
+  every group, and the repositories you [pinned](#pinned-and-muted-repositories-and-orgs) come
+  first in each, whichever you pick. Commits breaks a tie by the newest commit, and Newest by
+  name. Sorting asks GitHub nothing, and the order you pick stays after a restart, though a
+  [backup](#backing-up-your-setup) doesn't hold it.
 - **Search** filters every group, opening each while it searches. **Read GitHub again** reads the
   whole list again now. Nothing else does on a timer: the list stays as it was read, however
   old (the header says *Read 3h ago*), and after a release, or a merge in the review sheet, only
@@ -1298,6 +1307,49 @@ names the version.
 - **Recent** lists the last 10 releases started from the app, with how each came out (*on
   GitHub*, *on GitHub, following its workflow*, *published*, *release workflow failed*, *on
   GitHub, not published*, *not pushed*, *failed*, *not checked on GitHub*); each opens its run.
+
+**Each row** is one repository on one line, its parts in columns its whole group shares, so
+they line up down the list. When the list is narrow, as in a small window, the headline and
+your clone's notes move to a second line under the name, and narrower still the version and
+the age join them there. From the left:
+
+- **The edge** says how ready the repository is to release, on a row with **Release…**: red
+  while the checks on its newest commit fail, amber while your clone stops a release (below), a
+  grey pulse while the checks run, green once they passed with nothing in the way, and muted
+  when the commit has no checks, which never reads as ready. A row both failing and blocked
+  shows red.
+- **The checks** on the default branch's newest commit, as an icon (✓ passed, a pulsing dot
+  while they run, ✗ failing, or a ring for none), its words in its tooltip.
+- **The repository:** its owner, muted, and its name, cut short with the whole in its tooltip.
+  A pinned repository has a pin after its name, so the names still line up, and its tooltip
+  says which rule pins it and where to unpin it.
+- **The version:** the newest version tag, or *no version yet*.
+- **+N**, on a row with unreleased changes: how many commits came since that version, with a
+  **feat** chip when one of the newest 10 of them starts with `feat:`, which usually means a
+  minor release, or **breaking** when one is marked breaking, which usually means a major one;
+  the chip's tooltip says so, as the sheet's hint does. **+?** means GitHub couldn't compare the
+  version with the default branch, so how many came since isn't known.
+- **The headline** of the newest commit, taking the room the rest leave, with **×N** when 3 or
+  more repositories listed in the group have it as their newest commit, as a change synced to
+  many repositories does; its tooltip names them. A search that leaves fewer than 3 drops it.
+- **Your clone's notes,** from read-only git checks of the unreleased clones. Only what stops a
+  release is amber: uncommitted files (*3 uncommitted*), commits not on GitHub (*2 not
+  pushed*), a detached commit, a version tag only on this Mac (*v1.4.1 only on this Mac*), or a
+  clone git couldn't read. A row with any of those shows only them. Otherwise it says, quietly,
+  that origin has commits your clone lacks (*behind*), then the branch it's on when that isn't
+  the default, neither of which stops a release: magex pulls first, and switches to the default
+  branch and back. Each note's tooltip says what to do, as in *Commit or stash them first.* or
+  *magex pulls them first.*
+- **The age** of the newest commit.
+- **Release…** opens the sheet, and so does a click anywhere else on the row; each part of
+  the row still shows its tooltip. A click that ends selecting the row's words opens nothing,
+  so you can still copy them. Release… stays quiet until you point at the row or move the
+  focus into it, so a column of them stays calm.
+
+An **Up to date** row has no edge and no **Release…**, a **Can't release here** row says why in
+the headline's place, without checks, and neither opens anything when clicked. A **Muted** row
+shows its clone's folder there and **Unmute** in Release…'s place, quiet the same way; only
+Unmute itself unmutes, never a click on the row.
 
 **The sheet** checks the clone, origin, and GitHub as it opens, then shows:
 

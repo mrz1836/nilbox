@@ -104,6 +104,7 @@ import {
   setScriptsLastRepo,
   setScriptsSectionOpen,
   setShowRuns,
+  setReleaseSort,
   type AfterMerge,
   type AgentID,
   type AppNotification,
@@ -1048,10 +1049,9 @@ export function App() {
   }
 
   // remember stores a change to the window's memory: that the Scripts tab was announced, the
-  // page or clone it reopens on, the review sheet's tab, the Notifications page's tab, or
-  // the conversations' order. What
-  // shows has changed already; a store that fails only means the next start doesn't
-  // remember it.
+  // page or clone it reopens on, the Release page's order, the review sheet's tab, the
+  // Notifications page's tab, or the conversations' order. What shows has changed already;
+  // a store that fails only means the next start doesn't remember it.
   const remember = (store: Promise<Settings>, what: string) => {
     void attempt(store).then((result) => {
       if (result.ok) {
@@ -1476,6 +1476,10 @@ export function App() {
                               }}
                               repoRules={config.settings?.repoRules}
                               onSettingsSaved={setSettings}
+                              releaseSort={config.settings?.integrations.releaseSort ?? 'newest'}
+                              onReleaseSort={(sort) => {
+                                remember(setReleaseSort(sort), 'the Release page’s order')
+                              }}
                             />
                           </div>
                         </Suspense>

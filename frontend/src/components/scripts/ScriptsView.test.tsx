@@ -11,6 +11,7 @@ import type {
   HookInstallAllResult,
   IntegrationSwitch,
   IntegrationTool,
+  ReleaseSort,
   ScriptsPage as StoredScriptsPage,
   TerminalID,
 } from '../../platform'
@@ -47,6 +48,8 @@ interface TabProps {
   onPage?: (page: ScriptsPage) => void
   onRepo?: (dir: string) => void
   showRuns?: boolean
+  releaseSort?: ReleaseSort
+  onReleaseSort?: (sort: ReleaseSort) => void
 }
 
 // Tab is the tab as the window shows it: fed the tools and the runs the window lists.
@@ -61,6 +64,8 @@ function Tab({
   onPage = () => undefined,
   onRepo = () => undefined,
   showRuns = false,
+  releaseSort = 'newest',
+  onReleaseSort = () => undefined,
 }: TabProps) {
   return (
     <ScriptsView
@@ -78,6 +83,8 @@ function Tab({
       onPage={onPage}
       onRepo={onRepo}
       showRuns={showRuns}
+      releaseSort={releaseSort}
+      onReleaseSort={onReleaseSort}
     />
   )
 }
@@ -420,6 +427,18 @@ describe('ScriptsView', () => {
     view.rerender(<Tab request={request(1)} runRequest={{ id: 7, seq: 3 }} onOpenSettings={onOpenSettings} />)
     expect(await screen.findByRole('heading', { name: 'Checks · all files', level: 2 })).toBeInTheDocument()
     expect(rail().getByRole('button', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('lists Release in the order the settings remember, and stores another', async () => {
+    const onReleaseSort = vi.fn<(sort: ReleaseSort) => void>()
+    renderView({ releaseSort: 'name', onReleaseSort })
+
+    const sorts = within(await screen.findByRole('radiogroup', { name: 'Sort the repositories' }))
+
+    expect(sorts.getByRole('radio', { name: 'A–Z' })).toBeChecked()
+
+    await userEvent.click(sorts.getByRole('radio', { name: 'Commits' }))
+    expect(onReleaseSort).toHaveBeenCalledExactlyOnceWith('commits')
   })
 
   it('opens a recent release’s run in Runs', async () => {

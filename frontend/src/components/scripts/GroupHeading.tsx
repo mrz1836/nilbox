@@ -13,18 +13,22 @@ export interface GroupHeadingProps {
   open: boolean
   disabled: boolean
   onToggle: () => void
-  // note is quieter text after the count, such as what the group's repositories lack.
-  note?: string
+  // note is quieter text after the count, such as what the group's repositories lack: a
+  // string, cut short when the heading runs out of room, or a node that lays itself out in
+  // the room left, such as the Release page's readiness summary.
+  note?: ReactNode
   // children sit at the heading's end, such as a button for the whole group.
   children?: ReactNode
 }
 
 // GroupHeading heads one of a Scripts page's groups: a button that opens or folds the
 // group, with its title and how many it holds, over a rule that sets the group apart from
-// the one before, and whatever acts on the whole group beside it.
+// the one before, and whatever acts on the whole group beside it. It is sticky inside the
+// page's scroll container, so it stays at the top, over the page's background, while its
+// group's rows scroll under it.
 export function GroupHeading({ id, title, count, open, disabled, onToggle, note, children }: GroupHeadingProps) {
   return (
-    <div className="flex items-center gap-2 border-b border-border pb-1">
+    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-background pt-1 pb-1">
       <h3 id={id} className="min-w-0 flex-1">
         <button
           type="button"
@@ -41,12 +45,25 @@ export function GroupHeading({ id, title, count, open, disabled, onToggle, note,
           <span className="truncate">
             {title} · {formatCount(count)}
           </span>
-          {note !== undefined && (
-            <span className="ml-2 truncate font-normal tracking-normal text-muted normal-case">{note}</span>
-          )}
+          <Note note={note} />
         </button>
       </h3>
       {children}
     </div>
   )
+}
+
+// Note is a heading's note after its count: a string cut short to the room it has, any
+// other node given the rest of the heading's width to lay itself out in, and nothing
+// without one.
+function Note({ note }: { note: ReactNode }) {
+  if (note === undefined) {
+    return null
+  }
+
+  if (typeof note === 'string') {
+    return <span className="ml-2 truncate font-normal tracking-normal text-muted normal-case">{note}</span>
+  }
+
+  return <span className="ml-2 min-w-0 flex-1 font-normal tracking-normal text-muted normal-case">{note}</span>
 }
