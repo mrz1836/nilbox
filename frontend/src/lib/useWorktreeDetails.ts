@@ -45,6 +45,23 @@ export function changesOf(wt: Worktree, read: DetailsRead | undefined): Changes 
   return { files: wt.files, count: wt.dirtyCount, current: false }
 }
 
+// asReadNow is wt as its details last read it, for saying what removing it would cost, so
+// the drawer's sentence and the confirmations agree with the files and commits listed under
+// them: its uncommitted files and its commits not on GitHub counted as Details counted them,
+// each once it could. Everything else is the listing's, the backend's decisions (its can*
+// flags) included, since the backend checks again as it removes.
+export function asReadNow(wt: Worktree, read: DetailsRead | undefined): Worktree {
+  if (read?.state !== 'read') {
+    return wt
+  }
+
+  const { fileCount, unpushed } = read.details
+  const files = fileCount >= 0 ? { dirty: fileCount > 0, dirtyCount: fileCount } : {}
+  const commits = unpushed >= 0 ? { unpushed, onGitHub: unpushed === 0 } : {}
+
+  return { ...wt, ...files, ...commits }
+}
+
 // Reads are the details read for one listing, by the worktree's path.
 interface Reads {
   listing: number

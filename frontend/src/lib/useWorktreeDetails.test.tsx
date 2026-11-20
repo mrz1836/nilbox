@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Worktree, WorktreeDetails } from '../platform'
 import { mainWorktree, worktree, worktreeDetails, worktreeFiles } from '../test/fixtures'
 import { platform } from '../test/platform'
-import { changesOf, readable, useWorktreeDetails, type DetailsRead } from './useWorktreeDetails'
+import { asReadNow, changesOf, readable, useWorktreeDetails, type DetailsRead } from './useWorktreeDetails'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -252,5 +252,31 @@ describe('changesOf', () => {
     ],
   ])('lists the files from %s', (_, read, want) => {
     expect(changesOf(dirty, read)).toEqual(want)
+  })
+})
+
+describe('asReadNow', () => {
+  // ahead is a clean worktree with 2 commits not on GitHub, as the listing counted them.
+  const ahead = worktree({ unpushed: 2, onGitHub: false })
+
+  it.each<[string, Worktree, DetailsRead | undefined, Partial<Worktree>]>([
+    ['nothing read yet', ahead, undefined, {}],
+    ['a read under way', ahead, { state: 'reading' }, {}],
+    ['a read that failed', ahead, { state: 'failed', error: 'no' }, {}],
+    [
+      'files and commits counted now',
+      ahead,
+      { state: 'read', details: worktreeDetails({ files: worktreeFiles(3), fileCount: 3, unpushed: 5 }) },
+      { dirty: true, dirtyCount: 3, unpushed: 5, onGitHub: false },
+    ],
+    [
+      'everything on GitHub now, and clean',
+      dirty,
+      { state: 'read', details: worktreeDetails() },
+      { dirty: false, dirtyCount: 0, unpushed: 0, onGitHub: true },
+    ],
+    ['neither counted', ahead, { state: 'read', details: worktreeDetails({ fileCount: -1, unpushed: -1 }) }, {}],
+  ])('counts what removing it would cost from %s', (_, wt, read, changed) => {
+    expect(asReadNow(wt, read)).toEqual({ ...wt, ...changed })
   })
 })

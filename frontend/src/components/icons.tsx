@@ -767,3 +767,67 @@ export function LockIcon(props: IconProps) {
     </Icon>
   )
 }
+
+// UnlockIcon stands for releasing a lock: the lock with its shackle open.
+export function UnlockIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="5.5" y="10.5" width="13" height="9.5" rx="2" />
+      <path d="M8.5 10.5V8a3.5 3.5 0 0 1 6.85-1" />
+    </Icon>
+  )
+}
+
+// ArrowUpIcon stands for commits that aren't on GitHub yet: an arrow up.
+export function ArrowUpIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 19V5M6.5 10.5 12 5l5.5 5.5" />
+    </Icon>
+  )
+}
+
+// GhostIcon marks a worktree whose folder is gone, which git still lists.
+export function GhostIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5.7 20.4v-9.6a6.3 6.3 0 0 1 12.6 0v9.6l-2.25-1.65-2.1 1.65L12 18.75l-1.95 1.65-2.1-1.65z" />
+      <circle cx="9.6" cy="11.1" r="0.9" fill="currentColor" />
+      <circle cx="14.4" cy="11.1" r="0.9" fill="currentColor" />
+    </Icon>
+  )
+}
+
+// ScissorsIcon stands for pruning: clearing what is left of something gone.
+export function ScissorsIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="6.3" cy="6.9" r="2.7" />
+      <circle cx="6.3" cy="17.1" r="2.7" />
+      <path d="M8.7 8.4l10.8 9M8.7 15.6l10.8-9" />
+    </Icon>
+  )
+}
+
+// PullRequestClosedIcon stands for a pull request closed without merging: its branch
+// crossed out.
+export function PullRequestClosedIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="6" cy="6" r="2.25" />
+      <circle cx="6" cy="18" r="2.25" />
+      <circle cx="18" cy="18" r="2.25" />
+      <path d="M6 8.25v7.5M18 15.75V12.5M15.5 4.5l5 5M20.5 4.5l-5 5" />
+    </Icon>
+  )
+}
+
+// IssueClosedIcon stands for an issue that is done: a check in its circle.
+export function IssueClosedIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8.25" />
+      <path d="M8.4 12.3l2.55 2.4 4.65-4.95" />
+    </Icon>
+  )
+}
