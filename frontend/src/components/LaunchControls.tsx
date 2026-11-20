@@ -1,7 +1,7 @@
 import { useId, useState, type MouseEvent, type ReactNode } from 'react'
 
 import { attempt } from '../lib/call'
-import { agentName as agentLabel } from '../lib/launch'
+import { agentName as agentLabel, type LaunchOptions } from '../lib/launch'
 import { sinceWhen, stateLabel, stateText } from '../lib/sessions'
 import { formatAge } from '../lib/time'
 import {
@@ -32,7 +32,6 @@ import {
   removeLaunchDefaults,
   resolveLaunch,
   saveLaunchDefaults,
-  type AgentInfo,
   type AgentSession,
   type CloneTarget,
   type InboxItem,
@@ -43,10 +42,7 @@ import {
   type LaunchRequest,
   type LaunchResult,
   type LinkedClone,
-  type Profile,
-  type Prompt,
   type Resolution,
-  type Settings,
   type Situation,
 } from '../platform'
 import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
@@ -60,23 +56,12 @@ import { RelativeTime } from './RelativeTime'
 import { SessionDot } from './SessionDot'
 import { SessionsButton } from './SessionTag'
 
-export interface LaunchControlsProps {
+// LaunchControlsProps are the launch options every launch control shares, and the item's
+// own.
+export interface LaunchControlsProps extends LaunchOptions {
   item: InboxItem
   // resolution is the item's default launch settings, or null while they load.
   resolution: ItemResolution | null
-  // agents are the coding agents a launch can start, each with whether it is installed.
-  agents: readonly AgentInfo[]
-  profiles: readonly Profile[]
-  prompts: readonly Prompt[]
-  // launchDefaults are every saved org and repo default, for saving this launch's choices.
-  launchDefaults: readonly LaunchDefaults[]
-  // onDefaultsSaved reloads the launch defaults and every row's settings.
-  onDefaultsSaved: () => Promise<void>
-  // onManagePrompts opens the Prompts page.
-  onManagePrompts: () => void
-  // onSettingsSaved takes the settings stored once a clone found elsewhere is added as a
-  // repository location.
-  onSettingsSaved: (settings: Settings) => void
   // running is the item's newest session still running, if any: the button then brings
   // its terminal tab forward instead, and a launch from the menu asks first. In the card
   // variant it is the card's session (cardSession): the newest still running, else one

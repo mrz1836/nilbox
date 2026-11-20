@@ -6,6 +6,7 @@ import { useState } from 'react'
 
 import { CelebrationsContext } from '../lib/celebrations'
 import { filterInbox } from '../lib/inboxFilter'
+import type { LaunchOptions } from '../lib/launch'
 import { earnedBurst } from '../lib/nil'
 import { offersProjects } from '../lib/projects'
 import { useCollapsedSections } from '../lib/useCollapsedSections'
@@ -50,7 +51,7 @@ import {
   snapshot,
 } from '../test/fixtures'
 import { emit, listening, platform } from '../test/platform'
-import { InboxView, type LaunchOptions, type Reveal } from './InboxView'
+import { InboxView, type Reveal } from './InboxView'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 

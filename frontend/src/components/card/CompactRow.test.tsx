@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { CardPrefsContext, defaultCardPrefs } from '../../lib/cardPrefs'
 import { HiddenLabelsContext, labelMatcher } from '../../lib/labels'
+import type { LaunchOptions } from '../../lib/launch'
 import type { TriageTab } from '../../lib/triage'
 import type { InboxItem } from '../../platform'
 import { at } from '../../test/clock'
@@ -22,7 +23,7 @@ import {
   prompts,
 } from '../../test/fixtures'
 import { platform } from '../../test/platform'
-import { ItemRow, type ItemRowProps, type LaunchOptions } from '../ItemRow'
+import { ItemRow, type ItemRowProps } from '../ItemRow'
 import type { TriageActions } from '../TriageControls'
 import { compactOutcomeClass } from './CardActions'
 

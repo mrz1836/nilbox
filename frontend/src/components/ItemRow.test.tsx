@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { CardPrefsContext, defaultCardPrefs } from '../lib/cardPrefs'
 import { HiddenLabelsContext, labelMatcher } from '../lib/labels'
+import type { LaunchOptions } from '../lib/launch'
 import type { TriageTab } from '../lib/triage'
 import type { InboxItem, ItemDetails, RepoRules, Worktree } from '../platform'
 import { at } from '../test/clock'
@@ -27,7 +28,7 @@ import { clipper, shownAway } from '../test/cardLit'
 import { platform } from '../test/platform'
 import { AutopilotRowsContext, type AutopilotRows } from './autopilot/AutopilotChip'
 import type { EditActions } from './ItemMenu'
-import { CardChips, ItemRow, TrustTag, WorktreeTag, type ItemRowProps, type LaunchOptions } from './ItemRow'
+import { CardChips, ItemRow, TrustTag, WorktreeTag, type ItemRowProps } from './ItemRow'
 import type { TriageActions } from './TriageControls'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))

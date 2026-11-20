@@ -1,6 +1,7 @@
 import { useId, type RefObject } from 'react'
 
 import { counted } from '../../lib/format'
+import type { LaunchOptions } from '../../lib/launch'
 import type { ReviewDraft } from '../../lib/reviewDrafts'
 import { runningSession } from '../../lib/sessions'
 import { usePickReply } from '../../lib/usePickReply'
@@ -19,7 +20,6 @@ import {
 } from '../../platform'
 import { fieldClass, quietButtonClass } from '../controls'
 import { ChevronDownIcon } from '../icons'
-import type { LaunchOptions } from '../ItemRow'
 import { LaunchControls } from '../LaunchControls'
 import { MenuButton, type MenuItem } from '../Menu'
 import { ActionButton, menuOnly } from './ActionButton'
@@ -271,13 +271,7 @@ export function ReviewComposer({
             key={item.id}
             item={item}
             resolution={resolution}
-            agents={launch.agents}
-            profiles={launch.profiles}
-            prompts={launch.prompts}
-            launchDefaults={launch.launchDefaults}
-            onDefaultsSaved={launch.onDefaultsSaved}
-            onManagePrompts={launch.onManagePrompts}
-            onSettingsSaved={launch.onSettingsSaved}
+            {...launch}
             running={runningSession(sessions)}
           />
         )}

@@ -4,6 +4,7 @@ import { useState, type ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { useIssueDrafts } from '../../lib/issueDrafts'
+import type { LaunchOptions } from '../../lib/launch'
 import type { InboxItem, IssueResult } from '../../platform'
 import { at } from '../../test/clock'
 import {
@@ -22,7 +23,6 @@ import {
   worktree,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
-import type { LaunchOptions } from '../ItemRow'
 import { IssueSheet, type IssueSheetProps } from './IssueSheet'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))

@@ -1,14 +1,5 @@
-import type {
-  AgentInfo,
-  AgentSession,
-  InboxItem,
-  ItemDetails,
-  ItemResolution,
-  LaunchDefaults,
-  Profile,
-  Prompt,
-  Settings,
-} from '../platform'
+import type { AgentInfo, AgentSession, InboxItem, ItemDetails, ItemResolution } from '../platform'
+import type { LaunchOptions } from './launch'
 
 // The card guide's sample: one pull request, fixed, that the guide (components/card/
 // CardGuide) shows on the real card, so every part of a card has something to say. It is
@@ -273,21 +264,9 @@ export function guideResolution(): ItemResolution {
   }
 }
 
-// GuideLaunchOptions are the launch options the sample's card offers (ItemRow's
-// LaunchOptions): the agent alone, and nothing to save or open, since the guide's card
-// takes no clicks.
-export interface GuideLaunchOptions {
-  agents: readonly AgentInfo[]
-  profiles: readonly Profile[]
-  prompts: readonly Prompt[]
-  launchDefaults: readonly LaunchDefaults[]
-  onDefaultsSaved: () => Promise<void>
-  onManagePrompts: () => void
-  onSettingsSaved: (settings: Settings) => void
-}
-
-// guideLaunchOptions are the launch options the sample's card offers.
-export function guideLaunchOptions(): GuideLaunchOptions {
+// guideLaunchOptions are the launch options the sample's card offers: the agent alone, and
+// nothing to save or open, since the guide's card takes no clicks.
+export function guideLaunchOptions(): LaunchOptions {
   return {
     agents: [guideAgent],
     profiles: [],

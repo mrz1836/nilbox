@@ -4,20 +4,44 @@
 import type {
   Agent,
   AgentID,
+  AgentInfo,
   Choice,
   DefaultPrompts,
   DefaultSlot,
   ItemKind,
+  LaunchDefaults,
   LaunchDefaultsInput,
   LaunchSource,
   PerAgent,
+  Profile,
   Prompt,
   PromptAppliesTo,
   PromptUsage,
+  Settings,
   Situation,
   SlotPlace,
 } from '../platform'
 import { counted } from './format'
+
+// LaunchOptions are what every launch control shares (LaunchControls): the coding agents,
+// profiles, and prompts to choose from, and the saved launch defaults. Each row's own
+// resolved settings and worktree come apart from them, so a change to one item's renders
+// only its row.
+export interface LaunchOptions {
+  // agents are the coding agents a launch can start, each with whether it is installed.
+  agents: readonly AgentInfo[]
+  profiles: readonly Profile[]
+  prompts: readonly Prompt[]
+  // launchDefaults are every saved org and repo default, for saving a launch's choices.
+  launchDefaults: readonly LaunchDefaults[]
+  // onDefaultsSaved reloads the launch defaults and every row's settings.
+  onDefaultsSaved: () => Promise<void>
+  // onManagePrompts opens the Prompts page.
+  onManagePrompts: () => void
+  // onSettingsSaved takes the settings a change made from a launch stored, such as a
+  // repository location added for a clone found elsewhere.
+  onSettingsSaved: (settings: Settings) => void
+}
 
 // sourceLabels name where a resolved launch setting came from.
 const sourceLabels: Readonly<Record<LaunchSource, string>> = {

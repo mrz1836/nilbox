@@ -4,6 +4,7 @@ import { Activity, useState, type ReactElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Result } from '../../lib/call'
+import type { LaunchOptions } from '../../lib/launch'
 import { useReviewDrafts } from '../../lib/reviewDrafts'
 import { approvalWait } from '../../lib/useReview'
 import { isTopmost } from '../../lib/useModalDialog'
@@ -38,7 +39,6 @@ import {
   yourReview,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
-import type { LaunchOptions } from '../ItemRow'
 import { ReviewSheet, selectedAction, type ReviewSheetProps } from './ReviewSheet'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))

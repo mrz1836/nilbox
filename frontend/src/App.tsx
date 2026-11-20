@@ -19,7 +19,7 @@ import { ErrorBanner } from './components/ErrorBanner'
 import { MoveDialog } from './components/MoveDialog'
 import { UpdateBanner } from './components/UpdateBanner'
 import { UpdateRestartDialog } from './components/UpdateRestartDialog'
-import { InboxView, type LaunchOptions, type Reveal } from './components/InboxView'
+import { InboxView, type Reveal } from './components/InboxView'
 import { LaunchControls, type LaunchPlace } from './components/LaunchControls'
 import { QuitDialog } from './components/QuitDialog'
 import type { SearchFieldProps } from './components/SearchField'
@@ -63,7 +63,7 @@ import { CardPrefsContext, defaultCardPrefs, type CardPrefs } from './lib/cardPr
 import { CelebrationsContext, defaultCelebrations } from './lib/celebrations'
 import type { IgnoredWorkflows } from './lib/ignoredWorkflows'
 import { CardPicturesContext, useCardPictures } from './lib/pictures'
-import { agentName } from './lib/launch'
+import { agentName, type LaunchOptions } from './lib/launch'
 import { offersProjects } from './lib/projects'
 import { useTextSize } from './lib/textSize'
 import { defaultSnoozeDays, findItem } from './lib/triage'
@@ -1121,13 +1121,7 @@ export function App() {
       <LaunchControls
         item={found}
         resolution={config.resolutions.get(found.id) ?? null}
-        agents={launch.agents}
-        profiles={launch.profiles}
-        prompts={launch.prompts}
-        launchDefaults={launch.launchDefaults}
-        onDefaultsSaved={launch.onDefaultsSaved}
-        onManagePrompts={launch.onManagePrompts}
-        onSettingsSaved={launch.onSettingsSaved}
+        {...launch}
         initial={{ worktree: true }}
         running={runningSession(sessionsOf(agentSessions.byItem, found))}
         variant="row"

@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { maxIDs, type ActivityLine } from '../../lib/autopilot'
 import { useIssueDrafts } from '../../lib/issueDrafts'
+import type { LaunchOptions } from '../../lib/launch'
 import { useReviewDrafts } from '../../lib/reviewDrafts'
 import { useAutopilot, useAutopilotChips } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
@@ -26,7 +27,6 @@ import {
   settings,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
-import type { LaunchOptions } from '../ItemRow'
 import { ActivityList } from './ActivityList'
 import { AutopilotRowsContext } from './AutopilotChip'
 import { RoutinePane } from './RoutinePane'
