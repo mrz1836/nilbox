@@ -49,10 +49,12 @@ func checkGolden(t *testing.T, path, got string) {
 	assert.Equal(t, string(want), got, "%s differs: run the test with -update if the change is meant", file)
 }
 
-// The names the fixtures use most: the starter that fixes checks, and Dependabot's login.
+// The names the fixtures use most: the starter that fixes checks, and Dependabot's and
+// Renovate's logins.
 const (
 	fixChecksKey    = "fix-checks"
 	dependabotLogin = "dependabot"
+	renovateLogin   = "renovate"
 )
 
 // checkedAt is when the fixtures' routines last changed: to the nanosecond, as the

@@ -291,7 +291,7 @@ func TestEveryListOfACheckIsThere(t *testing.T) {
 		Prompts:  []kit.NewPrompt{{}},
 		Routines: []kit.RoutineChange{{}},
 		Settings: &kit.SettingsChange{AgentsAtOnce: someNumber(1)},
-		Rules:    &kit.RulesChange{Trust: []string{"renovate"}},
+		Rules:    &kit.RulesChange{Trust: []string{renovateLogin}},
 	})
 
 	data, err := json.Marshal(c)

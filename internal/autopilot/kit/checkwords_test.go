@@ -37,7 +37,7 @@ func TestTheWordsOfACheckAreWhatTheAgentReads(t *testing.T) {
 			{Name: "", Spec: spec.Spec{Version: 2}},
 		},
 		Settings: &kit.SettingsChange{AgentsAtOnce: someNumber(3), HistoryDays: someNumber(5)},
-		Rules:    &kit.RulesChange{Trust: []string{"renovate", "no such bot"}, Mute: []string{"acme-org/legacy"}},
+		Rules:    &kit.RulesChange{Trust: []string{renovateLogin, "no such bot"}, Mute: []string{"acme-org/legacy"}},
 	})
 	checkGolden(t, "checked/problems.golden", problems.Words())
 

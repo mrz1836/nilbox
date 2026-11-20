@@ -178,7 +178,7 @@ func wordsSnapshot(t *testing.T) kit.Snapshot {
 			Repositories: []string{"acme-org/api", "acme-org/web", "octo-user/dotfiles"},
 			Owners:       []string{"acme-org", "octo-user"},
 			People:       []string{"octo-user", "octo-other"},
-			Bots:         []string{"dependabot", "renovate"},
+			Bots:         []string{dependabotLogin, renovateLogin},
 			Labels:       []string{"bug", "dependencies", "help wanted"},
 			Checks:       []string{"CI / test", "CodeQL", "Security Scans / govulncheck"},
 		},

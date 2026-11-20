@@ -257,7 +257,7 @@ func TestRiskLinesArePinned(t *testing.T) {
 		"rules-trust-mute-ignore": func(t *testing.T) []kit.Risk {
 			before := kit.Rules{TrustedBots: []string{dependabotLogin}, Muted: []string{"acme-org/old"}}
 			after := kit.Rules{
-				TrustedBots: []string{dependabotLogin, "renovate"}, Muted: []string{"Acme-Org/Old", "acme-org/legacy", "acme-labs"},
+				TrustedBots: []string{dependabotLogin, renovateLogin}, Muted: []string{"Acme-Org/Old", "acme-org/legacy", "acme-labs"},
 				IgnoredWorkflows: []string{"CI / flaky"},
 			}
 
@@ -372,7 +372,7 @@ func TestRisksWeighWhatAChangeAdds(t *testing.T) {
 	after.DailyCap = autopilotprefs.DailyCap{Amount: 20, Unit: autopilotprefs.UnitUSD}
 	assert.Empty(t, kit.SettingsRisks(before, after), "a lower daily cap")
 
-	unread := kit.RulesRisks(kit.Rules{TrustedBots: []string{"Not A Bot", "Renovate[bot]"}}, kit.Rules{TrustedBots: []string{"renovate"}})
+	unread := kit.RulesRisks(kit.Rules{TrustedBots: []string{"Not A Bot", "Renovate[bot]"}}, kit.Rules{TrustedBots: []string{renovateLogin}})
 	assert.Empty(t, unread, "a bot trusted before is one, however its login was written, whatever else the list holds")
 }
 

@@ -90,7 +90,7 @@ func TestEveryRuleChangeIsKindedByTheListItCameFrom(t *testing.T) {
 		IgnoredWorkflows: []string{"Nightly"},
 	}
 	checked := checkRules(before, RulesChange{
-		Trust: []string{"renovate"}, Untrust: []string{"dependabot"}, Pin: []string{"acme-org/new"},
+		Trust: []string{"mergify"}, Untrust: []string{"dependabot"}, Pin: []string{"acme-org/new"},
 		Mute: []string{"acme-org/loud"}, Clear: []string{"acme-org/pinned"}, IgnoreWorkflows: []string{"Deploy"},
 		UnignoreWorkflows: []string{"Nightly"},
 	})

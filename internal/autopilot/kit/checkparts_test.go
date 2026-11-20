@@ -265,7 +265,7 @@ func TestARulesChangeGoesThroughTheRulesOwnPackages(t *testing.T) {
 
 	assert.Empty(t, r.Problems)
 	assert.Equal(t, []kit.RuleChange{
-		{Kind: "trust", Target: "renovate", Words: "Trust renovate[bot]"},
+		{Kind: "trust", Target: renovateLogin, Words: "Trust renovate[bot]"},
 		{Kind: "trust", Target: "my-bot", Words: "Trust my-bot[bot]"},
 		{Kind: "untrust", Target: "github-actions", Words: "Stop trusting github-actions[bot]"},
 		{Kind: "pin", Target: "acme-org/web", Words: "Pin acme-org/web"},
@@ -275,7 +275,7 @@ func TestARulesChangeGoesThroughTheRulesOwnPackages(t *testing.T) {
 	}, r.Changes, "one line each, in the proposal's order, a rule already so none")
 
 	assert.Equal(t, kit.Rules{
-		TrustedBots: []string{dependabotLogin, "my-bot", "renovate"}, Pinned: []string{"acme-org/web"},
+		TrustedBots: []string{dependabotLogin, "my-bot", renovateLogin}, Pinned: []string{"acme-org/web"},
 		Muted: []string{"Acme-Org/API", "acme-org/legacy"}, IgnoredWorkflows: []string{"CI / flaky"},
 	}, r.After)
 
@@ -323,7 +323,7 @@ func TestARulesChangeRefusesWhatTheRulesOwnPackagesRefuse(t *testing.T) {
 			},
 		},
 		"a bot both trusted and not": {
-			kit.RulesChange{Trust: []string{"renovate"}, Untrust: []string{"Renovate[bot]"}},
+			kit.RulesChange{Trust: []string{renovateLogin}, Untrust: []string{"Renovate[bot]"}},
 			[]string{"rules: renovate is in both trust and untrust: keep it in one."},
 		},
 		"too many bots": {
@@ -378,7 +378,7 @@ func TestARulesChangeRefusesWhatTheRulesOwnPackagesRefuse(t *testing.T) {
 
 	snap = checkSnapshot()
 	snap.Setup.Rules.TrustedBots = []string{dependabotLogin, "not a bot"}
-	got = kit.Check(t.Context(), snap, kit.Proposal{Summary: "x", Rules: &kit.RulesChange{Trust: []string{"renovate"}}})
+	got = kit.Check(t.Context(), snap, kit.Proposal{Summary: "x", Rules: &kit.RulesChange{Trust: []string{renovateLogin}}})
 	assert.Empty(t, got.Rules.Problems, "a trusted list read from before holds the bots it names")
-	assert.Equal(t, []string{dependabotLogin, "renovate"}, got.Rules.After.TrustedBots)
+	assert.Equal(t, []string{dependabotLogin, renovateLogin}, got.Rules.After.TrustedBots)
 }
