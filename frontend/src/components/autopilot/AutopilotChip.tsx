@@ -1,7 +1,7 @@
 import { createContext, use, useId, useState } from 'react'
 
 import { chipOf, effectState, effectVerb, inActivity, routineName, targetOf, type Chip } from '../../lib/autopilot'
-import { terminalNames } from '../../lib/terminals'
+import { terminalLabel } from '../../lib/terminals'
 import { formatAgo, formatFull } from '../../lib/time'
 import { useMutation } from '../../lib/useMutation'
 import { usePopover } from '../../lib/usePopover'
@@ -46,7 +46,7 @@ export function useWatch(): ((sessionId: string) => void) | undefined {
 export function useTakeOverTerminal(): string {
   const terminal = use(AutopilotRowsContext)?.terminal
 
-  return terminal === undefined || terminal === null ? 'your terminal' : terminalNames[terminal]
+  return terminalLabel(terminal, 'your terminal')
 }
 
 // AutopilotRowsContext holds the rows' Autopilot; without it, as while Autopilot (beta) is

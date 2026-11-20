@@ -20,7 +20,7 @@ import {
   type TimelineRow,
 } from '../../lib/runView'
 import { formatDuration } from '../../lib/scriptRuns'
-import { terminalNames } from '../../lib/terminals'
+import { terminalLabel } from '../../lib/terminals'
 import { formatClock, formatFull } from '../../lib/time'
 import { useOnAutopilot } from '../../lib/useAutopilot'
 import { useMutation } from '../../lib/useMutation'
@@ -315,7 +315,7 @@ export function RunView({ runId, terminal, agents, onOpenItem, onToast, onClose 
   const background = run.runner === 'background'
   const live = view.live && !timeline.done
   const error = last === null ? '' : actions[last].error
-  const where = terminal === null ? 'your terminal' : terminalNames[terminal]
+  const where = terminalLabel(terminal, 'your terminal')
   const progress = timeline.progress
   const tokens = progress.tokensIn + progress.tokensOut
   const started = run.startedAt === null ? Number.NaN : Date.parse(run.startedAt)
