@@ -4,6 +4,7 @@
 
 import { brand } from '../generated/brand'
 import type { RunsIn, UserScript, UserScriptIcon, UserScriptScope } from '../platform'
+import { unlisted } from './unlisted'
 
 // newUserScript is a script as the editor starts a new one: for every repository, run
 // where the setting sends runs, without asking first. ID 0 asks Save to create it.
@@ -50,7 +51,9 @@ export function runsInLabel(place: RunsIn | ''): string {
   }
 }
 
-// scopeWords say which repositories u shows in: all, the Go ones, or those it names.
+// scopeWords say which repositories u shows in: all, the Go ones, or those it names. Go
+// reads a script's scope from the database unchecked, so one this build doesn't know names
+// its repositories too.
 export function scopeWords(u: UserScript): string {
   switch (u.scope) {
     case 'all':
@@ -59,6 +62,8 @@ export function scopeWords(u: UserScript): string {
       return 'Go repositories'
     case 'repos':
       return u.repos.join(', ')
+    default:
+      return unlisted(u.scope, u.repos.join(', '))
   }
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { brand } from '../generated/brand'
+import type { UserScript } from '../platform'
 import { userScript } from '../test/fixtures'
 import {
   aboutScript,
@@ -54,6 +55,16 @@ describe('aboutScript', () => {
       'acme-org/sdk, acme-org/web',
     )
     expect(aboutScript(userScript({ runsIn: 'app' }), 'iTerm2')).toBe(`All repositories · Runs in ${brand.name}`)
+  })
+
+  it('names the repositories of a scope this build doesn’t know, which Go reads unchecked', () => {
+    // The window takes the scope as Go's JSON decodes, whatever it holds. A method's
+    // parameters are compared both ways, so this one takes the decoded value with no cast.
+    type Decoded = Omit<UserScript, 'scope'> & { scope: unknown }
+    const fromGo: { words(u: Decoded): string } = { words: scopeWords }
+    const kept: Decoded = { ...userScript({ repos: ['acme-org/sdk', 'acme-org/web'] }), scope: JSON.parse('"org"') }
+
+    expect(fromGo.words(kept)).toBe('acme-org/sdk, acme-org/web')
   })
 })
 
