@@ -1,5 +1,3 @@
-import { useEffect, useEffectEvent } from 'react'
-
 import {
   autopilotNeedsYou,
   checkAutopilotReadiness,
@@ -8,7 +6,6 @@ import {
   getAutopilotReadiness,
   latestAutopilotMatches,
   listRoutines,
-  on,
   routineNames,
   type AutopilotEngine,
   type AutopilotGlance,
@@ -20,6 +17,7 @@ import { inChunks } from './autopilot'
 import { all, andThen } from './call'
 import { useMutation } from './useMutation'
 import { useNowAs } from './useNow'
+import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
 // AutopilotState is Autopilot as the whole window shares it: at a glance (what the tab
@@ -44,17 +42,9 @@ const noRoutines: readonly AutopilotRoutine[] = []
 // useOnAutopilot calls reload on every "autopilot:updated" event, which comes at most four
 // times a second.
 export function useOnAutopilot(reload: () => void) {
-  const onUpdate = useEffectEvent(() => {
+  useOn('autopilot:updated', () => {
     reload()
   })
-
-  useEffect(
-    () =>
-      on('autopilot:updated', () => {
-        onUpdate()
-      }),
-    [],
-  )
 }
 
 // useAutopilot reads Autopilot at a glance, the routines, and the engine as the window
