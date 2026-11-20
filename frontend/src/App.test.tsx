@@ -47,6 +47,7 @@ import {
   agentSession,
   sessionsSnapshot,
   autopilotAlert,
+  autopilotEngine,
   autopilotMatch,
   autopilotOff,
   autopilotTarget,
@@ -58,7 +59,7 @@ import {
   heldRun,
   review,
 } from './test/fixtures'
-import { emit, listening, mocks, platform, renderApp } from './test/platform'
+import { emit, listening, mocks, platform, renderApp, send } from './test/platform'
 
 vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platform))
 
@@ -2918,5 +2919,26 @@ describe('Autopilot (beta)', () => {
 
     expect(platform.setAutopilotEnabled).toHaveBeenLastCalledWith(true)
     expect(within(await views().findByRole('button', { name: 'Autopilot' })).getByText('Beta')).toBeInTheDocument()
+  })
+
+  it('says in Settings → Autopilot when the engine last checked, as the window reads it again on a change', async () => {
+    const engine = autopilotEngine()
+    platform.getAutopilotEngine.mockResolvedValue(engine)
+    await renderApp()
+
+    await openSettingsFromMenu()
+    await userEvent.click(
+      within(screen.getByRole('navigation', { name: 'Settings sections' })).getByRole('button', { name: 'Autopilot' }),
+    )
+    expect(await screen.findByText('Last checked today, 11:59 AM · 34 ms · 7 matches · 1 start')).toBeInTheDocument()
+
+    platform.getAutopilotEngine.mockResolvedValue({
+      ...engine,
+      lastCycle: engine.lastCycle && { ...engine.lastCycle, at: '2026-06-15T12:00:00Z', matches: 9, starts: 2 },
+    })
+    send('autopilot:updated')
+
+    expect(await screen.findByText('Last checked today, 12:00 PM · 34 ms · 9 matches · 2 starts')).toBeInTheDocument()
+    expect(screen.queryByText(/^Last checked today, 11:59 AM/)).not.toBeInTheDocument()
   })
 })
