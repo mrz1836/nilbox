@@ -1,4 +1,4 @@
-package autopilot
+package draft
 
 import (
 	"testing"
@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 )
@@ -48,6 +49,23 @@ func TestAFallbackThatCantKeepThePresetIsWarnedOf(t *testing.T) {
 	assert.Contains(t, warnings[1].Message, "A fallback to it is passed over.")
 }
 
+func TestEachAgentTheChainNamesIsWarnedOfOnce(t *testing.T) {
+	t.Parallel()
+
+	codex := string(agent.Codex)
+	step := spec.AgentStep{
+		Agent: string(agent.Claude), Fence: &spec.Fence{Tools: catalog.PresetGitHubTasks},
+		Fallbacks: []spec.ProfileRef{
+			{Agent: codex, Profile: "default"}, {Agent: codex, Profile: "work"}, {Agent: catalog.Inherit}, {Profile: "work"},
+		},
+		LaunchFor: []spec.LaunchRow{{Target: "acme-org", Agent: catalog.Inherit}, {Target: "acme-labs"}},
+	}
+
+	warnings := fenceWarnings(agentSpec(step))
+	require.Len(t, warnings, 1, "Codex once, and neither the launch defaults' agent nor none")
+	assert.Equal(t, "[0].agent.fallbacks", warnings[0].Field)
+}
+
 func TestABudgetCodexCantKeepIsWarnedOf(t *testing.T) {
 	t.Parallel()
 
@@ -67,4 +85,32 @@ func TestABudgetCodexCantKeepIsWarnedOf(t *testing.T) {
 
 	assert.Empty(t, fenceWarnings(agentSpec(spec.AgentStep{Agent: "claude"})), "Claude Code keeps its own budget")
 	assert.Empty(t, fenceWarnings(agentSpec(spec.AgentStep{})), "Inherit's agent is the item's repository's")
+}
+
+func TestABudgetIsSaidForWhatEachAgentCanKeep(t *testing.T) {
+	t.Parallel()
+
+	keeps := agent.Headless{Background: true, Budget: true, Usage: true, UsageLive: true}
+
+	assert.Empty(t, budgetWords("Agent", agent.Headless{}, false), "an agent that can't run in the background")
+	assert.Empty(t, budgetWords("Agent", keeps, false), "one that keeps a budget in dollars of its own")
+	assert.Empty(t, budgetWords("Agent", keeps, true), "one that reports its tokens as it goes")
+
+	noDollars := keeps
+	noDollars.Budget = false
+	assert.Equal(t, "Budget: not available for Agent in dollars, which it keeps no budget of; the time limit still "+
+		"applies, and its runs stop when the app quits.", budgetWords("Agent", noDollars, false))
+
+	noTokens := keeps
+	noTokens.Usage = false
+	assert.Equal(t, "Budget: Agent reports no tokens, so a budget in tokens can't stop it; the time limit still applies.",
+		budgetWords("Agent", noTokens, true))
+
+	atTheEnd := keeps
+	atTheEnd.UsageLive = false
+	assert.Equal(t, "Budget: Agent reports its tokens only as a run ends, so a budget in tokens is checked then; the "+
+		"time limit bounds the run.", budgetWords("Agent", atTheEnd, true))
+
+	_, ok := budgetWarning(spec.AgentStep{Agent: "no-such-agent"}, 0)
+	assert.False(t, ok, "an agent this build doesn't know has no budget to warn of")
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/eval"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
@@ -389,7 +390,7 @@ func warnTruncated(searches []TestSearch) {
 func testWarnings(sp spec.Spec, items []TestItem) []spec.Problem {
 	out := []spec.Problem{}
 
-	if onlySearches(sp.Watch) {
+	if draft.OnlySearches(sp.Watch) {
 		return out
 	}
 
@@ -406,7 +407,7 @@ func testWarnings(sp spec.Spec, items []TestItem) []spec.Problem {
 	}
 
 	for i, st := range sp.Steps {
-		if slices.Contains(triageSteps(), st.Kind()) {
+		if slices.Contains(draft.TriageSteps(), st.Kind()) {
 			info, _ := catalog.StepByKind(st.Kind())
 			out = append(out, spec.Problem{
 				Part: spec.PartSteps, Field: fmt.Sprintf("[%d]", i),

@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/eval"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
@@ -88,7 +89,10 @@ func TestEveryTemplateHasItsFileAndEveryFileATemplate(t *testing.T) {
 
 	for _, g := range gallery {
 		keys = append(keys, g.Key)
-		assert.Regexp(t, templateKey, g.Key, "a template's key is one Save takes")
+
+		checked, keyErr := draft.CheckTemplate(g.Key)
+		require.NoError(t, keyErr, "a template's key is one Save takes")
+		assert.Equal(t, g.Key, checked, "as it is")
 		assert.NotEmpty(t, g.Name)
 		assert.NotEmpty(t, g.Icon)
 		assert.NotEmpty(t, g.Summary)
@@ -425,23 +429,23 @@ func TestATemplateSaysWhatThisBuildCantRunOfItYet(t *testing.T) {
 	terminalOnly := &Offers{
 		Steps: []catalog.StepKind{catalog.StepNotify, catalog.StepAgent, catalog.StepTellMe}, Places: []catalog.Where{catalog.WhereTerminal},
 	}
-	assert.Equal(t, []string{"agents in the background", "“Wait for the checks”"}, terminalOnly.needs(flagship.Spec))
+	assert.Equal(t, []string{"agents in the background", "“Wait for the checks”"}, terminalOnly.Needs(flagship.Spec))
 	assert.Equal(t,
 		"It needs agents in the background and “Wait for the checks”, which this version of "+brand.Name+" can't run yet.",
-		needsWords(terminalOnly.needs(flagship.Spec)))
+		draft.NeedsWords(terminalOnly.Needs(flagship.Spec)))
 
 	rebase, ok := TemplateByKey("ask-dependabot-to-rebase")
 	require.True(t, ok)
-	assert.Equal(t, []string{"“GitHub actions”"}, terminalOnly.needs(rebase.Spec))
+	assert.Equal(t, []string{"“GitHub actions”"}, terminalOnly.Needs(rebase.Spec))
 
 	stepButNoAction := allOffers()
 	stepButNoAction.Actions = nil
-	assert.Equal(t, []string{"“Ask Dependabot to rebase”"}, stepButNoAction.needs(rebase.Spec),
+	assert.Equal(t, []string{"“Ask Dependabot to rebase”"}, stepButNoAction.Needs(rebase.Spec),
 		"a GitHub step whose action isn't offered names the action")
 
 	// Once every part lands, every template simply works, with no change to it.
 	for _, g := range Gallery() {
-		assert.Empty(t, allOffers().needs(g.Spec), g.Key)
+		assert.Empty(t, allOffers().Needs(g.Spec), g.Key)
 	}
 
 	// What this build runs, its templates run as they ship: the local steps, the notices,
@@ -453,7 +457,7 @@ func TestATemplateSaysWhatThisBuildCantRunOfItYet(t *testing.T) {
 	} {
 		g, found := TemplateByKey(key)
 		require.True(t, found, key)
-		assert.Empty(t, catalogOffers().needs(g.Spec), "%s runs in this build", key)
+		assert.Empty(t, draft.CatalogOffers().Needs(g.Spec), "%s runs in this build", key)
 	}
 }
 
@@ -476,7 +480,7 @@ func TestARoutineFromAnItemFillsInWhatTheItemSays(t *testing.T) {
 	t.Parallel()
 
 	f := facts.Build(failing(dependabot(), "CodeQL / Analyze (go)"), fixtureEnv())
-	sp := itemSpec(f, galleryViewer, catalogOffers())
+	sp := itemSpec(f, galleryViewer, draft.CatalogOffers())
 
 	require.Len(t, sp.Watch.Sources, 1)
 	assert.Equal(t, item.KindPR, sp.Watch.Sources[0].Search.Kind)
@@ -507,7 +511,7 @@ func TestARoutineFromAnItemFillsInWhatTheItemSays(t *testing.T) {
 	other.Details.Mergeable = "CONFLICTING"
 	other.Details.Labels = []string{"bug"}
 	of := facts.Build(other, fixtureEnv())
-	osp := itemSpec(of, galleryViewer, catalogOffers())
+	osp := itemSpec(of, galleryViewer, draft.CatalogOffers())
 	assert.Equal(t, []string{"org:acme-org"}, osp.Watch.Sources[0].Search.Where)
 	assert.Equal(t, []string{"octo-other"}, osp.Watch.Sources[0].Search.Authors)
 	assert.Equal(t, catalog.EventMergeConflicts, osp.Trigger.Event)
@@ -519,9 +523,9 @@ func TestARoutineFromAnItemFillsInWhatTheItemSays(t *testing.T) {
 	changes := pr("octo-other", "User")
 	changes.Details.ReviewDecision = "CHANGES_REQUESTED"
 	assert.Equal(t, catalog.EventChangesRequested,
-		itemSpec(facts.Build(changes, fixtureEnv()), galleryViewer, catalogOffers()).Trigger.Event)
+		itemSpec(facts.Build(changes, fixtureEnv()), galleryViewer, draft.CatalogOffers()).Trigger.Event)
 	assert.Equal(t, catalog.EventAppears,
-		itemSpec(facts.Build(pr("octo-other", "User"), fixtureEnv()), galleryViewer, catalogOffers()).Trigger.Event)
+		itemSpec(facts.Build(pr("octo-other", "User"), fixtureEnv()), galleryViewer, draft.CatalogOffers()).Trigger.Event)
 }
 
 func TestWhyAnItemIsntInTheWatch(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/eval"
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
@@ -307,8 +308,8 @@ func (e *Engine) runNow(ctx context.Context, id, itemID int64, anyway bool) (int
 	// A click holds whatever the trigger, its kinds too, so the kinds the routine acts on
 	// are checked first, with Run anyway or without.
 	switch {
-	case !slices.Contains(actsOn(l.spec), all[0].Item.Kind):
-		return 0, uierr.New(fmt.Sprintf("It acts only on %s.", kindsWords(actsOn(l.spec))), ErrNoMatch)
+	case !slices.Contains(draft.ActsOn(l.spec), all[0].Item.Kind):
+		return 0, uierr.New(fmt.Sprintf("It acts only on %s.", draft.KindsWords(draft.ActsOn(l.spec))), ErrNoMatch)
 	case d.Match == eval.Yes:
 	case !anyway:
 		return 0, newRefusal(RefusalNoMatch, uierr.New(textutil.Sentence("It doesn't match it: "+firstNo(d)), ErrNoMatch))

@@ -334,7 +334,7 @@ type readiness struct {
 // newReadiness returns the readiness over checker; nil checks nothing, and every routine
 // is ready.
 func newReadiness(checker ReadinessChecker, offers *Offers) *readiness {
-	return &readiness{checker: checker, offers: offers.orCatalog(), results: map[string]ReadyCheck{}}
+	return &readiness{checker: checker, offers: offers.OrCatalog(), results: map[string]ReadyCheck{}}
 }
 
 // readySnapshot is what a cycle reads of readiness: the results, as they were.
@@ -465,9 +465,9 @@ func (r *readiness) placeCheck(n Need, now time.Time) ReadyCheck {
 	info, _ := catalog.PlaceByID(n.Place)
 	c := ReadyCheck{Need: n, ID: n.ID(), Label: "Agent " + strings.ToLower(info.Label), Level: ReadyOK, CheckedAt: now}
 
-	if !r.offers.runsAt(n.Place) {
+	if !r.offers.RunsAt(n.Place) {
 		c.Level, c.Found = ReadyProblem, "isn't something this version of "+brand.Name+" can run yet"
-		c.Fix = "Change the step to run " + strings.ToLower(r.offers.placeWords()) + "."
+		c.Fix = "Change the step to run " + strings.ToLower(r.offers.PlaceWords()) + "."
 	}
 
 	return c

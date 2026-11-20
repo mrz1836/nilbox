@@ -95,7 +95,7 @@ func itemSpec(f facts.Facts, viewer string, offers *Offers) spec.Spec {
 		Trigger:    spec.Trigger{Event: itemEvent(f)},
 		Conditions: spec.Conditions{Match: spec.MatchAll, Of: []spec.Clause{}},
 		Steps: []spec.Step{{Agent: &spec.AgentStep{
-			Prompt: spec.PromptRef{ItemDefault: true}, Where: offers.preferredPlace(),
+			Prompt: spec.PromptRef{ItemDefault: true}, Where: offers.PreferredPlace(),
 		}}},
 	}
 
@@ -108,22 +108,6 @@ func itemSpec(f facts.Facts, viewer string, offers *Offers) spec.Spec {
 	}
 
 	return spec.Normalize(sp)
-}
-
-// preferredPlace is where a routine made from an item runs its agent: in the background
-// once this build runs agents there, else the first place it does.
-func (o *Offers) preferredPlace() catalog.Where {
-	if o.runsAt(catalog.WhereBackground) {
-		return catalog.WhereBackground
-	}
-
-	for _, p := range catalog.Places() {
-		if o.runsAt(p.ID) {
-			return p.ID
-		}
-	}
-
-	return catalog.DefaultWhere
 }
 
 // itemPlace is where the item's search looks: your account for an item of yours, else its

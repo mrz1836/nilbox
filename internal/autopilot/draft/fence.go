@@ -1,4 +1,4 @@
-package autopilot
+package draft
 
 import (
 	"fmt"

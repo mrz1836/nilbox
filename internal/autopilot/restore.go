@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"slices"
 
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -185,11 +186,11 @@ func keptFrom(name, desc, template string, mode autopilotprefs.Mode, raw json.Ra
 		k.name = "Routine"
 	}
 
-	if d, descErr := checkDescription(desc); descErr == nil {
+	if d, descErr := draft.CheckDescription(desc); descErr == nil {
 		k.desc = d
 	}
 
-	if t, templateErr := checkTemplate(template); templateErr == nil {
+	if t, templateErr := draft.CheckTemplate(template); templateErr == nil {
 		k.template = t
 	}
 
@@ -246,7 +247,7 @@ func insertKept(ctx context.Context, q *queries.Queries, clk clock.Clock, k kept
 ) (queries.AutopilotRoutine, error) {
 	now := clk.Now()
 	row := queries.AutopilotRoutine{
-		AccountLogin: k.account, Name: k.name, NameKey: nameKey(k.name), Description: k.desc, Mode: string(k.mode),
+		AccountLogin: k.account, Name: k.name, NameKey: draft.NameKey(k.name), Description: k.desc, Mode: string(k.mode),
 		Spec: k.spec.data, SpecVersion: k.spec.version, TemplateKey: k.template, SortOrder: place,
 		BrokenReason: string(k.spec.broken), CreatedAt: now, UpdatedAt: now,
 	}

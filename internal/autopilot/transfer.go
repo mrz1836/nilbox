@@ -14,6 +14,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/textutil"
@@ -585,7 +586,7 @@ func (c *refCollector) prompt(name string, ref spec.PromptRef, reply bool) {
 
 // has reports a prompt the library holds, or one that arrives with the bundle by nickname.
 func (c *refCollector) has(ref spec.PromptRef) bool {
-	if _, ok := findPrompt(c.library, ref); ok {
+	if _, ok := draft.FindPrompt(c.library, ref); ok {
 		return true
 	}
 

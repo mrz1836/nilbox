@@ -8,10 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
-	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -325,8 +324,8 @@ func (s *Service) Templates(ctx context.Context) ([]Template, error) {
 			t.Sentence = spec.Sentence(g.Spec, names)
 		}
 
-		t.Needs = s.offers.needs(g.Spec)
-		t.NeedsWords = needsWords(t.Needs)
+		t.Needs = s.offers.Needs(g.Spec)
+		t.NeedsWords = draft.NeedsWords(t.Needs)
 		t.Prompts = templatePrompts(g.Spec, library, names)
 		t.Suggested = suggestedWhy(g.Signals, signals)
 		out = append(out, t)
@@ -373,93 +372,6 @@ func (s *Service) templateSignals(ctx context.Context) TemplateSignals {
 	return got
 }
 
-// needs names each part of s this build can't run yet: an agent's place, then each kind of
-// step and GitHub action it doesn't offer, in the catalog's order.
-func (o *Offers) needs(s spec.Spec) []string {
-	out := []string{}
-
-	for _, words := range append(o.placeNeeds(s), o.stepNeeds(s)...) {
-		if !slices.Contains(out, words) {
-			out = append(out, words)
-		}
-	}
-
-	return out
-}
-
-// placeNeeds names each place s runs an agent that this build doesn't.
-func (o *Offers) placeNeeds(s spec.Spec) []string {
-	var out []string
-
-	for _, st := range s.Steps {
-		if st.Agent != nil && !o.runsAt(st.Agent.Place()) {
-			info, _ := catalog.PlaceByID(st.Agent.Place())
-			out = append(out, "agents "+strings.ToLower(info.Label))
-		}
-	}
-
-	return out
-}
-
-// stepNeeds names each kind of step, and each GitHub action, of s this build doesn't run,
-// in the catalog's order.
-func (o *Offers) stepNeeds(s spec.Spec) []string {
-	off := o.orCatalog()
-
-	var out []string
-
-	for _, info := range catalog.Steps() {
-		for _, st := range s.Steps {
-			switch {
-			case st.Kind() != info.Kind:
-			case !slices.Contains(off.Steps, info.Kind):
-				out = append(out, "“"+info.Label+"”")
-			default:
-				out = append(out, off.actionNeeds(st)...)
-			}
-		}
-	}
-
-	return out
-}
-
-// actionNeeds names each GitHub action of st this build doesn't send.
-func (o *Offers) actionNeeds(st spec.Step) []string {
-	var out []string
-
-	for _, a := range st.GitHub {
-		if !slices.Contains(o.Actions, a.Kind()) {
-			out = append(out, "“"+actionLabel(a.Kind())+"”")
-		}
-	}
-
-	return out
-}
-
-// actionLabel names a GitHub action as the builder does, by the catalog's label when it
-// lists the action, else as the spec spells it.
-func actionLabel(kind catalog.GitHubActionKind) string {
-	for _, a := range catalog.GitHubActions() {
-		if a.Kind == kind {
-			return a.Label
-		}
-	}
-
-	return map[catalog.GitHubActionKind]string{
-		catalog.GitHubRebase: "Ask Dependabot to rebase", catalog.GitHubUpdateBranch: "Update branch",
-		catalog.GitHubReply: "Comment a reply", catalog.GitHubLabels: "Labels",
-	}[kind]
-}
-
-// needsWords says what a template needs as a sentence, "" for nothing.
-func needsWords(needs []string) string {
-	if len(needs) == 0 {
-		return ""
-	}
-
-	return fmt.Sprintf("It needs %s, which this version of %s can't run yet.", series(needs), brand.Name)
-}
-
 // templatePrompts returns the starter prompts sp's steps run, each once, with whether
 // library holds it and its nickname there.
 func templatePrompts(sp spec.Spec, library []LibraryPrompt, names spec.PromptNames) []TemplatePrompt {
@@ -478,7 +390,7 @@ func templatePrompts(sp spec.Spec, library []LibraryPrompt, names spec.PromptNam
 			}
 		}
 
-		_, p.InLibrary = findPrompt(library, ref)
+		_, p.InLibrary = draft.FindPrompt(library, ref)
 		out = append(out, p)
 	}
 

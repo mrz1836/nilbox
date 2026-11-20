@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
-	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -83,65 +83,12 @@ func (s *Service) MyScripts(ctx context.Context) ([]MyScript, error) {
 	return nonNil(got), nil
 }
 
-// scriptProblems returns the problems of the scripts sp's steps name: one of the user's
-// scripts no longer saved, or saved under another name than the step's. Without the
-// scripts to read, or with scripts that can't be read (logged), it finds none here; the
-// runner refuses a script that is gone as it starts, and the engine holds one renamed.
-func (s *Service) scriptProblems(ctx context.Context, sp spec.Spec) []spec.Problem {
-	if s.myScripts == nil || !hasStep(sp, catalog.StepScript) {
-		return nil
-	}
-
-	mine, err := s.myScripts.MyScripts(ctx)
-	if err != nil {
-		s.logger.WarnContext(ctx, "could not read the user's scripts to check a routine's", "error", err)
-
-		return nil
-	}
-
-	var out []spec.Problem
-
-	for i, st := range sp.Steps {
-		if st.Script == nil {
-			continue
-		}
-
-		at := slices.IndexFunc(mine, func(m MyScript) bool { return m.ID == st.Script.ID })
-
-		var message string
-
-		switch {
-		case at < 0:
-			message = fmt.Sprintf("%q is no longer one of your scripts: pick another", st.Script.Name)
-		case mine[at].Name != st.Script.Name:
-			message = renamedWords(st.Script.Name, mine[at].Name)
-		default:
-			continue
-		}
-
-		out = append(out, spec.Problem{Part: spec.PartSteps, Field: fmt.Sprintf("[%d].script.id", i), Message: message})
-	}
-
-	return out
-}
-
-// renamedWords says that the script a step picked as picked is now saved as name, so it
-// waits to be picked again.
-func renamedWords(picked, name string) string {
-	return fmt.Sprintf("The script picked as %q is now %q: pick it again", picked, name)
-}
-
-// hasStep reports a spec with a step of kind.
-func hasStep(sp spec.Spec, kind catalog.StepKind) bool {
-	return slices.ContainsFunc(sp.Steps, func(st spec.Step) bool { return st.Kind() == kind })
-}
-
 // scriptsOf reads the user's scripts once a cycle, by ID, when some routine runs one:
 // what the Ask before running rule reads. A read that fails is kept as failed, so every
 // script step waits rather than run one that may ask.
 func (p *pass) scriptsOf(ctx context.Context) {
 	if p.e.svc.myScripts == nil || !slices.ContainsFunc(p.routines, func(r *routineRun) bool {
-		return hasStep(r.spec, catalog.StepScript)
+		return draft.HasStep(r.spec, catalog.StepScript)
 	}) {
 		return
 	}
@@ -181,7 +128,7 @@ func (p *pass) scriptAsks(sr *stepRun) verdict {
 	case !ok:
 		return verdict{}
 	case sc.Name != sr.Step.Script.Name:
-		return wait(BlockNotReady, renamedWords(sr.Step.Script.Name, sc.Name)+" in the routine.")
+		return wait(BlockNotReady, draft.RenamedWords(sr.Step.Script.Name, sc.Name)+" in the routine.")
 	case !sc.Asks:
 		return verdict{}
 	}

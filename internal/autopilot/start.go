@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -164,7 +165,7 @@ func (e *Engine) promptHold(ctx context.Context, sp spec.Spec, st spec.Step) (Bl
 		return "", ""
 	}
 
-	problems := stepPromptProblems(library, st, actsOn(sp), "")
+	problems := draft.StepPromptProblems(library, st, draft.ActsOn(sp), "")
 
 	switch {
 	case len(problems) == 0:
