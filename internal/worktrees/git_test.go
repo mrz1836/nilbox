@@ -224,6 +224,13 @@ func TestGitArgvUsesDashC(t *testing.T) {
 			want:   gitArgv(repoDir, "rev-list --cherry-mark --right-only --no-merges", otherSHA+"..."+headSHA),
 		},
 		{
+			name:   "the changes themselves are read in the clone",
+			stdout: "\x00" + headSHA + "\n\ndiff --git a/f b/f\n",
+			call:   func(g git) error { _, err := g.copyPatches(ctx, repoDir, []string{headSHA, otherSHA}); return err },
+			want: append(gitArgv(repoDir, "log --no-show-signature --no-mailmap --no-walk=unsorted --root -p --no-ext-diff",
+				"--no-textconv --no-color --no-renames --full-index --unified=3"), "--format=%x00%H", headSHA, otherSHA),
+		},
+		{
 			name: "delete branch compares and deletes",
 			call: func(g git) error { _, err := g.deleteBranch(ctx, repoDir, "worktree-pr-7", headSHA); return err },
 			want: gitArgv(repoDir, "update-ref -d refs/heads/worktree-pr-7", headSHA),
@@ -353,6 +360,14 @@ func TestGitRejectsCommandsOutsideAllowlist(t *testing.T) {
 		argv("rev-list --cherry-mark --right-only", otherSHA+"..."+headSHA),
 		argv("rev-list --cherry-mark --right-only --no-merges", otherSHA+"..."+headSHA, "--all"),
 		argv("rev-list --cherry-pick --right-only --no-merges", otherSHA+"..."+headSHA),
+		copyPatchesCmd(),
+		append(copyPatchesCmd(), "HEAD"),
+		append(copyPatchesCmd(), headSHA, "--all"),
+		append(copyPatchesCmd(), headSHA, "--ext-diff"),
+		append(copyPatchesCmd(), "--textconv", headSHA),
+		append(copyPatchesCmd()[1:], headSHA),
+		append(argv("log --no-show-signature --no-mailmap --no-walk=unsorted --root -p --no-textconv --no-color"),
+			"--no-renames", "--full-index", "--unified=3", "--format=%x00%H", headSHA),
 		argv("worktree list"),
 		argv("checkout main"),
 		argv("status"),
@@ -389,6 +404,7 @@ func TestGitAllowsDeletingAnyWellFormedBranchAtACommit(t *testing.T) {
 		unpushedPastLogArgs(otherSHA), copyUnpushedArgs([]string{headSHA}, ""),
 		copyUnpushedArgs([]string{headSHA, otherSHA}, otherSHA), copyCandidatesArgs(0, ""),
 		copyCandidatesArgs(1699913600, "refs/remotes/origin/main"), copyCherryArgs(otherSHA, headSHA),
+		copyPatchesArgs([]string{headSHA, otherSHA}),
 	} {
 		_, _, err := git{run: &testutil.Runner{}, bin: gitBin}.do(t.Context(), repoDir, args...)
 		require.NoError(t, err, args)
@@ -400,7 +416,7 @@ func TestTheCommitsNotOnGitHubAreListedAsARead(t *testing.T) {
 
 	for _, args := range [][]string{
 		unpushedLogArgs(), unpushedPastLogArgs(otherSHA), refsArgs(), copyUnpushedArgs([]string{headSHA}, otherSHA),
-		copyCandidatesArgs(0, "refs/remotes/origin/main"), copyCherryArgs(otherSHA, headSHA),
+		copyCandidatesArgs(0, "refs/remotes/origin/main"), copyCherryArgs(otherSHA, headSHA), copyPatchesArgs([]string{headSHA}),
 	} {
 		assert.True(t, readOnly(args), args)
 	}
@@ -433,7 +449,9 @@ func TestTheCommitsNotOnGitHubAreListedAsARead(t *testing.T) {
 	require.NoError(t, err)
 	_, err = g.readRefs(t.Context(), repoDir)
 	require.NoError(t, err)
-	assert.Equal(t, [][]string{readEnv, readEnv, readEnv, readEnv}, envs)
+	_, err = g.copyPatches(t.Context(), repoDir, []string{headSHA})
+	require.NoError(t, err)
+	assert.Equal(t, [][]string{readEnv, readEnv, readEnv, readEnv, readEnv}, envs)
 	assert.Zero(t, guard.calls.Load())
 }
 

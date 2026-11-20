@@ -36,10 +36,11 @@ import (
 // copy keeps the author time and is made later. A pushed commit with a commit's author time,
 // author email, and subject is its likely copy. For each pushed branch holding likely
 // copies, most first and at most copyRefsMax of them, one rev-list --cherry-mark
-// (copyCherryArgs) says which of U have an identical change on it. A commit with an
-// identical change there and a likely copy has an identical copy; one with a likely copy
-// whose change differs has an edited copy, which is never taken for the commit; any other
-// has none. A worktree whose every commit has an identical copy on one branch is fully
+// (copyCherryArgs) says which of U git takes for an identical change on it, which one log of
+// their changes then confirms byte for byte (see copypatch.go: git's patch IDs leave
+// whitespace out). A commit whose change and a likely copy's are the same has an identical
+// copy; one with a likely copy whose change differs, if only by a space, has an edited copy,
+// which is never taken for the commit; any other has none. A worktree whose every commit has an identical copy on one branch is fully
 // copied onto it (Copies.full), and links to that branch's pull request when nothing else
 // links it (LinkCopy). Anything that goes wrong, as git failing or warning, an object a
 // partial clone lacks (the reads never fetch one), too many commits, a merge among U, or the
@@ -174,18 +175,50 @@ type coverEntry struct {
 }
 
 // copyCache keeps across listings each worktree's copyResult and whether its copy record
-// covers it, by the worktree's resolved directory, and whether a pull request's head has a
-// record's branch commit (see copyjudge.go). It is safe for concurrent use.
+// covers it, by the worktree's resolved directory, whether a pull request's head has a
+// record's branch commit (see copyjudge.go), and whether a commit and a likely copy make the
+// same change byte for byte (see copypatch.go). It is safe for concurrent use.
 type copyCache struct {
 	mu      sync.Mutex
 	entries map[string]copyEntry
 	covers  map[string]coverEntry
 	holds   map[holdKey]bool
+	pairs   map[copyPair]bool
 }
 
 // newCopyCache returns an empty copyCache.
 func newCopyCache() *copyCache {
-	return &copyCache{entries: map[string]copyEntry{}, covers: map[string]coverEntry{}, holds: map[holdKey]bool{}}
+	return &copyCache{
+		entries: map[string]copyEntry{}, covers: map[string]coverEntry{}, holds: map[holdKey]bool{},
+		pairs: map[copyPair]bool{},
+	}
+}
+
+// pairsMax is how many verdicts of samePatch the cache keeps before it starts over.
+const pairsMax = 16384
+
+// samePair returns whether a commit and a likely copy make the same change, when that is
+// kept.
+func (c *copyCache) samePair(pair copyPair) (same, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	same, ok = c.pairs[pair]
+
+	return same, ok
+}
+
+// keepPair keeps whether a commit and a likely copy make the same change, for good: neither
+// commit ever changes.
+func (c *copyCache) keepPair(pair copyPair, same bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if len(c.pairs) >= pairsMax {
+		clear(c.pairs)
+	}
+
+	c.pairs[pair] = same
 }
 
 // coverage returns whether the record of the worktree at path covers it, when that was
@@ -376,7 +409,7 @@ func (s *Service) detectCloneCopies(ctx context.Context, g git, dir string, wts 
 		return
 	}
 
-	compareCopies(ctx, g, dir, remotes, refs, todo)
+	compareCopies(ctx, g, s.copies, dir, remotes, refs, todo)
 
 	for _, w := range todo {
 		w.wt.copies.result, w.wt.Copies = &w.result, w.result.copies
@@ -425,7 +458,7 @@ func mayHaveCopies(wt *Worktree) bool {
 // compareCopies compares the commits not on GitHub of todo, worktrees of the clone at dir,
 // with its pushed branches, settling each one's result. A clone with no pushed branch has
 // nothing to compare them with.
-func compareCopies(ctx context.Context, g git, dir string, remotes map[string]repo.Name, refs cloneRefs,
+func compareCopies(ctx context.Context, g git, cache *copyCache, dir string, remotes map[string]repo.Name, refs cloneRefs,
 	todo []*copyWork,
 ) {
 	branches := pushedBranches(remotes, refs)
@@ -450,7 +483,7 @@ func compareCopies(ctx context.Context, g git, dir string, remotes map[string]re
 		case err != nil:
 			w.fail(ctx, err)
 		default:
-			w.compare(ctx, g, dir, refs, candidates)
+			w.compare(ctx, g, cache, dir, refs, candidates)
 		}
 	}
 }
@@ -617,7 +650,7 @@ func defaultBase(remotes map[string]repo.Name, refs cloneRefs) string {
 // its clone's pushed branches that may be their copies, and settles its result: one
 // rev-list --cherry-mark for each branch holding likely copies of them, the most first and
 // at most copyRefsMax, until one has an identical copy of every one.
-func (w *copyWork) compare(ctx context.Context, g git, dir string, refs cloneRefs, candidates []copyCommit) {
+func (w *copyWork) compare(ctx context.Context, g git, cache *copyCache, dir string, refs cloneRefs, candidates []copyCommit) {
 	likely := likelyCopies(w.unpushed, candidates)
 
 	var best *refComparison
@@ -625,7 +658,7 @@ func (w *copyWork) compare(ctx context.Context, g git, dir string, refs cloneRef
 	anywhere := map[string]bool{}
 
 	for _, ref := range rankRefs(likely) {
-		got, err := compareWith(ctx, g, dir, w.wt.Head, ref, refs.tracking[ref], w.unpushed, likely[ref])
+		got, err := compareWith(ctx, g, cache, dir, w.wt.Head, ref, refs.tracking[ref], w.unpushed, likely[ref])
 		if err != nil {
 			w.fail(ctx, err)
 
@@ -736,11 +769,12 @@ func (c refComparison) closer(other refComparison) bool {
 }
 
 // compareWith compares unpushed, head's commits not on GitHub, with the pushed branch ref,
-// at tip, by their changes, in one rev-list --cherry-mark. likely holds the likely copies
-// there of each, by its commit ID: a commit with an identical change there and a likely copy
-// has an identical copy, one with a likely copy whose change differs an edited copy, and any
-// other none, whatever its change.
-func compareWith(ctx context.Context, g git, dir, head, ref, tip string, unpushed []copyCommit,
+// at tip, by their changes, in one rev-list --cherry-mark, then confirms each = byte for
+// byte (confirmCopies). likely holds the likely copies there of each, by its commit ID: a
+// commit marked = with a likely copy whose change is the same byte for byte has an identical
+// copy, one with a likely copy whose change differs, by as little as a space, an edited
+// copy, and any other none, whatever its change.
+func compareWith(ctx context.Context, g git, cache *copyCache, dir, head, ref, tip string, unpushed []copyCommit,
 	likely map[string][]string,
 ) (refComparison, error) {
 	got := refComparison{ref: ref, tip: tip, marks: map[string]commitMark{}}
@@ -750,17 +784,32 @@ func compareWith(ctx context.Context, g git, dir, head, ref, tip string, unpushe
 		return refComparison{}, err
 	}
 
+	marked := map[string][]string{}
+
 	for _, u := range unpushed {
 		identical, listed := same[u.oid]
-		copies := likely[u.oid]
 
 		switch {
 		case !listed:
 			return refComparison{}, errCherryIncomplete
+		case identical && len(likely[u.oid]) > 0:
+			marked[u.oid] = likely[u.oid]
+		}
+	}
+
+	confirmed, err := confirmCopies(ctx, g, cache, dir, marked)
+	if err != nil {
+		return refComparison{}, err
+	}
+
+	for _, u := range unpushed {
+		copies := likely[u.oid]
+
+		switch {
 		case len(copies) == 0:
-		case identical:
+		case confirmed[u.oid] != "":
 			got.identical++
-			got.marks[u.oid] = commitMark{mark: CopyIdentical, copy: copies[0]}
+			got.marks[u.oid] = commitMark{mark: CopyIdentical, copy: confirmed[u.oid]}
 		default:
 			got.edited++
 			got.marks[u.oid] = commitMark{mark: CopyEdited, copy: copies[0]}

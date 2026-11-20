@@ -2215,9 +2215,26 @@ refs/remotes/<remote>/<default>`; a copy keeps the author time and is made later
 commit with a commit's author time, email, and subject is its likely copy. For each pushed
 branch holding likely copies, most first and at most three, one `rev-list --cherry-mark
 --right-only --no-merges <tip>...<HEAD>` (`copyCherryArgs`, commit IDs only) says which of U
-have an identical change there (`=`): a commit with an identical change and a likely copy
-has an identical copy; one with a likely copy whose change differs (`+`) an edited copy,
-which never counts (an edited change isn't the commit's); any other none. A worktree each of
+have an identical change there (`=`). A `=` is only where looking starts: git's patch IDs
+leave out every space inside a changed line, a hunk's position, and the mark of a missing
+last newline, so a copy that was only re-indented, or lost a space from a string, is marked
+`=` too, though in Python, YAML, a Makefile, or a string literal that is a change. So each
+`=` is confirmed byte for byte (`copypatch.go`): the changes of the commit and its likely
+copies are read in one more log for the comparison (`copyPatchesArgs`: `log
+--no-show-signature --no-mailmap --no-walk=unsorted --root -p --no-ext-diff --no-textconv
+--no-color --no-renames --full-index --unified=3 --format=%x00%H <commit>...`, a read) and
+compared whole but for a text file's blob IDs (its `index` line keeps only its mode) and the
+line numbers of each hunk's `@@` header (and the text git adds after it): spaces, context
+lines, `\ No newline at end of file`, modes, and file headers all count. A binary file's
+change is the same only when its blobs before and after are, its `index` line whole. An
+empty change, one that doesn't read as git's per-file diffs, or one git left out is no
+copy's, and a log that fails leaves the worktree not copied, with why. A verdict on a pair
+of commits is kept in memory for good (`copyCache.pairs`), as commits never change. A
+commit marked `=` with a likely copy whose change is the same has an identical copy; one
+with a likely copy whose change differs (`+`, or a `=` that didn't hold) an edited copy,
+which never counts (an edited change isn't the commit's); any other none. A copy made on a
+moved base whose context lines differ is marked `+` by git itself, and so is edited too. A
+worktree each of
 whose commits has an identical copy on one branch is fully copied onto it, and links to that
 branch's pull request, asked about as a branch link is, when nothing else links it
 (`LinkCopy`). `Worktree.Copies` says what was found: the branch (`ref`, as in

@@ -80,7 +80,7 @@ func copyCherryArgs(tip, head string) []string {
 
 // allowedCopyRead reports one of the comparison's reads, with the arguments it may take.
 func allowedCopyRead(args []string) bool {
-	return allowedCopyUnpushed(args) || allowedCopyCandidates(args) || allowedCopyCherry(args)
+	return allowedCopyUnpushed(args) || allowedCopyCandidates(args) || allowedCopyCherry(args) || allowedCopyPatches(args)
 }
 
 // allowedCopyUnpushed reports a log of the commits not on GitHub of one or more full commit
