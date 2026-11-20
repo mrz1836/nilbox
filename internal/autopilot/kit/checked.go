@@ -76,9 +76,11 @@ type CheckedRoutine struct {
 	// Spec is the routine's definition as a save would store it, normalized.
 	Spec spec.Spec `json:"spec"`
 
-	// Sentence says it in one sentence, "" while it has problems; Problems keep it from
-	// being saved, and Warnings don't; DryRunOnly are the kinds of step this build runs only
-	// in Dry run.
+	// Sentence says it in one sentence, "" while its spec has problems; Problems keep it
+	// from being saved, and Warnings don't, each where it is in the spec, or, with no Part,
+	// in one of the routine's own fields (its name, description, template, mode, ID, or
+	// base, by its key, or "spec" for a spec that can't be read at all); DryRunOnly are the
+	// kinds of step this build runs only in Dry run.
 	Sentence   string             `json:"sentence"`
 	Problems   []spec.Problem     `json:"problems"`
 	Warnings   []spec.Problem     `json:"warnings"`

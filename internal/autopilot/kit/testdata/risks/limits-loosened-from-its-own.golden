@@ -1,0 +1,5 @@
+warning: It may try up to 4 times on one item, up from 3.
+warning: It may run up to 40 times a day, up from 20.
+warning: It waits 15 minutes between tries on one item, down from 1 hour.
+warning: Its active hours widen from weekdays 09:00–17:00 to every day 08:00–20:00.
+warning: Its own daily budget goes up from $5.00 to $20.00.

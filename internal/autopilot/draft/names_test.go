@@ -117,6 +117,15 @@ func TestANamesKeyFoldsItAsEqualFoldDoes(t *testing.T) {
 	assert.Equal(t, "ÜBER", draft.NameKey("über"), "Ü is the smallest of ü's")
 }
 
+func TestMessageIsWhatACheckSaysToTheUser(t *testing.T) {
+	t.Parallel()
+
+	_, err := draft.CheckName(strings.Repeat("a", draft.MaxNameRunes+1))
+	require.Error(t, err)
+	assert.Equal(t, "Keep the name to 80 characters.", draft.Message(err), "the check's own sentence, not its cause")
+	assert.Empty(t, draft.Message(nil))
+}
+
 func TestAFreeNameIsTheFirstNumberNoRoutineHas(t *testing.T) {
 	t.Parallel()
 
