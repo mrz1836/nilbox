@@ -238,7 +238,7 @@ export function ReleasePage({
           const rows = sortCandidates(
             matched.filter((r) => r.group === group.id),
             sort,
-            (repo) => ruleFor(repoRules, repo).rule === 'pinned',
+            (repo) => pinnedBy(repo) !== '',
           )
           const shown = searching || folds.isOpen(stored(group.id))
 

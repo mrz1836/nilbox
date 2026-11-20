@@ -622,6 +622,17 @@ describe('sharedHeadlines', () => {
     expect([...shared].filter(([, repos]) => repos.length >= waveAt).map(([headline]) => headline)).toEqual([wave])
   })
 
+  it('counts a repository once however many of its clones are listed', () => {
+    const wave = 'sync(ci): add RELEASE_ENABLED toggle'
+    const shared = sharedHeadlines([
+      { repo: 'acme-org/sdk', headline: wave },
+      { repo: 'acme-org/web', headline: wave },
+      { repo: 'acme-org/sdk', headline: wave },
+    ])
+
+    expect(shared).toEqual(new Map([[wave, ['acme-org/sdk', 'acme-org/web']]]))
+  })
+
   it('leaves out the rows without a headline', () => {
     expect(sharedHeadlines([{ repo: 'acme-org/muted', headline: '' }])).toEqual(new Map())
     expect(sharedHeadlines([])).toEqual(new Map())

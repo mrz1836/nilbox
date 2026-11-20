@@ -78,26 +78,38 @@ function headTime(c: Pick<ReleaseCandidate, 'headAt'>): number {
   return Number.isNaN(at) ? -Infinity : at
 }
 
+// SortKey is what the sort reads of a candidate, worked out once per row rather than on
+// every comparison: whether it is pinned (0) or not (1), when its newest commit came, its
+// name lowered, and its commits since the newest version.
+interface SortKey {
+  row: ReleaseCandidate
+  rank: number
+  time: number
+  name: string
+  ahead: number
+}
+
 // byName orders candidates by "owner/name", ignoring case, as the release service does
 // (cmp.Compare of the lowered names, not the locale's collation).
-function byName(a: ReleaseCandidate, b: ReleaseCandidate): number {
-  return compare(a.repo.toLowerCase(), b.repo.toLowerCase())
+function byName(a: SortKey, b: SortKey): number {
+  return compare(a.name, b.name)
 }
 
 // byNewest orders candidates by their newest commit, the newest first and one without a
 // time last, then by name.
-function byNewest(a: ReleaseCandidate, b: ReleaseCandidate): number {
-  return compare(headTime(b), headTime(a)) || byName(a, b)
+function byNewest(a: SortKey, b: SortKey): number {
+  return compare(b.time, a.time) || byName(a, b)
 }
 
 // byCommits orders candidates by their commits since the newest version, the most first,
-// then as byNewest does.
-function byCommits(a: ReleaseCandidate, b: ReleaseCandidate): number {
+// then as byNewest does. A count GitHub couldn't work out (+?, an ahead of 0) comes after
+// every count it knows, as byNewest puts a row without a time last.
+function byCommits(a: SortKey, b: SortKey): number {
   return compare(b.ahead, a.ahead) || byNewest(a, b)
 }
 
 // candidateOrder is how a sort orders two candidates, pinning aside.
-function candidateOrder(sort: ReleaseSort): (a: ReleaseCandidate, b: ReleaseCandidate) => number {
+function candidateOrder(sort: ReleaseSort): (a: SortKey, b: SortKey) => number {
   switch (sort) {
     case 'newest':
       return byNewest
@@ -117,9 +129,15 @@ export function sortCandidates(
   isPinned: (repo: string) => boolean,
 ): ReleaseCandidate[] {
   const order = candidateOrder(sort)
-  const rank = (c: ReleaseCandidate) => (isPinned(c.repo) ? 0 : 1)
+  const keys = rows.map((row): SortKey => ({
+    row,
+    rank: isPinned(row.repo) ? 0 : 1,
+    time: headTime(row),
+    name: row.repo.toLowerCase(),
+    ahead: row.ahead,
+  }))
 
-  return [...rows].sort((a, b) => compare(rank(a), rank(b)) || order(a, b))
+  return keys.sort((a, b) => compare(a.rank, b.rank) || order(a, b)).map((k) => k.row)
 }
 
 // waveAt is how many of the listed rows must share a headline before their rows show a ×N
@@ -127,7 +145,8 @@ export function sortCandidates(
 export const waveAt = 3
 
 // sharedHeadlines maps each headline the rows have to the repositories whose newest
-// commit it is, in the rows' order. A row without a headline is left out.
+// commit it is, in the rows' order, each repository once however many of its clones are
+// listed. A row without a headline is left out.
 export function sharedHeadlines(rows: readonly Pick<ReleaseCandidate, 'repo' | 'headline'>[]): Map<string, string[]> {
   const shared = new Map<string, string[]>()
 
@@ -140,7 +159,7 @@ export function sharedHeadlines(rows: readonly Pick<ReleaseCandidate, 'repo' | '
 
     if (repos === undefined) {
       shared.set(headline, [repo])
-    } else {
+    } else if (!repos.includes(repo)) {
       repos.push(repo)
     }
   }
