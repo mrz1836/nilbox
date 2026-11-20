@@ -35,7 +35,7 @@ func firstTurn(t *testing.T, r *rig, m Message) (id, proposal, prompt string) {
 	stdin := filepath.Join(t.TempDir(), "stdin")
 
 	r.claude(testutil.FakeRun{
-		WantArgs: r.turnArgs(id, false, "", ""), StdinTo: stdin, Stdout: streamFixture(t, "turn-first.jsonl", 0),
+		WantArgs: r.turnArgs(id, false, "sonnet", ""), StdinTo: stdin, Stdout: streamFixture(t, "turn-first.jsonl", 0),
 		Files: []testutil.FakeFile{
 			{Path: r.path("proposals", id, proposal+".json"), Content: string(proposalFile(t, id, proposal, testNow, pinProposal()))},
 			{Path: "ran-here"},
@@ -171,7 +171,7 @@ func TestTheNextTurnResumesAndTellsWhatTheUserDid(t *testing.T) {
 
 	stdin := filepath.Join(t.TempDir(), "stdin")
 	r.claude(testutil.FakeRun{
-		WantArgs: r.turnArgs(id, true, "", ""), StdinTo: stdin, Stdout: streamFixture(t, "turn-resumed.jsonl", 0),
+		WantArgs: r.turnArgs(id, true, "sonnet", ""), StdinTo: stdin, Stdout: streamFixture(t, "turn-resumed.jsonl", 0),
 	})
 
 	_, err := r.svc.Send(t.Context(), Message{Text: "Skip drafts."})
@@ -256,6 +256,61 @@ func TestTheConversationsAgentPicksTheModelAndEffort(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, TurnDone, got.Turns[0].State, "the turn ran with the conversation's model and effort")
 	assert.Contains(t, r.agents.asked, otherProfile, "with the conversation's profile")
+}
+
+func TestInheritRunsTheProfilesOwnModelAndEffort(t *testing.T) {
+	t.Parallel()
+
+	for name, tt := range map[string]struct {
+		choice                AgentChoice
+		ownModel, ownEffort   string
+		wantModel, wantEffort string
+		why                   string
+	}{
+		"both inherited": {
+			ownModel: "sonnet", ownEffort: "medium", wantModel: "sonnet", wantEffort: "medium",
+			why: "Inherit runs the profile's own, never Claude Code's default in its place",
+		},
+		"the model chosen": {
+			choice: AgentChoice{Model: "haiku"}, ownModel: "sonnet", ownEffort: "medium", wantModel: "haiku",
+			wantEffort: "medium", why: "the model chosen, and the effort inherited",
+		},
+		"the effort chosen": {
+			choice: AgentChoice{Effort: "low"}, ownModel: "sonnet", ownEffort: "medium", wantModel: "sonnet",
+			wantEffort: "low", why: "the effort chosen, and the model inherited",
+		},
+		"a profile with none of its own": {
+			why: "nothing to inherit passes no flag, so Claude Code's own default is what the header says",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := newRig(t)
+
+			_, err := r.svc.SetAgent(t.Context(), tt.choice)
+			require.NoError(t, err)
+
+			id := r.newConversation()
+			r.claude(testutil.FakeRun{
+				WantArgs: r.turnArgs(id, false, tt.wantModel, tt.wantEffort), Stdout: streamFixture(t, "turn-first.jsonl", 0),
+			})
+			r.profileOwn(tt.ownModel, tt.ownEffort)
+
+			conv, err := r.svc.Send(t.Context(), Message{Text: pinText})
+			require.NoError(t, err)
+			assert.Equal(t, tt.choice, conv.Agent)
+			assert.Equal(t, tt.wantModel, conv.Model, "the header shows the model the turn runs")
+			assert.Equal(t, tt.wantEffort, conv.Effort, "and the effort")
+
+			r.waitTurn()
+
+			got, err := r.svc.Conversation(t.Context())
+			require.NoError(t, err)
+			assert.Equal(t, TurnDone, got.Turns[0].State, tt.why)
+			assert.Empty(t, got.Turns[0].Error, tt.why)
+		})
+	}
 }
 
 func TestStoppingATurnEndsItAsStopped(t *testing.T) {
@@ -412,7 +467,7 @@ func TestATurnThatEndsWithoutAResultSaysWhy(t *testing.T) {
 	assert.True(t, rec.Started, "a turn refused before its init names the session the other way next")
 
 	r.claude(testutil.FakeRun{
-		WantArgs: r.turnArgs(conv.ID, true, "", ""), Stdout: "Error: No conversation found with session ID.\n", Exit: 1,
+		WantArgs: r.turnArgs(conv.ID, true, "sonnet", ""), Stdout: "Error: No conversation found with session ID.\n", Exit: 1,
 	})
 
 	_, err = r.svc.Send(t.Context(), Message{Text: pinText})
@@ -423,7 +478,7 @@ func TestATurnThatEndsWithoutAResultSaysWhy(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, rec.Started, "and the other way again, so a conversation never sticks on its session")
 
-	r.claude(testutil.FakeRun{WantArgs: r.turnArgs(conv.ID, false, "", ""), Stdout: streamFixture(t, "turn-first.jsonl", 0)})
+	r.claude(testutil.FakeRun{WantArgs: r.turnArgs(conv.ID, false, "sonnet", ""), Stdout: streamFixture(t, "turn-first.jsonl", 0)})
 
 	_, err = r.svc.Send(t.Context(), Message{Text: pinText})
 	require.NoError(t, err)
@@ -443,7 +498,7 @@ func TestATurnSentBeforeTheWorkerClosedACrashedOneClosesItFirst(t *testing.T) {
 
 	r := newRig(t)
 	id := r.crashedTurn(streamFixture(t, "turn-first.jsonl", 0))
-	r.claude(testutil.FakeRun{WantArgs: r.turnArgs(id, true, "", ""), Stdout: streamFixture(t, "turn-resumed.jsonl", 0)})
+	r.claude(testutil.FakeRun{WantArgs: r.turnArgs(id, true, "sonnet", ""), Stdout: streamFixture(t, "turn-resumed.jsonl", 0)})
 
 	_, err := r.svc.Send(t.Context(), Message{Text: "Skip drafts."})
 	require.NoError(t, err)

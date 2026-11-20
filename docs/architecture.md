@@ -5130,7 +5130,8 @@ describe/
   and the instructions), then writes the turn's files and starts it with `execpath.Start` in a
   process group of its own: `agent.ConversationArgs` with the conversation's ID (`--session-id`,
   then `--resume` once the session started), `<brand.Name>: Describe it` as the session's name,
-  the conversation's model and effort, the turn's MCP config (`agent.ConversationFiles`, its one
+  the conversation's model and effort with Inherit resolved to the profile's own (`record.resolve`,
+  what the header shows; a profile with none passes no flag), the turn's MCP config (`agent.ConversationFiles`, its one
   server `brand.Slug`, the app's executable with `mcpserver.Arg` and `mcpserver.ConversationArg`),
   the instructions' file, and a $2 budget (`turnBudgetUSD`); the prompt on stdin, opened with
   `paths.OpenRegular`, and stdout and stderr into the turn's log, in `work/`, with the

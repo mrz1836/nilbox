@@ -270,6 +270,14 @@ func (r *rig) claude(run testutil.FakeRun) {
 	})
 }
 
+// profileOwn makes model and effort the profile's own, which a choice of Inherit runs.
+func (r *rig) profileOwn(model, effort string) {
+	r.agents.mu.Lock()
+	defer r.agents.mu.Unlock()
+
+	r.agents.start.Model, r.agents.start.Effort = model, effort
+}
+
 // waitTurn waits for the turn running now to end, failing the test after a long while.
 func (r *rig) waitTurn() {
 	r.t.Helper()

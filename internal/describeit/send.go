@@ -443,6 +443,9 @@ func (s *Service) launch(ctx context.Context, lt *liveTurn, plan turnPlan) (proc
 
 // turnArgs writes the turn's MCP config, which names the app's own tool mode for its
 // conversation alone, and returns the turn's arguments: resuming its session, or starting it.
+// The turn runs the model and effort its conversation's header shows, the record's with
+// Inherit resolved as the turn's start says (record.resolve), so a choice of Inherit runs the
+// profile's own, as a background run does, never Claude Code's default in its place.
 func (s *Service) turnArgs(plan turnPlan, resume bool) ([]string, error) {
 	id := plan.rec.ID
 
@@ -460,8 +463,7 @@ func (s *Service) turnArgs(plan turnPlan, resume bool) ([]string, error) {
 	}
 
 	return agent.ConversationArgs(agent.Claude, agent.ConversationOptions{
-		SessionID: id, Resume: resume, Name: brand.Name + sessionSuffix,
-		Model: plan.rec.Agent.Model, Effort: plan.rec.Agent.Effort,
+		SessionID: id, Resume: resume, Name: brand.Name + sessionSuffix, Model: plan.rec.Model, Effort: plan.rec.Effort,
 		MCPConfig: filepath.Join(s.conversationDir(id), agent.MCPConfigName), SystemPromptFile: s.instructionsFile(),
 		Server: brand.Slug, BudgetUSD: turnBudgetUSD,
 	})
