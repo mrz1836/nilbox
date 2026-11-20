@@ -45,8 +45,24 @@ func listFiles(t *testing.T, root string) []string {
 	return out
 }
 
+// clientEnv is the environment the tests start the executable in, as an agent's client
+// starts it: home its only home, and nothing of the test's own but the GOCOVERDIR go test
+// -cover sets. Under -cover the executable is this test binary, built with coverage, which
+// writes what it ran into GOCOVERDIR as it exits, where go test adds it to the profile,
+// and without one warns of it on the standard error the tests read.
+func clientEnv(home string) []string {
+	env := []string{"HOME=" + home, "TMPDIR=" + home, "PATH=/usr/bin:/bin"}
+
+	if dir := os.Getenv("GOCOVERDIR"); dir != "" {
+		env = append(env, "GOCOVERDIR="+dir)
+	}
+
+	return env
+}
+
 // hookCall runs the executable in hook mode on one tool call, with an empty home and
-// nothing else in its environment, and returns its exit status, stdout, and stderr.
+// nothing else in its environment (clientEnv), and returns its exit status, stdout, and
+// stderr.
 func hookCall(t *testing.T, exe, home, runDir, tool string, input map[string]any) (int, string, string) {
 	t.Helper()
 
@@ -54,7 +70,7 @@ func hookCall(t *testing.T, exe, home, runDir, tool string, input map[string]any
 	require.NoError(t, err)
 
 	cmd := exec.CommandContext(t.Context(), exe, fence.HookArg(runDir)) //nolint:gosec // the test's own binary
-	cmd.Env = []string{"HOME=" + home, "TMPDIR=" + home, "PATH=/usr/bin:/bin"}
+	cmd.Env = clientEnv(home)
 	cmd.Stdin = bytes.NewReader(payload)
 	cmd.WaitDelay = 10 * time.Second
 

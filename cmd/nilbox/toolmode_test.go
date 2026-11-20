@@ -28,8 +28,8 @@ import (
 const toolConversation = "6f1c2a4e-9b7d-4c3e-8a21-0d5e7f9b3c11"
 
 // toolSession is the executable run in its tool mode as the agent's client runs it: an
-// empty home and nothing else in its environment, in its session's folder, one message a
-// line over its stdin and stdout.
+// empty home and nothing else in its environment (clientEnv), in its session's folder, one
+// message a line over its stdin and stdout.
 type toolSession struct {
 	t      *testing.T
 	cmd    *exec.Cmd
@@ -43,7 +43,7 @@ func startToolMode(t *testing.T, exe, home, cwd string, args ...string) *toolSes
 	t.Helper()
 
 	cmd := exec.CommandContext(t.Context(), exe, args...) //nolint:gosec // the test's own binary
-	cmd.Env = []string{"HOME=" + home, "TMPDIR=" + home, "PATH=/usr/bin:/bin"}
+	cmd.Env = clientEnv(home)
 	cmd.Dir = cwd
 	cmd.WaitDelay = 10 * time.Second
 
