@@ -295,6 +295,7 @@ export function WorktreeLine({
                   rowMenuItems({
                     repo,
                     worktree,
+                    read: details.of(worktree.path),
                     disabled,
                     agentName,
                     onTerminal,

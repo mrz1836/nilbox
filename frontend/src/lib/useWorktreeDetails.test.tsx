@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Worktree, WorktreeDetails } from '../platform'
 import { mainWorktree, worktree, worktreeDetails, worktreeFiles } from '../test/fixtures'
 import { platform } from '../test/platform'
-import { asReadNow, changesOf, readable, useWorktreeDetails, type DetailsRead } from './useWorktreeDetails'
+import { asReadNow, changesOf, notOnGitHub, readable, useWorktreeDetails, type DetailsRead } from './useWorktreeDetails'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -168,31 +168,69 @@ describe('useWorktreeDetails', () => {
     expect(result.current.of(dirty.path)).toBeUndefined()
   })
 
-  it('says why a read failed, keeps the listing’s files, and asks no more that listing', async () => {
-    platform.worktreeDetails.mockRejectedValue(new Error('not a linked worktree of this repository'))
+  it('says why a read failed, keeps the listing’s files, and asks again only when read again', async () => {
+    const failing = held<WorktreeDetails>()
+    platform.worktreeDetails.mockReturnValueOnce(failing.promise).mockResolvedValueOnce(all30)
     const { result } = renderDetails()
 
     act(() => {
       result.current.read(repoPath, dirty)
-    })
-    await waitFor(() => {
-      expect(result.current.of(dirty.path)).toEqual({
-        state: 'failed',
-        error: 'not a linked worktree of this repository',
-      })
+      // One ask at a time: a second while the first is under way does nothing.
+      result.current.read(repoPath, dirty)
     })
 
+    await act(async () => {
+      failing.reject(new Error('not a linked worktree of this repository'))
+      await failing.promise.catch(() => undefined)
+    })
+
+    expect(result.current.of(dirty.path)).toEqual({
+      state: 'failed',
+      error: 'not a linked worktree of this repository',
+    })
     expect(changesOf(dirty, result.current.of(dirty.path))).toEqual({
       files: worktreeFiles(12),
       count: 30,
       current: false,
     })
+    // Nothing asks again on its own.
+    expect(platform.worktreeDetails).toHaveBeenCalledOnce()
 
     act(() => {
       result.current.read(repoPath, dirty)
     })
 
-    expect(platform.worktreeDetails).toHaveBeenCalledOnce()
+    expect(result.current.of(dirty.path)).toEqual({ state: 'reading' })
+    await waitFor(() => {
+      expect(result.current.of(dirty.path)).toEqual({ state: 'read', details: all30 })
+    })
+    expect(platform.worktreeDetails).toHaveBeenCalledTimes(2)
+  })
+
+  it('lets an older listing’s failure leave the newer listing’s ask be', async () => {
+    const old = held<WorktreeDetails>()
+    platform.worktreeDetails.mockReturnValueOnce(old.promise).mockReturnValueOnce(new Promise(() => undefined))
+    const { result, rerender } = renderDetails(1)
+
+    act(() => {
+      result.current.read(repoPath, dirty)
+    })
+    rerender({ at: 2 })
+    act(() => {
+      result.current.read(repoPath, dirty)
+    })
+
+    await act(async () => {
+      old.reject(new Error('git status: exit status 128'))
+      await old.promise.catch(() => undefined)
+    })
+
+    act(() => {
+      result.current.read(repoPath, dirty)
+    })
+
+    expect(result.current.of(dirty.path)).toEqual({ state: 'reading' })
+    expect(platform.worktreeDetails).toHaveBeenCalledTimes(2)
   })
 
   it('asks once under StrictMode, whose effects run twice, as a drawer reads when it opens', async () => {
@@ -255,10 +293,14 @@ describe('changesOf', () => {
   })
 })
 
-describe('asReadNow', () => {
-  // ahead is a clean worktree with 2 commits not on GitHub, as the listing counted them.
-  const ahead = worktree({ unpushed: 2, onGitHub: false })
+// ahead is a clean worktree with 2 commits not on GitHub, as the listing counted them.
+const ahead = worktree({ unpushed: 2, onGitHub: false })
 
+// atHead is one at its pull request's head, a fork's, which no remote-tracking branch has:
+// the listing counted 3 commits there, and the backend ruled them on GitHub.
+const atHead = worktree({ unpushed: 3, onGitHub: true })
+
+describe('asReadNow', () => {
   it.each<[string, Worktree, DetailsRead | undefined, Partial<Worktree>]>([
     ['nothing read yet', ahead, undefined, {}],
     ['a read under way', ahead, { state: 'reading' }, {}],
@@ -276,7 +318,46 @@ describe('asReadNow', () => {
       { dirty: false, dirtyCount: 0, unpushed: 0, onGitHub: true },
     ],
     ['neither counted', ahead, { state: 'read', details: worktreeDetails({ fileCount: -1, unpushed: -1 }) }, {}],
+    [
+      'the same count, not at its pull request’s head',
+      ahead,
+      { state: 'read', details: worktreeDetails({ unpushed: 2 }) },
+      { unpushed: 2, onGitHub: false },
+    ],
+    [
+      'the same count at its pull request’s head, which is on GitHub',
+      atHead,
+      { state: 'read', details: worktreeDetails({ unpushed: 3 }) },
+      { unpushed: 3, onGitHub: true },
+    ],
+    [
+      'a count that changed since, so HEAD moved off the head',
+      atHead,
+      { state: 'read', details: worktreeDetails({ unpushed: 4 }) },
+      { unpushed: 4, onGitHub: false },
+    ],
+    [
+      'none since, off the head or on it',
+      atHead,
+      { state: 'read', details: worktreeDetails({ unpushed: 0 }) },
+      { unpushed: 0, onGitHub: true },
+    ],
   ])('counts what removing it would cost from %s', (_, wt, read, changed) => {
     expect(asReadNow(wt, read)).toEqual({ ...wt, ...changed })
+  })
+})
+
+describe('notOnGitHub', () => {
+  it.each<[string, Worktree, DetailsRead | undefined, number]>([
+    ['the listing’s, before a read', ahead, undefined, 2],
+    ['the listing’s, after a read that failed', ahead, { state: 'failed', error: 'no' }, 2],
+    ['a plain count, not at the head', ahead, { state: 'read', details: worktreeDetails({ unpushed: 2 }) }, 2],
+    ['a fresh count, not at the head', ahead, { state: 'read', details: worktreeDetails({ unpushed: 350 }) }, 350],
+    ['none at the pull request’s head', atHead, { state: 'read', details: worktreeDetails({ unpushed: 3 }) }, 0],
+    ['none at the head before a read', atHead, undefined, 0],
+    ['the fresh count once HEAD moved', atHead, { state: 'read', details: worktreeDetails({ unpushed: 4 }) }, 4],
+    ['none when they couldn’t be counted', worktree({ unpushed: -1, onGitHub: false }), undefined, 0],
+  ])('counts %s', (_, wt, read, want) => {
+    expect(notOnGitHub(wt, read)).toBe(want)
   })
 })

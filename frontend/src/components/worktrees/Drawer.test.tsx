@@ -174,7 +174,7 @@ describe('Drawer safety', () => {
     expect(band).toHaveTextContent(words)
   })
 
-  it('says what removing it costs as its details count it, once read, leaving the removal the listing’s', () => {
+  it('says what removing it costs as its details count it, once read, and offers the removal that agrees', () => {
     const { li } = renderDrawer(row(), { read: read({ files: worktreeFiles(3), fileCount: 3, unpushed: 1 }) })
 
     const band = li.querySelector('[data-tone]')
@@ -183,9 +183,57 @@ describe('Drawer safety', () => {
       'Removing it would discard 3 uncommitted files, counting untracked ones.Its 1 commit not on GitHub stays in the clone on worktree-pr-7, which removing it keeps.',
     )
     expect(column('Changes').getByRole('heading')).toHaveTextContent('Changes3')
-    // The backend decides which removal runs, and checks again as it removes.
-    expect(screen.getByRole('button', { name: 'Remove…' })).toBeEnabled()
+    // The files it has now call for Force remove…, which the backend, having listed it
+    // clean, didn't allow: the read holds the removal back until a listing checks again.
+    expect(screen.queryByRole('button', { name: 'Remove…' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Force remove…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Force remove…' })).toHaveAttribute(
+      'title',
+      'It can’t be force-removed right now: Check again',
+    )
+  })
+
+  it('holds Remove… back for one that reads clean now but listed with files, until it’s checked again', () => {
+    renderDrawer(row({ dirty: true, dirtyCount: 3, files: worktreeFiles(3), canRemove: false, canForceRemove: true }), {
+      read: read(),
+    })
+
     expect(screen.queryByRole('button', { name: 'Force remove…' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Remove…' })).toHaveAttribute(
+      'title',
+      'It can’t be removed right now: Check again',
+    )
+  })
+
+  it('says a worktree at its pull request’s head loses nothing, however many commits no remote has', () => {
+    // A fork's pull request: its head is on GitHub, though no remote-tracking branch has it.
+    const atHead = row({ unpushed: 3, onGitHub: true, stage: 'finished', canCleanUp: true })
+    const { li } = renderDrawer(atHead, {
+      read: read({
+        unpushed: 3,
+        commits: [worktreeCommit(), worktreeCommit({ oid: '1'.repeat(40) }), worktreeCommit({ oid: '2'.repeat(40) })],
+      }),
+    })
+
+    expect(li.querySelector('[data-tone]')).toHaveAttribute('data-tone', 'success')
+    expect(li.querySelector('[data-tone]')).toHaveTextContent(/^Safe to remove/)
+    expect(li.querySelector('[data-tone]')).not.toHaveTextContent(/aren’t on GitHub/)
+
+    const commits = column('Not on GitHub')
+    expect(commits.getByRole('heading')).toHaveTextContent(/^Not on GitHub$/)
+    expect(commits.queryByText('Keep the widget cache warm')).not.toBeInTheDocument()
+    expect(commits.getByText('None: every commit is on GitHub (PR #7’s head).')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Clean up' })).toBeEnabled()
+  })
+
+  it('counts the commits as not on GitHub once HEAD moved off its pull request’s head', () => {
+    const atHead = row({ unpushed: 3, onGitHub: true })
+    renderDrawer(atHead, { read: read({ unpushed: 4, commits: [worktreeCommit()] }) })
+
+    const commits = column('Not on GitHub')
+    expect(commits.getByRole('heading')).toHaveTextContent('Not on GitHub4')
+    expect(commits.getByText('Keep the widget cache warm')).toBeInTheDocument()
   })
 
   it('sets a branch’s name in code', () => {
@@ -246,6 +294,24 @@ describe('Drawer changes', () => {
     expect(line('bin/tool').getByText('T')).toHaveClass('text-muted')
     expect(changes.getAllByText('web/src/lib/')[0]).toHaveClass('text-muted')
     expect(changes.getByTitle('web/src/lib/storage.ts')).toHaveTextContent('web/src/lib/storage.ts')
+  })
+
+  it('lists a path git lists twice once for each status', () => {
+    // React warns when siblings share a key.
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    // git rm --cached leaves the file deleted in the index and untracked in the folder.
+    const files = [
+      { code: 'D ', path: 'notes.txt' },
+      { code: '??', path: 'notes.txt' },
+    ]
+    renderDrawer(row({ dirty: true, dirtyCount: 2, files, canRemove: false, canForceRemove: true }), {
+      read: read({ files, fileCount: 2 }),
+    })
+
+    const lines = column('Changes').getAllByRole('listitem')
+    expect(lines.map((li) => li.textContent)).toEqual(['Dnotes.txt', 'Unotes.txt'])
+    expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key/)
+    errors.mockRestore()
   })
 
   it('copies the list with each file’s status', async () => {
@@ -385,6 +451,26 @@ describe('Drawer commits', () => {
     expect(first.getByText('2h')).toBeInTheDocument()
     expect(commits.getByText('test: cover a reload')).toBeInTheDocument()
     expect(commits.getByText('1d')).toBeInTheDocument()
+  })
+
+  it('says where the commits past the first 200 are', () => {
+    const commits = Array.from({ length: 200 }, (_, i) => worktreeCommit({ oid: i.toString(16).padStart(40, '0') }))
+    renderDrawer(row({ unpushed: 350, onGitHub: false, item: noHead }), { read: read({ unpushed: 350, commits }) })
+
+    const notOnGitHub = column('Not on GitHub')
+    expect(notOnGitHub.getByRole('heading')).toHaveTextContent('Not on GitHub350')
+    expect(notOnGitHub.getAllByRole('listitem')).toHaveLength(200)
+    expect(notOnGitHub.getByText(/^Only the first 200 are listed here/)).toHaveTextContent(
+      'Only the first 200 are listed here; 150 more are in Terminal (git log)',
+    )
+  })
+
+  it('says nothing of the rest when every commit is listed', () => {
+    renderDrawer(ahead, {
+      read: read({ unpushed: 2, commits: [worktreeCommit(), worktreeCommit({ oid: '1'.repeat(40) })] }),
+    })
+
+    expect(column('Not on GitHub').queryByText(/are listed here/)).not.toBeInTheDocument()
   })
 
   it('counts them as they are now once read', () => {

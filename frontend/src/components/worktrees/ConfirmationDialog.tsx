@@ -1,9 +1,8 @@
 import { useEffect, useEffectEvent } from 'react'
 
 import { counted, formatCount } from '../../lib/format'
-import { asReadNow, changesOf, type WorktreeDetailsState } from '../../lib/useWorktreeDetails'
+import { asReadNow, changesOf, notOnGitHub, type WorktreeDetailsState } from '../../lib/useWorktreeDetails'
 import type { Choice, Confirmation, Target } from '../../lib/useWorktrees'
-import { unpushedKnown } from '../../lib/worktreeParts'
 import { safety, type Safety } from '../../lib/worktrees'
 import type {
   AgentID,
@@ -17,7 +16,7 @@ import type {
 import { ConfirmDialog } from '../ConfirmDialog'
 import { Spinner } from '../Spinner'
 import { chosenBranches, useTicks, WorktreeBranches } from './BranchChoices'
-import { CommitLine, FileLine, waiting } from './ChangeLists'
+import { CommitLine, FileLine, fileKey, RestInTerminal, waiting } from './ChangeLists'
 import { MergedBranchesDialog } from './MergedBranchesDialog'
 import { detachedOf } from './RowCells'
 import { SafetyBand, SafetyLine } from './SafetyBand'
@@ -104,16 +103,17 @@ interface ForceListsProps {
 
 // ForceLists are what Force remove takes and what it leaves: the uncommitted files it
 // discards, those its details read (at most 200), else the listing's first 12, and the
-// commits that aren't on GitHub, which stay on its branch, or, on a detached worktree, go
-// with it. It reads the worktree's details as it opens, and again after a listing that lands
-// while it's open, once a listing.
+// commits that aren't on GitHub (notOnGitHub), which stay on its branch, or, on a detached
+// worktree, go with it, each saying where the rest are past the first 200. It reads the
+// worktree's details as it opens, which asks again after a read that failed, and again
+// after a listing that lands while it's open, once a listing.
 function ForceLists({ repoPath, worktree: wt, details }: ForceListsProps) {
   const read = details.of(wt.path)
   const { files, count, current } = changesOf(wt, read)
   const reading = waiting(wt, read)
   const rest = count - files.length
   const commits: readonly WorktreeCommit[] = read?.state === 'read' ? read.details.commits : []
-  const unpushed = read?.state === 'read' && read.details.unpushed >= 0 ? read.details.unpushed : unpushedKnown(wt)
+  const unpushed = notOnGitHub(wt, read)
   const detached = detachedOf(wt)
   // unread reports nothing read for this listing: as the dialog opens, unless its drawer
   // has read it, and again once a listing lands while it's open, which drops what was read.
@@ -122,10 +122,10 @@ function ForceLists({ repoPath, worktree: wt, details }: ForceListsProps) {
     details.read(repoPath, wt)
   })
 
+  // It reads as it opens, and again each time unread changes: one that turns true is a new
+  // listing's, and one that turns false is the read starting, which asking again leaves be.
   useEffect(() => {
-    if (unread) {
-      readAgain()
-    }
+    readAgain()
   }, [unread])
 
   return (
@@ -136,7 +136,7 @@ function ForceLists({ repoPath, worktree: wt, details }: ForceListsProps) {
         </h3>
         <ul className="flex max-h-40 flex-col overflow-y-auto text-xs text-text">
           {files.map((file) => (
-            <FileLine key={file.path} file={file} />
+            <FileLine key={fileKey(file)} file={file} />
           ))}
         </ul>
         {rest > 0 &&
@@ -144,8 +144,7 @@ function ForceLists({ repoPath, worktree: wt, details }: ForceListsProps) {
             <Reading text={`reading the other ${formatCount(rest)}…`} />
           ) : (
             <p className="mt-1 text-xs text-muted">
-              {`Only the first ${formatCount(files.length)} are listed here; ${formatCount(rest)} more are in Terminal (`}
-              <code className="font-mono">git status</code>)
+              <RestInTerminal listed={files.length} count={count} command="git status" />
             </p>
           ))}
       </section>
@@ -167,6 +166,11 @@ function ForceLists({ repoPath, worktree: wt, details }: ForceListsProps) {
                 <CommitLine key={commit.oid} commit={commit} />
               ))}
             </ul>
+          )}
+          {commits.length > 0 && unpushed > commits.length && (
+            <p className="mt-1 text-xs text-muted">
+              <RestInTerminal listed={commits.length} count={unpushed} command="git log" />
+            </p>
           )}
           {reading && <Reading text="reading them…" />}
         </section>

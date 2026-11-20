@@ -234,6 +234,73 @@ describe('ConfirmationDialog for Force remove', () => {
     expect(dialog.queryByRole('region', { name: 'Commits not on GitHub' })).not.toBeInTheDocument()
   })
 
+  it('says where the commits past the 200 it lists are', async () => {
+    const commits = Array.from({ length: 200 }, (_, i) => worktreeCommit({ oid: i.toString(16).padStart(40, '0') }))
+    platform.worktreeDetails.mockResolvedValue(
+      worktreeDetails({ files: worktreeFiles(1), fileCount: 1, unpushed: 350, commits }),
+    )
+    const dialog = single('force', dirty(1, 350))
+
+    const listed = dialog.getByRole('region', { name: 'Commits not on GitHub' })
+    expect(
+      await within(listed).findByText(/^Only the first 200 are listed here; 150 more are in Terminal/),
+    ).toHaveTextContent('Only the first 200 are listed here; 150 more are in Terminal (git log)')
+    expect(within(listed).getByRole('heading')).toHaveTextContent('Keeps 350 not on GitHub')
+    expect(within(listed).getAllByRole('listitem')).toHaveLength(200)
+  })
+
+  it('keeps nothing as not on GitHub for one at its pull request’s head, whatever no remote has', async () => {
+    platform.worktreeDetails.mockResolvedValue(
+      worktreeDetails({ files: worktreeFiles(2), fileCount: 2, unpushed: 3, commits: [worktreeCommit()] }),
+    )
+    const dialog = single('force', dirty(2, 3, { onGitHub: true, branches: [ownBranch()] }))
+
+    await vi.waitFor(() => {
+      expect(within(dialog.getByRole('region', { name: 'Files it discards' })).queryByRole('status')).toBeNull()
+    })
+    expect(dialog.queryByRole('region', { name: 'Commits not on GitHub' })).not.toBeInTheDocument()
+    expect(dialog.queryByText(/not on GitHub/)).not.toBeInTheDocument()
+  })
+
+  it('lists a path git lists twice once for each status', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const files = [
+      { code: 'D ', path: 'notes.txt' },
+      { code: '??', path: 'notes.txt' },
+    ]
+    platform.worktreeDetails.mockResolvedValue(worktreeDetails({ files, fileCount: 2 }))
+    const dialog = single('force', dirty(2, 0, { files }))
+
+    const listed = dialog.getByRole('region', { name: 'Files it discards' })
+    await vi.waitFor(() => {
+      expect(platform.worktreeDetails).toHaveBeenCalledOnce()
+    })
+    expect(paths(within(listed).getByRole('list'))).toEqual(['notes.txt', 'notes.txt'])
+    expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key/)
+    errors.mockRestore()
+  })
+
+  it('reads the details again as it opens after a read that failed', () => {
+    const read = vi.fn()
+    const wt = dirty(3)
+    render(
+      <ConfirmationDialog
+        confirmation={{ kind: 'force', repoPath, worktree: wt }}
+        rules={rules}
+        now={FIXED_NOW}
+        repos={[worktreeRepo()]}
+        details={{ of: () => ({ state: 'failed', error: 'Couldn’t read the worktree.' }), read }}
+        sessions={new Map()}
+        agentName={(id) => id}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { wrapper: at() },
+    )
+
+    expect(read).toHaveBeenCalledExactlyOnceWith(repoPath, wt)
+  })
+
   it('keeps the listing’s files and count when the details can’t be read', async () => {
     platform.worktreeDetails.mockRejectedValue(new Error('git status: exit status 128'))
     const dialog = single('force', dirty(30, 1))

@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AgentID, Worktree, WorktreeRepo } from '../../platform'
-import { finishedWorktree, linkedItem, worktree, worktreeRepo } from '../../test/fixtures'
+import {
+  finishedWorktree,
+  linkedItem,
+  worktree,
+  worktreeDetails,
+  worktreeFiles,
+  worktreeRepo,
+} from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import type { MenuItem } from '../Menu'
 import { cleanupMenuItems, goneWhy, rowMenuItems, type CleanupMenuOptions, type RowMenuOptions } from './menus'
@@ -16,6 +23,7 @@ function options(wt: Worktree, overrides: Partial<RowMenuOptions> = {}): RowMenu
   return {
     repo: er,
     worktree: wt,
+    read: undefined,
     disabled: false,
     agentName,
     onTerminal: vi.fn(),
@@ -87,6 +95,16 @@ describe('rowMenuItems', () => {
     ])
     expect(pick(items, 'Force remove…').danger).toBe(true)
     expect(pick(items, 'Remove…').title).toBe('It has uncommitted files: Force remove… discards them')
+  })
+
+  it('counts the removals as the details read them, holding back what the listing allowed', () => {
+    const read = { state: 'read', details: worktreeDetails({ files: worktreeFiles(3), fileCount: 3 }) } as const
+    const items = rowMenuItems(options(worktree(), { read }))
+
+    expect(shown(items).slice(-2)).toEqual([
+      'Remove… (off: It has uncommitted files: Force remove… discards them)',
+      'Force remove… (off: It can’t be force-removed right now: Check again)',
+    ])
   })
 
   it('says why neither removal runs while something runs in it', () => {

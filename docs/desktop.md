@@ -5493,10 +5493,12 @@ branch. **About** says what the worktree is for, the session in it, its launches
 (Nilbox, a routine, Claude Code under a clone's `.claude/worktrees/`, or someone outside the
 app) and when, its path, its lock, and which branches a removal would delete. The first 12
 files show at once, from the listing; the drawer reads the rest from local git as it opens,
-with the commits and the base, once per listing, and lists at most 200 files (the rest are in
-Terminal, in `git status`). The drawer's footer has **Open in Terminal**, **Reveal in Finder**,
-and **Copy path**, then **Clean up** or **Unlock**, and **Remove…**, or **Force remove…** for a
-worktree with uncommitted files, each saying why when it can't run.
+with the commits and the base, once per listing (a read that failed is tried again when the
+drawer opens again), and lists at most 200 files and 200 commits (the rest are in Terminal, in
+`git status` and `git log`). The drawer's footer has **Open in Terminal**, **Reveal in
+Finder**, and **Copy path**, then **Clean up** or **Unlock**, and **Remove…**, or **Force
+remove…** for a worktree with uncommitted files, as the drawer last read them, each saying why
+when it can't run.
 
 **The ⋯ menu** holds everything a row offers: **Open in Terminal**, **Reveal in Finder**, **Copy
 path**, **Copy branch**, the item on GitHub, **Unlock** for a lock an ended session left,
@@ -5584,9 +5586,9 @@ again**, or make the next change.
 - **Force remove…** is offered only on dirty, unlocked worktrees no session runs in, and only
   while the running processes can be listed. It runs `git worktree remove --force` after a
   confirmation that lists the uncommitted files it discards (as the drawer lists them, read
-  from local git once per listing, at most 200) and the commits not on GitHub, which stay in
-  the clone on the worktree's branch, or, for a detached worktree, which no branch holds, are
-  lost with it.
+  from local git once per listing, at most 200) and the commits not on GitHub (at most 200
+  too), which stay in the clone on the worktree's branch, or, for a detached worktree, which no
+  branch holds, are lost with it.
 - **Prune** appears on the heading of a clone with entries whose folder is gone, and runs
   `git worktree prune`, which touches no worktree that exists and no branch.
 - The main checkout shows only as its clone's note, and is never removable.

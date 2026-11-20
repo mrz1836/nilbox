@@ -374,8 +374,10 @@ export interface DrawerProps {
 // its actions in words: Open in Terminal, Reveal in Finder, and Copy path (or Prune, for a
 // folder that's gone), then Clean up or Unlock, and Remove… for a clean one or Force
 // remove… for one with uncommitted files, each saying why when it can't run. Which removal
-// it offers, and why one can't run, stay the listing's: the backend decides, and checks
-// again as it removes.
+// it offers, and why one can't run, are counted as the sentence over them is, so they never
+// contradict it; whether one may run at all stays the backend's (its can* flags), which
+// checks again as it removes, so a read can only hold a removal back, never allow one the
+// listing refused.
 export function Drawer({
   id,
   repo,
@@ -396,20 +398,23 @@ export function Drawer({
   onPrune,
 }: DrawerProps) {
   const now = useNow()
-  const verb = verbOf(worktree, false)
+  // fresh is the worktree counted as its details last counted it, which the sentence on
+  // top and the removal in the footer both go by.
+  const fresh = asReadNow(worktree, read)
+  const verb = verbOf(fresh, false)
   const errors = errorsOf(read)
-  const force = worktree.dirtyCount > 0
-  const removeReason = removeWhy(worktree, force, agentName)
+  const force = fresh.dirtyCount > 0
+  const removeReason = removeWhy(fresh, force, agentName)
   const removeTitle =
     removeReason !== ''
       ? removeReason
       : force
-        ? `Discards ${counted(worktree.dirtyCount, 'uncommitted file', 'uncommitted files')}; lists them and asks first`
+        ? `Discards ${counted(fresh.dirtyCount, 'uncommitted file', 'uncommitted files')}; lists them and asks first`
         : 'Removes the folder; asks which branches go with it'
 
   return (
     <li id={id} aria-label={`About ${nameOf(worktree)}`} className={drawerClass}>
-      <SafetyBand safety={safety(asReadNow(worktree, read), repo, now, session, agentName)} />
+      <SafetyBand safety={safety(fresh, repo, now, session, agentName)} />
       <div className={drawerColumnsClass}>
         <Changes worktree={worktree} read={read} />
         <NotOnGitHub worktree={worktree} read={read} />

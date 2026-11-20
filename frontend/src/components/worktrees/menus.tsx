@@ -1,4 +1,5 @@
 import { counted } from '../../lib/format'
+import { asReadNow, type DetailsRead } from '../../lib/useWorktreeDetails'
 import { itemRef } from '../../lib/worktreeParts'
 import { removeWhy } from '../../lib/worktrees'
 import { copyText, openExternal, type AgentID, type Worktree, type WorktreeRepo } from '../../platform'
@@ -52,6 +53,9 @@ export function goneWhy(wt: Worktree): string {
 export interface RowMenuOptions {
   repo: WorktreeRepo
   worktree: Worktree
+  // read is what the window has read of the worktree's details for this listing, or
+  // undefined before anything asked: the removals are counted by it, as its drawer's are.
+  read: DetailsRead | undefined
   // disabled holds every change while one, or a listing, runs.
   disabled: boolean
   agentName: (id: AgentID) => string
@@ -67,7 +71,9 @@ export interface RowMenuOptions {
 // rowMenuItems are a row's ⋯: Open in Terminal, Reveal in Finder, Copy path, Copy branch,
 // Open the item on GitHub, Unlock for a lock an ended session left, Prune for a folder
 // that's gone, then Clean up… for a finished worktree, Remove…, and Force remove… for one
-// with uncommitted files, in red.
+// with uncommitted files, in red. The removals count its files as its details last did
+// (asReadNow), as its drawer does, so a read can hold one back but never allow one the
+// backend refused.
 export function rowMenuItems(o: RowMenuOptions): MenuItem[] {
   const { repo, worktree: wt, disabled } = o
   const gone = goneWhy(wt)
@@ -144,7 +150,8 @@ export function rowMenuItems(o: RowMenuOptions): MenuItem[] {
     return items
   }
 
-  const removeReason = removeWhy(wt, false, o.agentName)
+  const fresh = asReadNow(wt, o.read)
+  const removeReason = removeWhy(fresh, false, o.agentName)
 
   items.push(
     ...(wt.canCleanUp
@@ -172,8 +179,8 @@ export function rowMenuItems(o: RowMenuOptions): MenuItem[] {
     },
   )
 
-  if (wt.dirtyCount > 0) {
-    const forceReason = removeWhy(wt, true, o.agentName)
+  if (fresh.dirtyCount > 0) {
+    const forceReason = removeWhy(fresh, true, o.agentName)
 
     items.push({
       label: 'Force remove…',

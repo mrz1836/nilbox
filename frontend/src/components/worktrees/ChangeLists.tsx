@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { formatCount } from '../../lib/format'
 import { shortCommit } from '../../lib/git'
 import { formatAge, formatAgo, formatFull } from '../../lib/time'
-import { changesOf, readable, type DetailsRead } from '../../lib/useWorktreeDetails'
+import { changesOf, notOnGitHub, readable, type DetailsRead } from '../../lib/useWorktreeDetails'
 import { fileStatus, itemRef, unpushedKnown, unpushedUnknown } from '../../lib/worktreeParts'
 import type { Worktree, WorktreeCommit, WorktreeFile } from '../../platform'
 import { quietButtonClass } from '../controls'
@@ -63,6 +63,24 @@ export function FileLine({ file }: { file: WorktreeFile }) {
   )
 }
 
+// fileKey is a changed file's key in a list: its status letters and its path, which a NUL
+// keeps apart, since git can list one path twice, as a file removed from the index and kept
+// untracked (D and ??).
+export function fileKey(file: WorktreeFile): string {
+  return `${file.code}\u0000${file.path}`
+}
+
+// RestInTerminal says where the rest of a list are when it holds only the first listed of
+// count: in Terminal, through command.
+export function RestInTerminal({ listed, count, command }: { listed: number; count: number; command: string }) {
+  return (
+    <>
+      {`Only the first ${formatCount(listed)} are listed here; ${formatCount(count - listed)} more are in Terminal (`}
+      <code className="font-mono">{command}</code>)
+    </>
+  )
+}
+
 // listText is files as Copy list puts them on the clipboard: each one's status letters and
 // its path, one a line.
 function listText(files: readonly WorktreeFile[]): string {
@@ -90,7 +108,7 @@ function FileList({ worktree, read }: ColumnProps) {
     <>
       <ul className="flex flex-col text-xs">
         {shown.map((file) => (
-          <FileLine key={file.path} file={file} />
+          <FileLine key={fileKey(file)} file={file} />
         ))}
       </ul>
       {(reading || files.length > firstFiles || past) && (
@@ -119,8 +137,7 @@ function FileList({ worktree, read }: ColumnProps) {
           )}
           {past && (
             <span className="px-1.5">
-              {`Only the first ${formatCount(files.length)} are listed here; ${formatCount(count - files.length)} more are in Terminal (`}
-              <code className="font-mono">git status</code>)
+              <RestInTerminal listed={files.length} count={count} command="git status" />
             </span>
           )}
         </div>
@@ -203,20 +220,17 @@ export function CommitLine({ commit }: { commit: WorktreeCommit }) {
 const skeletonWidths = ['w-52', 'w-40', 'w-48', 'w-32']
 
 // countedNow reports details that counted the commits not on GitHub.
-function countedNow(read: DetailsRead | undefined): read is Extract<DetailsRead, { state: 'read' }> {
+function countedNow(read: DetailsRead | undefined): boolean {
   return read?.state === 'read' && read.details.unpushed >= 0
 }
 
-// unpushedOf is how many commits on a worktree aren't on GitHub: as its details count them
-// now, once read, else as the listing did.
-function unpushedOf(wt: Worktree, read: DetailsRead | undefined): number {
-  return countedNow(read) ? read.details.unpushed : unpushedKnown(wt)
-}
-
-// Commits are the commits a worktree holds that aren't on GitHub, once Details has read
-// them, with a line standing in for each of the first four while it reads.
+// Commits are the commits a worktree holds that aren't on GitHub (notOnGitHub), once
+// Details has read them, with a line standing in for each of the first four while it reads,
+// and where the rest are past the first 200. Commits at its pull request's head are on
+// GitHub, however many no remote-tracking branch holds.
 function Commits({ worktree, read }: ColumnProps) {
   const known = unpushedKnown(worktree)
+  const n = notOnGitHub(worktree, read)
   const { item } = worktree
 
   if (worktree.prunable || worktree.error !== '') {
@@ -238,17 +252,26 @@ function Commits({ worktree, read }: ColumnProps) {
     )
   }
 
-  if (read?.state === 'read' && read.details.commits.length > 0) {
+  if (n > 0 && read?.state === 'read' && read.details.commits.length > 0) {
+    const { commits } = read.details
+
     return (
-      <ul className="flex flex-col text-xs">
-        {read.details.commits.map((commit) => (
-          <CommitLine key={commit.oid} commit={commit} />
-        ))}
-      </ul>
+      <>
+        <ul className="flex flex-col text-xs">
+          {commits.map((commit) => (
+            <CommitLine key={commit.oid} commit={commit} />
+          ))}
+        </ul>
+        {n > commits.length && (
+          <p className="mt-1 px-1.5 text-xs text-muted">
+            <RestInTerminal listed={commits.length} count={n} command="git log" />
+          </p>
+        )}
+      </>
     )
   }
 
-  if (unpushedOf(worktree, read) > 0) {
+  if (n > 0) {
     return (
       <p className={columnNoneClass}>
         <AlertIcon className="size-3.5 text-warning" />
@@ -355,7 +378,7 @@ function BranchLines({ worktree, read }: ColumnProps) {
 // NotOnGitHub is the drawer's second column: the commits a worktree holds that aren't on
 // GitHub, then its branch, head, and base, against origin's default branch.
 export function NotOnGitHub({ worktree, read }: ColumnProps) {
-  const n = worktree.prunable || worktree.error !== '' ? 0 : unpushedOf(worktree, read)
+  const n = worktree.prunable || worktree.error !== '' ? 0 : notOnGitHub(worktree, read)
 
   return (
     <div className={drawerColumnClass}>

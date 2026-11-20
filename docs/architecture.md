@@ -5318,11 +5318,19 @@ window already has, the inbox's items by `itemKey` and the followed sessions by 
 which add words and move no row to another lane. `lib/useWorktreeDetails` keeps the `Details`
 read for one listing, which `useWorktrees` numbers (`listing`): a new number drops them (state
 set while rendering), a ref dedupes the asks, so StrictMode's doubled effects make one call,
-and an answer for an older listing is dropped. An open drawer reads as it opens and after each
+and an answer for an older listing is dropped. A failed ask leaves the ref, so the next read
+asks again, but nothing retries on its own. An open drawer reads as it opens and after each
 listing (`useEffectEvent` and an effect), and Force remove's confirmation as it mounts and
 whenever a listing drops what it read while it's open, both through the page's one instance,
 and `readable` keeps the main checkout, a folder that's gone, and one git couldn't read from
-asking at all. Every clone shares one grid, `worktreeGridClass`
+asking at all. `asReadNow` counts a worktree's files and commits as its details last did, and
+the drawer's band and removal, the ⋯ menu's removals, and the confirmations all go by it, so a
+read can hold a removal back but never allow one the `can*` flags refused. Details doesn't say
+whether HEAD is the pull request's head (on GitHub for a fork's, though no remote-tracking
+branch has it), so a count of commits equal to the listing's keeps the listing's `onGitHub`,
+and one that changed counts as not on GitHub; `notOnGitHub` is that count, which the drawer's
+column and Force remove's list go by, each saying where the rest are past the first 200 (`git
+log`). Every clone shares one grid, `worktreeGridClass`
 in `worktrees/layout.ts`, of nine columns, the verb's apart from the tools' so a launch's
 control never widens them; each `CloneSection`, its `<ul>`, and each `WorktreeLine` row is a
 `grid-cols-subgrid` of it, so the columns line up down the page, and the rows follow the
