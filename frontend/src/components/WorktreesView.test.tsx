@@ -1311,34 +1311,36 @@ describe('WorktreesView history', () => {
     render(<WorktreesView clock={fixedNow} />)
 
     const list = await history()
-    expect(list.getByText('Everything in them was on GitHub')).toBeInTheDocument()
+    expect(list.getByRole('heading')).toHaveTextContent('Recently cleaned up · 3everything in them was on GitHub')
 
     const rows = list.getAllByRole('listitem')
     expect(rows).toHaveLength(3)
 
     const auto = within(rows[0] as HTMLElement)
-    expect(auto.getByText('example-repo')).toBeInTheDocument()
-    expect(auto.getByText('pr-7')).toHaveAttribute('title', '~/projects/example-repo/.claude/worktrees/pr-7')
+    expect(auto.getByTitle('~/projects/example-repo/.claude/worktrees/pr-7')).toHaveTextContent('example-repo / pr-7')
     expect(auto.getByText(/Add the widget cache/)).toBeInTheDocument()
-    expect(rows[0]).toHaveTextContent(
-      'Cleaned up automatically after the pull request merged · deleted worktree-pr-7 · was at fc1c397',
+    expect(auto.getByText('automatic · after merge')).toBeInTheDocument()
+    expect(rows[0]).toHaveTextContent('deleted worktree-pr-7')
+    expect(auto.getByText('fc1c397')).toHaveAttribute(
+      'title',
+      'Was at fc1c3975011e66491785ace891c893e4fc716587, which is on GitHub',
     )
-    expect(auto.getByText('fc1c397')).toHaveAttribute('title', 'fc1c3975011e66491785ace891c893e4fc716587')
     const when = auto.getByText('2h ago')
     expect(when).toHaveAttribute('dateTime', '2026-06-15T10:00:00Z')
     expect(when.getAttribute('title')).toMatch(/2026/)
 
-    await userEvent.click(auto.getByRole('button', { name: 'PR #7' }))
+    await userEvent.click(auto.getByRole('button', { name: 'Open PR #7 on GitHub' }))
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/pull/7')
 
     const manual = within(rows[1] as HTMLElement)
-    expect(manual.getByRole('button', { name: 'Issue #9' })).toHaveAttribute('title', 'acme-org/example-repo#9')
-    expect(rows[1]).toHaveTextContent('Cleaned up by you after the issue closed · its branch was kept')
-    expect(rows[1]).not.toHaveTextContent('was at')
+    expect(manual.getByRole('button', { name: 'Open Issue #9 on GitHub' })).toBeInTheDocument()
+    expect(rows[1]).toHaveTextContent('by you')
+    expect(rows[1]).toHaveTextContent('its branch was kept')
+    expect(manual.queryByTitle(/^Was at/)).not.toBeInTheDocument()
     expect(manual.getByText('2d ago')).toBeInTheDocument()
 
-    expect(rows[2]).toHaveTextContent('Cleaned up automatically · deleted worktree-pr-7')
-    expect(within(rows[2] as HTMLElement).queryByRole('button')).not.toBeInTheDocument()
+    expect(rows[2]).toHaveTextContent('automatic · after it finished')
+    expect(within(rows[2] as HTMLElement).queryByRole('button', { name: /^Open/ })).not.toBeInTheDocument()
 
     expect(list.queryByRole('button', { name: /more/ })).not.toBeInTheDocument()
   })
@@ -1407,7 +1409,7 @@ describe('WorktreesView history', () => {
     await userEvent.click(row(linkedDisplay).getByRole('button', { name: 'Clean up' }))
     await confirmWith('Clean up')
 
-    expect((await history()).getByText(/Cleaned up by you/)).toBeInTheDocument()
+    expect((await history()).getByText('by you')).toBeInTheDocument()
   })
 
   it('scrolls to the list once when asked to', async () => {

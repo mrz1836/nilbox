@@ -130,6 +130,39 @@ export const drawerFooterClass =
 // skeletonClass stands in for a word still being read.
 export const skeletonClass = 'inline-block h-2.25 rounded-sm bg-raised align-middle motion-safe:animate-pulse'
 
+// historyListClass is the recently cleaned-up list: a grid of its own, of eight columns
+// its lines take as subgrids (the mark, where it was, what it was for, who cleaned it up,
+// the branch that went with it, the commit, the age, and the actions), and the container
+// they follow. Under 56rem who cleaned it up, the branch, and the commit move to a second
+// line; under 36rem what it was for and the branch give way.
+export const historyListClass =
+  '@container grid grid-cols-[auto_fit-content(16rem)_minmax(0,1fr)_auto_fit-content(14rem)_auto_auto_auto] gap-x-3'
+
+export const historyRowClass =
+  'group/cleanup col-span-full grid min-h-7 grid-cols-subgrid items-center rounded-md py-0.5 pr-1 pl-2 text-[0.78125rem] hover:bg-raised/60 focus-within:bg-raised/60 @max-4xl:py-1'
+
+// historyCell is what every cell of a cleaned-up line shares: one line, cut short.
+const historyCell = 'row-start-1 min-w-0 truncate'
+
+export const historyIconClass = `${historyCell} col-start-1 flex text-success`
+
+export const historyWhereClass = `${historyCell} col-start-2`
+
+export const historyItemClass = `${historyCell} col-start-3 @max-xl:hidden`
+
+export const historyHowClass = `${historyCell} col-start-4 text-xs text-muted @max-4xl:col-[2/5] @max-4xl:row-start-2 @max-xl:col-[2/6]`
+
+export const historyBranchClass = `${historyCell} col-start-5 text-xs text-muted @max-4xl:col-[5/7] @max-4xl:row-start-2 @max-xl:hidden`
+
+export const historyCommitClass = `${historyCell} col-start-6 cursor-help font-mono text-[0.71875rem] text-muted @max-4xl:col-[7/-1] @max-4xl:row-start-2 @max-4xl:justify-self-end @max-4xl:pr-1.5`
+
+export const historyAgeClass = `${historyCell} col-start-7 text-right text-xs text-muted tabular-nums`
+
+// historyActionsClass holds a line's Copy restore command and Open, shown while the line
+// is pointed at or holds the focus.
+export const historyActionsClass =
+  'col-start-8 row-start-1 flex items-center gap-0.5 justify-self-end opacity-0 transition-opacity group-focus-within/cleanup:opacity-100 group-hover/cleanup:opacity-100'
+
 // toneText and toneBg color a part of the page by its tone, spelled out in full so
 // Tailwind finds them.
 export const toneText: Readonly<Record<Tone, string>> = {

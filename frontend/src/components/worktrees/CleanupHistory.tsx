@@ -1,89 +1,132 @@
 import { useId, useState, type Ref } from 'react'
 
+import { shortCommit } from '../../lib/git'
 import { formatAgo, formatFull } from '../../lib/time'
+import { itemRef, kindOf, restoreCommand } from '../../lib/worktreeParts'
 import { openExternal, type LinkedItem, type WorktreeCleanup } from '../../platform'
 import { quietButtonClass } from '../controls'
-import { CircleCheckIcon, IssueIcon, PullRequestIcon } from '../icons'
+import { CheckIcon, ExternalIcon, IssueClosedIcon, MergeIcon, PullRequestIcon, ResetIcon } from '../icons'
+import { GroupHeading } from '../scripts/GroupHeading'
 import { Spinner } from '../Spinner'
+import { CopyButton } from './CopyButton'
+import {
+  historyActionsClass,
+  historyAgeClass,
+  historyBranchClass,
+  historyCommitClass,
+  historyHowClass,
+  historyIconClass,
+  historyItemClass,
+  historyListClass,
+  historyRowClass,
+  historyWhereClass,
+  iconButtonClass,
+} from './layout'
 
 // historyPreview is how many cleanups the history shows before "Show more".
 const historyPreview = 5
 
-// itemNoun names an item's kind in a sentence.
-function itemNoun(item: LinkedItem): string {
-  return item.kind === 'pr' ? 'pull request' : 'issue'
+// DoneMark marks what a cleaned-up worktree was for, in the color of work that is done: a
+// merged pull request, another pull request, an issue, or nothing.
+function DoneMark({ item }: { item: LinkedItem | null }) {
+  const icon = 'size-3.25'
+
+  if (item === null) {
+    return <CheckIcon className={icon} />
+  }
+
+  if (item.kind === 'issue') {
+    return <IssueClosedIcon className={icon} />
+  }
+
+  return item.state === 'merged' ? <MergeIcon className={icon} /> : <PullRequestIcon className={icon} />
 }
 
-// CleanupSummary says how a worktree was cleaned up, what went with it, and the commit it
-// was at, which is on GitHub.
-function CleanupSummary({ cleanup }: { cleanup: WorktreeCleanup }) {
-  const who = cleanup.automatic ? 'Cleaned up automatically' : 'Cleaned up by you'
-  const after = cleanup.item === null ? '' : ` after the ${itemNoun(cleanup.item)} ${cleanup.item.state}`
+// howWords say who cleaned a worktree up: the app, after its pull request merged or its
+// issue closed, or the user.
+function howWords(cleanup: WorktreeCleanup): string {
+  if (!cleanup.automatic) {
+    return 'by you'
+  }
 
-  return (
-    <p className="text-xs text-muted">
-      {who}
-      {after}
-      {' · '}
-      {cleanup.deletedBranch === '' ? (
-        'its branch was kept'
-      ) : (
-        <>
-          deleted <span className="font-medium text-text">{cleanup.deletedBranch}</span>
-        </>
-      )}
-      {cleanup.head !== '' && (
-        <>
-          {' · was at '}
-          <code title={cleanup.head} className="font-mono">
-            {cleanup.head.slice(0, 7)}
-          </code>
-        </>
-      )}
-    </p>
-  )
-}
-
-// CleanupRow is one cleaned-up worktree: where it was, what it was for, and when it went.
-function CleanupRow({ cleanup, now }: { cleanup: WorktreeCleanup; now: Date }) {
   const { item } = cleanup
-  // KindIcon marks what the worktree was for, in the color of work that is done.
-  const KindIcon = item === null ? CircleCheckIcon : item.kind === 'pr' ? PullRequestIcon : IssueIcon
+
+  return `automatic · after ${item === null ? 'it finished' : item.kind === 'pr' ? 'merge' : 'close'}`
+}
+
+// CleanupLine is one cleaned-up worktree: where it was, what it was for, who cleaned it up,
+// the branch that went with it, the commit it was at, and when it went; then, while
+// pointed at or focused, Copy restore command, which brings it back at that commit (on its
+// branch again, when that went with it), and Open, which shows what it was for on GitHub.
+function CleanupLine({ cleanup, now }: { cleanup: WorktreeCleanup; now: Date }) {
+  const { item } = cleanup
+  const command = restoreCommand(cleanup)
+  // A pull request's head is on GitHub, which is why its worktree could go; when git has
+  // pruned it from the clone since, fetching the pull request's head brings it back.
+  const refetch =
+    item?.kind === 'pr'
+      ? ` If git has pruned it since, git fetch origin pull/${String(item.number)}/head brings it back first.`
+      : ''
 
   return (
-    <li className="flex items-start gap-2.5 border-b border-border px-3 py-2.5 last:border-b-0">
-      <KindIcon className="mt-0.5 size-4 shrink-0 text-success" />
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p className="flex min-w-0 items-baseline gap-2 text-sm">
-          <span className="shrink-0 font-medium">{cleanup.repo}</span>
-          <span className="shrink-0 text-muted" title={cleanup.displayPath}>
-            {cleanup.worktree}
-          </span>
-          {item !== null && (
-            <span className="min-w-0 truncate text-muted">
-              <button
-                type="button"
-                title={`${item.owner}/${item.name}#${String(item.number)}`}
-                onClick={() => {
-                  openExternal(item.url)
-                }}
-                className="font-medium text-text hover:underline"
-              >
-                {item.kind === 'pr' ? 'PR' : 'Issue'} #{item.number}
-              </button>{' '}
-              {item.title}
-            </span>
-          )}
-        </p>
-        <CleanupSummary cleanup={cleanup} />
-      </div>
-      <time
-        dateTime={cleanup.cleanedAt}
-        title={formatFull(cleanup.cleanedAt)}
-        className="shrink-0 pt-0.5 text-xs text-muted"
-      >
+    <li className={historyRowClass}>
+      <span title={item === null ? 'Cleaned up' : kindOf(item, false, now).words} className={historyIconClass}>
+        <DoneMark item={item} />
+      </span>
+      <span title={cleanup.displayPath} className={historyWhereClass}>
+        <span className="text-muted">{cleanup.repo} / </span>
+        <span className="font-medium">{cleanup.worktree}</span>
+      </span>
+      <span className={historyItemClass}>
+        {item !== null && (
+          <>
+            <span className="text-muted tabular-nums">#{String(item.number)}</span> {item.title}
+          </>
+        )}
+      </span>
+      <span className={historyHowClass}>{howWords(cleanup)}</span>
+      <span className={historyBranchClass}>
+        {cleanup.deletedBranch === '' ? (
+          'its branch was kept'
+        ) : (
+          <>
+            deleted <span className="font-medium text-text">{cleanup.deletedBranch}</span>
+          </>
+        )}
+      </span>
+      {cleanup.head !== '' && (
+        <span title={`Was at ${cleanup.head}, which is on GitHub`} className={historyCommitClass}>
+          {shortCommit(cleanup.head)}
+        </span>
+      )}
+      <time dateTime={cleanup.cleanedAt} title={formatFull(cleanup.cleanedAt)} className={historyAgeClass}>
         {formatAgo(now, cleanup.cleanedAt)}
       </time>
+      <span className={historyActionsClass}>
+        {command !== '' && (
+          <CopyButton
+            text={command}
+            what="restore command"
+            ariaLabel={`Copy the command that restores ${cleanup.worktree}`}
+            title={`Copy restore command: ${command}.${refetch}`}
+            icon={<ResetIcon className="size-3.5" />}
+            className={iconButtonClass}
+          />
+        )}
+        {item !== null && (
+          <button
+            type="button"
+            aria-label={`Open ${itemRef(item)} on GitHub`}
+            title={`Open ${itemRef(item)} on GitHub`}
+            onClick={() => {
+              openExternal(item.url)
+            }}
+            className={iconButtonClass}
+          >
+            <ExternalIcon className="size-3.5" />
+          </button>
+        )}
+      </span>
     </li>
   )
 }
@@ -100,8 +143,9 @@ export interface CleanupHistoryProps {
 }
 
 // CleanupHistory lists the worktrees cleaned up most recently, by hand or automatically,
-// so a cleanup whose toast went by unseen can still be found. It shows the newest few, and
-// the rest on request.
+// so a cleanup whose toast went by unseen can still be found, and put back: under a
+// heading that folds it, with Clear, which forgets the list and removes nothing else, one
+// line each, in columns of its own. It shows the newest few, and the rest on request.
 export function CleanupHistory({
   cleanups,
   now,
@@ -112,26 +156,30 @@ export function CleanupHistory({
   sectionRef,
 }: CleanupHistoryProps) {
   const headingId = useId()
+  const [open, setOpen] = useState(true)
   const [expanded, setExpanded] = useState(false)
   const shown = expanded ? cleanups : cleanups.slice(0, historyPreview)
   const more = cleanups.length - historyPreview
 
   return (
-    <section
-      ref={sectionRef}
-      aria-labelledby={headingId}
-      className="scroll-mt-4 rounded-lg border border-border bg-surface"
-    >
-      <header className="flex items-center gap-3 border-b border-border px-3 py-2">
-        <h2 id={headingId} className="text-sm font-semibold">
-          Recently cleaned up
-        </h2>
-        <span className="text-xs text-muted">Everything in them was on GitHub</span>
+    <section ref={sectionRef} aria-label="Recently cleaned up" className="flex scroll-mt-4 flex-col gap-0.5">
+      <GroupHeading
+        id={headingId}
+        title="Recently cleaned up"
+        count={cleanups.length}
+        open={open}
+        disabled={false}
+        onToggle={() => {
+          setOpen(!open)
+        }}
+        note="everything in them was on GitHub"
+      >
         <button
           type="button"
           disabled={disabled || clearing}
+          title="Forgets this list; removes nothing else"
           onClick={onClear}
-          className={`ml-auto ${quietButtonClass}`}
+          className={quietButtonClass}
         >
           {clearing ? (
             <>
@@ -142,30 +190,34 @@ export function CleanupHistory({
             'Clear'
           )}
         </button>
-      </header>
+      </GroupHeading>
       {error !== '' && (
-        <p role="alert" className="px-3 py-2 text-sm text-danger">
+        <p role="alert" className="px-1 text-sm text-danger">
           {error}
         </p>
       )}
-      <ul>
-        {shown.map((c) => (
-          <CleanupRow key={c.id} cleanup={c} now={now} />
-        ))}
-      </ul>
-      {more > 0 && (
-        <div className="border-t border-border px-1.5 py-1">
-          <button
-            type="button"
-            aria-expanded={expanded}
-            onClick={() => {
-              setExpanded(!expanded)
-            }}
-            className={quietButtonClass}
-          >
-            {expanded ? 'Show fewer' : `Show ${String(more)} more`}
-          </button>
-        </div>
+      {open && (
+        <>
+          <ul aria-label="Recently cleaned up worktrees" className={historyListClass}>
+            {shown.map((c) => (
+              <CleanupLine key={c.id} cleanup={c} now={now} />
+            ))}
+          </ul>
+          {more > 0 && (
+            <div className="pt-0.5 pl-1">
+              <button
+                type="button"
+                aria-expanded={expanded}
+                onClick={() => {
+                  setExpanded(!expanded)
+                }}
+                className={quietButtonClass}
+              >
+                {expanded ? 'Show fewer' : `Show ${String(more)} more`}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </section>
   )
