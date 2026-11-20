@@ -22,14 +22,16 @@ import (
 //
 //   - this listing found each with an identical copy on one pushed branch of a GitHub
 //     remote (Copies.full): the copies are on GitHub as that branch; or
-//   - the branch its copy record names is gone, and the record still holds: it describes
-//     the worktree (its HEAD is the record's; see liveCopies), it covers every commit the
-//     worktree has that isn't on GitHub (each is one whose copy the record vouches for, or
-//     is on the record's branch commit itself; see judgeCoverage), this listing read the
-//     record's pull request from GitHub, and that pull request's head is the record's
-//     branch commit or has it (prHolds). GitHub keeps a pull request's head commit, so the
-//     copies stay on GitHub however the pull request merged and whatever became of its
-//     branch. Copies.Recorded says so.
+//   - its copy record holds: it describes the worktree (its HEAD is the record's; see
+//     liveCopies), it covers every commit the worktree has that isn't on GitHub (each is
+//     one whose copy the record vouches for, or is on the record's branch commit itself;
+//     see judgeCoverage), this listing read the record's pull request from GitHub, and that
+//     pull request's head is the record's branch commit or has it (prHolds); and either the
+//     branch the record names is gone, or that pull request merged. GitHub keeps a pull
+//     request's head commit, so the copies stay on GitHub however the pull request merged
+//     and whatever became of its branch, deleted or force-pushed without them. While the
+//     pull request is open and its branch there, only the copies this listing finds on the
+//     branch count. Copies.Recorded says the record vouched.
 //
 // The automatic cleanup takes a worktree whose work is on GitHub only as copies only once
 // the record's pull request merged with them all (copyState.merged), and its own branch is
@@ -234,7 +236,8 @@ func recordTargets(repos []Repo, refs map[string]cloneRefs) []recordTarget {
 }
 
 // linkRecords fills in each target's record pull request from GitHub's answer about items,
-// and links a worktree nothing else links whose record's branch is gone to it (LinkCopy).
+// and links a worktree nothing else links to it (LinkCopy) when the record's branch is gone
+// or that pull request merged.
 func linkRecords(targets []recordTarget, items map[string]ItemState) {
 	for _, t := range targets {
 		state, ok := items[t.ref.Key()]
@@ -245,7 +248,7 @@ func linkRecords(targets []recordTarget, items map[string]ItemState) {
 		pr := linkedItem(linkTarget{kind: item.KindPR}, t.ref, state)
 		t.wt.copies.recordPR = pr
 
-		if t.gone && t.wt.Item == nil {
+		if (t.gone || pr.State == ItemMerged) && t.wt.Item == nil {
 			linked := *pr
 			t.wt.Item, t.wt.LinkedBy = &linked, LinkCopy
 		}
@@ -296,7 +299,10 @@ func (s *Service) judgeOneCopied(ctx context.Context, g git, dir string, wt *Wor
 
 	st.merged = pr.State == ItemMerged
 
-	if _, there := refs.tracking[rec.Ref]; !there && !st.onGitHub {
+	// The record vouches once its branch is gone, or, whatever became of the branch, once
+	// its pull request merged with every copy; while that is open, only the copies this
+	// listing found on the branch count.
+	if _, there := refs.tracking[rec.Ref]; !st.onGitHub && (!there || st.merged) {
 		st.onGitHub = true
 		wt.Copies = Copies{
 			Ref: strings.TrimPrefix(rec.Ref, remotesRef), Count: wt.Unpushed, Identical: wt.Unpushed, Recorded: true,

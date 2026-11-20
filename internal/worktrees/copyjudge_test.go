@@ -270,25 +270,54 @@ func TestACopyRecordNeedsItsPullRequestFromGitHub(t *testing.T) {
 	assert.Nil(t, row.Item)
 }
 
-func TestACopiedWorktreeOnAnotherBranchKeepsItsRecordUntilTheRecordedOneIsGone(t *testing.T) {
+// forcePushed has feat/parent force-pushed to a commit without the copies, its pull request
+// #199's head on GitHub at head, in state.
+func (r *copyRig) forcePushed(t *testing.T, state ItemStatus, head string) {
+	t.Helper()
+
+	testutil.RunGit(t, r.parent, "reset", "-q", "--hard", r.main)
+	bare := commitAt(t, r.parent, "other.txt", "other\n", "Start over", authoredAt+200)
+	pushed(t, r.repo, parentBranch, bare)
+
+	r.gh.set(exampleName, 199, headPR(199, state, head, parentBranch, ownRepo).State)
+	r.gh.setHead(parentBranch, headPR(199, state, head, parentBranch, ownRepo))
+}
+
+func TestACopyRecordVouchesOnceItsPullRequestMergedWhateverBecameOfItsBranch(t *testing.T) {
 	t.Parallel()
 
 	r, _, tip := copiedRig(t)
 	r.list(t)
 
-	// Force-pushed without the copies: the branch is there, the record isn't taken.
-	testutil.RunGit(t, r.parent, "reset", "-q", "--hard", r.main)
-	bare := commitAt(t, r.parent, "other.txt", "other\n", "Start over", authoredAt+200)
-	pushed(t, r.repo, parentBranch, bare)
-	r.merge(tip)
+	// Merged with every copy, then force-pushed without them: the branch is there.
+	r.forcePushed(t, ItemMerged, tip)
 
 	row := r.list(t)
-	assert.False(t, row.OnGitHub, "the branch is there without the copies")
-	assert.Equal(t, StageNone, row.Stage)
-	require.Len(t, r.records(t), 1, "the record still describes the worktree")
-
-	// Its pull request merged with every copy, so its own branch may go all the same.
+	assert.True(t, row.OnGitHub, "the merged pull request's head has every copy")
+	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 2, Identical: 2, Recorded: true}, row.Copies)
+	assert.Equal(t, LinkCopy, row.LinkedBy)
+	require.NotNil(t, row.Item)
+	assert.Equal(t, 199, row.Item.Number)
+	assert.Equal(t, StageFinished, row.Stage)
+	assert.True(t, autoCleanable(row))
 	assert.True(t, agentBranch(t, row).Deletable)
+}
+
+func TestACopyRecordOfAnOpenPullRequestNeedsTheCopiesOnItsBranch(t *testing.T) {
+	t.Parallel()
+
+	r, _, tip := copiedRig(t)
+	r.list(t)
+
+	// The branch was force-pushed without the copies, though GitHub still says the open
+	// pull request's head has them.
+	r.forcePushed(t, ItemOpen, tip)
+
+	row := r.list(t)
+	assert.False(t, row.OnGitHub, "an open pull request counts only the copies on its branch")
+	assert.False(t, row.Copies.Recorded)
+	require.Len(t, r.records(t), 1, "the record still describes the worktree")
+	assert.False(t, agentBranch(t, row).Deletable)
 }
 
 func TestAutoCleanableKeepsCopiedWorkToItsMergedPullRequest(t *testing.T) {

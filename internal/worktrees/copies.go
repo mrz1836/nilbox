@@ -110,9 +110,9 @@ type Copies struct {
 	Edited    int `json:"edited"`
 	None      int `json:"none"`
 
-	// Recorded reports that Ref is gone, and what an earlier listing recorded when it was
-	// there vouches for them instead: each had an identical copy on Ref, and the pull
-	// request Ref headed, which GitHub keeps, has those copies. Identical is Count then.
+	// Recorded reports that what an earlier listing recorded vouches for them: each had an
+	// identical copy on Ref, and the pull request Ref headed, which GitHub keeps, has those
+	// copies, and either Ref is gone or that pull request merged. Identical is Count then.
 	Recorded bool `json:"recorded"`
 
 	// Unless it is "", Note says in a sentence why they couldn't be compared, or why their

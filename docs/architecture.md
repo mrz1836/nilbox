@@ -2285,8 +2285,8 @@ Removing a worktree drops its record too. The worklog store stamps a record's
 being the linked pull request's head, or the worktree's copies counting (`copyState`), while
 `Unpushed` keeps the count by commit ID. They count when this listing found every commit not
 on GitHub with an identical copy on one pushed branch of a GitHub remote: on GitHub as that
-branch. Or when that branch is gone and the copy record still holds: it describes the
-worktree (HEAD is the record's); it covers every commit the worktree has that isn't on
+branch. Or when the copy record holds, and either its branch is gone or its pull request
+merged: the record describes the worktree (HEAD is the record's); it covers every commit the worktree has that isn't on
 GitHub, each being one whose identical copy the record vouches for or on the record's branch
 commit by ID (`judgeCoverage`: no git when this listing's comparison read those commits and
 all are the record's, else one `log` per record branch commit, `copyUnpushedArgs` with that
@@ -2298,9 +2298,11 @@ unmerged is never vouched for); the record's pull request was read in this listi
 is the record's `copy_tip` or has it (`prHolds`: `merge-base --is-ancestor`, which a commit
 the clone lacks fails; a yes kept for good, a no while the remote-tracking branches are the
 same). `Copies.Recorded` says so then, with `Identical` at `Count`, and a worktree nothing
-else links is linked to that pull request (`LinkCopy`). A branch that is still there but no
-longer holds the copies (force-pushed) makes them count for nothing; a record that covers
-less than the worktree holds links nothing. `stageOf` is unchanged: a merged or closed item,
+else links is linked to that pull request (`LinkCopy`). A merged pull request vouches
+whatever became of its branch, deleted or force-pushed without the copies; while it is
+open and its branch is there, only the copies this listing finds on the branch count, so a
+branch force-pushed without them makes them count for nothing. A record that covers less
+than the worktree holds links nothing. `stageOf` is unchanged: a merged or closed item,
 on GitHub, and clean is finished. The record's pull request merging with every copy
 (`copyState.merged`: the record holds, and its merged pull request's head has `copy_tip`) is
 what the cleanup waits for: `autoCleanable` takes a worktree whose work is on GitHub only as
