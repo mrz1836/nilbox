@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/agentrun/runevent"
+	"github.com/mrz1836/nilbox/internal/agentrun/stream"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -206,7 +207,7 @@ func New(cfg Config) *Runner {
 type run struct {
 	intent Intent
 	dir    string
-	parser *stream
+	parser *stream.Parser
 
 	mu        sync.Mutex
 	scriptID  int64
@@ -224,7 +225,7 @@ type run struct {
 }
 
 // newRun returns a run of intent in dir, read by parser.
-func newRun(intent Intent, dir string, parser *stream) *run {
+func newRun(intent Intent, dir string, parser *stream.Parser) *run {
 	return &run{intent: intent, dir: dir, parser: parser, done: make(chan struct{})}
 }
 
@@ -583,7 +584,7 @@ func (r *Runner) finish(ctx context.Context, rn *run, end scriptrun.Ending) scri
 	progress := rn.parser.Progress()
 
 	j := judgment{
-		end: end, fence: rn.intent.Fence, limit: rn.parser.Limit(), words: rn.parser.lastWords(),
+		end: end, fence: rn.intent.Fence, limit: rn.parser.Limit(), words: rn.parser.LastWords(),
 		tokens: progress.TokensIn + progress.TokensOut, unknown: progress.Unknown,
 	}
 
@@ -623,8 +624,8 @@ func (r *Runner) limitOf(ctx context.Context, rn *run, seen *Limit) *Limit {
 		return seen
 	}
 
-	if seen == nil || seen.Status != limitRejected {
-		if read.Status != limitRejected {
+	if seen == nil || seen.Status != stream.LimitRejected {
+		if read.Status != stream.LimitRejected {
 			return seen
 		}
 
@@ -838,12 +839,12 @@ func intentIn(raw any) Intent {
 
 // parserFor returns the stream parser of the agent with id, for a run in dir: Codex's, or
 // Claude Code's for any other.
-func parserFor(id agent.ID, dir string) *stream {
+func parserFor(id agent.ID, dir string) *stream.Parser {
 	if id == agent.Codex {
-		return newCodexParser(dir)
+		return stream.Codex(dir)
 	}
 
-	return newClaudeParser(dir)
+	return stream.Claude(dir)
 }
 
 // Liveness is what the runner knows of a run the ledger records as going.

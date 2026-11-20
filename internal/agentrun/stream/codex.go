@@ -1,4 +1,4 @@
-package agentrun
+package stream
 
 import (
 	"bytes"
@@ -81,13 +81,13 @@ type codexError struct {
 	Message string `json:"message"`
 }
 
-// newCodexParser returns a parser of Codex's stream, for a run in dir.
-func newCodexParser(dir string) *stream {
-	return newStream(readCodexLine, dir)
+// Codex returns a parser of Codex's stream, for a run in dir.
+func Codex(dir string) *Parser {
+	return newParser(readCodexLine, dir)
 }
 
 // readCodexLine reads one line of Codex's stream.
-func readCodexLine(s *stream, raw []byte) {
+func readCodexLine(s *Parser, raw []byte) {
 	var line codexLine
 	if err := json.Unmarshal(raw, &line); err != nil {
 		s.unknown()
@@ -122,7 +122,7 @@ func readCodexLine(s *stream, raw []byte) {
 
 // codexItemEvent reads one item event: a tool's start shows the tool, its end what it gave
 // back, and the agent's words show once they are whole.
-func codexItemEvent(s *stream, kind string, item *codexItem) {
+func codexItemEvent(s *Parser, kind string, item *codexItem) {
 	if item == nil {
 		s.unknown()
 
@@ -151,7 +151,7 @@ func codexItemEvent(s *stream, kind string, item *codexItem) {
 
 // codexMessage reads what the agent said: its last message is the run's final one, which a
 // read-only run's notes are and the strict schema's report is.
-func codexMessage(s *stream, text string) {
+func codexMessage(s *Parser, text string) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
@@ -164,7 +164,7 @@ func codexMessage(s *stream, text string) {
 
 // codexTool reads a tool's start and end: its event once, as it starts or else as it ends,
 // and its result as it ends.
-func codexTool(s *stream, kind string, item *codexItem) {
+func codexTool(s *Parser, kind string, item *codexItem) {
 	started := s.items[item.ID]
 
 	if kind == "item.updated" {
@@ -186,7 +186,7 @@ func codexTool(s *stream, kind string, item *codexItem) {
 
 // codexToolEnd reads a tool's end: what a command or an MCP tool gave back, and a tool that
 // failed.
-func codexToolEnd(s *stream, item *codexItem) {
+func codexToolEnd(s *Parser, item *codexItem) {
 	failed := item.Status == "failed" || item.Status == "declined" || item.ExitCode != nil && *item.ExitCode != 0
 
 	switch {
@@ -201,7 +201,7 @@ func codexToolEnd(s *stream, item *codexItem) {
 
 // codexToolOf says what a tool item does: its category, its event's text, and the run's
 // step.
-func codexToolOf(s *stream, item *codexItem) (runevent.Category, string, string) {
+func codexToolOf(s *Parser, item *codexItem) (runevent.Category, string, string) {
 	switch item.Type {
 	case "command_execution":
 		text := "$ " + codexCommand(item.Command)
@@ -244,7 +244,7 @@ func codexCommand(command string) string {
 }
 
 // codexTodos keeps the todo list Codex wrote, stepping the run to the first not done.
-func codexTodos(s *stream, item *codexItem) {
+func codexTodos(s *Parser, item *codexItem) {
 	todos := make([]runevent.Todo, 0, len(item.Items))
 	done, next := 0, ""
 
@@ -272,7 +272,7 @@ func codexTodos(s *stream, item *codexItem) {
 }
 
 // codexTurnCompleted reads the turn's end: the run is done, its report its last message.
-func codexTurnCompleted(s *stream, u *codexUsage) {
+func codexTurnCompleted(s *Parser, u *codexUsage) {
 	if u != nil {
 		s.addUsage("turn", tokens{in: max(u.Input-u.CacheRead, 0), out: u.Output, cacheRead: u.CacheRead})
 	}
@@ -286,7 +286,7 @@ func codexTurnCompleted(s *stream, u *codexUsage) {
 }
 
 // codexTurnFailed reads a failed turn: an error, or the profile's usage limit refusing it.
-func codexTurnFailed(s *stream, message string) {
+func codexTurnFailed(s *Parser, message string) {
 	r := codexResult(s, "turn_failed", true)
 	if message = strings.TrimSpace(message); message != "" {
 		r.Errors = []string{codexErrorText(message)}
@@ -299,7 +299,7 @@ func codexTurnFailed(s *stream, message string) {
 	s.result = &r
 
 	text := "Ended with an error"
-	if s.limit != nil && s.limit.Status == limitRejected {
+	if s.limit != nil && s.limit.Status == LimitRejected {
 		text = "Ended out of usage"
 	}
 
@@ -308,7 +308,7 @@ func codexTurnFailed(s *stream, message string) {
 }
 
 // codexResult is the run's end as Codex reports it: tokens, never a cost, and no models.
-func codexResult(s *stream, subtype string, isError bool) Result {
+func codexResult(s *Parser, subtype string, isError bool) Result {
 	return Result{
 		Subtype: subtype, IsError: isError, Message: s.lastMessage, Turns: 1, TokensIn: s.progress.TokensIn,
 		TokensOut: s.progress.TokensOut, CacheRead: s.progress.CacheRead, Errors: []string{}, Models: []string{},
@@ -317,7 +317,7 @@ func codexResult(s *stream, subtype string, isError bool) Result {
 
 // codexRetry reads a top-level error event: Codex retrying its provider, or refused for the
 // profile's usage limit, which its turn then fails for.
-func codexRetry(s *stream, message string) {
+func codexRetry(s *Parser, message string) {
 	text := codexErrorText(message)
 	if l := codexLimitOf(message); l != nil {
 		s.limit = l
@@ -356,9 +356,6 @@ func codexErrorText(message string) string {
 	return message
 }
 
-// limitRejected is a usage limit's status that refused the run.
-const limitRejected = "rejected"
-
 // codexLimitCodes are the codes Codex gives a turn its profile's usage refused (codex-cli
 // 0.163.0's binary holds them): its plan's limit reached, its quota or credits used up.
 func codexLimitCodes() []string {
@@ -371,18 +368,18 @@ func codexLimitCodes() []string {
 
 // codexLimitOf returns the usage limit an error says refused the run, or nil: one of
 // codexLimitCodes, or the words "usage limit" ("You've hit your usage limit."). Which limit,
-// and when it resets, only the thread's rollout says (LimitReader).
+// and when it resets, only the thread's rollout says (agentrun's LimitReader reads it).
 func codexLimitOf(message string) *Limit {
 	lower := strings.ToLower(message)
 
 	for _, code := range codexLimitCodes() {
 		if strings.Contains(lower, code) {
-			return &Limit{Status: limitRejected}
+			return &Limit{Status: LimitRejected}
 		}
 	}
 
 	if strings.Contains(lower, "usage limit") {
-		return &Limit{Status: limitRejected}
+		return &Limit{Status: LimitRejected}
 	}
 
 	return nil

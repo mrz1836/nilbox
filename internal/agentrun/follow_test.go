@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -15,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/agentrun/stream"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/procs"
@@ -101,7 +103,7 @@ func TestAnEndHeardBeforeTheSessionIsRecordedIsToldOnceItIs(t *testing.T) {
 
 	r := newRig(t)
 	plan := r.plan(testutil.FakeRun{})
-	rn := newRun(intentOf(plan), plan.Dir, newClaudeParser(plan.Dir))
+	rn := newRun(intentOf(plan), plan.Dir, stream.Claude(plan.Dir))
 
 	// A run can end before its start has recorded its session.
 	r.runner.setSession(t.Context(), rn, SessionUpdate{State: SessionEnded, LastMessage: "Finished."})
@@ -170,7 +172,7 @@ func TestARunsStreamTellsWhatChangedAndItsTokensAtMostEveryUsageEvery(t *testing
 		},
 	})
 
-	f := feed{runner: runner, rn: newRun(Intent{RunID: 7}, "", newClaudeParser(""))}
+	f := feed{runner: runner, rn: newRun(Intent{RunID: 7}, "", stream.Claude(""))}
 	said := func(id string, in, out int64) []byte {
 		return []byte(`{"type":"assistant","message":{"id":"` + id + `","content":[{"type":"text","text":"Working"}],` +
 			`"usage":{"input_tokens":` + jsonInt(in) + `,"output_tokens":` + jsonInt(out) + `,"cache_read_input_tokens":1}}}` + "\n")
@@ -195,6 +197,11 @@ func TestARunsStreamTellsWhatChangedAndItsTokensAtMostEveryUsageEvery(t *testing
 		{RunID: 7, TokensIn: 10, TokensOut: 3, CacheRead: 1},
 		{RunID: 7, TokensIn: 16, TokensOut: 6, CacheRead: 3},
 	}, usages, "its first tokens at once, then at most every UsageEvery")
+}
+
+// jsonInt writes n as JSON.
+func jsonInt(n int64) string {
+	return strconv.FormatInt(n, 10)
 }
 
 // limitsFunc is a LimitReader from a function.
@@ -232,7 +239,7 @@ func TestTheAgentsRecordSaysWhichLimitEndedARun(t *testing.T) {
 		},
 	} {
 		runner := New(Config{Limits: tc.record})
-		rn := newRun(Intent{Agent: agent.Claude, Fence: Fence{Timeout: time.Minute}}, "", newClaudeParser(""))
+		rn := newRun(Intent{Agent: agent.Claude, Fence: Fence{Timeout: time.Minute}}, "", stream.Claude(""))
 		_, _ = rn.parser.Write([]byte(tc.stream))
 
 		got, ok := runner.finish(t.Context(), rn, scriptrun.Ending{}).Detail.(Outcome)
@@ -323,7 +330,7 @@ func TestARunsCommitsAreReadFromItsWorktreeAsItEnds(t *testing.T) {
 	} {
 		logs := &testutil.Logs{}
 		runner := New(Config{Git: tc.git, Logger: logs.Logger()})
-		rn := newRun(Intent{HeadBefore: tc.headBefore, Fence: Fence{Timeout: time.Minute}}, dir, newClaudeParser(dir))
+		rn := newRun(Intent{HeadBefore: tc.headBefore, Fence: Fence{Timeout: time.Minute}}, dir, stream.Claude(dir))
 		_, _ = rn.parser.Write([]byte(success))
 
 		got, ok := runner.finish(t.Context(), rn, scriptrun.Ending{}).Detail.(Outcome)
@@ -339,7 +346,7 @@ func TestARunsCommitsAreReadFromItsWorktreeAsItEnds(t *testing.T) {
 	}
 
 	git := &worktreeGit{head: after}
-	rn := newRun(Intent{HeadBefore: before, Fence: Fence{Timeout: time.Minute}}, dir, newClaudeParser(dir))
+	rn := newRun(Intent{HeadBefore: before, Fence: Fence{Timeout: time.Minute}}, dir, stream.Claude(dir))
 
 	got, ok := New(Config{Git: git}).finish(t.Context(), rn, scriptrun.Ending{Interrupted: "The Mac shut down."}).
 		Detail.(Outcome)

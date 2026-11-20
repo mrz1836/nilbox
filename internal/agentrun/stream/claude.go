@@ -1,8 +1,9 @@
-package agentrun
+package stream
 
 import (
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,12 @@ import (
 // task_started, task_notification, permission_denied, and others it only notes),
 // assistant, user, rate_limit_event, and result, the run's last word. A run is judged by
 // its result line, never its exit code: a SIGINT ends with a result in error and exit 0.
+//
+// The conversation spike recorded more on 2.1.328: a session_title_changed note before init
+// when the session is named (--name); several tool uses of one message, each on a line of
+// its own that repeats the message; and, for a turn that resumes a conversation, a result
+// line whose total_cost_usd and modelUsage are the conversation's running totals, beside the
+// turn's own model_usage_since_last_result and usage.
 
 // claudeLine is what the parser reads of one line; every other field is skipped.
 type claudeLine struct {
@@ -24,9 +31,12 @@ type claudeLine struct {
 	Timestamp string `json:"timestamp"`
 
 	// system/init
-	Model        string `json:"model"`
-	Version      string `json:"claude_code_version"`
-	APIKeySource string `json:"apiKeySource"`
+	Model        string            `json:"model"`
+	Version      string            `json:"claude_code_version"`
+	APIKeySource string            `json:"apiKeySource"`
+	SessionID    string            `json:"session_id"`
+	Tools        []string          `json:"tools"`
+	MCPServers   []claudeMCPServer `json:"mcp_servers"`
 
 	// system/api_retry
 	Attempt    int    `json:"attempt"`
@@ -55,11 +65,18 @@ type claudeLine struct {
 	TotalCost        *float64                 `json:"total_cost_usd"`
 	Usage            *claudeUsage             `json:"usage"`
 	ModelUsage       map[string]claudeModelUs `json:"modelUsage"`
+	TurnUsage        map[string]claudeModelUs `json:"model_usage_since_last_result"`
 	NumTurns         int64                    `json:"num_turns"`
 	DurationMS       int64                    `json:"duration_ms"`
 	TerminalReason   string                   `json:"terminal_reason"`
 	Errors           []string                 `json:"errors"`
 	Denials          []json.RawMessage        `json:"permission_denials"`
+}
+
+// claudeMCPServer is an MCP server as the init line names it.
+type claudeMCPServer struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
 }
 
 // claudeMessage is an assistant's or a user's message.
@@ -103,17 +120,17 @@ type claudeRateLimit struct {
 func claudeSystemNotes() []string {
 	return []string{
 		"thinking_tokens", "background_tasks_changed", "task_updated", "hook_started", "hook_response", "status",
-		"compact_boundary", "files_persisted",
+		"compact_boundary", "files_persisted", "session_title_changed",
 	}
 }
 
-// newClaudeParser returns a parser of Claude Code's stream, for a run in dir.
-func newClaudeParser(dir string) *stream {
-	return newStream(readClaudeLine, dir)
+// Claude returns a parser of Claude Code's stream, for a run in dir.
+func Claude(dir string) *Parser {
+	return newParser(readClaudeLine, dir)
 }
 
 // readClaudeLine reads one line of Claude Code's stream.
-func readClaudeLine(s *stream, raw []byte) {
+func readClaudeLine(s *Parser, raw []byte) {
 	var line claudeLine
 	if err := json.Unmarshal(raw, &line); err != nil {
 		s.unknown()
@@ -150,13 +167,10 @@ func messageOf(raw json.RawMessage) *claudeMessage {
 }
 
 // claudeSystem reads a system message.
-func claudeSystem(s *stream, line claudeLine) {
+func claudeSystem(s *Parser, line claudeLine) {
 	switch line.Subtype {
 	case "init":
-		s.keySource = line.APIKeySource
-		text := strings.TrimSpace(line.Model + " · Claude Code " + line.Version)
-		s.emit(runevent.Event{Kind: runevent.KindStarted, Text: text})
-		s.step("Starting")
+		claudeInit(s, line)
 	case "api_retry":
 		text := "Retrying (" + strconv.Itoa(line.Attempt) + " of " + strconv.Itoa(line.MaxRetries) + ")"
 		if line.ErrorText != "" {
@@ -174,19 +188,35 @@ func claudeSystem(s *stream, line claudeLine) {
 			Text: line.DecisionReason, Error: true,
 		})
 	default:
-		for _, note := range claudeSystemNotes() {
-			if line.Subtype == note {
-				return
-			}
+		if !slices.Contains(claudeSystemNotes(), line.Subtype) {
+			s.unknown()
 		}
-
-		s.unknown()
 	}
+}
+
+// claudeInit reads the init line: the run starts, and what it says of its setup is kept
+// (Init).
+func claudeInit(s *Parser, line claudeLine) {
+	s.keySource = line.APIKeySource
+
+	servers := make([]MCPServer, 0, len(line.MCPServers))
+	for _, m := range line.MCPServers {
+		servers = append(servers, MCPServer(m))
+	}
+
+	s.init = &Init{
+		Model: line.Model, Version: line.Version, APIKeySource: line.APIKeySource, SessionID: line.SessionID,
+		Tools: append([]string{}, line.Tools...), MCPServers: servers,
+	}
+
+	text := strings.TrimSpace(line.Model + " · Claude Code " + line.Version)
+	s.emit(runevent.Event{Kind: runevent.KindStarted, Text: text})
+	s.step("Starting")
 }
 
 // claudeAssistant reads an assistant's message: what it said, its thinking, and the tools
 // it used, and its usage.
-func claudeAssistant(s *stream, m *claudeMessage) {
+func claudeAssistant(s *Parser, m *claudeMessage) {
 	if m == nil {
 		s.unknown()
 
@@ -239,7 +269,7 @@ type claudeToolInput struct {
 
 // claudeTool reads one tool use: its event, the run's step, and, for TodoWrite, its todo
 // list.
-func claudeTool(s *stream, b claudeBlock) {
+func claudeTool(s *Parser, b claudeBlock) {
 	var in claudeToolInput
 
 	_ = json.Unmarshal(b.Input, &in) // a tool with an input the parser doesn't know shows its name
@@ -278,7 +308,7 @@ func claudeTool(s *stream, b claudeBlock) {
 
 // claudeTodos keeps the todo list a TodoWrite wrote, steps the run to the todo in
 // progress, and returns what the event says.
-func claudeTodos(s *stream, in claudeToolInput) string {
+func claudeTodos(s *Parser, in claudeToolInput) string {
 	todos := make([]runevent.Todo, 0, len(in.Todos))
 	done := 0
 
@@ -299,7 +329,7 @@ func claudeTodos(s *stream, in claudeToolInput) string {
 }
 
 // claudeUser reads a user's message: the tools' results.
-func claudeUser(s *stream, m *claudeMessage) {
+func claudeUser(s *Parser, m *claudeMessage) {
 	if m == nil {
 		s.unknown()
 
@@ -351,7 +381,7 @@ func resultText(raw json.RawMessage) string {
 }
 
 // claudeLimit reads the provider's usage limit: a warning or a refusal shows.
-func claudeLimit(s *stream, rl *claudeRateLimit) {
+func claudeLimit(s *Parser, rl *claudeRateLimit) {
 	if rl == nil {
 		s.unknown()
 
@@ -361,7 +391,7 @@ func claudeLimit(s *stream, rl *claudeRateLimit) {
 	s.limit = &Limit{Status: rl.Status, Type: rl.Type, ResetsAt: rl.ResetsAt}
 
 	if rl.Status != "allowed" {
-		s.emit(runevent.Event{Kind: runevent.KindLimit, Text: rl.Status + " · " + rl.Type, Error: rl.Status == "rejected"})
+		s.emit(runevent.Event{Kind: runevent.KindLimit, Text: rl.Status + " · " + rl.Type, Error: rl.Status == LimitRejected})
 	}
 }
 
@@ -372,15 +402,15 @@ func onPlan(source string) bool {
 	return source == "" || source == "none"
 }
 
-// claudeResult reads the run's result: its end, what it cost, and its report.
-func claudeResult(s *stream, line claudeLine) {
+// claudeResult reads the run's result: its end, what it and its turn cost, and its report.
+func claudeResult(s *Parser, line claudeLine) {
 	r := Result{
-		Subtype: line.Subtype, IsError: line.IsError, Cost: line.TotalCost, Turns: line.NumTurns,
-		Estimated:  line.TotalCost != nil && onPlan(s.keySource),
-		DurationMS: line.DurationMS, TerminalReason: line.TerminalReason, Errors: append([]string{}, line.Errors...),
-		Denials: len(line.Denials), Models: []string{},
+		Subtype: line.Subtype, IsError: line.IsError, Cost: line.TotalCost, TurnCost: turnCost(line.TurnUsage),
+		Turns: line.NumTurns, DurationMS: line.DurationMS, TerminalReason: line.TerminalReason,
+		Errors: append([]string{}, line.Errors...), Denials: len(line.Denials), Models: claudeModels(line.ModelUsage),
 	}
 
+	r.Estimated = (r.Cost != nil || r.TurnCost != nil) && onPlan(s.keySource)
 	r.Message, _ = cut(strings.TrimSpace(line.ResultText), maxMessage)
 
 	if len(line.StructuredOutput) > 0 && string(line.StructuredOutput) != "null" {
@@ -394,12 +424,6 @@ func claudeResult(s *stream, line claudeLine) {
 		r.TokensIn, r.TokensOut, r.CacheRead = s.progress.TokensIn, s.progress.TokensOut, s.progress.CacheRead
 	}
 
-	for model := range line.ModelUsage {
-		r.Models = append(r.Models, model)
-	}
-
-	sortStrings(r.Models)
-
 	s.result = &r
 
 	text := "Finished"
@@ -409,6 +433,34 @@ func claudeResult(s *stream, line claudeLine) {
 
 	s.emit(runevent.Event{Kind: runevent.KindResult, Text: text, Error: r.IsError})
 	s.step(text)
+}
+
+// claudeModels returns the models a result line says the run used, by name, never nil.
+func claudeModels(usage map[string]claudeModelUs) []string {
+	models := make([]string, 0, len(usage))
+	for model := range usage {
+		models = append(models, model)
+	}
+
+	slices.Sort(models)
+
+	return models
+}
+
+// turnCost returns what a result line says its own turn cost, in dollars: the sum of each
+// model's share, added in the models' order so it comes out the same every time; nil when
+// the line says nothing of its turn alone.
+func turnCost(usage map[string]claudeModelUs) *float64 {
+	if usage == nil {
+		return nil
+	}
+
+	var sum float64
+	for _, model := range claudeModels(usage) {
+		sum += usage[model].CostUSD
+	}
+
+	return &sum
 }
 
 // claudeCategory says what one of Claude Code's tools does.
@@ -436,7 +488,7 @@ func claudeCategory(tool string) runevent.Category {
 }
 
 // rel writes path from the run's folder, when it is inside it.
-func (s *stream) rel(path string) string {
+func (s *Parser) rel(path string) string {
 	if s.dir == "" || path == "" || !filepath.IsAbs(path) {
 		return path
 	}

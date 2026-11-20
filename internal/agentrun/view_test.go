@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agentrun/runevent"
+	"github.com/mrz1836/nilbox/internal/agentrun/stream"
 	"github.com/mrz1836/nilbox/internal/gitread"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
@@ -158,7 +159,7 @@ func TestTheRunViewPagesALongLogBack(t *testing.T) {
 func TestALiveRunsEarlierEventsAreReadFromItsLog(t *testing.T) {
 	t.Parallel()
 
-	const steps = keepEvents + 300
+	const steps = stream.KeepEvents + 300
 
 	r := newRig(t)
 	start := time.Date(2026, 11, 16, 6, 15, 0, 0, time.UTC)
@@ -177,16 +178,16 @@ func TestALiveRunsEarlierEventsAreReadFromItsLog(t *testing.T) {
 
 	assert.False(t, page.Done)
 	assert.Nil(t, page.Ending, "a run still going has no ending")
-	assert.Len(t, page.Events, keepEvents, "memory keeps the last events")
+	assert.Len(t, page.Events, stream.KeepEvents, "memory keeps the last events")
 	require.True(t, page.Earlier, "the rest are its log's")
 	assert.Equal(t, page.Events[0].Offset, page.Before)
-	assert.Equal(t, fmt.Sprintf("Step %d", steps-keepEvents), page.Events[0].Text)
+	assert.Equal(t, fmt.Sprintf("Step %d", steps-stream.KeepEvents), page.Events[0].Text)
 
 	earlier, err := r.runner.EventsBefore(t.Context(), plan.RunID, page.Before)
 	require.NoError(t, err)
 	require.NotEmpty(t, earlier.Events)
 	assert.False(t, earlier.Done)
-	assert.Equal(t, fmt.Sprintf("Step %d", steps-keepEvents-1), earlier.Events[len(earlier.Events)-1].Text,
+	assert.Equal(t, fmt.Sprintf("Step %d", steps-stream.KeepEvents-1), earlier.Events[len(earlier.Events)-1].Text,
 		"the page before memory's first event ends just before it")
 
 	after, err := r.runner.Events(t.Context(), plan.RunID, page.Events[len(page.Events)-1].Seq)

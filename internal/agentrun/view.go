@@ -112,15 +112,15 @@ func (r *Runner) logPage(ctx context.Context, id int64, agentID agent.ID, before
 
 	buf, start = lastLines(buf, start, pageLines)
 
-	parser := parserFor(agentID, "").from(start)
+	parser := parserFor(agentID, "").From(start)
 	_, _ = parser.Write(buf)
 
 	if ended && end == tail.Size {
-		parser.flush()
+		parser.Flush()
 	}
 
 	page := runevent.Page{
-		Events: parser.all(), Earlier: start > 0, Before: start, Progress: parser.Progress(),
+		Events: parser.Events(), Earlier: start > 0, Before: start, Progress: parser.Progress(),
 	}
 
 	for i := range page.Events {

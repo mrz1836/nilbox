@@ -1,4 +1,4 @@
-package agentrun
+package stream
 
 import (
 	"encoding/json"
@@ -13,14 +13,13 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agentrun/runevent"
 	"github.com/mrz1836/nilbox/internal/brand"
-	"github.com/mrz1836/nilbox/internal/fence"
-	"github.com/mrz1836/nilbox/internal/scriptrun"
 )
 
 // fixtureDir is the worktree the S1 fixtures ran in.
 const fixtureDir = "/work/example-repo/." + brand.Slug + "/worktrees/example-repo/pr-1"
 
-// fixture returns an S1 stream fixture.
+// fixture returns a recorded stream: S1's, S6's (codex/), or the conversation spike's
+// (conversation/).
 func fixture(t *testing.T, name string) []byte {
 	t.Helper()
 
@@ -31,10 +30,10 @@ func fixture(t *testing.T, name string) []byte {
 }
 
 // parsed returns a parser fed the fixture whole.
-func parsed(t *testing.T, name string) *stream {
+func parsed(t *testing.T, name string) *Parser {
 	t.Helper()
 
-	p := newClaudeParser(fixtureDir)
+	p := Claude(fixtureDir)
 	_, err := p.Write(fixture(t, name))
 	require.NoError(t, err)
 
@@ -49,6 +48,24 @@ func kinds(page runevent.Page) []runevent.Kind {
 	}
 
 	return out
+}
+
+// reportOf reads the outcome, the summary, and the push of a structured report.
+func reportOf(t *testing.T, raw json.RawMessage) report {
+	t.Helper()
+
+	var r report
+	require.NoError(t, json.Unmarshal(raw, &r), "the report is JSON")
+
+	return r
+}
+
+// report is what the tests read of a run's structured report.
+type report struct {
+	Outcome      string `json:"outcome"`
+	Summary      string `json:"summary"`
+	Pushed       bool   `json:"pushed"`
+	PushedCommit string `json:"pushedCommit"`
 }
 
 func TestTheParserReadsAStructuredSuccess(t *testing.T) {
@@ -74,14 +91,15 @@ func TestTheParserReadsAStructuredSuccess(t *testing.T) {
 	assert.Equal(t, []string{"claude-haiku-5-5"}, r.Models, "the model actually used, from modelUsage")
 	require.NotNil(t, r.Cost)
 	assert.InDelta(t, 0.0055, *r.Cost, 0.0001)
+	require.NotNil(t, r.TurnCost)
+	assert.InDelta(t, *r.Cost, *r.TurnCost, 1e-12, "a run that starts its conversation costs the same in both")
 	assert.True(t, r.Estimated, "signed in with the plan (apiKeySource none), its cost is an estimate")
 	assert.Equal(t, int64(3), r.Turns)
 
-	report := parseReport(r.Report)
-	require.NotNil(t, report, "the report is read from structured_output")
-	assert.Equal(t, "nothing_to_do", report.Outcome)
-	assert.False(t, report.Pushed)
-	assert.Contains(t, report.Summary, "returns a - b")
+	got := reportOf(t, r.Report)
+	assert.Equal(t, "nothing_to_do", got.Outcome, "the report is read from structured_output")
+	assert.False(t, got.Pushed)
+	assert.Contains(t, got.Summary, "returns a - b")
 
 	limit := p.Limit()
 	require.NotNil(t, limit)
@@ -91,7 +109,7 @@ func TestTheParserReadsAStructuredSuccess(t *testing.T) {
 func TestACostOnAnAPIKeyIsNoEstimate(t *testing.T) {
 	t.Parallel()
 
-	p := newClaudeParser(fixtureDir)
+	p := Claude(fixtureDir)
 	_, err := p.Write([]byte(`{"type":"system","subtype":"init","apiKeySource":"ANTHROPIC_API_KEY","model":"m"}` + "\n" +
 		`{"type":"result","subtype":"success","total_cost_usd":0.25,"result":"Done."}` + "\n"))
 	require.NoError(t, err)
@@ -100,6 +118,7 @@ func TestACostOnAnAPIKeyIsNoEstimate(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, r.Cost)
 	assert.False(t, r.Estimated, "an API key's cost is what it was charged")
+	assert.Nil(t, r.TurnCost, "a result line that says nothing of its turn alone reports no turn's cost")
 }
 
 func TestTheParserReadsTheOtherFixtures(t *testing.T) {
@@ -126,7 +145,7 @@ func TestTheParserReadsTheOtherFixtures(t *testing.T) {
 func TestTheParserCountsTokensOncePerMessage(t *testing.T) {
 	t.Parallel()
 
-	p := newClaudeParser("")
+	p := Claude("")
 	line := func(id string, out int64) string {
 		return `{"type":"assistant","message":{"id":"` + id + `","content":[{"type":"text","text":"hi"}],` +
 			`"usage":{"input_tokens":10,"cache_creation_input_tokens":5,"cache_read_input_tokens":2,"output_tokens":` +
@@ -146,7 +165,7 @@ func TestTheParserSplitsLinesItself(t *testing.T) {
 
 	whole := parsed(t, "success-structured.jsonl").Page(0)
 
-	byteByByte := newClaudeParser(fixtureDir)
+	byteByByte := Claude(fixtureDir)
 	for _, b := range fixture(t, "success-structured.jsonl") {
 		_, _ = byteByByte.Write([]byte{b})
 	}
@@ -157,7 +176,7 @@ func TestTheParserSplitsLinesItself(t *testing.T) {
 func TestTheParserWaitsForAPartialLastLine(t *testing.T) {
 	t.Parallel()
 
-	p := newClaudeParser("")
+	p := Claude("")
 	text := `{"type":"assistant","message":{"id":"m","content":[{"type":"text","text":"Reading the log"}]}}`
 
 	_, _ = p.Write([]byte(text[:40]))
@@ -179,7 +198,7 @@ func TestTheParserKeepsEightKilobytesOfAHugeLine(t *testing.T) {
 	content, err := json.Marshal(huge)
 	require.NoError(t, err)
 
-	p := newClaudeParser("")
+	p := Claude("")
 	line := `{"type":"user","message":{"content":[{"type":"tool_result","content":` + string(content) + `}]}}` + "\n"
 	require.Greater(t, len(line), 5<<20)
 
@@ -194,7 +213,7 @@ func TestTheParserKeepsEightKilobytesOfAHugeLine(t *testing.T) {
 func TestTheParserCountsMessagesItDoesntKnow(t *testing.T) {
 	t.Parallel()
 
-	p := newClaudeParser("")
+	p := Claude("")
 	_, _ = p.Write([]byte(`{"type":"a_newer_message","x":1}` + "\n" +
 		`{"type":"system","subtype":"a_newer_note"}` + "\n" +
 		"not json\n" +
@@ -208,25 +227,26 @@ func TestTheParserCountsMessagesItDoesntKnow(t *testing.T) {
 func TestTheParserKeepsTheLastEvents(t *testing.T) {
 	t.Parallel()
 
-	p := newClaudeParser("")
+	p := Claude("")
 
 	var b strings.Builder
-	for range keepEvents + 10 {
+	for range KeepEvents + 10 {
 		b.WriteString(`{"type":"assistant","message":{"content":[{"type":"thinking"}]}}` + "\n")
 	}
 
 	_, _ = p.Write([]byte(b.String()))
 
 	page := p.Page(0)
-	assert.Len(t, page.Events, keepEvents)
+	assert.Len(t, page.Events, KeepEvents)
 	assert.Equal(t, int64(11), page.First, "the oldest it still keeps")
-	assert.Empty(t, p.Page(int64(keepEvents+10)).Events)
+	assert.Empty(t, p.Page(int64(KeepEvents+10)).Events)
+	assert.Equal(t, page.Events, p.Events(), "every event it keeps, oldest first")
 }
 
 func TestTheParserReadsTheTodoListAsSteps(t *testing.T) {
 	t.Parallel()
 
-	p := newClaudeParser("")
+	p := Claude("")
 	_, _ = p.Write([]byte(`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"TodoWrite","input":` +
 		`{"todos":[{"content":"Read the log","status":"completed","activeForm":"Reading the log"},` +
 		`{"content":"Fix the test","status":"in_progress","activeForm":"Fixing the test"}]}}]}}` + "\n" +
@@ -236,58 +256,12 @@ func TestTheParserReadsTheTodoListAsSteps(t *testing.T) {
 	assert.Equal(t, []runevent.Todo{{Text: "Read the log", Status: "completed"}, {Text: "Fix the test", Status: "in_progress"}}, got.Todos)
 	assert.Equal(t, "$ go test ./...", got.Step)
 	assert.Equal(t, "1 of 2 done", p.Page(0).Events[0].Text)
+	assert.Equal(t, "$ go test ./...", p.LastWords(), "with nothing said, its last words are its latest step")
 }
 
 // jsonInt writes n as JSON.
 func jsonInt(n int64) string {
 	return strconv.FormatInt(n, 10)
-}
-
-func TestALimitIsNamedAsThePlanNamesIt(t *testing.T) {
-	t.Parallel()
-
-	for kind, want := range map[string]string{
-		"five_hour": "five-hour", "seven_day": "weekly", "seven_day_opus": "weekly Opus", "monthly_cap": "monthly cap",
-		"": "",
-	} {
-		assert.Equal(t, want, limitName(kind), kind)
-	}
-
-	assert.Equal(t, "Out of usage.", outOfUsageWords(Limit{Status: "rejected"}), "with nothing more to say")
-}
-
-func TestAQuitInterruptsARunAndAStopStopsIt(t *testing.T) {
-	t.Parallel()
-
-	result := &Result{Subtype: "error_during_execution", IsError: true}
-
-	quit := judge(judgment{end: scriptrun.Ending{Quit: true, Stopped: true}, result: result})
-	assert.Equal(t, StatusInterrupted, quit.Status, "no one chose to stop it, so its match comes back")
-	assert.Equal(t, "Interrupted as the app quit.", quit.Summary)
-
-	stopped := judge(judgment{end: scriptrun.Ending{Stopped: true}, result: result})
-	assert.Equal(t, StatusStopped, stopped.Status, "the user's Stop")
-}
-
-func TestALeakedSandboxFailsTheRun(t *testing.T) {
-	t.Parallel()
-
-	done := Outcome{Status: StatusDone, Summary: "Finished: done."}
-
-	leaked := sandboxed(done, fence.SandboxLeaked)
-	assert.Equal(t, StatusFailed, leaked.Status, "its commands weren't held to the fence")
-	assert.Equal(t, leakedWords, leaked.Summary)
-	assert.Equal(t, fence.SandboxLeaked, leaked.Sandbox)
-
-	held := sandboxed(done, fence.SandboxHeld)
-	assert.Equal(t, done.Summary, held.Summary)
-	assert.Equal(t, fence.SandboxHeld, held.Sandbox)
-
-	stopped := sandboxed(Outcome{Status: StatusStopped, Summary: "Stopped."}, fence.SandboxLeaked)
-	assert.Equal(t, StatusStopped, stopped.Status, "a stop says so already")
-
-	assert.Empty(t, sandboxOf(""), "no folder, no policy")
-	assert.Empty(t, sandboxOf(t.TempDir()), "a folder with no policy can't say")
 }
 
 // toolUse returns an assistant's line that uses the tool name with input.
@@ -337,7 +311,7 @@ func TestTheParserSaysWhatEachToolDoes(t *testing.T) {
 			category: runevent.CategoryTodo, text: "0 of 1 done", step: "Fix the test",
 		},
 	} {
-		p := newClaudeParser(fixtureDir)
+		p := Claude(fixtureDir)
 		_, _ = p.Write([]byte(tc.line))
 
 		page := p.Page(0)
@@ -362,7 +336,7 @@ func TestTheParserReadsAToolsResultInEitherShape(t *testing.T) {
 		return `{"type":"user","message":{"content":[{"type":"tool_result","is_error":` + e + `,"content":` + content + `}]}}` + "\n"
 	}
 
-	p := newClaudeParser("")
+	p := Claude("")
 	_, _ = p.Write([]byte(result(`"  ok\n"`, false) +
 		result(`[{"type":"text","text":"first"},{"type":"image"},{"type":"text","text":"second"}]`, true) +
 		result(`42`, false) +
@@ -381,7 +355,7 @@ func TestTheParserReadsAToolsResultInEitherShape(t *testing.T) {
 func TestTheParserCountsKnownMessagesItCantRead(t *testing.T) {
 	t.Parallel()
 
-	p := newClaudeParser("")
+	p := Claude("")
 	_, _ = p.Write([]byte(`{"type":"assistant"}` + "\n" +
 		`{"type":"assistant","message":{"content":"not blocks"}}` + "\n" +
 		`{"type":"assistant","message":{"content":[{"type":"server_tool_use"},{"type":"text","text":"  "}]}}` + "\n" +
@@ -394,4 +368,23 @@ func TestTheParserCountsKnownMessagesItCantRead(t *testing.T) {
 	assert.Equal(t, int64(7), got.Unknown, "each is counted, never fatal")
 	assert.Zero(t, got.Events, "and none shows")
 	assert.Nil(t, p.Limit(), "a limit event without its limit says nothing of it")
+}
+
+func TestAPageReadFromTheLogsMiddleCountsItsOffsetsFromThere(t *testing.T) {
+	t.Parallel()
+
+	said := `{"type":"assistant","message":{"id":"m","content":[{"type":"text","text":"Reading the log"}]}}`
+
+	p := Claude("").From(1000)
+	_, _ = p.Write([]byte(said + "\n" + said))
+
+	require.Len(t, p.Events(), 1, "a last line not ended yet is held")
+
+	p.Flush()
+
+	events := p.Events()
+	require.Len(t, events, 2, "a log that won't grow has its last line read whole")
+	assert.Equal(t, int64(1000), events[0].Offset, "the first line starts where the page does")
+	assert.Equal(t, int64(1000+len(said)+1), events[1].Offset)
+	assert.Equal(t, "Reading the log", p.LastWords())
 }

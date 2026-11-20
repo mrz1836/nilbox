@@ -1,7 +1,7 @@
 // Package agentrun runs a coding agent in the background, for Autopilot: one
-// scriptrun.Spec of KindAgent from a finished plan, each agent's stream parser into the one
-// event model (runevent), how a run came out, the Verifier that picks a run up after a
-// restart, and the run view's reads.
+// scriptrun.Spec of KindAgent from a finished plan, its log read by its agent's stream
+// parser (the stream leaf) into the one event model (runevent), how a run came out, the
+// Verifier that picks a run up after a restart, and the run view's reads.
 //
 // It takes its own plain input, Plan, which core builds from the launcher's background
 // plan: the argv, the environment, the worktree, the prompt, and the fence. It never

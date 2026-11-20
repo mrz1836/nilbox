@@ -1,4 +1,13 @@
-package agentrun
+// Package stream reads a coding agent's stream as its run writes it: Claude Code's
+// `claude -p --output-format stream-json --verbose` and Codex's `codex exec --json`. Each
+// agent's parser turns its own messages into the one event model (runevent), and keeps
+// how far the run has got, the agent's own end (Result), the provider's usage limit, and,
+// for Claude Code, what its init line says of its own setup (Init).
+//
+// It is a leaf: it imports only runevent and the standard library, so the background
+// runner (internal/agentrun) and anything else that follows an agent's stream read it
+// without reaching a run engine or the store.
+package stream
 
 import (
 	"bytes"
@@ -16,9 +25,9 @@ import (
 // numbers, the todo list, the tokens used, and the agent's own end once it comes.
 
 const (
-	// keepEvents is how many events a run keeps in memory; the run view of a run with more
-	// reads the rest from its log.
-	keepEvents = 2000
+	// KeepEvents is how many events a parser keeps in memory; the run view of a run with
+	// more reads the rest from its log.
+	KeepEvents = 2000
 
 	// maxLine is the longest line a parser reads; a longer one is skipped whole and counted
 	// as unknown, so a runaway line never holds the app's memory.
@@ -30,12 +39,12 @@ const (
 )
 
 // lineReader reads one complete line of an agent's stream into the parser's state, through
-// the stream's methods. It is called with the stream's lock held.
-type lineReader func(s *stream, line []byte)
+// the parser's methods. It is called with the parser's lock held.
+type lineReader func(s *Parser, line []byte)
 
-// stream is a run's parser: an io.Writer fed the run's log in order, from one goroutine at
-// a time, which any goroutine may read.
-type stream struct {
+// Parser is a run's parser of its agent's stream (Claude or Codex): an io.Writer fed the
+// run's log in order, from one goroutine at a time, which any goroutine may read.
+type Parser struct {
 	read lineReader
 	dir  string
 
@@ -57,7 +66,7 @@ type stream struct {
 	// at is the latest time a line said it was written, as RFC 3339, or "".
 	at string
 
-	// events are the last keepEvents events, and seq the last one's number.
+	// events are the last KeepEvents events, and seq the last one's number.
 	events []runevent.Event
 	seq    int64
 
@@ -69,6 +78,9 @@ type stream struct {
 
 	result *Result
 	limit  *Limit
+
+	// init is what the agent's init line said of its setup, nil until it comes.
+	init *Init
 
 	// keySource is where the agent's init line says its API key came from, "none" for a
 	// sign-in with the user's plan.
@@ -90,17 +102,17 @@ type tokens struct {
 	in, out, cacheRead int64
 }
 
-// newStream returns a parser that reads each line with read; dir is the run's folder, which
+// newParser returns a parser that reads each line with read; dir is the run's folder, which
 // the events write paths from.
-func newStream(read lineReader, dir string) *stream {
-	return &stream{
+func newParser(read lineReader, dir string) *Parser {
+	return &Parser{
 		read: read, dir: dir, usage: map[string]tokens{}, items: map[string]bool{},
 		progress: runevent.Progress{Todos: []runevent.Todo{}},
 	}
 }
 
 // Write feeds the parser more of the log. It never fails.
-func (s *stream) Write(p []byte) (int, error) {
+func (s *Parser) Write(p []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -127,7 +139,7 @@ func (s *stream) Write(p []byte) (int, error) {
 
 // Page returns the events after the one numbered after, and how far the run has got. The
 // events it no longer keeps in memory are the log's, before the first one's line.
-func (s *stream) Page(after int64) runevent.Page {
+func (s *Parser) Page(after int64) runevent.Page {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -148,7 +160,7 @@ func (s *stream) Page(after int64) runevent.Page {
 }
 
 // Progress returns how far the run has got.
-func (s *stream) Progress() runevent.Progress {
+func (s *Parser) Progress() runevent.Progress {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -156,7 +168,7 @@ func (s *stream) Progress() runevent.Progress {
 }
 
 // Result returns the agent's own end, once its result line came.
-func (s *stream) Result() (Result, bool) {
+func (s *Parser) Result() (Result, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -168,7 +180,7 @@ func (s *stream) Result() (Result, bool) {
 }
 
 // Limit returns the provider's usage limit as the agent last reported it, or nil.
-func (s *stream) Limit() *Limit {
+func (s *Parser) Limit() *Limit {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -181,9 +193,27 @@ func (s *stream) Limit() *Limit {
 	return &l
 }
 
+// Init returns what the agent's init line said of its own setup, once it came: only Claude
+// Code's stream has one. A turn reads it to check its own tools and MCP servers before it
+// goes on.
+func (s *Parser) Init() (Init, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.init == nil {
+		return Init{}, false
+	}
+
+	in := *s.init
+	in.Tools = append([]string{}, s.init.Tools...)
+	in.MCPServers = append([]MCPServer{}, s.init.MCPServers...)
+
+	return in, true
+}
+
 // AgentSessionID returns the agent's own ID of the conversation, once its stream names it
 // (Codex's thread.started), or "".
-func (s *stream) AgentSessionID() string {
+func (s *Parser) AgentSessionID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -192,41 +222,60 @@ func (s *stream) AgentSessionID() string {
 
 // Over reports that the agent's result line came: the run is done, whatever of it is left
 // running.
-func (s *stream) Over() bool {
+func (s *Parser) Over() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	return s.result != nil
 }
 
-// from starts the parser at offset in the log, a line's start, as for a page read from its
-// middle: its events' offsets count from there.
-func (s *stream) from(offset int64) *stream {
+// From starts the parser at offset in the log, a line's start, as for a page read from its
+// middle: its events' offsets count from there. It returns the parser, which must not have
+// read anything yet.
+func (s *Parser) From(offset int64) *Parser {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.pos, s.lineStart = offset, offset
 
 	return s
 }
 
-// flush reads a last line the log never ended, as a run's that has ended may be: the log
+// Flush reads a last line the log never ended, as a run's that has ended may be: the log
 // won't grow, so the line is whole.
-func (s *stream) flush() {
+func (s *Parser) Flush() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.readPending()
 }
 
-// all returns every event the parser keeps, oldest first.
-func (s *stream) all() []runevent.Event {
+// Events returns every event the parser keeps, oldest first.
+func (s *Parser) Events() []runevent.Event {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	return append([]runevent.Event{}, s.events...)
 }
 
+// LastWords returns the last thing the agent said, or its latest step: what a run that
+// didn't report shows.
+func (s *Parser) LastWords() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := len(s.events) - 1; i >= 0; i-- {
+		if s.events[i].Kind == runevent.KindText {
+			return s.events[i].Text
+		}
+	}
+
+	return s.progress.Step
+}
+
 // readPending reads the line held, whole now, unless it ran past maxLine, and starts the
 // next one where the parser has read to. The caller holds mu.
-func (s *stream) readPending() {
+func (s *Parser) readPending() {
 	if !s.skipping && len(bytes.TrimSpace(s.pending)) > 0 {
 		s.line, s.part = s.lineStart, 0
 		s.read(s, s.pending)
@@ -237,7 +286,7 @@ func (s *stream) readPending() {
 }
 
 // hold keeps part of a line not ended yet, dropping one past maxLine.
-func (s *stream) hold(part []byte) {
+func (s *Parser) hold(part []byte) {
 	if s.skipping {
 		return
 	}
@@ -254,7 +303,7 @@ func (s *stream) hold(part []byte) {
 
 // emit records an event, cutting its text to runevent.MaxText, at its line's offset and
 // the latest time a line gave.
-func (s *stream) emit(e runevent.Event) {
+func (s *Parser) emit(e runevent.Event) {
 	e.Text, e.Cut = cut(e.Text, runevent.MaxText)
 	e.Offset, e.Part, e.At = s.line, s.part, s.at
 	s.part++
@@ -264,19 +313,19 @@ func (s *stream) emit(e runevent.Event) {
 	s.progress.Events = s.seq
 
 	s.events = append(s.events, e)
-	if len(s.events) > keepEvents {
-		s.events = append(s.events[:0], s.events[len(s.events)-keepEvents:]...)
+	if len(s.events) > KeepEvents {
+		s.events = append(s.events[:0], s.events[len(s.events)-KeepEvents:]...)
 	}
 }
 
 // unknown counts a message the parser didn't know.
-func (s *stream) unknown() {
+func (s *Parser) unknown() {
 	s.progress.Unknown++
 }
 
 // stamp notes when a line says it was written, an RFC 3339 time; anything else is left
 // alone, so a line with none keeps the latest time before it.
-func (s *stream) stamp(at string) {
+func (s *Parser) stamp(at string) {
 	if at == "" {
 		return
 	}
@@ -287,14 +336,14 @@ func (s *stream) stamp(at string) {
 }
 
 // step sets the run's latest step.
-func (s *stream) step(text string) {
+func (s *Parser) step(text string) {
 	if text != "" {
 		s.progress.Step, _ = cut(text, 200)
 	}
 }
 
 // addUsage records an assistant message's usage, by its ID.
-func (s *stream) addUsage(id string, t tokens) {
+func (s *Parser) addUsage(id string, t tokens) {
 	if id == "" {
 		id = "#" + strconv.Itoa(len(s.usage))
 	}
@@ -310,26 +359,11 @@ func (s *stream) addUsage(id string, t tokens) {
 }
 
 // progressLocked returns a copy of the progress.
-func (s *stream) progressLocked() runevent.Progress {
+func (s *Parser) progressLocked() runevent.Progress {
 	p := s.progress
 	p.Todos = append([]runevent.Todo{}, s.progress.Todos...)
 
 	return p
-}
-
-// lastWords returns the last thing the agent said, or its latest step: what a run that
-// didn't report shows.
-func (s *stream) lastWords() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for i := len(s.events) - 1; i >= 0; i-- {
-		if s.events[i].Kind == runevent.KindText {
-			return s.events[i].Text
-		}
-	}
-
-	return s.progress.Step
 }
 
 // cut returns text cut to at most limit bytes, between characters, and whether it was.

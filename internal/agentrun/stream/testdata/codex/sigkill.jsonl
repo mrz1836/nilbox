@@ -1,0 +1,3 @@
+{"type":"thread.started","thread_id":"01a1e67a-0ffe-71c2-b1bb-8f230a46e08c"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc 'sleep 45'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
