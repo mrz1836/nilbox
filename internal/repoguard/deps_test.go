@@ -326,6 +326,14 @@ func boundaries() []boundary {
 				"proposal applies through the window's own bindings",
 		},
 		{
+			pkg: "internal/mcpserver",
+			forbidden: append(slices.Clone(noService),
+				"internal/execpath", "internal/scriptrun", "internal/launcher", "internal/logging"),
+			why: "the tool mode is the app's binary run by Claude Code as its tool server: it reads the snapshot the " +
+				"app wrote and writes proposals, so nothing it reaches starts a program, runs a script or an agent, " +
+				"logs, or opens the store or any service (TestTheToolServerRunsNothing holds its own files to it too)",
+		},
+		{
 			pkg:       "internal/autopilotprefs",
 			forbidden: append(slices.Clone(noService), "internal/autopilot", "internal/event"),
 			why: "autopilotprefs declares Autopilot's settings keys and a routine's modes, which settings writes " +
@@ -396,6 +404,14 @@ func leaves() []leaf {
 		why: "kit is what Describe it hands a coding agent and reads back, which the app and its tool mode share: " +
 			"the snapshot comes with each call, so it reads no file, starts nothing, and imports only the routines " +
 			"core, draft, and the leaves that declare the settings and rules it checks",
+	}, leaf{
+		pkg: "internal/mcpserver",
+		allowed: []string{
+			"internal/autopilot/kit", "internal/autopilot/spec", "internal/appdata", "internal/paths", "internal/brand",
+			"internal/textutil",
+		},
+		why: "mcpserver is the tool mode, which serves kit's words and checks and writes kit's proposal files: it " +
+			"imports only kit and spec, appdata's whole-file writes, paths' readers, the brand, and the words",
 	}, leaf{
 		pkg: "internal/autopilotprefs", allowed: []string{"internal/prefs/prefval"},
 		why: "autopilotprefs declares Autopilot's settings for settings to write and Autopilot to read, so it " +

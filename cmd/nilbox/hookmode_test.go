@@ -16,13 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/fence"
+	"github.com/mrz1836/nilbox/internal/mcpserver"
 )
 
 // TestMain runs this test binary, which holds the build's own main, as an agent runs the
-// app's executable for its fence hook: given the hook mode's flag, it is main in that mode,
-// whichever build the tests were built for.
+// app's executable for its fence hook or as its tool server: given the hook mode's flag or
+// the tool mode's, it is main in that mode, whichever build the tests were built for.
 func TestMain(m *testing.M) {
-	if fence.IsHookCall(os.Args[1:]) {
+	if fence.IsHookCall(os.Args[1:]) || mcpserver.IsCall(os.Args[1:]) {
 		main()
 	}
 

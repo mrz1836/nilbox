@@ -59,6 +59,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/logging"
+	"github.com/mrz1836/nilbox/internal/mcpserver"
 	"github.com/mrz1836/nilbox/internal/measure"
 	"github.com/mrz1836/nilbox/internal/milestones"
 	"github.com/mrz1836/nilbox/internal/notify"
@@ -112,6 +113,14 @@ func main() {
 	// calls: it decides the call against the run's policy and exits, before anything reads
 	// a setting, opens the data, starts logging, or touches the window.
 	if code, ok := fence.RunHook(os.Args[1:], os.Stdin, os.Stderr); ok {
+		os.Exit(code)
+	}
+
+	// Describe it's tool server is this binary run again too, by Claude Code, in the app's
+	// conversation and in the user's own sessions: it serves the tools on stdin and stdout
+	// until the session ends, and as the hook does, it opens no data, starts no logging,
+	// and touches no window, reading only the snapshot and the proposals' folders.
+	if code, ok := mcpserver.Serve(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); ok {
 		os.Exit(code)
 	}
 

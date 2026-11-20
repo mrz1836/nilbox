@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/fence"
+	"github.com/mrz1836/nilbox/internal/mcpserver"
 )
 
 // Build metadata, injected at build time via -ldflags (see .mage.yaml).
@@ -30,6 +31,13 @@ func main() {
 	// A fenced agent run's hook is this binary run again, as the desktop build's is: it
 	// decides one tool call against the run's policy and exits, opening nothing.
 	if code, ok := fence.RunHook(os.Args[1:], os.Stdin, os.Stderr); ok {
+		os.Exit(code)
+	}
+
+	// Describe it's tool server is this binary run again too, by Claude Code: it serves
+	// the tools on stdin and stdout until the session ends, opening nothing but the
+	// snapshot and the proposals' folders.
+	if code, ok := mcpserver.Serve(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); ok {
 		os.Exit(code)
 	}
 
