@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -188,7 +190,9 @@ type describeAgents struct {
 // Conversation returns how to start Claude Code with the profile named profile, "" for
 // the launch defaults' own: found, at least agent.ConversationFloor, and signed in, or why
 // not, worded as readiness words it. A check that finds what holds a turn back is asked
-// again at once, so a problem the user has just fixed never stays.
+// again at once, so a problem the user has just fixed never stays. A profile on this Mac
+// that is only signed out still gets its program and environment, not ready: the plugin's
+// commands need no sign-in (the spike's S9), while a turn is held back.
 func (a describeAgents) Conversation(ctx context.Context, profile string) (describeit.Start, error) {
 	claude, err := agent.Lookup(agent.Claude)
 	if err != nil {
@@ -217,11 +221,7 @@ func (a describeAgents) Conversation(ctx context.Context, profile string) (descr
 		return start, err
 	}
 
-	if start = a.signIn(ctx, s, start); start.Problem != "" {
-		return start, nil
-	}
-
-	return a.ready(claude, s, p, path, start), nil
+	return a.signedIn(ctx, claude, s, p, path, start), nil
 }
 
 // Profiles returns Claude Code's stored profiles, the launch defaults' first, then the rest
@@ -251,6 +251,42 @@ func (a describeAgents) Profiles(ctx context.Context) ([]describeit.Profile, err
 	}
 
 	return out, nil
+}
+
+// signedIn finishes start, Claude Code found at path, with the profile p's sign-in: its
+// program and environment (ready), held back by a profile that isn't signed in. One on this
+// Mac that is only signed out keeps them, for the plugin's commands.
+func (a describeAgents) signedIn(ctx context.Context, claude agent.Agent, s settings.Settings, p profiles.Profile,
+	path string, start describeit.Start,
+) describeit.Start {
+	held := a.signIn(ctx, s, start)
+	if held.Problem != "" && !a.onThisMac(claude, p) {
+		return held
+	}
+
+	ready := a.ready(claude, s, p, path, start)
+	if held.Problem != "" && ready.Ready {
+		ready.Ready, ready.Problem, ready.Fix = false, held.Problem, held.Fix
+	}
+
+	return ready
+}
+
+// onThisMac reports the profile p stored, with its folder there, as readiness's own
+// check finds it: one whose sign-in alone can hold a turn back.
+func (a describeAgents) onThisMac(claude agent.Agent, p profiles.Profile) bool {
+	if p.Name == "" {
+		return false
+	}
+
+	dir := p.ConfigDir
+	if dir == "" {
+		dir = filepath.Join(a.deps.home, claude.ConfigDir)
+	}
+
+	_, err := os.Stat(dir)
+
+	return err == nil
 }
 
 // claudeProfiles returns Claude Code's stored profiles, its default first and the rest by

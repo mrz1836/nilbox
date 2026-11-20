@@ -195,6 +195,7 @@ func TestDescribeItSaysWhyClaudeCodeCantRunATurn(t *testing.T) {
 		problem string
 		fix     string
 		version string
+		starts  bool
 	}{
 		{
 			name: "not installed", claude: floorClaude(), missing: true,
@@ -208,7 +209,7 @@ func TestDescribeItSaysWhyClaudeCodeCantRunATurn(t *testing.T) {
 		{
 			name: "signed out", claude: claudeAt(floor, `{"loggedIn": false}`),
 			problem: "Profile default (Claude) is signed out.", fix: "Run `claude auth login`, then Check again.",
-			version: floor,
+			version: floor, starts: true,
 		},
 		{
 			name: "a profile not on this Mac", claude: floorClaude(), profile: "nope",
@@ -241,6 +242,15 @@ func TestDescribeItSaysWhyClaudeCodeCantRunATurn(t *testing.T) {
 			assert.Equal(t, tt.problem, got.Problem)
 			assert.Equal(t, tt.fix, got.Fix)
 			assert.Equal(t, tt.version, got.Version)
+
+			if tt.starts {
+				assert.Equal(t, r.claude, got.Program, "a profile on this Mac that is only signed out still runs "+
+					"the plugin's commands, which need no sign-in")
+				assert.NotEmpty(t, got.Env)
+
+				return
+			}
+
 			assert.Empty(t, got.Program, "nothing to start")
 			assert.Empty(t, got.Env)
 		})

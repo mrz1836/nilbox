@@ -3641,7 +3641,8 @@ profiles with the plugin's state there (*Installed · 1.0.0*, *Not installed*) a
 - **Install** writes the plugin into Nilbox's data folder (`describe/plugin`, a local
   marketplace of its own holding the plugin's manifest, its skill, and its MCP server, and no
   settings, hooks, or permission rules), points the program it runs (`describe/bin/nilbox-mcp`)
-  at the app, and runs Claude Code's own `claude plugin install` for the profile. Claude Code
+  at the app, and runs Claude Code's own `claude plugin install` for the profile, which needs
+  no sign-in, so a profile not signed in yet can have it too. Claude Code
   loads the plugin in place from that folder, which each version of Nilbox rewrites as it starts
   (or once Autopilot is turned on) when its words differ, so an update reaches your next session
   with nothing to install again.
