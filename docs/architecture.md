@@ -2184,7 +2184,10 @@ hold a slash, so a remote-tracking branch is the branch of the clone's remote, o
 it names with a URL (`localrepos.LocalRepo.Names`, from the same config read as its GitHub
 remotes), whose name is the longest that begins it (`withOwners`):
 `refs/remotes/origin/mirror/main` is a remote called `origin/mirror`'s `main`, never
-origin's `mirror/main`, and a branch of a remote the clone doesn't name is no one's. GitHub is asked in the
+origin's `mirror/main`, and a branch of a remote the clone doesn't name is no one's. So is a
+remote's HEAD: `refs/remotes/origin/mirror/HEAD` names the default branch of the remote
+called `origin/mirror`, once the clone names that remote, which nothing links through nor
+looks for copies on. GitHub is asked in the
 listing's request for the items' states: `github.FetchLinkStates` adds one aliased
 `repository { pullRequests(headRefName: ..., states: [OPEN, MERGED, CLOSED], first: 20,
 orderBy: UPDATED_AT DESC) }` per branch to the states query, at most fifty of each a request,

@@ -557,6 +557,7 @@ func TestGitBranchOutputParsing(t *testing.T) {
 	assert.NotEqual(t, refs.fingerprint(), parseRefs(nil).fingerprint())
 	assert.Equal(t, refs.fingerprint(), parseRefs([]byte("refs/remotes/origin/feat/x\x00"+otherSHA+"\x00\x00\x00\n"+
 		"refs/remotes/origin/HEAD\x00"+headSHA+"\x00\x00refs/remotes/origin/main\x00\n"+
+		"refs/remotes/upstream/HEAD\x00"+otherSHA+"\x00\x00refs/remotes/origin/develop\x00\n"+
 		"refs/remotes/origin/main\x00"+headSHA+"\x00\x00\x00\n")).fingerprint(),
 		"the same remote state in another order, without the local branches")
 

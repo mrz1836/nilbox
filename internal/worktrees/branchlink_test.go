@@ -2,6 +2,7 @@ package worktrees
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -440,6 +441,38 @@ func TestWithOwnersTellsARemoteWhoseNameHoldsASlash(t *testing.T) {
 	assert.False(t, ok, "nor is a branch the clone hasn't anyone's")
 }
 
+func TestWithOwnersKnowsTheDefaultBranchOfARemoteWhoseNameHoldsASlash(t *testing.T) {
+	t.Parallel()
+
+	read := parseRefs([]byte(strings.Join([]string{
+		"refs/remotes/origin/HEAD\x00" + headSHA + "\x00\x00refs/remotes/origin/main\x00",
+		"refs/remotes/origin/main\x00" + headSHA + "\x00\x00\x00",
+		"refs/remotes/origin/mirror/HEAD\x00" + otherSHA + "\x00\x00refs/remotes/origin/mirror/trunk\x00",
+		"refs/remotes/origin/mirror/trunk\x00" + otherSHA + "\x00\x00\x00",
+		"refs/remotes/origin/mirror/feat/x\x00" + otherSHA + "\x00\x00\x00",
+	}, "\n") + "\n"))
+	assert.Equal(t, map[string]string{originRemote: mainBranch}, read.defaults, "not until the remotes are known")
+
+	refs := withOwners(read, []string{originRemote, "origin/mirror"})
+	assert.Equal(t, map[string]string{originRemote: mainBranch, "origin/mirror": "trunk"}, refs.defaults)
+	assert.True(t, refs.isDefault("trunk"))
+	assert.Equal(t, map[string]string{originRemote: mainBranch}, read.defaults, "the read itself is left as it was")
+
+	remotes := map[string]repo.Name{originRemote: exampleRepo(), "origin/mirror": {Owner: "mirror-org", Repo: "example-repo"}}
+	assert.Equal(t, map[string]bool{"refs/remotes/origin/mirror/feat/x": true}, pushedBranches(remotes, refs),
+		"neither remote's default branch is looked for copies on")
+
+	_, ok := branchAsk(&Worktree{Branch: "trunk"}, remotes, refs)
+	assert.False(t, ok, "nor is a worktree on the mirror's default branch linked through it")
+
+	_, ok = branchAsk(&Worktree{Branch: "feat/x"}, remotes, refs)
+	assert.True(t, ok)
+
+	alone := withOwners(read, []string{originRemote})
+	assert.Equal(t, map[string]string{originRemote: mainBranch}, alone.defaults,
+		"a HEAD under a name no remote has is no one's")
+}
+
 // addSlashedMirror gives the clone at repo a remote that isn't on GitHub named
 // origin/mirror, as its config may name one though git remote add refuses it beside origin.
 func addSlashedMirror(t *testing.T, repo string) {
@@ -469,6 +502,34 @@ func TestListLinksNothingByABranchPushedOnlyToARemoteNamedLikeOrigins(t *testing
 	require.NoError(t, err)
 	assert.Nil(t, mustRow(t, snap, path).Item, "refs/remotes/origin/mirror/feat/y is the mirror's feat/y, not origin's")
 	assert.Empty(t, gh.heads, "and GitHub isn't asked about it")
+}
+
+func TestListNeverLinksThroughTheDefaultBranchOfARemoteWhoseNameHoldsASlash(t *testing.T) {
+	t.Parallel()
+
+	r := newCopyRig(t, nil)
+	testutil.RunGit(t, r.repo, "config", "remote.origin/mirror.url", "https://github.com/mirror-org/example-repo.git")
+	testutil.RunGit(t, r.repo, "config", "remote.origin/mirror.fetch", "+refs/heads/*:refs/remotes/origin/mirror/*")
+
+	// The mirror's default branch is trunk, which a worktree has checked out, holding copies
+	// of the agent's commits, and pushed there.
+	oids := r.work(t, 2)
+	trunk := addWorktree(t, r.repo, filepath.Join(r.e.home, "wt", "trunk"), "trunk")
+	commitAt(t, trunk, "trunk.txt", "trunk\n", "Start the trunk", authoredAt-1000)
+	head := copyOnto(t, trunk, oids...)
+	testutil.RunGit(t, r.repo, "update-ref", "refs/remotes/origin/mirror/trunk", head)
+	testutil.RunGit(t, r.repo, "symbolic-ref", "refs/remotes/origin/mirror/HEAD", "refs/remotes/origin/mirror/trunk")
+	testutil.RunGit(t, r.repo, "config", "branch.trunk.remote", "origin/mirror")
+	testutil.RunGit(t, r.repo, "config", "branch.trunk.merge", "refs/heads/trunk")
+	r.gh.setHead("trunk", headPR(9, ItemOpen, head, "trunk", "mirror-org/example-repo"))
+
+	snap := listOf(t, r.svc)
+	assert.Nil(t, mustRow(t, snap, trunk).Item, "the mirror's default branch links nothing")
+
+	agent := mustRow(t, snap, r.agent)
+	assert.Empty(t, agent.Copies.Ref, "and isn't looked for copies on")
+	assert.Nil(t, agent.Item)
+	assert.Empty(t, r.gh.heads, "so GitHub isn't asked about it")
 }
 
 func TestHeadCacheStartsOverWhenFull(t *testing.T) {

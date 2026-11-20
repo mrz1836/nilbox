@@ -45,8 +45,13 @@ type cloneRefs struct {
 	names []string
 
 	// defaults maps each remote whose HEAD the clone knows to the branch it points at, the
-	// repository's default branch, as in main.
+	// repository's default branch, as in main: a remote of a plain name's from the read
+	// itself, and one whose name holds a slash's once withOwners knows it is a remote.
 	defaults map[string]string
+
+	// heads maps each remote's HEAD the clone has, by the name between refs/remotes/ and
+	// /HEAD, as in origin or origin/mirror, to the ref it points at.
+	heads map[string]string
 }
 
 // remoteBranch is a remote-tracking branch's remote and its branch there.
@@ -58,10 +63,12 @@ type remoteBranch struct {
 // every remote the clone has: the one with the longest name that, with a slash, begins the
 // branch's name past refs/remotes/. A remote's name may hold a slash, so the
 // refs/remotes/origin/mirror/main of a remote called origin/mirror is that remote's main,
-// never origin's branch mirror/main.
+// never origin's branch mirror/main. Each of names whose HEAD the clone has has its default
+// branch, as refs/remotes/origin/mirror/HEAD gives origin/mirror's.
 func withOwners(refs cloneRefs, names []string) cloneRefs {
 	refs.names = slices.Sorted(slices.Values(names))
 	refs.owners = make(map[string]remoteBranch, len(refs.tracking))
+	refs.defaults = defaultsAmong(refs, names)
 
 	for ref := range refs.tracking {
 		rest := strings.TrimPrefix(ref, remotesRef)
@@ -81,6 +88,21 @@ func withOwners(refs cloneRefs, names []string) cloneRefs {
 	return refs
 }
 
+// defaultsAmong returns refs' default branches with those of each of names whose HEAD refs
+// has, a remote whose name holds a slash among them, in a map of its own.
+func defaultsAmong(refs cloneRefs, names []string) map[string]string {
+	out := make(map[string]string, len(refs.defaults))
+	maps.Copy(out, refs.defaults)
+
+	for remote, symref := range refs.heads {
+		if branch, ok := defaultOf(remote, symref); ok && slices.Contains(names, remote) {
+			out[remote] = branch
+		}
+	}
+
+	return out
+}
+
 // readRefs reads the refs of the clone at dir in one git run.
 func (g git) readRefs(ctx context.Context, dir string) (cloneRefs, error) {
 	stdout, _, err := g.do(ctx, dir, refsArgs()...)
@@ -92,10 +114,11 @@ func (g git) readRefs(ctx context.Context, dir string) (cloneRefs, error) {
 }
 
 // parseRefs reads what refsArgs prints. A line that is not a branch and a commit is left
-// out, and so is a remote-tracking branch or a remote's HEAD whose remote or branch git
-// could not be asked about by name.
+// out, and so is a remote-tracking branch whose remote or branch git could not be asked
+// about by name. A remote's HEAD names its default branch here only when the remote's name
+// is plain: one whose name holds a slash waits for withOwners.
 func parseRefs(stdout []byte) cloneRefs {
-	refs := cloneRefs{tracking: map[string]string{}, defaults: map[string]string{}}
+	refs := cloneRefs{tracking: map[string]string{}, defaults: map[string]string{}, heads: map[string]string{}}
 
 	for line := range strings.Lines(string(stdout)) {
 		fields := strings.Split(strings.TrimRight(line, "\n"), "\x00")
@@ -117,26 +140,40 @@ func addRef(r *cloneRefs, name, oid, upstream, symref, worktree string) {
 		return
 	}
 
-	if remote, ok := remoteHeadOf(name); ok {
-		if branch, ok := strings.CutPrefix(symref, remotesRef+remote+"/"); ok && gitread.ValidBranch(branch) {
-			r.defaults[remote] = branch
-		}
-
-		return
+	remote, head := remoteHeadOf(name)
+	if head && symref != "" {
+		r.heads[remote] = symref
 	}
 
-	if symref == "" && isTrackingRef(name) {
+	switch {
+	case head && gitread.ValidRemoteName(remote):
+		if branch, ok := defaultOf(remote, symref); ok {
+			r.defaults[remote] = branch
+		}
+	case symref == "" && isTrackingRef(name):
 		r.tracking[name] = oid
 	}
 }
 
-// remoteHeadOf returns the remote whose HEAD ref is, refs/remotes/<remote>/HEAD.
+// remoteHeadOf returns the name whose HEAD ref is, refs/remotes/<name>/HEAD, which may hold
+// a slash.
 func remoteHeadOf(ref string) (string, bool) {
-	if !isRemoteHead(ref) {
+	rest, ok := strings.CutPrefix(ref, remotesRef)
+	if !ok {
 		return "", false
 	}
 
-	return strings.TrimSuffix(strings.TrimPrefix(ref, remotesRef), "/HEAD"), true
+	remote, ok := strings.CutSuffix(rest, "/HEAD")
+
+	return remote, ok && remote != ""
+}
+
+// defaultOf returns the branch symref, where remote's HEAD points, names on remote itself:
+// its default branch. One on another remote, or of a name git refuses, is none.
+func defaultOf(remote, symref string) (string, bool) {
+	branch, ok := strings.CutPrefix(symref, remotesRef+remote+"/")
+
+	return branch, ok && gitread.ValidBranch(branch)
 }
 
 // defaultNames lists the branches the remotes' HEADs point at, each once, in name order:
@@ -175,8 +212,8 @@ func (r cloneRefs) fingerprint() string {
 		sum.Write([]byte(ref + "\x00" + r.tracking[ref] + "\n"))
 	}
 
-	for _, remote := range slices.Sorted(maps.Keys(r.defaults)) {
-		sum.Write([]byte("HEAD\x00" + remote + "\x00" + r.defaults[remote] + "\n"))
+	for _, remote := range slices.Sorted(maps.Keys(r.heads)) {
+		sum.Write([]byte("HEAD\x00" + remote + "\x00" + r.heads[remote] + "\n"))
 	}
 
 	return hex.EncodeToString(sum.Sum(nil))
