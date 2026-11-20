@@ -397,6 +397,17 @@ func boundCalls(t *testing.T) map[string]boundCall {
 
 			return got, nil
 		},
+		"worktrees.Service.Details": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			snap, err := c.Worktrees.List(ctx)
+			require.NoError(t, err)
+			require.Len(t, snap.Repos, 1)
+			require.Len(t, snap.Repos[0].Worktrees, 2, "the main worktree and the linked one")
+
+			got, err := c.Worktrees.Details(ctx, snap.Repos[0].Path, snap.Repos[0].Worktrees[1].Path)
+			require.NotEmpty(t, got.Errors, "git refuses the status here, which Details says rather than fails")
+
+			return got, err
+		},
 		"worktrees.Service.RecentCleanups": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Worktrees.RecentCleanups(ctx)
 			require.NotEmpty(t, got)

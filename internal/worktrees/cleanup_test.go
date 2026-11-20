@@ -192,6 +192,9 @@ type linkDeps struct {
 
 	// guard, when set, runs the Service under gitread's guards, as core does.
 	guard Guard
+
+	// base, when set, reads where a clone's default branch stands, for Details.
+	base BaseReader
 }
 
 // linked builds a Service over the env that links worktrees through deps. Agent locks
@@ -232,6 +235,10 @@ func (e *env) linked(deps linkDeps) *Service {
 
 	if deps.guard != nil {
 		cfg.Guard = deps.guard
+	}
+
+	if deps.base != nil {
+		cfg.Base = deps.base
 	}
 
 	svc := NewService(cfg)

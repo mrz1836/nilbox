@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -132,6 +134,27 @@ func TestGitArgvUsesDashC(t *testing.T) {
 			want:   append(gitArgv(repoDir, "rev-list --count --ignore-missing", headSHA, "--not --remotes"), otherSHA),
 		},
 		{
+			name:   "the commits not on GitHub are listed in the worktree",
+			stdout: headSHA + " 1700000000 Fix the cache\n",
+			call:   func(g git) error { _, _, err := g.unpushedCommits(ctx, treePath, ""); return err },
+			want: append(gitArgv(treePath, "log --no-show-signature --no-mailmap --max-count=200"), "--format=%H %ct %s",
+				"HEAD", "--not", "--remotes"),
+		},
+		{
+			name:   "the commits not on GitHub past the commit fetched from GitHub",
+			stdout: headSHA + " 1700000000 Fix the cache\n",
+			call:   func(g git) error { _, _, err := g.unpushedCommits(ctx, treePath, otherSHA); return err },
+			want: append(gitArgv(treePath, "log --no-show-signature --no-mailmap --max-count=200"), "--format=%H %ct %s",
+				"--ignore-missing", "HEAD", "--not", "--remotes", otherSHA),
+		},
+		{
+			name:   "the commits not on GitHub ignore a fetched head that is no commit",
+			stdout: headSHA + " 1700000000 Fix the cache\n",
+			call:   func(g git) error { _, _, err := g.unpushedCommits(ctx, treePath, "main"); return err },
+			want: append(gitArgv(treePath, "log --no-show-signature --no-mailmap --max-count=200"), "--format=%H %ct %s",
+				"HEAD", "--not", "--remotes"),
+		},
+		{
 			name: "unlock",
 			call: func(g git) error { _, err := g.unlock(ctx, repoDir, treePath); return err },
 			want: gitArgv(repoDir, "worktree unlock", treePath),
@@ -206,6 +229,22 @@ func TestGitRejectsCommandsOutsideAllowlist(t *testing.T) {
 		{"log", "--no-walk=unsorted", "--no-show-signature", "--no-mailmap", "--format=%H %ct", strings.Repeat("0", 40)},
 		{"log", "--no-walk=unsorted", "--format=%H %an", headSHA},
 		{"log", "--no-walk", "--format=%H %ct", headSHA},
+		append(unpushedLogCmd(), "main", "--not", "--remotes"),
+		append(unpushedLogCmd(), headSHA, "--not", "--remotes"),
+		append(unpushedLogCmd(), "HEAD", "--not", "--all"),
+		append(unpushedLogCmd(), "HEAD", "--remotes", "--not"),
+		append(unpushedLogCmd(), "HEAD", "--not", "--remotes", otherSHA),
+		append(unpushedLogCmd(), "HEAD", "--not", "--remotes", "--not", otherSHA),
+		append(unpushedLogCmd(), "HEAD", "--not", "--remotes", "-p"),
+		append(unpushedLogCmd(), "--ignore-missing", "HEAD", "--not", "--remotes", "main"),
+		append(unpushedLogCmd(), "--ignore-missing", "HEAD", "--not", "--remotes", strings.Repeat("0", 40)),
+		append(unpushedLogCmd(), "--ignore-missing", "main", "--not", "--remotes", otherSHA),
+		append(unpushedLogCmd(), "--ignore-missing", "HEAD", "--not", "--not", otherSHA),
+		append(unpushedLogCmd(), "--ignore-missing", "HEAD", "--not", "--remotes", otherSHA, headSHA),
+		append(argv("log --no-show-signature --no-mailmap --max-count=200"), "--format=%H %ct %s %b", "HEAD", "--not", "--remotes"),
+		append(argv("log --no-show-signature --no-mailmap --max-count=2000"), "--format=%H %ct %s", "HEAD", "--not", "--remotes"),
+		append(argv("log --no-mailmap --max-count=200"), "--format=%H %ct %s", "HEAD", "--not", "--remotes", "--all"),
+		append(argv("log --max-count=200"), "--format=%H %ct %s", "HEAD", "--not", "--remotes"),
 		argv("worktree list"),
 		argv("checkout main"),
 		argv("status"),
@@ -238,11 +277,36 @@ func TestGitAllowsDeletingAnyWellFormedBranchAtACommit(t *testing.T) {
 
 	for _, args := range [][]string{
 		branchListArgs(), remoteHeadsArgs(), branchUnpushedArgs(headSHA), ancestorArgs(headSHA, otherSHA),
-		unpushedPastArgs(headRef, otherSHA), unpushedPastArgs(headSHA, otherSHA),
+		unpushedPastArgs(headRef, otherSHA), unpushedPastArgs(headSHA, otherSHA), unpushedLogArgs(),
+		unpushedPastLogArgs(otherSHA),
 	} {
 		_, _, err := git{run: &testutil.Runner{}, bin: gitBin}.do(t.Context(), repoDir, args...)
 		require.NoError(t, err, args)
 	}
+}
+
+func TestTheCommitsNotOnGitHubAreListedAsARead(t *testing.T) {
+	t.Parallel()
+
+	for _, args := range [][]string{unpushedLogArgs(), unpushedPastLogArgs(otherSHA)} {
+		assert.True(t, readOnly(args), args)
+	}
+
+	readEnv := []string{"GIT_NO_LAZY_FETCH=1"}
+	guard := failingGuard{env: func() []string { return readEnv }, err: errFakeStart, calls: &atomic.Int32{}}
+
+	var envs [][]string
+
+	g := git{bin: gitPath, guard: guard, with: func(env []string) execpath.Runner {
+		envs = append(envs, env)
+
+		return &testutil.Runner{}
+	}}
+
+	_, _, err := g.unpushedCommits(t.Context(), treePath, otherSHA)
+	require.NoError(t, err)
+	assert.Equal(t, [][]string{readEnv}, envs, "it runs with gitread's read environment")
+	assert.Zero(t, guard.calls.Load(), "and works out no setup of the clone's own config, as a status would")
 }
 
 func TestGitBranchOutputParsing(t *testing.T) {
@@ -409,6 +473,45 @@ func TestGitOutputParsing(t *testing.T) {
 			_, _, err := git{run: run, bin: gitBin}.unpushed(ctx, treePath, "")
 			require.ErrorIs(t, err, errParseCount, out)
 		}
+	})
+
+	t.Run("the commits not on GitHub", func(t *testing.T) {
+		t.Parallel()
+
+		run := &testutil.Runner{Stdout: headSHA + " 1700000100 Fix the cache: keep  two spaces\n\n" + otherSHA + " 1700000000 \n"}
+		commits, _, err := git{run: run, bin: gitBin}.unpushedCommits(ctx, treePath, "")
+		require.NoError(t, err)
+		assert.Equal(t, []UnpushedCommit{
+			{OID: headSHA, Unix: 1700000100, Subject: "Fix the cache: keep  two spaces"},
+			{OID: otherSHA, Unix: 1700000000},
+		}, commits, "in git's order, newest first, a subject's words as they are, an empty one, and no blank line")
+
+		commits, _, err = git{run: &testutil.Runner{}, bin: gitBin}.unpushedCommits(ctx, treePath, "")
+		require.NoError(t, err)
+		assert.NotNil(t, commits, "none is [], never null")
+		assert.Empty(t, commits)
+	})
+
+	t.Run("the commits not on GitHub with unexpected output", func(t *testing.T) {
+		t.Parallel()
+
+		for _, out := range []string{
+			"commits\n", headSHA + "\n", headSHA + " yesterday Fix\n", "not-a-commit 1700000000 Fix\n",
+			headSHA + " 1700000000 Fix\nsomething else\n",
+		} {
+			run := &testutil.Runner{Stdout: out}
+			_, _, err := git{run: run, bin: gitBin}.unpushedCommits(ctx, treePath, "")
+			require.ErrorIs(t, err, errParseCommits, out)
+		}
+	})
+
+	t.Run("the commits not on GitHub failure returns stderr", func(t *testing.T) {
+		t.Parallel()
+
+		run := &testutil.Runner{Stderr: "fatal: bad revision 'HEAD'", Err: exitError{code: 128}}
+		_, stderr, err := git{run: run, bin: gitBin}.unpushedCommits(ctx, treePath, otherSHA)
+		require.Error(t, err)
+		assert.Equal(t, "fatal: bad revision 'HEAD'", string(stderr))
 	})
 
 	t.Run("unpushed count failure returns stderr", func(t *testing.T) {

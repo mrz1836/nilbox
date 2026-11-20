@@ -638,6 +638,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Reader:   locations,
 		Clock:    opts.Clock,
 		GitHub:   itemStates{tokens: tokens, client: client, inbox: inboxStore, logger: logger},
+		Base:     shellGit,
 		Records:  workLog,
 		Procs:    procs.System{Run: runner},
 		History:  workLog,

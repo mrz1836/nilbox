@@ -360,14 +360,36 @@ func (s *Service) commitTimes(ctx context.Context, g git, dir string, entries []
 }
 
 // fetchedHeads maps each recorded worktree's resolved directory to the commit it was made
-// at from GitHub (worklog.Record.FetchedHead), for those that have one.
+// at from GitHub (worklog.Record.FetchedHead), for those whose record has one (see
+// recordsByDir).
 func fetchedHeads(records []worklog.Record) map[string]string {
 	out := map[string]string{}
 
-	for _, r := range records {
+	for dir, r := range recordsByDir(records) {
 		if gitread.IsCommitID(r.FetchedHead) {
-			out[paths.Resolved(r.Dir())] = r.FetchedHead
+			out[dir] = r.FetchedHead
 		}
+	}
+
+	return out
+}
+
+// recordsByDir maps each recorded worktree's resolved directory to its record. Where
+// several records name one directory, the last that holds the commit the worktree was made
+// at from GitHub wins, or else the last: the worklog lists them oldest first, so that is the
+// newest such record. The listing's count of the commits not on GitHub (fetchedHeads) and
+// Details read the same one.
+func recordsByDir(records []worklog.Record) map[string]worklog.Record {
+	out := make(map[string]worklog.Record, len(records))
+
+	for _, r := range records {
+		dir := paths.Resolved(r.Dir())
+
+		if kept, ok := out[dir]; ok && gitread.IsCommitID(kept.FetchedHead) && !gitread.IsCommitID(r.FetchedHead) {
+			continue
+		}
+
+		out[dir] = r
 	}
 
 	return out

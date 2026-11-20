@@ -258,8 +258,8 @@ type Worktree struct {
 	DirtyCount int `json:"dirtyCount"`
 
 	// Files are the first 12 of those files by path, from the same status (rowFiles), which
-	// the view shows before it reads the rest. A clean worktree has none, and so has one
-	// whose status couldn't be read.
+	// the view shows before it reads the rest (Details). A clean worktree has none, and so
+	// has one whose status couldn't be read.
 	Files []FileEntry `json:"files"`
 
 	// LastCommitUnix is the commit time of HEAD in Unix seconds, or 0 when unknown.

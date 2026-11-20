@@ -773,6 +773,10 @@ export type Worktree = NonNullLists<worktrees.Worktree>
 // WorktreeFile is one changed or untracked file in a worktree: git's two status letters
 // and its path.
 export type WorktreeFile = NonNullLists<worktrees.FileEntry>
+// WorktreeDetails is what a worktree's drawer shows beyond its row, read when it first
+// opens, and WorktreeCommit one of the commits on it that aren't on GitHub.
+export type WorktreeDetails = NonNullLists<worktrees.Details>
+export type WorktreeCommit = NonNullLists<worktrees.UnpushedCommit>
 export type WorktreeBranch = NonNullLists<worktrees.Branch>
 export type BranchKind = worktrees.BranchKind
 export type WorktreePick = NonNullLists<worktrees.Pick>
@@ -1213,6 +1217,7 @@ export function runScript(req: ScriptRunRequest): CancellablePromise<ScriptStart
 
 export const {
   List: listWorktrees,
+  Details: worktreeDetails,
   Remove: removeWorktree,
   ForceRemove: forceRemoveWorktree,
   RemoveAllClean: removeAllCleanWorktrees,

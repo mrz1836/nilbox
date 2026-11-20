@@ -291,6 +291,10 @@ type Config struct {
 	// worktree is linked, so none is ever finished.
 	GitHub GitHub
 
+	// Base reads where a clone's default branch stands, for Details. Core gives every
+	// Service one; without it, Details says nothing of the base.
+	Base BaseReader
+
 	// Records holds the worktrees the app made or found for pull requests and issues.
 	Records Records
 
@@ -349,6 +353,7 @@ type Service struct {
 	reader   *localrepos.Reader
 	clock    clock.Clock
 	github   GitHub
+	base     BaseReader
 	launches Records
 	lister   procs.Lister
 	history  History
@@ -403,6 +408,7 @@ func NewService(cfg Config) *Service {
 		reader:   cfg.Reader,
 		clock:    clock.Or(cfg.Clock),
 		github:   cfg.GitHub,
+		base:     cfg.Base,
 		launches: cfg.Records,
 		lister:   cfg.Procs,
 		history:  cfg.History,

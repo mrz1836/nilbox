@@ -150,6 +150,60 @@ export interface Cleanup {
 }
 
 /**
+ * Details is what a worktree's drawer shows beyond its row, read when the drawer first
+ * opens. Every field is a plain value.
+ */
+export interface Details {
+    /**
+     * Files are the worktree's changed and untracked files as its status lists them now, by
+     * path, at most 200; none when it has none, or when they couldn't be read. They replace
+     * the row's (Worktree.Files), which are as the listing found them.
+     */
+    "files": FileEntry[] | null;
+
+    /**
+     * FileCount is how many changed and untracked files the status found, or -1 when it
+     * couldn't be read.
+     */
+    "fileCount": number;
+
+    /**
+     * Commits are the commits on HEAD that aren't on GitHub, as Worktree.Unpushed counts
+     * them, newest first, at most 200; none when every one is, or when they couldn't be
+     * read.
+     */
+    "commits": UnpushedCommit[] | null;
+
+    /**
+     * Unpushed is how many such commits there are, or -1 when they couldn't be counted.
+     */
+    "unpushed": number;
+
+    /**
+     * Base is origin's default branch as the clone last fetched it, as in "origin/main", or
+     * "" when the clone doesn't say.
+     */
+    "base": string;
+
+    /**
+     * Behind is how many commits Base has that HEAD doesn't, or -1 when that is unknown.
+     */
+    "behind": number;
+
+    /**
+     * CreatedAt is when the app made or first recorded the worktree, in RFC 3339, or "" for
+     * one it has no record of.
+     */
+    "createdAt": string;
+
+    /**
+     * Errors say, each in a sentence, what couldn't be read and why; none when every read
+     * worked. The fields it would have filled keep their empty values.
+     */
+    "errors": string[] | null;
+}
+
+/**
  * FileEntry is one changed or untracked file in a worktree, as git status reports it.
  */
 export interface FileEntry {
@@ -546,6 +600,26 @@ export interface SweepReport {
 }
 
 /**
+ * UnpushedCommit is a commit on a worktree's HEAD that isn't on GitHub.
+ */
+export interface UnpushedCommit {
+    /**
+     * OID is its commit ID.
+     */
+    "oid": string;
+
+    /**
+     * Unix is its commit time, in Unix seconds.
+     */
+    "unix": number;
+
+    /**
+     * Subject is the first line of its message.
+     */
+    "subject": string;
+}
+
+/**
  * Worktree is one row of the Worktrees view.
  */
 export interface Worktree {
@@ -623,8 +697,8 @@ export interface Worktree {
 
     /**
      * Files are the first 12 of those files by path, from the same status (rowFiles), which
-     * the view shows before it reads the rest. A clean worktree has none, and so has one
-     * whose status couldn't be read.
+     * the view shows before it reads the rest (Details). A clean worktree has none, and so
+     * has one whose status couldn't be read.
      */
     "files": FileEntry[] | null;
 

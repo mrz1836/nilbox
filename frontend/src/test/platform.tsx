@@ -107,6 +107,7 @@ import {
   nilMoment,
   userScript,
   variables,
+  worktreeDetails,
   worktreesSnapshot,
 } from './fixtures'
 
@@ -577,6 +578,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     showHooksConfig: done,
 
     listWorktrees: () => Promise.resolve(worktreesSnapshot()),
+    worktreeDetails: () => Promise.resolve(worktreeDetails()),
     removeWorktree: () => Promise.resolve(removeResult()),
     forceRemoveWorktree: () => Promise.resolve(removeResult()),
     removeAllCleanWorktrees: () => Promise.resolve([]),

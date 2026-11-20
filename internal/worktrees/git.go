@@ -40,6 +40,10 @@ var errParseCommitTime = errors.New("unexpected commit time")
 // errParseCount is returned when git rev-list prints something other than a count.
 var errParseCount = errors.New("unexpected commit count")
 
+// errParseCommits is returned when git log prints something other than the commits asked
+// for.
+var errParseCommits = errors.New("unexpected commit list")
+
 // allowedFixedCommands are the complete argument lists, after `-C <dir>`, that git may
 // run with. `worktree remove`, `worktree unlock`, and `update-ref -d` are checked
 // separately because they take a path or a branch.
@@ -117,6 +121,25 @@ const headRef = "HEAD"
 
 // unpushedArgs counts the commits on HEAD that no remote-tracking branch has.
 func unpushedArgs() []string { return []string{"rev-list", "--count", headRef, "--not", "--remotes"} }
+
+// unpushedLogCmd starts the argument list that prints the commits on HEAD that aren't on
+// GitHub, newest first and at most detailLimit: each one's commit ID, its commit time, and
+// its subject, separated by spaces, one line each, with no signature check and no mailmap.
+func unpushedLogCmd() []string {
+	return []string{"log", noSignatures, noMailmap, "--max-count=" + strconv.Itoa(detailLimit), "--format=%H %ct %s"}
+}
+
+// unpushedLogArgs lists the commits on HEAD that no remote-tracking branch has, those
+// unpushedArgs counts.
+func unpushedLogArgs() []string { return append(unpushedLogCmd(), headRef, "--not", "--remotes") }
+
+// unpushedPastLogArgs lists the commits on HEAD that neither a remote-tracking branch nor
+// fetched has, those unpushedPastArgs counts: fetched follows --remotes after the one
+// --not, so its commits are left out too, and a fetched commit the clone no longer has is
+// left out (--ignore-missing).
+func unpushedPastLogArgs(fetched string) []string {
+	return append(unpushedLogCmd(), "--ignore-missing", headRef, "--not", "--remotes", fetched)
+}
 
 // revParseArgs checks that ref names a commit, printing it.
 func revParseArgs(ref string) []string { return []string{"rev-parse", "--verify", "--quiet", ref} }
@@ -224,8 +247,9 @@ func (g git) localFor(ctx context.Context, dir string) (gitread.Local, error) {
 }
 
 // readOnly reports a command that only reads refs, commits, and the worktrees' own records:
-// listing the worktrees and the branches, resolving a ref, counting commits, an ancestor's
-// check, and a commit's time, with no signature check and no mailmap. None runs a filter
+// listing the worktrees and the branches, resolving a ref, counting commits or listing
+// those not on GitHub, an ancestor's check, and a commit's time, the logs with no
+// signature check and no mailmap. None runs a filter
 // or a hook, but each could read an object a partial clone lacks, which git would fetch
 // from the clone's promisor remote, through a transport the clone's config can name, so
 // each runs with gitread's read environment (ReadEnv): no transport, no lazy fetch, no
@@ -623,6 +647,51 @@ func (g git) unpushed(ctx context.Context, dir, fetched string) (int, []byte, er
 	return count, nil, err
 }
 
+// unpushedCommits lists the commits unpushed counts in the worktree at dir, newest first
+// and at most detailLimit: those on HEAD that no remote-tracking branch has, nor fetched,
+// the commit the worktree was made at from GitHub, when it is one.
+func (g git) unpushedCommits(ctx context.Context, dir, fetched string) ([]UnpushedCommit, []byte, error) {
+	args := unpushedLogArgs()
+	if gitread.IsCommitID(fetched) {
+		args = unpushedPastLogArgs(fetched)
+	}
+
+	stdout, stderr, err := g.do(ctx, dir, args...)
+	if err != nil {
+		return nil, stderr, err
+	}
+
+	commits, err := parseCommits(stdout)
+
+	return commits, nil, err
+}
+
+// parseCommits reads the log unpushedLogCmd prints: one commit a line, its commit ID, its
+// commit time, and its subject, which may be empty, separated by spaces. The list is never
+// nil.
+func parseCommits(stdout []byte) ([]UnpushedCommit, error) {
+	commits := []UnpushedCommit{}
+
+	for line := range strings.Lines(string(stdout)) {
+		line = strings.TrimSuffix(line, "\n")
+		if line == "" {
+			continue
+		}
+
+		oid, rest, _ := strings.Cut(line, " ")
+		unix, subject, ok := strings.Cut(rest, " ")
+
+		at, err := strconv.ParseInt(unix, 10, 64)
+		if !ok || err != nil || !gitread.IsCommitID(oid) {
+			return nil, fmt.Errorf("%w %q", errParseCommits, line)
+		}
+
+		commits = append(commits, UnpushedCommit{OID: oid, Unix: at, Subject: subject})
+	}
+
+	return commits, nil
+}
+
 // prune clears the entries of worktrees whose directories are gone.
 func (g git) prune(ctx context.Context, dir string) ([]byte, error) {
 	_, stderr, err := g.do(ctx, dir, pruneArgs()...)
@@ -700,8 +769,24 @@ func allowed(args []string) bool {
 		return true
 	}
 
-	return allowedCommitTimes(args) || allowedLookup(args) || allowedBranchLookup(args) || allowedCreate(args) ||
-		allowedChange(args)
+	return allowedCommitTimes(args) || allowedLookup(args) || allowedBranchLookup(args) || allowedUnpushedLog(args) ||
+		allowedCreate(args) || allowedChange(args)
+}
+
+// allowedUnpushedLog reports the log of the commits on HEAD that aren't on GitHub: past
+// the remote-tracking branches, or past them and the full commit ID the worktree was made
+// at. Its tip is HEAD alone.
+func allowedUnpushedLog(args []string) bool {
+	switch len(args) {
+	case len(unpushedLogArgs()):
+		return joinArgs(args) == joinArgs(unpushedLogArgs())
+	case len(unpushedPastLogArgs("")):
+		fetched := args[len(args)-1]
+
+		return gitread.IsCommitID(fetched) && joinArgs(args) == joinArgs(unpushedPastLogArgs(fetched))
+	default:
+		return false
+	}
 }
 
 // allowedChange reports a removal command with arguments it may run with: removing or

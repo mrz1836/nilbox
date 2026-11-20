@@ -2073,8 +2073,9 @@ worktree holds a pull request's own files, and a pull request's worktree is made
 the head whose files the launch checked; a clone's own config-named hooks refuse every
 command that could fire one (below). With core's `Guard`, the worktree service's own
 commands on a clone or its worktrees are guarded too (`git.do`): the reads (`readOnly`:
-listing the worktrees and branches, resolving a ref, counting commits, an ancestor's
-check, and a commit's time, with `--no-show-signature` and `--no-mailmap`), which run no
+listing the worktrees and branches, resolving a ref, counting commits or listing those not
+on GitHub, an ancestor's check, and a commit's time, the logs with `--no-show-signature`
+and `--no-mailmap`), which run no
 filter or hook but could read an object a partial clone lacks, run with gitread's
 `ReadEnv` (no transport, no lazy fetch, no optional lock, no replace ref), so a promisor
 remote the clone names is never asked; every other (a status, which runs a file's clean
@@ -2141,6 +2142,32 @@ before it reads the rest. Only those 12 are kept as the status is read, each fil
 only counted, so a worktree with tens of thousands of untracked files costs little more
 than the count. A clean worktree's `Files` is `[]`, and so is one whose status couldn't be
 read. Keeping them runs no git of its own.
+
+The rest of what a worktree's drawer shows comes from `Details(repoPath, path)`, which the
+window calls when the drawer first opens. It first checks the request as the removals do
+(`checkedGit`, then `entryOf`, which lists the clone's worktrees, then `ErrPrunable` for a
+folder that's gone), and fails when the request can't be checked or isn't about a linked
+worktree of a clone the repository locations hold, or when its context ends. Past that,
+every read it can't make is a sentence in `Errors`, not an error. It runs three reads side
+by side:
+
+- the status, every time, so the drawer shows the files as they are now: the first by
+  path, at most 200, and `FileCount`, all of them;
+- the count of the commits not on GitHub, every time, the listing's own, and only when
+  it is over 0, their list (`log --no-show-signature --no-mailmap --max-count=200
+  --format=%H %ct %s HEAD --not --remotes`, or with `--ignore-missing` and the commit the
+  worktree was made at after `--remotes`, as `unpushedPastArgs` counts them;
+  `allowedUnpushedLog` takes HEAD as the tip and a full commit ID as that commit, and
+  nothing else);
+- origin's default branch as the clone last fetched it and how many commits it has that
+  HEAD doesn't (`Base`, `Behind`, -1 when unknown), through the `BaseReader` core gives,
+  gitread's `OriginHead`, `TrackingBranch`, and `CommitsBetween`, in steps, each only once
+  the one before found what it needs.
+
+When the app made the worktree comes from its record (`CreatedAt`). Where several records
+name one folder, `recordsByDir` picks the newest that holds the commit the worktree was
+made at, or else the newest, for the listing's count (`fetchedHeads`) and `Details` alike.
+`Details` never asks GitHub, takes no lock, and emits nothing.
 
 ## internal/gitread
 

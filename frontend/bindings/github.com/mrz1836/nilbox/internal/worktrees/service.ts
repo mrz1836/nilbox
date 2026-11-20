@@ -58,6 +58,24 @@ export function DeleteBranches(picks: $models.BranchPick[] | null): $Cancellable
 }
 
 /**
+ * Details reads what the drawer of the worktree at path, one of the linked worktrees of
+ * the clone at repoPath, shows beyond its row: its changed files, the commits on it that
+ * aren't on GitHub, how far it is behind origin's default branch, and when the app made
+ * it. It reads the status and counts the commits not on GitHub every time, so the drawer
+ * shows the worktree as it is now, and lists those commits only when the count is over 0.
+ * It reads the base in steps, each only once the one before found what it needs. These
+ * three run side by side. A read that fails is a sentence in Errors, not an error. Details
+ * fails only when the request can't be checked (git or the settings can't be found, or
+ * git can't list the clone's worktrees), when it isn't about a linked worktree, whose
+ * folder is there, of a clone the repository locations hold, or when ctx ends. It reads
+ * the clone's git and the worktree records alone, never GitHub, takes no lock, and emits
+ * no event.
+ */
+export function Details(repoPath: string, path: string): $CancellablePromise<$models.Details> {
+    return $Call.ByID(3552296446, repoPath, path);
+}
+
+/**
  * ForceRemove removes one unlocked linked worktree that has uncommitted changes,
  * discarding them, with a single --force, and the branches named as Remove does. Locked
  * worktrees, and ones a running process works in, are refused even here, so a running
