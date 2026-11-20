@@ -3,6 +3,7 @@ import { useEffect, useEffectEvent } from 'react'
 import { counted, formatCount } from '../../lib/format'
 import { asReadNow, changesOf, notOnGitHub, type WorktreeDetailsState } from '../../lib/useWorktreeDetails'
 import type { Choice, Confirmation, Target } from '../../lib/useWorktrees'
+import { copiedOf } from '../../lib/worktreeParts'
 import { safety, type Safety } from '../../lib/worktrees'
 import type {
   AgentID,
@@ -71,9 +72,14 @@ const singleWords: Readonly<Record<Single['kind'], { title: string; label: strin
 
 // folderText says what removing or cleaning up a worktree does to its folder.
 function folderText(kind: Exclude<Single['kind'], 'force'>, wt: Worktree): string {
-  return kind === 'remove'
-    ? `This deletes the folder ${wt.displayPath}, which has no uncommitted changes.`
-    : `This deletes the folder ${wt.displayPath}, whose work is finished: it has no uncommitted changes, and every commit on it is on GitHub.`
+  if (kind === 'remove') {
+    return `This deletes the folder ${wt.displayPath}, which has no uncommitted changes.`
+  }
+
+  const every =
+    copiedOf(wt) === null ? 'every commit on it is on GitHub' : 'the change of every commit on it is on GitHub'
+
+  return `This deletes the folder ${wt.displayPath}, whose work is finished: it has no uncommitted changes, and ${every}.`
 }
 
 // listBoxClass frames each list Force remove shows, and listHeadingClass heads it, in

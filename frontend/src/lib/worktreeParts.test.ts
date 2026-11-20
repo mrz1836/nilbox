@@ -5,22 +5,29 @@ import type { AgentID, Worktree } from '../platform'
 import { FIXED_NOW } from '../test/clock'
 import {
   agentSession,
+  copiedPR,
+  copiedWorktree,
   details,
   item,
   linkedItem,
   mainWorktree,
+  partlyCopiedWorktree,
+  recordedWorktree,
   sessionsSnapshot,
   worktree,
   worktreeCleanup,
+  worktreeCopies,
   worktreeRepo,
 } from '../test/fixtures'
 import {
   agentLine,
   agoWords,
+  atItemHead,
   byHand,
   checksOf,
   clockOf,
   cloneOf,
+  copiedOf,
   facetOn,
   facetQuery,
   facetsOf,
@@ -98,6 +105,57 @@ describe('the row’s predicates', () => {
   it('names a worktree’s folder', () => {
     expect(folderOf(row())).toBe('pr-7')
     expect(folderOf(row({ displayPath: '' }))).toBe('')
+  })
+
+  it.each([
+    ['at its pull request’s head', row({ item: linkedItem({ headOid: 'a'.repeat(40) }), head: 'a'.repeat(40) }), true],
+    ['past it', row({ item: linkedItem({ headOid: 'a'.repeat(40) }), head: 'b'.repeat(40) }), false],
+    ['for an item with no head', row({ item: linkedItem({ headOid: '' }), head: '' }), false],
+    ['for no item', row({ item: null }), false],
+  ])('knows a worktree %s', (_, wt, want) => {
+    expect(atItemHead(wt)).toBe(want)
+  })
+})
+
+describe('copiedOf', () => {
+  it('says where commits on GitHub only as copies are, and the pull request linked by them', () => {
+    expect(copiedOf(copiedWorktree())).toEqual({
+      n: 10,
+      ref: 'origin/feature-x',
+      branch: 'feature-x',
+      pr: copiedPR(),
+      recorded: false,
+    })
+  })
+
+  it('says copies a record vouches for, on a branch that’s gone', () => {
+    expect(copiedOf(recordedWorktree())).toMatchObject({ n: 10, recorded: true, pr: { number: 42, state: 'merged' } })
+  })
+
+  it.each([
+    ['linked by its name', copiedWorktree({ item: linkedItem(), linkedBy: 'name' })],
+    ['linked to nothing', copiedWorktree({ item: null, linkedBy: '' })],
+  ])('names no pull request for copies of one %s', (_, wt) => {
+    expect(copiedOf(wt)?.pr).toBeNull()
+  })
+
+  it.each([
+    ['the backend counts them not on GitHub', copiedWorktree({ onGitHub: false })],
+    ['every commit is on GitHub by its ID', copiedWorktree({ unpushed: 0 })],
+    ['its commits couldn’t be counted', copiedWorktree({ unpushed: -1 })],
+    ['the comparison counted other commits', copiedWorktree({ unpushed: 11 })],
+    [
+      'some have no identical copy',
+      copiedWorktree({ copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 9, edited: 1 }) }),
+    ],
+    [
+      'the backend says why they don’t count',
+      copiedWorktree({ copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, note: 'No.' }) }),
+    ],
+    ['no branch has them', copiedWorktree({ copies: worktreeCopies({ count: 10, identical: 10 }) })],
+    ['it’s at its pull request’s head', copiedWorktree({ item: copiedPR({ headOid: copiedWorktree().head }) })],
+  ])('says nothing of copies when %s', (_, wt) => {
+    expect(copiedOf(wt)).toBeNull()
   })
 })
 
@@ -546,6 +604,17 @@ describe('the chips', () => {
       'Show the 2 worktrees that have commits that aren’t on GitHub (is:unpushed)',
       'Show the 2 worktrees that are done on GitHub but hold work that isn’t (is:review)',
       'Show the 1 worktree that Clean up removes without losing anything (is:finished)',
+    ])
+  })
+
+  it('counts as not on GitHub commits with only an edited copy, never those on GitHub as copies', () => {
+    const copies = [
+      worktreeRepo({ worktrees: [mainWorktree(), copiedWorktree(), recordedWorktree(), partlyCopiedWorktree()] }),
+    ]
+
+    expect(facetsOf(copies, '').map((c) => [c.key, c.n])).toEqual([
+      ['unpushed', 1],
+      ['finished', 1],
     ])
   })
 

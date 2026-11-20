@@ -46,8 +46,9 @@ export function byHand(wt: Worktree): boolean {
   return wt.locked && !wt.agentLock
 }
 
-// unpushedKnown is how many commits on a worktree aren't on GitHub, or 0 when every one is,
-// or when they couldn't be counted.
+// unpushedKnown is how many commits on a worktree aren't on GitHub, or 0 when every one is
+// (by its commit ID, at its pull request's head, or as an identical copy: onGitHub), or
+// when they couldn't be counted.
 export function unpushedKnown(wt: Worktree): number {
   return wt.unpushed > 0 && !wt.onGitHub ? wt.unpushed : 0
 }
@@ -56,6 +57,58 @@ export function unpushedKnown(wt: Worktree): number {
 // GitHub, which is never counted as on GitHub.
 export function unpushedUnknown(wt: Worktree): boolean {
   return !wt.main && !wt.prunable && wt.unpushed < 0 && !wt.onGitHub
+}
+
+// atItemHead reports a worktree at its pull request's head commit, which GitHub keeps, so
+// every commit it has is on GitHub by its commit ID, however many no remote-tracking branch
+// has.
+export function atItemHead(wt: Worktree): boolean {
+  return wt.item !== null && wt.item.headOid !== '' && wt.item.headOid === wt.head
+}
+
+// Copied is why a worktree's commits that aren't on GitHub by their commit IDs are on
+// GitHub anyway: each of them, n, has an identical copy on ref, a pushed branch, as in
+// origin/feature-x, whose own name is branch (feature-x), as cherry-picking or rebasing
+// them onto it leaves. pr is the pull request the worktree is linked to by those copies,
+// that branch's, or null when it is linked otherwise, or to nothing. recorded reports that
+// ref is gone, and what the app recorded while it was there vouches for them instead: pr's
+// head, which GitHub keeps, has every copy.
+export interface Copied {
+  n: number
+  ref: string
+  branch: string
+  pr: LinkedItem | null
+  recorded: boolean
+}
+
+// copiedOf says why a worktree's commits that aren't on GitHub by their commit IDs are on
+// GitHub as copies, or is null when they aren't. The backend rules them on GitHub
+// (onGitHub), and this only words its comparison when that backs it: every one of them, as
+// many as it counted (unpushed), with an identical copy on one pushed branch, and nothing
+// that keeps those from counting (note). A worktree at its pull request's head has them on
+// GitHub by commit ID, which says it more plainly.
+export function copiedOf(wt: Worktree): Copied | null {
+  const c = wt.copies
+
+  if (
+    !wt.onGitHub ||
+    wt.unpushed <= 0 ||
+    c.count !== wt.unpushed ||
+    c.identical !== c.count ||
+    c.note !== '' ||
+    c.ref === '' ||
+    atItemHead(wt)
+  ) {
+    return null
+  }
+
+  return {
+    n: c.count,
+    ref: c.ref,
+    branch: c.ref.slice(c.ref.indexOf('/') + 1),
+    pr: wt.linkedBy === 'copy' ? wt.item : null,
+    recorded: c.recorded,
+  }
 }
 
 // folderOf is the last part of a worktree's path: its folder's name.

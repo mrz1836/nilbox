@@ -6,7 +6,7 @@
 // the window follows only add words. The smaller parts, what works in a worktree and the
 // page's chips among them, are in lib/worktreeParts.
 
-import type { AgentID, AgentSession, Worktree, WorktreeRepo } from '../platform'
+import type { AgentID, AgentSession, LinkedItem, Worktree, WorktreeRepo } from '../platform'
 import { counted, formatCount } from './format'
 import { homeWord, shortCommit } from './git'
 import { capitalize, formatAgo } from './time'
@@ -16,11 +16,13 @@ import {
   agoWords,
   byHand,
   clockOf,
+  copiedOf,
   itemRef,
   running,
   runsIn,
   unpushedKnown,
   unpushedUnknown,
+  type Copied,
   type Tone,
 } from './worktreeParts'
 
@@ -109,7 +111,8 @@ export interface RowState {
 
 // stateOf is a row's state, the first that holds: git couldn't read it, its folder is
 // gone, something runs in it, it's locked by hand or by an ended session, it has
-// uncommitted files, commits not on GitHub, or commits it couldn't check; else it's clean.
+// uncommitted files, commits not on GitHub, or commits it couldn't check; else it's clean,
+// its commits on GitHub by their commit IDs or as copies (copiedOf).
 export function stateOf(wt: Worktree): RowState {
   if (wt.error !== '') {
     return { glyph: 'alert', tone: 'danger', words: 'git couldn’t read it' }
@@ -143,29 +146,75 @@ export function stateOf(wt: Worktree): RowState {
     return { glyph: 'ring', tone: 'muted', words: 'couldn’t tell whether every commit is on GitHub' }
   }
 
+  const copied = copiedOf(wt)
+
   return {
     glyph: 'check',
     tone: wt.stage === 'finished' ? 'success' : 'muted',
-    words: 'clean, and every commit is on GitHub',
+    words:
+      copied === null
+        ? 'clean, and every commit is on GitHub'
+        : `clean; each commit’s change ${wordsText(copiedWords(copied))}`,
   }
 }
 
 // WorkNote is one note of the work column: uncommitted files, commits not on GitHub (↑),
-// or commits it couldn't count (↑?); its text, the words a screen reader hears before it,
-// and its tooltip.
+// commits it couldn't count (↑?), or commits on GitHub only as copies (⧉); its text, the
+// words a screen reader hears before it, and its tooltip.
 export interface WorkNote {
-  kind: 'dirty' | 'up' | 'unknown'
+  kind: 'dirty' | 'up' | 'unknown' | 'copied'
   tone: Tone
   text: string
   sr: string
   title: string
 }
 
+// copiedText is the work column's note on commits on GitHub only as copies, after ⧉: how
+// many, and the pull request they went into, as in "10 on #42", else the branch their copies
+// are on, "10 on feature-x", or were on, "10 via feature-x", for one that's gone.
+function copiedText(c: Copied): string {
+  const n = formatCount(c.n)
+
+  if (c.pr !== null) {
+    return `${n} on #${String(c.pr.number)}`
+  }
+
+  return `${n} ${c.recorded ? 'via' : 'on'} ${c.branch}`
+}
+
+// copiedTitle says why a worktree's commits not on GitHub by their commit IDs are on GitHub
+// anyway, as the work column's tooltip: "Its 10 commits aren’t on GitHub by ID, but each
+// one’s change is on origin/feature-x (PR #42)".
+function copiedTitle(c: Copied): string {
+  const lead = `Its ${counted(c.n, 'commit isn’t', 'commits aren’t')} on GitHub by ID, but ${c.n === 1 ? 'its' : 'each one’s'} change`
+
+  if (c.recorded) {
+    return c.pr === null
+      ? `${lead} went into the pull request of ${c.ref}, a branch that’s gone now`
+      : `${lead} went into ${itemRef(c.pr)}, from ${c.ref}, a branch that’s gone now`
+  }
+
+  return `${lead} is on ${c.ref}${c.pr === null ? '' : ` (${itemRef(c.pr)})`}`
+}
+
+// upTitle is the tooltip of the commits not on GitHub, n: how many, then how they compare
+// with the pushed branches when the backend compared them (copyCounts), and why it couldn't,
+// or why their identical copies don't count (Copies.note).
+function upTitle(wt: Worktree, n: number): string {
+  const copies = wordsText(copyCounts(wt))
+  const note = copyNote(wt)
+  const title = `${counted(n, 'commit isn’t', 'commits aren’t')} on GitHub${copies === '' ? '' : `: ${copies}`}`
+
+  return note === '' ? title : `${title}. ${note}`
+}
+
 // workNotes are the work column's notes, none for a clean worktree with every commit on
-// GitHub: the state's ✓ says that already.
+// GitHub by its commit ID: the state's ✓ says that already. Commits on GitHub only as
+// copies get a muted note, which says where.
 export function workNotes(wt: Worktree): WorkNote[] {
   const out: WorkNote[] = []
   const commits = unpushedKnown(wt)
+  const copied = copiedOf(wt)
 
   if (wt.dirtyCount > 0) {
     out.push({
@@ -183,7 +232,15 @@ export function workNotes(wt: Worktree): WorkNote[] {
       tone: 'caution',
       text: formatCount(commits),
       sr: 'not on GitHub: ',
-      title: `${counted(commits, 'commit isn’t', 'commits aren’t')} on GitHub`,
+      title: upTitle(wt, commits),
+    })
+  } else if (copied !== null) {
+    out.push({
+      kind: 'copied',
+      tone: 'muted',
+      text: copiedText(copied),
+      sr: 'on GitHub as copies: ',
+      title: copiedTitle(copied),
     })
   } else if (unpushedUnknown(wt)) {
     out.push({
@@ -207,16 +264,21 @@ export type Verb =
 
 // verbOf is the verb of a worktree, or null for one with nothing to do: Clean up for a
 // finished one, Unlock for a lock its ended session left, and a launch on an open item the
-// inbox lists (listed) when nothing runs in it and it isn't locked by hand.
+// inbox lists (listed) when nothing runs in it and it isn't locked by hand. The launch
+// resumes the worktree only when it is the item's own, linked by its record, name, or
+// branch made for the item (linkedBy 'name'): for one linked by the pushed branch it is on,
+// or by its commits' copies, a launch on the item would make or resume the item's own
+// worktree instead, so none is offered.
 export function verbOf(wt: Worktree, listed: boolean): Verb | null {
   if (wt.canCleanUp) {
     const what = wt.staleLock ? 'Releases the ended session’s lock, then removes' : 'Removes'
+    const every = copiedOf(wt) === null ? 'every commit' : 'every commit’s change'
 
     return {
       act: 'cleanUp',
       label: 'Clean up',
       tone: 'success',
-      title: `${what} the worktree, whose every commit is on GitHub; asks which branches go with it`,
+      title: `${what} the worktree, whose ${every} is on GitHub; asks which branches go with it`,
     }
   }
 
@@ -229,7 +291,7 @@ export function verbOf(wt: Worktree, listed: boolean): Verb | null {
     }
   }
 
-  if (wt.item?.state === 'open' && !running(wt) && !byHand(wt) && listed) {
+  if (wt.item?.state === 'open' && wt.linkedBy === 'name' && !running(wt) && !byHand(wt) && listed) {
     return {
       act: 'launch',
       title: `Launches on ${itemRef(wt.item)} in this worktree, which resumes it (your launch defaults)`,
@@ -295,6 +357,98 @@ function joined(...sentences: Words[]): Words {
   return sentences.filter((s) => s.length > 0).flatMap((s, i) => (i === 0 ? s : [' ', ...s]))
 }
 
+// copiedWords say where a worktree's commits went as copies (copiedOf), after "every
+// commit’s change": "is on GitHub, copied onto PR #42’s branch", or onto the branch itself
+// when no pull request links them by their copies; once that branch is gone, "went into PR
+// #42", or "went into the pull request of origin/feature-x, a branch that’s gone now".
+function copiedWords(c: Copied): Words {
+  if (c.recorded) {
+    return c.pr === null
+      ? ['went into the pull request of ', { code: c.ref }, ', a branch that’s gone now']
+      : [`went into ${itemRef(c.pr)}`]
+  }
+
+  return c.pr === null
+    ? ['is on GitHub, copied onto ', { code: c.ref }]
+    : [`is on GitHub, copied onto ${itemRef(c.pr)}’s branch`]
+}
+
+// copyCounts say how a worktree's commits not on GitHub compare with the pushed branch the
+// backend compared them with, when some have a copy there: "7 have an identical copy on
+// origin/feature-x, 2 only an edited one, 1 none". An edited copy has another change, so
+// its commit's own isn't on GitHub. None when every commit is on GitHub, when none has a
+// copy there, or when the comparison counted other commits than these.
+function copyCounts(wt: Worktree): Words {
+  const c = wt.copies
+  const n = unpushedKnown(wt)
+
+  if (n === 0 || c.count !== n || c.ref === '' || c.identical + c.edited === 0) {
+    return []
+  }
+
+  const have = (k: number) => `${formatCount(k)} ${k === 1 ? 'has' : 'have'}`
+  const on: Words = [' on ', { code: c.ref }]
+  const parts: Words[] = []
+
+  if (c.identical > 0) {
+    parts.push([`${have(c.identical)} an identical copy`, ...on])
+  }
+
+  if (c.edited > 0) {
+    parts.push(
+      c.identical > 0
+        ? [`${formatCount(c.edited)} only an edited one`]
+        : [`${have(c.edited)} only an edited copy`, ...on],
+    )
+  }
+
+  if (c.none > 0) {
+    parts.push([`${formatCount(c.none)} none`])
+  }
+
+  return parts.flatMap((p, i) => (i === 0 ? p : [', ', ...p]))
+}
+
+// copyNote is the backend's sentence on why it couldn't compare a worktree's commits not on
+// GitHub with the pushed branches, or why their identical copies don't count, or '' when it
+// has none, or every commit is on GitHub.
+function copyNote(wt: Worktree): string {
+  const n = unpushedKnown(wt)
+
+  return n > 0 && wt.copies.count === n ? wt.copies.note : ''
+}
+
+// copySentences say, after the commits not on GitHub, how they compare with the pushed
+// branches (copyCounts), and the backend's note on it.
+function copySentences(wt: Worktree): Words {
+  const counts = copyCounts(wt)
+  const note = copyNote(wt)
+
+  return joined(counts.length === 0 ? [] : [...counts, '.'], note === '' ? [] : [note])
+}
+
+// copiedWhen says where pull request pr, which a worktree's copies went into, stands, after
+// it: ", merged 2d ago", ", closed", or ", which is open".
+function copiedWhen(pr: LinkedItem, now: Date): string {
+  return pr.state === 'open' ? ', which is open' : `, ${pr.state}${agoWords(now, pr.closedAt)}`
+}
+
+// originals says what becomes of the commits of a worktree whose changes are on GitHub as
+// copies when it goes: a detached one's, which no branch holds, go with it; any other's stay
+// on its branch, which removing it keeps unless that branch may go with it, which the
+// confirmation asks.
+function originals(wt: Worktree): Words {
+  if (wt.detached) {
+    return ['Only the original commits, which no branch holds, go with it.']
+  }
+
+  if (wt.branches.some((b) => b.name === wt.branch && b.deletable)) {
+    return []
+  }
+
+  return ['Removing it keeps its branch, ', { code: wt.branch }, ', with the original commits.']
+}
+
 // uncountedWords say the commits not on GitHub couldn't be counted, and cleanButUncounted
 // says so of a worktree with nothing uncommitted, after a lead such as "Once it ends,".
 const uncountedWords = 'Couldn’t count the commits that aren’t on GitHub, so removing it might lose some.'
@@ -318,7 +472,9 @@ export interface Safety {
 // confirmations show it, with session, the session the app follows there, and agentName.
 // An uncommitted file goes with the folder. A commit that isn't on GitHub stays on its
 // branch, which a removal keeps (Branch.deletable is false while it holds one); only a
-// detached worktree's commits, which no branch holds, go too.
+// detached worktree's commits, which no branch holds, go too. Commits on GitHub only as
+// identical copies (copiedOf) lose nothing but their own commit IDs; an edited copy doesn't
+// count, and is only said of the commits that aren't on GitHub (copySentences).
 export function safety(
   wt: Worktree,
   repo: WorktreeRepo | null,
@@ -328,6 +484,10 @@ export function safety(
 ): Safety {
   const files = wt.dirtyCount
   const commits = unpushedKnown(wt)
+  const copied = copiedOf(wt)
+  // everyCommit says every commit is on GitHub, by its change when it is there as a copy.
+  const everyCommit = copied === null ? 'every commit is on GitHub' : 'every commit’s change is on GitHub'
+  const copies = copySentences(wt)
   const ftext = counted(files, 'uncommitted file', 'uncommitted files')
   const ctext = counted(commits, 'commit', 'commits')
   // kept says the branch keeps the commits, starting with lead ("Its" or "its").
@@ -391,7 +551,7 @@ export function safety(
           ? joined(['Once it ends,'], kept('its'), lost)
           : unknown
             ? [`Once it ends, ${cleanButUncounted}`]
-            : ['Once it ends, nothing in it would be lost: every commit is on GitHub.']
+            : [`Once it ends, nothing in it would be lost: ${everyCommit}.`]
 
     return result(
       'info',
@@ -409,7 +569,7 @@ export function safety(
           ? joined(['Then'], kept('its'), lost)
           : unknown
             ? [`After that, ${cleanButUncounted}`]
-            : ['After that, nothing in it would be lost: every commit is on GitHub.']
+            : [`After that, nothing in it would be lost: ${everyCommit}.`]
 
     return {
       ...result('danger', 'lock', ['Locked by hand, so it can’t be removed here. Unlock it first:'], then),
@@ -422,12 +582,12 @@ export function safety(
       'warning',
       'alert',
       [`Removing it would discard ${ftext}, counting untracked ones.`],
-      joined(kept('Its'), lost, uncounted, doneWithout),
+      joined(kept('Its'), lost, copies, uncounted, doneWithout),
     )
   }
 
   if (lost.length > 0) {
-    return result('warning', 'alert', lost, ['Its folder is clean.'])
+    return result('warning', 'alert', lost, joined(copies, ['Its folder is clean.']))
   }
 
   if (commits > 0) {
@@ -437,7 +597,7 @@ export function safety(
       'warning',
       'up',
       [`Its folder is clean, but ${ctext} on `, { code: wt.branch }, ` ${one ? 'isn’t' : 'aren’t'} on GitHub.`],
-      joined(doneWithout, [
+      joined(copies, doneWithout, [
         `Removing the worktree keeps that branch, so ${one ? 'it stays' : 'they stay'} in the clone; the app won’t delete it while ${one ? 'it’s' : 'they’re'} only here.`,
       ]),
     )
@@ -445,6 +605,23 @@ export function safety(
 
   if (unknown) {
     return result('warning', 'ring', [uncountedWords], ['Its folder is clean.'])
+  }
+
+  const stale: Words = wt.staleLock
+    ? [
+        `A Claude session that has ended still locks it; ${wt.canCleanUp ? 'Clean up' : 'Unlock'} releases the lock first.`,
+      ]
+    : []
+
+  if (copied !== null) {
+    const where = copied.recorded && copied.pr !== null ? [copiedWhen(copied.pr, now)] : []
+
+    return result(
+      'success',
+      'shield',
+      ['Safe to remove: no uncommitted files, and every commit’s change ', ...copiedWords(copied), ...where, '.'],
+      joined(originals(wt), stale),
+    )
   }
 
   const { item } = wt
@@ -455,11 +632,7 @@ export function safety(
     'success',
     'shield',
     [`Safe to remove: no uncommitted files, and every commit is on GitHub${head}.`],
-    wt.staleLock
-      ? [
-          `A Claude session that has ended still locks it; ${wt.canCleanUp ? 'Clean up' : 'Unlock'} releases the lock first.`,
-        ]
-      : [],
+    stale,
   )
 }
 

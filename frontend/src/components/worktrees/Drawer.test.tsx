@@ -9,11 +9,15 @@ import type { AgentID, AgentSession, Worktree, WorktreeDetails, WorktreeRepo } f
 import { at, FIXED_NOW } from '../../test/clock'
 import {
   agentSession,
+  copiedWorktree,
   item,
   linkedItem,
   ownBranch,
+  partlyCopiedWorktree,
+  recordedWorktree,
   worktree,
   worktreeCommit,
+  worktreeCopies,
   worktreeDetails,
   worktreeFiles,
   worktreeRepo,
@@ -208,11 +212,16 @@ describe('Drawer safety', () => {
 
   it('says a worktree at its pull request’s head loses nothing, however many commits no remote has', () => {
     // A fork's pull request: its head is on GitHub, though no remote-tracking branch has it.
+    // Details lists HEAD first.
     const atHead = row({ unpushed: 3, onGitHub: true, stage: 'finished', canCleanUp: true })
     const { li } = renderDrawer(atHead, {
       read: read({
         unpushed: 3,
-        commits: [worktreeCommit(), worktreeCommit({ oid: '1'.repeat(40) }), worktreeCommit({ oid: '2'.repeat(40) })],
+        commits: [
+          worktreeCommit({ oid: atHead.head }),
+          worktreeCommit({ oid: '1'.repeat(40) }),
+          worktreeCommit({ oid: '2'.repeat(40) }),
+        ],
       }),
     })
 
@@ -528,6 +537,161 @@ describe('Drawer commits', () => {
     const commits = column('Not on GitHub')
     expect(commits.getByRole('heading')).toHaveTextContent(/^Not on GitHub$/)
     expect(commits.getByText('Couldn’t be read.')).toBeInTheDocument()
+  })
+})
+
+describe('Drawer copies', () => {
+  // two is a sub-agent's worktree whose two commits not on GitHub by their commit IDs each
+  // have an identical copy on origin/feature-x, pull request #42's branch.
+  const two = copiedWorktree({
+    unpushed: 2,
+    copies: worktreeCopies({ ref: 'origin/feature-x', count: 2, identical: 2 }),
+  })
+
+  // copiesOf are two's commits as Details lists them, HEAD first, each with its copy.
+  const copiesOf = [
+    worktreeCommit({ oid: two.head, copy: 'identical', copyOid: '3'.repeat(40) }),
+    worktreeCommit({
+      oid: '1'.repeat(40),
+      subject: 'Test the widget cache',
+      copy: 'identical',
+      copyOid: '4'.repeat(40),
+    }),
+  ]
+
+  it('says nothing is lost, headed with the pull request the commits were copied onto', () => {
+    const { li } = renderDrawer(two)
+
+    expect(li.querySelector('[data-tone]')).toHaveAttribute('data-tone', 'success')
+    expect(li.querySelector('[data-tone]')).toHaveTextContent(
+      'Safe to remove: no uncommitted files, and every commit’s change is on GitHub, copied onto PR #42’s branch.Removing it keeps its branch, worktree-agent-a1b2c3, with the original commits.',
+    )
+
+    const copies = column('Copied to PR #42')
+    expect(copies.getByRole('heading')).toHaveTextContent(/^Copied to PR #42$/)
+    expect(copies.getByText(/^Each has an identical copy on/)).toHaveTextContent(
+      'Each has an identical copy on origin/feature-x, under another commit ID.',
+    )
+    expect(copies.getByText('origin/feature-x').tagName).toBe('CODE')
+    // They wait for Details, a line for each.
+    expect(copies.getByRole('list', { name: 'Reading the commits' }).children).toHaveLength(2)
+    expect(screen.queryByRole('heading', { name: /^Not on GitHub/ })).not.toBeInTheDocument()
+  })
+
+  it('lists each commit with its identical copy once read', () => {
+    renderDrawer(two, { read: read({ unpushed: 2, commits: copiesOf }) })
+
+    const copies = column('Copied to PR #42')
+    const [first, second] = copies.getAllByRole('listitem').map((li) => within(li))
+    expect(first?.getByText('Keep the widget cache warm')).toBeInTheDocument()
+    expect(first?.getByTitle(`An identical copy of it is on GitHub: ${'3'.repeat(40)}`)).toHaveTextContent(
+      '= copied as 3333333',
+    )
+    expect(first?.getByTitle(/^An identical copy/)).toHaveClass('text-muted')
+    expect(second?.getByTitle(/^An identical copy/)).toHaveTextContent('= copied as 4444444')
+    expect(copies.queryByText(/are listed here/)).not.toBeInTheDocument()
+  })
+
+  it('says where the copied commits past the first 200 are', () => {
+    renderDrawer(copiedWorktree(), { read: read({ unpushed: 10, commits: copiesOf.slice(0, 1) }) })
+
+    expect(column('Copied to PR #42').getByText(/^Only the first 1 are listed here/)).toHaveTextContent(
+      'Only the first 1 are listed here; 9 more are in Terminal (git log)',
+    )
+  })
+
+  it('says where the copies are, with no list, when Details couldn’t list them', () => {
+    renderDrawer(two, { read: { state: 'failed', error: 'Couldn’t read the worktree.' } })
+
+    const copies = column('Copied to PR #42')
+    expect(copies.getByText(/^Each has an identical copy on/)).toBeInTheDocument()
+    expect(copies.queryByRole('list')).not.toBeInTheDocument()
+  })
+
+  it('heads copies no pull request links with the branch they’re on, in its own case', () => {
+    renderDrawer(copiedWorktree({ item: null, linkedBy: '' }))
+
+    const heading = screen.getByRole('heading', { name: 'Copied to origin/feature-x' })
+    expect(within(heading).getByText('origin/feature-x')).toHaveClass('normal-case')
+  })
+
+  it('says a branch that’s gone, whose copies the app recorded, went into the merged pull request', () => {
+    const { li } = renderDrawer(recordedWorktree(), {
+      read: read({ unpushed: 10, commits: [worktreeCommit({ oid: recordedWorktree().head })] }),
+    })
+
+    expect(li.querySelector('[data-tone]')).toHaveTextContent(
+      'Safe to remove: no uncommitted files, and every commit’s change went into PR #42, merged 2d ago.',
+    )
+
+    const copies = column('Copied to PR #42')
+    expect(copies.getByText(/is gone, but the app recorded/)).toHaveTextContent(
+      'origin/feature-x is gone, but the app recorded each one’s identical copy there, and PR #42 has them.',
+    )
+    expect(copies.getByText('Keep the widget cache warm')).toBeInTheDocument()
+    expect(copies.queryByText(/copied as/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Clean up' })).toHaveAttribute(
+      'title',
+      'Removes the worktree, whose every commit’s change is on GitHub; asks which branches go with it',
+    )
+  })
+
+  it('says recorded copies went into the pull request their branch headed, when it links none', () => {
+    renderDrawer(recordedWorktree({ item: linkedItem(), linkedBy: 'name' }))
+
+    expect(screen.getByRole('heading', { name: 'Copied to origin/feature-x' })).toBeInTheDocument()
+    expect(screen.getByText(/is gone, but the app recorded/)).toHaveTextContent(
+      'origin/feature-x is gone, but the app recorded each one’s identical copy there, and the pull request it headed has them.',
+    )
+  })
+
+  it('marks a commit with only an edited copy, in amber, among those not on GitHub', () => {
+    const { li } = renderDrawer(partlyCopiedWorktree(), {
+      read: read({
+        unpushed: 1,
+        commits: [worktreeCommit({ oid: partlyCopiedWorktree().head, copy: 'edited', copyOid: '5'.repeat(40) })],
+      }),
+    })
+
+    expect(li.querySelector('[data-tone]')).toHaveAttribute('data-tone', 'warning')
+    expect(li.querySelector('[data-tone]')).toHaveTextContent('1 has only an edited copy on origin/feature-x.')
+
+    const commits = column('Not on GitHub')
+    expect(commits.getByRole('heading')).toHaveTextContent('Not on GitHub1')
+    const mark = commits.getByText(/^≈ edited copy/)
+    expect(mark).toHaveTextContent('≈ edited copy 5555555')
+    expect(mark).toHaveClass('text-caution')
+    expect(mark).toHaveAttribute(
+      'title',
+      `Only an edited copy of it is on GitHub, ${'5'.repeat(40)}: the same author, time, and subject, with another change`,
+    )
+  })
+
+  it('counts the commits as not on GitHub once their copies changed since they were compared', () => {
+    const { li } = renderDrawer(two, {
+      read: read({
+        unpushed: 2,
+        commits: [
+          worktreeCommit({ oid: two.head, copy: 'identical', copyOid: '3'.repeat(40) }),
+          worktreeCommit({ oid: '1'.repeat(40), copy: 'edited', copyOid: '4'.repeat(40) }),
+        ],
+      }),
+    })
+
+    expect(li.querySelector('[data-tone]')).toHaveAttribute('data-tone', 'warning')
+    expect(column('Not on GitHub').getByRole('heading')).toHaveTextContent('Not on GitHub2')
+    expect(column('Not on GitHub').getByText(/^≈ edited copy/)).toBeInTheDocument()
+  })
+
+  it('counts the commits as not on GitHub once HEAD moved since they were compared', () => {
+    const { li } = renderDrawer(two, { read: read({ unpushed: 2, commits: [worktreeCommit({ copy: 'edited' })] }) })
+
+    expect(li.querySelector('[data-tone]')).toHaveAttribute('data-tone', 'warning')
+    expect(li.querySelector('[data-tone]')).toHaveTextContent(
+      'Its folder is clean, but 2 commits on worktree-agent-a1b2c3 aren’t on GitHub.',
+    )
+    expect(column('Not on GitHub').getByRole('heading')).toHaveTextContent('Not on GitHub2')
+    expect(screen.queryByRole('heading', { name: /^Copied to/ })).not.toBeInTheDocument()
   })
 })
 

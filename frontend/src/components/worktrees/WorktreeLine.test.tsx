@@ -13,8 +13,10 @@ import type { AgentID, AgentSession, LinkedItem, Worktree, WorktreeDetails, Work
 import { at, FIXED_NOW } from '../../test/clock'
 import {
   agentSession,
+  copiedWorktree,
   item,
   linkedItem,
+  partlyCopiedWorktree,
   worktree,
   worktreeDetails,
   worktreeFiles,
@@ -823,6 +825,53 @@ describe('WorktreeLine gallery', () => {
       'uncommitted: 7 files',
     )
     expect(line.getByTitle('2 commits aren’t on GitHub')).toHaveTextContent('not on GitHub: 2')
+  })
+
+  it('tags a pull request linked by its commits’ copies, open and calm, with no launch on it', () => {
+    const { line } = renderLine(copiedWorktree(), { facts: facts('SUCCESS'), launchFor: launch })
+
+    expect(rowOf().querySelector('[data-lane]')).toBeNull()
+    expect(line.getByRole('button', { name: '#42' })).toBeInTheDocument()
+    expect(line.getByText('copied')).toHaveAttribute('title', 'PR #42 is the pull request its commits were copied onto')
+    expect(line.getByText('copied')).toHaveClass('rounded-full')
+    expect(line.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
+  })
+
+  it('tags no pull request linked by the branch it is on, and offers no launch on it', () => {
+    const launchFor = vi.fn(launch)
+    const { line } = renderLine(row('feature-x', { item: pr(42, 'Describe the widget cache'), linkedBy: 'branch' }), {
+      facts: facts('SUCCESS'),
+      launchFor,
+    })
+
+    expect(line.queryByText('copied')).not.toBeInTheDocument()
+    expect(launchFor).not.toHaveBeenCalled()
+  })
+
+  it('notes commits on GitHub only as copies, muted, with ⧉ and where they are in its tooltip', () => {
+    const { line } = renderLine(copiedWorktree())
+
+    const note = line.getByTitle(
+      'Its 10 commits aren’t on GitHub by ID, but each one’s change is on origin/feature-x (PR #42)',
+    )
+    expect(note).toHaveTextContent('on GitHub as copies: 10 on #42')
+    expect(note).toHaveClass('text-muted')
+    expect(note).not.toHaveClass('font-medium')
+    // ⧉, two squares, in place of ↑.
+    expect(note.querySelector('svg rect')).not.toBeNull()
+    expect(line.getByText('clean; each commit’s change is on GitHub, copied onto PR #42’s branch')).toHaveClass(
+      'sr-only',
+    )
+  })
+
+  it('notes commits with only an edited copy as not on GitHub, in amber with ↑', () => {
+    const { line } = renderLine(partlyCopiedWorktree())
+
+    const note = line.getByTitle('1 commit isn’t on GitHub: 1 has only an edited copy on origin/feature-x')
+    expect(note).toHaveTextContent('not on GitHub: 1')
+    expect(note).toHaveClass('text-caution', 'font-medium')
+    expect(note.querySelector('svg rect')).toBeNull()
+    expect(rowOf().querySelector('[data-lane]')).toHaveAttribute('data-lane', 'risk')
   })
 
   it('says what runs in a worktree in the agent’s tooltip', () => {

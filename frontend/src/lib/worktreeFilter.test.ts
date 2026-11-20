@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
 import type { AgentID, WorktreeRepo } from '../platform'
-import { linkedItem, mainWorktree, worktree, worktreeRepo } from '../test/fixtures'
+import {
+  copiedWorktree,
+  linkedItem,
+  mainWorktree,
+  partlyCopiedWorktree,
+  recordedWorktree,
+  worktree,
+  worktreeRepo,
+} from '../test/fixtures'
 import type { WorktreeErrors } from './useWorktrees'
 import { filterWorktrees, worktreeHint, worktreeSuggestions, type WorktreeFilter } from './worktreeFilter'
+import { facetsOf } from './worktreeParts'
 
 // The listing the tests filter: example-repo with its main worktree and three linked ones
 // (a dirty pull request in Codex with commits not on GitHub, a merged one Claude works in,
@@ -154,6 +163,18 @@ describe('filterWorktrees', () => {
     ['is:fin', { 'example-repo': ['done'] }, 1],
   ])('filters %j', (query, want, matches) => {
     expect(shown(filterWorktrees(repos, query, { agentName }))).toEqual({ repos: want, matches })
+  })
+
+  it('keeps as not on GitHub what its chip counts: a commit with only an edited copy, never commits on GitHub as copies', () => {
+    const copies = [
+      worktreeRepo({ worktrees: [mainWorktree(), copiedWorktree(), recordedWorktree(), partlyCopiedWorktree()] }),
+    ]
+
+    expect(shown(filterWorktrees(copies, 'is:unpushed'))).toEqual({
+      repos: { 'example-repo': ['agent-d4e5f6'] },
+      matches: 1,
+    })
+    expect(facetsOf(copies, '').find((c) => c.key === 'unpushed')?.n).toBe(1)
   })
 
   it('knows an agent by its ID alone without a way to name it', () => {

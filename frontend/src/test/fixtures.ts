@@ -168,6 +168,7 @@ import type {
   WorktreeBranch,
   WorktreeCleanup,
   WorktreeCommit,
+  WorktreeCopies,
   WorktreeDetails,
   WorktreeFile,
   WorktreeRepo,
@@ -2466,8 +2467,9 @@ export function worktree(overrides: Partial<Worktree> = {}): Worktree {
     unpushed: 0,
     onGitHub: true,
     item: null,
-    linkedBy: '',
-    copies: { ref: '', count: 0, identical: 0, edited: 0, none: 0, recorded: false, note: '' },
+    // A worktree with an item is linked to it somehow: by its name, unless said.
+    linkedBy: overrides.item === undefined || overrides.item === null ? '' : 'name',
+    copies: worktreeCopies(),
     stage: '',
     ownBranch: true,
     managed: true,
@@ -2506,6 +2508,98 @@ export function linkedItem(overrides: Partial<LinkedItem> = {}): LinkedItem {
 // finishedWorktree is a worktree whose pull request merged, ready to clean up.
 export function finishedWorktree(overrides: Partial<Worktree> = {}): Worktree {
   return worktree({ item: linkedItem(), stage: 'finished', canCleanUp: true, ...overrides })
+}
+
+// worktreeCopies is what comparing a worktree's commits not on GitHub with the pushed
+// branches found: by default nothing, as for a worktree with every commit on GitHub.
+export function worktreeCopies(overrides: Partial<WorktreeCopies> = {}): WorktreeCopies {
+  return { ref: '', count: 0, identical: 0, edited: 0, none: 0, recorded: false, note: '', ...overrides }
+}
+
+// copiedPR is pull request #42, open, whose branch, feature-x, a session pushed with the
+// commits of a sub-agent's worktree copied onto it.
+export function copiedPR(overrides: Partial<LinkedItem> = {}): LinkedItem {
+  return linkedItem({
+    number: 42,
+    title: 'Describe the widget cache',
+    url: 'https://github.com/acme-org/example-repo/pull/42',
+    state: 'open',
+    closedAt: '',
+    headOid: '4d2e8f1a0b3c5d7e9f1a2b3c4d5e6f7a8b9c0d1e',
+    headRef: 'feature-x',
+    launched: false,
+    ...overrides,
+  })
+}
+
+// copiedWorktree is a sub-agent's worktree Claude Code made in example-repo, on its own
+// branch, whose 10 commits are on no remote-tracking branch by commit ID, but each has an
+// identical copy on origin/feature-x, so they're on GitHub: it is linked by those copies to
+// pull request #42, still open, whose branch keeps its own branch, which may not go yet.
+export function copiedWorktree(overrides: Partial<Worktree> = {}): Worktree {
+  return worktree({
+    path: '/home/user/projects/example-repo/.claude/worktrees/agent-a1b2c3',
+    displayPath: '~/projects/example-repo/.claude/worktrees/agent-a1b2c3',
+    branch: 'worktree-agent-a1b2c3',
+    head: '9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d',
+    legacy: false,
+    unpushed: 10,
+    onGitHub: true,
+    item: copiedPR(),
+    linkedBy: 'copy',
+    copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10 }),
+    stage: 'active',
+    branches: [
+      ownBranch({
+        name: 'worktree-agent-a1b2c3',
+        head: '9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d',
+        deletable: false,
+        reason: "its commits are on GitHub only as copies, in pull request #42, which hasn't merged with them",
+      }),
+    ],
+    ...overrides,
+  })
+}
+
+// recordedWorktree is that worktree once pull request #42 merged and its branch was
+// deleted: no remote-tracking branch has the copies now, but the app's record of them
+// vouches that the pull request has every one, so it is finished, its own branch free to go.
+export function recordedWorktree(overrides: Partial<Worktree> = {}): Worktree {
+  return copiedWorktree({
+    item: copiedPR({ state: 'merged', closedAt: '2026-06-13T12:00:00Z' }),
+    copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, recorded: true }),
+    stage: 'finished',
+    canCleanUp: true,
+    branches: [ownBranch({ name: 'worktree-agent-a1b2c3', head: '9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d' })],
+    ...overrides,
+  })
+}
+
+// partlyCopiedWorktree is another sub-agent's worktree whose one commit not on GitHub has
+// only an edited copy on origin/feature-x: the same author, time, and subject, but another
+// change, so it isn't on GitHub, and nothing links it.
+export function partlyCopiedWorktree(overrides: Partial<Worktree> = {}): Worktree {
+  return copiedWorktree({
+    path: '/home/user/projects/example-repo/.claude/worktrees/agent-d4e5f6',
+    displayPath: '~/projects/example-repo/.claude/worktrees/agent-d4e5f6',
+    branch: 'worktree-agent-d4e5f6',
+    head: '1f2e3d4c5b6a7980f1e2d3c4b5a69788f9e0d1c2',
+    unpushed: 1,
+    onGitHub: false,
+    item: null,
+    linkedBy: '',
+    copies: worktreeCopies({ ref: 'origin/feature-x', count: 1, edited: 1 }),
+    stage: '',
+    branches: [
+      ownBranch({
+        name: 'worktree-agent-d4e5f6',
+        head: '1f2e3d4c5b6a7980f1e2d3c4b5a69788f9e0d1c2',
+        deletable: false,
+        reason: "1 commit on it isn't on GitHub",
+      }),
+    ],
+    ...overrides,
+  })
 }
 
 // worktreeFileCodes are the status letters worktreeFiles gives its files, in turn.

@@ -3,8 +3,8 @@ import { useState } from 'react'
 import { formatCount } from '../../lib/format'
 import { shortCommit } from '../../lib/git'
 import { formatAge, formatAgo, formatFull } from '../../lib/time'
-import { changesOf, notOnGitHub, readable, type DetailsRead } from '../../lib/useWorktreeDetails'
-import { fileStatus, itemRef, unpushedKnown, unpushedUnknown } from '../../lib/worktreeParts'
+import { asReadNow, changesOf, notOnGitHub, readable, type DetailsRead } from '../../lib/useWorktreeDetails'
+import { copiedOf, fileStatus, itemRef, unpushedKnown, unpushedUnknown, type Copied } from '../../lib/worktreeParts'
 import type { Worktree, WorktreeCommit, WorktreeFile } from '../../platform'
 import { quietButtonClass } from '../controls'
 import { AlertIcon, CheckIcon, RingIcon } from '../icons'
@@ -196,8 +196,35 @@ export function Changes({ worktree, read }: ColumnProps) {
   )
 }
 
-// CommitLine is one commit that isn't on GitHub: its short ID, its subject, and its age.
-// Force remove's confirmation lists the commits it keeps, or loses, with it.
+// CopyMark says how a commit not on GitHub by its commit ID compares with the pushed branch
+// its worktree's commits were compared with: = and its copy's short ID for an identical
+// copy there, which has its change on GitHub, ≈ and its copy's for an edited one, whose
+// change differs, so this commit's isn't; nothing for one with no copy there.
+function CopyMark({ commit }: { commit: WorktreeCommit }) {
+  if (commit.copy === '') {
+    return null
+  }
+
+  const identical = commit.copy === 'identical'
+
+  return (
+    <span
+      title={
+        identical
+          ? `An identical copy of it is on GitHub: ${commit.copyOid}`
+          : `Only an edited copy of it is on GitHub, ${commit.copyOid}: the same author, time, and subject, with another change`
+      }
+      className={`shrink-0 cursor-help text-[0.71875rem] ${identical ? 'text-muted' : 'text-caution'}`}
+    >
+      {identical ? '= copied as ' : '≈ edited copy '}
+      <code className="font-mono text-[0.6875rem]">{shortCommit(commit.copyOid)}</code>
+    </span>
+  )
+}
+
+// CommitLine is one commit that isn't on GitHub: its short ID, its subject, its copy on the
+// pushed branch its worktree's commits were compared with, if it has one (CopyMark), and its
+// age. Force remove's confirmation lists the commits it keeps, or loses, with it.
 export function CommitLine({ commit }: { commit: WorktreeCommit }) {
   const at = new Date(commit.unix * 1000).toISOString()
 
@@ -209,6 +236,7 @@ export function CommitLine({ commit }: { commit: WorktreeCommit }) {
       <span title={commit.subject} className="min-w-0 flex-1 truncate">
         {commit.subject}
       </span>
+      <CopyMark commit={commit} />
       <span title={formatFull(at)} className="shrink-0 text-[0.71875rem] text-muted tabular-nums">
         <RelativeTime iso={at} show={formatAge} />
       </span>
@@ -218,6 +246,40 @@ export function CommitLine({ commit }: { commit: WorktreeCommit }) {
 
 // skeletonWidths are the widths of the lines that stand in for the commits being read.
 const skeletonWidths = ['w-52', 'w-40', 'w-48', 'w-32']
+
+// ReadingCommits stands a line in for each of the first n commits being read, four at most,
+// and one at least.
+function ReadingCommits({ n }: { n: number }) {
+  return (
+    <ul aria-busy="true" aria-label="Reading the commits" className="flex flex-col gap-1.5 py-0.5">
+      {skeletonWidths.slice(0, Math.min(Math.max(n, 1), skeletonWidths.length)).map((width) => (
+        <li key={width} className="flex items-center gap-2">
+          <span className={`${skeletonClass} w-12`} />
+          <span className={`${skeletonClass} ${width}`} />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// CommitList lists commits that a worktree has, of n, Details listing at most 200, and
+// where the rest are.
+function CommitList({ commits, n }: { commits: readonly WorktreeCommit[]; n: number }) {
+  return (
+    <>
+      <ul className="flex flex-col text-xs">
+        {commits.map((commit) => (
+          <CommitLine key={commit.oid} commit={commit} />
+        ))}
+      </ul>
+      {n > commits.length && (
+        <p className="mt-1 px-1.5 text-xs text-muted">
+          <RestInTerminal listed={commits.length} count={n} command="git log" />
+        </p>
+      )}
+    </>
+  )
+}
 
 // countedNow reports details that counted the commits not on GitHub.
 function countedNow(read: DetailsRead | undefined): boolean {
@@ -240,35 +302,11 @@ function Commits({ worktree, read }: ColumnProps) {
   // While Details reads, a count the listing couldn't make waits too, on one line, rather
   // than say it couldn't count them before Details has tried.
   if ((known > 0 || unpushedUnknown(worktree)) && waiting(worktree, read)) {
-    return (
-      <ul aria-busy="true" aria-label="Reading the commits" className="flex flex-col gap-1.5 py-0.5">
-        {skeletonWidths.slice(0, Math.min(Math.max(known, 1), skeletonWidths.length)).map((width) => (
-          <li key={width} className="flex items-center gap-2">
-            <span className={`${skeletonClass} w-12`} />
-            <span className={`${skeletonClass} ${width}`} />
-          </li>
-        ))}
-      </ul>
-    )
+    return <ReadingCommits n={known} />
   }
 
   if (n > 0 && read?.state === 'read' && read.details.commits.length > 0) {
-    const { commits } = read.details
-
-    return (
-      <>
-        <ul className="flex flex-col text-xs">
-          {commits.map((commit) => (
-            <CommitLine key={commit.oid} commit={commit} />
-          ))}
-        </ul>
-        {n > commits.length && (
-          <p className="mt-1 px-1.5 text-xs text-muted">
-            <RestInTerminal listed={commits.length} count={n} command="git log" />
-          </p>
-        )}
-      </>
-    )
+    return <CommitList commits={read.details.commits} n={n} />
   }
 
   if (n > 0) {
@@ -375,18 +413,69 @@ function BranchLines({ worktree, read }: ColumnProps) {
   )
 }
 
+// refClass sets a pushed branch's name in code in a column's heading, in its own case.
+const refClass = 'font-mono font-medium tracking-normal normal-case'
+
+// CopiedCommits are the commits of a worktree that aren't on GitHub by their commit IDs
+// but are as identical copies (copied): where the copies are, then each commit once Details
+// has read them, marked with its copy (CommitLine), with a line standing in for each of the
+// first four while it reads. Once the branch with the copies is gone, the app's record of
+// them vouches for them instead, and Details, which compares the commits with the branches
+// there are, marks none.
+function CopiedCommits({ worktree, read, copied }: ColumnProps & { copied: Copied }) {
+  const commits = read?.state === 'read' ? read.details.commits : []
+  const pr = copied.pr === null ? 'the pull request it headed' : itemRef(copied.pr)
+
+  return (
+    <>
+      <p className="mb-1 text-xs text-muted">
+        {copied.recorded ? (
+          <>
+            <code className="font-mono text-[0.71875rem]">{copied.ref}</code>
+            {` is gone, but the app recorded each one’s identical copy there, and ${pr} has them.`}
+          </>
+        ) : (
+          <>
+            {'Each has an identical copy on '}
+            <code className="font-mono text-[0.71875rem]">{copied.ref}</code>, under another commit ID.
+          </>
+        )}
+      </p>
+      {waiting(worktree, read) ? (
+        <ReadingCommits n={copied.n} />
+      ) : (
+        commits.length > 0 && <CommitList commits={commits} n={copied.n} />
+      )}
+    </>
+  )
+}
+
 // NotOnGitHub is the drawer's second column: the commits a worktree holds that aren't on
-// GitHub, then its branch, head, and base, against origin's default branch.
+// GitHub, then its branch, head, and base, against origin's default branch. When those
+// commits are on GitHub as identical copies after all (copiedOf), counted as its details
+// last counted them (asReadNow), it is headed with the pull request they went into, or the
+// branch they're on, and lists them with their copies.
 export function NotOnGitHub({ worktree, read }: ColumnProps) {
   const n = worktree.prunable || worktree.error !== '' ? 0 : notOnGitHub(worktree, read)
+  const copied = copiedOf(asReadNow(worktree, read))
 
   return (
     <div className={drawerColumnClass}>
-      <h4 className={columnHeadingClass}>
-        Not on GitHub
-        {n > 0 && <span className="tracking-normal text-text tabular-nums">{formatCount(n)}</span>}
-      </h4>
-      <Commits worktree={worktree} read={read} />
+      {copied === null ? (
+        <h4 className={columnHeadingClass}>
+          Not on GitHub
+          {n > 0 && <span className="tracking-normal text-text tabular-nums">{formatCount(n)}</span>}
+        </h4>
+      ) : (
+        <h4 className={columnHeadingClass}>
+          Copied to {copied.pr === null ? <code className={refClass}>{copied.ref}</code> : itemRef(copied.pr)}
+        </h4>
+      )}
+      {copied === null ? (
+        <Commits worktree={worktree} read={read} />
+      ) : (
+        <CopiedCommits worktree={worktree} read={read} copied={copied} />
+      )}
       {!worktree.prunable && <BranchLines worktree={worktree} read={read} />}
     </div>
   )
