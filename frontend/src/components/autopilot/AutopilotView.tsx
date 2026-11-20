@@ -28,7 +28,7 @@ import { attempt } from '../../lib/call'
 import { formatCount } from '../../lib/format'
 import { agentName } from '../../lib/launch'
 import { dryRunWhy, NEW_ROUTINE, newRoutineName, routineDraft, sameDraft, scratchDraft } from '../../lib/routineBuilder'
-import { useNeedsYou, useReadiness, type AutopilotState } from '../../lib/useAutopilot'
+import { useNeedsYou, useReadiness, type SharedAutopilot } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
 import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
@@ -97,7 +97,7 @@ import { WorkingList } from './WorkingList'
 
 export interface AutopilotViewProps {
   // autopilot is Autopilot as the window shares it: at a glance, the routines, the engine.
-  autopilot: AutopilotState
+  autopilot: SharedAutopilot
   // settings are the stored settings, null until they load, whose Pause Autopilot the
   // header's button and the paused banner's Resume change; onSettingsSaved receives them
   // as stored after.
@@ -195,7 +195,7 @@ function PauseButton({ settings, onSaved }: { settings: Settings; onSaved: (sett
 }
 
 interface BannersProps {
-  autopilot: AutopilotState
+  autopilot: SharedAutopilot
   settings: Settings | null
   onSettingsSaved: (settings: Settings) => void
 }

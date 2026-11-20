@@ -20,10 +20,10 @@ import { useNowAs } from './useNow'
 import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
-// AutopilotState is Autopilot as the whole window shares it: at a glance (what the tab
+// SharedAutopilot is Autopilot as the whole window shares it: at a glance (what the tab
 // counts), the routines, by ID for the names the rows say ("Snoozed by ⚡ ..."), and the
 // engine (its problems color the tab's red dot), each as last read.
-export interface AutopilotState {
+export interface SharedAutopilot {
   glance: AutopilotGlance | null
   routines: readonly AutopilotRoutine[]
   // loaded reports the routines read at least once.
@@ -51,7 +51,7 @@ export function useOnAutopilot(reload: () => void) {
 // opens, and again whenever Autopilot says it changed. Each reads the database alone. The
 // routines are read again as a new local day begins too, so a status line's "today" turns
 // over at midnight even while nothing changes, on the window's own clock.
-export function useAutopilot(): AutopilotState {
+export function useAutopilot(): SharedAutopilot {
   const day = useNowAs((now) => now.toDateString())
   const glance = useQuery(() => getAutopilotGlance(), [], { log: 'could not read Autopilot at a glance' })
   const routines = useQuery(() => listRoutines(), [day])
