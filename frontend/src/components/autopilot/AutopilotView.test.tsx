@@ -2176,8 +2176,38 @@ describe('the Autopilot tab’s Describe it', () => {
     }
 
     expect(box.queryByText(/Claude sees what you type/)).not.toBeInTheDocument()
+    expect(box.getByRole('button', { name: 'Check again' })).toBeEnabled()
     // Describe it itself still opens, where its own box says the same.
     expect(box.getByRole('button', { name: 'Open Describe it' })).toBeEnabled()
+  })
+
+  it('reads Describe it’s status again on Check again, and takes a message once a turn can run', async () => {
+    const user = userEvent.setup()
+    platform.describeItStatus.mockResolvedValue(
+      describeStatus({
+        ready: false,
+        problem: 'Profile default (Claude Code) isn’t signed in.',
+        fix: 'Run `claude auth login`, then Check again.',
+      }),
+    )
+    renderTab()
+
+    const box = await askBox()
+    const text = box.getByRole('textbox', { name: 'Tell Autopilot what you want' })
+
+    expect(await box.findByText('Run `claude auth login`, then Check again.')).toBeInTheDocument()
+    expect(text).toBeDisabled()
+
+    // The user signs in, then asks again.
+    platform.describeItStatus.mockResolvedValue(describeStatus())
+    await user.click(box.getByRole('button', { name: 'Check again' }))
+
+    await waitFor(() => {
+      expect(text).toBeEnabled()
+    })
+    expect(platform.describeItStatus).toHaveBeenCalledTimes(2)
+    expect(box.queryByRole('button', { name: 'Check again' })).not.toBeInTheDocument()
+    expect(box.getByText(/Claude sees what you type/)).toBeInTheDocument()
   })
 
   it('lets the user write and send while Describe it’s status is still being read', async () => {

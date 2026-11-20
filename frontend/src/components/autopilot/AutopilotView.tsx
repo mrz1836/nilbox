@@ -329,9 +329,11 @@ function CountBadge({ count, words }: { count: number; words: string }) {
 
 interface AskBoxProps {
   // status is whether Describe it can run a turn now, undefined until it is read, and
-  // error why it couldn't be read.
+  // error why it couldn't be read; checking reports it read again, as Check again asks.
   status: DescribeStatus | undefined
   error: string
+  checking: boolean
+  onCheck: () => void
   // onSend opens Describe it with the message, which it sends at once; onOpen opens it
   // without one.
   onSend: (text: string) => void
@@ -341,9 +343,10 @@ interface AskBoxProps {
 // AskBox is the empty tab's way into Describe it: the user tells Autopilot what they want,
 // an example a click away filling in the box, and sending (⌘↩) opens Describe it, which
 // sends it at once. While Describe it can't run a turn, it is held back with why and what
-// to do. Open Describe it goes there without a message, to a conversation under way or to
-// the proposals from the user's own Claude Code, whose count it shows.
-function AskBox({ status, error, onSend, onOpen }: AskBoxProps) {
+// to do, and Check again reads that again once the user has done it. Open Describe it goes
+// there without a message, to a conversation under way or to the proposals from the user's
+// own Claude Code, whose count it shows.
+function AskBox({ status, error, checking, onCheck, onSend, onOpen }: AskBoxProps) {
   const id = useId()
   const box = useRef<HTMLTextAreaElement>(null)
   const [text, setText] = useState('')
@@ -428,13 +431,9 @@ function AskBox({ status, error, onSend, onOpen }: AskBoxProps) {
         </button>
       </div>
       {held ? (
-        <p
-          id={`${id}-held`}
-          role="status"
-          className="flex items-start gap-2 rounded-md border border-warning/60 bg-warning/10 px-3 py-2 text-xs"
-        >
+        <div className="flex items-start gap-2 rounded-md border border-warning/60 bg-warning/10 px-3 py-2 text-xs">
           <AlertIcon className="mt-0.5 size-3.5 shrink-0 text-warning" />
-          <span className="min-w-0 flex-1">
+          <p id={`${id}-held`} role="status" className="min-w-0 flex-1">
             <span className="text-text">{problem}</span>
             {fix !== '' && (
               <>
@@ -442,8 +441,11 @@ function AskBox({ status, error, onSend, onOpen }: AskBoxProps) {
                 <span className="text-muted">{fix}</span>
               </>
             )}
-          </span>
-        </p>
+          </p>
+          <button type="button" disabled={checking} onClick={onCheck} className={`${buttonClass} shrink-0`}>
+            {checking ? 'Checking…' : 'Check again'}
+          </button>
+        </div>
       ) : (
         <p id={`${id}-sees`} className="text-xs text-muted">
           {describeSeesText}
@@ -1216,6 +1218,10 @@ export default function AutopilotView({
           <AskBox
             status={describeStatus.data}
             error={describeStatus.error}
+            checking={describeStatus.pending}
+            onCheck={() => {
+              void describeStatus.refetch()
+            }}
             onSend={(text) => {
               describe({ text })
             }}

@@ -1041,8 +1041,8 @@ export const describeExamples: readonly string[] = [
   'Snooze passing bot PRs for a few days',
 ]
 
-// describeSeesText says what Claude Code sees of what the user tells Describe it, as the
-// composers say it under the box.
+// describeSeesText says what Claude Code sees of what the user tells Describe it, as both
+// boxes say it under their text: the empty tab's and Describe it's own composer.
 export const describeSeesText =
   'Claude sees what you type, how Autopilot works, and the names in your setup and inbox, never your items’ text or code.'
 

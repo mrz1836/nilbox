@@ -1,5 +1,6 @@
 import { useId, type KeyboardEvent } from 'react'
 
+import { describeSeesText } from '../../../lib/autopilot'
 import type { Chip } from '../../../lib/describeit'
 import type { DescribeAttachRef, DescribeStatus } from '../../../platform'
 import { buttonClass, fieldClass, primaryButtonClass } from '../../controls'
@@ -125,8 +126,7 @@ export function Composer({
       />
       <div className="flex flex-wrap items-center gap-3">
         <p id={`${id}-sees`} className="min-w-0 flex-1 text-xs text-muted">
-          Claude sees what you type, how Autopilot works, and the names in your setup and inbox, never your items’ text
-          or code.
+          {describeSeesText}
         </p>
         {running ? (
           <button type="button" disabled={stopping} onClick={onStop} className={buttonClass}>
