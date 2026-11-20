@@ -353,6 +353,33 @@ func TestTheOutsideFolderHoldsAtMost50WaitingProposals(t *testing.T) {
 			fill(50)(t, r)
 			require.NoError(t, os.WriteFile(filepath.Join(r.proposals(kit.Outside), "outcomes.json"), []byte("{"), 0o600))
 		}, true},
+		{"50, one naming a conversation", func(t *testing.T, r rig) {
+			t.Helper()
+			fill(50)(t, r)
+
+			// Another process's file, which the app shows no card for: one from outside names
+			// no conversation.
+			data, err := kit.EncodeProposalFile(kit.ProposalFile{
+				ID: proposalID(1), At: servedAt, SnapshotAt: snapshotAt, Conversation: conversationID, Proposal: twoParts(),
+			})
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(filepath.Join(r.proposals(kit.Outside), proposalID(1)+".json"), data, 0o600))
+		}, false},
+		{"50 waiting, older than the newest the app reads", func(t *testing.T, r rig) {
+			t.Helper()
+			fill(50)(t, r)
+
+			settled := make([]kit.Outcome, 0, 2*kit.MaxOutsideRead)
+
+			for i := 51; i <= 50+kit.MaxOutsideRead; i++ {
+				r.writeProposal(t, kit.Outside, proposalID(i), "other-repo", twoParts())
+				settled = append(settled,
+					outcome(proposalID(i), kit.PartRoutine, 0, kit.OutcomeAdded, "Added “Tell me”, switched off"),
+					outcome(proposalID(i), kit.PartSettings, 0, kit.OutcomeDiscarded, "Discarded the settings change"))
+			}
+
+			r.writeOutcomes(t, kit.Outside, settled...)
+		}, false},
 	}
 
 	for _, tt := range tests {

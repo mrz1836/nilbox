@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
@@ -95,6 +96,8 @@ func proposalIDs(dir string) ([]string, error) {
 			ids = append(ids, id)
 		}
 	}
+
+	slices.Sort(ids)
 
 	return ids, nil
 }
@@ -202,9 +205,10 @@ func (st settled) waiting(id string, p kit.Proposal) []partRef {
 }
 
 // room refuses a proposal the folder dir has no room for: from the user's own Claude
-// Code, kit.MaxOutsidePending proposals waiting there already, each one the app can read
-// with a part the user hasn't dealt with. The app's own conversation has no cap: its user
-// reads each proposal as it comes.
+// Code, kit.MaxOutsidePending proposals waiting there already, counted as the app counts
+// the cards it shows: among the newest kit.MaxOutsideRead files, each one the app reads as
+// a card from outside (never one naming a conversation) with a part the user hasn't dealt
+// with. The app's own conversation has no cap: its user reads each proposal as it comes.
 func (s *server) room(dir string) error {
 	if s.where != kit.Outside {
 		return nil
@@ -213,6 +217,10 @@ func (s *server) room(dir string) error {
 	ids, err := proposalIDs(dir)
 	if err != nil {
 		return err
+	}
+
+	if len(ids) > kit.MaxOutsideRead {
+		ids = ids[len(ids)-kit.MaxOutsideRead:]
 	}
 
 	if len(ids) < kit.MaxOutsidePending {
@@ -225,7 +233,7 @@ func (s *server) room(dir string) error {
 	waiting := 0
 
 	for _, id := range ids {
-		if f, err := readProposal(dir, id); err == nil && len(st.waiting(id, f.Proposal)) > 0 {
+		if f, err := readProposal(dir, id); err == nil && f.Conversation == "" && len(st.waiting(id, f.Proposal)) > 0 {
 			waiting++
 		}
 	}

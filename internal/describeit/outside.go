@@ -25,11 +25,6 @@ const (
 	// outsideEvery is how often the outside folder is looked at for a card that came or
 	// went.
 	outsideEvery = 3 * time.Second
-
-	// maxOutsideRead caps the proposal files read from the outside folder, the newest
-	// first: past the tool mode's own cap, only a process other than the tool mode wrote
-	// them.
-	maxOutsideRead = 4 * kit.MaxOutsidePending
 )
 
 // Proposals returns the cards from the user's own Claude Code, each checked against the
@@ -61,7 +56,7 @@ func (s *Service) Proposals(ctx context.Context) ([]Card, error) {
 }
 
 // outsideIDs returns the IDs of the outside folder's proposal files, the newest
-// maxOutsideRead.
+// kit.MaxOutsideRead.
 func (s *Service) outsideIDs(ctx context.Context) []string {
 	ids, err := proposalIDs(s.proposalsDir(Outside))
 	if err != nil {
@@ -70,15 +65,16 @@ func (s *Service) outsideIDs(ctx context.Context) []string {
 		return []string{}
 	}
 
-	if len(ids) > maxOutsideRead {
-		ids = ids[len(ids)-maxOutsideRead:]
+	if len(ids) > kit.MaxOutsideRead {
+		ids = ids[len(ids)-kit.MaxOutsideRead:]
 	}
 
 	return ids
 }
 
 // pendingOutside counts the cards from the user's own Claude Code with a part no one has
-// dealt with yet. It decodes each, and checks none.
+// dealt with yet, as the tool mode counts them toward kit.MaxOutsidePending. It decodes
+// each, and checks none.
 func (s *Service) pendingOutside(ctx context.Context) int {
 	outcomes := s.outcomes(ctx, Outside)
 	n := 0
@@ -159,7 +155,8 @@ func (s *Service) pruneOutside(ctx context.Context) {
 }
 
 // settledLongAgo returns the IDs of the cards from outside that every part of was dealt
-// with more than keepConversations ago.
+// with more than keepConversations ago: among every proposal file, not only the newest
+// kit.MaxOutsideRead the cards are read from, so one that fell past them still goes.
 func (s *Service) settledLongAgo(ctx context.Context) map[string]bool {
 	gone := map[string]bool{}
 
@@ -168,9 +165,16 @@ func (s *Service) settledLongAgo(ctx context.Context) map[string]bool {
 		return gone
 	}
 
+	ids, err := proposalIDs(s.proposalsDir(Outside))
+	if err != nil {
+		s.logger.WarnContext(ctx, "describe it couldn't read the proposals from outside", "error", err)
+
+		return gone
+	}
+
 	now := s.clock.Now()
 
-	for _, id := range s.outsideIDs(ctx) {
+	for _, id := range ids {
 		if f, readErr := s.readProposal(Outside, id); readErr == nil {
 			mine := outcomesOf(f, o.Items)
 			if len(mine) == len(parts(f.Proposal)) && now.Sub(lastSettled(mine)) > keepConversations {

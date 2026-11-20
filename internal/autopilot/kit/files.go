@@ -10,8 +10,16 @@ import "time"
 const ProposalFileVersion = 1
 
 // MaxOutsidePending caps the proposals waiting from the user's own Claude Code sessions:
-// past it, the tool mode refuses another until the user deals with some.
+// past it, the tool mode refuses another until the user deals with some. A proposal waits
+// while it has a part the user hasn't dealt with, counted as the app counts its cards:
+// among the newest MaxOutsideRead files, each one the app reads as a card.
 const MaxOutsidePending = 50
+
+// MaxOutsideRead caps the proposal files the app and the tool mode read from the outside
+// folder, the newest first, so a folder that grew with proposals dealt with, or that
+// another process filled, never slows either: the app's cards, and the waiting ones the
+// tool mode counts, are among them alone.
+const MaxOutsideRead = 4 * MaxOutsidePending
 
 // ProposalFile is one proposal as the tool mode writes it: in-app, into its conversation's
 // folder; from the user's own Claude Code, into the outside folder.
