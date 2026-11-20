@@ -839,6 +839,9 @@ export type WorktreeLinkKind = worktrees.LinkKind
 // one, or none.
 export type WorktreeCopies = NonNullLists<worktrees.Copies>
 export type WorktreeCopyMark = worktrees.CopyMark
+// WorktreeCopyComparison is how the drawer's own comparison of those commits went: whether
+// it ran, against which branch, and what it found.
+export type WorktreeCopyComparison = NonNullLists<worktrees.CopyComparison>
 export type WorktreeSession = NonNullLists<worktrees.Session>
 
 // The bound calls, under the names the app knows them by. What each one does is the Go

@@ -2646,6 +2646,7 @@ export function worktreeDetails(overrides: Partial<WorktreeDetails> = {}): Workt
     fileCount: 0,
     commits: [],
     unpushed: 0,
+    copies: { compared: false, ref: '', identical: 0, edited: 0, note: '' },
     base: 'origin/main',
     behind: 0,
     createdAt: '2026-06-14T12:00:00Z',

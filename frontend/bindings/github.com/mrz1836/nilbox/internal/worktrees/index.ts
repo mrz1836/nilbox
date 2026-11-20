@@ -20,6 +20,7 @@ export type {
     BranchResult,
     Cleanup,
     Copies,
+    CopyComparison,
     Details,
     FileEntry,
     LinkedItem,

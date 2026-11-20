@@ -158,6 +158,11 @@ type copyResult struct {
 	// marks says how each of commits compares with ref, by commit ID; one with none isn't
 	// there.
 	marks map[string]commitMark
+
+	// compared reports a comparison that ran to completion, the candidates read and every
+	// branch compared with, or that had no pushed branch to compare with; false for one
+	// that couldn't be made (copies.Note says why).
+	compared bool
 }
 
 // full reports a worktree fully copied onto ref.
@@ -481,10 +486,9 @@ func compareCopies(ctx context.Context, g git, cache *copyCache, dir string, rem
 	for _, w := range todo {
 		switch {
 		case len(branches) == 0:
-			w.done, w.result = true, copyResult{marks: map[string]commitMark{}}
+			w.done, w.result = true, copyResult{marks: map[string]commitMark{}, compared: true}
 		case w.wt.Unpushed > copyLimit:
-			w.finish("It has more than " + strconv.Itoa(copyLimit) + " commits that aren't on GitHub, more than " +
-				"are compared with the pushed branches.")
+			w.finish(tooManyToCompare())
 		}
 	}
 
@@ -496,6 +500,12 @@ func compareCopies(ctx context.Context, g git, cache *copyCache, dir string, rem
 			w.compare(ctx, g, cache, dir, refs, w.candidates)
 		}
 	}
+}
+
+// tooManyToCompare says a worktree has more commits not on GitHub than are compared.
+func tooManyToCompare() string {
+	return "It has more than " + strconv.Itoa(copyLimit) + " commits that aren't on GitHub, more than are " +
+		"compared with the pushed branches."
 }
 
 // pushedBranches are the remote-tracking branches of a clone's GitHub remotes that copies
@@ -727,7 +737,9 @@ func (w *copyWork) compare(ctx context.Context, g git, cache *copyCache, dir str
 // closest, or, for nil, as having no copy on any.
 func (w *copyWork) settle(best *refComparison) {
 	w.done = true
-	w.result = copyResult{copies: Copies{Count: w.wt.Unpushed, None: w.wt.Unpushed}, marks: map[string]commitMark{}}
+	w.result = copyResult{
+		copies: Copies{Count: w.wt.Unpushed, None: w.wt.Unpushed}, marks: map[string]commitMark{}, compared: true,
+	}
 
 	w.result.commits = make([]string, 0, len(w.unpushed))
 	for _, c := range w.unpushed {

@@ -38,6 +38,11 @@ type Details struct {
 	// Unpushed is how many such commits there are, or -1 when they couldn't be counted.
 	Unpushed int `json:"unpushed"`
 
+	// Copies says how comparing those commits with the pushed branches went, now: whether
+	// it ran, against what, and what it found. Its zero value is for a worktree with none of
+	// them, or whose commits couldn't be read.
+	Copies CopyComparison `json:"copies"`
+
 	// Base is origin's default branch as the clone last fetched it, as in "origin/main", or
 	// "" when the clone doesn't say.
 	Base string `json:"base"`
@@ -52,6 +57,40 @@ type Details struct {
 	// Errors say, each in a sentence, what couldn't be read and why; none when every read
 	// worked. The fields it would have filled keep their empty values.
 	Errors []string `json:"errors"`
+}
+
+// CopyComparison is how comparing a worktree's commits not on GitHub with the pushed
+// branches went when Details compared them, or found what the listing compared still
+// holds. It reads no copy record, so a worktree its record vouches for
+// (Worktree.Copies.Recorded) may have nothing on a pushed branch now. Every field is a plain
+// value.
+type CopyComparison struct {
+	// Compared reports that the comparison ran to completion, the pushed commits read and
+	// every branch holding likely copies compared, byte for byte, or that there was no pushed
+	// branch to compare with. With Identical at 0, none of the commits has an identical copy
+	// on a pushed branch now; false says only that this is unknown (Note says why).
+	Compared bool `json:"compared"`
+
+	// Ref is the pushed branch they were compared with, as in origin/feature-x, or "" when
+	// no pushed commit was a likely copy of any.
+	Ref string `json:"ref"`
+
+	// Identical and Edited count the commits with an identical copy on Ref, and those with
+	// a copy there whose change differs.
+	Identical int `json:"identical"`
+	Edited    int `json:"edited"`
+
+	// Unless it is "", Note says in a sentence why the comparison couldn't run, or why
+	// identical copies on several branches don't count.
+	Note string `json:"note"`
+}
+
+// comparisonOf is how a comparison that found r went.
+func comparisonOf(r copyResult) CopyComparison {
+	return CopyComparison{
+		Compared: r.compared, Ref: r.copies.Ref, Identical: r.copies.Identical, Edited: r.copies.Edited,
+		Note: r.copies.Note,
+	}
 }
 
 // UnpushedCommit is a commit on a worktree's HEAD that isn't on GitHub.
@@ -119,7 +158,7 @@ func (s *Service) Details(ctx context.Context, repoPath, path string) (Details, 
 	)
 
 	wg.Go(func() { d.Files, d.FileCount, filesFailed = detailFiles(ctx, g, e.Path) })
-	wg.Go(func() { d.Commits, d.Unpushed, commitsFailed = s.detailCommits(ctx, g, repoPath, e, fetched) })
+	wg.Go(func() { d.Commits, d.Unpushed, d.Copies, commitsFailed = s.detailCommits(ctx, g, repoPath, e, fetched) })
 	wg.Go(func() { d.Base, d.Behind, baseFailed = s.detailBase(ctx, repoPath, e.HEAD) })
 	wg.Wait()
 
@@ -171,65 +210,72 @@ func detailFiles(ctx context.Context, g git, dir string) ([]FileEntry, int, stri
 // detailCommits counts the commits on HEAD in the worktree e of the clone at dir that aren't
 // on GitHub, past fetched, the commit it was made at from GitHub, when it is one, and lists
 // them, at most detailLimit, only when there are any, each with how it compares with the
-// pushed branches (copyMarks); or says why they couldn't be read.
+// pushed branches, and how that comparison went (copiesNow); or says why they couldn't be
+// read.
 func (s *Service) detailCommits(ctx context.Context, g git, dir string, e Entry, fetched string,
-) ([]UnpushedCommit, int, string) {
+) ([]UnpushedCommit, int, CopyComparison, string) {
 	count, stderr, err := g.unpushed(ctx, e.Path, fetched)
 
 	switch {
 	case err != nil:
-		return []UnpushedCommit{}, -1, readFailure("the commits not on GitHub", err, stderr)
+		return []UnpushedCommit{}, -1, CopyComparison{}, readFailure("the commits not on GitHub", err, stderr)
 	case count == 0:
-		return []UnpushedCommit{}, 0, ""
+		return []UnpushedCommit{}, 0, CopyComparison{}, ""
 	}
 
 	commits, stderr, err := g.unpushedCommits(ctx, e.Path, fetched)
 	if err != nil {
-		return []UnpushedCommit{}, count, readFailure("the commits not on GitHub", err, stderr)
+		return []UnpushedCommit{}, count, CopyComparison{}, readFailure("the commits not on GitHub", err, stderr)
 	}
 
-	marks := s.copyMarks(ctx, g, dir, e, fetched, count)
+	compared := s.copiesNow(ctx, g, dir, e, fetched, count)
 
 	for i := range commits {
-		if m, ok := marks[commits[i].OID]; ok {
+		if m, ok := compared.marks[commits[i].OID]; ok {
 			commits[i].Copy, commits[i].CopyOID = m.mark, m.copy
 		}
 	}
 
-	return commits, count, ""
+	return commits, count, comparisonOf(compared), ""
 }
 
-// copyMarks says how each of the count commits not on GitHub of the worktree e, of the clone
-// at dir, compares with the pushed branches, by commit ID: what the listing found, when the
-// clone's refs, read once, say nothing it was worked out from changed since, or else what a
-// comparison of its own finds (see copies.go). None when that can't be told.
-func (s *Service) copyMarks(ctx context.Context, g git, dir string, e Entry, fetched string, count int) map[string]commitMark {
-	if count > copyLimit || !gitread.IsCommitID(e.HEAD) {
-		return nil
+// copiesNow is how the count commits not on GitHub of the worktree e, of the clone at dir,
+// compare with the pushed branches now: what the listing found, when the clone's refs,
+// read once, say nothing it was worked out from changed since, or else what a comparison of
+// its own finds (see copies.go). It is a result that wasn't compared, with why, when that
+// can't be told.
+func (s *Service) copiesNow(ctx context.Context, g git, dir string, e Entry, fetched string, count int) copyResult {
+	if count > copyLimit {
+		return uncompared(tooManyToCompare())
 	}
 
 	refs, err := g.readRefs(ctx, dir)
 	if err != nil {
-		return nil
+		return uncompared(compareFailure(err))
 	}
 
-	if marks, ok := s.keptMarks(e, fetched, refs, count); ok {
-		return marks
+	if kept, ok := s.keptCopies(e, fetched, refs, count); ok {
+		return kept
 	}
 
 	clone, err := localrepos.Inspect(ctx, dir, s.run)
 	if err != nil {
-		return nil
+		return uncompared(compareFailure(err))
 	}
 
 	wt := &Worktree{Path: e.Path, Head: e.HEAD, Unpushed: count, fetched: fetched}
 	s.detectCloneCopies(ctx, g, dir, []*Worktree{wt}, clone.Remotes, withOwners(refs, clone.Names), false)
 
 	if wt.copies.result == nil {
-		return nil
+		return uncompared(compareFailure(nil))
 	}
 
-	return wt.copies.result.marks
+	return *wt.copies.result
+}
+
+// uncompared is a result of a comparison that couldn't be made, with why.
+func uncompared(note string) copyResult {
+	return copyResult{copies: Copies{Note: note}, marks: map[string]commitMark{}}
 }
 
 // detailBase reads origin's default branch in the clone at dir, as it last fetched it, and
@@ -268,16 +314,16 @@ func (s *Service) detailBase(ctx context.Context, dir, head string) (string, int
 	return base, behind, ""
 }
 
-// keptMarks returns the marks the listing found for the worktree e's count commits not on
-// GitHub, when nothing they were worked out from changed since: its HEAD, the commit it was
+// keptCopies returns what the listing found of the worktree e's count commits not on
+// GitHub, when nothing it was worked out from changed since: its HEAD, the commit it was
 // made at from GitHub, and its clone's remote-tracking branches, as refs has them now.
-func (s *Service) keptMarks(e Entry, fetched string, refs cloneRefs, count int) (map[string]commitMark, bool) {
+func (s *Service) keptCopies(e Entry, fetched string, refs cloneRefs, count int) (copyResult, bool) {
 	kept, ok := s.copies.entry(paths.Resolved(e.Path))
 	if !ok || kept.key.head != e.HEAD || kept.key.fetched != fetched || kept.key.refs != refs.fingerprint() {
-		return nil, false
+		return copyResult{}, false
 	}
 
-	return kept.result.marks, kept.result.copies.Count == 0 || kept.result.copies.Count == count
+	return kept.result, kept.result.copies.Count == 0 || kept.result.copies.Count == count
 }
 
 // readFailure words a read Details couldn't make with the service's own git, for the

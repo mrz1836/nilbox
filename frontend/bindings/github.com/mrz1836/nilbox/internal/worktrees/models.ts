@@ -207,6 +207,42 @@ export interface Copies {
 }
 
 /**
+ * CopyComparison is how comparing a worktree's commits not on GitHub with the pushed
+ * branches went when Details compared them, or found what the listing compared still
+ * holds. It reads no copy record, so a worktree its record vouches for
+ * (Worktree.Copies.Recorded) may have nothing on a pushed branch now. Every field is a plain
+ * value.
+ */
+export interface CopyComparison {
+    /**
+     * Compared reports that the comparison ran to completion, the pushed commits read and
+     * every branch holding likely copies compared, byte for byte, or that there was no pushed
+     * branch to compare with. With Identical at 0, none of the commits has an identical copy
+     * on a pushed branch now; false says only that this is unknown (Note says why).
+     */
+    "compared": boolean;
+
+    /**
+     * Ref is the pushed branch they were compared with, as in origin/feature-x, or "" when
+     * no pushed commit was a likely copy of any.
+     */
+    "ref": string;
+
+    /**
+     * Identical and Edited count the commits with an identical copy on Ref, and those with
+     * a copy there whose change differs.
+     */
+    "identical": number;
+    "edited": number;
+
+    /**
+     * Unless it is "", Note says in a sentence why the comparison couldn't run, or why
+     * identical copies on several branches don't count.
+     */
+    "note": string;
+}
+
+/**
  * CopyMark is how a commit that isn't on GitHub compares with the pushed branch its
  * worktree's commits were compared with (Copies.Ref).
  */
@@ -265,6 +301,13 @@ export interface Details {
      * Unpushed is how many such commits there are, or -1 when they couldn't be counted.
      */
     "unpushed": number;
+
+    /**
+     * Copies says how comparing those commits with the pushed branches went, now: whether
+     * it ran, against what, and what it found. Its zero value is for a worktree with none of
+     * them, or whose commits couldn't be read.
+     */
+    "copies": CopyComparison;
 
     /**
      * Base is origin's default branch as the clone last fetched it, as in "origin/main", or

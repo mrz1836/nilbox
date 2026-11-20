@@ -571,7 +571,62 @@ func TestDetailsMarkNothingWhenTheRefsCantBeRead(t *testing.T) {
 		assert.Empty(t, c.CopyOID)
 	}
 
+	assert.Equal(t, CopyComparison{Note: "Couldn't compare its commits with the pushed branches."}, d.Copies,
+		"not compared, which says nothing of whether the copies are there")
 	assert.Empty(t, d.Errors, "and no read the drawer shows failed")
+}
+
+func TestDetailsSayHowTheirComparisonWent(t *testing.T) {
+	t.Parallel()
+
+	r, _, _ := markedRig(t)
+	r.list(t)
+
+	d, err := r.svc.Details(t.Context(), r.repo, r.agent)
+	require.NoError(t, err)
+	assert.Equal(t, CopyComparison{Compared: true, Ref: "origin/" + parentBranch, Identical: 1, Edited: 1}, d.Copies)
+
+	// The branch is deleted: compared again, nothing is on a pushed branch any more.
+	testutil.RunGit(t, r.repo, "update-ref", "-d", "refs/remotes/origin/"+parentBranch)
+
+	d, err = r.svc.Details(t.Context(), r.repo, r.agent)
+	require.NoError(t, err)
+	assert.Equal(t, CopyComparison{Compared: true}, d.Copies, "compared, with nothing found: no copy is pushed now")
+
+	for _, c := range d.Commits {
+		assert.Empty(t, c.Copy)
+	}
+}
+
+func TestDetailsSayWhyTheirComparisonCouldntRun(t *testing.T) {
+	t.Parallel()
+
+	for name, tt := range map[string]struct {
+		answer func(sub []string) (reply, bool)
+		note   string
+	}{
+		"git refuses the comparison": {
+			answer: func(sub []string) (reply, bool) {
+				return reply{stderr: "fatal: missing blob object", err: exitError{code: 128}}, startsWith(sub, callCherry)
+			},
+			note: "Couldn't compare its commits with the pushed branches. Missing blob object.",
+		},
+		"too many commits": {
+			answer: func(sub []string) (reply, bool) { return reply{stdout: "201\n"}, startsWith(sub, "rev-list --count") },
+			note:   tooManyToCompare(),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r, _, _ := markedRig(t)
+			r.svc.run = scriptedGit(r.e.git, tt.answer)
+
+			d, err := r.svc.Details(t.Context(), r.repo, r.agent)
+			require.NoError(t, err)
+			assert.Equal(t, CopyComparison{Note: tt.note}, d.Copies)
+		})
+	}
 }
 
 func TestListComparesNoBranchOfARemoteNamedLikeOrigins(t *testing.T) {
