@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { render, type RenderResult } from '@testing-library/react'
+import type { ReactElement, ReactNode } from 'react'
 
 import { ClockContext, createClock, type Clock } from '../lib/useNow'
 
@@ -34,4 +35,10 @@ export function withClock(clock: Clock) {
 // at is a render wrapper whose clock stands still at now, FIXED_NOW unless given.
 export function at(now: Date = FIXED_NOW) {
   return withClock(clockAt(now))
+}
+
+// renderAt renders ui on a clock that stands still at now, FIXED_NOW unless given, as
+// render(ui, { wrapper: at(now) }) does; a rerender keeps the clock.
+export function renderAt(ui: ReactElement, now: Date = FIXED_NOW): RenderResult {
+  return render(ui, { wrapper: at(now) })
 }
