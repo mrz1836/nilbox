@@ -25,6 +25,8 @@ func NewWorker(s *Service) *Worker {
 // rule, or the inbox. The worker writes the snapshot again soon after, once per burst. It
 // never blocks.
 func (w *Worker) Changed() {
+	w.s.forget()
+
 	select {
 	case w.changed <- struct{}{}:
 	default:

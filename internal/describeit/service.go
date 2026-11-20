@@ -1,11 +1,16 @@
 package describeit
 
 import (
+	"context"
 	"log/slog"
 	"path/filepath"
+	"strconv"
+	"sync"
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/logging"
 )
 
@@ -14,12 +19,54 @@ type Service struct {
 	cfg    Config
 	clock  clock.Clock
 	logger *slog.Logger
+	sink   event.Sink
+
+	// runner runs one of the plugin's commands with env (execpath.Exec): tests stand in for
+	// it.
+	runner func(env []string) execpath.Runner
+
+	// mu guards the current conversation, the turn running, and closing.
+	mu sync.Mutex
+
+	// rec is the current conversation, nil for none, once looked says it was looked for.
+	rec    *record
+	looked bool
+
+	// live is the turn running, or starting, nil while none does.
+	live *liveTurn
+
+	// closing reports the app quitting: no turn starts any more.
+	closing bool
+
+	// outcomesMu orders the writes of every outcomes file, each a read and a write.
+	outcomesMu sync.Mutex
+
+	// snap keeps the live snapshot a while.
+	snap snapshotCache
 }
 
-// New returns the service cfg describes. A nil Clock is the real clock, and a nil Logger
-// discards.
+// New returns the service cfg describes. A nil Clock is the real clock, a nil Sink
+// discards, and a nil Logger discards.
 func New(cfg Config) *Service {
-	return &Service{cfg: cfg, clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger)}
+	return &Service{
+		cfg: cfg, clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), sink: event.Or(cfg.Sink),
+		runner: execRunner,
+	}
+}
+
+// startProcess starts a turn's agent in a process group of its own.
+func startProcess(ctx context.Context, cmd execpath.Cmd) (process, error) {
+	proc, err := execpath.Start(ctx, cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	return proc, nil
+}
+
+// execRunner runs one of the plugin's commands with env as its whole environment.
+func execRunner(env []string) execpath.Runner {
+	return execpath.Exec{Env: env}
 }
 
 // The describe folder's layout (internal/describeit's part of docs/architecture.md). Every
@@ -84,5 +131,32 @@ func (s *Service) agentFile() string { return s.path(agentName) }
 // conversationDir is the folder of the conversation id.
 func (s *Service) conversationDir(id string) string { return s.path(conversationsName, id) }
 
+// recordFile is the record of the conversation id.
+func (s *Service) recordFile(id string) string {
+	return filepath.Join(s.conversationDir(id), conversationName)
+}
+
+// turnFile is the file of the conversation id's turn n with the suffix given: its prompt
+// (".prompt.md") or its stream (".jsonl").
+func (s *Service) turnFile(id string, n int, suffix string) string {
+	name := strconv.Itoa(n)
+	for len(name) < 4 {
+		name = "0" + name
+	}
+
+	return filepath.Join(s.conversationDir(id), "turn-"+name+suffix)
+}
+
+// turnLog is the stream of the conversation id's turn n.
+func (s *Service) turnLog(id string, n int) string { return s.turnFile(id, n, ".jsonl") }
+
+// turnPrompt is the prompt of the conversation id's turn n.
+func (s *Service) turnPrompt(id string, n int) string { return s.turnFile(id, n, ".prompt.md") }
+
 // proposalsDir is the proposals folder of source: a conversation's ID, or Outside.
 func (s *Service) proposalsDir(source string) string { return s.path(proposalsName, source) }
+
+// outcomesFile is the outcomes file of the proposals folder of source.
+func (s *Service) outcomesFile(source string) string {
+	return filepath.Join(s.proposalsDir(source), outcomesName)
+}
