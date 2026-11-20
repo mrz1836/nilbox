@@ -1334,6 +1334,38 @@ No CI check runs on macOS, so `magex app:check` runs only on your Mac.
 </details>
 
 <details>
+<summary><strong>Inspect a running build, and point at what's wrong</strong>: Nilbox Dev's inspector</summary>
+<br/>
+
+Nilbox Dev, and `magex app:dev`, carry an inspector that the `magex inspect:*` targets talk to
+while the app runs (a release never has one). When something in the window looks wrong, point
+at it instead of describing it:
+
+1. Press **⌥⌘P** in the window, or choose **Point at an Element** in the menu bar's menu.
+2. Hover: the window outlines and names what the pointer is over. **↑** outlines the element
+   around it, **↓** goes back in.
+3. Click it (the app doesn't act on the click), type what's wrong, and press **Enter**. Click
+   another element for another note; **Esc** stops.
+
+Each note keeps your words, the element and where it is, its styles, its React components and
+source file (under `magex app:dev`), and a picture of the window with the element boxed. Notes
+are kept across restarts until you clear them.
+
+| Command                           | What it does                                                                     |
+|-----------------------------------|----------------------------------------------------------------------------------|
+| `magex inspect:notes`             | Print the open notes, each picture saved as `bin/inspect/note-<n>.png`           |
+| `magex inspect:notes follow=true` | Keep printing each new note as you leave it, as an agent helping you would       |
+| `magex inspect:notes done=3`      | Mark a note fixed (`done=all` for every one); `clear=true` empties the list      |
+| `magex inspect:trail`             | What you clicked, pressed, and typed in (never what you typed), in order         |
+| `magex inspect:shot`              | Save a picture of the window as it is now                                        |
+| `magex inspect:help`              | Every inspector target: the log, the page's console, the live database, and more |
+
+Settings → About → Inspector turns pointing off (⌥⌘P is then the app's again) and clears the
+notes. The [Desktop Guide](docs/desktop.md#the-inspector) has the inspector in full.
+
+</details>
+
+<details>
 <summary><strong>Desktop checks and bindings</strong>: the desktop-tagged code the Go gate leaves out</summary>
 <br/>
 
