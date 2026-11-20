@@ -677,13 +677,16 @@ func (s *Service) removeRow(ctx context.Context, g git, repoPath string, wt Work
 		}
 	}
 
+	// Where the folder is, worked out while it is there (see forgetRecord).
+	resolved := paths.Resolved(wt.Path)
+
 	if err = s.removeEntry(ctx, g, repoPath, e, force); err != nil {
 		return res, err
 	}
 
 	res.Removed = true
 
-	s.forgetRecord(ctx, wt.Path)
+	s.forgetRecord(ctx, wt.Path, resolved)
 
 	deleted, kept := s.deleteChosen(ctx, g, repoPath, wt, branches)
 	res.DeletedBranches, res.Reason = deleted, strings.Join(kept, "; ")

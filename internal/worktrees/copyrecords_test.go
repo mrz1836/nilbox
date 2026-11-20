@@ -1,6 +1,8 @@
 package worktrees
 
 import (
+	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -122,6 +124,64 @@ func TestRemovingAWorktreeForgetsItsCopyRecord(t *testing.T) {
 	require.True(t, r.list(t).CanRemove)
 
 	_, err := r.svc.Remove(t.Context(), r.repo, r.agent, nil)
+	require.NoError(t, err)
+	assert.Empty(t, r.records(t))
+}
+
+// linkedRig is a copiedRig whose agent's folder moved elsewhere, a link left where git knows
+// it, and whose git removes such a folder: this one refuses to (rmdir: Not a directory), so
+// the removal takes the link and the folder it points at, as one that doesn't would. It
+// returns the copies' branch's commit, and where the folder is now.
+func linkedRig(t *testing.T) (r *copyRig, tip, moved string) {
+	t.Helper()
+
+	r, _, tip = copiedRig(t)
+	moved = filepath.Join(r.e.home, "elsewhere", "agent-1")
+	require.NoError(t, os.MkdirAll(filepath.Dir(moved), 0o750))
+	require.NoError(t, os.Rename(r.agent, moved))
+	require.NoError(t, os.Symlink(moved, r.agent))
+
+	link := r.agent
+	r.svc.run = scriptedGit(r.e.git, func(sub []string) (reply, bool) {
+		if !startsWith(sub, "worktree remove") {
+			return reply{}, false
+		}
+
+		if err := errors.Join(os.Remove(link), os.RemoveAll(moved)); err != nil {
+			return reply{stderr: "fatal: " + err.Error(), err: exitError{code: 128}}, true
+		}
+
+		return reply{}, true
+	})
+
+	return r, tip, moved
+}
+
+func TestRemovingAWorktreeWhoseFolderIsALinkForgetsItsCopyRecord(t *testing.T) {
+	t.Parallel()
+
+	r, _, moved := linkedRig(t)
+	require.True(t, r.list(t).CanRemove)
+	require.Len(t, r.records(t), 1)
+	require.Equal(t, paths.Resolved(moved), r.records(t)[0].WorktreePath, "recorded where the folder is")
+
+	_, err := r.svc.Remove(t.Context(), r.repo, r.agent, nil)
+	require.NoError(t, err)
+	assert.Empty(t, r.records(t), "forgotten where it was recorded, though the link resolves elsewhere now")
+}
+
+func TestCleaningUpAWorktreeWhoseFolderIsALinkForgetsItsCopyRecord(t *testing.T) {
+	t.Parallel()
+
+	r, tip, _ := linkedRig(t)
+	r.gh.setHead(parentBranch, headPR(199, ItemMerged, tip, parentBranch, ownRepo))
+	r.gh.set(exampleName, 199, headPR(199, ItemMerged, tip, parentBranch, ownRepo).State)
+
+	row := r.list(t)
+	require.True(t, row.CanCleanUp, row.Stage)
+	require.Len(t, r.records(t), 1)
+
+	_, err := r.svc.CleanUp(t.Context(), r.repo, r.agent, nil)
 	require.NoError(t, err)
 	assert.Empty(t, r.records(t))
 }

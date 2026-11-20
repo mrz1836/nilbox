@@ -175,6 +175,9 @@ func (s *Service) cleanUpRow(ctx context.Context, g git, repoPath string, wt Wor
 		DeletedBranches: []string{},
 	}
 
+	// Where the folder is, worked out while it is there (see forgetRecord).
+	resolved := paths.Resolved(wt.Path)
+
 	unlock, err := s.holdClone(ctx, repoPath)
 	if err == nil {
 		defer unlock()
@@ -190,7 +193,7 @@ func (s *Service) cleanUpRow(ctx context.Context, g git, repoPath string, wt Wor
 
 	res.Removed = true
 
-	s.forgetRecord(ctx, wt.Path)
+	s.forgetRecord(ctx, wt.Path, resolved)
 
 	deleted, kept := s.deleteChosen(ctx, g, repoPath, wt, branches)
 	res.DeletedBranches, res.Reason = deleted, strings.Join(kept, "; ")
@@ -223,16 +226,18 @@ func (s *Service) removeFinished(ctx context.Context, g git, repoPath string, wt
 	return s.removeEntry(ctx, g, repoPath, e, false)
 }
 
-// forgetRecord removes the record of a removed worktree, and its copy record. A record left
-// behind is dropped by the next listing or sweep, so a failure is only logged.
-func (s *Service) forgetRecord(ctx context.Context, path string) {
+// forgetRecord removes the record of a removed worktree, at path, and its copy record.
+// resolved is path as paths.Resolved resolved it before the folder was removed, as the copy
+// record holds it: a folder that was a link resolves elsewhere once it is gone. A record
+// left behind is dropped by the next listing or sweep, so a failure is only logged.
+func (s *Service) forgetRecord(ctx context.Context, path, resolved string) {
 	for _, r := range s.records(ctx) {
-		if paths.Same(r.Dir(), path) {
+		if paths.Same(r.Dir(), path) || paths.Same(r.Dir(), resolved) {
 			s.forget(ctx, r)
 		}
 	}
 
-	s.forgetCopy(ctx, paths.Resolved(path))
+	s.forgetCopy(ctx, resolved)
 }
 
 // findWorktree returns the snapshot's row for path.
