@@ -2775,6 +2775,34 @@ describe('Autopilot (beta)', () => {
     expect(views().getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
   })
 
+  it('describes a routine for an item from its menu in the Autopilot tab’s Describe it', async () => {
+    platform.listRoutines.mockResolvedValue([routine()])
+    await renderApp()
+    await screen.findByRole('region', { name: 'Review requested' })
+
+    const [more] = screen.getAllByRole('button', { name: 'More actions' })
+    if (more === undefined) {
+      throw new Error('no row menu')
+    }
+    await userEvent.click(more)
+    await userEvent.click(
+      await within(screen.getByRole('menu', { name: 'More actions' })).findByRole('menuitem', { name: 'Autopilot' }),
+    )
+    await userEvent.click(
+      await within(screen.getByRole('menu', { name: 'Autopilot' })).findByRole('menuitem', {
+        name: 'Describe a routine for this…',
+      }),
+    )
+
+    const autopilotNav = within(await screen.findByRole('navigation', { name: 'Autopilot' }))
+
+    expect(views().getByRole('button', { name: 'Autopilot' })).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => {
+      expect(autopilotNav.getByRole('button', { name: 'Describe it' })).toHaveAttribute('aria-current', 'page')
+    })
+    expect(platform.routineFromItem).not.toHaveBeenCalled()
+  })
+
   it('shows none of Autopilot while it is off: no tab, chip, mark, or type of notification', async () => {
     pinnedByARoutine()
     platform.getSettings.mockResolvedValue(autopilotOff())

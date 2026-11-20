@@ -29,6 +29,7 @@ import {
   RingIcon,
   RoutineIcon,
   SlidersIcon,
+  SparkIcon,
   UnassignIcon,
 } from './icons'
 import { MenuButton, type MenuItem } from './Menu'
@@ -263,8 +264,9 @@ function inboxActions(
 
 // autopilotItems are what Autopilot offers for the item: Run a routine, each of the user's
 // routines that are on and act on its kind, which runs it now; Make a routine from this…,
-// which opens the builder filled in from the item; and Why didn't a routine run?, which
-// shows what each decides about it.
+// which opens the builder filled in from the item; Describe a routine for this…, which
+// opens Describe it with the item attached; and Why didn't a routine run?, which shows
+// what each decides about it.
 function autopilotItems(item: InboxItem, autopilot: AutopilotMenu): MenuItem[] {
   const routines = autopilot.runnable(item)
   const asks = autopilot.askable(item)
@@ -298,6 +300,15 @@ function autopilotItems(item: InboxItem, autopilot: AutopilotMenu): MenuItem[] {
       title: 'Open the builder filled in from this item: its author, its owner, and what is happening to it',
       onSelect: () => {
         autopilot.onMake(item)
+      },
+    },
+    {
+      label: 'Describe a routine for this…',
+      icon: <SparkIcon className={iconClass} />,
+      title:
+        'Tell Claude Code what a routine should do with items like this. It sees the item’s address, kind, repository, author, labels, and failed checks’ names, never its text or code.',
+      onSelect: () => {
+        autopilot.onDescribe(item)
       },
     },
     {

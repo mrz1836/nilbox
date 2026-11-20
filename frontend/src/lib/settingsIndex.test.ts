@@ -226,8 +226,28 @@ describe('matchSettings', () => {
     ['clear history', 'Clear history'],
     ['heartbeat', 'Last checked'],
     ['engine', 'Last checked'],
+    ['describe it', 'Claude Code'],
+    ['describe it', 'Describe it’s agent'],
+    ['effort', 'Describe it’s agent'],
+    ['plugin', `Use ${brand.name} in your own Claude Code`],
+    ['uninstall', `Use ${brand.name} in your own Claude Code`],
+    ['mcp', `Use ${brand.name} in your own Claude Code`],
   ] as const)('finds the Autopilot setting %j looks for', (query, label) => {
     expect(matchSettings(query)?.isMatch('autopilot', label)).toBe(true)
+  })
+
+  it('finds the Claude Code Describe it runs, and its plugin, in Autopilot’s section, after its history', () => {
+    const labels = settingsIndex.autopilot.map((e) => e.label)
+    const plugin = `Use ${brand.name} in your own Claude Code`
+
+    expect(labels.slice(labels.indexOf('Stop all') + 1, labels.indexOf('This Mac'))).toEqual([
+      'Claude Code',
+      'Describe it’s agent',
+      plugin,
+    ])
+    expect(matchSettings('plugin')?.sections.get('autopilot')).toBe(1)
+    expect(matchSettings('plugin', hiddenOf(autopilotOff()))?.matches).toBe(0)
+    expect(sectionInfo.autopilot.description).toContain('the Claude Code that Describe it runs')
   })
 
   it('finds the GitHub notification settings by the section’s name, right after Notifications', () => {

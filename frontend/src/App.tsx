@@ -683,9 +683,10 @@ export function App() {
   }
 
   // openAutopilotWith opens the Autopilot tab at a new routine's builder filled in from an
-  // item (Make a routine from this…), or at a template's quick setup, as the first-run
-  // setup's suggestion asks.
-  const openAutopilotWith = (ask: { fromItem?: number; template?: string }) => {
+  // item (Make a routine from this…), at a template's quick setup, as the first-run setup's
+  // suggestion asks, or at Describe it with an item attached (Describe a routine for
+  // this…).
+  const openAutopilotWith = (ask: Pick<AutopilotRequest, 'fromItem' | 'template' | 'describe'>) => {
     if (!autopilotOn) {
       sayOfRun('Autopilot is off. Turn it on in Settings → Labs to make routines.')
 
@@ -888,9 +889,16 @@ export function App() {
   )
   // routineMenu is what every item's ⋯ menu offers of Autopilot, while it is on, and the
   // dialogs and toasts its choices show.
-  const routineMenu = useRoutineMenu(autopilot.routines, toastSeconds, (item) => {
-    openAutopilotWith({ fromItem: item.id })
-  })
+  const routineMenu = useRoutineMenu(
+    autopilot.routines,
+    toastSeconds,
+    (item) => {
+      openAutopilotWith({ fromItem: item.id })
+    },
+    (item) => {
+      openAutopilotWith({ describe: { itemId: item.id } })
+    },
+  )
 
   const openSettings = () => {
     go({ type: 'settings', section: 'account' })

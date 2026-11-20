@@ -1,7 +1,8 @@
 // Autopilot as the window words it: the modes, the tab's count and dots, a routine's status
 // line, the ⚡ chip of an item a routine touched, the question asked as a routine is turned
-// on, and Activity's lines, by day, with its filters. Every function here is pure; the
-// components and hooks under components/autopilot read and change Autopilot.
+// on, Activity's lines, by day, with its filters, and the requests that open the tab, at
+// Describe it too. Every function here is pure; the components and hooks under
+// components/autopilot read and change Autopilot.
 
 import { brand } from '../generated/brand'
 import type {
@@ -27,6 +28,7 @@ import type {
   AutopilotStepKind,
   AutopilotTarget,
   AutopilotVerdict,
+  DescribeAttachRef,
 } from '../platform'
 import { counted, formatCount } from './format'
 
@@ -179,6 +181,12 @@ export function routineStatus(r: AutopilotRoutine, working: number, problem: str
 // loads.
 export function canSwitch(r: AutopilotRoutine): boolean {
   return !r.otherAccount && r.broken === ''
+}
+
+// editable reports a routine that can change here, in the builder or with Claude: one of
+// the user's whose spec reads, whether or not it still validates.
+export function editable(r: AutopilotRoutine): boolean {
+  return !r.otherAccount && r.brokenReason !== 'newer' && r.brokenReason !== 'unreadable'
 }
 
 // effectVerbs name what a local step did, as Activity's lines do.
@@ -990,13 +998,58 @@ export function skipLabel(m: Pick<AutopilotMatch, 'item' | 'fireKey'>): string {
 
 // AutopilotRequest is what the window asks the Autopilot tab to show, numbered so the same
 // target asked again shows again: Activity, at a match when one is named, or a routine; or
-// a new routine's builder filled in from an item (fromItem, Make a routine from this…), or
-// a template's quick setup (template, as the first-run setup suggests one).
+// a new routine's builder filled in from an item (fromItem, Make a routine from this…), a
+// template's quick setup (template, as the first-run setup suggests one), or Describe it
+// with a routine or an item attached to the next message (describe, as Describe a routine
+// for this… attaches its item).
 export interface AutopilotRequest {
   seq: number
   target: AutopilotTarget
   fromItem?: number
   template?: string
+  describe?: DescribeAsk
+}
+
+// DescribeAsk is what a request attaches in Describe it: one of the user's routines, a
+// stored item, or both, each by its ID.
+export interface DescribeAsk {
+  routineId?: number
+  itemId?: number
+}
+
+// describeAttach is what a request's ask attaches to the next message: the routine, then
+// the item, each that it names.
+export function describeAttach({ routineId = 0, itemId = 0 }: DescribeAsk): DescribeAttachRef[] {
+  const out: DescribeAttachRef[] = []
+
+  if (routineId > 0) {
+    out.push({ kind: 'routine', id: routineId })
+  }
+
+  if (itemId > 0) {
+    out.push({ kind: 'item', id: itemId })
+  }
+
+  return out
+}
+
+// describeExamples are what the empty tab offers to tell Autopilot, a click each filling in
+// the box: one an agent fixes in the background, one that pins, and one that snoozes.
+export const describeExamples: readonly string[] = [
+  'When Dependabot’s security scans fail, fix it in the background and tell me how it went',
+  'Pin my pull requests when their checks fail',
+  'Snooze passing bot PRs for a few days',
+]
+
+// describeSeesText says what Claude Code sees of what the user tells Describe it, as the
+// composers say it under the box.
+export const describeSeesText =
+  'Claude sees what you type, how Autopilot works, and the names in your setup and inbox, never your items’ text or code.'
+
+// pendingText says how many proposals from the user's own Claude Code wait for them, as
+// Describe it's count stands for it.
+export function pendingText(count: number): string {
+  return `${counted(count, 'proposal', 'proposals')} from your own Claude Code ${count === 1 ? 'waits' : 'wait'}`
 }
 
 // activityTarget is a target that shows Activity alone.

@@ -1,11 +1,11 @@
 import { useId, type ReactNode } from 'react'
 
-import { canSwitch, modeHelp, modeLabels, modeOrder, type StatusLine } from '../../lib/autopilot'
+import { canSwitch, editable, modeHelp, modeLabels, modeOrder, type StatusLine } from '../../lib/autopilot'
 import type { AutopilotMode, AutopilotRoutine } from '../../platform'
 import { captionClass, primaryButtonClass, quietButtonClass, Segmented, Switch } from '../controls'
-import { MoreIcon, RoutineIcon } from '../icons'
+import { MoreIcon, RoutineIcon, SparkIcon } from '../icons'
 import { MenuButton } from '../Menu'
-import { graduateText, routineMenu, Status, type RoutineActions } from './RoutineList'
+import { describeTitle, graduateText, routineMenu, Status, type RoutineActions } from './RoutineList'
 import { WeekStats } from './WeekStats'
 
 export interface RoutinePaneProps {
@@ -28,10 +28,10 @@ export interface RoutinePaneProps {
   onNotNow?: () => void
 }
 
-// RoutinePane shows one routine: its name, switch, mode, and ⋯ menu; its status line; the
-// builder, the routine itself edited in place (or, without one, the sentence it reads as
-// and what is wrong with it); then what it watches now, as the inbox's rows, and what it
-// did, its own Activity.
+// RoutinePane shows one routine: its name, Change with Claude… (while it can change here),
+// switch, mode, and ⋯ menu; its status line; the builder, the routine itself edited in
+// place (or, without one, the sentence it reads as and what is wrong with it); then what it
+// watches now, as the inbox's rows, and what it did, its own Activity.
 export function RoutinePane({
   routine: r,
   status,
@@ -57,6 +57,19 @@ export function RoutinePane({
           <h2 id={`${id}-name`} className="min-w-0 flex-1 truncate text-lg font-semibold" title={r.name}>
             {r.name}
           </h2>
+          {editable(r) && (
+            <button
+              type="button"
+              title={describeTitle(r)}
+              onClick={() => {
+                actions.onDescribe(r)
+              }}
+              className={`${quietButtonClass} shrink-0`}
+            >
+              <SparkIcon className="size-3.5 text-accent" />
+              Change with Claude…
+            </button>
+          )}
           <MenuButton
             label={`More for ${r.name}`}
             align="right"

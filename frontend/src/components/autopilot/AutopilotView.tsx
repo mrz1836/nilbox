@@ -1,7 +1,11 @@
-import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
+import { Activity, useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 
 import {
   activityLines,
+  describeAttach,
+  describeExamples,
+  describeSeesText,
+  editable,
   elsewhereText,
   filters,
   inActivity,
@@ -9,6 +13,7 @@ import {
   notReadyBanner,
   notReadyText,
   pausedText,
+  pendingText,
   readyOf,
   resultLabels,
   resultOrder,
@@ -20,6 +25,7 @@ import {
   type AutopilotRequest,
 } from '../../lib/autopilot'
 import { attempt } from '../../lib/call'
+import { formatCount } from '../../lib/format'
 import { agentName } from '../../lib/launch'
 import { dryRunWhy, NEW_ROUTINE, newRoutineName, routineDraft, sameDraft, scratchDraft } from '../../lib/routineBuilder'
 import { useNeedsYou, useReadiness, type AutopilotState } from '../../lib/useAutopilot'
@@ -29,6 +35,7 @@ import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   declineGraduate,
   deleteRoutine,
+  describeItStatus,
   duplicateRoutine,
   getAutopilotCatalog,
   itemsByID,
@@ -48,6 +55,7 @@ import {
   type AutopilotRoutine,
   type AutopilotSuggestions,
   type AutopilotTemplate,
+  type DescribeStatus,
   type Profile,
   type Prompt,
   type Settings,
@@ -66,6 +74,7 @@ import {
   PulseIcon,
   RoutineIcon,
   SlidersIcon,
+  SparkIcon,
   StarIcon,
 } from '../icons'
 import { defaultToastSeconds, Toast, type ToastMessage } from '../Toast'
@@ -74,6 +83,7 @@ import { NeedsYouSection } from './NeedsYouSection'
 import type { AgentKit } from './builder/AgentStepBlock'
 import { RoutineBuilder } from './builder/RoutineBuilder'
 import type { Pinned } from './builder/TestPanel'
+import { DescribeView, type DescribeRequest } from './describe/DescribeView'
 import { QuickSetup } from './QuickSetup'
 import { RoutineList, type RoutineActions } from './RoutineList'
 import { RoutinePane } from './RoutinePane'
@@ -128,8 +138,13 @@ interface Editing {
 }
 
 // TEMPLATES is the gallery's place in the tab, beside Activity (0), a routine, and a new
-// routine (NEW_ROUTINE).
+// routine (NEW_ROUTINE); DESCRIBE is Describe it's.
 const TEMPLATES = -2
+const DESCRIBE = -3
+
+// DescribeWith is what opens Describe it besides showing it: a message it sends at once,
+// or what it attaches to the next one (a DescribeRequest, before the tab numbers it).
+type DescribeWith = Omit<DescribeRequest, 'seq'>
 
 // noSuggestions are the pickers' suggestions until they load.
 const noSuggestions: AutopilotSuggestions = { authors: [], bots: [], owners: [], labels: [], checks: [] }
@@ -295,20 +310,159 @@ function LoadMore({ more, loading, onMore }: { more: boolean; loading: boolean; 
   )
 }
 
-// editable reports a routine the builder may change: one of the user's whose spec reads,
-// whether or not it still validates.
-function editable(r: AutopilotRoutine): boolean {
-  return !r.otherAccount && r.brokenReason !== 'newer' && r.brokenReason !== 'unreadable'
+// CountBadge is the count beside a place in the nav, the words it stands for left to
+// assistive tech.
+function CountBadge({ count, words }: { count: number; words: string }) {
+  return (
+    <>
+      {' '}
+      <span
+        aria-hidden="true"
+        className="rounded-full bg-accent/15 px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium text-text tabular-nums"
+      >
+        {formatCount(count)}
+      </span>
+      <span className="sr-only">({words})</span>
+    </>
+  )
+}
+
+interface AskBoxProps {
+  // status is whether Describe it can run a turn now, undefined until it is read, and
+  // error why it couldn't be read.
+  status: DescribeStatus | undefined
+  error: string
+  // onSend opens Describe it with the message, which it sends at once; onOpen opens it
+  // without one.
+  onSend: (text: string) => void
+  onOpen: () => void
+}
+
+// AskBox is the empty tab's way into Describe it: the user tells Autopilot what they want,
+// an example a click away filling in the box, and sending (⌘↩) opens Describe it, which
+// sends it at once. While Describe it can't run a turn, it is held back with why and what
+// to do. Open Describe it goes there without a message, to a conversation under way or to
+// the proposals from the user's own Claude Code, whose count it shows.
+function AskBox({ status, error, onSend, onOpen }: AskBoxProps) {
+  const id = useId()
+  const box = useRef<HTMLTextAreaElement>(null)
+  const [text, setText] = useState('')
+  const held = error !== '' || status?.ready === false
+  // A status that couldn't be read says only why; one read says why it can't run, and
+  // what to do.
+  const problem = error === '' ? (status?.problem ?? '') : error
+  const fix = error === '' ? (status?.fix ?? '') : ''
+  const pending = status?.pending ?? 0
+
+  const send = () => {
+    const message = text.trim()
+
+    if (message !== '' && !held) {
+      onSend(message)
+    }
+  }
+
+  return (
+    <form
+      aria-labelledby={`${id}-title`}
+      onSubmit={(e) => {
+        e.preventDefault()
+        send()
+      }}
+      className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4"
+    >
+      <div className="flex items-center gap-2">
+        <SparkIcon className="size-4 shrink-0 text-accent" />
+        <label id={`${id}-title`} htmlFor={`${id}-text`} className="min-w-0 flex-1 text-sm font-semibold">
+          Tell Autopilot what you want
+        </label>
+        <button type="button" onClick={onOpen} className={`${quietButtonClass} shrink-0`}>
+          Open Describe it
+          {pending > 0 && <CountBadge count={pending} words={pendingText(pending)} />}
+        </button>
+      </div>
+      <textarea
+        ref={box}
+        id={`${id}-text`}
+        rows={3}
+        value={text}
+        disabled={held}
+        placeholder="What should Autopilot do, and when?"
+        aria-describedby={held ? `${id}-held` : `${id}-sees`}
+        onChange={(e) => {
+          setText(e.target.value)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && e.metaKey) {
+            e.preventDefault()
+            send()
+          }
+        }}
+        className={`${fieldClass} w-full resize-y`}
+      />
+      <div className="flex flex-wrap items-start gap-3">
+        <ul aria-label="Examples" className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+          {describeExamples.map((example) => (
+            <li key={example}>
+              <button
+                type="button"
+                disabled={held}
+                onClick={() => {
+                  setText(example)
+                  box.current?.focus()
+                }}
+                className="rounded-full border border-border px-2.5 py-0.5 text-left text-xs text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
+              >
+                {example}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button
+          type="submit"
+          disabled={held || text.trim() === ''}
+          title="Opens Describe it, where Claude Code answers (⌘↩)"
+          className={`${primaryButtonClass} shrink-0`}
+        >
+          Send
+        </button>
+      </div>
+      {held ? (
+        <p
+          id={`${id}-held`}
+          role="status"
+          className="flex items-start gap-2 rounded-md border border-warning/60 bg-warning/10 px-3 py-2 text-xs"
+        >
+          <AlertIcon className="mt-0.5 size-3.5 shrink-0 text-warning" />
+          <span className="min-w-0 flex-1">
+            <span className="text-text">{problem}</span>
+            {fix !== '' && (
+              <>
+                {' '}
+                <span className="text-muted">{fix}</span>
+              </>
+            )}
+          </span>
+        </p>
+      ) : (
+        <p id={`${id}-sees`} className="text-xs text-muted">
+          {describeSeesText}
+        </p>
+      )}
+    </form>
+  )
 }
 
 // AutopilotView is the Autopilot tab: the routines on the left, each with its switch and
-// its status, under Activity and above + New routine; and on the right Activity (what the
-// routines did, by day, newest first, with the banners for what stops everything and its
-// filters), or the routine chosen (its mode, the builder, which is the routine itself edited
-// in place, with Test below it, what it watches, and its own Activity), or a new routine's
-// builder. Pause Autopilot sits in the header. While there is no routine, the tab explains
-// Autopilot and offers Start from scratch. A routine's unsaved changes survive switching
-// tabs, and leaving them for another routine or Activity asks first.
+// its status, under Activity and above Describe it and + New routine; and on the right
+// Activity (what the routines did, by day, newest first, with the banners for what stops
+// everything and its filters), or the routine chosen (its mode, the builder, which is the
+// routine itself edited in place, with Test below it, what it watches, and its own
+// Activity), or a new routine's builder, or Describe it, the conversation with Claude
+// Code. Pause Autopilot sits in the header. While there is no routine, the tab explains
+// Autopilot, asks what the user wants, and offers Start from scratch. A routine's unsaved
+// changes survive switching tabs, and leaving them for another routine, Activity, or
+// Describe it asks first.
 export default function AutopilotView({
   autopilot,
   settings,
@@ -379,9 +533,34 @@ export default function AutopilotView({
   const [handled, setHandled] = useState(0)
   const { routines, engine, reload } = autopilot
   // editing is the routine the builder holds, null on Activity; leaving is where the user
-  // asked to go while it has unsaved changes, which asks first.
+  // asked to go while it has unsaved changes, which asks first, and leavingWith what
+  // Describe it opens with when that is where.
   const [editing, setEditing] = useState<Editing | null>(null)
   const [leaving, setLeaving] = useState<number | null>(null)
+  const [leavingWith, setLeavingWith] = useState<DescribeWith | undefined>(undefined)
+  // describeRequest is what Describe it was last opened with, numbered by describeSeq: kept
+  // while it shows, and dropped as soon as it doesn't, so a view made again never acts on
+  // it twice. describeVisited keeps the view, hidden, once it has shown, so a message being
+  // written survives a look elsewhere in the tab.
+  const [describeRequest, setDescribeRequest] = useState<DescribeRequest | undefined>(undefined)
+  const [describeSeq, setDescribeSeq] = useState(0)
+  const [describeVisited, setDescribeVisited] = useState(false)
+  // describeStatus says whether Describe it can run a turn, which the empty tab's box
+  // needs, and how many proposals from the user's own Claude Code wait, Describe it's count:
+  // read as the tab shows, and again as those proposals change.
+  const describeStatus = useQuery(() => describeItStatus(), [])
+  const readDescribeStatus = useEffectEvent(() => {
+    void describeStatus.refetch()
+  })
+
+  useEffect(
+    () =>
+      on('describeit:proposals', () => {
+        readDescribeStatus()
+      }),
+    [],
+  )
+  const pending = describeStatus.data?.pending ?? 0
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   // justSaved is the routine a save made, shown until the list read again holds it, and
@@ -488,6 +667,30 @@ export default function AutopilotView({
     setQuickKey(t.key)
   }
 
+  // showDescribe shows Describe it, and hands it ask, a message to send or what to attach,
+  // numbered as a request of its own, when there is one.
+  const showDescribe = (ask?: DescribeWith) => {
+    open(DESCRIBE)
+
+    if (ask !== undefined) {
+      setDescribeSeq(describeSeq + 1)
+      setDescribeRequest({ ...ask, seq: describeSeq + 1 })
+    }
+  }
+
+  // describe opens Describe it with ask, asking first, as leaving for anywhere else does,
+  // while the builder has unsaved changes; ask waits for the answer.
+  const describe = (ask?: DescribeWith) => {
+    if (editing !== null && dirty) {
+      setLeaving(DESCRIBE)
+      setLeavingWith(ask)
+
+      return
+    }
+
+    showDescribe(ask)
+  }
+
   // Make a routine from this… reads what the item suggests, once per request, and opens the
   // builder with it; while the builder holds unsaved changes, it says so instead.
   const makeFrom = useEffectEvent((itemId: number) => {
@@ -533,6 +736,13 @@ export default function AutopilotView({
     }
   }
 
+  // A request for Describe it, as an item's Describe a routine for this… makes, opens it
+  // with what it attaches, asking first while the builder has unsaved changes.
+  if (request?.describe !== undefined && request.seq !== handled) {
+    setHandled(request.seq)
+    describe({ attach: describeAttach(request.describe) })
+  }
+
   // A request from a notification, the menu bar, or a chip shows Activity, at the match
   // it names, or the routine it names, once the routines are read; one that names an
   // agent's run opens its run view beside Activity.
@@ -540,6 +750,7 @@ export default function AutopilotView({
     request !== null &&
     request.seq !== handled &&
     request.template === undefined &&
+    request.describe === undefined &&
     (request.fromItem ?? 0) === 0 &&
     (request.target.matchId > 0 || request.target.runId > 0 || autopilot.loaded)
   ) {
@@ -771,6 +982,9 @@ export default function AutopilotView({
     onDryRun: (r, on) => {
       changes.request(r, { kind: 'mode', mode: on ? 'dryRun' : 'ask' })
     },
+    onDescribe: (r) => {
+      describe({ attach: describeAttach({ routineId: r.id }) })
+    },
     onDuplicate: (r) => {
       void attempt(duplicateRoutine(r.id)).then((result) => {
         if (result.ok) {
@@ -969,11 +1183,22 @@ export default function AutopilotView({
   }
 
   const making = selected === NEW_ROUTINE && editing?.key === NEW_ROUTINE
+  const describing = selected === DESCRIBE
 
-  // The empty tab explains Autopilot in two sentences, then offers the templates that fit
-  // what this Mac knows (the first few), Start from scratch, Start from an item, Import, and
-  // every template.
-  if (empty && !making && chosen === undefined && selected !== TEMPLATES) {
+  // What Describe it was opened with goes as soon as it doesn't show, and its view, once
+  // shown, is kept while the tab shows anything else.
+  if (!describing && describeRequest !== undefined) {
+    setDescribeRequest(undefined)
+  }
+
+  if (describing && !describeVisited) {
+    setDescribeVisited(true)
+  }
+
+  // The empty tab explains Autopilot in two sentences, asks what the user wants, which opens
+  // Describe it, then offers the templates that fit what this Mac knows (the first few),
+  // Start from scratch, Start from an item, Import, and every template.
+  if (empty && !making && !describing && chosen === undefined && selected !== TEMPLATES) {
     return (
       <div className="flex h-full justify-center overflow-y-auto p-8">
         <div className="flex w-full max-w-3xl flex-col gap-6">
@@ -988,6 +1213,16 @@ export default function AutopilotView({
               </p>
             ))}
           </div>
+          <AskBox
+            status={describeStatus.data}
+            error={describeStatus.error}
+            onSend={(text) => {
+              describe({ text })
+            }}
+            onOpen={() => {
+              describe()
+            }}
+          />
           {gallery(4)}
           <div className="flex flex-wrap items-center justify-center gap-2">
             <button
@@ -1038,10 +1273,21 @@ export default function AutopilotView({
     )
   }
 
-  // shown is what the right side shows: a new routine's builder, a routine, or Activity;
-  // watching reports the run view open beside Activity.
-  const shown = making ? 'new' : selected === TEMPLATES ? 'templates' : chosen === undefined ? 'activity' : 'routine'
+  // shown is what the right side shows: a new routine's builder, the templates, Describe
+  // it, a routine, or Activity; watching reports the run view open beside Activity.
+  const shown = making
+    ? 'new'
+    : selected === TEMPLATES
+      ? 'templates'
+      : describing
+        ? 'describe'
+        : chosen === undefined
+          ? 'activity'
+          : 'routine'
   const watching = runShown > 0 && shown === 'activity'
+  // named reports a right side named by its own heading: not a routine's, which its name
+  // labels, nor Describe it's, whose view is a region of its own.
+  const named = shown !== 'routine' && shown !== 'describe'
 
   return (
     <div className="flex h-full min-h-0">
@@ -1077,11 +1323,26 @@ export default function AutopilotView({
         )}
         <button
           type="button"
+          aria-current={describing ? 'page' : undefined}
+          title={
+            pending > 0 ? pendingText(pending) : 'Tell Claude Code what you want, and review the routines it proposes'
+          }
+          onClick={() => {
+            describe()
+          }}
+          className="mt-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted transition-colors hover:bg-raised hover:text-text aria-[current=page]:bg-raised aria-[current=page]:text-text"
+        >
+          <SparkIcon className="size-3.5 text-accent" />
+          <span className="min-w-0 flex-1 truncate">Describe it</span>
+          {pending > 0 && <CountBadge count={pending} words={pendingText(pending)} />}
+        </button>
+        <button
+          type="button"
           aria-current={making ? 'page' : undefined}
           onClick={() => {
             go(NEW_ROUTINE)
           }}
-          className="mt-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted transition-colors hover:bg-raised hover:text-text aria-[current=page]:bg-raised aria-[current=page]:text-text"
+          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted transition-colors hover:bg-raised hover:text-text aria-[current=page]:bg-raised aria-[current=page]:text-text"
         >
           <PlusIcon className="size-3.5" />
           New routine
@@ -1120,7 +1381,7 @@ export default function AutopilotView({
         </div>
       </nav>
       <section
-        aria-labelledby={shown === 'routine' ? undefined : `${id}-title`}
+        aria-labelledby={named ? `${id}-title` : undefined}
         aria-label={shown === 'routine' ? chosen?.name : undefined}
         className={`min-w-0 overflow-y-auto ${watching ? 'w-[30rem] shrink-0 border-r border-border' : 'flex-1'}`}
       >
@@ -1157,7 +1418,26 @@ export default function AutopilotView({
             <NotReadyBanner count={ready.readiness?.notReady ?? 0} onSettings={onSettings} />
           )}
           {activity.error !== '' && <ErrorBanner>{activity.error}</ErrorBanner>}
-          {shown === 'new' ? (
+          {/* Describe it's view stays once it has shown, hidden while the tab shows anything
+              else, so what is being written in it survives a look at a routine. */}
+          {describeVisited && (
+            <Activity mode={describing ? 'visible' : 'hidden'}>
+              <DescribeView
+                {...(describeRequest === undefined ? {} : { request: describeRequest })}
+                onEditInBuilder={(draft) => {
+                  newFrom(draft)
+                }}
+                onShowRoutine={(routineId) => {
+                  if (!routines.some((r) => r.id === routineId)) {
+                    reload()
+                  }
+
+                  go(routineId)
+                }}
+              />
+            </Activity>
+          )}
+          {shown === 'describe' ? null : shown === 'new' ? (
             (builderFor(null) ?? (
               <p role="status" className="text-sm text-muted">
                 Reading what a routine can do…
@@ -1348,11 +1628,18 @@ export default function AutopilotView({
             const next = leaving
 
             setLeaving(null)
+            setLeavingWith(undefined)
             setEditing(null)
-            open(next)
+
+            if (next === DESCRIBE) {
+              showDescribe(leavingWith)
+            } else {
+              open(next)
+            }
           }}
           onCancel={() => {
             setLeaving(null)
+            setLeavingWith(undefined)
           }}
         >
           {editing.key === NEW_ROUTINE

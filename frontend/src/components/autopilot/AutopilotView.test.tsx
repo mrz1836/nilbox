@@ -21,6 +21,7 @@ import {
   autopilotMatch,
   claudeMissing,
   cloneTarget,
+  describeStatus,
   dryRunMatch,
   galleryTemplate,
   githubStep,
@@ -42,9 +43,49 @@ import { emit, platform } from '../../test/platform'
 import type { LaunchOptions } from '../ItemRow'
 import { AutopilotRowsContext } from './AutopilotChip'
 import AutopilotView from './AutopilotView'
+import type { DescribeViewProps } from './describe/DescribeView'
 import type { RowsKit } from './WatchingList'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
+
+// Describe it's view is tested on its own, under describe/; here a stand-in shows what the
+// tab hands it (the request, as JSON, or none), keeps a message being written as a view
+// does, and makes its calls back on asking: Edit in builder with a draft, and Show it with
+// routine 3.
+vi.mock('./describe/DescribeView', async () => {
+  const { createElement: h } = await import('react')
+  const { scratchDraft } = await import('../../lib/routineBuilder')
+
+  return {
+    DescribeView: ({ request, onEditInBuilder, onShowRoutine }: DescribeViewProps) =>
+      h(
+        'section',
+        { 'aria-label': 'Describe it' },
+        h('output', { 'aria-label': 'Request' }, request === undefined ? 'none' : JSON.stringify(request)),
+        h('textarea', { 'aria-label': 'Message' }),
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: () => {
+              onEditInBuilder({ ...scratchDraft('Pin failing PRs', 'ask'), description: 'From Claude' })
+            },
+          },
+          'Edit in builder',
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            onClick: () => {
+              onShowRoutine(3)
+            },
+          },
+          'Show it',
+        ),
+      ),
+  }
+})
 
 // The sheets load on their own (lazily, as the inbox's do), and are imported once before
 // the tests, so no test pays a sheet's cold, instrumented import inside the second a
@@ -1947,5 +1988,376 @@ describe('Easy mode', () => {
       expect(platform.exportRoutines).toHaveBeenCalledExactlyOnceWith('/exports/snooze.json', [3], true)
     })
     expect(await screen.findByText('Exported 1 routine.')).toBeInTheDocument()
+  })
+})
+
+// nav returns the queries scoped to the tab's left side.
+function nav() {
+  return within(screen.getByRole('navigation', { name: 'Autopilot' }))
+}
+
+// requested is what the tab handed Describe it last: the request, parsed, or null for none.
+function requested(): unknown {
+  const text = screen.getByRole('status', { name: 'Request' }).textContent
+
+  return text === 'none' ? null : (JSON.parse(text) as unknown)
+}
+
+// askBox returns the queries scoped to the empty tab's box, once it shows.
+async function askBox() {
+  return within(await screen.findByRole('form', { name: 'Tell Autopilot what you want' }))
+}
+
+describe('the Autopilot tab’s Describe it', () => {
+  it('sits above New routine in the nav, and opens with nothing asked of it', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab()
+
+    await routineList()
+
+    const places = nav()
+      .getAllByRole('button')
+      .map((b) => b.textContent)
+
+    expect(places.indexOf('Describe it')).toBe(places.indexOf('New routine') - 1)
+    expect(screen.queryByRole('region', { name: 'Describe it' })).not.toBeInTheDocument()
+
+    await user.click(nav().getByRole('button', { name: 'Describe it' }))
+
+    expect(screen.getByRole('region', { name: 'Describe it' })).toBeInTheDocument()
+    expect(nav().getByRole('button', { name: 'Describe it' })).toHaveAttribute('aria-current', 'page')
+    expect(requested()).toBeNull()
+  })
+
+  it('counts the proposals from the user’s own Claude Code that wait, read again as they change', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab()
+
+    await routineList()
+    await waitFor(() => {
+      expect(platform.describeItStatus).toHaveBeenCalledOnce()
+    })
+    expect(nav().getByRole('button', { name: 'Describe it' })).not.toHaveTextContent(/\d/)
+
+    platform.describeItStatus.mockResolvedValue(describeStatus({ pending: 2 }))
+    act(() => {
+      emit('describeit:proposals')
+    })
+
+    const counted = await nav().findByRole('button', {
+      name: 'Describe it (2 proposals from your own Claude Code wait)',
+    })
+
+    expect(counted).toHaveTextContent('Describe it 2')
+    expect(counted).toHaveAttribute('title', '2 proposals from your own Claude Code wait')
+
+    platform.describeItStatus.mockResolvedValue(describeStatus({ pending: 0 }))
+    act(() => {
+      emit('describeit:proposals')
+    })
+
+    expect(await nav().findByRole('button', { name: 'Describe it' })).not.toHaveTextContent(/\d/)
+  })
+
+  it('asks what the user wants on the empty tab, under the intro and above the templates', async () => {
+    renderTab()
+
+    const box = await askBox()
+    const form = screen.getByRole('form', { name: 'Tell Autopilot what you want' })
+    const templates = await screen.findByRole('list', { name: 'Templates' })
+
+    expect(screen.getByText(/Autopilot watches your pull requests/).compareDocumentPosition(form)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+    expect(form.compareDocumentPosition(templates)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(box.getByRole('textbox', { name: 'Tell Autopilot what you want' })).toBeEnabled()
+    expect(box.getByRole('button', { name: 'Send' })).toBeDisabled()
+    expect(box.getByText(/Claude sees what you type, how Autopilot works/)).toBeInTheDocument()
+    expect(
+      within(box.getByRole('list', { name: 'Examples' }))
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual([
+      'When Dependabot’s security scans fail, fix it in the background and tell me how it went',
+      'Pin my pull requests when their checks fail',
+      'Snooze passing bot PRs for a few days',
+    ])
+  })
+
+  it('fills the box with an example, and sends it on asking, opening Describe it with the message', async () => {
+    const user = userEvent.setup()
+    renderTab()
+
+    const box = await askBox()
+    const text = box.getByRole('textbox', { name: 'Tell Autopilot what you want' })
+
+    await user.click(box.getByRole('button', { name: 'Pin my pull requests when their checks fail' }))
+
+    expect(text).toHaveValue('Pin my pull requests when their checks fail')
+    expect(text).toHaveFocus()
+
+    await user.type(text, ' twice')
+    await user.click(box.getByRole('button', { name: 'Send' }))
+
+    expect(await screen.findByRole('region', { name: 'Describe it' })).toBeInTheDocument()
+    expect(requested()).toEqual({ text: 'Pin my pull requests when their checks fail twice', seq: 1 })
+    expect(nav().getByRole('button', { name: 'Describe it' })).toHaveAttribute('aria-current', 'page')
+    expect(nav().getByText('No routines yet.')).toBeInTheDocument()
+  })
+
+  it('sends with ⌘↩, trimmed, and sends nothing blank', async () => {
+    const user = userEvent.setup()
+    renderTab()
+
+    const box = await askBox()
+    const text = box.getByRole('textbox', { name: 'Tell Autopilot what you want' })
+
+    await user.type(text, '   ')
+    await user.keyboard('{Meta>}{Enter}{/Meta}')
+
+    expect(screen.queryByRole('region', { name: 'Describe it' })).not.toBeInTheDocument()
+
+    await user.type(text, ' Snooze bot PRs  ')
+    await user.keyboard('{Enter}')
+
+    expect(screen.queryByRole('region', { name: 'Describe it' })).not.toBeInTheDocument()
+
+    await user.keyboard('{Meta>}{Enter}{/Meta}')
+
+    expect(await screen.findByRole('region', { name: 'Describe it' })).toBeInTheDocument()
+    expect(requested()).toEqual({ text: 'Snooze bot PRs', seq: 1 })
+  })
+
+  it('opens Describe it from the empty tab without a message, its count showing while proposals wait', async () => {
+    const user = userEvent.setup()
+    platform.describeItStatus.mockResolvedValue(describeStatus({ pending: 1 }))
+    renderTab()
+
+    const box = await askBox()
+    const open = await box.findByRole('button', {
+      name: 'Open Describe it (1 proposal from your own Claude Code waits)',
+    })
+
+    await user.click(open)
+
+    expect(await screen.findByRole('region', { name: 'Describe it' })).toBeInTheDocument()
+    expect(requested()).toBeNull()
+
+    // Activity, with no routine yet, is the empty tab again.
+    await user.click(nav().getByRole('button', { name: 'Activity' }))
+
+    expect(await askBox()).toBeDefined()
+    expect(screen.queryByRole('region', { name: 'Describe it' })).not.toBeInTheDocument()
+  })
+
+  it('holds the box back, with why and what to do, while Describe it can’t run a turn', async () => {
+    platform.describeItStatus.mockResolvedValue(
+      describeStatus({
+        ready: false,
+        problem: 'Claude Code isn’t signed in.',
+        fix: 'Run claude auth login in a terminal.',
+      }),
+    )
+    renderTab()
+
+    const box = await askBox()
+
+    expect(await box.findByText('Claude Code isn’t signed in.')).toBeInTheDocument()
+    expect(box.getByText('Run claude auth login in a terminal.')).toBeInTheDocument()
+    expect(box.getByRole('textbox', { name: 'Tell Autopilot what you want' })).toBeDisabled()
+    expect(box.getByRole('textbox', { name: 'Tell Autopilot what you want' })).toHaveAccessibleDescription(
+      'Claude Code isn’t signed in. Run claude auth login in a terminal.',
+    )
+    expect(box.getByRole('button', { name: 'Send' })).toBeDisabled()
+
+    for (const example of within(box.getByRole('list', { name: 'Examples' })).getAllByRole('button')) {
+      expect(example).toBeDisabled()
+    }
+
+    expect(box.queryByText(/Claude sees what you type/)).not.toBeInTheDocument()
+    // Describe it itself still opens, where its own box says the same.
+    expect(box.getByRole('button', { name: 'Open Describe it' })).toBeEnabled()
+  })
+
+  it('lets the user write and send while Describe it’s status is still being read', async () => {
+    const user = userEvent.setup()
+    platform.describeItStatus.mockReturnValue(new Promise(() => undefined))
+    renderTab()
+
+    const box = await askBox()
+
+    await user.type(box.getByRole('textbox', { name: 'Tell Autopilot what you want' }), 'Pin my PRs')
+    await user.click(box.getByRole('button', { name: 'Send' }))
+
+    expect(await screen.findByRole('region', { name: 'Describe it' })).toBeInTheDocument()
+    expect(requested()).toEqual({ text: 'Pin my PRs', seq: 1 })
+  })
+
+  it('holds the box back, saying why, when Describe it’s status can’t be read', async () => {
+    platform.describeItStatus.mockRejectedValue(new Error('Describe it isn’t ready in this build yet.'))
+    renderTab()
+
+    const box = await askBox()
+
+    expect(await box.findByText('Describe it isn’t ready in this build yet.')).toBeInTheDocument()
+    expect(box.getByRole('textbox', { name: 'Tell Autopilot what you want' })).toBeDisabled()
+    expect(box.getByRole('button', { name: 'Send' })).toBeDisabled()
+  })
+
+  it('changes a routine with Claude from its ⋯ menu and its pane, with the routine attached', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab()
+
+    const list = await routineList()
+
+    await user.click(list.getByRole('button', { name: 'More for Snooze passing bot PRs' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Change with Claude…' }))
+
+    expect(screen.getByRole('region', { name: 'Describe it' })).toBeInTheDocument()
+    expect(requested()).toEqual({ attach: [{ kind: 'routine', id: 3 }], seq: 1 })
+
+    await user.click(list.getByRole('button', { name: /^Investigate new bugs/ }))
+    await user.click(await screen.findByRole('button', { name: 'Change with Claude…' }))
+
+    expect(requested()).toEqual({ attach: [{ kind: 'routine', id: 4 }], seq: 2 })
+
+    // Another account's routine can't change here, nor with Claude.
+    await user.click(list.getByRole('button', { name: 'More for Someone else’s' }))
+    expect(await screen.findByRole('menuitem', { name: 'Change with Claude…' })).toBeDisabled()
+  })
+
+  it('opens Describe it with the item a request attaches, once per request', async () => {
+    const first: AutopilotRequest = { seq: 1, target: activityTarget, describe: { itemId: 7 } }
+    const view = render(<Tab request={first} />, { wrapper: at() })
+
+    expect(await screen.findByRole('region', { name: 'Describe it' })).toBeInTheDocument()
+    expect(requested()).toEqual({ attach: [{ kind: 'item', id: 7 }], seq: 1 })
+    expect(platform.routineFromItem).not.toHaveBeenCalled()
+
+    view.rerender(<Tab request={{ ...first }} />)
+
+    expect(requested()).toEqual({ attach: [{ kind: 'item', id: 7 }], seq: 1 })
+
+    view.rerender(<Tab request={{ seq: 2, target: activityTarget, describe: { routineId: 3, itemId: 7 } }} />)
+
+    expect(requested()).toEqual({
+      attach: [
+        { kind: 'routine', id: 3 },
+        { kind: 'item', id: 7 },
+      ],
+      seq: 2,
+    })
+  })
+
+  it('drops what it was opened with once left, and keeps a message being written', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab({ request: { seq: 1, target: activityTarget, describe: { itemId: 7 } } })
+
+    expect(await screen.findByRole('region', { name: 'Describe it' })).toBeInTheDocument()
+    await user.type(screen.getByRole('textbox', { name: 'Message' }), 'only on weekdays')
+
+    await user.click(nav().getByRole('button', { name: 'Activity' }))
+
+    expect(await screen.findByRole('heading', { name: 'Activity' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Describe it' })).not.toBeInTheDocument()
+
+    await user.click(nav().getByRole('button', { name: 'Describe it' }))
+
+    expect(requested()).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('only on weekdays')
+  })
+
+  it('asks first while the builder has unsaved changes, and opens with what was asked once they go', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    const view = render(<Tab />, { wrapper: at() })
+
+    await routineList()
+    await user.click(nav().getByRole('button', { name: 'New routine' }))
+    await user.type(await screen.findByRole('textbox', { name: 'Name' }), ' for bugs')
+
+    // Describe it from the nav: Keep editing stays.
+    await user.click(nav().getByRole('button', { name: 'Describe it' }))
+    await user.click(await screen.findByRole('button', { name: 'Keep editing' }))
+
+    expect(screen.getByRole('heading', { name: 'New routine' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('New routine for bugs')
+
+    // An item's request waits for the answer, and Discard changes opens it with the item.
+    view.rerender(<Tab request={{ seq: 1, target: activityTarget, describe: { itemId: 7 } }} />)
+
+    const dialog = within(await screen.findByRole('dialog', { name: 'Discard your changes?' }))
+
+    expect(dialog.getByText('“New routine for bugs” hasn’t been created yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Describe it' })).not.toBeInTheDocument()
+
+    await user.click(dialog.getByRole('button', { name: 'Discard changes' }))
+
+    expect(await screen.findByRole('region', { name: 'Describe it' })).toBeInTheDocument()
+    expect(requested()).toEqual({ attach: [{ kind: 'item', id: 7 }], seq: 1 })
+  })
+
+  it('drops what a request asked once its question is answered Keep editing', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    const view = render(<Tab />, { wrapper: at() })
+
+    await routineList()
+    await user.click(nav().getByRole('button', { name: 'New routine' }))
+    await user.type(await screen.findByRole('textbox', { name: 'Name' }), ' for bugs')
+
+    view.rerender(<Tab request={{ seq: 1, target: activityTarget, describe: { itemId: 7 } }} />)
+    await user.click(await screen.findByRole('button', { name: 'Keep editing' }))
+    await user.click(nav().getByRole('button', { name: 'Describe it' }))
+    await user.click(await screen.findByRole('button', { name: 'Discard changes' }))
+
+    expect(await screen.findByRole('region', { name: 'Describe it' })).toBeInTheDocument()
+    expect(requested()).toBeNull()
+  })
+
+  it('opens the builder on a draft Describe it hands back, and leaving it asks first', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue(routines())
+    renderTab()
+
+    await routineList()
+    await user.click(nav().getByRole('button', { name: 'Describe it' }))
+    await user.click(screen.getByRole('button', { name: 'Edit in builder' }))
+
+    expect(await screen.findByRole('heading', { name: 'New routine' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveValue('Pin failing PRs')
+    expect(screen.queryByRole('region', { name: 'Describe it' })).not.toBeInTheDocument()
+
+    await user.click(nav().getByRole('button', { name: 'Describe it' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Discard your changes?' })).toBeInTheDocument()
+  })
+
+  it('shows a routine Describe it names, reading the routines again when the list doesn’t hold it yet', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue([routine({ id: 4, name: 'Investigate new bugs' })])
+    renderTab()
+
+    await routineList()
+    await user.click(nav().getByRole('button', { name: 'Describe it' }))
+    await waitFor(() => {
+      expect(platform.listRoutines).toHaveBeenCalledOnce()
+    })
+
+    platform.listRoutines.mockResolvedValue(routines())
+    await user.click(screen.getByRole('button', { name: 'Show it' }))
+
+    expect(await screen.findByRole('region', { name: 'Snooze passing bot PRs' })).toBeInTheDocument()
+    expect(platform.listRoutines).toHaveBeenCalledTimes(2)
+
+    // One the list holds shows at once, with nothing read again.
+    await user.click(nav().getByRole('button', { name: 'Describe it' }))
+    await user.click(screen.getByRole('button', { name: 'Show it' }))
+
+    expect(screen.getByRole('region', { name: 'Snooze passing bot PRs' })).toBeInTheDocument()
+    expect(platform.listRoutines).toHaveBeenCalledTimes(2)
   })
 })

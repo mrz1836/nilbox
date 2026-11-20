@@ -609,7 +609,12 @@ function menuRoutines(): AutopilotRoutine[] {
 
 // WithRoutines provides the item menus' Autopilot as the window does, over routines.
 function WithRoutines({ routines, children }: { routines: readonly AutopilotRoutine[]; children: ReactNode }) {
-  const { menu, node } = useRoutineMenu(routines, defaultToastSeconds, () => undefined)
+  const { menu, node } = useRoutineMenu(
+    routines,
+    defaultToastSeconds,
+    () => undefined,
+    () => undefined,
+  )
 
   return (
     <AutopilotMenuContext value={menu}>
@@ -657,6 +662,7 @@ describe('ItemMenu Autopilot', () => {
     expect(names(screen.getByRole('menu', { name: 'Autopilot' }))).toEqual([
       'Run a routine',
       'Make a routine from this…',
+      'Describe a routine for this…',
       'Why didn’t a routine run?',
     ])
 
@@ -848,9 +854,10 @@ describe('ItemMenu Autopilot', () => {
 
   it('makes a routine from the item through the window’s own call', async () => {
     const made = vi.fn<(it: InboxItem) => void>()
+    const described = vi.fn<(it: InboxItem) => void>()
 
     render(
-      <MakeRoutines onMake={made}>
+      <MakeRoutines onMake={made} onDescribe={described}>
         <ul>
           <ItemRow item={item()} launch={null} triage={triageActions()} edits={editActions()} />
         </ul>
@@ -863,13 +870,47 @@ describe('ItemMenu Autopilot', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Make a routine from this…' }))
 
     expect(made).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: item().id }))
+    expect(described).not.toHaveBeenCalled()
+  })
+
+  it('describes a routine for the item through the window’s own call, saying what Claude Code sees of it', async () => {
+    const made = vi.fn<(it: InboxItem) => void>()
+    const described = vi.fn<(it: InboxItem) => void>()
+
+    render(
+      <MakeRoutines onMake={made} onDescribe={described}>
+        <ul>
+          <ItemRow item={item()} launch={null} triage={triageActions()} edits={editActions()} />
+        </ul>
+      </MakeRoutines>,
+      { wrapper: at() },
+    )
+
+    await openMenu()
+    await openSubmenu('Autopilot')
+
+    const describeItem = screen.getByRole('menuitem', { name: 'Describe a routine for this…' })
+
+    expect(describeItem).toHaveAttribute('title', expect.stringContaining('never its text or code'))
+    await userEvent.click(describeItem)
+
+    expect(described).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: item().id }))
+    expect(made).not.toHaveBeenCalled()
   })
 })
 
-// MakeRoutines provides the item menus' Autopilot with no routines, and onMake as the
-// window's Make a routine from this….
-function MakeRoutines({ onMake, children }: { onMake: (it: InboxItem) => void; children: ReactNode }) {
-  const { menu, node } = useRoutineMenu([], defaultToastSeconds, onMake)
+// MakeRoutines provides the item menus' Autopilot with no routines, and onMake and
+// onDescribe as the window's Make a routine from this… and Describe a routine for this….
+function MakeRoutines({
+  onMake,
+  onDescribe,
+  children,
+}: {
+  onMake: (it: InboxItem) => void
+  onDescribe: (it: InboxItem) => void
+  children: ReactNode
+}) {
+  const { menu, node } = useRoutineMenu([], defaultToastSeconds, onMake, onDescribe)
 
   return (
     <AutopilotMenuContext value={menu}>

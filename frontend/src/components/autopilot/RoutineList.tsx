@@ -1,10 +1,10 @@
 import { useId } from 'react'
 
-import { canSwitch, modeLabel, type StatusLine } from '../../lib/autopilot'
+import { canSwitch, editable, modeLabel, type StatusLine } from '../../lib/autopilot'
 import { formatAgo } from '../../lib/time'
 import type { AutopilotRoutine } from '../../platform'
 import { Switch } from '../controls'
-import { CopyIcon, ExportIcon, MoreIcon, RingIcon, RoutineIcon, TrashIcon } from '../icons'
+import { CopyIcon, ExportIcon, MoreIcon, RingIcon, RoutineIcon, SparkIcon, TrashIcon } from '../icons'
 import { MenuButton, type MenuItem } from '../Menu'
 import { RelativeTime } from '../RelativeTime'
 
@@ -32,13 +32,22 @@ export function Status({ line }: { line: StatusLine }) {
 
 export interface RoutineActions {
   // onSwitch switches a routine on or off; onDryRun puts it in Dry run, or takes it out;
+  // onDescribe opens Describe it with the routine attached, to change it with Claude;
   // onDuplicate copies it, onExport writes it to a file, and onDelete deletes it, after
   // asking.
   onSwitch: (routine: AutopilotRoutine, on: boolean) => void
   onDryRun: (routine: AutopilotRoutine, on: boolean) => void
+  onDescribe: (routine: AutopilotRoutine) => void
   onDuplicate: (routine: AutopilotRoutine) => void
   onExport: (routine: AutopilotRoutine) => void
   onDelete: (routine: AutopilotRoutine) => void
+}
+
+// describeTitle says what Change with Claude… does with a routine, or why it can't here.
+export function describeTitle(r: AutopilotRoutine): string {
+  return editable(r)
+    ? 'Tell Claude Code what to change, and review the change it proposes before it is saved'
+    : 'This routine can’t change here'
 }
 
 // graduateText says why a routine offers to go on Autopilot: a suggestion, never a change.
@@ -48,17 +57,28 @@ export const graduateText =
 // iconClass is a menu item's icon.
 const iconClass = 'size-3.5 shrink-0 text-muted'
 
-// routineMenu is a routine's ⋯ menu: Duplicate, Export, Dry run (or out of it), and Delete. A
-// routine that is broken, or another account's, keeps its mode.
+// routineMenu is a routine's ⋯ menu: Change with Claude…, Duplicate, Export, Dry run (or
+// out of it), and Delete. A routine that is broken, or another account's, keeps its mode,
+// and one that can't change here can't change with Claude either.
 export function routineMenu(r: AutopilotRoutine, actions: RoutineActions): MenuItem[] {
   const dry = r.mode === 'dryRun'
   const held = r.dryRunOnly.length > 0
 
   return [
     {
+      label: 'Change with Claude…',
+      icon: <SparkIcon className={iconClass} />,
+      title: describeTitle(r),
+      disabled: !editable(r),
+      onSelect: () => {
+        actions.onDescribe(r)
+      },
+    },
+    {
       label: 'Duplicate',
       icon: <CopyIcon className={iconClass} />,
       title: 'Make a copy, switched off, right after it',
+      divided: true,
       onSelect: () => {
         actions.onDuplicate(r)
       },

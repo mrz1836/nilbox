@@ -356,7 +356,11 @@ export function SettingsView({
                     <ReviewingSection settings={settings} onSaved={onSaved} onManageReplies={onManageReplies} />
                   ))}
                 {section === 'autopilot' &&
-                  (settings === null ? loading : <AutopilotSection settings={settings} onSaved={onSaved} />)}
+                  (settings === null ? (
+                    loading
+                  ) : (
+                    <AutopilotSection settings={settings} onSaved={onSaved} agents={agents} profiles={profiles} />
+                  ))}
                 {section === 'launching' &&
                   (settings === null ? (
                     loading
