@@ -250,10 +250,9 @@ func (g git) localFor(ctx context.Context, dir string) (gitread.Local, error) {
 // readOnly reports a command that only reads refs, commits, and the worktrees' own records:
 // listing the worktrees and the branches, resolving a ref, counting commits or listing
 // those not on GitHub, an ancestor's check, and a commit's time, the logs with no
-// signature check and no mailmap, and comparing commits with the pushed branches' by their
-// changes (rev-list --cherry-mark, whose patch IDs read the commits' files as stored, no
-// filter or diff program among them, and the log of those changes, with no diff program and
-// no text conversion). None runs a filter
+// signature check and no mailmap, and comparing commits with the pushed branches' (rev-list
+// --left-right, and the log of their changes, with no diff program and no text
+// conversion). None runs a filter
 // or a hook, but each could read an object a partial clone lacks, which git would fetch
 // from the clone's promisor remote, through a transport the clone's config can name, so
 // each runs with gitread's read environment (ReadEnv): no transport, no lazy fetch, no

@@ -15,8 +15,8 @@ import (
 // changed line, a hunk's position, and the mark of a file's missing last newline, so a
 // commit whose copy was only re-indented, or had a space dropped from a string, is marked =
 // as if its change were identical. In Python, YAML, a Makefile, or a string that is a change
-// all the same. So a = is only where looking starts: the commit's patch and its likely
-// copy's are read (copyPatchesArgs) and compared whole, all but what may differ between two
+// all the same. So no patch ID is asked for: the commit's patch and each likely copy's are
+// read (copyPatchesArgs) and compared whole, all but what may differ between two
 // identical changes made on different commits, the blob IDs of a text file (the index line)
 // and where each hunk starts (the line numbers of its @@ header, and the text git adds after
 // it). A binary file's change is identical only when its blobs before and after are, as its
@@ -139,8 +139,8 @@ func normalizeFile(lines []string) ([]string, bool) {
 	return out, true
 }
 
-// confirmCopies confirms byte for byte the copies cherry-mark marked identical, in the
-// clone at dir: for each commit of marked, by its commit ID, its likely copies there, most
+// confirmCopies compares byte for byte each commit with its likely copies on a pushed branch,
+// in the clone at dir: for each commit of marked, by its commit ID, its likely copies there, most
 // likely first. It returns, for each commit with a copy whose change is the same (samePatch),
 // that copy; a commit with none has an edited copy. Only the changes of commits whose pairs
 // aren't kept in cache are read, all in one log. It fails when that log does, which counts

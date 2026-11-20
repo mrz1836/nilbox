@@ -137,7 +137,7 @@ func TestASquashMergeAndTheBranchsDeletionKeepTheCopiesOnGitHub(t *testing.T) {
 
 	for _, argv := range r.run.Calls()[before:] {
 		sub := gitWords(argv)
-		assert.False(t, startsWith(sub, callUnpushed) || startsWith(sub, callCandidates) || startsWith(sub, callCherry) ||
+		assert.False(t, startsWith(sub, callUnpushed) || startsWith(sub, callCandidates) || startsWith(sub, callSides) ||
 			startsWith(sub, "merge-base"), "ran %v", sub)
 	}
 

@@ -35,13 +35,16 @@ import (
 // time is at most copyWindow before the oldest of U's author times (copyCandidatesArgs): a
 // copy keeps the author time and is made later; a window too wide to read fails only the
 // worktrees that need it (readCandidates). A pushed commit with a commit's author time,
-// author email, and subject is its likely copy. For each pushed branch holding likely
-// copies, most first and at most copyRefsMax of them, one rev-list --cherry-mark
-// (copyCherryArgs) says which of U git takes for an identical change on it, which one log of
-// their changes then confirms byte for byte (see copypatch.go: git's patch IDs leave
-// whitespace out). A commit whose change and a likely copy's are the same has an identical
-// copy; one with a likely copy whose change differs, if only by a space, has an edited copy,
-// which is never taken for the commit; any other has none. A worktree whose every commit has an identical copy on one branch is fully
+// author email, and subject is its likely copy. The log credits each pushed commit to one
+// branch only, so the branches it credits with likely copies, most first and at most
+// copyRefsMax of them, are only the order they are compared in: for each, one rev-list
+// --left-right (copySidesArgs) lists the commits it has that the worktree's HEAD hasn't, and
+// every likely copy among them is one there, whichever branch the log credited it to, as a
+// branch built on another holds that one's copies too. One log of their changes then
+// compares each pair byte for byte (see copypatch.go). A commit whose change and a likely
+// copy's are the same has an identical copy; one with a likely copy whose change differs, if
+// only by a space, has an edited copy, which is never taken for the commit; any other has
+// none. A worktree whose every commit has an identical copy on one branch is fully
 // copied onto it (Copies.full), and links to that branch's pull request when nothing else
 // links it (LinkCopy). Anything that goes wrong, as git failing or warning, an object a
 // partial clone lacks (the reads never fetch one), too many commits, a merge among U, or the
@@ -697,17 +700,18 @@ func defaultBase(remotes map[string]repo.Name, refs cloneRefs) string {
 
 // compare compares the worktree's commits not on GitHub with candidates, the commits of
 // its clone's pushed branches that may be their copies, and settles its result: one
-// rev-list --cherry-mark for each branch holding likely copies of them, the most first and
-// at most copyRefsMax, until one has an identical copy of every one.
+// comparison (compareWith) with each branch the candidates' log credits with likely copies
+// of them, the most first and at most copyRefsMax, until one has an identical copy of every
+// one.
 func (w *copyWork) compare(ctx context.Context, g git, cache *copyCache, dir string, refs cloneRefs, candidates []copyCommit) {
-	likely := likelyCopies(w.unpushed, candidates)
+	byRef, likely := likelyCopies(w.unpushed, candidates)
 
 	var best *refComparison
 
 	anywhere := map[string]bool{}
 
-	for _, ref := range rankRefs(likely) {
-		got, err := compareWith(ctx, g, cache, dir, w.wt.Head, ref, refs.tracking[ref], w.unpushed, likely[ref])
+	for _, ref := range rankRefs(byRef) {
+		got, err := compareWith(ctx, g, cache, dir, w.wt.Head, ref, refs.tracking[ref], w.unpushed, likely)
 		if err != nil {
 			w.fail(ctx, err)
 
@@ -756,9 +760,34 @@ func (w *copyWork) settle(best *refComparison) {
 	w.result.copies.None = w.wt.Unpushed - best.identical - best.edited
 }
 
-// likelyCopies are, by pushed branch, the likely copies there of each of unpushed, by its
-// commit ID: candidates with its author time, author email, and subject, newest first.
-func likelyCopies(unpushed, candidates []copyCommit) map[string]map[string][]string {
+// likelyCopies are the likely copies of each of unpushed, by its commit ID: candidates with
+// its author time, author email, and subject, newest first, wherever they are (all); and the
+// same by the pushed branch the candidates' log found each on (byRef), which only orders the
+// branches compared with, as the log names one branch for a commit many have.
+func likelyCopies(unpushed, candidates []copyCommit) (byRef map[string]map[string][]string, all map[string][]string) {
+	found := alike(unpushed, candidates)
+	byRef, all = map[string]map[string][]string{}, map[string][]string{}
+
+	for _, u := range unpushed {
+		for _, c := range found[u.likeness()] {
+			if byRef[c.ref] == nil {
+				byRef[c.ref] = map[string][]string{}
+			}
+
+			byRef[c.ref][u.oid] = append(byRef[c.ref][u.oid], c.oid)
+
+			if !slices.Contains(all[u.oid], c.oid) {
+				all[u.oid] = append(all[u.oid], c.oid)
+			}
+		}
+	}
+
+	return byRef, all
+}
+
+// alike groups the candidates with the author time, author email, and subject of one of
+// unpushed by those (copyCommit.likeness), newest first.
+func alike(unpushed, candidates []copyCommit) map[string][]copyCommit {
 	wanted := map[string]bool{}
 	for _, c := range unpushed {
 		wanted[c.likeness()] = true
@@ -772,19 +801,7 @@ func likelyCopies(unpushed, candidates []copyCommit) map[string]map[string][]str
 		}
 	}
 
-	out := map[string]map[string][]string{}
-
-	for _, u := range unpushed {
-		for _, c := range found[u.likeness()] {
-			if out[c.ref] == nil {
-				out[c.ref] = map[string][]string{}
-			}
-
-			out[c.ref][u.oid] = append(out[c.ref][u.oid], c.oid)
-		}
-	}
-
-	return out
+	return found
 }
 
 // rankRefs orders the branches of likely by how many commits have a likely copy there, most
@@ -820,41 +837,35 @@ func (c refComparison) closer(other refComparison) bool {
 }
 
 // compareWith compares unpushed, head's commits not on GitHub, with the pushed branch ref,
-// at tip, by their changes, in one rev-list --cherry-mark, then confirms each = byte for
-// byte (confirmCopies). likely holds the likely copies there of each, by its commit ID: a
-// commit marked = with a likely copy whose change is the same byte for byte has an identical
-// copy, one with a likely copy whose change differs, by as little as a space, an edited
-// copy, and any other none, whatever its change.
+// at tip. One rev-list --left-right (copySides) tells the commits ref has that head hasn't;
+// of those, each with a commit's author time, email, and subject (likely, a commit's likely
+// copies anywhere, by its commit ID) is a likely copy of it there, whichever branch the
+// candidates' log found it on, as a branch built on another holds that one's copies too.
+// Each pair is then compared byte for byte (confirmCopies): a commit with a likely copy there
+// whose change is the same has an identical copy, one with likely copies there whose changes
+// differ, by as little as a space, an edited copy, and any other none.
 func compareWith(ctx context.Context, g git, cache *copyCache, dir, head, ref, tip string, unpushed []copyCommit,
 	likely map[string][]string,
 ) (refComparison, error) {
 	got := refComparison{ref: ref, tip: tip, marks: map[string]commitMark{}}
 
-	same, err := g.cherryMarks(ctx, dir, tip, head)
+	sides, err := g.copySides(ctx, dir, tip, head)
 	if err != nil {
 		return refComparison{}, err
 	}
 
-	marked := map[string][]string{}
-
-	for _, u := range unpushed {
-		identical, listed := same[u.oid]
-
-		switch {
-		case !listed:
-			return refComparison{}, errCherryIncomplete
-		case identical && len(likely[u.oid]) > 0:
-			marked[u.oid] = likely[u.oid]
-		}
+	there, err := copiesThere(unpushed, likely, sides)
+	if err != nil {
+		return refComparison{}, err
 	}
 
-	confirmed, err := confirmCopies(ctx, g, cache, dir, marked)
+	confirmed, err := confirmCopies(ctx, g, cache, dir, there)
 	if err != nil {
 		return refComparison{}, err
 	}
 
 	for _, u := range unpushed {
-		copies := likely[u.oid]
+		copies := there[u.oid]
 
 		switch {
 		case len(copies) == 0:
@@ -870,9 +881,29 @@ func compareWith(ctx context.Context, g git, cache *copyCache, dir, head, ref, t
 	return got, nil
 }
 
-// errCherryIncomplete is returned when git's comparison with a pushed branch leaves out a
-// commit that isn't on GitHub, which it lists whenever the two reads agree.
-var errCherryIncomplete = errors.New("the comparison left out a commit that isn't on GitHub")
+// copiesThere keeps, of likely, each of unpushed's likely copies by its commit ID, those on
+// the pushed branch's side of sides (copySides), by the same. It fails when sides leaves one
+// of unpushed out, or puts it on the branch's side.
+func copiesThere(unpushed []copyCommit, likely map[string][]string, sides map[string]bool) (map[string][]string, error) {
+	there := map[string][]string{}
+
+	for _, u := range unpushed {
+		if tips, listed := sides[u.oid]; !listed || tips {
+			return nil, errSidesIncomplete
+		}
+
+		if copies := slices.DeleteFunc(slices.Clone(likely[u.oid]), func(c string) bool { return !sides[c] }); len(copies) > 0 {
+			there[u.oid] = copies
+		}
+	}
+
+	return there, nil
+}
+
+// errSidesIncomplete is returned when git's listing of what a pushed branch and HEAD each
+// have leaves out a commit that isn't on GitHub, or puts it on the branch's side, as it never
+// does when the two reads agree.
+var errSidesIncomplete = errors.New("the comparison left out a commit that isn't on GitHub")
 
 // compareFailure words why a worktree's commits couldn't be compared with the pushed
 // branches, for Copies.Note: in git's own words when it gave any.

@@ -30,7 +30,8 @@ func amendCopy(t *testing.T, dir, file, content string) string {
 func cherryMark(t *testing.T, r *copyRig, tip string) string {
 	t.Helper()
 
-	return strings.TrimSpace(testutil.RunGit(t, r.repo, copyCherryArgs(tip, headOf(t, r.agent))...))[:1]
+	return strings.TrimSpace(testutil.RunGit(t, r.repo, "rev-list", "--cherry-mark", "--right-only", "--no-merges",
+		tip+"..."+headOf(t, r.agent)))[:1]
 }
 
 // editedCase is a commit of the agent's and its copy's edit: file holds original in the
@@ -242,7 +243,7 @@ func TestConfirmedCopiesAreKeptForGood(t *testing.T) {
 	pushed(t, r.repo, "feat/elsewhere", r.main)
 	assert.True(t, r.list(t).Copies.full())
 	assert.Equal(t, 1, gitCalls(r.run, callPatches)[callPatches])
-	assert.Equal(t, 2, r.copies()[callCherry])
+	assert.Equal(t, 2, r.copies()[callSides])
 }
 
 func TestACopyWhoseChangeCantBeReadIsNoCopy(t *testing.T) {

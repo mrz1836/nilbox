@@ -71,16 +71,16 @@ func copyCandidatesArgs(since int64, base string) []string {
 	return args
 }
 
-// copyCherryArgs marks each commit on head that tip doesn't have, past their merge base:
-// = when tip has one with an identical change (git's patch ID), + when it doesn't. No merge
-// is marked.
-func copyCherryArgs(tip, head string) []string {
-	return []string{"rev-list", "--cherry-mark", "--right-only", "--no-merges", tip + "..." + head}
+// copySidesArgs lists the commits each of tip and head has that the other doesn't, past
+// their merge base, each marked with its side: < for tip's, > for head's. No merge is
+// listed.
+func copySidesArgs(tip, head string) []string {
+	return []string{"rev-list", "--left-right", "--no-merges", tip + "..." + head}
 }
 
 // allowedCopyRead reports one of the comparison's reads, with the arguments it may take.
 func allowedCopyRead(args []string) bool {
-	return allowedCopyUnpushed(args) || allowedCopyCandidates(args) || allowedCopyCherry(args) || allowedCopyPatches(args)
+	return allowedCopyUnpushed(args) || allowedCopyCandidates(args) || allowedCopySides(args) || allowedCopyPatches(args)
 }
 
 // allowedCopyUnpushed reports a log of the commits not on GitHub of one or more full commit
@@ -149,15 +149,16 @@ func sinceArg(arg string) (int64, bool) {
 	return since, err == nil && since >= 0 && strconv.FormatInt(since, 10) == digits
 }
 
-// allowedCopyCherry reports a comparison of a full commit ID's commits with another's.
-func allowedCopyCherry(args []string) bool {
-	if len(args) != len(copyCherryArgs("", "")) {
+// allowedCopySides reports a listing of what one full commit ID has that another hasn't,
+// and back.
+func allowedCopySides(args []string) bool {
+	if len(args) != len(copySidesArgs("", "")) {
 		return false
 	}
 
 	tip, head, ok := strings.Cut(args[len(args)-1], "...")
 
-	return ok && gitread.IsCommitID(tip) && gitread.IsCommitID(head) && joinArgs(args) == joinArgs(copyCherryArgs(tip, head))
+	return ok && gitread.IsCommitID(tip) && gitread.IsCommitID(head) && joinArgs(args) == joinArgs(copySidesArgs(tip, head))
 }
 
 // allCommitIDs reports a list of full commit IDs.
@@ -165,8 +166,8 @@ func allCommitIDs(oids []string) bool {
 	return !slices.ContainsFunc(oids, func(oid string) bool { return !gitread.IsCommitID(oid) })
 }
 
-// copyGitError is a comparison's read that git refused, or that warned of something, as a
-// patch ID it couldn't work out: stderr says why.
+// copyGitError is a comparison's read that git refused, or that warned of something on
+// the way: stderr says why.
 type copyGitError struct {
 	err    error
 	stderr []byte
@@ -179,7 +180,7 @@ func (e *copyGitError) Error() string { return e.err.Error() }
 func (e *copyGitError) Unwrap() error { return e.err }
 
 // errGitWarned is a comparison's read that git ran, but warned of something on the way, so
-// its answer may be wrong: a patch ID it couldn't work out marks a commit as having no copy.
+// its answer may be wrong.
 var errGitWarned = errors.New("git warned while comparing")
 
 // copyRead runs one of the comparison's reads in the clone at dir: an error when git refused
@@ -249,29 +250,28 @@ func (g git) copyCandidates(ctx context.Context, dir string, since int64, base s
 	return commits, nil
 }
 
-// cherryMarks compares the commits on head that tip doesn't have with tip's, in the clone at
-// dir (see copyCherryArgs), and reports for each by commit ID whether tip has an identical
-// change.
-func (g git) cherryMarks(ctx context.Context, dir, tip, head string) (map[string]bool, error) {
-	stdout, err := g.copyRead(ctx, dir, copyCherryArgs(tip, head))
+// copySides lists, in the clone at dir, the commits tip has that head doesn't and those
+// head has that tip doesn't (see copySidesArgs), by commit ID: true for tip's.
+func (g git) copySides(ctx context.Context, dir, tip, head string) (map[string]bool, error) {
+	stdout, err := g.copyRead(ctx, dir, copySidesArgs(tip, head))
 	if err != nil {
 		return nil, err
 	}
 
-	marks := map[string]bool{}
+	sides := map[string]bool{}
 
 	for line := range strings.Lines(string(stdout)) {
 		line = strings.TrimSuffix(line, "\n")
 
 		mark, oid := line[:min(len(line), 1)], line[min(len(line), 1):]
-		if (mark != "=" && mark != "+") || !gitread.IsCommitID(oid) {
+		if (mark != "<" && mark != ">") || !gitread.IsCommitID(oid) {
 			return nil, fmt.Errorf("%w %q", errParseCommits, line)
 		}
 
-		marks[oid] = mark == "="
+		sides[oid] = mark == "<"
 	}
 
-	return marks, nil
+	return sides, nil
 }
 
 var (

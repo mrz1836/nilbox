@@ -20,7 +20,7 @@ import (
 const (
 	callUnpushed   = "log --no-show-signature --no-mailmap --max-count=10000"
 	callCandidates = "log --no-show-signature --no-mailmap --no-merges --source"
-	callCherry     = "rev-list --cherry-mark"
+	callSides      = "rev-list --left-right"
 	parentBranch   = "feat/parent"
 )
 
@@ -141,7 +141,7 @@ func (r *copyRig) list(t *testing.T) Worktree {
 
 // copies counts the comparison's git reads the rig ran so far.
 func (r *copyRig) copies() map[string]int {
-	return gitCalls(r.run, callUnpushed, callCandidates, callCherry)
+	return gitCalls(r.run, callUnpushed, callCandidates, callSides)
 }
 
 func TestListSeesCommitsCherryPickedOntoAPushedBranch(t *testing.T) {
@@ -161,12 +161,51 @@ func TestListSeesCommitsCherryPickedOntoAPushedBranch(t *testing.T) {
 	require.NotNil(t, row.Item)
 	assert.Equal(t, 199, row.Item.Number)
 	assert.False(t, row.Item.Launched)
-	assert.Equal(t, map[string]int{callUnpushed: 1, callCandidates: 1, callCherry: 1}, r.copies(),
+	assert.Equal(t, map[string]int{callUnpushed: 1, callCandidates: 1, callSides: 1}, r.copies(),
 		"one log of the commits not on GitHub, one of the pushed ones, and one comparison")
 
 	parent := mustRow(t, listOf(t, r.svc), r.parent)
 	assert.Equal(t, LinkBranch, parent.LinkedBy, "the branch they were copied onto links by itself")
 	assert.Zero(t, parent.Copies, "and has nothing to compare")
+}
+
+func TestListSeesCommitsCopiedOntoAStackOfBranches(t *testing.T) {
+	t.Parallel()
+
+	r := newCopyRig(t, nil)
+	oids := r.work(t, 3)
+
+	// feat/parent holds the copies of the first two, and feat/stacked, built on it, those and
+	// the third's: the log credits the two shared copies to feat/parent alone.
+	lower := copyOnto(t, r.parent, oids[0], oids[1])
+	pushed(t, r.repo, parentBranch, lower)
+
+	stacked := addWorktree(t, r.repo, filepath.Join(r.e.home, "wt", "stacked"), "feat/stacked")
+	testutil.RunGit(t, stacked, "reset", "-q", "--hard", lower)
+	upper := copyOnto(t, stacked, oids[2])
+	pushed(t, r.repo, "feat/stacked", upper)
+
+	credits := testutil.RunGit(t, r.repo, "log", "--source", "--format=%H %S", "--remotes", "--not", "refs/remotes/origin/"+mainBranch)
+	require.Contains(t, credits, lower+" origin/"+parentBranch, "the stack's shared copies are credited to the lower branch")
+	require.Contains(t, credits, upper+" origin/feat/stacked")
+
+	r.gh.setHead(parentBranch, headPR(199, ItemOpen, lower, parentBranch, ownRepo))
+	r.gh.setHead("feat/stacked", headPR(200, ItemOpen, upper, "feat/stacked", ownRepo))
+	r.gh.set(exampleName, 199, headPR(199, ItemOpen, lower, parentBranch, ownRepo).State)
+	r.gh.set(exampleName, 200, headPR(200, ItemOpen, upper, "feat/stacked", ownRepo).State)
+
+	row := r.list(t)
+	assert.Equal(t, Copies{Ref: "origin/feat/stacked", Count: 3, Identical: 3, PR: 200}, row.Copies,
+		"every copy on the upper branch counts there, wherever the log credited it")
+	assert.Equal(t, LinkCopy, row.LinkedBy)
+	require.NotNil(t, row.Item)
+	assert.Equal(t, 200, row.Item.Number, "linked to the pull request of the branch that holds them all")
+	assert.Equal(t, 2, r.copies()[callSides], "the lower branch, credited with more, is compared first")
+
+	again := r.list(t)
+	assert.Equal(t, row.Copies, again.Copies)
+	assert.Equal(t, map[string]int{callUnpushed: 1, callCandidates: 1, callSides: 2}, r.copies(),
+		"and a listing after which nothing changed runs no git to compare")
 }
 
 // listOf lists svc's worktrees.
@@ -260,7 +299,7 @@ func TestListLeavesCopiesSpreadOverTwoBranchesUncounted(t *testing.T) {
 	assert.Equal(t, 1, row.Copies.Identical)
 	assert.Contains(t, row.Copies.Note, "no one branch has them all")
 	assert.False(t, row.Copies.full())
-	assert.Equal(t, 2, r.copies()[callCherry], "both branches were compared")
+	assert.Equal(t, 2, r.copies()[callSides], "both branches were compared")
 }
 
 func TestListComparesNoMerge(t *testing.T) {
@@ -279,7 +318,7 @@ func TestListComparesNoMerge(t *testing.T) {
 	assert.Equal(t, 3, row.Copies.Count)
 	assert.Contains(t, row.Copies.Note, "merge")
 	assert.Zero(t, row.Copies.Identical)
-	assert.Zero(t, r.copies()[callCherry], "nothing is compared")
+	assert.Zero(t, r.copies()[callSides], "nothing is compared")
 }
 
 func TestListComparesADetachedWorktree(t *testing.T) {
@@ -349,7 +388,7 @@ func TestListComparesOnlyBranchesPushedToGitHub(t *testing.T) {
 
 	row := r.list(t)
 	assert.Equal(t, Copies{Count: 1, None: 1}, row.Copies, "a copy on a remote that isn't GitHub isn't looked at")
-	assert.Zero(t, r.copies()[callCherry])
+	assert.Zero(t, r.copies()[callSides])
 
 	// Merged into the default branch by a rebase: the default branch isn't compared with.
 	pushed(t, r.repo, mainBranch, head)
@@ -357,7 +396,7 @@ func TestListComparesOnlyBranchesPushedToGitHub(t *testing.T) {
 	row = r.list(t)
 	assert.Equal(t, 1, row.Unpushed, "main has the copy, not the commit")
 	assert.Equal(t, Copies{Count: 1, None: 1}, row.Copies)
-	assert.Zero(t, r.copies()[callCherry])
+	assert.Zero(t, r.copies()[callSides])
 }
 
 func TestListLeavesWhatGitCantCompareUncopied(t *testing.T) {
@@ -375,17 +414,17 @@ func TestListLeavesWhatGitCantCompareUncopied(t *testing.T) {
 		},
 		{
 			name:   "a warning",
-			answer: reply{stdout: "=" + headSHA + "\n", stderr: "error: could not get patch ID for " + headSHA},
-			want:   "Couldn't compare its commits with the pushed branches. Could not get patch ID for " + headSHA + ".",
+			answer: reply{stdout: ">" + headSHA + "\n", stderr: "warning: something odd about " + headSHA},
+			want:   "Couldn't compare its commits with the pushed branches. Warning: something odd about " + headSHA + ".",
 		},
 		{
 			name:   "a commit left out",
-			answer: reply{stdout: "=" + headSHA + "\n"},
+			answer: reply{stdout: ">" + headSHA + "\n"},
 			want:   "Couldn't compare its commits with the pushed branches.",
 		},
 		{
 			name:   "an answer git never gives",
-			answer: reply{stdout: "?" + headSHA + "\n"},
+			answer: reply{stdout: "=" + headSHA + "\n"},
 			want:   "Couldn't compare its commits with the pushed branches.",
 		},
 	}
@@ -395,7 +434,7 @@ func TestListLeavesWhatGitCantCompareUncopied(t *testing.T) {
 			t.Parallel()
 
 			r := newCopyRig(t, func(_ string, sub []string) (reply, bool) {
-				return tt.answer, startsWith(sub, callCherry)
+				return tt.answer, startsWith(sub, callSides)
 			})
 			oids := r.work(t, 1)
 			head := copyOnto(t, r.parent, oids...)
@@ -407,7 +446,7 @@ func TestListLeavesWhatGitCantCompareUncopied(t *testing.T) {
 			assert.Nil(t, row.Item)
 
 			r.list(t)
-			assert.Equal(t, 1, r.copies()[callCherry], "what git answered is kept until something changes")
+			assert.Equal(t, 1, r.copies()[callSides], "what git answered is kept until something changes")
 		})
 	}
 }
@@ -428,7 +467,7 @@ func TestListComparesAgainOnlyWhenSomethingChanged(t *testing.T) {
 	second := r.list(t)
 	assert.Equal(t, first.Copies, second.Copies)
 	assert.Equal(t, LinkCopy, second.LinkedBy)
-	assert.Equal(t, map[string]int{callUnpushed: 1, callCandidates: 1, callCherry: 1}, r.copies(),
+	assert.Equal(t, map[string]int{callUnpushed: 1, callCandidates: 1, callSides: 1}, r.copies(),
 		"a listing in which nothing changed runs no git to compare")
 
 	calls, withHeads := r.gh.requests()
@@ -463,7 +502,7 @@ func TestListComparesEveryWorktreeOfAClonesInOneLog(t *testing.T) {
 	snap := listOf(t, r.svc)
 	assert.True(t, mustRow(t, snap, r.agent).Copies.full())
 	assert.True(t, mustRow(t, snap, second).Copies.full())
-	assert.Equal(t, map[string]int{callUnpushed: 1, callCandidates: 1, callCherry: 2}, r.copies(),
+	assert.Equal(t, map[string]int{callUnpushed: 1, callCandidates: 1, callSides: 2}, r.copies(),
 		"one log of each kind for the clone, and a comparison for each worktree")
 }
 
@@ -525,7 +564,7 @@ func TestDetailsMarkEachCommitsCopyAsTheListingFoundIt(t *testing.T) {
 		switch {
 		case startsWith(sub, refsCall()):
 			refsReads++
-		case startsWith(sub, callUnpushed), startsWith(sub, callCandidates), startsWith(sub, callCherry):
+		case startsWith(sub, callUnpushed), startsWith(sub, callCandidates), startsWith(sub, callSides):
 			compares++
 		case startsWith(sub, "config"):
 			remotes++
@@ -546,10 +585,10 @@ func TestDetailsCompareTheCommitsWhenTheListingDidntForTheirState(t *testing.T) 
 	assert.Equal(t, map[string]string{
 		oids[0]: "identical " + copies[0], oids[1]: "edited " + copies[1], oids[2]: " ",
 	}, marksOf(d))
-	assert.Equal(t, map[string]int{callUnpushed: 1, callCandidates: 1, callCherry: 1}, r.copies())
+	assert.Equal(t, map[string]int{callUnpushed: 1, callCandidates: 1, callSides: 1}, r.copies())
 
 	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 3, Identical: 1, Edited: 1, None: 1}, r.list(t).Copies)
-	assert.Equal(t, 1, r.copies()[callCherry], "and the listing after them finds what they found")
+	assert.Equal(t, 1, r.copies()[callSides], "and the listing after them finds what they found")
 }
 
 func TestDetailsMarkNothingWhenTheRefsCantBeRead(t *testing.T) {
@@ -607,7 +646,7 @@ func TestDetailsSayWhyTheirComparisonCouldntRun(t *testing.T) {
 	}{
 		"git refuses the comparison": {
 			answer: func(sub []string) (reply, bool) {
-				return reply{stderr: "fatal: missing blob object", err: exitError{code: 128}}, startsWith(sub, callCherry)
+				return reply{stderr: "fatal: missing blob object", err: exitError{code: 128}}, startsWith(sub, callSides)
 			},
 			note: "Couldn't compare its commits with the pushed branches. Missing blob object.",
 		},
@@ -644,7 +683,7 @@ func TestListComparesNoBranchOfARemoteNamedLikeOrigins(t *testing.T) {
 	assert.Equal(t, Copies{Count: 1, None: 1}, row.Copies,
 		"refs/remotes/origin/mirror/feat/parent is the mirror's, which isn't GitHub, not origin's mirror/feat/parent")
 	assert.False(t, row.OnGitHub)
-	assert.Zero(t, r.copies()[callCherry])
+	assert.Zero(t, r.copies()[callSides])
 }
 
 func TestAnOldWorktreeNeverKeepsTheOthersOfItsCloneFromBeingCompared(t *testing.T) {
@@ -690,7 +729,7 @@ func TestListComparesNothingInAClonePushedNowhere(t *testing.T) {
 	snap, err := e.service(run).List(t.Context())
 	require.NoError(t, err)
 	assert.Zero(t, mustRow(t, snap, feature).Copies)
-	assert.Equal(t, map[string]int{}, gitCalls(run, callUnpushed, callCandidates, callCherry))
+	assert.Equal(t, map[string]int{}, gitCalls(run, callUnpushed, callCandidates, callSides))
 }
 
 func TestReachFollowsParentsWithinTheSet(t *testing.T) {

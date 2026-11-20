@@ -219,9 +219,9 @@ func TestGitArgvUsesDashC(t *testing.T) {
 		},
 		{
 			name:   "the changes are compared in the clone",
-			stdout: "=" + headSHA + "\n",
-			call:   func(g git) error { _, err := g.cherryMarks(ctx, repoDir, otherSHA, headSHA); return err },
-			want:   gitArgv(repoDir, "rev-list --cherry-mark --right-only --no-merges", otherSHA+"..."+headSHA),
+			stdout: "<" + otherSHA + "\n>" + headSHA + "\n",
+			call:   func(g git) error { _, err := g.copySides(ctx, repoDir, otherSHA, headSHA); return err },
+			want:   gitArgv(repoDir, "rev-list --left-right --no-merges", otherSHA+"..."+headSHA),
 		},
 		{
 			name:   "the changes themselves are read in the clone",
@@ -353,13 +353,13 @@ func TestGitRejectsCommandsOutsideAllowlist(t *testing.T) {
 		append(copyCandidatesCmd(), "--since=@1700000000", "--remotes", "--all", "refs/remotes/origin/main"),
 		append(argv("log --no-show-signature --no-mailmap --source --max-count=20000"), "--format=%H%x00%S%x00%at%x00%ae%x00%s",
 			"--since=@1700000000", "--remotes"),
-		argv("rev-list --cherry-mark --right-only --no-merges", "HEAD..."+headSHA),
-		argv("rev-list --cherry-mark --right-only --no-merges", otherSHA+".."+headSHA),
-		argv("rev-list --cherry-mark --right-only --no-merges", otherSHA+"..."+headSHA+"..."+headSHA),
-		argv("rev-list --cherry-mark --left-only --no-merges", otherSHA+"..."+headSHA),
-		argv("rev-list --cherry-mark --right-only", otherSHA+"..."+headSHA),
-		argv("rev-list --cherry-mark --right-only --no-merges", otherSHA+"..."+headSHA, "--all"),
-		argv("rev-list --cherry-pick --right-only --no-merges", otherSHA+"..."+headSHA),
+		argv("rev-list --left-right --no-merges", "HEAD..."+headSHA),
+		argv("rev-list --left-right --no-merges", otherSHA+".."+headSHA),
+		argv("rev-list --left-right --no-merges", otherSHA+"..."+headSHA+"..."+headSHA),
+		argv("rev-list --left-only --no-merges", otherSHA+"..."+headSHA),
+		argv("rev-list --left-right", otherSHA+"..."+headSHA),
+		argv("rev-list --left-right --no-merges", otherSHA+"..."+headSHA, "--all"),
+		argv("rev-list --left-right --cherry-pick --no-merges", otherSHA+"..."+headSHA),
 		copyPatchesCmd(),
 		append(copyPatchesCmd(), "HEAD"),
 		append(copyPatchesCmd(), headSHA, "--all"),
@@ -403,7 +403,7 @@ func TestGitAllowsDeletingAnyWellFormedBranchAtACommit(t *testing.T) {
 		unpushedPastArgs(headRef, otherSHA), unpushedPastArgs(headSHA, otherSHA), unpushedLogArgs(),
 		unpushedPastLogArgs(otherSHA), copyUnpushedArgs([]string{headSHA}, ""),
 		copyUnpushedArgs([]string{headSHA, otherSHA}, otherSHA), copyCandidatesArgs(0, ""),
-		copyCandidatesArgs(1699913600, "refs/remotes/origin/main"), copyCherryArgs(otherSHA, headSHA),
+		copyCandidatesArgs(1699913600, "refs/remotes/origin/main"), copySidesArgs(otherSHA, headSHA),
 		copyPatchesArgs([]string{headSHA, otherSHA}),
 	} {
 		_, _, err := git{run: &testutil.Runner{}, bin: gitBin}.do(t.Context(), repoDir, args...)
@@ -416,7 +416,7 @@ func TestTheCommitsNotOnGitHubAreListedAsARead(t *testing.T) {
 
 	for _, args := range [][]string{
 		unpushedLogArgs(), unpushedPastLogArgs(otherSHA), refsArgs(), copyUnpushedArgs([]string{headSHA}, otherSHA),
-		copyCandidatesArgs(0, "refs/remotes/origin/main"), copyCherryArgs(otherSHA, headSHA), copyPatchesArgs([]string{headSHA}),
+		copyCandidatesArgs(0, "refs/remotes/origin/main"), copySidesArgs(otherSHA, headSHA), copyPatchesArgs([]string{headSHA}),
 	} {
 		assert.True(t, readOnly(args), args)
 	}
@@ -445,7 +445,7 @@ func TestTheCommitsNotOnGitHubAreListedAsARead(t *testing.T) {
 	require.NoError(t, err)
 	_, err = g.copyCandidates(t.Context(), repoDir, 0, "")
 	require.NoError(t, err)
-	_, err = g.cherryMarks(t.Context(), repoDir, otherSHA, headSHA)
+	_, err = g.copySides(t.Context(), repoDir, otherSHA, headSHA)
 	require.NoError(t, err)
 	_, err = g.readRefs(t.Context(), repoDir)
 	require.NoError(t, err)
@@ -492,19 +492,19 @@ func TestCopyReadsParseWhatGitPrints(t *testing.T) {
 		copyCandidates(ctx, repoDir, 0, "")
 	require.ErrorIs(t, err, errTooManyCandidates)
 
-	marks, err := run("="+headSHA+"\n+"+otherSHA+"\n", "", nil).cherryMarks(ctx, repoDir, otherSHA, headSHA)
+	sides, err := run(">"+headSHA+"\n<"+otherSHA+"\n", "", nil).copySides(ctx, repoDir, otherSHA, headSHA)
 	require.NoError(t, err)
-	assert.Equal(t, map[string]bool{headSHA: true, otherSHA: false}, marks)
+	assert.Equal(t, map[string]bool{headSHA: false, otherSHA: true}, sides, "true for the tip's side")
 
-	for _, bad := range []string{"", "-" + headSHA, "=main"} {
-		_, err = run(bad+"\n", "", nil).cherryMarks(ctx, repoDir, otherSHA, headSHA)
+	for _, bad := range []string{"", "=" + headSHA, "-" + headSHA, "+" + headSHA, "<main", headSHA} {
+		_, err = run(bad+"\n", "", nil).copySides(ctx, repoDir, otherSHA, headSHA)
 		require.ErrorIs(t, err, errParseCommits, bad)
 	}
 
-	_, err = run("="+headSHA+"\n", "error: could not get patch ID", nil).cherryMarks(ctx, repoDir, otherSHA, headSHA)
+	_, err = run(">"+headSHA+"\n", "warning: something odd", nil).copySides(ctx, repoDir, otherSHA, headSHA)
 	require.ErrorIs(t, err, errGitWarned, "an answer git warned about is no answer")
 
-	_, err = run("", "fatal: bad object", exitError{code: 128}).cherryMarks(ctx, repoDir, otherSHA, headSHA)
+	_, err = run("", "fatal: bad object", exitError{code: 128}).copySides(ctx, repoDir, otherSHA, headSHA)
 
 	gitErr, ok := errors.AsType[*copyGitError](err)
 	require.True(t, ok)

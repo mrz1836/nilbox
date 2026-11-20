@@ -2220,14 +2220,17 @@ refs/remotes/<remote>/<default>`; a copy keeps the author time and is made later
 log reaches its cap, only the worktrees that need its window (the oldest) can't be compared,
 and one more log, from the next oldest worktree's window, serves the rest, so one worktree
 left for months never keeps its clone's others from being compared. A pushed commit with a
-commit's author time, email, and subject is its likely copy. For each pushed
-branch holding likely copies, most first and at most three, one `rev-list --cherry-mark
---right-only --no-merges <tip>...<HEAD>` (`copyCherryArgs`, commit IDs only) says which of U
-have an identical change there (`=`). A `=` is only where looking starts: git's patch IDs
-leave out every space inside a changed line, a hunk's position, and the mark of a missing
-last newline, so a copy that was only re-indented, or lost a space from a string, is marked
-`=` too, though in Python, YAML, a Makefile, or a string literal that is a change. So each
-`=` is confirmed byte for byte (`copypatch.go`): the changes of the commit and its likely
+commit's author time, email, and subject is its likely copy. The log credits each pushed
+commit to one branch only (`--source`), often the lowest of a stack of branches, so the
+branches it credits with likely copies, most first and at most three, only order the
+comparisons: for each, one `rev-list --left-right --no-merges <tip>...<HEAD>`
+(`copySidesArgs`, commit IDs only) lists the commits the branch has that HEAD hasn't (`<`)
+and back (`>`), and every likely copy on the branch's side is one there, whichever branch
+the log credited it to, so a branch built on another counts the copies the two share. No
+patch ID decides anything: git's leave out every space inside a changed line, a hunk's
+position, and the mark of a missing last newline, so a copy that was only re-indented, or
+lost a space from a string, would pass, though in Python, YAML, a Makefile, or a string
+literal that is a change. So each pair is compared byte for byte (`copypatch.go`): the changes of the commit and its likely
 copies are read in one more log for the comparison (`copyPatchesArgs`: `log
 --no-show-signature --no-mailmap --no-walk=unsorted --root -p --no-ext-diff --no-textconv
 --no-color --no-renames --full-index --unified=3 --format=%x00%H <commit>...`, a read) and
@@ -2238,11 +2241,10 @@ change is the same only when its blobs before and after are, its `index` line wh
 empty change, one that doesn't read as git's per-file diffs, or one git left out is no
 copy's, and a log that fails leaves the worktree not copied, with why. A verdict on a pair
 of commits is kept in memory for good (`copyCache.pairs`), as commits never change. A
-commit marked `=` with a likely copy whose change is the same has an identical copy; one
-with a likely copy whose change differs (`+`, or a `=` that didn't hold) an edited copy,
-which never counts (an edited change isn't the commit's); any other none. A copy made on a
-moved base whose context lines differ is marked `+` by git itself, and so is edited too. A
-worktree each of
+commit with a likely copy there whose change is the same has an identical copy; one with
+likely copies there whose changes differ an edited copy, which never counts (an edited
+change isn't the commit's); any other none. A copy made on a moved base whose context lines
+differ is edited too. A worktree each of
 whose commits has an identical copy on one branch is fully copied onto it, and links to that
 branch's pull request, asked about as a branch link is, when nothing else links it
 (`LinkCopy`); the pull request of the branch a worktree copied only in part is asked about
@@ -2256,7 +2258,7 @@ only when `recorded`. Its zero value means there was nothing to compare with. Ea
 fails it rather than being fetched), and the allowlist holds each to its exact words: commit
 IDs, a remote-tracking branch, and a whole number of seconds. Anything that goes wrong leaves
 the worktree not fully copied and never fails the listing: git refusing a read, or warning
-on its way (a patch ID it couldn't work out would mark a commit as having no copy), a log
+on its way (its answer may then be wrong), a log
 reaching its cap, more than 200 commits, a merge among U, a count that changed meanwhile,
 or a comparison that leaves a commit out. What a comparison found is kept in memory
 (`copyCache`) by the worktree's HEAD, the commit it was made at from GitHub, its clone's
