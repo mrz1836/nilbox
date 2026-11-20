@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { renderHook } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 
-import { isFindKey, isPreviewKey, isTyping } from './keys'
+import { isFindKey, isPreviewKey, isTyping, useKeyDown } from './keys'
 
 // keydownOn is a key event dispatched at target, as the document's listeners see it.
 function keydownOn(target: EventTarget, init: KeyboardEventInit = {}): KeyboardEvent {
@@ -91,5 +92,87 @@ describe('isPreviewKey', () => {
     [{ key: 'o', metaKey: true, shiftKey: true }, false],
   ])('reads %j', (init, want) => {
     expect(isPreviewKey(new KeyboardEvent('keydown', init))).toBe(want)
+  })
+})
+
+// press sends a key from target, bubbling, as a key pressed with focus there does.
+function press(target: EventTarget, key = 'Escape') {
+  target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+}
+
+describe('useKeyDown', () => {
+  it('hears each key that bubbles up to the document while mounted', () => {
+    const heard = vi.fn()
+    const { unmount } = renderHook(() => {
+      useKeyDown(heard)
+    })
+
+    press(place('div'))
+
+    expect(heard).toHaveBeenCalledOnce()
+    expect(heard.mock.lastCall?.[0]).toMatchObject({ key: 'Escape' })
+
+    unmount()
+    press(place('div'))
+
+    expect(heard).toHaveBeenCalledOnce()
+  })
+
+  it('listens as the key bubbles, so a control that stops it keeps it', () => {
+    const heard = vi.fn()
+    const el = place('div')
+
+    el.addEventListener('keydown', (e) => {
+      e.stopPropagation()
+    })
+    renderHook(() => {
+      useKeyDown(heard)
+    })
+
+    press(el)
+
+    expect(heard).not.toHaveBeenCalled()
+  })
+
+  it('calls the latest handler rendered, without listening again', () => {
+    const added = vi.spyOn(document, 'addEventListener')
+    const first = vi.fn()
+    const second = vi.fn()
+    const { rerender } = renderHook(
+      ({ handler }: { handler: (e: KeyboardEvent) => void }) => {
+        useKeyDown(handler)
+      },
+      { initialProps: { handler: first } },
+    )
+
+    rerender({ handler: second })
+    press(document)
+
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledOnce()
+    expect(added.mock.calls.filter(([type]) => type === 'keydown')).toHaveLength(1)
+  })
+
+  it('listens on the window when asked, which hears a key after the document', () => {
+    const order: string[] = []
+    const onDocument = vi.spyOn(document, 'addEventListener')
+    const { unmount } = renderHook(() => {
+      useKeyDown(() => {
+        order.push('document')
+      })
+      useKeyDown(() => {
+        order.push('window')
+      }, window)
+    })
+
+    press(place('div'))
+
+    expect(order).toEqual(['document', 'window'])
+    expect(onDocument.mock.calls.filter(([type]) => type === 'keydown')).toHaveLength(1)
+
+    unmount()
+    press(place('div'))
+
+    expect(order).toEqual(['document', 'window'])
   })
 })
