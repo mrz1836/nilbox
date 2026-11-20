@@ -1341,12 +1341,15 @@ the age join them there. From the left:
   branch and back. Each note's tooltip says what to do, as in *Commit or stash them first.* or
   *magex pulls them first.*
 - **The age** of the newest commit.
-- **Release…** opens the sheet. It stays quiet until you point at the row or move the focus
-  into it, so a column of them stays calm.
+- **Release…** opens the sheet, and so does a click anywhere else on the row; each part of
+  the row still shows its tooltip. A click that ends selecting the row's words opens nothing,
+  so you can still copy them. Release… stays quiet until you point at the row or move the
+  focus into it, so a column of them stays calm.
 
 An **Up to date** row has no edge and no **Release…**, a **Can't release here** row says why in
-the headline's place, without checks, and a **Muted** row shows its clone's folder there and
-**Unmute** in Release…'s place, quiet the same way.
+the headline's place, without checks, and neither opens anything when clicked. A **Muted** row
+shows its clone's folder there and **Unmute** in Release…'s place, quiet the same way; only
+Unmute itself unmutes, never a click on the row.
 
 **The sheet** checks the clone, origin, and GitHub as it opens, then shows:
 

@@ -229,6 +229,11 @@ describe('ReleasePage', () => {
 
     await userEvent.click(within(row).getByRole('button', { name: 'Release acme-org/sdk…' }))
     expect(onRelease).toHaveBeenCalledWith(releaseCandidate())
+
+    // A click anywhere else on the row opens the same sheet.
+    await userEvent.click(within(row).getByText('Fix retries on 502 (#45)'))
+    expect(onRelease).toHaveBeenCalledTimes(2)
+    expect(onRelease).toHaveBeenLastCalledWith(releaseCandidate())
   })
 
   it('opens a collapsed group: Release… where there is something to release, and why not where there isn’t', async () => {

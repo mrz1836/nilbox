@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -83,6 +83,46 @@ describe('CandidateRow', () => {
     await userEvent.click(release)
 
     expect(onRelease).toHaveBeenCalledOnce()
+  })
+
+  it('opens its sheet from a click anywhere on the row, its cells keeping their tooltips', async () => {
+    const { row, onRelease } = renderCandidate(releaseCandidate())
+    const r = within(row)
+
+    expect(row).toHaveClass('cursor-pointer')
+
+    await userEvent.click(r.getByText('Fix retries on 502 (#45)'))
+
+    expect(onRelease).toHaveBeenCalledOnce()
+
+    await userEvent.click(r.getByText('v1.4.2'))
+    await userEvent.click(r.getByTitle('acme-org/sdk'))
+
+    expect(onRelease).toHaveBeenCalledTimes(3)
+    expect(r.getByText('+4')).toHaveAttribute('title', '4 commits since v1.4.2')
+  })
+
+  it('opens nothing from a click that ends selecting the row’s words, so they can be copied', () => {
+    const { row, onRelease } = renderCandidate(releaseCandidate())
+    const headline = within(row).getByText('Fix retries on 502 (#45)')
+
+    window.getSelection()?.selectAllChildren(headline)
+    fireEvent.click(headline)
+
+    expect(onRelease).not.toHaveBeenCalled()
+
+    window.getSelection()?.removeAllRanges()
+    fireEvent.click(headline)
+
+    expect(onRelease).toHaveBeenCalledOnce()
+
+    // A document with no selection at all, as one not shown anywhere, selects nothing.
+    const none = vi.spyOn(window, 'getSelection').mockReturnValue(null)
+
+    fireEvent.click(headline)
+    none.mockRestore()
+
+    expect(onRelease).toHaveBeenCalledTimes(2)
   })
 
   it.each<{ name: string; checks: CommitChecks; clone: ReleaseCloneState; want: string; bar: string[] }>([
@@ -328,8 +368,8 @@ describe('CandidateRow', () => {
     expect(row.querySelector('time')).not.toBeInTheDocument()
   })
 
-  it('offers Release… for a repository with no releases yet, its edge from its checks alone', () => {
-    const { row } = renderCandidate(
+  it('offers Release… for a repository with no releases yet, its edge from its checks alone', async () => {
+    const { row, onRelease } = renderCandidate(
       releaseCandidate({
         repo: 'acme-org/tools',
         group: 'noReleases',
@@ -348,10 +388,14 @@ describe('CandidateRow', () => {
     expect(r.getByRole('button', { name: 'Release acme-org/tools…' })).toBeInTheDocument()
     expect(row).not.toHaveTextContent('+')
     expect(edge(row)).toHaveAttribute('data-readiness', 'failing')
+
+    await userEvent.click(r.getByText('First commit'))
+
+    expect(onRelease).toHaveBeenCalledOnce()
   })
 
-  it('offers no Release… and no edge for a repository up to date', () => {
-    const { row } = renderCandidate(
+  it('offers no Release… and no edge for a repository up to date, and its row opens nothing', async () => {
+    const { row, onRelease } = renderCandidate(
       releaseCandidate({
         repo: 'acme-org/web',
         group: 'upToDate',
@@ -370,10 +414,15 @@ describe('CandidateRow', () => {
     expect(row).not.toHaveTextContent('+')
     expect(edge(row)).not.toHaveAttribute('data-readiness')
     expect(edge(row)).toHaveClass('bg-transparent')
+    expect(row).not.toHaveClass('cursor-pointer')
+
+    await userEvent.click(r.getByText('Release v0.9.1'))
+
+    expect(onRelease).not.toHaveBeenCalled()
   })
 
-  it('says why a repository can’t be released here, in its headline’s place, without checks', () => {
-    const { row } = renderCandidate(
+  it('says why a repository can’t be released here, in its headline’s place, without checks', async () => {
+    const { row, onRelease } = renderCandidate(
       releaseCandidate({
         repo: 'acme-org/old',
         group: 'cantRelease',
@@ -392,6 +441,11 @@ describe('CandidateRow', () => {
     expect(r.queryByText('checks passed')).not.toBeInTheDocument()
     expect(r.queryByRole('button')).not.toBeInTheDocument()
     expect(edge(row)).toHaveClass('bg-transparent')
+    expect(row).not.toHaveClass('cursor-pointer')
+
+    await userEvent.click(r.getByText('Archived on GitHub'))
+
+    expect(onRelease).not.toHaveBeenCalled()
   })
 })
 
@@ -415,6 +469,12 @@ describe('MutedRow', () => {
       'Unmute acme-org: GitHub is asked about it again, and its items go back to the inbox’s lists',
     )
     expect(unmute).toBeEnabled()
+    expect(row).not.toHaveClass('cursor-pointer')
+
+    // Unmuting changes the settings, so only its button does it, never the row.
+    await userEvent.click(within(row).getByText('~/projects/quiet'))
+
+    expect(onUnmute).not.toHaveBeenCalled()
 
     await userEvent.click(unmute)
 

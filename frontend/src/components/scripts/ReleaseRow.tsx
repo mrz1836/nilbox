@@ -267,12 +267,22 @@ export interface CandidateRowProps {
   onRelease: () => void
 }
 
+// selectingText reports a click that ends a drag across text, which selects the words
+// rather than acting on the row they're in.
+function selectingText(): boolean {
+  return (window.getSelection()?.toString() ?? '') !== ''
+}
+
 // CandidateRow is one repository on one line: its readiness as an edge, the checks on its
 // newest commit, its name and pin, its newest version, how many commits came since and
 // the bump they suggest, that commit's headline (with ×N when a wave of repositories
 // shares it), what matters about its clone, its age, and Release… where there is
 // something to release. A repository that can't be released here says why in place of
-// its headline, with no checks.
+// its headline, with no checks. A row with Release… opens its sheet from a click anywhere
+// on it, as Release… does: a pointer's shortcut for the button, which the keyboard and a
+// screen reader reach. Nothing covers the row's cells to catch the click, so each keeps
+// its tooltip, and a drag that selects the row's words opens nothing, so they can still
+// be copied.
 export function CandidateRow({ candidate, pinnedWith = '', wave = noWave, onRelease }: CandidateRowProps) {
   const { group, repo, headline, headAt } = candidate
   const canRelease = releasable(group)
@@ -280,7 +290,19 @@ export function CandidateRow({ candidate, pinnedWith = '', wave = noWave, onRele
   const notes = shownNotes(cloneNotes(candidate.clone, candidate.defaultBranch))
 
   return (
-    <li className={rowClass}>
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- the row's click is a pointer's shortcut for its Release… button, which the keyboard and a screen reader reach
+    <li
+      className={canRelease ? `${rowClass} cursor-pointer` : rowClass}
+      onClick={
+        canRelease
+          ? () => {
+              if (!selectingText()) {
+                onRelease()
+              }
+            }
+          : undefined
+      }
+    >
       <span
         aria-hidden="true"
         data-readiness={canRelease ? ready : undefined}
@@ -316,7 +338,16 @@ export function CandidateRow({ candidate, pinnedWith = '', wave = noWave, onRele
       </div>
       {canRelease && (
         <span className={actionClass}>
-          <button type="button" aria-label={`Release ${repo}…`} onClick={onRelease} className={rowButtonClass}>
+          <button
+            type="button"
+            aria-label={`Release ${repo}…`}
+            onClick={(e) => {
+              // The row's own click would open the sheet a second time.
+              e.stopPropagation()
+              onRelease()
+            }}
+            className={rowButtonClass}
+          >
             Release…
           </button>
         </span>

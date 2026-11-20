@@ -4994,6 +4994,13 @@ and under 36rem (`@max-xl`) a row is a five-column grid of its own whose second 
 the version, the headline, the notes, and the age (`metaClass`, `display: contents` while
 they sit in the row's columns). `rowButtonClass` keeps Release… and Unmute quiet, muted words,
 until the row is hovered or holds the focus (`group-hover/row`, `group-focus-within/row`).
+A `CandidateRow` with Release… opens its sheet from a click anywhere on it: the `<li>` takes
+the click itself, a pointer's shortcut for the button, which the keyboard and a screen reader
+reach, rather than the inbox card's stretched button under raised cells, since nearly every
+cell here has a tooltip that would otherwise have to sit above it and stop opening. Release…
+stops its own click there, so the sheet opens once, and a click that ends a text selection
+(`window.getSelection()`) opens nothing. A muted row's click does nothing: Unmute changes the
+settings, so only its button does.
 The pure half is `lib/release.ts`. `cloneNotes` turns a clone's state into `CloneNote`s,
 each its `kind`, the few words the row shows (`text`), whether it `blocks` a release, and
 its tooltip's `title`: uncommitted files, commits not pushed, a detached commit, a tag only
