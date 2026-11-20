@@ -1,7 +1,14 @@
 import { useId, useState, type CSSProperties } from 'react'
 
 import { brand } from '../../generated/brand'
-import { autopilotKinds, bannerStatusText, inboxKinds, sessionBannerHint, sessionKinds } from '../../lib/notifications'
+import {
+  autopilotKinds,
+  bannerStatusText,
+  inboxKinds,
+  sessionBannerHint,
+  sessionKinds,
+  type KindDescription,
+} from '../../lib/notifications'
 import { useMutation } from '../../lib/useMutation'
 import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
@@ -98,6 +105,40 @@ function ToastSecondsRow({ controlId, seconds, onChange, describedBy }: ToastSec
   )
 }
 
+interface BannerSwitchesProps {
+  // kinds are the kinds of notification whose banners the switches turn on and off.
+  kinds: readonly KindDescription[]
+  // id is the section's, which each switch's id starts with.
+  id: string
+  // off lists the kinds whose banners are off.
+  off: readonly NotificationKind[]
+  // describedBy is the id of why the last change was refused, while that shows.
+  describedBy: string | false
+  // onSwitch turns a kind's banners on or off.
+  onSwitch: (kind: NotificationKind, on: boolean) => void
+}
+
+// BannerSwitches is a switch for each kind's banners, on unless the kind is off.
+function BannerSwitches({ kinds, id, off, describedBy, onSwitch }: BannerSwitchesProps) {
+  return (
+    <>
+      {kinds.map(({ kind, label, description }) => (
+        <SwitchRow
+          key={kind}
+          label={label}
+          controlId={`${id}-${kind}`}
+          description={description}
+          checked={!off.includes(kind)}
+          describedBy={describedBy}
+          onChange={(on) => {
+            onSwitch(kind, on)
+          }}
+        />
+      ))}
+    </>
+  )
+}
+
 // NotificationsSection holds the menu bar icon, how long a toast stays, and which kinds of
 // notification show a banner, each saved as soon as it is set, with a test banner and a
 // note when banners cannot show. Autopilot's kinds stand apart, under their own heading,
@@ -169,19 +210,7 @@ export function NotificationsSection({ settings: stored, onSaved }: SectionProps
           <p className="rounded-md border border-warning px-3 py-2 text-xs text-warning">{statusText}</p>
         )}
         <Group>
-          {inboxKinds.map(({ kind, label, description }) => (
-            <SwitchRow
-              key={kind}
-              label={label}
-              controlId={`${id}-${kind}`}
-              description={description}
-              checked={!off.includes(kind)}
-              describedBy={errorId}
-              onChange={(on) => {
-                switchBanner(kind, on)
-              }}
-            />
-          ))}
+          <BannerSwitches kinds={inboxKinds} id={id} off={off} describedBy={errorId} onSwitch={switchBanner} />
           <ChoiceRow
             label="Test"
             description={
@@ -221,19 +250,7 @@ export function NotificationsSection({ settings: stored, onSaved }: SectionProps
             its item, or the Autopilot tab.
           </SectionIntro>
           <Group>
-            {autopilotKinds.map(({ kind, label, description }) => (
-              <SwitchRow
-                key={kind}
-                label={label}
-                controlId={`${id}-${kind}`}
-                description={description}
-                checked={!off.includes(kind)}
-                describedBy={errorId}
-                onChange={(on) => {
-                  switchBanner(kind, on)
-                }}
-              />
-            ))}
+            <BannerSwitches kinds={autopilotKinds} id={id} off={off} describedBy={errorId} onSwitch={switchBanner} />
           </Group>
         </div>
       )}
@@ -243,19 +260,7 @@ export function NotificationsSection({ settings: stored, onSaved }: SectionProps
           one shows its item here. {sessionBannerHint}
         </SectionIntro>
         <Group>
-          {sessionKinds.map(({ kind, label, description }) => (
-            <SwitchRow
-              key={kind}
-              label={label}
-              controlId={`${id}-${kind}`}
-              description={description}
-              checked={!off.includes(kind)}
-              describedBy={errorId}
-              onChange={(on) => {
-                switchBanner(kind, on)
-              }}
-            />
-          ))}
+          <BannerSwitches kinds={sessionKinds} id={id} off={off} describedBy={errorId} onSwitch={switchBanner} />
         </Group>
       </div>
       <ErrorText id={`${id}-error`} error={error} className="-mt-5" />
