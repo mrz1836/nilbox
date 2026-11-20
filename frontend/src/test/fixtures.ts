@@ -14,7 +14,14 @@ import type {
   DescribeStatus,
   DescribeTurn,
   KitChecked,
+  KitCheckedPrompt,
   KitCheckedRoutine,
+  KitCheckedRules,
+  KitCheckedSettings,
+  KitNewPrompt,
+  KitOutcome,
+  KitRoutine,
+  DescribeAttachment,
   AutopilotExplanation,
   AutopilotHold,
   AutopilotImportPreview,
@@ -4438,4 +4445,94 @@ export function kitCheckedRoutine(overrides: Partial<KitCheckedRoutine> = {}): K
 // describePluginState is the plugin not installed in the launch defaults' profile.
 export function describePluginState(overrides: Partial<DescribePluginState> = {}): DescribePluginState {
   return { profile: 'default', default: true, installed: false, version: '', problem: '', ...overrides }
+}
+
+// kitNewPrompt is a new agent prompt for pull requests, Fix it.
+export function kitNewPrompt(overrides: Partial<KitNewPrompt> = {}): KitNewPrompt {
+  return {
+    name: 'Fix the failing checks',
+    nickname: 'Fix it',
+    purpose: 'agent',
+    appliesTo: 'pr',
+    body: 'Fix the failing checks of {{.Repo}} #{{.Number}}.',
+    ...overrides,
+  }
+}
+
+// kitCheckedPrompt is a new prompt, checked: no problem, no risk.
+export function kitCheckedPrompt(overrides: Partial<KitCheckedPrompt> = {}): KitCheckedPrompt {
+  return { index: 0, problems: [], risks: [], prompt: kitNewPrompt(), ...overrides }
+}
+
+// kitRoutine is routine 3 as Claude read it from the setup: Snooze passing bot PRs, on, in
+// Autopilot.
+export function kitRoutine(overrides: Partial<KitRoutine> = {}): KitRoutine {
+  return {
+    id: 3,
+    name: 'Snooze passing bot PRs',
+    description: 'Keeps the bots’ passing updates out of the way.',
+    enabled: true,
+    mode: 'auto',
+    sentence:
+      'When checks pass on pull requests in Review requested, snooze it for 3 days. Once per head commit, at most 2 tries per pull request.',
+    broken: '',
+    spec: routineSpec(),
+    updatedAt: '2026-06-15T08:00:00Z',
+    ...overrides,
+  }
+}
+
+// kitCheckedSettings is a change of Agents at once from 2 to 1, checked.
+export function kitCheckedSettings(overrides: Partial<KitCheckedSettings> = {}): KitCheckedSettings {
+  return {
+    changes: [{ key: 'agentsAtOnce', label: 'Agents at once', before: '2', after: '1' }],
+    problems: [],
+    risks: [],
+    after: { ...settings().autopilot, agentsAtOnce: 1 },
+    ...overrides,
+  }
+}
+
+// kitCheckedRules is trusting renovate[bot] and muting acme-org/legacy, checked.
+export function kitCheckedRules(overrides: Partial<KitCheckedRules> = {}): KitCheckedRules {
+  return {
+    changes: [
+      { kind: 'trust', target: 'renovate[bot]', words: 'Trust renovate[bot]' },
+      { kind: 'mute', target: 'acme-org/legacy', words: 'Mute acme-org/legacy' },
+    ],
+    problems: [],
+    risks: [{ level: 'warning', text: 'Routines that act on trusted bots act on renovate[bot]’s pull requests too.' }],
+    after: {
+      trustedBots: ['dependabot', 'github-actions', 'renovate', 'renovate[bot]'],
+      pinned: [],
+      muted: ['acme-org/legacy'],
+      ignoredWorkflows: [],
+    },
+    ...overrides,
+  }
+}
+
+// kitOutcome is a new routine added from the conversation's first card, switched off.
+export function kitOutcome(overrides: Partial<KitOutcome> = {}): KitOutcome {
+  return {
+    proposal: '20260615T120010Z-9f2c4100ab31',
+    part: 'routine',
+    index: 0,
+    kind: 'added',
+    words: 'Added “Snooze passing bot PRs”, switched off',
+    routineId: 11,
+    at: '2026-06-15T12:01:00Z',
+    ...overrides,
+  }
+}
+
+// describeAttachment is routine 3 attached to a message, as Change with Claude… attaches it.
+export function describeAttachment(overrides: Partial<DescribeAttachment> = {}): DescribeAttachment {
+  return {
+    kind: 'routine',
+    id: 3,
+    label: 'Snooze passing bot PRs',
+    words: 'The routine “Snooze passing bot PRs”.',
+    ...overrides,
+  }
 }
