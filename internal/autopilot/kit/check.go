@@ -172,7 +172,8 @@ func (c *proposalChecker) change(out *CheckedRoutine, rc RoutineChange) autopilo
 		out.Gone = true
 		out.Problems = append(out.Problems, routineProblem("id", fmt.Sprintf(
 			"no routine has the ID %d: leave id out for a new routine, or take a routine's from autopilot_my_setup",
-			rc.ID)))
+			rc.ID,
+		)))
 
 		return c.snap.Setup.Settings.DefaultMode
 	}
@@ -182,7 +183,8 @@ func (c *proposalChecker) change(out *CheckedRoutine, rc RoutineChange) autopilo
 
 	if first, ok := c.changed[rc.ID]; ok {
 		out.Problems = append(out.Problems, routineProblem("id", fmt.Sprintf(
-			"routines[%d] changes this routine already: make every change to it in one", first)))
+			"routines[%d] changes this routine already: make every change to it in one", first,
+		)))
 	} else {
 		c.changed[rc.ID] = out.Index
 	}
@@ -231,7 +233,8 @@ func (c *proposalChecker) newOnly(out *CheckedRoutine, rc RoutineChange) {
 	if rc.Mode != "" && !rc.Mode.Valid() {
 		out.Problems = append(out.Problems, routineProblem("mode", fmt.Sprintf(
 			"say %s, the mode it suggests, which the card shows beside the one it starts in, or leave mode out",
-			orChoices(autopilotprefs.Modes()))))
+			orChoices(autopilotprefs.Modes()),
+		)))
 	}
 
 	if key, err := draft.CheckTemplate(rc.Template); err != nil {

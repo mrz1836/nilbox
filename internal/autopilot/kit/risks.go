@@ -140,7 +140,8 @@ func routineCautions(r CheckedRoutine, proposed string) []Risk {
 
 	if r.NameTaken {
 		risks = append(risks, Risk{Level: RiskCaution, Text: fmt.Sprintf(
-			"Another routine is named %s, so this one is saved as %s.", riskQuote(proposed), riskQuote(r.Name))})
+			"Another routine is named %s, so this one is saved as %s.", riskQuote(proposed), riskQuote(r.Name),
+		)})
 	}
 
 	return risks

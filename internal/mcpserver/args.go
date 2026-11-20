@@ -36,7 +36,8 @@ var errCall = errors.New("the tool mode can't serve this call")
 // proposal file's conversation to it: a UUID, so the folder it names is one of the
 // proposals folder's own.
 var conversationPattern = regexp.MustCompile(
-	`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`,
+)
 
 // Arg returns the tool mode's argument for the describe folder dir.
 func Arg(dir string) string {

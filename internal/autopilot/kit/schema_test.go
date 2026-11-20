@@ -332,7 +332,7 @@ func (v *wordsValidator) list(node map[string]any, list []any, path string) {
 	}
 }
 
-func (v *wordsValidator) object(node map[string]any, obj map[string]any, path string) {
+func (v *wordsValidator) object(node, obj map[string]any, path string) {
 	props, _ := node["properties"].(map[string]any)
 
 	for key, value := range obj {
