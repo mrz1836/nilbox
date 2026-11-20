@@ -38,8 +38,10 @@ type linkTarget struct {
 // branch a pull request heads, and returns why GitHub could not be asked, or "". A record
 // names the item exactly; otherwise the worktree's name, or an item's own branch, gives the
 // kind and number, and the clone's GitHub remotes the repositories it may be in. A worktree
-// with none of these on a pushed branch is linked by that branch (see branchlink.go). One
-// request reads them all, unless there are more than fifty of either.
+// with none of these on a pushed branch is linked by that branch (see branchlink.go), and
+// one whose commits were copied onto a pushed branch by that branch, or by its copy record
+// once that branch is gone (see copyjudge.go), whose pull request the same request reads.
+// One request reads them all, unless there are more than fifty of either.
 //
 // remotes maps each repository's Path to its remotes (remote name to repository), refs to
 // its refs as read for this listing, and recorded holds the live records by their
@@ -54,11 +56,16 @@ func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map
 	targets := linkTargets(repos, remotes, recorded)
 	heads := branchTargets(repos, remotes, refs, namedOf(targets))
 	copied := copyTargets(repos, remotes)
+	vouched := recordTargets(repos, refs)
 	all := slices.Concat(heads, copied)
 	now := s.clock.Now()
 	plan := s.heads.plan(all, now)
 
 	items := plan.refs(uniqueRefs(targets), all)
+	for _, t := range vouched {
+		items = appendRef(items, t.ref)
+	}
+
 	if len(items) == 0 && len(plan.asks) == 0 {
 		return ""
 	}
@@ -84,13 +91,8 @@ func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map
 	prs := s.heads.resolveHeads(all, plan, answer, now)
 	linkHeads(heads, prs, LinkBranch)
 	linkHeads(copied, prs, LinkCopy)
-
-	for _, t := range copied {
-		if pr := prs[t.ask.cacheKey()]; pr != nil {
-			linked := *pr
-			t.wt.copyPR = &linked
-		}
-	}
+	copiedInto(copied, prs)
+	linkRecords(vouched, answer.Items)
 
 	return ""
 }
@@ -276,7 +278,7 @@ func assess(wt *Worktree, sessionsKnown bool) {
 	wt.CanRemove = free && !wt.Dirty && wt.Error == ""
 	wt.CanForceRemove = free && wt.Dirty && sessionsKnown
 
-	wt.OnGitHub = wt.Unpushed == 0 || headIsItemHead(wt)
+	wt.OnGitHub = onGitHubByID(wt) || wt.copies.onGitHub
 	wt.Stage = stageOf(wt)
 	wt.CanCleanUp = wt.Stage == StageFinished
 }
@@ -320,21 +322,44 @@ func lockedStage(wt *Worktree) Stage {
 // request merged, or its issue closed. A worktree the app did not launch a session in
 // counts only when it is linked by commit too, its HEAD being the merged pull request's
 // head, so a name or branch that only looks like an item's is never enough. One linked by
-// the pushed branch it is on counts only when the app or Claude Code made it (Managed),
-// so a worktree the user made by hand is only ever cleaned up by hand.
+// the pushed branch it is on, or by its commits' copies, counts only when the app or Claude
+// Code made it (Managed), so a worktree the user made by hand is only ever cleaned up by
+// hand. One whose work is on GitHub only as copies counts only once its copy record's pull
+// request merged with every copy (copyState.merged), and, linked by those copies, only when
+// that is the pull request it is linked to: never while it is open.
 func autoCleanable(wt Worktree) bool {
 	it := wt.Item
 
 	switch {
-	case !wt.CanCleanUp || it == nil:
+	case !sweepMayTake(wt):
 		return false
-	case wt.LinkedBy == LinkBranch && !wt.Managed:
-		return false
+	case wt.LinkedBy == LinkCopy:
+		return it.Kind == item.KindPR && it.State == ItemMerged && wt.copies.merged && isRecordPR(it, wt.copies.record)
 	case it.Kind == item.KindPR:
 		return it.State == ItemMerged && (it.Launched || it.HeadOID == wt.Head)
 	default:
 		return it.State == ItemClosed && it.Launched
 	}
+}
+
+// sweepMayTake reports a finished worktree with an item that the sweep may look at at all:
+// one linked by a pushed branch or by copies only when the app or Claude Code made it, and
+// one whose work is on GitHub only as copies only once their pull request merged with them.
+func sweepMayTake(wt Worktree) bool {
+	switch {
+	case !wt.CanCleanUp || wt.Item == nil:
+		return false
+	case (wt.LinkedBy == LinkBranch || wt.LinkedBy == LinkCopy) && !wt.Managed:
+		return false
+	default:
+		return onGitHubByID(&wt) || wt.copies.merged
+	}
+}
+
+// isRecordPR reports it as the pull request rec's copies went into.
+func isRecordPR(it *LinkedItem, rec *worklog.Copy) bool {
+	return rec != nil && it.Kind == item.KindPR && it.Number == rec.Number &&
+		repo.Name{Owner: it.Owner, Repo: it.Name}.Key() == repo.Name{Owner: rec.Owner, Repo: rec.Name}.Key()
 }
 
 // itemName names an item for a result, e.g. "acme-org/example-repo#184", or is "".

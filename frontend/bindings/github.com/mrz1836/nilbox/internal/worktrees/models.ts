@@ -179,6 +179,13 @@ export interface Copies {
     "none": number;
 
     /**
+     * Recorded reports that Ref is gone, and what an earlier listing recorded when it was
+     * there vouches for them instead: each had an identical copy on Ref, and the pull
+     * request Ref headed, which GitHub keeps, has those copies. Identical is Count then.
+     */
+    "recorded": boolean;
+
+    /**
      * Unless it is "", Note says in a sentence why they couldn't be compared, or why their
      * identical copies don't count.
      */
@@ -835,7 +842,9 @@ export interface Worktree {
     /**
      * OnGitHub reports that every commit the worktree has is on GitHub: none is missing
      * from the remote-tracking branches and the commit it was made at, or HEAD is its pull
-     * request's head commit, which GitHub keeps.
+     * request's head commit, which GitHub keeps, or the change of each that is has an
+     * identical copy on GitHub (Copies), on a pushed branch or in the pull request it went
+     * into. Unpushed still counts the commits missing by commit ID.
      */
     "onGitHub": boolean;
 

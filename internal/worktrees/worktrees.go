@@ -33,7 +33,10 @@
 // worktree only when its item is merged or closed, it has no uncommitted changes, every
 // commit it has is on GitHub, and no session runs in it. Then they also delete its own
 // worktree-<name> branch, and only while it still points at the commit checked. No other
-// branch is ever deleted, and nothing on GitHub is touched.
+// branch is ever deleted, and nothing on GitHub is touched. A commit is on GitHub by its
+// commit ID, or by an identical copy of its change on a pushed branch (see copies.go); the
+// sweep takes a worktree whose work is on GitHub only as copies, and its own branch may go,
+// only once the pull request the copies went into merged (see copyjudge.go).
 //
 // Every git command runs as an argv `git -C <dir> ...` from a short allowlist, never
 // through a shell. Only create.go fetches and adds worktrees; nothing changes a clone's
@@ -298,7 +301,9 @@ type Worktree struct {
 
 	// OnGitHub reports that every commit the worktree has is on GitHub: none is missing
 	// from the remote-tracking branches and the commit it was made at, or HEAD is its pull
-	// request's head commit, which GitHub keeps.
+	// request's head commit, which GitHub keeps, or the change of each that is has an
+	// identical copy on GitHub (Copies), on a pushed branch or in the pull request it went
+	// into. Unpushed still counts the commits missing by commit ID.
 	OnGitHub bool `json:"onGitHub"`
 
 	// Item is the pull request or issue the worktree was made for, or nil.
@@ -363,11 +368,9 @@ type Worktree struct {
 	// own branch's too. The window never sees it.
 	fetched string
 
-	// copies is what comparing its commits not on GitHub with the pushed branches' found,
-	// which Copies shows, or nil when they weren't compared; copyPR is the pull request the
-	// branch they were fully copied onto heads, or nil. The window sees neither.
-	copies *copyResult
-	copyPR *LinkedItem
+	// copies is what the listing found of the copies of its commits not on GitHub, which
+	// Copies shows (see copyjudge.go). The window never sees it.
+	copies copyState
 }
 
 // rowFiles is how many of a worktree's changed files its row lists (Worktree.Files).

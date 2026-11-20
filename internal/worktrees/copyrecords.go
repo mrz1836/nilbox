@@ -39,19 +39,15 @@ func (s *Service) copyRecords(ctx context.Context) []worklog.Copy {
 	return records
 }
 
-// keepCopies checks every copy record against the worktrees listings listed, then records
-// each worktree of repos fully copied onto a branch whose pull request this listing knows.
-// A record whose clone was listed but has no worktree at its directory, or has one whose
-// directory is gone or whose HEAD isn't the record's, is dropped, and so is one whose clone
-// is gone from a folder that is still there; one whose clone wasn't listed, or couldn't be,
-// is kept as it is. A worktree whose record already says all a new one would is not written
-// again. A failed write only costs a record until the next listing, so it is logged.
-func (s *Service) keepCopies(ctx context.Context, listings []cloneListing, repos []Repo, records []worklog.Copy) {
+// recordCopies records each worktree of repos fully copied onto a branch whose pull request
+// this listing knows, unless its record already says all a new one would, and takes the
+// record it wrote for the worktree's: one whose copies are this listing's covers it, and
+// its pull request is the branch's. A failed write only costs a record until the next
+// listing, so it is logged, and the worktree keeps the record it had.
+func (s *Service) recordCopies(ctx context.Context, repos []Repo) {
 	if s.copyLog == nil {
 		return
 	}
-
-	live := s.liveCopies(ctx, listings, records)
 
 	for repo, wt := range rows(repos) {
 		r, ok := copyRecordOf(repo, wt)
@@ -59,19 +55,25 @@ func (s *Service) keepCopies(ctx context.Context, listings []cloneListing, repos
 			continue
 		}
 
-		if kept, found := live[r.WorktreePath]; found && sameCopy(kept, r) {
-			continue
+		if kept := wt.copies.record; kept == nil || !sameCopy(*kept, r) {
+			if err := s.copyLog.RecordCopy(ctx, r); err != nil {
+				s.logger.WarnContext(ctx, "could not record the pull request a worktree's commits were copied into",
+					"error", err)
+
+				continue
+			}
 		}
 
-		if err := s.copyLog.RecordCopy(ctx, r); err != nil {
-			s.logger.WarnContext(ctx, "could not record the pull request a worktree's commits were copied into",
-				"error", err)
-		}
+		wt.copies.record, wt.copies.covered, wt.copies.recordPR = &r, true, wt.copies.pr
 	}
 }
 
-// liveCopies drops each of records that no longer describes its worktree (copyRecordHolds)
-// and returns the others, by their worktree's resolved directory.
+// liveCopies checks every copy record against the worktrees listings listed, and returns
+// those that may still describe their worktree, by its resolved directory. A record whose
+// clone was listed but has no worktree at its directory, or has one whose directory is gone
+// or whose HEAD isn't the record's, is dropped, and so is one whose clone is gone from a
+// folder that is still there; one whose clone wasn't listed, or couldn't be, is kept as it
+// is (see copyRecordHolds).
 func (s *Service) liveCopies(ctx context.Context, listings []cloneListing, records []worklog.Copy) map[string]worklog.Copy {
 	live := make(map[string]worklog.Copy, len(records))
 
@@ -107,7 +109,7 @@ func copyRecordHolds(listings []cloneListing, r worklog.Copy) bool {
 // copyRecordOf is the copy record of wt, a worktree of repo, when it is fully copied onto a
 // branch whose pull request this listing knows.
 func copyRecordOf(repo *Repo, wt *Worktree) (worklog.Copy, bool) {
-	c, pr := wt.copies, wt.copyPR
+	c, pr := wt.copies.result, wt.copies.pr
 	if !c.full() || pr == nil || pr.Kind != item.KindPR || !gitread.IsCommitID(c.tip) {
 		return worklog.Copy{}, false
 	}

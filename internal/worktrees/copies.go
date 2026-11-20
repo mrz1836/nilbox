@@ -108,15 +108,20 @@ type Copies struct {
 	Edited    int `json:"edited"`
 	None      int `json:"none"`
 
+	// Recorded reports that Ref is gone, and what an earlier listing recorded when it was
+	// there vouches for them instead: each had an identical copy on Ref, and the pull
+	// request Ref headed, which GitHub keeps, has those copies. Identical is Count then.
+	Recorded bool `json:"recorded"`
+
 	// Unless it is "", Note says in a sentence why they couldn't be compared, or why their
 	// identical copies don't count.
 	Note string `json:"note"`
 }
 
 // full reports a worktree each of whose commits that aren't on GitHub has an identical copy
-// on Ref.
+// on Ref, as this listing found.
 func (c Copies) full() bool {
-	return c.Count > 0 && c.Note == "" && c.Ref != "" && c.Identical == c.Count
+	return c.Count > 0 && c.Note == "" && c.Ref != "" && c.Identical == c.Count && !c.Recorded
 }
 
 // commitMark is how one commit compares with the branch compared with: its mark, and its
@@ -161,16 +166,82 @@ type copyEntry struct {
 	result copyResult
 }
 
-// copyCache keeps each worktree's copyResult across listings, by the worktree's resolved
-// directory. It is safe for concurrent use.
+// coverEntry is whether a worktree's copy record covers it, kept with its clone and key.
+type coverEntry struct {
+	clone   string
+	key     coverKey
+	covered bool
+}
+
+// copyCache keeps across listings each worktree's copyResult and whether its copy record
+// covers it, by the worktree's resolved directory, and whether a pull request's head has a
+// record's branch commit (see copyjudge.go). It is safe for concurrent use.
 type copyCache struct {
 	mu      sync.Mutex
 	entries map[string]copyEntry
+	covers  map[string]coverEntry
+	holds   map[holdKey]bool
 }
 
 // newCopyCache returns an empty copyCache.
 func newCopyCache() *copyCache {
-	return &copyCache{entries: map[string]copyEntry{}}
+	return &copyCache{entries: map[string]copyEntry{}, covers: map[string]coverEntry{}, holds: map[holdKey]bool{}}
+}
+
+// coverage returns whether the record of the worktree at path covers it, when that was
+// worked out from key.
+func (c *copyCache) coverage(path string, key coverKey) (covered, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	e, found := c.covers[path]
+
+	return e.covered, found && e.key == key
+}
+
+// keepCoverage keeps whether the record of the worktree at path, of clone, covers it, as
+// worked out from key.
+func (c *copyCache) keepCoverage(clone, path string, key coverKey, covered bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.covers[path] = coverEntry{clone: clone, key: key, covered: covered}
+}
+
+// holdsMax is how many answers of prHolds the cache keeps before it starts over.
+const holdsMax = 4096
+
+// held returns whether a pull request's head has a record's branch commit, as key names
+// them, when that is kept: a yes for good, a no for the remote-tracking branches fp sums up.
+func (c *copyCache) held(key holdKey, fp string) (held, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.holds[key] {
+		return true, true
+	}
+
+	key.refs = fp
+	_, ok = c.holds[key]
+
+	return false, ok
+}
+
+// keepHeld keeps whether a pull request's head has a record's branch commit, as key names
+// them, a no for the remote-tracking branches fp sums up.
+func (c *copyCache) keepHeld(key holdKey, fp string, held bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if len(c.holds) >= holdsMax {
+		clear(c.holds)
+	}
+
+	if !held {
+		key.refs = fp
+	}
+
+	c.holds[key] = held
 }
 
 // lookup returns the result kept for the worktree at path, when it was worked out from key.
@@ -207,6 +278,7 @@ func (c *copyCache) prune(clone string, listed map[string]bool) {
 	defer c.mu.Unlock()
 
 	maps.DeleteFunc(c.entries, func(path string, e copyEntry) bool { return e.clone == clone && !listed[path] })
+	maps.DeleteFunc(c.covers, func(path string, e coverEntry) bool { return e.clone == clone && !listed[path] })
 }
 
 // remotesKey sums up a clone's GitHub remotes, the only ones whose branches it compares
@@ -307,7 +379,7 @@ func (s *Service) detectCloneCopies(ctx context.Context, g git, dir string, wts 
 	compareCopies(ctx, g, dir, remotes, refs, todo)
 
 	for _, w := range todo {
-		w.wt.copies, w.wt.Copies = &w.result, w.result.copies
+		w.wt.copies.result, w.wt.Copies = &w.result, w.result.copies
 
 		if !w.retry && ctx.Err() == nil {
 			s.copies.keep(dir, w.path, w.key, w.result)
@@ -335,7 +407,7 @@ func (s *Service) copiesToCompare(wts []*Worktree, clone copyKey) ([]*copyWork, 
 		// The same key means the same commits not on GitHub, and so the same count; a count
 		// that differs was read amiss, and is compared again.
 		if result, ok := s.copies.lookup(path, key); ok && (result.copies.Count == 0 || result.copies.Count == wt.Unpushed) {
-			wt.copies, wt.Copies = &result, result.copies
+			wt.copies.result, wt.Copies = &result, result.copies
 		} else {
 			todo = append(todo, &copyWork{wt: wt, path: path, key: key})
 		}
@@ -409,9 +481,7 @@ func (w *copyWork) finish(note string) {
 // failure would be the same again for the same key.
 func (w *copyWork) fail(ctx context.Context, err error) {
 	w.finish(compareFailure(err))
-
-	gitErr, ok := errors.AsType[*copyGitError](err)
-	w.retry = ctx.Err() != nil || (ok && !errors.Is(gitErr.err, errGitWarned) && !gitRefused(ctx, gitErr.err))
+	w.retry = retryable(ctx, err)
 }
 
 // readUnpushed reads the commits not on GitHub of the worktrees of todo not yet settled, in

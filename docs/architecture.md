@@ -2256,6 +2256,37 @@ from a folder that is still there; one whose clone wasn't listed, or couldn't be
 Removing a worktree drops its record too. The worklog store stamps a record's
 `created_at` (kept while the HEAD is the same) and `updated_at` with its own clock.
 
+**Copied work counts as on GitHub** (`copyjudge.go`). `OnGitHub` is `Unpushed == 0`, or HEAD
+being the linked pull request's head, or the worktree's copies counting (`copyState`), while
+`Unpushed` keeps the count by commit ID. They count when this listing found every commit not
+on GitHub with an identical copy on one pushed branch of a GitHub remote: on GitHub as that
+branch. Or when that branch is gone and the copy record still holds: it describes the
+worktree (HEAD is the record's); it covers every commit the worktree has that isn't on
+GitHub, each being one whose identical copy the record vouches for or on the record's branch
+commit by ID (`judgeCoverage`: no git when this listing's comparison read those commits and
+all are the record's, else one `log` per record branch commit, `copyUnpushedArgs` with that
+commit after `--remotes` and `--ignore-missing`, kept in memory by the worktree's HEAD, the
+remote-tracking branches, and the record; this is what keeps the commits a worktree started
+from on a branch since squash-merged covered, while a commit of another branch deleted
+unmerged is never vouched for); the record's pull request was read in this listing's request
+(asked by number, with the items, only for a covering record); and that pull request's head
+is the record's `copy_tip` or has it (`prHolds`: `merge-base --is-ancestor`, which a commit
+the clone lacks fails; a yes kept for good, a no while the remote-tracking branches are the
+same). `Copies.Recorded` says so then, with `Identical` at `Count`, and a worktree nothing
+else links is linked to that pull request (`LinkCopy`). A branch that is still there but no
+longer holds the copies (force-pushed) makes them count for nothing; a record that covers
+less than the worktree holds links nothing. `stageOf` is unchanged: a merged or closed item,
+on GitHub, and clean is finished. The record's pull request merging with every copy
+(`copyState.merged`: the record holds, and its merged pull request's head has `copy_tip`) is
+what the cleanup waits for: `autoCleanable` takes a worktree whose work is on GitHub only as
+copies only then, and one linked by its copies only when that is the pull request it is
+linked to, and only when the app or Claude Code made it; never while the pull request is
+open, and never by a branch's name. Its own branch, and a pull request's branch it has
+checked out, are deletable then too (`headSafety`), still subject to the protected patterns,
+a remote's default branch, and the conditional `update-ref -d`; while the pull request is
+open, their reason says the commits are on GitHub only as copies in a pull request that
+hasn't merged with them.
+
 The rest of what a worktree's drawer shows comes from `Details(repoPath, path)`, which the
 window calls when the drawer first opens. It first checks the request as the removals do
 (`checkedGit`, then `entryOf`, which lists the clone's worktrees, then `ErrPrunable` for a

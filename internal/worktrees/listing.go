@@ -227,8 +227,10 @@ func (s *Service) assessClones(ctx context.Context, g git, roots localrepos.Root
 	snap := s.snapshot(roots, listed)
 	refs := s.readAllRefs(ctx, g, snap.Repos)
 	s.detectCopies(ctx, g, snap.Repos, remotes, refs)
+	s.judgeCoverage(ctx, g, snap.Repos, remotes, refs, s.liveCopies(ctx, listings, copied))
 	snap.LinkError = s.link(ctx, snap.Repos, remotes, refs, recorded, tracker)
-	s.keepCopies(ctx, listings, snap.Repos, copied)
+	s.recordCopies(ctx, snap.Repos)
+	s.judgeCopied(ctx, g, snap.Repos, refs)
 	s.adopt(ctx, snap.Repos, recorded)
 	markSessions(snap.Repos, running, s.agentProcesses(ctx), s.runSessions(ctx))
 	snap.SessionsUnknown = !known

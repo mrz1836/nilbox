@@ -225,11 +225,11 @@ func (s *Service) copyMarks(ctx context.Context, g git, dir string, e Entry, fet
 	wt := &Worktree{Path: e.Path, Head: e.HEAD, Unpushed: count, fetched: fetched}
 	s.detectCloneCopies(ctx, g, dir, []*Worktree{wt}, clone.Remotes, refs, false)
 
-	if wt.copies == nil {
+	if wt.copies.result == nil {
 		return nil
 	}
 
-	return wt.copies.marks
+	return wt.copies.result.marks
 }
 
 // detailBase reads origin's default branch in the clone at dir, as it last fetched it, and

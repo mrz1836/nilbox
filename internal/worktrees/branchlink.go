@@ -319,17 +319,28 @@ func copyTargets(repos []Repo, remotes map[string]map[string]repo.Name) []headTa
 	var out []headTarget
 
 	for r, wt := range rows(repos) {
-		if !wt.copies.full() {
+		if !wt.copies.result.full() {
 			continue
 		}
 
-		remote, branch, ok := trackingOf(wt.copies.ref)
+		remote, branch, ok := trackingOf(wt.copies.result.ref)
 		if target, onGitHub := remotes[r.Path][remote]; ok && onGitHub {
-			out = append(out, headTarget{wt: wt, ask: headAsk{repo: target, branch: branch, tip: wt.copies.tip}})
+			out = append(out, headTarget{wt: wt, ask: headAsk{repo: target, branch: branch, tip: wt.copies.result.tip}})
 		}
 	}
 
 	return out
+}
+
+// copiedInto keeps, for each of targets, worktrees fully copied onto a pushed branch, the
+// pull request that branch heads, from prs, which resolveHeads returned, whatever links it.
+func copiedInto(targets []headTarget, prs map[headKey]*LinkedItem) {
+	for _, t := range targets {
+		if pr := prs[t.ask.cacheKey()]; pr != nil {
+			linked := *pr
+			t.wt.copies.pr = &linked
+		}
+	}
 }
 
 // branchAsk works out the pushed branch a linked worktree on a local branch may be linked
