@@ -496,6 +496,12 @@ func dataReset(ctx context.Context, reset *store.Reset, home string, logger *slo
 // what happened at startup, which the window is told, and holds the stores whose data is
 // kept outside the database, with their copies.
 func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Core {
+	// Describe it's worker hears, through every service's events, each change of what its
+	// snapshot holds: the routines, Autopilot's settings, the rules, and the inbox. It is
+	// built last, once what it reads is, and the waker tells it from then on.
+	describe := &describeWaker{}
+	opts.Events = describeOnChanges{sink: opts.Events, changed: describe}
+
 	shellEnv := shellenv.New(shellenv.Config{Start: opts.ShellStarter, Home: opts.Home, Logger: logger})
 	search := execpath.Search{Home: opts.Home}
 
@@ -975,8 +981,11 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	c.ShellSettings = newShellSettings(prefs, c.Setup, pool, opts.Clock)
 
 	// Describe it reads the setup and the inbox through the services above, so it is built
-	// once they are.
-	c.DescribeIt, c.DescribeItWorker = newDescribeIt(opts, logger)
+	// once they are: Claude Code as readiness checks it, the routines, the update engine's
+	// word on where the app runs, and the waker its worker hears the app's changes through.
+	c.DescribeIt, c.DescribeItWorker = newDescribeIt(ctx, opts, describeItDeps{
+		agents: agents, ready: readiness, routines: routines, updates: updateEngine, waker: describe,
+	}, logger)
 
 	return c
 }
