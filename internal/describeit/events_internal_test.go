@@ -41,6 +41,27 @@ func TestEventsReadAnEndedTurnsStreamAgain(t *testing.T) {
 	assert.NotNil(t, page.Progress.Todos)
 }
 
+func TestEventsOfATurnGettingReadyAreNoneYetAndNotDone(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	id := r.newConversation()
+
+	// The turn as Send leaves it while its agent starts: kept as running, with no stream yet.
+	r.svc.mu.Lock()
+	rec := r.svc.currentLocked()
+	rec.Turns = append(rec.Turns, turnRecord{N: 1, State: TurnRunning, StartedAt: testNow, Proposals: []string{}})
+	r.svc.live = &liveTurn{rec: rec, n: 1, log: r.svc.turnLog(id, 1), done: make(chan struct{})}
+	r.svc.mu.Unlock()
+
+	page, err := r.svc.Events(t.Context(), id, 1, 0)
+	require.NoError(t, err)
+	assert.False(t, page.Done, "a turn whose agent is starting hasn't ended: the window asks again")
+	assert.NotNil(t, page.Events)
+	assert.Empty(t, page.Events)
+	assert.NotNil(t, page.Progress.Todos)
+}
+
 func TestEventsOfATurnThatIsntThereAreRefused(t *testing.T) {
 	t.Parallel()
 

@@ -14,17 +14,23 @@ import (
 // after: what the agent said and each tool it used, read from the turn's stream, a page at
 // a time, as a background run's are (autopilot.Service.RunEvents).
 //
-// While the turn runs, they come from its follower's parser; once it has ended, its stream
-// is read again whole by a parser of its own, which numbers its events as the follower's
-// did, so the window asks on after the last it has across the turn's end.
+// While the turn runs, they come from its follower's parser, and a turn still getting
+// ready, whose agent hasn't started, has none yet; neither is done. Once it has ended, its
+// stream is read again whole by a parser of its own, which numbers its events as the
+// follower's did, so the window asks on after the last it has across the turn's end.
 func (s *Service) Events(_ context.Context, id string, turn int, after int64) (runevent.Page, error) {
 	s.mu.Lock()
 
-	lt := s.live
-	if lt != nil && lt.rec != nil && lt.rec.ID == id && lt.n == turn && lt.parser != nil {
+	if lt := s.live; lt != nil && lt.rec != nil && lt.rec.ID == id && lt.n == turn {
+		parser := lt.parser
+
 		s.mu.Unlock()
 
-		return listedPage(lt.parser.Page(after)), nil
+		if parser == nil {
+			return emptyPage(), nil
+		}
+
+		return listedPage(parser.Page(after)), nil
 	}
 
 	known := s.knownTurnLocked(id, turn)
