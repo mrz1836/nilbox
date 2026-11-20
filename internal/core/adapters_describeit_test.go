@@ -16,12 +16,14 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/describeit"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/shellenv"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -420,6 +422,85 @@ func TestTheWakerTellsDescribeItsWorkerOnceItIsBuilt(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("a burst of changes blocked")
 	}
+}
+
+func TestDescribeItIsBuiltOverEveryPartItReachesTheAppThrough(t *testing.T) {
+	t.Parallel()
+
+	deps := describeItDeps{
+		agents: agentDeps{
+			prompts: new(prompts.Store), profiles: new(profiles.Store), settings: new(settings.Service),
+			inbox: new(inbox.Store),
+		},
+		ready: new(readyChecks), routines: new(autopilot.Service),
+		updates: fixedStatus{st: update.Status{Flavor: update.FlavorRelease, Location: update.Location{OK: true}}},
+	}
+	opts := Options{Paths: appdata.NewPaths(t.TempDir()), Clock: testutil.NewClock(time.Now()), Events: &eventLog{}}
+	cfg := describeItConfig(t.Context(), opts, deps, nil)
+
+	assert.Equal(t, opts.Paths.Describe, cfg.Dir)
+	require.NotNil(t, cfg.Executable)
+	assert.Equal(t, ownExecutable(), cfg.Executable(), "the app's own program, which the tool mode runs")
+	require.NotNil(t, cfg.Stable)
+	assert.True(t, cfg.Stable(), "as the update engine finds where the app runs")
+	assert.Same(t, opts.Clock, cfg.Clock)
+	assert.Same(t, opts.Events, cfg.Sink)
+
+	agents, ok := cfg.Agents.(describeAgents)
+	require.True(t, ok, "Claude Code as readiness finds it")
+	assert.Same(t, deps.ready, agents.checks)
+	assert.Same(t, deps.agents.settings, agents.deps.settings)
+
+	setup, ok := cfg.Setup.(describeSetup)
+	require.True(t, ok, "the setup and the inbox, as one snapshot")
+	assert.Same(t, deps.routines, setup.routines)
+	assert.Same(t, deps.agents.prompts, setup.prompts)
+	assert.Same(t, deps.agents.profiles, setup.profiles)
+	assert.Same(t, deps.agents.settings, setup.settings)
+	assert.Same(t, deps.agents.inbox, setup.inbox)
+
+	attachments, ok := cfg.Attachments.(describeAttachments)
+	require.True(t, ok, "a routine or an item, worded")
+	assert.Same(t, deps.routines, attachments.routines)
+	assert.Same(t, deps.agents.inbox, attachments.inbox)
+}
+
+func TestDescribeItsWorkerHearsWhatTheAppChanges(t *testing.T) {
+	t.Parallel()
+
+	opts := testOptions(t, ".claude")
+	c := bootstrap(t, opts)
+	snapshot := filepath.Join(opts.Paths.Describe, "context.json")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		c.DescribeItWorker.Run(ctx)
+	}()
+
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(snapshot)
+
+		return err == nil
+	}, 10*time.Second, 20*time.Millisecond, "the worker writes the snapshot as it starts")
+
+	// A routine saved through Autopilot, whose event passes through the one sink every
+	// service is given.
+	boundRoutine(t.Context(), t, c, "Tell me when checks fail")
+
+	require.Eventually(t, func() bool {
+		data, err := os.ReadFile(snapshot) //nolint:gosec // the test's own data folder
+
+		return err == nil && strings.Contains(string(data), "Tell me when checks fail")
+	}, 10*time.Second, 20*time.Millisecond, "the worker hears the change and writes the snapshot again")
 }
 
 // fixedStatus is an update engine's status, as read.

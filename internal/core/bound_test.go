@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"maps"
+	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -15,14 +16,17 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/kit"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/avatars"
 	"github.com/mrz1836/nilbox/internal/backup"
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/describeit"
 	"github.com/mrz1836/nilbox/internal/ghthreads"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/hooks"
@@ -745,6 +749,22 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 		"autopilot.Service.Catalog": func(context.Context, *Core, seededItems) (any, error) {
 			return (&autopilot.Service{}).Catalog(), nil
 		},
+		"describeit.Service.Conversation": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.DescribeIt.Conversation(ctx)
+		},
+		"describeit.Service.NewConversation": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.DescribeIt.NewConversation(ctx, describeit.AgentChoice{})
+		},
+		"describeit.Service.Proposals": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			cards, err := c.DescribeIt.Proposals(ctx)
+			require.Len(t, cards, 1, "the seeded proposal from the user's own Claude Code, every list of its card")
+
+			return cards, err
+		},
+		"describeit.Service.Plugins": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			// Each of Claude Code's profiles, saying why its state can't be read here.
+			return c.DescribeIt.Plugins(ctx)
+		},
 		"autopilot.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			boundRoutine(ctx, t, c, "Bound list")
 
@@ -963,65 +983,61 @@ func boundBundle(ctx context.Context, t *testing.T, c *Core, name string) string
 // boundCalls does not call, each with why: they need GitHub, a clone, or a terminal, which
 // the tests do not have. Their results come from the same code as a method that is called.
 func unreachedBound() map[string]string {
-	// Describe it's methods refuse while the service is a skeleton: each moves to boundCalls
-	// as it is built.
-	const describeIt = "Describe it's skeleton refuses; it moves to boundCalls as it is built"
-
 	return map[string]string{
-		"describeit.Service.Conversation":    describeIt,
-		"describeit.Service.NewConversation": describeIt,
-		"describeit.Service.Send":            describeIt,
-		"describeit.Service.Events":          describeIt,
-		"describeit.Service.Proposals":       describeIt,
-		"describeit.Service.Plugins":         describeIt,
-		"describeit.Service.InstallPlugin":   describeIt,
-		"describeit.Service.RemovePlugin":    describeIt,
-		"integrations.Service.CheckAgain":    "reads the user's login shell and GitHub; its result is built as List's",
-		"integrations.Service.Install":       "downloads from GitHub; its tools are built as List's",
-		"integrations.Service.Update":        "runs a tool's own updater or downloads from GitHub; its tools are built as List's",
-		"integrations.Service.Reinstall":     "downloads from GitHub; its tools are built as List's",
-		"integrations.Service.Trash":         "moves a copy of a tool through Finder; its result is built as List's",
-		"autopilot.Service.Approve":          "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
-		"autopilot.Service.ApproveBacklog":   "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
-		"autopilot.Service.SkipBacklog":      "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
-		"autopilot.Service.PostAsComment":    "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
-		"autopilot.Service.TryAgain":         "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
-		"autopilot.Service.Skip":             "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
-		"autopilot.Service.RunNow":           "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
-		"autopilot.Service.RunOnMatches":     "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
-		"autopilot.Service.Undo":             "applied by the engine's loop, which runs as deferred work; its result starts its lists empty",
-		"autopilot.Service.PreviewRun":       "plans a launch in a stored item's clone, which the tests do not have; nonNilPreview fills its lists",
-		"inbox.Service.Refresh":              "reads GitHub; its snapshot is built as Snapshot's",
-		"inbox.Service.RefreshItem":          "reads GitHub; its snapshot is built as Snapshot's",
-		"inbox.Service.Unassign":             "edits GitHub; its snapshot is built as Snapshot's",
-		"inbox.Service.RemoveReviewRequest":  "edits GitHub; its snapshot is built as Snapshot's",
-		"inbox.Service.Nudge":                "edits GitHub; its snapshot is built as Snapshot's",
-		"inbox.Service.CheckFiles":           "reads GitHub; nil for an item whose files are not checked",
-		"inbox.Service.StoredFiles":          "nil for an item whose files are not checked",
-		"launcher.Service.Preview":           "needs a clone; its resolution is built as Resolve's",
-		"launcher.Service.LinkClone":         "needs a clone's remotes; its location is built as settings' PreviewCloneLocation's",
-		"launcher.Service.Launch":            "opens a terminal",
-		"launcher.Service.Resume":            "opens a terminal",
-		"launcher.Service.TakeOver":          "stops a background run and opens a terminal; its result is Resume's",
-		"worktrees.Service.Remove":           "needs a worktree to remove; its result starts its lists empty, as RemoveAllClean's",
-		"worktrees.Service.ForceRemove":      "needs a dirty worktree; its result is built as Remove's",
-		"worktrees.Service.CleanUp":          "reads GitHub; its result is built as CleanUpFinished's",
-		"worktrees.Service.MergedBranches":   "reads GitHub; it starts its list empty, as DeleteBranches does",
-		"review.Service.Refresh":             "reads GitHub; its review is built as Open's",
-		"review.Service.ReadAgain":           "reads GitHub; its review is built as Open's",
-		"review.Service.Act":                 "edits GitHub; its steps start empty",
-		"review.Service.LearnReviewers":      "reads GitHub; its result is built as ReviewerCandidates'",
-		"review.Service.LearnAssignees":      "reads GitHub; its result is built as AssigneeCandidates'",
-		"issues.Service.LearnAssignees":      "reads GitHub; its result is built as AssigneeCandidates'",
-		"issues.Service.Refresh":             "reads GitHub; its issue is built as Open's",
-		"issues.Service.ReadAgain":           "reads GitHub; its issue is built as Open's",
-		"issues.Service.Earlier":             "reads GitHub; its items are converted as Open's",
-		"review.Service.Earlier":             "reads GitHub; its items are converted as Open's",
-		"issues.Service.Act":                 "edits GitHub; its steps start empty",
-		"issues.Service.Labels":              "reads GitHub; its labels start empty, and an error returns them empty",
-		"release.Service.Candidates":         "scans the clone root and reads GitHub; its lists start empty",
-		"release.Service.Prepare":            "needs a clone of a GitHub repository; Decide starts every list empty",
-		"hooks.Service.InstallAll":           "needs go-pre-commit; its lines start empty",
+		"describeit.Service.Send": "starts a turn of Claude Code, which the tests do not have; its conversation is " +
+			"built as Conversation's",
+		"describeit.Service.Events": "reads a turn's stream, and only Send, which starts Claude Code, makes a turn; " +
+			"its page's lists are filled as an ended turn's are",
+		"describeit.Service.InstallPlugin": "runs Claude Code's plugin install, which the tests do not have, from an " +
+			"app in a stable place; its states are Plugins'",
+		"describeit.Service.RemovePlugin": "runs Claude Code's plugin commands, which the tests do not have; its " +
+			"states are Plugins'",
+		"integrations.Service.CheckAgain":   "reads the user's login shell and GitHub; its result is built as List's",
+		"integrations.Service.Install":      "downloads from GitHub; its tools are built as List's",
+		"integrations.Service.Update":       "runs a tool's own updater or downloads from GitHub; its tools are built as List's",
+		"integrations.Service.Reinstall":    "downloads from GitHub; its tools are built as List's",
+		"integrations.Service.Trash":        "moves a copy of a tool through Finder; its result is built as List's",
+		"autopilot.Service.Approve":         "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
+		"autopilot.Service.ApproveBacklog":  "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
+		"autopilot.Service.SkipBacklog":     "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
+		"autopilot.Service.PostAsComment":   "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
+		"autopilot.Service.TryAgain":        "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
+		"autopilot.Service.Skip":            "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
+		"autopilot.Service.RunNow":          "applied by the engine's loop, which runs as deferred work; its match is built as Activity's",
+		"autopilot.Service.RunOnMatches":    "applied by the engine's loop, which runs as deferred work; its matches are built as Activity's",
+		"autopilot.Service.Undo":            "applied by the engine's loop, which runs as deferred work; its result starts its lists empty",
+		"autopilot.Service.PreviewRun":      "plans a launch in a stored item's clone, which the tests do not have; nonNilPreview fills its lists",
+		"inbox.Service.Refresh":             "reads GitHub; its snapshot is built as Snapshot's",
+		"inbox.Service.RefreshItem":         "reads GitHub; its snapshot is built as Snapshot's",
+		"inbox.Service.Unassign":            "edits GitHub; its snapshot is built as Snapshot's",
+		"inbox.Service.RemoveReviewRequest": "edits GitHub; its snapshot is built as Snapshot's",
+		"inbox.Service.Nudge":               "edits GitHub; its snapshot is built as Snapshot's",
+		"inbox.Service.CheckFiles":          "reads GitHub; nil for an item whose files are not checked",
+		"inbox.Service.StoredFiles":         "nil for an item whose files are not checked",
+		"launcher.Service.Preview":          "needs a clone; its resolution is built as Resolve's",
+		"launcher.Service.LinkClone":        "needs a clone's remotes; its location is built as settings' PreviewCloneLocation's",
+		"launcher.Service.Launch":           "opens a terminal",
+		"launcher.Service.Resume":           "opens a terminal",
+		"launcher.Service.TakeOver":         "stops a background run and opens a terminal; its result is Resume's",
+		"worktrees.Service.Remove":          "needs a worktree to remove; its result starts its lists empty, as RemoveAllClean's",
+		"worktrees.Service.ForceRemove":     "needs a dirty worktree; its result is built as Remove's",
+		"worktrees.Service.CleanUp":         "reads GitHub; its result is built as CleanUpFinished's",
+		"worktrees.Service.MergedBranches":  "reads GitHub; it starts its list empty, as DeleteBranches does",
+		"review.Service.Refresh":            "reads GitHub; its review is built as Open's",
+		"review.Service.ReadAgain":          "reads GitHub; its review is built as Open's",
+		"review.Service.Act":                "edits GitHub; its steps start empty",
+		"review.Service.LearnReviewers":     "reads GitHub; its result is built as ReviewerCandidates'",
+		"review.Service.LearnAssignees":     "reads GitHub; its result is built as AssigneeCandidates'",
+		"issues.Service.LearnAssignees":     "reads GitHub; its result is built as AssigneeCandidates'",
+		"issues.Service.Refresh":            "reads GitHub; its issue is built as Open's",
+		"issues.Service.ReadAgain":          "reads GitHub; its issue is built as Open's",
+		"issues.Service.Earlier":            "reads GitHub; its items are converted as Open's",
+		"review.Service.Earlier":            "reads GitHub; its items are converted as Open's",
+		"issues.Service.Act":                "edits GitHub; its steps start empty",
+		"issues.Service.Labels":             "reads GitHub; its labels start empty, and an error returns them empty",
+		"release.Service.Candidates":        "scans the clone root and reads GitHub; its lists start empty",
+		"release.Service.Prepare":           "needs a clone of a GitHub repository; Decide starts every list empty",
+		"hooks.Service.InstallAll":          "needs go-pre-commit; its lines start empty",
 	}
 }
 
@@ -1201,7 +1217,36 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 		now, now, now, now)
 	require.NoError(t, err)
 
+	seedOutsideProposal(t, opts.Paths.Describe, now)
+
 	return c, seededItems{item: ids[0], stuck: ids[1]}
+}
+
+// seedOutsideProposal writes a proposal from the user's own Claude Code into Describe it's
+// folder at describe, made at now, with every part a card shows: a new prompt, a routine,
+// a settings change, and a rules change.
+func seedOutsideProposal(t *testing.T, describe string, now time.Time) {
+	t.Helper()
+
+	one := 1
+	data, err := kit.EncodeProposalFile(kit.ProposalFile{
+		ID: "20261120T053103Z-9f2c4100ab31", At: now, SnapshotAt: now, Where: boundRepo,
+		Proposal: kit.Proposal{
+			Summary: "Tells you when your checks fail, and runs one agent at a time.",
+			Prompts: []kit.NewPrompt{{
+				Name: "Explain a failure", Nickname: "Explain", Purpose: kit.PurposeAgent, AppliesTo: kit.AppliesToPR,
+				Body: "Explain why the checks failed.",
+			}},
+			Routines: []kit.RoutineChange{{Name: "Tell me", Spec: boundSpec()}},
+			Settings: &kit.SettingsChange{AgentsAtOnce: &one},
+			Rules:    &kit.RulesChange{Trust: []string{"renovate"}},
+		},
+	})
+	require.NoError(t, err)
+
+	dir := filepath.Join(describe, "proposals", "outside")
+	require.NoError(t, os.MkdirAll(dir, appdata.PrivateDirPerm))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "20261120T053103Z-9f2c4100ab31.json"), data, appdata.PrivateFilePerm))
 }
 
 func TestBoundResultsHoldNoNullLists(t *testing.T) {

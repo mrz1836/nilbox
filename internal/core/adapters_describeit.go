@@ -60,7 +60,21 @@ type describeItDeps struct {
 // app runs is asked under it, uncanceled, for as long as the app runs.
 func newDescribeIt(ctx context.Context, opts Options, deps describeItDeps, logger *slog.Logger,
 ) (*describeit.Service, *describeit.Worker) {
-	svc := describeit.New(describeit.Config{
+	svc := describeit.New(describeItConfig(ctx, opts, deps, logger))
+
+	worker := describeit.NewWorker(svc)
+	if deps.waker != nil {
+		deps.waker.worker.Store(worker)
+	}
+
+	return svc, worker
+}
+
+// describeItConfig is what Describe it is built with: its folder, the app's own executable,
+// whether the app runs from a stable place, and the adapters it reaches the rest of the app
+// through, over deps.
+func describeItConfig(ctx context.Context, opts Options, deps describeItDeps, logger *slog.Logger) describeit.Config {
+	return describeit.Config{
 		Dir: opts.Paths.Describe, Executable: ownExecutable, Stable: stableApp(context.WithoutCancel(ctx), deps.updates),
 		Agents: describeAgents{deps: deps.agents, checks: deps.ready},
 		Setup: describeSetup{
@@ -69,14 +83,7 @@ func newDescribeIt(ctx context.Context, opts Options, deps describeItDeps, logge
 		},
 		Attachments: describeAttachments{routines: deps.routines, inbox: deps.agents.inbox, clock: opts.Clock},
 		Clock:       opts.Clock, Sink: event.Or(opts.Events), Logger: logger,
-	})
-
-	worker := describeit.NewWorker(svc)
-	if deps.waker != nil {
-		deps.waker.worker.Store(worker)
 	}
-
-	return svc, worker
 }
 
 // describeWaker tells Describe it's worker that what its snapshot holds may have changed,

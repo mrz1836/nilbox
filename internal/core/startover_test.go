@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -178,7 +179,7 @@ func TestStartingOverForgetsDescribeItsConversationsAndKeepsItsPlugin(t *testing
 	}
 
 	require.NoError(t, appdata.RequestReset(opts.Paths.ResetRequest, appdata.ResetBySettings, askedAt()))
-	bootstrap(t, opts)
+	c := bootstrap(t, opts)
 
 	assert.NoDirExists(t, filepath.Join(opts.Paths.Describe, "conversations"), "they name routines that are gone")
 	assert.NoDirExists(t, filepath.Join(opts.Paths.Describe, "proposals"))
@@ -191,6 +192,16 @@ func TestStartingOverForgetsDescribeItsConversationsAndKeepsItsPlugin(t *testing
 	require.NoError(t, err, "the plugin's link stays")
 	assert.Equal(t, target, got)
 	assert.FileExists(t, target, "and what it points at is never touched")
+
+	// Describe it's worker makes its folders again first thing as it starts, so the user's
+	// own Claude Code, whose tool mode writes only into a folder the app made, can propose
+	// again at once.
+	quit, cancel := context.WithCancel(t.Context())
+	cancel()
+	c.DescribeItWorker.Run(quit)
+
+	assert.DirExists(t, filepath.Join(opts.Paths.Describe, "proposals", "outside"))
+	assert.DirExists(t, filepath.Join(opts.Paths.Describe, "conversations"))
 }
 
 func TestStartingOverSaysWhatOfDescribeItItCouldntForget(t *testing.T) {
