@@ -1,0 +1,66 @@
+# The files a conversation's turn reads from its folder, then those of the plugin for the user's
+# own Claude Code, from its marketplace's folder. Rewrite with
+# go test ./internal/agent -run TestTheConversationsFiles -update
+
+mcp.json:
+{
+  "mcpServers": {
+    "app": {
+      "type": "stdio",
+      "command": "/Applications/App.app/Contents/MacOS/App",
+      "args": [
+        "--app-tools=/Users/example/Library/Application Support/App/describe",
+        "--app-conversation=00000000-0000-4000-8000-000000000001"
+      ]
+    }
+  }
+}
+
+.claude-plugin/marketplace.json:
+{
+  "name": "app-local",
+  "owner": {
+    "name": "App"
+  },
+  "description": "Propose Autopilot routines, prompts, and settings for the app to review.",
+  "plugins": [
+    {
+      "name": "app",
+      "source": "./app",
+      "description": "Propose Autopilot routines, prompts, and settings for the app to review.",
+      "version": "1.0.0"
+    }
+  ]
+}
+
+app/.claude-plugin/plugin.json:
+{
+  "name": "app",
+  "version": "1.0.0",
+  "description": "Propose Autopilot routines, prompts, and settings for the app to review.",
+  "author": {
+    "name": "App"
+  }
+}
+
+app/skills/describe/SKILL.md:
+---
+name: "describe"
+description: "Use when the user wants an Autopilot routine: describe it, check it, and propose it."
+---
+
+# Describe it
+
+Propose every change with autopilot_propose; the user reviews each one.
+
+app/.mcp.json:
+{
+  "mcpServers": {
+    "autopilot": {
+      "command": "/Users/example/Library/Application Support/App/describe/bin/app-mcp",
+      "args": [
+        "--app-tools=/Users/example/Library/Application Support/App/describe"
+      ]
+    }
+  }
+}

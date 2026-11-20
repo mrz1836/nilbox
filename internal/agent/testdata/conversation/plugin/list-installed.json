@@ -1,0 +1,22 @@
+[
+  {
+    "id": "nilbox@nilbox-local",
+    "version": "0.0.1",
+    "scope": "user",
+    "enabled": true,
+    "installPath": "/home/user/.claude/plugins/cache/nilbox-local/nilbox/0.0.1",
+    "readFromFolder": "/data/describe/plugin",
+    "folderVersion": "0.0.1",
+    "installedAt": "2026-01-01T00:00:00.000Z",
+    "lastUpdated": "2026-01-01T00:00:00.000Z",
+    "mcpServers": {
+      "autopilot": {
+        "command": "/data/describe/bin/nilbox-mcp",
+        "args": [
+          "--mcp-server-v1=/data/describe"
+        ]
+      }
+    },
+    "projectEnabled": false
+  }
+]

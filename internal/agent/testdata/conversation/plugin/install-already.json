@@ -1,0 +1,1 @@
+{"command":"install","outcome":"ok","plugin":"nilbox@nilbox-local","pluginId":"nilbox@nilbox-local","scope":"user","message":"Plugin \"nilbox@nilbox-local\" is already installed (scope: user) — it loads in place from /data/describe/plugin, so edits there take effect at the next session start or /reload-plugins","installedVersion":"0.0.2","availableVersion":"0.0.2"}
