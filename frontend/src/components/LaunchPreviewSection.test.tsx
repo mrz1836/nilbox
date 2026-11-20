@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { WorktreePlan } from '../platform'
-import { worktreeLine } from './LaunchPreviewSection'
+import { PlannedLaunch, worktreeLine, type Plan } from './LaunchPreviewSection'
+
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 // plan is the worktree a launch on pull request #7 plans, made from its head.
 function plan(overrides: Partial<WorktreePlan> = {}): WorktreePlan {
@@ -38,5 +41,32 @@ describe('worktreeLine', () => {
     expect(worktreeLine(plan({ action: 'adopt', dirty: 3 }))).toBe(
       'Takes over ~/projects/.app/worktrees/example-repo/pr-7 · 3 uncommitted files',
     )
+  })
+})
+
+describe('PlannedLaunch', () => {
+  // planned is a launch planned in ~/projects/example-repo, opening in terminal.
+  function planned(terminal: string): Plan {
+    return {
+      prompt: 'Review the pull request',
+      worktree: null,
+      dir: '~/projects/example-repo',
+      permission: 'plan mode',
+      env: [],
+      command: 'claude',
+      terminal,
+    }
+  }
+
+  it('names the terminal a launch opens in by its app, or as the plan names one it doesn’t know', () => {
+    const { rerender } = render(<PlannedLaunch plan={planned('iterm2')} />)
+
+    expect(screen.getByText(/plan mode · opens in iTerm2$/)).toBeInTheDocument()
+
+    rerender(<PlannedLaunch plan={planned('ghostty')} />)
+    expect(screen.getByText(/plan mode · opens in ghostty$/)).toBeInTheDocument()
+
+    rerender(<PlannedLaunch plan={planned('')} />)
+    expect(screen.queryByText(/opens in/)).not.toBeInTheDocument()
   })
 })
