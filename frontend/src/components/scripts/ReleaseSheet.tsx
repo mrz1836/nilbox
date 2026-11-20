@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useId, useState } from 'react'
+import { useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
 import { counted } from '../../lib/format'
@@ -8,10 +8,10 @@ import { isLive } from '../../lib/scriptRuns'
 import { terminalLabel } from '../../lib/terminals'
 import { formatAgo } from '../../lib/time'
 import { useMutation } from '../../lib/useMutation'
+import { useOn } from '../../lib/useOn'
 import { useQuery } from '../../lib/useQuery'
 import {
   getScriptRun,
-  on,
   openExternal,
   prepareRelease,
   startRelease,
@@ -267,30 +267,24 @@ export function ReleaseSheet({
   }
 
   const running = useQuery(() => getScriptRun(runId ?? 0), [runId], { enabled: runId !== null })
-  const readRunAgain = useEffectEvent(() => {
-    void running.refetch()
-  })
 
   // The run is read again as it changes status or ends, and as its own progress moves.
-  useEffect(() => {
-    if (runId === null) {
-      return undefined
-    }
-
-    const offUpdated = on('scriptruns:updated', () => {
-      readRunAgain()
-    })
-    const offProgress = on('scriptruns:progress', ({ id: moved }) => {
+  useOn(
+    'scriptruns:updated',
+    () => {
+      void running.refetch()
+    },
+    runId !== null,
+  )
+  useOn(
+    'scriptruns:progress',
+    ({ id: moved }) => {
       if (moved === runId) {
-        readRunAgain()
+        void running.refetch()
       }
-    })
-
-    return () => {
-      offUpdated()
-      offProgress()
-    }
-  }, [runId])
+    },
+    runId !== null,
+  )
 
   const run = runId === null || running.data?.id !== runId ? undefined : running.data
   const live = run !== undefined && isLive(run.status)

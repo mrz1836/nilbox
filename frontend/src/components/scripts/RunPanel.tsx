@@ -8,12 +8,12 @@ import { isBumpResult } from '../../lib/release'
 import { formatDuration, isLive, readLog, runDuration, runPlace } from '../../lib/scriptRuns'
 import { useMutation } from '../../lib/useMutation'
 import { useNow } from '../../lib/useNow'
+import { useOn } from '../../lib/useOn'
 import { useQuery } from '../../lib/useQuery'
 import {
   copyText,
   getScriptRun,
   markScriptRunSeen,
-  on,
   openScriptRunInTerminal,
   runScriptAgain,
   showScriptRunLog,
@@ -173,9 +173,6 @@ function StopNote({ id, run, terminal }: { id: string; run: ScriptRun; terminal:
 export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   const headingId = useId()
   const query = useQuery(() => getScriptRun(id), [id])
-  const reloadOnUpdate = useEffectEvent(() => {
-    void query.refetch()
-  })
   const stop = useMutation(() => stopScriptRun(id))
   const again = useMutation(() => runScriptAgain(id))
   const openTerminal = useMutation(() => openScriptRunInTerminal(id))
@@ -198,21 +195,14 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
 
   // The run is read again as it changes status or ends, and as its own progress moves:
   // a step reached, or Stop turned on or off.
-  useEffect(() => {
-    const offUpdated = on('scriptruns:updated', () => {
-      reloadOnUpdate()
-    })
-    const offProgress = on('scriptruns:progress', ({ id: moved }) => {
-      if (moved === id) {
-        reloadOnUpdate()
-      }
-    })
-
-    return () => {
-      offUpdated()
-      offProgress()
+  useOn('scriptruns:updated', () => {
+    void query.refetch()
+  })
+  useOn('scriptruns:progress', ({ id: moved }) => {
+    if (moved === id) {
+      void query.refetch()
     }
-  }, [id])
+  })
 
   const markSeen = useEffectEvent(() => {
     logFailure(markScriptRunSeen(id), 'could not mark the run seen:')
