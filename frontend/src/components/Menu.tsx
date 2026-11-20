@@ -180,7 +180,7 @@ function Submenu({ id, label, items, focusFirst, onChoose, onBack }: SubmenuProp
       aria-label={label}
       tabIndex={-1}
       onKeyDown={onKeyDown}
-      className={`absolute z-10 min-w-48 rounded-lg border border-border bg-surface p-1.5 shadow-xl shadow-black/20 outline-none motion-safe:animate-pop-in ${x} ${y}`}
+      className={`absolute z-10 min-w-48 rounded-lg border border-border bg-surface p-1.5 whitespace-normal shadow-xl shadow-black/20 outline-none motion-safe:animate-pop-in ${x} ${y}`}
     >
       <MenuItems items={items} onChoose={onChoose} />
     </div>
@@ -399,10 +399,13 @@ export function MenuButton({
       >
         {children}
       </button>
+      {/* whitespace-normal: a menu opened from a row that never wraps (the Worktrees page's
+          title row) inherits its white-space, which would cut the items' notes off at the
+          panel's edge instead of wrapping them. The items keep their own nowrap. */}
       <PopoverPanel
         state={popover}
         align={align}
-        className={`z-40 shadow-black/20 ${panelClassName} ${header === undefined ? 'p-1.5' : ''}`}
+        className={`z-40 whitespace-normal shadow-black/20 ${panelClassName} ${header === undefined ? 'p-1.5' : ''}`}
       >
         {typeof header === 'function'
           ? header(() => {

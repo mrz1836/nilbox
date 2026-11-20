@@ -208,6 +208,24 @@ describe('MenuButton', () => {
     expect(screen.getByRole('menuitem', { name: 'Open the config' })).not.toHaveAttribute('aria-describedby')
   })
 
+  it('wraps its notes even when it opens from a row that never wraps', async () => {
+    const choices: MenuItem[] = [{ label: 'Run checks', note: 'Some checks fix files.', onSelect: vi.fn() }]
+
+    render(
+      <div className="whitespace-nowrap">
+        <MenuButton label="More actions" items={choices}>
+          ⋯
+        </MenuButton>
+      </div>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
+
+    // white-space is inherited, so the panel resets it: a note cut off at the panel's edge
+    // can't be read.
+    expect(screen.getByRole('menu').parentElement).toHaveClass('whitespace-normal')
+  })
+
   it('opens upward when there is no room below the button', async () => {
     const rect = vi
       .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
@@ -403,7 +421,7 @@ describe('MenuButton', () => {
       await userEvent.click(screen.getByRole('menuitem', { name: 'Move to' }))
 
       const submenu = screen.getByRole('menu', { name: 'Move to' })
-      expect(submenu).toHaveClass('right-full')
+      expect(submenu).toHaveClass('right-full', 'whitespace-normal')
       expect(submenu).not.toHaveClass('left-full')
 
       rect.mockRestore()
