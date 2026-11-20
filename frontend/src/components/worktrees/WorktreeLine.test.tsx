@@ -18,6 +18,7 @@ import {
   linkedItem,
   partlyCopiedWorktree,
   worktree,
+  worktreeCopies,
   worktreeDetails,
   worktreeFiles,
   worktreeRepo,
@@ -835,6 +836,15 @@ describe('WorktreeLine gallery', () => {
     expect(line.getByText('copied')).toHaveAttribute('title', 'PR #42 is the pull request its commits were copied onto')
     expect(line.getByText('copied')).toHaveClass('rounded-full')
     expect(line.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
+  })
+
+  it('says on the copied tag when the pull request no longer holds the copies', () => {
+    const { line } = renderLine(copiedWorktree({ onGitHub: false, copies: worktreeCopies() }))
+
+    expect(line.getByText('copied')).toHaveAttribute(
+      'title',
+      'Its commits were copied onto PR #42’s branch, but PR #42 doesn’t hold them all now',
+    )
   })
 
   it('tags no pull request linked by the branch it is on, and offers no launch on it', () => {

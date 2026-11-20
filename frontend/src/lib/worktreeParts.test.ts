@@ -28,6 +28,8 @@ import {
   clockOf,
   cloneOf,
   copiedOf,
+  prOfCopies,
+  copiedTag,
   facetOn,
   facetQuery,
   facetsOf,
@@ -37,6 +39,7 @@ import {
   itemFacts,
   itemRef,
   kindOf,
+  linkWords,
   liveSessions,
   lockInfo,
   madeBy,
@@ -118,25 +121,51 @@ describe('the row’s predicates', () => {
 })
 
 describe('copiedOf', () => {
-  it('says where commits on GitHub only as copies are, and the pull request linked by them', () => {
+  it('says where commits on GitHub only as copies are, the pull request they went into, and as linked', () => {
     expect(copiedOf(copiedWorktree())).toEqual({
       n: 10,
       ref: 'origin/feature-x',
       branch: 'feature-x',
-      pr: copiedPR(),
+      pr: 42,
+      item: copiedPR(),
       recorded: false,
+      gone: false,
     })
   })
 
-  it('says copies a record vouches for, on a branch that’s gone', () => {
-    expect(copiedOf(recordedWorktree())).toMatchObject({ n: 10, recorded: true, pr: { number: 42, state: 'merged' } })
+  it('says copies a record vouches for, and whether their branch is gone', () => {
+    expect(copiedOf(recordedWorktree())).toMatchObject({
+      n: 10,
+      pr: 42,
+      item: { number: 42, state: 'merged' },
+      recorded: true,
+      gone: true,
+    })
+    expect(
+      copiedOf(
+        recordedWorktree({
+          copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, recorded: true, pr: 42 }),
+        }),
+      ),
+    ).toMatchObject({ recorded: true, gone: false })
   })
 
   it.each([
-    ['linked by its name', copiedWorktree({ item: linkedItem(), linkedBy: 'name' })],
-    ['linked to nothing', copiedWorktree({ item: null, linkedBy: '' })],
-  ])('names no pull request for copies of one %s', (_, wt) => {
-    expect(copiedOf(wt)?.pr).toBeNull()
+    ['linked by its name', copiedWorktree({ item: linkedItem(), linkedBy: 'name' }), 42],
+    ['linked to nothing', copiedWorktree({ item: null, linkedBy: '' }), 42],
+    ['linked by copies, its item not read', copiedWorktree({ item: null }), 42],
+    [
+      'linked by copies to another pull request than the one its branch heads',
+      copiedWorktree({ copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, pr: 43 }) }),
+      43,
+    ],
+    [
+      'whose branch no pull request is known to head',
+      copiedWorktree({ copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10 }) }),
+      0,
+    ],
+  ])('names the pull request copies went into, by its number alone, for one %s', (_, wt, pr) => {
+    expect(copiedOf(wt)).toMatchObject({ pr, item: null })
   })
 
   it.each([
@@ -156,6 +185,44 @@ describe('copiedOf', () => {
     ['it’s at its pull request’s head', copiedWorktree({ item: copiedPR({ headOid: copiedWorktree().head }) })],
   ])('says nothing of copies when %s', (_, wt) => {
     expect(copiedOf(wt)).toBeNull()
+  })
+
+  it('names the pull request copies went into, or says it has one when its number isn’t known', () => {
+    expect(prOfCopies({ n: 1, ref: 'origin/x', branch: 'x', pr: 42, item: null, recorded: true, gone: true })).toBe(
+      'PR #42',
+    )
+    expect(prOfCopies({ n: 1, ref: 'origin/x', branch: 'x', pr: 0, item: null, recorded: true, gone: true })).toBe(
+      'its pull request',
+    )
+  })
+})
+
+describe('how a worktree is linked', () => {
+  it.each([
+    [
+      'one linked by its copies, the pull request holding them',
+      copiedWorktree(),
+      'PR #42 is the pull request its commits were copied onto',
+    ],
+    [
+      'one linked by its copies, the pull request no longer holding them all',
+      copiedWorktree({ onGitHub: false }),
+      'Its commits were copied onto PR #42’s branch, but PR #42 doesn’t hold them all now',
+    ],
+    ['one linked by its name', row(), ''],
+    ['one linked by its branch', row({ linkedBy: 'branch' }), ''],
+    ['one linked by its copies, its item not read', copiedWorktree({ item: null }), ''],
+  ])('words the copied tag of %s', (_, wt, want) => {
+    expect(copiedTag(wt)).toBe(want)
+  })
+
+  it('says how each kind of link names its item', () => {
+    expect(linkWords).toEqual({
+      '': 'Made for',
+      name: 'Made for',
+      branch: 'On the branch of',
+      copy: 'Its commits were copied onto',
+    })
   })
 })
 

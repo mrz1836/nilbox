@@ -16,6 +16,7 @@ import type {
   Worktree,
   WorktreeCleanup,
   WorktreeFile,
+  WorktreeLinkKind,
   WorktreeRepo,
 } from '../platform'
 import { counted } from './format'
@@ -69,16 +70,20 @@ export function atItemHead(wt: Worktree): boolean {
 // Copied is why a worktree's commits that aren't on GitHub by their commit IDs are on
 // GitHub anyway: each of them, n, has an identical copy on ref, a pushed branch, as in
 // origin/feature-x, whose own name is branch (feature-x), as cherry-picking or rebasing
-// them onto it leaves. pr is the pull request the worktree is linked to by those copies,
-// that branch's, or null when it is linked otherwise, or to nothing. recorded reports that
-// ref is gone, and what the app recorded while it was there vouches for them instead: pr's
-// head, which GitHub keeps, has every copy.
+// them onto it leaves. pr is the number of the pull request they went into, the one that
+// branch heads, or 0 when none is known, and item that pull request as the worktree is
+// linked to it by its copies, or null when it is linked otherwise, or to nothing. recorded
+// reports that ref no longer holds them all, and what the app recorded while it did vouches
+// for them instead, as it does once pr merged, or once ref is gone (gone): pr's head, which
+// GitHub keeps, has every copy.
 export interface Copied {
   n: number
   ref: string
   branch: string
-  pr: LinkedItem | null
+  pr: number
+  item: LinkedItem | null
   recorded: boolean
+  gone: boolean
 }
 
 // copiedOf says why a worktree's commits that aren't on GitHub by their commit IDs are on
@@ -102,13 +107,23 @@ export function copiedOf(wt: Worktree): Copied | null {
     return null
   }
 
+  const { item } = wt
+
   return {
     n: c.count,
     ref: c.ref,
     branch: c.ref.slice(c.ref.indexOf('/') + 1),
-    pr: wt.linkedBy === 'copy' ? wt.item : null,
+    pr: c.pr,
+    item: wt.linkedBy === 'copy' && item?.number === c.pr ? item : null,
     recorded: c.recorded,
+    gone: c.gone,
   }
+}
+
+// prOfCopies names the pull request a worktree's commits went into as copies: "PR #42", or
+// "its pull request" when its number isn't known.
+export function prOfCopies(c: Copied): string {
+  return c.pr > 0 ? `PR #${String(c.pr)}` : 'its pull request'
 }
 
 // folderOf is the last part of a worktree's path: its folder's name.
@@ -132,6 +147,33 @@ export function splitBranch(branch: string): [prefix: string, name: string] {
 // itemRef names a pull request or issue in a few words: "PR #214" or "Issue #88".
 export function itemRef(item: LinkedItem): string {
   return `${item.kind === 'pr' ? 'PR' : 'Issue'} #${String(item.number)}`
+}
+
+// copiedTag is the tooltip of the copied tag beside the pull request a worktree is linked
+// to by its commits' copies (linkedBy 'copy'), or '' for one linked otherwise, which shows
+// none: that it is the pull request they were copied onto, or, once the listing found it
+// doesn't hold them all (onGitHub false), that too.
+export function copiedTag(wt: Worktree): string {
+  if (wt.linkedBy !== 'copy' || wt.item === null) {
+    return ''
+  }
+
+  const pr = itemRef(wt.item)
+
+  return wt.onGitHub
+    ? `${pr} is the pull request its commits were copied onto`
+    : `Its commits were copied onto ${pr}’s branch, but ${pr} doesn’t hold them all now`
+}
+
+// linkWords say how a worktree is linked to its pull request or issue, before naming it in
+// a sentence (as in "Made for pull request #7"): made for it, by its record, name, or own
+// branch; on its branch, by the pushed branch it is on; or by the copies of its commits on
+// its branch.
+export const linkWords: Readonly<Record<WorktreeLinkKind, string>> = {
+  '': 'Made for',
+  name: 'Made for',
+  branch: 'On the branch of',
+  copy: 'Its commits were copied onto',
 }
 
 // KindIcon is the mark of a pull request or issue as it stands.

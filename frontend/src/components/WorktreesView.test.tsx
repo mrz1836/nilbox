@@ -1129,8 +1129,8 @@ describe('WorktreesView bulk cleanups', () => {
     const dialog = screen.getByRole('dialog', { name: 'Clean up finished worktrees?' })
     expect(dialog).toHaveTextContent('The pull request or issue of each of these is finished')
     const listed = within(within(dialog).getByRole('list', { name: 'Worktrees' }))
-    expect(listed.getByRole('checkbox', { name: `${linkedDisplay}pull request #7, merged` })).toBeChecked()
-    expect(listed.getByRole('checkbox', { name: /pr-8pull request #8, merged$/ })).toBeChecked()
+    expect(listed.getByRole('checkbox', { name: `${linkedDisplay}Made for pull request #7, merged` })).toBeChecked()
+    expect(listed.getByRole('checkbox', { name: /pr-8Made for pull request #8, merged$/ })).toBeChecked()
     const prBox = within(
       listed.getByRole('list', { name: 'Branches of ~/projects/example-repo/.claude/worktrees/pr-8' }),
     ).getByRole('checkbox', { name: /^Delete branch feature-x/ })

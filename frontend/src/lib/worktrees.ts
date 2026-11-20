@@ -18,6 +18,7 @@ import {
   clockOf,
   copiedOf,
   itemRef,
+  prOfCopies,
   running,
   runsIn,
   unpushedKnown,
@@ -171,30 +172,23 @@ export interface WorkNote {
 
 // copiedText is the work column's note on commits on GitHub only as copies, after ⧉: how
 // many, and the pull request they went into, as in "10 on #42", else the branch their copies
-// are on, "10 on feature-x", or were on, "10 via feature-x", for one that's gone.
+// are on, "10 on feature-x".
 function copiedText(c: Copied): string {
-  const n = formatCount(c.n)
-
-  if (c.pr !== null) {
-    return `${n} on #${String(c.pr.number)}`
-  }
-
-  return `${n} ${c.recorded ? 'via' : 'on'} ${c.branch}`
+  return `${formatCount(c.n)} on ${c.pr > 0 ? `#${String(c.pr)}` : c.branch}`
 }
 
 // copiedTitle says why a worktree's commits not on GitHub by their commit IDs are on GitHub
 // anyway, as the work column's tooltip: "Its 10 commits aren’t on GitHub by ID, but each
-// one’s change is on origin/feature-x (PR #42)".
+// one’s change is on origin/feature-x (PR #42)", or, once that branch no longer holds them
+// all, went into the pull request, as the app recorded (copiedLater).
 function copiedTitle(c: Copied): string {
   const lead = `Its ${counted(c.n, 'commit isn’t', 'commits aren’t')} on GitHub by ID, but ${c.n === 1 ? 'its' : 'each one’s'} change`
 
   if (c.recorded) {
-    return c.pr === null
-      ? `${lead} went into the pull request of ${c.ref}, a branch that’s gone now`
-      : `${lead} went into ${itemRef(c.pr)}, from ${c.ref}, a branch that’s gone now`
+    return `${lead} went into ${prOfCopies(c)}${wordsText(copiedLater(c))}`
   }
 
-  return `${lead} is on ${c.ref}${c.pr === null ? '' : ` (${itemRef(c.pr)})`}`
+  return `${lead} is on ${c.ref}${c.pr > 0 ? ` (${prOfCopies(c)})` : ''}`
 }
 
 // upTitle is the tooltip of the commits not on GitHub, n: how many, then how they compare
@@ -358,19 +352,27 @@ function joined(...sentences: Words[]): Words {
 }
 
 // copiedWords say where a worktree's commits went as copies (copiedOf), after "every
-// commit’s change": "is on GitHub, copied onto PR #42’s branch", or onto the branch itself
-// when no pull request links them by their copies; once that branch is gone, "went into PR
-// #42", or "went into the pull request of origin/feature-x, a branch that’s gone now".
+// commit’s change": "is on GitHub, copied onto PR #42’s branch", the pull request that
+// branch heads, or onto the branch itself when no pull request is known to; once what the
+// app recorded vouches for them, "went into PR #42".
 function copiedWords(c: Copied): Words {
   if (c.recorded) {
-    return c.pr === null
-      ? ['went into the pull request of ', { code: c.ref }, ', a branch that’s gone now']
-      : [`went into ${itemRef(c.pr)}`]
+    return [`went into ${prOfCopies(c)}`]
   }
 
-  return c.pr === null
-    ? ['is on GitHub, copied onto ', { code: c.ref }]
-    : [`is on GitHub, copied onto ${itemRef(c.pr)}’s branch`]
+  return c.pr > 0
+    ? [`is on GitHub, copied onto ${prOfCopies(c)}’s branch`]
+    : ['is on GitHub, copied onto ', { code: c.ref }]
+}
+
+// copiedLater says, after the pull request a worktree's copies went into as the app
+// recorded them, what became of the branch they were on since: ", from origin/feature-x, a
+// branch that’s gone now", or "; origin/feature-x no longer holds all of them", as a merged
+// pull request's branch may not, deleted or not.
+function copiedLater(c: Copied): Words {
+  return c.gone
+    ? [', from ', { code: c.ref }, ', a branch that’s gone now']
+    : ['; ', { code: c.ref }, ' no longer holds all of them']
 }
 
 // copyCounts say how a worktree's commits not on GitHub compare with the pushed branch the
@@ -428,10 +430,19 @@ function copySentences(wt: Worktree): Words {
 }
 
 // copiedWhen says where pull request pr, which a worktree's copies went into, stands, after
-// it: ", merged 2d ago", ", closed", or ", which is open".
-function copiedWhen(pr: LinkedItem, now: Date): string {
+// it: ", merged 2d ago", ", closed", or ", which is open"; nothing when the worktree isn't
+// linked to it, so its state isn't known.
+function copiedWhen(pr: LinkedItem | null, now: Date): string {
+  if (pr === null) {
+    return ''
+  }
+
   return pr.state === 'open' ? ', which is open' : `, ${pr.state}${agoWords(now, pr.closedAt)}`
 }
+
+// lostOriginals says a detached worktree's original commits, which no branch holds, go with
+// it, when their changes are on GitHub as copies (copied).
+const lostOriginals: Words = ['Only the original commits, which no branch holds, go with it.']
 
 // originals says what becomes of the commits of a worktree whose changes are on GitHub as
 // copies when it goes: a detached one's, which no branch holds, go with it; any other's stay
@@ -439,7 +450,7 @@ function copiedWhen(pr: LinkedItem, now: Date): string {
 // confirmation asks.
 function originals(wt: Worktree): Words {
   if (wt.detached) {
-    return ['Only the original commits, which no branch holds, go with it.']
+    return lostOriginals
   }
 
   if (wt.branches.some((b) => b.name === wt.branch && b.deletable)) {
@@ -488,6 +499,9 @@ export function safety(
   // everyCommit says every commit is on GitHub, by its change when it is there as a copy.
   const everyCommit = copied === null ? 'every commit is on GitHub' : 'every commit’s change is on GitHub'
   const copies = copySentences(wt)
+  // originalsGo says a detached worktree's original commits go with it, when their changes
+  // are on GitHub as copies.
+  const originalsGo: Words = copied !== null && wt.detached ? lostOriginals : []
   const ftext = counted(files, 'uncommitted file', 'uncommitted files')
   const ctext = counted(commits, 'commit', 'commits')
   // kept says the branch keeps the commits, starting with lead ("Its" or "its").
@@ -546,12 +560,19 @@ export function safety(
     const bits = [pid, started].filter((b) => b !== '').join(', ')
     const then: Words =
       files > 0
-        ? joined([`Once it ends, removing it would discard ${ftext}.`], kept('Its'), lost, uncounted)
+        ? joined(
+            [`Once it ends, removing it would discard ${ftext}.`],
+            kept('Its'),
+            lost,
+            copies,
+            uncounted,
+            originalsGo,
+          )
         : commits > 0
-          ? joined(['Once it ends,'], kept('its'), lost)
+          ? joined(['Once it ends,'], kept('its'), lost, copies)
           : unknown
             ? [`Once it ends, ${cleanButUncounted}`]
-            : [`Once it ends, nothing in it would be lost: ${everyCommit}.`]
+            : joined([`Once it ends, nothing in it would be lost: ${everyCommit}.`], originalsGo)
 
     return result(
       'info',
@@ -564,12 +585,12 @@ export function safety(
   if (byHand(wt)) {
     const then: Words =
       files > 0
-        ? joined([`Then removing it would discard ${ftext}.`], kept('Its'), lost, uncounted)
+        ? joined([`Then removing it would discard ${ftext}.`], kept('Its'), lost, copies, uncounted, originalsGo)
         : commits > 0
-          ? joined(['Then'], kept('its'), lost)
+          ? joined(['Then'], kept('its'), lost, copies)
           : unknown
             ? [`After that, ${cleanButUncounted}`]
-            : [`After that, nothing in it would be lost: ${everyCommit}.`]
+            : joined([`After that, nothing in it would be lost: ${everyCommit}.`], originalsGo)
 
     return {
       ...result('danger', 'lock', ['Locked by hand, so it can’t be removed here. Unlock it first:'], then),
@@ -582,7 +603,7 @@ export function safety(
       'warning',
       'alert',
       [`Removing it would discard ${ftext}, counting untracked ones.`],
-      joined(kept('Its'), lost, copies, uncounted, doneWithout),
+      joined(kept('Its'), lost, copies, uncounted, originalsGo, doneWithout),
     )
   }
 
@@ -614,7 +635,11 @@ export function safety(
     : []
 
   if (copied !== null) {
-    const where = copied.recorded && copied.pr !== null ? [copiedWhen(copied.pr, now)] : []
+    // Once what the app recorded vouches for them, it says where their pull request stands,
+    // and that their branch no longer holds them all, unless it's gone.
+    const where: Words = copied.recorded
+      ? [copiedWhen(copied.item, now), ...(copied.gone ? [] : copiedLater(copied))]
+      : []
 
     return result(
       'success',

@@ -169,6 +169,7 @@ import type {
   WorktreeCleanup,
   WorktreeCommit,
   WorktreeCopies,
+  WorktreeCopyComparison,
   WorktreeDetails,
   WorktreeFile,
   WorktreeRepo,
@@ -2558,7 +2559,7 @@ export function copiedWorktree(overrides: Partial<Worktree> = {}): Worktree {
     onGitHub: true,
     item: copiedPR(),
     linkedBy: 'copy',
-    copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10 }),
+    copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, pr: 42 }),
     stage: 'active',
     branches: [
       ownBranch({
@@ -2578,7 +2579,7 @@ export function copiedWorktree(overrides: Partial<Worktree> = {}): Worktree {
 export function recordedWorktree(overrides: Partial<Worktree> = {}): Worktree {
   return copiedWorktree({
     item: copiedPR({ state: 'merged', closedAt: '2026-06-13T12:00:00Z' }),
-    copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, recorded: true }),
+    copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, recorded: true, pr: 42, gone: true }),
     stage: 'finished',
     canCleanUp: true,
     branches: [ownBranch({ name: 'worktree-agent-a1b2c3', head: '9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d' })],
@@ -2587,8 +2588,8 @@ export function recordedWorktree(overrides: Partial<Worktree> = {}): Worktree {
 }
 
 // partlyCopiedWorktree is another sub-agent's worktree whose one commit not on GitHub has
-// only an edited copy on origin/feature-x: the same author, time, and subject, but another
-// change, so it isn't on GitHub, and nothing links it.
+// only an edited copy on origin/feature-x, pull request #42's branch: the same author,
+// time, and subject, but another change, so it isn't on GitHub, and nothing links it.
 export function partlyCopiedWorktree(overrides: Partial<Worktree> = {}): Worktree {
   return copiedWorktree({
     path: '/home/user/projects/example-repo/.claude/worktrees/agent-d4e5f6',
@@ -2599,7 +2600,7 @@ export function partlyCopiedWorktree(overrides: Partial<Worktree> = {}): Worktre
     onGitHub: false,
     item: null,
     linkedBy: '',
-    copies: worktreeCopies({ ref: 'origin/feature-x', count: 1, edited: 1 }),
+    copies: worktreeCopies({ ref: 'origin/feature-x', count: 1, edited: 1, pr: 42 }),
     stage: '',
     branches: [
       ownBranch({
@@ -2636,6 +2637,13 @@ export function worktreeCommit(overrides: Partial<WorktreeCommit> = {}): Worktre
     copyOid: '',
     ...overrides,
   }
+}
+
+// copyComparison is how a drawer's comparison of a worktree's commits not on GitHub with
+// the pushed branches went: by default it ran, and each of 10 has an identical copy on
+// origin/feature-x, as copiedWorktree's do.
+export function copyComparison(overrides: Partial<WorktreeCopyComparison> = {}): WorktreeCopyComparison {
+  return { compared: true, ref: 'origin/feature-x', identical: 10, edited: 0, note: '', ...overrides }
 }
 
 // worktreeDetails is what a clean worktree's drawer reads, all of it on GitHub and level

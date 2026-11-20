@@ -4,7 +4,15 @@ import { formatCount } from '../../lib/format'
 import { shortCommit } from '../../lib/git'
 import { formatAge, formatAgo, formatFull } from '../../lib/time'
 import { asReadNow, changesOf, notOnGitHub, readable, type DetailsRead } from '../../lib/useWorktreeDetails'
-import { copiedOf, fileStatus, itemRef, unpushedKnown, unpushedUnknown, type Copied } from '../../lib/worktreeParts'
+import {
+  copiedOf,
+  fileStatus,
+  itemRef,
+  prOfCopies,
+  unpushedKnown,
+  unpushedUnknown,
+  type Copied,
+} from '../../lib/worktreeParts'
 import type { Worktree, WorktreeCommit, WorktreeFile } from '../../platform'
 import { quietButtonClass } from '../controls'
 import { AlertIcon, CheckIcon, RingIcon } from '../icons'
@@ -419,12 +427,13 @@ const refClass = 'font-mono font-medium tracking-normal normal-case'
 // CopiedCommits are the commits of a worktree that aren't on GitHub by their commit IDs
 // but are as identical copies (copied): where the copies are, then each commit once Details
 // has read them, marked with its copy (CommitLine), with a line standing in for each of the
-// first four while it reads. Once the branch with the copies is gone, the app's record of
-// them vouches for them instead, and Details, which compares the commits with the branches
-// there are, marks none.
+// first four while it reads. Once the branch with the copies is gone, or no longer holds
+// them all, the app's record of them vouches for them instead, and the commits are listed
+// unmarked: Details compares them with the branch as it is now, which says nothing of the
+// pull request they went into.
 function CopiedCommits({ worktree, read, copied }: ColumnProps & { copied: Copied }) {
-  const commits = read?.state === 'read' ? read.details.commits : []
-  const pr = copied.pr === null ? 'the pull request it headed' : itemRef(copied.pr)
+  const listed = read?.state === 'read' ? read.details.commits : []
+  const commits = copied.recorded ? listed.map((c) => ({ ...c, copy: '' as const, copyOid: '' })) : listed
 
   return (
     <>
@@ -432,7 +441,7 @@ function CopiedCommits({ worktree, read, copied }: ColumnProps & { copied: Copie
         {copied.recorded ? (
           <>
             <code className="font-mono text-[0.71875rem]">{copied.ref}</code>
-            {` is gone, but the app recorded each one’s identical copy there, and ${pr} has them.`}
+            {` ${copied.gone ? 'is gone' : 'no longer holds them all'}, but the app recorded each one’s identical copy there, and ${prOfCopies(copied)} has them.`}
           </>
         ) : (
           <>
@@ -468,7 +477,7 @@ export function NotOnGitHub({ worktree, read }: ColumnProps) {
         </h4>
       ) : (
         <h4 className={columnHeadingClass}>
-          Copied to {copied.pr === null ? <code className={refClass}>{copied.ref}</code> : itemRef(copied.pr)}
+          Copied to {copied.pr > 0 ? prOfCopies(copied) : <code className={refClass}>{copied.ref}</code>}
         </h4>
       )}
       {copied === null ? (

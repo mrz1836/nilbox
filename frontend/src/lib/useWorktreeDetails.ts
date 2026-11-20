@@ -4,12 +4,12 @@ import {
   worktreeDetails,
   type Worktree,
   type WorktreeCopies,
-  type WorktreeCopyMark,
+  type WorktreeCopyComparison,
   type WorktreeDetails,
   type WorktreeFile,
 } from '../platform'
 import { attempt, start } from './call'
-import { atItemHead, unpushedKnown } from './worktreeParts'
+import { copiedOf, unpushedKnown } from './worktreeParts'
 
 // DetailsRead is what the window has of one worktree's details (Worktrees.Details) for the
 // latest listing: a read under way, its answer, or why it failed, in which case the drawer
@@ -62,37 +62,52 @@ export function changesOf(wt: Worktree, read: DetailsRead | undefined): Changes 
 //
 // The backend rules commits that no remote-tracking branch holds on GitHub anyway when HEAD
 // is its pull request's head commit, as a fork's pull request's head is, or when each has an
-// identical copy on a pushed branch, or in the pull request its copies went into (copies).
-// Details reads neither, so commits it found as the listing did, with the copies it found,
-// keep the listing's word, and its comparison with them. Any others mean HEAD moved, or the
-// pushed branches did, and only none puts them on GitHub: what the listing found of their
-// copies no longer holds, and is dropped.
+// identical copy on a pushed branch, or in the pull request its copies went into, as the app
+// recorded them (copies). Details reads no pull request and no record, but compares the
+// commits with the pushed branches again (Details.copies), so (commitsNow):
+//
+//   - commits it found as the listing did keep the listing's word, but copies on a pushed
+//     branch only while its comparison ran and found every one with an identical copy on
+//     the same branch, as it no longer does once that branch was deleted or force-pushed
+//     without them, and copies the app recorded whatever it finds there, as the record
+//     vouches for them;
+//   - any others mean HEAD moved, and only none puts them on GitHub.
+//
+// Whatever no longer holds is counted as Details counted it, and its copies as it compared
+// them, with why when it couldn't.
 export function asReadNow(wt: Worktree, read: DetailsRead | undefined): Worktree {
   if (read?.state !== 'read') {
     return wt
   }
 
-  const { fileCount, unpushed } = read.details
+  const { fileCount } = read.details
   const files = fileCount >= 0 ? { dirty: fileCount > 0, dirtyCount: fileCount } : {}
-  const commits =
-    unpushed < 0 || (sameCommits(wt, read.details) && copiesAgree(wt, read.details))
-      ? {}
-      : { unpushed, onGitHub: unpushed === 0, copies: noCopies }
 
-  return { ...wt, ...files, ...commits }
+  return { ...wt, ...files, ...commitsNow(wt, read.details) }
 }
 
-// noCopies is what comparing no commits with the pushed branches finds: nothing.
-const noCopies: WorktreeCopies = {
-  ref: '',
-  count: 0,
-  identical: 0,
-  edited: 0,
-  none: 0,
-  recorded: false,
-  pr: 0,
-  gone: false,
-  note: '',
+// commitsNow is what details, as asReadNow reads them, change of wt's commits not on GitHub
+// and their copies: nothing when they couldn't be counted, or when the listing's word on
+// them holds, else their count, whether they're on GitHub, and the copies Details found.
+function commitsNow(wt: Worktree, details: WorktreeDetails): Partial<Worktree> {
+  const { unpushed } = details
+
+  if (unpushed < 0) {
+    return {}
+  }
+
+  const same = sameCommits(wt, details)
+  const byCopies = copiedOf(wt) !== null
+
+  if (same && (wt.copies.recorded || (byCopies && copiesHold(wt, details.copies)))) {
+    return {}
+  }
+
+  return {
+    unpushed,
+    onGitHub: unpushed === 0 || (same && wt.onGitHub && !byCopies),
+    copies: copiesNow(wt, details),
+  }
 }
 
 // sameCommits reports details that found, as far as they tell, the commits not on GitHub
@@ -105,28 +120,30 @@ function sameCommits(wt: Worktree, details: WorktreeDetails): boolean {
   return details.unpushed === wt.unpushed && (newest === undefined || newest.oid === wt.head)
 }
 
-// copiesAgree reports details whose copies of wt's commits not on GitHub don't contradict
-// the listing's: once Details lists every one of them, and its comparison with the pushed
-// branches found any copy, as many have an identical copy, and an edited one, as the
-// listing counted (copies). Details that found no copy of any can't tell that from a
-// comparison it couldn't make, and say nothing. A record's copies were on a branch that's
-// gone, which Details can't compare with, and a worktree at its pull request's head needs
-// no copy.
-function copiesAgree(wt: Worktree, details: WorktreeDetails): boolean {
-  const { commits } = details
+// copiesHold reports a comparison, compared, that still finds what the listing found of
+// wt's commits on a pushed branch: it ran, and every one of them has an identical copy on
+// the branch the listing compared them with.
+function copiesHold(wt: Worktree, compared: WorktreeCopyComparison): boolean {
+  return compared.compared && compared.ref === wt.copies.ref && compared.identical === wt.unpushed
+}
 
-  if (
-    wt.copies.recorded ||
-    atItemHead(wt) ||
-    commits.length !== details.unpushed ||
-    commits.every((c) => c.copy === '')
-  ) {
-    return true
+// copiesNow is what Details' comparison found of the copies of its count commits not on
+// GitHub, as Worktree.copies says it: none recorded, and the pull request the listing found
+// the branch heads, while it's the same branch.
+function copiesNow(wt: Worktree, details: WorktreeDetails): WorktreeCopies {
+  const c = details.copies
+
+  return {
+    ref: c.ref,
+    count: details.unpushed,
+    identical: c.identical,
+    edited: c.edited,
+    none: c.compared ? details.unpushed - c.identical - c.edited : 0,
+    recorded: false,
+    pr: c.ref !== '' && c.ref === wt.copies.ref ? wt.copies.pr : 0,
+    gone: false,
+    note: c.note,
   }
-
-  const marked = (mark: WorktreeCopyMark) => commits.filter((c) => c.copy === mark).length
-
-  return marked('identical') === wt.copies.identical && marked('edited') === wt.copies.edited
 }
 
 // notOnGitHub is how many commits on wt aren't on GitHub, as its details count them now

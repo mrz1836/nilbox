@@ -8,6 +8,7 @@ import type { Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
 import { at, FIXED_NOW } from '../../test/clock'
 import {
   copiedWorktree,
+  copyComparison,
   finishedWorktree,
   linkedItem,
   ownBranch,
@@ -135,8 +136,79 @@ describe('ConfirmationDialog for one worktree', () => {
     expect(screen.getByRole('dialog', { name: 'Clean up this worktree?' })).toHaveTextContent(
       'whose work is finished: it has no uncommitted changes, and the change of every commit on it is on GitHub.',
     )
-    expect(dialog.getByText('Made for pull request #42, merged.')).toBeInTheDocument()
+    expect(dialog.getByText('Its commits were copied onto pull request #42, merged.')).toBeInTheDocument()
     expect(dialog.getByRole('checkbox', { name: /^Delete branch worktree-agent-a1b2c3/ })).toBeChecked()
+  })
+
+  it('says a clean up holds back a worktree whose copies are gone since, as its details read, in both its words', () => {
+    const gone = worktreeDetails({
+      unpushed: 10,
+      commits: [worktreeCommit({ oid: copiedWorktree().head })],
+      copies: copyComparison({ ref: '', identical: 0 }),
+    })
+    render(
+      <ConfirmationDialog
+        confirmation={{ kind: 'cleanUp', repoPath, worktree: copiedWorktree({ stage: 'finished', canCleanUp: true }) }}
+        rules={rules}
+        now={FIXED_NOW}
+        repos={[worktreeRepo()]}
+        details={{ of: () => ({ state: 'read', details: gone }), read: vi.fn() }}
+        sessions={new Map()}
+        agentName={(id) => id}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { wrapper: at() },
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Clean up this worktree?' })
+    expect(
+      within(dialog)
+        .getByText(/^Its folder is clean, but 10 commits/)
+        .closest('[data-tone]'),
+    ).toHaveAttribute('data-tone', 'warning')
+    expect(dialog).toHaveTextContent(
+      'Clean up checks it again first, and deletes the folder ~/projects/example-repo/.claude/worktrees/agent-a1b2c3 only if its work is still finished, which, as last read, it isn’t.',
+    )
+    expect(dialog).not.toHaveTextContent(/whose work is finished/)
+  })
+
+  it.each([
+    ['uncommitted files since', finishedWorktree(), worktreeDetails({ files: worktreeFiles(2), fileCount: 2 })],
+    ['commits not on GitHub since', finishedWorktree(), worktreeDetails({ unpushed: 1, commits: [worktreeCommit()] })],
+    [
+      'commits it couldn’t count, as listed and as read',
+      finishedWorktree({ unpushed: -1, onGitHub: false }),
+      worktreeDetails({ unpushed: -1 }),
+    ],
+  ])('says a clean up holds back a worktree with %s, as its details read', (_, wt, read) => {
+    render(
+      <ConfirmationDialog
+        confirmation={{ kind: 'cleanUp', repoPath, worktree: wt }}
+        rules={rules}
+        now={FIXED_NOW}
+        repos={[worktreeRepo()]}
+        details={{ of: () => ({ state: 'read', details: read }), read: vi.fn() }}
+        sessions={new Map()}
+        agentName={(id) => id}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { wrapper: at() },
+    )
+
+    expect(screen.getByRole('dialog', { name: 'Clean up this worktree?' })).toHaveTextContent(
+      /Clean up checks it again first, and deletes the folder .+ only if its work is still finished, which, as last read, it isn’t\./,
+    )
+  })
+
+  it.each([
+    ['by its branch', 'branch', 'On the branch of pull request #7, open.'],
+    ['by its commits’ copies', 'copy', 'Its commits were copied onto pull request #7, open.'],
+  ] as const)('says how a worktree linked %s is linked to its pull request', (_, linkedBy, words) => {
+    const dialog = single('remove', worktree({ item: linkedItem({ state: 'open', headOid: '' }), linkedBy }))
+
+    expect(dialog.getByText(words)).toBeInTheDocument()
   })
 
   it('holds the branch of one whose commits are copied onto an open pull request’s, saying why', () => {
@@ -316,6 +388,7 @@ describe('ConfirmationDialog for Force remove', () => {
         fileCount: 14,
         unpushed: 10,
         commits: [worktreeCommit({ oid: copied.head, copy: 'identical', copyOid: '3'.repeat(40) })],
+        copies: copyComparison(),
       }),
     )
     const dialog = single('force', copied)
@@ -341,6 +414,7 @@ describe('ConfirmationDialog for Force remove', () => {
         fileCount: 2,
         unpushed: 1,
         commits: [worktreeCommit({ oid: partly.head, copy: 'edited', copyOid: '5'.repeat(40) })],
+        copies: copyComparison({ identical: 0, edited: 1 }),
       }),
     )
     const dialog = single('force', partly)
@@ -508,5 +582,9 @@ describe('ConfirmationDialog in bulk', () => {
     expect(line).toHaveTextContent(
       'Safe to remove: no uncommitted files, and every commit’s change went into PR #42, merged 2d ago.',
     )
+    expect(screen.getByRole('dialog', { name: 'Clean up finished worktrees?' })).toHaveTextContent(
+      'each has no uncommitted changes, and every commit on it, or its change, is on GitHub.',
+    )
+    expect(screen.getByText('Its commits were copied onto pull request #42, merged')).toBeInTheDocument()
   })
 })

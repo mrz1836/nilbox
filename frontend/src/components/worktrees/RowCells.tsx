@@ -9,6 +9,7 @@ import {
   agentLine,
   checksOf,
   clockOf,
+  copiedTag,
   folderOf,
   itemRef,
   kindOf,
@@ -175,9 +176,9 @@ interface ItemCellProps {
 interface LinkedCellProps {
   item: LinkedItem
   facts: ItemFacts | undefined
-  // copied reports a worktree linked to the pull request by its commits' copies on the
-  // pull request's branch (linkedBy 'copy'), which a tag says.
-  copied: boolean
+  // copied is the tooltip of the tag on a pull request the worktree is linked to by its
+  // commits' copies on its branch (copiedTag), or '' for one linked otherwise, with no tag.
+  copied: string
 }
 
 // LinkedCell is the pull request or issue a worktree is for: its mark in its state's color,
@@ -209,8 +210,8 @@ function LinkedCell({ item, facts, copied }: LinkedCellProps) {
       <span title={`${item.owner}/${item.name}#${String(item.number)}: ${item.title}`} className="min-w-0 truncate">
         {item.title}
       </span>
-      {copied && (
-        <span title={`${itemRef(item)} is the pull request its commits were copied onto`} className={tagClass}>
+      {copied !== '' && (
+        <span title={copied} className={tagClass}>
           copied
         </span>
       )}
@@ -236,7 +237,7 @@ function LinkedCell({ item, facts, copied }: LinkedCellProps) {
 // name, muted, and a Claude Code tag on one Claude Code made.
 export function ItemCell({ worktree, facts }: ItemCellProps) {
   if (worktree.item !== null) {
-    return <LinkedCell item={worktree.item} facts={facts} copied={worktree.linkedBy === 'copy'} />
+    return <LinkedCell item={worktree.item} facts={facts} copied={copiedTag(worktree)} />
   }
 
   return (
