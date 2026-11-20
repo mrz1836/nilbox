@@ -9,7 +9,7 @@ import type {
   AutopilotOpID,
   ItemKind,
 } from '../../../platform'
-import { fieldClass, quietButtonClass } from '../../controls'
+import { fieldClass, quietButtonClass, Select, type SelectOption } from '../../controls'
 import { PlusIcon, TrashIcon } from '../../icons'
 import { Block, Notes, type BuilderKit } from './parts'
 import { TokenField, type TokenOption } from './TokenField'
@@ -231,6 +231,9 @@ function Condition({ kit, kinds, clause, path, index, onChange, onRemove }: Cond
   // A field the routine can't read on what it acts on, or one this version doesn't know, is
   // kept as an option, so the menu shows the field the condition holds, with its problem.
   const listed = fields.some((f) => f.id === clause.field)
+  const kept: SelectOption<AutopilotFieldID | ''>[] = listed
+    ? []
+    : [{ value: clause.field ?? '', label: field?.label ?? clause.field ?? 'Pick a field' }]
 
   // A new field starts at its first operator, with no value: a value of another field's
   // means nothing to it.
@@ -252,47 +255,40 @@ function Condition({ kit, kinds, clause, path, index, onChange, onRemove }: Cond
         <label htmlFor={`${id}-field`} className="sr-only">
           {`${name}: field`}
         </label>
-        <select
+        <Select<AutopilotFieldID | ''>
           id={`${id}-field`}
-          value={clause.field ?? ''}
           aria-invalid={invalid}
           aria-describedby={describedBy}
-          onChange={(e) => {
-            pickField(e.target.value as AutopilotFieldID)
-          }}
           className={`${fieldClass} py-1`}
-        >
-          {!listed && <option value={clause.field ?? ''}>{field?.label ?? clause.field ?? 'Pick a field'}</option>}
-          {groups.map((g) => (
-            <optgroup key={g.id} label={g.label}>
-              {fields
-                .filter((f) => f.group === g.id)
-                .map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.label}
-                  </option>
-                ))}
-            </optgroup>
-          ))}
-        </select>
+          value={clause.field ?? ''}
+          options={[
+            ...kept,
+            ...groups.map((g) => ({
+              group: g.label,
+              options: fields.filter((f) => f.group === g.id).map((f) => ({ value: f.id, label: f.label })),
+            })),
+          ]}
+          onChange={(v) => {
+            if (v !== '') {
+              pickField(v)
+            }
+          }}
+        />
         <label htmlFor={`${id}-op`} className="sr-only">
           {`${name}: how it compares`}
         </label>
-        <select
+        <Select<AutopilotOpID | ''>
           id={`${id}-op`}
-          value={clause.op ?? ''}
           title={op?.help}
-          onChange={(e) => {
-            pickOp(e.target.value as AutopilotOpID)
-          }}
           className={`${fieldClass} py-1`}
-        >
-          {ops.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+          value={clause.op ?? ''}
+          options={ops.map((o) => ({ value: o.id, label: o.label }))}
+          onChange={(v) => {
+            if (v !== '') {
+              pickOp(v)
+            }
+          }}
+        />
         {field !== undefined && op?.arity === 'many' && (
           <div className="min-w-48 flex-1">
             <TokenField

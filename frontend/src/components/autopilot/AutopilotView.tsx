@@ -62,7 +62,7 @@ import {
   type Settings,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, captionClass, fieldClass, primaryButtonClass, quietButtonClass } from '../controls'
+import { buttonClass, captionClass, fieldClass, primaryButtonClass, quietButtonClass, Select } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import {
   AlertIcon,
@@ -1495,20 +1495,15 @@ export default function AutopilotView({
                 <label htmlFor={`${id}-result`} className="sr-only">
                   Result
                 </label>
-                <select
+                <Select<ActivityResult>
                   id={`${id}-result`}
-                  value={filter.result}
-                  onChange={(e) => {
-                    setFilter({ ...filter, result: e.target.value as ActivityResult })
-                  }}
                   className={`${fieldClass} py-1`}
-                >
-                  {resultOrder.map((result) => (
-                    <option key={result} value={result}>
-                      {resultLabels[result]}
-                    </option>
-                  ))}
-                </select>
+                  value={filter.result}
+                  options={resultOrder.map((r) => ({ value: r, label: resultLabels[r] }))}
+                  onChange={(result) => {
+                    setFilter({ ...filter, result })
+                  }}
+                />
                 {filters(filter) && (
                   <button
                     type="button"

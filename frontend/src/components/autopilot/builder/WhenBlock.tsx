@@ -2,7 +2,7 @@ import { useId } from 'react'
 
 import { defaultSchedule, newTrigger, omit, problemsAt, watchKinds } from '../../../lib/routineBuilder'
 import type { AutopilotEvent, AutopilotScheduleStyle, AutopilotSpec, AutopilotTrigger } from '../../../platform'
-import { fieldClass } from '../../controls'
+import { fieldClass, Select } from '../../controls'
 import { Block, Notes, NumberField, type BuilderKit } from './parts'
 
 // onOffOptions are a trigger's yes-or-no options, as the spec spells their keys.
@@ -11,8 +11,10 @@ type OnOff = 'waitForChecks' | 'firstToo' | 'ownPushesToo'
 // numberOptions are a trigger's number options.
 type NumberOption = 'settleMinutes' | 'count' | 'days'
 
-// everyLabels name a schedule's choices.
+// everyLabels name a schedule's choices, and everyKeys lists them in the order the menu
+// offers them.
 const everyLabels = { day: 'Every day', weekday: 'Every weekday', week: 'Every week' } as const
+const everyKeys: readonly (keyof typeof everyLabels)[] = ['day', 'weekday', 'week']
 
 // dayLabels name the days of a weekly schedule, from Monday.
 const dayLabels = {
@@ -24,6 +26,9 @@ const dayLabels = {
   sat: 'Saturday',
   sun: 'Sunday',
 } as const
+
+// dayKeys lists the days in the order the menu offers them, from Monday.
+const dayKeys: readonly (keyof typeof dayLabels)[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 
 // ScheduleNote says what a schedule's style does: each match told on its own, or one digest
 // with the list, and when a time the Mac slept through runs.
@@ -72,20 +77,15 @@ export function WhenBlock({ kit, spec, onChange }: WhenBlockProps) {
         <label htmlFor={`${id}-event`} className="sr-only">
           Trigger
         </label>
-        <select
+        <Select<AutopilotEvent>
           id={`${id}-event`}
-          value={trigger.event}
-          onChange={(e) => {
-            onChange(newTrigger(kit.catalog, e.target.value as AutopilotEvent))
-          }}
           className={`${fieldClass} py-1`}
-        >
-          {offered.map((t) => (
-            <option key={t.event} value={t.event}>
-              {t.label}
-            </option>
-          ))}
-        </select>
+          value={trigger.event}
+          options={offered.map((t) => ({ value: t.event, label: t.label }))}
+          onChange={(event) => {
+            onChange(newTrigger(kit.catalog, event))
+          }}
+        />
         {info?.options.map((o) => {
           const optionId = `${id}-${o.id}`
 
@@ -163,12 +163,12 @@ export function WhenBlock({ kit, spec, onChange }: WhenBlockProps) {
               <label htmlFor={`${optionId}-every`} className="sr-only">
                 How often
               </label>
-              <select
+              <Select
                 id={`${optionId}-every`}
+                className={`${fieldClass} py-1`}
                 value={schedule.every}
-                onChange={(e) => {
-                  const every = e.target.value as keyof typeof everyLabels
-
+                options={everyKeys.map((e) => ({ value: e, label: everyLabels[e] }))}
+                onChange={(every) => {
                   onChange({
                     ...trigger,
                     schedule:
@@ -177,33 +177,21 @@ export function WhenBlock({ kit, spec, onChange }: WhenBlockProps) {
                         : omit({ ...schedule, every }, 'on'),
                   })
                 }}
-                className={`${fieldClass} py-1`}
-              >
-                {(Object.keys(everyLabels) as (keyof typeof everyLabels)[]).map((e) => (
-                  <option key={e} value={e}>
-                    {everyLabels[e]}
-                  </option>
-                ))}
-              </select>
+              />
               {schedule.every === 'week' && (
                 <>
                   <label htmlFor={`${optionId}-on`} className="sr-only">
                     On
                   </label>
-                  <select
+                  <Select
                     id={`${optionId}-on`}
-                    value={schedule.on ?? 'mon'}
-                    onChange={(e) => {
-                      onChange({ ...trigger, schedule: { ...schedule, on: e.target.value as keyof typeof dayLabels } })
-                    }}
                     className={`${fieldClass} py-1`}
-                  >
-                    {(Object.keys(dayLabels) as (keyof typeof dayLabels)[]).map((d) => (
-                      <option key={d} value={d}>
-                        {dayLabels[d]}
-                      </option>
-                    ))}
-                  </select>
+                    value={schedule.on ?? 'mon'}
+                    options={dayKeys.map((d) => ({ value: d, label: dayLabels[d] }))}
+                    onChange={(on) => {
+                      onChange({ ...trigger, schedule: { ...schedule, on } })
+                    }}
+                  />
                 </>
               )}
               <label htmlFor={`${optionId}-at`} className="text-sm text-muted">
@@ -221,26 +209,19 @@ export function WhenBlock({ kit, spec, onChange }: WhenBlockProps) {
               <label htmlFor={`${optionId}-style`} className="sr-only">
                 How it tells you
               </label>
-              <select
+              <Select<AutopilotScheduleStyle>
                 id={`${optionId}-style`}
+                className={`${fieldClass} py-1`}
                 value={schedule.style ?? 'each'}
-                onChange={(e) => {
-                  const style = e.target.value as AutopilotScheduleStyle
-
+                options={kit.catalog.scheduleStyles.map((s) => ({ value: s.id, label: s.label, title: s.help }))}
+                onChange={(style) => {
                   // Each match is the default, written as none.
                   onChange({
                     ...trigger,
                     schedule: style === 'each' ? omit(schedule, 'style') : { ...schedule, style },
                   })
                 }}
-                className={`${fieldClass} py-1`}
-              >
-                {kit.catalog.scheduleStyles.map((s) => (
-                  <option key={s.id} value={s.id} title={s.help}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
+              />
             </span>
           )
         })}
