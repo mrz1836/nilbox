@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
-import type { ReleaseResult as Result, ScriptRun } from '../../platform'
+import { CelebrationsContext } from '../../lib/celebrations'
+import type { Celebrations, ReleaseResult as Result, ScriptRun } from '../../platform'
 import { at } from '../../test/clock'
 import { releaseFollow, releaseResult, releaseRun } from '../../test/fixtures'
 import { platform } from '../../test/platform'
@@ -11,7 +12,11 @@ import { ReleaseResult } from './ReleaseResult'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
-function renderResult(result: Partial<Result> | Error = {}, run: ScriptRun = releaseRun()) {
+function renderResult(
+  result: Partial<Result> | Error = {},
+  run: ScriptRun = releaseRun(),
+  celebrations: Celebrations = 'milestones',
+) {
   if (result instanceof Error) {
     platform.getReleaseResult.mockRejectedValue(result)
   } else {
@@ -21,9 +26,11 @@ function renderResult(result: Partial<Result> | Error = {}, run: ScriptRun = rel
   const handlers = { onTryAgain: vi.fn<() => void>(), onDone: vi.fn<() => void>() }
 
   render(
-    <dialog open>
-      <ReleaseResult run={run} repo="acme-org/sdk" {...handlers} />
-    </dialog>,
+    <CelebrationsContext value={celebrations}>
+      <dialog open>
+        <ReleaseResult run={run} repo="acme-org/sdk" {...handlers} />
+      </dialog>
+    </CelebrationsContext>,
     { wrapper: at() },
   )
 
@@ -95,6 +102,21 @@ describe('ReleaseResult', () => {
 
     expect(document.querySelector('[data-testid="confetti"]')).toBeNull()
     vi.unstubAllGlobals()
+  })
+
+  it.each(['quiet', 'off'] as const)('throws no confetti with celebrations %s', async (mode) => {
+    renderResult({}, releaseRun(), mode)
+
+    const c = await card()
+    // Let the effect that would throw it run.
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0)
+      })
+    })
+
+    expect(c.getByRole('heading', { name: 'acme-org/sdk v1.4.3 is on GitHub' })).toBeInTheDocument()
+    expect(document.querySelector('[data-testid="confetti"]')).toBeNull()
   })
 
   it('says when the version moved, or a newer commit was tagged, than the sheet showed', async () => {

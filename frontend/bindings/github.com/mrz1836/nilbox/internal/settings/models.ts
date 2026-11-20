@@ -72,6 +72,43 @@ export const CardDensity = {
 } as const;
 
 /**
+ * Celebrations is how the window celebrates: the inbox reaching nil, the first-run setup's
+ * end, and a release on GitHub.
+ */
+export type Celebrations = "milestones" | "quiet" | "off";
+
+/**
+ * The values of Celebrations, by the names of their Go constants.
+ */
+export const Celebrations = {
+    /**
+     * The celebrations' choices.
+     *
+     * CelebrationsMilestones throws the confetti for what it means: the inbox's party
+     * throws it on its own for an achievement (the milestones package), at most once a
+     * day, and the setup's end and a release each throw a burst. Every other party plays a
+     * small flourish instead.
+     */
+    CelebrationsMilestones: "milestones",
+
+    /**
+     * CelebrationsQuiet keeps the party's flourishes and the achievements it shows, and
+     * throws confetti only when the user runs the party again.
+     */
+    CelebrationsQuiet: "quiet",
+
+    /**
+     * CelebrationsOff shows the inbox at nil as a still strip, and throws nothing.
+     */
+    CelebrationsOff: "off",
+
+    /**
+     * DefaultCelebrations is how a fresh database celebrates.
+     */
+    DefaultCelebrations: "milestones",
+} as const;
+
+/**
  * ConversationOrder is the order the issue sheet and the review sheet list a conversation's
  * entries in, under its description.
  */
@@ -462,6 +499,12 @@ export interface Settings {
      * TextSize is the size of the app's text, apart from the size of its window.
      */
     "textSize": TextSize;
+
+    /**
+     * Celebrations is how the window celebrates the inbox at nil, the setup's end, and a
+     * release (see KeyCelebrations).
+     */
+    "celebrations": Celebrations;
 
     /**
      * ToastSeconds is how long, in seconds, a message at the bottom of the window stays

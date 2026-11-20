@@ -89,6 +89,23 @@
     background-repeat: no-repeat;
   }
 
+  /* A glyph the sparks flourish sends up out of the mark, from its middle; the party's
+     own edges clip it. */
+  .nil-spark {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    translate: -50% -50%;
+    opacity: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--color-accent);
+    pointer-events: none;
+  }
+
   /* Confetti: the outer span drifts sideways and fades, the middle one rises and falls,
      and the inner one, the shape itself, tumbles in 3D. */
   .nil-confetti {
@@ -138,7 +155,8 @@
   @media (prefers-reduced-motion: reduce) {
     .nil-confetti,
     .nil-flash,
-    .nil-glint {
+    .nil-glint,
+    .nil-spark {
       display: none;
     }
   }
@@ -219,6 +237,137 @@
     /* Two wiggles, seven seconds apart, the first once the entrance settles; then it rests. */
     .nil-nudge {
       animation: nil-nudge 7s ease-in-out 1.8s 2;
+    }
+
+    /* The flourishes, each once, as the entrance settles. */
+    .nil-hop {
+      animation: nil-hop 950ms cubic-bezier(0.34, 1.3, 0.64, 1) 0.9s both;
+    }
+
+    .nil-burst {
+      animation: nil-burst 700ms steps(1, end) 0.8s both;
+    }
+
+    .nil-spark {
+      animation: nil-spark 1.9s cubic-bezier(0.22, 1, 0.36, 1) var(--d) both;
+    }
+
+    .nil-stamp {
+      animation: nil-stamp 560ms cubic-bezier(0.2, 0.9, 0.3, 1.2) 0.55s both;
+    }
+
+    /* With celebrations off, nothing in the party moves. Declared last, so it wins over
+       each animation above. */
+    .nil-still,
+    .nil-still * {
+      animation: none;
+    }
+  }
+
+  /* The mark crouches, jumps, turns once in the air, and lands with a squash. */
+  @keyframes nil-hop {
+    0% {
+      translate: 0 0;
+      rotate: 0deg;
+      scale: 1;
+    }
+    14% {
+      translate: 0 2px;
+      scale: 1.1 0.88;
+    }
+    50% {
+      translate: 0 -18px;
+      rotate: 200deg;
+      scale: 0.94 1.06;
+    }
+    82% {
+      translate: 0 0;
+      rotate: 360deg;
+      scale: 1.1 0.9;
+    }
+    100% {
+      translate: 0 0;
+      rotate: 360deg;
+      scale: 1;
+    }
+  }
+
+  /* A hard RGB-split burst: a few jumpy frames of split, sliced type, then still. */
+  @keyframes nil-burst {
+    0% {
+      transform: translate(-4px, 1px) skewX(-14deg);
+      filter: drop-shadow(4px 0 var(--color-info)) drop-shadow(-4px 0 var(--color-danger));
+      clip-path: inset(10% 0 50% 0);
+    }
+    12% {
+      transform: translate(5px, -2px) skewX(10deg);
+      clip-path: inset(55% 0 5% 0);
+    }
+    24% {
+      transform: translate(-3px, 0) scaleX(1.12);
+      filter: drop-shadow(-5px 0 var(--color-info)) drop-shadow(5px 0 var(--color-danger));
+      clip-path: inset(25% 0 30% 0);
+    }
+    36% {
+      transform: translate(3px, 2px);
+      clip-path: inset(0 0 68% 0);
+    }
+    48% {
+      transform: translate(-2px, -1px) skewX(-6deg);
+      filter: drop-shadow(3px 0 var(--color-info)) drop-shadow(-3px 0 var(--color-danger));
+      clip-path: inset(60% 0 0 0);
+    }
+    60% {
+      transform: translate(1px, 0);
+      clip-path: none;
+    }
+    72%,
+    100% {
+      transform: none;
+      filter: none;
+      clip-path: none;
+    }
+  }
+
+  /* A glyph floats up and out, drifting and turning, and fades. */
+  @keyframes nil-spark {
+    0% {
+      opacity: 0;
+      translate: -50% -50%;
+      scale: 0.6;
+      rotate: 0deg;
+    }
+    16% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      translate: calc(-50% + var(--sx)) calc(-50% - var(--sy));
+      scale: 1.1;
+      rotate: var(--sr);
+    }
+  }
+
+  /* The chip comes down hard from above, overshoots, and settles like a rubber stamp. */
+  @keyframes nil-stamp {
+    0% {
+      opacity: 0;
+      scale: 2.4;
+      rotate: -12deg;
+    }
+    55% {
+      opacity: 1;
+      scale: 0.9;
+      rotate: -3deg;
+    }
+    75% {
+      scale: 1.05;
+      rotate: 1deg;
+    }
+    100% {
+      opacity: 1;
+      scale: 1;
+      rotate: 0deg;
     }
   }
 

@@ -31,6 +31,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
+	"github.com/mrz1836/nilbox/internal/milestones"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/notifyprefs"
 	prefsstore "github.com/mrz1836/nilbox/internal/prefs"
@@ -129,6 +130,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		},
 		"settings.Service.SetCardUnread": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetCardUnread(ctx, false)
+		},
+		"settings.Service.SetCelebrations": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetCelebrations(ctx, settings.CelebrationsQuiet)
 		},
 		"settings.Service.SetTerminal": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetTerminal(ctx, settings.TerminalApp)
@@ -287,6 +291,10 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		},
 		"setup.Service.Terminals": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Setup.Terminals(ctx), nil
+		},
+		// A found nil unlocks nothing, so its list is the one that starts empty.
+		"milestones.Service.Reached": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Milestones.Reached(ctx, milestones.Reach{Loud: true})
 		},
 		"prompts.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Prompts.List(ctx)

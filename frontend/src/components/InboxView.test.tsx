@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useState } from 'react'
 
+import { CelebrationsContext } from '../lib/celebrations'
 import { filterInbox } from '../lib/inboxFilter'
 import { earnedBurst } from '../lib/nil'
 import { offersProjects } from '../lib/projects'
@@ -16,6 +17,7 @@ import { ClockContext } from '../lib/useNow'
 import { useTriage } from '../lib/useTriage'
 import type {
   AfterMerge,
+  Celebrations,
   InboxItem,
   InboxSnapshot,
   Issue,
@@ -36,6 +38,7 @@ import {
   item,
   itemResolution,
   list,
+  nilMoment,
   profile,
   project,
   prompts,
@@ -91,17 +94,21 @@ interface HarnessProps {
   repoRules?: RepoRules
   // showing is whether the page is on screen, as App keeps it while another page shows.
   showing?: boolean
+  // celebrations is how the window celebrates, as App provides it.
+  celebrations?: Celebrations
 }
 
 // Harness renders the view over the real inbox state, triage, and collapsed lists, the
 // way App does, on a clock that reads its time from clock.
-function Harness({ clock, ...props }: HarnessProps) {
+function Harness({ clock, celebrations = 'milestones', ...props }: HarnessProps) {
   const [shared] = useState(() => clockAt(clock))
 
   return (
-    <ClockContext value={shared}>
-      <Inbox {...props} />
-    </ClockContext>
+    <CelebrationsContext value={celebrations}>
+      <ClockContext value={shared}>
+        <Inbox {...props} />
+      </ClockContext>
+    </CelebrationsContext>
   )
 }
 
@@ -115,7 +122,7 @@ function Inbox({
   releases = true,
   repoRules = { pinned: [], muted: [] },
   showing = true,
-}: Omit<HarnessProps, 'clock'>) {
+}: Omit<HarnessProps, 'clock' | 'celebrations'>) {
   const inbox = useInbox()
   const drafts = useReviewDrafts()
   const issueDrafts = useIssueDrafts()
@@ -1258,16 +1265,42 @@ describe('InboxView at nil', () => {
   // full party shows.
   const party = () => screen.queryByRole('region', { name: 'inbox == nil' })
   const terminal = () => screen.queryByRole('figure', { name: 'Terminal' })
+  const confetti = () => screen.queryAllByTestId('confetti').length
+
+  // milestones stands in for the milestones as they keep their log: an earned nil unlocks
+  // the first nil, and confetti flies for the first loud one only, as for the first in a
+  // day.
+  function milestones() {
+    let flown = false
+
+    platform.reachedNil.mockImplementation((reach) => {
+      const confetti = reach.earned && reach.loud && !flown
+      flown ||= confetti
+
+      return Promise.resolve(
+        nilMoment({
+          earned: reach.earned,
+          cleared: reach.cleared,
+          count: reach.earned ? 1 : 0,
+          unlocked: reach.earned ? [{ kind: 'first', n: 1 }] : [],
+          confetti,
+        }),
+      )
+    })
+  }
 
   it('throws a party in place of the lists once a refresh finds every list empty', async () => {
+    milestones()
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
-    // Opening the page at nil is quiet; the achievement and the confetti are for emptying it.
-    expect(screen.queryByText('Achievement unlocked')).not.toBeInTheDocument()
-    expect(screen.queryAllByTestId('confetti')).toHaveLength(0)
-    // With nothing set aside, no list shows.
+    // Opening the page at nil is finding it empty: it unlocks nothing, and throws nothing.
+    expect(platform.reachedNil).toHaveBeenCalledExactlyOnceWith({ earned: false, cleared: 0, loud: true })
+    expect(screen.queryByText(/Achievement unlocked/)).not.toBeInTheDocument()
+    expect(confetti()).toBe(0)
+    // With nothing set aside, no list shows, and the party fills the page.
+    expect(terminal()).toBeInTheDocument()
     for (const title of ['Review requested', 'Yours']) {
       expect(screen.queryByRole('region', { name: title })).not.toBeInTheDocument()
     }
@@ -1293,7 +1326,8 @@ describe('InboxView at nil', () => {
     expect(screen.getByRole('button', { name: 'go run ./party --again' })).toBeInTheDocument()
   })
 
-  it('fills the page when emptied, and folds once a list turns to what was set aside', async () => {
+  it('is a strip when emptied above what was set aside, and folds once a list turns to it', async () => {
+    milestones()
     const snoozed = item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' })
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]), yours: list([snoozed]) }),
@@ -1309,11 +1343,15 @@ describe('InboxView at nil', () => {
 
     await userEvent.click((await section('Review requested')).getByRole('button', { name: 'Dismiss' }))
 
-    // The reward: the full party, the terminal and all, though lists show below it.
-    expect(await screen.findByText('Achievement unlocked')).toBeInTheDocument()
+    // Earned, the strip unlocks the achievement, and leaves the page to the list below it.
+    expect(await screen.findByText(/Achievement unlocked/)).toBeInTheDocument()
+    expect(terminal()).not.toBeInTheDocument()
+
+    // Its run brings it in full; turning to what was set aside is getting back to work, and
+    // it folds.
+    await userEvent.click(screen.getByRole('button', { name: 'go run ./party' }))
     expect(terminal()).toBeInTheDocument()
 
-    // Turning to what was set aside is getting back to work, and the party folds.
     const yours = await section('Yours')
     await userEvent.click(yours.getByRole('tab', { name: 'Snoozed 1' }))
 
@@ -1327,6 +1365,7 @@ describe('InboxView at nil', () => {
   })
 
   it('stays folded for the visit, through a restore and a second dismissal', async () => {
+    milestones()
     const snoozed = item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' })
     const dismissed = snapshot({
       lastRefreshedAt: refreshed,
@@ -1344,10 +1383,12 @@ describe('InboxView at nil', () => {
 
     const review = await section('Review requested')
     await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'go run ./party' }))
+    expect(terminal()).toBeInTheDocument()
     await userEvent.click(await review.findByRole('tab', { name: 'Dismissed 1' }))
     expect(terminal()).not.toBeInTheDocument()
 
-    // Restoring the item ends the party; dismissing it again earns it back, as a strip, so
+    // Restoring the item ends the party; dismissing it again earns another, as a strip, so
     // the page doesn't jump while the user is still at work.
     await userEvent.click(review.getByRole('button', { name: 'Restore' }))
     await waitFor(() => {
@@ -1358,6 +1399,8 @@ describe('InboxView at nil', () => {
 
     expect(await screen.findByRole('region', { name: 'inbox == nil' })).toHaveTextContent('Achievement unlocked')
     expect(terminal()).not.toBeInTheDocument()
+    // Each party reported once, each earned.
+    expect(platform.reachedNil.mock.calls.map(([reach]) => reach.earned)).toEqual([true, true])
   })
 
   it('starts each visit as it comes', async () => {
@@ -1417,9 +1460,11 @@ describe('InboxView at nil', () => {
     render(<Harness launch={launchOptions} clock={fixedNow} />)
     expect(await screen.findByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
     expect(party()).not.toBeInTheDocument()
+    expect(platform.reachedNil).not.toHaveBeenCalled()
   })
 
   it('unlocks the achievement when the last item is dismissed, and leaves with an undo', async () => {
+    milestones()
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]) }))
     platform.dismissItem.mockResolvedValue(
       snapshot({
@@ -1435,9 +1480,14 @@ describe('InboxView at nil', () => {
 
     await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
 
-    expect(await screen.findByText('Achievement unlocked')).toBeInTheDocument()
+    expect(await screen.findByText(/Achievement unlocked/)).toHaveTextContent('Achievement unlocked · First nil')
+    expect(platform.reachedNil).toHaveBeenCalledExactlyOnceWith({ earned: true, cleared: 1, loud: true })
     expect(party()).toHaveTextContent('Inbox zero is for amateurs. You hit nil.')
-    expect(screen.getAllByTestId('confetti').length).toBeGreaterThan(0)
+    expect(confetti()).toBe(earnedBurst)
+    // The dismissed item still shows in its list's tab, so the party is a strip; its run
+    // brings the terminal, which counts it.
+    expect(terminal()).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'go run ./party' }))
     expect(within(screen.getByRole('figure', { name: 'Terminal' })).getByText('dismissed')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
@@ -1446,7 +1496,38 @@ describe('InboxView at nil', () => {
     expect(party()).not.toBeInTheDocument()
   })
 
-  it('throws confetti on its own only on emptying the inbox, and then only once in a while', async () => {
+  it('reports the most the inbox held on the way to nil as what was cleared', async () => {
+    const other = item({ id: 2, number: 8, title: 'Bump the parser' })
+    const dismissedAt = FIXED_NOW.toISOString()
+    platform.getInboxSnapshot.mockResolvedValue(
+      snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]), yours: list([other]) }),
+    )
+    platform.dismissItem
+      .mockResolvedValueOnce(
+        snapshot({
+          lastRefreshedAt: refreshed,
+          reviewRequested: list([{ ...last, dismissedAt }]),
+          yours: list([other]),
+        }),
+      )
+      .mockResolvedValueOnce(
+        snapshot({
+          lastRefreshedAt: refreshed,
+          reviewRequested: list([{ ...last, dismissedAt }]),
+          yours: list([{ ...other, dismissedAt }]),
+        }),
+      )
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    await userEvent.click((await section('Review requested')).getByRole('button', { name: 'Dismiss' }))
+    await userEvent.click((await section('Yours')).getByRole('button', { name: 'Dismiss' }))
+
+    expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
+    expect(platform.reachedNil).toHaveBeenCalledExactlyOnceWith({ earned: true, cleared: 2, loud: true })
+  })
+
+  it('throws confetti on its own only when the milestones say so', async () => {
+    milestones()
     const dismissed = snapshot({
       lastRefreshedAt: refreshed,
       reviewRequested: list([{ ...last, dismissedAt: FIXED_NOW.toISOString() }]),
@@ -1455,23 +1536,24 @@ describe('InboxView at nil', () => {
     platform.dismissItem.mockResolvedValue(dismissed)
     platform.restoreItem.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]) }))
     const { rerender } = render(<Harness launch={launchOptions} clock={fixedNow} />)
-    const confetti = () => screen.queryAllByTestId('confetti').length
 
     const review = await section('Review requested')
     await userEvent.click(review.getByRole('button', { name: 'Dismiss' }))
 
-    expect(await screen.findByText('Achievement unlocked')).toBeInTheDocument()
+    expect(await screen.findByText(/Achievement unlocked/)).toBeInTheDocument()
     expect(confetti()).toBe(earnedBurst)
 
-    // Leaving for another page and coming back finds the inbox at nil, quietly.
+    // Leaving for another page and coming back finds the inbox at nil: a party of its own,
+    // which unlocks nothing and throws nothing.
     rerender(<Harness launch={launchOptions} clock={fixedNow} showing={false} />)
     rerender(<Harness launch={launchOptions} clock={fixedNow} showing />)
 
     expect(await screen.findByRole('button', { name: 'go run ./party' })).toBeInTheDocument()
+    expect(platform.reachedNil).toHaveBeenLastCalledWith({ earned: false, cleared: 0, loud: true })
     expect(confetti()).toBe(0)
 
     // Bringing the item back and emptying the inbox again earns the party, but the confetti
-    // has flown too recently to fly again on its own.
+    // has flown today.
     const again = await section('Review requested')
     await userEvent.click(again.getByRole('tab', { name: 'Dismissed 1' }))
     await userEvent.click(again.getByRole('button', { name: 'Restore' }))
@@ -1481,8 +1563,91 @@ describe('InboxView at nil', () => {
     await userEvent.click(again.getByRole('tab', { name: 'Review requested 1' }))
     await userEvent.click(again.getByRole('button', { name: 'Dismiss' }))
 
-    expect(await screen.findByText('Achievement unlocked')).toBeInTheDocument()
+    expect(await screen.findByText(/Achievement unlocked/)).toBeInTheDocument()
+    expect(platform.reachedNil).toHaveBeenCalledTimes(3)
     expect(confetti()).toBe(0)
+  })
+
+  it('counts a party shown again with nothing come back as found, not earned again', async () => {
+    milestones()
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]) }))
+    platform.dismissItem.mockResolvedValue(
+      snapshot({
+        lastRefreshedAt: refreshed,
+        reviewRequested: list([{ ...last, dismissedAt: FIXED_NOW.toISOString() }]),
+      }),
+    )
+    const { rerender } = render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    await userEvent.click((await section('Review requested')).getByRole('button', { name: 'Dismiss' }))
+    expect(await screen.findByText(/Achievement unlocked/)).toBeInTheDocument()
+
+    // A filter hides the party, and clearing it shows another.
+    rerender(<Harness launch={launchOptions} clock={fixedNow} query="widget" />)
+    await waitFor(() => {
+      expect(party()).not.toBeInTheDocument()
+    })
+    rerender(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
+    expect(platform.reachedNil.mock.calls.map(([reach]) => reach.earned)).toEqual([true, false])
+  })
+
+  it('shows the party without a chip when the milestones cannot answer', async () => {
+    platform.reachedNil.mockRejectedValue(new Error('database is locked'))
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed }))
+    render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
+    expect(screen.queryByTestId('nil-chip')).not.toBeInTheDocument()
+    expect(confetti()).toBe(0)
+  })
+
+  it('plays another flourish at the next party', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed }))
+    const { rerender } = render(<Harness launch={launchOptions} clock={fixedNow} />)
+
+    expect((await screen.findByRole('region', { name: 'inbox == nil' })).dataset.flourish).toBe('glint')
+
+    rerender(<Harness launch={launchOptions} clock={fixedNow} showing={false} />)
+    rerender(<Harness launch={launchOptions} clock={fixedNow} showing />)
+
+    await waitFor(() => {
+      expect(party()?.dataset.flourish).toBe('hop')
+    })
+  })
+
+  it('reports a quiet nil with celebrations quiet, and throws no confetti of its own', async () => {
+    platform.reachedNil.mockImplementation((reach) =>
+      Promise.resolve(nilMoment({ earned: reach.earned, unlocked: [{ kind: 'first', n: 1 }], confetti: true })),
+    )
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([last]) }))
+    platform.dismissItem.mockResolvedValue(
+      snapshot({
+        lastRefreshedAt: refreshed,
+        reviewRequested: list([{ ...last, dismissedAt: FIXED_NOW.toISOString() }]),
+      }),
+    )
+    render(<Harness launch={launchOptions} clock={fixedNow} celebrations="quiet" />)
+
+    await userEvent.click((await section('Review requested')).getByRole('button', { name: 'Dismiss' }))
+
+    expect(await screen.findByText(/Achievement unlocked/)).toBeInTheDocument()
+    expect(platform.reachedNil).toHaveBeenCalledExactlyOnceWith({ earned: true, cleared: 1, loud: false })
+    expect(confetti()).toBe(0)
+  })
+
+  it('is a still strip with celebrations off, even with nothing set aside', async () => {
+    milestones()
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: refreshed }))
+    render(<Harness launch={launchOptions} clock={fixedNow} celebrations="off" />)
+
+    expect(await screen.findByRole('region', { name: 'inbox == nil' })).toHaveClass('nil-still')
+    expect(terminal()).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'go run ./party' })).not.toBeInTheDocument()
+    // The log still keeps the streak.
+    expect(platform.reachedNil).toHaveBeenCalledExactlyOnceWith({ earned: false, cleared: 0, loud: false })
   })
 })
 

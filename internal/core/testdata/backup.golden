@@ -83,6 +83,7 @@
     "nudgeSnooze": false,
     "theme": "system",
     "textSize": "default",
+    "celebrations": "milestones",
     "toastSeconds": 12,
     "inboxOrder": {
       "statusSorted": [],

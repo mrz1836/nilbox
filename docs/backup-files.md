@@ -117,6 +117,7 @@ is each entry left out.
 | `watchPushes` | *Notice pushes from this Mac*: whether the app watches the branches of the inbox's pull requests in your clones, so one you push to is read again at once (`true`, the default). |
 | `serviceStatus` | What the service status check watches: `off`, the status pages turned off (`github`, `claude`, `openai`), and `parts`, every part watched, across the services, by the app's own names for them (such as `github.pulls`, `claude.api`, or `openai.codex-cli`). `parts` is the whole list: a part it leaves out is unticked. A name this version doesn't know is left out of an import, with a note. |
 | `mergeMethod`, `theme`, `textSize`, `toastSeconds` | Reviewing and appearance. |
+| `celebrations` | *Celebrations*: how the app celebrates inbox nil, the end of the setup, and a release: `milestones` (confetti for an achievement, at most once a day, the default), `quiet` (flourishes and achievements, confetti only on asking), or `off`. The milestones themselves, the streak and the achievements, are history, and a backup never holds them. |
 | `nudgeAfterHours` | *Offer a nudge after*: how many hours a pull request you requested changes on has to be quiet before its card offers **Nudge**, `0` to `720`; `0` offers none, and `24`, the default, is a day. |
 | `nudgeSnooze` | *Snooze after a nudge*: whether the nudge dialog starts with *Then snooze* ticked (`false`, the default). |
 | `inboxOrder` | Which inbox lists (`reviewRequested`, `yours`) sort by project status (`statusSorted`), the order of the statuses (`statusOrder`), and which show one kind of item (`kinds`). A file from an older version names the former `authored` and `assigned` lists: `assigned`'s sort and kind are read as `yours`'s, unless the file gives `yours` a kind of its own, and `authored`'s are dropped. |
@@ -191,8 +192,9 @@ stored as the app writes one, its lists sorted and its texts trimmed.
 - **Your GitHub sign-in.** The app never stores a token: it borrows one from `gh` each time.
 - **Caches and mirrors.** The inbox, the review sheet's diffs, the issue sheet's views, profile
   pictures, and the mirror of your GitHub notifications are read from GitHub again.
-- **History.** Runs, agent sessions, notifications, worktree records, and Autopilot's history:
-  what each routine matched, ran, and did.
+- **History.** Runs, agent sessions, notifications, worktree records, Autopilot's history
+  (what each routine matched, ran, and did), and the inbox's milestones (the streak, the count,
+  and the achievements unlocked).
 - **Per-item triage.** Snoozes, dismissals, and pins hang off the inbox's cached items.
 - **Agent profiles.** They are found in your home directory on every start.
 - **Script trust.** A file from elsewhere could otherwise pre-approve a repository's command,

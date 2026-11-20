@@ -28,6 +28,9 @@ describe('matchSettings', () => {
     ['dark mode', 'appearance', 'Theme'],
     ['font', 'appearance', 'Text size'],
     ['zoom', 'appearance', 'Text size'],
+    ['confetti', 'appearance', 'Celebrations'],
+    ['inbox nil', 'appearance', 'Celebrations'],
+    ['streak', 'appearance', 'Celebrations'],
     ['menu bar', 'notifications', 'Show in the menu bar'],
     ['force-push', 'snoozing', 'New commits'],
     ['iterm', 'launching', 'Terminal'],
@@ -53,9 +56,10 @@ describe('matchSettings', () => {
   it('finds every setting of a section by its name, and counts them', () => {
     const match = matchSettings('appearance')
 
-    expect(found('appearance')).toEqual([['appearance', 3]])
-    expect(match?.matches).toBe(3)
+    expect(found('appearance')).toEqual([['appearance', 4]])
+    expect(match?.matches).toBe(4)
     expect(match?.isMatch('appearance', 'Window size')).toBe(true)
+    expect(match?.isMatch('appearance', 'Celebrations')).toBe(true)
   })
 
   it('counts across the sections, in the sidebar’s order', () => {

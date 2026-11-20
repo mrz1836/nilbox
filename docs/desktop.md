@@ -900,7 +900,7 @@ while focus isn't in a field or on a control; Escape never skips.
 | **Pick your agent** | Each coding agent with its version, or where to get it; its profiles, and the command that signs one in; the default, the profile a launch runs with, the terminal (iTerm2 or Terminal, installed ones only: a default iTerm2 that isn't installed moves to Terminal), and whether each session gets its own worktree |
 | **Stay in the loop** | Turns banners on with a sample, which makes macOS ask once; the agent sessions' banners; the menu bar icon; and the mirror of your GitHub notifications, and clearing them |
 | **Add your tools** | Only when it fits: mage-x or go-pre-commit is installed, or a clone uses one of them, runs go-fortress, or is a Go module (a few fixed paths in each clone, looked at with `lstat` alone). It says why it is suggested, shows each tool's card as Settings → Integrations does, and is always skippable |
-| **Finish** | Throws confetti, prints a `go test`-style log of the setup with a **Fix** beside whatever needs attention, previews the inbox, shows [how to read a card](#inbox-cards) (a sample card and the key to its colors and symbols), and opens it |
+| **Finish** | Throws confetti (unless [Celebrations](#inbox-nil) is quiet or off), prints a `go test`-style log of the setup with a **Fix** beside whatever needs attention, previews the inbox, shows [how to read a card](#inbox-cards) (a sample card and the key to its colors and symbols), and opens it |
 
 macOS asks to allow banners only once the setup ends, or from its Notifications step, never
 the moment the window opens. **Skip setup** ends it at any step. **Settings → About → Run
@@ -1407,7 +1407,8 @@ never from its exit status alone:
 
 - **On GitHub:** the tag and commit, the branch your clone is back on, and **View v1.4.3 on
   GitHub**, **Watch the release workflow**, and **Copy v1.4.3**, with a burst of confetti
-  (none when the system asks for reduced motion). A version that moved meanwhile, or a newer
+  (none when the system asks for reduced motion, or with [Celebrations](#inbox-nil) quiet or
+  off). A version that moved meanwhile, or a newer
   commit than the one you saw, is said too.
 - **Tagged on this Mac only:** the push magex skipped or GitHub refused, the commands to push or
   undo the tag, to copy, and **Open in terminal**.
@@ -1842,8 +1843,13 @@ rem, never px, so it follows the setting; a repository test fails the build for 
 large** (1680 × 1050). Choosing one resizes the window at once. A size larger than the screen
 opens as large as the screen allows.
 
+**Celebrations.** Settings → Appearance also sets how the app celebrates: **Milestones** (the
+default), **Quiet**, or **Off**, each described under [Inbox nil](#inbox-nil). The row says what
+the chosen one does, and the next party follows it.
+
 **Settings** is a page of its own. Its sidebar lists the sections in the order the app is used:
-your account, appearance (the theme, the text size, and the size the window opens at),
+your account, appearance (the theme, the text size, the size the window opens at, and the
+[celebrations](#inbox-nil)),
 [notifications](#menu-bar-and-notifications) (the menu bar icon and which banners show),
 [GitHub notifications](#github-notifications) (whether the app reads them, and when they are
 cleared), and refreshing (how often the inbox, the running checks, and the worktrees are read again); then,
@@ -2986,16 +2992,41 @@ the requests to GitHub's API.
 ## Inbox nil
 
 When every list is empty, the inbox throws a party in their place, above any list that still
-holds what you snoozed, dismissed, or muted: **inbox == nil**, a one-liner,
-and a terminal that checks off each list, counts what you snoozed and dismissed (with when the
-first snooze comes back), and panics, having nothing left to do. Empty the inbox while you
-watch, by triaging the last item or by a refresh that finds nothing left, and you get the full
-party with **Achievement unlocked**, and confetti flies from the **nil**. So that it keeps its
-meaning, the confetti flies on its own at most once every four hours while the app runs, and
-never when you open the inbox to find it already empty, however often you come back. Those
-quieter entrances sweep a glint across the party instead, and **go run ./party** gives a little
-wiggle, twice. It runs the party again whenever you like, with more confetti and a new one-liner
-each time.
+holds what you snoozed, dismissed, or muted: **inbox == nil**, a chip that says what the moment
+was worth, a one-liner, and a terminal that checks off each list, counts what you snoozed and
+dismissed (with when the first snooze comes back), keeps your streak (`streak … 4 // days
+running`, the `best` to beat, and `nil … 37 // and counting`), and panics, having nothing left
+to do.
+
+**Milestones.** The app keeps a small log of the days the inbox reached nil, on your Mac, in its
+database (never in a backup; a reset clears it). Every day at nil, whether you emptied the inbox
+or opened it to find it empty, carries your **streak** on; a day without one starts it again.
+Emptying it while you watch, by triaging the last item or by a refresh that finds nothing left,
+counts as a nil of yours, and can unlock an achievement, each once: a **3-, 7-, 14-, or 30-day
+streak** and every 30 days after, your **10th, 25th, 50th, and 100th nil** and every 100th after,
+your **First nil**, a **Clean sweep** of 10 or more items in one sitting, **Early bird** (5:00
+to noon), **Friday finish**, **Weekend warrior**, and **Night owl** (22:00 to 5:00). A streak reached
+on a day you only found the inbox empty unlocks with the next nil you earn. The chip shows what
+unlocked (*Achievement unlocked · 7-day streak*, with *+1 more* if several did), or, for an
+ordinary nil, its number (*Nil #37*) or the day of your streak (*Day 4 at nil*). The one-liner
+fits the moment: the first nil you earn gets *Inbox zero is for amateurs. You hit nil.*, and
+later ones turn through their own quips, or speak to a sweep, a streak, a Friday, a weekend, the
+hour before standup, or the dark.
+
+**Confetti.** Confetti flies from the **nil** on its own only when a nil unlocks an achievement,
+and then at most once a day: the day it flew is in the log, so restarting the app doesn't throw
+it again. Every other party plays one small flourish instead, never the same one twice in a row:
+a glint sweeping across it, the mark hopping and turning, a hard RGB-split burst on **nil**, a
+few code glyphs drifting up out of the mark, or the chip landing like a rubber stamp; and **go
+run ./party** gives a little wiggle, twice. It runs the party again whenever you like, with more
+confetti and a new one-liner each time.
+
+**Celebrations** in Settings → Appearance sets how much of this you get. **Milestones**, the
+default, is all of the above. **Quiet** keeps the chips and the flourishes, and throws confetti
+only when you run the party again. **Off** shows the inbox at nil as a still strip, the mark, the
+heading, and the one-liner, with no chip, flourish, or button; the log still keeps your streak.
+Quiet and Off also skip the bursts of confetti that end the [first-run setup](#first-run-setup)
+and greet a [release on GitHub](#release).
 
 The party needs a successful refresh: an inbox that was never refreshed, or whose last refresh
 failed, is unknown rather than empty. A list whose **N of M** count shows more on GitHub than
@@ -3003,16 +3034,15 @@ was fetched is not empty either. A list that holds something set aside stays bel
 so its **Snoozed** and **Dismissed** tabs are a click away, and an **Undo** that brings an item
 back ends it.
 
-Above such a list, the party fills the page only for the moment you empty the inbox. Open
-the inbox to find it already empty and the party is a strip above the lists: **inbox == nil**,
-a one-liner, and **go run ./party**, with the lists in view below. Turn a list to its **Snoozed**,
-**Dismissed**, or **Muted** tab while the full party shows and it folds into the strip, the
-list staying where it was under the pointer; the chevron in the party's corner folds it too.
-**go run ./party** in the strip runs the party in full again. It stays the way you left it
-until you leave the inbox for another page and come back. With nothing set aside, there's no
-list to make room for, and the party always fills the page. With
-**Reduce motion** on (System Settings → Accessibility → Display), everything holds still and no
-confetti flies.
+Above such a list, the party is a strip: **inbox == nil**, the chip, a one-liner, and **go run
+./party**, with the lists in view below, whether you emptied the inbox or found it empty. **go
+run ./party** in the strip runs the party in full. Turn a list to its **Snoozed**,
+**Dismissed**, or **Muted** tab while the full party shows and it folds into the strip again,
+the list staying where it was under the pointer; the chevron in the party's corner folds it too.
+It stays the way you left it until you leave the inbox for another page and come back. With
+nothing set aside, there's no list to make room for, and the party fills the page, unless
+Celebrations is **Off**, which always shows the strip. With **Reduce motion** on (System Settings
+→ Accessibility → Display), everything holds still and no confetti flies.
 
 <br>
 

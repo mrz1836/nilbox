@@ -96,6 +96,7 @@ func TestPrefDefaults(t *testing.T) {
 		BannersOff:          []notifyprefs.Kind{notifyprefs.KindSessionNeedsYou, notifyprefs.KindSessionFinished},
 		Theme:               ThemeSystem,
 		TextSize:            TextSizeDefault,
+		Celebrations:        CelebrationsMilestones,
 		ToastSeconds:        12,
 		CollapsedSections:   []ListKey{},
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}},
@@ -255,6 +256,7 @@ func TestSettersPersist(t *testing.T) {
 	require.NoError(t, testutil.ErrOf(svc.SetWatchPushes(t.Context(), false)))
 	require.NoError(t, testutil.ErrOf(svc.SetBranchRules(t.Context(), branchrules.Rules{Own: true, Protected: []string{"develop"}})))
 	require.NoError(t, testutil.ErrOf(svc.SetTextSize(t.Context(), TextSizeLarger)))
+	require.NoError(t, testutil.ErrOf(svc.SetCelebrations(t.Context(), CelebrationsOff)))
 	require.NoError(t, testutil.ErrOf(svc.SetToastSeconds(t.Context(), 30)))
 	require.NoError(t, testutil.ErrOf(svc.SetRepoRule(t.Context(), "acme-org", reporules.RuleMuted)))
 
@@ -298,6 +300,7 @@ func TestSettersPersist(t *testing.T) {
 		BannersOff:          []notifyprefs.Kind{notifyprefs.KindWoke, notifyprefs.KindSessionFinished},
 		Theme:               DefaultTheme,
 		TextSize:            TextSizeLarger,
+		Celebrations:        CelebrationsOff,
 		ToastSeconds:        30,
 		CollapsedSections:   []ListKey{},
 		InboxOrder:          InboxOrder{StatusSorted: []ListKey{}, StatusOrder: []string{}, Kinds: map[ListKey]ListKind{}},
@@ -388,6 +391,8 @@ func TestSetRejectsInvalid(t *testing.T) {
 		{name: "no toast", set: func() error { return testutil.ErrOf(svc.SetToastSeconds(t.Context(), 0)) }, wantErr: ErrInvalidToastSeconds},
 		{name: "nudge before now", set: func() error { return testutil.ErrOf(svc.SetNudgeAfterHours(t.Context(), -1)) }, wantErr: ErrInvalidNudgeAfterHours, wantMsg: "-1 hours; choose 0 (never) to 720"},
 		{name: "nudge past a month", set: func() error { return testutil.ErrOf(svc.SetNudgeAfterHours(t.Context(), 721)) }, wantErr: ErrInvalidNudgeAfterHours},
+		{name: "unknown celebrations", set: func() error { return testutil.ErrOf(svc.SetCelebrations(t.Context(), "fireworks")) }, wantErr: ErrInvalidCelebrations, wantMsg: `"fireworks": choose one of milestones, quiet, off`},
+		{name: "celebrations in the wrong case", set: func() error { return testutil.ErrOf(svc.SetCelebrations(t.Context(), "Quiet")) }, wantErr: ErrInvalidCelebrations},
 		{name: "unknown review rule", set: func() error {
 			return testutil.ErrOf(svc.SetSnoozeWake(t.Context(), snooze.Rules{Reviews: "sometimes"}))
 		}, wantErr: snooze.ErrInvalidRules, wantMsg: `"sometimes"`},
@@ -439,6 +444,7 @@ func TestGetFallsBackOnBadStoredValues(t *testing.T) {
 	setPref(t, db, KeyToastSeconds, "61")
 	setPref(t, db, KeyNudgeAfterHours, "721")
 	setPref(t, db, KeyNudgeSnooze, "maybe")
+	setPref(t, db, KeyCelebrations, "fireworks")
 	setPref(t, db, snooze.PrefWakeReviews, "sometimes")
 	setPref(t, db, snooze.PrefWakeCommits, "lots")
 
@@ -651,6 +657,10 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"card unread", func() (Settings, error) { return svc.SetCardUnread(ctx, false) },
 			func(s Settings) any { return s.CardUnread }, false,
+		},
+		{
+			"celebrations", func() (Settings, error) { return svc.SetCelebrations(ctx, CelebrationsQuiet) },
+			func(s Settings) any { return s.Celebrations }, CelebrationsQuiet,
 		},
 		{
 			"ignored workflows", func() (Settings, error) { return svc.SetIgnoredWorkflows(ctx, []string{"Auto-merge Trigger"}) },

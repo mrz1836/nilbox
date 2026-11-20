@@ -496,6 +496,47 @@ describe('SettingsView', () => {
     })
   })
 
+  it('offers the celebrations, saying what the chosen one does, and saves a choice at once', async () => {
+    const { onSaved } = renderSettings()
+    await openSection('Appearance')
+
+    const modes = screen.getByRole('radiogroup', { name: 'Celebrations' })
+    expect(
+      within(modes)
+        .getAllByRole('radio')
+        .map((r) => r.getAttribute('value')),
+    ).toEqual(['milestones', 'quiet', 'off'])
+    expect(within(modes).getByRole('radio', { name: 'Milestones' })).toBeChecked()
+    expect(screen.getByText(/throws confetti for a streak or an achievement, at most once a day/)).toBeInTheDocument()
+
+    await userEvent.click(within(modes).getByRole('radio', { name: 'Quiet' }))
+
+    expect(platform.setCelebrations).toHaveBeenCalledExactlyOnceWith('quiet')
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ celebrations: 'quiet' }))
+    })
+    expect(screen.getByText(/confetti flies only when you run the party again/)).toBeInTheDocument()
+  })
+
+  it('shows celebrations the backend refused, and goes back to the stored one', async () => {
+    platform.setCelebrations.mockRejectedValue(new Error('unknown celebrations'))
+    const { onSaved } = renderSettings({ current: settings({ celebrations: 'off' }) })
+    await openSection('Appearance')
+
+    const modes = screen.getByRole('radiogroup', { name: 'Celebrations' })
+    expect(within(modes).getByRole('radio', { name: 'Off' })).toBeChecked()
+    expect(screen.getByText('Inbox nil is a still strip, and nothing throws confetti.')).toBeInTheDocument()
+
+    await userEvent.click(within(modes).getByRole('radio', { name: 'Milestones' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('unknown celebrations')
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(modes).toHaveAccessibleDescription('unknown celebrations')
+    await waitFor(() => {
+      expect(within(modes).getByRole('radio', { name: 'Off' })).toBeChecked()
+    })
+  })
+
   it('offers the themes, with the chosen one checked', async () => {
     renderSettings({ theme: 'dark' })
     await openSection('Appearance')

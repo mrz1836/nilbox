@@ -34,6 +34,7 @@ import * as launchdefaults from '../../bindings/github.com/mrz1836/nilbox/intern
 import * as launcher from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
 import type * as terminal from '../../bindings/github.com/mrz1836/nilbox/internal/launcher/terminal'
 import type * as localrepos from '../../bindings/github.com/mrz1836/nilbox/internal/localrepos'
+import * as milestones from '../../bindings/github.com/mrz1836/nilbox/internal/milestones'
 import * as notify from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
 import type * as notifyprefs from '../../bindings/github.com/mrz1836/nilbox/internal/notifyprefs'
 import * as profiles from '../../bindings/github.com/mrz1836/nilbox/internal/profiles'
@@ -163,6 +164,14 @@ export type MoveResult = NonNullLists<update.MoveResult>
 export type MoveOutcome = update.MoveOutcome
 export type InstallFailure = NonNullLists<update.InstallFailure>
 export type UpdateMode = updateprefs.Mode
+
+// The inbox's milestones: a time it reached nil as the window saw it (Reach), and what that
+// was worth (NilMoment): the streak, the count, and the achievements it unlocked, each a
+// kind and its tier.
+export type Reach = milestones.Reach
+export type NilMoment = NonNullLists<milestones.Moment>
+export type Achievement = milestones.Achievement
+export type AchievementKind = milestones.Kind
 
 // The first-run setup: where it stands (whether it is done, and the step it opens on), the
 // GitHub step's check of the GitHub CLI's sign-in, the terminals launches can open in,
@@ -718,6 +727,7 @@ export type ReviewTab = settings.ReviewTab
 export type NotificationsTab = settings.NotificationsTab
 export type ConversationOrder = settings.ConversationOrder
 export type CardDensity = settings.CardDensity
+export type Celebrations = settings.Celebrations
 export type RefreshKind = settings.RefreshKind
 
 // The service status check: where the services the user watches stand (GitHub, Claude,
@@ -800,6 +810,11 @@ export const {
 } = narrow(inbox.Service)
 
 export const { List: listProfiles, Agents: listAgents, Rediscover: rediscoverProfiles } = narrow(profiles.Service)
+
+// The inbox's milestones. Reached records that the inbox reached nil, in the local log, and
+// says what that was worth: the streak, the count, what it unlocked, and whether confetti
+// flies for it, at most once a day.
+export const { Reached: reachedNil } = narrow(milestones.Service)
 
 // The first-run setup. State says whether it shows and the step it opens on; SetStep
 // remembers the step, so a quit part way through opens there again; Finish marks it done
@@ -947,6 +962,7 @@ export const {
   Theme: getTheme,
   SetTheme: setTheme,
   SetTextSize: setTextSize,
+  SetCelebrations: setCelebrations,
   SetToastSeconds: setToastSeconds,
   CollapsedSections: getCollapsedSections,
   SetSectionCollapsed: setSectionCollapsed,
