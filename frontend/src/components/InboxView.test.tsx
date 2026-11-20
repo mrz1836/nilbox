@@ -2471,13 +2471,14 @@ describe('InboxView review sheet', () => {
 
     it('writes a failure to ask to the console, and offers nothing', async () => {
       const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const failure = new Error('database is locked')
 
-      platform.offerReleaseAfterMerge.mockRejectedValue(new Error('database is locked'))
+      platform.offerReleaseAfterMerge.mockRejectedValue(failure)
 
       const toast = within(await merge())
 
       await waitFor(() => {
-        expect(logged).toHaveBeenCalledWith('could not ask whether the merge offers a release:', 'database is locked')
+        expect(logged).toHaveBeenCalledWith('could not ask whether the merge offers a release:', failure)
       })
       expect(toast.queryByRole('button', { name: /^Release/ })).not.toBeInTheDocument()
     })

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 
 import type { IgnoredWorkflows } from '../lib/ignoredWorkflows'
-import { attempt } from '../lib/call'
+import { logFailure } from '../lib/call'
 import { CardLinksContext, linkIndex, type CardLinks } from '../lib/cardLinks'
 import { refText } from '../lib/format'
 import type { InboxFilter } from '../lib/inboxFilter'
@@ -593,34 +593,30 @@ export function InboxView({
 
     const slash = r.repo.indexOf('/')
 
-    void attempt(offerReleaseAfterMerge(r.repo.slice(0, slash), r.repo.slice(slash + 1), r.baseRef)).then((answer) => {
-      if (!answer.ok) {
-        console.error('could not ask whether the merge offers a release:', answer.error)
+    logFailure(
+      offerReleaseAfterMerge(r.repo.slice(0, slash), r.repo.slice(slash + 1), r.baseRef),
+      'could not ask whether the merge offers a release:',
+      (offer) => {
+        if (!offer.offer) {
+          return
+        }
 
-        return
-      }
-
-      const offer = answer.data
-
-      if (!offer.offer) {
-        return
-      }
-
-      setToast((shown) =>
-        shown?.id === toastId
-          ? {
-              ...shown,
-              action: {
-                label: `Release ${offer.repo}…`,
-                onClick: () => {
-                  setToast(null)
-                  onRelease(offer)
+        setToast((shown) =>
+          shown?.id === toastId
+            ? {
+                ...shown,
+                action: {
+                  label: `Release ${offer.repo}…`,
+                  onClick: () => {
+                    setToast(null)
+                    onRelease(offer)
+                  },
                 },
-              },
-            }
-          : shown,
-      )
-    })
+              }
+            : shown,
+        )
+      },
+    )
   }
 
   // What every row's controls and menu do, and the triage a sheet's header makes, each said
