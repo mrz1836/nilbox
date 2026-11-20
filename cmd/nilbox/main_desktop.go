@@ -263,6 +263,9 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 	}
 
 	ui := &desktopUI{}
+	menuBar := &tray{ui: ui, dev: l.dev}
+	l.dev.redrawMenu(menuBar.Redraw)
+
 	workers := []desktop.Worker{
 		c.WatchPasses, c.Scheduler, c.GHThreadsSyncer, c.ChecksFollower, c.MergeFollower, c.Sweeper, c.BudgetSaver,
 		c.Watcher, c.Rereads, c.ReleaseRefresher, c.ReleaseChecksFollower, c.HooksScans,
@@ -270,7 +273,7 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 	shell := desktop.New(desktop.Config{
 		Frontend: ui,
 		Window:   ui,
-		Tray:     &tray{ui: ui},
+		Tray:     menuBar,
 		App:      ui,
 		Inbox:    c.Inbox,
 		Settings: c.ShellSettings,

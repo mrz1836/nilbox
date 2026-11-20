@@ -622,6 +622,8 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     openExternal: () => undefined,
     copyText: done,
     on: subscribe,
+    // No inspector, as in a release: a test of its part of Settings gives one.
+    inspector: () => null,
   }
 }
 

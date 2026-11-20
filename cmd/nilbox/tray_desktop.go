@@ -28,12 +28,19 @@ var trayIcon []byte
 //
 // Every change runs on the main thread, in the order it was asked for, so its fields
 // need no lock, and the shell never waits for the main thread, which its shutdown can
-// hold. A change the main thread reaches once the app is shutting down is dropped.
+// hold. A change the main thread reaches once the app is shutting down is dropped. A
+// build from source's inspector adds its item above Quit (devKit.menu); a release's
+// adds nothing.
 type tray struct {
-	ui *desktopUI
+	ui  *desktopUI
+	dev *devKit
 
 	item *application.SystemTray
 	menu *application.Menu
+
+	// last is the summary the menu was last filled from, once drawn, for Redraw.
+	last  menubar.Summary
+	drawn bool
 }
 
 // Show puts the icon in the menu bar, if it is not there.
@@ -74,6 +81,15 @@ func (t *tray) Draw(sum menubar.Summary) {
 	})
 }
 
+// Redraw fills the menu again from the summary it was last filled from, once it has been.
+func (t *tray) Redraw() {
+	t.onMain(func(*application.App) {
+		if t.item != nil && t.drawn {
+			t.build(t.last)
+		}
+	})
+}
+
 // onMain runs fn on the main thread, unless the app is shutting down by then.
 func (t *tray) onMain(fn func(app *application.App)) {
 	application.InvokeAsync(func() {
@@ -91,6 +107,8 @@ func (t *tray) build(sum menubar.Summary) {
 	shell := t.ui.shell
 	m := t.menu
 	m.Clear()
+
+	t.last, t.drawn = sum, true
 
 	m.Add("Open " + brand.Name).OnClick(func(*application.Context) { shell.ShowWindow() })
 	m.AddSeparator()
@@ -126,6 +144,8 @@ func (t *tray) build(sum menubar.Summary) {
 	if sum.Failed {
 		status.SetTooltip(sum.Error)
 	}
+
+	t.dev.menu(m, shell.ShowWindow)
 
 	m.AddSeparator()
 	m.Add("Quit " + brand.Name).SetAccelerator("CmdOrCtrl+Q").OnClick(func(*application.Context) { shell.Quit() })

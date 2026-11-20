@@ -69,8 +69,12 @@ releases), so this check is local.
 inspector: when the owner reports something wrong in the window, `magex inspect:trail` shows
 what they clicked, and `inspect:shot`, `inspect:cards`, `inspect:dom`, `inspect:js`,
 `inspect:console`, `inspect:logs`, and `inspect:sql` show the window, the page, the log, and the
-live database as they are now ([the inspector](docs/desktop.md#the-inspector)). Run them
-outside the sandbox, which refuses the socket.
+live database as they are now ([the inspector](docs/desktop.md#the-inspector)). The owner can
+also point at an element (⌥⌘P) and leave a note: `magex inspect:notes` has the open ones (the
+words, the element and where, its styles, components, and source file, and a boxed picture).
+While working on the window with them, keep `inspect:notes follow=true` running in the
+background so each new note reaches you, and mark one fixed with `inspect:notes done=<n>`. Run
+them outside the sandbox, which refuses the socket.
 
 <br>
 

@@ -20,12 +20,14 @@ import (
 )
 
 const (
-	// devLogSize, devEventSize, devConsoleSize, and devTrailSize are how many log records,
-	// events, console lines, and steps of the user's trail the inspector keeps.
+	// devLogSize, devEventSize, devConsoleSize, devTrailSize, and devNoteSize are how many
+	// log records, events, console lines, steps of the user's trail, and notes the user
+	// left on elements (each with a picture of the window) the inspector keeps.
 	devLogSize     = 5000
 	devEventSize   = 2000
 	devConsoleSize = 2000
 	devTrailSize   = 1000
+	devNoteSize    = 50
 )
 
 // errNoSnapshot is returned when the web view gave no picture back.
@@ -52,14 +54,19 @@ type devKit struct {
 	done   chan struct{}
 }
 
-// newDevKit returns the inspector, keeping nothing yet.
+// newDevKit returns the inspector, keeping nothing yet. Each note the user leaves in the
+// page keeps a picture of the main window.
 func newDevKit() *devKit {
-	return &devKit{
+	k := &devKit{
 		logs:    devtools.NewFeed[devtools.LogEntry](devLogSize),
 		events:  devtools.NewFeed[devtools.EventEntry](devEventSize),
-		page:    devtools.NewPage(devConsoleSize, devTrailSize, time.Now),
+		page:    devtools.NewPage(devConsoleSize, devTrailSize, devNoteSize, time.Now),
 		started: time.Now(),
 	}
+
+	k.page.AttachShot(k.shot)
+
+	return k
 }
 
 // logger returns logger, its records kept by the inspector too, from Debug up, whatever
@@ -85,11 +92,16 @@ func (k *devKit) configure(opts *application.Options) {
 	}
 }
 
-// start runs the agent in the main window's page on every load, and answers the
-// inspector's clients on the socket in the data directory until stop. A socket it can't
-// listen on, such as one another running copy answers on, leaves the inspector off, which
-// it logs.
+// start reads back the notes the user left and their choice of whether pointing may
+// start, kept in the inspector's folder in the data directory, runs the agent in the main
+// window's page on every load, and answers the inspector's clients on the socket in the
+// data directory until stop. A socket it can't listen on, such as one another running copy
+// answers on, leaves the inspector off, which it logs.
 func (k *devKit) start(app *application.App, l launch) {
+	if err := k.page.Open(devtools.InspectorDir(l.paths.Root), l.logger); err != nil {
+		l.logger.Warn("the inspector couldn't read back all it keeps", "error", err)
+	}
+
 	app.Window.OnCreate(func(w application.Window) {
 		window, ok := w.(*application.WebviewWindow)
 		if !ok || !k.window.CompareAndSwap(nil, window) {
@@ -133,6 +145,36 @@ func (k *devKit) start(app *application.App, l launch) {
 	}()
 
 	l.logger.Info("the inspector listens; magex inspect:status talks to it", "socket", socket)
+}
+
+// menu adds the inspector's item to the menu bar's menu, while the user lets pointing
+// start: Point at an Element, which shows the window and turns pointing on there, as ⌥⌘P
+// does in the window.
+func (k *devKit) menu(m *application.Menu, show func()) {
+	if !k.page.State().Enabled {
+		return
+	}
+
+	m.AddSeparator()
+	m.Add("Point at an Element").SetAccelerator("OptionOrAlt+CmdOrCtrl+P").OnClick(func(*application.Context) {
+		show()
+
+		_ = k.page.StartPointing()
+	})
+}
+
+// redrawMenu has redraw draw the menu bar's menu again each time the user turns pointing
+// on or off, which adds or takes away the inspector's item.
+func (k *devKit) redrawMenu(redraw func()) {
+	var last atomic.Bool
+
+	last.Store(k.page.State().Enabled)
+
+	k.page.OnChange(func(state devtools.InspectorState) {
+		if last.Swap(state.Enabled) != state.Enabled {
+			redraw()
+		}
+	})
 }
 
 // stop stops answering and removes the socket.

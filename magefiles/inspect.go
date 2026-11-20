@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -75,6 +76,31 @@ func (Inspect) Console() error {
 //	magex inspect:trail n=30
 func (Inspect) Trail() error {
 	return hostRunner().inspect("trail", appdata.Resolve, "n", "grep", "follow")
+}
+
+// Notes prints the open notes left on the window's elements: ⌥⌘P in the window, its menu
+// bar's Point at an Element, or inspect:point lets the user point at an element, click
+// it, and say what is wrong with it. Each note says what the element is and where, its
+// styles, and, under app:dev, the components that render it and its source file; its
+// picture of the window, the element boxed, is saved as bin/inspect/note-<n>.png. The app
+// keeps the notes across restarts. done=2,3 (or done=all) marks notes dealt with, and
+// all=true shows those too; follow=true keeps printing each new note until interrupted;
+// wait=true waits for the next one, prints it, and returns; clear=true empties the list.
+//
+//	magex inspect:notes
+//	magex inspect:notes follow=true
+//	magex inspect:notes done=3
+func (Inspect) Notes() error {
+	return hostRunner().inspect("notes", appdata.Resolve, "n", "all", "follow", "wait", "done", "clear")
+}
+
+// Point turns pointing on in the window, as ⌥⌘P does there: the user points at an
+// element, clicks it, types a note, and presses Enter, which inspect:notes then reads.
+// on=false turns it off. It refuses while the user has pointing turned off in Settings.
+//
+//	magex inspect:point
+func (Inspect) Point() error {
+	return hostRunner().inspect("point", appdata.Resolve, "on")
 }
 
 // Watch follows the log, the events, the console, and the trail together, as they
@@ -223,12 +249,20 @@ func (r runner) inspectRequest(command string, keys []string) (devtools.Request,
 }
 
 // printLine prints one line of the answer: as Render shows it, or as JSON with raw. A
-// picture is saved instead.
+// picture is saved instead, and a note's picture beside the note.
 func (r runner) printLine(line devtools.Line, raw bool) error {
-	if line.Type == devtools.LineShot {
+	switch line.Type {
+	case devtools.LineShot:
 		return r.saveShot(line)
+	case devtools.LineNote:
+		return r.printNote(line, raw)
 	}
 
+	return r.printValue(line, raw)
+}
+
+// printValue prints line as Render shows it, or as JSON with raw.
+func (r runner) printValue(line devtools.Line, raw bool) error {
 	if !raw {
 		return devtools.Render(r.stdout, line)
 	}
@@ -255,14 +289,62 @@ func (r runner) saveShot(line devtools.Line) error {
 		path = filepath.Join(shotsDir, "shot-"+time.Now().Format("20060102-150405.000")+".png")
 	}
 
+	abs, err := r.savePicture(path, shot.PNG)
+	if err != nil {
+		return err
+	}
+
+	r.say("Saved a picture of the window: " + abs)
+
+	return nil
+}
+
+// printNote prints the note line holds, as printLine prints a line, without its picture,
+// which it saves in shotsDir as note-<n>.png, and says where. The app boxed the note's
+// element on the picture as it kept it.
+func (r runner) printNote(line devtools.Line, raw bool) error {
+	var note devtools.Note
+	if err := json.Unmarshal(line.Value, &note); err != nil {
+		return fmt.Errorf("read the note: %w", err)
+	}
+
+	picture := note.Shot
+	note.Shot = nil
+
+	value, err := json.Marshal(note)
+	if err != nil {
+		return fmt.Errorf("print the note: %w", err)
+	}
+
+	if err = r.printValue(devtools.Line{Type: devtools.LineNote, Value: value}, raw); err != nil {
+		return err
+	}
+
+	if len(picture) == 0 {
+		return nil
+	}
+
+	abs, err := r.savePicture(filepath.Join(shotsDir, "note-"+strconv.Itoa(note.N)+".png"), picture)
+	if err != nil {
+		return err
+	}
+
+	r.say("  picture    " + abs)
+
+	return nil
+}
+
+// savePicture writes the PNG picture to path, under the checkout unless it is absolute,
+// and returns where, absolute.
+func (r runner) savePicture(path string, picture []byte) (string, error) {
 	path = r.path(path)
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return fmt.Errorf("make the picture's folder: %w", err)
+		return "", fmt.Errorf("make the picture's folder: %w", err)
 	}
 
-	if err := os.WriteFile(path, shot.PNG, 0o600); err != nil {
-		return fmt.Errorf("save the picture: %w", err)
+	if err := os.WriteFile(path, picture, 0o600); err != nil {
+		return "", fmt.Errorf("save the picture: %w", err)
 	}
 
 	abs, err := filepath.Abs(path)
@@ -270,7 +352,5 @@ func (r runner) saveShot(line devtools.Line) error {
 		abs = path
 	}
 
-	r.say("Saved a picture of the window: " + abs)
-
-	return nil
+	return abs, nil
 }

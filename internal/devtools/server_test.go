@@ -28,6 +28,9 @@ var (
 	errStop     = errors.New("enough")
 )
 
+// yes is a flag's argument that turns it on, as magex passes it.
+const yes = "true"
+
 // database is a fake database: it answers every query with result and records what it
 // was asked, or fails with err.
 type database struct {
@@ -79,7 +82,7 @@ func newApp() *app {
 	events.Add(devtools.EventEntry{Time: at(2), Name: "inbox:updated", Data: json.RawMessage(`{}`)})
 	events.Add(devtools.EventEntry{Time: at(4), Name: "tools:updated"})
 
-	page := devtools.NewPage(10, 10, func() time.Time { return at(6) })
+	page := devtools.NewPage(10, 10, 10, func() time.Time { return at(6) })
 	page.Receive(devtools.Prefix + `{"t":"console","level":"warn","text":"slow render"}`)
 	page.Receive(devtools.Prefix + `{"t":"console","level":"error","text":"boom"}`)
 	page.Receive(devtools.Prefix + `{"t":"trail","kind":"click","target":"button “Snooze”","where":"card 7"}`)
@@ -216,7 +219,7 @@ func TestServerFollows(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		done <- devtools.Ask(ctx, socket, devtools.Request{Command: "logs", Args: map[string]string{"n": "1", "follow": "true"}},
+		done <- devtools.Ask(ctx, socket, devtools.Request{Command: "logs", Args: map[string]string{"n": "1", "follow": yes}},
 			func(line devtools.Line) error {
 				got <- line
 
@@ -273,6 +276,222 @@ func TestServerWatches(t *testing.T) {
 	require.NoError(t, <-done)
 }
 
+// noteAnswer is an answer about notes: the notes it holds, and what it says.
+type noteAnswer struct {
+	notes []devtools.Note
+	said  []string
+}
+
+// askNotes asks the inspector at socket for its notes with args, and returns the answer.
+func askNotes(t *testing.T, socket string, args map[string]string) noteAnswer {
+	t.Helper()
+
+	lines, err := ask(t, socket, "notes", args)
+	require.NoError(t, err)
+
+	var answer noteAnswer
+
+	for _, line := range lines {
+		switch line.Type {
+		case devtools.LineNote:
+			answer.notes = append(answer.notes, valuesOf[devtools.Note](t, []devtools.Line{line}, devtools.LineNote)...)
+		case devtools.LineText:
+			answer.said = append(answer.said, valuesOf[string](t, []devtools.Line{line}, devtools.LineText)...)
+		default:
+			t.Fatalf("a %s line in an answer about notes", line.Type)
+		}
+	}
+
+	return answer
+}
+
+func TestServerNotes(t *testing.T) {
+	t.Parallel()
+
+	a := newApp()
+	a.cfg.Page.AttachShot(func(context.Context) ([]byte, error) { return []byte("png"), nil })
+	leaveNote(a.cfg.Page, "first")
+	leaveNote(a.cfg.Page, "second")
+
+	socket := serve(t, a.cfg)
+
+	kept := askNotes(t, socket, nil)
+	assert.Equal(t, []string{"first", "second"}, texts(kept.notes))
+	assert.Equal(t, []byte("png"), kept.notes[0].Shot, "each with its picture")
+	assert.Empty(t, kept.said)
+	assert.Equal(t, []string{"second"}, texts(askNotes(t, socket, map[string]string{"n": "1"}).notes))
+
+	// done= marks notes dealt with, which then show only with all=true.
+	for _, c := range []struct{ done, says string }{
+		{done: "1", says: "Marked 1 note done; 1 note open.\n"},
+		{done: "#1, 9", says: "No open note has that number; 1 note open.\n"},
+	} {
+		assert.Equal(t, []string{c.says}, askNotes(t, socket, map[string]string{"done": c.done}).said, c.done)
+	}
+
+	assert.Equal(t, []string{"second"}, texts(askNotes(t, socket, nil).notes))
+
+	all := askNotes(t, socket, map[string]string{"all": yes}).notes
+	assert.Equal(t, []string{"first", "second"}, texts(all))
+	assert.True(t, all[0].Done)
+
+	_, err := ask(t, socket, "notes", map[string]string{"done": "the grey one"})
+	require.ErrorIs(t, err, devtools.ErrInspector)
+	require.ErrorContains(t, err, devtools.ErrBadNoteList.Error())
+
+	assert.Equal(t, []string{"Marked 1 note done; no notes open.\n"},
+		askNotes(t, socket, map[string]string{"done": "all"}).said)
+	assert.Equal(t, noteAnswer{said: []string{"No open notes.\n"}}, askNotes(t, socket, nil))
+
+	// wait=true answers with the next note alone, once it comes.
+	type waited struct {
+		lines []devtools.Line
+		err   error
+	}
+
+	got := make(chan waited, 1)
+
+	go func() {
+		lines, waitErr := ask(t, socket, "notes", map[string]string{"wait": yes})
+		got <- waited{lines: lines, err: waitErr}
+	}()
+
+	require.Eventually(t, func() bool { return a.cfg.Page.Notes().Followers() == 1 }, 5*time.Second, time.Millisecond)
+	leaveNote(a.cfg.Page, "third")
+
+	answer := <-got
+	require.NoError(t, answer.err)
+	assert.Equal(t, []string{"third"}, texts(valuesOf[devtools.Note](t, answer.lines, devtools.LineNote)))
+
+	// clear=true drops them all, and says how many.
+	for _, want := range []string{"Cleared 3 notes.\n", "Cleared no notes.\n"} {
+		assert.Equal(t, []string{want}, askNotes(t, socket, map[string]string{"clear": yes}).said)
+	}
+
+	assert.Equal(t, noteAnswer{said: []string{"No notes.\n"}}, askNotes(t, socket, map[string]string{"all": yes}))
+}
+
+func TestServerFollowsTheNotes(t *testing.T) {
+	t.Parallel()
+
+	a := newApp()
+	leaveNote(a.cfg.Page, "open")
+	socket := serve(t, a.cfg)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	got := make(chan devtools.Line, 10)
+	done := make(chan error, 1)
+
+	go func() {
+		done <- devtools.Ask(ctx, socket, devtools.Request{Command: "notes", Args: map[string]string{"follow": yes}},
+			func(line devtools.Line) error {
+				got <- line
+
+				return nil
+			})
+	}()
+
+	assert.Contains(t, string((<-got).Value), `"text":"open"`, "the open notes first")
+
+	leaveNote(a.cfg.Page, "new")
+	assert.Contains(t, string((<-got).Value), `"text":"new"`, "then each new one")
+
+	cancel()
+	require.NoError(t, <-done)
+
+	// With none open, it says so, and that it waits.
+	_, err := a.cfg.Page.MarkDone(nil, true)
+	require.NoError(t, err)
+
+	ctx, cancel = context.WithCancel(t.Context())
+	defer cancel()
+
+	go func() {
+		done <- devtools.Ask(ctx, socket, devtools.Request{Command: "notes", Args: map[string]string{"follow": yes}},
+			func(line devtools.Line) error {
+				got <- line
+
+				return nil
+			})
+	}()
+
+	assert.JSONEq(t, `"No open notes; waiting for the next one.\n"`, string((<-got).Value))
+
+	cancel()
+	require.NoError(t, <-done)
+}
+
+func TestServerStopsWaitingForANoteWithTheClient(t *testing.T) {
+	t.Parallel()
+
+	a := newApp()
+	socket := serve(t, a.cfg)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- devtools.Ask(ctx, socket, devtools.Request{Command: "notes", Args: map[string]string{"wait": yes}},
+			func(devtools.Line) error { return nil })
+	}()
+
+	require.Eventually(t, func() bool { return a.cfg.Page.Notes().Followers() == 1 }, 5*time.Second, time.Millisecond)
+
+	cancel()
+	require.NoError(t, <-done, "giving up the wait is no error")
+	require.Eventually(t, func() bool { return a.cfg.Page.Notes().Followers() == 0 }, 5*time.Second, time.Millisecond,
+		"the inspector stops waiting once the client goes")
+}
+
+func TestServerPoint(t *testing.T) {
+	t.Parallel()
+
+	a := newApp()
+	socket := serve(t, a.cfg)
+
+	for _, c := range []struct {
+		args map[string]string
+		code string
+		says string
+	}{
+		{code: "nb.point(true)", says: "Pointing is on in the window"},
+		{args: map[string]string{"on": yes}, code: "nb.point(true)", says: "Pointing is on in the window"},
+		{args: map[string]string{"on": "false"}, code: "nb.point(false)", says: "Pointing is off."},
+	} {
+		lines, err := ask(t, socket, "point", c.args)
+		require.NoError(t, err, c.args)
+
+		said := valuesOf[string](t, lines, devtools.LineText)
+		require.Len(t, said, 1)
+		assert.Contains(t, said[0], c.says, c.args)
+
+		_, codes := a.window.scripts()
+		assert.Equal(t, c.code, codes[len(codes)-1], c.args)
+	}
+
+	closed := newApp()
+	closed.cfg.Page = devtools.NewPage(1, 1, 1, now)
+
+	_, err := ask(t, serve(t, closed.cfg), "point", nil)
+	require.ErrorContains(t, err, devtools.ErrNoWindow.Error())
+
+	// While the user has pointing turned off, it never starts, but it still ends.
+	require.NoError(t, a.cfg.Page.SetPointing(false))
+
+	_, before := a.window.scripts()
+
+	_, err = ask(t, socket, "point", nil)
+	require.ErrorContains(t, err, devtools.ErrPointingOff.Error())
+
+	_, after := a.window.scripts()
+	assert.Equal(t, before, after, "the page is never asked")
+
+	_, err = ask(t, socket, "point", map[string]string{"on": "false"})
+	require.NoError(t, err)
+}
+
 func TestServerStatus(t *testing.T) {
 	t.Parallel()
 
@@ -287,7 +506,7 @@ func TestServerStatus(t *testing.T) {
 	assert.Equal(t, "1m30s", status.Uptime)
 	assert.Positive(t, status.Goroutines)
 	assert.Equal(t, "wails://wails/", status.Page.URL)
-	assert.Equal(t, map[string]int{"log": 3, "event": 2, "console": 2, "trail": 1}, status.Kept)
+	assert.Equal(t, map[string]int{"log": 3, "event": 2, "console": 2, "trail": 1, "note": 0}, status.Kept)
 }
 
 func TestServerHelp(t *testing.T) {
@@ -387,7 +606,7 @@ func TestServerPageFailures(t *testing.T) {
 	require.ErrorContains(t, err, "ReferenceError: x")
 
 	closed := newApp()
-	closed.cfg.Page = devtools.NewPage(1, 1, now)
+	closed.cfg.Page = devtools.NewPage(1, 1, 1, now)
 	socket = serve(t, closed.cfg)
 
 	_, err = ask(t, socket, "reload", nil)

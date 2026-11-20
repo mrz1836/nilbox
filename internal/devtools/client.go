@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -146,6 +148,8 @@ func renderText(line Line) (string, error) {
 		return renderEntry(line.Value, func(e TrailEntry) string {
 			return strings.TrimSuffix(fmt.Sprintf("%s USER  %-6s %s · %s", clockText(e.Time), e.Kind, e.Target, e.Where), " · ")
 		})
+	case LineNote:
+		return renderEntry(line.Value, noteText)
 	default:
 		return renderValue(line)
 	}
@@ -193,6 +197,89 @@ func renderEntry[T any](value json.RawMessage, format func(T) string) (string, e
 	}
 
 	return format(e) + "\n", nil
+}
+
+// noteText is a note as a terminal shows it: its time, number, whether it is done, and its
+// words, then a line for each thing known of the element it is on. Its picture is the
+// client's to save.
+func noteText(n Note) string {
+	var b strings.Builder
+
+	done := ""
+	if n.Done {
+		done = " (done)"
+	}
+
+	_, _ = fmt.Fprintf(&b, "%s NOTE  #%d%s “%s”", clockText(n.Time), n.N, done, strings.ReplaceAll(n.Text, "\n", "\n  "))
+
+	field := func(label, value string) {
+		if value != "" {
+			_, _ = fmt.Fprintf(&b, "\n  %-10s %s", label, value)
+		}
+	}
+
+	field("on", strings.TrimSuffix(n.Target+" · "+n.Where, " · "))
+	field("view", n.View)
+	field("components", n.Components)
+
+	if n.Source != "" {
+		field("source", n.Source+" (the line approximate)")
+	}
+
+	field("element", elementText(n.Element))
+	field("classes", n.Element.Classes)
+
+	styles := make([]string, 0, len(n.Styles))
+	for _, style := range n.Styles {
+		styles = append(styles, style[0]+": "+style[1])
+	}
+
+	field("styles", strings.Join(styles, "; "))
+
+	if n.Nearby != "" {
+		field("nearby", "“"+n.Nearby+"”")
+	}
+
+	if n.ShotError != "" {
+		field("picture", "none: "+n.ShotError)
+	}
+
+	return b.String()
+}
+
+// elementText is an element on one line: its tag, id, role, and name, where it is, and
+// its data-* and aria-* attributes, in order.
+func elementText(e Element) string {
+	if e.Tag == "" {
+		return ""
+	}
+
+	parts := []string{e.Tag}
+
+	if e.ID != "" {
+		parts = append(parts, "#"+e.ID)
+	}
+
+	if e.Role != "" {
+		parts = append(parts, "role="+e.Role)
+	}
+
+	if e.Name != "" {
+		parts = append(parts, "“"+e.Name+"”")
+	}
+
+	parts = append(parts, fmt.Sprintf("at %d,%d %d×%d", e.Rect.X, e.Rect.Y, e.Rect.Width, e.Rect.Height))
+
+	marks := make([]string, 0, len(e.Marks))
+	for _, key := range slices.Sorted(maps.Keys(e.Marks)) {
+		marks = append(marks, key+"="+strconv.Quote(e.Marks[key]))
+	}
+
+	if len(marks) > 0 {
+		parts = append(parts, "· "+strings.Join(marks, " "))
+	}
+
+	return strings.Join(parts, " ")
 }
 
 // tableText is a query's result as aligned columns, with a note when rows were left out.

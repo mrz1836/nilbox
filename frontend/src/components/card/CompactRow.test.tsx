@@ -497,6 +497,14 @@ describe('CompactRow', () => {
     expect(title.lastElementChild).toHaveTextContent('Unread')
   })
 
+  it('marks its title, as a comfortable card does, so the inspector reads it', () => {
+    const row = mountCompact(asked())
+
+    expect(row.querySelector('[data-card-title]')).toBe(
+      within(row).getByRole('button', { name: 'Add the widget cache' }),
+    )
+  })
+
   it('shows no unread dot on a card read', () => {
     const read = mountCompact(asked())
 

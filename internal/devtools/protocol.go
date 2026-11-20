@@ -15,12 +15,13 @@ const SocketName = "devtools.sock"
 
 // The types of the lines of an answer.
 const (
-	// LineLog holds a LogEntry, LineEvent an EventEntry, LineConsole a ConsoleEntry, and
-	// LineTrail a TrailEntry.
+	// LineLog holds a LogEntry, LineEvent an EventEntry, LineConsole a ConsoleEntry,
+	// LineTrail a TrailEntry, and LineNote a Note.
 	LineLog     = "log"
 	LineEvent   = "event"
 	LineConsole = "console"
 	LineTrail   = "trail"
+	LineNote    = "note"
 
 	// LineResult holds any JSON value: what a script gave back, or what a command found.
 	LineResult = "result"
@@ -42,6 +43,10 @@ var ErrMissingArg = errors.New("missing argument")
 
 // ErrUnknownCommand is returned for a command the inspector doesn't have.
 var ErrUnknownCommand = errors.New("no such command; ask for help")
+
+// ErrBadNoteList is returned for done= that names no notes: it takes note numbers, as 2,3,
+// or all.
+var ErrBadNoteList = errors.New("done= takes note numbers, as 2,3, or all")
 
 // Request is what a client asks the inspector: the first line a connection carries.
 type Request struct {
@@ -163,3 +168,5 @@ func (e EventEntry) when() time.Time { return e.Time }
 func (e ConsoleEntry) when() time.Time { return e.Time }
 
 func (e TrailEntry) when() time.Time { return e.Time }
+
+func (n Note) when() time.Time { return n.Time }
