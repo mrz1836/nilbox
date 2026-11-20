@@ -1,7 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { mainWorktree, worktree, worktreeRepo, worktreesSnapshot } from '../test/fixtures'
+import type { RemoveResult, WorktreesSnapshot } from '../platform'
+import { mainWorktree, removeResult, worktree, worktreeRepo, worktreesSnapshot } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { useWorktrees } from './useWorktrees'
 
@@ -84,4 +85,93 @@ describe('useWorktrees', () => {
     expect(platform.cleanUpFinishedWorktrees).toHaveBeenCalledWith([])
     expect(platform.deleteBranches).toHaveBeenCalledWith([])
   })
+
+  it('numbers each listing that arrives, keeping the number while one fails', async () => {
+    const { result } = renderHook(() => useWorktrees())
+
+    expect(result.current.listing).toBe(0)
+    await waitFor(() => {
+      expect(result.current.listing).toBe(1)
+    })
+
+    act(() => {
+      result.current.refresh()
+    })
+    await waitFor(() => {
+      expect(result.current.listing).toBe(2)
+    })
+
+    platform.listWorktrees.mockRejectedValue(new Error('git: exit status 128'))
+    act(() => {
+      result.current.refresh()
+    })
+    await waitFor(() => {
+      expect(result.current.loadError).toBe('git: exit status 128')
+    })
+    expect(result.current.listing).toBe(2)
+    expect(platform.listWorktrees).toHaveBeenCalledTimes(3)
+  })
+
+  it('says on each worktree a bulk action took what became of it, and why one was left', async () => {
+    const path = (name: string) => `/home/user/projects/example-repo/.claude/worktrees/${name}`
+    const repo = worktreeRepo({
+      worktrees: [
+        mainWorktree(),
+        worktree({ path: path('pr-7') }),
+        worktree({ path: path('pr-8') }),
+        worktree({ path: path('pr-9') }),
+      ],
+    })
+    platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ repos: [repo], cleanCount: 3 }))
+    const { result } = renderHook(() => useWorktrees())
+    await waitFor(() => {
+      expect(result.current.disabled).toBe(false)
+    })
+
+    const removal = held<RemoveResult[]>()
+    platform.removeAllCleanWorktrees.mockReturnValue(removal.promise)
+    platform.listWorktrees.mockReturnValue(held<WorktreesSnapshot>().promise)
+    act(() => {
+      result.current.askRemoveAllClean()
+    })
+    act(() => {
+      result.current.confirm({
+        picks: ['pr-7', 'pr-8', 'pr-9'].map((name) => ({ repoPath: repo.path, path: path(name), branches: [] })),
+      })
+    })
+
+    expect(result.current.workOn(path('pr-7'))).toEqual({ state: 'doing', text: 'Removing…', reason: '' })
+    expect(result.current.workOn(repo.path)).toBeNull()
+
+    await act(async () => {
+      removal.resolve([
+        removeResult({ path: path('pr-7') }),
+        removeResult({
+          path: path('pr-8'),
+          removed: false,
+          reason: 'the worktree changed since it was checked; refresh and try again',
+        }),
+        removeResult({ path: path('pr-9'), removed: false, reason: '' }),
+      ])
+      await removal.promise
+    })
+
+    expect(result.current.workOn(path('pr-7'))).toEqual({ state: 'done', text: 'Removed', reason: '' })
+    expect(result.current.workOn(path('pr-8'))).toEqual({
+      state: 'left',
+      text: 'Left in place',
+      reason: 'Left in place: the worktree changed since it was checked; refresh and try again.',
+    })
+    expect(result.current.workOn(path('pr-9'))).toEqual({ state: 'left', text: 'Left in place', reason: '' })
+  })
 })
+
+// held is a call that answers only once the test says.
+function held<T>() {
+  let resolve: (value: T) => void = () => undefined
+  const promise = new Promise<T>((res) => {
+    resolve = res
+  })
+
+  return { promise, resolve }
+}
