@@ -2,10 +2,9 @@ import { useId, useState, type ReactNode } from 'react'
 
 import { brand } from '../../generated/brand'
 import { attempt } from '../../lib/call'
+import { pickFileToOpen, pickFileToSave } from '../../lib/dialogs'
 import { counted } from '../../lib/format'
 import {
-  chooseFileToOpen,
-  chooseFileToSave,
   exportRoutines,
   importRoutines,
   previewRoutineImport,
@@ -176,7 +175,15 @@ export function useRoutineTransfer(
   const promptsId = useId()
 
   const startImport = async () => {
-    const path = await chooseFileToOpen({ title: 'Import routines', button: 'Read', filters: routineFiles })
+    const picked = await pickFileToOpen({ title: 'Import routines', button: 'Read', filters: routineFiles })
+
+    if (!picked.ok) {
+      say(picked.error, 'error')
+
+      return
+    }
+
+    const path = picked.data
 
     if (path === '') {
       return
@@ -213,9 +220,17 @@ export function useRoutineTransfer(
   const finishExport = async (routines: readonly AutopilotRoutine[]) => {
     const one = routines.length === 1 ? routines[0] : undefined
     const filename = `${one === undefined ? `${brand.slug}-routines` : one.name.replace(/[^\w-]+/g, '-').toLowerCase()}.json`
-    const path = await chooseFileToSave({ title: 'Export routines', button: 'Export', filters: routineFiles, filename })
+    const picked = await pickFileToSave({ title: 'Export routines', button: 'Export', filters: routineFiles, filename })
 
     setExporting(null)
+
+    if (!picked.ok) {
+      say(picked.error, 'error')
+
+      return
+    }
+
+    const path = picked.data
 
     if (path === '') {
       return

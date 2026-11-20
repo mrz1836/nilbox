@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { AutopilotMissingRef, AutopilotRoutine } from '../../platform'
+import { nextTask } from '../../test/async'
 import { routine, routineImportPreview } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { choicesOf, importedWords, refWords, useRoutineTransfer } from './RoutineTransfer'
@@ -147,5 +148,39 @@ describe('useRoutineTransfer', () => {
     await user.click(screen.getByRole('button', { name: 'Import some' }))
     await user.click(await screen.findByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('says why the file dialog couldn’t open, and reads nothing', async () => {
+    const user = userEvent.setup()
+    const said = vi.fn()
+    platform.chooseFileToOpen.mockRejectedValue(new Error('the dialog is already open'))
+    render(<Transfer routines={[]} said={said} />)
+
+    await user.click(screen.getByRole('button', { name: 'Import some' }))
+    await waitFor(() => {
+      expect(said).toHaveBeenCalledExactlyOnceWith('Couldn’t open the file dialog: the dialog is already open', 'error')
+    })
+
+    // The failure is handled: an unhandled rejection would fail the run once it surfaces.
+    await nextTask()
+    expect(platform.previewRoutineImport).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('says why the save dialog couldn’t open, closes Export, and saves nothing', async () => {
+    const user = userEvent.setup()
+    const said = vi.fn()
+    platform.chooseFileToSave.mockRejectedValue(new Error('the dialog is already open'))
+    render(<Transfer routines={[routine()]} said={said} />)
+
+    await user.click(screen.getByRole('button', { name: 'Export them' }))
+    await user.click(screen.getByRole('button', { name: 'Choose where…' }))
+    await waitFor(() => {
+      expect(said).toHaveBeenCalledExactlyOnceWith('Couldn’t open the save dialog: the dialog is already open', 'error')
+    })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await nextTask()
+    expect(platform.exportRoutines).not.toHaveBeenCalled()
   })
 })
