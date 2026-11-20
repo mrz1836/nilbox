@@ -16,6 +16,7 @@ import {
   rootNeedsAttention,
   stepInfo,
   toolsFit,
+  type SetupInbox,
 } from '../../lib/setup'
 import type { Theme } from '../../lib/theme'
 import type { IntegrationsState } from '../../lib/useIntegrations'
@@ -32,7 +33,6 @@ import {
   notificationBannerStatus,
   setupSignals,
   type AgentInfo,
-  type InboxSnapshot,
   type Profile,
   type Settings,
   type SetupStep,
@@ -49,14 +49,6 @@ import { NotificationsStep } from './NotificationsStep'
 import { SetupRail } from './SetupRail'
 import { ToolsStep } from './ToolsStep'
 import { WelcomeStep } from './WelcomeStep'
-
-// SetupInbox is what the setup reads of the inbox: the stored inbox, which Finish
-// previews, and the refresh the GitHub step starts once the sign-in is ready.
-export interface SetupInbox {
-  snapshot: InboxSnapshot | null
-  refreshing: boolean
-  refresh: () => void
-}
 
 export interface SetupViewProps {
   // control is where the setup stands, and the moves it makes.

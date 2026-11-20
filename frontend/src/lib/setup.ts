@@ -417,6 +417,14 @@ export function goDuration(ms: number): string {
   return minutes > 0 ? `${String(minutes)}m${String(seconds)}s` : `${String(seconds)}s`
 }
 
+// SetupInbox is what the setup reads of the inbox: the stored inbox, which Finish
+// previews, and the refresh the GitHub step starts once the sign-in is ready.
+export interface SetupInbox {
+  snapshot: InboxSnapshot | null
+  refreshing: boolean
+  refresh: () => void
+}
+
 // inboxPreview says what the inbox holds: "5 review requests · 7 of yours", or '' before
 // its first refresh.
 export function inboxPreview(snapshot: InboxSnapshot | null): string {

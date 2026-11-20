@@ -4,7 +4,7 @@ import { brand } from '../../generated/brand'
 import { throwsBursts, useCelebrations } from '../../lib/celebrations'
 import { prefersReducedMotion } from '../../lib/motion'
 import { earnedBurst } from '../../lib/nil'
-import { finishLog, finishMarks, goDuration, inboxPreview, logName } from '../../lib/setup'
+import { finishLog, finishMarks, goDuration, inboxPreview, logName, type SetupInbox } from '../../lib/setup'
 import { darkTokens } from '../../lib/theme'
 import { useQuery } from '../../lib/useQuery'
 import { listTemplates } from '../../platform'
@@ -24,7 +24,6 @@ import { Confetti, useConfetti } from '../Confetti'
 import { buttonClass, captionClass, primaryButtonClass } from '../controls'
 import { ChevronRightIcon, InboxIcon, TrophyIcon } from '../icons'
 import { Spinner } from '../Spinner'
-import type { SetupInbox } from './SetupView'
 
 // command is what the log runs.
 const command = `${brand.slug} setup`
