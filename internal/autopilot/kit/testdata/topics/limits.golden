@@ -1,0 +1,12 @@
+# Limits
+
+`limits` are the routine's own, each optional: one left out takes its default. Settings → Autopilot's `agentsAtOnce`, `runsPerDay`, `actionsPerDay`, and `dailyCap` still hold over every routine together (topic `settings`). A limit delays a match and never loses it: one over today's limit starts the next day.
+
+- `oncePer` (Once per): `item`, `headCommit` (head commit), or `day`; left out, the trigger's own.
+- `triesPerItem` (Tries per item): a whole number, 1 to 10 tries, default 2.
+- `runsPerDay` (Runs a day): a whole number, 1 to 100 runs, default 10.
+- `waitMinutes` (Wait between tries on one item): a whole number, 0 to 1440 minutes, default 30.
+- `activeHours` (Active hours): `{"days": [...], "from": "HH:MM", "to": "HH:MM"}`, the days (`mon`, `tue`, `wed`, `thu`, `fri`, `sat`, and `sun`) and the local hours it may start in; `from` after `to` runs past midnight, and the two differ; left out, always.
+- `budgetPerDay` (Daily budget): `{"usd": 5}`, $1 to $500 to the cent, or `{"tokens": 1000000}`, 100000 to 50000000; left out, none. Settings' `dailyCap` still holds beside it.
+
+A routine's runs of its agent, GitHub, and script steps on one item count as its tries, across occurrences: a fix that still fails puts a new commit at the head, which the routine fires on again after `waitMinutes`, until its last try.

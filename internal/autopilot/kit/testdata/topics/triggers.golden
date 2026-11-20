@@ -1,0 +1,29 @@
+# Triggers
+
+A routine has one trigger, `trigger.event`, with that trigger's options beside it in `trigger`: `{"event": "checks_failed", "settleMinutes": 5}`. Autopilot checks it on each refresh of the inbox and fires once per occurrence, such as once per head commit, across refreshes and restarts; a routine's own `limits.oncePer` replaces the trigger's. An option the trigger doesn't take is refused, and one left out takes its default. A trigger for pull requests only needs a watch that holds pull requests.
+
+- `appears`: fires when an item is in the watch; pull requests and issues; once per item.
+- `new_commits` (New commits): fires when an item has a head commit this routine hasn't seen; pull requests only; once per head commit. It never fires on a commit a routine's own run pushed, unless `ownPushesToo` is true.
+  - `firstToo` (Also when it first appears): `true` or `false`, default `true`.
+  - `ownPushesToo` (Also on commits a routine pushed): `true` or `false`, default `false`.
+- `checks_failed` (Checks fail): fires when an item has a failed or errored check on its head commit; pull requests only; once per head commit. With `waitForChecks`, it waits until every check has finished and settled, so it fires once with every failure.
+  - `waitForChecks` (Wait until every check has finished): `true` or `false`, default `true`.
+  - `settleMinutes` (Settle for): a whole number, 0 to 60 minutes, default 2.
+- `checks_passed` (Checks pass): fires when an item has every check passing, and settled, on its head commit; pull requests only; once per head commit.
+  - `settleMinutes` (Settle for): a whole number, 0 to 60 minutes, default 2.
+- `changes_requested` (Changes requested): fires when an item gets a new request for changes, or its review decision turns to one; pull requests only; once per review round.
+- `approved`: fires when an item is approved: the decision, or a new approval; pull requests only; once per head commit.
+- `merge_conflicts` (Merge conflicts): fires when an item conflicts with its base branch; pull requests only; once per head commit.
+- `falls_behind` (Falls behind): fires when an item is behind its base branch, with no conflict; pull requests only; once per head commit and base.
+- `labeled`: fires when an item carries a given label; pull requests and issues; once per item and label.
+  - `label` (Label): text, needed.
+- `ready_for_review` (Ready for review): fires when an item isn't a draft, whether it opened ready or turned ready; pull requests only; once per item.
+- `review_requested` (Review requested): fires when an item newly asks for your review; pull requests only; once per request.
+- `assigned` (Assigned to me): fires when an item is newly assigned to you; pull requests and issues; once per assignment.
+- `new_comments` (New comments): fires when an item gains new comments since the routine last fired, or since it first saw the item; pull requests and issues; once per comment count.
+  - `count` (Comments): a whole number, 1 to 100 comments, default 1.
+- `goes_quiet` (Goes quiet): fires when an item has had no activity for a number of days; pull requests and issues; once per last activity.
+  - `days` (Days): a whole number, 1 to 365 days, default 7.
+- `schedule` (On a schedule): fires when an item holds the conditions at a set time; pull requests and issues; once per scheduled time. Its `schedule` says when (topic `schedule`).
+  - `schedule` (When): an object, needed.
+- `manual` (Only when I run it): fires when an item is picked from an item's menu by you; pull requests and issues; once for each click. The user runs it from an item's menu, on that item, so its watch may be empty.

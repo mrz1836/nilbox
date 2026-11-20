@@ -1,0 +1,88 @@
+# Prompts
+
+An `agent` step runs a prompt from the user's prompt library, and a GitHub step's `reply` comments a reply from it. A step names one in `prompt`, exactly one way:
+
+- `{"starter": "<key>"}`: the user's copy of a starter prompt, below, whatever they renamed it.
+- `{"nickname": "<nickname>"}`: the library's prompt with that nickname, ignoring case: one `autopilot_my_setup` lists, or a new one the same proposal adds.
+- `{"itemDefault": true}`: the item's own default prompt, as a click picks it; an agent step's alone.
+
+A prompt's `purpose` is `agent` or `reply`: an agent step runs an `agent` prompt, and a GitHub step comments a `reply`. A reply's `replyAction` is the review it is written for, `approve`, `request_changes`, or `comment`; a GitHub step only comments, so it takes a `comment` reply alone. A prompt's `appliesTo` is `pr`, `issue`, or `any`, and it must apply to every kind of item the routine acts on.
+
+## The starters
+
+Prompts Nilbox ships, which the user's library holds a copy of unless they deleted it; `autopilot_my_setup` says which copies it holds, and their nicknames there.
+
+- `review-pr`: "Review" (Review a pull request), `agent`, applies to `pr`.
+- `work-on-issue`: "Work on it" (Work on an issue), `agent`, applies to `issue`.
+- `quick-look`: "Quick look" (Take a quick look for blockers), `agent`, applies to `pr`.
+- `fix-checks`: "Fix checks" (Fix a pull request's failing checks), `agent`, applies to `pr`.
+- `reply-lgtm`: "LGTM" (Approve with thanks), `reply` for `approve`, applies to `pr`.
+- `reply-update-ok`: "Update OK" (Approve a dependency update), `reply` for `approve`, applies to `pr`.
+- `reply-needs-changes`: "Needs changes" (Ask for changes), `reply` for `request_changes`, applies to `pr`.
+- `reply-question`: "Question" (Ask a question), `reply` for `comment`, applies to `pr`.
+- `fix-dependency-security`: "Fix dep security" (Fix a dependency update's security checks), `agent`, applies to `pr`.
+- `re-review`: "Re-review" (Re-review a pull request), `agent`, applies to `pr`.
+- `reply-nudge`: "Nudge" (Nudge the author), `reply` for `comment`, applies to `pr`.
+- `heal-dependabot-pr`: "Heal Dependabot PR" (Heal a dependency update), `agent`, applies to `pr`.
+- `address-review`: "Address review" (Address a review's requested changes), `agent`, applies to `pr`.
+- `resolve-conflicts`: "Resolve conflicts" (Resolve a pull request's merge conflicts), `agent`, applies to `pr`.
+- `rerun-failed-jobs`: "Re-run failed jobs" (Re-run a pull request's failed jobs), `agent`, applies to `pr`.
+- `reply-needs-repro`: "Needs repro" (Ask for steps to reproduce), `reply` for `comment`, applies to `issue`.
+
+## A new prompt
+
+Add one in the proposal's `prompts` only when none in the library does what the user wants. It takes the library's defaults for its model, effort, plan mode, and worktree.
+
+- `name`: its title: one line, short.
+- `nickname`: what the launch menu shows, and a step names it by: one line of at most 20 characters, unlike any other prompt's, ignoring case.
+- `purpose`: `agent` or `reply`.
+- `replyAction`: a reply's review, `approve`, `request_changes`, or `comment`; left out for an agent's prompt.
+- `appliesTo`: `pr`, `issue`, or `any`.
+- `body`: its text, a Go template filled in for each item, at most 32768 bytes. Say what to do and how to finish; an agent in the background is told it runs unattended.
+
+## The variables
+
+A prompt's text names the item's facts as `{{.Name}}`, filled in for each item; `{{if .IsPR}}...{{end}}` works, and nothing that loops. It never holds the item's text or comments: the agent reads those itself. A reply is filled in the same way.
+
+- `{{.Kind}}` (Item, text): "pull request" or "issue".
+- `{{.IsPR}}` (Item, yes/no): The item is a pull request.
+- `{{.Number}}` (Item, number): The pull request or issue number.
+- `{{.Title}}` (Item, text): The title, cut to 200 characters.
+- `{{.URL}}` (Item, text): The web address on GitHub.
+- `{{.Author}}` (Item, text): Who opened it.
+- `{{.IsBot}}` (Item, yes/no): A bot opened it, such as Dependabot.
+- `{{.Labels}}` (Item, text): Label names, separated by commas.
+- `{{.IsDraft}}` (Item, yes/no, pull requests only): The pull request is a draft.
+- `{{.Repo}}` (Repository, text): The repository, as owner/name.
+- `{{.Owner}}` (Repository, text): The repository's owner.
+- `{{.RepoName}}` (Repository, text): The repository's name.
+- `{{.DefaultBranch}}` (Repository, text): The repository's default branch.
+- `{{.Remote}}` (Repository, text): The clone's remote for the repository, such as "origin", or empty without a clone.
+- `{{.RemoteIsPlain}}` (Repository, yes/no): The remote's name is plain (ASCII letters, digits, and -_./:,+@%=, not starting with - or =), so a command can name it.
+- `{{.Branch}}` (Pull request, text, pull requests only): The head branch.
+- `{{.BranchIsPlain}}` (Pull request, yes/no, pull requests only): The head branch, as GitHub reported it, is plain (ASCII letters, digits, and -_./:,+@%=, not starting with - or =), so a command can name it.
+- `{{.HeadCommit}}` (Pull request, text, pull requests only): The head commit, or empty before a refresh read it.
+- `{{.ReviewedCommit}}` (Pull request, text, pull requests only): The commit your last review was on, when your verdict requested changes or approved; empty otherwise.
+- `{{.Checks}}` (Pull request, text, pull requests only): "passing", "failing", "pending", or empty.
+- `{{.FailedChecks}}` (Pull request, text, pull requests only): The head commit's failed checks, separated by commas, or empty when they aren't known.
+- `{{.Review}}` (Pull request, text, pull requests only): "approved", "changes requested", "review required", or empty.
+- `{{.HasConflicts}}` (Pull request, yes/no, pull requests only): Conflicts with its base branch.
+- `{{.Additions}}` (Pull request, number, pull requests only): Lines added.
+- `{{.Deletions}}` (Pull request, number, pull requests only): Lines removed.
+- `{{.ChangedFiles}}` (Pull request, number, pull requests only): Files changed.
+- `{{.Commits}}` (Pull request, number, pull requests only): Commits.
+- `{{.SensitiveFiles}}` (Pull request, text, pull requests only): Sensitive files it changes, such as workflows, with their categories, or empty.
+- `{{.Dependency}}` (Pull request, text, pull requests only): The dependency a bot's update bumps, such as golang.org/x/net, or empty.
+- `{{.FromVersion}}` (Pull request, text, pull requests only): The version it moves from, or empty.
+- `{{.ToVersion}}` (Pull request, text, pull requests only): The version it moves to, or empty.
+- `{{.UpdateType}}` (Pull request, text, pull requests only): "patch", "minor", "major", or empty when it can't be told.
+- `{{.InWorktree}}` (Session, yes/no): The session starts in its own worktree.
+- `{{.WorktreeOnPRHead}}` (Session, yes/no, pull requests only): That worktree already starts at the pull request's head.
+- `{{.Worktree}}` (Session, text): The worktree's name, such as "pr-7", or empty.
+- `{{.Profile}}` (Session, text): The profile the session runs with.
+- `{{.Me}}` (Session, text): Your GitHub login.
+- `{{.OutsideContributor}}` (Session, yes/no): It comes from outside the repository's members and collaborators.
+- `{{.Routine}}` (Autopilot, text): The Autopilot routine that started it, or empty for your own launch.
+- `{{.Trigger}}` (Autopilot, text): What made the routine run, such as "Checks fail", or empty for your own launch.
+- `{{.Attempt}}` (Autopilot, number): Which of the routine's tries on the item this is, 1 for the first, or 0 for your own launch.
+- `{{.Unattended}}` (Autopilot, yes/no): Nobody is there to answer: a routine's run in the background.

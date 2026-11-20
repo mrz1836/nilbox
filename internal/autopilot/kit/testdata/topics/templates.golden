@@ -1,0 +1,130 @@
+# Templates
+
+The gallery's templates are routines Nilbox ships ready to use. To start from one, copy its definition into the routine's `spec`, fill in its blanks, change only what the user asked for, set the routine's `template` to its key, and give its suggested mode as the routine's `mode`.
+
+## `fix-dependabot-security`: Fix Dependabot security failures
+
+When a Dependabot update fails a security scan, an agent fixes the cause in the background and pushes, then the checks run again. Its fence keeps it out of package.json and the other tooling, workflow, and agent files, so a fix that needs one pushes nothing and says what a person must change.
+
+- Suggests `ask` (Ask first).
+- Blank `where` (Where): Your account, and the orgs, users, or repositories to watch too. It fills `watch.sources[0].search.where`.
+
+```json
+{"version":1,"watch":{"sources":[{"search":{"kind":"pr","authors":["app/dependabot"],"where":["@me"]}}]},"trigger":{"event":"checks_failed","waitForChecks":true},"conditions":{"match":"all","of":[{"field":"checks.failedNames","op":"anyContains","values":["codeql","gitleaks","govulncheck","nancy","osv","security"]}]},"steps":[{"agent":{"agent":"inherit","prompt":{"starter":"fix-dependency-security"},"where":"background","fence":{"budget":{"usd":3},"timeoutMinutes":30,"tools":"editTestPush"}}},{"waitForChecks":{"settleMinutes":2,"giveUpHours":2},"onlyIf":"pushed"},{"tellMe":{"when":"verdict"}}],"limits":{"oncePer":"headCommit","triesPerItem":2,"runsPerDay":10,"waitMinutes":30}}
+```
+
+## `heal-dependabot-then-merge`: Heal Dependabot PRs, then merge them
+
+When a patch or minor Dependabot update fails its checks, an agent adapts the code, and once the checks pass it merges inside GitHub's own rules. Its fence keeps it out of package.json and the other tooling, workflow, and agent files, so a fix that needs one pushes nothing.
+
+- Suggests `ask` (Ask first).
+- Blank `where` (Where): Your account, and the orgs, users, or repositories to watch too. It fills `watch.sources[0].search.where`.
+
+```json
+{"version":1,"watch":{"sources":[{"search":{"kind":"pr","authors":["app/dependabot"],"where":["@me"]}}]},"trigger":{"event":"checks_failed","waitForChecks":true},"conditions":{"match":"all","of":[{"field":"dep.updateType","op":"oneOf","values":["minor","patch"]}]},"steps":[{"agent":{"agent":"inherit","prompt":{"starter":"heal-dependabot-pr"},"where":"background","fence":{"budget":{"usd":3},"timeoutMinutes":30,"tools":"editTestPush"}}},{"waitForChecks":{"settleMinutes":2,"giveUpHours":2},"onlyIf":"pushed"},{"merge":{"how":"autoMergeIfItWasOn"},"onlyIf":"passed"},{"tellMe":{},"onlyIf":"stillFails"}],"limits":{"oncePer":"headCommit","triesPerItem":2,"runsPerDay":10}}
+```
+
+## `review-members`: Review members' PRs
+
+When a member opens a small pull request with no sensitive file, an agent reviews it read only and posts its verdict, never an approval unless you allow it.
+
+- Suggests `ask` (Ask first).
+- Blank `where` (Where): The repositories whose pull requests to review: your account, or orgs and repositories. It fills `watch.sources[0].search.where`.
+
+```json
+{"version":1,"watch":{"sources":[{"search":{"kind":"pr","where":["@me"],"state":["ready"]}}]},"trigger":{"event":"appears"},"conditions":{"match":"all","of":[{"field":"item.trust","op":"oneOf","values":["member"]},{"field":"files.sensitive","op":"isEmpty"},{"field":"pr.lines","op":"lt","value":"400"}]},"steps":[{"agent":{"agent":"inherit","prompt":{"starter":"review-pr"},"where":"background","fence":{"tools":"readOnly"}}},{"postReview":{"as":"verdict"}}],"limits":{"oncePer":"headCommit"}}
+```
+
+## `snooze-passing-bot-prs`: Snooze passing bot PRs
+
+A trusted bot's patch or minor update whose checks pass leaves your inbox for three days.
+
+- Suggests `auto` (Autopilot).
+
+```json
+{"version":1,"watch":{"sources":[{"lists":["reviewRequested","assigned"]}]},"trigger":{"event":"checks_passed"},"conditions":{"match":"all","of":[{"field":"item.trust","op":"oneOf","values":["bot"]},{"field":"dep.updateType","op":"oneOf","values":["minor","patch"]}]},"steps":[{"snooze":{"days":3}}],"limits":{}}
+```
+
+## `tell-me-about-security-failures`: Tell me about security failures
+
+A notification when a Dependabot update fails a security scan.
+
+- Suggests `auto` (Autopilot).
+- Blank `where` (Where): Your account, and the orgs, users, or repositories to watch too. It fills `watch.sources[0].search.where`.
+
+```json
+{"version":1,"watch":{"sources":[{"search":{"kind":"pr","authors":["app/dependabot"],"where":["@me"]}}]},"trigger":{"event":"checks_failed"},"conditions":{"match":"all","of":[{"field":"checks.failedNames","op":"anyContains","values":["codeql","gitleaks","govulncheck","nancy","osv","security"]}]},"steps":[{"notify":{}}],"limits":{}}
+```
+
+## `address-requested-changes`: Address requested changes
+
+When a reviewer asks for changes on your pull request, an agent works through them in your terminal.
+
+- Suggests `ask` (Ask first).
+
+```json
+{"version":1,"watch":{"sources":[{"lists":["authored"]}]},"trigger":{"event":"changes_requested"},"conditions":{"match":"all","of":[]},"steps":[{"agent":{"agent":"inherit","prompt":{"starter":"address-review"},"where":"terminal"}}],"limits":{"oncePer":"headCommit"}}
+```
+
+## `resolve-merge-conflicts`: Resolve merge conflicts on my PRs
+
+When your pull request conflicts with its base, an agent merges the base in and resolves it. Its fence keeps it out of package.json and the other tooling, workflow, and agent files, so a conflict in one waits for you.
+
+- Suggests `ask` (Ask first).
+
+```json
+{"version":1,"watch":{"sources":[{"lists":["authored"]}]},"trigger":{"event":"merge_conflicts"},"conditions":{"match":"all","of":[{"field":"pr.draft","op":"isNo"}]},"steps":[{"agent":{"agent":"inherit","prompt":{"starter":"resolve-conflicts"},"where":"background","fence":{"tools":"editTestPush"}}}],"limits":{"oncePer":"headCommit"}}
+```
+
+## `re-run-flaky-checks-once`: Re-run flaky checks once
+
+When a check you know is flaky fails, an agent re-runs its failed jobs once, and changes nothing else.
+
+- Suggests `auto` (Autopilot).
+- Blank `checks` (Flaky checks): The checks that fail now and then for no fault of the code, as GitHub names them. It fills `conditions.of[0].values`. Required: the routine can't run until it is filled.
+- Blank `where` (Where): Your account, and the orgs, users, or repositories to watch too. It fills `watch.sources[1].search.where`.
+
+```json
+{"version":1,"watch":{"sources":[{"lists":["authored"]},{"search":{"kind":"pr","authors":["app/dependabot"],"where":["@me"]}}]},"trigger":{"event":"checks_failed"},"conditions":{"match":"all","of":[{"field":"checks.failedNames","op":"hasAny"}]},"steps":[{"agent":{"agent":"inherit","prompt":{"starter":"rerun-failed-jobs"},"where":"background","fence":{"tools":"githubTasks"}}}],"limits":{"oncePer":"headCommit","triesPerItem":1}}
+```
+
+## `ask-dependabot-to-rebase`: Ask Dependabot to rebase what conflicts
+
+When a Dependabot update has merge conflicts, comment @dependabot rebase on it, once a commit. No agent, nothing spent.
+
+- Suggests `auto` (Autopilot).
+- Blank `where` (Where): Your account, and the orgs, users, or repositories to watch too. It fills `watch.sources[0].search.where`.
+
+```json
+{"version":1,"watch":{"sources":[{"search":{"kind":"pr","authors":["app/dependabot"],"where":["@me"]}}]},"trigger":{"event":"merge_conflicts"},"conditions":{"match":"all","of":[]},"steps":[{"github":[{"rebase":{}}]}],"limits":{"oncePer":"headCommit"}}
+```
+
+## `ask-for-a-repro-on-quiet-bugs`: Ask for a repro on quiet bugs
+
+When a bug assigned to you goes quiet for two weeks with no repro, comment your Needs repro reply and label it needs-repro. No agent, nothing spent.
+
+- Suggests `ask` (Ask first).
+
+```json
+{"version":1,"watch":{"sources":[{"search":{"kind":"issue","involving":["assigned"]}}]},"trigger":{"event":"goes_quiet","days":14},"conditions":{"match":"all","of":[{"field":"item.labels","op":"hasAny","values":["bug"]},{"field":"item.labels","op":"hasNone","values":["needs-repro"]}]},"steps":[{"github":[{"reply":{"prompt":{"starter":"reply-needs-repro"}}},{"labels":{"add":["needs-repro"]}}]}],"limits":{}}
+```
+
+## `update-my-prs-when-behind`: Update my PRs when they fall behind
+
+When your pull request falls behind its base branch, update its branch, as the review sheet's Update branch does.
+
+- Suggests `ask` (Ask first).
+
+```json
+{"version":1,"watch":{"sources":[{"lists":["authored"]}]},"trigger":{"event":"falls_behind"},"conditions":{"match":"all","of":[{"field":"pr.draft","op":"isNo"},{"field":"repo.allowsUpdateBranch","op":"isYes"}]},"steps":[{"github":[{"updateBranch":{}}]}],"limits":{}}
+```
+
+## `fix-failing-checks-on-my-prs`: Fix failing checks on my PRs
+
+When the checks on your pull request fail, an agent finds the cause and pushes a fix in the background.
+
+- Suggests `ask` (Ask first).
+
+```json
+{"version":1,"watch":{"sources":[{"lists":["authored"]}]},"trigger":{"event":"checks_failed","waitForChecks":true},"conditions":{"match":"all","of":[{"field":"pr.draft","op":"isNo"}]},"steps":[{"agent":{"agent":"inherit","prompt":{"starter":"fix-checks"},"where":"background","fence":{"tools":"editTestPush"}}},{"waitForChecks":{},"onlyIf":"pushed"},{"tellMe":{"when":"verdict"}}],"limits":{"oncePer":"headCommit","triesPerItem":2}}
+```

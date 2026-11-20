@@ -1,0 +1,9 @@
+# The rules routines lean on
+
+Beside the routines, Settings keeps rules that change what a routine sees and may do. A proposal's `rules` changes them, each list optional: `{"trust": ["renovate"], "mute": ["acme-org/legacy"]}`.
+
+- `trust`, `untrust`: bots to trust, or to trust no longer, each by its login, such as `renovate`, `renovate[bot]`, or `app/renovate`, all written as `renovate`. An item a trusted bot opened counts as `bot` in `item.trust`, not `outside`: an agent works on it as the routine says rather than only planning, its GitHub actions don't wait for the user's OK as an outside contributor's do, and `postReview` may approve it. Until the user changes the list, `dependabot`, `github-actions`, and `renovate` are trusted.
+- `pin`, `mute`, `clear`: repositories (`owner/name`) or orgs (`owner`) to pin, to mute, or to clear of either. A pinned one's items count as pinned in the inbox (`repo.pinned`); a muted one's are set apart in each list's Muted tab, counted nowhere, told in no banner, and followed by nothing (`repo.muted`). A repository's own rule wins over its org's, a target is in one list at most, and each list holds at most 500.
+- `ignoreWorkflows`, `unignoreWorkflows`: workflows, by their names as GitHub shows them, matched whole and case-sensitively, whose runs GitHub holds for a maintainer's approval never count toward where a pull request stands, on the inbox's cards and in the review sheet; at most 100, each at most 200 characters.
+
+`autopilot_my_setup` lists the rules as they are now, as `trustedBots`, `pinned`, `muted`, and `ignoredWorkflows`.

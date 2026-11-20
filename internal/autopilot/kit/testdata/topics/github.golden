@@ -1,0 +1,14 @@
+# The GitHub step
+
+`github` sends GitHub one or more of the app's own writes, as the review and issue sheets send them, in the order listed: 1 to 4 actions, each kind once, each an object holding exactly one action's key.
+
+```json
+{"github": [{"reply": {"prompt": {"starter": "reply-question"}}}, {"labels": {"add": ["needs-repro"]}}]}
+```
+
+- `rebase` (Ask Dependabot to rebase): Comments @dependabot rebase, as the review sheet does, on a Dependabot pull request behind its base or in conflict. Dependabot force-pushes its branch, which can't be taken back. Pull requests only. It takes no settings: `{}`.
+- `updateBranch` (Update branch): Merges the base branch into the pull request's branch, as the review sheet does. The merge commit stays. Pull requests only. It takes no settings: `{}`.
+- `reply` (Comment one of my replies): Posts one of your comment replies, filled in for the item, as the sheets post one. It can be deleted, but GitHub has told people by then. It takes `{"prompt": ...}`, one of the library's comment replies (`purpose` `reply`, `replyAction` `comment`) by its `starter` or its `nickname`, never `itemDefault`: the step only comments, so a reply that approves or requests changes is refused.
+- `labels` (Add or remove labels): Adds and takes off labels, as the issue sheet does. They can be put back by hand, and a label can start a repository's label-triggered workflows. It takes `{"add": [...], "remove": [...]}`, at least one label, at most 20 in each, each at most 50 characters, none both added and removed; it changes only the labels the item has.
+
+Each action follows the routine's mode, is read from GitHub right before it goes and sent only while the sheet still offers it, and is pinned to the head commit that read found. On an outside contributor's item it waits for the user's OK in every mode. Every action counts toward Settings' `actionsPerDay`. A GitHub action never merges, approves, requests changes, closes, or approves workflow runs: merging and posting a review are the steps `merge` and `postReview`, and marking the item's GitHub notifications done is the step `markDone`.

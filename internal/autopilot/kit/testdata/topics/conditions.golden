@@ -1,0 +1,67 @@
+# Conditions
+
+`conditions` says which of the items the trigger fires on count. `match` is `all` (every condition) or `any` (any condition); `of` lists the conditions, and groups of them one level deep (a group holds no group), at most 50 in all. With none, write `{"match": "all", "of": []}`.
+
+```json
+{"match": "all", "of": [{"field": "pr.draft", "op": "isNo"}, {"group": {"match": "any", "of": [{"field": "item.labels", "op": "hasAny", "values": ["bug"]}, {"field": "pr.lines", "op": "lt", "value": "400"}]}}]}
+```
+
+A condition names a `field` (topic `fields`), an `op` its type takes, and what the op compares against: one value in `value`, several in `values`, or none. Each value is one line of at most 200 characters, at most 50 of them. A condition on a field that doesn't apply to an item, such as a pull request's field on an issue, is no; one on a value not read yet waits until it is read.
+
+## `text`
+
+One piece of text, compared ignoring case. A pattern takes `*` for any run of characters and `?` for one; a regex is Go's (RE2), ignoring case.
+
+- `is`: one value, in `value`. Its opposite is `isNot`.
+- `isNot` (isn't): one value, in `value`. Its opposite is `is`.
+- `contains`: one value, in `value`. Its opposite is `notContains`.
+- `notContains` (doesn't contain): one value, in `value`. Its opposite is `contains`.
+- `startsWith` (starts with): one value, in `value`.
+- `matches` (matches the pattern): one value, in `value`. * matches any run of characters and ? one, ignoring case.
+- `matchesRegex` (matches the regex): one value, in `value`. A Go (RE2) regular expression, ignoring case.
+
+## `list`
+
+A list of text, such as the labels. A list whose values are a field's choices takes only `hasAny`, `hasAll`, `hasNone`, `isEmpty`, and `notEmpty`; one of paths matches its patterns as `.gitignore` does, the others as globs. An "all" operator over an empty list is no, never yes.
+
+- `hasAny` (has any of): one or more, in `values`. Its opposite is `hasNone`.
+- `hasAll` (has all of): one or more, in `values`. Holds every one of them; an empty list holds none, so it doesn't match.
+- `hasNone` (has none of): one or more, in `values`. Its opposite is `hasAny`.
+- `anyContains` (contains any of): one or more, in `values`. Its opposite is `noneContains`.
+- `noneContains` (contains none of): one or more, in `values`. Its opposite is `anyContains`.
+- `anyMatches` (any matches): one or more, in `values`.
+- `allMatch` (all match): one or more, in `values`. Every one matches one of the patterns; an empty list doesn't match, so a pull request that changes no file never has all its paths under docs/.
+- `isEmpty` (is empty): no value. Its opposite is `notEmpty`.
+- `notEmpty` (isn't empty): no value. Its opposite is `isEmpty`.
+
+## `number`
+
+A whole number, written as its digits in a string: `"400"`.
+
+- `eq` (=): one value, in `value`. Its opposite is `ne`.
+- `ne` (≠): one value, in `value`. Its opposite is `eq`.
+- `lt` (<): one value, in `value`. Its opposite is `gte`.
+- `lte` (≤): one value, in `value`. Its opposite is `gt`.
+- `gt` (>): one value, in `value`. Its opposite is `lte`.
+- `gte` (≥): one value, in `value`. Its opposite is `lt`.
+
+## `bool`
+
+Yes or no; its operators take no value.
+
+- `isYes` (is yes): no value. Its opposite is `isNo`.
+- `isNo` (is no): no value. Its opposite is `isYes`.
+
+## `choice`
+
+One of the field's choices (topic `fields`), compared ignoring case.
+
+- `oneOf` (is any of): one or more, in `values`. Its opposite is `noneOf`.
+- `noneOf` (is none of): one or more, in `values`. Its opposite is `oneOf`.
+
+## `duration`
+
+How long ago something happened, against a length: a whole number of minutes, hours, or days, such as `"30m"`, `"2h"`, or `"14d"`.
+
+- `moreThan` (more than): one value, in `value`.
+- `lessThan` (less than): one value, in `value`.

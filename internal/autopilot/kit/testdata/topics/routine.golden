@@ -1,0 +1,185 @@
+# A routine's definition
+
+A routine's `spec` is one JSON object. Every key is spelled exactly as below, and one marked `?` may be left out, to take its default. A key the format doesn't have, or one spelled in another case, is refused. Each part has a topic of its own: `watch`, `triggers` and `schedule`, `conditions` and `fields`, `steps`, `agent`, `github`, and `limits`.
+
+```
+Spec {
+  version: 1
+  watch: Watch
+  trigger: Trigger
+  conditions: Conditions
+  steps: Step[]
+  limits: Limits
+  notify?: Notices
+  requires?: string[]
+}
+Watch {
+  sources: Source[]
+}
+Trigger {
+  event: string  // a trigger's event: topic triggers
+  waitForChecks?: boolean
+  settleMinutes?: number
+  firstToo?: boolean
+  ownPushesToo?: boolean
+  count?: number
+  days?: number
+  label?: string
+  schedule?: Schedule
+}
+Conditions {
+  match: "all" | "any"
+  of: Clause[]
+}
+Step {  // exactly one kind of step, and onlyIf
+  notify?: NotifyStep
+  pin?: Empty
+  snooze?: SnoozeStep
+  dismiss?: Empty
+  restore?: Empty
+  markDone?: Empty
+  github?: GitHubAction[]
+  agent?: AgentStep
+  waitForChecks?: WaitStep
+  merge?: MergeStep
+  postReview?: ReviewStep
+  tellMe?: TellStep
+  script?: ScriptStep
+  onlyIf?: "passed" | "stillFails" | "pushed" | "notPushed" | "approve" | "requestChanges"
+}
+Limits {
+  oncePer?: "item" | "headCommit" | "day"
+  triesPerItem?: number
+  runsPerDay?: number
+  waitMinutes?: number
+  activeHours?: ActiveHours
+  budgetPerDay?: Budget
+}
+Notices {
+  alert?: boolean
+  needsYou?: boolean
+  finished?: boolean
+  checks?: boolean
+  problem?: boolean
+}
+Source {  // exactly one of lists and search
+  lists?: ("reviewRequested" | "authored" | "assigned")[]
+  search?: Search
+}
+Schedule {
+  every: "day" | "weekday" | "week"
+  at: string
+  on?: "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun"
+  style?: "each" | "digest"
+}
+Clause {  // a condition (field, op, and value or values), or a group
+  field?: string  // a field's id: topic fields
+  op?: string  // an operator: topic conditions
+  value?: string
+  values?: string[]
+  group?: Conditions
+}
+NotifyStep {
+  note?: string
+  banner?: boolean
+}
+Empty {  // no keys: {}
+}
+SnoozeStep {
+  days?: number
+}
+GitHubAction {  // exactly one action
+  rebase?: Empty
+  updateBranch?: Empty
+  reply?: ReplyAction
+  labels?: LabelsAction
+}
+AgentStep {
+  agent?: string
+  prompt: PromptRef
+  where?: "background" | "terminal"
+  profile?: string
+  fallbacks?: ProfileRef[]
+  model?: string
+  effort?: string
+  planMode?: boolean
+  worktree?: boolean
+  launchFor?: LaunchRow[]
+  fence?: Fence
+}
+WaitStep {
+  settleMinutes?: number
+  giveUpHours?: number
+}
+MergeStep {
+  how: "autoMergeIfItWasOn" | "whenMergeable"
+  method?: "merge" | "squash" | "rebase"
+}
+ReviewStep {
+  as: "comment" | "verdict"
+  allowApprove?: boolean
+}
+TellStep {
+  when?: "reached" | "verdict"
+}
+ScriptStep {
+  id: number
+  name: string
+}
+ActiveHours {
+  days: ("mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun")[]
+  from: string
+  to: string
+}
+Budget {  // exactly one of usd and tokens
+  usd?: number
+  tokens?: number
+}
+Search {
+  kind?: "pr" | "issue"
+  authors?: string[]
+  where?: string[]
+  involving?: ("assigned" | "reviewRequested" | "mentioned")[]
+  labels?: string[]
+  notLabels?: string[]
+  base?: string
+  headPrefix?: string
+  state?: ("ready" | "draft" | "failing" | "passing" | "pending" | "changesRequested" | "approved" | "reviewRequired" | "unreviewed")[]
+  more?: string
+}
+ReplyAction {
+  prompt: PromptRef
+}
+LabelsAction {
+  add?: string[]
+  remove?: string[]
+}
+PromptRef {  // exactly one of starter, nickname, and itemDefault
+  starter?: string
+  nickname?: string
+  itemDefault?: boolean
+}
+ProfileRef {
+  agent: string
+  profile: string
+}
+LaunchRow {
+  target: string
+  agent?: string
+  profile?: string
+  model?: string
+  effort?: string
+}
+Fence {
+  budget?: Budget
+  timeoutMinutes?: number
+  tools?: "readOnly" | "githubTasks" | "editTest" | "editTestPush" | "profile"
+  allow?: string[]
+  deny?: string[]
+}
+```
+
+- `version` is always 1, the format this build reads and writes.
+- `notify` says which of the routine's notices show a banner (`true`) or only an entry in the Notifications page (`false`); a key left out follows Settings → Notifications. `alert` is its Notify me and Tell me, `needsYou` a match that waits for the user's OK, `finished` its agent's run ending, `checks` Wait for the checks' verdict, and `problem` the routine failing to run.
+- `requires` names the programs the routine needs beyond what Nilbox works out on its own, such as `pnpm` or `govulncheck`, at most 20.
+- A routine's name and description sit beside its definition, in the proposal's routine; its mode and its switch are the user's.
