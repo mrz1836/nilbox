@@ -43,6 +43,7 @@ import {
   toneText,
   verbButtonClass,
 } from './layout'
+import type { WorktreeRowActions } from './menus'
 import { nameOf, programOf } from './RowCells'
 import { SafetyBand } from './SafetyBand'
 
@@ -349,7 +350,7 @@ function errorsOf(read: DetailsRead | undefined): readonly string[] {
   }
 }
 
-export interface DrawerProps {
+export interface DrawerProps extends WorktreeRowActions {
   // id is the drawer's, which its row's chevron controls.
   id: string
   repo: WorktreeRepo
@@ -368,13 +369,6 @@ export interface DrawerProps {
   working: boolean
   // opening reports Terminal or Finder being opened on the worktree.
   opening: boolean
-  onTerminal: () => void
-  onReveal: () => void
-  onCleanUp: (repo: WorktreeRepo, worktree: Worktree) => void
-  onUnlock: (repo: WorktreeRepo, worktree: Worktree) => void
-  onRemove: (repo: WorktreeRepo, worktree: Worktree) => void
-  onForceRemove: (repo: WorktreeRepo, worktree: Worktree) => void
-  onPrune: (repo: WorktreeRepo) => void
 }
 
 // Drawer is a row's drawer: on top, what removing the worktree would cost (SafetyBand),

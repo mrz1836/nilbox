@@ -50,7 +50,20 @@ export function goneWhy(wt: Worktree): string {
   return wt.error === '' ? '' : 'git couldn’t read it'
 }
 
-export interface RowMenuOptions {
+// WorktreeRowActions are what a worktree's row, its drawer, and its ⋯ do: open it in
+// Terminal or reveal it in Finder, and hand the page a change to make to it, or a prune
+// of its clone.
+export interface WorktreeRowActions {
+  onTerminal: () => void
+  onReveal: () => void
+  onCleanUp: (repo: WorktreeRepo, worktree: Worktree) => void
+  onUnlock: (repo: WorktreeRepo, worktree: Worktree) => void
+  onRemove: (repo: WorktreeRepo, worktree: Worktree) => void
+  onForceRemove: (repo: WorktreeRepo, worktree: Worktree) => void
+  onPrune: (repo: WorktreeRepo) => void
+}
+
+export interface RowMenuOptions extends WorktreeRowActions {
   repo: WorktreeRepo
   worktree: Worktree
   // read is what the window has read of the worktree's details for this listing, or
@@ -59,13 +72,6 @@ export interface RowMenuOptions {
   // disabled holds every change while one, or a listing, runs.
   disabled: boolean
   agentName: (id: AgentID) => string
-  onTerminal: () => void
-  onReveal: () => void
-  onCleanUp: (repo: WorktreeRepo, worktree: Worktree) => void
-  onUnlock: (repo: WorktreeRepo, worktree: Worktree) => void
-  onRemove: (repo: WorktreeRepo, worktree: Worktree) => void
-  onForceRemove: (repo: WorktreeRepo, worktree: Worktree) => void
-  onPrune: (repo: WorktreeRepo) => void
 }
 
 // rowMenuItems are a row's ⋯: Open in Terminal, Reveal in Finder, Copy path, Copy branch,
