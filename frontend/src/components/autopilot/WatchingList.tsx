@@ -5,8 +5,9 @@ import { all, andThen } from '../../lib/call'
 import { worktreeOf } from '../../lib/itemWorktrees'
 import { sessionsOf } from '../../lib/sessions'
 import { useAutopilotChips, useOnAutopilot } from '../../lib/useAutopilot'
+import { useOn } from '../../lib/useOn'
 import { useQuery } from '../../lib/useQuery'
-import { itemsByID, on, routineWatching, type InboxItem } from '../../platform'
+import { itemsByID, routineWatching, type InboxItem } from '../../platform'
 import { ItemRow } from '../ItemRow'
 import { AutopilotRowsContext } from './AutopilotChip'
 import { useSheetHost, type RowsKit } from './useSheetHost'
@@ -60,17 +61,9 @@ export function WatchingList({ routineId, kit, highlight, onHighlighted }: Watch
   })
 
   // The rows' triage changes the stored items, which the inbox says it changed.
-  const readAgain = useEffectEvent(() => {
+  useOn('inbox:updated', () => {
     void items.refetch()
   })
-
-  useEffect(
-    () =>
-      on('inbox:updated', () => {
-        readAgain()
-      }),
-    [],
-  )
 
   const listed = items.data !== undefined
   const failed = ids.error !== '' || items.error !== ''

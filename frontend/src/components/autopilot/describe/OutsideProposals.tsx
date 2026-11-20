@@ -1,9 +1,10 @@
-import { useEffect, useEffectEvent, useId } from 'react'
+import { useId } from 'react'
 
 import { attempt } from '../../../lib/call'
 import { formatAgo, formatFull } from '../../../lib/time'
+import { useOn } from '../../../lib/useOn'
 import { useQuery } from '../../../lib/useQuery'
-import { describeItProposals, discardDescribeItProposal, on, type DescribeCard } from '../../../platform'
+import { describeItProposals, discardDescribeItProposal, type DescribeCard } from '../../../platform'
 import { captionClass } from '../../controls'
 import { TerminalIcon } from '../../icons'
 import { RelativeTime } from '../../RelativeTime'
@@ -28,17 +29,10 @@ function Source({ card }: { card: DescribeCard }) {
 export function OutsideProposals({ kit }: { kit: Omit<CardKit, 'onSettled'> }) {
   const id = useId()
   const cards = useQuery(() => describeItProposals(), [])
-  const readAgain = useEffectEvent(() => {
+
+  useOn('describeit:proposals', () => {
     void cards.refetch()
   })
-
-  useEffect(
-    () =>
-      on('describeit:proposals', () => {
-        readAgain()
-      }),
-    [],
-  )
 
   if (cards.data === undefined || cards.data.length === 0) {
     return cards.error === '' ? null : (

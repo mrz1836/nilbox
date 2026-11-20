@@ -30,6 +30,7 @@ import { agentName } from '../../lib/launch'
 import { dryRunWhy, NEW_ROUTINE, newRoutineName, routineDraft, sameDraft, scratchDraft } from '../../lib/routineBuilder'
 import { useNeedsYou, useReadiness, type SharedAutopilot } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
+import { useOn } from '../../lib/useOn'
 import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
@@ -40,7 +41,6 @@ import {
   getAutopilotCatalog,
   itemsByID,
   listTemplates,
-  on,
   openExternal,
   routineFromItem,
   routineWatching,
@@ -519,19 +519,11 @@ export default function AutopilotView({
   })
   // The stored inbox changed, the sheet's own triage included, which the backend says
   // once it is stored: the item is read again once, as it is now.
-  const readLone = useEffectEvent(() => {
+  useOn('inbox:updated', () => {
     if (loneId > 0) {
       void loneRead.refetch()
     }
   })
-
-  useEffect(
-    () =>
-      on('inbox:updated', () => {
-        readLone()
-      }),
-    [],
-  )
   const [handled, setHandled] = useState(0)
   const { routines, engine, reload } = autopilot
   // editing is the routine the builder holds, null on Activity; leaving is where the user
@@ -551,17 +543,10 @@ export default function AutopilotView({
   // needs, and how many proposals from the user's own Claude Code wait, Describe it's count:
   // read as the tab shows, and again as those proposals change.
   const describeStatus = useQuery(() => describeItStatus(), [])
-  const readDescribeStatus = useEffectEvent(() => {
+
+  useOn('describeit:proposals', () => {
     void describeStatus.refetch()
   })
-
-  useEffect(
-    () =>
-      on('describeit:proposals', () => {
-        readDescribeStatus()
-      }),
-    [],
-  )
   const pending = describeStatus.data?.pending ?? 0
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')

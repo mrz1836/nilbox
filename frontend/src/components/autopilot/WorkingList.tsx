@@ -1,14 +1,13 @@
-import { useEffect, useEffectEvent } from 'react'
-
 import { itemText } from '../../lib/autopilot'
 import { counted } from '../../lib/format'
 import { formatDuration } from '../../lib/scriptRuns'
+import { useOnAutopilot } from '../../lib/useAutopilot'
 import { useNow } from '../../lib/useNow'
 import { useMutation } from '../../lib/useMutation'
+import { useOn } from '../../lib/useOn'
 import { useQuery } from '../../lib/useQuery'
 import {
   autopilotWorking,
-  on,
   stopAllAutopilotRuns,
   stopAutopilotRun,
   type AutopilotItemRef,
@@ -31,25 +30,16 @@ export function tokensText(n: number): string {
 // stream moves on.
 export function useWorking(): { list: AutopilotWorkingList | undefined; reload: () => void } {
   const query = useQuery(() => autopilotWorking(), [], { log: 'could not read the agents working' })
-  const reload = useEffectEvent(() => {
+  const reload = () => {
     void query.refetch()
+  }
+
+  useOnAutopilot(reload)
+  useOn('autopilot:run', () => {
+    reload()
   })
 
-  useEffect(() => {
-    const offUpdated = on('autopilot:updated', () => {
-      reload()
-    })
-    const offRun = on('autopilot:run', () => {
-      reload()
-    })
-
-    return () => {
-      offUpdated()
-      offRun()
-    }
-  }, [])
-
-  return { list: query.data, reload: () => void query.refetch() }
+  return { list: query.data, reload }
 }
 
 export interface WorkingListProps {
