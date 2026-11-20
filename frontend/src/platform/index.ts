@@ -464,6 +464,10 @@ export type KitRules = NonNullLists<autopilotkit.Rules>
 // A step, and a run, has '' for a verdict until a Wait for the checks reaches one, and
 // for every step but that wait.
 export type AutopilotVerdict = autopilot.Verdict
+// AutopilotReviewVerdict is what a routine's read-only agent's review says of a pull
+// request, which a Post the review step posts; the review sheet's own choices are
+// ReviewAction.
+export type AutopilotReviewVerdict = autopilot.ReviewVerdict
 export type AutopilotMatchStep = Omit<NonNullLists<autopilot.MatchStep>, 'verdict' | 'reviewAs'> & {
   verdict: autopilot.Verdict | ''
   reviewAs: autopilotcatalog.ReviewAs | ''

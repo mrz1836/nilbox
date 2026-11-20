@@ -22,6 +22,7 @@ import type {
   AutopilotReadiness,
   AutopilotReadyCheck,
   AutopilotReason,
+  AutopilotReviewVerdict,
   AutopilotRoutine,
   AutopilotRoutineReady,
   AutopilotRun,
@@ -503,7 +504,7 @@ export type FollowUp =
   | { kind: 'merge'; does: string; verdict: string }
   | {
       kind: 'review'
-      verdict: 'approve' | 'request_changes' | 'comment'
+      verdict: AutopilotReviewVerdict
       body: string
       comments: number
       allowApprove: boolean
@@ -541,7 +542,7 @@ export function followUpOf(m: Pick<AutopilotMatch, 'steps' | 'step'>): FollowUp 
 }
 
 // reviewVerdictLabels name an agent review's verdicts.
-export const reviewVerdictLabels: Readonly<Record<'approve' | 'request_changes' | 'comment', string>> = {
+export const reviewVerdictLabels: Readonly<Record<AutopilotReviewVerdict, string>> = {
   approve: 'Approves',
   request_changes: 'Requests changes',
   comment: 'Comments',
