@@ -481,8 +481,9 @@ More in [Inbox cards](docs/desktop.md#inbox-cards).
   Snoozed**), and the words you typed are marked in the titles.
 - **Click to filter:** a card's repository, author, and labels add themselves to the filter, and
   a second click takes them out.
-- **Worktrees** filter by `repo:`, `branch:`, `agent:`, `is:dirty`, `is:in-use`, `is:finished`,
-  and more, and **Find a setting** narrows Settings to the sections with a match and marks it.
+- **Worktrees** filter by `repo:`, `branch:`, `agent:`, `is:dirty`, `is:unpushed`, `is:in-use`,
+  `is:finished`, and more, and **Find a setting** narrows Settings to the sections with a match
+  and marks it.
 - Each page keeps its own query until the app quits.
 
 More in [Filtering](docs/desktop.md#filtering).
@@ -916,8 +917,13 @@ go-pre-commit is on in **Settings → Integrations**, or while you turn Scripts 
 
 - **Every worktree, in one view:** the **Worktrees** tab lists every linked worktree of the clones
   in your clone root and other repository locations, including ones from sessions started
-  outside Nilbox, with the branch, uncommitted files, commits not on GitHub, locks, and the age of
-  the last commit. While it lists, the toolbar shows how far it has got.
+  outside Nilbox, one line each under its clone's heading, what needs you first: the branch, the
+  item, uncommitted files, commits not on GitHub, what runs in it, and the age of the last
+  commit. Chips count the worktrees running, uncommitted, not on GitHub, needing a look, and
+  ready to clean up, and filter by them. While it lists, the head shows how far it has got.
+- **What removing it would cost:** a row unfolds into a drawer that says so in one sentence, then
+  lists its changed files, its commits not on GitHub, its branch and how far behind it is, and
+  where it came from, with **Open in Terminal** and **Reveal in Finder**.
 - **Kept track of:** Nilbox records each worktree it makes, with the agent and time of its latest
   session, and checks every record against git each time it lists or sweeps: a worktree moved is
   followed, one removed outside the app is forgotten, and one on an item's `worktree-<item>`
@@ -928,9 +934,10 @@ go-pre-commit is on in **Settings → Integrations**, or while you turn Scripts 
 - **Clean up** removes a finished worktree only when nothing would be lost: no uncommitted
   changes, every commit on GitHub, and no session running in it. A sweep every five minutes (or as
   set in **Settings → Refreshing**) does the same once a pull request merges or an issue closes.
-- **Remove**, **Remove all clean**, **Force remove** (for dirty, unlocked worktrees), **Prune**,
-  and **Unlock** for an agent's lock whose session has ended. The main worktree is never
-  removable, a worktree in use is never removed, and a lock you set by hand is never released.
+- **Remove**, **Remove clean worktrees**, **Force remove** (for dirty, unlocked worktrees, listing
+  the files it discards first), **Prune**, and **Unlock** for an agent's lock whose session has
+  ended. The main worktree is never removable, a worktree in use is never removed, and a lock you
+  set by hand is never released.
 - **Branches go only on purpose:** every removal asks first, with a box for each branch it would
   take, ticked as **Settings → Worktrees** says. A branch goes only when every commit on it is on
   GitHub, and only while it still points at the commit shown.
@@ -941,7 +948,7 @@ go-pre-commit is on in **Settings → Integrations**, or while you turn Scripts 
   A merged branch held only for commits not on GitHub can be deleted anyway, once you ask for
   such branches to be offered, tick it, and confirm a second time.
 - **Recently cleaned up** lists each cleanup, by hand or automatic, with the deleted branch and the
-  commit the worktree was at.
+  commit the worktree was at, and copies the command that brings it back.
 - **Guarded against a clone's own config:** a worktree whose status can't be read safely, such as
   one whose clone names a hook or a filter git would run, says why and is never removed.
 
