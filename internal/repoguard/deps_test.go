@@ -56,8 +56,9 @@ func boundaries() []boundary {
 		},
 		{
 			pkg:       "internal/worktrees",
-			forbidden: []string{"internal/inbox", "internal/github", settings},
-			why:       "worktrees reads its settings and GitHub's answers through its own SettingsReader and GitHub interfaces",
+			forbidden: []string{"internal/inbox", "internal/github", settings, "internal/scriptrun"},
+			why: "worktrees reads its settings and GitHub's answers, and opens the terminal, through its own " +
+				"SettingsReader, GitHub, and FolderOpener interfaces",
 		},
 		{
 			pkg:       "internal/agent",

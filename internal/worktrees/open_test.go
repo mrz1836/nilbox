@@ -13,33 +13,26 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/execpath"
-	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 var errFakeOpen = errors.New("fake: it won't open")
 
-// opened is one folder the fake terminal was asked to open, under the script name given.
-type opened struct {
-	name string
-	path string
-}
-
 // fakeOpener is the user's terminal and Finder: it records what each was asked to open,
 // and fails with err when set.
 type fakeOpener struct {
 	mu     sync.Mutex
 	err    error
-	folder []opened
+	folder []string
 	shown  []string
 }
 
-func (f *fakeOpener) OpenFolder(_ context.Context, name, dir string) error {
+func (f *fakeOpener) OpenFolder(_ context.Context, dir string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.folder = append(f.folder, opened{name: name, path: dir})
+	f.folder = append(f.folder, dir)
 
 	return f.err
 }
@@ -190,11 +183,11 @@ func TestOpenTerminal(t *testing.T) {
 		{name: "opens the worktree and runs nothing", clone: alphaClone, path: featureWorktree, opens: true},
 		{
 			name: "says when it can't", clone: alphaClone, path: featureWorktree, noOpener: true,
-			wantErr: scriptrun.ErrNoFolderTerminal, wantText: "Your terminal can't be opened here.",
+			wantErr: ErrNoTerminal, wantText: "Your terminal can't be opened here.",
 		},
 		{
 			name: "passes the terminal's failure on", clone: alphaClone, path: featureWorktree, openErr: errFakeOpen,
-			wantErr: errFakeOpen, wantIn: "open the terminal", opens: true,
+			wantErr: errFakeOpen, wantIn: "open the terminal in the worktree: ", opens: true,
 		},
 	}, refusals()...)
 
@@ -202,19 +195,19 @@ func TestOpenTerminal(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			runOpen(t, tt, (*Service).OpenTerminal, func(f *fakeOpener) []string {
-				paths := make([]string, 0, len(f.folder))
-
-				for _, o := range f.folder {
-					assert.Equal(t, scriptrun.FolderScript, o.name, "the script that runs nothing")
-
-					paths = append(paths, resolvedPath(o.path))
-				}
-
-				return paths
-			})
+			runOpen(t, tt, (*Service).OpenTerminal, func(f *fakeOpener) []string { return resolvedPaths(f.folder) })
 		})
 	}
+}
+
+// resolvedPaths is each of paths with its links resolved.
+func resolvedPaths(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		out = append(out, resolvedPath(path))
+	}
+
+	return out
 }
 
 func TestReveal(t *testing.T) {
@@ -236,14 +229,7 @@ func TestReveal(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			runOpen(t, tt, (*Service).Reveal, func(f *fakeOpener) []string {
-				paths := make([]string, 0, len(f.shown))
-				for _, path := range f.shown {
-					paths = append(paths, resolvedPath(path))
-				}
-
-				return paths
-			})
+			runOpen(t, tt, (*Service).Reveal, func(f *fakeOpener) []string { return resolvedPaths(f.shown) })
 		})
 	}
 }

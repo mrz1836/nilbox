@@ -125,9 +125,10 @@ export function MergedBranches(): $CancellablePromise<$models.MergedBranch[] | n
 /**
  * OpenTerminal opens the terminal chosen for launches in the worktree at path, one of the
  * linked worktrees of the clone at repoPath, for its Open in Terminal: the user looks at
- * the worktree or works in it there. The app runs nothing in it (scriptrun.OpenFolder).
- * The request is checked as Details checks it, so a worktree whose folder is gone is
- * refused with ErrPrunable.
+ * the worktree or works in it there, and the app runs nothing in it. The request is
+ * checked as Details checks it, so a worktree whose folder is gone is refused with
+ * ErrPrunable; where no terminal can be opened, the error is ErrNoTerminal, in words the
+ * window shows.
  */
 export function OpenTerminal(repoPath: string, path: string): $CancellablePromise<void> {
     return $Call.ByID(403914312, repoPath, path);

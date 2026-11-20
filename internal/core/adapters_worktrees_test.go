@@ -28,14 +28,14 @@ func TestAWorktreesTerminalOpensOnceThereIsOne(t *testing.T) {
 
 	term := &worktreeTerminal{}
 
-	err := term.OpenFolder(t.Context(), scriptrun.FolderScript, "/srv/worktrees/pr-7")
+	err := term.OpenFolder(t.Context(), "/srv/worktrees/pr-7")
 	require.ErrorIs(t, err, scriptrun.ErrNoFolderTerminal, "before the terminal is built, nothing opens")
 	assert.Equal(t, "Your terminal can't be opened here.", uierr.Message(err))
 
 	runs := &folderOpened{}
 	term.opener = runs
 
-	require.NoError(t, term.OpenFolder(t.Context(), scriptrun.FolderScript, "/srv/worktrees/pr-7"))
+	require.NoError(t, term.OpenFolder(t.Context(), "/srv/worktrees/pr-7"))
 	assert.Equal(t, [][2]string{{scriptrun.FolderScript, "/srv/worktrees/pr-7"}}, runs.opened,
-		"once it is, the worktree opens in it")
+		"once it is, the worktree opens in it under the script that runs nothing")
 }

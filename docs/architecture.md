@@ -2171,12 +2171,14 @@ made at, or else the newest, for the listing's count (`fetchedHeads`) and `Detai
 
 `OpenTerminal(repoPath, path)` and `Reveal(repoPath, path)` check the request as `Details`
 does, so a worktree whose folder is gone is refused with `ErrPrunable`, then open the
-terminal chosen for launches in the worktree through `scriptrun.OpenFolder`, which runs
-nothing there, or show it in Finder with `open -R` (off macOS there is no `Revealer`, and
-Reveal fails with `ErrNoFinder`, worded for the window). Core builds the worktree service
-before the terminal, which needs the launcher, which needs the worktrees, so the service's
-`FolderOpener` is a core adapter (`worktreeTerminal`) filled in once the terminal is built,
-before any work starts.
+terminal chosen for launches in the worktree through the service's own `FolderOpener`, which
+runs nothing there (without one, OpenTerminal fails with `ErrNoTerminal`, worded for the
+window), or show it in Finder with `open -R` (off macOS there is no `Revealer`, and Reveal
+fails with `ErrNoFinder`, likewise worded). The package never imports `internal/scriptrun`.
+Core builds the worktree service before the terminal, which needs the launcher, which needs
+the worktrees, so the service's `FolderOpener` is a core adapter (`worktreeTerminal`) filled
+in once the terminal is built, before any work starts, which opens the folder as
+`scriptrun.FolderScript`.
 
 ## internal/gitread
 

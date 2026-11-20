@@ -31,13 +31,14 @@ type worktreeTerminal struct {
 	opener scriptrun.FolderOpener
 }
 
-// OpenFolder opens the terminal in dir, once there is one.
-func (w *worktreeTerminal) OpenFolder(ctx context.Context, name, dir string) error {
+// OpenFolder opens the terminal in dir, once there is one, as scriptrun.FolderScript, the
+// script that runs nothing there.
+func (w *worktreeTerminal) OpenFolder(ctx context.Context, dir string) error {
 	if w.opener == nil {
 		return uierr.New("Your terminal can't be opened here.", scriptrun.ErrNoFolderTerminal)
 	}
 
-	return w.opener.OpenFolder(ctx, name, dir)
+	return w.opener.OpenFolder(ctx, scriptrun.FolderScript, dir)
 }
 
 // sweepSettings is the part of the settings the worktree service reads.
