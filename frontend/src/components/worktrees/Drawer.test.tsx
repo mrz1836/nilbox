@@ -546,7 +546,7 @@ describe('Drawer copies', () => {
   // have an identical copy on origin/feature-x, pull request #42's branch.
   const two = copiedWorktree({
     unpushed: 2,
-    copies: worktreeCopies({ ref: 'origin/feature-x', count: 2, identical: 2, pr: 42 }),
+    copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 2, identical: 2, pr: 42 }),
   })
 
   // copiesOf are two's commits as Details lists them, HEAD first, each with its copy, and
@@ -618,7 +618,7 @@ describe('Drawer copies', () => {
       copiedWorktree({
         item: null,
         linkedBy: '',
-        copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10 }),
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10 }),
       }),
     )
 
@@ -649,7 +649,14 @@ describe('Drawer copies', () => {
 
   it('marks no commit a record vouches for, whatever the branch holds now', () => {
     const merged = recordedWorktree({
-      copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, recorded: true, pr: 42 }),
+      copies: worktreeCopies({
+        ref: 'origin/feature-x',
+        branch: 'feature-x',
+        count: 10,
+        identical: 10,
+        recorded: true,
+        pr: 42,
+      }),
     })
     const { li } = renderDrawer(merged, {
       read: read({
@@ -686,7 +693,14 @@ describe('Drawer copies', () => {
       recordedWorktree({
         item: null,
         linkedBy: '',
-        copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, recorded: true, gone: true }),
+        copies: worktreeCopies({
+          ref: 'origin/feature-x',
+          branch: 'feature-x',
+          count: 10,
+          identical: 10,
+          recorded: true,
+          gone: true,
+        }),
       }),
     )
 
@@ -744,7 +758,7 @@ describe('Drawer copies', () => {
       read: read({
         unpushed: 2,
         commits: [worktreeCommit({ oid: two.head }), worktreeCommit({ oid: '1'.repeat(40) })],
-        copies: copyComparison({ ref: '', identical: 0 }),
+        copies: copyComparison({ ref: '', branch: '', identical: 0 }),
       }),
     })
 
@@ -763,6 +777,7 @@ describe('Drawer copies', () => {
         copies: copyComparison({
           compared: false,
           ref: '',
+          branch: '',
           identical: 0,
           note: 'Couldn’t compare its commits with the pushed branches. git refused it.',
         }),

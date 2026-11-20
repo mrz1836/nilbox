@@ -99,7 +99,7 @@ func TestAnEditedCopyIsToldApartWhereGitsPatchIDsSeeNoChange(t *testing.T) {
 			}
 
 			row := r.list(t)
-			assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 1, Edited: 1, PR: 199}, row.Copies)
+			assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Branch: parentBranch, Count: 1, Edited: 1, PR: 199}, row.Copies)
 			assert.False(t, row.OnGitHub)
 			assert.Nil(t, row.Item)
 		})
@@ -163,11 +163,11 @@ func TestACopyOntoAMovedBaseIsIdenticalWhereOnlyItsPlaceMoved(t *testing.T) {
 			row := r.list(t)
 			if tt.identical {
 				assert.Equal(t, "=", cherryMark(t, r, tip))
-				assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 1, Identical: 1}, row.Copies,
+				assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Branch: parentBranch, Count: 1, Identical: 1}, row.Copies,
 					"the same change, its hunk further down")
 			} else {
 				assert.Equal(t, "+", cherryMark(t, r, tip), "git's patch IDs hold the context lines")
-				assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 1, Edited: 1}, row.Copies,
+				assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Branch: parentBranch, Count: 1, Edited: 1}, row.Copies,
 					"a change whose context differs is no identical copy")
 			}
 		})
@@ -193,9 +193,9 @@ func TestABinaryCopyIsIdenticalOnlyWithTheSameBlobs(t *testing.T) {
 
 			row := r.list(t)
 			if edit == "" {
-				assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 1, Identical: 1, PR: 199}, row.Copies)
+				assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Branch: parentBranch, Count: 1, Identical: 1, PR: 199}, row.Copies)
 			} else {
-				assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 1, Edited: 1, PR: 199}, row.Copies)
+				assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Branch: parentBranch, Count: 1, Edited: 1, PR: 199}, row.Copies)
 			}
 		})
 	}

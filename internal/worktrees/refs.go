@@ -71,21 +71,33 @@ func withOwners(refs cloneRefs, names []string) cloneRefs {
 	refs.defaults = defaultsAmong(refs, names)
 
 	for ref := range refs.tracking {
-		rest := strings.TrimPrefix(ref, remotesRef)
-		owner := ""
-
-		for _, name := range names {
-			if len(name) > len(owner) && strings.HasPrefix(rest, name+"/") {
-				owner = name
-			}
-		}
-
-		if branch := strings.TrimPrefix(rest, owner+"/"); owner != "" && gitread.ValidBranch(branch) {
-			refs.owners[ref] = remoteBranch{remote: owner, branch: branch}
+		if owner, ok := ownerAmong(ref, names); ok {
+			refs.owners[ref] = owner
 		}
 	}
 
 	return refs
+}
+
+// ownerAmong works out the remote of names a remote-tracking branch, ref, is of, and its
+// branch there (see withOwners), or false when none of names is its remote.
+func ownerAmong(ref string, names []string) (remoteBranch, bool) {
+	rest, ok := strings.CutPrefix(ref, remotesRef)
+	if !ok {
+		return remoteBranch{}, false
+	}
+
+	owner := ""
+
+	for _, name := range names {
+		if len(name) > len(owner) && strings.HasPrefix(rest, name+"/") {
+			owner = name
+		}
+	}
+
+	branch := strings.TrimPrefix(rest, owner+"/")
+
+	return remoteBranch{remote: owner, branch: branch}, owner != "" && gitread.ValidBranch(branch)
 }
 
 // defaultsAmong returns refs' default branches with those of each of names whose HEAD refs
@@ -200,6 +212,22 @@ func (r cloneRefs) owner(ref string) (remote, branch string, ok bool) {
 	o, ok := r.owners[ref]
 
 	return o.remote, o.branch, ok
+}
+
+// branchOf returns the branch a remote-tracking branch is of on its remote (see withOwners),
+// whether the clone still has it or not, as a recorded one may be gone: "" when no remote
+// the clone names is its remote.
+func (r cloneRefs) branchOf(ref string) string {
+	o, ok := r.owners[ref]
+	if !ok {
+		o, ok = ownerAmong(ref, r.names)
+	}
+
+	if !ok {
+		return ""
+	}
+
+	return o.branch
 }
 
 // fingerprint sums up the remote-tracking branches, where each points, and the remotes'

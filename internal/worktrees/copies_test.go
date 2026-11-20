@@ -155,7 +155,7 @@ func TestListSeesCommitsCherryPickedOntoAPushedBranch(t *testing.T) {
 	r.gh.set(exampleName, 199, headPR(199, ItemOpen, head, parentBranch, ownRepo).State)
 
 	row := r.list(t)
-	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 2, Identical: 2, PR: 199}, row.Copies)
+	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Branch: parentBranch, Count: 2, Identical: 2, PR: 199}, row.Copies)
 	assert.Equal(t, 2, row.Unpushed, "the count by commit ID is kept as it is")
 	assert.Equal(t, LinkCopy, row.LinkedBy)
 	require.NotNil(t, row.Item)
@@ -195,7 +195,7 @@ func TestListSeesCommitsCopiedOntoAStackOfBranches(t *testing.T) {
 	r.gh.set(exampleName, 200, headPR(200, ItemOpen, upper, "feat/stacked", ownRepo).State)
 
 	row := r.list(t)
-	assert.Equal(t, Copies{Ref: "origin/feat/stacked", Count: 3, Identical: 3, PR: 200}, row.Copies,
+	assert.Equal(t, Copies{Ref: "origin/feat/stacked", Branch: "feat/stacked", Count: 3, Identical: 3, PR: 200}, row.Copies,
 		"every copy on the upper branch counts there, wherever the log credited it")
 	assert.Equal(t, LinkCopy, row.LinkedBy)
 	require.NotNil(t, row.Item)
@@ -233,7 +233,7 @@ func TestListCountsCopiesTheLogCreditsToARemotesHead(t *testing.T) {
 	r.gh.setHead("feat/stacked", headPR(200, ItemOpen, upper, "feat/stacked", ownRepo))
 
 	row := r.list(t)
-	assert.Equal(t, Copies{Ref: "origin/feat/stacked", Count: 3, Identical: 3, PR: 200}, row.Copies,
+	assert.Equal(t, Copies{Ref: "origin/feat/stacked", Branch: "feat/stacked", Count: 3, Identical: 3, PR: 200}, row.Copies,
 		"the copies the log credits to a ref no copy is looked for on still count on a branch that holds them")
 	assert.Equal(t, LinkCopy, row.LinkedBy)
 	assert.Equal(t, 1, r.copies()[callSides], "and only the pushed branch is compared with")
@@ -278,7 +278,7 @@ func TestListSeesCommitsRebasedOntoAMovedBase(t *testing.T) {
 	pushed(t, r.repo, parentBranch, head)
 
 	row := r.list(t)
-	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 1, Identical: 1}, row.Copies,
+	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Branch: parentBranch, Count: 1, Identical: 1}, row.Copies,
 		"the same change, though the files around it differ")
 }
 
@@ -297,7 +297,7 @@ func TestListTellsAnEditedCopyApart(t *testing.T) {
 	r.gh.setHead(parentBranch, headPR(199, ItemOpen, head, parentBranch, ownRepo))
 
 	row := r.list(t)
-	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 2, Identical: 1, Edited: 1, PR: 199}, row.Copies)
+	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Branch: parentBranch, Count: 2, Identical: 1, Edited: 1, PR: 199}, row.Copies)
 	assert.Nil(t, row.Item, "an edited copy is no copy: the worktree isn't linked by it")
 	assert.Empty(t, row.LinkedBy)
 }
@@ -311,7 +311,7 @@ func TestListCountsAWorktreeCopiedInPart(t *testing.T) {
 	pushed(t, r.repo, parentBranch, head)
 
 	row := r.list(t)
-	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 3, Identical: 1, None: 2}, row.Copies)
+	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Branch: parentBranch, Count: 3, Identical: 1, None: 2}, row.Copies)
 	assert.Nil(t, row.Item)
 }
 
@@ -577,7 +577,7 @@ func TestDetailsMarkEachCommitsCopyAsTheListingFoundIt(t *testing.T) {
 	r, oids, copies := markedRig(t)
 
 	row := r.list(t)
-	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 3, Identical: 1, Edited: 1, None: 1}, row.Copies)
+	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Branch: parentBranch, Count: 3, Identical: 1, Edited: 1, None: 1}, row.Copies)
 
 	before := len(r.run.Calls())
 
@@ -618,7 +618,7 @@ func TestDetailsCompareTheCommitsWhenTheListingDidntForTheirState(t *testing.T) 
 	}, marksOf(d))
 	assert.Equal(t, map[string]int{callUnpushed: 1, callCandidates: 1, callSides: 1}, r.copies())
 
-	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 3, Identical: 1, Edited: 1, None: 1}, r.list(t).Copies)
+	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Branch: parentBranch, Count: 3, Identical: 1, Edited: 1, None: 1}, r.list(t).Copies)
 	assert.Equal(t, 1, r.copies()[callSides], "and the listing after them finds what they found")
 }
 
@@ -654,7 +654,7 @@ func TestDetailsSayHowTheirComparisonWent(t *testing.T) {
 
 	d, err := r.svc.Details(t.Context(), r.repo, r.agent)
 	require.NoError(t, err)
-	assert.Equal(t, CopyComparison{Compared: true, Ref: "origin/" + parentBranch, Identical: 1, Edited: 1}, d.Copies)
+	assert.Equal(t, CopyComparison{Compared: true, Ref: "origin/" + parentBranch, Branch: parentBranch, Identical: 1, Edited: 1}, d.Copies)
 
 	// The branch is deleted: compared again, nothing is on a pushed branch any more.
 	testutil.RunGit(t, r.repo, "update-ref", "-d", "refs/remotes/origin/"+parentBranch)

@@ -308,8 +308,8 @@ func (s *Service) judgeOneCopied(ctx context.Context, g git, dir string, wt *Wor
 	if _, there := refs.tracking[rec.Ref]; !st.onGitHub && (!there || st.merged) {
 		st.onGitHub = true
 		wt.Copies = Copies{
-			Ref: strings.TrimPrefix(rec.Ref, remotesRef), Count: wt.Unpushed, Identical: wt.Unpushed, Recorded: true,
-			PR: rec.Number, Gone: !there,
+			Ref: strings.TrimPrefix(rec.Ref, remotesRef), Branch: refs.branchOf(rec.Ref), Count: wt.Unpushed,
+			Identical: wt.Unpushed, Recorded: true, PR: rec.Number, Gone: !there,
 		}
 	}
 }

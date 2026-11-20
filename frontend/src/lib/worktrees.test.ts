@@ -162,7 +162,7 @@ const partly = partlyCopiedWorktree()
 const unlinked = copiedWorktree({
   item: null,
   linkedBy: '',
-  copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10 }),
+  copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10 }),
 })
 
 // elsewhere is recorded, linked by its name to pull request #7 rather than by its copies:
@@ -172,13 +172,23 @@ const elsewhere = recordedWorktree({ item: linkedItem({ headOid: '' }), linkedBy
 // held is recorded while #42's branch is still there, merged, but force-pushed since
 // without the copies: the record vouches for them, the branch no longer holds them all.
 const held = recordedWorktree({
-  copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, recorded: true, pr: 42 }),
+  copies: worktreeCopies({
+    ref: 'origin/feature-x',
+    branch: 'feature-x',
+    count: 10,
+    identical: 10,
+    recorded: true,
+    pr: 42,
+  }),
 })
 
 // ahead is partly, with n commits not on GitHub that compare with origin/feature-x as
 // copies says.
 function ahead(n: number, copies: Partial<Worktree['copies']>): Worktree {
-  return partlyCopiedWorktree({ unpushed: n, copies: worktreeCopies({ ref: 'origin/feature-x', count: n, ...copies }) })
+  return partlyCopiedWorktree({
+    unpushed: n,
+    copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: n, ...copies }),
+  })
 }
 
 describe('laneOf', () => {
@@ -291,7 +301,9 @@ describe('stateOf', () => {
     [elsewhere, 'check', 'success', 'clean; each commit’s change went into PR #42'],
     [held, 'check', 'success', 'clean; each commit’s change went into PR #42'],
     [
-      copiedWorktree({ copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, pr: 43 }) }),
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10, pr: 43 }),
+      }),
       'check',
       'muted',
       'clean; each commit’s change is on GitHub, copied onto PR #43’s branch',
@@ -372,6 +384,16 @@ describe('workNotes', () => {
       'Its 10 commits aren’t on GitHub by ID, but each one’s change is on origin/feature-x',
     ],
     [
+      'onto the main branch of a remote whose name holds a slash',
+      copiedWorktree({
+        item: null,
+        linkedBy: '',
+        copies: worktreeCopies({ ref: 'origin/mirror/main', branch: 'main', count: 10, identical: 10 }),
+      }),
+      '10 on main',
+      'Its 10 commits aren’t on GitHub by ID, but each one’s change is on origin/mirror/main',
+    ],
+    [
       'into a pull request whose branch is gone',
       recorded,
       '10 on #42',
@@ -394,14 +416,23 @@ describe('workNotes', () => {
       recordedWorktree({
         item: null,
         linkedBy: '',
-        copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, recorded: true, gone: true }),
+        copies: worktreeCopies({
+          ref: 'origin/feature-x',
+          branch: 'feature-x',
+          count: 10,
+          identical: 10,
+          recorded: true,
+          gone: true,
+        }),
       }),
       '10 on feature-x',
       'Its 10 commits aren’t on GitHub by ID, but each one’s change went into its pull request, from origin/feature-x, a branch that’s gone now',
     ],
     [
       'onto the branch of another pull request than the one it is linked to',
-      copiedWorktree({ copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, pr: 43 }) }),
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10, pr: 43 }),
+      }),
       '10 on #43',
       'Its 10 commits aren’t on GitHub by ID, but each one’s change is on origin/feature-x (PR #43)',
     ],
@@ -409,7 +440,7 @@ describe('workNotes', () => {
       'one commit',
       copiedWorktree({
         unpushed: 1,
-        copies: worktreeCopies({ ref: 'origin/feature-x', count: 1, identical: 1, pr: 42 }),
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 1, identical: 1, pr: 42 }),
       }),
       '1 on #42',
       'Its 1 commit isn’t on GitHub by ID, but its change is on origin/feature-x (PR #42)',
@@ -420,7 +451,7 @@ describe('workNotes', () => {
         unpushed: 1204,
         item: null,
         linkedBy: '',
-        copies: worktreeCopies({ ref: 'upstream/feat/x', count: 1204, identical: 1204 }),
+        copies: worktreeCopies({ ref: 'upstream/feat/x', branch: 'feat/x', count: 1204, identical: 1204 }),
       }),
       '1,204 on feat/x',
       'Its 1,204 commits aren’t on GitHub by ID, but each one’s change is on upstream/feat/x',
@@ -470,15 +501,21 @@ describe('workNotes', () => {
     ],
     [
       'that couldn’t be compared',
-      ahead(3, { ref: '', note: 'Couldn’t compare its commits with the pushed branches. Git refused it.' }),
+      ahead(3, { ref: '', branch: '', note: 'Couldn’t compare its commits with the pushed branches. Git refused it.' }),
       '3 commits aren’t on GitHub. Couldn’t compare its commits with the pushed branches. Git refused it.',
     ],
-    ['with no copy anywhere', ahead(3, { ref: '', none: 3 }), '3 commits aren’t on GitHub'],
+    ['with no copy anywhere', ahead(3, { ref: '', branch: '', none: 3 }), '3 commits aren’t on GitHub'],
     [
       'compared when there were others',
       partlyCopiedWorktree({
         unpushed: 3,
-        copies: worktreeCopies({ ref: 'origin/feature-x', count: 2, edited: 2, note: 'Something.' }),
+        copies: worktreeCopies({
+          ref: 'origin/feature-x',
+          branch: 'feature-x',
+          count: 2,
+          edited: 2,
+          note: 'Something.',
+        }),
       }),
       '3 commits aren’t on GitHub',
     ],
@@ -1020,7 +1057,9 @@ describe('safety', () => {
     ],
     [
       'onto the branch of another pull request than the one it is linked to',
-      copiedWorktree({ copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, pr: 43 }) }),
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10, pr: 43 }),
+      }),
       'Safe to remove: no uncommitted files, and every commit’s change is on GitHub, copied onto PR #43’s branch.',
       'Removing it keeps its branch, worktree-agent-a1b2c3, with the original commits.',
     ],
@@ -1144,7 +1183,7 @@ describe('safety', () => {
     ],
     [
       'commits that couldn’t be compared',
-      ahead(3, { ref: '', note: 'Couldn’t compare its commits with the pushed branches.' }),
+      ahead(3, { ref: '', branch: '', note: 'Couldn’t compare its commits with the pushed branches.' }),
       'up',
       'Its folder is clean, but 3 commits on worktree-agent-d4e5f6 aren’t on GitHub.',
       'Couldn’t compare its commits with the pushed branches. Removing the worktree keeps that branch, so they stay in the clone; the app won’t delete it while they’re only here.',

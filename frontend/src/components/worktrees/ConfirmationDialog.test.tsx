@@ -144,7 +144,7 @@ describe('ConfirmationDialog for one worktree', () => {
     const gone = worktreeDetails({
       unpushed: 10,
       commits: [worktreeCommit({ oid: copiedWorktree().head })],
-      copies: copyComparison({ ref: '', identical: 0 }),
+      copies: copyComparison({ ref: '', branch: '', identical: 0 }),
     })
     render(
       <ConfirmationDialog

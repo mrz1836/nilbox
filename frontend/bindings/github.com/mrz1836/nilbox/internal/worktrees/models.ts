@@ -164,6 +164,14 @@ export interface Copies {
     "ref": string;
 
     /**
+     * Branch is Ref's branch on its remote, as in feature-x, worked out among the clone's
+     * remotes, whose names may hold a slash: origin/mirror/main of a remote called
+     * origin/mirror is main. It is "" when Ref is, or when no remote the clone names is
+     * Ref's.
+     */
+    "branch": string;
+
+    /**
      * Count is how many there are (Worktree.Unpushed) when they were compared, or couldn't
      * be (Note); 0 when there was nothing to compare them with.
      */
@@ -227,6 +235,11 @@ export interface CopyComparison {
      * no pushed commit was a likely copy of any.
      */
     "ref": string;
+
+    /**
+     * Branch is Ref's branch on its remote, as Copies.Branch says it.
+     */
+    "branch": string;
 
     /**
      * Identical and Edited count the commits with an identical copy on Ref, and those with

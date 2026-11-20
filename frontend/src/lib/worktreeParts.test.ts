@@ -133,6 +133,20 @@ describe('copiedOf', () => {
     })
   })
 
+  it('names the branch as the backend tells it apart, on a remote whose name holds a slash', () => {
+    const wt = copiedWorktree({
+      copies: worktreeCopies({ ref: 'origin/mirror/main', branch: 'main', count: 10, identical: 10, pr: 42 }),
+    })
+
+    expect(copiedOf(wt)).toMatchObject({ ref: 'origin/mirror/main', branch: 'main' })
+  })
+
+  it('names the branch by its whole ref when no remote the clone names is its', () => {
+    const wt = copiedWorktree({ copies: worktreeCopies({ ref: 'stranger/x', count: 10, identical: 10, pr: 42 }) })
+
+    expect(copiedOf(wt)).toMatchObject({ branch: 'stranger/x' })
+  })
+
   it('says copies a record vouches for, and whether their branch is gone', () => {
     expect(copiedOf(recordedWorktree())).toMatchObject({
       n: 10,
@@ -144,7 +158,14 @@ describe('copiedOf', () => {
     expect(
       copiedOf(
         recordedWorktree({
-          copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, recorded: true, pr: 42 }),
+          copies: worktreeCopies({
+            ref: 'origin/feature-x',
+            branch: 'feature-x',
+            count: 10,
+            identical: 10,
+            recorded: true,
+            pr: 42,
+          }),
         }),
       ),
     ).toMatchObject({ recorded: true, gone: false })
@@ -156,12 +177,16 @@ describe('copiedOf', () => {
     ['linked by copies, its item not read', copiedWorktree({ item: null }), 42],
     [
       'linked by copies to another pull request than the one its branch heads',
-      copiedWorktree({ copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, pr: 43 }) }),
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10, pr: 43 }),
+      }),
       43,
     ],
     [
       'whose branch no pull request is known to head',
-      copiedWorktree({ copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10 }) }),
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10 }),
+      }),
       0,
     ],
   ])('names the pull request copies went into, by its number alone, for one %s', (_, wt, pr) => {
@@ -175,11 +200,15 @@ describe('copiedOf', () => {
     ['the comparison counted other commits', copiedWorktree({ unpushed: 11 })],
     [
       'some have no identical copy',
-      copiedWorktree({ copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 9, edited: 1 }) }),
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 9, edited: 1 }),
+      }),
     ],
     [
       'the backend says why they don’t count',
-      copiedWorktree({ copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, note: 'No.' }) }),
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10, note: 'No.' }),
+      }),
     ],
     ['no branch has them', copiedWorktree({ copies: worktreeCopies({ count: 10, identical: 10 }) })],
     ['it’s at its pull request’s head', copiedWorktree({ item: copiedPR({ headOid: copiedWorktree().head }) })],

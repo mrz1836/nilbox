@@ -473,6 +473,35 @@ func TestWithOwnersKnowsTheDefaultBranchOfARemoteWhoseNameHoldsASlash(t *testing
 		"a HEAD under a name no remote has is no one's")
 }
 
+func TestBranchOfNamesTheBranchOnARemoteWhoseNameHoldsASlash(t *testing.T) {
+	t.Parallel()
+
+	refs := withOwners(cloneRefs{tracking: map[string]string{
+		"refs/remotes/origin/mirror/main": headSHA,
+	}}, []string{"origin/mirror", originRemote})
+
+	assert.Equal(t, mainBranch, refs.branchOf("refs/remotes/origin/mirror/main"))
+	assert.Equal(t, "feat/x", refs.branchOf("refs/remotes/origin/mirror/feat/x"), "one the clone no longer has, too")
+	assert.Equal(t, "mirror", refs.branchOf("refs/remotes/origin/mirror"))
+	assert.Empty(t, refs.branchOf("refs/remotes/stranger/main"), "a remote the clone doesn't name has none")
+	assert.Empty(t, refs.branchOf(""))
+}
+
+func TestListNamesTheBranchCopiesWentOntoOnARemoteWhoseNameHoldsASlash(t *testing.T) {
+	t.Parallel()
+
+	r := newCopyRig(t, nil)
+	testutil.RunGit(t, r.repo, "config", "remote.origin/mirror.url", "https://github.com/mirror-org/example-repo.git")
+	testutil.RunGit(t, r.repo, "config", "remote.origin/mirror.fetch", "+refs/heads/*:refs/remotes/origin/mirror/*")
+
+	oids := r.work(t, 2)
+	testutil.RunGit(t, r.repo, "update-ref", "refs/remotes/origin/mirror/main", copyOnto(t, r.parent, oids...))
+
+	row := r.list(t)
+	assert.Equal(t, Copies{Ref: "origin/mirror/main", Branch: mainBranch, Count: 2, Identical: 2}, row.Copies,
+		"the mirror's main, never origin's mirror/main")
+}
+
 // addSlashedMirror gives the clone at repo a remote that isn't on GitHub named
 // origin/mirror, as its config may name one though git remote add refuses it beside origin.
 func addSlashedMirror(t *testing.T, repo string) {

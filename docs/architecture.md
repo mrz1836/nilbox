@@ -2255,7 +2255,9 @@ whose commits has an identical copy on one branch is fully copied onto it, and l
 branch's pull request, asked about as a branch link is, when nothing else links it
 (`LinkCopy`); the pull request of the branch a worktree copied only in part is asked about
 the same way, without linking it. `Worktree.Copies` says what was found: the branch (`ref`,
-as in `origin/feature-x`), how many commits (`count`), and how many have an identical copy,
+as in `origin/feature-x`, and `branch`, its name on its remote as `withOwners` works it out,
+`main` for `origin/mirror/main` of a remote called `origin/mirror`, or `''` when no remote
+the clone names is its), how many commits (`count`), and how many have an identical copy,
 an edited one, or none, with `note` saying why they couldn't be compared, or why identical
 copies on several branches don't count; `pr` is the number of the pull request the copies
 went into (the one `ref`'s branch heads, or, when `recorded`, the one the record names; 0

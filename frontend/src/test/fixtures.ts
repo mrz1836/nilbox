@@ -2516,6 +2516,7 @@ export function finishedWorktree(overrides: Partial<Worktree> = {}): Worktree {
 export function worktreeCopies(overrides: Partial<WorktreeCopies> = {}): WorktreeCopies {
   return {
     ref: '',
+    branch: '',
     count: 0,
     identical: 0,
     edited: 0,
@@ -2559,7 +2560,7 @@ export function copiedWorktree(overrides: Partial<Worktree> = {}): Worktree {
     onGitHub: true,
     item: copiedPR(),
     linkedBy: 'copy',
-    copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, pr: 42 }),
+    copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10, pr: 42 }),
     stage: 'active',
     branches: [
       ownBranch({
@@ -2579,7 +2580,15 @@ export function copiedWorktree(overrides: Partial<Worktree> = {}): Worktree {
 export function recordedWorktree(overrides: Partial<Worktree> = {}): Worktree {
   return copiedWorktree({
     item: copiedPR({ state: 'merged', closedAt: '2026-06-13T12:00:00Z' }),
-    copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 10, recorded: true, pr: 42, gone: true }),
+    copies: worktreeCopies({
+      ref: 'origin/feature-x',
+      branch: 'feature-x',
+      count: 10,
+      identical: 10,
+      recorded: true,
+      pr: 42,
+      gone: true,
+    }),
     stage: 'finished',
     canCleanUp: true,
     branches: [ownBranch({ name: 'worktree-agent-a1b2c3', head: '9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d' })],
@@ -2600,7 +2609,7 @@ export function partlyCopiedWorktree(overrides: Partial<Worktree> = {}): Worktre
     onGitHub: false,
     item: null,
     linkedBy: '',
-    copies: worktreeCopies({ ref: 'origin/feature-x', count: 1, edited: 1, pr: 42 }),
+    copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 1, edited: 1, pr: 42 }),
     stage: '',
     branches: [
       ownBranch({
@@ -2643,7 +2652,15 @@ export function worktreeCommit(overrides: Partial<WorktreeCommit> = {}): Worktre
 // the pushed branches went: by default it ran, and each of 10 has an identical copy on
 // origin/feature-x, as copiedWorktree's do.
 export function copyComparison(overrides: Partial<WorktreeCopyComparison> = {}): WorktreeCopyComparison {
-  return { compared: true, ref: 'origin/feature-x', identical: 10, edited: 0, note: '', ...overrides }
+  return {
+    compared: true,
+    ref: 'origin/feature-x',
+    branch: 'feature-x',
+    identical: 10,
+    edited: 0,
+    note: '',
+    ...overrides,
+  }
 }
 
 // worktreeDetails is what a clean worktree's drawer reads, all of it on GitHub and level
@@ -2654,7 +2671,7 @@ export function worktreeDetails(overrides: Partial<WorktreeDetails> = {}): Workt
     fileCount: 0,
     commits: [],
     unpushed: 0,
-    copies: { compared: false, ref: '', identical: 0, edited: 0, note: '' },
+    copies: { compared: false, ref: '', branch: '', identical: 0, edited: 0, note: '' },
     base: 'origin/main',
     behind: 0,
     createdAt: '2026-06-14T12:00:00Z',

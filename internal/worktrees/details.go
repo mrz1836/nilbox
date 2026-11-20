@@ -75,6 +75,9 @@ type CopyComparison struct {
 	// no pushed commit was a likely copy of any.
 	Ref string `json:"ref"`
 
+	// Branch is Ref's branch on its remote, as Copies.Branch says it.
+	Branch string `json:"branch"`
+
 	// Identical and Edited count the commits with an identical copy on Ref, and those with
 	// a copy there whose change differs.
 	Identical int `json:"identical"`
@@ -88,8 +91,8 @@ type CopyComparison struct {
 // comparisonOf is how a comparison that found r went.
 func comparisonOf(r copyResult) CopyComparison {
 	return CopyComparison{
-		Compared: r.compared, Ref: r.copies.Ref, Identical: r.copies.Identical, Edited: r.copies.Edited,
-		Note: r.copies.Note,
+		Compared: r.compared, Ref: r.copies.Ref, Branch: r.copies.Branch, Identical: r.copies.Identical,
+		Edited: r.copies.Edited, Note: r.copies.Note,
 	}
 }
 

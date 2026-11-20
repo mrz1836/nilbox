@@ -381,7 +381,7 @@ describe('asReadNow', () => {
         commits: [worktreeCommit({ oid: atHead.head, copy: 'edited', copyOid: '3'.repeat(40) })],
         copies: copyComparison({ identical: 0, edited: 1 }),
       }),
-      { copies: worktreeCopies({ ref: 'origin/feature-x', count: 1, edited: 1 }) },
+      { copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 1, edited: 1 }) },
     ],
     [
       'the same commits, each still with its identical copy on the same branch',
@@ -398,14 +398,17 @@ describe('asReadNow', () => {
     [
       'the same commits, their branch deleted since, so none has a copy on a pushed branch',
       copied,
-      read({ unpushed: 10, commits: atCopiedHead(''), copies: copyComparison({ ref: '', identical: 0 }) }),
+      read({ unpushed: 10, commits: atCopiedHead(''), copies: copyComparison({ ref: '', branch: '', identical: 0 }) }),
       { onGitHub: false, copies: worktreeCopies({ count: 10, none: 10 }) },
     ],
     [
       'the same commits, each with an identical copy on another branch',
       copied,
-      read({ unpushed: 10, copies: copyComparison({ ref: 'origin/feature-y' }) }),
-      { onGitHub: false, copies: worktreeCopies({ ref: 'origin/feature-y', count: 10, identical: 10 }) },
+      read({ unpushed: 10, copies: copyComparison({ ref: 'origin/feature-y', branch: 'feature-y' }) }),
+      {
+        onGitHub: false,
+        copies: worktreeCopies({ ref: 'origin/feature-y', branch: 'feature-y', count: 10, identical: 10 }),
+      },
     ],
     [
       'the same commits, one with only an edited copy now, as a force-push leaves it',
@@ -413,7 +416,14 @@ describe('asReadNow', () => {
       read({ unpushed: 10, commits: atCopiedHead('edited'), copies: copyComparison({ identical: 9, edited: 1 }) }),
       {
         onGitHub: false,
-        copies: worktreeCopies({ ref: 'origin/feature-x', count: 10, identical: 9, edited: 1, pr: 42 }),
+        copies: worktreeCopies({
+          ref: 'origin/feature-x',
+          branch: 'feature-x',
+          count: 10,
+          identical: 9,
+          edited: 1,
+          pr: 42,
+        }),
       },
     ],
     [
@@ -421,7 +431,13 @@ describe('asReadNow', () => {
       copied,
       read({
         unpushed: 10,
-        copies: copyComparison({ compared: false, ref: '', identical: 0, note: 'Couldn’t compare its commits.' }),
+        copies: copyComparison({
+          compared: false,
+          ref: '',
+          branch: '',
+          identical: 0,
+          note: 'Couldn’t compare its commits.',
+        }),
       }),
       { onGitHub: false, copies: worktreeCopies({ count: 10, note: 'Couldn’t compare its commits.' }) },
     ],
@@ -441,7 +457,11 @@ describe('asReadNow', () => {
     [
       'commits a record vouched for, HEAD moved since',
       recorded,
-      read({ unpushed: 10, commits: [worktreeCommit()], copies: copyComparison({ ref: '', identical: 0 }) }),
+      read({
+        unpushed: 10,
+        commits: [worktreeCommit()],
+        copies: copyComparison({ ref: '', branch: '', identical: 0 }),
+      }),
       { onGitHub: false, copies: worktreeCopies({ count: 10, none: 10 }) },
     ],
     [
@@ -465,7 +485,7 @@ describe('asReadNow', () => {
         commits: [worktreeCommit({ oid: partlyCopiedWorktree().head, copy: 'identical', copyOid: '3'.repeat(40) })],
         copies: copyComparison({ identical: 1 }),
       }),
-      { copies: worktreeCopies({ ref: 'origin/feature-x', count: 1, identical: 1, pr: 42 }) },
+      { copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 1, identical: 1, pr: 42 }) },
     ],
     [
       'the same commit, still with only an edited copy',
@@ -478,10 +498,16 @@ describe('asReadNow', () => {
   })
 
   it('words copies only while the comparison still finds them, and says why it couldn’t compare', () => {
-    const gone = asReadNow(copied, read({ unpushed: 10, copies: copyComparison({ ref: '', identical: 0 }) }))
+    const gone = asReadNow(
+      copied,
+      read({ unpushed: 10, copies: copyComparison({ ref: '', branch: '', identical: 0 }) }),
+    )
     const unknown = asReadNow(
       copied,
-      read({ unpushed: 10, copies: copyComparison({ compared: false, ref: '', identical: 0, note: 'No.' }) }),
+      read({
+        unpushed: 10,
+        copies: copyComparison({ compared: false, ref: '', branch: '', identical: 0, note: 'No.' }),
+      }),
     )
 
     expect(copiedOf(copied)).not.toBeNull()
@@ -507,7 +533,7 @@ describe('notOnGitHub', () => {
     [
       'all of them once their copies are gone',
       copied,
-      read({ unpushed: 10, copies: copyComparison({ ref: '', identical: 0 }) }),
+      read({ unpushed: 10, copies: copyComparison({ ref: '', branch: '', identical: 0 }) }),
       10,
     ],
     ['none a record vouches for once read', recorded, read({ unpushed: 10 }), 0],

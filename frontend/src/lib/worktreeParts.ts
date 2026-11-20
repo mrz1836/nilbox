@@ -69,8 +69,10 @@ export function atItemHead(wt: Worktree): boolean {
 
 // Copied is why a worktree's commits that aren't on GitHub by their commit IDs are on
 // GitHub anyway: each of them, n, has an identical copy on ref, a pushed branch, as in
-// origin/feature-x, whose own name is branch (feature-x), as cherry-picking or rebasing
-// them onto it leaves. pr is the number of the pull request they went into, the one that
+// origin/feature-x, whose own name is branch (feature-x, or main for origin/mirror/main of
+// a remote called origin/mirror, as the backend tells them apart; ref itself when no remote
+// the clone names is its), as cherry-picking or rebasing them onto it leaves. pr is the
+// number of the pull request they went into, the one that
 // branch heads, or 0 when none is known, and item that pull request as the worktree is
 // linked to it by its copies, or null when it is linked otherwise, or to nothing. recorded
 // reports that ref no longer holds them all, and what the app recorded while it did vouches
@@ -112,7 +114,7 @@ export function copiedOf(wt: Worktree): Copied | null {
   return {
     n: c.count,
     ref: c.ref,
-    branch: c.ref.slice(c.ref.indexOf('/') + 1),
+    branch: c.branch === '' ? c.ref : c.branch,
     pr: c.pr,
     item: wt.linkedBy === 'copy' && item?.number === c.pr ? item : null,
     recorded: c.recorded,

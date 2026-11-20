@@ -102,6 +102,12 @@ type Copies struct {
 	// none has a copy of any.
 	Ref string `json:"ref"`
 
+	// Branch is Ref's branch on its remote, as in feature-x, worked out among the clone's
+	// remotes, whose names may hold a slash: origin/mirror/main of a remote called
+	// origin/mirror is main. It is "" when Ref is, or when no remote the clone names is
+	// Ref's.
+	Branch string `json:"branch"`
+
 	// Count is how many there are (Worktree.Unpushed) when they were compared, or couldn't
 	// be (Note); 0 when there was nothing to compare them with.
 	Count int `json:"count"`
@@ -729,7 +735,7 @@ func (w *copyWork) compare(ctx context.Context, g git, cache *copyCache, dir str
 		}
 	}
 
-	w.settle(best)
+	w.settle(best, refs)
 
 	if best != nil && best.identical < len(w.unpushed) && len(anywhere) == len(w.unpushed) {
 		w.result.copies.Note = "Each of its commits has an identical copy on one of the pushed branches, but no " +
@@ -738,8 +744,8 @@ func (w *copyWork) compare(ctx context.Context, g git, cache *copyCache, dir str
 }
 
 // settle fills in the worktree's result from the comparison with the branch that came
-// closest, or, for nil, as having no copy on any.
-func (w *copyWork) settle(best *refComparison) {
+// closest, or, for nil, as having no copy on any, with refs the clone's.
+func (w *copyWork) settle(best *refComparison, refs cloneRefs) {
 	w.done = true
 	w.result = copyResult{
 		copies: Copies{Count: w.wt.Unpushed, None: w.wt.Unpushed}, marks: map[string]commitMark{}, compared: true,
@@ -756,6 +762,7 @@ func (w *copyWork) settle(best *refComparison) {
 
 	w.result.ref, w.result.tip, w.result.marks = best.ref, best.tip, best.marks
 	w.result.copies.Ref = strings.TrimPrefix(best.ref, remotesRef)
+	w.result.copies.Branch = refs.branchOf(best.ref)
 	w.result.copies.Identical, w.result.copies.Edited = best.identical, best.edited
 	w.result.copies.None = w.wt.Unpushed - best.identical - best.edited
 }

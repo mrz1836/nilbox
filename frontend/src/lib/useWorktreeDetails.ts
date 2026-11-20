@@ -135,6 +135,7 @@ function copiesNow(wt: Worktree, details: WorktreeDetails): WorktreeCopies {
 
   return {
     ref: c.ref,
+    branch: c.branch,
     count: details.unpushed,
     identical: c.identical,
     edited: c.edited,
