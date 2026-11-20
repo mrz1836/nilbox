@@ -770,6 +770,9 @@ export type WorktreesProgress = Events.CustomEvents['worktrees:progress']
 export type WorktreesPhase = WorktreesProgress['phase']
 export type SweepReport = NonNullLists<worktrees.SweepReport>
 export type Worktree = NonNullLists<worktrees.Worktree>
+// WorktreeFile is one changed or untracked file in a worktree: git's two status letters
+// and its path.
+export type WorktreeFile = NonNullLists<worktrees.FileEntry>
 export type WorktreeBranch = NonNullLists<worktrees.Branch>
 export type BranchKind = worktrees.BranchKind
 export type WorktreePick = NonNullLists<worktrees.Pick>

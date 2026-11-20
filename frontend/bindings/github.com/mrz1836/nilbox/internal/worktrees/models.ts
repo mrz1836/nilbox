@@ -150,6 +150,22 @@ export interface Cleanup {
 }
 
 /**
+ * FileEntry is one changed or untracked file in a worktree, as git status reports it.
+ */
+export interface FileEntry {
+    /**
+     * Code is git's two status letters for the file, the index's then the worktree's, as
+     * in " M", "A ", "R ", "UU", or "??" (git status --porcelain).
+     */
+    "code": string;
+
+    /**
+     * Path is the file's path in the worktree: for a rename or a copy, its new one.
+     */
+    "path": string;
+}
+
+/**
  * ItemStatus is whether a pull request or issue is open, merged, or closed.
  */
 export type ItemStatus = "open" | "merged" | "closed";
@@ -604,6 +620,13 @@ export interface Worktree {
      * DirtyCount is the number of changed and untracked files.
      */
     "dirtyCount": number;
+
+    /**
+     * Files are the first 12 of those files by path, from the same status (rowFiles), which
+     * the view shows before it reads the rest. A clean worktree has none, and so has one
+     * whose status couldn't be read.
+     */
+    "files": FileEntry[] | null;
 
     /**
      * LastCommitUnix is the commit time of HEAD in Unix seconds, or 0 when unknown.

@@ -2442,6 +2442,7 @@ export function worktree(overrides: Partial<Worktree> = {}): Worktree {
     prunableReason: '',
     dirty: false,
     dirtyCount: 0,
+    files: [],
     lastCommitUnix: 0,
     head: 'fc1c3975011e66491785ace891c893e4fc716587',
     unpushed: 0,

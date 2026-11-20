@@ -2,6 +2,7 @@ package worktrees
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -631,12 +632,22 @@ func (g git) prune(ctx context.Context, dir string) ([]byte, error) {
 
 // dirtyCount returns the number of changed and untracked files in the worktree at dir.
 func (g git) dirtyCount(ctx context.Context, dir string) (int, []byte, error) {
+	count, _, stderr, err := g.firstChanged(ctx, dir, 0)
+
+	return count, stderr, err
+}
+
+// firstChanged counts the changed and untracked files in the worktree at dir and returns
+// the first n of them by path, never nil, from one status (see readStatus).
+func (g git) firstChanged(ctx context.Context, dir string, n int) (int, []FileEntry, []byte, error) {
 	stdout, stderr, err := g.do(ctx, dir, statusArgs()...)
 	if err != nil {
-		return 0, stderr, err
+		return 0, nil, stderr, err
 	}
 
-	return countStatusEntries(stdout), nil, nil
+	count, files := readStatus(stdout, n)
+
+	return count, files, nil, nil
 }
 
 // commitTimes returns the commit time of each of oids, in Unix seconds, by commit ID, read
@@ -833,10 +844,26 @@ func joinArgs(args []string) string {
 	return strings.Join(args, "\x00")
 }
 
-// countStatusEntries counts the files in `git status --porcelain=v1 -z` output. A rename
-// or copy entry is followed by its source path, which is not counted again.
-func countStatusEntries(out []byte) int {
+// statusEntry is one file of a status, its two status letters and its path, each a slice of
+// git's output.
+type statusEntry struct {
+	code, path []byte
+}
+
+// compareEntries orders entries by path, then by status letters.
+func compareEntries(a, b statusEntry) int {
+	return cmp.Or(bytes.Compare(a.path, b.path), bytes.Compare(a.code, b.code))
+}
+
+// readStatus reads `git status --porcelain=v1 -z` output: how many files it names, and the
+// first n of them by path, never nil. Each entry is its two status letters, a space, and
+// its path, which -z leaves unquoted; a rename or copy entry is followed by its source
+// path, which is no file of its own. Only the first n are kept as it reads, in order, each
+// file past them only counted, so a status naming tens of thousands of files costs little
+// more than counting them.
+func readStatus(out []byte, n int) (int, []FileEntry) {
 	count := 0
+	first := firstEntries{n: n, kept: make([]statusEntry, 0, n)}
 	skip := false
 
 	for field := range bytes.SplitSeq(out, []byte{0}) {
@@ -848,10 +875,45 @@ func countStatusEntries(out []byte) int {
 		default:
 			count++
 			skip = field[0] == 'R' || field[0] == 'C' || field[1] == 'R' || field[1] == 'C'
+
+			first.offer(statusEntry{code: field[:2], path: field[3:]})
 		}
 	}
 
-	return count
+	return count, first.files()
+}
+
+// firstEntries keeps the first n status entries it is offered, by path, in order.
+type firstEntries struct {
+	n    int
+	kept []statusEntry
+}
+
+// offer keeps e when it is among the first n offered so far, letting go of the one past
+// them.
+func (f *firstEntries) offer(e statusEntry) {
+	full := len(f.kept) == f.n
+	if full && (f.n == 0 || compareEntries(e, f.kept[f.n-1]) >= 0) {
+		return
+	}
+
+	at, _ := slices.BinarySearchFunc(f.kept, e, compareEntries)
+	if !full {
+		f.kept = append(f.kept, e)
+	}
+
+	copy(f.kept[at+1:], f.kept[at:len(f.kept)-1])
+	f.kept[at] = e
+}
+
+// files returns the entries kept, as files, never nil.
+func (f *firstEntries) files() []FileEntry {
+	files := make([]FileEntry, 0, len(f.kept))
+	for _, e := range f.kept {
+		files = append(files, FileEntry{Code: string(e.code), Path: string(e.path)})
+	}
+
+	return files
 }
 
 // gitRefused reports whether err is a process exit with a non-zero status (git ran and

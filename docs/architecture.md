@@ -2133,6 +2133,15 @@ for one another. A run (a release, checks, a script) is never waited for: a laun
 click fails at once with a sentence naming the run, and the sweep and a listing's
 forgetting of a record skip the clone until next time.
 
+A listing reads each worktree's status once (`status --porcelain=v1 -z
+--untracked-files=all`, read by `readStatus`): every file it names counts toward the row's
+`DirtyCount`, and the first 12 by path are its `Files`, each with git's two status letters
+and its path (a rename or a copy by its new one, its source skipped), which the view shows
+before it reads the rest. Only those 12 are kept as the status is read, each file past them
+only counted, so a worktree with tens of thousands of untracked files costs little more
+than the count. A clean worktree's `Files` is `[]`, and so is one whose status couldn't be
+read. Keeping them runs no git of its own.
+
 ## internal/gitread
 
 `internal/gitread/` is the read-only git that release, hooks, and Repo scripts share: an exact-argv allowlist

@@ -431,6 +431,7 @@ func (s *Service) row(ctx context.Context, g git, e Entry, managedDir, legacyDir
 		Legacy:         within(legacyDir, path),
 		Head:           e.HEAD,
 		Unpushed:       -1,
+		Files:          []FileEntry{},
 		InUse:          []Session{},
 		Branches:       []Branch{},
 		fetched:        fetched,
@@ -461,16 +462,16 @@ func (s *Service) judgeLock(wt *Worktree) {
 	wt.CanUnlock = wt.StaleLock && !wt.Main
 }
 
-// readState fills in a worktree's uncommitted-file count, last commit time, and unpushed
-// commits, those past the commit it was made at from GitHub too (Worktree.fetched). A git
-// refusal leaves the field unknown (and records why, for the status); failing to run git at
-// all is an error.
+// readState fills in a worktree's uncommitted files (their count, and the first by path),
+// last commit time, and unpushed commits, those past the commit it was made at from GitHub
+// too (Worktree.fetched). A git refusal leaves the field unknown (and records why, for the
+// status); failing to run git at all is an error.
 func (s *Service) readState(ctx context.Context, g git, wt *Worktree, times map[string]int64) error {
-	count, stderr, err := g.dirtyCount(ctx, wt.Path)
+	count, files, stderr, err := g.firstChanged(ctx, wt.Path, rowFiles)
 
 	switch {
 	case err == nil:
-		wt.Dirty, wt.DirtyCount = count > 0, count
+		wt.Dirty, wt.DirtyCount, wt.Files = count > 0, count, files
 	case guarded(err):
 		// The clone's own config refuses a status: the worktree says why, and nothing that
 		// needs its status, as a sweep's removal, touches it.

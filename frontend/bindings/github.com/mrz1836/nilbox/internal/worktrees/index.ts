@@ -17,6 +17,7 @@ export type {
     BranchPick,
     BranchResult,
     Cleanup,
+    FileEntry,
     LinkedItem,
     MergedBranch,
     MergedPullRequest,

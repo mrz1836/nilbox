@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -316,6 +317,29 @@ func TestGitOutputParsing(t *testing.T) {
 		require.ErrorIs(t, err, errFakeStart)
 	})
 
+	t.Run("the first changed files", func(t *testing.T) {
+		t.Parallel()
+
+		run := &testutil.Runner{Stdout: "?? z\x00 M f\x00R  new\x00old\x00"}
+		count, files, _, err := git{run: run, bin: gitPath}.firstChanged(ctx, treePath, 2)
+		require.NoError(t, err)
+		assert.Equal(t, 3, count)
+		assert.Equal(t, []FileEntry{{Code: " M", Path: "f"}, {Code: "R ", Path: "new"}}, files, "by path")
+		assert.Equal(t, [][]string{gitArgv(treePath, "status --porcelain=v1 -z --untracked-files=all")}, run.Calls(),
+			"the one status the count reads")
+	})
+
+	t.Run("the first changed files failure returns stderr", func(t *testing.T) {
+		t.Parallel()
+
+		run := &testutil.Runner{Stderr: "fatal: unreadable index", Err: exitError{code: 128}}
+		count, files, stderr, err := git{run: run, bin: gitPath}.firstChanged(ctx, treePath, 12)
+		require.Error(t, err)
+		assert.Zero(t, count)
+		assert.Nil(t, files)
+		assert.Equal(t, "fatal: unreadable index", string(stderr))
+	})
+
 	t.Run("last commit", func(t *testing.T) {
 		t.Parallel()
 
@@ -413,28 +437,95 @@ func TestOwnBranchRefs(t *testing.T) {
 	}
 }
 
-func TestCountStatusEntries(t *testing.T) {
+func TestReadStatus(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		out  string
-		want int
+		name  string
+		out   string
+		n     int
+		count int
+		want  []FileEntry
 	}{
-		{name: "clean", out: "", want: 0},
-		{name: "modified and untracked", out: " M f\x00?? g\x00", want: 2},
-		{name: "rename counts its source once", out: "R  new\x00a\x00 M f\x00", want: 2},
-		{name: "copy in the worktree column", out: " C copy\x00orig\x00", want: 1},
-		{name: "staged, deleted, and conflicted", out: "A  a\x00 D b\x00UU c\x00", want: 3},
-		{name: "untracked file with a space", out: "?? with space.txt\x00", want: 1},
+		{name: "clean", out: "", n: 12, want: []FileEntry{}},
+		{name: "modified in the worktree", out: " M f\x00", n: 12, count: 1, want: []FileEntry{{Code: " M", Path: "f"}}},
+		{name: "staged, then modified again", out: "MM f\x00", n: 12, count: 1, want: []FileEntry{{Code: "MM", Path: "f"}}},
+		{name: "untracked", out: "?? g\x00", n: 12, count: 1, want: []FileEntry{{Code: "??", Path: "g"}}},
+		{
+			name: "a rename is its new path, its source no file of its own", out: "R  new\x00old\x00 M f\x00", n: 12,
+			count: 2, want: []FileEntry{{Code: " M", Path: "f"}, {Code: "R ", Path: "new"}},
+		},
+		{
+			name: "a copy in the worktree column", out: " C copy\x00orig\x00?? g\x00", n: 12, count: 2,
+			want: []FileEntry{{Code: " C", Path: "copy"}, {Code: "??", Path: "g"}},
+		},
+		{
+			name: "a rename whose source looks like an entry", out: "RM new\x00?? old\x00", n: 12, count: 1,
+			want: []FileEntry{{Code: "RM", Path: "new"}},
+		},
+		{
+			name: "staged, deleted, and conflicted", out: "UU c\x00 D b\x00A  a\x00", n: 12, count: 3,
+			want: []FileEntry{{Code: "A ", Path: "a"}, {Code: " D", Path: "b"}, {Code: "UU", Path: "c"}},
+		},
+		{
+			name: "paths with spaces and beyond ASCII, unquoted, by their bytes", n: 12, count: 3,
+			out: "?? with space.txt\x00 M docs/café ☕.md\x00?? README.md\x00",
+			want: []FileEntry{
+				{Code: "??", Path: "README.md"}, {Code: " M", Path: "docs/café ☕.md"}, {Code: "??", Path: "with space.txt"},
+			},
+		},
+		{name: "a field too short to be an entry", out: "M\x00\x00 M f", n: 12, count: 1, want: []FileEntry{{Code: " M", Path: "f"}}},
+		{
+			name: "only the first n are kept, every one counted", out: "?? d\x00?? b\x00?? e\x00?? a\x00?? c\x00", n: 2,
+			count: 5, want: []FileEntry{{Code: "??", Path: "a"}, {Code: "??", Path: "b"}},
+		},
+		{name: "a count alone keeps none", out: " M f\x00?? g\x00", count: 2, want: []FileEntry{}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, tt.want, countStatusEntries([]byte(tt.out)))
+			count, files := readStatus([]byte(tt.out), tt.n)
+			assert.Equal(t, tt.count, count)
+			assert.Equal(t, tt.want, files, "never nil, so the window gets []")
 		})
+	}
+}
+
+func TestReadStatusKeepsTheFirstOfManyUnsortedFiles(t *testing.T) {
+	t.Parallel()
+
+	// 5,000 files in an order of their own, a rename among every ten, as git lists a
+	// worktree with many untracked files.
+	const total = 5000
+
+	var out []byte
+
+	want := make([]FileEntry, 0, total)
+
+	for i := range total {
+		path := fmt.Sprintf("dir-%02d/file-%04d.txt", (i*7919)%13, (i*7919)%total)
+
+		code := "??"
+		if i%10 == 0 {
+			code = "R "
+		}
+
+		out = append(out, code+" "+path+"\x00"...)
+		if code == "R " {
+			out = append(out, "old/"+path+"\x00"...)
+		}
+
+		want = append(want, FileEntry{Code: code, Path: path})
+	}
+
+	slices.SortFunc(want, func(a, b FileEntry) int { return strings.Compare(a.Path, b.Path) })
+
+	for _, n := range []int{1, 12, 200} {
+		count, files := readStatus(out, n)
+		assert.Equal(t, total, count, "every file counted, a rename once")
+		assert.Equal(t, want[:n], files, "the first %d by path", n)
 	}
 }
 
