@@ -551,17 +551,16 @@ export default function AutopilotView({
   const pending = describeStatus.data?.pending ?? 0
   // saver saves a new routine, and saving reports it under way. saveError is why the last
   // save failed, shown in the builder's footer: a new routine's from saver, a change to the
-  // routine shown from changeError, which its change sets. clearSaveError clears both.
+  // routine shown from changeError, which its change sets. clearSaveError clears both,
+  // whatever its closure saw: some callers run it once an await is over, after a save
+  // that failed meanwhile.
   const saver = useMutation((draft: AutopilotDraft) => saveRoutine(draft))
   const saving = saver.pending
   const [changeError, setChangeError] = useState('')
   const saveError = changeError !== '' ? changeError : saver.error
   const clearSaveError = () => {
     setChangeError('')
-
-    if (saver.error !== '') {
-      saver.reset()
-    }
+    saver.reset()
   }
   // justSaved is the routine a save made, shown until the list read again holds it, and
   // synced the routine as the builder last took it from the list.

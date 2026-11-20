@@ -10,7 +10,7 @@ import type { LaunchOptions } from '../../lib/launch'
 import { useReviewDrafts } from '../../lib/reviewDrafts'
 import { useAutopilot } from '../../lib/useAutopilot'
 import { useInbox } from '../../lib/useInbox'
-import type { AutopilotMatch, KitOutcome, Settings } from '../../platform'
+import type { AutopilotMatch, AutopilotRoutine, KitOutcome, Settings } from '../../platform'
 import { deferred, nextTask } from '../../test/async'
 import { at } from '../../test/clock'
 import {
@@ -1184,6 +1184,36 @@ describe('the builder in the tab', () => {
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(await screen.findByRole('heading', { name: 'Activity' })).toBeInTheDocument()
+  })
+
+  it('leaves a new routine’s refusal behind when a copy asked for before it opens', async () => {
+    const user = userEvent.setup()
+    const copy = deferred<AutopilotRoutine>()
+    const made = routine({ id: 13, name: 'Snooze passing bot PRs copy', enabled: false, enabledAt: null })
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.duplicateRoutine.mockImplementation(() => copy.promise)
+    platform.saveRoutine.mockRejectedValue(new Error('Another routine has that name.'))
+    renderTab()
+
+    const list = await routineList()
+
+    // The copy is asked for first, and a new routine's save fails while it is made.
+    await user.click(list.getByRole('button', { name: 'More for Snooze passing bot PRs' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Duplicate' }))
+    await user.click(screen.getByRole('button', { name: 'New routine' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Create routine' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: 'Create routine' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Another routine has that name.')
+
+    platform.listRoutines.mockResolvedValue([...routines(), made])
+    copy.resolve(made)
+
+    const pane = await screen.findByRole('region', { name: 'Snooze passing bot PRs copy' })
+
+    expect(await within(pane).findByRole('textbox', { name: 'Name' })).toHaveValue('Snooze passing bot PRs copy')
+    expect(screen.queryByText('Another routine has that name.')).not.toBeInTheDocument()
   })
 
   it('asks before leaving unsaved changes, keeps them on Keep editing, and keeps them across a visit elsewhere', async () => {
