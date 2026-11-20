@@ -138,6 +138,10 @@ func TestTheRoutinesReadsReportAnUnreadableDatabase(t *testing.T) {
 	_, err = s.KnownOwners(ctx)
 	require.ErrorContains(t, err, "read the owners")
 
+	repos, err := s.KnownRepositories(ctx)
+	require.ErrorContains(t, err, "read the repositories")
+	assert.NotNil(t, repos, "the list is never nil")
+
 	err = s.NoteStates(ctx, s.StartRead(), []item.Ref{prRef(1)},
 		map[string]github.ItemState{prRef(1).Key(): {State: github.StateClosed}})
 	require.Error(t, err)

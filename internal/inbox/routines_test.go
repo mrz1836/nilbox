@@ -174,6 +174,18 @@ func TestSuggestReadsTheStoredItems(t *testing.T) {
 		owners, err := NewStore(h.pool, h.clock).KnownOwners(t.Context())
 		require.NoError(t, err)
 		assert.True(t, owners[acmeOrg])
+
+		repos, err := NewStore(h.pool, h.clock).KnownRepositories(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, []string{acmeOrg + "/" + exampleRepo}, repos)
+
+		_, err = h.pool.ExecContext(t.Context(), `UPDATE repos SET is_archived = 1`)
+		require.NoError(t, err)
+
+		repos, err = NewStore(h.pool, h.clock).KnownRepositories(t.Context())
+		require.NoError(t, err)
+		assert.Empty(t, repos, "an archived repository is no routine's to name")
+		assert.NotNil(t, repos)
 	})
 }
 

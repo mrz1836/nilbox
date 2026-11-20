@@ -467,6 +467,23 @@ func (s *Store) KnownOwners(ctx context.Context) (map[string]bool, error) {
 	return out, nil
 }
 
+// KnownRepositories returns the stored repositories that aren't archived, as owner/name,
+// the most stored items first, at most 200: the repositories a routine Describe it
+// proposes may name. It reads the database alone, and the list is never nil.
+func (s *Store) KnownRepositories(ctx context.Context) ([]string, error) {
+	rows, err := s.q.ListKnownRepositories(ctx)
+	if err != nil {
+		return []string{}, fmt.Errorf("read the repositories: %w", err)
+	}
+
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, r.Owner+"/"+r.Name)
+	}
+
+	return out, nil
+}
+
 // StateRead is when another service's read of items' states went out, in the inbox's
 // write order: what NoteStates stores that read's states by. The zero StateRead records
 // nothing.

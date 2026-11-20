@@ -407,6 +407,48 @@ func (q *Queries) ListFactsRows(ctx context.Context, ids []int64) ([]ListFactsRo
 	return items, nil
 }
 
+const listKnownRepositories = `-- name: ListKnownRepositories :many
+SELECT r.owner, r.name, COUNT(i.id) AS items
+FROM repos r
+LEFT JOIN items i ON i.repo_id = r.id
+WHERE r.is_archived = 0
+GROUP BY r.id
+ORDER BY items DESC, r.owner COLLATE NOCASE, r.name COLLATE NOCASE
+LIMIT 200
+`
+
+type ListKnownRepositoriesRow struct {
+	Owner string
+	Name  string
+	Items int64
+}
+
+// ListKnownRepositories returns each stored repository that isn't archived, by its owner
+// and name, with how many of its items are stored, the most first: the repositories a
+// routine Describe it proposes may name.
+func (q *Queries) ListKnownRepositories(ctx context.Context) ([]ListKnownRepositoriesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listKnownRepositories)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListKnownRepositoriesRow{}
+	for rows.Next() {
+		var i ListKnownRepositoriesRow
+		if err := rows.Scan(&i.Owner, &i.Name, &i.Items); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLabelColumns = `-- name: ListLabelColumns :many
 SELECT labels FROM item_details WHERE labels <> '[]'
 `
