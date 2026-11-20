@@ -30,6 +30,7 @@ import { agentName } from '../../lib/launch'
 import { dryRunWhy, NEW_ROUTINE, newRoutineName, routineDraft, sameDraft, scratchDraft } from '../../lib/routineBuilder'
 import { useNeedsYou, useReadiness, type SharedAutopilot } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
+import { useMutation } from '../../lib/useMutation'
 import { useOn } from '../../lib/useOn'
 import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
@@ -491,7 +492,7 @@ export default function AutopilotView({
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const toasts = useRef(0)
   const [deleting, setDeleting] = useState<AutopilotRoutine | null>(null)
-  const [deleteBusy, setDeleteBusy] = useState(false)
+  const remover = useMutation((routineId: number) => deleteRoutine(routineId))
   const [focus, setFocus] = useState<Focus | null>(null)
   const [highlight, setHighlight] = useState<{ matchId: number; seq: number } | null>(null)
   // runShown is the agent's run open in the run view beside Activity, 0 for none.
@@ -548,8 +549,20 @@ export default function AutopilotView({
     void describeStatus.refetch()
   })
   const pending = describeStatus.data?.pending ?? 0
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState('')
+  // saver saves a new routine, and saving reports it under way. saveError is why the last
+  // save failed, shown in the builder's footer: a new routine's from saver, a change to the
+  // routine shown from changeError, which its change sets. clearSaveError clears both.
+  const saver = useMutation((draft: AutopilotDraft) => saveRoutine(draft))
+  const saving = saver.pending
+  const [changeError, setChangeError] = useState('')
+  const saveError = changeError !== '' ? changeError : saver.error
+  const clearSaveError = () => {
+    setChangeError('')
+
+    if (saver.error !== '') {
+      saver.reset()
+    }
+  }
   // justSaved is the routine a save made, shown until the list read again holds it, and
   // synced the routine as the builder last took it from the list.
   const [justSaved, setJustSaved] = useState<AutopilotRoutine | null>(null)
@@ -610,7 +623,7 @@ export default function AutopilotView({
       return
     }
 
-    setSaveError('')
+    clearSaveError()
 
     if (next === NEW_ROUTINE) {
       const d = scratchDraft(newRoutineName(routines), settings?.autopilot.defaultMode ?? 'ask')
@@ -638,7 +651,7 @@ export default function AutopilotView({
 
     setSelected(NEW_ROUTINE)
     setQuickKey('')
-    setSaveError('')
+    clearSaveError()
     setEditing({ key: NEW_ROUTINE, baseline: scratch, draft, ...extra })
   }
 
@@ -879,25 +892,20 @@ export default function AutopilotView({
       )
     }
 
-    setSaveError('')
+    clearSaveError()
 
     if (!made) {
       if (chosen !== undefined) {
-        changes.request(chosen, { kind: 'save', draft }, done, setSaveError)
+        changes.request(chosen, { kind: 'save', draft }, done, setChangeError)
       }
 
       return
     }
 
-    setSaving(true)
-    void attempt(saveRoutine(draft)).then((result) => {
-      setSaving(false)
-
+    void saver.run(draft).then((result) => {
       if (result.ok) {
         reload()
         done(result.data)
-      } else {
-        setSaveError(result.error)
       }
     })
   }
@@ -915,7 +923,7 @@ export default function AutopilotView({
       setEditing({ ...editing, draft: editing.baseline })
     }
 
-    setSaveError('')
+    clearSaveError()
   }
 
   // builderFor is the builder of the routine the draft is of, once the catalog is read.
@@ -945,7 +953,7 @@ export default function AutopilotView({
         saveError={saveError}
         onChange={(draft) => {
           setEditing({ ...editing, draft })
-          setSaveError('')
+          clearSaveError()
         }}
         onSave={saveEditing}
         onDiscard={discardEditing}
@@ -1076,9 +1084,7 @@ export default function AutopilotView({
 
     const gone = deleting
 
-    setDeleteBusy(true)
-    void attempt(deleteRoutine(gone.id)).then((result) => {
-      setDeleteBusy(false)
+    void remover.run(gone.id).then((result) => {
       setDeleting(null)
 
       if (result.ok) {
@@ -1648,7 +1654,7 @@ export default function AutopilotView({
         <ConfirmDialog
           title={`Delete “${deleting.name}”?`}
           confirmLabel="Delete"
-          busy={deleteBusy}
+          busy={remover.pending}
           onConfirm={removeChosen}
           onCancel={() => {
             setDeleting(null)

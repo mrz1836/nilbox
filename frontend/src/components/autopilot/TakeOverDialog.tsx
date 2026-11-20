@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
-import { attempt } from '../../lib/call'
+import { useMutation } from '../../lib/useMutation'
 import { takeOverRun, type LaunchHold, type LaunchResult, type TakeOverRequest } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { LaunchHoldDialog } from '../LaunchHoldDialog'
@@ -41,23 +41,18 @@ export function TakeOverDialog({
 }: TakeOverDialogProps) {
   const id = useId()
   const [profile, setProfile] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
+  const taker = useMutation((request: TakeOverRequest) => takeOverRun(request))
+  const busy = taker.pending
   // held is the take over held back for a hold, with the request to send again.
   const [held, setHeld] = useState<{ hold: LaunchHold; request: TakeOverRequest } | null>(null)
 
+  // take takes the run over with request; its failure shows as taker's error.
   const take = async (request: TakeOverRequest) => {
-    setBusy(true)
-    setError('')
     setHeld(null)
 
-    const result = await attempt(takeOverRun(request))
-
-    setBusy(false)
+    const result = await taker.run(request)
 
     if (!result.ok) {
-      setError(result.error)
-
       return
     }
 
@@ -128,9 +123,9 @@ export function TakeOverDialog({
             </span>
           </span>
         </label>
-        {error !== '' && (
+        {taker.error !== '' && (
           <p role="alert" className="text-xs text-danger">
-            {error}
+            {taker.error}
           </p>
         )}
       </div>
