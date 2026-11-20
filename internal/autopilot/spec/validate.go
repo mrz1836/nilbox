@@ -102,8 +102,9 @@ func (e *ValidationError) Unwrap() error {
 }
 
 // Validate checks a normalized spec, returning a *ValidationError with every problem it
-// finds, or nil. It holds every value to its range, every name to the catalog, every
-// search to its rules (scoped, quoted, short), and the steps to their order:
+// finds, or nil. It holds every value to its range, every name to its closed set
+// (ClosedSets) or the catalog, every search to its rules (scoped, quoted, short), and the
+// steps to their order:
 //
 //   - one agent step at most;
 //   - Wait for the checks only after an agent step that may push, and never only if it
@@ -190,7 +191,7 @@ func (v *validator) lists(field string, lists []catalog.ListSource) {
 	}
 
 	for i, l := range lists {
-		if _, ok := catalog.ListSourceByID(l); !ok {
+		if !member(l) {
 			v.add(PartWatch, fmt.Sprintf("%s[%d]", field, i), "%q isn't a reason an item is in your inbox", l)
 		}
 	}

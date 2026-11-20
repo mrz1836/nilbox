@@ -217,6 +217,18 @@ type Catalog struct {
 
 	// ScheduleStyles are On a schedule's styles: each match on its own, or one digest.
 	ScheduleStyles []ScheduleStyleInfo `json:"scheduleStyles"`
+
+	// Everies are how often On a schedule fires.
+	Everies []EveryInfo `json:"everies"`
+
+	// MergeHows and MergeMethods are how Merge it merges and with which method, the
+	// repository's own first.
+	MergeHows    []MergeHowInfo    `json:"mergeHows"`
+	MergeMethods []MergeMethodInfo `json:"mergeMethods"`
+
+	// ReviewAses are how Post the agent's review posts it, and TellWhens what Tell me says.
+	ReviewAses []ReviewAsInfo `json:"reviewAses"`
+	TellWhens  []TellWhenInfo `json:"tellWhens"`
 }
 
 // All returns the whole catalog, with every list empty rather than nil, so the window
@@ -226,7 +238,8 @@ func All() Catalog {
 		Triggers: Triggers(), Groups: Groups(), Fields: Fields(), Ops: Ops(), Lists: ListSources(), Steps: Steps(),
 		GitHubActions: GitHubActions(), Outcomes: Outcomes(), Presets: Presets(), Places: Places(),
 		AgentSettings: AgentSettings(), Limits: Limits(), StepSettings: StepSettings(),
-		ScheduleStyles: ScheduleStyles(),
+		ScheduleStyles: ScheduleStyles(), Everies: Everies(), MergeHows: MergeHows(), MergeMethods: MergeMethods(),
+		ReviewAses: ReviewAses(), TellWhens: TellWhens(),
 	}
 
 	for i := range c.Triggers {

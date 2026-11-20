@@ -303,6 +303,10 @@ search.involving
   reviewRequested
   mentioned
 
+search.kind
+  pr
+  issue
+
 search.state
   ready
   draft

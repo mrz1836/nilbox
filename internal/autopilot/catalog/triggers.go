@@ -238,6 +238,22 @@ const (
 	EveryWeek    Every = "week"
 )
 
+// EveryInfo describes how often a schedule fires, for the builder.
+type EveryInfo struct {
+	ID    Every  `json:"id"`
+	Label string `json:"label"`
+	Help  string `json:"help"`
+}
+
+// Everies returns how often a schedule can fire, in the builder's order.
+func Everies() []EveryInfo {
+	return []EveryInfo{
+		{ID: EveryDay, Label: "Every day", Help: "Fires every day, at its time."},
+		{ID: EveryWeekday, Label: "Every weekday", Help: "Fires Monday to Friday, at its time."},
+		{ID: EveryWeek, Label: "Every week", Help: "Fires once a week, on its day, at its time."},
+	}
+}
+
 // Weekday names a day of the week as the spec spells it.
 type Weekday string
 

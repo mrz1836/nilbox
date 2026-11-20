@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -91,27 +90,24 @@ func (v *validator) optionValues(t Trigger) {
 	}
 }
 
-// schedule checks when a scheduled routine fires.
+// schedule checks when a scheduled routine fires: how often, on a day only when weekly,
+// at a time of day, and in a style.
 func (v *validator) schedule(s Schedule) {
-	switch s.Every {
-	case catalog.EveryDay, catalog.EveryWeekday:
-		if s.On != "" {
-			v.add(PartTrigger, "schedule.on", "only a weekly schedule takes a day")
-		}
-	case catalog.EveryWeek:
-		if !slices.Contains(catalog.Weekdays(), s.On) {
-			v.add(PartTrigger, "schedule.on", "pick the day of the week it fires")
-		}
-	default:
-		v.add(PartTrigger, "schedule.every", `pick "day", "weekday", or "week"`)
+	switch {
+	case !member(s.Every):
+		v.add(PartTrigger, "schedule.every", "pick %s", choices[catalog.Every]())
+	case s.Every == catalog.EveryWeek && !member(s.On):
+		v.add(PartTrigger, "schedule.on", "pick the day of the week it fires")
+	case s.Every != catalog.EveryWeek && s.On != "":
+		v.add(PartTrigger, "schedule.on", "only a weekly schedule takes a day")
 	}
 
 	if !clockTime.MatchString(s.At) {
 		v.add(PartTrigger, "schedule.at", `write the time as "HH:MM", such as "08:00"`)
 	}
 
-	if _, ok := catalog.ScheduleStyleByID(s.Style); !ok {
-		v.add(PartTrigger, "schedule.style", `pick "each" or "digest"`)
+	if !member(s.Style) {
+		v.add(PartTrigger, "schedule.style", "pick %s", choices[catalog.ScheduleStyle]())
 	}
 }
 
@@ -144,10 +140,8 @@ func (v *validator) label(part Part, field, l string) {
 
 // limits checks the routine's limits.
 func (v *validator) limits(l Limits) {
-	switch l.OncePer {
-	case "", catalog.OncePerItem, catalog.OncePerHeadCommit, catalog.OncePerDay:
-	default:
-		v.add(PartLimits, "oncePer", `pick "item", "headCommit", or "day"`)
+	if !member(l.OncePer) {
+		v.add(PartLimits, "oncePer", "pick %s", choices[catalog.OncePer]())
 	}
 
 	v.inRange(PartLimits, "triesPerItem", l.TriesPerItem, catalog.MinTries, catalog.MaxTries)
@@ -173,7 +167,7 @@ func (v *validator) activeHours(h ActiveHours) {
 	}
 
 	for i, d := range h.Days {
-		if !slices.Contains(catalog.Weekdays(), d) {
+		if !member(d) {
 			v.add(PartLimits, fmt.Sprintf("activeHours.days[%d]", i), "%q isn't a day of the week", d)
 		}
 	}

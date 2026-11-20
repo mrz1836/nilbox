@@ -271,17 +271,13 @@ func (v *validator) agent(field string, a AgentStep) {
 	v.agentName(field+".agent", a.AgentID(), true)
 	v.prompt(field+".prompt", a.Prompt, false)
 
-	switch a.Place() {
-	case catalog.WhereBackground:
-		if a.PlanMode != nil || a.Worktree != nil {
-			v.add(PartSteps, field, "in the background the tools decide plan mode and the worktree is always on")
-		}
-	case catalog.WhereTerminal:
-		if a.Fence != nil {
-			v.add(PartSteps, field+".fence", "a terminal run has a click's access; the fence holds in the background")
-		}
-	default:
-		v.add(PartSteps, field+".where", `run it "background" or "terminal"`)
+	switch place := a.Place(); {
+	case !member(place):
+		v.add(PartSteps, field+".where", "run it %s", choices[catalog.Where]())
+	case place == catalog.WhereBackground && (a.PlanMode != nil || a.Worktree != nil):
+		v.add(PartSteps, field, "in the background the tools decide plan mode and the worktree is always on")
+	case place == catalog.WhereTerminal && a.Fence != nil:
+		v.add(PartSteps, field+".fence", "a terminal run has a click's access; the fence holds in the background")
 	}
 
 	v.name(field+".profile", a.Profile)
@@ -358,7 +354,7 @@ func (v *validator) fence(field string, f Fence) {
 	v.inRange(PartSteps, field+".timeoutMinutes", f.TimeoutMinutes, catalog.MinTimeoutMinutes,
 		catalog.MaxTimeoutMinutes)
 
-	if _, ok := catalog.PresetByID(f.Tools); f.Tools != "" && !ok {
+	if !member(f.Tools) {
 		v.add(PartSteps, field+".tools", "%q isn't a tools preset", f.Tools)
 	}
 
@@ -372,40 +368,33 @@ func (v *validator) wait(field string, w WaitStep) {
 	v.inRange(PartSteps, field+".giveUpHours", w.GiveUpHours, catalog.MinGiveUpHours, catalog.MaxGiveUpHours)
 }
 
-// merge checks a Merge it.
+// merge checks a Merge it: how it merges, and its method, if any.
 func (v *validator) merge(field string, m MergeStep) {
-	switch m.How {
-	case catalog.MergeAutoIfItWasOn, catalog.MergeWhenMergeable:
-	default:
-		v.add(PartSteps, field+".how", `merge "autoMergeIfItWasOn" or "whenMergeable"`)
+	if !member(m.How) {
+		v.add(PartSteps, field+".how", "merge %s", choices[catalog.MergeHow]())
 	}
 
-	switch m.Method {
-	case catalog.MergeDefault, catalog.MergeCommit, catalog.MergeSquash, catalog.MergeRebase:
-	default:
-		v.add(PartSteps, field+".method", "pick a merge method: merge, squash, or rebase, or leave it out for the repository's own")
+	if !member(m.Method) {
+		v.add(PartSteps, field+".method", "pick a merge method: %s, or leave it out for the repository's own",
+			series(valuesOf[catalog.MergeMethod](), "or"))
 	}
 }
 
-// review checks a Post the agent's review.
+// review checks a Post the agent's review: how it posts, and approving only with a
+// verdict.
 func (v *validator) review(field string, r ReviewStep) {
-	switch r.As {
-	case catalog.ReviewAsComment:
-		if r.AllowApprove {
-			v.add(PartSteps, field+".allowApprove", "only a review posted as its verdict can approve")
-		}
-	case catalog.ReviewAsVerdict:
-	default:
-		v.add(PartSteps, field+".as", `post it as "comment" or "verdict"`)
+	switch {
+	case !member(r.As):
+		v.add(PartSteps, field+".as", "post it as %s", choices[catalog.ReviewAs]())
+	case r.AllowApprove && r.As != catalog.ReviewAsVerdict:
+		v.add(PartSteps, field+".allowApprove", "only a review posted as its verdict can approve")
 	}
 }
 
 // tell checks a Tell me.
 func (v *validator) tell(field string, t TellStep) {
-	switch t.When {
-	case "", catalog.TellReached, catalog.TellVerdict:
-	default:
-		v.add(PartSteps, field+".when", `say "reached" or "verdict"`)
+	if !member(t.When) {
+		v.add(PartSteps, field+".when", "say %s", choices[catalog.TellWhen]())
 	}
 }
 

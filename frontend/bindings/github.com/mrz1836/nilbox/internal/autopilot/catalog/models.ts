@@ -54,6 +54,24 @@ export interface Catalog {
      * ScheduleStyles are On a schedule's styles: each match on its own, or one digest.
      */
     "scheduleStyles": ScheduleStyleInfo[] | null;
+
+    /**
+     * Everies are how often On a schedule fires.
+     */
+    "everies": EveryInfo[] | null;
+
+    /**
+     * MergeHows and MergeMethods are how Merge it merges and with which method, the
+     * repository's own first.
+     */
+    "mergeHows": MergeHowInfo[] | null;
+    "mergeMethods": MergeMethodInfo[] | null;
+
+    /**
+     * ReviewAses are how Post the agent's review posts it, and TellWhens what Tell me says.
+     */
+    "reviewAses": ReviewAsInfo[] | null;
+    "tellWhens": TellWhenInfo[] | null;
 }
 
 /**
@@ -207,6 +225,15 @@ export const Every = {
     EveryWeekday: "weekday",
     EveryWeek: "week",
 } as const;
+
+/**
+ * EveryInfo describes how often a schedule fires, for the builder.
+ */
+export interface EveryInfo {
+    "id": Every;
+    "label": string;
+    "help": string;
+}
 
 /**
  * Field is one value a condition can read about an item.
@@ -483,6 +510,15 @@ export const MergeHow = {
 } as const;
 
 /**
+ * MergeHowInfo describes a way Merge it merges, for the builder.
+ */
+export interface MergeHowInfo {
+    "id": MergeHow;
+    "label": string;
+    "help": string;
+}
+
+/**
  * MergeMethod is the method Merge it merges with; "" is the repository's own, as
  * Settings → Reviewing picks it.
  */
@@ -500,6 +536,15 @@ export const MergeMethod = {
     MergeSquash: "squash",
     MergeRebase: "rebase",
 } as const;
+
+/**
+ * MergeMethodInfo describes a merge method for the builder.
+ */
+export interface MergeMethodInfo {
+    "id": MergeMethod;
+    "label": string;
+    "help": string;
+}
 
 /**
  * OncePer is a routine's own once-per, over its trigger's.
@@ -872,6 +917,15 @@ export const ReviewAs = {
 } as const;
 
 /**
+ * ReviewAsInfo describes a way Post the agent's review posts it, for the builder.
+ */
+export interface ReviewAsInfo {
+    "id": ReviewAs;
+    "label": string;
+    "help": string;
+}
+
+/**
  * ScheduleStyle is how a routine On a schedule tells of the items it matches at its time:
  * each match on its own, or once, with the list. Either way its steps run on each item it
  * matches, and the ledger records each match apart.
@@ -1036,6 +1090,15 @@ export const TellWhen = {
      */
     TellVerdict: "verdict",
 } as const;
+
+/**
+ * TellWhenInfo describes what Tell me says, for the builder.
+ */
+export interface TellWhenInfo {
+    "id": TellWhen;
+    "label": string;
+    "help": string;
+}
 
 /**
  * Trigger describes one trigger for the builder.

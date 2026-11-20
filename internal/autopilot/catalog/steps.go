@@ -407,6 +407,25 @@ const (
 	MergeWhenMergeable MergeHow = "whenMergeable"
 )
 
+// MergeHowInfo describes a way Merge it merges, for the builder.
+type MergeHowInfo struct {
+	ID    MergeHow `json:"id"`
+	Label string   `json:"label"`
+	Help  string   `json:"help"`
+}
+
+// MergeHows returns the ways Merge it merges, in the builder's order.
+func MergeHows() []MergeHowInfo {
+	return []MergeHowInfo{
+		{
+			ID: MergeAutoIfItWasOn, Label: "auto-merge if it was on, else when GitHub allows",
+			Help: "Turns GitHub's auto-merge back on if it was on before the match, and otherwise merges when GitHub " +
+				"says it's mergeable.",
+		},
+		{ID: MergeWhenMergeable, Label: "when GitHub allows", Help: "Merges when GitHub says it's mergeable."},
+	}
+}
+
 // MergeMethod is the method Merge it merges with; "" is the repository's own, as
 // Settings → Reviewing picks it.
 type MergeMethod string
@@ -418,6 +437,34 @@ const (
 	MergeSquash  MergeMethod = "squash"
 	MergeRebase  MergeMethod = "rebase"
 )
+
+// MergeMethodInfo describes a merge method for the builder.
+type MergeMethodInfo struct {
+	ID    MergeMethod `json:"id"`
+	Label string      `json:"label"`
+	Help  string      `json:"help"`
+}
+
+// MergeMethods returns the methods Merge it merges with, the repository's own ("") first.
+// Squash and rebase are labeled by their own names, as the builder's menu shows them.
+func MergeMethods() []MergeMethodInfo {
+	return []MergeMethodInfo{
+		{
+			ID: MergeDefault, Label: "the repository's own method",
+			Help: "Merges with the method Settings → Reviewing's Merge method picks, as the review sheet does: by " +
+				"default, the one GitHub's merge button offers first in that repository.",
+		},
+		{ID: MergeCommit, Label: "merge commit", Help: "Adds every commit to the base branch, joined by a merge commit."},
+		{
+			ID: MergeSquash, Label: string(MergeSquash),
+			Help: "Combines the pull request's commits into one commit on the base branch.",
+		},
+		{
+			ID: MergeRebase, Label: string(MergeRebase),
+			Help: "Adds each commit to the base branch on its own, with no merge commit.",
+		},
+	}
+}
 
 // ReviewAs is how Post the agent's review posts it.
 type ReviewAs string
@@ -432,6 +479,25 @@ const (
 	ReviewAsVerdict ReviewAs = "verdict"
 )
 
+// ReviewAsInfo describes a way Post the agent's review posts it, for the builder.
+type ReviewAsInfo struct {
+	ID    ReviewAs `json:"id"`
+	Label string   `json:"label"`
+	Help  string   `json:"help"`
+}
+
+// ReviewAses returns the ways Post the agent's review posts it, in the builder's order.
+func ReviewAses() []ReviewAsInfo {
+	return []ReviewAsInfo{
+		{ID: ReviewAsComment, Label: "as a comment", Help: "Posts the agent's review as a comment, whatever its verdict."},
+		{
+			ID: ReviewAsVerdict, Label: "as its verdict",
+			Help: "Posts it as its verdict: a request for changes, or, with Allow approving on, an approval of a pull " +
+				"request Autopilot may approve; any other approval posts as a comment.",
+		},
+	}
+}
+
 // TellWhen is what Tell me says.
 type TellWhen string
 
@@ -444,6 +510,24 @@ const (
 	// is ready.
 	TellVerdict TellWhen = "verdict"
 )
+
+// TellWhenInfo describes what Tell me says, for the builder.
+type TellWhenInfo struct {
+	ID    TellWhen `json:"id"`
+	Label string   `json:"label"`
+	Help  string   `json:"help"`
+}
+
+// TellWhens returns what Tell me can say, the default first.
+func TellWhens() []TellWhenInfo {
+	return []TellWhenInfo{
+		{ID: TellReached, Label: "that it got here", Help: "Tells you the routine reached this step."},
+		{
+			ID: TellVerdict, Label: "how the steps before it ended",
+			Help: "Tells you how the steps before it ended: merged, still failing, or the review is ready.",
+		},
+	}
+}
 
 // OncePer is a routine's own once-per, over its trigger's.
 type OncePer string

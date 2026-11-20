@@ -37,8 +37,8 @@ func (v *validator) list(field string, c Conditions, kinds []item.Kind, top bool
 		return field + "." + s
 	}
 
-	if c.Match != MatchAll && c.Match != MatchAny {
-		v.add(PartConditions, at("match"), `match "all" or "any" of the conditions`)
+	if !member(c.Match) {
+		v.add(PartConditions, at("match"), "match %s of the conditions", choices[Match]())
 	}
 
 	if !top && len(c.Of) == 0 {
