@@ -35,7 +35,7 @@ import {
 } from '../../platform'
 import { CommandLine } from '../CommandLine'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, fieldClass, Segmented, type SegmentOption } from '../controls'
+import { buttonClass, fieldClass, Segmented, Select, type SegmentOption, type SelectOption } from '../controls'
 import { AlertIcon, CheckIcon, RefreshIcon, XIcon } from '../icons'
 import { Spinner } from '../Spinner'
 import { DescribeItSettings } from './DescribeItSettings'
@@ -103,6 +103,13 @@ const modeOptions: readonly SegmentOption<AutopilotMode>[] = [
 
 // CapChoice is what the daily cap counts, or off.
 type CapChoice = 'off' | AutopilotUnit
+
+// capChoices are the Daily cap's choices: off, or a unit to count in.
+const capChoices: readonly SelectOption<CapChoice>[] = [
+  { value: 'off', label: 'Off (default)' },
+  { value: 'usd', label: 'In dollars' },
+  { value: 'tokens', label: 'In tokens' },
+]
 
 // Range is the least and the most a setting takes.
 interface Range {
@@ -264,22 +271,17 @@ function CapRow({ controlId, cap, error, onChange }: CapRowProps) {
           className={`${fieldClass} w-32 text-right tabular-nums`}
         />
       )}
-      <select
+      <Select
         id={controlId}
         value={choice}
+        options={capChoices}
         aria-describedby={describedBy}
-        onChange={(e) => {
-          const next = e.target.value as CapChoice
-
+        onChange={(next) => {
           setDraft(null)
           onChange(next === 'off' ? { amount: 0, unit: cap.unit } : { amount: defaults.cap[next], unit: next })
         }}
         className="rounded-md border border-border bg-surface px-2 py-1 text-sm"
-      >
-        <option value="off">Off (default)</option>
-        <option value="usd">In dollars</option>
-        <option value="tokens">In tokens</option>
-      </select>
+      />
     </SettingRow>
   )
 }
