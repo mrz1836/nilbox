@@ -1,9 +1,9 @@
-import { useId, type RefObject } from 'react'
+import type { RefObject } from 'react'
 
 import { closeNote, issueHeldBack, withReply } from '../../lib/issues'
 import type { IssueDraft } from '../../lib/issueDrafts'
 import type { LaunchOptions } from '../../lib/launch'
-import { runningSession } from '../../lib/sessions'
+import { replyMenuItems } from '../../lib/replies'
 import { usePickReply } from '../../lib/usePickReply'
 import { useQuery } from '../../lib/useQuery'
 import {
@@ -15,10 +15,8 @@ import {
   type IssueAction,
   type ItemResolution,
 } from '../../platform'
-import { fieldClass, quietButtonClass } from '../controls'
-import { ChevronDownIcon } from '../icons'
-import { LaunchControls } from '../LaunchControls'
-import { MenuButton, type MenuItem } from '../Menu'
+import { Composer } from '../conversation/Composer'
+import type { MenuItem } from '../Menu'
 import { ActionButton } from '../review/ActionButton'
 
 export interface IssueComposerProps {
@@ -65,7 +63,6 @@ export function IssueComposer({
   textRef,
   onManageReplies,
 }: IssueComposerProps) {
-  const id = useId()
   const replies = useQuery(() => issueReplies(), [])
   const offerOf = (action: IssueAction) => issue.offers.find((o) => o.action === action)
   const offer = offerOf(selected)
@@ -78,67 +75,28 @@ export function IssueComposer({
     onDraft((d) => ({ ...d, body: withReply(d, text), filled: text }))
   })
 
-  // replyChoices are the library's replies for issues, or why there are none to pick.
-  const replyChoices = (): MenuItem[] => {
-    const list = replies.data ?? []
-
-    if (list.length > 0) {
-      return list.map((r) => ({
-        label: r.nickname,
-        title: r.name,
-        onSelect: () => {
-          picking.pick(r.id)
-        },
-      }))
-    }
-
-    if (replies.data === undefined && replies.error !== '') {
-      return [{ label: 'Couldn’t load the replies', title: replies.error, disabled: true }]
-    }
-
-    return [{ label: replies.data === undefined ? 'Loading replies…' : 'No replies for issues yet', disabled: true }]
-  }
-
-  const replyItems = (): MenuItem[] => [
-    ...replyChoices(),
-    ...(onManageReplies === undefined ? [] : [{ label: 'Manage replies…', divided: true, onSelect: onManageReplies }]),
-  ]
+  // replyItems are the library's replies for issues, or why there are none to pick.
+  const replyItems = () =>
+    replyMenuItems({
+      replies: replies.data,
+      error: replies.error,
+      none: 'No replies for issues yet',
+      onPick: picking.pick,
+      onManage: onManageReplies,
+    })
 
   return (
-    <section aria-label="Your comment" className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <label htmlFor={id} className="text-xs font-medium text-muted">
-          Your comment
-        </label>
-        <MenuButton label="Choose a reply" items={replyItems} className={quietButtonClass} align="right">
-          Replies <ChevronDownIcon className="size-3" />
-        </MenuButton>
-      </div>
-      <textarea
-        ref={textRef}
-        id={id}
-        rows={5}
-        value={draft.body}
-        placeholder="Leave a comment (markdown)"
-        onChange={(e) => {
-          const text = e.target.value
-
-          picking.drop()
-          onDraft((d) => ({ ...d, body: text }))
-        }}
-        className={`${fieldClass} block w-full font-mono text-xs`}
-      />
-      {picking.error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          Couldn’t fill in the reply: {picking.error}
-        </p>
-      )}
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center gap-2">
+    <Composer
+      label="Your comment"
+      replies={replyItems}
+      picking={picking}
+      text={draft.body}
+      onText={(text) => {
+        onDraft((d) => ({ ...d, body: text }))
+      }}
+      textRef={textRef}
+      error={error}
+      actions={
         <ActionButton
           offers={issue.offers}
           selected={selected}
@@ -151,19 +109,13 @@ export function IssueComposer({
           menuLabel="More issue actions"
           extra={extra}
         />
-        {launch !== null && item !== undefined && (
-          <LaunchControls
-            // The sheet steps through its list in place: each issue's launch starts from
-            // its own settings, never the choices made for the last one.
-            key={item.id}
-            item={item}
-            resolution={resolution}
-            {...launch}
-            running={runningSession(sessions)}
-          />
-        )}
-      </div>
-      {note !== '' && <p className={`text-xs ${noteBlocks ? 'text-warning' : 'text-muted'}`}>{note}</p>}
-    </section>
+      }
+      launch={launch}
+      item={item}
+      resolution={resolution}
+      sessions={sessions}
+      note={note}
+      noteBlocks={noteBlocks}
+    />
   )
 }

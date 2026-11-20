@@ -1,9 +1,8 @@
-import { useId, type RefObject } from 'react'
+import type { RefObject } from 'react'
 
 import { counted } from '../../lib/format'
 import type { LaunchOptions } from '../../lib/launch'
 import type { ReviewDraft } from '../../lib/reviewDrafts'
-import { runningSession } from '../../lib/sessions'
 import { usePickReply } from '../../lib/usePickReply'
 import { useQuery } from '../../lib/useQuery'
 import {
@@ -18,10 +17,9 @@ import {
   type ReviewOffer,
   type ReviewReplyList,
 } from '../../platform'
-import { fieldClass, quietButtonClass } from '../controls'
-import { ChevronDownIcon } from '../icons'
-import { LaunchControls } from '../LaunchControls'
-import { MenuButton, type MenuItem } from '../Menu'
+import { quietButtonClass } from '../controls'
+import { Composer } from '../conversation/Composer'
+import type { MenuItem } from '../Menu'
 import { ActionButton, menuOnly } from './ActionButton'
 
 export interface ReviewComposerProps {
@@ -172,7 +170,6 @@ export function ReviewComposer({
   onManageReplies,
   textRef,
 }: ReviewComposerProps) {
-  const id = useId()
   const { list, fallback, body } = reply
   const offerOf = (action: ReviewAction) => review.offers.find((o) => o.action === action)
   const offer = offerOf(selected)
@@ -205,54 +202,33 @@ export function ReviewComposer({
   ]
 
   return (
-    <section aria-label="Your review" className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <label htmlFor={id} className="text-xs font-medium text-muted">
-          Your review
-        </label>
-        <MenuButton label="Choose a reply" items={replyItems} className={quietButtonClass} align="right">
-          Replies <ChevronDownIcon className="size-3" />
-        </MenuButton>
-      </div>
-      <textarea
-        ref={textRef}
-        id={id}
-        rows={5}
-        value={body}
-        placeholder="Leave a comment (markdown)"
-        onChange={(e) => {
-          const text = e.target.value
-
-          picking.drop()
-          onDraft((d) => ({ ...d, body: text, edited: true }))
-        }}
-        className={`${fieldClass} block w-full font-mono text-xs`}
-      />
-      {picking.error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          Couldn’t fill in the reply: {picking.error}
-        </p>
-      )}
-      {draft.comments.length > 0 && (
-        <p className="flex items-center gap-2 text-xs text-muted">
-          {counted(draft.comments.length, 'line comment', 'line comments')} go with the review.
-          <button
-            type="button"
-            onClick={() => {
-              onDraft((d) => ({ ...d, comments: [] }))
-            }}
-            className={quietButtonClass}
-          >
-            Discard
-          </button>
-        </p>
-      )}
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center gap-2">
+    <Composer
+      label="Your review"
+      replies={replyItems}
+      picking={picking}
+      text={body}
+      onText={(text) => {
+        onDraft((d) => ({ ...d, body: text, edited: true }))
+      }}
+      textRef={textRef}
+      lineComments={
+        draft.comments.length > 0 && (
+          <p className="flex items-center gap-2 text-xs text-muted">
+            {counted(draft.comments.length, 'line comment', 'line comments')} go with the review.
+            <button
+              type="button"
+              onClick={() => {
+                onDraft((d) => ({ ...d, comments: [] }))
+              }}
+              className={quietButtonClass}
+            >
+              Discard
+            </button>
+          </p>
+        )
+      }
+      error={error}
+      actions={
         <ActionButton
           offers={review.offers}
           selected={selected}
@@ -264,19 +240,13 @@ export function ReviewComposer({
           blocked={(action) => heldBack(offerOf(action), sentText(action, draft, body), draft.comments.length)}
           menuOnly={menuOnly}
         />
-        {launch !== null && item !== undefined && (
-          <LaunchControls
-            // The sheet steps through its list in place: each pull request's launch starts
-            // from its own settings, never the choices made for the last one.
-            key={item.id}
-            item={item}
-            resolution={resolution}
-            {...launch}
-            running={runningSession(sessions)}
-          />
-        )}
-      </div>
-      {firstNote !== '' && <p className={`text-xs ${noteBlocks ? 'text-warning' : 'text-muted'}`}>{firstNote}</p>}
-    </section>
+      }
+      launch={launch}
+      item={item}
+      resolution={resolution}
+      sessions={sessions}
+      note={firstNote}
+      noteBlocks={noteBlocks}
+    />
   )
 }
