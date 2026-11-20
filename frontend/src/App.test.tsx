@@ -2072,6 +2072,38 @@ describe('the Scripts tab', () => {
     error.mockRestore()
   })
 
+  it('lists Release in the order remembered from a past start, and remembers another', async () => {
+    platform.getSettings.mockResolvedValue(settings({ integrations: integrationsConfig({ releaseSort: 'commits' }) }))
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
+    const sorts = within(await screen.findByRole('radiogroup', { name: 'Sort the repositories' }))
+
+    await waitFor(() => {
+      expect(sorts.getByRole('radio', { name: 'Commits' })).toBeChecked()
+    })
+
+    await userEvent.click(sorts.getByRole('radio', { name: 'A–Z' }))
+    expect(platform.setReleaseSort).toHaveBeenCalledExactlyOnceWith('name')
+    expect(sorts.getByRole('radio', { name: 'A–Z' })).toBeChecked()
+  })
+
+  it('still lists Release in the order picked when it can’t be remembered, and logs why', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    platform.setReleaseSort.mockRejectedValue(new Error('database gone'))
+    await renderApp()
+
+    await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
+    const sorts = within(await screen.findByRole('radiogroup', { name: 'Sort the repositories' }))
+    await userEvent.click(sorts.getByRole('radio', { name: 'A–Z' }))
+
+    expect(sorts.getByRole('radio', { name: 'A–Z' })).toBeChecked()
+    await vi.waitFor(() => {
+      expect(error).toHaveBeenCalledWith('could not remember the Release page’s order:', 'database gone')
+    })
+    error.mockRestore()
+  })
+
   it('closes the announcement from its close button', async () => {
     platform.listIntegrations.mockResolvedValue(missing())
     await renderApp()

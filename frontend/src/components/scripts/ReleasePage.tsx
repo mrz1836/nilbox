@@ -12,6 +12,7 @@ import {
   recentWords,
   releasable,
   releaseGroups,
+  sortCandidates,
 } from '../../lib/release'
 import { ruleFor } from '../../lib/repoRules'
 import type { ReleaseCandidatesState } from '../../lib/useReleaseCandidates'
@@ -25,12 +26,13 @@ import {
   type IntegrationTool,
   type ReleaseCandidate,
   type ReleaseGroup,
+  type ReleaseSort,
   type RepoRules,
   type ScriptRun,
   type ScriptsSection,
   type Settings,
 } from '../../platform'
-import { buttonClass, captionClass, quietButtonClass } from '../controls'
+import { buttonClass, captionClass, quietButtonClass, Segmented, type SegmentOption } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, CheckIcon, RefreshIcon, RingIcon, XIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
@@ -60,6 +62,14 @@ const checksIcons: Readonly<Record<CommitChecks, ReactNode>> = {
   ERROR: <XIcon className="size-3.5 shrink-0 text-danger" />,
   '': <RingIcon className="size-3.5 shrink-0 text-muted" />,
 }
+
+// releaseSortOptions are the orders a group can list its repositories in, the pinned ones
+// first in each.
+const releaseSortOptions: readonly SegmentOption<ReleaseSort>[] = [
+  { value: 'newest', label: 'Newest', title: 'The newest commit first' },
+  { value: 'name', label: 'A–Z', title: 'By owner/name' },
+  { value: 'commits', label: 'Commits', title: 'The most commits since the newest version first' },
+]
 
 // stored names a group as the settings keep it: "release.upToDate".
 function stored(group: ReleaseGroup): ScriptsSection {
@@ -207,19 +217,25 @@ export interface ReleasePageProps {
   // muted row's Unmute changes; onSettingsSaved receives the settings as stored after it.
   repoRules?: RepoRules | undefined
   onSettingsSaved?: ((settings: Settings) => void) | undefined
+  // releaseSort is the order each group lists its repositories in, as the settings
+  // remember it, and onReleaseSort stores another.
+  releaseSort?: ReleaseSort
+  onReleaseSort?: (sort: ReleaseSort) => void
 }
 
 // noRepoRules are the rules until the settings have loaded.
 const noRepoRules: RepoRules = { pinned: [], muted: [] }
 
 // ReleasePage is the Scripts tab's Release page: every clone with a GitHub origin, in its
-// group (unreleased changes first, newest commit first, then the collapsed rest), each
-// with Release… where there is something to release; a search over every group; a way
-// to read GitHub again, how far a read has got, and how old the list is when it was kept
-// from the last start or the last read failed; and the recent releases, each opening its
-// run. While magex can't be used, the page says why in place of its list. Each group
-// stays open or folded as the user left it, across starts (useSections). The muted
-// repositories sit in their own group, folded at first, each with Unmute.
+// group (unreleased changes first, then the collapsed rest), each with Release… where
+// there is something to release; a search over every group, and a sort of each (the
+// newest commit first, by name, or the most commits first, the pinned repositories ahead
+// in every one) remembered across starts; a way to read GitHub again, how far a read has
+// got, and how old the list is when it was kept from the last start or the last read
+// failed; and the recent releases, each opening its run. While magex can't be used, the
+// page says why in place of its list. Each group stays open or folded as the user left
+// it, across starts (useSections). The muted repositories sit in their own group, folded
+// at first, each with Unmute.
 export function ReleasePage({
   candidates,
   tool,
@@ -232,9 +248,15 @@ export function ReleasePage({
   onSection = () => undefined,
   repoRules = noRepoRules,
   onSettingsSaved,
+  releaseSort = 'newest',
+  onReleaseSort = () => undefined,
 }: ReleasePageProps) {
   const id = useId()
   const [search, setSearch] = useState('')
+  // picked is the sort chosen while the page shows, or null before one is, when the one
+  // the settings remember applies; it holds the choice while the settings store it.
+  const [picked, setPicked] = useState<ReleaseSort | null>(null)
+  const sort = picked ?? releaseSort
   // unmuting is the target being unmuted, and unmuteError why the last unmute failed.
   const [unmuting, setUnmuting] = useState('')
   const [unmuteError, setUnmuteError] = useState('')
@@ -309,7 +331,11 @@ export function ReleasePage({
           <p className="px-1 text-sm text-muted">No repository matching “{search.trim()}”.</p>
         )}
         {releaseGroups.map((group) => {
-          const rows = matched.filter((r) => r.group === group.id)
+          const rows = sortCandidates(
+            matched.filter((r) => r.group === group.id),
+            sort,
+            (repo) => ruleFor(repoRules, repo).rule === 'pinned',
+          )
           const shown = searching || folds.isOpen(stored(group.id))
 
           if (rows.length === 0 && (searching || group.id !== 'unreleased')) {
@@ -372,9 +398,9 @@ export function ReleasePage({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex flex-col gap-2 px-4 pt-4 pb-2">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold">Release</h2>
-          <div className="flex items-center gap-2 text-xs text-muted">
+          <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
             {usable(tool) && tool !== undefined && (
               <span>
                 {tool.binary} {tool.copy.version.raw}
@@ -385,18 +411,18 @@ export function ReleasePage({
                 · Read <RelativeTime iso={list.checkedAt} show={formatAgo} />
               </span>
             )}
-            <button
-              type="button"
-              disabled={refreshing || !usable(tool)}
-              onClick={() => {
-                void refresh()
-              }}
-              className={quietButtonClass}
-            >
-              <RefreshIcon className={`size-3.5 ${refreshing ? 'motion-safe:animate-spin' : ''}`} />
-              {refreshing ? 'Reading GitHub…' : 'Read GitHub again'}
-            </button>
-          </div>
+          </span>
+          <button
+            type="button"
+            disabled={refreshing || !usable(tool)}
+            onClick={() => {
+              void refresh()
+            }}
+            className={`ml-auto ${quietButtonClass}`}
+          >
+            <RefreshIcon className={`size-3.5 ${refreshing ? 'motion-safe:animate-spin' : ''}`} />
+            {refreshing ? 'Reading GitHub…' : 'Read GitHub again'}
+          </button>
         </div>
         <ErrorText error={refreshError === '' ? '' : `Couldn’t read GitHub again: ${refreshError}`} />
         <ErrorText error={unmuteError} />
@@ -422,7 +448,21 @@ export function ReleasePage({
             {progress !== null && <span> {listProgressWords(progress)}</span>}
           </p>
         )}
-        <RepoSearch value={search} onChange={setSearch} />
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <RepoSearch value={search} onChange={setSearch} />
+          </div>
+          <Segmented<ReleaseSort>
+            label="Sort the repositories"
+            size="sm"
+            value={sort}
+            options={releaseSortOptions}
+            onChange={(next) => {
+              setPicked(next)
+              onReleaseSort(next)
+            }}
+          />
+        </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pb-4">
         {body}

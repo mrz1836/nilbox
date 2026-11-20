@@ -4,11 +4,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { SettingsSection } from '../../lib/settingsIndex'
 import type { OnSection } from '../../lib/useSections'
-import { useReleaseCandidates } from '../../lib/useReleaseCandidates'
+import { useReleaseCandidates, type ReleaseCandidatesState } from '../../lib/useReleaseCandidates'
 import type {
   IntegrationTool,
   ReleaseCandidate,
   ReleaseCandidates,
+  ReleaseSort,
   RepoRules,
   ScriptRun,
   Settings,
@@ -24,7 +25,7 @@ import {
   toolCopy,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
-import { ReleasePage } from './ReleasePage'
+import { ReleasePage, type ReleasePageProps } from './ReleasePage'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
@@ -74,6 +75,79 @@ function heldList(): (list: ReleaseCandidates) => void {
   return (list) => {
     answer(list)
   }
+}
+
+// listed is the page's list as read, holding repos, with no read of GitHub under way.
+function listed(repos: ReleaseCandidate[]): ReleaseCandidatesState {
+  return {
+    list: releaseCandidates({ repos }),
+    error: '',
+    refreshing: false,
+    refreshError: '',
+    progress: null,
+    refresh: () => Promise.resolve(),
+  }
+}
+
+// sortRows are four repositories with unreleased changes whose newest commits, commit
+// counts, and names each order them differently, two of them named in capitals.
+function sortRows(): ReleaseCandidate[] {
+  return [
+    releaseCandidate({ repo: 'acme-org/Web-kit', dir: '~/projects/web-kit', headAt: '2026-06-15T11:00:00Z', ahead: 1 }),
+    releaseCandidate({ repo: 'acme-org/api', dir: '~/projects/api', headAt: '2026-06-14T09:00:00Z', ahead: 7 }),
+    releaseCandidate({
+      repo: 'acme-org/Sdk-kit',
+      dir: '~/projects/sdk-kit',
+      headAt: '2026-06-12T09:00:00Z',
+      ahead: 12,
+    }),
+    releaseCandidate({ repo: 'acme-org/zeta', dir: '~/projects/zeta', headAt: '2026-06-10T09:00:00Z', ahead: 3 }),
+  ]
+}
+
+// renderSorted shows the page over sortRows, with props on top, and returns onReleaseSort
+// and a way to render the page again with the same props.
+function renderSorted(props: Partial<ReleasePageProps> = {}) {
+  const onReleaseSort = vi.fn<(sort: ReleaseSort) => void>()
+  const page = () => (
+    <ReleasePage
+      candidates={listed(sortRows())}
+      tool={integrationTool()}
+      runs={[]}
+      where="under ~/projects"
+      onRelease={vi.fn()}
+      onOpenRun={vi.fn()}
+      onOpenSettings={vi.fn()}
+      onReleaseSort={onReleaseSort}
+      {...props}
+    />
+  )
+  const view = render(page(), { wrapper: at() })
+
+  return {
+    onReleaseSort,
+    rerender: () => {
+      view.rerender(page())
+    },
+  }
+}
+
+// sorts is the page's choice of order.
+function sorts() {
+  return within(screen.getByRole('radiogroup', { name: 'Sort the repositories' }))
+}
+
+// unreleased is the text of each row in the Unreleased changes list, top to bottom.
+function unreleased(): string[] {
+  return within(screen.getByRole('list', { name: 'Unreleased changes' }))
+    .getAllByRole('listitem')
+    .map((row) => row.textContent)
+}
+
+// holding matches the rows unreleased reads when they hold the repositories named, in that
+// order, each by its name without its owner.
+function holding(...names: string[]): unknown[] {
+  return names.map((name): unknown => expect.stringContaining(name))
 }
 
 describe('ReleasePage', () => {
@@ -509,6 +583,76 @@ describe('ReleasePage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: fix }))
     expect(onOpenSettings).toHaveBeenCalledExactlyOnceWith('integrations')
+  })
+
+  describe('the sort', () => {
+    it('lists each group with the newest commit first until another order is picked', () => {
+      renderSorted()
+
+      expect(sorts().getByRole('radio', { name: 'Newest' })).toBeChecked()
+      expect(sorts().getByRole('radio', { name: 'A–Z' })).not.toBeChecked()
+      expect(sorts().getByRole('radio', { name: 'Newest' }).closest('label')).toHaveAttribute(
+        'title',
+        'The newest commit first',
+      )
+      expect(unreleased()).toEqual(holding('Web-kit', 'api', 'Sdk-kit', 'zeta'))
+    })
+
+    it('starts on A–Z when the settings remember it', () => {
+      renderSorted({ releaseSort: 'name' })
+
+      expect(sorts().getByRole('radio', { name: 'A–Z' })).toBeChecked()
+      expect(sorts().getByRole('radio', { name: 'Newest' })).not.toBeChecked()
+      expect(unreleased()).toEqual(holding('api', 'Sdk-kit', 'Web-kit', 'zeta'))
+    })
+
+    it('lists each group by name in any case, or by the most commits, and stores each choice', async () => {
+      const { onReleaseSort } = renderSorted()
+
+      await userEvent.click(sorts().getByRole('radio', { name: 'A–Z' }))
+      expect(sorts().getByRole('radio', { name: 'A–Z' })).toBeChecked()
+      expect(unreleased()).toEqual(holding('api', 'Sdk-kit', 'Web-kit', 'zeta'))
+
+      await userEvent.click(sorts().getByRole('radio', { name: 'Commits' }))
+      expect(sorts().getByRole('radio', { name: 'Commits' })).toBeChecked()
+      expect(unreleased()).toEqual(holding('Sdk-kit', 'api', 'zeta', 'Web-kit'))
+
+      expect(onReleaseSort.mock.calls).toEqual([['name'], ['commits']])
+    })
+
+    it('keeps the pinned repositories first in every order', async () => {
+      renderSorted({ repoRules: { pinned: ['acme-org/zeta'], muted: [] } })
+
+      expect(unreleased()).toEqual(holding('zeta', 'Web-kit', 'api', 'Sdk-kit'))
+
+      await userEvent.click(sorts().getByRole('radio', { name: 'A–Z' }))
+      expect(unreleased()).toEqual(holding('zeta', 'api', 'Sdk-kit', 'Web-kit'))
+
+      await userEvent.click(sorts().getByRole('radio', { name: 'Commits' }))
+      expect(unreleased()).toEqual(holding('zeta', 'Sdk-kit', 'api', 'Web-kit'))
+    })
+
+    it('keeps the order while it searches, with nowhere to store it', async () => {
+      platform.listReleaseCandidates.mockResolvedValue(releaseCandidates({ repos: sortRows() }))
+      renderPage()
+
+      await screen.findByRole('list', { name: 'Unreleased changes' })
+      await userEvent.type(screen.getByRole('searchbox', { name: 'Search repositories' }), 'kit')
+      expect(unreleased()).toEqual(holding('Web-kit', 'Sdk-kit'))
+
+      await userEvent.click(sorts().getByRole('radio', { name: 'A–Z' }))
+      expect(unreleased()).toEqual(holding('Sdk-kit', 'Web-kit'))
+    })
+
+    it('keeps the order picked while the settings store it', async () => {
+      const { rerender } = renderSorted()
+
+      await userEvent.click(sorts().getByRole('radio', { name: 'Commits' }))
+      rerender()
+
+      expect(sorts().getByRole('radio', { name: 'Commits' })).toBeChecked()
+      expect(unreleased()).toEqual(holding('Sdk-kit', 'api', 'zeta', 'Web-kit'))
+    })
   })
 
   it('lists the recent releases, each opening its run', async () => {
