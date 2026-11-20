@@ -831,6 +831,9 @@ export type BranchRules = NonNullLists<branchrules.Rules>
 export type RepoRule = reporules.Rule
 export type RepoRules = NonNullLists<reporules.Rules>
 export type WorktreeStage = worktrees.Stage
+// WorktreeLinkKind is how a worktree was linked to its pull request or issue: by its name
+// or record, or by the pushed branch it is on; '' with no item.
+export type WorktreeLinkKind = worktrees.LinkKind
 export type WorktreeSession = NonNullLists<worktrees.Session>
 
 // The bound calls, under the names the app knows them by. What each one does is the Go

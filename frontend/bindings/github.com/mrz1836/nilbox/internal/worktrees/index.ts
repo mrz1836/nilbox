@@ -9,6 +9,7 @@ export {
 export {
     BranchKind,
     ItemStatus,
+    LinkKind,
     Stage
 } from "./models.js";
 

@@ -56,6 +56,7 @@ func allowedFixedCommands() []string {
 		joinArgs(unpushedArgs()),
 		joinArgs(branchListArgs()),
 		joinArgs(remoteHeadsArgs()),
+		joinArgs(refsArgs()),
 	}
 }
 
@@ -542,6 +543,10 @@ type localBranch struct {
 
 	// worktree is the worktree that has it checked out, or "".
 	worktree string
+
+	// upstream is the branch it follows, as in refs/remotes/origin/feature-x, or "": read
+	// only with the rest of a clone's refs (readRefs).
+	upstream string
 }
 
 // branches lists the local branches of the clone at dir.

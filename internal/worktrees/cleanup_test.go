@@ -35,17 +35,51 @@ var (
 // mergedAt is when the fake pull requests merged.
 func mergedAt() time.Time { return time.Date(2026, 11, 6, 18, 0, 0, 0, time.UTC) }
 
-// fakeGitHub answers ItemStates from a table keyed by item.Ref.Key, as the client does,
-// and records each call.
+// fakeGitHub answers ItemStates and LinkStates from a table keyed by item.Ref.Key, as the
+// client does, and records each call: its refs in calls, and a LinkStates call's head asks
+// in heads, at the same index (none for an ItemStates call).
 type fakeGitHub struct {
 	mu     sync.Mutex
 	states map[string]ItemState
 	err    error
 	calls  [][]item.Ref
 
+	// prs answers LinkStates' head asks, which it records in heads.
+	prs   map[BranchKey][]HeadPR
+	heads [][]HeadQuery
+
 	// merged answers MergedPullRequests, which records each call's queries in asked.
 	merged map[BranchKey][]MergedPR
 	asked  [][]BranchQuery
+}
+
+func (f *fakeGitHub) LinkStates(_ context.Context, refs []item.Ref, heads []HeadQuery) (LinkAnswer, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.calls = append(f.calls, refs)
+	f.heads = append(f.heads, heads)
+
+	if f.err != nil {
+		return LinkAnswer{}, f.err
+	}
+
+	answer := LinkAnswer{Items: map[string]ItemState{}, Heads: map[BranchKey][]HeadPR{}}
+
+	for _, ref := range refs {
+		if state, ok := f.states[ref.Key()]; ok {
+			answer.Items[ref.Key()] = state
+		}
+	}
+
+	for _, h := range heads {
+		key := BranchKey{Repo: h.Repo.Key(), Branch: h.Branch}
+		if prs, ok := f.prs[key]; ok {
+			answer.Heads[key] = prs
+		}
+	}
+
+	return answer, nil
 }
 
 func (f *fakeGitHub) MergedPullRequests(_ context.Context, queries []BranchQuery) (map[BranchKey][]MergedPR, error) {
@@ -64,6 +98,32 @@ func (f *fakeGitHub) ItemStates(_ context.Context, refs []item.Ref) (map[string]
 	f.calls = append(f.calls, refs)
 
 	return f.states, f.err
+}
+
+// setHead records the pull requests GitHub finds for branch in acme-org/example-repo.
+func (f *fakeGitHub) setHead(branch string, prs ...HeadPR) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.prs == nil {
+		f.prs = make(map[BranchKey][]HeadPR)
+	}
+
+	f.prs[BranchKey{Repo: exampleRepo().Key(), Branch: branch}] = prs
+}
+
+// requests counts the calls GitHub was asked, and how many of them asked about a branch.
+func (f *fakeGitHub) requests() (calls, withHeads int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	for _, heads := range f.heads {
+		if len(heads) > 0 {
+			withHeads++
+		}
+	}
+
+	return len(f.calls), withHeads
 }
 
 // set records an item's state under acme-org/<name>.

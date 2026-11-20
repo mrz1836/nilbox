@@ -237,6 +237,36 @@ export const ItemStatus = {
 } as const;
 
 /**
+ * LinkKind is how a worktree was linked to its pull request or issue.
+ */
+export type LinkKind = "" | "name" | "branch";
+
+/**
+ * The values of LinkKind, by the names of their Go constants.
+ */
+export const LinkKind = {
+    /**
+     * How a worktree was linked to its item, as Worktree.LinkedBy reports it.
+     *
+     * LinkNone is a worktree linked to no item.
+     */
+    LinkNone: "",
+
+    /**
+     * LinkName is a worktree linked by its record, the name of the folder the app or
+     * Claude Code made it in (pr-<n>, issue-<n>), or an item's own branch
+     * (worktree-pr-<n>, worktree-issue-<n>).
+     */
+    LinkName: "name",
+
+    /**
+     * LinkBranch is a worktree on a pushed branch, linked to the pull request that branch
+     * heads in the repository it was pushed to.
+     */
+    LinkBranch: "branch",
+} as const;
+
+/**
  * LinkedItem is the pull request or issue a worktree was made for, as GitHub reports it
  * now.
  */
@@ -730,6 +760,13 @@ export interface Worktree {
      * Item is the pull request or issue the worktree was made for, or nil.
      */
     "item": LinkedItem | null;
+
+    /**
+     * LinkedBy is how the worktree was linked to Item: by its record, its name, or an
+     * item's own branch (LinkName), or by the pushed branch it is on (LinkBranch); "" with
+     * no item.
+     */
+    "linkedBy": LinkKind;
 
     /**
      * Stage is where the worktree stands.

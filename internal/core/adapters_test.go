@@ -20,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/branchrules"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -380,6 +381,53 @@ func TestMergedPullRequestsKeyEachAnswerByRepositoryAndBranch(t *testing.T) {
 			MergedAt: time.Date(2026, 11, 6, 18, 0, 5, 0, time.UTC), HeadOID: "fc1c3975011e66491785ace891c893e4fc716587",
 		}},
 	}, got, "keyed by the repository's key, whatever its case; a branch none had is left out")
+}
+
+func TestLinkStatesAskAboutItemsAndHeadsInOneRequest(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+
+		_, _ = io.WriteString(w, `{"data": {
+			"r0": {"item": {"__typename": "PullRequest", "title": "Add locktimes", "url": "https://github.com/acme-org/example-repo/pull/184",
+				"prState": "MERGED", "closedAt": "2026-11-06T18:00:00Z", "mergedAt": "2026-11-06T18:00:05Z",
+				"headRefOid": "fc1c3975011e66491785ace891c893e4fc716587", "headRefName": "add-locktimes"}},
+			"h0": {"pulls": {"nodes": [{"number": 199, "title": "Describe it", "url": "https://github.com/acme-org/example-repo/pull/199",
+				"state": "OPEN", "closedAt": null, "mergedAt": null, "headRefOid": "0b1c3975011e66491785ace891c893e4fc716588",
+				"headRefName": "feature-x", "headRepository": {"nameWithOwner": "acme-org/example-repo"}}]}},
+			"h1": {"pulls": {"nodes": []}}}}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	states := itemStates{
+		tokens: githubtest.NewTokens(),
+		client: &github.Client{BaseURL: srv.URL, HTTP: srv.Client()},
+	}
+	example := repo.Name{Owner: boundOwner, Repo: "Example-Repo"}
+	ref := item.Ref{Repo: example, Number: 184}
+
+	got, err := states.LinkStates(t.Context(), []item.Ref{ref},
+		[]worktrees.HeadQuery{{Repo: example, Branch: "feature-x"}, {Repo: example, Branch: "old-idea"}})
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), requests.Load())
+	assert.Equal(t, worktrees.ItemMerged, got.Items[ref.Key()].State)
+	assert.Equal(t, map[worktrees.BranchKey][]worktrees.HeadPR{
+		{Repo: example.Key(), Branch: "feature-x"}: {{
+			Number: 199, HeadRepo: example.Key(), State: worktrees.ItemState{
+				PullRequest: true, Title: "Describe it", URL: "https://github.com/acme-org/example-repo/pull/199",
+				State: worktrees.ItemOpen, HeadOID: "0b1c3975011e66491785ace891c893e4fc716588", HeadRef: "feature-x",
+			},
+		}},
+	}, got.Heads, "keyed by the repository's key, whatever its case; a branch none had is left out")
+
+	_, err = itemStates{
+		tokens: githubtest.FailingTokens([]error{github.ErrGHNotFound}),
+		client: &github.Client{BaseURL: srv.URL, HTTP: srv.Client()},
+	}.LinkStates(t.Context(), []item.Ref{ref}, nil)
+	require.Error(t, err, "no token, no answer")
 }
 
 func TestTerminalRunsOpenAFollowedScriptInTheTerminal(t *testing.T) {

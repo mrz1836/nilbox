@@ -2466,6 +2466,7 @@ export function worktree(overrides: Partial<Worktree> = {}): Worktree {
     unpushed: 0,
     onGitHub: true,
     item: null,
+    linkedBy: '',
     stage: '',
     ownBranch: true,
     managed: true,

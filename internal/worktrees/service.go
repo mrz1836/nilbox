@@ -205,9 +205,48 @@ type GitHub interface {
 	// ref's Key.
 	ItemStates(ctx context.Context, refs []item.Ref) (map[string]ItemState, error)
 
+	// LinkStates returns the state of each item in refs that GitHub knows, as ItemStates
+	// does, and, in the same requests, the pull requests of each repository heads asks
+	// about whose head branch had its name, in any state, newest updated first, keyed by
+	// BranchKey. A name none had is left out. Asking about branches beside items costs no
+	// request of its own.
+	LinkStates(ctx context.Context, refs []item.Ref, heads []HeadQuery) (LinkAnswer, error)
+
 	// MergedPullRequests returns the merged pull requests whose head branch had each
 	// name asked about, newest first, keyed by BranchKey. A name none had is left out.
 	MergedPullRequests(ctx context.Context, queries []BranchQuery) (map[BranchKey][]MergedPR, error)
+}
+
+// HeadQuery asks which pull requests of a repository have a branch of a given name as
+// their head.
+type HeadQuery struct {
+	Repo   repo.Name
+	Branch string
+}
+
+// HeadPR is a pull request whose head branch had the name a HeadQuery asked about, as
+// GitHub reports it now.
+type HeadPR struct {
+	// Number is its number in the repository asked about.
+	Number int
+
+	// State is what GitHub says about it.
+	State ItemState
+
+	// HeadRepo is the repository its head branch is in, as owner/name, or "" when GitHub
+	// doesn't say, as for a fork that was deleted.
+	HeadRepo string
+}
+
+// LinkAnswer is what GitHub said about the items and the branches a listing asked about
+// (GitHub.LinkStates).
+type LinkAnswer struct {
+	// Items holds the state of each item GitHub knows, keyed by its ref's Key.
+	Items map[string]ItemState
+
+	// Heads holds the pull requests whose head branch had each name asked about, newest
+	// updated first, keyed by BranchKey.
+	Heads map[BranchKey][]HeadPR
 }
 
 // BranchQuery asks which of a repository's branch names were the head of a merged pull
@@ -373,6 +412,10 @@ type Service struct {
 	logger   *slog.Logger
 	procs    processTable
 
+	// heads keeps which pull request each pushed branch heads, across listings (see
+	// branchlink.go).
+	heads *headCache
+
 	// progressEvery is how often, at most, the window's listing tells how far it has got.
 	progressEvery time.Duration
 
@@ -432,6 +475,7 @@ func NewService(cfg Config) *Service {
 		procs:    osProcesses{},
 		zone:     time.Local, //nolint:gosmopolitan // the agent writes a session's start in the machine's zone or in UTC
 		last:     emptyReport(),
+		heads:    newHeadCache(),
 
 		progressEvery: progress.Every,
 	}

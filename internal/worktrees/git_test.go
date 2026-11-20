@@ -155,6 +155,13 @@ func TestGitArgvUsesDashC(t *testing.T) {
 				"HEAD", "--not", "--remotes"),
 		},
 		{
+			name:   "the refs are read in the clone",
+			stdout: "refs/heads/main\x00" + headSHA + "\x00\x00\x00" + repoDir + "\n",
+			call:   func(g git) error { _, err := g.readRefs(ctx, repoDir); return err },
+			want: gitArgv(repoDir, "for-each-ref", "--format=%(refname)%00%(objectname)%00%(upstream)%00%(symref)%00%(worktreepath)",
+				"refs/heads/ refs/remotes/"),
+		},
+		{
 			name: "unlock",
 			call: func(g git) error { _, err := g.unlock(ctx, repoDir, treePath); return err },
 			want: gitArgv(repoDir, "worktree unlock", treePath),
@@ -223,6 +230,10 @@ func TestGitRejectsCommandsOutsideAllowlist(t *testing.T) {
 		argv("merge-base", headSHA, headSHA),
 		argv("for-each-ref refs/heads/"),
 		argv("for-each-ref --format=%(refname) refs/"),
+		argv("for-each-ref --format=%(refname)%00%(objectname)%00%(upstream)%00%(symref)%00%(worktreepath) refs/"),
+		argv("for-each-ref --format=%(refname)%00%(objectname)%00%(upstream)%00%(symref)%00%(worktreepath) refs/heads/"),
+		append(refsArgs(), "refs/tags/"),
+		append(refsArgs()[:2], "--count=1", "refs/heads/", "refs/remotes/"),
 		{"log", "--no-walk=unsorted", "--no-show-signature", "--no-mailmap", "--format=%H %ct"},
 		{"log", "--no-walk=unsorted", "--no-show-signature", "--no-mailmap", "--format=%H %ct", "HEAD"},
 		{"log", "--no-walk=unsorted", "--no-show-signature", "--no-mailmap", "--format=%H %ct", headSHA, "--all"},
@@ -276,7 +287,7 @@ func TestGitAllowsDeletingAnyWellFormedBranchAtACommit(t *testing.T) {
 	}
 
 	for _, args := range [][]string{
-		branchListArgs(), remoteHeadsArgs(), branchUnpushedArgs(headSHA), ancestorArgs(headSHA, otherSHA),
+		branchListArgs(), remoteHeadsArgs(), refsArgs(), branchUnpushedArgs(headSHA), ancestorArgs(headSHA, otherSHA),
 		unpushedPastArgs(headRef, otherSHA), unpushedPastArgs(headSHA, otherSHA), unpushedLogArgs(),
 		unpushedPastLogArgs(otherSHA),
 	} {
@@ -288,7 +299,7 @@ func TestGitAllowsDeletingAnyWellFormedBranchAtACommit(t *testing.T) {
 func TestTheCommitsNotOnGitHubAreListedAsARead(t *testing.T) {
 	t.Parallel()
 
-	for _, args := range [][]string{unpushedLogArgs(), unpushedPastLogArgs(otherSHA)} {
+	for _, args := range [][]string{unpushedLogArgs(), unpushedPastLogArgs(otherSHA), refsArgs()} {
 		assert.True(t, readOnly(args), args)
 	}
 
@@ -324,6 +335,37 @@ func TestGitBranchOutputParsing(t *testing.T) {
 		{name: "main", head: headSHA, worktree: "/srv/clone"},
 		{name: "feature/x", head: otherSHA},
 	}, got, "lines that are not a branch and a commit are left out")
+
+	refs := parseRefs([]byte(strings.Join([]string{
+		"refs/heads/main\x00" + headSHA + "\x00refs/remotes/origin/main\x00\x00/srv/clone",
+		"refs/heads/feat/x\x00" + otherSHA + "\x00\x00\x00",
+		"refs/heads/\x00" + headSHA + "\x00\x00\x00",
+		"refs/heads/broken\x00not-a-commit\x00\x00\x00",
+		"refs/remotes/origin/HEAD\x00" + headSHA + "\x00\x00refs/remotes/origin/main\x00",
+		"refs/remotes/upstream/HEAD\x00" + headSHA + "\x00\x00refs/remotes/origin/develop\x00",
+		"refs/remotes/origin/main\x00" + headSHA + "\x00\x00\x00",
+		"refs/remotes/origin/feat/x\x00" + otherSHA + "\x00\x00\x00",
+		"refs/remotes/origin/-x\x00" + otherSHA + "\x00\x00\x00",
+		"refs/remotes/origin/linked\x00" + otherSHA + "\x00\x00refs/remotes/origin/feat/x\x00",
+		"refs/remotes/bad..remote/x\x00" + otherSHA + "\x00\x00\x00",
+		"too\x00few",
+	}, "\n") + "\n"))
+
+	assert.Equal(t, []localBranch{
+		{name: mainBranch, head: headSHA, worktree: "/srv/clone", upstream: "refs/remotes/origin/main"},
+		{name: "feat/x", head: otherSHA},
+	}, refs.locals, "lines that are not a branch and a commit are left out")
+	assert.Equal(t, map[string]string{
+		"refs/remotes/origin/main": headSHA, "refs/remotes/origin/feat/x": otherSHA,
+	}, refs.tracking, "remote-tracking branches with a plain remote and branch, no symbolic ref among them")
+	assert.Equal(t, map[string]string{originRemote: mainBranch}, refs.defaults,
+		"a remote's HEAD pointing at its own branch; one pointing at another remote's is no answer")
+	assert.Equal(t, []string{mainBranch}, refs.defaultNames())
+	assert.NotEqual(t, refs.fingerprint(), parseRefs(nil).fingerprint())
+	assert.Equal(t, refs.fingerprint(), parseRefs([]byte("refs/remotes/origin/feat/x\x00"+otherSHA+"\x00\x00\x00\n"+
+		"refs/remotes/origin/HEAD\x00"+headSHA+"\x00\x00refs/remotes/origin/main\x00\n"+
+		"refs/remotes/origin/main\x00"+headSHA+"\x00\x00\x00\n")).fingerprint(),
+		"the same remote state in another order, without the local branches")
 
 	heads := git{run: &testutil.Runner{Stdout: "main\n\nmain\ndevelop\n"}, bin: gitBin}.remoteHeads(t.Context(), repoDir)
 	assert.Equal(t, []string{"main", "develop"}, heads)

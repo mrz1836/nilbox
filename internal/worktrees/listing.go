@@ -224,14 +224,58 @@ func (s *Service) assessClones(ctx context.Context, g git, roots localrepos.Root
 	}
 
 	snap := s.snapshot(roots, listed)
-	snap.LinkError = s.link(ctx, snap.Repos, remotes, recorded, tracker)
+	refs := s.readAllRefs(ctx, g, snap.Repos)
+	snap.LinkError = s.link(ctx, snap.Repos, remotes, refs, recorded, tracker)
 	s.adopt(ctx, snap.Repos, recorded)
 	markSessions(snap.Repos, running, s.agentProcesses(ctx), s.runSessions(ctx))
 	snap.SessionsUnknown = !known
 	s.tally(&snap)
-	s.markBranches(ctx, g, snap.Repos, rules)
+	s.markBranches(ctx, g, snap.Repos, refs, rules)
 
 	return snap, nil
+}
+
+// readAllRefs reads the refs of each repository with a linked worktree, a few at a time,
+// in one git run each, keyed by its Path: what linking by a pushed branch and judging the
+// branches a removal offers both read. A repository whose refs git can't read is left
+// out, so none of its worktrees is linked by a branch and none offers a branch.
+func (s *Service) readAllRefs(ctx context.Context, g git, repos []Repo) map[string]cloneRefs {
+	read := make([]*cloneRefs, len(repos))
+
+	var eg errgroup.Group
+
+	eg.SetLimit(listConcurrency)
+
+	for i := range repos {
+		if !offersBranches(&repos[i]) {
+			continue
+		}
+
+		eg.Go(func() error {
+			refs, err := g.readRefs(ctx, repos[i].Path)
+			if err != nil {
+				s.logger.DebugContext(ctx, "the branches could not be listed", "repo", repos[i].DisplayPath, "error", err)
+
+				return nil
+			}
+
+			read[i] = &refs
+
+			return nil
+		})
+	}
+
+	_ = eg.Wait() // each read's failure only leaves its repository out
+
+	out := make(map[string]cloneRefs, len(repos))
+
+	for i, refs := range read {
+		if refs != nil {
+			out[repos[i].Path] = *refs
+		}
+	}
+
+	return out
 }
 
 // tally works out each worktree's stage, counts what the bulk actions would remove, and

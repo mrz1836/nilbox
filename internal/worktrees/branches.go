@@ -36,32 +36,25 @@ import (
 // ownPullPrefix starts the name of a pull request's worktree, pr-<n>.
 const ownPullPrefix = "pr-"
 
-// markBranches fills in each linked worktree's Branches, listing the branches of each
-// clone that has a worktree once.
-func (s *Service) markBranches(ctx context.Context, g git, repos []Repo, rules branchrules.Rules) {
+// markBranches fills in each linked worktree's Branches from its clone's refs, read once
+// for the listing (refs, by the repository's Path; see readAllRefs).
+func (s *Service) markBranches(ctx context.Context, g git, repos []Repo, refs map[string]cloneRefs, rules branchrules.Rules) {
 	for i := range repos {
-		if offersBranches(&repos[i]) {
-			s.markRepo(ctx, g, &repos[i], rules)
+		if cr, ok := refs[repos[i].Path]; ok && offersBranches(&repos[i]) {
+			s.markRepo(ctx, g, &repos[i], cr, rules)
 		}
 	}
 }
 
-// markRepo fills in the Branches of each linked worktree of r. A clone whose branches
-// cannot be listed offers none.
-func (s *Service) markRepo(ctx context.Context, g git, r *Repo, rules branchrules.Rules) {
-	locals, _, err := g.branches(ctx, r.Path)
-	if err != nil {
-		s.logger.DebugContext(ctx, "the branches could not be listed", "repo", r.DisplayPath, "error", err)
-
-		return
-	}
-
-	defaults := g.remoteHeads(ctx, r.Path)
+// markRepo fills in the Branches of each linked worktree of r, whose refs are refs. A
+// clone whose refs could not be read offers none.
+func (s *Service) markRepo(ctx context.Context, g git, r *Repo, refs cloneRefs, rules branchrules.Rules) {
+	defaults := refs.defaultNames()
 
 	for j := range r.Worktrees {
 		wt := &r.Worktrees[j]
 		if !wt.Main && !wt.Prunable {
-			wt.Branches = s.branchesOf(ctx, g, r.Path, wt, locals, defaults, rules)
+			wt.Branches = s.branchesOf(ctx, g, r.Path, wt, refs.locals, defaults, rules)
 		}
 	}
 }
@@ -93,8 +86,10 @@ func (s *Service) branchesOf(ctx context.Context, g git, repoPath string, wt *Wo
 		}
 	}
 
-	if wt.Item != nil && wt.Item.Kind == item.KindPR && wt.Branch != "" && wt.Branch != own &&
-		wt.Branch == wt.Item.HeadRef {
+	// Only a worktree linked by its name or record offers its pull request's branch: one
+	// linked by the branch it is on keeps it, as before it was linked.
+	if wt.Item != nil && wt.LinkedBy == LinkName && wt.Item.Kind == item.KindPR && wt.Branch != "" &&
+		wt.Branch != own && wt.Branch == wt.Item.HeadRef {
 		out = append(out, s.judge(Branch{Name: wt.Branch, Head: wt.Head, Kind: BranchPullRequest}, wt.Unpushed,
 			wt.OnGitHub, "", defaults, rules))
 	}
