@@ -258,7 +258,7 @@ func TestPageNotes(t *testing.T) {
 			`"width":20}`)
 
 		note := <-kept
-		assert.Equal(t, []color.RGBA{{R: 0xff, G: 0x2d, B: 0x95, A: 0xff}}, colorsAt(t, note.Shot, image.Pt(8, 15)))
+		assert.Equal(t, []color.RGBA{{R: 0x25, G: 0x63, B: 0xeb, A: 0xff}}, colorsAt(t, note.Shot, image.Pt(8, 15)))
 		assert.Equal(t, note.Shot, page.Notes().List(true)[0].Shot, "the picture is kept boxed")
 	})
 

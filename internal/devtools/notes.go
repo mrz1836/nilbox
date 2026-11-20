@@ -68,9 +68,9 @@ type Note struct {
 // Outline returns the PNG picture with a box drawn just outside rect, where a note's
 // element is in a viewport viewportWidth CSS pixels wide. The picture is in the web view's
 // own pixels, two to a CSS pixel on a Retina screen, so rect is scaled by the picture's
-// width over viewportWidth (1 when that is not known). The box is the magenta the agent
-// outlines the element with in the window, which no theme of the app uses. An empty rect
-// leaves the picture as it was.
+// width over viewportWidth (1 when that is not known). The box is the blue the agent
+// outlines the element with in the window: a strong one, unlike the app's accent and its
+// muted Info blue in either theme. An empty rect leaves the picture as it was.
 func Outline(picture []byte, rect Rect, viewportWidth int) ([]byte, error) {
 	src, err := png.Decode(bytes.NewReader(picture))
 	if err != nil {
@@ -97,7 +97,7 @@ func Outline(picture []byte, rect Rect, viewportWidth int) ([]byte, error) {
 	img := image.NewRGBA(bounds)
 	draw.Draw(img, bounds, src, bounds.Min, draw.Src)
 
-	paint := image.NewUniform(color.RGBA{R: 0xff, G: 0x2d, B: 0x95, A: 0xff})
+	paint := image.NewUniform(color.RGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0xff})
 
 	for _, side := range []image.Rectangle{
 		image.Rect(outer.Min.X, outer.Min.Y, outer.Max.X, box.Min.Y),

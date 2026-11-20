@@ -451,7 +451,7 @@
   // pointer is over, or else the last modal one, or else the body. A modal dialog leaves the
   // rest of the page inert, and the top layer draws the popover over the dialog. Nothing the
   // user does in the layer reaches the app: every event from it stops at the window.
-  const pointColor = '#ff2d95'
+  const pointColor = '#2563eb'
   const surface = 'var(--color-surface, #18181b)'
   const ink = 'var(--color-text, #fafafa)'
   const muted = 'var(--color-muted, #a1a1aa)'
@@ -485,7 +485,7 @@
   const box = make(
     'div',
     `position: absolute; display: none; box-sizing: border-box; border: 2px solid ${pointColor}; ` +
-      'border-radius: 0.1875rem; background: rgb(255 45 149 / 0.12)',
+      'border-radius: 0.1875rem; background: rgb(37 99 235 / 0.12)',
   )
   const caption = make(
     'div',

@@ -50,7 +50,7 @@ func TestOutline(t *testing.T) {
 
 	// The colors of the pictures: the window's, and the box Outline draws.
 	white := color.RGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
-	magenta := color.RGBA{R: 0xff, G: 0x2d, B: 0x95, A: 0xff}
+	blue := color.RGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0xff}
 
 	t.Run("boxes the element just outside it, in the picture's own pixels", func(t *testing.T) {
 		t.Parallel()
@@ -60,7 +60,7 @@ func TestOutline(t *testing.T) {
 		boxed, err := devtools.Outline(whitePicture(t, 40, 40), devtools.Rect{X: 5, Y: 5, Width: 5, Height: 5}, 20)
 		require.NoError(t, err)
 
-		assert.Equal(t, []color.RGBA{magenta, magenta, magenta, magenta}, colorsAt(t, boxed,
+		assert.Equal(t, []color.RGBA{blue, blue, blue, blue}, colorsAt(t, boxed,
 			image.Pt(8, 15), image.Pt(21, 15), image.Pt(15, 7), image.Pt(15, 22)), "left, right, top, and bottom")
 		assert.Equal(t, []color.RGBA{white, white, white}, colorsAt(t, boxed,
 			image.Pt(15, 15), image.Pt(5, 15), image.Pt(15, 25)), "the element, and what is beyond the box, as they were")
@@ -72,7 +72,7 @@ func TestOutline(t *testing.T) {
 		boxed, err := devtools.Outline(whitePicture(t, 40, 40), devtools.Rect{X: 5, Y: 5, Width: 5, Height: 5}, 0)
 		require.NoError(t, err)
 
-		assert.Equal(t, []color.RGBA{magenta, white}, colorsAt(t, boxed, image.Pt(4, 7), image.Pt(7, 7)))
+		assert.Equal(t, []color.RGBA{blue, white}, colorsAt(t, boxed, image.Pt(4, 7), image.Pt(7, 7)))
 	})
 
 	t.Run("draws what of the box falls on the picture", func(t *testing.T) {
@@ -81,7 +81,7 @@ func TestOutline(t *testing.T) {
 		boxed, err := devtools.Outline(whitePicture(t, 20, 20), devtools.Rect{X: -5, Y: 15, Width: 50, Height: 50}, 20)
 		require.NoError(t, err)
 
-		assert.Equal(t, []color.RGBA{magenta, white}, colorsAt(t, boxed, image.Pt(10, 14), image.Pt(10, 18)))
+		assert.Equal(t, []color.RGBA{blue, white}, colorsAt(t, boxed, image.Pt(10, 14), image.Pt(10, 18)))
 	})
 
 	t.Run("leaves a picture with no element on it as it was", func(t *testing.T) {

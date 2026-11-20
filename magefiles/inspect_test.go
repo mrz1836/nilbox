@@ -195,7 +195,7 @@ func TestInspect(t *testing.T) {
 		require.NoError(t, err)
 
 		boxed, plain := color.RGBAModel.Convert(img.At(0, 5)), color.RGBAModel.Convert(img.At(5, 5))
-		assert.Equal(t, color.RGBA{R: 0xff, G: 0x2d, B: 0x95, A: 0xff}, boxed)
+		assert.Equal(t, color.RGBA{R: 0x25, G: 0x63, B: 0xeb, A: 0xff}, boxed)
 		assert.Equal(t, color.RGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}, plain)
 	})
 
