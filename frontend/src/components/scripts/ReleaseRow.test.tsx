@@ -592,11 +592,56 @@ describe('GroupHeading', () => {
     expect(screen.getByRole('button', { name: 'Set up' })).toBeInTheDocument()
   })
 
-  it('shows only its title and count without a note', () => {
-    render(<GroupHeading id="yours" title="Yours" count={1} open disabled={false} onToggle={vi.fn()} />)
+  it('shows only its title and count without a note, with its own classes alone', () => {
+    const { container } = render(
+      <GroupHeading id="yours" title="Yours" count={1} open disabled={false} onToggle={vi.fn()} />,
+    )
 
     const button = screen.getByRole('button', { name: 'Yours · 1' })
 
     expect(button.querySelectorAll(':scope > span')).toHaveLength(1)
+    expect(container.firstElementChild).toHaveAttribute(
+      'class',
+      'sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-background pt-1 pb-1',
+    )
+  })
+
+  it('heads a clone by its name in normal case, in place of a title and count, where its grid puts it', async () => {
+    const onToggle = vi.fn<() => void>()
+    const { container } = render(
+      <GroupHeading
+        id="clone-example-repo"
+        name={
+          <>
+            <span className="text-muted">acme-org/</span>
+            <span className="font-semibold">example-repo</span>
+          </>
+        }
+        open={false}
+        disabled={false}
+        onToggle={onToggle}
+        note={<span>~/projects/example-repo</span>}
+        className="col-span-full"
+      >
+        <button type="button">Prune</button>
+      </GroupHeading>,
+    )
+    const button = screen.getByRole('button', { name: /^acme-org\/example-repo/ })
+
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    expect(button).not.toHaveTextContent('·')
+    expect(screen.getByText('example-repo').parentElement).toHaveClass(
+      'shrink-0',
+      'text-[0.8125rem]',
+      'tracking-normal',
+      'normal-case',
+    )
+    expect(screen.getByText('~/projects/example-repo').parentElement).toHaveClass('ml-2', 'flex-1')
+    expect(container.firstElementChild).toHaveClass('sticky', 'top-0', 'bg-background', 'col-span-full')
+    expect(screen.getByRole('button', { name: 'Prune' })).toBeInTheDocument()
+
+    await userEvent.click(button)
+
+    expect(onToggle).toHaveBeenCalledOnce()
   })
 })
