@@ -14,6 +14,14 @@ const rawHtmlProperties = ['innerHTML', 'outerHTML', 'insertAdjacentHTML']
 
 const rawHtmlMessage = 'Render through React; never write raw HTML into the DOM.'
 
+// The React Compiler memoizes the build, so no component holds a hand-written useMemo or
+// useCallback.
+const noMemoHooks = {
+  name: 'react',
+  importNames: ['useMemo', 'useCallback'],
+  message: 'The React Compiler memoizes the build; see CLAUDE.md',
+}
+
 export default defineConfig([
   globalIgnores(['dist', 'bindings', 'src/generated', 'coverage']),
 
@@ -72,12 +80,15 @@ export default defineConfig([
 
   // The UI reaches the desktop runtime and the generated bindings only through
   // src/platform, so a different shell or OS port swaps that module, never its callers.
+  // Nothing in src, src/platform included, imports React's memo hooks: the React Compiler
+  // memoizes the build.
   {
     files: ['src/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
+          paths: [noMemoHooks],
           patterns: [
             { group: ['@wailsio/*'], message: 'Import the desktop runtime through src/platform.' },
             { group: ['**/bindings/**'], message: 'Import the generated bindings through src/platform.' },
@@ -88,7 +99,7 @@ export default defineConfig([
   },
   {
     files: ['src/platform/**'],
-    rules: { 'no-restricted-imports': 'off' },
+    rules: { 'no-restricted-imports': ['error', { paths: [noMemoHooks] }] },
   },
 
   // Tests: Vitest's and Testing Library's rules catch tests that pass without checking
