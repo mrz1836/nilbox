@@ -14,20 +14,19 @@ import (
 //
 // A worktree with no item by its record, its name, or an item's own branch, on a local
 // branch that was pushed, is linked to the pull request whose head is that branch in the
-// repository it was pushed to: the branch's upstream when it follows a branch of a GitHub
-// remote, or else the remote-tracking branch of the same name, origin's first. A
-// remote's default branch never links. The pull request's head must be in that same
-// repository, so a fork's branch of the same name never links; of several, the one
-// updated last wins, whatever its state. GitHub is asked in the request the listing
-// makes for the items' states (GitHub.LinkStates), and its answer is kept (headCache) for
-// the commit the branch was pushed at, so a listing that finds nothing new asks about the
-// pull request's state alone. Linking by branch never makes the automatic cleanup easier:
-// autoCleanable keeps its rule.
+// repository it was pushed to: the remote-tracking branch of the same name, its upstream's
+// first, then origin's. A remote's default branch never links. The pull request's head
+// must be in that same repository, so a fork's branch of the same name never links; of
+// several, the open one wins, else the one updated last. GitHub is asked in the request
+// the listing makes for the items' states (GitHub.LinkStates), and its answer is kept
+// (headCache) for the commit the branch was pushed at, so a listing that finds nothing new
+// asks about the pull request's state alone. Linking by branch never makes the automatic
+// cleanup easier: autoCleanable keeps its rule.
 
 // headRecheck is how long a branch's answer is kept when it may change while the branch
 // stays where it is: that no pull request heads it, as before one is opened, or that the
-// one that does is done while the branch has moved past its head, as when it is reused for
-// another. A listing in between links it as GitHub last said.
+// one that does is done, as when the branch is reused for another, with or without a new
+// push. A listing in between links it as GitHub last said.
 const headRecheck = 10 * time.Minute
 
 // headCacheMax is how many branches' answers headCache keeps before it starts over.
@@ -94,10 +93,11 @@ type headPlan struct {
 }
 
 // plan works out what to ask about targets' branches at now: a branch at a commit it was
-// never asked about at is asked about; one known to head no pull request, or one that is
-// done while the branch moved past its head, is asked about again once headRecheck has
-// passed, and links as last said until then; one known to head a pull request is asked
-// about by that pull request's number alone.
+// never asked about at is asked about; one known to head no pull request, or only one that
+// is done, is asked about again once headRecheck has passed, as a pull request opened since
+// on the same branch at the same commit is the one it heads, and links as last said until
+// then; one known to head an open pull request is asked about by that pull request's
+// number alone.
 func (c *headCache) plan(targets []headTarget, now time.Time) headPlan {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -112,7 +112,7 @@ func (c *headCache) plan(targets []headTarget, now time.Time) headPlan {
 		}
 
 		e, ok := c.entries[key]
-		stale := e.number == 0 || (e.state != ItemOpen && e.head != t.ask.tip)
+		stale := e.number == 0 || e.state != ItemOpen
 
 		switch {
 		case ok && (!stale || now.Sub(e.askedAt) < headRecheck):
@@ -192,18 +192,27 @@ func knownRef(a headAsk, number int) item.Ref {
 }
 
 // pickHead chooses the pull request a branch of repo heads among GitHub's answer for it,
-// newest updated first: the first whose head branch has that name in that repository, so
-// a fork's same-named branch never counts. It is nil when none does.
+// newest updated first, of those whose head branch has that name in that repository, so a
+// fork's same-named branch never counts: the open one, when there is one, else the one
+// updated last. An old pull request of the branch updated since, by a comment, say, never
+// wins over the open one. It is nil when none heads it.
 func pickHead(prs []HeadPR, a headAsk) *HeadPR {
+	var chosen *HeadPR
+
 	for i := range prs {
 		pr := &prs[i]
-		if pr.Number > 0 && pr.State.PullRequest && pr.State.HeadRef == a.branch &&
-			strings.EqualFold(pr.HeadRepo, a.repo.String()) {
+
+		switch {
+		case pr.Number <= 0 || !pr.State.PullRequest || pr.State.HeadRef != a.branch ||
+			!strings.EqualFold(pr.HeadRepo, a.repo.String()):
+		case itemStatus(pr.State.State) == ItemOpen:
 			return pr
+		case chosen == nil:
+			chosen = pr
 		}
 	}
 
-	return nil
+	return chosen
 }
 
 // resolveHeads works out the pull request each target's branch heads from GitHub's answer

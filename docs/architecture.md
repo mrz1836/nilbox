@@ -2173,9 +2173,9 @@ is linked by that branch (`branch`, `branchlink.go`): through the remote-trackin
 the same name, its upstream's remote's first when it follows one by that name (an upstream
 of another name is the branch it started from, its base, not its head), then origin's, then
 the other remotes' by name. A remote's default branch, a detached HEAD, and a remote that
-isn't on GitHub never link. It links to the pull request updated last, in any state, whose
-head branch has that name in that same repository (`headRepository`), so a fork's branch of
-the same name never does. Each clone's refs are read once a listing (`refsArgs`:
+isn't on GitHub never link. Of the pull requests whose head branch has that name in that
+same repository (`headRepository`), so a fork's branch of the same name never does, it links
+to the open one, when there is one, else to the one updated last, merged or closed. Each clone's refs are read once a listing (`refsArgs`:
 `for-each-ref` over `refs/heads/` and `refs/remotes/`, each with its commit, upstream,
 symbolic target, and worktree, a read with `ReadEnv`), and the branches a removal offers are
 judged from the same read (`markRepo`), so linking by branch runs no git of its own; a clone
@@ -2187,8 +2187,8 @@ so branches beside items cost no request, and branches alone one. The answer is 
 memory by repository, branch, and the commit the clone saw it at (`headCache`): the next
 listing asks about that pull request by number with the items, and about the branch only
 once it moves, or, at most every `headRecheck` (10 minutes), while no pull request heads it
-or the one that does is done and the branch moved past its head (one opened since, or a
-branch reused). A pull request GitHub no longer answers as that branch's is forgotten, and
+or the one that does is done (one opened since, or a branch reused for another, with or
+without a push). A pull request GitHub no longer answers as that branch's is forgotten, and
 the branch asked about again. A worktree linked by its branch is never recorded as its
 item's (`adopt`), so a launch on the item never resumes it; it offers no pull request's
 branch with its removal (`BranchPullRequest` stays `name`'s); and the sweep removes it only

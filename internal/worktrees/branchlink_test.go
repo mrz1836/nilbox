@@ -275,6 +275,47 @@ func TestListAsksAgainAboutABranchThatMovedPastItsDonePullRequest(t *testing.T) 
 	assert.Equal(t, 2, withHeads)
 }
 
+func TestListPrefersTheOpenPullRequestABranchHeads(t *testing.T) {
+	t.Parallel()
+
+	r := newBranchRig(t, false)
+	r.gh.setHead(pushedBranch,
+		headPR(7, ItemMerged, r.head, pushedBranch, ownRepo),
+		headPR(8, ItemClosed, r.head, pushedBranch, ownRepo),
+		headPR(9, ItemOpen, r.head, pushedBranch, ownRepo),
+	)
+
+	row := r.list(t)
+	require.NotNil(t, row.Item)
+	assert.Equal(t, 9, row.Item.Number, "the open one, though an older one was updated since")
+	assert.Equal(t, StageActive, row.Stage)
+}
+
+func TestListAsksAgainAboutABranchReusedAtTheHeadOfItsDonePullRequest(t *testing.T) {
+	t.Parallel()
+
+	r := newBranchRig(t, false)
+	r.gh.setHead(pushedBranch, headPR(7, ItemMerged, r.head, pushedBranch, ownRepo))
+	r.gh.set(exampleName, 7, headPR(7, ItemMerged, r.head, pushedBranch, ownRepo).State)
+
+	assert.Equal(t, 7, r.list(t).Item.Number)
+
+	// A pull request opened again from the branch, with nothing pushed since.
+	r.gh.setHead(pushedBranch,
+		headPR(9, ItemOpen, r.head, pushedBranch, ownRepo), headPR(7, ItemMerged, r.head, pushedBranch, ownRepo))
+
+	assert.Equal(t, 7, r.list(t).Item.Number, "as last said, until a while has passed")
+
+	r.clock.Advance(headRecheck)
+
+	row := r.list(t)
+	assert.Equal(t, 9, row.Item.Number)
+	assert.Equal(t, StageActive, row.Stage)
+
+	_, withHeads := r.gh.requests()
+	assert.Equal(t, 2, withHeads)
+}
+
 func TestListForgetsABranchsPullRequestGitHubNoLongerKnows(t *testing.T) {
 	t.Parallel()
 
