@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { finishSetup, getSetup, restartSetup, setSetupStep, type SetupStep } from '../platform'
-import { attempt, type Result } from './call'
+import { attempt, logFailure, type Result } from './call'
 import { setupFromURL, urlWithoutSetup } from './setup'
 import { useQuery } from './useQuery'
 
@@ -34,15 +34,6 @@ function stripSetupParam(win: Window): void {
   }
 }
 
-// logged writes a failed store to the console: what it changed shows already.
-function logged(what: string): (result: Result<unknown>) => void {
-  return (result) => {
-    if (!result.ok) {
-      console.error(`could not ${what}:`, result.error)
-    }
-  }
-}
-
 // useSetup follows the first-run setup. Its first frame trusts the page's URL, which the
 // shell writes from the stored state, so the window never flashes the inbox before the
 // setup; the stored state, once read, is what counts, and a state that can't be read never
@@ -70,13 +61,14 @@ export function useSetup(win: Window = window): SetupControl {
 
   const go = (next: SetupStep) => {
     setChosen(next)
-    void attempt(setSetupStep(next)).then(logged('remember the setup’s step'))
+    // A store that fails is logged: the step shows already.
+    logFailure(setSetupStep(next), 'could not remember the setup’s step:')
   }
 
   const finish = () => {
     setDecided(false)
     stripSetupParam(win)
-    void attempt(finishSetup()).then(logged('store that the setup is done'))
+    logFailure(finishSetup(), 'could not store that the setup is done:')
   }
 
   const restart = async (): Promise<Result<void>> => {

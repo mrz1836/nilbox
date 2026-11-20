@@ -104,9 +104,10 @@ describe('useSetup', () => {
 
   it('logs a finish or a step it could not store, keeping what shows', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const full = new Error('setup: write prefs: disk full', { cause: { message: 'The disk is full.' } })
     platform.getSetup.mockReturnValue(pending())
-    platform.finishSetup.mockRejectedValue(new Error('disk full'))
-    platform.setSetupStep.mockRejectedValue(new Error('disk full'))
+    platform.finishSetup.mockRejectedValue(full)
+    platform.setSetupStep.mockRejectedValue(full)
 
     const { result } = renderHook(() => useSetup())
 
@@ -119,9 +120,9 @@ describe('useSetup', () => {
 
     expect(result.current.showing).toBe(false)
     await waitFor(() => {
-      expect(error).toHaveBeenCalledWith('could not store that the setup is done:', 'disk full')
+      expect(error).toHaveBeenCalledWith('could not store that the setup is done:', full)
     })
-    expect(error).toHaveBeenCalledWith('could not remember the setup’s step:', 'disk full')
+    expect(error).toHaveBeenCalledWith('could not remember the setup’s step:', full)
   })
 
   it('runs again from Welcome, welcoming the user back', async () => {

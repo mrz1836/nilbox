@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { all, andThen, attempt, cancel, serial, start } from './call'
+import { all, andThen, attempt, cancel, logFailure, serial, start } from './call'
 
 // cancellable is a call that records its cancellation, as a bound call does.
 function cancellable<T>(value: T) {
@@ -20,6 +20,56 @@ describe('attempt', () => {
     const err = new Error('graphql: 502 Bad Gateway', { cause: { message: 'Could not reach GitHub.' } })
 
     expect(await attempt(Promise.reject(err))).toEqual({ ok: false, error: 'Could not reach GitHub.' })
+  })
+})
+
+describe('logFailure', () => {
+  it('logs a failure under its message with the error as it came, not the user’s sentence', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const err = new Error('graphql: 502 Bad Gateway', { cause: { message: 'Could not reach GitHub.' } })
+    const onData = vi.fn()
+
+    logFailure(Promise.reject(err), 'could not quit:', onData)
+
+    await vi.waitFor(() => {
+      expect(logged).toHaveBeenCalledExactlyOnceWith('could not quit:', err)
+    })
+    expect(onData).not.toHaveBeenCalled()
+  })
+
+  it('hands the answer to onData, logging nothing', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const onData = vi.fn()
+
+    logFailure(Promise.resolve(4), 'could not count', onData)
+    logFailure(Promise.resolve('ignored'), 'could not say')
+
+    await vi.waitFor(() => {
+      expect(onData).toHaveBeenCalledExactlyOnceWith(4)
+    })
+    expect(logged).not.toHaveBeenCalled()
+  })
+
+  it('handles a cancelled call’s rejection too', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    let refuse: (err: Error) => void = () => undefined
+    const call = Object.assign(
+      new Promise<void>((_, reject) => {
+        refuse = reject
+      }),
+      {
+        cancel: () => {
+          refuse(new Error('cancelled'))
+        },
+      },
+    )
+
+    logFailure(call, 'could not keep running:')
+    cancel(call)
+
+    await vi.waitFor(() => {
+      expect(logged).toHaveBeenCalledExactlyOnceWith('could not keep running:', new Error('cancelled'))
+    })
   })
 })
 
