@@ -1,6 +1,6 @@
 import { useId } from 'react'
 
-import { badgeText, formatCount } from '../lib/format'
+import { formatCount } from '../lib/format'
 import { quickViewMax } from '../lib/notifications'
 import type { NotificationsState } from '../lib/useNotifications'
 import { usePopover } from '../lib/usePopover'
@@ -8,7 +8,7 @@ import type { AppNotification } from '../platform'
 import { quietButtonClass } from './controls'
 import { BellIcon, CheckIcon, HistoryIcon, SlidersIcon } from './icons'
 import { EntryRow } from './notifications/EntryRow'
-import { PopoverPanel } from './PopoverPanel'
+import { CountDot, PopoverPanel, ToolbarPopoverButton } from './PopoverPanel'
 
 export interface NotificationsMenuProps {
   notifications: NotificationsState
@@ -38,7 +38,7 @@ export function bellLabel(unread: number): string {
 export function NotificationsMenu({ notifications, onOpen, onSettings, onViewAll }: NotificationsMenuProps) {
   const id = useId()
   const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ focus: 'panel' })
-  const { open, toggle, close, triggerRef } = popover
+  const { close } = popover
   const { log, error, markRead, markAllRead, markError } = notifications
   const unread = log.items.filter((n) => !n.read)
   const shown = unread.slice(0, quickViewMax)
@@ -59,28 +59,15 @@ export function NotificationsMenu({ notifications, onOpen, onSettings, onViewAll
 
   return (
     <div className="relative">
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-label={label}
-        title={label}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        onClick={toggle}
+      <ToolbarPopoverButton
+        popover={popover}
+        id={id}
+        label={label}
         className="relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text"
       >
         <BellIcon className="size-[1.125rem]" />
-        {log.unread > 0 && (
-          <span
-            data-testid="notifications-unread"
-            aria-hidden="true"
-            className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-surface tabular-nums"
-          >
-            {badgeText(log.unread)}
-          </span>
-        )}
-      </button>
+        <CountDot count={log.unread} testId="notifications-unread" />
+      </ToolbarPopoverButton>
       <PopoverPanel
         state={popover}
         align="right"

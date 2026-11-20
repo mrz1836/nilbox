@@ -20,7 +20,7 @@ import { formatAgo } from '../lib/time'
 import { openExternal, type ServiceProvider } from '../platform'
 import { buttonClass } from './controls'
 import { AlertIcon, ExternalIcon } from './icons'
-import { PopoverPanel } from './PopoverPanel'
+import { PopoverPanel, ToolbarPopoverButton } from './PopoverPanel'
 
 export interface ServiceStatusMenuProps {
   service: ServiceStatusState
@@ -119,7 +119,7 @@ function ProviderCard({ provider }: { provider: ServiceProvider }) {
 export function ServiceStatusMenu({ service, onChooseWatch }: ServiceStatusMenuProps) {
   const id = useId()
   const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ focus: 'panel' })
-  const { open, toggle, close, triggerRef } = popover
+  const { close } = popover
   const { status, checking, check } = service
   const checkedAt = status?.checkedAt ?? ''
   const checked = useNowAs((now) => (checkedAt === '' ? '' : formatAgo(now, checkedAt)))
@@ -135,19 +135,14 @@ export function ServiceStatusMenu({ service, onChooseWatch }: ServiceStatusMenuP
 
   return (
     <div className="relative">
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-label={label}
-        title={label}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        onClick={toggle}
+      <ToolbarPopoverButton
+        popover={popover}
+        id={id}
+        label={label}
         className={`flex size-8 items-center justify-center rounded-md transition-colors hover:bg-raised aria-expanded:bg-raised ${toneText[tone]}`}
       >
         <AlertIcon className="size-4" />
-      </button>
+      </ToolbarPopoverButton>
       <PopoverPanel
         state={popover}
         align="right"
