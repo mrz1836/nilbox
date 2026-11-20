@@ -1,7 +1,7 @@
-import { useId, type ReactNode } from 'react'
+import { useId, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 
-// Shared styles and small controls for forms: text fields, buttons, and a segmented
-// choice. Every control is a native element, so it works with the keyboard and screen
+// Shared styles and small controls for forms: text fields, buttons, a segmented choice,
+// and a select. Every control is a native element, so it works with the keyboard and screen
 // readers as is.
 
 export const fieldClass =
@@ -116,6 +116,73 @@ export function Segmented<T extends string>({
         </label>
       ))}
     </div>
+  )
+}
+
+export interface SelectOption<T extends string> {
+  value: T
+  label: string
+  // title is the option's tooltip, if any.
+  title?: string | undefined
+  // disabled turns the option off alone, such as one the choice around it can't take.
+  disabled?: boolean | undefined
+}
+
+// SelectGroup is a run of options under a heading, an optgroup; its heading names it among
+// the others, so each is its own.
+export interface SelectGroup<T extends string> {
+  group: string
+  options: readonly SelectOption<T>[]
+}
+
+// SelectProps are a select's own attributes (id, className, aria-*, title, disabled, ...),
+// which it carries as they are, with its value, its options in order, and onChange, which
+// receives the option chosen.
+export type SelectProps<T extends string> = Omit<
+  ComponentPropsWithoutRef<'select'>,
+  'value' | 'defaultValue' | 'onChange' | 'children' | 'multiple'
+> & {
+  value: T
+  options: readonly (SelectOption<T> | SelectGroup<T>)[]
+  onChange: (value: T) => void
+}
+
+// selectOption draws one option of a Select.
+function selectOption<T extends string>(o: SelectOption<T>) {
+  return (
+    <option key={o.value} value={o.value} title={o.title} disabled={o.disabled}>
+      {o.label}
+    </option>
+  )
+}
+
+// Select is a native select of options typed T: the value the DOM reports is read back
+// through the options, so onChange receives one of theirs.
+export function Select<T extends string>({ value, options, onChange, ...attributes }: SelectProps<T>) {
+  const listed = options.flatMap((o) => ('group' in o ? o.options : [o]))
+
+  return (
+    <select
+      {...attributes}
+      value={value}
+      onChange={(e) => {
+        const chosen = listed.find((o) => o.value === e.target.value)
+
+        if (chosen !== undefined) {
+          onChange(chosen.value)
+        }
+      }}
+    >
+      {options.map((o) =>
+        'group' in o ? (
+          <optgroup key={o.group} label={o.group}>
+            {o.options.map(selectOption)}
+          </optgroup>
+        ) : (
+          selectOption(o)
+        ),
+      )}
+    </select>
   )
 }
 
