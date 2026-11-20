@@ -35,7 +35,7 @@ func TestTheReviewSheetReadsAnEarlierPageThroughTheInboxStoringNothing(t *testin
 	assert.Len(t, r.pulls.asked(), 1, "neither asks GitHub")
 }
 
-func TestTheReviewSheetReadsTheMergeMethodAsTheSettingsStoreIt(t *testing.T) {
+func TestTheReviewSheetReadsItsMergePrefsAsTheSettingsStoreThem(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -43,21 +43,25 @@ func TestTheReviewSheetReadsTheMergeMethodAsTheSettingsStoreIt(t *testing.T) {
 	prefs := settings.NewService(db, profiles.NewStore(db, nil), t.TempDir())
 	sheet := reviewSettings{settings: prefs}
 
-	got, err := sheet.MergeMethod(ctx)
+	got, err := sheet.MergePrefs(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, review.PrefRepo, got, "as each repository offers first, until the user picks one")
+	assert.Equal(t, review.Prefs{Method: review.PrefRepo}, got,
+		"as each repository offers first, and never past the rules on its own, until the user picks")
 
 	_, err = prefs.SetMergeMethod(ctx, settings.MergeMethodRebase)
 	require.NoError(t, err)
 
-	got, err = sheet.MergeMethod(ctx)
+	_, err = prefs.SetBypassOwn(ctx, true)
 	require.NoError(t, err)
-	assert.Equal(t, review.PrefRebase, got)
+
+	got, err = sheet.MergePrefs(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, review.Prefs{Method: review.PrefRebase, BypassOwn: true}, got)
 
 	closed := testutil.ClosedDB(t)
 	broken := reviewSettings{settings: settings.NewService(closed, profiles.NewStore(closed, nil), t.TempDir())}
 
-	_, err = broken.MergeMethod(ctx)
+	_, err = broken.MergePrefs(ctx)
 	require.Error(t, err, "settings that can't be read fail the sheet's read")
 
 	_, err = broken.Sensitive(ctx)

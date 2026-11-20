@@ -176,6 +176,37 @@ describe('ReviewingSection', () => {
     expect(onSaved).not.toHaveBeenCalled()
   })
 
+  it('saves whether your own pull requests merge past the rules, off at first', async () => {
+    const { onSaved } = renderSection()
+    const bypass = screen.getByRole('switch', { name: 'Merge your own pull requests past the rules' })
+
+    expect(bypass).not.toBeChecked()
+    expect(bypass).toHaveAccessibleDescription(
+      'When an approval from someone else is all your pull request lacks, and GitHub lets you merge past the branch’s rules, the review sheet’s button does that instead of Merge when ready. You still confirm each rule it skips.',
+    )
+
+    await userEvent.click(bypass)
+
+    expect(platform.setBypassOwn).toHaveBeenCalledWith(true)
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith(settings({ bypassOwn: true }))
+    })
+  })
+
+  it('shows a change of merging past the rules the backend refused, and goes back to the stored one', async () => {
+    platform.setBypassOwn.mockRejectedValue(new Error('the settings could not be saved'))
+    const { onSaved } = renderSection()
+    const bypass = screen.getByRole('switch', { name: 'Merge your own pull requests past the rules' })
+
+    await userEvent.click(bypass)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('the settings could not be saved')
+    await waitFor(() => {
+      expect(bypass).not.toBeChecked()
+    })
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
   it('lists the ignored workflows, each with its remove button', () => {
     renderSection(settings({ ignoredWorkflows: ['Auto-merge Trigger', 'Deploy Preview'] }))
 

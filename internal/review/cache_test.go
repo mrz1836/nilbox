@@ -29,7 +29,7 @@ func TestACachedContextFromAnOlderBuildStillReads(t *testing.T) {
 	assert.Nil(t, pc.Timeline, "nor the conversation, until the sheet reads it again")
 	assert.False(t, pc.BodyTrimmed)
 
-	r := build(storedPull(), &cached{head: "abc", context: pc}, nil, PrefRepo)
+	r := build(storedPull(), &cached{head: "abc", context: pc}, nil, Prefs{Method: PrefRepo})
 	assert.Equal(t, []timeline.Entry{}, r.Timeline.Items, "the sheet shows no conversation, never null")
 	assert.Equal(t, []timeline.Reaction{}, r.Reactions)
 	assert.False(t, recent(storedPull(), &cached{head: "abc", context: pc, contextAt: testNow}, testNow),

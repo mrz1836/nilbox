@@ -461,6 +461,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setBranchRules: (branches) => stored({ branches: { ...branches, protected: branches.protected ?? [] } }),
     setRepoRule: (target, rule) => stored({ repoRules: withRepoRule(settings().repoRules, target, rule) }),
     setMergeMethod: (mergeMethod) => stored({ mergeMethod }),
+    setBypassOwn: (bypassOwn) => stored({ bypassOwn }),
     setNudgeAfterHours: (nudgeAfterHours) => stored({ nudgeAfterHours }),
     setNudgeSnooze: (nudgeSnooze) => stored({ nudgeSnooze }),
     setIntegrationEnabled: (id, state) =>

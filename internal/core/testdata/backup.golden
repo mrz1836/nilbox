@@ -79,6 +79,7 @@
       ]
     },
     "mergeMethod": "repo",
+    "bypassOwn": false,
     "nudgeAfterHours": 24,
     "nudgeSnooze": false,
     "theme": "system",

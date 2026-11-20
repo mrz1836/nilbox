@@ -1007,6 +1007,7 @@ export const {
   SetBranchRules: setBranchRules,
   SetRepoRule: setRepoRule,
   SetMergeMethod: setMergeMethod,
+  SetBypassOwn: setBypassOwn,
   SetNudgeAfterHours: setNudgeAfterHours,
   SetNudgeSnooze: setNudgeSnooze,
   SetIntegrationEnabled: setIntegrationEnabled,

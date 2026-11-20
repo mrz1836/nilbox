@@ -232,10 +232,11 @@ type GitHub interface {
 	RemoveAssignees(ctx context.Context, tok github.Token, ref item.Ref, logins []string) (*github.Edited, error)
 }
 
-// Settings reads the settings the sheet follows: how to merge, which files are sensitive,
-// and the workflows whose held runs never count (heldruns.KeyIgnoredWorkflows).
+// Settings reads the settings the sheet follows: how to merge and whether to merge the
+// user's own pull requests past the rules (Prefs), which files are sensitive, and the
+// workflows whose held runs never count (heldruns.KeyIgnoredWorkflows).
 type Settings interface {
-	MergeMethod(ctx context.Context) (MethodPref, error)
+	MergePrefs(ctx context.Context) (Prefs, error)
 	Sensitive(ctx context.Context) (sensitive.Config, error)
 	IgnoredWorkflows(ctx context.Context) ([]string, error)
 }
@@ -560,12 +561,12 @@ func (s *Service) built(ctx context.Context, pull StoredPull, c *cached) (Review
 		return Review{}, err
 	}
 
-	pref, err := s.settings.MergeMethod(ctx)
+	prefs, err := s.settings.MergePrefs(ctx)
 	if err != nil {
 		return Review{}, err
 	}
 
-	return build(pull, c, sensitive.NewMatcher(cfg), pref), nil
+	return build(pull, c, sensitive.NewMatcher(cfg), prefs), nil
 }
 
 // stampUse stamps the use of the cache c of the pull request with id, and, when visit is
@@ -801,8 +802,8 @@ func (s *Service) now() time.Time {
 }
 
 // build makes the sheet from the stored pull request and its cache (nil when the sheet
-// never read it), judging its files with matcher and its merge with pref.
-func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPref) Review {
+// never read it), judging its files with matcher and its merge with prefs.
+func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, prefs Prefs) Review {
 	r := Review{
 		ID: pull.ID, Repo: pull.ref().Repo.String(), Number: pull.Number, Title: pull.Title, URL: pull.URL,
 		State: github.StateOpen, Author: pull.AuthorLogin, IsBot: strings.EqualFold(pull.AuthorType, "Bot"),
@@ -842,7 +843,7 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 	r.Assignees, r.MoreAssignees = shownAssignees(c, pull.Viewer)
 	r.CanEditAssignees = canEditAssignees(pull, c)
 
-	plan := Decide(factsOf(pull, c, r), pref)
+	plan := Decide(factsOf(pull, c, r), prefs)
 	r.Offers, r.Primary, r.Readiness = textutil.NonNil(plan.Offers), plan.Primary, plan.Readiness
 	r.MergeMethods, r.DefaultMethod = plan.Methods, plan.Method
 

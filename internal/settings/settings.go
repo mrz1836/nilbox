@@ -284,8 +284,11 @@ type Settings struct {
 	// never nil.
 	IgnoredWorkflows []string `json:"ignoredWorkflows"`
 
-	// MergeMethod is how the review sheet merges a pull request.
+	// MergeMethod is how the review sheet merges a pull request, and BypassOwn whether its
+	// button merges the user's own pull request past the rules when an approval from
+	// someone else is all it lacks (see KeyBypassOwn).
 	MergeMethod MergeMethod `json:"mergeMethod"`
+	BypassOwn   bool        `json:"bypassOwn"`
 
 	// NudgeAfterHours is how many hours a pull request the user requested changes on has
 	// to be quiet before its card offers to nudge its author, 0 for never (see
@@ -836,6 +839,7 @@ func fromStored(stored map[string]string) Settings {
 		CardUnread:           prefval.Bool(stored[KeyCardUnread], DefaultCardUnread),
 		IgnoredWorkflows:     heldruns.Decode(stored[KeyIgnoredWorkflows]),
 		MergeMethod:          mergeMethods().decode(stored[KeyMergeMethod]),
+		BypassOwn:            prefval.Bool(stored[KeyBypassOwn], DefaultBypassOwn),
 		NudgeAfterHours:      decodeNudgeAfterHours(stored[KeyNudgeAfterHours]),
 		NudgeSnooze:          prefval.Bool(stored[KeyNudgeSnooze], DefaultNudgeSnooze),
 		Integrations:         integrationprefs.Decode(stored),
@@ -964,7 +968,7 @@ func settingKeys() []string {
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments, snooze.PrefWakeReady,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
-		KeyTextSize, KeyCelebrations, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyNudgeAfterHours, KeyNudgeSnooze, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
+		KeyTextSize, KeyCelebrations, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyBypassOwn, KeyNudgeAfterHours, KeyNudgeSnooze, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus, KeyWatchPushes, updateprefs.KeyMode,
 		KeyHiddenLabels, KeyCardAvatars, KeyCardDensity, KeyCardUnread, KeyIgnoredWorkflows,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),

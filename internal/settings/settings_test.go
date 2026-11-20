@@ -444,6 +444,7 @@ func TestGetFallsBackOnBadStoredValues(t *testing.T) {
 	setPref(t, db, KeyToastSeconds, "61")
 	setPref(t, db, KeyNudgeAfterHours, "721")
 	setPref(t, db, KeyNudgeSnooze, "maybe")
+	setPref(t, db, KeyBypassOwn, "maybe")
 	setPref(t, db, KeyCelebrations, "fireworks")
 	setPref(t, db, snooze.PrefWakeReviews, "sometimes")
 	setPref(t, db, snooze.PrefWakeCommits, "lots")
@@ -709,6 +710,10 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 		{
 			"nudge snooze", func() (Settings, error) { return svc.SetNudgeSnooze(ctx, true) },
 			func(s Settings) any { return s.NudgeSnooze }, true,
+		},
+		{
+			"bypass own", func() (Settings, error) { return svc.SetBypassOwn(ctx, true) },
+			func(s Settings) any { return s.BypassOwn }, true,
 		},
 		{
 			"snooze wake", func() (Settings, error) { return svc.SetSnoozeWake(ctx, wake) },

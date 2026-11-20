@@ -214,7 +214,7 @@ func TestTheSheetShowsTheCommitsSinceYourReview(t *testing.T) {
 func TestASheetNeverReadHasNoCommits(t *testing.T) {
 	t.Parallel()
 
-	r := build(storedPull(), nil, nil, PrefRepo)
+	r := build(storedPull(), nil, nil, Prefs{Method: PrefRepo})
 	assert.Equal(t, []Commit{}, r.CommitList, "never null")
 	assert.Nil(t, r.YourReview)
 	assert.Equal(t, 1, r.Commits, "the card's count")

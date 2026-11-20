@@ -72,14 +72,20 @@ type reviewSettings struct {
 	settings *settings.Service
 }
 
-// MergeMethod returns how the user chose to merge.
-func (r reviewSettings) MergeMethod(ctx context.Context) (review.MethodPref, error) {
+// MergePrefs returns how the user chose to merge, and whether the sheet's button merges
+// their own pull request past the rules when it waits only on an approval.
+func (r reviewSettings) MergePrefs(ctx context.Context) (review.Prefs, error) {
 	m, err := r.settings.MergeMethod(ctx)
 	if err != nil {
-		return "", err
+		return review.Prefs{}, err
 	}
 
-	return review.MethodPref(m), nil
+	bypassOwn, err := r.settings.BypassOwn(ctx)
+	if err != nil {
+		return review.Prefs{}, err
+	}
+
+	return review.Prefs{Method: review.MethodPref(m), BypassOwn: bypassOwn}, nil
 }
 
 // Sensitive returns which files are sensitive.

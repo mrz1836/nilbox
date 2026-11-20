@@ -737,10 +737,11 @@ func (g *fakeGitHub) requests() []string { return g.calls.Since(callReview, call
 
 // fakeSettings is the settings the sheet follows.
 type fakeSettings struct {
-	pref    MethodPref
-	cfg     sensitive.Config
-	ignored *ignoredWorkflows
-	err     error
+	pref      MethodPref
+	bypassOwn bool
+	cfg       sensitive.Config
+	ignored   *ignoredWorkflows
+	err       error
 }
 
 // ignoredWorkflows is the workflows whose held runs never count, which a test changes while
@@ -769,12 +770,13 @@ func (s fakeSettings) IgnoredWorkflows(context.Context) ([]string, error) {
 	return slices.Clone(s.ignored.names), s.err
 }
 
-func (s fakeSettings) MergeMethod(context.Context) (MethodPref, error) {
-	if s.pref == "" {
-		return PrefRepo, s.err
+func (s fakeSettings) MergePrefs(context.Context) (Prefs, error) {
+	prefs := Prefs{Method: s.pref, BypassOwn: s.bypassOwn}
+	if prefs.Method == "" {
+		prefs.Method = PrefRepo
 	}
 
-	return s.pref, s.err
+	return prefs, s.err
 }
 
 func (s fakeSettings) Sensitive(context.Context) (sensitive.Config, error) {

@@ -70,13 +70,13 @@ func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 		return Result{}, err
 	}
 
-	pref, err := s.settings.MergeMethod(ctx)
+	prefs, err := s.settings.MergePrefs(ctx)
 	if err != nil {
 		return Result{}, err
 	}
 
-	facts := factsOf(pull, c, build(pull, c, sensitive.NewMatcher(cfg), pref))
-	plan := Decide(facts, pref)
+	facts := factsOf(pull, c, build(pull, c, sensitive.NewMatcher(cfg), prefs))
+	plan := Decide(facts, prefs)
 
 	run, err := s.prepare(ctx, req, plan, c)
 	if err != nil {

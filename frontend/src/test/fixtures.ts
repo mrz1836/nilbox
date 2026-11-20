@@ -1280,6 +1280,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     cardUnread: true,
     ignoredWorkflows: [],
     mergeMethod: 'repo',
+    bypassOwn: false,
     nudgeAfterHours: 24,
     nudgeSnooze: false,
     integrations: integrationsConfig(),

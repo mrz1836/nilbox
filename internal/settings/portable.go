@@ -70,6 +70,7 @@ type Portable struct {
 	WatchPushes         *bool                `json:"watchPushes,omitempty"`
 	ServiceStatus       *PortableStatus      `json:"serviceStatus,omitempty"`
 	MergeMethod         *MergeMethod         `json:"mergeMethod,omitempty"`
+	BypassOwn           *bool                `json:"bypassOwn,omitempty"`
 	NudgeAfterHours     *int                 `json:"nudgeAfterHours,omitempty"`
 	NudgeSnooze         *bool                `json:"nudgeSnooze,omitempty"`
 	Theme               *Theme               `json:"theme,omitempty"`
@@ -203,8 +204,9 @@ func portableOf(set Settings) Portable {
 		},
 		WatchPushes:   &set.WatchPushes,
 		ServiceStatus: &PortableStatus{Off: &off, Parts: &picked},
-		MergeMethod:   &set.MergeMethod, NudgeAfterHours: &set.NudgeAfterHours, NudgeSnooze: &set.NudgeSnooze,
-		Theme: &set.Theme, TextSize: &set.TextSize, Celebrations: &set.Celebrations, ToastSeconds: &set.ToastSeconds,
+		MergeMethod:   &set.MergeMethod, BypassOwn: &set.BypassOwn, NudgeAfterHours: &set.NudgeAfterHours,
+		NudgeSnooze: &set.NudgeSnooze,
+		Theme:       &set.Theme, TextSize: &set.TextSize, Celebrations: &set.Celebrations, ToastSeconds: &set.ToastSeconds,
 		InboxOrder: &set.InboxOrder, HiddenLabels: &set.HiddenLabels, CardAvatars: &set.CardAvatars,
 		CardDensity: &set.CardDensity, CardUnread: &set.CardUnread, IgnoredWorkflows: &set.IgnoredWorkflows,
 		Integrations: &PortableIntegration{
@@ -484,6 +486,8 @@ func (s *Service) portableFields() []portableField {
 		pointerField("Merge method", tellsNothing, func(p Portable) *MergeMethod { return p.MergeMethod },
 			func(_ context.Context, m MergeMethod) (map[string]string, error) { return checkMergeMethod(m) },
 			func(m MergeMethod) string { return string(m) }),
+		boolField("Merge your own pull requests past the rules", tellsNothing, KeyBypassOwn,
+			func(p Portable) *bool { return p.BypassOwn }),
 		pointerField("Offer a nudge after", tellsNothing, func(p Portable) *int { return p.NudgeAfterHours },
 			func(_ context.Context, n int) (map[string]string, error) { return checkNudgeAfterHours(n) }, nudgeHours),
 		boolField("Snooze after a nudge", tellsNothing, KeyNudgeSnooze, func(p Portable) *bool { return p.NudgeSnooze }),

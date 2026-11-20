@@ -112,6 +112,14 @@ const (
 	PrefRebase MethodPref = "rebase_merge"
 )
 
+// Prefs are the user's settings that Decide follows: how to merge, and whether the sheet's
+// button merges the user's own pull request past the rules when an approval from someone
+// else is all it lacks (the review.bypassOwn setting).
+type Prefs struct {
+	Method    MethodPref
+	BypassOwn bool
+}
+
 // method is the merge method a choice names, or "" for PrefRepo.
 func (p MethodPref) method() MergeMethod {
 	switch p {
