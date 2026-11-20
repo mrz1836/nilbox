@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
-import type { AutopilotConfig, Settings } from '../../platform'
+import type { AutopilotConfig, AutopilotEngine, Settings } from '../../platform'
 import { at } from '../../test/clock'
 import {
   agents,
@@ -27,7 +27,16 @@ function withAutopilot(change: Partial<AutopilotConfig>): Settings {
 }
 
 // Harness keeps the settings as a settings page does: each one stored becomes the one shown.
-function Harness({ initial, onSaved }: { initial: Settings; onSaved: (settings: Settings) => void }) {
+// engine is the engine as the window last read it.
+function Harness({
+  initial,
+  onSaved,
+  engine,
+}: {
+  initial: Settings
+  onSaved: (settings: Settings) => void
+  engine: AutopilotEngine | null
+}) {
   const [current, setCurrent] = useState(initial)
 
   return (
@@ -39,16 +48,22 @@ function Harness({ initial, onSaved }: { initial: Settings; onSaved: (settings: 
       }}
       agents={agents()}
       profiles={[profile(), profile({ agent: 'codex', name: 'default', folder: '~/.codex' })]}
+      engine={engine}
     />
   )
 }
 
-function renderSection(current: Settings = settings()) {
+// renderSection shows the section with current, and engine as the window last read it;
+// showEngine shows it with another.
+function renderSection(current: Settings = settings(), engine: AutopilotEngine | null = autopilotEngine()) {
   const onSaved = vi.fn()
+  const { rerender } = render(<Harness initial={current} onSaved={onSaved} engine={engine} />, { wrapper: at() })
 
-  render(<Harness initial={current} onSaved={onSaved} />, { wrapper: at() })
+  const showEngine = (next: AutopilotEngine | null) => {
+    rerender(<Harness initial={current} onSaved={onSaved} engine={next} />)
+  }
 
-  return { onSaved }
+  return { onSaved, showEngine }
 }
 
 // labels lists a select's options as they read.
@@ -296,21 +311,34 @@ describe('AutopilotSection', () => {
     ).toBeInTheDocument()
   })
 
-  it('reads the engine again whenever Autopilot changes', async () => {
-    renderSection()
+  it('says when the engine last checked as the window reads it again', () => {
+    const { showEngine } = renderSection()
 
-    expect(await screen.findByText(/^Last checked today, 11:59 AM/)).toBeInTheDocument()
+    const line = screen.getByText(/^Last checked today, 11:59 AM/)
 
-    platform.getAutopilotEngine.mockResolvedValue(autopilotEngine({ elsewhere: true, holds: false }))
-    act(() => {
-      emit('autopilot:updated')
-    })
+    expect(line).toHaveAttribute('title')
+
+    showEngine(autopilotEngine({ elsewhere: true, holds: false }))
 
     expect(
-      await screen.findByText(
+      screen.getByText(
         `Autopilot is running in another copy of ${brand.name}. This one shows them and starts nothing.`,
       ),
-    ).toBeInTheDocument()
+    ).not.toHaveAttribute('title')
+    expect(platform.getAutopilotEngine).not.toHaveBeenCalled()
+  })
+
+  it('says nothing of the last check until the window has read the engine', () => {
+    const { showEngine } = renderSection(settings(), null)
+
+    const heading = screen.getByText('Last checked', { selector: 'p' })
+
+    expect(heading.nextElementSibling).toHaveTextContent(/^$/)
+    expect(heading.nextElementSibling).not.toHaveAttribute('title')
+
+    showEngine(autopilotEngine())
+
+    expect(heading.nextElementSibling).toHaveTextContent('Last checked today, 11:59 AM · 34 ms · 7 matches · 1 start')
   })
 })
 
@@ -429,6 +457,6 @@ describe('lastCheckedText', () => {
     expect(lastCheckedText(now, autopilotEngine({ elsewhere: true }))).toBe(
       `Autopilot is running in another copy of ${brand.name}. This one shows them and starts nothing.`,
     )
-    expect(lastCheckedText(now, undefined)).toBe('')
+    expect(lastCheckedText(now, null)).toBe('')
   })
 })

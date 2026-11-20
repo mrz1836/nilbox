@@ -9,6 +9,7 @@ import type { Theme } from '../lib/theme'
 import type {
   Account,
   AgentInfo,
+  AutopilotEngine,
   DefaultPrompts,
   LaunchDefaults,
   NotificationKind,
@@ -20,6 +21,7 @@ import {
   account,
   agents,
   appInfo,
+  autopilotEngine,
   autopilotOff,
   defaultPrompts,
   launchDefaults,
@@ -73,6 +75,7 @@ interface Options {
   appPrompts?: DefaultPrompts | null
   theme?: Theme
   onThemeChange?: (theme: Theme) => Promise<Result<void>>
+  engine?: AutopilotEngine | null
 }
 
 function renderSettings({
@@ -86,6 +89,7 @@ function renderSettings({
   appPrompts = defaultPrompts(),
   theme = 'system',
   onThemeChange = vi.fn(() => Promise.resolve<Result<void>>({ ok: true, data: undefined })),
+  engine,
 }: Options = {}) {
   const onSaved = vi.fn()
   const onClose = vi.fn()
@@ -107,6 +111,7 @@ function renderSettings({
       onSaved={onSaved}
       onLaunchChanged={onLaunchChanged}
       onClose={onClose}
+      {...(engine === undefined ? {} : { autopilotEngine: engine })}
     />,
   )
 
@@ -1546,6 +1551,24 @@ describe('SettingsView Labs and Autopilot (beta)', () => {
 
     expect(screen.getByRole('region', { name: 'Labs' })).toBeInTheDocument()
     expect(screen.queryByText('Beta')).not.toBeInTheDocument()
+  })
+
+  // lastChecked is what Autopilot's Last checked says.
+  function lastChecked() {
+    return screen.getByText('Last checked', { selector: 'p' }).nextElementSibling
+  }
+
+  it('says when the engine it is given last checked', () => {
+    renderSettings({ section: 'autopilot', engine: autopilotEngine() })
+
+    expect(lastChecked()).toHaveTextContent(/^Last checked .+ · 34 ms · 7 matches · 1 start$/)
+    expect(platform.getAutopilotEngine).not.toHaveBeenCalled()
+  })
+
+  it('says nothing of the last check without an engine read', () => {
+    renderSettings({ section: 'autopilot' })
+
+    expect(lastChecked()).toHaveTextContent(/^$/)
   })
 
   it('marks no other section’s heading Beta', () => {

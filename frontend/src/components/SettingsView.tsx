@@ -18,6 +18,7 @@ import type { Theme } from '../lib/theme'
 import type {
   Account,
   AgentInfo,
+  AutopilotEngine,
   DefaultPrompts,
   LaunchDefaults,
   Profile,
@@ -103,6 +104,9 @@ export interface SettingsViewProps {
   // onManageReplies opens the review replies in the Prompts tab, which Reviewing's nudges
   // point at; without it they name the place alone.
   onManageReplies?: (() => void) | undefined
+  // autopilotEngine is Autopilot's engine as the window last read it, or null (the
+  // default) until it has, which Autopilot's Last checked says.
+  autopilotEngine?: AutopilotEngine | null | undefined
 }
 
 // SettingsView is the settings page: a sidebar of sections and the chosen section's
@@ -137,6 +141,7 @@ export function SettingsView({
   update,
   onShowCardGuide,
   onManageReplies,
+  autopilotEngine = null,
 }: SettingsViewProps) {
   const headingId = useId()
   const [chosen, setSection] = useState<SectionId>(initialSection)
@@ -347,7 +352,13 @@ export function SettingsView({
                   (settings === null ? (
                     loading
                   ) : (
-                    <AutopilotSection settings={settings} onSaved={onSaved} agents={agents} profiles={profiles} />
+                    <AutopilotSection
+                      settings={settings}
+                      onSaved={onSaved}
+                      agents={agents}
+                      profiles={profiles}
+                      engine={autopilotEngine}
+                    />
                   ))}
                 {section === 'launching' &&
                   (settings === null ? (

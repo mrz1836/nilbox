@@ -1492,6 +1492,7 @@ export function App() {
                               update={update}
                               onShowCardGuide={showCardGuide}
                               onManageReplies={openPrompts}
+                              autopilotEngine={autopilot.engine}
                             />
                           </Suspense>
                         </Activity>
