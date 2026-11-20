@@ -64,6 +64,28 @@ func TestFeedFollowers(t *testing.T) {
 	stopOther()
 }
 
+func TestFeedClear(t *testing.T) {
+	t.Parallel()
+
+	feed := devtools.NewFeed[int](2)
+	assert.Equal(t, 0, feed.Clear())
+
+	for i := range 5 {
+		feed.Add(i)
+	}
+
+	entries, stop := feed.Follow()
+	defer stop()
+
+	assert.Equal(t, 2, feed.Clear(), "it counts only what it keeps")
+	assert.Empty(t, feed.Last(0))
+	assert.Equal(t, 0, feed.Len())
+
+	feed.Add(5)
+	assert.Equal(t, 5, <-entries, "its followers go on following")
+	assert.Equal(t, []int{5}, feed.Last(0))
+}
+
 func TestFeedNeverWaitsOnASlowFollower(t *testing.T) {
 	t.Parallel()
 

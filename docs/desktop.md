@@ -172,6 +172,16 @@ of what you do there: each click, key, field typed in (never what you type), and
 changed, with the card, dialog, or list it happened in. So when something goes wrong, there's
 no need to retrace the steps: `magex inspect:trail` already has them.
 
+When something in the window looks wrong, you can point at it instead of describing it. Press
+⌥⌘P (or run `magex inspect:point`), and the window outlines whatever the pointer is over and
+names it. Click it (the app doesn't act on the click), type what's wrong in the box that opens,
+and press Enter; click another element for another note. Escape drops the note you're writing,
+then stops pointing, and leaves an open sheet or dialog open. Each note keeps your words, what
+you clicked and where (the card, dialog, and list), the view, the text around it, and a picture
+of the window with the element boxed; under `magex app:dev` it also keeps the React components
+that render the element and the source file that wrote it. `magex inspect:notes` reads them
+back, and each note shows on the trail too, in order with your clicks.
+
 It answers on a socket in the data folder (`devtools.sock`), which only your account can open,
 and sends nothing anywhere. It reads the database read-only: a statement that would write is
 refused, and the connection can't write besides.
@@ -182,6 +192,8 @@ refused, and the connection can't write besides.
 | `magex inspect:logs [n=] [level=] [grep=] [follow=true]` | The log, the last `n` (100) records at `level` and up holding `grep`; `follow=true` keeps printing until interrupted |
 | `magex inspect:events`, `inspect:console`, `inspect:trail` | The services' events, the page's console, and your trail, read the same way |
 | `magex inspect:watch [level=] [grep=]` | The log, the events, the console, and the trail together, live, until interrupted |
+| `magex inspect:point [on=false]` | Turns pointing on in the window, as ⌥⌘P does; `on=false` turns it off |
+| `magex inspect:notes [n=] [follow=true] [wait=true] [clear=true]` | The notes you left by pointing, each picture saved as `bin/inspect/note-<n>.png` with the element boxed; `wait=true` waits for the next note, prints it, and returns; `clear=true` empties the list |
 | `magex inspect:sql q="SELECT …" [max=]` | One statement that reads, against the live database, at most `max` (200) rows; a long value is cut short (`json=true` prints it whole) |
 | `magex inspect:tables` | The database's tables and their row counts |
 | `magex inspect:js code="…"` or `file=probe.js` | Runs JavaScript in the window's page and prints what it returns, once a promise settles: an expression, or statements that `return`. `nb` holds helpers: `nb.$`, `nb.$$`, `nb.find`, `nb.describe`, `nb.dom`, `nb.text`, `nb.cards`, `nb.click`, `nb.type`, `nb.press`, `nb.scroll`, `nb.wait`, and `nb.waitFor`, each taking a selector or the name a control shows |

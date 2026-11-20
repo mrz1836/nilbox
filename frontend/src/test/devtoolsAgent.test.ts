@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runInThisContext } from 'node:vm'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 // The inspector's agent, internal/devtools/agent.js, is the one piece of the inspector a
 // build from source runs in the window's page. It is plain JavaScript the app hands the
@@ -24,10 +24,18 @@ interface Message {
   target?: string
   where?: string
   url?: string
+  view?: string
+  element?: Record<string, unknown>
+  nearby?: string
+  components?: string
+  source?: string
+  width?: number
 }
 
 interface Agent {
   run: (id: number, code: string) => void
+  nb: { point: (on?: boolean) => boolean }
+  noted: (n: number) => void
 }
 
 // posted holds what the agent posted to the app, newest last.
@@ -68,15 +76,93 @@ const evaluate = async (code: string) => {
   return result as Message
 }
 
+// pointLayer is what the agent draws while the user points, or null when they don't.
+const pointLayer = () => document.querySelector<HTMLElement>('[data-devtools-point]')
+
+// press presses a key on target as the user would, and reports whether nothing prevented
+// it.
+const press = (target: EventTarget, init: KeyboardEventInit) =>
+  target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }))
+
+// pointKey is ⌥⌘P, which types π.
+const pointKey = { code: 'KeyP', key: 'π', altKey: true, metaKey: true }
+
+// component is a component named name, as React's development build keeps it.
+const component = (name: string) => Object.defineProperty(() => null, 'name', { value: name })
+
+// devFiber is the fiber React's development build keeps on a button TriageControls
+// rendered: its element's stack starts in React's own module, then in the component's
+// file. Above it are a provider, which has no name, ItemRow under memo, a list item, and
+// InboxView under forwardRef.
+const devFiber = {
+  type: 'button',
+  _debugOwner: null,
+  _debugStack: {
+    stack:
+      'react-stack-top-frame\n' +
+      'jsxDEV@wails://localhost/node_modules/.vite/deps/react_jsx-dev-runtime.js:250:12\n' +
+      'TriageControls@wails://localhost/src/components/TriageControls.tsx?t=1700:120:9',
+  },
+  return: {
+    type: component('TriageControls'),
+    return: {
+      type: { _context: {} },
+      return: {
+        type: { type: component('ItemRow') },
+        return: { type: 'li', return: { type: { render: component('InboxView') }, return: null } },
+      },
+    },
+  },
+}
+
+// noteOn points at el, writes words in the note's box, and presses Enter; it returns the
+// note the agent then posts.
+const noteOn = async (el: HTMLElement, words: string) => {
+  const before = posted.length
+
+  agent().nb.point(true)
+  el.click()
+
+  const field = pointLayer()?.querySelector('textarea') as HTMLTextAreaElement
+  field.value = words
+  press(field, { key: 'Enter' })
+
+  let note: Message | undefined
+
+  await expect.poll(() => (note = posted.slice(before).find((m) => m.t === 'note'))).toBeDefined()
+
+  return note as Message
+}
+
 const originalConsole = { ...console }
 const innerText = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'innerText')
 
 beforeAll(() => {
-  // jsdom lays nothing out, so it has no innerText; the text stands in.
+  // jsdom lays nothing out, so it has no innerText; the text stands in, but for what a
+  // page would not draw: a style sheet's, and what its own style hides.
   Object.defineProperty(HTMLElement.prototype, 'innerText', {
     configurable: true,
     get(this: HTMLElement) {
-      return this.textContent
+      const hidden = (el: HTMLElement | null) => {
+        for (let at = el; at !== null && at !== this.parentElement; at = at.parentElement) {
+          if (at.tagName === 'STYLE' || at.style.visibility === 'hidden' || at.style.display === 'none') {
+            return true
+          }
+        }
+
+        return false
+      }
+
+      const walker = document.createTreeWalker(this, NodeFilter.SHOW_TEXT)
+      let text = ''
+
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        if (!hidden(node.parentElement)) {
+          text += node.nodeValue ?? ''
+        }
+      }
+
+      return text
     },
   })
 
@@ -132,6 +218,10 @@ beforeEach(() => {
     ),
     el('input', { type: 'checkbox', 'aria-label': 'Compact' }),
   )
+})
+
+afterEach(() => {
+  agent().nb.point(false)
 })
 
 describe('the inspector’s agent', () => {
@@ -318,5 +408,254 @@ describe('the inspector’s agent', () => {
       error: expect.stringContaining('timed out waiting for #never') as string,
     })
     expect(await evaluate('nb.waitFor(() => 42)')).toMatchObject({ value: 42 })
+  })
+
+  it('names a dialog by the heading its aria-labelledby names', () => {
+    const sheet = el(
+      'dialog',
+      { open: '', 'aria-labelledby': 'sheet-title' },
+      el('h2', { id: 'sheet-title' }, 'Fix the cache'),
+      el('button', {}, 'Merge'),
+    )
+    document.body.append(sheet)
+
+    sheet.querySelector('button')?.click()
+    expect(latest('trail')).toMatchObject({ target: 'button “Merge”', where: 'dialog “Fix the cache”' })
+  })
+})
+
+describe('pointing at an element', () => {
+  it('starts and ends on ⌥⌘P, which the page never hears', () => {
+    const heard: string[] = []
+    const listening = new AbortController()
+    document.addEventListener('keydown', (e) => heard.push(e.key), { capture: true, signal: listening.signal })
+
+    expect(press(document.body, pointKey)).toBe(false)
+    expect(pointLayer()?.parentElement).toBe(document.body)
+    expect(pointLayer()?.textContent).toContain('Pointing: click what you mean')
+    expect(latest('trail')).toMatchObject({ kind: 'point', target: 'on' })
+
+    press(document.body, pointKey)
+    expect(pointLayer()).toBeNull()
+    expect(latest('trail')).toMatchObject({ kind: 'point', target: 'off' })
+
+    listening.abort()
+    expect(heard).toEqual([])
+  })
+
+  it('draws inside the open dialog the pointer is over, which a modal leaves live', () => {
+    const merge = el('button', {}, 'Merge')
+    const sheet = el('dialog', { open: '' }, merge)
+    document.body.append(sheet)
+
+    expect(agent().nb.point(true)).toBe(true)
+    expect(pointLayer()?.parentElement).toBe(document.body)
+
+    merge.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }))
+    expect(pointLayer()?.parentElement).toBe(sheet)
+    expect(pointLayer()?.textContent).toContain('button “Merge”')
+
+    expect(agent().nb.point(false)).toBe(false)
+    expect(pointLayer()).toBeNull()
+  })
+
+  it('shows what it draws as a popover where the page has them', () => {
+    const shown: Element[] = []
+    Object.assign(HTMLElement.prototype, {
+      showPopover(this: HTMLElement) {
+        shown.push(this)
+      },
+      hidePopover() {
+        // Nothing shows in jsdom.
+      },
+    })
+
+    try {
+      const merge = el('button', {}, 'Merge')
+      const sheet = el('dialog', { open: '' }, merge)
+      document.body.append(sheet)
+      merge.focus()
+
+      agent().nb.point(true)
+
+      expect(pointLayer()?.parentElement).toBe(sheet)
+      expect(pointLayer()?.getAttribute('popover')).toBe('manual')
+      expect(shown).toEqual([pointLayer()])
+    } finally {
+      // The layer is the agent's for good: as a popover never shown it would take no
+      // focus in the tests that follow.
+      pointLayer()?.removeAttribute('popover')
+      Reflect.deleteProperty(HTMLElement.prototype, 'showPopover')
+      Reflect.deleteProperty(HTMLElement.prototype, 'hidePopover')
+    }
+  })
+
+  it('takes a click for itself, which the app never hears, and opens a note on what was clicked', () => {
+    const snooze = document.querySelector('[aria-label="Snooze for 3 days"]') as HTMLElement
+    const heard: string[] = []
+
+    for (const type of ['mousedown', 'click']) {
+      snooze.addEventListener(type, () => heard.push(type))
+    }
+
+    const before = posted.length
+
+    agent().nb.point(true)
+    expect(snooze.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))).toBe(false)
+    snooze.click()
+
+    expect(heard).toEqual([])
+    expect(posted.slice(before).filter((m) => m.kind === 'click')).toEqual([])
+    expect(document.activeElement).toBe(pointLayer()?.querySelector('textarea'))
+    expect(pointLayer()?.textContent).toContain('Note on button “Snooze for 3 days”')
+
+    // A click in the note's box is the box's.
+    pointLayer()?.querySelector('textarea')?.click()
+    expect(heard).toEqual([])
+    expect(pointLayer()?.textContent).toContain('Note on button “Snooze for 3 days”')
+  })
+
+  it('keeps the keys typed in the note, and focus moving to it and back, from the app', () => {
+    const filter = document.querySelector('input[aria-label="Filter"]') as HTMLInputElement
+    filter.focus()
+
+    const heard: string[] = []
+    const listening = new AbortController()
+
+    for (const type of ['keydown', 'keyup', 'input', 'focusin', 'focusout']) {
+      document.addEventListener(type, () => heard.push(type), { capture: true, signal: listening.signal })
+    }
+
+    agent().nb.point(true)
+    ;(document.querySelector('select') as HTMLElement).click()
+
+    const field = pointLayer()?.querySelector('textarea') as HTMLTextAreaElement
+    expect(document.activeElement).toBe(field)
+
+    for (const k of ['s', 'e', 'c']) {
+      press(field, { key: k })
+      field.dispatchEvent(new KeyboardEvent('keyup', { key: k, bubbles: true }))
+    }
+
+    field.value = 'sec'
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(press(field, { key: 'Tab' }), 'Tab stays in the box').toBe(false)
+    expect(press(field, { key: 'Escape' })).toBe(false)
+
+    listening.abort()
+    expect(heard).toEqual([])
+    expect(document.activeElement, 'focus goes back where it was').toBe(filter)
+    expect(pointLayer()?.querySelector('textarea'), 'Escape drops the note').toBeNull()
+    expect(pointLayer(), 'and leaves pointing on').not.toBeNull()
+  })
+
+  it('ends on Escape, after dropping the note being written, and leaves a dialog open', () => {
+    const merge = el('button', {}, 'Merge')
+    const sheet = el('dialog', { open: '' }, merge)
+    document.body.append(sheet)
+
+    // useModalDialog listens so, and closes its dialog on an Escape nothing prevented.
+    const heard: string[] = []
+    const listening = new AbortController()
+    document.addEventListener('keydown', (e) => heard.push(e.key), { capture: true, signal: listening.signal })
+
+    agent().nb.point(true)
+    merge.click()
+    expect(pointLayer()?.querySelector('textarea')).not.toBeNull()
+
+    expect(press(merge, { key: 'Escape' })).toBe(false)
+    expect(pointLayer()?.querySelector('textarea')).toBeNull()
+    expect(pointLayer()).not.toBeNull()
+
+    expect(press(merge, { key: 'Escape' })).toBe(false)
+    expect(pointLayer()).toBeNull()
+
+    listening.abort()
+    expect(heard).toEqual([])
+    expect(sheet.hasAttribute('open')).toBe(true)
+  })
+
+  it('names the element and its components as the pointer moves over it', () => {
+    const snooze = document.querySelector('[aria-label="Snooze for 3 days"]') as HTMLElement
+    Object.assign(snooze, { __reactFiber$test: devFiber })
+
+    agent().nb.point(true)
+    snooze.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }))
+
+    expect(pointLayer()?.textContent).toContain('button “Snooze for 3 days” · InboxView › ItemRow › TriageControls')
+  })
+
+  it('posts a note with what the user said, what the element is, and what React made it of', async () => {
+    document.body.prepend(
+      el(
+        'nav',
+        { 'aria-label': 'Views' },
+        el('button', { 'aria-pressed': 'true' }, 'Inbox'),
+        el('button', { 'aria-pressed': 'false' }, 'Notifications'),
+      ),
+    )
+
+    const snooze = document.querySelector('[aria-label="Snooze for 3 days"]') as HTMLElement
+    Object.assign(snooze, { __reactFiber$test: devFiber })
+
+    const before = posted.length
+
+    agent().nb.point(true)
+    snooze.click()
+    press(pointLayer()?.querySelector('textarea') as HTMLElement, { key: 'Enter' })
+    expect(pointLayer()?.querySelector('textarea'), 'a note needs words').not.toBeNull()
+
+    const note = await noteOn(snooze, '  Should say for how long  ')
+
+    expect(note).toMatchObject({
+      text: 'Should say for how long',
+      target: 'button “Snooze for 3 days”',
+      where: 'card 7 “Fix the cache” · in Review requested',
+      view: 'Inbox',
+      element: { tag: 'button', name: 'Snooze for 3 days', marks: { 'aria-label': 'Snooze for 3 days' } },
+      nearby: 'Fix the cachezz',
+      components: 'InboxView › ItemRow › TriageControls',
+      source: 'frontend/src/components/TriageControls.tsx:120',
+      width: innerWidth,
+    })
+    expect(
+      posted.slice(before).filter((m) => m.kind === 'type'),
+      'the note’s words are never typing on the trail',
+    ).toEqual([])
+
+    expect(pointLayer()?.style.visibility, 'hidden for the picture of the window').toBe('hidden')
+    agent().noted(4)
+    expect(pointLayer()?.style.visibility).toBe('')
+    expect(pointLayer()?.textContent).toContain('Note 4 saved')
+  })
+
+  it('reads the text around an element in a dialog without its own, which is in the dialog too', async () => {
+    const cancel = el('button', {}, 'Cancel')
+    const confirm = el('dialog', { open: '', 'aria-label': 'Skip the setup?' }, el('p', {}, 'Skip the setup?'), cancel)
+    document.body.append(confirm)
+
+    agent().nb.point(true)
+    cancel.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }))
+    expect(pointLayer()?.parentElement).toBe(confirm)
+
+    const note = await noteOn(cancel, 'Say what is lost')
+
+    expect(note).toMatchObject({
+      target: 'button “Cancel”',
+      where: 'dialog “Skip the setup?”',
+      element: { name: 'Cancel' },
+      nearby: 'Skip the setup?Cancel',
+    })
+  })
+
+  it('names no components under a production build, which keeps no owners', async () => {
+    const snooze = document.querySelector('[aria-label="Snooze for 3 days"]') as HTMLElement
+    Object.assign(snooze, { __reactFiber$test: { type: 'button', return: { type: component('a') } } })
+
+    const note = await noteOn(snooze, 'Grey?')
+
+    expect(note.target).toBe('button “Snooze for 3 days”')
+    expect(note).not.toHaveProperty('components')
+    expect(note).not.toHaveProperty('source')
   })
 })

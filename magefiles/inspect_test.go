@@ -3,11 +3,17 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,8 +33,23 @@ func noResolve() (appdata.Paths, error) {
 	return appdata.Paths{}, errNoResolve
 }
 
+// whitePNG is a white picture of a window 20 pixels square, as a Retina screen takes one
+// of a viewport 10 CSS pixels wide.
+func whitePNG(t *testing.T) []byte {
+	t.Helper()
+
+	img := image.NewRGBA(image.Rect(0, 0, 20, 20))
+	draw.Draw(img, img.Bounds(), image.NewUniform(color.White), image.Point{}, draw.Src)
+
+	var buf bytes.Buffer
+	require.NoError(t, png.Encode(&buf, img))
+
+	return buf.Bytes()
+}
+
 // inspected starts an inspector in a fresh data directory, as a running build from source
-// would, its log holding one record and its window a picture to take, and returns the
+// would, its log holding one record, its window a picture to take, and its page one note
+// the user left, with a picture of a viewport 10 CSS pixels wide, and returns the
 // directory.
 func inspected(t *testing.T) string {
 	t.Helper()
@@ -41,10 +62,19 @@ func inspected(t *testing.T) string {
 		Time: at, Level: "INFO", Message: "refreshed the inbox", Attrs: []devtools.Attr{{Key: "items", Value: "3"}},
 	})
 
+	page := devtools.NewPage(10, 10, 10, time.Now)
+	page.AttachShot(func(context.Context) ([]byte, error) { return whitePNG(t), nil })
+
+	kept, stop := page.Notes().Follow()
+	page.Receive(devtools.Prefix + `{"t":"note","text":"Should say for how long","target":"button “Snooze”",` +
+		`"where":"card 7","element":{"tag":"button","rect":{"x":1,"y":1,"width":3,"height":3}},"width":10,"height":10}`)
+	<-kept
+	stop()
+
 	server := devtools.NewServer(devtools.Config{
 		Logs:   logs,
 		Events: devtools.NewFeed[devtools.EventEntry](10),
-		Page:   devtools.NewPage(10, 10, time.Now),
+		Page:   page,
 		Shot:   func(context.Context) ([]byte, error) { return []byte("png"), nil },
 		About:  func() devtools.About { return devtools.About{Version: "v1", Started: at} },
 	})
@@ -145,6 +175,46 @@ func TestInspect(t *testing.T) {
 		saved, err := filepath.Glob(g.path(shotsDir + "/shot-*.png"))
 		require.NoError(t, err)
 		assert.Len(t, saved, 1)
+	})
+
+	t.Run("prints each note, and saves its picture with the element boxed", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		withArgs(t, g, "data="+dir)
+
+		require.NoError(t, g.runner().inspect("notes", noResolve, "n", "follow", "wait", "clear"))
+
+		saved := g.path(shotsDir + "/note-1.png")
+		assert.Contains(t, g.out.String(), " NOTE  #1 “Should say for how long”\n  on         button “Snooze” · card 7\n")
+		assert.Contains(t, g.out.String(), "  picture    "+saved+"\n")
+
+		// Two pixels to a CSS pixel: the element spans pixels 2 to 8, and the box the 4
+		// around it.
+		img, err := png.Decode(strings.NewReader(readFile(t, saved)))
+		require.NoError(t, err)
+
+		boxed, plain := color.RGBAModel.Convert(img.At(0, 5)), color.RGBAModel.Convert(img.At(5, 5))
+		assert.Equal(t, color.RGBA{R: 0xff, G: 0x2d, B: 0x95, A: 0xff}, boxed)
+		assert.Equal(t, color.RGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}, plain)
+	})
+
+	t.Run("prints a note as JSON without its picture, which it saves", func(t *testing.T) {
+		t.Parallel()
+
+		g := newRig(t)
+		withArgs(t, g, "data="+dir, "json=true")
+
+		require.NoError(t, g.runner().inspect("notes", noResolve, "n"))
+
+		first, rest, _ := strings.Cut(g.out.String(), "\n")
+
+		var line devtools.Line
+		require.NoError(t, json.Unmarshal([]byte(first), &line))
+		assert.Equal(t, devtools.LineNote, line.Type)
+		assert.Contains(t, string(line.Value), `"text":"Should say for how long"`)
+		assert.NotContains(t, string(line.Value), `"shot"`)
+		assert.Equal(t, "  picture    "+g.path(shotsDir+"/note-1.png")+"\n", rest)
 	})
 
 	t.Run("passes on the inspector's refusal", func(t *testing.T) {

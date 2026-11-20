@@ -79,7 +79,7 @@ func newApp() *app {
 	events.Add(devtools.EventEntry{Time: at(2), Name: "inbox:updated", Data: json.RawMessage(`{}`)})
 	events.Add(devtools.EventEntry{Time: at(4), Name: "tools:updated"})
 
-	page := devtools.NewPage(10, 10, func() time.Time { return at(6) })
+	page := devtools.NewPage(10, 10, 10, func() time.Time { return at(6) })
 	page.Receive(devtools.Prefix + `{"t":"console","level":"warn","text":"slow render"}`)
 	page.Receive(devtools.Prefix + `{"t":"console","level":"error","text":"boom"}`)
 	page.Receive(devtools.Prefix + `{"t":"trail","kind":"click","target":"button “Snooze”","where":"card 7"}`)
@@ -273,6 +273,119 @@ func TestServerWatches(t *testing.T) {
 	require.NoError(t, <-done)
 }
 
+// texts are the notes' words.
+func texts(notes []devtools.Note) []string {
+	out := make([]string, 0, len(notes))
+	for _, n := range notes {
+		out = append(out, n.Text)
+	}
+
+	return out
+}
+
+func TestServerNotes(t *testing.T) {
+	t.Parallel()
+
+	a := newApp()
+	a.cfg.Page.AttachShot(func(context.Context) ([]byte, error) { return []byte("png"), nil })
+	leaveNote(a.cfg.Page, "first")
+	leaveNote(a.cfg.Page, "second")
+
+	socket := serve(t, a.cfg)
+
+	notes := func(args map[string]string) []devtools.Note {
+		lines, err := ask(t, socket, "notes", args)
+		require.NoError(t, err)
+
+		return valuesOf[devtools.Note](t, lines, devtools.LineNote)
+	}
+
+	kept := notes(nil)
+	assert.Equal(t, []string{"first", "second"}, texts(kept))
+	assert.Equal(t, []byte("png"), kept[0].Shot, "each with its picture")
+	assert.Equal(t, []string{"second"}, texts(notes(map[string]string{"n": "1"})))
+
+	// wait=true answers with the next note alone, once it comes.
+	got := make(chan []devtools.Note, 1)
+
+	go func() { got <- notes(map[string]string{"wait": "true"}) }()
+
+	require.Eventually(t, func() bool { return a.cfg.Page.Notes().Followers() == 1 }, 5*time.Second, time.Millisecond)
+	leaveNote(a.cfg.Page, "third")
+
+	assert.Equal(t, []string{"third"}, texts(<-got))
+
+	// clear=true drops them all, and says how many.
+	for _, want := range []string{"Cleared 3 notes.\n", "There were no notes to clear.\n"} {
+		lines, err := ask(t, socket, "notes", map[string]string{"clear": "true"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{want}, valuesOf[string](t, lines, devtools.LineText))
+	}
+
+	assert.Empty(t, notes(nil))
+
+	leaveNote(a.cfg.Page, "fourth")
+
+	lines, err := ask(t, socket, "notes", map[string]string{"clear": "yes"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Cleared 1 note.\n"}, valuesOf[string](t, lines, devtools.LineText))
+}
+
+func TestServerStopsWaitingForANoteWithTheClient(t *testing.T) {
+	t.Parallel()
+
+	a := newApp()
+	socket := serve(t, a.cfg)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+
+	go func() {
+		done <- devtools.Ask(ctx, socket, devtools.Request{Command: "notes", Args: map[string]string{"wait": "true"}},
+			func(devtools.Line) error { return nil })
+	}()
+
+	require.Eventually(t, func() bool { return a.cfg.Page.Notes().Followers() == 1 }, 5*time.Second, time.Millisecond)
+
+	cancel()
+	require.NoError(t, <-done, "giving up the wait is no error")
+	require.Eventually(t, func() bool { return a.cfg.Page.Notes().Followers() == 0 }, 5*time.Second, time.Millisecond,
+		"the inspector stops waiting once the client goes")
+}
+
+func TestServerPoint(t *testing.T) {
+	t.Parallel()
+
+	a := newApp()
+	socket := serve(t, a.cfg)
+
+	for _, c := range []struct {
+		args map[string]string
+		code string
+		says string
+	}{
+		{code: "nb.point(true)", says: "Pointing is on in the window"},
+		{args: map[string]string{"on": "true"}, code: "nb.point(true)", says: "Pointing is on in the window"},
+		{args: map[string]string{"on": "false"}, code: "nb.point(false)", says: "Pointing is off."},
+	} {
+		lines, err := ask(t, socket, "point", c.args)
+		require.NoError(t, err, c.args)
+
+		said := valuesOf[string](t, lines, devtools.LineText)
+		require.Len(t, said, 1)
+		assert.Contains(t, said[0], c.says, c.args)
+
+		_, codes := a.window.scripts()
+		assert.Equal(t, c.code, codes[len(codes)-1], c.args)
+	}
+
+	closed := newApp()
+	closed.cfg.Page = devtools.NewPage(1, 1, 1, now)
+
+	_, err := ask(t, serve(t, closed.cfg), "point", nil)
+	require.ErrorContains(t, err, devtools.ErrNoWindow.Error())
+}
+
 func TestServerStatus(t *testing.T) {
 	t.Parallel()
 
@@ -287,7 +400,7 @@ func TestServerStatus(t *testing.T) {
 	assert.Equal(t, "1m30s", status.Uptime)
 	assert.Positive(t, status.Goroutines)
 	assert.Equal(t, "wails://wails/", status.Page.URL)
-	assert.Equal(t, map[string]int{"log": 3, "event": 2, "console": 2, "trail": 1}, status.Kept)
+	assert.Equal(t, map[string]int{"log": 3, "event": 2, "console": 2, "trail": 1, "note": 0}, status.Kept)
 }
 
 func TestServerHelp(t *testing.T) {
@@ -387,7 +500,7 @@ func TestServerPageFailures(t *testing.T) {
 	require.ErrorContains(t, err, "ReferenceError: x")
 
 	closed := newApp()
-	closed.cfg.Page = devtools.NewPage(1, 1, now)
+	closed.cfg.Page = devtools.NewPage(1, 1, 1, now)
 	socket = serve(t, closed.cfg)
 
 	_, err = ask(t, socket, "reload", nil)

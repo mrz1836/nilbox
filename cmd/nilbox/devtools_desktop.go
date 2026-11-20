@@ -20,12 +20,14 @@ import (
 )
 
 const (
-	// devLogSize, devEventSize, devConsoleSize, and devTrailSize are how many log records,
-	// events, console lines, and steps of the user's trail the inspector keeps.
+	// devLogSize, devEventSize, devConsoleSize, devTrailSize, and devNoteSize are how many
+	// log records, events, console lines, steps of the user's trail, and notes the user
+	// left on elements (each with a picture of the window) the inspector keeps.
 	devLogSize     = 5000
 	devEventSize   = 2000
 	devConsoleSize = 2000
 	devTrailSize   = 1000
+	devNoteSize    = 50
 )
 
 // errNoSnapshot is returned when the web view gave no picture back.
@@ -52,14 +54,19 @@ type devKit struct {
 	done   chan struct{}
 }
 
-// newDevKit returns the inspector, keeping nothing yet.
+// newDevKit returns the inspector, keeping nothing yet. Each note the user leaves in the
+// page keeps a picture of the main window.
 func newDevKit() *devKit {
-	return &devKit{
+	k := &devKit{
 		logs:    devtools.NewFeed[devtools.LogEntry](devLogSize),
 		events:  devtools.NewFeed[devtools.EventEntry](devEventSize),
-		page:    devtools.NewPage(devConsoleSize, devTrailSize, time.Now),
+		page:    devtools.NewPage(devConsoleSize, devTrailSize, devNoteSize, time.Now),
 		started: time.Now(),
 	}
+
+	k.page.AttachShot(k.shot)
+
+	return k
 }
 
 // logger returns logger, its records kept by the inspector too, from Debug up, whatever

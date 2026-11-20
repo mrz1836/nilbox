@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -61,25 +62,31 @@ type PageInfo struct {
 }
 
 // agentMessage is a message the agent posted, by its type (T): a "result" of an
-// evaluation, a "console" line, a "trail" entry, or "hello", the page describing itself
-// as the agent installs.
+// evaluation, a "console" line, a "trail" entry, a "note" the user left on an element
+// they pointed at, or "hello", the page describing itself as the agent installs. Width
+// and Height are the viewport's, in a hello and in a note.
 type agentMessage struct {
-	T      string          `json:"t"`
-	ID     int64           `json:"id"`
-	OK     bool            `json:"ok"`
-	Value  json.RawMessage `json:"value"`
-	Error  string          `json:"error"`
-	Level  string          `json:"level"`
-	Text   string          `json:"text"`
-	Kind   string          `json:"kind"`
-	Target string          `json:"target"`
-	Where  string          `json:"where"`
-	URL    string          `json:"url"`
-	Title  string          `json:"title"`
-	Width  int             `json:"width"`
-	Height int             `json:"height"`
-	Scale  float64         `json:"scale"`
-	UA     string          `json:"ua"`
+	T          string          `json:"t"`
+	ID         int64           `json:"id"`
+	OK         bool            `json:"ok"`
+	Value      json.RawMessage `json:"value"`
+	Error      string          `json:"error"`
+	Level      string          `json:"level"`
+	Text       string          `json:"text"`
+	Kind       string          `json:"kind"`
+	Target     string          `json:"target"`
+	Where      string          `json:"where"`
+	View       string          `json:"view"`
+	Components string          `json:"components"`
+	Source     string          `json:"source"`
+	Nearby     string          `json:"nearby"`
+	Element    Element         `json:"element"`
+	URL        string          `json:"url"`
+	Title      string          `json:"title"`
+	Width      int             `json:"width"`
+	Height     int             `json:"height"`
+	Scale      float64         `json:"scale"`
+	UA         string          `json:"ua"`
 }
 
 // evalResult is what an evaluation came back with.
@@ -91,26 +98,35 @@ type evalResult struct {
 // Page is the inspector's way into the window's page, through the agent the page runs:
 // the app runs JavaScript there (Eval) through the window's ExecJS, which Attach hands
 // it, and hands back each message the page posts (Receive), which carries an
-// evaluation's result, a console line, an entry of the user's trail, or the page
-// describing itself. It is safe for concurrent use.
+// evaluation's result, a console line, an entry of the user's trail, a note the user
+// left on an element, or the page describing itself. It is safe for concurrent use.
 type Page struct {
 	mu      sync.Mutex
 	exec    func(js string)
+	shot    func(ctx context.Context) ([]byte, error)
 	pending map[int64]chan evalResult
 	next    int64
 	info    PageInfo
 	console *Feed[ConsoleEntry]
 	trail   *Feed[TrailEntry]
+	notes   *Feed[Note]
 	now     func() time.Time
+
+	// noted is how many notes the user has left, and lastNote closes once the last of
+	// them is kept, so each is kept after the one before it.
+	noted    int
+	lastNote chan struct{}
 }
 
 // NewPage returns a page with no window yet, keeping the console's last consoleSize
-// lines and the trail's last trailSize entries, stamped with now.
-func NewPage(consoleSize, trailSize int, now func() time.Time) *Page {
+// lines, the trail's last trailSize entries, and the last noteSize notes, stamped with
+// now.
+func NewPage(consoleSize, trailSize, noteSize int, now func() time.Time) *Page {
 	return &Page{
 		pending: map[int64]chan evalResult{},
 		console: NewFeed[ConsoleEntry](consoleSize),
 		trail:   NewFeed[TrailEntry](trailSize),
+		notes:   NewFeed[Note](noteSize),
 		now:     now,
 	}
 }
@@ -121,6 +137,15 @@ func (p *Page) Attach(exec func(js string)) {
 	defer p.mu.Unlock()
 
 	p.exec = exec
+}
+
+// AttachShot gives the page the window's way to take a picture of itself, for each note
+// the user leaves to keep one.
+func (p *Page) AttachShot(shot func(ctx context.Context) ([]byte, error)) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.shot = shot
 }
 
 // Agent returns the script that installs the agent in the page, for the window to run on
@@ -137,6 +162,11 @@ func (p *Page) Console() *Feed[ConsoleEntry] {
 // Trail returns the feed of what the user did in the page.
 func (p *Page) Trail() *Feed[TrailEntry] {
 	return p.trail
+}
+
+// Notes returns the feed of the notes the user left on elements they pointed at.
+func (p *Page) Notes() *Feed[Note] {
+	return p.notes
 }
 
 // Info returns the page as the agent last described it.
@@ -208,6 +238,8 @@ func (p *Page) Receive(message string) bool {
 		p.console.Add(ConsoleEntry{Time: p.now(), Level: m.Level, Text: m.Text})
 	case "trail":
 		p.trail.Add(TrailEntry{Time: p.now(), Kind: m.Kind, Target: m.Target, Where: m.Where})
+	case "note":
+		p.takeNote(m)
 	case "hello":
 		p.hello(m)
 	}
@@ -261,6 +293,57 @@ func (p *Page) answer(m agentMessage) {
 	case answer <- result:
 	default:
 	}
+}
+
+// takeNote numbers the note the user left and puts it on the trail at once, then keeps
+// it, with a picture of the window, on a goroutine of its own: Receive runs as the window
+// hands it a message, and the picture needs the window. The agent hid what it draws
+// before posting the note, so the picture shows the window as the user saw it.
+func (p *Page) takeNote(m agentMessage) {
+	p.mu.Lock()
+	p.noted++
+	note := Note{
+		N: p.noted, Time: p.now(), Text: m.Text, Target: m.Target, Where: m.Where, View: m.View,
+		Components: m.Components, Source: m.Source, Nearby: m.Nearby, Element: m.Element,
+		ViewportWidth: m.Width, ViewportHeight: m.Height,
+	}
+	shot, before := p.shot, p.lastNote
+	done := make(chan struct{})
+	p.lastNote = done
+	p.mu.Unlock()
+
+	p.trail.Add(TrailEntry{Time: note.Time, Kind: "note", Target: noteTrailTarget(note), Where: note.Where})
+
+	go p.keepNote(note, shot, before, done)
+}
+
+// keepNote takes note's picture with shot (none without one), tells the agent to show
+// what it draws again, and keeps note once the note before it is kept, which closes
+// before; it closes done once note is kept.
+func (p *Page) keepNote(note Note, shot func(ctx context.Context) ([]byte, error), before <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
+
+	if shot != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), shotTimeout)
+		picture, err := shot(ctx)
+
+		cancel()
+
+		if err != nil {
+			note.ShotError = err.Error()
+		} else {
+			note.Shot = picture
+		}
+	}
+
+	// A window that has gone away misses this, and the agent shows itself again on its own.
+	_ = p.Run("window.__appDevtools?.noted(" + strconv.Itoa(note.N) + ")")
+
+	if before != nil {
+		<-before
+	}
+
+	p.notes.Add(note)
 }
 
 // hello records the page as the agent described it on installing.

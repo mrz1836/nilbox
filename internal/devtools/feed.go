@@ -68,6 +68,18 @@ func (f *Feed[T]) Len() int {
 	return min(len(f.entries), f.capacity)
 }
 
+// Clear drops every entry the feed keeps and returns how many it kept; its followers go
+// on following.
+func (f *Feed[T]) Clear() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	n := min(len(f.entries), f.capacity)
+	f.entries = nil
+
+	return n
+}
+
 // Follow returns a channel that receives every entry added from now on, and the function
 // that stops it and closes the channel. A follower that falls followerBuffer entries
 // behind misses the entries added while it is full.

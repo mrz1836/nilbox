@@ -214,6 +214,7 @@ export function CompactRow({
       <div className="flex min-w-0 items-center gap-2">
         <button
           type="button"
+          data-card-title
           title={opens ? `${item.title}\n${isPR ? 'Review' : 'Read'} it here; ⌘-click opens GitHub` : item.title}
           onClick={(e) => {
             if (opens && !e.metaKey) {

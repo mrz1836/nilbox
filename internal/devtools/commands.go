@@ -52,6 +52,15 @@ func (s *Server) table() map[string]command {
 		"events":  {args: "n grep follow", about: "the events the services emitted", run: s.events},
 		"console": {args: "n level grep follow", about: "the page's console and its uncaught errors", run: s.console},
 		"trail":   {args: "n grep follow", about: "what the user clicked, pressed, typed in, and chose", run: s.trail},
+		"notes": {
+			args:  "n follow wait clear",
+			about: "the notes the user left on elements they pointed at (⌥⌘P), each with a picture of the window",
+			run:   s.notes,
+		},
+		"point": {
+			args: "on", about: "turns pointing on in the window, for the user to point at an element and leave a note; on=false ends it",
+			run: s.point,
+		},
 		"watch": {
 			args: "n level grep", about: "follows the log, the events, the console, and the trail together", run: s.watch,
 		},
@@ -103,6 +112,7 @@ func (s *Server) status(_ context.Context, out *writer, _ args) error {
 		Kept: map[string]int{
 			LineLog: s.cfg.Logs.Len(), LineEvent: s.cfg.Events.Len(),
 			LineConsole: s.cfg.Page.Console().Len(), LineTrail: s.cfg.Page.Trail().Len(),
+			LineNote: s.cfg.Page.Notes().Len(),
 		},
 	})
 }
@@ -126,6 +136,62 @@ func (s *Server) console(ctx context.Context, out *writer, a args) error {
 // trail streams what the user did, as logs streams the log.
 func (s *Server) trail(ctx context.Context, out *writer, a args) error {
 	return stream(ctx, out, a.number("n", defaultLast), a.flag("follow"), s.trailSource(a))
+}
+
+// notes streams the notes the user left, as logs streams the log. With wait it sends
+// only the next note, once the user leaves it; with clear it drops every note kept and
+// says how many.
+func (s *Server) notes(ctx context.Context, out *writer, a args) error {
+	notes := s.cfg.Page.Notes()
+
+	switch {
+	case a.flag("clear"):
+		return out.send(LineText, clearedText(notes.Clear()))
+	case a.flag("wait"):
+		next, stop := notes.Follow()
+		defer stop()
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case note := <-next:
+			return out.send(LineNote, note)
+		}
+	default:
+		return stream(ctx, out, a.number("n", defaultLast), a.flag("follow"),
+			sourceOf(LineNote, notes, func(Note) bool { return true }))
+	}
+}
+
+// point turns pointing on in the window, or off with on=false.
+func (s *Server) point(ctx context.Context, out *writer, a args) error {
+	on := a.text("on") == "" || a.flag("on")
+
+	ctx, cancel := context.WithTimeout(ctx, defaultScriptSeconds*time.Second)
+	defer cancel()
+
+	if _, err := s.cfg.Page.Eval(ctx, "nb.point("+strconv.FormatBool(on)+")"); err != nil {
+		return err
+	}
+
+	if !on {
+		return out.send(LineText, "Pointing is off.\n")
+	}
+
+	return out.send(LineText, "Pointing is on in the window: click what you mean, type a note, and press Enter. "+
+		"Esc or ⌥⌘P ends it; magex inspect:notes reads the notes.\n")
+}
+
+// clearedText says that n notes were dropped.
+func clearedText(n int) string {
+	switch n {
+	case 0:
+		return "There were no notes to clear.\n"
+	case 1:
+		return "Cleared 1 note.\n"
+	default:
+		return "Cleared " + strconv.Itoa(n) + " notes.\n"
+	}
 }
 
 // watch follows the log, the events, the console, and the trail together, in the order

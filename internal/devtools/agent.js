@@ -2,9 +2,11 @@
 // (internal/devtools). The app runs it on every page load and before each evaluation; it
 // installs once. It posts to the app through the web view's message handler, each message
 // prefixed as Page.Receive expects: the page describing itself ("hello"), each console line
-// and each error nothing caught ("console"), each thing the user does ("trail"), and each
-// evaluation's result ("result"). What the user types is never posted, only the field it
-// went into. Nothing leaves the Mac: the app keeps it in memory for the inspector's socket.
+// and each error nothing caught ("console"), each thing the user does ("trail"), each note
+// the user leaves on an element they point at ("note"), and each evaluation's result
+// ("result"). What the user types into the app is never posted, only the field it went
+// into; a note's words are, since the user typed them into the agent's own box to say
+// them. Nothing leaves the Mac: the app keeps it in memory for the inspector's socket.
 ;(() => {
   'use strict'
 
@@ -251,6 +253,20 @@
     return `${el.getAttribute('role') || el.tagName.toLowerCase()}${name === '' ? '' : ` “${name}”`}`
   }
 
+  // labelOf is what labels el: its aria-label, or else the text of the elements its
+  // aria-labelledby names.
+  const labelOf = (el) => {
+    const label = squash(el.getAttribute('aria-label') ?? '')
+
+    if (label !== '') {
+      return label
+    }
+
+    const ids = (el.getAttribute('aria-labelledby') ?? '').split(/\s+/).filter(Boolean)
+
+    return squash(ids.map((id) => document.getElementById(id)?.innerText ?? '').join(' '))
+  }
+
   const where = (el) => {
     const parts = []
     const card = el.closest('[data-item-id]')
@@ -263,7 +279,7 @@
     const dialog = el.closest('[role=dialog], dialog')
 
     if (dialog) {
-      const label = squash(dialog.getAttribute('aria-label') ?? '')
+      const label = clip(labelOf(dialog), 80)
       parts.push(label === '' ? 'dialog' : `dialog “${label}”`)
     }
 
@@ -331,6 +347,587 @@
     },
     true,
   )
+
+  // React's development build (app:dev) keeps on each element the fiber that rendered it,
+  // and on each fiber the component it ran, its owner (_debugOwner), and the stack its
+  // element was made on (_debugStack). A production build keeps no _debugOwner, no stacks,
+  // and no names worth reading, so it is read only under the development build.
+  const fiberOf = (el) => {
+    for (let node = el; node; node = node.parentElement) {
+      const key = Object.keys(node).find((k) => k.startsWith('__reactFiber$'))
+
+      if (key) {
+        return node[key]
+      }
+    }
+
+    return null
+  }
+
+  // componentName is the name of the component a fiber ran (a forwardRef's or a memo's
+  // inner one's), or '' for an element, a provider, or anything else React made.
+  const componentName = (fiber) => {
+    const type = fiber?.type
+    const fn = typeof type === 'function' ? type : (type?.render ?? type?.type)
+
+    return typeof fn === 'function' ? String(type.displayName || fn.displayName || fn.name || '') : ''
+  }
+
+  // sourceOf is a stack's first frame in the frontend's own sources, as the file in the
+  // repository and its line, or ''.
+  const sourceOf = (stack) => {
+    const text = typeof stack === 'string' ? stack : stack?.stack
+
+    if (typeof text !== 'string') {
+      return ''
+    }
+
+    for (const frame of text.split('\n')) {
+      const found = frame.includes('/node_modules/')
+        ? null
+        : /\/(src\/[^\s?#:()]+\.[cm]?[jt]sx?)(?:\?[^\s:()]*)?:(\d+)/.exec(frame)
+
+      if (found) {
+        return `frontend/${found[1]}:${found[2]}`
+      }
+    }
+
+    return ''
+  }
+
+  // reactOf is, under React's development build, the components that render el, the
+  // nearest few of them outermost first, and the file and line whose JSX made it, the line
+  // approximate (the stack's lines are the compiled module's); nothing under a production
+  // build.
+  const reactOf = (el, few = 6) => {
+    const fiber = fiberOf(el)
+
+    if (!fiber || !('_debugOwner' in fiber)) {
+      return {}
+    }
+
+    const names = []
+    let source = ''
+
+    for (let f = fiber; f && names.length < few; f = f.return) {
+      source ||= sourceOf(f._debugStack)
+
+      const name = componentName(f)
+
+      if (name !== '' && name !== names.at(-1)) {
+        names.push(name)
+      }
+    }
+
+    return { components: names.reverse().join(' › ') || undefined, source: source || undefined }
+  }
+
+  // viewOf names what the window shows: the items its navigation marks as current, outside
+  // any dialog, as each reads.
+  const viewOf = () =>
+    [...document.querySelectorAll('nav [aria-pressed="true"], nav [aria-current="page"], nav [aria-current="true"]')]
+      .filter((e) => !e.closest('dialog, [role=dialog]') && drawn(e) !== false)
+      .map((e) => clip(nameOf(e), 40))
+      .filter((name) => name !== '')
+      .join(' › ')
+
+  // nearbyText is the text around el: its row's, list item's, form's, or section's, cut
+  // short.
+  const around =
+    'li, tr, [role=row], [role=listitem], article, fieldset, form, header, footer, section, dialog, [role=dialog]'
+  const nearbyText = (el) => clip(squash((el.closest(around) ?? el.parentElement ?? el).innerText), 300)
+
+  // Pointing (⌥⌘P, or nb.point): the user points at an element and says what is wrong with
+  // it. While it is on, the agent outlines what the pointer is over and takes the clicks, so
+  // the app hears none; a click opens a box for a note on what was clicked, and Enter posts
+  // the note ("note"): the user's words, the element as the trail names it and as describe
+  // has it, the text around it, the view, and what React's development build says of it.
+  // Escape drops the note being written, or ends pointing, and leaves any dialog open.
+  //
+  // What the agent draws is one element, the layer: a popover in the open dialog the
+  // pointer is over, or else the last modal one, or else the body. A modal dialog leaves the
+  // rest of the page inert, and the top layer draws the popover over the dialog. Nothing the
+  // user does in the layer reaches the app: every event from it stops at the window.
+  const pointColor = '#ff2d95'
+  const surface = 'var(--color-surface, #18181b)'
+  const ink = 'var(--color-text, #fafafa)'
+  const muted = 'var(--color-muted, #a1a1aa)'
+  const rule = 'var(--color-border, #3f3f46)'
+  const idleWords = 'Pointing: click what you mean · Esc ends it'
+
+  const make = (tag, style, text) => {
+    const node = document.createElement(tag)
+    node.style.cssText = style
+
+    if (text !== undefined) {
+      node.textContent = text
+    }
+
+    return node
+  }
+
+  const layer = make(
+    'div',
+    'position: fixed; inset: 0; width: auto; height: auto; max-width: none; max-height: none; margin: 0; padding: 0; ' +
+      `border: 0; background: transparent; overflow: visible; pointer-events: none; z-index: 2147483647; color: ${ink}; ` +
+      'font: 500 0.75rem/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; text-align: left',
+  )
+  layer.setAttribute('data-devtools-point', '')
+
+  const cursor = make(
+    'style',
+    '',
+    '*, *::before, *::after { cursor: crosshair !important } [data-devtools-point] textarea { cursor: text !important }',
+  )
+  const box = make(
+    'div',
+    `position: absolute; display: none; box-sizing: border-box; border: 2px solid ${pointColor}; ` +
+      'border-radius: 0.1875rem; background: rgb(255 45 149 / 0.12)',
+  )
+  const caption = make(
+    'div',
+    'position: absolute; display: none; max-width: 40rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; ' +
+      `padding: 0.125rem 0.375rem; border-radius: 0.25rem; background: ${pointColor}; color: #fff; font-size: 0.6875rem`,
+  )
+  const badge = make(
+    'div',
+    'position: absolute; left: 50%; bottom: 1rem; transform: translateX(-50%); white-space: nowrap; ' +
+      `padding: 0.375rem 0.75rem; border-radius: 999px; border: 1px solid ${pointColor}; background: ${surface}; ` +
+      'box-shadow: 0 0.25rem 1rem rgb(0 0 0 / 0.3)',
+    idleWords,
+  )
+  const form = make(
+    'div',
+    `position: absolute; width: 20rem; box-sizing: border-box; padding: 0.5rem; border-radius: 0.5rem; ` +
+      `border: 1px solid ${rule}; background: ${surface}; box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.35); pointer-events: auto`,
+  )
+  const heading = make(
+    'div',
+    `margin: 0 0 0.375rem; color: ${muted}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis`,
+  )
+  const field = make(
+    'textarea',
+    'display: block; box-sizing: border-box; width: 100%; min-height: 4.5rem; margin: 0; padding: 0.375rem 0.5rem; ' +
+      `resize: vertical; border-radius: 0.375rem; border: 1px solid ${pointColor}; background: transparent; color: ${ink}; ` +
+      'font: inherit; outline: none',
+  )
+  field.rows = 3
+  field.placeholder = 'What’s wrong here?'
+  field.setAttribute('aria-label', 'Note')
+  form.append(
+    heading,
+    field,
+    make(
+      'div',
+      `margin: 0.375rem 0 0; color: ${muted}; font-size: 0.6875rem`,
+      'Enter saves · ⇧Enter for a new line · Esc cancels',
+    ),
+  )
+  layer.append(cursor, box, caption, badge)
+
+  // pointing is whether pointing is on; hovered is the element outlined, and picked the one
+  // the note being written is on; focusBack had focus before its box opened; saving is a
+  // note on its way, the layer hidden for the window's picture the app takes.
+  let pointing = false
+  let hovered = null
+  let picked = null
+  let focusBack = null
+  let saving = false
+  let keeper = 0
+  let revealTimer = 0
+  let idleTimer = 0
+
+  const inLayer = (node) => node instanceof Node && layer.contains(node)
+
+  const popoverOpen = (el) => {
+    try {
+      return el.matches(':popover-open')
+    } catch {
+      return false
+    }
+  }
+
+  const modals = () => {
+    try {
+      return [...document.querySelectorAll('dialog:modal')]
+    } catch {
+      return []
+    }
+  }
+
+  // mount puts the layer in host and shows it over everything there: as a popover, in the
+  // top layer, or else fixed over the page, where a page without popovers leaves it.
+  const mount = (host) => {
+    const popover = typeof layer.showPopover === 'function'
+
+    if (layer.parentElement !== host) {
+      if (popoverOpen(layer)) {
+        layer.hidePopover()
+      }
+
+      if (popover) {
+        layer.setAttribute('popover', 'manual')
+      }
+
+      host.append(layer)
+    }
+
+    if (popover && layer.isConnected && !popoverOpen(layer)) {
+      layer.showPopover()
+    }
+  }
+
+  // settle moves the layer where it must be once what it was in has closed, or a modal
+  // dialog has opened over it.
+  const settle = () => {
+    const host = layer.parentElement
+    const open = modals()
+    const fine =
+      layer.isConnected &&
+      host !== null &&
+      !host.matches('dialog:not([open])') &&
+      (open.length === 0 || open.some((d) => d.contains(host)))
+
+    mount(fine ? host : (open.at(-1) ?? document.body))
+  }
+
+  // say puts words in the badge, which goes back to saying pointing is on after a while.
+  const say = (words) => {
+    badge.textContent = words
+    clearTimeout(idleTimer)
+
+    if (words !== idleWords) {
+      idleTimer = setTimeout(() => {
+        badge.textContent = idleWords
+      }, 3000)
+    }
+  }
+
+  // outline outlines el, its name and its components above it, or nothing for none.
+  const outline = (el) => {
+    hovered = el
+
+    if (!el?.isConnected) {
+      box.style.display = 'none'
+      caption.style.display = 'none'
+
+      return
+    }
+
+    const r = el.getBoundingClientRect()
+    const chain = reactOf(el, 3).components
+    Object.assign(box.style, {
+      display: 'block',
+      left: `${r.x - 2}px`,
+      top: `${r.y - 2}px`,
+      width: `${r.width + 4}px`,
+      height: `${r.height + 4}px`,
+    })
+    caption.textContent = chain ? `${targetText(el)} · ${chain}` : targetText(el)
+    caption.style.display = 'block'
+
+    const above = r.y - caption.offsetHeight - 4
+    Object.assign(caption.style, { left: `${Math.max(0, r.x - 2)}px`, top: `${above >= 0 ? above : r.bottom + 4}px` })
+  }
+
+  // placeForm puts the note's box under el, or over it when there is no room below, inside
+  // the window.
+  const placeForm = (el) => {
+    const r = el.getBoundingClientRect()
+    const width = form.offsetWidth || 320
+    const height = form.offsetHeight || 140
+    const below = r.bottom + 8
+    const top = below + height <= innerHeight - 8 ? below : Math.max(8, r.y - 8 - height)
+    const left = Math.min(Math.max(8, r.x), Math.max(8, innerWidth - width - 8))
+    Object.assign(form.style, { left: `${left}px`, top: `${top}px` })
+  }
+
+  // pick opens the note's box on el, or moves it there, keeping what was typed.
+  const pick = (el) => {
+    if (!picked) {
+      focusBack = document.activeElement
+    }
+
+    picked = el
+    outline(el)
+    heading.textContent = `Note on ${caption.textContent}`
+    layer.append(form)
+    placeForm(el)
+    field.focus({ preventScroll: true })
+  }
+
+  // closeNote closes the note's box, dropping what was typed, and gives focus back.
+  const closeNote = () => {
+    if (!picked) {
+      return
+    }
+
+    picked = null
+    field.value = ''
+
+    if (focusBack instanceof HTMLElement && focusBack !== document.body && focusBack.isConnected) {
+      focusBack.focus({ preventScroll: true })
+    } else {
+      field.blur()
+    }
+
+    focusBack = null
+    form.remove()
+    outline(null)
+  }
+
+  // reveal shows the layer again once a note is on its way, saying it was kept as note n,
+  // or only sent when the app never said (n 0).
+  const reveal = (n) => {
+    clearTimeout(revealTimer)
+    saving = false
+    layer.style.visibility = ''
+    say(n > 0 ? `Note ${n} saved · magex inspect:notes reads it` : 'Note sent')
+  }
+
+  const afterPaint = (fn) =>
+    typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame(() => requestAnimationFrame(fn))
+      : setTimeout(fn, 50)
+
+  // saveNote posts the note being written, once the layer is hidden from the picture of the
+  // window the app takes; the app then says it has the note (noted), which shows the layer
+  // again, as a while without word does. The layer is hidden before the note reads the
+  // page, too, so its words are none of the element's nor of the text around it: it sits
+  // in the dialog the element is in.
+  const saveNote = () => {
+    const text = field.value.trim()
+
+    if (!picked || text === '') {
+      return
+    }
+
+    const el = picked
+    closeNote()
+    saving = true
+    layer.style.visibility = 'hidden'
+
+    const hit = control(el)
+    const note = {
+      t: 'note',
+      text: clip(text, 4000),
+      target: targetText(hit),
+      where: where(hit),
+      view: viewOf(),
+      element: describe(el),
+      nearby: nearbyText(el),
+      ...reactOf(el),
+      width: innerWidth,
+      height: innerHeight,
+    }
+
+    clearTimeout(revealTimer)
+    revealTimer = setTimeout(() => reveal(0), 5000)
+    afterPaint(() => post(note))
+  }
+
+  // setPointing starts or ends pointing, and reports whether it is on.
+  const setPointing = (on) => {
+    if (on === pointing) {
+      return pointing
+    }
+
+    pointing = on
+
+    if (on) {
+      layer.style.visibility = ''
+      say(idleWords)
+      mount(document.activeElement?.closest('dialog[open]') ?? modals().at(-1) ?? document.body)
+      keeper = setInterval(() => {
+        settle()
+
+        if (picked) {
+          outline(picked)
+        }
+      }, 250)
+    } else {
+      closeNote()
+      clearInterval(keeper)
+      clearTimeout(revealTimer)
+      clearTimeout(idleTimer)
+      saving = false
+      outline(null)
+
+      if (popoverOpen(layer)) {
+        layer.hidePopover()
+      }
+
+      layer.remove()
+    }
+
+    post({ t: 'trail', kind: 'point', target: on ? 'on' : 'off', where: '' })
+
+    return pointing
+  }
+
+  const swallow = (e) => {
+    e.preventDefault()
+    e.stopImmediatePropagation()
+  }
+
+  // The keys, heard before anything in the page hears them: ⌥⌘P starts and ends pointing
+  // anywhere (matched by the key's place, since ⌥P types π); while pointing, Escape drops
+  // the note being written, or ends pointing; and in the note's box, Enter saves and every
+  // key is the box's alone.
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.code === 'KeyP' && e.altKey && e.metaKey && !e.ctrlKey && !e.shiftKey) {
+        swallow(e)
+        setPointing(!pointing)
+
+        return
+      }
+
+      if (!pointing) {
+        return
+      }
+
+      if (inLayer(e.target)) {
+        e.stopImmediatePropagation()
+
+        if (e.isComposing) {
+          return
+        }
+
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          closeNote()
+        } else if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault()
+          saveNote()
+        } else if (e.key === 'Tab') {
+          e.preventDefault()
+        }
+
+        return
+      }
+
+      if (e.key === 'Escape') {
+        swallow(e)
+
+        if (picked) {
+          closeNote()
+        } else {
+          setPointing(false)
+        }
+      }
+    },
+    true,
+  )
+
+  for (const type of [
+    'keyup',
+    'keypress',
+    'beforeinput',
+    'input',
+    'change',
+    'select',
+    'paste',
+    'copy',
+    'cut',
+    'compositionstart',
+    'compositionupdate',
+    'compositionend',
+    'wheel',
+  ]) {
+    window.addEventListener(
+      type,
+      (e) => {
+        if (inLayer(e.target)) {
+          e.stopImmediatePropagation()
+        }
+      },
+      true,
+    )
+  }
+
+  // Focus moving into the layer, or out of it, is the layer's alone: the app never hears
+  // that it lost focus to the note's box, nor that it got it back.
+  for (const type of ['focus', 'blur', 'focusin', 'focusout']) {
+    window.addEventListener(
+      type,
+      (e) => {
+        if (inLayer(e.target) || inLayer(e.relatedTarget)) {
+          e.stopImmediatePropagation()
+        }
+      },
+      true,
+    )
+  }
+
+  // While pointing, a press is the agent's: the app hears none, nor does its default
+  // happen (focus, selection, a drag), except in the layer, where it stays.
+  for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'dblclick', 'auxclick', 'contextmenu']) {
+    window.addEventListener(
+      type,
+      (e) => {
+        if (!pointing) {
+          return
+        }
+
+        if (inLayer(e.target)) {
+          e.stopImmediatePropagation()
+        } else {
+          swallow(e)
+        }
+      },
+      true,
+    )
+  }
+
+  window.addEventListener(
+    'click',
+    (e) => {
+      if (!pointing) {
+        return
+      }
+
+      if (inLayer(e.target)) {
+        e.stopImmediatePropagation()
+
+        return
+      }
+
+      swallow(e)
+
+      if (e.target instanceof Element && !saving) {
+        pick(e.target)
+      }
+    },
+    true,
+  )
+
+  window.addEventListener(
+    'pointermove',
+    (e) => {
+      if (!pointing || saving || picked || inLayer(e.target) || !(e.target instanceof Element)) {
+        return
+      }
+
+      mount(e.target.closest('dialog[open]') ?? modals().at(-1) ?? document.body)
+      outline(e.target)
+    },
+    true,
+  )
+
+  const redraw = () => {
+    if (pointing && hovered) {
+      outline(hovered)
+
+      if (picked) {
+        placeForm(picked)
+      }
+    }
+  }
+
+  window.addEventListener('scroll', redraw, true)
+  window.addEventListener('resize', redraw)
 
   // The helpers an evaluation gets as nb. A target is an element, a CSS selector, or the
   // name a control shows (its label or its text), matched whole first, then in part.
@@ -447,6 +1044,7 @@
         await sleep(50)
       }
     },
+    point: (on = true) => setPointing(on !== false),
   })
 
   // compile makes code a function of nb: an expression whose value it returns, or else
@@ -478,7 +1076,7 @@
       )
   }
 
-  window.__appDevtools = Object.freeze({ run, nb })
+  window.__appDevtools = Object.freeze({ run, nb, noted: reveal })
 
   post({
     t: 'hello',

@@ -269,6 +269,27 @@ the web view draws it and what is inside it (`checkVisibility`), which is what
 The agent runs outside the frontend's sources, so `frontend/src/test/devtoolsAgent.test.ts`
 runs it in jsdom.
 
+**Pointing.** ⌥⌘P in the window, or `nb.point` (`inspect:point`), turns pointing on. The
+agent's listeners are on the window in the capture phase, so they hear every key and press
+before the page does, a sheet's `useModalDialog` (which listens on the document) included:
+⌥⌘P works over a sheet, and Escape, swallowed there, never closes one. While pointing, the
+agent outlines the element under the pointer and swallows every press and click, so the app
+never acts; a click opens a box for a note, and Enter posts a `note`. Everything it draws is
+one element, the layer, appended inside the open dialog the pointer is over (else the last
+`dialog:modal`, else the body) and shown as a `popover="manual"`: a modal dialog leaves the rest
+of the page inert, and the top layer draws the popover over it. Every event from inside the
+layer, and focus moving into it or back out, stops at the window, so the app hears neither the
+note's keys nor focus leaving it. The note carries the trail's target and where, the element
+as `describe` has it, the text around it, the view (the `nav` items marked pressed or current),
+and, when the fiber React keeps on the element has a `_debugOwner` (the development build of
+`app:dev`), the component chain from the fibers' `return`s and the first `/src/` frame of
+`_debugStack`, its line the compiled module's and so approximate. Before posting, the agent
+hides the layer. `Page.Receive` numbers the note and puts it on the trail (kind `note`), then,
+on a goroutine of its own, since the picture needs the main thread the message came on, takes
+a picture with the shot `AttachShot` gave it, tells the agent to show itself again (`noted`),
+and keeps the note in its feed after the one before it. `inspect:notes` saves each picture with
+the element boxed (`Outline`, scaled by the picture's width over the viewport's).
+
 **The picture.** `devKit.shot` has the web view take a picture of what it draws
 (`WKWebView takeSnapshotWithConfiguration`), as PNG, on the main thread, and waits for it on a
 thread of its own; one that takes longer than the request allows is left to finish.
