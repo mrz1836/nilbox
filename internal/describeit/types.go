@@ -182,6 +182,12 @@ type Card struct {
 	// Summary is what the agent says it does: the card's "Claude says".
 	Summary string `json:"summary"`
 
+	// Proposal is the proposal as the agent wrote it, which a part applies from where
+	// Checked holds nothing of its own (a routine's description, the mode the agent suggests
+	// as a hint, the template it starts from, the change's routine and base), and Checked
+	// each part checked against the live snapshot, which a part applies from otherwise (a
+	// routine's name and spec as a save stores them, the settings and rules once applied).
+	Proposal kit.Proposal  `json:"proposal"`
 	Checked  kit.Checked   `json:"checked"`
 	Outcomes []kit.Outcome `json:"outcomes"`
 

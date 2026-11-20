@@ -453,6 +453,10 @@ export type KitOutcome = NonNullLists<autopilotkit.Outcome>
 export type KitOutcomeKind = autopilotkit.OutcomeKind
 export type KitPart = autopilotkit.Part
 export type KitNewPrompt = NonNullLists<autopilotkit.NewPrompt>
+export type KitProposal = NonNullLists<autopilotkit.Proposal>
+export type KitRoutineChange = NonNullLists<autopilotkit.RoutineChange>
+export type KitSettingsChange = NonNullLists<autopilotkit.SettingsChange>
+export type KitRulesChange = NonNullLists<autopilotkit.RulesChange>
 export type KitRoutine = NonNullLists<autopilotkit.Routine>
 export type KitRules = NonNullLists<autopilotkit.Rules>
 // A step, and a run, has '' for a verdict until a Wait for the checks reaches one, and

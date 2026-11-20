@@ -209,6 +209,24 @@ export const Part = {
 } as const;
 
 /**
+ * Proposal is what the agent proposes, for the user to review in the Autopilot tab: new
+ * prompts, new routines and changes to routines, a change to Autopilot's settings, and a
+ * change to the rules routines lean on. A card applies its parts in that order, so a
+ * routine may run a prompt the same proposal adds.
+ */
+export interface Proposal {
+    /**
+     * Summary says what it does in a sentence or two, as the card shows it under "Claude
+     * says".
+     */
+    "summary": string;
+    "prompts"?: NewPrompt[] | null;
+    "routines"?: RoutineChange[] | null;
+    "settings"?: SettingsChange | null;
+    "rules"?: RulesChange | null;
+}
+
+/**
  * Purpose is what a library prompt is for, as the prompt library names it.
  */
 export type Purpose = "agent" | "reply";
@@ -315,6 +333,35 @@ export interface Routine {
 }
 
 /**
+ * RoutineChange is a new routine, or a change to one of the user's routines: a change
+ * never touches a routine's mode or switch, and a new routine arrives switched off, in the
+ * mode Settings says new routines start in.
+ */
+export interface RoutineChange {
+    /**
+     * ID is the routine it changes, 0 for a new one, and Base that routine's updatedAt as
+     * the agent read it, so a card can say it changed since.
+     */
+    "id"?: number;
+    "base"?: string;
+    "name": string;
+    "description"?: string;
+
+    /**
+     * Mode is the mode the agent suggests a new routine starts in, which the card shows
+     * beside the one it starts in as a hint, as the gallery's suggestion does; never
+     * applied.
+     */
+    "mode"?: autopilotprefs$0.Mode;
+
+    /**
+     * Template is the gallery template it starts from, "" for none.
+     */
+    "template"?: string;
+    "spec": spec$0.Spec;
+}
+
+/**
  * RuleChange is one change to the rules routines lean on, in the window's words.
  */
 export interface RuleChange {
@@ -340,6 +387,21 @@ export interface Rules {
 }
 
 /**
+ * RulesChange is a change to the rules routines lean on: bots to trust or no longer trust,
+ * repositories and orgs to pin, mute, or clear of either, and workflows whose held runs to
+ * ignore or count again.
+ */
+export interface RulesChange {
+    "trust"?: string[] | null;
+    "untrust"?: string[] | null;
+    "pin"?: string[] | null;
+    "mute"?: string[] | null;
+    "clear"?: string[] | null;
+    "ignoreWorkflows"?: string[] | null;
+    "unignoreWorkflows"?: string[] | null;
+}
+
+/**
  * SettingChange is one of Autopilot's settings a proposal changes, in the window's words.
  */
 export interface SettingChange {
@@ -350,4 +412,22 @@ export interface SettingChange {
     "label": string;
     "before": string;
     "after": string;
+}
+
+/**
+ * SettingsChange is a change to Autopilot's settings: only what changes is set. It has no
+ * field for Autopilot's switch or for Pause, which are the user's alone, so a proposal
+ * that names either is refused as it is read.
+ */
+export interface SettingsChange {
+    "defaultMode"?: autopilotprefs$0.Mode | null;
+    "agentsAtOnce"?: number | null;
+    "runsPerDay"?: number | null;
+    "actionsPerDay"?: number | null;
+    "dailyCap"?: autopilotprefs$0.DailyCap | null;
+    "keepAwake"?: boolean | null;
+    "holdOnOutage"?: boolean | null;
+    "catchUpHours"?: number | null;
+    "historyDays"?: number | null;
+    "logDays"?: number | null;
 }

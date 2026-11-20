@@ -18,9 +18,13 @@ export type {
     CheckedSettings,
     NewPrompt,
     Outcome,
+    Proposal,
     Risk,
     Routine,
+    RoutineChange,
     RuleChange,
     Rules,
-    SettingChange
+    RulesChange,
+    SettingChange,
+    SettingsChange
 } from "./models.js";

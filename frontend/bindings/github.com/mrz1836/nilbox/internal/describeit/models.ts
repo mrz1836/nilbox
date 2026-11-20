@@ -81,6 +81,15 @@ export interface Card {
      * Summary is what the agent says it does: the card's "Claude says".
      */
     "summary": string;
+
+    /**
+     * Proposal is the proposal as the agent wrote it, which a part applies from where
+     * Checked holds nothing of its own (a routine's description, the mode the agent suggests
+     * as a hint, the template it starts from, the change's routine and base), and Checked
+     * each part checked against the live snapshot, which a part applies from otherwise (a
+     * routine's name and spec as a save stores them, the settings and rules once applied).
+     */
+    "proposal": kit$0.Proposal;
     "checked": kit$0.Checked;
     "outcomes": kit$0.Outcome[] | null;
 

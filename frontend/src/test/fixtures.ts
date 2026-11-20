@@ -4399,6 +4399,10 @@ export function describeCard(overrides: Partial<DescribeCard> = {}): DescribeCar
     where: '',
     turn: 1,
     summary: 'A routine that pins your pull requests when their checks fail.',
+    proposal: {
+      summary: 'A routine that pins your pull requests when their checks fail.',
+      routines: [{ name: 'Snooze passing bot PRs', mode: 'ask', spec: routineSpec() }],
+    },
     checked: kitChecked(),
     outcomes: [],
     settled: false,
