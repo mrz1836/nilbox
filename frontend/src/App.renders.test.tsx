@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Profiler, type ReactNode } from 'react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ItemRowProps } from './components/ItemRow'
 import { triageList } from './lib/triage'
@@ -72,14 +72,11 @@ vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platfo
 
 // The window's clock reads a faked time, starting at the fixtures' FIXED_NOW, so the
 // minute tick can be stepped. renderApp makes the clock as the window renders, once the
-// timers are faked.
-beforeAll(() => {
-  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'], now: FIXED_NOW })
-})
-
-// Each run starts at FIXED_NOW, however far the run before it stepped the clock.
+// timers are faked. Each run fakes them afresh, since the setup file puts the real timers
+// back after every test, and so starts at FIXED_NOW, however far the run before it
+// stepped the clock.
 beforeEach(() => {
-  vi.setSystemTime(FIXED_NOW)
+  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'], now: FIXED_NOW })
 })
 
 afterAll(() => {

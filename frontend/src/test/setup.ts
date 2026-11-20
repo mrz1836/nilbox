@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 
 // jsdom lays nothing out, so it has no scrollIntoView; a no-op stands in, and a test that
 // cares spies on it.
@@ -38,8 +38,11 @@ HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
   }
 }
 
-// Unmount everything rendered by a test before the next one starts. Mocks are reset by
-// mockReset and restoreMocks in vitest.config.ts.
+// Unmount everything rendered by a test before the next one starts, then put the real
+// timers back, so fake timers a test turned on end with it, after its unmount has cleared
+// its own. Mocks and stubbed globals are put back by mockReset, restoreMocks, and
+// unstubGlobals in vitest.config.ts.
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
 })

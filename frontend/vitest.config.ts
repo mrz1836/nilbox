@@ -7,11 +7,14 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react()],
   test: {
-    // Every test starts with fresh mocks: call history is cleared, every mock answers as
-    // it was made to again (the platform fake's defaults, in src/test/platform.tsx), and
-    // vi.spyOn spies are put back, so no test depends on what an earlier one left behind.
+    // Every test starts with fresh mocks and globals: call history is cleared, every mock
+    // answers as it was made to again (the platform fake's defaults, in
+    // src/test/platform.tsx), vi.spyOn spies are put back, and every global vi.stubGlobal
+    // replaced is restored (src/test/stubs.ts), so no test depends on what an earlier one
+    // left behind. src/test/setup.ts puts the real timers back after each test.
     mockReset: true,
     restoreMocks: true,
+    unstubGlobals: true,
     projects: [
       {
         extends: true,
