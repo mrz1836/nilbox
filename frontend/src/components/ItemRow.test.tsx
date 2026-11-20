@@ -1379,7 +1379,7 @@ describe('ItemRow peek', () => {
 
     const options = peek().getByRole('button', { name: 'Claude…' })
     await userEvent.click(options)
-    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
     expect(options).toHaveAttribute('aria-expanded', 'true')
   })
 
@@ -1564,6 +1564,7 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
     const options = within(row).getByRole('button', { name: /^Launch options/ })
 
     await user.click(options)
+    await screen.findByRole('dialog', { name: 'Launch options' })
     expect(shownAway(row)).toBe(true)
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
 

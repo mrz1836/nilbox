@@ -382,7 +382,9 @@ describe('CompactRow', () => {
 
     await userEvent.click(within(hover).getByRole('button', { name: 'Open in Claude' }))
     await userEvent.click(
-      within(screen.getByRole('dialog', { name: 'Launch options' })).getByRole('button', { name: 'Open in Claude' }),
+      within(await screen.findByRole('dialog', { name: 'Launch options' })).getByRole('button', {
+        name: 'Open in Claude',
+      }),
     )
 
     expect(

@@ -113,7 +113,7 @@ beforeEach(() => {
 async function rowOptions() {
   await userEvent.click(await screen.findByRole('button', { name: /^Launch options/ }))
 
-  return within(screen.getByRole('dialog', { name: 'Launch options' }))
+  return within(await screen.findByRole('dialog', { name: 'Launch options' }))
 }
 
 // openSettingsFromMenu opens the settings page the way a person would: the account menu.
@@ -692,7 +692,7 @@ describe('App', () => {
 
     // The row's verb opens the launch options every launch control opens, worktree on.
     await userEvent.click(listed.getByRole('button', { name: 'Open in Claude' }))
-    const options = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    const options = within(await screen.findByRole('dialog', { name: 'Launch options' }))
     expect(options.getByRole('checkbox', { name: /Start in a worktree/ })).toBeChecked()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()

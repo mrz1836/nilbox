@@ -84,18 +84,21 @@ function optionsButton(): HTMLElement {
   return screen.getByRole('button', { name: /^Launch options/ })
 }
 
-// openMenu opens the launch menu and returns queries scoped to it.
+// openMenu opens the launch menu and returns queries scoped to it, once its code, which
+// loads on its own, has come.
 async function openMenu() {
   await userEvent.click(optionsButton())
 
-  return within(screen.getByRole('dialog', { name: 'Launch options' }))
+  return within(await screen.findByRole('dialog', { name: 'Launch options' }))
 }
 
 // launchIt launches as the user does: the button, name, opens the launch options, and
 // their own Open, named the same, starts the launch.
 async function launchIt(name = 'Open in Claude') {
   await userEvent.click(screen.getByRole('button', { name }))
-  await userEvent.click(within(screen.getByRole('dialog', { name: 'Launch options' })).getByRole('button', { name }))
+  await userEvent.click(
+    within(await screen.findByRole('dialog', { name: 'Launch options' })).getByRole('button', { name }),
+  )
 }
 
 // choosePrompt picks a prompt, by its nickname, in the launch options' Prompt select.
@@ -340,7 +343,7 @@ describe('LaunchControls', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
 
-    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Open in Claude' })[0]).toHaveAttribute('aria-expanded', 'true')
     expect(platform.launch).not.toHaveBeenCalled()
 
@@ -1053,7 +1056,7 @@ describe('LaunchControls', () => {
 
     // The button opens the same launch options as the arrow, which say why.
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
-    const menu = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    const menu = within(await screen.findByRole('dialog', { name: 'Launch options' }))
 
     expect(menu.getByText(/No prompt applies/)).toBeInTheDocument()
     // With no options to choose, focus starts in the dialog itself.
@@ -1123,7 +1126,9 @@ describe('LaunchControls', () => {
 
     await userEvent.click((await held()).getByRole('button', { name: 'Take over' }))
     await userEvent.click(
-      within(screen.getByRole('dialog', { name: 'Take over this run?' })).getByRole('button', { name: 'Cancel' }),
+      within(await screen.findByRole('dialog', { name: 'Take over this run?' })).getByRole('button', {
+        name: 'Cancel',
+      }),
     )
     expect(platform.takeOverRun).not.toHaveBeenCalled()
 

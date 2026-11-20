@@ -899,7 +899,7 @@ describe('ReviewSheet', () => {
     const arrow = screen.getByRole('button', { name: /^Launch options/ })
     await userEvent.click(arrow)
 
-    const options = screen.getByRole<HTMLDialogElement>('dialog', { name: 'Launch options' })
+    const options = await screen.findByRole<HTMLDialogElement>('dialog', { name: 'Launch options' })
     expect(isTopmost(options)).toBe(true)
     expect(within(options).getByRole('heading', { name: 'Open in Claude' })).toBeInTheDocument()
     expect(within(options).getByRole('combobox', { name: 'Prompt' })).toHaveFocus()
@@ -937,7 +937,7 @@ describe('ReviewSheet', () => {
     await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
 
     // React hands a dialog's cancel event on to the dialogs around it, as if it bubbled.
-    fireEvent(screen.getByRole('dialog', { name: 'Launch options' }), new Event('cancel', { cancelable: true }))
+    fireEvent(await screen.findByRole('dialog', { name: 'Launch options' }), new Event('cancel', { cancelable: true }))
 
     expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()
     expect(sheet()).toHaveAttribute('open')
@@ -955,7 +955,7 @@ describe('ReviewSheet', () => {
 
     await actionButton('Approve & squash-merge')
     await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
-    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
 
     // Another view shows (⌘, opens Settings), then the inbox again.
     rerender(page('hidden'))
@@ -981,7 +981,7 @@ describe('ReviewSheet', () => {
     await actionButton('Approve & squash-merge')
     await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
 
-    const options = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    const options = within(await screen.findByRole('dialog', { name: 'Launch options' }))
     await userEvent.selectOptions(options.getByRole('combobox', { name: 'Prompt' }), 'Quick look')
     await userEvent.click(options.getByRole('button', { name: 'Close' }))
     expect(screen.getByRole('button', { name: /^Launch options/ })).toHaveAccessibleName(

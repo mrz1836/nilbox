@@ -948,7 +948,7 @@ describe('ReviewComposer', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
     await userEvent.selectOptions(
-      within(screen.getByRole('dialog', { name: 'Launch options' })).getByRole('combobox', { name: 'Prompt' }),
+      within(await screen.findByRole('dialog', { name: 'Launch options' })).getByRole('combobox', { name: 'Prompt' }),
       'Quick look',
     )
     await userEvent.keyboard('{Escape}')
