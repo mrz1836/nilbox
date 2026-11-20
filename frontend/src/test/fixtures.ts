@@ -3,6 +3,8 @@
 import { brand } from '../generated/brand'
 import catalogJSON from './autopilotCatalog.json'
 import type {
+  AssigneeCandidate,
+  AssigneeCandidates,
   AutopilotCatalog,
   AutopilotDescribed,
   AutopilotExplanation,
@@ -85,7 +87,6 @@ import type {
   InboxItem,
   Issue,
   IssueLinked,
-  IssueCandidate,
   IssueOffer,
   IssueRepoLabels,
   IssueReply,
@@ -2826,6 +2827,48 @@ export function review(overrides: Partial<Review> = {}): Review {
     fetchedAt: '2026-06-15T11:59:00Z',
     stale: false,
     canEditReviewers: false,
+    assignees: [],
+    moreAssignees: 0,
+    canEditAssignees: false,
+    ...overrides,
+  }
+}
+
+// assigneeCandidates is whom the assignee picker offers for pull request #7 or issue #12,
+// in acme-org/example-repo, as the app learned them before a read of who can be assigned
+// there: the user, the author octo-other, octo-commenter, who took part, octo-member, who
+// works on the repository, and octo-org, who works on acme-org/web.
+export function assigneeCandidates(overrides: Partial<AssigneeCandidates> = {}): AssigneeCandidates {
+  const person = (c: Partial<AssigneeCandidate> & Pick<AssigneeCandidate, 'login' | 'source'>): AssigneeCandidate => ({
+    name: '',
+    mine: false,
+    reviewed: 0,
+    authored: 0,
+    committed: 0,
+    assignedAt: '',
+    lastAt: '',
+    where: '',
+    ...c,
+  })
+
+  return {
+    people: [
+      person({ login: 'octo-user', name: 'Octo User', mine: true, source: 'you' }),
+      person({ login: 'octo-other', source: 'author' }),
+      person({ login: 'octo-commenter', source: 'participant' }),
+      person({
+        login: 'octo-member',
+        name: 'Octo Member',
+        source: 'works_here',
+        reviewed: 12,
+        lastAt: '2026-06-12T12:00:00Z',
+      }),
+      person({ login: 'octo-org', source: 'org', authored: 2, lastAt: '2026-06-14T12:00:00Z', where: 'acme-org/web' }),
+    ],
+    total: 0,
+    complete: false,
+    readAt: '',
+    stale: false,
     ...overrides,
   }
 }
@@ -3189,15 +3232,6 @@ export function repoLabels(overrides: Partial<IssueRepoLabels> = {}): IssueRepoL
     total: 3,
     ...overrides,
   }
-}
-
-// candidates are the people a search finds the issue can be assigned to: the user, and one
-// other.
-export function candidates(): IssueCandidate[] {
-  return [
-    { login: 'octo-user', name: 'Octo User', mine: true },
-    { login: 'octo-other', name: '', mine: false },
-  ]
 }
 
 // issueReplies are the comment replies the issue sheet offers: one for issues, one for

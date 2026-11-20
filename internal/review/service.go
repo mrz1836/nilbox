@@ -19,7 +19,9 @@
 // Line comments are checked against the cached diff (hunks.go) before GitHub sees them.
 // The sheet also manages who a pull request asks to review (reviewers.go): it suggests
 // reviewers from the People directory, with no request, learns into it from every read, and
-// asks or takes requests off with at most two REST requests.
+// asks or takes requests off with at most two REST requests. And it manages who a pull
+// request is assigned to (assignees.go), as the issue sheet does an issue's, through the
+// assignee Finder both sheets share.
 // The package reaches the inbox, the settings, the prompt library, and the People
 // directory only through the interfaces it declares, which the app's core adapts.
 package review
@@ -37,6 +39,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/assignees"
 	"github.com/mrz1836/nilbox/internal/bump"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
@@ -222,6 +225,11 @@ type GitHub interface {
 	) (*github.Edited, error)
 	FetchRepoPeople(ctx context.Context, tok github.Token, id string) (*github.RepoPeople, error)
 	FetchRepoTeams(ctx context.Context, tok github.Token, name repo.Name) ([]github.Team, error)
+	FetchAssignable(
+		ctx context.Context, tok github.Token, kind item.Kind, id, query string,
+	) (*github.AssignableUsers, error)
+	AddAssignees(ctx context.Context, tok github.Token, ref item.Ref, logins []string) (*github.Edited, error)
+	RemoveAssignees(ctx context.Context, tok github.Token, ref item.Ref, logins []string) (*github.Edited, error)
 }
 
 // Settings reads the settings the sheet follows: how to merge, which files are sensitive,
@@ -246,8 +254,8 @@ type Merges interface {
 	Merged(name repo.Name)
 }
 
-// Config holds a Service's dependencies. Every one but Merges, People, Clock, and Logger
-// is required.
+// Config holds a Service's dependencies. Every one but Merges, People, Assignees, Clock,
+// and Logger is required.
 type Config struct {
 	// Pool is the database, which holds the sheet's cache.
 	Pool *sql.DB
@@ -269,6 +277,10 @@ type Config struct {
 	// only GitHub's suggestions.
 	People People
 
+	// Assignees offers people to assign, and learns and searches who can be, shared with
+	// the issue sheet; without it, the assignee picker offers no one.
+	Assignees *assignees.Finder
+
 	Clock  clock.Clock
 	Logger *slog.Logger
 }
@@ -283,6 +295,7 @@ type Service struct {
 	events   event.Sink
 	merges   Merges
 	people   People
+	finder   *assignees.Finder
 	clock    clock.Clock
 	logger   *slog.Logger
 
@@ -304,7 +317,7 @@ func NewService(cfg Config) *Service {
 	return &Service{
 		inbox: cfg.Inbox, github: cfg.GitHub, settings: cfg.Settings, replies: cfg.Replies,
 		cache: newCacheStore(cfg.Pool), events: event.Or(cfg.Events), merges: cfg.Merges, people: cfg.People,
-		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), onGitHub: map[int64]bool{},
+		finder: cfg.Assignees, clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger), onGitHub: map[int64]bool{},
 	}
 }
 
@@ -799,7 +812,7 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 		AutoMerge: MergeMethod(pull.AutoMerge), Head: pull.HeadOID, Files: []File{}, Checks: []Check{}, Unrun: []Unrun{},
 		Reviews: []ReviewEntry{}, Closes: []Closing{}, TotalFiles: pull.ChangedFiles, Stale: true,
 		OpenedAt: stamp(pull.CreatedAt), Reactions: []timeline.Reaction{}, Timeline: timeline.Page{Items: []timeline.Entry{}},
-		CommitList: []Commit{},
+		CommitList: []Commit{}, Assignees: []Assignee{},
 	}
 
 	if u, ok := bump.Parse(pull.Title); ok && r.IsBot {
@@ -826,6 +839,8 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, pref MethodPr
 	r.Change = changeOf(r.Files, r.Bump != nil)
 	r.Reviews = withRequests(r.Reviews, pull)
 	r.CanEditReviewers = canEditReviewers(pull, c)
+	r.Assignees, r.MoreAssignees = shownAssignees(c, pull.Viewer)
+	r.CanEditAssignees = canEditAssignees(pull, c)
 
 	plan := Decide(factsOf(pull, c, r), pref)
 	r.Offers, r.Primary, r.Readiness = textutil.NonNil(plan.Offers), plan.Primary, plan.Readiness

@@ -23,7 +23,11 @@ import { useQuery } from '../../lib/useQuery'
 import { cardKey, heldRuns, listMark, useReview } from '../../lib/useReview'
 import {
   actOnReview,
+  editAssignees,
   editReviewers,
+  learnReviewAssignees,
+  reviewAssigneeCandidates,
+  searchReviewAssignees,
   openExternal,
   reviewerCandidates,
   type AgentSession,
@@ -38,6 +42,7 @@ import {
   type ReviewTab,
   type Worktree,
 } from '../../platform'
+import type { AssigneeReads } from '../AssigneePicker'
 import { Description } from '../conversation/Description'
 import { Timeline } from '../conversation/Timeline'
 import { buttonClass } from '../controls'
@@ -159,6 +164,17 @@ interface Notice {
 // place to go back to.
 type Scrollers = Record<ReviewTab, HTMLElement | null>
 type Places = Record<ReviewTab, number | null>
+
+// assigneeReads are the assignee picker's reads of a pull request.
+const assigneeReads: AssigneeReads = {
+  candidates: reviewAssigneeCandidates,
+  learn: learnReviewAssignees,
+  search: searchReviewAssignees,
+}
+
+// ownAssignment says where the user takes themselves off a pull request: never in the
+// picker, which keeps their own row checked.
+const ownAssignment = 'Take yourself off with Unassign me, in the card’s menu.'
 
 // ConversationSkeleton is the conversation's placeholder while the first read comes.
 function ConversationSkeleton() {
@@ -344,6 +360,24 @@ export function ReviewSheet({
     }
 
     onDone(result.data, r)
+  }
+
+  // changeAssignees assigns and unassigns people, by login, then builds the sheet again from
+  // its cache, which kept who GitHub answered the pull request is assigned to, asking GitHub
+  // nothing, once GitHub made any of it, since what it made before a step that failed
+  // stands. It resolves with why it couldn't, or '' once it did.
+  const changeAssignees = async (add: string[], remove: string[]): Promise<string> => {
+    const result = await attempt(editAssignees({ itemId: id, add, remove }))
+
+    if (!result.ok) {
+      return result.error
+    }
+
+    if (result.data.sent > 0) {
+      loaded.rebuild()
+    }
+
+    return result.data.failed
   }
 
   // changeReviewers asks and takes off reviewers, by the picker's keys, then builds the sheet
@@ -812,6 +846,11 @@ export function ReviewSheet({
                                 },
                                 onEdit: changeReviewers,
                               }
+                            : undefined
+                        }
+                        assignees={
+                          review.canEditAssignees
+                            ? { reads: assigneeReads, ownLock: ownAssignment, onEdit: changeAssignees }
                             : undefined
                         }
                       />

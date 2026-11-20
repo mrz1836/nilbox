@@ -171,15 +171,21 @@ type Edited struct {
 	UpdatedAt time.Time
 
 	// ReviewRequests is who a pull request asks to review after RemoveReviewRequest,
-	// RequestReview, RequestReviewers, or RemoveReviewRequests. It is zero after
-	// RemoveAssignee.
+	// RequestReview, RequestReviewers, or RemoveReviewRequests. It is zero after an assignee
+	// edit.
 	ReviewRequests ReviewRequests
+
+	// Assignees is who the item is assigned to after AddAssignees, RemoveAssignee, or
+	// RemoveAssignees, in GitHub's order, never nil after one; nil after a review request
+	// edit.
+	Assignees []string
 }
 
-// RemoveAssignee takes login off the assignees of a pull request or issue, with one REST
-// request (DELETE /repos/{owner}/{repo}/issues/{number}/assignees). GitHub answers with
-// the item as it stands after the edit; when login is still one of its assignees, GitHub
-// ignored the change, and ErrEditIgnored is returned.
+// RemoveAssignee takes login, the signed-in user, off the assignees of a pull request or
+// issue, with one REST request (DELETE /repos/{owner}/{repo}/issues/{number}/assignees):
+// Unassign me. GitHub answers with the item as it stands after the edit; when login is still
+// one of its assignees, GitHub ignored the change, and ErrEditIgnored is returned, worded
+// for the user taking themselves off.
 func (c *Client) RemoveAssignee(ctx context.Context, tok Token, ref item.Ref, login string) (*Edited, error) {
 	edited, err := c.removeAssignee(ctx, tok, ref, login)
 
@@ -297,39 +303,19 @@ type restLogin struct {
 
 // removeAssignee sends the edit and checks GitHub's answer.
 func (c *Client) removeAssignee(ctx context.Context, tok Token, ref item.Ref, login string) (*Edited, error) {
-	if err := validateEdit(ref, login); err != nil {
-		return nil, err
-	}
-
-	body, err := json.Marshal(map[string][]string{"assignees": {login}})
-	if err != nil {
-		return nil, fmt.Errorf("encode the edit: %w", err)
-	}
-
-	raw, err := c.edit(ctx, tok, http.MethodDelete, issuePath(ref)+"/assignees", body)
+	answer, err := c.assigneesEdit(ctx, tok, ref, http.MethodDelete, []string{login})
 	if err != nil {
 		return nil, editError(ref, fmt.Errorf("unassign %s from %s: %w", login, ref, err))
 	}
 
-	var answer struct {
-		UpdatedAt time.Time   `json:"updated_at"`
-		Assignees []restLogin `json:"assignees"`
+	if len(keptNames([]string{login}, answer.Assignees)) > 0 {
+		return nil, uierr.New(
+			fmt.Sprintf("GitHub kept you assigned to %s. Your account may not be allowed to change its assignees.", ref),
+			fmt.Errorf("unassign %s from %s: %w", login, ref, ErrEditIgnored),
+		)
 	}
 
-	if err = json.Unmarshal(raw, &answer); err != nil {
-		return nil, fmt.Errorf("%w: decode %s: %w", ErrMalformedResponse, ref, err)
-	}
-
-	for _, a := range answer.Assignees {
-		if strings.EqualFold(a.Login, login) {
-			return nil, uierr.New(
-				fmt.Sprintf("GitHub kept you assigned to %s. Your account may not be allowed to change its assignees.", ref),
-				fmt.Errorf("unassign %s from %s: %w", login, ref, ErrEditIgnored),
-			)
-		}
-	}
-
-	return &Edited{UpdatedAt: answer.UpdatedAt.UTC()}, nil
+	return answer, nil
 }
 
 // removeReviewRequest sends the edit and checks GitHub's answer.

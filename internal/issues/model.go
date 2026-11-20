@@ -268,14 +268,6 @@ type RepoLabel struct {
 	Description string `json:"description"`
 }
 
-// Candidate is someone the issue can be assigned to: their login, their name or "", and
-// whether they are the user.
-type Candidate struct {
-	Login string `json:"login"`
-	Name  string `json:"name"`
-	Mine  bool   `json:"mine"`
-}
-
 // EditRequest asks to change the labels and assignees of the issue with ItemID: the
 // labels to add and to take off, by name, and the people to assign and to unassign, by
 // login. Taking the user off is Unassign me, never an edit.

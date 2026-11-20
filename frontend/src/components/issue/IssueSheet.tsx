@@ -22,6 +22,9 @@ import { useMutation } from '../../lib/useMutation'
 import {
   actOnIssue,
   editIssue,
+  issueAssigneeCandidates,
+  learnIssueAssignees,
+  searchIssueAssignees,
   type AgentSession,
   type ConversationOrder,
   type InboxItem,
@@ -33,6 +36,7 @@ import {
   type ItemResolution,
   type Worktree,
 } from '../../platform'
+import type { AssigneeReads } from '../AssigneePicker'
 import { Description } from '../conversation/Description'
 import { Timeline } from '../conversation/Timeline'
 import { buttonClass } from '../controls'
@@ -93,6 +97,17 @@ export interface IssueSheetProps {
   triage?: ReactNode
   toast?: ReactNode
 }
+
+// assigneeReads are the assignee picker's reads of an issue.
+const assigneeReads: AssigneeReads = {
+  candidates: issueAssigneeCandidates,
+  learn: learnIssueAssignees,
+  search: searchIssueAssignees,
+}
+
+// ownAssignment says where the user takes themselves off an issue: never in the picker,
+// which keeps their own row checked.
+const ownAssignment = 'Take yourself off with Unassign me, in the action menu.'
 
 // Notice is what the sheet says of one issue after an action on it: a close refused for a
 // comment since, or why taking the user off it failed. It says it only while that issue
@@ -406,7 +421,19 @@ export function IssueSheet({
                     <WorkLine worktree={worktree} sessions={sessions} agents={launch?.agents ?? []} itemId={id} />
                   </div>
                   <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-                    {reading ? <SummarySkeleton /> : <IssueSummary issue={issue} onEdit={edit} />}
+                    {reading ? (
+                      <SummarySkeleton />
+                    ) : (
+                      <IssueSummary
+                        issue={issue}
+                        onEdit={edit}
+                        assignees={{
+                          reads: assigneeReads,
+                          ownLock: ownAssignment,
+                          onEdit: (add, remove) => edit({ addAssignees: add, removeAssignees: remove }),
+                        }}
+                      />
+                    )}
                     <AgentVerdict
                       sessions={sessions}
                       agents={launch?.agents ?? []}

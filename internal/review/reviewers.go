@@ -90,13 +90,16 @@ type Directory struct {
 }
 
 // People is the local directory of who works on each repository, which the sheet learns
-// into and suggests reviewers from. core adapts *people.Service to it.
+// into and suggests reviewers from, and whose size Settings shows beside Forget, which
+// empties it. core adapts *people.Service to it.
 type People interface {
 	Learn(ctx context.Context, name repo.Name, seen []PersonSeen) error
 	SetTeams(ctx context.Context, name repo.Name, teams []TeamCandidate, listed bool) error
 	MarkRead(ctx context.Context, name repo.Name, pulls int, org bool) error
 	MarkFailed(ctx context.Context, name repo.Name) error
 	Ranked(ctx context.Context, name repo.Name) (Directory, error)
+	Summary(ctx context.Context) (PeopleSummary, error)
+	Forget(ctx context.Context) error
 }
 
 // Suggestion is why GitHub suggests someone to review a pull request.
@@ -455,9 +458,16 @@ func hasAccess(association string) bool {
 
 // learn keeps what review, a read of pull, saw of who works on its repository: who opened
 // it, who reviewed it, who committed to it, who and which teams it asks to review, and whom
-// GitHub suggests. People only. A failure is logged, and never fails the read.
+// GitHub suggests; and who it is assigned to, as assigned there. People only. A failure is
+// logged, and never fails the read.
 func (s *Service) learn(ctx context.Context, pull StoredPull, review *github.PullReview) {
-	if s.people == nil || review == nil || !review.Update.Found {
+	if review == nil || !review.Update.Found {
+		return
+	}
+
+	s.finder.Seen(ctx, pull.ref().Repo, review.Assignees.Logins)
+
+	if s.people == nil {
 		return
 	}
 

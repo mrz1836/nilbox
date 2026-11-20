@@ -50,29 +50,63 @@ func TestFetchRepoLabelsReadsTheRepositorysLabels(t *testing.T) {
 func TestFetchAssignableReadsWhoMatches(t *testing.T) {
 	t.Parallel()
 
-	body := `{"data":{"node":{"__typename":"Issue","repository":{"assignableUsers":{"nodes":[
-		{"login":"octo-user","name":"Octo User"},null,{"login":"","name":"nobody"},{"login":"octo-other","name":null}]}}},
-		"rateLimit":{"cost":1,"remaining":4980}}}`
+	for _, tc := range []struct {
+		kind     item.Kind
+		typeName string
+		id       string
+	}{
+		{kind: item.KindIssue, typeName: "Issue", id: "I_fakeNodeId12"},
+		{kind: item.KindPR, typeName: "PullRequest", id: "PR_fakeNodeId12"},
+	} {
+		t.Run(string(tc.kind), func(t *testing.T) {
+			t.Parallel()
 
-	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		raw, err := io.ReadAll(r.Body)
-		assert.NoError(t, err)
+			body := `{"data":{"node":{"__typename":"` + tc.typeName + `","repository":{"assignableUsers":{"totalCount":7,
+				"nodes":[{"login":"octo-user","name":"Octo User"},null,{"login":"","name":"nobody"},
+				{"login":"octo-other","name":null}]}}},"rateLimit":{"cost":1,"remaining":4980}}}`
 
-		var req struct {
-			Query     string            `json:"query"`
-			Variables map[string]string `json:"variables"`
-		}
+			client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				raw, err := io.ReadAll(r.Body)
+				assert.NoError(t, err)
 
-		assert.NoError(t, json.Unmarshal(raw, &req))
-		assert.Contains(t, req.Query, "assignableUsers(first: 20, query: $query)")
-		assert.Equal(t, map[string]string{"id": "I_fakeNodeId12", "query": "octo"}, req.Variables)
+				var req struct {
+					Query     string            `json:"query"`
+					Variables map[string]string `json:"variables"`
+				}
 
-		_, _ = io.WriteString(w, body)
-	})
+				assert.NoError(t, json.Unmarshal(raw, &req))
+				assert.Contains(t, req.Query, "... on RepositoryNode")
+				assert.Contains(t, req.Query, "assignableUsers(first: 100, query: $query) { totalCount nodes { login name } }")
+				assert.Equal(t, map[string]string{"id": tc.id, "query": "octo"}, req.Variables)
 
-	people, err := client.FetchAssignable(t.Context(), NewToken(fakeToken), "I_fakeNodeId12", "  octo ")
+				_, _ = io.WriteString(w, body)
+			})
+
+			people, err := client.FetchAssignable(t.Context(), NewToken(fakeToken), tc.kind, tc.id, "  octo ")
+			require.NoError(t, err)
+			assert.Equal(t, &AssignableUsers{
+				People: []Person{{Login: octoUser, Name: "Octo User"}, {Login: octoOther}}, Total: 7,
+			}, people)
+		})
+	}
+}
+
+func TestFetchAssignableCountsAtLeastWhomItNamed(t *testing.T) {
+	t.Parallel()
+
+	client := newTestClient(t, serveItem(`{"data":{"node":{"__typename":"Issue","repository":{"assignableUsers":`+
+		`{"totalCount":0,"nodes":[{"login":"octo-user"}]}}}}}`))
+
+	people, err := client.FetchAssignable(t.Context(), NewToken(fakeToken), item.KindIssue, "I_x", "")
 	require.NoError(t, err)
-	assert.Equal(t, []Assignable{{Login: "octo-user", Name: "Octo User"}, {Login: "octo-other"}}, people)
+	assert.Equal(t, 1, people.Total)
+
+	none := newTestClient(t, serveItem(`{"data":{"node":{"__typename":"Issue","repository":{"assignableUsers":`+
+		`{"totalCount":0,"nodes":[]}}}}}`))
+
+	people, err = none.FetchAssignable(t.Context(), NewToken(fakeToken), item.KindIssue, "I_x", "")
+	require.NoError(t, err)
+	assert.Equal(t, &AssignableUsers{People: []Person{}}, people, "never nil")
 }
 
 func TestTheIssueReadsOfAnIssueThatIsGoneOrNone(t *testing.T) {
@@ -83,8 +117,11 @@ func TestTheIssueReadsOfAnIssueThatIsGoneOrNone(t *testing.T) {
 	_, err := gone.FetchRepoLabels(t.Context(), NewToken(fakeToken), "I_gone")
 	require.ErrorIs(t, err, ErrIssueGone)
 
-	_, err = gone.FetchAssignable(t.Context(), NewToken(fakeToken), "I_gone", "")
+	_, err = gone.FetchAssignable(t.Context(), NewToken(fakeToken), item.KindIssue, "I_gone", "")
 	require.ErrorIs(t, err, ErrIssueGone)
+
+	_, err = gone.FetchAssignable(t.Context(), NewToken(fakeToken), item.KindPR, "PR_gone", "")
+	require.ErrorIs(t, err, ErrPullGone, "a pull request that is gone says so")
 
 	for name, body := range map[string]string{
 		"a pull request": `{"data":{"node":{"__typename":"PullRequest"}}}`,
@@ -96,9 +133,17 @@ func TestTheIssueReadsOfAnIssueThatIsGoneOrNone(t *testing.T) {
 		require.ErrorIs(t, err, ErrMalformedResponse, name)
 	}
 
+	issue := newTestClient(t, serveItem(`{"data":{"node":{"__typename":"Issue"}}}`))
+
+	_, err = issue.FetchAssignable(t.Context(), NewToken(fakeToken), item.KindPR, "PR_x", "")
+	require.ErrorIs(t, err, ErrMalformedResponse, "an issue where a pull request was asked for")
+
+	_, err = issue.FetchAssignable(t.Context(), NewToken(fakeToken), item.Kind("discussion"), "D_x", "")
+	require.ErrorIs(t, err, ErrInvalidItemRef, "neither an issue nor a pull request")
+
 	failing := newTestClient(t, serveItem(`{"data":{"node":null},"errors":[{"type":"FORBIDDEN","message":"no"}]}`))
 
-	_, err = failing.FetchAssignable(t.Context(), NewToken(fakeToken), "I_x", "")
+	_, err = failing.FetchAssignable(t.Context(), NewToken(fakeToken), item.KindIssue, "I_x", "")
 	require.ErrorIs(t, err, ErrGraphQL)
 
 	_, err = failing.FetchRepoLabels(t.Context(), NewToken(fakeToken), "")
@@ -242,7 +287,8 @@ func TestAddAssigneesSendsOneEditAndSeesWhoGitHubLeftOut(t *testing.T) {
 
 	edited, err := client.AddAssignees(t.Context(), NewToken(fakeToken), issueRef(), []string{"octo-other"})
 	require.NoError(t, err)
-	assert.Equal(t, &Edited{UpdatedAt: time.Date(2026, 1, 10, 12, 30, 0, 0, time.UTC)}, edited)
+	assert.Equal(t, &Edited{UpdatedAt: time.Date(2026, 1, 10, 12, 30, 0, 0, time.UTC), Assignees: []string{"Octo-Other"}},
+		edited, "who it is assigned to after the edit")
 	assert.Equal(t, []editRequest{{
 		method: http.MethodPost, path: "/repos/" + filesOwner + "/" + exampleRepo + "/issues/12/assignees",
 		body: map[string][]string{"assignees": {"octo-other"}},
@@ -269,6 +315,45 @@ func TestAddAssigneesSendsOneEditAndSeesWhoGitHubLeftOut(t *testing.T) {
 	_, err = refused.AddAssignees(t.Context(), NewToken(fakeToken), issueRef(), []string{"octo-other"})
 	require.Error(t, err)
 	assert.Contains(t, uierr.Message(err), "refused the change")
+}
+
+func TestRemoveAssigneesSendsOneDeleteAndNamesWhomGitHubKept(t *testing.T) {
+	t.Parallel()
+
+	client, got := editServer(t, http.StatusOK,
+		`{"updated_at":"2026-01-10T12:30:00Z","assignees":[{"login":"octo-third"},{"login":""}]}`, nil)
+	gate := &fakeGate{}
+	client.Writes = gate
+	pull := issueRef()
+	pull.Kind = item.KindPR
+
+	edited, err := client.RemoveAssignees(t.Context(), NewToken(fakeToken), pull, []string{octoUser, octoOther})
+	require.NoError(t, err)
+	assert.Equal(t, &Edited{UpdatedAt: time.Date(2026, 1, 10, 12, 30, 0, 0, time.UTC), Assignees: []string{"octo-third"}},
+		edited, "who is still assigned, a blank login left out")
+	assert.Equal(t, []editRequest{{
+		method: http.MethodDelete, path: "/repos/" + filesOwner + "/" + exampleRepo + "/issues/12/assignees",
+		body: map[string][]string{"assignees": {octoUser, octoOther}},
+	}}, *got, "a pull request's assignees are at the issues endpoint, everyone in one request")
+	assert.Equal(t, []string{ResourceCore}, gate.allowed, "the gate counted it")
+
+	_, err = client.RemoveAssignees(t.Context(), NewToken(fakeToken), pull, []string{"Octo-Third", octoUser})
+	require.ErrorIs(t, err, ErrEditIgnored)
+	assert.Equal(t, "GitHub kept Octo-Third assigned to "+filesOwner+"/"+exampleRepo+"#12. "+
+		"Your account may not be allowed to change its assignees.", uierr.Message(err))
+
+	_, err = client.RemoveAssignees(t.Context(), NewToken(fakeToken), pull, nil)
+	require.ErrorIs(t, err, ErrInvalidLogin)
+
+	_, err = client.RemoveAssignees(t.Context(), NewToken(fakeToken), pull, []string{octoUser, "not a login"})
+	require.ErrorIs(t, err, ErrInvalidLogin)
+	assert.Len(t, *got, 2, "nothing sent for a login GitHub can't have issued")
+
+	refused, _ := editServer(t, http.StatusNotFound, `{"message":"Not Found"}`, nil)
+
+	_, err = refused.RemoveAssignees(t.Context(), NewToken(fakeToken), pull, []string{octoUser})
+	require.Error(t, err)
+	assert.Contains(t, uierr.Message(err), "could not find")
 }
 
 func TestCanTriage(t *testing.T) {

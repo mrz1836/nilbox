@@ -13,6 +13,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/assignees"
+	"github.com/mrz1836/nilbox/internal/assignees/assigneestest"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/github/githubtest"
 	"github.com/mrz1836/nilbox/internal/inbox"
@@ -198,6 +200,10 @@ const (
 	callUnask   = "unask"
 	callPeople  = "people"
 	callTeams   = "teams"
+
+	callAssignable = "assignable"
+	callAssign     = "assign"
+	callUnassign   = "unassign"
 )
 
 // fakeGitHub answers the sheet's requests and counts them.
@@ -280,6 +286,80 @@ type fakeGitHub struct {
 	peopleWait chan struct{}
 	repoTeams  []github.Team
 	teamsErr   error
+
+	// assignable is what a read of who can be assigned answers, assignableErr its failure,
+	// and searched the words of each read, in order, with the kind of item each read through.
+	assignable    *github.AssignableUsers
+	assignableErr error
+	searched      []string
+
+	// assigned is who the pull request is assigned to, which AddAssignees adds to and
+	// RemoveAssignees takes from, answering with it; assignErr and unassignErr fail the next
+	// of each once, and assignBadToken refuses the token of the next assignment once.
+	assigned       []string
+	assignErr      error
+	unassignErr    error
+	assignBadToken bool
+}
+
+func (g *fakeGitHub) FetchAssignable(
+	_ context.Context, _ github.Token, kind item.Kind, _, query string,
+) (*github.AssignableUsers, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callAssignable)
+	g.searched = append(g.searched, string(kind)+":"+query)
+
+	switch {
+	case g.assignableErr != nil:
+		return nil, g.assignableErr
+	case g.assignable == nil:
+		return &github.AssignableUsers{People: []github.Person{}}, nil
+	default:
+		return g.assignable, nil
+	}
+}
+
+func (g *fakeGitHub) AddAssignees(_ context.Context, _ github.Token, _ item.Ref, logins []string) (*github.Edited, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callAssign)
+
+	switch {
+	case g.assignBadToken:
+		g.assignBadToken = false
+
+		return nil, githubtest.BadCredentials()
+	case g.assignErr != nil:
+		err := g.assignErr
+		g.assignErr = nil
+
+		return nil, err
+	}
+
+	g.assigned = append(slices.Clone(g.assigned), logins...)
+
+	return &github.Edited{UpdatedAt: testNow, Assignees: append([]string{}, g.assigned...)}, nil
+}
+
+func (g *fakeGitHub) RemoveAssignees(_ context.Context, _ github.Token, _ item.Ref, logins []string) (*github.Edited, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callUnassign)
+
+	if g.unassignErr != nil {
+		err := g.unassignErr
+		g.unassignErr = nil
+
+		return nil, err
+	}
+
+	g.assigned = slices.DeleteFunc(slices.Clone(g.assigned), func(a string) bool { return slices.Contains(logins, a) })
+
+	return &github.Edited{UpdatedAt: testNow, Assignees: append([]string{}, g.assigned...)}, nil
 }
 
 func (g *fakeGitHub) FetchPullReview(_ context.Context, _ github.Token, _, compareHead string) (*github.PullReview, error) {
@@ -732,6 +812,9 @@ type harness struct {
 	merges *fakeMerges
 	people *fakePeople
 
+	// assignable is the directory the assignee Finder learns into and offers from.
+	assignable *assigneestest.Directory
+
 	// ignored is the workflows whose held runs never count, as the settings say.
 	ignored *ignoredWorkflows
 }
@@ -747,7 +830,7 @@ func newHarness(t *testing.T) *harness {
 		db: db, inbox: &fakeInbox{pull: storedPull()}, clock: testutil.NewClock(testNow), events: &testutil.Events{},
 		github: &fakeGitHub{review: pullReview(headA, github.MergeStateClean), diff: pullDiff(headA)},
 		logs:   &testutil.Logs{},
-		merges: &fakeMerges{}, ignored: &ignoredWorkflows{}, people: newFakePeople(),
+		merges: &fakeMerges{}, ignored: &ignoredWorkflows{}, people: newFakePeople(), assignable: assigneestest.NewDirectory(),
 	}
 
 	h.svc = h.service(fakeSettings{ignored: h.ignored}, fakeReplies{})
@@ -759,7 +842,8 @@ func newHarness(t *testing.T) *harness {
 func (h *harness) service(settings Settings, replies Replies) *Service {
 	return NewService(Config{
 		Pool: h.db, Inbox: h.inbox, GitHub: h.github, Settings: settings, Replies: replies, Events: h.events,
-		Merges: h.merges, People: h.people, Clock: h.clock, Logger: h.logs.Logger(),
+		Merges: h.merges, People: h.people, Assignees: assignees.NewFinder(h.assignable, nil), Clock: h.clock,
+		Logger: h.logs.Logger(),
 	})
 }
 
@@ -918,6 +1002,32 @@ func (f *fakePeople) Ranked(context.Context, repo.Name) (Directory, error) {
 	d.People, d.Teams = slices.Clone(d.People), slices.Clone(d.Teams)
 
 	return d, nil
+}
+
+func (f *fakePeople) Summary(context.Context) (PeopleSummary, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	people := map[string]bool{}
+	for _, s := range f.learned {
+		people[strings.ToLower(s.Login)] = true
+	}
+
+	return PeopleSummary{People: len(people), Repos: min(len(people), 1)}, f.err
+}
+
+func (f *fakePeople) Forget(context.Context) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.err != nil {
+		return f.err
+	}
+
+	f.learned, f.listed, f.asked, f.reads = nil, nil, nil, nil
+	f.dir = Directory{People: []KnownPerson{}, Teams: []TeamCandidate{}, Stale: true}
+
+	return nil
 }
 
 // seenAs lists what the directory learned in role, as "login #number" with "+" for access.

@@ -4,17 +4,19 @@ import { counted, refText } from '../../lib/format'
 import { dayPassed, formatDay } from '../../lib/time'
 import { useNowAs } from '../../lib/useNow'
 import { openExternal, type Issue, type IssueFix, type IssueLinked, type IssuePerson } from '../../platform'
+import { AssigneesSection, type AssigneesEditing } from '../Assignees'
 import { PersonAvatar } from '../Avatar'
 import { captionClass } from '../controls'
 import { ItemLink } from '../ItemLink'
 import { LabelChip, ProgressBar, ProjectLink } from '../ItemSignals'
-import { AssigneePicker, LabelPicker, type OnEdit } from './IssuePickers'
+import { LabelPicker, type OnEdit } from './IssuePickers'
 
 export interface IssueSummaryProps {
   issue: Issue
-  // onEdit changes the issue's labels and assignees, which the details offer to while the
-  // user may (Issue.canEdit); without it, they don't.
+  // onEdit changes the issue's labels, and assignees its assignees, which the details offer
+  // to while the user may (Issue.canEdit); without them, they don't.
   onEdit?: OnEdit | undefined
+  assignees?: AssigneesEditing | undefined
 }
 
 // Part is one titled part of the details, with a control beside its title, if any.
@@ -188,9 +190,10 @@ function Milestone({ issue }: { issue: Issue }) {
 }
 
 // IssueSummary is the details beside the conversation: the pull requests that fix the
-// issue, who it is assigned to, its labels and projects, its milestone, its sub-issues and
-// the issue it is part of, and who took part.
-export function IssueSummary({ issue, onEdit }: IssueSummaryProps) {
+// issue, who it is assigned to (AssigneesSection, as the review sheet shows a pull
+// request's), its labels and projects, its milestone, its sub-issues and the issue it is
+// part of, and who took part.
+export function IssueSummary({ issue, onEdit, assignees }: IssueSummaryProps) {
   const editing = issue.canEdit && onEdit !== undefined
 
   return (
@@ -198,9 +201,16 @@ export function IssueSummary({ issue, onEdit }: IssueSummaryProps) {
       <Part title="Development">
         <Development issue={issue} />
       </Part>
-      <Part title="Assignees" action={editing && <AssigneePicker issue={issue} onEdit={onEdit} />}>
-        <People people={issue.assignees} more={issue.moreAssignees} url={issue.url} none="No one" />
-      </Part>
+      <AssigneesSection
+        look="details"
+        itemId={issue.id}
+        repo={issue.repo}
+        noun="issue"
+        url={issue.url}
+        assignees={issue.assignees}
+        more={issue.moreAssignees}
+        editing={issue.canEdit ? assignees : undefined}
+      />
       <Part title="Labels" action={editing && <LabelPicker issue={issue} onEdit={onEdit} />}>
         {issue.labels.length === 0 ? (
           <p className="text-sm text-muted">None</p>

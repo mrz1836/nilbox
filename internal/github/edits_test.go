@@ -101,7 +101,8 @@ func TestRemoveAssigneeSendsOneEdit(t *testing.T) {
 	edited, err := client.RemoveAssignee(t.Context(), NewToken(fakeToken), editRef(), "octo-user")
 	require.NoError(t, err)
 
-	assert.Equal(t, &Edited{UpdatedAt: time.Date(2026, 1, 10, 12, 30, 0, 0, time.UTC)}, edited)
+	assert.Equal(t, &Edited{UpdatedAt: time.Date(2026, 1, 10, 12, 30, 0, 0, time.UTC), Assignees: []string{"someone"}},
+		edited, "who it is assigned to after the edit")
 	assert.Equal(t, []editRequest{{
 		method: http.MethodDelete, path: "/repos/acme-org/example-repo/issues/42/assignees",
 		body: map[string][]string{"assignees": {"octo-user"}},

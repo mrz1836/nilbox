@@ -165,7 +165,8 @@ func TestMigrateFreshDatabase(t *testing.T) {
 		"gh_thread_moments", "gh_threads",
 		"issue_views", "item_agent_changes", "item_checks", "item_details", "item_files", "item_local_state",
 		"item_watches", "items",
-		"launch_defaults", "notifications", "people", "people_reads", "people_seen", "people_teams",
+		"launch_defaults", "notifications", "people", "people_assignable", "people_assignable_reads", "people_reads",
+		"people_seen", "people_teams",
 		"prefs", "prompts", "rate_snapshots", "repos", "review_diff_files", "review_diffs", "schema_migrations",
 		"script_runs", "script_trust", "tool_installs", "user_scripts", "worktree_cleanups", "worktree_records",
 	}, tables(t, db))

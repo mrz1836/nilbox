@@ -249,8 +249,8 @@ bytes).
 - `internal/clock`, `periodic`, `flight`, `paths`, `progress`, `textutil`: the clock, the
   interval runner, one call per key, paths, progress, and text and shell quoting.
 - `internal/testutil`, `internal/scriptrun/scriptruntest`,
-  `internal/localrepos/localrepostest`: the shared test fakes and fixtures;
-  only tests import them.
+  `internal/localrepos/localrepostest`, `internal/assignees/assigneestest`: the shared test
+  fakes and fixtures; only tests import them.
 - `internal/github/githubtest`: the shared fakes of `internal/github` (a token source, a fake
   GitHub's request counts, a refused token); only tests import it.
 
@@ -286,7 +286,9 @@ bytes).
 - [`internal/avatars`](docs/architecture.md#internalavatars): the profile pictures the sheets
   and the inbox's cards show, people's and bots'.
 - [`internal/people`](docs/architecture.md#internalpeople): the local directory of who works on
-  each repository, which the review sheet's reviewer picker suggests from.
+  each repository and who can be assigned there, which the pickers suggest from.
+- [`internal/assignees`](docs/architecture.md#internalassignees): whom both sheets' assignee
+  pickers offer, and when a read of GitHub is due.
 - [`internal/bump`](docs/architecture.md#internalbump): reads a dependency update from a bot's
   pull request.
 

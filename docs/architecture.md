@@ -22,7 +22,8 @@ The sections follow the guide's Layout:
   [`internal/statusprefs`](#internalstatusprefs), [`internal/svcstatus`](#internalsvcstatus)
 - **The sheets**: [`internal/review`](#internalreview), [`internal/issues`](#internalissues),
   [`internal/timeline`](#internaltimeline), [`internal/avatars`](#internalavatars),
-  [`internal/people`](#internalpeople), [`internal/bump`](#internalbump)
+  [`internal/people`](#internalpeople), [`internal/assignees`](#internalassignees),
+  [`internal/bump`](#internalbump)
 - **Agents and launches**: [`internal/launcher`](#internallauncher),
   [`internal/sessions`](#internalsessions)
 - **Clones and worktrees**: [`internal/localrepos`](#internallocalrepos),
@@ -163,6 +164,11 @@ worktrees, notifications, app info, the API budget, sessions, integrations, scri
 release, hooks, repository scripts, the mirror of the user's GitHub notifications, the
 backup of the user's setup, the service status check, the first-run setup, the app's updates,
 and Autopilot's routines.
+Some building blocks are built once and handed to every service that needs them, so what they
+hold is shared: the clone locks (`clonelock.Set`), the profile pictures (`avatars.Service`), and
+the assignee Finder both sheets offer people to assign through (`assignees.Finder`, over the
+People directory, adapted by `assigneesDirectory` in `adapters_assignees.go`), so a
+repository's assignable users are read at most once at a time, whichever sheet asks.
 Every `internal/*` package is plain Go, built and tested on Linux without CGO.
 
 ## internal/event and internal/desktop
@@ -475,7 +481,9 @@ GitHub refusing the token; only tests may import it too.
 `internal/localrepos/localrepostest` holds the fake clone root the hooks, scripts, and
 release suites share (`Clones`: the roots, the clones listed in them, and each clone's
 origin, each read counted, failed, or hooked as a test says); only tests may import it as
-well. The repoguard guards on SQL and on the git verbs the app runs treat every
+well. `internal/assignees/assigneestest` holds the in-memory `Directory` both sheets' suites
+hand their assignee Finder, which keeps each read and records who was assigned and which reads
+failed. The repoguard guards on SQL and on the git verbs the app runs treat every
 test-support package as they treat `_test.go` files.
 
 ## internal/budget and internal/github
@@ -585,6 +593,27 @@ connection nodes, which GitHub's formula rounds to one). `FetchRepoTeams` reads 
 organization's repository's teams (`GET /repos/{owner}/{repo}/teams?per_page=100`, through
 `do`, one REST point); GitHub refuses (403) or hides (404) them from an account it won't show
 them to, as it hides them from one that isn't a member, which is `ErrTeamsHidden`.
+
+**Assignees.** Both sheets assign and unassign people with at most two REST requests at the
+issues endpoint, where GitHub keeps a pull request's assignees too: `RemoveAssignees` takes
+everyone off in one `DELETE .../issues/{number}/assignees`, and `AddAssignees` assigns everyone
+in one `POST` at the same path, both through `edit` and one shared sender (`assigneesEdit`),
+which `RemoveAssignee`, the inbox's Unassign me, uses too and keeps its words about "you".
+Every login is checked before anything is sent (`ErrInvalidLogin`). GitHub answers with the
+item as it stands after the edit, whose assignees the result holds (`Edited.Assignees`, never
+nil after an assignee edit): a login added that it doesn't list, or taken off that it still
+lists, is a change GitHub ignored (`ErrEditIgnored`), named in the user's words ("GitHub kept
+octo-other assigned to acme-org/example-repo#42."). GitHub assigns at most ten people
+(`MaxAssignees`). `FetchAssignable(kind, id, query)` reads who an issue's or a pull request's
+repository can assign, by the item's node (`... on RepositoryNode { repository {
+assignableUsers(first: 100, query: $query) { totalCount nodes { login name } } } }`), `""` for
+everyone: the first page (`AssignableMax`) and how many match (`AssignableUsers.Total`), one
+point; an item GitHub can't find is `ErrIssueGone` or `ErrPullGone`, by kind, through the same
+`itemRepoRead` the labels read uses. The review sheet's read (`FetchPullReview`) asks for the
+pull request's assignees too (`assignees(first: 10) { totalCount nodes { login } }`, all of
+them, since GitHub assigns ten at most), into `PullReview.Assignees`; the read still costs one
+point (GitHub's dry run, in November 2026: 2,722 nodes, ten more than without them), and so
+does `FetchAssignable` (100 nodes).
 
 ## internal/inbox
 
@@ -1565,6 +1594,36 @@ read; nothing is `settle`d, since the cache holds no requests. A step that fails
 is the result's `Failed`, as a label edit's is, and a failure before any is the error. Each
 person asked is kept as `picked` in the directory, so the people the user asks most rank up.
 
+**Who it is assigned to** (`assignees.go`). The sheet reads a pull request's assignees with its
+one read and keeps them in the cache (`pullContext.Assignees`, nil in an older build's, which
+keeps them from being edited until the sheet reads the pull request again: `Review.Assignees`
+is then empty and `CanEditAssignees` false, with "Reload the pull request" as why). It offers
+people to assign through the `assignees.Finder` core hands both sheets (see internal/assignees):
+`AssigneeCandidates` with no request, `LearnAssignees` when a read of the repository's
+assignable users is due, and `SearchAssignees` for words, each made of the pull request as the
+Finder sees it (`assigneeItem`: the repository, the user, the author when a person, and who
+took part, its reviewers and whoever wrote what its conversation shows, bots left out) and of
+the read the sheet makes (`readAssignable`: `FetchAssignable(KindPR)` through the inbox's
+`Peek`, which stores nothing). Every read records who is assigned (`learn`, `Finder.Seen`).
+`EditAssignees` changes who it is assigned to: names taken once and apart as a reviewer edit's
+are, then at most two REST requests through the Actor (`sendAssignees`: `"-"`,
+`RemoveAssignees` for everyone taken off, then `"+"`, `AddAssignees` for everyone added), each
+never sent twice across the token retry; taking off first lets a swap work at GitHub's cap. It
+needs `Review.CanEditAssignees` (as `CanEditReviewers`, with the assignees read), else
+`ErrCannotEditAssignees` with why; taking the user off is refused (`ErrOwnAssignment`: that is
+Unassign me, on the card), and so is an edit that would leave more than ten assigned
+(`ErrTooManyAssignees`), before anything is sent. After each step GitHub made, the sheet
+rewrites the cache's assignees with GitHub's answer (`cacheStore.setAssignees`: one
+transaction of `GetDiff`, the new list, `fitContext`, and `SetDiffContext` with the row's own
+`context_at`, so the next refresh is no sooner), and the window rebuilds the sheet with no
+read; a cache it can't rewrite is expired instead (`settle`), so the next refresh reads it. The
+inbox's card is not touched: it knows only whether the user is assigned, which its next refresh
+reads. Each person assigned is recorded as assigned in the repository. A read already under way
+when an edit lands can overwrite the rewritten list with the one it read; the next read puts it
+right. `PeopleSummary` and `ForgetPeople` (`people.go`) count and empty the People directory
+for Settings › Reviewing › People; forgetting answers with what is left, so the row needs no
+second read.
+
 ## internal/issues
 
 `internal/issues/` is the issue sheet's service, beside the review sheet's: neither imports
@@ -1610,12 +1669,19 @@ reply may apply to issues; a default reply, which only the review sheet starts f
 apply to pull requests), through the reply filler core shares with the review sheet,
 which refuses a reply for another kind of item. With triage access or more (`github.CanTriage`,
 `Issue.CanEdit`, on an open issue the sheet has read), `Labels` lists the repository's
-labels and `Assignable` searches who the issue can be assigned to (one GraphQL point each,
-one read of each at a time, kept in memory ten minutes), and `Edit` adds and removes labels
-and assignees through `ActIssue`, each answer checked (GitHub ignores a change it won't
-make), never sending a step twice, stopping at the first that fails, and saying how many
-GitHub made (`EditResult`), so the window reads the issue again only then; the user takes
-themselves off with Unassign me alone.
+labels (one GraphQL point, one read at a time, kept in memory ten minutes), and
+`AssigneeCandidates`, `LearnAssignees`, and `SearchAssignees` offer people to assign through
+the `assignees.Finder` the review sheet shares (`assignees.go`: the issue as the Finder sees it,
+`issueItem`, with its participants as the sheet last read them, and the read it makes,
+`FetchAssignable(KindIssue)` through `PeekIssue`); every read records who is assigned
+(`Finder.Seen`). `Edit` adds and removes labels and assignees through `ActIssue`: the labels
+added, each label taken off, then one request that unassigns everyone taken off
+(`RemoveAssignees`) before one that assigns everyone added (`AddAssignees`), so a swap works at
+GitHub's cap of ten, past which an edit is refused before anything is sent. Each answer is
+checked (GitHub ignores a change it won't make), no step is sent twice, it stops at the first
+that fails, and it says how many GitHub made (`EditResult`), so the window reads the issue
+again only then; each person assigned is recorded as assigned, and the user takes themselves
+off with Unassign me alone.
 
 ## internal/timeline
 
@@ -1654,11 +1720,13 @@ pruned in the transaction that writes. The window gets them as data: URLs (`Pers
 ## internal/people
 
 `internal/people/` is the app's local directory of who works on each repository, which the
-review sheet's reviewer picker suggests from with no request (see internal/review). It takes
-plain values, people only (the review sheet leaves bots and mannequins out), keyed by the
-repository's `repo.Name`, and imports no GitHub client and no service; the sheet learns into it
-from every read of a pull request (`Learn`) and from one read of the repository's recent pull
-requests at most weekly (`LearnReviewers`). It owns four tables (migration `0106_people`):
+review sheet's reviewer picker suggests from with no request (see internal/review), and of who
+can be assigned there, which both sheets' assignee pickers suggest from (see
+internal/assignees). It takes plain values, people only (the sheets leave bots and mannequins
+out), keyed by the repository's `repo.Name`, and imports no GitHub client and no service; the
+sheet learns into it from every read of a pull request (`Learn`) and from one read of the
+repository's recent pull requests at most weekly (`LearnReviewers`). It owns six tables, these
+four from migration `0106_people` and two of who can be assigned (below):
 `people`, one row per login, lower-cased as GitHub compares them, with the login as GitHub
 spells it now and the name, which an empty one never overwrites; `people_seen`, what a person
 was seen doing, keyed by repository, person, pull request number, and role (`author`,
@@ -1686,6 +1754,60 @@ row, so rows that share a time are cut too), and no person nothing names; a team
 nor asked for in a year, and a read neither made nor failed in a year, go. Every stamp comes
 from its injected clock, and an entry without a valid login, a pull request number, or a known
 role is skipped.
+
+**Who can be assigned** (`assignable.go`, migration `0108_people_assignable`).
+`people_assignable` holds, per repository and
+person, when a read of GitHub's assignable users last named them (`listed_at`) and when the app
+last saw them assigned there (`assigned_at`, from a sheet's read or the user's own edit,
+`SeenAssigned`); `people_assignable_reads` holds each read of the list, by its words
+lower-cased and trimmed (`QueryKey`, `""` for the whole list): when it went through, how many
+GitHub said match (`total`) and named (`listed`), and when it last failed. A person is one row
+of `people` however many repositories they work in, so what the app learns of them anywhere
+serves everywhere, and `PruneUnseenPeople` keeps whoever `people_assignable` names.
+`KeepAssignable` keeps a read in one transaction: the people (a name only when the read gave
+one), each marked listed, the read, and, for a whole list that named everyone (`listed >=
+total`), everyone it left out unlisted. `Assignable` returns everyone the repository's rows
+name with what the whole list's read says (`Complete`, and `Stale` as `Ranked`'s: due weekly,
+never within 30 minutes of a failure). `Covers` reports that a search needs no request: a whole
+list that named everyone covers every search; a search that named everyone it matched covers,
+for a week (`coversFor`), every longer one that starts with its words; and any search answers
+the same words for ten minutes (`repeatFor`). `OrgRanked` ranks, with `rank`, the latest 2,000
+rows of who works on the owner's other repositories (access, or asked to review), each person
+with the one they were last seen in (`Person.Where`). It is bounded too: rows neither listed
+nor seen assigned in a year go, then the oldest past 100,000, a search's read after a week and
+the whole list's after a year. `Summary` counts the people and the repositories anything names,
+and `Forget` empties every table in one transaction (the people's rows take what names them
+with them, by their foreign keys).
+
+## internal/assignees
+
+`internal/assignees/` is what both sheets' assignee pickers share: whom they offer to assign
+to an issue or a pull request, in what order, and how that offer is learned and searched with
+as few requests as it takes. It knows no store, no service, and neither sheet (the repoguard
+boundary test): it reaches the People directory through its `Directory` interface (`Known`,
+`Covers`, `Keep`, `MarkFailed`, `Assigned`), which core adapts, and GitHub only through the
+`Read` each sheet hands it, one GraphQL point through that sheet's inbox footing. Core builds
+one `Finder` for both sheets, so its one `flight.Group`, keyed by repository and words, makes
+one read at a time whichever sheet asks, and checks again, as the read would start, that it is
+still due. `Candidates` is local alone. `Learn` reads the whole list (`""`) when the directory
+says it is stale, keeps it, or records a failure ("Couldn't learn who can be assigned in
+acme-org/example-repo: ..."), and returns the list. `Search` filters what the directory holds
+when `Covers` says it answers the words, else reads them once, keeps the people found, and
+marks those the list holds nothing else of as `SourceFound`. `Seen` records who a read saw
+assigned, or the user just assigned. A nil Finder offers no one and reads nothing; every list
+is empty, never nil.
+
+`rank` is pure: each person once, never a bot or a login GitHub couldn't have issued, at most
+300 (enough for a whole list of 100 beside the item's own people, since a list that named
+everyone is never searched past), in the order of their `Source`: the user (`you`), the author
+(`author`, a person only), the participants (`participant`), the people assigned in the
+repository before (`assigned_before`, the latest first), those who work on it (`works_here`,
+as `Ranked` ranks them), those a search just found (`found`), the rest of those GitHub listed
+(`listed`, by login), and, only while the whole list is cut short, those who work on the
+owner's other repositories (`org`, with where). Once the whole list named everyone, someone
+only the directory knows, not on it, is left out: GitHub would ignore their assignment. A query
+keeps those whose login or name matches as the window's own filter matches (a field or a word
+of one that starts with it first, then one that holds it), and everyone the search found.
 
 ## internal/bump
 
@@ -4836,7 +4958,26 @@ reviewer's (not the user's, the author's, or a bot's, which `ReviewEntry.mine` a
 three people to ask in one click, with More… to open the picker. After an edit that GitHub made
 any of, `ReviewSheet` builds the sheet again through `useReview`'s rebuild, which asks GitHub
 nothing, since the inbox rewrote the card from GitHub's answer, and reads the candidates again
-from the directory, which now ranks the people the user picked.
+from the directory, which now ranks the people the user picked. `PeopleParts.tsx` holds what
+the reviewers' and the assignees' lists share: a picker row's label (`personLabel`), the
+row's hover button (`RowAction`), and the one-click chips (`SuggestionChips`).
+
+**Assignees.** `Assignees.tsx` (`AssigneesSection`) is both sheets' list of who an item is
+assigned to, in the review summary's small look or the issue details' (`look`): each person's
+line with their picture and "(you)", and, while the user may edit (`AssigneesEditing`), Edit,
+× on everyone's line but the user's (who takes themselves off with Unassign me), a line fading
+while its edit runs, an inline alert when one fails, and, with no one assigned, up to three
+one-click chips ("Assign yourself" first, then the author, `quickPicks`) and More…. It reads
+whom to suggest itself (`AssigneeReads.candidates`, a local read) and again after each edit.
+`AssigneePicker.tsx` builds the picker on `PickerDialog`: who it is assigned to first, the
+user's row locked, then the sections `lib/assignees.ts` makes (`assigneeGroups`: Suggested,
+Works on, Can be assigned in, In the owner, Found on GitHub), each row's hint saying why. Opened
+while a read is due, it learns once; while the list is cut short (`searchesGitHub`), a pause of
+300 ms in typing searches (`useQuery`'s `delay`), which asks GitHub only when Go finds nothing
+kept answers the words, and its answer merges into the list (`mergeFound`). Pictures are read
+for its first 100 people. The review sheet edits with `EditAssignees` and rebuilds with no read;
+the issue sheet with its `Edit`, then reads the issue again. Settings › Reviewing › People shows
+`PeopleSummary` and forgets it all (`ForgetPeople`) behind a confirmation.
 
 **The inbox cards.** `ItemRow` (a `memo` export, which the render check counts) is a Signal
 card: a grid of the edge, `card/CardAvatar`, the two-line body, the state column, and the

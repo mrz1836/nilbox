@@ -15,6 +15,7 @@ import type * as autopilotcatalog from '../../bindings/github.com/mrz1836/nilbox
 import type * as autopiloteval from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/eval'
 import type * as autopilotspec from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/spec'
 import type * as autopilotwatch from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/watch'
+import type * as assignees from '../../bindings/github.com/mrz1836/nilbox/internal/assignees'
 import * as autopilotprefs from '../../bindings/github.com/mrz1836/nilbox/internal/autopilotprefs'
 import * as avatars from '../../bindings/github.com/mrz1836/nilbox/internal/avatars'
 import type * as runevent from '../../bindings/github.com/mrz1836/nilbox/internal/agentrun/runevent'
@@ -650,6 +651,17 @@ export type ReviewerSuggestion = review.Suggestion
 export type TeamCandidate = NonNullLists<review.TeamCandidate>
 export type ReviewersRequest = NonNullLists<review.ReviewersRequest>
 export type ReviewersResult = NonNullLists<review.ReviewersResult>
+// The assignee pickers', both sheets': whom they offer to assign (Candidates, each with why:
+// AssigneeSource), who a pull request is assigned to, and a change of it, with what GitHub
+// made of it. An issue's assignees are IssuePerson, and its edit IssueEditRequest.
+export type AssigneeCandidates = NonNullLists<assignees.Candidates>
+export type AssigneeCandidate = NonNullLists<assignees.Candidate>
+export type AssigneeSource = assignees.Source
+export type ReviewAssignee = NonNullLists<review.Assignee>
+export type AssigneesRequest = NonNullLists<review.AssigneesRequest>
+export type AssigneesResult = NonNullLists<review.AssigneesResult>
+// PeopleSummary is how much the People directory holds, which Settings shows beside Forget.
+export type PeopleSummary = NonNullLists<review.PeopleSummary>
 export type MergeMethod = review.MergeMethod
 export type PatchState = review.PatchState
 export type ReadyState = review.ReadyState
@@ -670,7 +682,6 @@ export type IssueOffer = NonNullLists<issues.Offer>
 export type IssueOutcome = issues.Outcome
 export type IssuePerson = NonNullLists<issues.Person>
 export type IssueProject = NonNullLists<issues.Project>
-export type IssueCandidate = NonNullLists<issues.Candidate>
 // PictureBot is a bot whose picture a card asks for: its login without "[bot]", as the
 // inbox names it, and the picture's URL the inbox stored with its item.
 export type PictureBot = NonNullLists<avatars.Bot>
@@ -880,6 +891,18 @@ export const {
   ReviewerCandidates: reviewerCandidates,
   LearnReviewers: learnReviewers,
   EditReviewers: editReviewers,
+  // AssigneeCandidates reads whom the assignee picker offers from what the app learned,
+  // asking GitHub nothing; LearnAssignees reads who can be assigned in the repository first,
+  // when a read is due (AssigneeCandidates.stale); SearchAssignees asks GitHub only when what
+  // the app holds can't answer; EditAssignees assigns and unassigns.
+  AssigneeCandidates: reviewAssigneeCandidates,
+  LearnAssignees: learnReviewAssignees,
+  SearchAssignees: searchReviewAssignees,
+  EditAssignees: editAssignees,
+  // PeopleSummary counts what the app learned of who works where, and ForgetPeople forgets
+  // it all, answering with what is left.
+  PeopleSummary: peopleSummary,
+  ForgetPeople: forgetPeople,
 } = narrow(review.Service)
 
 export const {
@@ -891,7 +914,9 @@ export const {
   Replies: issueReplies,
   FillReply: fillIssueReply,
   Labels: issueLabels,
-  Assignable: issueAssignable,
+  AssigneeCandidates: issueAssigneeCandidates,
+  LearnAssignees: learnIssueAssignees,
+  SearchAssignees: searchIssueAssignees,
   Edit: editIssue,
   Avatars: issueAvatars,
 } = narrow(issues.Service)

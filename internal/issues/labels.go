@@ -9,13 +9,12 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 )
 
-// The pickers' memory: what each read found is kept for keptFor, so opening a picker again,
-// or searching again for the same words, costs nothing. The labels are kept for labelRepos
-// repositories at most, and the searches for keptSearches.
+// The label picker's memory: what each read found is kept for keptFor, so opening the
+// picker again costs nothing, for labelRepos repositories at most. Whom the assignee picker
+// offers is the People directory's, which keeps it far longer (assignees.go).
 const (
-	keptFor      = 10 * time.Minute
-	labelRepos   = 32
-	keptSearches = 64
+	keptFor    = 10 * time.Minute
+	labelRepos = 32
 )
 
 // memo keeps what reads found, by key, each for keptFor, and size keys at most: the oldest
@@ -121,55 +120,4 @@ func (s *Service) readLabels(ctx context.Context, id int64, repo string) (RepoLa
 	s.labels.put(repo, out, s.now())
 
 	return out, nil
-}
-
-// Assignable returns the people the issue can be assigned to whose login or name matches
-// query, the first twenty: read with one GraphQL point a search, one at a time for the
-// same words in the same repository, then kept ten minutes. The user is marked.
-func (s *Service) Assignable(ctx context.Context, id int64, query string) ([]Candidate, error) {
-	card, err := s.issue(ctx, id)
-	if err != nil {
-		return []Candidate{}, err
-	}
-
-	query = strings.TrimSpace(query)
-	key := strings.ToLower(card.ref().Repo.String()) + "\x00" + strings.ToLower(query)
-
-	found, ok := s.searches.get(key, s.now())
-	if !ok {
-		found, err = s.searchReads.Do(ctx, key, func(ctx context.Context) ([]github.Assignable, error) {
-			return s.search(ctx, id, key, query)
-		})
-		if err != nil {
-			return []Candidate{}, err
-		}
-	}
-
-	out := make([]Candidate, 0, len(found))
-	for _, p := range found {
-		out = append(out, Candidate{Login: p.Login, Name: p.Name, Mine: isViewer(p.Login, card.Viewer)})
-	}
-
-	return out, nil
-}
-
-// search reads who the issue with id can be assigned to that query matches, and keeps them
-// under key.
-func (s *Service) search(ctx context.Context, id int64, key, query string) ([]github.Assignable, error) {
-	var found []github.Assignable
-
-	err := s.inbox.Peek(ctx, id, func(ctx context.Context, tok github.Token, t Target) error {
-		var readErr error
-
-		found, readErr = s.github.FetchAssignable(ctx, tok, t.NodeID, query)
-
-		return readErr
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	s.searches.put(key, found, s.now())
-
-	return found, nil
 }

@@ -13,19 +13,27 @@ import (
 
 // ErrCannotEdit is returned for an edit of an issue's labels or assignees the user can't
 // make: their account has less than triage access, the sheet hasn't read the issue or read
-// it closed, or the edit takes the user off it, which is Unassign me.
+// it closed, the edit takes the user off it, which is Unassign me, or it would leave more
+// people assigned than GitHub allows (github.MaxAssignees).
 var ErrCannotEdit = errors.New("the issue's labels or assignees can't be changed that way")
 
+// The keys of an edit's assignee steps.
+const (
+	stepUnassign = "-assignee"
+	stepAssign   = "+assignee"
+)
+
 // Edit changes the labels and assignees of the issue with req.ItemID as req asks, with one
-// REST request for the labels added, one for each label taken off, one for the people
-// assigned, and one for each person unassigned, through the inbox's Actor (the item's
-// lock, the account check, and a token borrowed again once when GitHub refuses one, which
-// never sends a step twice). GitHub ignores a change an account can't make rather than
-// refusing it, so every answer is checked. It stops at the first step that fails, and
-// those before it stand: once GitHub made any, the result counts them and says why the
-// next failed, while a failure before any is the error. A name given twice is sent once,
-// and one both added and taken off not at all. The sheet's copy of the issue is marked out
-// of date, for the read the sheet makes next.
+// REST request for the labels added, one for each label taken off, one for everyone
+// unassigned, then one for everyone assigned, through the inbox's Actor (the item's lock, the
+// account check, and a token borrowed again once when GitHub refuses one, which never sends
+// a step twice). Unassigning first lets a swap work at GitHub's cap of ten. GitHub ignores a
+// change an account can't make rather than refusing it, so every answer is checked. It stops
+// at the first step that fails, and those before it stand: once GitHub made any, the result
+// counts them and says why the next failed, while a failure before any is the error. A name
+// given twice is sent once, and one both added and taken off not at all. The sheet's copy of
+// the issue is marked out of date, for the read the sheet makes next, and each person
+// assigned is kept in the People directory as assigned in the repository.
 func (s *Service) Edit(ctx context.Context, req EditRequest) (EditResult, error) {
 	card, c, err := s.load(ctx, req.ItemID)
 	if err != nil {
@@ -51,6 +59,11 @@ func (s *Service) Edit(ctx context.Context, req EditRequest) (EditResult, error)
 			fmt.Errorf("%w: unassigning the viewer", ErrCannotEdit))
 	}
 
+	if n := assignedAfter(c.view.Assignees, e.assign, e.unassign); n > github.MaxAssignees {
+		return EditResult{}, uierr.New(fmt.Sprintf("GitHub assigns an issue to %d people at most. Unassign someone first.",
+			github.MaxAssignees), fmt.Errorf("%w: %d assigned", ErrCannotEdit, n))
+	}
+
 	if e.empty() {
 		return EditResult{}, nil
 	}
@@ -61,6 +74,10 @@ func (s *Service) Edit(ctx context.Context, req EditRequest) (EditResult, error)
 
 		return Acted{}, editErr
 	})
+
+	if e.done[stepAssign] {
+		s.finder.Seen(ctx, card.ref().Repo, e.assign)
+	}
 
 	sent := len(e.done)
 
@@ -122,6 +139,15 @@ func names(list []string) []string {
 	return out
 }
 
+// assignedAfter counts the people an issue assigned to now would be assigned to once it
+// unassigns unassign and assigns assign, ignoring case.
+func assignedAfter(now, assign, unassign []string) int {
+	after, _ := apart(names(now), unassign)
+	extra, _ := apart(assign, after)
+
+	return len(after) + len(extra)
+}
+
 // empty reports an edit with nothing to send.
 func (e *edit) empty() bool {
 	return len(e.label)+len(e.unlabel)+len(e.assign)+len(e.unassign) == 0
@@ -145,7 +171,7 @@ func (e *edit) run(ctx context.Context, gh GitHub, tok github.Token, t Target) e
 }
 
 // steps are the edit's requests to the issue t, in order: the labels added, each label
-// taken off, the people assigned, then each person unassigned.
+// taken off, everyone unassigned, then everyone assigned.
 func (e *edit) steps(gh GitHub, t Target) []editStep {
 	var out []editStep
 
@@ -165,22 +191,17 @@ func (e *edit) steps(gh GitHub, t Target) []editStep {
 		}})
 	}
 
-	if len(e.assign) > 0 {
-		out = append(out, editStep{key: "+assignee", send: func(ctx context.Context, tok github.Token) error {
-			_, err := gh.AddAssignees(ctx, tok, t.Ref, e.assign)
+	if len(e.unassign) > 0 {
+		out = append(out, editStep{key: stepUnassign, send: func(ctx context.Context, tok github.Token) error {
+			_, err := gh.RemoveAssignees(ctx, tok, t.Ref, e.unassign)
 
 			return err
 		}})
 	}
 
-	for _, login := range e.unassign {
-		out = append(out, editStep{key: "-assignee:" + login, send: func(ctx context.Context, tok github.Token) error {
-			_, err := gh.RemoveAssignee(ctx, tok, t.Ref, login)
-			if errors.Is(err, github.ErrEditIgnored) {
-				// The client words this for the user taking themselves off; here it is someone else.
-				return uierr.New(fmt.Sprintf("GitHub kept %s assigned to %s. Your account may not be allowed to "+
-					"change its assignees.", login, t.Ref), err)
-			}
+	if len(e.assign) > 0 {
+		out = append(out, editStep{key: stepAssign, send: func(ctx context.Context, tok github.Token) error {
+			_, err := gh.AddAssignees(ctx, tok, t.Ref, e.assign)
 
 			return err
 		}})

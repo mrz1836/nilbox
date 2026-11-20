@@ -956,12 +956,12 @@ func TestWailsAllowed(t *testing.T) {
 
 // testSupportDirs hold the test-support packages, which must never reach the app: the
 // helpers and fakes the test suites share, the runner the suites of scriptrun's kinds
-// share, which builds on them, Autopilot's simulator, the fakes of internal/github, and
-// the fake clone root.
+// share, which builds on them, Autopilot's simulator, the fakes of internal/github, the
+// fake clone root, and the sheets' fake of who can be assigned.
 func testSupportDirs() []string {
 	return []string{
 		"internal/testutil", "internal/scriptrun/scriptruntest", "internal/autopilot/sim", "internal/github/githubtest",
-		"internal/localrepos/localrepostest",
+		"internal/localrepos/localrepostest", "internal/assignees/assigneestest",
 	}
 }
 

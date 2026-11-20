@@ -178,45 +178,23 @@ describe('LabelPicker', () => {
   })
 })
 
-describe('AssigneePicker', () => {
-  it('searches who can be assigned, and never takes the user off', async () => {
+describe('the issue’s assignees', () => {
+  it('edits them on the shared picker, from what the app learned', async () => {
     const onEdit = vi.fn().mockResolvedValue('')
-    render(<IssueSummary issue={issue()} onEdit={onEdit} />)
+    const reads = { candidates: platform.issueAssigneeCandidates, learn: vi.fn(), search: vi.fn() }
+    render(<IssueSummary issue={issue()} assignees={{ reads, ownLock: 'Use Unassign me.', onEdit }} />)
 
     const panel = await picker('Edit assignees', 'Assignees')
+    expect(platform.issueAssigneeCandidates).toHaveBeenCalledWith(1)
     const me = panel.getByRole('checkbox', { name: 'octo-user (you)' })
     expect(me).toBeChecked()
     expect(me, 'Unassign me does that').toBeDisabled()
-    expect(me.closest('label')).toHaveAttribute('title', 'Take yourself off with Unassign me, in the action menu.')
+    expect(me.closest('label')).toHaveAttribute('title', 'Use Unassign me.')
 
-    await userEvent.type(panel.getByRole('searchbox', { name: 'Search people' }), 'octo')
-    await waitFor(() => {
-      expect(platform.issueAssignable).toHaveBeenLastCalledWith(1, 'octo')
-    })
-    await userEvent.click(await panel.findByRole('checkbox', { name: 'octo-other' }))
-    await userEvent.click(panel.getByRole('button', { name: 'Apply' }))
+    await userEvent.click(await panel.findByRole('checkbox', { name: /^octo-other/ }))
+    await userEvent.click(panel.getByRole('button', { name: 'Assign 1' }))
 
-    expect(onEdit).toHaveBeenCalledExactlyOnceWith({ addAssignees: ['octo-other'], removeAssignees: [] })
-  })
-
-  it('lets the user assign themselves, and takes another person off', async () => {
-    const onEdit = vi.fn().mockResolvedValue('')
-    render(<IssueSummary issue={issue({ assignees: [{ login: 'octo-other', mine: false }] })} onEdit={onEdit} />)
-
-    const panel = await picker('Edit assignees', 'Assignees')
-    await userEvent.click(await panel.findByRole('checkbox', { name: 'octo-user (you) Octo User' }))
-    await userEvent.click(panel.getByRole('checkbox', { name: 'octo-other' }))
-    await userEvent.click(panel.getByRole('button', { name: 'Apply' }))
-
-    expect(onEdit).toHaveBeenCalledExactlyOnceWith({ addAssignees: ['octo-user'], removeAssignees: ['octo-other'] })
-  })
-
-  it('says no one matches', async () => {
-    platform.issueAssignable.mockResolvedValue([])
-    render(<IssueSummary issue={issue({ assignees: [] })} onEdit={vi.fn()} />)
-
-    const panel = await picker('Edit assignees', 'Assignees')
-    expect(await panel.findByText('No one matches.')).toBeInTheDocument()
+    expect(onEdit).toHaveBeenCalledExactlyOnceWith(['octo-other'], [])
   })
 })
 
@@ -227,5 +205,6 @@ describe('IssueSummary edits', () => {
 
     rerender(<IssueSummary issue={issue()} />)
     expect(screen.queryByRole('button', { name: 'Edit assignees' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Assignees' })).toHaveTextContent('octo-user (you)')
   })
 })

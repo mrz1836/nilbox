@@ -16,7 +16,6 @@ export {
 
 export type {
     ActRequest,
-    Candidate,
     EditRequest,
     EditResult,
     Fix,

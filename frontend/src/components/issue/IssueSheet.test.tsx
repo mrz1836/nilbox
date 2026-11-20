@@ -360,6 +360,34 @@ describe('IssueSheet', () => {
     expect(platform.readIssueAgain).not.toHaveBeenCalled()
   })
 
+  it('unassigns someone with ×, through the issue’s edit, then reads it again', async () => {
+    const shared = issue({
+      assignees: [
+        { login: 'octo-user', mine: true },
+        { login: 'octo-other', mine: false },
+      ],
+    })
+    platform.openIssue.mockResolvedValue(shared)
+    platform.refreshIssue.mockResolvedValue(shared)
+    render(<Harness />)
+
+    const assignees = await screen.findByRole('region', { name: 'Assignees' })
+    expect(within(assignees).queryByRole('button', { name: 'Unassign octo-user' }), 'Unassign me does that').toBeNull()
+
+    await userEvent.click(within(assignees).getByRole('button', { name: 'Unassign octo-other' }))
+
+    expect(platform.editIssue).toHaveBeenCalledExactlyOnceWith({
+      itemId: 1,
+      addLabels: [],
+      removeLabels: [],
+      addAssignees: [],
+      removeAssignees: ['octo-other'],
+    })
+    await waitFor(() => {
+      expect(platform.readIssueAgain).toHaveBeenCalledWith(1)
+    })
+  })
+
   it('runs the button with ⌘↩, and only once it can', async () => {
     render(<Harness />)
 

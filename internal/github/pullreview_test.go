@@ -699,3 +699,44 @@ func TestVerdictIsTheViewersOwnDecision(t *testing.T) {
 		})
 	}
 }
+
+func TestFetchPullReviewReadsTheAssignees(t *testing.T) {
+	t.Parallel()
+
+	var answer map[string]any
+	require.NoError(t, json.Unmarshal(fixture(t, "pull_review_response.json"), &answer))
+
+	node, ok := answer["data"].(map[string]any)["node"].(map[string]any)
+	require.True(t, ok)
+
+	node["assignees"] = map[string]any{"totalCount": 3, "nodes": []any{
+		map[string]any{"login": octoUser}, nil, map[string]any{"login": ""}, map[string]any{"login": octoOther},
+	}}
+
+	body, err := json.Marshal(answer)
+	require.NoError(t, err)
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		var req itemRequest
+
+		raw, readErr := io.ReadAll(r.Body)
+		assert.NoError(t, readErr)
+		assert.NoError(t, json.Unmarshal(raw, &req))
+		assert.Contains(t, req.Query, "assignees(first: 10) { totalCount nodes { login } }", "all of them: GitHub assigns ten at most")
+
+		_, _ = w.Write(body)
+	})
+
+	review, err := client.FetchPullReview(t.Context(), NewToken(fakeToken), "PR_fakeNodeId94", "")
+	require.NoError(t, err)
+	assert.Equal(t, People{Logins: []string{octoUser, octoOther}, Total: 3}, review.Assignees, "nulls and blanks skipped")
+
+	delete(node, "assignees")
+
+	none, err := json.Marshal(answer)
+	require.NoError(t, err)
+
+	review, err = newTestClient(t, serveItem(string(none))).FetchPullReview(t.Context(), NewToken(fakeToken), "PR_x", "")
+	require.NoError(t, err)
+	assert.Equal(t, People{Logins: []string{}}, review.Assignees, "no one, never nil")
+}

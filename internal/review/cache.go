@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/clock"
@@ -138,6 +139,18 @@ type pullContext struct {
 	// Suggested are the reviewers GitHub suggests, in its order, which the reviewer picker
 	// offers first; none in a context an older build cached, until the sheet reads it again.
 	Suggested []contextSuggestion `json:"suggested,omitempty"`
+
+	// Assignees are who it is assigned to, all of them, as the read found them or an edit
+	// since left them (setAssignees); nil in a context an older build cached, which says
+	// nothing of them, so they can't be edited until the sheet reads it again.
+	Assignees *contextPeople `json:"assignees,omitempty"`
+}
+
+// contextPeople are the logins of a pull request's assignees, in GitHub's order, and how
+// many there are.
+type contextPeople struct {
+	Logins []string `json:"logins"`
+	Total  int      `json:"total"`
 }
 
 // contextSuggestion is a reviewer GitHub suggests, as the cache keeps them: their commits
@@ -298,6 +311,8 @@ func contextOf(r *github.PullReview, viewer string) pullContext {
 			Login: sug.Login, Name: sug.Name, ChangedFiles: sug.ChangedFiles, Commented: sug.Commented,
 		})
 	}
+
+	c.Assignees = &contextPeople{Logins: textutil.NonNil(r.Assignees.Logins), Total: r.Assignees.Total}
 
 	return c
 }
@@ -482,6 +497,43 @@ func (c *cacheStore) save(ctx context.Context, id int64, pc pullContext, diff *g
 	})
 	if err != nil {
 		return fmt.Errorf("save the review: %w", err)
+	}
+
+	return nil
+}
+
+// setAssignees rewrites who the cached pull request with id is assigned to, as GitHub
+// answered an edit of them, at now: the rest of its context stays as read, and so does when
+// it was read, so the sheet rebuilds with no read and its next refresh is no sooner. A pull
+// request the sheet holds no cache of is an error (sql.ErrNoRows), for the caller to expire
+// instead.
+func (c *cacheStore) setAssignees(ctx context.Context, id int64, logins []string, now time.Time) error {
+	err := store.InTx(ctx, c.db, func(tx *sql.Tx) error {
+		q := c.q.WithTx(tx)
+
+		row, err := q.GetDiff(ctx, id)
+		if err != nil {
+			return err
+		}
+
+		pc, err := store.DecodeJSON[pullContext](row.Context)
+		if err != nil {
+			return err
+		}
+
+		pc.Assignees = &contextPeople{Logins: textutil.NonNil(slices.Clone(logins)), Total: len(logins)}
+
+		encoded, err := fitContext(pc)
+		if err != nil {
+			return err
+		}
+
+		return q.SetDiffContext(ctx, queries.SetDiffContextParams{
+			Context: encoded, ContextAt: row.ContextAt, UsedAt: now, ItemID: id,
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("save the pull request's assignees: %w", err)
 	}
 
 	return nil

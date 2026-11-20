@@ -2,9 +2,17 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { InboxItem, PictureBot } from '../platform'
-import { issue, issueComment, issueEvent, issueTimeline, item } from '../test/fixtures'
+import { issue, issueComment, issueEvent, issueTimeline, item, review } from '../test/fixtures'
 import { platform } from '../test/platform'
-import { cardAuthors, cardBatches, cardPictureKey, pictureLogins, useCardPictures, type Pictures } from './pictures'
+import {
+  cardAuthors,
+  cardBatches,
+  cardPictureKey,
+  pictureLogins,
+  reviewPictureLogins,
+  useCardPictures,
+  type Pictures,
+} from './pictures'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -39,6 +47,22 @@ describe('pictureLogins', () => {
       'octo-other',
       'octo-user',
     ])
+  })
+})
+
+describe('reviewPictureLogins', () => {
+  it('names who the pull request is assigned to, beside who opened it', () => {
+    expect(
+      reviewPictureLogins(
+        review({
+          assignees: [
+            { login: 'zed-user', mine: false },
+            { login: 'octo-other', mine: false },
+          ],
+        }),
+      ),
+      'each once, sorted',
+    ).toEqual(['octo-other', 'zed-user'])
   })
 })
 

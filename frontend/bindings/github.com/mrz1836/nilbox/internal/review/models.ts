@@ -136,6 +136,34 @@ export const Action = {
 } as const;
 
 /**
+ * Assignee is someone a pull request is assigned to: Mine says it is the user.
+ */
+export interface Assignee {
+    "login": string;
+    "mine": boolean;
+}
+
+/**
+ * AssigneesRequest asks to change who the pull request with ItemID is assigned to: the
+ * people to assign (Add) and to unassign (Remove), by login.
+ */
+export interface AssigneesRequest {
+    "itemId": number;
+    "add": string[] | null;
+    "remove": string[] | null;
+}
+
+/**
+ * AssigneesResult is what an assignee edit made of a pull request on GitHub: Sent counts the
+ * requests GitHub made, and Failed says why the one after them failed, or "" when every one
+ * went.
+ */
+export interface AssigneesResult {
+    "sent": number;
+    "failed": string;
+}
+
+/**
  * Change is what kind of change a pull request makes.
  */
 export interface Change {
@@ -579,6 +607,15 @@ export const PatchState = {
 } as const;
 
 /**
+ * PeopleSummary is how much the People directory holds: the people the app learned of, and
+ * the repositories it knows anyone of, which Settings shows beside Forget.
+ */
+export interface PeopleSummary {
+    "people": number;
+    "repos": number;
+}
+
+/**
  * Readiness says how close a pull request is to merging.
  */
 export interface Readiness {
@@ -824,6 +861,18 @@ export interface Review {
      * access or more.
      */
     "canEditReviewers": boolean;
+
+    /**
+     * Assignees are who it is assigned to, as the sheet last read it or an edit since left
+     * it, in GitHub's order, the user's marked; none before the sheet read them, and in a
+     * read an older build cached. MoreAssignees is how many others GitHub has, which the read
+     * didn't name. CanEditAssignees reports that the user may change them (EditAssignees):
+     * it is open, the sheet has read who it is assigned to, and their account has triage
+     * access or more.
+     */
+    "assignees": Assignee[] | null;
+    "moreAssignees": number;
+    "canEditAssignees": boolean;
 
     /**
      * Timeline is the newest page of the conversation, oldest first: its comments, its
