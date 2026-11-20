@@ -119,6 +119,25 @@ describe('Select', () => {
     expect(within(drawn).getByRole('option', { name: 'Every week' })).toBeDisabled()
   })
 
+  it('keys a group apart from an option whose value is the group’s heading', () => {
+    const logged = vi.spyOn(console, 'error')
+    render(
+      <Select
+        aria-label="How often"
+        value="Often"
+        options={[
+          { value: 'Often', label: 'Often' },
+          { group: 'Often', options: every.slice(0, 2) },
+        ]}
+        onChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Often', 'Every hour', 'Every day'])
+    expect(screen.getByRole('group', { name: 'Often' })).toBeInTheDocument()
+    expect(logged).not.toHaveBeenCalled()
+  })
+
   it('reads a choice from within a group, and can be disabled as a whole', async () => {
     const onChange = vi.fn<(value: Every | '') => void>()
     const { rerender } = render(

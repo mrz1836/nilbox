@@ -156,8 +156,10 @@ function selectOption<T extends string>(o: SelectOption<T>) {
   )
 }
 
-// Select is a native select of options typed T: the value the DOM reports is read back
-// through the options, so onChange receives one of theirs.
+// Select is a native select of options typed T, for a choice among strings: the value the
+// DOM reports is read back through the options, so onChange receives one of theirs. Its
+// options' values are unique within it, as are its groups' headings; a heading may equal
+// an option's value, since the groups are keyed apart from the options.
 export function Select<T extends string>({ value, options, onChange, ...attributes }: SelectProps<T>) {
   const listed = options.flatMap((o) => ('group' in o ? o.options : [o]))
 
@@ -175,7 +177,7 @@ export function Select<T extends string>({ value, options, onChange, ...attribut
     >
       {options.map((o) =>
         'group' in o ? (
-          <optgroup key={o.group} label={o.group}>
+          <optgroup key={`group:${o.group}`} label={o.group}>
             {o.options.map(selectOption)}
           </optgroup>
         ) : (
