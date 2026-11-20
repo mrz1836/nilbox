@@ -6,9 +6,10 @@ import type { WorktreeErrors } from './useWorktrees'
 import { filterWorktrees, worktreeHint, worktreeSuggestions, type WorktreeFilter } from './worktreeFilter'
 
 // The listing the tests filter: example-repo with its main worktree and three linked ones
-// (a dirty pull request in Codex, a merged one Claude works in, a closed issue that needs
-// a look), other-tool with its main worktree and a detached one in use, and a clone whose
-// worktrees could not be listed.
+// (a dirty pull request in Codex with commits not on GitHub, a merged one Claude works in,
+// a closed issue that needs a look, whose commits couldn't be counted), other-tool with its
+// main worktree and a detached one in use, and a clone whose worktrees could not be listed.
+// A main worktree is never a row, so no query keeps one.
 
 const exampleRepo = worktreeRepo({
   path: '/home/user/projects/example-repo',
@@ -22,6 +23,8 @@ const exampleRepo = worktreeRepo({
       branch: 'feature-x',
       dirty: true,
       dirtyCount: 2,
+      unpushed: 2,
+      onGitHub: false,
       stage: 'active',
       agent: 'codex',
       item: linkedItem({ number: 7, title: 'Add the widget cache', state: 'open', closedAt: '' }),
@@ -40,6 +43,8 @@ const exampleRepo = worktreeRepo({
       branch: 'crash-fix',
       stage: 'needs-review',
       locked: true,
+      unpushed: -1,
+      onGitHub: false,
       item: linkedItem({ kind: 'issue', number: 12, title: 'Crash on start', state: 'closed' }),
     }),
   ],
@@ -89,8 +94,8 @@ function shown(filter: WorktreeFilter | null) {
   }
 }
 
-const allExample = ['example-repo', 'feature', 'done', 'crash']
-const allOther = ['other-tool', 'scratch']
+const allExample = ['feature', 'done', 'crash']
+const allOther = ['scratch']
 
 describe('filterWorktrees', () => {
   it.each(['', '   ', 'repo:', 'is:', '""'])('filters nothing for %j', (query) => {
@@ -109,18 +114,21 @@ describe('filterWorktrees', () => {
     ['scratch', { 'other-tool': ['scratch'] }, 1],
     ['nothing-here', {}, 0],
     // A query that names a clone shows all of it; one that excludes anything does not.
-    ['example-repo', { 'example-repo': allExample }, 4],
-    ['projects/other', { 'other-tool': allOther }, 2],
-    ['example-repo -feature', { 'example-repo': ['example-repo', 'done', 'crash'] }, 3],
-    ['repo:other', { 'other-tool': allOther }, 2],
-    ['repo:example-repo,other-tool', { 'example-repo': allExample, 'other-tool': allOther }, 6],
-    ['repo:example-repo repo:other-tool', { 'example-repo': allExample, 'other-tool': allOther }, 6],
-    ['-repo:example-repo', { 'other-tool': allOther }, 2],
+    ['example-repo', { 'example-repo': allExample }, 3],
+    ['projects/other', { 'other-tool': allOther }, 1],
+    ['example-repo -feature', { 'example-repo': ['done', 'crash'] }, 2],
+    ['repo:other', { 'other-tool': allOther }, 1],
+    ['repo:example-repo,other-tool', { 'example-repo': allExample, 'other-tool': allOther }, 4],
+    ['repo:example-repo repo:other-tool', { 'example-repo': allExample, 'other-tool': allOther }, 4],
+    ['-repo:example-repo', { 'other-tool': allOther }, 1],
     ['repo:example-repo is:dirty', { 'example-repo': ['feature'] }, 1],
-    // Branches: a value that names one matches it exactly, any other as a part of one.
-    ['branch:main', { 'example-repo': ['example-repo'] }, 1],
-    ['branch:mai', { 'example-repo': ['example-repo'], 'other-tool': ['other-tool'] }, 2],
-    ['-branch:feature-x repo:example', { 'example-repo': ['example-repo', 'done', 'crash'] }, 3],
+    // Branches: a value that names one matches it exactly, any other as a part of one. A
+    // main checkout's branch is no row's.
+    ['branch:feature-x', { 'example-repo': ['feature'] }, 1],
+    ['branch:fix', { 'example-repo': ['crash'] }, 1],
+    ['branch:main', {}, 0],
+    ['branch:maint', {}, 0],
+    ['-branch:feature-x repo:example', { 'example-repo': ['done', 'crash'] }, 2],
     // Agents, by ID or by name: the one last launched there, and those working in it.
     ['agent:codex', { 'example-repo': ['feature'] }, 1],
     ['agent:claude', { 'example-repo': ['done'], 'other-tool': ['scratch'] }, 2],
@@ -128,6 +136,9 @@ describe('filterWorktrees', () => {
     ['"claude code"', { 'example-repo': ['done'], 'other-tool': ['scratch'] }, 2],
     // States.
     ['is:dirty', { 'example-repo': ['feature'] }, 1],
+    // Commits not on GitHub, never those that couldn't be counted.
+    ['is:unpushed', { 'example-repo': ['feature'] }, 1],
+    ['-is:unpushed repo:example', { 'example-repo': ['done', 'crash'] }, 2],
     ['is:locked', { 'example-repo': ['crash'] }, 1],
     ['is:in-use', { 'example-repo': ['done'], 'other-tool': ['scratch'] }, 2],
     ['is:finished', { 'example-repo': ['done'] }, 1],
@@ -139,7 +150,7 @@ describe('filterWorktrees', () => {
     ['is:closed', { 'example-repo': ['crash'] }, 1],
     ['is:merged,closed', { 'example-repo': ['done', 'crash'] }, 2],
     ['is:pr is:open', { 'example-repo': ['feature'] }, 1],
-    ['-is:pr repo:example', { 'example-repo': ['example-repo', 'crash'] }, 2],
+    ['-is:pr repo:example', { 'example-repo': ['crash'] }, 1],
     ['is:fin', { 'example-repo': ['done'] }, 1],
   ])('filters %j', (query, want, matches) => {
     expect(shown(filterWorktrees(repos, query, { agentName }))).toEqual({ repos: want, matches })
@@ -148,6 +159,17 @@ describe('filterWorktrees', () => {
   it('knows an agent by its ID alone without a way to name it', () => {
     expect(shown(filterWorktrees(repos, 'claude code'))).toEqual({ repos: {}, matches: 0 })
     expect(shown(filterWorktrees(repos, 'codex'))).toEqual({ repos: { 'example-repo': ['feature'] }, matches: 1 })
+  })
+
+  it('never keeps a main checkout, not even one that shows an error', () => {
+    const failing = worktreeRepo({
+      ...otherTool,
+      worktrees: [mainWorktree({ path: '/w/other-main', displayPath: '~/projects/other-tool', error: 'unreadable' })],
+    })
+    const errors: WorktreeErrors = { worktree: () => 'remove: exit status 1', repo: () => '' }
+
+    expect(shown(filterWorktrees([failing], 'other-tool', { errors }))).toEqual({ repos: {}, matches: 0 })
+    expect(shown(filterWorktrees([failing], 'nothing-here', { errors }))).toEqual({ repos: {}, matches: 0 })
   })
 
   it('keeps a clone or worktree that shows an error in sight, without counting it', () => {
@@ -189,12 +211,13 @@ describe('worktreeSuggestions', () => {
     expect(list).toMatchObject({ label: 'Filters', auto: true, hint: worktreeHint })
     expect(list.options.map((o) => [o.label, o.detail, o.count])).toEqual([
       ['Dirty', 'is:dirty', '1'],
+      ['Not on GitHub', 'is:unpushed', '1'],
       ['Locked', 'is:locked', '1'],
       ['In use', 'is:in-use', '2'],
       ['Ready to clean up', 'is:finished', '1'],
       ['Needs a look', 'is:review', '1'],
       ['Repository', 'repo:', '2 repos'],
-      ['Branch', 'branch:', '5 branches'],
+      ['Branch', 'branch:', '3 branches'],
       ['Agent', 'agent:', '2 agents'],
     ])
   })
@@ -202,7 +225,7 @@ describe('worktreeSuggestions', () => {
   it('leaves out the states no worktree is in, and the agents while none worked anywhere', () => {
     const quiet = [worktreeRepo()]
 
-    expect(ids('', 0, quiet)).toEqual(['is:dirty 0', 'repo: 1 repo', 'branch: 2 branches'])
+    expect(ids('', 0, quiet)).toEqual(['is:dirty 0', 'repo: 1 repo', 'branch: 1 branch'])
   })
 
   it('offers the values of the key being typed, counted among what the rest of the query keeps', () => {
@@ -221,7 +244,9 @@ describe('worktreeSuggestions', () => {
       'is:merged 1',
       'is:open 1',
       'is:review 1',
+      'is:unpushed 1',
     ])
+    expect(ids('branch:ma')).toEqual([])
     expect(worktreeSuggestions(repos, 'branch:', 7)).toMatchObject({ label: 'Branches', auto: true, hint: '' })
   })
 

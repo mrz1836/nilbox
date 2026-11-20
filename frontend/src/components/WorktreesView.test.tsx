@@ -1898,7 +1898,7 @@ describe('WorktreesView summaries', () => {
 
 describe('WorktreesView filter', () => {
   // listing is example-repo with its main worktree, pr-7, and a dirty worktree, and
-  // other-tool with its main worktree; the history holds one cleanup.
+  // other-tool with its main worktree and pr-3; the history holds one cleanup.
   function listing() {
     platform.listWorktrees.mockResolvedValue(
       worktreesSnapshot({
@@ -1922,7 +1922,14 @@ describe('WorktreesView filter', () => {
             path: '/home/user/projects/other-tool',
             displayPath: '~/projects/other-tool',
             name: 'other-tool',
-            worktrees: [mainWorktree({ path: '/home/user/projects/other-tool', displayPath: '~/projects/other-tool' })],
+            worktrees: [
+              mainWorktree({ path: '/home/user/projects/other-tool', displayPath: '~/projects/other-tool' }),
+              worktree({
+                path: '/home/user/projects/other-tool/.claude/worktrees/pr-3',
+                displayPath: '~/projects/other-tool/.claude/worktrees/pr-3',
+                branch: 'worktree-pr-3',
+              }),
+            ],
           }),
         ],
       }),
@@ -1945,9 +1952,12 @@ describe('WorktreesView filter', () => {
     expect(screen.getByRole('button', { name: 'Remove all clean (1)' })).toBeEnabled()
     expect(await screen.findByRole('region', { name: 'Recently cleaned up' })).toBeInTheDocument()
 
-    // A query that names a clone shows all of it.
+    // A query that names a clone shows all of its linked worktrees, never its main one.
     rerender(<WorktreesView clock={fixedNow} query="other-tool" />)
-    expect((await repo('other-tool')).getByText('1 worktree')).toBeInTheDocument()
+    const other = await repo('other-tool')
+    expect(other.getByText('1 of 2 worktrees')).toBeInTheDocument()
+    expect(other.getByText('~/projects/other-tool/.claude/worktrees/pr-3')).toBeInTheDocument()
+    expect(other.queryByText('main worktree')).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'example-repo' })).not.toBeInTheDocument()
 
     // Clearing the query shows everything again.
