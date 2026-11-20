@@ -2088,7 +2088,8 @@ describe('the Scripts tab', () => {
 
   it('still shows the page picked when it can’t be remembered, and logs why', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.setScriptsLastPage.mockRejectedValue(new Error('database gone'))
+    const gone = new Error('database gone')
+    platform.setScriptsLastPage.mockRejectedValue(gone)
     await renderApp()
 
     await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
@@ -2097,7 +2098,7 @@ describe('the Scripts tab', () => {
 
     expect(rail.getByRole('button', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page')
     await vi.waitFor(() => {
-      expect(error).toHaveBeenCalledWith('could not remember the Scripts page shown:', 'database gone')
+      expect(error).toHaveBeenCalledWith('could not remember the Scripts page shown:', gone)
     })
     error.mockRestore()
   })
@@ -2120,7 +2121,8 @@ describe('the Scripts tab', () => {
 
   it('still lists Release in the order picked when it can’t be remembered, and logs why', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.setReleaseSort.mockRejectedValue(new Error('database gone'))
+    const gone = new Error('database gone')
+    platform.setReleaseSort.mockRejectedValue(gone)
     await renderApp()
 
     await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
@@ -2129,7 +2131,7 @@ describe('the Scripts tab', () => {
 
     expect(sorts.getByRole('radio', { name: 'A–Z' })).toBeChecked()
     await vi.waitFor(() => {
-      expect(error).toHaveBeenCalledWith('could not remember the Release page’s order:', 'database gone')
+      expect(error).toHaveBeenCalledWith('could not remember the Release page’s order:', gone)
     })
     error.mockRestore()
   })

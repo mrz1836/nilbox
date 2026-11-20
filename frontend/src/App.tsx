@@ -26,7 +26,7 @@ import type { SearchFieldProps } from './components/SearchField'
 import type { SettingsSection } from './components/SettingsView'
 import { defaultToastSeconds, Toast, ToastQueue, type ToastMessage } from './components/Toast'
 import { activityTarget, autopilotBadge, type AutopilotRequest } from './lib/autopilot'
-import { attempt, serial } from './lib/call'
+import { attempt, logFailure, serial } from './lib/call'
 import { filterInbox, inboxItems, inboxSpec, inboxSuggestions } from './lib/inboxFilter'
 import { isFindKey, isTyping, useKeyDown } from './lib/keys'
 import { filterThreads } from './lib/githubThreads'
@@ -357,11 +357,7 @@ function useUpdatedToast(status: UpdateStatus | null, held: boolean) {
       return
     }
 
-    void attempt(ackUpdated()).then((result) => {
-      if (!result.ok) {
-        console.error('could not record that the update was said:', result.error)
-      }
-    })
+    logFailure(ackUpdated(), 'could not record that the update was said:')
   }, [told])
 
   const close = () => {
@@ -1025,13 +1021,7 @@ export function App() {
   // projects. The inbox hides it at once; a store that fails only means it is offered
   // again at the next start.
   const dismissProjects = () => {
-    void attempt(setProjectsTipDismissed(true)).then((result) => {
-      if (result.ok) {
-        saveSettings(result.data)
-      } else {
-        console.error('could not store that the projects tip was put away:', result.error)
-      }
-    })
+    logFailure(setProjectsTipDismissed(true), 'could not store that the projects tip was put away:', saveSettings)
   }
 
   // remember stores a change to the window's memory: that the Scripts tab was announced, the
@@ -1039,13 +1029,7 @@ export function App() {
   // Notifications page's tab, or the conversations' order. What shows has changed already;
   // a store that fails only means the next start doesn't remember it.
   const remember = (store: Promise<Settings>, what: string) => {
-    void attempt(store).then((result) => {
-      if (result.ok) {
-        saveSettings(result.data)
-      } else {
-        console.error(`could not remember ${what}:`, result.error)
-      }
-    })
+    logFailure(store, `could not remember ${what}:`, saveSettings)
   }
 
   // Once the found-tools toast shows, that is stored, so a later start never shows it again.

@@ -47,7 +47,8 @@ describe('useBudget', () => {
   it('keeps the gauge as it was when a check fails, and logs why', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     platform.getBudget.mockResolvedValue(budgetGauge({ graphql: reading({ used: 20 }) }))
-    platform.checkBudget.mockRejectedValue(new Error('offline'))
+    const offline = new Error('offline')
+    platform.checkBudget.mockRejectedValue(offline)
     const { result } = renderHook(() => useBudget())
 
     await waitFor(() => {
@@ -59,7 +60,7 @@ describe('useBudget', () => {
     })
 
     await waitFor(() => {
-      expect(logged).toHaveBeenCalledWith('could not read the API budget:', 'offline')
+      expect(logged).toHaveBeenCalledWith('could not read the API budget:', offline)
     })
     expect(result.current.gauge?.graphql.used).toBe(20)
   })

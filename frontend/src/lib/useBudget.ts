@@ -1,5 +1,5 @@
 import { checkBudget, getBudget, type BudgetGauge } from '../platform'
-import { attempt } from './call'
+import { logFailure } from './call'
 import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
@@ -23,12 +23,8 @@ export function useBudget(): BudgetState {
   })
 
   const check = () => {
-    void attempt(checkBudget()).then((result) => {
-      if (result.ok) {
-        budget.set(() => result.data)
-      } else {
-        console.error('could not read the API budget:', result.error)
-      }
+    logFailure(checkBudget(), 'could not read the API budget:', (data) => {
+      budget.set(() => data)
     })
   }
 

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 
 import { brand } from '../generated/brand'
-import { attempt } from '../lib/call'
+import { attempt, logFailure } from '../lib/call'
 import { counted } from '../lib/format'
 import { carryOnText, heldReleaseText, heldRunText, releaseTagRisk, tagRisk } from '../lib/runsGoing'
 import { runWhere } from '../lib/scriptRuns'
@@ -147,20 +147,12 @@ export function QuitDialog() {
 
   const quit = () => {
     setGoing(null)
-    void attempt(quitAnyway()).then((result) => {
-      if (!result.ok) {
-        console.error('could not quit:', result.error)
-      }
-    })
+    logFailure(quitAnyway(), 'could not quit:')
   }
 
   const letFinish = () => {
     setGoing(null)
-    void attempt(letThemFinish()).then((result) => {
-      if (!result.ok) {
-        console.error('could not quit letting the agents finish:', result.error)
-      }
-    })
+    logFailure(letThemFinish(), 'could not quit letting the agents finish:')
   }
 
   const ask = async () => {
@@ -208,11 +200,7 @@ export function QuitDialog() {
       onConfirm={quit}
       onCancel={() => {
         setGoing(null)
-        void attempt(keepRunning()).then((result) => {
-          if (!result.ok) {
-            console.error('could not keep running:', result.error)
-          }
-        })
+        logFailure(keepRunning(), 'could not keep running:')
       }}
     >
       {question(going)}
