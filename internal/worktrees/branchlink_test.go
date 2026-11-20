@@ -373,10 +373,10 @@ func TestBranchAskSkipsWorktreesItCannotLink(t *testing.T) {
 	t.Parallel()
 
 	remotes := map[string]repo.Name{"origin": exampleRepo()}
-	refs := cloneRefs{
+	refs := withOwners(cloneRefs{
 		tracking: map[string]string{"refs/remotes/origin/feat/x": headSHA},
 		defaults: map[string]string{originRemote: mainBranch},
-	}
+	}, []string{originRemote})
 
 	_, ok := branchAsk(&Worktree{Branch: pushedBranch}, remotes, refs)
 	assert.True(t, ok)
@@ -394,6 +394,64 @@ func TestBranchAskSkipsWorktreesItCannotLink(t *testing.T) {
 
 	_, ok = branchAsk(&Worktree{Branch: pushedBranch}, map[string]repo.Name{}, refs)
 	assert.False(t, ok, "a clone with no GitHub remote links nothing by branch")
+}
+
+func TestWithOwnersTellsARemoteWhoseNameHoldsASlash(t *testing.T) {
+	t.Parallel()
+
+	refs := withOwners(cloneRefs{tracking: map[string]string{
+		"refs/remotes/origin/feat/x":        headSHA,
+		"refs/remotes/origin/mirror/feat/x": headSHA,
+		"refs/remotes/origin/mirror":        headSHA,
+		"refs/remotes/stranger/feat/x":      headSHA,
+	}}, []string{"origin/mirror", "origin"})
+
+	for ref, want := range map[string]remoteBranch{
+		"refs/remotes/origin/feat/x":        {remote: "origin", branch: "feat/x"},
+		"refs/remotes/origin/mirror/feat/x": {remote: "origin/mirror", branch: "feat/x"},
+		"refs/remotes/origin/mirror":        {remote: "origin", branch: "mirror"},
+	} {
+		remote, branch, ok := refs.owner(ref)
+		assert.True(t, ok, ref)
+		assert.Equal(t, want, remoteBranch{remote: remote, branch: branch}, ref)
+	}
+
+	_, _, ok := refs.owner("refs/remotes/stranger/feat/x")
+	assert.False(t, ok, "a remote the clone doesn't name owns nothing")
+
+	_, _, ok = refs.owner("refs/remotes/origin/gone")
+	assert.False(t, ok, "nor is a branch the clone hasn't anyone's")
+}
+
+// addSlashedMirror gives the clone at repo a remote that isn't on GitHub named
+// origin/mirror, as its config may name one though git remote add refuses it beside origin.
+func addSlashedMirror(t *testing.T, repo string) {
+	t.Helper()
+
+	testutil.RunGit(t, repo, "config", "remote.origin/mirror.url", "https://gitlab.example.com/acme-org/example-repo.git")
+	testutil.RunGit(t, repo, "config", "remote.origin/mirror.fetch", "+refs/heads/*:refs/remotes/origin/mirror/*")
+}
+
+func TestListLinksNothingByABranchPushedOnlyToARemoteNamedLikeOrigins(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	clone := e.newGitHubRepo(t, exampleName)
+	addSlashedMirror(t, clone)
+
+	path := addWorktree(t, clone, filepath.Join(e.home, "wt", "mirrored"), "mirror/feat/y")
+	head := testutil.Commit(t, path, "y.txt", "y\n")
+	testutil.RunGit(t, clone, "update-ref", "refs/remotes/origin/mirror/feat/y", head)
+	testutil.RunGit(t, clone, "config", "branch.mirror/feat/y.remote", "origin/mirror")
+	testutil.RunGit(t, clone, "config", "branch.mirror/feat/y.merge", "refs/heads/feat/y")
+
+	gh := &fakeGitHub{}
+	gh.setHead("mirror/feat/y", headPR(7, ItemMerged, head, "mirror/feat/y", ownRepo))
+
+	snap, err := e.linked(linkDeps{gh: gh}).List(t.Context())
+	require.NoError(t, err)
+	assert.Nil(t, mustRow(t, snap, path).Item, "refs/remotes/origin/mirror/feat/y is the mirror's feat/y, not origin's")
+	assert.Empty(t, gh.heads, "and GitHub isn't asked about it")
 }
 
 func TestHeadCacheStartsOverWhenFull(t *testing.T) {

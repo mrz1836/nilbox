@@ -324,7 +324,7 @@ func branchTargets(repos []Repo, remotes map[string]map[string]repo.Name, refs m
 // copyTargets lists the worktrees of repos fully copied onto a pushed branch (see
 // copies.go), with that branch, whose pull request each may be linked to. remotes maps each
 // repository's Path to its GitHub remotes.
-func copyTargets(repos []Repo, remotes map[string]map[string]repo.Name) []headTarget {
+func copyTargets(repos []Repo, remotes map[string]map[string]repo.Name, refs map[string]cloneRefs) []headTarget {
 	var out []headTarget
 
 	for r, wt := range rows(repos) {
@@ -332,7 +332,7 @@ func copyTargets(repos []Repo, remotes map[string]map[string]repo.Name) []headTa
 			continue
 		}
 
-		remote, branch, ok := trackingOf(wt.copies.result.ref)
+		remote, branch, ok := refs[r.Path].owner(wt.copies.result.ref)
 		if target, onGitHub := remotes[r.Path][remote]; ok && onGitHub {
 			out = append(out, headTarget{wt: wt, ask: headAsk{repo: target, branch: branch, tip: wt.copies.result.tip}})
 		}
@@ -364,7 +364,7 @@ func branchAsk(wt *Worktree, remotes map[string]repo.Name, refs cloneRefs) (head
 	}
 
 	for _, ref := range pushedAs(wt.Branch, remotes, refs) {
-		remote, branch, ok := trackingOf(ref)
+		remote, branch, ok := refs.owner(ref)
 		tip, pushed := refs.tracking[ref]
 		target, onGitHub := remotes[remote]
 
@@ -389,7 +389,7 @@ func pushedAs(branch string, remotes map[string]repo.Name, refs cloneRefs) []str
 	var out []string
 
 	if lb, ok := refs.local(branch); ok {
-		if _, name, ok := trackingOf(lb.upstream); ok && name == branch {
+		if _, name, ok := refs.owner(lb.upstream); ok && name == branch {
 			out = append(out, lb.upstream)
 		}
 	}

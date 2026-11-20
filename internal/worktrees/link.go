@@ -55,7 +55,7 @@ func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map
 
 	targets := linkTargets(repos, remotes, recorded)
 	heads := branchTargets(repos, remotes, refs, namedOf(targets))
-	copied := copyTargets(repos, remotes)
+	copied := copyTargets(repos, remotes, refs)
 	vouched := recordTargets(repos, refs)
 	all := slices.Concat(heads, copied)
 	now := s.clock.Now()

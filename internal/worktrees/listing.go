@@ -191,12 +191,13 @@ func (s *Service) assessClones(ctx context.Context, g git, roots localrepos.Root
 
 	listings := make([]cloneListing, len(clones))
 	remotes := make(map[string]map[string]repo.Name, len(clones))
+	names := make(map[string][]string, len(clones))
 
 	eg, ectx := errgroup.WithContext(ctx)
 	eg.SetLimit(listConcurrency)
 
 	for i, clone := range clones {
-		remotes[clone.Path] = clone.Remotes
+		remotes[clone.Path], names[clone.Path] = clone.Remotes, clone.Names
 
 		eg.Go(func() error {
 			var listErr error
@@ -225,7 +226,7 @@ func (s *Service) assessClones(ctx context.Context, g git, roots localrepos.Root
 	}
 
 	snap := s.snapshot(roots, listed)
-	refs := s.readAllRefs(ctx, g, snap.Repos)
+	refs := s.readAllRefs(ctx, g, snap.Repos, names)
 	s.detectCopies(ctx, g, snap.Repos, remotes, refs)
 	s.judgeCoverage(ctx, g, snap.Repos, remotes, refs, s.liveCopies(ctx, listings, copied))
 	snap.LinkError = s.link(ctx, snap.Repos, remotes, refs, recorded, tracker)
@@ -242,9 +243,11 @@ func (s *Service) assessClones(ctx context.Context, g git, roots localrepos.Root
 
 // readAllRefs reads the refs of each repository with a linked worktree, a few at a time,
 // in one git run each, keyed by its Path: what linking by a pushed branch and judging the
-// branches a removal offers both read. A repository whose refs git can't read is left
-// out, so none of its worktrees is linked by a branch and none offers a branch.
-func (s *Service) readAllRefs(ctx context.Context, g git, repos []Repo) map[string]cloneRefs {
+// branches a removal offers both read, each remote-tracking branch's remote worked out among
+// names, every remote each repository has, by its Path (withOwners). A repository whose refs
+// git can't read is left out, so none of its worktrees is linked by a branch and none
+// offers a branch.
+func (s *Service) readAllRefs(ctx context.Context, g git, repos []Repo, names map[string][]string) map[string]cloneRefs {
 	read := make([]*cloneRefs, len(repos))
 
 	var eg errgroup.Group
@@ -264,6 +267,7 @@ func (s *Service) readAllRefs(ctx context.Context, g git, repos []Repo) map[stri
 				return nil
 			}
 
+			refs = withOwners(refs, names[repos[i].Path])
 			read[i] = &refs
 
 			return nil

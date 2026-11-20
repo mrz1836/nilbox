@@ -94,7 +94,7 @@ func (s *Service) judgeCoverage(ctx context.Context, g git, repos []Repo, remote
 		}
 
 		eg.Go(func() error {
-			s.judgeCloneCoverage(ctx, g, r, copyKey{remotes: remotesKey(remotes[r.Path]), refs: cr.fingerprint()}, live)
+			s.judgeCloneCoverage(ctx, g, r, copyKey{remotes: remotesKey(remotes[r.Path], cr.names), refs: cr.fingerprint()}, live)
 
 			return nil
 		})

@@ -35,9 +35,50 @@ type cloneRefs struct {
 	// commit it points at. A remote's HEAD is left out.
 	tracking map[string]string
 
+	// owners maps each of tracking to the remote it is of and its branch there, of those
+	// whose remote the clone names (withOwners); one of no remote it names isn't any
+	// remote's.
+	owners map[string]remoteBranch
+
+	// names are every remote the clone has, on GitHub or not, that owners were worked out
+	// among.
+	names []string
+
 	// defaults maps each remote whose HEAD the clone knows to the branch it points at, the
 	// repository's default branch, as in main.
 	defaults map[string]string
+}
+
+// remoteBranch is a remote-tracking branch's remote and its branch there.
+type remoteBranch struct {
+	remote, branch string
+}
+
+// withOwners returns refs with each remote-tracking branch's remote worked out among names,
+// every remote the clone has: the one with the longest name that, with a slash, begins the
+// branch's name past refs/remotes/. A remote's name may hold a slash, so the
+// refs/remotes/origin/mirror/main of a remote called origin/mirror is that remote's main,
+// never origin's branch mirror/main.
+func withOwners(refs cloneRefs, names []string) cloneRefs {
+	refs.names = slices.Sorted(slices.Values(names))
+	refs.owners = make(map[string]remoteBranch, len(refs.tracking))
+
+	for ref := range refs.tracking {
+		rest := strings.TrimPrefix(ref, remotesRef)
+		owner := ""
+
+		for _, name := range names {
+			if len(name) > len(owner) && strings.HasPrefix(rest, name+"/") {
+				owner = name
+			}
+		}
+
+		if branch := strings.TrimPrefix(rest, owner+"/"); owner != "" && gitread.ValidBranch(branch) {
+			refs.owners[ref] = remoteBranch{remote: owner, branch: branch}
+		}
+	}
+
+	return refs
 }
 
 // readRefs reads the refs of the clone at dir in one git run.
@@ -116,13 +157,12 @@ func (r cloneRefs) local(name string) (localBranch, bool) {
 	return findBranch(r.locals, name)
 }
 
-// trackingOf splits a remote-tracking branch into its remote and its branch.
-func trackingOf(ref string) (remote, branch string, ok bool) {
-	if !isTrackingRef(ref) {
-		return "", "", false
-	}
+// owner returns the remote a remote-tracking branch the clone has is of, and its branch
+// there (see withOwners), or false for one the clone hasn't, or of no remote it names.
+func (r cloneRefs) owner(ref string) (remote, branch string, ok bool) {
+	o, ok := r.owners[ref]
 
-	return strings.Cut(strings.TrimPrefix(ref, remotesRef), "/")
+	return o.remote, o.branch, ok
 }
 
 // fingerprint sums up the remote-tracking branches, where each points, and the remotes'

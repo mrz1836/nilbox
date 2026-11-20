@@ -223,7 +223,7 @@ func (s *Service) copyMarks(ctx context.Context, g git, dir string, e Entry, fet
 	}
 
 	wt := &Worktree{Path: e.Path, Head: e.HEAD, Unpushed: count, fetched: fetched}
-	s.detectCloneCopies(ctx, g, dir, []*Worktree{wt}, clone.Remotes, refs, false)
+	s.detectCloneCopies(ctx, g, dir, []*Worktree{wt}, clone.Remotes, withOwners(refs, clone.Names), false)
 
 	if wt.copies.result == nil {
 		return nil

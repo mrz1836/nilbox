@@ -152,6 +152,7 @@ func TestParseRemotes(t *testing.T) {
 		"remote.my.fork.url git@github.com:octo-user/example-repo.git",
 		"remote.Upstream.url https://github.com/Acme-Org/Example-Repo\r",
 		"remote.mirror.url https://gitlab.com/acme-org/example-repo.git",
+		"remote.origin/mirror.url https://gitlab.com/acme-org/example-repo.git",
 		"remote.origin.pushurl https://github.com/acme-org/push-only.git",
 		"remote..url https://github.com/acme-org/nameless.git",
 		"no-value-line",
@@ -163,6 +164,9 @@ func TestParseRemotes(t *testing.T) {
 		"my.fork":  {Owner: "octo-user", Repo: exampleName},
 		"Upstream": {Owner: "Acme-Org", Repo: "Example-Repo"},
 	}, parseRemotes(out))
+	assert.Equal(t, []string{"Upstream", "mirror", "my.fork", originRemote, originRemote + "/mirror"}, parseRemoteNames(out),
+		"every remote with a URL, on GitHub or not, each once")
+	assert.Equal(t, []string{}, parseRemoteNames(""))
 }
 
 func TestScanFindsReposOneLevelDeep(t *testing.T) {
@@ -190,9 +194,12 @@ func TestScanFindsReposOneLevelDeep(t *testing.T) {
 		{Path: filepath.Join(root, "alpha"), Remotes: map[string]repo.Name{
 			"origin":   exampleRepo(),
 			"upstream": {Owner: "octo-user", Repo: exampleName},
-		}},
-		{Path: filepath.Join(root, "beta"), Remotes: map[string]repo.Name{}},
-		{Path: filepath.Join(root, "linked"), Remotes: map[string]repo.Name{"origin": {Owner: exampleOwner, Repo: "linked-repo"}}},
+		}, Names: []string{originRemote, "upstream"}},
+		{Path: filepath.Join(root, "beta"), Remotes: map[string]repo.Name{}, Names: []string{}},
+		{
+			Path: filepath.Join(root, "linked"), Remotes: map[string]repo.Name{"origin": {Owner: exampleOwner, Repo: "linked-repo"}},
+			Names: []string{originRemote},
+		},
 	}, repos)
 }
 
@@ -380,7 +387,7 @@ func TestInspect(t *testing.T) {
 
 	got, err := Inspect(t.Context(), dir, git)
 	require.NoError(t, err)
-	assert.Equal(t, LocalRepo{Path: dir, Remotes: map[string]repo.Name{"origin": exampleRepo()}}, got)
+	assert.Equal(t, LocalRepo{Path: dir, Remotes: map[string]repo.Name{"origin": exampleRepo()}, Names: []string{originRemote}}, got)
 
 	_, err = Inspect(t.Context(), t.TempDir(), git)
 	require.ErrorIs(t, err, ErrNotARepo)

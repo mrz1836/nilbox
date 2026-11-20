@@ -316,13 +316,15 @@ func (c *copyCache) prune(clone string, listed map[string]bool) {
 }
 
 // remotesKey sums up a clone's GitHub remotes, the only ones whose branches it compares
-// with.
-func remotesKey(remotes map[string]repo.Name) string {
+// with, and names, every remote it has, which tell whose each remote-tracking branch is.
+func remotesKey(remotes map[string]repo.Name, names []string) string {
 	var b strings.Builder
 
 	for _, name := range slices.Sorted(maps.Keys(remotes)) {
 		b.WriteString(name + "=" + remotes[name].Key() + "\n")
 	}
+
+	b.WriteString(strings.Join(names, "\x00"))
 
 	return b.String()
 }
@@ -402,7 +404,7 @@ func (s *Service) detectCopies(ctx context.Context, g git, repos []Repo, remotes
 func (s *Service) detectCloneCopies(ctx context.Context, g git, dir string, wts []*Worktree,
 	remotes map[string]repo.Name, refs cloneRefs, prune bool,
 ) {
-	todo, listed := s.copiesToCompare(wts, copyKey{remotes: remotesKey(remotes), refs: refs.fingerprint()})
+	todo, listed := s.copiesToCompare(wts, copyKey{remotes: remotesKey(remotes, refs.names), refs: refs.fingerprint()})
 
 	if prune {
 		s.copies.prune(dir, listed)
@@ -492,7 +494,7 @@ func pushedBranches(remotes map[string]repo.Name, refs cloneRefs) map[string]boo
 	out := map[string]bool{}
 
 	for ref := range refs.tracking {
-		remote, branch, ok := trackingOf(ref)
+		remote, branch, ok := refs.owner(ref)
 		if _, onGitHub := remotes[remote]; ok && onGitHub && refs.defaults[remote] != branch {
 			out[ref] = true
 		}

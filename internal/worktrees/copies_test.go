@@ -574,6 +574,24 @@ func TestDetailsMarkNothingWhenTheRefsCantBeRead(t *testing.T) {
 	assert.Empty(t, d.Errors, "and no read the drawer shows failed")
 }
 
+func TestListComparesNoBranchOfARemoteNamedLikeOrigins(t *testing.T) {
+	t.Parallel()
+
+	r := newCopyRig(t, nil)
+	addSlashedMirror(t, r.repo)
+
+	oids := r.work(t, 1)
+	head := copyOnto(t, r.parent, oids...)
+	testutil.RunGit(t, r.repo, "update-ref", "refs/remotes/origin/mirror/"+parentBranch, head)
+	pushed(t, r.repo, "feat/unrelated", r.main)
+
+	row := r.list(t)
+	assert.Equal(t, Copies{Count: 1, None: 1}, row.Copies,
+		"refs/remotes/origin/mirror/feat/parent is the mirror's, which isn't GitHub, not origin's mirror/feat/parent")
+	assert.False(t, row.OnGitHub)
+	assert.Zero(t, r.copies()[callCherry])
+}
+
 func TestAnOldWorktreeNeverKeepsTheOthersOfItsCloneFromBeingCompared(t *testing.T) {
 	t.Parallel()
 
