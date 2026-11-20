@@ -1,9 +1,9 @@
+import { counted } from '../../lib/format'
 import type { Choice, Confirmation, Target } from '../../lib/useWorktrees'
 import type { BranchRules, LinkedItem, Worktree } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { chosenBranches, useTicks, WorktreeBranches } from './BranchChoices'
 import { MergedBranchesDialog } from './MergedBranchesDialog'
-import { plural } from './shared'
 
 export interface ConfirmationDialogProps {
   confirmation: Confirmation
@@ -36,7 +36,7 @@ function folderText(kind: Single['kind'], wt: Worktree): string {
     case 'remove':
       return `This deletes the folder ${wt.displayPath}, which has no uncommitted changes.`
     case 'force':
-      return `${wt.displayPath} has ${plural(wt.dirtyCount, 'uncommitted file')}, counting untracked files. Force removing it discards them for good.`
+      return `${wt.displayPath} has ${counted(wt.dirtyCount, 'uncommitted file', 'uncommitted files')}, counting untracked files. Force removing it discards them for good.`
     default:
       return `This deletes the folder ${wt.displayPath}, whose work is finished: it has no uncommitted changes, and every commit on it is on GitHub.`
   }
@@ -117,7 +117,7 @@ function BulkConfirmation({
   return (
     <ConfirmDialog
       title={words.title}
-      confirmLabel={`${words.verb} ${plural(chosen.length, 'worktree')}`}
+      confirmLabel={`${words.verb} ${counted(chosen.length, 'worktree', 'worktrees')}`}
       confirmDisabled={chosen.length === 0}
       tone={words.tone}
       size="wide"
