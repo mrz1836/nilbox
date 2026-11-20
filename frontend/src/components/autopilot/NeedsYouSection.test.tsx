@@ -1,8 +1,8 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AutopilotMatch } from '../../platform'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { autopilotMatch, itemRef } from '../../test/fixtures'
 import { NeedsYouSection } from './NeedsYouSection'
 
@@ -28,7 +28,7 @@ function waiting(id: number, backlog = false): AutopilotMatch {
 const matches = [waiting(2), waiting(21, true), waiting(22, true), waiting(23, true)]
 
 function renderSection(matchId: number) {
-  render(
+  renderAt(
     <NeedsYouSection
       matches={matches}
       routine={0}
@@ -40,7 +40,6 @@ function renderSection(matchId: number) {
       onToast={() => undefined}
       onChanged={() => undefined}
     />,
-    { wrapper: at() },
   )
 }
 

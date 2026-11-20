@@ -1,7 +1,7 @@
-import { act, renderHook } from '@testing-library/react'
+import { renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { emit, listening, platform } from '../test/platform'
+import { listening, platform, send } from '../test/platform'
 import { useOnAutopilot } from './useAutopilot'
 import { useOn } from './useOn'
 
@@ -18,9 +18,7 @@ describe('useOn', () => {
     expect(platform.on).toHaveBeenCalledOnce()
     expect(listening('scriptruns:progress')).toBe(1)
 
-    act(() => {
-      emit('scriptruns:progress', { id: 7 })
-    })
+    send('scriptruns:progress', { id: 7 })
 
     expect(heard).toHaveBeenCalledExactlyOnceWith({ id: 7 })
 
@@ -42,9 +40,7 @@ describe('useOn', () => {
 
     rerender({ listener: second })
 
-    act(() => {
-      emit('sessions:updated')
-    })
+    send('sessions:updated')
 
     expect(first).not.toHaveBeenCalled()
     expect(second).toHaveBeenCalledOnce()
@@ -69,9 +65,7 @@ describe('useOn', () => {
 
     expect(listening('hooks:updated')).toBe(1)
 
-    act(() => {
-      emit('hooks:updated')
-    })
+    send('hooks:updated')
 
     expect(heard).toHaveBeenCalledOnce()
 
@@ -101,9 +95,7 @@ describe('useOn', () => {
     expect(listening('review:progress')).toBe(0)
     expect(listening('issue:progress')).toBe(1)
 
-    act(() => {
-      emit('issue:progress', { itemId: 3, step: 'Merging' })
-    })
+    send('issue:progress', { itemId: 3, step: 'Merging' })
 
     expect(heard).toHaveBeenCalledExactlyOnceWith({ itemId: 3, step: 'Merging' })
   })
@@ -123,9 +115,7 @@ describe('useOnAutopilot', () => {
 
     rerender({ reload: second })
 
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     expect(first).not.toHaveBeenCalled()
     expect(second).toHaveBeenCalledExactlyOnceWith()
