@@ -367,6 +367,26 @@ func leaves() []leaf {
 	}
 
 	return append(out, leaf{
+		pkg: "internal/autopilot/draft",
+		allowed: []string{
+			"internal/autopilot/catalog", "internal/autopilot/spec", "internal/autopilot/watch", "internal/item",
+			"internal/agent", "internal/fence", "internal/autopilotprefs", "internal/brand", "internal/textutil",
+			"internal/uierr",
+		},
+		why: "draft is the one validator of a routine's draft, which the builder, Describe it's kit, and the tool " +
+			"mode share: it reads the prompt library and the scripts through the Setup it is handed, so it imports " +
+			"only the routines core, the agents' registry for what each can keep, and the words",
+	}, leaf{
+		pkg: "internal/autopilot/kit",
+		allowed: []string{
+			"internal/autopilot/catalog", "internal/autopilot/spec", "internal/autopilot/watch",
+			"internal/autopilot/draft", "internal/item", "internal/repo", "internal/autopilotprefs", "internal/trust",
+			"internal/reporules", "internal/heldruns", "internal/brand", "internal/textutil",
+		},
+		why: "kit is what Describe it hands a coding agent and reads back, which the app and its tool mode share: " +
+			"the snapshot comes with each call, so it reads no file, starts nothing, and imports only the routines " +
+			"core, draft, and the leaves that declare the settings and rules it checks",
+	}, leaf{
 		pkg: "internal/autopilotprefs", allowed: []string{"internal/prefs/prefval"},
 		why: "autopilotprefs declares Autopilot's settings for settings to write and Autopilot to read, so it " +
 			"imports only prefval and the standard library",
