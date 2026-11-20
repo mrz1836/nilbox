@@ -2186,9 +2186,11 @@ remotes), whose name is the longest that begins it (`withOwners`):
 `refs/remotes/origin/mirror/main` is a remote called `origin/mirror`'s `main`, never
 origin's `mirror/main`, and a branch of a remote the clone doesn't name is no one's. GitHub is asked in the
 listing's request for the items' states: `github.FetchLinkStates` adds one aliased
-`repository { pullRequests(headRefName: ..., states: [OPEN, MERGED, CLOSED], first: 3,
+`repository { pullRequests(headRefName: ..., states: [OPEN, MERGED, CLOSED], first: 20,
 orderBy: UPDATED_AT DESC) }` per branch to the states query, at most fifty of each a request,
-so branches beside items cost no request, and branches alone one. The answer is kept in
+so branches beside items cost no request, and branches alone one (twenty pull requests a
+branch, so the repository's own isn't lost behind forks' of a branch of the same name
+updated since, still one point a request). The answer is kept in
 memory by repository, branch, and the commit the clone saw it at (`headCache`): the next
 listing asks about that pull request by number with the items, and about the branch only
 once it moves, or, at most every `headRecheck` (10 minutes), while no pull request heads it

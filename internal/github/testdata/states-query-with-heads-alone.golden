@@ -1,4 +1,4 @@
 query ItemStates {
-  h0: repository(owner: "acme-org", name: "example-repo") { pulls: pullRequests(headRefName: "feature-x", states: [OPEN, MERGED, CLOSED], first: 3, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title url state closedAt mergedAt headRefOid headRefName headRepository { nameWithOwner } } } }
+  h0: repository(owner: "acme-org", name: "example-repo") { pulls: pullRequests(headRefName: "feature-x", states: [OPEN, MERGED, CLOSED], first: 20, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title url state closedAt mergedAt headRefOid headRefName headRepository { nameWithOwner } } } }
   rateLimit { cost }
 }

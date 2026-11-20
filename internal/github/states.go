@@ -21,14 +21,16 @@ import (
 //
 // The same requests carry FetchLinkStates' head asks, at most headsBatch each, under
 // headsPrefix and their index, as in h0. Each is a connection of at most headsPerBranch
-// pull requests, so a request full of them still costs a point.
+// pull requests, enough that the repository's own one isn't lost behind forks' pull requests
+// of a branch of the same name, as main or a common name has, updated since; GitHub counts
+// a connection as one call whatever its size, so a request full of them still costs a point.
 const (
 	statesBatch    = 50
 	statesParallel = detailsParallel
 	statesPrefix   = "r"
 
 	headsBatch     = 50
-	headsPerBranch = 3
+	headsPerBranch = 20
 	headsPrefix    = "h"
 )
 

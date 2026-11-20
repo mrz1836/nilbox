@@ -144,6 +144,23 @@ func TestListLeavesAForksBranchOfTheSameNameUnlinked(t *testing.T) {
 	assert.Empty(t, row.Stage)
 }
 
+func TestListLinksTheRepositorysOwnPullRequestBehindForks(t *testing.T) {
+	t.Parallel()
+
+	r := newBranchRig(t, false)
+	r.gh.setHead(pushedBranch,
+		headPR(301, ItemOpen, r.head, pushedBranch, "fork-a/example-repo"),
+		headPR(302, ItemOpen, r.head, pushedBranch, "fork-b/example-repo"),
+		headPR(303, ItemMerged, r.head, pushedBranch, "fork-c/example-repo"),
+		headPR(199, ItemMerged, r.head, pushedBranch, ownRepo),
+	)
+
+	row := r.list(t)
+	require.NotNil(t, row.Item, "three forks' pull requests updated since never hide the repository's own")
+	assert.Equal(t, 199, row.Item.Number)
+	assert.Equal(t, LinkBranch, row.LinkedBy)
+}
+
 func TestListLinksByBranchOnlyWhatWasPushedToGitHub(t *testing.T) {
 	t.Parallel()
 

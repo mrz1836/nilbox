@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -319,7 +320,7 @@ func TestFetchLinkStatesAsksAboutHeadsInTheStatesRequest(t *testing.T) {
 		assert.NoError(t, json.Unmarshal(raw, &req))
 		assert.Contains(t, req.Query, `r0: repository(owner: "acme-org", name: "example-repo") { item: issueOrPullRequest(number: 184)`)
 		assert.Contains(t, req.Query, `h0: repository(owner: "acme-org", name: "example-repo") { pulls: pullRequests(`+
-			`headRefName: "feature-x", states: [OPEN, MERGED, CLOSED], first: 3, orderBy: {field: UPDATED_AT, direction: DESC})`)
+			`headRefName: "feature-x", states: [OPEN, MERGED, CLOSED], first: 20, orderBy: {field: UPDATED_AT, direction: DESC})`)
 		assert.Contains(t, req.Query, `h1: repository(owner: "acme-org", name: "example-repo") { pulls: pullRequests(headRefName: "old-idea"`)
 		assert.NotContains(t, req.Query, "h2:", "an empty name and one that is not UTF-8 are never asked about")
 		assert.Contains(t, req.Query, "headRepository { nameWithOwner }")
@@ -358,6 +359,56 @@ func TestFetchLinkStatesAsksAboutHeadsInTheStatesRequest(t *testing.T) {
 		}},
 	}, heads[HeadKey(repo.Name{Owner: "Acme-Org", Repo: "Example-Repo"}, headBranch)],
 		"in GitHub's order, a merged one dated by its merge, a null node and one without a number left out, keyed whatever the casing")
+}
+
+func TestFetchLinkStatesReachesTheRepositorysOwnPullRequestBehindForks(t *testing.T) {
+	t.Parallel()
+
+	example := repo.Name{Owner: filesOwner, Repo: exampleRepo}
+
+	// Three forks' pull requests of a branch of the same name, updated since, then the
+	// repository's own, which GitHub answers only as far as the query's first takes it.
+	nodes := make([]string, 0, 4)
+	for i := range 3 {
+		nodes = append(nodes, `{"number": `+strconv.Itoa(301+i)+`, "state": "OPEN", "headRefName": "feature-x", `+
+			`"headRepository": {"nameWithOwner": "fork-`+strconv.Itoa(i)+`/example-repo"}}`)
+	}
+
+	nodes = append(nodes, `{"number": 42, "state": "OPEN", "headRefName": "feature-x", `+
+		`"headRepository": {"nameWithOwner": "acme-org/example-repo"}}`)
+
+	firstArg := regexp.MustCompile(`first: (\d+),`)
+
+	var requests atomic.Int32
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+
+		var req graphQLRequest
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		assert.Contains(t, req.Query, "rateLimit { cost }", "what the request cost is still counted")
+
+		match := firstArg.FindStringSubmatch(req.Query)
+		if !assert.Len(t, match, 2) {
+			return
+		}
+
+		first, err := strconv.Atoi(match[1])
+		assert.NoError(t, err)
+
+		_, _ = io.WriteString(w, `{"data": {"h0": {"pulls": {"nodes": [`+strings.Join(nodes[:min(first, len(nodes))], ",")+
+			`]}}, "rateLimit": {"cost": 1}}}`)
+	})
+
+	_, heads, err := client.FetchLinkStates(t.Context(), NewToken(fakeToken), nil,
+		[]HeadQuery{{Repo: example, Branch: headBranch}})
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), requests.Load(), "still one request")
+
+	got := heads[HeadKey(example, headBranch)]
+	require.Len(t, got, 4)
+	assert.Equal(t, 42, got[3].Number)
+	assert.Equal(t, filesOwner+"/"+exampleRepo, got[3].HeadRepo, "the repository's own pull request is in the answer")
 }
 
 func TestFetchLinkStatesBatchesHeadsBesideItems(t *testing.T) {
