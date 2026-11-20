@@ -60,6 +60,7 @@ import type * as timeline from '../../bindings/github.com/mrz1836/nilbox/interna
 import * as update from '../../bindings/github.com/mrz1836/nilbox/internal/update'
 import type * as updateprefs from '../../bindings/github.com/mrz1836/nilbox/internal/updateprefs'
 import * as worktrees from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
+import { causeOf } from './cause'
 
 export type { CancellablePromise }
 
@@ -1224,19 +1225,6 @@ export const duplicateUserScript: (id: number) => CancellablePromise<UserScript>
 
 // questionFields are the fields every ScriptQuestion holds, each a string.
 const questionFields = ['ref', 'name', 'source', 'command', 'trust', 'trusted', 'trustNote', 'sha256'] as const
-
-// causeOf reads what a failed call's cause carries beside its message: the backend's words
-// for the user, and its detail, or null when the failure carries no cause.
-function causeOf(err: unknown): { detail: unknown; message: string } | null {
-  if (!(err instanceof Error) || typeof err.cause !== 'object' || err.cause === null) {
-    return null
-  }
-
-  const { cause } = err
-  const message = 'message' in cause && typeof cause.message === 'string' ? cause.message : ''
-
-  return { detail: 'detail' in cause ? cause.detail : undefined, message }
-}
 
 // refusal reads what a failed call's cause carries beside its message: the backend's words
 // for the user, and the question to ask, or null when it holds none.
