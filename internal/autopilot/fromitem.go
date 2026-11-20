@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/eval"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
@@ -205,7 +206,7 @@ func itemRoutineName(f facts.Facts, viewer string) string {
 		name += " in your account"
 	}
 
-	return fitName(textutil.OneLine(name), "")
+	return draft.FitName(textutil.OneLine(name), "")
 }
 
 // botName names a bot as the sentence does: Dependabot, Renovate, GitHub Actions, or its

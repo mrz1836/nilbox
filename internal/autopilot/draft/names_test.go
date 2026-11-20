@@ -1,8 +1,10 @@
 package draft_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -113,4 +115,39 @@ func TestANamesKeyFoldsItAsEqualFoldDoes(t *testing.T) {
 
 	assert.Equal(t, "FIX CHECKS", draft.NameKey("fIx checks"), "each rune folds to the smallest of its orbit")
 	assert.Equal(t, "ÜBER", draft.NameKey("über"), "Ü is the smallest of ü's")
+}
+
+func TestAFreeNameIsTheFirstNumberNoRoutineHas(t *testing.T) {
+	t.Parallel()
+
+	// taken is a list of routines' names, compared as every comparison of names is.
+	taken := func(names ...string) func(string) bool {
+		return func(n string) bool {
+			return slices.ContainsFunc(names, func(name string) bool { return draft.NameKey(name) == draft.NameKey(n) })
+		}
+	}
+
+	assert.Equal(t, "Fix checks", draft.FreeName("Fix checks", taken("Nightly")), "a free name is kept")
+	assert.Equal(t, "Fix checks 2", draft.FreeName("Fix checks", taken("fix CHECKS")), "taken ignoring case")
+	assert.Equal(t, "Fix checks 4",
+		draft.FreeName("Fix checks", taken("Fix checks", "Fix checks 2", "fix checks 3")), "the first free number")
+
+	long := strings.Repeat("ü", draft.MaxNameRunes)
+	got := draft.FreeName(long, taken(long))
+	assert.Equal(t, strings.Repeat("ü", draft.MaxNameRunes-2)+" 2", got, "the name is cut so the number fits")
+	assert.Equal(t, draft.MaxNameRunes, utf8.RuneCountInString(got))
+}
+
+func TestFitNameCutsTheNameSoItsSuffixFits(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "Fix checks copy", draft.FitName("Fix checks", " copy"), "a short name is kept whole")
+	assert.Equal(t, "Fix checks", draft.FitName("Fix checks", ""))
+	assert.Equal(t, strings.Repeat("a", 75)+" copy", draft.FitName(strings.Repeat("a", 75)+" word", " copy"),
+		"cut, and trimmed where it was cut")
+	assert.Equal(t, strings.Repeat("ü", draft.MaxNameRunes), draft.FitName(strings.Repeat("ü", 90), ""),
+		"runes are counted, never bytes")
+
+	suffix := strings.Repeat("x", draft.MaxNameRunes+1)
+	assert.Equal(t, suffix, draft.FitName("Fix", suffix), "a suffix past the cap leaves nothing of the name")
 }

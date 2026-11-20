@@ -6,9 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strconv"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
@@ -113,38 +110,17 @@ func renumber(ctx context.Context, q *queries.Queries, order []queries.Autopilot
 }
 
 // freeName returns name, or the first of "name 2", "name 3", and so on that no routine in
-// rows has, ignoring case, cut to fit MaxNameRunes.
+// rows has, ignoring case, cut to fit MaxNameRunes (draft.FreeName).
 func freeName(name string, rows []queries.AutopilotRoutine) string {
-	taken := func(n string) bool {
+	return draft.FreeName(name, func(n string) bool {
 		return slices.ContainsFunc(rows, func(r queries.AutopilotRoutine) bool { return sameName(r.Name, n) })
-	}
-
-	if !taken(name) {
-		return name
-	}
-
-	for i := 2; ; i++ {
-		suffix := " " + strconv.Itoa(i)
-		if n := fitName(name, suffix); !taken(n) {
-			return n
-		}
-	}
+	})
 }
 
 // copyName returns the name of a copy of the routine name: "name copy", or "name copy 2"
 // and so on when another routine in rows has it.
 func copyName(name string, rows []queries.AutopilotRoutine) string {
-	return freeName(fitName(name, " copy"), rows)
-}
-
-// fitName returns name with suffix, name cut so the whole fits MaxNameRunes.
-func fitName(name, suffix string) string {
-	runes := []rune(name)
-	if keep := MaxNameRunes - utf8.RuneCountInString(suffix); len(runes) > keep {
-		runes = runes[:keep]
-	}
-
-	return strings.TrimSpace(string(runes)) + suffix
+	return freeName(draft.FitName(name, " copy"), rows)
 }
 
 // goneError says the routine id was deleted.

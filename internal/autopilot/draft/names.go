@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -97,6 +98,33 @@ func Hidden(r rune) bool {
 // SQLite's NOCASE folds ASCII alone.
 func NameKey(name string) string {
 	return strings.Map(foldRune, name)
+}
+
+// FreeName returns name, or, when taken says another routine has it, the first of "name
+// 2", "name 3", and so on that taken says none has, each cut to fit MaxNameRunes
+// (FitName): the name a save, a copy, an import, or a restore gives a routine whose name
+// is taken. taken compares names as NameKey does, and says no to all but a finite few.
+func FreeName(name string, taken func(string) bool) string {
+	if !taken(name) {
+		return name
+	}
+
+	for i := 2; ; i++ {
+		if n := FitName(name, " "+strconv.Itoa(i)); !taken(n) {
+			return n
+		}
+	}
+}
+
+// FitName returns name with suffix, name cut so the whole fits MaxNameRunes and trimmed
+// where it was cut.
+func FitName(name, suffix string) string {
+	runes := []rune(name)
+	if keep := MaxNameRunes - utf8.RuneCountInString(suffix); len(runes) > keep {
+		runes = runes[:max(keep, 0)]
+	}
+
+	return strings.TrimSpace(string(runes)) + suffix
 }
 
 // foldRune returns the smallest rune in r's simple case folding orbit.

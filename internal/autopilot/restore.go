@@ -181,7 +181,7 @@ func keptFrom(name, desc, template string, mode autopilotprefs.Mode, raw json.Ra
 		return keptRoutine{}, false
 	}
 
-	k := keptRoutine{name: fitName(textutil.OneLine(name), ""), mode: storedMode(string(mode)), spec: sp}
+	k := keptRoutine{name: draft.FitName(textutil.OneLine(name), ""), mode: storedMode(string(mode)), spec: sp}
 	if k.name == "" {
 		k.name = "Routine"
 	}
