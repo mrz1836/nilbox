@@ -2226,12 +2226,13 @@ log reaches its cap, only the worktrees that need its window (the oldest) can't 
 and one more log, from the next oldest worktree's window, serves the rest, so one worktree
 left for months never keeps its clone's others from being compared. A pushed commit with a
 commit's author time, email, and subject is its likely copy. The log credits each pushed
-commit to one branch only (`--source`), often the lowest of a stack of branches, so the
-branches it credits with likely copies, most first and at most three, only order the
-comparisons: for each, one `rev-list --left-right --no-merges <tip>...<HEAD>`
-(`copySidesArgs`, commit IDs only) lists the commits the branch has that HEAD hasn't (`<`)
-and back (`>`), and every likely copy on the branch's side is one there, whichever branch
-the log credited it to, so a branch built on another counts the copies the two share. No
+commit to one ref only (`--source`), often the lowest of a stack of branches, or a remote's
+HEAD, so the pushed branches it credits with likely copies, most first and at most three,
+only order the comparisons: for each, one `rev-list --left-right --no-merges
+<tip>...<HEAD>` (`copySidesArgs`, commit IDs only) lists the commits the branch has that
+HEAD hasn't (`<`) and back (`>`), and every likely copy on the branch's side is one there,
+whatever ref the log credited it to, so a branch built on another counts the copies the two
+share, even those of a default branch no copy is looked for on. No
 patch ID decides anything: git's leave out every space inside a changed line, a hunk's
 position, and the mark of a missing last newline, so a copy that was only re-indented, or
 lost a space from a string, would pass, though in Python, YAML, a Makefile, or a string

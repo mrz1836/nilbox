@@ -208,6 +208,37 @@ func TestListSeesCommitsCopiedOntoAStackOfBranches(t *testing.T) {
 		"and a listing after which nothing changed runs no git to compare")
 }
 
+func TestListCountsCopiesTheLogCreditsToARemotesHead(t *testing.T) {
+	t.Parallel()
+
+	r := newCopyRig(t, nil)
+	testutil.RunGit(t, r.repo, "remote", "add", "upstream", "https://github.com/upstream-org/example-repo.git")
+	oids := r.work(t, 3)
+
+	// upstream's default branch, which no copy is looked for on, holds the copies of the
+	// first two, and feat/stacked, built on it, those and the third's: the log credits the two
+	// to upstream's HEAD, which names that branch.
+	lower := copyOnto(t, r.parent, oids[0], oids[1])
+	testutil.RunGit(t, r.repo, "update-ref", "refs/remotes/upstream/main", lower)
+	testutil.RunGit(t, r.repo, "symbolic-ref", "refs/remotes/upstream/HEAD", "refs/remotes/upstream/main")
+
+	stacked := addWorktree(t, r.repo, filepath.Join(r.e.home, "wt", "stacked"), "feat/stacked")
+	testutil.RunGit(t, stacked, "reset", "-q", "--hard", lower)
+	upper := copyOnto(t, stacked, oids[2])
+	pushed(t, r.repo, "feat/stacked", upper)
+
+	credits := testutil.RunGit(t, r.repo, "log", "--source", "--format=%H %S", "--remotes", "--not", "refs/remotes/origin/"+mainBranch)
+	require.Contains(t, credits, lower+" upstream/HEAD")
+
+	r.gh.setHead("feat/stacked", headPR(200, ItemOpen, upper, "feat/stacked", ownRepo))
+
+	row := r.list(t)
+	assert.Equal(t, Copies{Ref: "origin/feat/stacked", Count: 3, Identical: 3, PR: 200}, row.Copies,
+		"the copies the log credits to a ref no copy is looked for on still count on a branch that holds them")
+	assert.Equal(t, LinkCopy, row.LinkedBy)
+	assert.Equal(t, 1, r.copies()[callSides], "and only the pushed branch is compared with")
+}
+
 // listOf lists svc's worktrees.
 func listOf(t *testing.T, svc *Service) Snapshot {
 	t.Helper()
@@ -756,13 +787,18 @@ func TestRankRefsKeepsTheBranchesWithTheMostLikelyCopies(t *testing.T) {
 	t.Parallel()
 
 	likely := map[string]map[string][]string{
-		"refs/remotes/origin/b": {"1": nil, "2": nil},
-		"refs/remotes/origin/a": {"1": nil, "2": nil},
-		"refs/remotes/origin/c": {"1": nil, "2": nil, "3": nil},
-		"refs/remotes/origin/d": {"1": nil},
+		"refs/remotes/origin/b":    {"1": nil, "2": nil},
+		"refs/remotes/origin/a":    {"1": nil, "2": nil},
+		"refs/remotes/origin/c":    {"1": nil, "2": nil, "3": nil},
+		"refs/remotes/origin/d":    {"1": nil},
+		"refs/remotes/origin/HEAD": {"1": nil, "2": nil, "3": nil, "4": nil},
+	}
+	branches := map[string]bool{
+		"refs/remotes/origin/a": true, "refs/remotes/origin/b": true, "refs/remotes/origin/c": true, "refs/remotes/origin/d": true,
 	}
 
-	assert.Equal(t, []string{"refs/remotes/origin/c", "refs/remotes/origin/a", "refs/remotes/origin/b"}, rankRefs(likely))
+	assert.Equal(t, []string{"refs/remotes/origin/c", "refs/remotes/origin/a", "refs/remotes/origin/b"}, rankRefs(likely, branches),
+		"a ref copies aren't looked for on, as a remote's HEAD, is never compared with")
 }
 
 func TestCompareFailureWordsWhatWentWrong(t *testing.T) {

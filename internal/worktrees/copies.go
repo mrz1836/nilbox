@@ -496,11 +496,11 @@ func compareCopies(ctx context.Context, g git, cache *copyCache, dir string, rem
 	}
 
 	readUnpushed(ctx, g, dir, todo)
-	readCandidates(ctx, g, dir, defaultBase(remotes, refs), todo, branches)
+	readCandidates(ctx, g, dir, defaultBase(remotes, refs), todo)
 
 	for _, w := range todo {
 		if !w.done {
-			w.compare(ctx, g, cache, dir, refs, w.candidates)
+			w.compare(ctx, g, cache, dir, refs, branches)
 		}
 	}
 }
@@ -623,15 +623,17 @@ func reach(set map[string]copyCommit, head string) []copyCommit {
 }
 
 // readCandidates reads, for each worktree of todo not yet settled, the commits of the
-// clone's pushed branches that may be copies of its commits not on GitHub: those not in the
-// default branch, base, whose commit time is at most copyWindow before the oldest of those
-// commits' author times (copyCommit.since), each with the branch it was found on, kept to
-// branches. One log, from the oldest worktree's time, serves them all. When it reaches
+// clone's remote-tracking branches that may be copies of its commits not on GitHub: those
+// not in the default branch, base, whose commit time is at most copyWindow before the
+// oldest of those commits' author times (copyCommit.since), each with the ref the log
+// credits it to, which may be a remote's HEAD or a branch no copy is looked for on: a
+// pushed branch built on it holds it too (see compareWith). One log, from the oldest
+// worktree's time, serves them all. When it reaches
 // copyCandidatesMax, the worktrees that need that time alone can't be compared, and the
 // next log starts from the next oldest's: so one old worktree, as one left for months,
 // never keeps the others from being compared. Any other failure settles every worktree
 // waiting.
-func readCandidates(ctx context.Context, g git, dir, base string, todo []*copyWork, branches map[string]bool) {
+func readCandidates(ctx context.Context, g git, dir, base string, todo []*copyWork) {
 	waiting := slices.DeleteFunc(slices.Clone(todo), func(w *copyWork) bool { return w.done || len(w.unpushed) == 0 })
 	slices.SortStableFunc(waiting, func(a, b *copyWork) int { return cmp.Compare(a.since(), b.since()) })
 
@@ -645,13 +647,11 @@ func readCandidates(ctx context.Context, g git, dir, base string, todo []*copyWo
 			continue
 		}
 
-		kept := slices.DeleteFunc(candidates, func(c copyCommit) bool { return !branches[c.ref] })
-
 		for _, w := range waiting {
 			if err != nil {
 				w.fail(ctx, err)
 			} else {
-				w.candidates = kept
+				w.candidates = candidates
 			}
 		}
 
@@ -698,19 +698,19 @@ func defaultBase(remotes map[string]repo.Name, refs cloneRefs) string {
 	return ""
 }
 
-// compare compares the worktree's commits not on GitHub with candidates, the commits of
-// its clone's pushed branches that may be their copies, and settles its result: one
-// comparison (compareWith) with each branch the candidates' log credits with likely copies
-// of them, the most first and at most copyRefsMax, until one has an identical copy of every
-// one.
-func (w *copyWork) compare(ctx context.Context, g git, cache *copyCache, dir string, refs cloneRefs, candidates []copyCommit) {
-	byRef, likely := likelyCopies(w.unpushed, candidates)
+// compare compares the worktree's commits not on GitHub with its candidates, the commits of
+// its clone's remote-tracking branches that may be their copies, and settles its result:
+// one comparison (compareWith) with each of branches, the pushed branches copies are looked
+// for on, that the candidates' log credits with likely copies of them, the most first and at
+// most copyRefsMax, until one has an identical copy of every one.
+func (w *copyWork) compare(ctx context.Context, g git, cache *copyCache, dir string, refs cloneRefs, branches map[string]bool) {
+	byRef, likely := likelyCopies(w.unpushed, w.candidates)
 
 	var best *refComparison
 
 	anywhere := map[string]bool{}
 
-	for _, ref := range rankRefs(byRef) {
+	for _, ref := range rankRefs(byRef, branches) {
 		got, err := compareWith(ctx, g, cache, dir, w.wt.Head, ref, refs.tracking[ref], w.unpushed, likely)
 		if err != nil {
 			w.fail(ctx, err)
@@ -804,10 +804,11 @@ func alike(unpushed, candidates []copyCommit) map[string][]copyCommit {
 	return found
 }
 
-// rankRefs orders the branches of likely by how many commits have a likely copy there, most
-// first, then by name, and keeps the first copyRefsMax.
-func rankRefs(likely map[string]map[string][]string) []string {
-	refs := slices.SortedFunc(maps.Keys(likely), func(a, b string) int {
+// rankRefs orders the refs of likely that are among branches by how many commits have a
+// likely copy there, most first, then by name, and keeps the first copyRefsMax.
+func rankRefs(likely map[string]map[string][]string, branches map[string]bool) []string {
+	refs := slices.DeleteFunc(slices.Collect(maps.Keys(likely)), func(ref string) bool { return !branches[ref] })
+	slices.SortFunc(refs, func(a, b string) int {
 		return cmp.Or(cmp.Compare(len(likely[b]), len(likely[a])), strings.Compare(a, b))
 	})
 
