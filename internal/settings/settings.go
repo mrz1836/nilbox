@@ -232,6 +232,10 @@ type Settings struct {
 	// TextSize is the size of the app's text, apart from the size of its window.
 	TextSize TextSize `json:"textSize"`
 
+	// Celebrations is how the window celebrates the inbox at nil, the setup's end, and a
+	// release (see KeyCelebrations).
+	Celebrations Celebrations `json:"celebrations"`
+
 	// ToastSeconds is how long, in seconds, a message at the bottom of the window stays
 	// before it closes itself, MinToastSeconds to MaxToastSeconds.
 	ToastSeconds int `json:"toastSeconds"`
@@ -816,6 +820,7 @@ func fromStored(stored map[string]string) Settings {
 			stored[notifyprefs.KeyBannersOn]),
 		Theme:             themes().decode(stored[KeyTheme]),
 		TextSize:          textSizes().decode(stored[KeyTextSize]),
+		Celebrations:      celebrationChoices().decode(stored[KeyCelebrations]),
 		ToastSeconds:      decodeToastSeconds(stored[KeyToastSeconds]),
 		CollapsedSections: decodeCollapsed(stored),
 
@@ -959,7 +964,7 @@ func settingKeys() []string {
 		KeySnoozeDays, KeyWindowSize,
 		snooze.PrefWakeCommits, snooze.PrefWakeReviews, snooze.PrefWakeComments, snooze.PrefWakeReady,
 		sensitive.PrefScope, sensitive.PrefOff, sensitive.PrefPatterns, KeyMenuBar, notifyprefs.KeyBannersOff, notifyprefs.KeyBannersOn, KeyTheme,
-		KeyTextSize, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyNudgeAfterHours, KeyNudgeSnooze, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
+		KeyTextSize, KeyCelebrations, KeyToastSeconds, KeyProjectsTipDismissed, KeyReviewTab, KeyNotificationsTab, KeyConversationOrder, KeyMergeMethod, KeyNudgeAfterHours, KeyNudgeSnooze, KeyRefreshInbox, KeyRefreshChecks, KeyRefreshWorktrees,
 		KeyRefreshNotifications, KeyRefreshReleaseChecks, KeyRefreshServiceStatus, KeyWatchPushes, updateprefs.KeyMode,
 		KeyHiddenLabels, KeyCardAvatars, KeyCardDensity, KeyCardUnread, KeyIgnoredWorkflows,
 	), append(append(append(append(collapsedKeys(), orderKeys()...), branchrules.Keys()...), reporules.Keys()...),

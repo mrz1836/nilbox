@@ -39,6 +39,9 @@
 //   - setup writes setup.*: whether the first-run setup is done (setup.done), which it
 //     decides once per database at startup, and the step the user was on (setup.step),
 //     where it opens again.
+//   - milestones writes milestones.*: milestones.log, the log of the inbox reaching nil
+//     (the streak, the best one, how many nils the user earned, the achievements unlocked,
+//     and the last day confetti flew on its own).
 //   - update writes every update.* key but update.mode: when it last checked
 //     (update.lastCheck), the last version it told of (update.notified), the banner hidden
 //     with Later (update.bannerHiddenUntil), the version the app last ran as

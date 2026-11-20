@@ -74,6 +74,7 @@ type Portable struct {
 	NudgeSnooze         *bool                `json:"nudgeSnooze,omitempty"`
 	Theme               *Theme               `json:"theme,omitempty"`
 	TextSize            *TextSize            `json:"textSize,omitempty"`
+	Celebrations        *Celebrations        `json:"celebrations,omitempty"`
 	ToastSeconds        *int                 `json:"toastSeconds,omitempty"`
 	InboxOrder          *InboxOrder          `json:"inboxOrder,omitempty"`
 	HiddenLabels        *[]string            `json:"hiddenLabels,omitempty"`
@@ -203,7 +204,7 @@ func portableOf(set Settings) Portable {
 		WatchPushes:   &set.WatchPushes,
 		ServiceStatus: &PortableStatus{Off: &off, Parts: &picked},
 		MergeMethod:   &set.MergeMethod, NudgeAfterHours: &set.NudgeAfterHours, NudgeSnooze: &set.NudgeSnooze,
-		Theme: &set.Theme, TextSize: &set.TextSize, ToastSeconds: &set.ToastSeconds,
+		Theme: &set.Theme, TextSize: &set.TextSize, Celebrations: &set.Celebrations, ToastSeconds: &set.ToastSeconds,
 		InboxOrder: &set.InboxOrder, HiddenLabels: &set.HiddenLabels, CardAvatars: &set.CardAvatars,
 		CardDensity: &set.CardDensity, CardUnread: &set.CardUnread, IgnoredWorkflows: &set.IgnoredWorkflows,
 		Integrations: &PortableIntegration{
@@ -492,6 +493,9 @@ func (s *Service) portableFields() []portableField {
 		pointerField("Text size", tellsTextSize, func(p Portable) *TextSize { return p.TextSize },
 			func(_ context.Context, size TextSize) (map[string]string, error) { return checkTextSize(size) },
 			func(size TextSize) string { return string(size) }),
+		pointerField("Celebrations", tellsNothing, func(p Portable) *Celebrations { return p.Celebrations },
+			func(_ context.Context, c Celebrations) (map[string]string, error) { return checkCelebrations(c) },
+			func(c Celebrations) string { return string(c) }),
 		pointerField("How long messages stay", tellsNothing, func(p Portable) *int { return p.ToastSeconds },
 			func(_ context.Context, n int) (map[string]string, error) { return checkToastSeconds(n) }, seconds),
 		pointerField("Inbox sorting", tellsNothing, func(p Portable) *InboxOrder { return p.InboxOrder },

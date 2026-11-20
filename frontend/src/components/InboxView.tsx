@@ -10,7 +10,18 @@ import type { IssueDrafts } from '../lib/issueDrafts'
 import { issueTone } from '../lib/issues'
 import { itemKey, noWorktrees, worktreeOf } from '../lib/itemWorktrees'
 import { sheetCards, shownOrder } from '../lib/listOrder'
-import { isInboxNil, listsShow, partyCompact, type PartyFold } from '../lib/nil'
+import { useCelebrations } from '../lib/celebrations'
+import { nilChip } from '../lib/milestones'
+import {
+  flourishes,
+  isInboxNil,
+  listsShow,
+  nextFlourish,
+  partyCompact,
+  plainFlourishes,
+  type Flourish,
+  type PartyFold,
+} from '../lib/nil'
 import type { ReviewDrafts } from '../lib/reviewDrafts'
 import { ruleFor, withRepoRule } from '../lib/repoRules'
 import { holdPlace } from '../lib/scroll'
@@ -31,6 +42,7 @@ import type { InboxState } from '../lib/useInbox'
 import type { InboxOrderState } from '../lib/useInboxOrder'
 import {
   offerReleaseAfterMerge,
+  reachedNil,
   type AfterMerge,
   type AgentSession,
   type ConversationOrder,
@@ -38,6 +50,7 @@ import {
   type ItemKind,
   type ItemResolution,
   type ListKey,
+  type NilMoment,
   type RepoRules,
   type Review,
   type ReviewResult,
@@ -264,10 +277,12 @@ function firstMessage(...messages: string[]): string {
 // Each list has tabs for what was snoozed or dismissed from it and collapses from its
 // header, and each triage action is confirmed by a toast with an Undo. When every list is
 // empty, the inbox throws a party in their place (InboxNil), above any list that still
-// holds what was snoozed, dismissed, or muted. Above such a list the party fills the page
-// only for the moment the inbox empties while the user watches, and is a strip otherwise
+// holds what was snoozed, dismissed, or muted. Above such a list the party is a strip until
+// its run opens it in full, and with celebrations off it is always the strip
 // (partyCompact); turning a list to what was set aside folds it into the strip, keeping
-// that list where it stood. The account and the API budget live in the toolbar.
+// that list where it stood. Each party reports to the milestones (reachedNil), which say
+// what it was worth and whether confetti flies. The account and the API budget live in
+// the toolbar.
 //
 // While the toolbar's query filters the inbox, each list shows only its matching items,
 // open whatever its stored collapse state, and a list with no match hides; when nothing
@@ -356,23 +371,38 @@ export function InboxView({
     collapsed !== null &&
     error === '' &&
     isInboxNil(snapshot, triaged)
-  // busy records that the inbox has held something while the page was showing, so emptying
-  // it from here earns the party, confetti and all, while coming to the page at nil throws
-  // a quiet one. The page stays mounted while another shows, so hiding it forgets busy, and
-  // each visit numbers the party anew: an inbox emptied meanwhile is found at nil, quietly.
+  // mode is how the window celebrates (Settings → Appearance).
+  const mode = useCelebrations()
+  // busy records that the inbox has held something while the page was showing, since its
+  // last party, so emptying it from here earns the party, while coming to the page at nil,
+  // or the party showing again with nothing come back (a filter cleared), is finding it
+  // empty. The page stays mounted while another shows, so hiding it forgets busy: an inbox
+  // emptied meanwhile is found at nil.
   const [busy, setBusy] = useState(false)
   const [visit, setVisit] = useState({ showing, n: 0 })
-  // confettiAt is when the party last threw confetti on its own, which it then holds back
-  // for a while (confettiDue). It outlives the visits, as the page stays mounted.
-  const [confettiAt, setConfettiAt] = useState<Date | null>(null)
+  // peak is the most the inbox has held on this visit since its last party, which the next
+  // party reports as what the user cleared on the way.
+  const [peak, setPeak] = useState(0)
   // fold is how the user left the party on this visit (partyCompact): turning a list to
   // what was set aside, or the party's collapse button, folds it into its strip, and the
   // strip's run opens it again. Each visit starts as it comes.
   const [fold, setFold] = useState<PartyFold>('auto')
   const party = nil && filter === null
+  // thrown numbers each party, one each time the page reaches nil while it shows or shows at
+  // nil, with what it reports to the milestones: whether the user emptied the inbox, and the
+  // most it held on the way.
+  const [thrown, setThrown] = useState<{ n: number; earned: boolean; cleared: number } | null>(null)
+  const live = party && showing
+  const [wasLive, setWasLive] = useState(false)
+  // reached is what the latest party was worth, once the milestones answer, by its number,
+  // with the flourish it plays; its moment is null when they could not answer.
+  const [reached, setReached] = useState<{ n: number; moment: NilMoment | null; flourish: Flourish } | null>(null)
+  // lastFlourish is the flourish the last party that played one played, so the next plays
+  // another. It outlives the visits, as the page stays mounted.
+  const lastFlourish = useRef<Flourish | null>(null)
   // setAside says a list still shows below the party, which it can fold away for.
   const setAside = triaged !== null && listsShow(triaged)
-  const compact = partyCompact(fold, busy, setAside)
+  const compact = partyCompact(fold, setAside, mode)
   // held is the list a tab was chosen in as it folded the party, and where it stood in
   // the window then; the fold keeps it there rather than pulling the tab just chosen up
   // from under the pointer.
@@ -394,10 +424,60 @@ export function InboxView({
   if (visit.showing !== showing) {
     setVisit({ showing, n: showing ? visit.n + 1 : visit.n })
     setBusy(false)
+    setPeak(0)
     setFold('auto')
-  } else if (showing && !busy && count > 0) {
+  } else if (live !== wasLive) {
+    // A party starts once the visit has settled, so it reports this visit's busy and peak,
+    // and the next counts afresh from there.
+    setWasLive(live)
+
+    if (live) {
+      setThrown({ n: (thrown?.n ?? 0) + 1, earned: busy, cleared: peak })
+      setBusy(false)
+      setPeak(0)
+    }
+  } else if (showing && count > 0 && (!busy || count > peak)) {
     setBusy(true)
+    setPeak(Math.max(peak, count))
   }
+
+  // Each party reports to the milestones once, and shows once they answer: a local write,
+  // a few milliseconds. Its flourish is picked then, never the last one played, and only a
+  // party that plays one moves lastFlourish on.
+  const settle = useEffectEvent((n: number, moment: NilMoment | null) => {
+    const flourish = nextFlourish(
+      lastFlourish.current,
+      Math.random,
+      nilChip(moment) === null ? plainFlourishes : flourishes,
+    )
+
+    if (mode !== 'off' && !(mode === 'milestones' && moment?.confetti === true)) {
+      lastFlourish.current = flourish
+    }
+
+    setReached({ n, moment, flourish })
+  })
+  const report = useEffectEvent((n: number, earned: boolean, cleared: number) => {
+    reachedNil({ earned, cleared, loud: mode === 'milestones' }).then(
+      (moment) => {
+        settle(n, moment)
+      },
+      () => {
+        settle(n, null)
+      },
+    )
+  })
+  // reported is the last party reported, so a remount in development reports none twice.
+  const reported = useRef(0)
+
+  useEffect(() => {
+    if (thrown === null || reported.current === thrown.n) {
+      return
+    }
+
+    reported.current = thrown.n
+    report(thrown.n, thrown.earned, thrown.cleared)
+  }, [thrown])
 
   // chooseTab folds the party once the user turns a list to what was set aside while it
   // shows: it has had its moment, and the page is theirs to work in. It stays folded for
@@ -828,13 +908,14 @@ export function InboxView({
         />
       )}
       {filter !== null && filter.matches === 0 && <NoMatches query={filter.query} onClear={onClearFilter} />}
-      {party && (
+      {party && thrown !== null && reached?.n === thrown.n && (
         <InboxNil
-          key={visit.n}
+          key={thrown.n}
           stats={triaged}
-          earned={busy}
-          confettiAt={confettiAt}
-          onConfetti={setConfettiAt}
+          earned={thrown.earned}
+          moment={reached.moment}
+          flourish={reached.flourish}
+          mode={mode}
           compact={compact}
           onOpen={() => {
             setFold('open')

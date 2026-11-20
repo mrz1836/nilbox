@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode } from 'react'
 
 import { brand } from '../../generated/brand'
+import { throwsBursts, useCelebrations } from '../../lib/celebrations'
 import { prefersReducedMotion } from '../../lib/motion'
 import { shortCommit } from '../../lib/git'
 import { followLine, followState, intentOf, resultHeading, type FollowLine } from '../../lib/release'
@@ -170,7 +171,7 @@ export interface ReleaseResultProps {
 
 // ReleaseResult is how a release came out, as the app verified it once magex ended: on
 // GitHub, with links to the tag and the release workflow and a burst of confetti (none
-// with reduced motion); tagged on this Mac only, with the commands to push or undo it,
+// with reduced motion, or with Celebrations quiet or off); tagged on this Mac only, with the commands to push or undo it,
 // which the app never runs; or failed, with what happened in words and the line of
 // magex's that says so. Each says where the clone is now. A release on GitHub says, too,
 // how its workflow goes as the app follows it, read again each time that changes. It is
@@ -187,12 +188,14 @@ export function ReleaseResult({ run, repo, onTryAgain, onDone }: ReleaseResultPr
   const heading = useRef<HTMLHeadingElement>(null)
   const { bursts, fire, land } = useConfetti()
   const [layer, setLayer] = useState<Element | null>(null)
+  const celebrations = useCelebrations()
 
-  // A release on GitHub throws confetti once, from its heading, over the sheet.
+  // A release on GitHub throws confetti once, from its heading, over the sheet, unless the
+  // user's celebrations throw no bursts.
   const celebrate = useEffectEvent(() => {
     const el = heading.current
 
-    if (el === null || prefersReducedMotion()) {
+    if (el === null || prefersReducedMotion() || !throwsBursts(celebrations)) {
       return
     }
 

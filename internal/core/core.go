@@ -42,6 +42,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/logging"
+	"github.com/mrz1836/nilbox/internal/milestones"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/people"
@@ -178,6 +179,10 @@ type Core struct {
 	Setup          *setup.Service
 	Updates        *update.Service
 	Autopilot      *autopilot.Service
+
+	// Milestones keeps the log of the inbox reaching nil, which says what each time is
+	// worth to the party the window throws.
+	Milestones *milestones.Service
 
 	// AutopilotEngine runs the routines: it records what each matched, and starts what may
 	// start, in the copy of the app that holds the lock in the data folder. The desktop
@@ -399,7 +404,7 @@ func (c *Core) Services() []any {
 	return []any{
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Avatars, c.Integrations, c.ScriptRuns, c.Release,
-		c.Hooks, c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup, c.Updates, c.Autopilot,
+		c.Hooks, c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup, c.Updates, c.Autopilot, c.Milestones,
 	}
 }
 
@@ -856,9 +861,10 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	routinePromptUses := routinePrompts{follower: autopilot.NewPromptFollower(routines), logger: logger}
 
 	c := &Core{
-		DB:       pool,
-		Settings: prefs,
-		Profiles: profiles.NewService(profileStore, opts.Home, search, profiles.WithLogger(logger)),
+		DB:         pool,
+		Settings:   prefs,
+		Milestones: milestones.NewService(pool, milestones.WithClock(opts.Clock), milestones.WithLogger(logger)),
+		Profiles:   profiles.NewService(profileStore, opts.Home, search, profiles.WithLogger(logger)),
 		Prompts: prompts.NewService(prompts.Config{
 			Store: promptStore, Usage: defaultsStore, Source: previews,
 			File: info.kept.promptFile, Database: opts.Paths.DB, App: opts.Version, Clock: opts.Clock, Logger: logger,

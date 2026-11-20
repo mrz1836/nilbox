@@ -5,7 +5,7 @@ import { defaultTextSize, textSizes, type TextSize } from '../../lib/textSize'
 import type { Theme } from '../../lib/theme'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import { presetFor, sizeKey, sizeLabel, windowPresets } from '../../lib/windowSize'
-import { setTextSize, setWindowSize, type Settings } from '../../platform'
+import { setCelebrations, setTextSize, setWindowSize, type Celebrations, type Settings } from '../../platform'
 import { Segmented } from '../controls'
 import { DisplayIcon, MoonIcon, SunIcon } from '../icons'
 import { ChoiceRow, Group, joinIds, Note } from './rows'
@@ -153,6 +153,54 @@ function WindowSizeRow({ settings: stored, onSaved }: SectionProps) {
   )
 }
 
+// celebrationChoices are the Celebrations options, each with what it does, which the row
+// says of the one chosen.
+const celebrationChoices: readonly { value: Celebrations; label: string; title: string; description: string }[] = [
+  {
+    value: 'milestones',
+    label: 'Milestones',
+    title: 'Confetti for a streak or an achievement, at most once a day',
+    description:
+      'Inbox nil throws confetti for a streak or an achievement, at most once a day, and a small flourish otherwise.',
+  },
+  {
+    value: 'quiet',
+    label: 'Quiet',
+    title: 'Flourishes and achievements, and confetti only when you ask for it',
+    description: 'Inbox nil keeps its flourishes and achievements; confetti flies only when you run the party again.',
+  },
+  {
+    value: 'off',
+    label: 'Off',
+    title: 'A still strip at inbox nil, and no confetti anywhere',
+    description: 'Inbox nil is a still strip, and nothing throws confetti.',
+  },
+]
+
+// CelebrationsRow holds how the app celebrates inbox nil, the end of the setup, and a
+// release. Choosing stores it, and the next party follows it.
+function CelebrationsRow({ settings: stored, onSaved }: SectionProps) {
+  const errorId = useId()
+  const { settings, save, error } = useSettingsSave(stored, onSaved)
+  const chosen = celebrationChoices.find(({ value }) => value === settings.celebrations) ?? celebrationChoices[0]
+
+  const choose = (next: Celebrations) => {
+    void save({ celebrations: next }, () => setCelebrations(next))
+  }
+
+  return (
+    <ChoiceRow label="Celebrations" description={chosen?.description} error={error} errorId={errorId}>
+      <Segmented
+        label="Celebrations"
+        value={settings.celebrations}
+        options={celebrationChoices.map(({ value, label, title }) => ({ value, label, title }))}
+        describedBy={joinIds(error !== '' && errorId)}
+        onChange={choose}
+      />
+    </ChoiceRow>
+  )
+}
+
 interface AppearanceSectionProps extends ThemeRowProps {
   // settings is null until it has loaded; the text and window sizes wait for it.
   settings: Settings | null
@@ -160,7 +208,7 @@ interface AppearanceSectionProps extends ThemeRowProps {
 }
 
 // AppearanceSection holds how the app looks: the theme, which needs no settings to show,
-// the size of its text, and the size the window opens at.
+// the size of its text, the size the window opens at, and how it celebrates.
 export function AppearanceSection({ settings, onSaved, theme, onThemeChange }: AppearanceSectionProps) {
   return (
     <div className="flex flex-col gap-3">
@@ -172,6 +220,7 @@ export function AppearanceSection({ settings, onSaved, theme, onThemeChange }: A
           <>
             <TextSizeRow settings={settings} onSaved={onSaved} />
             <WindowSizeRow settings={settings} onSaved={onSaved} />
+            <CelebrationsRow settings={settings} onSaved={onSaved} />
           </>
         )}
       </Group>

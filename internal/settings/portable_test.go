@@ -106,6 +106,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetNudgeSnooze(ctx, true) },
 		func() (Settings, error) { return svc.SetTheme(ctx, ThemeDark) },
 		func() (Settings, error) { return svc.SetTextSize(ctx, TextSizeLarge) },
+		func() (Settings, error) { return svc.SetCelebrations(ctx, CelebrationsQuiet) },
 		func() (Settings, error) { return svc.SetToastSeconds(ctx, 20) },
 		func() (Settings, error) { return svc.SetStatusSort(ctx, ListYours, true) },
 		func() (Settings, error) { return svc.SetListKind(ctx, ListReviewRequested, ListKindIssues) },

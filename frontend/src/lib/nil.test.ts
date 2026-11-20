@@ -1,22 +1,27 @@
 import { describe, expect, it } from 'vitest'
 
 import type { InboxSnapshot } from '../platform'
-import { FIXED_NOW, fromNow } from '../test/clock'
-import { item, list, snapshot } from '../test/fixtures'
+import { FIXED_NOW } from '../test/clock'
+import { item, list, nilMoment, snapshot } from '../test/fixtures'
 import {
-  confettiCooldownMs,
-  confettiDue,
   earnedQuip,
+  earnedQuips,
+  firstQuip,
+  flourishes,
   isInboxNil,
   listsShow,
   maxBurst,
+  nextFlourish,
   nextQuip,
+  openingQuip,
   partyCompact,
   pickQuip,
+  plainFlourishes,
   quips,
   replayBurst,
   replayLabel,
   replayLabels,
+  type Flourish,
 } from './nil'
 import { inboxLists, triageInbox } from './triage'
 
@@ -85,23 +90,29 @@ describe('listsShow', () => {
 })
 
 describe('partyCompact', () => {
+  const folds = ['auto', 'folded', 'open'] as const
+
   it('fills the page when no list shows below it, however it was left', () => {
-    for (const fold of ['auto', 'folded', 'open'] as const) {
-      for (const earned of [false, true]) {
-        expect(partyCompact(fold, earned, false), `${fold}, earned ${String(earned)}`).toBe(false)
+    for (const mode of ['milestones', 'quiet'] as const) {
+      for (const fold of folds) {
+        expect(partyCompact(fold, false, mode), `${fold}, ${mode}`).toBe(false)
       }
     }
   })
 
-  it('fills the page when earned, and gives it to the lists on arrival', () => {
-    expect(partyCompact('auto', true, true)).toBe(false)
-    expect(partyCompact('auto', false, true)).toBe(true)
+  it('gives the page to the lists below it as a strip, until its run opens it in full', () => {
+    for (const mode of ['milestones', 'quiet'] as const) {
+      expect(partyCompact('auto', true, mode)).toBe(true)
+      expect(partyCompact('folded', true, mode)).toBe(true)
+      expect(partyCompact('open', true, mode)).toBe(false)
+    }
   })
 
-  it('stays as the user left it, earned or not', () => {
-    for (const earned of [false, true]) {
-      expect(partyCompact('folded', earned, true)).toBe(true)
-      expect(partyCompact('open', earned, true)).toBe(false)
+  it('is always the strip with celebrations off', () => {
+    for (const fold of folds) {
+      for (const setAside of [false, true]) {
+        expect(partyCompact(fold, setAside, 'off'), `${fold}, set aside ${String(setAside)}`).toBe(true)
+      }
     }
   })
 })
@@ -113,8 +124,9 @@ describe('quips', () => {
     expect(quips).toContain(pickQuip())
   })
 
-  it('cycles through every quip, and leads in from the earned one', () => {
-    expect(nextQuip(earnedQuip)).toBe(quips[0])
+  it('cycles through every quip, and leads in from any other', () => {
+    expect(nextQuip(firstQuip)).toBe(quips[0])
+    expect(nextQuip(earnedQuips[3] ?? '')).toBe(quips[0])
 
     let quip = quips[0] ?? ''
     const seen = new Set<string>()
@@ -142,16 +154,82 @@ describe('replays', () => {
   })
 })
 
-describe('confettiDue', () => {
-  it('throws confetti on its own only for an inbox emptied while the user watched', () => {
-    expect(confettiDue(true, null, FIXED_NOW)).toBe(true)
-    expect(confettiDue(false, null, FIXED_NOW)).toBe(false)
+describe('openingQuip', () => {
+  // A Monday afternoon, where no moment's quip fits on its own.
+  const monday = new Date(2026, 5, 15, 14, 0)
+
+  it('opens a party found empty on a random quip', () => {
+    expect(openingQuip(false, nilMoment({ streak: 4 }), monday, () => 0)).toBe(quips[0])
+    expect(openingQuip(false, null, monday, () => 0.9999)).toBe(quips.at(-1))
   })
 
-  it('holds it back until the cooldown since the last has passed', () => {
-    expect(confettiDue(true, fromNow(-60_000), FIXED_NOW)).toBe(false)
-    expect(confettiDue(true, fromNow(1 - confettiCooldownMs), FIXED_NOW)).toBe(false)
-    expect(confettiDue(true, fromNow(-confettiCooldownMs), FIXED_NOW)).toBe(true)
-    expect(confettiDue(false, fromNow(-confettiCooldownMs), FIXED_NOW)).toBe(false)
+  it('greets the first nil the user earns, and an earned one with no moment, with the first quip', () => {
+    const first = nilMoment({ earned: true, count: 1, unlocked: [{ kind: 'first', n: 1 }] })
+
+    expect(openingQuip(true, first, monday)).toBe(firstQuip)
+    expect(openingQuip(true, null, monday)).toBe(firstQuip)
+  })
+
+  it('speaks to what a nil unlocked', () => {
+    const swept = nilMoment({ earned: true, count: 9, cleared: 14, unlocked: [{ kind: 'sweep', n: 10 }] })
+
+    expect(openingQuip(true, swept, monday, () => 0.99)).toBe('14 down, 0 to go.')
+  })
+
+  it('turns to the next earned quip, nil by nil, when no moment’s quip fits', () => {
+    const plain = nilMoment({ earned: true, count: 5 })
+
+    expect(openingQuip(true, plain, monday)).toBe(earnedQuip(5))
+    expect(openingQuip(true, { ...plain, count: 6 }, monday)).toBe(earnedQuip(6))
+    expect(earnedQuip(5)).not.toBe(earnedQuip(6))
+  })
+
+  it('is as likely to speak to the moment as to turn to the next earned quip', () => {
+    const streak = nilMoment({ earned: true, count: 5, streak: 2, best: 4 })
+
+    expect(openingQuip(true, streak, monday, () => 0.2)).toBe('Day 2 at nil. Don’t break the chain.')
+    expect(openingQuip(true, streak, monday, () => 0.7)).toBe(earnedQuip(5))
+  })
+})
+
+describe('earnedQuip', () => {
+  it('turns through every earned quip, nil by nil', () => {
+    const seen = new Set(earnedQuips.map((_, i) => earnedQuip(i + 1)))
+
+    expect(seen.size).toBe(earnedQuips.length)
+    expect(earnedQuip(1 + earnedQuips.length)).toBe(earnedQuip(1))
+    expect(earnedQuips).not.toContain(firstQuip)
+  })
+})
+
+describe('nextFlourish', () => {
+  it('never plays the same flourish twice in a row', () => {
+    for (const last of flourishes) {
+      for (const r of [0, 0.3, 0.6, 0.9999]) {
+        expect(nextFlourish(last, () => r)).not.toBe(last)
+      }
+    }
+  })
+
+  it('plays every flourish in time', () => {
+    const seen = new Set<Flourish>()
+    let last: Flourish | null = null
+
+    for (let i = 0; i < 40; i++) {
+      last = nextFlourish(last, () => (i * 0.37) % 1)
+      seen.add(last)
+    }
+
+    expect([...seen].sort()).toEqual([...flourishes].sort())
+  })
+
+  it('picks only from the choices it is given, and plays the one there is', () => {
+    expect(plainFlourishes).not.toContain('stamp')
+
+    for (const r of [0, 0.5, 0.9999]) {
+      expect(plainFlourishes).toContain(nextFlourish('glint', () => r, plainFlourishes))
+    }
+
+    expect(nextFlourish('hop', () => 0.5, ['hop'])).toBe('hop')
   })
 })

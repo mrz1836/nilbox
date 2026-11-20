@@ -85,7 +85,10 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
     label: 'Account',
     description: 'The GitHub account your inbox comes from, and what it lets the inbox show.',
   },
-  appearance: { label: 'Appearance', description: 'The theme, the text size, and the size the window opens at.' },
+  appearance: {
+    label: 'Appearance',
+    description: 'The theme, the text size, the size the window opens at, and the celebrations.',
+  },
   notifications: {
     label: 'Notifications',
     description: 'The menu bar icon, how long toasts stay, and the banners that tell you when something new needs you.',
@@ -223,6 +226,21 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Theme', keywords: ['dark mode', 'light mode', 'system', 'colors'] },
     { label: 'Text size', keywords: ['font', 'font size', 'zoom', 'larger text', 'scale', 'accessibility'] },
     { label: 'Window size', keywords: ['window', 'resize', 'dimensions', 'opens at'] },
+    {
+      label: 'Celebrations',
+      keywords: [
+        'confetti',
+        'party',
+        'inbox nil',
+        'celebrations',
+        'achievements',
+        'streak',
+        'animation',
+        'quiet',
+        'off',
+        'motion',
+      ],
+    },
   ],
   notifications: [
     { label: 'Show in the menu bar', keywords: ['menu bar icon', 'tray', 'status bar', 'badge', 'keep running'] },

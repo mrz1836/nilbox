@@ -160,6 +160,7 @@ import type {
   StatusProvider,
   RunGoing,
   MoveResult,
+  NilMoment,
   UpdateLocation,
   UpdateLocationKind,
   UpdateStatus,
@@ -411,6 +412,12 @@ export function myScript(overrides: Partial<AutopilotMyScript> = {}): AutopilotM
     shows: 'every clone',
     ...overrides,
   }
+}
+
+// nilMoment is what a time at nil was worth: by default, the first day at nil, unlocking
+// nothing and throwing no confetti.
+export function nilMoment(overrides: Partial<NilMoment> = {}): NilMoment {
+  return { earned: false, cleared: 0, streak: 1, best: 1, count: 0, unlocked: [], confetti: false, ...overrides }
 }
 
 // routineStats is a routine's week with nothing run.
@@ -1257,6 +1264,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
     bannersOff: ['session_needs_you', 'session_finished'],
     theme: 'system',
     textSize: 'default',
+    celebrations: 'milestones',
     toastSeconds: 12,
     collapsedSections: [],
     projectsTipDismissed: false,

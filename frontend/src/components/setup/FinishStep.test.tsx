@@ -3,7 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { CelebrationsContext } from '../../lib/celebrations'
 import { earnedBurst } from '../../lib/nil'
+import type { Celebrations } from '../../platform'
 import {
   agents,
   agentVersions,
@@ -29,7 +31,7 @@ afterEach(() => {
 })
 
 // showFinish shows Finish over a setup that went well, as change adjusts its props.
-function showFinish(change: Partial<FinishStepProps> = {}) {
+function showFinish(change: Partial<FinishStepProps> = {}, celebrations: Celebrations = 'milestones') {
   const props: FinishStepProps = {
     headingId: 'setup-heading',
     headingRef: createRef(),
@@ -56,7 +58,11 @@ function showFinish(change: Partial<FinishStepProps> = {}) {
     ...change,
   }
 
-  render(<FinishStep {...props} />)
+  render(
+    <CelebrationsContext value={celebrations}>
+      <FinishStep {...props} />
+    </CelebrationsContext>,
+  )
 
   return props
 }
@@ -155,6 +161,13 @@ describe('FinishStep', () => {
     showFinish()
 
     expect(screen.queryAllByTestId('confetti')).toHaveLength(0)
+  })
+
+  it.each(['quiet', 'off'] as const)('throws nothing with celebrations %s, the achievement all the same', (mode) => {
+    showFinish({}, mode)
+
+    expect(screen.queryAllByTestId('confetti')).toHaveLength(0)
+    expect(screen.getByText('Achievement unlocked')).toBeInTheDocument()
   })
 
   it('suggests a template from what this Mac knows, while Autopilot is on, and sets it up on asking', async () => {

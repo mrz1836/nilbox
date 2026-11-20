@@ -59,6 +59,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/measure"
+	"github.com/mrz1836/nilbox/internal/milestones"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
@@ -514,7 +515,7 @@ func binders() []func(svc any) (application.Service, bool) {
 		binder[sessions.Service], binder[review.Service], binder[issues.Service], binder[avatars.Service],
 		binder[integrations.Service], binder[scriptrun.Service], binder[releases.Service], binder[hooks.Service],
 		binder[scripts.Service], binder[ghthreads.Service], binder[backup.Service], binder[svcstatus.Service],
-		binder[setup.Service], binder[update.Service], binder[autopilot.Service],
+		binder[setup.Service], binder[update.Service], binder[autopilot.Service], binder[milestones.Service],
 	}
 }
 

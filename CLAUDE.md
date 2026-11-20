@@ -272,6 +272,8 @@ bytes).
   catalog and what the user watches.
 - [`internal/svcstatus`](docs/architecture.md#internalsvcstatus): follows GitHub's, Claude's,
   and OpenAI's status pages.
+- [`internal/milestones`](docs/architecture.md#internalmilestones): the log of the inbox at
+  nil: the streak, the achievements, and confetti at most once a day.
 
 **The sheets**
 
@@ -395,7 +397,8 @@ package imports the driver, and nothing imports an ORM (`internal/repoguard` enf
   snooze, sensitive, notifyprefs, branchrules, reporules, integrationprefs, threadrules,
   statusprefs, updateprefs, autopilotprefs, and heldruns packages declare (`update.mode`,
   the `autopilot.*` settings, and `checks.ignoredWorkflows` among them); inbox
-  writes `inbox.*`; prompts writes `prompts.*`; setup writes `setup.*`; update writes its state,
+  writes `inbox.*`; prompts writes `prompts.*`; setup writes `setup.*`; milestones writes
+  `milestones.*`; update writes its state,
   the other `update.*` keys (the package doc has the full list); Autopilot's engine writes its
   own state, `autopilot.engine`, never a setting. Settings and
   those leaves write a switch and a list of strings one way, through the leaf

@@ -319,6 +319,15 @@ export function SetCardUnread(on: boolean): $CancellablePromise<$models.Settings
 }
 
 /**
+ * SetCelebrations stores how the window celebrates, CelebrationsMilestones,
+ * CelebrationsQuiet, or CelebrationsOff, and returns the settings with it. A choice that is
+ * not one of them is refused, and nothing is stored.
+ */
+export function SetCelebrations(c: $models.Celebrations): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3959039032, c);
+}
+
+/**
  * SetClaudeAPIKey stores whether an API key in the environment may sign Claude Code in,
  * and returns the settings with it. Off, launches remove the key, so Claude Code runs on
  * the profile's own sign-in.

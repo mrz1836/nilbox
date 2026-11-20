@@ -104,6 +104,7 @@ import {
   updateReady,
   updateStatus,
   moveResult,
+  nilMoment,
   userScript,
   variables,
   worktreesSnapshot,
@@ -292,6 +293,9 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     markItemUnseen: done,
     checkItemFiles: () => Promise.resolve(fileCheck()),
 
+    // Each time at nil is the first day, unlocking nothing, unless a test says otherwise.
+    reachedNil: (reach) => Promise.resolve(nilMoment({ earned: reach.earned, cleared: reach.cleared })),
+
     listProfiles: () => Promise.resolve([profile(), profile({ agent: 'codex', folder: '~/.codex' })]),
     listAgents: () => Promise.resolve(agents()),
     rediscoverProfiles: () => Promise.resolve([profile(), profile({ agent: 'codex', folder: '~/.codex' })]),
@@ -425,6 +429,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getTheme: () => Promise.resolve('system'),
     setTheme: (theme) => stored({ theme }),
     setTextSize: (textSize) => stored({ textSize }),
+    setCelebrations: (celebrations) => stored({ celebrations }),
     setToastSeconds: (toastSeconds) => stored({ toastSeconds }),
     getCollapsedSections: () => Promise.resolve([]),
     setSectionCollapsed: (section, collapsed) => stored({ collapsedSections: collapsed ? [section] : [] }),

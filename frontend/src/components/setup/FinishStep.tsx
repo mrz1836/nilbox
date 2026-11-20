@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useId, useRef, type CSSProperties, type RefObject } from 'react'
 
 import { brand, palettes } from '../../generated/brand'
+import { throwsBursts, useCelebrations } from '../../lib/celebrations'
 import { prefersReducedMotion } from '../../lib/motion'
 import { earnedBurst } from '../../lib/nil'
 import { finishLog, finishMarks, goDuration, inboxPreview, logName } from '../../lib/setup'
@@ -131,7 +132,7 @@ function InboxPreview({ inbox, connected }: { inbox: SetupInbox; connected: bool
 // terminal that checks off each part of the setup as go test would, with a Fix beside what
 // needs attention, what the inbox holds by now, a few tips, how to read a card (the
 // compact card guide), and Open my inbox. With reduced motion nothing moves and no
-// confetti flies.
+// confetti flies, and with Celebrations quiet or off none flies either.
 export function FinishStep({
   headingId,
   headingRef,
@@ -152,6 +153,7 @@ export function FinishStep({
 }: FinishStepProps) {
   const guideId = useId()
   const { bursts, fire, land } = useConfetti()
+  const celebrations = useCelebrations()
   const terminal = terminals?.find((t) => t.id === settings?.terminal)
   const lines = finishLog({
     github: github,
@@ -171,12 +173,13 @@ export function FinishStep({
   const warnings = lines.filter((l) => l.mark === 'warn').length
   const agentName = agents.find((a) => a.id === settings?.defaultAgent)?.name ?? 'your agent'
 
-  // The confetti goes off once, from the heading, as the step shows.
+  // The confetti goes off once, from the heading, as the step shows, unless the user's
+  // celebrations throw no bursts.
   const thrown = useRef(false)
   const throwConfetti = useEffectEvent(() => {
     const heading = headingRef.current
 
-    if (heading === null || prefersReducedMotion()) {
+    if (heading === null || prefersReducedMotion() || !throwsBursts(celebrations)) {
       return
     }
 
