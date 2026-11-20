@@ -210,6 +210,57 @@ func TestASettingsChangeSaysEachSettingItChangesInTheWindowsWords(t *testing.T) 
 	assert.Equal(t, "$25", dollars.Changes[0].After)
 }
 
+func TestASettingsChangeSaysWhatItSetsWhateverTheSettingsAreNow(t *testing.T) {
+	t.Parallel()
+
+	auto := autopilotprefs.ModeAuto
+	every := kit.SettingsChange{
+		DefaultMode: &auto, AgentsAtOnce: someNumber(2), RunsPerDay: someNumber(100), ActionsPerDay: someNumber(50),
+		DailyCap:  &autopilotprefs.DailyCap{Amount: 5, Unit: autopilotprefs.UnitUSD},
+		KeepAwake: someNumber(true), HoldOnOutage: someNumber(true), CatchUpHours: someNumber(168),
+		HistoryDays: someNumber(14), LogDays: someNumber(7),
+	}
+
+	assert.Equal(t, []kit.SettingChange{
+		{Key: "defaultMode", Label: "New routines start in", After: "Autopilot"},
+		{Key: "agentsAtOnce", Label: "Agents at once", After: "2"},
+		{Key: "runsPerDay", Label: "Agent runs a day", After: "100"},
+		{Key: "actionsPerDay", Label: "GitHub actions a day", After: "50"},
+		{Key: "dailyCap", Label: "Daily cap", After: "$5"},
+		{Key: "keepAwake", Label: "Keep the Mac awake while agents work", After: "On"},
+		{Key: "holdOnOutage", Label: "Hold agent starts while their provider reports an outage", After: "On"},
+		{Key: "catchUpHours", Label: "Ask before catching up after", After: "1 week"},
+		{Key: "historyDays", Label: "History kept", After: "14 days"},
+		{Key: "logDays", Label: "Run logs kept", After: "7 days"},
+	}, kit.SettingsSet(every), "every setting it names, a value set to what it is now included, in the window's order")
+
+	assert.Equal(t, []kit.SettingChange{{Key: "dailyCap", Label: "Daily cap", After: "$5"}},
+		kit.SettingsSet(kit.SettingsChange{DailyCap: every.DailyCap}), "and only those it names")
+	assert.Equal(t, []kit.SettingChange{}, kit.SettingsSet(kit.SettingsChange{}))
+}
+
+func TestARulesChangeSaysWhatItSetsWhateverTheRulesAreNow(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []kit.RuleChange{
+		{Kind: "trust", Target: renovateLogin, Words: "Trust renovate[bot]"},
+		{Kind: "trust", Target: dependabotLogin, Words: "Trust dependabot[bot]"},
+		{Kind: "untrust", Target: "github-actions", Words: "Stop trusting github-actions[bot]"},
+		{Kind: "pin", Target: "acme-org/tools", Words: "Pin acme-org/tools"},
+		{Kind: "mute", Target: "acme-org/legacy", Words: "Mute acme-org/legacy"},
+		{Kind: "clear", Target: "acme-labs", Words: "Unpin or unmute acme-labs"},
+		{Kind: "ignoreWorkflows", Target: "Nightly build", Words: "Ignore Nightly build"},
+		{Kind: "unignoreWorkflows", Target: "Deploy preview", Words: "Stop ignoring Deploy preview"},
+	}, kit.RulesSet(kit.RulesChange{
+		Trust: []string{" Renovate[bot] ", dependabotLogin, "renovate", "not a bot!"}, Untrust: []string{"github-actions"},
+		Pin: []string{"acme-org/tools"}, Mute: []string{"acme-org/legacy", "ACME-ORG/TOOLS", "not/a/repo/at/all"},
+		Clear: []string{"acme-labs"}, IgnoreWorkflows: []string{" Nightly build ", "Nightly build"},
+		UnignoreWorkflows: []string{"Deploy preview"},
+	}), "a rule already so included, in the check's order, each once, and a name that isn't one left out")
+
+	assert.Equal(t, []kit.RuleChange{}, kit.RulesSet(kit.RulesChange{}))
+}
+
 func TestASettingsChangeIsCheckedAsSettingsChecksIt(t *testing.T) {
 	t.Parallel()
 

@@ -3580,7 +3580,9 @@ session's, and Nilbox never removes it.
 parts in the order they apply: new prompts, routines, a settings change, and a rules change.
 Each part has its own buttons, and once you act its outcome takes their place (*✓ Added,
 switched off · Show it*, *Changes saved*, *Added to your prompts*, *Applied*, *Opened in the
-builder*, *Discarded*). A card of several parts has **Apply all**, which applies the parts left
+builder*, *Discarded*). From then on the part shows what it did, never checked again against
+what it changed: a routine by its name, a change by its sentence now, and settings and rules by
+what they set (*Daily cap → $5*). A card of several parts has **Apply all**, which applies the parts left
 in that order and stops at the first that fails, saying which and why; what it applied before
 stays applied. A part with problems can't be applied (*It can’t be applied like this: ask Claude
 to fix it, or discard it.*), and while one has them, **Apply all** is off.

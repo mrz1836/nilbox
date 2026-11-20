@@ -47,9 +47,10 @@ function Heading({ id, p }: { id: string; p: RoutinePart }) {
   )
 }
 
-// Sentences are what the routine does: for a change, as it is and as it would be.
-function Sentences({ p, sentence }: { p: RoutinePart; sentence: string }) {
-  if (!isEdit(p)) {
+// Sentences are what the routine does: for a change, as it is and as it would be, or, once
+// it is saved, as it is now, which the routine as Claude read it no longer is.
+function Sentences({ p, sentence, saved = false }: { p: RoutinePart; sentence: string; saved?: boolean }) {
+  if (!isEdit(p) || saved) {
     return <p className="text-sm leading-relaxed text-text">{sentence === '' ? 'It doesn’t read yet.' : sentence}</p>
   }
 
@@ -79,7 +80,7 @@ export function RoutineChange(props: RoutineChangeProps) {
       <Heading id={`${id}-title`} p={props.p} />
       {props.outcome !== undefined ? (
         <>
-          <Sentences p={props.p} sentence={props.p.checked.sentence} />
+          <Sentences p={props.p} sentence={props.p.checked.sentence} saved={props.outcome.kind === 'saved'} />
           <OutcomeLine part="routine" outcome={props.outcome} onShowRoutine={props.kit.onShowRoutine} />
         </>
       ) : (

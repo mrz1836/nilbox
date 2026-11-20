@@ -5166,7 +5166,11 @@ describe/
   can write the folder: only a name the tool mode makes (`kit.ValidProposalID`), never a link
   (`Lstat`), within `kit.MaxProposalFileBytes`, through kit's strict decoder, naming its own ID
   and the folder it is in; then checked again with `kit.Check` against the live snapshot, so a
-  card says what applying it would do now. `Card.Proposal` is the proposal as written, which a
+  card says what applying it would do now. A part the user dealt with is shown as it was dealt
+  with instead (`asDealtWith`), since checked against the setup it changed itself it would find
+  its own name taken or nothing left to change: no problem, warning, or risk, a routine it
+  added or saved by that routine's name now, and settings and rules by what they set
+  (`kit.SettingsSet`, `kit.RulesSet`). `Card.Proposal` is the proposal as written, which a
   part applies from where `Checked` holds nothing of its own (a description, the mode
   suggested, the template, a change's routine and base). `Settle` records what the user did
   with one part in the folder's `outcomes.json` (only a kind that fits the part, the first

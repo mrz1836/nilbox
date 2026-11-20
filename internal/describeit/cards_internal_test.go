@@ -108,6 +108,98 @@ func TestACardIsItsProposalCheckedAgainstTheLiveSetup(t *testing.T) {
 	assert.True(t, checked.Routines[1].Stale, "and that a routine changed since the agent read it")
 }
 
+func TestAPartDealtWithShowsAsItWasDealtWith(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	id, ids := r.conversationWith(fullProposal())
+	ref := CardRef{Source: id, Proposal: ids[0]}
+
+	for _, s := range []SettleRequest{
+		{Part: kit.PartPrompt, Kind: kit.OutcomeAdded, Words: "Added “Tests first” to your prompts"},
+		{Part: kit.PartRoutine, Kind: kit.OutcomeAdded, Words: "Added “Pin failing PRs”, switched off", RoutineID: 8},
+		{Part: kit.PartRoutine, Index: 1, Kind: kit.OutcomeSaved, Words: "Saved the changes to “Nightly”", RoutineID: 7},
+		{Part: kit.PartSettings, Kind: kit.OutcomeApplied, Words: "Applied the settings change"},
+		{Part: kit.PartRules, Kind: kit.OutcomeApplied, Words: "Applied the rules change"},
+	} {
+		s.Ref = ref
+		require.NoError(t, r.svc.Settle(t.Context(), s))
+	}
+
+	// The setup as applying every part left it.
+	applied := testSnapshot()
+	applied.Setup.Routines[0].Spec, applied.Setup.Routines[0].UpdatedAt = checksFailSpec(notifyStep(), pinStep()), testNow
+	applied.Setup.Routines = append(applied.Setup.Routines, kit.Routine{
+		ID: 8, Name: "Pin failing PRs", Mode: autopilotprefs.ModeAsk, Spec: checksFailSpec(pinStep()), UpdatedAt: testNow,
+	})
+	applied.Setup.Prompts = append(applied.Setup.Prompts, kit.Prompt{
+		Nickname: "Tests first", Name: "Fix failing checks, tests first", Purpose: kit.PurposeAgent,
+		AppliesTo: kit.AppliesToPR,
+	})
+	applied.Setup.Settings.AgentsAtOnce = 1
+	applied.Setup.Rules.TrustedBots = []string{"dependabot", "renovate"}
+	r.setup.change(applied)
+	NewWorker(r.svc).Changed()
+
+	conv, err := r.svc.Conversation(t.Context())
+	require.NoError(t, err)
+
+	card := conv.Turns[0].Cards[0]
+	require.True(t, card.Settled)
+
+	checked := card.Checked
+	assert.Empty(t, checked.Prompts[0].Problems, "an added prompt never finds its own nickname taken")
+	assert.Equal(t, "Pin failing PRs", checked.Routines[0].Name, "an added routine goes by its name, never its own name taken")
+	assert.False(t, checked.Routines[0].NameTaken)
+	assert.False(t, checked.Routines[1].Stale, "a saved change never reads as its routine changed since")
+	assert.Equal(t, []kit.SettingChange{{Key: kit.SettingAgentsAtOnce, Label: "Agents at once", After: "1"}},
+		checked.Settings.Changes, "applied settings say what they set, never that they change nothing")
+	assert.Empty(t, checked.Settings.Problems)
+	assert.Empty(t, checked.Settings.Risks)
+	assert.Equal(t, []kit.RuleChange{{Kind: kit.RuleTrust, Target: "renovate", Words: "Trust renovate[bot]"}},
+		checked.Rules.Changes, "and applied rules too")
+	assert.Empty(t, checked.Rules.Problems)
+	assert.Empty(t, checked.Rules.Risks, "a part dealt with has nothing left to warn of")
+
+	renamed := applied
+	renamed.Setup.Routines = append([]kit.Routine{}, applied.Setup.Routines...)
+	renamed.Setup.Routines[1].Name = "Pinned PRs"
+	r.setup.change(renamed)
+	NewWorker(r.svc).Changed()
+
+	conv, err = r.svc.Conversation(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "Pinned PRs", conv.Turns[0].Cards[0].Checked.Routines[0].Name,
+		"a routine a part added goes by its name now")
+}
+
+func TestAPartDiscardedGoesByTheNameProposed(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	id, ids := r.conversationWith(pinProposal())
+
+	require.NoError(t, r.svc.Settle(t.Context(), SettleRequest{
+		Ref: CardRef{Source: id, Proposal: ids[0]}, Part: kit.PartRoutine, Kind: kit.OutcomeBuilder,
+		Words: "Opened “Pin failing PRs” in the builder",
+	}))
+
+	// The builder saved it under the name proposed, which a check now finds taken.
+	saved := testSnapshot()
+	saved.Setup.Routines = append(saved.Setup.Routines, kit.Routine{
+		ID: 8, Name: "Pin failing PRs", Mode: autopilotprefs.ModeAsk, Spec: checksFailSpec(pinStep()), UpdatedAt: testNow,
+	})
+	r.setup.change(saved)
+	NewWorker(r.svc).Changed()
+
+	conv, err := r.svc.Conversation(t.Context())
+	require.NoError(t, err)
+
+	routine := conv.Turns[0].Cards[0].Checked.Routines[0]
+	assert.Equal(t, "Pin failing PRs", routine.Name, "never the free name a save would give it now")
+	assert.False(t, routine.NameTaken)
+}
+
 func TestACardsListsAreNeverNull(t *testing.T) {
 	t.Parallel()
 

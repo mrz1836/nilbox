@@ -7,12 +7,15 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/autopilot/kit"
+	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/textutil"
@@ -198,8 +201,74 @@ func cardOf(ctx context.Context, source string, f kit.ProposalFile, turn int, sn
 	}
 
 	fillLists(&card)
+	asDealtWith(&card.Checked, f.Proposal, snap, mine)
 
 	return card
+}
+
+// asDealtWith shows each part of c the user dealt with, by outcomes, as it was dealt with,
+// never as checked again against a setup it may have changed itself: checked again, a
+// routine it added finds its own name taken ("Fix checks 2"), a change it saved finds its
+// routine changed since the agent read it, a prompt it added finds its nickname taken, and
+// settings or rules it applied find nothing left to change, which reads as a part that
+// can't be applied. A part dealt with keeps no problem, warning, or risk; a routine it
+// added or saved goes by that routine's name now, and any other routine by the name the
+// proposal p gave it; and settings or rules show what p sets (kit.SettingsSet,
+// kit.RulesSet).
+func asDealtWith(c *kit.Checked, p kit.Proposal, snap kit.Snapshot, outcomes []kit.Outcome) {
+	for _, o := range outcomes {
+		switch o.Part {
+		case kit.PartPrompt:
+			dealtPrompt(c, o.Index)
+		case kit.PartRoutine:
+			dealtRoutine(c, p, snap, o)
+		case kit.PartSettings, kit.PartRules:
+			dealtLists(c, p, o.Part)
+		}
+	}
+}
+
+// dealtLists shows the settings or the rules part of c, as part says, as the user dealt
+// with it: by what the proposal p sets, with no problem or risk.
+func dealtLists(c *kit.Checked, p kit.Proposal, part kit.Part) {
+	switch {
+	case part == kit.PartSettings && c.Settings != nil && p.Settings != nil:
+		c.Settings.Changes, c.Settings.Problems, c.Settings.Risks = kit.SettingsSet(*p.Settings), []string{}, []kit.Risk{}
+	case part == kit.PartRules && c.Rules != nil && p.Rules != nil:
+		c.Rules.Changes, c.Rules.Problems, c.Rules.Risks = kit.RulesSet(*p.Rules), []string{}, []kit.Risk{}
+	}
+}
+
+// dealtPrompt shows the prompt part index of c as the user dealt with it: with no problem
+// or risk.
+func dealtPrompt(c *kit.Checked, index int) {
+	if i := slices.IndexFunc(c.Prompts, func(cp kit.CheckedPrompt) bool { return cp.Index == index }); i >= 0 {
+		c.Prompts[i].Problems, c.Prompts[i].Risks = []string{}, []kit.Risk{}
+	}
+}
+
+// dealtRoutine shows the routine part of c the outcome o names, which the proposal p
+// proposed, as the user dealt with it: by the name of the routine o added or saved, when
+// snap holds it, or else the name p gave it, neither taken nor changed since, with no
+// problem, warning, or risk.
+func dealtRoutine(c *kit.Checked, p kit.Proposal, snap kit.Snapshot, o kit.Outcome) {
+	i := slices.IndexFunc(c.Routines, func(cr kit.CheckedRoutine) bool { return cr.Index == o.Index })
+	if i < 0 || o.Index >= len(p.Routines) {
+		return
+	}
+
+	r := &c.Routines[i]
+	if r.NameTaken {
+		r.Name = strings.TrimSpace(p.Routines[o.Index].Name)
+	}
+
+	held := slices.IndexFunc(snap.Setup.Routines, func(h kit.Routine) bool { return o.RoutineID != 0 && h.ID == o.RoutineID })
+	if held >= 0 {
+		r.Name = snap.Setup.Routines[held].Name
+	}
+
+	r.NameTaken, r.Stale = false, false
+	r.Problems, r.Warnings, r.Risks = []spec.Problem{}, []spec.Problem{}, []kit.Risk{}
 }
 
 // outcomesOf returns the outcomes of the proposal f's parts among all: the first for each

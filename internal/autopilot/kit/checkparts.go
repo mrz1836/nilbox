@@ -331,6 +331,82 @@ func checkSettings(before autopilotprefs.Config, c SettingsChange) CheckedSettin
 	return out
 }
 
+// SettingsSet words each setting the change c names as the value it sets, with no value
+// before it: what a settings change the user dealt with set, which its card shows, since
+// checked again against the settings it changed itself it finds nothing left to change.
+func SettingsSet(c SettingsChange) []SettingChange {
+	set, named := applySettings(autopilotprefs.Defaults(), c), c.named()
+	out := []SettingChange{}
+
+	for _, row := range settingRows() {
+		if named[row.key] {
+			out = append(out, SettingChange{Key: row.key, Label: row.label, After: row.words(set)})
+		}
+	}
+
+	return out
+}
+
+// named reports each setting c names, by its key.
+func (c SettingsChange) named() map[SettingKey]bool {
+	return map[SettingKey]bool{
+		SettingDefaultMode: c.DefaultMode != nil, SettingAgentsAtOnce: c.AgentsAtOnce != nil,
+		SettingRunsPerDay: c.RunsPerDay != nil, SettingActionsPerDay: c.ActionsPerDay != nil,
+		SettingDailyCap: c.DailyCap != nil, SettingKeepAwake: c.KeepAwake != nil,
+		SettingHoldOnOutage: c.HoldOnOutage != nil, SettingCatchUpHours: c.CatchUpHours != nil,
+		SettingHistoryDays: c.HistoryDays != nil, SettingLogDays: c.LogDays != nil,
+	}
+}
+
+// RulesSet words each change the rules change c names as it sets it, whatever the rules
+// are now: what a rules change the user dealt with set, which its card shows, since checked
+// again against the rules it changed itself it finds nothing left to change. A name that
+// isn't a bot's login, an org or a repository, or a workflow's is left out, and so is one
+// named twice.
+func RulesSet(c RulesChange) []RuleChange {
+	b := rulesCheck{changes: []RuleChange{}, problems: []string{}}
+	named := func(kind RuleKind, list []string) {
+		for _, target := range list {
+			b.changes = append(b.changes, ruleChange(kind, target))
+		}
+	}
+
+	named(RuleTrust, b.botList(RuleTrust, c.Trust))
+	named(RuleUntrust, b.botList(RuleUntrust, c.Untrust))
+
+	seen := map[string]bool{}
+
+	for _, step := range []struct {
+		kind  RuleKind
+		list  []string
+		words string
+	}{{RulePin, c.Pin, "Pin"}, {RuleMute, c.Mute, "Mute"}, {RuleClear, c.Clear, "Unpin or unmute"}} {
+		for _, raw := range step.list {
+			if name, err := reporules.ParseTarget(raw); err == nil && !seen[name.Key()] {
+				seen[name.Key()] = true
+				text := targetText(name)
+				b.changes = append(b.changes, RuleChange{Kind: step.kind, Target: text, Words: step.words + " " + text})
+			}
+		}
+	}
+
+	named(RuleIgnoreWorkflows, b.workflowList(RuleIgnoreWorkflows, c.IgnoreWorkflows))
+	named(RuleUnignoreWorkflows, b.workflowList(RuleUnignoreWorkflows, c.UnignoreWorkflows))
+
+	return b.changes
+}
+
+// ruleChange is a change of kind to target, a bot or a workflow, in the window's words:
+// "Trust renovate[bot]", "Stop ignoring Deploy preview".
+func ruleChange(kind RuleKind, target string) RuleChange {
+	words := map[RuleKind]string{
+		RuleTrust: "Trust " + target + "[bot]", RuleUntrust: "Stop trusting " + target + "[bot]",
+		RuleIgnoreWorkflows: "Ignore " + target, RuleUnignoreWorkflows: "Stop ignoring " + target,
+	}[kind]
+
+	return RuleChange{Kind: kind, Target: target, Words: words}
+}
+
 // applySettings returns c with s applied, as Settings' setters apply each: a shorter
 // history shortens the run logs with it, and the run logs it names come after.
 func applySettings(c autopilotprefs.Config, s SettingsChange) autopilotprefs.Config {
@@ -411,7 +487,7 @@ func (b *rulesCheck) bots(before, trusting, untrusting []string) []string {
 			b.problems = append(b.problems, fmt.Sprintf("rules: %s is in both trust and untrust: keep it in one.", bot))
 		case !slices.Contains(current, bot):
 			current = append(current, bot)
-			b.changes = append(b.changes, RuleChange{Kind: RuleTrust, Target: bot, Words: "Trust " + bot + "[bot]"})
+			b.changes = append(b.changes, ruleChange(RuleTrust, bot))
 		}
 	}
 
@@ -419,7 +495,7 @@ func (b *rulesCheck) bots(before, trusting, untrusting []string) []string {
 		if i := slices.Index(current, bot); i >= 0 && !slices.Contains(trusts, bot) {
 			current = slices.Delete(current, i, i+1)
 
-			b.changes = append(b.changes, RuleChange{Kind: RuleUntrust, Target: bot, Words: "Stop trusting " + bot + "[bot]"})
+			b.changes = append(b.changes, ruleChange(RuleUntrust, bot))
 		}
 	}
 
@@ -540,7 +616,7 @@ func (b *rulesCheck) workflows(before, ignoring, unignoring []string) []string {
 				"keep it in one.", name))
 		case !slices.Contains(current, name):
 			current = append(current, name)
-			b.changes = append(b.changes, RuleChange{Kind: RuleIgnoreWorkflows, Target: name, Words: "Ignore " + name})
+			b.changes = append(b.changes, ruleChange(RuleIgnoreWorkflows, name))
 		}
 	}
 
@@ -548,7 +624,7 @@ func (b *rulesCheck) workflows(before, ignoring, unignoring []string) []string {
 		if i := slices.Index(current, name); i >= 0 && !slices.Contains(ignores, name) {
 			current = slices.Delete(current, i, i+1)
 
-			b.changes = append(b.changes, RuleChange{Kind: RuleUnignoreWorkflows, Target: name, Words: "Stop ignoring " + name})
+			b.changes = append(b.changes, ruleChange(RuleUnignoreWorkflows, name))
 		}
 	}
 

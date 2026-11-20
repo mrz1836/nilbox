@@ -309,6 +309,10 @@ describe('ProposalCard', () => {
     await user.click(within(question).getByRole('button', { name: 'Run on them too' }))
 
     expect(await row.findByText('Changes saved')).toBeInTheDocument()
+    expect(row.queryByText('Now')).not.toBeInTheDocument()
+    expect(
+      row.getByText('When checks pass on pull requests in Review requested or Yours, snooze it for 3 days.'),
+    ).toBeInTheDocument()
     expect(platform.saveRoutine).toHaveBeenCalledWith({
       id: 3,
       name: 'Snooze passing bot PRs',
