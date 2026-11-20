@@ -1,8 +1,8 @@
-import { useEffect, useEffectEvent, useId, useState } from 'react'
+import { useId, useState } from 'react'
 
 import { modeHelp, modeLabels, modeOrder } from '../../../lib/autopilot'
 import { counted } from '../../../lib/format'
-import { isSaveKey } from '../../../lib/keys'
+import { isSaveKey, useKeyDown } from '../../../lib/keys'
 import {
   actsOn,
   canonical,
@@ -166,7 +166,7 @@ export function RoutineBuilder({
 
   // ⌘S saves while the tab shows: a hidden tab runs no effects, so it stops listening. A
   // dialog or a sheet open over the page, the question a save asks among them, keeps it.
-  const onKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
+  useKeyDown((e) => {
     if (isSaveKey(e)) {
       e.preventDefault()
 
@@ -175,18 +175,6 @@ export function RoutineBuilder({
       }
     }
   })
-
-  useEffect(() => {
-    const listen = (e: globalThis.KeyboardEvent) => {
-      onKey(e)
-    }
-
-    document.addEventListener('keydown', listen)
-
-    return () => {
-      document.removeEventListener('keydown', listen)
-    }
-  }, [])
 
   const status = (() => {
     if (saveError !== '') {
