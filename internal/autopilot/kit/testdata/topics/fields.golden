@@ -1,0 +1,85 @@
+# Fields
+
+A condition reads one field, by its `id`. A field of pull requests alone says so, and a condition on it is no for an issue. Each field's type decides the operators it takes (topic `conditions`); a choice field, and a list of choices, takes only its choices, as written here.
+
+## Item (`item`)
+
+- `item.kind` (Kind): `choice`; its choices: `pr` (a pull request), `issue` (an issue).
+- `item.title` (Title): `text`.
+- `item.labels` (Labels): `list`; its patterns are globs.
+- `item.author` (Author): `text`.
+- `item.authorIsBot` (Author is a bot): `bool`.
+- `item.trust` (Trust): `choice`; its choices: `member` (a member), `bot` (a trusted bot), `outside` (an outside contributor).
+- `item.association` (Author's association): `choice`; its choices: `OWNER`, `MEMBER`, `COLLABORATOR`, `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR` (first-time contributor), `FIRST_TIMER` (first-timer), `MANNEQUIN`, `NONE`.
+- `item.age` (Age): `duration`.
+- `item.idle` (Time since its last activity): `duration`.
+- `item.comments` (Comments): `number`.
+- `item.lists` (Why it's in your inbox): `list`; its choices: `reviewRequested` (review requested), `authored` (opened by you), `assigned` (assigned to you).
+- `item.snoozed` (Snoozed): `bool`.
+- `item.dismissed` (Dismissed): `bool`.
+- `item.pinned` (Pinned): `bool`.
+- `item.mine` (Opened by me): `bool`.
+
+## Repository (`repo`)
+
+- `repo.owner` (Owner): `text`.
+- `repo.name` (Name): `text`.
+- `repo.fullName` (Owner and name): `text`.
+- `repo.visibility` (Visibility): `choice`; its choices: `public`, `private`, `internal`.
+- `repo.language` (Language): `text`.
+- `repo.fork` (Is a fork): `bool`.
+- `repo.permission` (Your permission): `choice`; its choices: `admin`, `maintain`, `write`, `triage`, `read`.
+- `repo.hasClone` (Has a local clone): `bool`.
+- `repo.muted` (Is muted): `bool`.
+- `repo.pinned` (Is pinned): `bool`.
+- `repo.allowsUpdateBranch` (Allows updating branches): `bool`, pull requests only.
+
+## Pull request (`pr`)
+
+- `pr.draft` (Draft): `bool`, pull requests only.
+- `pr.base` (Base branch): `text`, pull requests only.
+- `pr.head` (Head branch): `text`, pull requests only.
+- `pr.fromFork` (From a fork): `bool`, pull requests only.
+- `pr.size` (Size): `choice`, pull requests only; its choices: `XS`, `S`, `M`, `L`, `XL`.
+- `pr.lines` (Lines changed): `number`, pull requests only.
+- `pr.files` (Files changed): `number`, pull requests only.
+- `pr.commits` (Commits): `number`, pull requests only.
+- `pr.conflicts` (Has conflicts): `bool`, pull requests only.
+- `pr.behind` (Behind its base): `bool`, pull requests only.
+- `pr.reviewDecision` (Review decision): `choice`, pull requests only; its choices: `approved`, `changesRequested` (changes requested), `reviewRequired` (review required), `none`.
+- `pr.approvals` (Approvals): `number`, pull requests only.
+- `pr.changesRequested` (Changes requested): `number`, pull requests only.
+- `pr.asksMe` (Asks for my review): `bool`, pull requests only.
+- `pr.autoMerge` (Auto-merge on): `bool`, pull requests only.
+
+## Checks (`checks`)
+
+- `checks.state` (State): `choice`, pull requests only; its choices: `success` (passing), `failure` (failing), `error` (erroring), `pending`, `expected`, `none` (no checks).
+- `checks.failed` (Failed checks): `number`, pull requests only.
+- `checks.pending` (Pending checks): `number`, pull requests only.
+- `checks.passed` (Passed checks): `number`, pull requests only.
+- `checks.failedNames` (A failed check's name): `list`, pull requests only; its patterns are globs.
+- `checks.names` (A check's name): `list`, pull requests only; its patterns are globs.
+- `checks.requiredFailed` (A required check failed): `bool`, pull requests only.
+- `checks.awaitingApproval` (Runs awaiting approval): `bool`, pull requests only.
+
+## Files (`files`)
+
+- `files.paths` (Changed paths): `list`, pull requests only; its patterns match as `.gitignore`'s do.
+- `files.sensitive` (Sensitive categories touched): `list`, pull requests only; its choices: `agent` (agent config), `workflows`, `tooling` (build tooling), `review` (review rules), `dependencies`, `custom` (your patterns).
+
+## Dependency update (`dep`)
+
+- `dep.tool` (Tool): `choice`, pull requests only; its choices: `dependabot`, `renovate`, `none` (neither).
+- `dep.ecosystem` (Ecosystem): `choice`, pull requests only; its choices: `gomod` (Go modules), `npm` (npm, Yarn, and pnpm), `github-actions` (GitHub Actions), `docker`, `docker-compose` (Docker Compose), `pip`, `uv`, `bundler`, `cargo`, `composer`, `maven`, `gradle`, `nuget`, `terraform`, `gitsubmodule` (Git submodules), `mix` (Hex (Mix)), `elm`, `pub`, `swift`, `devcontainers` (Dev containers), `bun`, `helm`.
+- `dep.package` (Package): `text`, pull requests only.
+- `dep.from` (From version): `text`, pull requests only.
+- `dep.to` (To version): `text`, pull requests only.
+- `dep.updateType` (Update type): `choice`, pull requests only; its choices: `major`, `minor`, `patch`.
+- `dep.grouped` (Grouped update): `bool`, pull requests only.
+- `dep.security` (Security update): `bool`, pull requests only.
+
+## History (`history`)
+
+- `history.tries` (This routine's tries): `number`.
+- `history.lastOutcome` (Its last outcome): `choice`; its choices: `none` (none yet), `done`, `failed`, `gaveUp` (gave up), `dismissed` (skipped by you), `passed` (the checks passed), `stillFails` (the checks still fail).

@@ -1,0 +1,46 @@
+# The agent step
+
+`agent` starts a coding agent on the item with a prompt from the user's library, as a click on the item's launch button would, with the routine's own choices in the launch menu's place. Every setting left out inherits what a click would use.
+
+```json
+{"agent":{"agent":"inherit","prompt":{"starter":"fix-checks"},"where":"background","fence":{"budget":{"usd":2},"timeoutMinutes":20,"tools":"editTestPush"}}}
+```
+
+- `agent`: `inherit`, or an agent's id, as `autopilot_my_setup`'s profiles name the agents; left out, `inherit`.
+- `prompt`: the prompt it runs, exactly one of `{"starter": "<key>"}`, `{"nickname": "<nickname>"}`, and `{"itemDefault": true}` (topic `prompts`).
+- `where`: `background` (In the background) or `terminal` (In my terminal); left out, `background`.
+- `profile`: the agent's profile by its name, one of `autopilot_my_setup`'s; left out, inherited.
+- `fallbacks`: up to 3 profiles, `{"agent": ..., "profile": ...}`, to use in order when one is out of usage, another agent's included.
+- `model`: the agent's own model, as its launch takes it; left out, inherited. Leave it out unless the user asks.
+- `effort`: the agent's own effort; left out, inherited. Leave it out unless the user asks.
+- `planMode`: `true` or `false`, for a terminal run alone; in the background the tools preset decides. Left out, inherited.
+- `worktree`: `true` or `false`, for a terminal run alone; in the background the item's own worktree is always used. Left out, inherited.
+- `launchFor`: rows, `{"target": "acme-org" or "acme-org/api", "agent", "profile", "model", "effort"}`, that set the launch for one org or repository, a repository's row winning over its org's; at most 50.
+- `fence`: what holds a background run in, below.
+
+## Where it runs
+
+- `background` (In the background): Headless, always in the item's worktree, held in by the fence.
+- `terminal` (In my terminal): Exactly a click's launch: the same holds, worktree, terminal, and session. It suits Ask first: on Autopilot it opens a terminal tab while the user works.
+
+## The fence
+
+`fence` holds a run in the background in, since nobody is there to answer the agent; a terminal run takes none. Left out, it takes the defaults.
+
+- `budget`: `{"usd": 3}`, $0.50 to $50 to the cent, which the agent keeps to itself, or `{"tokens": 200000}`, 10000 to 50000000, which Nilbox stops it at; left out, $3.
+- `timeoutMinutes`: its time limit, a whole number, 5 to 180 minutes, default 30.
+- `tools`: its tools preset, below; left out, `editTestPush`.
+- `allow`: extra commands it may run, each one line of at most 200 characters, at most 50; they never loosen the fence's hard lines.
+- `deny`: extra commands it may not run, as `allow`.
+
+## The tools presets
+
+From the narrowest. Give a step the narrowest that does the job:
+
+- `readOnly` (Read only): Reads and plans; changes nothing. A `postReview` step, and an `onlyIf` on its verdict, can follow it.
+- `githubTasks` (GitHub tasks only): Only the gh commands for small GitHub changes: re-run failed jobs, a comment, a label.
+- `editTest` (Edit and test, no push): Edits and runs the repository's checks; never pushes.
+- `editTestPush` (Edit, test, and push to the PR's branch): As Edit and test, plus exactly one push, to the pull request's own branch. A `waitForChecks` step can follow it.
+- `profile` (The profile's own permissions): Exactly what a click passes, within the fence's hard lines. A `waitForChecks` step can follow it.
+
+Under every preset an agent never edits outside the item's worktree, nor the repository's agent, workflow, and tooling files; never uses the network tools; never merges, reviews, or closes through `gh`; never reads the user's credentials; and pushes at most once, to the pull request's own branch, never with `--force`. An agent works on an outside contributor's item only where its org or repository allows it, and then read only, whatever the preset. The step's own agent may not keep every preset, which `autopilot_check` says.

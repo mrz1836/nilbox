@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
@@ -110,7 +111,7 @@ func RestingWords(resting []Resting) string {
 		parts = append(parts, "the "+name+" profile is out of usage until "+at)
 	}
 
-	return series(parts)
+	return draft.Series(parts)
 }
 
 // outOfUsageWords says a run was refused for its profile's usage limit, and that the

@@ -62,6 +62,11 @@ func ids() []string {
 	out = append(out, each(c.Steps, func(s catalog.Step) string { return string(s.Dispatcher) })...)
 	out = append(out, each(c.GitHubActions, func(a catalog.GitHubAction) string { return string(a.Kind) })...)
 	out = append(out, each(c.Outcomes, func(o catalog.OutcomeInfo) string { return string(o.ID) })...)
+	out = append(out, each(c.Everies, func(e catalog.EveryInfo) string { return string(e.ID) })...)
+	out = append(out, each(c.MergeHows, func(m catalog.MergeHowInfo) string { return string(m.ID) })...)
+	out = append(out, each(c.MergeMethods, func(m catalog.MergeMethodInfo) string { return string(m.ID) })...)
+	out = append(out, each(c.ReviewAses, func(r catalog.ReviewAsInfo) string { return string(r.ID) })...)
+	out = append(out, each(c.TellWhens, func(w catalog.TellWhenInfo) string { return string(w.ID) })...)
 
 	return append(out, each(c.Presets, func(p catalog.PresetInfo) string { return string(p.ID) })...)
 }
@@ -285,6 +290,96 @@ func TestTheScheduleStylesStartWithEachMatch(t *testing.T) {
 
 	_, ok = catalog.ScheduleStyleByID("weekly")
 	assert.False(t, ok)
+}
+
+// choice is one entry of a list of choices, as the builder and a guide show it.
+type choice struct{ id, label, help string }
+
+// choices returns what say makes of every entry of list.
+func choices[T any](list []T, say func(T) choice) []choice {
+	out := make([]choice, 0, len(list))
+	for _, e := range list {
+		out = append(out, say(e))
+	}
+
+	return out
+}
+
+// TestTheChoiceListsAreTheirConstants holds each list of a step's or a schedule's choices
+// to its constants, each once, in the builder's order, every one with a label of its own
+// and help: how often a schedule fires, how Merge it merges and with which method (the
+// repository's own, "", first), how Post the agent's review posts it, and what Tell me
+// says (its default first).
+func TestTheChoiceListsAreTheirConstants(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		got  []choice
+		want []string
+	}{
+		{
+			name: "how often a schedule fires",
+			got: choices(catalog.Everies(), func(e catalog.EveryInfo) choice {
+				return choice{string(e.ID), e.Label, e.Help}
+			}),
+			want: []string{"day", "weekday", "week"},
+		},
+		{
+			name: "how Merge it merges",
+			got: choices(catalog.MergeHows(), func(m catalog.MergeHowInfo) choice {
+				return choice{string(m.ID), m.Label, m.Help}
+			}),
+			want: []string{"autoMergeIfItWasOn", "whenMergeable"},
+		},
+		{
+			name: "the methods Merge it merges with",
+			got: choices(catalog.MergeMethods(), func(m catalog.MergeMethodInfo) choice {
+				return choice{string(m.ID), m.Label, m.Help}
+			}),
+			want: []string{"", "merge", "squash", "rebase"},
+		},
+		{
+			name: "how Post the agent's review posts it",
+			got: choices(catalog.ReviewAses(), func(r catalog.ReviewAsInfo) choice {
+				return choice{string(r.ID), r.Label, r.Help}
+			}),
+			want: []string{"comment", "verdict"},
+		},
+		{
+			name: "what Tell me says",
+			got: choices(catalog.TellWhens(), func(w catalog.TellWhenInfo) choice {
+				return choice{string(w.ID), w.Label, w.Help}
+			}),
+			want: []string{"reached", "verdict"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.NotNil(t, tt.got)
+			assert.Equal(t, tt.want, each(tt.got, func(c choice) string { return c.id }))
+
+			labels := map[string]bool{}
+
+			for _, c := range tt.got {
+				assert.NotEmpty(t, c.label, "%q has a label", c.id)
+				assert.NotEmpty(t, c.help, "%q has help", c.id)
+				assert.False(t, labels[c.label], "%q's label is its own", c.id)
+
+				labels[c.label] = true
+			}
+		})
+	}
+
+	c := catalog.All()
+	assert.Equal(t, catalog.Everies(), c.Everies)
+	assert.Equal(t, catalog.MergeHows(), c.MergeHows)
+	assert.Equal(t, catalog.MergeMethods(), c.MergeMethods)
+	assert.Equal(t, catalog.ReviewAses(), c.ReviewAses)
+	assert.Equal(t, catalog.TellWhens(), c.TellWhens)
 }
 
 func TestFields(t *testing.T) {

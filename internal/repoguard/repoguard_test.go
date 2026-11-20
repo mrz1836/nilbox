@@ -453,6 +453,57 @@ func TestTheFenceRunsNothing(t *testing.T) {
 	assert.Empty(t, found, "the fence decides an agent's tool calls and runs nothing")
 }
 
+// toolServerReaches matches an import of what the tool mode never uses: a way to start a
+// process (os/exec, execpath), the network (net and its packages), or a database
+// (database/sql). Built from parts so this file does not match itself.
+func toolServerReaches() *regexp.Regexp {
+	return regexp.MustCompile(`"os/` + `exec"|internal/exec` + `path"|"n` + `et(/[^"]*)?"|"database/` + `sql"`)
+}
+
+// TestTheToolServerRunsNothing holds the tool mode to serving words and writing proposals:
+// no file of its package imports a way to start a process, reach the network, or open a
+// database, beside the boundary that keeps it off execpath and the store.
+func TestTheToolServerRunsNothing(t *testing.T) {
+	t.Parallel()
+
+	reaches := toolServerReaches()
+
+	var found, files []string
+
+	for _, rel := range goFiles(t) {
+		if !strings.HasPrefix(rel, "internal/mcpserver/") || strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+
+		files = append(files, rel)
+
+		if text, ok := readText(t, rel); ok && reaches.MatchString(text) {
+			found = append(found, rel)
+		}
+	}
+
+	assert.NotEmpty(t, files, "internal/mcpserver is gone; update this guard")
+	assert.Empty(t, found, "the tool mode serves Describe it's tools and writes proposals: it starts nothing, makes "+
+		"no network call, and opens no database")
+}
+
+func TestToolServerReachesPattern(t *testing.T) {
+	t.Parallel()
+
+	reaches := toolServerReaches()
+
+	for _, imp := range []string{
+		`"os/` + `exec"`, `"n` + `et"`, `"n` + `et/http"`, `"n` + `et/url"`, `"database/` + `sql"`,
+		`"github.com/mrz1836/nilbox/internal/exec` + `path"`,
+	} {
+		assert.True(t, reaches.MatchString(imp), imp)
+	}
+
+	for _, imp := range []string{`"os"`, `"encoding/json"`, `"github.com/mrz1836/nilbox/internal/paths"`, `"syscall"`} {
+		assert.False(t, reaches.MatchString(imp), imp)
+	}
+}
+
 // resetWordFile declares the word the user types to confirm a reset of the app, which is
 // spelled as one of the verbs TestNoGitCommandChangesAClone looks for.
 const resetWordFile = "internal/setup/reset.go"

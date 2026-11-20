@@ -197,6 +197,18 @@ LEFT JOIN items i ON i.repo_id = r.id
 GROUP BY r.owner COLLATE NOCASE
 ORDER BY items DESC, r.owner COLLATE NOCASE;
 
+-- name: ListKnownRepositories :many
+-- ListKnownRepositories returns each stored repository that isn't archived, by its owner
+-- and name, with how many of its items are stored, the most first: the repositories a
+-- routine Describe it proposes may name.
+SELECT r.owner, r.name, COUNT(i.id) AS items
+FROM repos r
+LEFT JOIN items i ON i.repo_id = r.id
+WHERE r.is_archived = 0
+GROUP BY r.id
+ORDER BY items DESC, r.owner COLLATE NOCASE, r.name COLLATE NOCASE
+LIMIT 200;
+
 -- name: ListLabelColumns :many
 -- ListLabelColumns returns every stored item's labels, as their JSON column, for the
 -- builder's suggestions.

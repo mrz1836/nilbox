@@ -1,0 +1,32 @@
+# What a routine watches
+
+`watch.sources` says where a routine's items come from. Each source is either `lists`, the user's inbox, or `search`, a GitHub search of its own, never both. A routine watches at most 10 sources, at most 5 of them searches; one whose trigger is `manual` may watch none.
+
+```json
+{"sources": [{"lists": ["authored"]}, {"search": {"kind": "pr", "authors": ["app/dependabot"], "where": ["@me"]}}]}
+```
+
+## The inbox's lists
+
+`lists` names the reasons an item is in the user's inbox, any of them. Every refresh reads the inbox already, so watching it costs GitHub nothing more: prefer it whenever it holds the items.
+
+- `reviewRequested` (Review requested): items asking for your review; pull requests only.
+- `authored` (Opened by you): items opened by you; pull requests and issues.
+- `assigned` (Assigned to you): items assigned to you; pull requests and issues.
+
+## A search
+
+`search` is a GitHub search the routine reads on each refresh while it is on, which costs GitHub requests: keep it narrow, and watch the inbox's lists instead when they hold the items. A search returns the most recently updated open items it matches. Its fields, each of them optional:
+
+- `kind`: `pr` or `issue`; left out, both.
+- `authors`: who opened the items, any of them: `@me` (the user), a login, or `app/<bot>` for a bot, such as `app/dependabot`: a bot's bare name matches nothing.
+- `where`: the places the items are in, any of them: `@me` (the user's account, whichever is signed in), `user:<login>`, `org:<org>`, or `repo:<owner>/<name>`.
+- `involving`: how the items involve the user, all of them: `assigned` (assigned to the user), `reviewRequested` (asking for the user's review), or `mentioned` (mentioning the user); `reviewRequested` only for pull requests.
+- `labels`: labels the items carry, any of them, each at most 50 characters and holding no comma.
+- `notLabels`: labels the items carry none of.
+- `base`: the branch pull requests merge into; pull requests only.
+- `headPrefix`: the start of the branch pull requests come from, such as `dependabot/`; pull requests only.
+- `state`: the items' states, all of them; pull requests only: `ready` (not a draft), `draft` (a draft), `failing` (its checks fail), `passing` (its checks pass), `pending` (its checks are running), `changesRequested` (changes requested), `approved`, `reviewRequired` (a review required), or `unreviewed` (no review yet). Two of one kind, such as `passing` and `failing`, match nothing and are refused.
+- `more`: qualifiers typed by hand, such as `language:go` or `label:"help wanted"`, at most 200 characters. One a routine's search can't take is refused, and so are free text and the search's own: `is:` (but `is:public`, `is:private`, `is:locked`, and `is:unlocked`), `sort:`, `archived:`, and `in:`.
+
+Every search names a user, an org, or a repository in `where`, or asks for something of the user's (`@me` among the `authors`, or an `involving`), so it never scans all of GitHub. Each list holds at most 10 values. Every search adds `is:open archived:false sort:updated-desc`, and its whole query is at most 256 characters: split a longer one into two searches. No value may hold a quote, a backslash, or a control character.

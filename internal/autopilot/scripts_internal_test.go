@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -105,21 +106,27 @@ func TestAScriptsProblemsAreCheckedOnlyAgainstScriptsThatCanBeRead(t *testing.T)
 	logs := &testutil.Logs{}
 	lint := MyScript{ID: 7, Name: "Lint"}
 
-	problems := NewService(Config{MyScripts: scriptsRead{list: []MyScript{lint}}}).scriptProblems(t.Context(), scriptSpec())
+	// scriptProblems are the problems Save and Describe find of sp, which runs no agent and
+	// names no prompt, so they are its scripts' alone.
+	scriptProblems := func(s *Service, sp spec.Spec) []spec.Problem {
+		return draft.Problems(t.Context(), sp, s.liveSetup(), s.offers)
+	}
+
+	problems := scriptProblems(NewService(Config{MyScripts: scriptsRead{list: []MyScript{lint}}}), scriptSpec())
 	assert.Empty(t, problems, "the script it picked, under its name")
 
-	problems = NewService(Config{MyScripts: scriptsRead{}}).scriptProblems(t.Context(), scriptSpec())
+	problems = scriptProblems(NewService(Config{MyScripts: scriptsRead{}}), scriptSpec())
 	require.Len(t, problems, 1)
 	assert.Equal(t, spec.Problem{
 		Part: spec.PartSteps, Field: "[1].script.id", Message: `"Lint" is no longer one of your scripts: pick another`,
 	}, problems[0], "the step's own place in the routine")
 
-	problems = NewService(Config{MyScripts: scriptsRead{err: errBroken}, Logger: logs.Logger()}).
-		scriptProblems(t.Context(), scriptSpec())
+	problems = scriptProblems(NewService(Config{MyScripts: scriptsRead{err: errBroken}, Logger: logs.Logger()}),
+		scriptSpec())
 	assert.Empty(t, problems, "scripts that can't be read find none here")
 	assert.Contains(t, logs.String(), "could not read the user's scripts to check a routine's")
 
-	assert.Empty(t, NewService(Config{MyScripts: scriptsRead{}}).scriptProblems(t.Context(), notifyOnly()),
+	assert.Empty(t, scriptProblems(NewService(Config{MyScripts: scriptsRead{}}), notifyOnly()),
 		"a routine that runs no script")
 }
 

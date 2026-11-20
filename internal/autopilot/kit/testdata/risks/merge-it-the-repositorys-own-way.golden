@@ -1,0 +1,2 @@
+warning: Its agent may push to the pull request's own branch: one push, never by force.
+warning: It merges the pull request on GitHub (the repository's own method) once the checks on its agent's push pass, inside GitHub's own rules.

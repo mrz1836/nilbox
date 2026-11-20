@@ -2,10 +2,12 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
+	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/scripts"
@@ -131,6 +134,114 @@ func hasNickname(library []prompts.Prompt, nickname string) bool {
 	}
 
 	return false
+}
+
+// describeFolder fills Describe it's folder in paths as a user's would be: a conversation
+// and its proposal, a proposal from the user's own Claude Code, the agent chosen for new
+// conversations, the plugin's marketplace, and the plugin's link to the app. It returns
+// the files a start over forgets, those it keeps, the link, and the link's target.
+func describeFolder(t *testing.T, paths appdata.Paths) (forgotten, kept []string, link, target string) {
+	t.Helper()
+
+	dir := paths.Describe
+	forgotten = []string{
+		filepath.Join(dir, "conversations", "c1", "conversation.json"),
+		filepath.Join(dir, "proposals", "c1", "20261120T053103Z-9f2c4100ab31.json"),
+		filepath.Join(dir, "proposals", "outside", "outcomes.json"),
+	}
+	kept = []string{filepath.Join(dir, "agent.json"), filepath.Join(dir, "plugin", "marketplace.json")}
+
+	for _, f := range append(slices.Clone(forgotten), kept...) {
+		testutil.WriteFile(t, f, "{}")
+	}
+
+	target = filepath.Join(t.TempDir(), "app")
+	testutil.WriteFile(t, target, "the app")
+
+	link = filepath.Join(dir, "bin", brand.Slug+"-mcp")
+	require.NoError(t, os.MkdirAll(filepath.Dir(link), appdata.PrivateDirPerm))
+	require.NoError(t, os.Symlink(target, link))
+
+	return forgotten, kept, link, target
+}
+
+func TestStartingOverForgetsDescribeItsConversationsAndKeepsItsPlugin(t *testing.T) {
+	t.Parallel()
+
+	opts := testOptions(t, ".claude")
+	usedCore(t, opts)
+	forgotten, kept, link, target := describeFolder(t, opts.Paths)
+
+	require.NoError(t, bootstrap(t, opts).Close())
+
+	for _, f := range append(slices.Clone(forgotten), kept...) {
+		assert.FileExists(t, f, "a start that isn't a start over keeps every conversation")
+	}
+
+	require.NoError(t, appdata.RequestReset(opts.Paths.ResetRequest, appdata.ResetBySettings, askedAt()))
+	c := bootstrap(t, opts)
+
+	assert.NoDirExists(t, filepath.Join(opts.Paths.Describe, "conversations"), "they name routines that are gone")
+	assert.NoDirExists(t, filepath.Join(opts.Paths.Describe, "proposals"))
+
+	for _, f := range kept {
+		assert.FileExists(t, f, "the agent chosen and the plugin stay")
+	}
+
+	got, err := os.Readlink(link)
+	require.NoError(t, err, "the plugin's link stays")
+	assert.Equal(t, target, got)
+	assert.FileExists(t, target, "and what it points at is never touched")
+
+	// A start over turns Autopilot (beta) off with the rest of the settings. Once the user
+	// turns it on again, Describe it's worker makes its folders again first thing, so the
+	// user's own Claude Code, whose tool mode writes only into a folder the app made, can
+	// propose again at once.
+	_, err = c.Settings.SetAutopilotEnabled(t.Context(), true)
+	require.NoError(t, err)
+
+	quit, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		c.DescribeItWorker.Run(quit)
+	}()
+
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+
+	for _, dir := range []string{"proposals/outside", "conversations"} {
+		assert.Eventually(t, func() bool {
+			info, statErr := os.Stat(filepath.Join(opts.Paths.Describe, filepath.FromSlash(dir)))
+
+			return statErr == nil && info.IsDir()
+		}, 10*time.Second, 20*time.Millisecond, dir)
+	}
+}
+
+func TestStartingOverSaysWhatOfDescribeItItCouldntForget(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "describe")
+	testutil.WriteFile(t, filepath.Join(dir, "conversations", "c1", "conversation.json"), "{}")
+
+	// A folder whose entries can't be unlinked holds the conversation's.
+	stuck := filepath.Join(dir, "conversations", "c1")
+	require.NoError(t, os.Chmod(stuck, 0o400))
+	t.Cleanup(func() { _ = os.Chmod(stuck, appdata.PrivateDirPerm) })
+
+	var logs bytes.Buffer
+
+	forgetConversations(t.Context(), dir, slog.New(slog.NewTextHandler(&logs, nil)))
+	assert.Contains(t, logs.String(), "could not remove Describe it's conversations")
+	assert.DirExists(t, stuck)
+
+	assert.NotPanics(t, func() { forgetConversations(t.Context(), "", slog.New(slog.DiscardHandler)) },
+		"no folder, nothing to forget: never a path relative to where the app runs")
 }
 
 func TestBootstrapKeepsTheNewestResetCopies(t *testing.T) {

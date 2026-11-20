@@ -1,0 +1,42 @@
+Checked 2 new prompts, 4 routines, a settings change, and a rules change: 9 problems.
+
+Prompt 1, “Fix flaky”:
+- Problem at prompts[0]: .Body isn't a variable a prompt can use: the prompts topic lists the ones it can.
+- The card shows this warning: A routine's agent runs it: its text is what the agent is told to do, so read it before you add it.
+
+Prompt 2, “Triage”:
+- Problem at prompts[1]: Another prompt is already called "Triage": give this one a nickname of its own.
+
+Routine 1, new, saved as “Nightly 2”:
+It reads: When checks fail on pull requests in your account, once every check has settled, run "Fix flaky" in the background, then pin it. At most 2 tries per pull request.
+- No problems.
+- Warning at routines[0].spec.steps[1]: Pin changes how an item shows in your inbox, and this routine watches only searches: items that aren't in your inbox won't look any different.
+- The card shows this caution: Another routine is named “Nightly”, so this one is saved as “Nightly 2”.
+- The card shows this warning: Its agent may push to the pull request's own branch: one push, never by force.
+- The card shows this warning: Its agent runs “Fix flaky”, a prompt this proposal adds: read its text before you add it.
+
+Routine 2, a change to “Nightly” (id 7), saved as “Nightly”:
+- Problem at routines[1].base: set base to the routine's updatedAt from autopilot_my_setup, so the card can tell when it changed since
+- Problem at routines[1].spec.steps[0].agent.prompt: no prompt in your library has the nickname "Nope": pick one that does
+- The card shows this warning: Its agent may push to the pull request's own branch: one push, never by force.
+
+Routine 3, a change to a routine your setup doesn't have:
+It reads: When checks fail on pull requests opened by you, once every check has settled, notify me.
+- Problem at routines[2].id: no routine has the ID 404: leave id out for a new routine, or take a routine's from autopilot_my_setup
+
+Routine 4, new:
+- Problem at routines[3].name: Give the routine a name.
+- Problem at routines[3].spec: The routine can't be read: Made by a newer version: update to edit it (version 2).
+
+Settings: Agents at once 2 → 3; History kept 90 days → 5 days; Run logs kept 30 days → 5 days.
+- Problem at settings: Days of history is out of range: 5; choose 7 to 365.
+- The card shows this warning: History kept drops from 90 days to 5 days: the routines' history older than that is deleted, for good.
+- The card shows this warning: Run logs kept drops from 30 days to 5 days: older agent run logs are deleted, for good.
+- The card shows this warning: Agents at once goes up from 2 to 3: more of your routines' agents run at the same time.
+
+Rules: Trust renovate[bot]; Mute acme-org/legacy.
+- Problem: rules.trust[1]: "no such bot" isn't a bot's login GitHub could give: write its login, as renovate or renovate[bot].
+- The card shows this warning: Trusts renovate[bot]: its pull requests no longer count as an outside contributor's, so routines act on them without that hold, and a click launches them with the profile's permissions.
+- The card shows this warning: Mutes acme-org/legacy: its items wait in each list's Muted tab, count nowhere, show no banner, and nothing follows their checks.
+
+It has 9 problems: fix each where it is, then check it again. A proposal with a problem can't be proposed.

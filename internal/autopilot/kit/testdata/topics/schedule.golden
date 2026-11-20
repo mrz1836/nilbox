@@ -1,0 +1,14 @@
+# A routine on a schedule
+
+A routine whose trigger is `schedule` fires at a time of day by the Mac's own clock, once a day, on the items its watch holds that meet its conditions then. A time missed while the Mac slept runs once it wakes, the same day, never for a day gone by.
+
+```json
+{"event": "schedule", "schedule": {"every": "week", "on": "mon", "at": "09:00", "style": "digest"}}
+```
+
+- `every`, how often, needed: `day` (Every day): Fires every day, at its time. `weekday` (Every weekday): Fires Monday to Friday, at its time. `week` (Every week): Fires once a week, on its day, at its time.
+- `at`, the time of day, needed: `"HH:MM"` on a 24-hour clock, such as `"08:00"`.
+- `on`, the day of the week, for `week` alone, and needed there: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, or `sun`.
+- `style`, how it tells the user of what it matched: `each` (For each match): Runs its steps on each item that matches at the time, and tells you of each on its own. The default: leave `style` out for it. `digest` (Once, with the list): Runs its steps on each item that matches at the time, and tells you once, with one digest that lists them: “5 pull requests need you: 3 failing, 2 conflicting”. Notify me comes first.
+
+A `digest` needs `notify` as the routine's first step: the matches made at one time tell the user once, together.

@@ -33,6 +33,9 @@ export interface AutopilotMenu {
   onWhy: (item: InboxItem) => void
   // onMake opens the builder filled in from the item: Make a routine from this…
   onMake: (item: InboxItem) => void
+  // onDescribe opens Describe it with the item attached to the next message: Describe a
+  // routine for this…
+  onDescribe: (item: InboxItem) => void
 }
 
 // AutopilotMenuContext holds the item menus' Autopilot; without it a menu offers none.
@@ -42,8 +45,10 @@ export const AutopilotMenuContext = createContext<AutopilotMenu | null>(null)
 interface Held {
   routines: readonly AutopilotRoutine[]
   catalog: AutopilotCatalog | undefined
-  // make is the window's Make a routine from this…, as last rendered.
+  // make is the window's Make a routine from this…, and describe its Describe a routine
+  // for this…, each as last rendered.
   make: (item: InboxItem) => void
+  describe: (item: InboxItem) => void
 }
 
 // Anyway is a routine the item didn't match, which the user may run on it anyway: why it
@@ -68,6 +73,12 @@ interface Shows {
   why: (why: Why) => void
 }
 
+// unheld is a choice that goes to the window's call before the menu holds it, as it does
+// once it renders.
+function unheld() {
+  return undefined
+}
+
 // startedWords say what became of a routine run from the menu: the match's own words.
 function startedWords(routine: AutopilotRoutine, words: string): Omit<ToastMessage, 'id'> {
   return { text: words === '' ? `Started “${routine.name}”.` : words, detail: routine.name }
@@ -77,7 +88,7 @@ function startedWords(routine: AutopilotRoutine, words: string): Omit<ToastMessa
 // opens, what the routines and the catalog last read hold, and ends each choice in one of
 // the window's setters or a call to the backend, so it never changes while they do.
 class MenuSource implements AutopilotMenu {
-  private held: Held = { routines: [], catalog: undefined, make: () => undefined }
+  private held: Held = { routines: [], catalog: undefined, make: unheld, describe: unheld }
   private toasts = 0
   private readonly shows: Shows
 
@@ -130,6 +141,11 @@ class MenuSource implements AutopilotMenu {
   // onMake opens the Autopilot tab's builder filled in from the item.
   onMake = (item: InboxItem) => {
     this.held.make(item)
+  }
+
+  // onDescribe opens the Autopilot tab's Describe it with the item attached.
+  onDescribe = (item: InboxItem) => {
+    this.held.describe(item)
   }
 }
 
@@ -279,12 +295,14 @@ function WhyDialog({ why, routines, onPick, onClose }: WhyDialogProps) {
 // of items (AutopilotMenuContext), and what its choices show: Run a routine runs it at
 // once and says what became of it, and on an item it doesn't match offers Run anyway,
 // showing why it doesn't; Why didn't a routine run? opens what a routine decides about the
-// item. The menu reads the routines, and the catalog that says what each acts on, as it
-// opens, so it stays the same while they change.
+// item; Make a routine from this… and Describe a routine for this… go to the window's
+// onMake and onDescribe. The menu reads the routines, and the catalog that says what each
+// acts on, as it opens, so it stays the same while they change.
 export function useRoutineMenu(
   routines: readonly AutopilotRoutine[],
   toastSeconds: number,
   onMake: (item: InboxItem) => void,
+  onDescribe: (item: InboxItem) => void,
 ): { menu: AutopilotMenu; node: ReactNode } {
   const catalog = useQuery(() => getAutopilotCatalog(), [], {
     enabled: routines.length > 0,
@@ -297,8 +315,8 @@ export function useRoutineMenu(
   const [menu] = useState(() => new MenuSource({ toast: setToast, anyway: setAnyway, why: setWhy }))
 
   useEffect(() => {
-    menu.hold({ routines, catalog: catalog.data, make: onMake })
-  }, [menu, routines, catalog.data, onMake])
+    menu.hold({ routines, catalog: catalog.data, make: onMake, describe: onDescribe })
+  }, [menu, routines, catalog.data, onMake, onDescribe])
 
   // runAnyway runs the routine the user chose to run on an item it doesn't match.
   const runAnyway = async (a: Anyway) => {

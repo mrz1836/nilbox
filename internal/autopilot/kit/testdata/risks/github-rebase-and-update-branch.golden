@@ -1,0 +1,2 @@
+warning: It comments @dependabot rebase on the pull request, and Dependabot force-pushes its branch, which can't be taken back.
+warning: It merges the base branch into the pull request's branch on GitHub, and the merge commit stays.

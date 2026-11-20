@@ -2621,5 +2621,80 @@
       "label": "Once, with the list",
       "help": "Runs its steps on each item that matches at the time, and tells you once, with one digest that lists them: “5 pull requests need you: 3 failing, 2 conflicting”. Notify me comes first."
     }
+  ],
+  "everies": [
+    {
+      "id": "day",
+      "label": "Every day",
+      "help": "Fires every day, at its time."
+    },
+    {
+      "id": "weekday",
+      "label": "Every weekday",
+      "help": "Fires Monday to Friday, at its time."
+    },
+    {
+      "id": "week",
+      "label": "Every week",
+      "help": "Fires once a week, on its day, at its time."
+    }
+  ],
+  "mergeHows": [
+    {
+      "id": "autoMergeIfItWasOn",
+      "label": "auto-merge if it was on, else when GitHub allows",
+      "help": "Turns GitHub's auto-merge back on if it was on before the match, and otherwise merges when GitHub says it's mergeable."
+    },
+    {
+      "id": "whenMergeable",
+      "label": "when GitHub allows",
+      "help": "Merges when GitHub says it's mergeable."
+    }
+  ],
+  "mergeMethods": [
+    {
+      "id": "",
+      "label": "the repository's own method",
+      "help": "Merges with the method Settings → Reviewing's Merge method picks, as the review sheet does: by default, the one GitHub's merge button offers first in that repository."
+    },
+    {
+      "id": "merge",
+      "label": "merge commit",
+      "help": "Adds every commit to the base branch, joined by a merge commit."
+    },
+    {
+      "id": "squash",
+      "label": "squash",
+      "help": "Combines the pull request's commits into one commit on the base branch."
+    },
+    {
+      "id": "rebase",
+      "label": "rebase",
+      "help": "Adds each commit to the base branch on its own, with no merge commit."
+    }
+  ],
+  "reviewAses": [
+    {
+      "id": "comment",
+      "label": "as a comment",
+      "help": "Posts the agent's review as a comment, whatever its verdict."
+    },
+    {
+      "id": "verdict",
+      "label": "as its verdict",
+      "help": "Posts it as its verdict: a request for changes, or, with Allow approving on, an approval of a pull request Autopilot may approve; any other approval posts as a comment."
+    }
+  ],
+  "tellWhens": [
+    {
+      "id": "reached",
+      "label": "that it got here",
+      "help": "Tells you the routine reached this step."
+    },
+    {
+      "id": "verdict",
+      "label": "how the steps before it ended",
+      "help": "Tells you how the steps before it ended: merged, still failing, or the review is ready."
+    }
   ]
 }

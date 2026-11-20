@@ -80,7 +80,7 @@ describe('timelineRows', () => {
     const rows = timelineRows(
       [
         runEvent({ offset: 0, kind: 'denied', tool: 'Bash', text: 'git push isn’t allowed', error: true }),
-        runEvent({ offset: 1, kind: 'limit', text: 'allowed_warning · five_hour' }),
+        runEvent({ offset: 1, kind: 'limit', text: "Near its plan's five-hour limit" }),
         runEvent({ offset: 2, kind: 'result', text: 'Finished' }),
       ],
       false,
@@ -88,7 +88,7 @@ describe('timelineRows', () => {
 
     expect(rows.map((r) => [r.kind, r.text, r.error])).toEqual([
       ['denied', 'Not allowed: Bash. git push isn’t allowed', true],
-      ['note', 'allowed_warning · five_hour', false],
+      ['note', "Near its plan's five-hour limit", false],
       ['result', 'Finished', false],
     ])
   })

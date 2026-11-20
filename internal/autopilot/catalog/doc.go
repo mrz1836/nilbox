@@ -1,7 +1,9 @@
-// Package catalog is Autopilot's vocabulary: the triggers a routine fires on, the fields
-// its conditions read and the operators each type of field takes, the steps it can run
-// and which dispatcher runs each, the agent step's settings, the tools presets, the
-// limits and their ranges, and the words the builder shows for every one of them.
+// Package catalog is Autopilot's vocabulary: the triggers a routine fires on and a
+// schedule's choices, the fields its conditions read and the operators each type of field
+// takes, the steps it can run and which dispatcher runs each, the agent step's settings,
+// the tools presets, the other steps' choices (how Merge it merges, how a review posts,
+// what Tell me says), the limits and their ranges, and the words the builder shows for
+// every one of them.
 //
 // Every name a routine's spec stores is a constant here, so the spec, the evaluator, and
 // the builder spell each one the same way, and a later build that adds an entry adds it

@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/agentrun/stream"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -219,6 +220,16 @@ func (l *heldLimit) await(t *testing.T) time.Duration {
 // reach fires every limit set, as though its time had come.
 func (l *heldLimit) reach() {
 	close(l.fire)
+}
+
+// fixture returns a recorded stream the fake agents replay: S1's, or S6's (codex/).
+func fixture(t *testing.T, name string) []byte {
+	t.Helper()
+
+	body, err := os.ReadFile(filepath.Join("testdata", name)) //nolint:gosec // the package's own fixture
+	require.NoError(t, err)
+
+	return body
 }
 
 // lines returns the first n lines of a fixture.
@@ -597,7 +608,7 @@ func TestAKilledRunsLeftoversAreSwept(t *testing.T) {
 	t.Parallel()
 
 	r := newRig(t)
-	rn := &run{intent: Intent{Fence: Fence{Timeout: time.Minute}}, dir: "/srv/wt/pr-1", parser: newClaudeParser("")}
+	rn := &run{intent: Intent{Fence: Fence{Timeout: time.Minute}}, dir: "/srv/wt/pr-1", parser: stream.Claude("")}
 
 	r.runner.finish(t.Context(), rn, scriptrun.Ending{Stopped: true})
 	assert.Empty(t, r.sweeper.swept(), "SIGINT ends what the agent started in the background")

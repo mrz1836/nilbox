@@ -1,8 +1,7 @@
 import { useId, useState } from 'react'
 
-import { modeHelp, modeLabels, modeOrder } from '../../lib/autopilot'
 import { attempt } from '../../lib/call'
-import { actsOn, canonical, placeLabel, placeValue, testedKeys } from '../../lib/routineBuilder'
+import { actsOn, placeLabel, placeValue } from '../../lib/routineBuilder'
 import {
   blankProblems,
   blankValues,
@@ -12,14 +11,8 @@ import {
   quickProblems,
   templateDraft,
 } from '../../lib/templates'
-import { useMutation } from '../../lib/useMutation'
-import { useDebouncedQuery, useQuery } from '../../lib/useQuery'
 import {
   addStarterPrompt,
-  describeRoutine,
-  draftReadiness,
-  saveRoutine,
-  testRoutine,
   type AutopilotBlank,
   type AutopilotCatalog,
   type AutopilotDraft,
@@ -28,12 +21,11 @@ import {
   type AutopilotRoutine,
   type AutopilotSuggestions,
   type AutopilotTemplate,
-  type AutopilotTestResult,
 } from '../../platform'
-import { buttonClass, captionClass, primaryButtonClass, quietButtonClass, Segmented } from '../controls'
-import { AlertIcon, CheckIcon } from '../icons'
-import { TestPanel } from './builder/TestPanel'
+import { buttonClass, primaryButtonClass, quietButtonClass } from '../controls'
+import { AlertIcon } from '../icons'
 import { TokenField } from './builder/TokenField'
+import { DraftTestPanel, ModeChoice, ThisMac, useDraftReview } from './DraftReview'
 
 export interface QuickSetupProps {
   template: AutopilotTemplate
@@ -124,34 +116,23 @@ export function QuickSetup({
   const [values, setValues] = useState<string[][]>(() => blankValues(t))
   const [mode, setMode] = useState<AutopilotMode>(defaultMode)
   const [name] = useState(() => freeName(routines, t.name))
-  const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [adding, setAdding] = useState('')
   const draft = templateDraft(t, values, name, mode)
-  const key = canonical(draft)
-  const described = useDebouncedQuery(() => describeRoutine(draft).then((d) => ({ key, d })), [key], describeDelay)
-  const current = described.data?.d
+  const review = useDraftReview(draft, describeDelay)
+  const current = review.reading
   const problems = quickProblems(t, current?.problems ?? [])
-  const ready = useQuery(() => draftReadiness(draft), [canonical(draft.spec)], {
-    log: 'could not check what this Mac has for the routine',
-  })
   const missing = missingStarters(t)
-  const tester = useMutation((d: AutopilotDraft) => testRoutine(d))
-  const [tested, setTested] = useState<(ReturnType<typeof testedKeys> & { result: AutopilotTestResult }) | null>(null)
-  const keys = testedKeys(0, draft.spec)
   const runs = t.needs.length === 0 && missing.length === 0
-  const canTest = runs && current !== undefined && problems.length === 0 && described.data?.key === key
-  const canSave = canTest && !saving
+  const canTest = runs && current !== undefined && problems.length === 0 && review.fresh
+  const canSave = canTest && !review.saving
   const sentence = current?.sentence !== undefined && current.sentence !== '' ? current.sentence : t.sentence
   const hint = modeHint(t, mode)
 
   const save = async () => {
-    setSaving(true)
     setSaveError('')
 
-    const result = await attempt(saveRoutine(draft))
-
-    setSaving(false)
+    const result = await review.save()
 
     if (result.ok) {
       onSaved(result.data)
@@ -231,18 +212,7 @@ export function QuickSetup({
           ))}
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-3">
-        <Segmented
-          label="Mode"
-          value={mode}
-          options={modeOrder.map((m) => ({ value: m, label: modeLabels[m], title: modeHelp[m] }))}
-          describedBy={`${id}-mode`}
-          onChange={setMode}
-        />
-        <p id={`${id}-mode`} className="min-w-0 flex-1 text-xs text-muted">
-          {hint === '' ? `${modeHelp[mode]} It starts off: switch it on once it’s saved.` : hint}
-        </p>
-      </div>
+      <ModeChoice mode={mode} hint={hint} onChange={setMode} />
       {problems.filter((p) => !t.blanks.some((b) => blankProblems(b, [p]).length > 0)).length > 0 && (
         <ul aria-label="What keeps it from being saved" className="flex flex-col gap-1">
           {problems
@@ -254,46 +224,13 @@ export function QuickSetup({
             ))}
         </ul>
       )}
-      <section aria-labelledby={`${id}-ready`} className="flex flex-col gap-1">
-        <h3 id={`${id}-ready`} className={captionClass}>
-          This Mac
-        </h3>
-        {ready.data === undefined ? (
-          <p className="text-xs text-muted">Checking what this Mac has…</p>
-        ) : ready.data.problems.length === 0 ? (
-          <p className="flex items-center gap-1.5 text-xs text-muted">
-            <CheckIcon className="size-3.5 text-success" />
-            Ready to run here.
-          </p>
-        ) : (
-          <ul aria-label="What this Mac lacks for it" className="flex flex-col gap-0.5">
-            {ready.data.problems.map((c) => (
-              <li key={c.id} className="text-xs text-warning">
-                {`${c.label}: ${c.found}`}
-                {c.fix !== '' && <span className="text-muted">{c.command ? ` · run ${c.fix}` : ` · ${c.fix}`}</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      <TestPanel
-        result={tested?.result}
-        stale={tested !== null && tested.key !== keys.key}
-        testing={tester.pending}
-        error={tester.error}
+      <ThisMac readiness={review.readiness} />
+      <DraftTestPanel
+        test={review.test}
         ready={canTest}
         kinds={actsOn(catalog, draft.spec)}
         mode={mode}
         draft={draft}
-        onTest={() => {
-          const asked = keys
-
-          void tester.run(draft).then((result) => {
-            if (result.ok) {
-              setTested({ ...asked, result: result.data })
-            }
-          })
-        }}
       />
       <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
         <p
@@ -301,7 +238,7 @@ export function QuickSetup({
           className={`mr-auto min-w-0 truncate text-xs ${saveError === '' ? 'text-muted' : 'text-danger'}`}
           title={saveError}
         >
-          {saveError !== '' ? saveError : saving ? 'Saving…' : `It’s saved as “${name}”, switched off.`}
+          {saveError !== '' ? saveError : review.saving ? 'Saving…' : `It’s saved as “${name}”, switched off.`}
         </p>
         <button type="button" onClick={onCancel} className={quietButtonClass}>
           Back to templates

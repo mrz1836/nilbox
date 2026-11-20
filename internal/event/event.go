@@ -129,6 +129,12 @@ const (
 	// NameAutopilotRun is AutopilotRun's name.
 	NameAutopilotRun = "autopilot:run"
 
+	// NameDescribeItUpdated is DescribeItUpdated's name.
+	NameDescribeItUpdated = "describeit:updated"
+
+	// NameDescribeItProposals is DescribeItProposals's name.
+	NameDescribeItProposals = "describeit:proposals"
+
 	// NameUpdatesUpdated is UpdatesUpdated's name.
 	NameUpdatesUpdated = "updates:updated"
 
@@ -200,6 +206,8 @@ func WindowEvents() []WindowEvent {
 		UpdateRestartRequested{},
 		AutopilotUpdated{},
 		AutopilotRun{},
+		DescribeItUpdated{},
+		DescribeItProposals{},
 	}
 }
 
@@ -526,6 +534,31 @@ type AutopilotRun struct {
 func (AutopilotRun) Name() string { return NameAutopilotRun }
 
 func (AutopilotRun) window() {}
+
+// DescribeItUpdated says Describe it's current conversation changed: a turn started, its
+// agent said or did more, it ended, or one of its cards was dealt with. The window reads the
+// conversation again, and the turn's events after the last it has, so the event never
+// carries a stream. It comes at most four times a second.
+type DescribeItUpdated struct {
+	// ConversationID is the conversation, and Turn the turn that changed, 0 for the
+	// conversation as a whole.
+	ConversationID string `json:"conversationId"`
+	Turn           int    `json:"turn"`
+}
+
+// Name returns NameDescribeItUpdated.
+func (DescribeItUpdated) Name() string { return NameDescribeItUpdated }
+
+func (DescribeItUpdated) window() {}
+
+// DescribeItProposals says the cards from the user's own Claude Code changed: one came, or
+// one was dealt with. The window reads them again, and the left nav's count.
+type DescribeItProposals struct{}
+
+// Name returns NameDescribeItProposals.
+func (DescribeItProposals) Name() string { return NameDescribeItProposals }
+
+func (DescribeItProposals) window() {}
 
 // UpdatesUpdated says the app's update changed: a check started or ended, a download got
 // further (a few times a second at most), a version is ready, a restart began or failed,

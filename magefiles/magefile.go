@@ -15,6 +15,8 @@
 //   - measure: record startup, refresh, launch, and size numbers
 //   - inspect: look inside a running build from source, through the inspector it
 //     carries (internal/devtools)
+//   - autopilot: run the eval suite of the plugin Describe it installs in the user's
+//     own Claude Code, by hand
 //
 // The desktop shell itself builds only with the desktop build tag; these
 // targets compile on every OS and guard macOS-only steps at run time.

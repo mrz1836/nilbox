@@ -32,6 +32,8 @@ import {
   type AutopilotReadyCheck,
   type AutopilotReadyLevel,
   type AutopilotUnit,
+  type AgentInfo,
+  type Profile,
   type Settings,
 } from '../../platform'
 import { CommandLine } from '../CommandLine'
@@ -39,6 +41,7 @@ import { ConfirmDialog } from '../ConfirmDialog'
 import { buttonClass, fieldClass, Segmented, type SegmentOption } from '../controls'
 import { AlertIcon, CheckIcon, RefreshIcon, XIcon } from '../icons'
 import { Spinner } from '../Spinner'
+import { DescribeItSettings } from './DescribeItSettings'
 import { rowMatchClass, useSetting } from './match'
 import { ChoiceRow, Group, Note, rowDescribedBy, SectionIntro, SettingRow, SwitchRow } from './rows'
 import type { SectionProps } from './types'
@@ -555,12 +558,19 @@ function StopAll({ controlId }: { controlId: string }) {
   )
 }
 
+export interface AutopilotSectionProps extends SectionProps {
+  // agents and profiles are the coding agents and their profiles, of which Describe it's
+  // agent picks Claude Code's.
+  agents: readonly AgentInfo[]
+  profiles: readonly Profile[]
+}
+
 // AutopilotSection holds Autopilot's settings, each saved as soon as it is set: Pause
 // Autopilot and the mode new routines start in; the limits every routine keeps to, across
 // them all; what holds a coding agent back; how long the history and the run logs are
-// kept, and Clear history; what the routines need on this Mac; and when the engine last
-// checked the routines.
-export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
+// kept, and Clear history; the Claude Code Describe it runs, and the plugin for the user's
+// own; what the routines need on this Mac; and when the engine last checked the routines.
+export function AutopilotSection({ settings: stored, onSaved, agents, profiles }: AutopilotSectionProps) {
   const id = useId()
   const { settings, save, error } = useSettingsSave(stored, onSaved)
   const config = settings.autopilot
@@ -753,6 +763,11 @@ export function AutopilotSection({ settings: stored, onSaved }: SectionProps) {
           <StopAll controlId={`${id}-stop-all`} />
         </Group>
       </div>
+      <DescribeItSettings
+        defaultProfile={settings.defaultProfiles.claude ?? 'default'}
+        agents={agents}
+        profiles={profiles}
+      />
       <ThisMac />
       <Group>
         <LastChecked />

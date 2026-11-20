@@ -20,6 +20,12 @@
 // build migrates an older version in Go; an older build refuses a newer one rather than
 // guess at it.
 //
+// ClosedSets lists every closed set of values the format holds, from the catalog's lists
+// and watch's and item's, never a copy of them: Validate checks each value against its
+// set, so a value the catalog adds is one a spec can hold at once. DecodeExact holds any
+// document to Decode's rules, so a spec inside another document reads as strictly as a
+// stored one.
+//
 // Sentence writes a spec as the one sentence the builder, the routine list, the menu bar,
 // and an export all show. The package is a leaf: it imports only catalog, watch, item,
 // repo, sensitive (whose patterns a condition on paths uses), and textutil.

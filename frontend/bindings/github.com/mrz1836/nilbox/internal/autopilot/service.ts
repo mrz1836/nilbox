@@ -241,6 +241,21 @@ export function List(): $CancellablePromise<$models.Routine[] | null> {
 }
 
 /**
+ * MatchStored counts what the draft d matches now among the items the inbox stored in the
+ * lists d watches, that its routine (d.ID, 0 for a new one) has no record of and doesn't
+ * leave alone, by kind: the count Describe it's card shows, "Matches 3 items in your inbox
+ * now". It decides from what the inbox stored alone and never asks GitHub, so an item
+ * whose decision waits on a read, such as its check names, counts as unknown. A search's
+ * items are Test's to read, so a draft that watches a search says its count may be short
+ * (Incomplete), as one does that watches more items than a test tries. A draft whose spec
+ * has problems is refused with them, as Save refuses it. It changes nothing, and works
+ * with Autopilot off.
+ */
+export function MatchStored(d: $models.Draft): $CancellablePromise<$models.Matching> {
+    return $Call.ByID(3287232931, d);
+}
+
+/**
  * Matching counts the items the draft d matches now that its routine (d.ID, 0 for a new
  * one) has no record of, reading its searches now unless a test read them within a minute,
  * for the question asked when it is turned on, leaves Dry run, or its Watch, When, If, or

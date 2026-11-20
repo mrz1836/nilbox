@@ -317,6 +317,24 @@ func boundaries() []boundary {
 				"launch itself, so a run has no more access than the launcher gave it",
 		},
 		{
+			pkg: "internal/describeit",
+			forbidden: append(slices.Clone(noService),
+				"internal/prompts", "internal/profiles", "internal/launcher", "internal/scriptrun", "internal/desktop",
+				"internal/notify"),
+			why: "Describe it reads the setup, the inbox's names, the agents, and Autopilot's switch through its own " +
+				"Setup, Attachments, Agents, and Switch, which core adapts, and runs each turn itself: it knows no " +
+				"store (and so neither Autopilot's service nor the background runner), no GitHub client, and no " +
+				"service, and every proposal applies through the window's own bindings",
+		},
+		{
+			pkg: "internal/mcpserver",
+			forbidden: append(slices.Clone(noService),
+				"internal/execpath", "internal/scriptrun", "internal/launcher", "internal/logging"),
+			why: "the tool mode is the app's binary run by Claude Code as its tool server: it reads the snapshot the " +
+				"app wrote and writes proposals, so nothing it reaches starts a program, runs a script or an agent, " +
+				"logs, or opens the store or any service (TestTheToolServerRunsNothing holds its own files to it too)",
+		},
+		{
 			pkg:       "internal/autopilotprefs",
 			forbidden: append(slices.Clone(noService), "internal/autopilot", "internal/event"),
 			why: "autopilotprefs declares Autopilot's settings keys and a routine's modes, which settings writes " +
@@ -368,6 +386,34 @@ func leaves() []leaf {
 	}
 
 	return append(out, leaf{
+		pkg: "internal/autopilot/draft",
+		allowed: []string{
+			"internal/autopilot/catalog", "internal/autopilot/spec", "internal/autopilot/watch", "internal/item",
+			"internal/agent", "internal/fence", "internal/autopilotprefs", "internal/brand", "internal/textutil",
+			"internal/uierr",
+		},
+		why: "draft is the one validator of a routine's draft, which the builder, Describe it's kit, and the tool " +
+			"mode share: it reads the prompt library and the scripts through the Setup it is handed, so it imports " +
+			"only the routines core, the agents' registry for what each can keep, and the words",
+	}, leaf{
+		pkg: "internal/autopilot/kit",
+		allowed: []string{
+			"internal/autopilot/catalog", "internal/autopilot/spec", "internal/autopilot/watch",
+			"internal/autopilot/draft", "internal/item", "internal/repo", "internal/autopilotprefs", "internal/trust",
+			"internal/reporules", "internal/heldruns", "internal/brand", "internal/textutil",
+		},
+		why: "kit is what Describe it hands a coding agent and reads back, which the app and its tool mode share: " +
+			"the snapshot comes with each call, so it reads no file, starts nothing, and imports only the routines " +
+			"core, draft, and the leaves that declare the settings and rules it checks",
+	}, leaf{
+		pkg: "internal/mcpserver",
+		allowed: []string{
+			"internal/autopilot/kit", "internal/autopilot/spec", "internal/appdata", "internal/paths", "internal/brand",
+			"internal/textutil",
+		},
+		why: "mcpserver is the tool mode, which serves kit's words and checks and writes kit's proposal files: it " +
+			"imports only kit and spec, appdata's whole-file writes, paths' readers, the brand, and the words",
+	}, leaf{
 		pkg: "internal/autopilotprefs", allowed: []string{"internal/prefs/prefval"},
 		why: "autopilotprefs declares Autopilot's settings for settings to write and Autopilot to read, so it " +
 			"imports only prefval and the standard library",
@@ -375,6 +421,10 @@ func leaves() []leaf {
 		pkg: "internal/fence", allowed: []string{"internal/sensitive", "internal/paths", "internal/textutil"},
 		why: "fence is the agent-independent fence policy, and its hook mode runs before the app opens anything, so " +
 			"it imports only sensitive's patterns, paths' readers, textutil's quoting, and the standard library",
+	}, leaf{
+		pkg: "internal/agentrun/stream", allowed: []string{"internal/agentrun/runevent"},
+		why: "stream reads an agent's stream into runevent's events, for the background runner and Describe it's " +
+			"turns alike, so it imports only runevent",
 	}, leaf{
 		pkg: "internal/agentrun/runevent", allowed: []string{},
 		why: "runevent is a background run's event model, which Autopilot and the window read without reaching " +

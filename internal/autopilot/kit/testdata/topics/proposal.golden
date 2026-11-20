@@ -1,0 +1,155 @@
+# The proposal
+
+A proposal is one JSON object, given as `proposal` to `autopilot_check` and `autopilot_propose`. The user reviews it in the Autopilot tab as one card, whose parts apply in this order: `prompts`, then `routines`, then `settings`, then `rules`, so a routine may run a prompt the same proposal adds. The user applies or discards each part on its own.
+
+```
+Proposal {
+  summary: string
+  prompts?: NewPrompt[]
+  routines?: RoutineChange[]
+  settings?: SettingsChange
+  rules?: RulesChange
+}
+NewPrompt {
+  name: string
+  nickname: string
+  purpose: "agent" | "reply"
+  replyAction?: "approve" | "request_changes" | "comment"
+  appliesTo: "pr" | "issue" | "any"
+  body: string
+}
+RoutineChange {
+  id?: number
+  base?: string
+  name: string
+  description?: string
+  mode?: "dryRun" | "ask" | "auto"
+  template?: string
+  spec: Spec  // a routine's definition: topic routine
+}
+SettingsChange {
+  defaultMode?: "dryRun" | "ask" | "auto"
+  agentsAtOnce?: number
+  runsPerDay?: number
+  actionsPerDay?: number
+  dailyCap?: DailyCap
+  keepAwake?: boolean
+  holdOnOutage?: boolean
+  catchUpHours?: number
+  historyDays?: number
+  logDays?: number
+}
+RulesChange {
+  trust?: string[]
+  untrust?: string[]
+  pin?: string[]
+  mute?: string[]
+  clear?: string[]
+  ignoreWorkflows?: string[]
+  unignoreWorkflows?: string[]
+}
+DailyCap {
+  amount: number
+  unit: "usd" | "tokens"
+}
+```
+
+- `summary`: one or two sentences, in plain words, that the card shows first: what the proposal does.
+- `prompts`: new prompts for the library (topic `prompts`).
+- `routines`: new routines, and changes to the user's routines. `name` is one line of at most 80 characters, and `description` at most 500; a name another routine has takes a free one, as a save would. `spec` is its whole definition (topic `routine`), and `template` the gallery template it starts from, if any (topic `templates`).
+- A new routine has no `id`. Its `mode` is the mode you suggest: the card shows it as a hint beside the mode the routine starts in, which Settings gives new routines, and never applies it.
+- A change to one of the user's routines gives its `id`, and its `updatedAt` from `autopilot_my_setup` as `base`, exactly as written there, so the card can say if it changed since you read it. It gives the routine's `name` (its own, unless the user asks for another), its `description`, and its whole `spec` as it should be once changed. It has no `mode`: a routine keeps its own mode and switch.
+- `settings`: only the settings that change (topic `settings`).
+- `rules`: the rules to change (topic `rules`).
+
+A proposal holds at most 10 routines and 10 prompts, and one that holds nothing is refused. Every key is spelled exactly as above: a key the format doesn't have, or one spelled in another case, is refused, and so is a key given twice.
+
+## A worked example
+
+This example holds every part at once to show the format; a real proposal holds only what the user asked for. It starts from a template, runs a new prompt in place of the template's, caps Autopilot's daily spend, and mutes a repository.
+
+```json
+{
+  "summary": "Fixes failing checks on your pull requests in the background with a new prompt that starts with the tests, caps Autopilot at $5 a day, and mutes acme-org/legacy.",
+  "prompts": [
+    {
+      "name": "Fix failing checks, starting with the tests",
+      "nickname": "Tests first",
+      "purpose": "agent",
+      "appliesTo": "pr",
+      "body": "Fix the failing checks on {{.Repo}} #{{.Number}} ({{.FailedChecks}}). Start with the tests: run them, read what fails, fix the cause, and push once."
+    }
+  ],
+  "routines": [
+    {
+      "name": "Fix failing checks on my PRs",
+      "description": "Fixes the failing checks on my pull requests, starting with the tests.",
+      "mode": "ask",
+      "template": "fix-failing-checks-on-my-prs",
+      "spec": {
+        "version": 1,
+        "watch": {
+          "sources": [
+            {
+              "lists": [
+                "authored"
+              ]
+            }
+          ]
+        },
+        "trigger": {
+          "event": "checks_failed",
+          "waitForChecks": true
+        },
+        "conditions": {
+          "match": "all",
+          "of": [
+            {
+              "field": "pr.draft",
+              "op": "isNo"
+            }
+          ]
+        },
+        "steps": [
+          {
+            "agent": {
+              "agent": "inherit",
+              "prompt": {
+                "nickname": "Tests first"
+              },
+              "where": "background",
+              "fence": {
+                "tools": "editTestPush"
+              }
+            }
+          },
+          {
+            "waitForChecks": {},
+            "onlyIf": "pushed"
+          },
+          {
+            "tellMe": {
+              "when": "verdict"
+            }
+          }
+        ],
+        "limits": {
+          "oncePer": "headCommit",
+          "triesPerItem": 2
+        }
+      }
+    }
+  ],
+  "settings": {
+    "dailyCap": {
+      "amount": 5,
+      "unit": "usd"
+    }
+  },
+  "rules": {
+    "mute": [
+      "acme-org/legacy"
+    ]
+  }
+}
+```

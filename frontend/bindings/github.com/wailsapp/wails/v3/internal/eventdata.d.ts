@@ -16,6 +16,8 @@ declare module "@wailsio/runtime" {
             "autopilot:run": event$0.AutopilotRun;
             "autopilot:updated": event$0.AutopilotUpdated;
             "budget:updated": event$0.BudgetUpdated;
+            "describeit:proposals": event$0.DescribeItProposals;
+            "describeit:updated": event$0.DescribeItUpdated;
             "ghthreads:updated": event$0.GHThreadsUpdated;
             "hooks:updated": event$0.HooksUpdated;
             "inbox:progress": event$0.InboxProgress;

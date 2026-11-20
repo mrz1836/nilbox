@@ -1,7 +1,7 @@
 // Package runevent is the event model of an agent's background run: what the run view, the
 // Activity's Working list, and the tray show of a run, whichever agent runs it. Each
-// agent's stream parser (internal/agentrun) turns its own messages into these events, so
-// nothing above it ever branches on the agent. It is a leaf: it imports nothing of the
+// agent's stream parser (internal/agentrun/stream) turns its own messages into these
+// events, so nothing above it ever branches on the agent. It is a leaf: it imports nothing of the
 // app's, so Autopilot reads it without reaching the runner.
 package runevent
 

@@ -1,0 +1,19 @@
+# Autopilot's settings
+
+Settings → Autopilot holds limits over every routine together. A proposal's `settings` holds only what changes, each key optional: `{"agentsAtOnce": 1, "dailyCap": {"amount": 5, "unit": "usd"}}`. A limit delays a match and never loses it, and a day runs from local midnight.
+
+- `defaultMode`, New routines start in: `dryRun` (Dry run), `ask` (Ask first), or `auto` (Autopilot), default `ask`: the mode a routine the user makes starts in; a routine keeps its own once made.
+- `agentsAtOnce`, Agents at once: a whole number, 1 to 3 agents, default 2: the most coding agents the routines run at the same time.
+- `runsPerDay`, Agent runs a day: a whole number, 1 to 200 runs, default 20: the most coding agent runs the routines start in a day, together.
+- `actionsPerDay`, GitHub actions a day: a whole number, 1 to 200 actions, default 50: the most actions on GitHub the routines send in a day, together.
+- `dailyCap`, Daily cap: `{"amount": 5, "unit": "usd"}`: the most the routines' agents use in a day, in whole dollars (1 to 500) or in tokens (100000 to 50000000), as `unit` says, `usd` or `tokens`; an `amount` of 0 is none, the default. A cap counts only the runs budgeted in its own unit.
+- `keepAwake`, Keep the Mac awake while agents work: `true` or `false`, default `false`.
+- `holdOnOutage`, Hold agent starts while their provider reports an outage: `true` or `false`, default `true`: holds a routine's agent while its provider's status page reports a major outage.
+- `catchUpHours`, Ask before catching up after: a whole number, 1 to 168 hours, default 24: after Nilbox was closed this long, a routine's agent and GitHub steps wait for the user's OK.
+- `historyDays`, History kept: a whole number, 7 to 365 days, default 90: lowering it deletes the older history, and lowers the run logs with it.
+- `logDays`, Run logs kept: a whole number, 1 to 90 days, default 30: never more than `historyDays`.
+
+These two are the user's alone, and a proposal has no place for them:
+
+- `enabled`, Autopilot (beta) in Labs: shows and runs Autopilot.
+- `paused`, Pause Autopilot: while on, no routine starts anything new.

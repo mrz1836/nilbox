@@ -3,6 +3,7 @@ package autopilot_test
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -50,36 +51,44 @@ func TestAGitHubReplyStepTakesACommentsReplyAlone(t *testing.T) {
 
 	r := libraryRig(t, library{}, nil)
 
-	reply := func(nickname string) spec.Spec {
-		s := searchSpec(catalog.EventAppears, orgSearch)
-		s.Steps = []spec.Step{{GitHub: []spec.GitHubAction{{Reply: &spec.ReplyAction{
-			Prompt: spec.PromptRef{Nickname: nickname},
-		}}}}}
-
-		return s
-	}
-
-	for nickname, want := range map[string]string{
-		"LGTM":          `"LGTM" is a reply that approves: a GitHub step only comments`,
-		"Needs changes": `"Needs changes" is a reply that requests changes: a GitHub step only comments`,
-		"Triage":        "is a prompt for an agent",
-	} {
-		got, err := r.svc.Describe(t.Context(), draft(nickname, reply(nickname)))
+	for nickname, want := range refusedReplies() {
+		got, err := r.svc.Describe(t.Context(), draft(nickname, replySpec(nickname)))
 		require.NoError(t, err)
 		require.Len(t, got.Problems, 1, nickname)
 		assert.Equal(t, "steps[0].github[0].reply.prompt", got.Problems[0].Path())
 		assert.Contains(t, got.Problems[0].Message, want)
 
-		_, err = r.svc.Save(t.Context(), draft(nickname, reply(nickname)))
+		_, err = r.svc.Save(t.Context(), draft(nickname, replySpec(nickname)))
 
 		var problems *autopilot.ProblemsError
 
 		require.ErrorAs(t, err, &problems, "Save refuses %s as Describe does", nickname)
 	}
 
-	got, err := r.svc.Describe(t.Context(), draft("Question", reply("question")))
+	got, err := r.svc.Describe(t.Context(), draft("Question", replySpec("question")))
 	require.NoError(t, err)
 	assert.Empty(t, got.Problems, "a comment's reply is what a GitHub step posts")
+}
+
+// refusedReplies are the library's prompts a GitHub step can't comment, by nickname, each
+// with what Describe says of it.
+func refusedReplies() map[string]string {
+	return map[string]string{
+		"LGTM":          `"LGTM" is a reply that approves: a GitHub step only comments`,
+		"Needs changes": `"Needs changes" is a reply that requests changes: a GitHub step only comments`,
+		"Triage":        "is a prompt for an agent",
+	}
+}
+
+// replySpec is a routine whose GitHub step comments the library's reply nicknamed
+// nickname on the items a search finds.
+func replySpec(nickname string) spec.Spec {
+	s := searchSpec(catalog.EventAppears, orgSearch)
+	s.Steps = []spec.Step{{GitHub: []spec.GitHubAction{{Reply: &spec.ReplyAction{
+		Prompt: spec.PromptRef{Nickname: nickname},
+	}}}}}
+
+	return s
 }
 
 // libraryRig is a rig whose Service checks prompts against lib, and runs the steps
@@ -168,12 +177,7 @@ func TestDescribeNamesEachProblemWhereItIsAndKeepsNoSentence(t *testing.T) {
 
 	r := libraryRig(t, library{}, nil)
 
-	bad := searchSpec(catalog.EventAppears, watch.Search{Kind: item.KindPR})
-	bad.Conditions = spec.Conditions{Match: spec.MatchAll, Of: []spec.Clause{
-		{Field: catalog.FieldTitle, Op: catalog.OpMatchesRegex, Value: "(unclosed"},
-	}}
-
-	got, err := r.svc.Describe(t.Context(), draft("Bad", bad))
+	got, err := r.svc.Describe(t.Context(), draft("Bad", badSpec()))
 	require.NoError(t, err, "problems are the answer, not an error")
 	assert.Empty(t, got.Sentence, "the builder keeps the last sentence that read")
 
@@ -186,17 +190,28 @@ func TestDescribeNamesEachProblemWhereItIsAndKeepsNoSentence(t *testing.T) {
 	assert.Contains(t, paths, "conditions.of[0].value", "a regex that doesn't compile")
 }
 
-func TestDescribeAndSaveCheckTheAgentStepsPrompt(t *testing.T) {
-	t.Parallel()
+// badSpec is a routine with problems of its own: a search with no scope, and a regex that
+// doesn't compile.
+func badSpec() spec.Spec {
+	bad := searchSpec(catalog.EventAppears, watch.Search{Kind: item.KindPR})
+	bad.Conditions = spec.Conditions{Match: spec.MatchAll, Of: []spec.Clause{
+		{Field: catalog.FieldTitle, Op: catalog.OpMatchesRegex, Value: "(unclosed"},
+	}}
 
-	r := libraryRig(t, library{}, nil)
+	return bad
+}
 
-	tests := []struct {
-		name   string
-		prompt spec.PromptRef
-		watch  []catalog.ListSource
-		want   string
-	}{
+// promptCase is an agent step's prompt that Describe and Save refuse, with what they say.
+type promptCase struct {
+	name   string
+	prompt spec.PromptRef
+	watch  []catalog.ListSource
+	want   string
+}
+
+// promptCases are the agent steps' prompts the library doesn't have, or that don't fit.
+func promptCases() []promptCase {
+	return []promptCase{
 		{name: "a starter the user deleted", prompt: spec.PromptRef{Starter: "quick-look"}, want: "isn't in your library"},
 		{name: "a nickname no prompt has", prompt: spec.PromptRef{Nickname: "Gone"}, want: `"Gone"`},
 		{name: "a reply", prompt: spec.PromptRef{Nickname: "LGTM"}, want: "review reply"},
@@ -205,18 +220,32 @@ func TestDescribeAndSaveCheckTheAgentStepsPrompt(t *testing.T) {
 			watch: []catalog.ListSource{catalog.SourceAssigned}, want: "acts on issues too",
 		},
 	}
+}
 
-	for _, tt := range tests {
+// promptSpec is agentSpec run as an item appears, its agent running prompt, watching the
+// lists named when there are any.
+func promptSpec(prompt spec.PromptRef, lists []catalog.ListSource) spec.Spec {
+	s := agentSpec()
+	s.Trigger = spec.Trigger{Event: catalog.EventAppears}
+	s.Steps[0].Agent.Prompt = prompt
+
+	if lists != nil {
+		s.Watch.Sources = []spec.Source{{Lists: lists}}
+	}
+
+	return s
+}
+
+func TestDescribeAndSaveCheckTheAgentStepsPrompt(t *testing.T) {
+	t.Parallel()
+
+	r := libraryRig(t, library{}, nil)
+
+	for _, tt := range promptCases() {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			s := agentSpec()
-			s.Trigger = spec.Trigger{Event: catalog.EventAppears}
-			s.Steps[0].Agent.Prompt = tt.prompt
-
-			if tt.watch != nil {
-				s.Watch.Sources = []spec.Source{{Lists: tt.watch}}
-			}
+			s := promptSpec(tt.prompt, tt.watch)
 
 			got, err := r.svc.Describe(t.Context(), draft(tt.name, s))
 			require.NoError(t, err)
@@ -233,22 +262,33 @@ func TestDescribeAndSaveCheckTheAgentStepsPrompt(t *testing.T) {
 		})
 	}
 
-	s := agentSpec()
-	s.Steps[0].Agent.Prompt = spec.PromptRef{Nickname: "triage"}
-
-	got, err := r.svc.Describe(t.Context(), draft("Any item", s))
+	got, err := r.svc.Describe(t.Context(), draft("Any item", anyItemSpec()))
 	require.NoError(t, err)
 	assert.Empty(t, got.Problems, "a nickname matches ignoring case, and a prompt for any item fits")
 
-	issues := agentSpec()
-	issues.Trigger = spec.Trigger{Event: catalog.EventAppears}
-	issues.Watch.Sources = []spec.Source{{Search: &watch.Search{Kind: item.KindIssue, Where: []string{watch.Me}}}}
-
-	only, err := r.svc.Describe(t.Context(), draft("Issues", issues))
+	only, err := r.svc.Describe(t.Context(), draft("Issues", issuesSpec()))
 	require.NoError(t, err)
 	require.Len(t, only.Problems, 1)
 	assert.Equal(t, `"Fix checks" is written for pull requests, and this routine acts only on issues: `+
 		"pick a prompt for issues", only.Problems[0].Message, "a routine of issues alone acts on nothing else")
+}
+
+// anyItemSpec is agentSpec running the user's own Triage, a prompt for any item, by its
+// nickname in another case.
+func anyItemSpec() spec.Spec {
+	s := agentSpec()
+	s.Steps[0].Agent.Prompt = spec.PromptRef{Nickname: "triage"}
+
+	return s
+}
+
+// issuesSpec is agentSpec run as an issue appears, on issues alone.
+func issuesSpec() spec.Spec {
+	issues := agentSpec()
+	issues.Trigger = spec.Trigger{Event: catalog.EventAppears}
+	issues.Watch.Sources = []spec.Source{{Search: &watch.Search{Kind: item.KindIssue, Where: []string{watch.Me}}}}
+
+	return issues
 }
 
 func TestAPromptLibraryThatCantBeReadChecksNothing(t *testing.T) {
@@ -256,24 +296,26 @@ func TestAPromptLibraryThatCantBeReadChecksNothing(t *testing.T) {
 
 	r := libraryRig(t, library{err: errLocked}, nil)
 
-	s := agentSpec()
-	s.Steps[0].Agent.Prompt = spec.PromptRef{Nickname: "Gone"}
-
-	got, err := r.svc.Describe(t.Context(), draft("Locked", s))
+	got, err := r.svc.Describe(t.Context(), draft("Locked", goneSpec()))
 	require.NoError(t, err)
 	assert.Empty(t, got.Problems, "a library that can't be read refuses nothing")
 	assert.Contains(t, r.logs.String(), "could not read the prompt library")
 }
 
+// goneSpec is agentSpec running a prompt by a nickname no library has.
+func goneSpec() spec.Spec {
+	s := agentSpec()
+	s.Steps[0].Agent.Prompt = spec.PromptRef{Nickname: "Gone"}
+
+	return s
+}
+
 func TestDescribeWarnsOfWhatMayDoLessThanMeant(t *testing.T) {
 	t.Parallel()
 
-	snooze := searchSpec(catalog.EventChecksPassed, orgSearch)
-	snooze.Steps = []spec.Step{{Snooze: &spec.SnoozeStep{}}}
-
 	r := libraryRig(t, library{}, nil)
 
-	got, err := r.svc.Describe(t.Context(), draft("Snooze", snooze))
+	got, err := r.svc.Describe(t.Context(), draft("Snooze", snoozeSpec()))
 	require.NoError(t, err)
 	require.Len(t, got.Warnings, 1)
 	assert.Equal(t, "steps[0]", got.Warnings[0].Path())
@@ -283,7 +325,7 @@ func TestDescribeWarnsOfWhatMayDoLessThanMeant(t *testing.T) {
 	terminal := agentSpec()
 
 	// A build that ran no agent would hold the routine in Dry run.
-	held := libraryRig(t, library{}, &autopilot.Offers{Steps: []catalog.StepKind{catalog.StepPin}}).svc
+	held := libraryRig(t, library{}, pinOnly()).svc
 
 	dry, err := held.Describe(t.Context(), autopilot.Draft{Name: "Held", Mode: autopilotprefs.ModeAuto, Spec: terminal})
 	require.NoError(t, err)
@@ -294,21 +336,43 @@ func TestDescribeWarnsOfWhatMayDoLessThanMeant(t *testing.T) {
 	require.Len(t, open.Warnings, 1)
 	assert.Equal(t, "steps[0].agent.where", open.Warnings[0].Path())
 
-	offered := libraryRig(t, library{}, &autopilot.Offers{
-		Steps: []catalog.StepKind{catalog.StepAgent}, Places: []catalog.Where{catalog.WhereBackground},
-	})
+	offered := libraryRig(t, library{}, backgroundOnly())
 
-	fenced := backgroundSpec()
-	fenced.Steps[0].Agent.Fence = &spec.Fence{Tools: catalog.PresetProfile}
-
-	own, err := offered.svc.Describe(t.Context(), autopilot.Draft{Name: "Own", Mode: autopilotprefs.ModeAuto, Spec: fenced})
+	own, err := offered.svc.Describe(t.Context(), autopilot.Draft{Name: "Own", Mode: autopilotprefs.ModeAuto, Spec: fencedSpec()})
 	require.NoError(t, err)
 	require.Len(t, own.Warnings, 1)
 	assert.Equal(t, "steps[0].agent.fence.tools", own.Warnings[0].Path())
 
-	asks, err := offered.svc.Describe(t.Context(), autopilot.Draft{Name: "Asks", Mode: autopilotprefs.ModeAsk, Spec: fenced})
+	asks, err := offered.svc.Describe(t.Context(), autopilot.Draft{Name: "Asks", Mode: autopilotprefs.ModeAsk, Spec: fencedSpec()})
 	require.NoError(t, err)
 	assert.Empty(t, asks.Warnings, "Ask first waits for the user")
+}
+
+// snoozeSpec is a routine that snoozes the items a search alone finds once their checks
+// pass.
+func snoozeSpec() spec.Spec {
+	snooze := searchSpec(catalog.EventChecksPassed, orgSearch)
+	snooze.Steps = []spec.Step{{Snooze: &spec.SnoozeStep{}}}
+
+	return snooze
+}
+
+// fencedSpec is backgroundSpec with the profile's own permissions.
+func fencedSpec() spec.Spec {
+	fenced := backgroundSpec()
+	fenced.Steps[0].Agent.Fence = &spec.Fence{Tools: catalog.PresetProfile}
+
+	return fenced
+}
+
+// pinOnly is a build that runs Pin alone, and so no agent.
+func pinOnly() *autopilot.Offers {
+	return &autopilot.Offers{Steps: []catalog.StepKind{catalog.StepPin}}
+}
+
+// backgroundOnly is a build that runs an agent in the background alone.
+func backgroundOnly() *autopilot.Offers {
+	return &autopilot.Offers{Steps: []catalog.StepKind{catalog.StepAgent}, Places: []catalog.Where{catalog.WhereBackground}}
 }
 
 func TestTestSaysWhatTheHistoryHoldsOfEachMatch(t *testing.T) {
@@ -324,15 +388,13 @@ func TestTestSaysWhatTheHistoryHoldsOfEachMatch(t *testing.T) {
 	}
 	r := itemsRig(t, items)
 
-	s := searchSpec(catalog.EventChecksFailed, orgSearch)
-	s.Trigger.WaitForChecks = new(false)
-	s.Steps = []spec.Step{{Snooze: &spec.SnoozeStep{}}}
+	s := snoozeFailingSpec()
 
 	searchesAlone, err := r.svc.Test(t.Context(), draft("Searches alone", s))
 	require.NoError(t, err)
 	assert.Empty(t, searchesAlone.Warnings, "Describe warns of triage over searches alone, so Test says it once")
 
-	s.Watch.Sources = append(s.Watch.Sources, spec.Source{Lists: []catalog.ListSource{catalog.SourceAssigned}})
+	s = alsoAssigned(s)
 	saved := r.save(t, draft("Snooze failing", s))
 	d := draft("Snooze failing", s)
 	d.ID = saved.ID
@@ -401,4 +463,75 @@ func TestTestSaysWhatTheHistoryHoldsOfEachMatch(t *testing.T) {
 	for _, it := range fresh.Items {
 		assert.Empty(t, it.Record, "a new routine has no history")
 	}
+}
+
+// snoozeFailingSpec is a routine that snoozes the items a search alone finds the moment
+// their checks fail.
+func snoozeFailingSpec() spec.Spec {
+	s := searchSpec(catalog.EventChecksFailed, orgSearch)
+	s.Trigger.WaitForChecks = new(false)
+	s.Steps = []spec.Step{{Snooze: &spec.SnoozeStep{}}}
+
+	return s
+}
+
+// alsoAssigned is s watching the items assigned to the user too.
+func alsoAssigned(s spec.Spec) spec.Spec {
+	s.Watch.Sources = append(slices.Clone(s.Watch.Sources), spec.Source{Lists: []catalog.ListSource{catalog.SourceAssigned}})
+
+	return s
+}
+
+// described is a draft the tests read, with the library and the build (nil, the
+// catalog's) it is read against, and the user's scripts, nil for none.
+type described struct {
+	name    string
+	library autopilot.Library
+	scripts autopilot.MyScripts
+	offers  *autopilot.Offers
+	draft   autopilot.Draft
+}
+
+// describedDrafts are the drafts the tests in this file read, each against the library
+// and the build it is read with there, which TestReadingMatchesDescribe reads through
+// both Describe and the draft leaf. A test added here that reads another draft adds it.
+func describedDrafts() []described {
+	lib := library{}
+
+	out := make([]described, 0, 32)
+
+	for nickname := range refusedReplies() {
+		out = append(out, described{name: "reply " + nickname, library: lib, draft: draft(nickname, replySpec(nickname))})
+	}
+
+	for _, c := range promptCases() {
+		out = append(out, described{name: c.name, library: lib, draft: draft(c.name, promptSpec(c.prompt, c.watch))})
+	}
+
+	return append(out,
+		described{name: "reply question", library: lib, draft: draft("Question", replySpec("question"))},
+		described{name: "Tell me", library: lib, draft: draft("Tell me", notifySpec())},
+		described{name: "Fix", library: lib, draft: draft("Fix", agentSpec())},
+		described{name: "Fix in the background", library: lib, draft: draft("Fix", backgroundSpec())},
+		described{name: "Fix where this build can't", library: lib, offers: terminalOnly(), draft: draft("Fix", backgroundSpec())},
+		described{name: "Bad", library: lib, draft: draft("Bad", badSpec())},
+		described{name: "Any item", library: lib, draft: draft("Any item", anyItemSpec())},
+		described{name: "Issues", library: lib, draft: draft("Issues", issuesSpec())},
+		described{name: "Locked", library: library{err: errLocked}, draft: draft("Locked", goneSpec())},
+		described{name: "Snooze", library: lib, draft: draft("Snooze", snoozeSpec())},
+		described{name: "Held", library: lib, offers: pinOnly(), draft: autopilot.Draft{
+			Name: "Held", Mode: autopilotprefs.ModeAuto, Spec: agentSpec(),
+		}},
+		described{name: "Open", library: lib, draft: autopilot.Draft{
+			Name: "Open", Mode: autopilotprefs.ModeAuto, Spec: agentSpec(),
+		}},
+		described{name: "Own", library: lib, offers: backgroundOnly(), draft: autopilot.Draft{
+			Name: "Own", Mode: autopilotprefs.ModeAuto, Spec: fencedSpec(),
+		}},
+		described{name: "Asks", library: lib, offers: backgroundOnly(), draft: autopilot.Draft{
+			Name: "Asks", Mode: autopilotprefs.ModeAsk, Spec: fencedSpec(),
+		}},
+		described{name: "Searches alone", draft: draft("Searches alone", snoozeFailingSpec())},
+		described{name: "Snooze failing", draft: draft("Snooze failing", alsoAssigned(snoozeFailingSpec()))},
+	)
 }

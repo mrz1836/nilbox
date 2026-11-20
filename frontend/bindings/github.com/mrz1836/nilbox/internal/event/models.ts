@@ -46,6 +46,28 @@ export interface BudgetUpdated {
 }
 
 /**
+ * DescribeItProposals says the cards from the user's own Claude Code changed: one came, or
+ * one was dealt with. The window reads them again, and the left nav's count.
+ */
+export interface DescribeItProposals {
+}
+
+/**
+ * DescribeItUpdated says Describe it's current conversation changed: a turn started, its
+ * agent said or did more, it ended, or one of its cards was dealt with. The window reads the
+ * conversation again, and the turn's events after the last it has, so the event never
+ * carries a stream. It comes at most four times a second.
+ */
+export interface DescribeItUpdated {
+    /**
+     * ConversationID is the conversation, and Turn the turn that changed, 0 for the
+     * conversation as a whole.
+     */
+    "conversationId": string;
+    "turn": number;
+}
+
+/**
  * GHThreadsUpdated says what the window shows of the user's GitHub notifications changed:
  * a pass read them, or checked their items' states, and found something new; reading them
  * was turned off; or whether GitHub lets the token read them, or the last pass's error,

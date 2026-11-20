@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilot/watch"
@@ -122,7 +123,7 @@ func listMiss(lists []catalog.ListSource, f facts.Facts) string {
 		return "It isn't in your inbox."
 	}
 
-	return fmt.Sprintf("It isn't %s: it's in your inbox, %s.", orSeries(missed), series(reasons))
+	return fmt.Sprintf("It isn't %s: it's in your inbox, %s.", orSeries(missed), draft.Series(reasons))
 }
 
 // searchMiss says the first field of s the item f doesn't fit, as far as its facts tell,
@@ -300,15 +301,15 @@ func branchMiss(s watch.Search, f facts.Facts) string {
 
 // stateMiss: a draft in a search of pull requests out of draft, or the other way about.
 func stateMiss(s watch.Search, f facts.Facts) string {
-	draft := f.Value(catalog.FieldDraft)
-	if !draft.Known() {
+	isDraft := f.Value(catalog.FieldDraft)
+	if !isDraft.Known() {
 		return ""
 	}
 
 	switch {
-	case slices.Contains(s.State, watch.StateReady) && draft.Bool:
+	case slices.Contains(s.State, watch.StateReady) && isDraft.Bool:
 		return "it's a draft, and the search finds pull requests out of draft."
-	case slices.Contains(s.State, watch.StateDraft) && !draft.Bool:
+	case slices.Contains(s.State, watch.StateDraft) && !isDraft.Bool:
 		return "it isn't a draft, and the search finds drafts."
 	}
 

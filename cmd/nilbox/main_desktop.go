@@ -46,6 +46,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/core"
+	"github.com/mrz1836/nilbox/internal/describeit"
 	"github.com/mrz1836/nilbox/internal/desktop"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -58,6 +59,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/logging"
+	"github.com/mrz1836/nilbox/internal/mcpserver"
 	"github.com/mrz1836/nilbox/internal/measure"
 	"github.com/mrz1836/nilbox/internal/milestones"
 	"github.com/mrz1836/nilbox/internal/notify"
@@ -111,6 +113,14 @@ func main() {
 	// calls: it decides the call against the run's policy and exits, before anything reads
 	// a setting, opens the data, starts logging, or touches the window.
 	if code, ok := fence.RunHook(os.Args[1:], os.Stdin, os.Stderr); ok {
+		os.Exit(code)
+	}
+
+	// Describe it's tool server is this binary run again too, by Claude Code, in the app's
+	// conversation and in the user's own sessions: it serves the tools on stdin and stdout
+	// until the session ends, and as the hook does, it opens no data, starts no logging,
+	// and touches no window, reading only the snapshot and the proposals' folders.
+	if code, ok := mcpserver.Serve(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); ok {
 		os.Exit(code)
 	}
 
@@ -281,7 +291,7 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 		Workers:  workers,
 		Deferred: []desktop.Worker{
 			c.Deferred, c.ToolFinder, c.Runs, c.ReleaseFollower, c.ServiceStatusChecker, c.UpdateWorker,
-			c.AutopilotEngine, c.PushWatcher,
+			c.AutopilotEngine, c.PushWatcher, c.DescribeItWorker,
 		},
 		Updates:        c.Updates,
 		Autopilot:      c.ShellAutopilot,
@@ -473,6 +483,8 @@ func registerEvents() {
 	application.RegisterEvent[event.UpdatesUpdated](event.NameUpdatesUpdated)
 	application.RegisterEvent[event.AutopilotUpdated](event.NameAutopilotUpdated)
 	application.RegisterEvent[event.AutopilotRun](event.NameAutopilotRun)
+	application.RegisterEvent[event.DescribeItUpdated](event.NameDescribeItUpdated)
+	application.RegisterEvent[event.DescribeItProposals](event.NameDescribeItProposals)
 	application.RegisterEvent[event.UpdateRestartRequested](event.NameUpdateRestartRequested)
 }
 
@@ -519,6 +531,7 @@ func binders() []func(svc any) (application.Service, bool) {
 		binder[integrations.Service], binder[scriptrun.Service], binder[releases.Service], binder[hooks.Service],
 		binder[scripts.Service], binder[ghthreads.Service], binder[backup.Service], binder[svcstatus.Service],
 		binder[setup.Service], binder[update.Service], binder[autopilot.Service], binder[milestones.Service],
+		binder[describeit.Service],
 	}
 }
 

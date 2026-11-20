@@ -12,7 +12,6 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
-	"github.com/mrz1836/nilbox/internal/autopilot/watch"
 )
 
 // forbidden are the words no part of the format, nor any value it can hold, may be:
@@ -30,12 +29,11 @@ func squash(s string) string {
 	return strings.NewReplacer("_", "", "-", "", ".", "", " ", "").Replace(strings.ToLower(s))
 }
 
-// structKeys walks the format from Spec and writes each struct's JSON keys, with the Go
-// type each holds, in the order the types are first reached.
-func structKeys() ([]string, []string) {
+// formatTypes walks the format from Spec and returns each of its struct types, in the
+// order they are first reached.
+func formatTypes() []reflect.Type {
 	var (
-		lines []string
-		keys  []string
+		types []reflect.Type
 		seen  = map[reflect.Type]bool{}
 		queue = []reflect.Type{reflect.TypeFor[spec.Spec]()}
 	)
@@ -49,21 +47,42 @@ func structKeys() ([]string, []string) {
 		}
 
 		seen[typ] = true
-		lines = append(lines, typ.String())
+		types = append(types, typ)
 
 		for i := range typ.NumField() {
-			f := typ.Field(i)
-			name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
-			keys = append(keys, name)
-			lines = append(lines, fmt.Sprintf("  %s: %s", name, f.Type))
-
-			if inner := structOf(f.Type); inner != nil && !seen[inner] {
+			if inner := structOf(typ.Field(i).Type); inner != nil && !seen[inner] {
 				queue = append(queue, inner)
 			}
 		}
 	}
 
+	return types
+}
+
+// structKeys writes each of the format's structs' JSON keys, with the Go type each holds,
+// in the order formatTypes reaches the structs.
+func structKeys() ([]string, []string) {
+	var lines, keys []string
+
+	for _, typ := range formatTypes() {
+		lines = append(lines, typ.String())
+
+		for i := range typ.NumField() {
+			f := typ.Field(i)
+			name := jsonName(f)
+			keys = append(keys, name)
+			lines = append(lines, fmt.Sprintf("  %s: %s", name, f.Type))
+		}
+	}
+
 	return lines, keys
+}
+
+// jsonName is a struct field's JSON key.
+func jsonName(f reflect.StructField) string {
+	name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+
+	return name
 }
 
 // structOf returns the struct a field holds, through pointers and slices, or nil.
@@ -79,44 +98,58 @@ func structOf(t reflect.Type) reflect.Type {
 	return nil
 }
 
-// enums lists every closed set of values the format holds, by where it is used.
+// enums lists every closed set of values the format holds (spec.ClosedSets), by where it
+// is used, each value with what the catalog says of it where the golden shows that: a
+// field's type and choices, an operator's type and arity, a trigger's options, a step's
+// dispatcher, and the step an outcome comes from.
 func enums() map[string][]string {
-	words := func(values ...string) []string { return values }
-	out := map[string][]string{
-		"conditions.match": words(string(spec.MatchAll), string(spec.MatchAny)),
-		"limits.oncePer":   words(string(catalog.OncePerItem), string(catalog.OncePerHeadCommit), string(catalog.OncePerDay)),
-		"agent.where":      words(string(catalog.WhereBackground), string(catalog.WhereTerminal)),
-		"merge.how":        words(string(catalog.MergeAutoIfItWasOn), string(catalog.MergeWhenMergeable)),
-		"merge.method":     words(string(catalog.MergeCommit), string(catalog.MergeSquash), string(catalog.MergeRebase)),
-		"postReview.as":    words(string(catalog.ReviewAsComment), string(catalog.ReviewAsVerdict)),
-		"tellMe.when":      words(string(catalog.TellReached), string(catalog.TellVerdict)),
-		"schedule.every":   words(string(catalog.EveryDay), string(catalog.EveryWeekday), string(catalog.EveryWeek)),
+	out := map[string][]string{}
+
+	for _, set := range spec.ClosedSets() {
+		suffix, say := details(set.Name)
+		out[set.Name+suffix] = each(set.Values, say)
 	}
 
-	out["schedule.on, activeHours.days"] = each(catalog.Weekdays(), func(d catalog.Weekday) string { return string(d) })
-	out["schedule.style"] = each(catalog.ScheduleStyles(), func(s catalog.ScheduleStyleInfo) string { return string(s.ID) })
-	out["source.lists"] = each(catalog.ListSources(), func(l catalog.ListSourceInfo) string { return string(l.ID) })
-	out["search.involving"] = each(watch.Involvings(), func(i watch.Involving) string { return string(i) })
-	out["search.state"] = each(watch.States(), func(s watch.State) string { return string(s) })
-	out["fence.tools"] = each(catalog.Presets(), func(p catalog.PresetInfo) string { return string(p.ID) })
-	out["condition.field (type: choices)"] = each(catalog.Fields(), fieldLine)
-	out["github actions"] = each([]catalog.GitHubActionKind{
-		catalog.GitHubRebase, catalog.GitHubUpdateBranch, catalog.GitHubReply, catalog.GitHubLabels,
-	}, func(a catalog.GitHubActionKind) string { return string(a) })
-	out["step kinds"] = each(catalog.Steps(), func(s catalog.Step) string {
-		return string(s.Kind) + " (" + string(s.Dispatcher) + ")"
-	})
-	out["step.onlyIf"] = each(catalog.Outcomes(), func(o catalog.OutcomeInfo) string {
-		return string(o.ID) + " (from " + string(o.From) + ")"
-	})
-	out["condition.op (type, arity)"] = each(catalog.Ops(), func(o catalog.OpInfo) string {
-		return string(o.ID) + " (" + string(o.Type) + ", " + string(o.Arity) + ")"
-	})
-	out["trigger.event (its options)"] = each(catalog.Triggers(), func(t catalog.Trigger) string {
-		return string(t.Event) + " (" + strings.Join(each(t.Options, func(o catalog.OptionInfo) string { return string(o.ID) }), ", ") + ")"
-	})
-
 	return out
+}
+
+// details returns how enums writes the set it names: the words after its name, and each
+// value with the catalog's details.
+func details(name string) (string, func(string) string) {
+	switch name {
+	case "condition.field":
+		return " (type: choices)", func(v string) string {
+			f, _ := catalog.FieldByID(catalog.FieldID(v))
+
+			return fieldLine(f)
+		}
+	case "condition.op":
+		return " (type, arity)", func(v string) string {
+			o, _ := catalog.OpByID(catalog.Op(v))
+
+			return v + " (" + string(o.Type) + ", " + string(o.Arity) + ")"
+		}
+	case "trigger.event":
+		return " (its options)", func(v string) string {
+			t, _ := catalog.TriggerByEvent(catalog.Event(v))
+
+			return v + " (" + strings.Join(each(t.Options, func(o catalog.OptionInfo) string { return string(o.ID) }), ", ") + ")"
+		}
+	case "step kinds":
+		return "", func(v string) string {
+			s, _ := catalog.StepByKind(catalog.StepKind(v))
+
+			return v + " (" + string(s.Dispatcher) + ")"
+		}
+	case "step.onlyIf":
+		return "", func(v string) string {
+			o, _ := catalog.OutcomeByID(catalog.Outcome(v))
+
+			return v + " (from " + string(o.From) + ")"
+		}
+	default:
+		return "", func(v string) string { return v }
+	}
 }
 
 // each returns what say writes of every element of list.

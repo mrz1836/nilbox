@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/textutil"
@@ -232,7 +233,7 @@ func (d Digest) Body(note string) string {
 
 	words := strings.Join(counts, ", ")
 	if len(names) > 0 {
-		words += ": " + series(names)
+		words += ": " + draft.Series(names)
 	}
 
 	return joinSentences(words, note)

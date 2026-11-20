@@ -124,7 +124,7 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   autopilot: {
     label: 'Autopilot',
     description:
-      'Pause Autopilot, the mode new routines start in, the limits every routine keeps to, and how long its history is kept.',
+      'Pause Autopilot, the mode new routines start in, the limits every routine keeps to, how long its history is kept, and the Claude Code that Describe it runs.',
   },
   launching: {
     label: 'Launching',
@@ -386,6 +386,7 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     },
   ],
   // The switch and the default mode, the limits, what holds an agent back, the history,
+  // the Claude Code Describe it runs and the plugin for the user's own, what this Mac has,
   // and the engine's heartbeat.
   autopilot: [
     { label: 'Pause Autopilot', keywords: ['pause', 'stop', 'resume', 'hold', 'routines', 'nothing new starts'] },
@@ -416,6 +417,31 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Run logs kept', keywords: ['logs', 'transcripts', 'retention', 'days', 'prune'] },
     { label: 'Clear history', keywords: ['clear', 'delete history', 'forget', 'activity', 'ledger', 'wipe'] },
     { label: 'Stop all', keywords: ['stop', 'agents', 'kill', 'background', 'runs', 'halt'] },
+    {
+      label: 'Claude Code',
+      keywords: ['Describe it', 'Claude', 'conversation', 'chat', 'propose', 'proposals', 'assistant', 'AI'],
+    },
+    {
+      label: 'Describe it’s agent',
+      keywords: ['Describe it', 'Claude', 'Claude Code', 'profile', 'model', 'effort', 'inherit', 'conversation'],
+    },
+    {
+      label: `Use ${brand.name} in your own Claude Code`,
+      keywords: [
+        'plugin',
+        'install',
+        'uninstall',
+        'remove',
+        'skill',
+        'MCP',
+        'tool server',
+        'Claude',
+        'Claude Code',
+        'proposals',
+        'Describe it',
+        'your own session',
+      ],
+    },
     {
       label: 'This Mac',
       keywords: [

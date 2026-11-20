@@ -6,7 +6,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../../generated/brand'
 import type { AutopilotConfig, Settings } from '../../platform'
 import { at } from '../../test/clock'
-import { autopilotEngine, claudeMissing, readiness, readyCheck, routineReady, settings } from '../../test/fixtures'
+import {
+  agents,
+  autopilotEngine,
+  claudeMissing,
+  profile,
+  readiness,
+  readyCheck,
+  routineReady,
+  settings,
+} from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
 import { AutopilotSection, clearedText, lastCheckedText } from './AutopilotSection'
 
@@ -28,6 +37,8 @@ function Harness({ initial, onSaved }: { initial: Settings; onSaved: (settings: 
         onSaved(next)
         setCurrent(next)
       }}
+      agents={agents()}
+      profiles={[profile(), profile({ agent: 'codex', name: 'default', folder: '~/.codex' })]}
     />
   )
 }

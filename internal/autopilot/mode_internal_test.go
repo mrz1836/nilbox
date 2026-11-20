@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/testutil"
@@ -48,14 +47,12 @@ func TestTheModeANewRoutineStartsIn(t *testing.T) {
 	}
 }
 
+// TestOnlyAStepThisBuildCantRunKeepsARoutineInDryRun holds a restore and an import to the
+// mode the catalog's offers keep a routine in (catalogMode). The offers' own cases, which
+// kinds of step a build runs and the mode it keeps a routine in for them, are the draft
+// leaf's, beside Offers.
 func TestOnlyAStepThisBuildCantRunKeepsARoutineInDryRun(t *testing.T) {
 	t.Parallel()
-
-	var catalogs *Offers
-
-	none := spec.Spec{Version: spec.Version}
-	assert.Empty(t, catalogs.notOffered(none))
-	assert.Equal(t, autopilotprefs.ModeAuto, catalogs.modeFor(autopilotprefs.ModeAuto, none), "a mode stands for what runs")
 
 	later := spec.Spec{Steps: []spec.Step{
 		{Notify: &spec.NotifyStep{}},
@@ -64,33 +61,11 @@ func TestOnlyAStepThisBuildCantRunKeepsARoutineInDryRun(t *testing.T) {
 		{GitHub: []spec.GitHubAction{{Rebase: &spec.Empty{}}}},
 		{MarkDone: &spec.Empty{}},
 	}}
-	assert.Empty(t, catalogs.notOffered(later),
-		"the notices, the triage steps, the notification's Done, and the GitHub step all run")
 	assert.Equal(t, autopilotprefs.ModeAuto, catalogMode(autopilotprefs.ModeAuto, later))
 
-	verify := spec.Spec{Steps: []spec.Step{
-		{Notify: &spec.NotifyStep{}},
-		{WaitForChecks: &spec.WaitStep{}},
-		{WaitForChecks: &spec.WaitStep{}},
-	}}
-	assert.Empty(t, catalogs.notOffered(verify), "the engine follows an agent's checks itself")
-
-	noticesOnly := &Offers{Steps: []catalog.StepKind{catalog.StepNotify}}
-	assert.Equal(t, []catalog.StepKind{catalog.StepWaitForChecks}, noticesOnly.notOffered(verify),
-		"each kind once: a build that can't follow an agent's checks")
-	assert.Equal(t, autopilotprefs.ModeDryRun, noticesOnly.modeFor(autopilotprefs.ModeAuto, verify))
-
 	notices := spec.Spec{Steps: []spec.Step{{Notify: &spec.NotifyStep{}}, {Pin: &spec.Empty{}}, {TellMe: &spec.TellStep{}}}}
-	assert.Empty(t, catalogs.notOffered(notices), "the notices and the triage steps run in this build")
 	assert.Equal(t, autopilotprefs.ModeAuto, catalogMode(autopilotprefs.ModeAuto, notices))
 
 	pin := spec.Spec{Steps: []spec.Step{{Pin: &spec.Empty{}}, {Snooze: &spec.SnoozeStep{}}, {Restore: &spec.Empty{}}}}
 	assert.Equal(t, autopilotprefs.ModeAuto, catalogMode(autopilotprefs.ModeAuto, pin), "the triage steps take any mode")
-
-	offered := &Offers{Steps: []catalog.StepKind{catalog.StepGitHub, catalog.StepPin}}
-	github := spec.Step{GitHub: []spec.GitHubAction{{Rebase: &spec.Empty{}}}}
-	assert.False(t, offered.runs(github), "a GitHub step runs only once each of its actions is offered")
-	assert.True(t, offered.runs(spec.Step{Pin: &spec.Empty{}}))
-	assert.Equal(t, autopilotprefs.ModeAuto, offered.modeFor(autopilotprefs.ModeAuto, spec.Spec{Steps: []spec.Step{{Pin: &spec.Empty{}}}}),
-		"a test's offers run what they name")
 }

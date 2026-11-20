@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilot/internal/queries"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
@@ -158,7 +159,7 @@ func newerNote(name string) string {
 // checkImport reads one of a backup's routines as it is stored, or says why it is left
 // out: a name its checks refuse, or a definition that won't load.
 func checkImport(r BundleRoutine, defaultMode autopilotprefs.Mode) (keptRoutine, string) {
-	name, err := checkName(r.Name)
+	name, err := draft.CheckName(r.Name)
 	if err != nil {
 		return keptRoutine{}, "A routine was left out. " + uierr.Message(err)
 	}
@@ -303,7 +304,7 @@ func (im *routineImport) place(ctx context.Context, k keptRoutine) error {
 	}
 
 	_, err := im.q.UpdateRoutine(ctx, queries.UpdateRoutineParams{
-		AccountLogin: account, Name: row.Name, NameKey: nameKey(row.Name), Description: k.desc, Mode: string(k.mode),
+		AccountLogin: account, Name: row.Name, NameKey: draft.NameKey(row.Name), Description: k.desc, Mode: string(k.mode),
 		Spec: k.spec.data, SpecVersion: k.spec.version, UpdatedAt: im.clock.Now(), ID: row.ID,
 	})
 	if err != nil {

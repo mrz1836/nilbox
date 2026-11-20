@@ -1,0 +1,3 @@
+warning: It may try up to 5 times on one item, more than the default 2.
+warning: It may run up to 50 times a day, more than the default 10.
+warning: It tries again on one item without waiting, where the default waits 30 minutes.

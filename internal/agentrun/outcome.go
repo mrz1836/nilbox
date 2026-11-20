@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mrz1836/nilbox/internal/agentrun/runevent"
+	"github.com/mrz1836/nilbox/internal/agentrun/stream"
 	"github.com/mrz1836/nilbox/internal/fence"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/textutil"
@@ -48,51 +49,12 @@ const UnattendedNote = "You are running unattended, in the background: nobody ca
 	"merge, approve, or close anything, and never force-push. When you are done, give your report in the " +
 	"structured output asked for."
 
-// Result is the agent's own end of a run, from its result line.
-type Result struct {
-	// Subtype is the agent's word for how it ended ("success", "error_max_budget_usd",
-	// "error_during_execution"), and IsError whether it ended in error.
-	Subtype string `json:"subtype"`
-	IsError bool   `json:"isError"`
-
-	// Message is its final message, at most 50 KB: a read-only run's notes.
-	Message string `json:"message"`
-
-	// Report is its structured output, as it gave it, or nil.
-	Report json.RawMessage `json:"report"`
-
-	// Cost is what it reports the run cost, in dollars, nil when it reports none, and
-	// Estimated says it is an estimate of what the API would have charged, as for a run
-	// signed in with the user's plan rather than an API key.
-	Cost      *float64 `json:"cost"`
-	Estimated bool     `json:"estimated"`
-
-	// TokensIn, TokensOut, and CacheRead are the tokens it used, Turns its turns, and
-	// DurationMS how long it ran.
-	TokensIn   int64 `json:"tokensIn"`
-	TokensOut  int64 `json:"tokensOut"`
-	CacheRead  int64 `json:"cacheRead"`
-	Turns      int64 `json:"turns"`
-	DurationMS int64 `json:"durationMs"`
-
-	// Models are the models it actually used: plan mode runs on another model than asked.
-	Models []string `json:"models"`
-
-	// TerminalReason and Errors say why it ended, as the agent does, and Denials counts
-	// the tool uses its permissions denied.
-	TerminalReason string   `json:"terminalReason"`
-	Errors         []string `json:"errors"`
-	Denials        int      `json:"denials"`
-}
+// Result is the agent's own end of a run, from its result line, as its stream's parser
+// reads it.
+type Result = stream.Result
 
 // Limit is the provider's usage limit, as the agent last reported it.
-type Limit struct {
-	// Status is allowed, allowed_warning, or rejected; Type is which window
-	// ("five_hour", "seven_day", ...); ResetsAt is when it resets, in Unix seconds.
-	Status   string `json:"status"`
-	Type     string `json:"type"`
-	ResetsAt int64  `json:"resetsAt"`
-}
+type Limit = stream.Limit
 
 // Report is the agent's structured report, as ReportSchema asks for it.
 type Report struct {
@@ -335,8 +297,8 @@ func parseReport(raw json.RawMessage) *Report {
 		return nil
 	}
 
-	r.Summary, _ = cut(r.Summary, 2000)
-	r.Reason, _ = cut(r.Reason, 500)
+	r.Summary = cut(r.Summary, 2000)
+	r.Reason = cut(r.Reason, 500)
 	r.Review = keptReview(r.Review)
 
 	return &r
@@ -355,12 +317,12 @@ func keptReview(rv *Review) *Review {
 		return nil
 	}
 
-	rv.Body, _ = cut(strings.TrimSpace(rv.Body), maxReviewBody)
+	rv.Body = cut(strings.TrimSpace(rv.Body), maxReviewBody)
 
 	kept := make([]ReviewComment, 0, min(len(rv.Comments), maxReviewComments))
 
 	for _, c := range rv.Comments {
-		c.Body, _ = cut(strings.TrimSpace(c.Body), maxCommentBody)
+		c.Body = cut(strings.TrimSpace(c.Body), maxCommentBody)
 		if len(kept) < maxReviewComments && c.Path != "" && c.Line > 0 && c.Body != "" {
 			kept = append(kept, c)
 		}
@@ -381,7 +343,7 @@ func noReport(words string) string {
 		return "The agent didn't report."
 	}
 
-	words, _ = cut(firstLine(words), 300)
+	words = cut(firstLine(words), 300)
 
 	return "The agent didn't report. It last said: " + words
 }
@@ -415,7 +377,7 @@ func errorWords(r Result) string {
 // when it resets: "Out of usage: its plan's five-hour limit is reached. It resets Mon 15:04."
 func outOfUsageWords(l Limit) string {
 	words := "Out of usage"
-	if name := limitName(l.Type); name != "" {
+	if name := stream.LimitName(l.Type); name != "" {
 		words += ": its plan's " + name + " limit is reached"
 	}
 
@@ -426,26 +388,6 @@ func outOfUsageWords(l Limit) string {
 	}
 
 	return words
-}
-
-// limitName names a usage limit as the agent reports its type: "five_hour" is the
-// five-hour limit, "seven_day" the weekly one, and "seven_day_opus" the weekly Opus one.
-func limitName(kind string) string {
-	switch {
-	case kind == "":
-		return ""
-	case kind == "five_hour":
-		return "five-hour"
-	case strings.HasPrefix(kind, "seven_day"):
-		model := strings.TrimPrefix(strings.TrimPrefix(kind, "seven_day"), "_")
-		if model == "" {
-			return "weekly"
-		}
-
-		return "weekly " + strings.ToUpper(model[:1]) + model[1:]
-	default:
-		return strings.ReplaceAll(kind, "_", " ")
-	}
 }
 
 // dollars writes an amount in dollars: "$0.50".
@@ -479,12 +421,28 @@ func scriptStatus(s Status) scriptrun.Status {
 	}
 }
 
-// sortStrings sorts s in place.
-func sortStrings(s []string) {
-	slices.Sort(s)
-}
-
 // String names an outcome for the logs.
 func (o Outcome) String() string {
 	return fmt.Sprintf("%s: %s", o.Status, o.Summary)
+}
+
+// cut returns text cut to at most limit bytes, between characters.
+func cut(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+
+	end := limit
+	for end > 0 && !utf8.RuneStart(text[end]) {
+		end--
+	}
+
+	return text[:end]
+}
+
+// firstLine returns text's first line.
+func firstLine(text string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+
+	return line
 }

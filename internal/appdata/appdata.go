@@ -52,6 +52,7 @@ type Paths struct {
 	AutopilotLock  string // the lock that lets one copy of the app run Autopilot's engine on this data
 	AgentRuns      string // each background agent run's own folder (its prompt and settings), named by its session ID
 	Backups        string // the copies of the user's setup an import or a reset saves before it changes anything
+	Describe       string // Describe it's folder: the snapshot the tool mode reads, each conversation, the proposals, and the plugin
 	Launch         string // generated launch scripts and prompt files
 	Logs           string // log files
 	ResetRequest   string // the request to start over that the next start carries out (see RequestReset)
@@ -69,6 +70,7 @@ func NewPaths(root string) Paths {
 		AutopilotLock:  filepath.Join(root, "autopilot.lock"),
 		AgentRuns:      filepath.Join(root, "agent-runs"),
 		Backups:        filepath.Join(root, "backups"),
+		Describe:       filepath.Join(root, "describe"),
 		Launch:         filepath.Join(root, "launch"),
 		Logs:           filepath.Join(root, "logs"),
 		ResetRequest:   filepath.Join(root, "reset-request.json"),
@@ -79,7 +81,7 @@ func NewPaths(root string) Paths {
 // Ensure creates every data directory that does not exist yet, readable only by the
 // user. Existing directories are left as they are.
 func (p Paths) Ensure() error {
-	for _, dir := range []string{p.Root, p.Launch, p.Logs, p.Updates} {
+	for _, dir := range []string{p.Root, p.Launch, p.Logs, p.Updates, p.Describe} {
 		if err := os.MkdirAll(dir, PrivateDirPerm); err != nil {
 			return fmt.Errorf("create data directory: %w", err)
 		}

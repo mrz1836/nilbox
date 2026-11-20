@@ -659,7 +659,14 @@ describe('useAutopilotChips', () => {
 })
 
 describe('RoutinePane', () => {
-  const actions = { onSwitch: vi.fn(), onDryRun: vi.fn(), onDuplicate: vi.fn(), onExport: vi.fn(), onDelete: vi.fn() }
+  const actions = {
+    onSwitch: vi.fn(),
+    onDryRun: vi.fn(),
+    onDescribe: vi.fn(),
+    onDuplicate: vi.fn(),
+    onExport: vi.fn(),
+    onDelete: vi.fn(),
+  }
 
   function renderPane(r = routine()) {
     render(
@@ -685,6 +692,40 @@ describe('RoutinePane', () => {
     await userEvent.click(screen.getByRole('button', { name: 'More for Snooze passing bot PRs' }))
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete…' }))
     expect(actions.onDelete).toHaveBeenCalledWith(routine())
+  })
+
+  it('changes the routine with Claude from its header and its menu, with the routine attached', async () => {
+    renderPane()
+
+    const change = screen.getByRole('button', { name: 'Change with Claude…' })
+
+    expect(change).toHaveAttribute('title', expect.stringContaining('review the change it proposes'))
+    await userEvent.click(change)
+    expect(actions.onDescribe).toHaveBeenCalledExactlyOnceWith(routine())
+
+    await userEvent.click(screen.getByRole('button', { name: 'More for Snooze passing bot PRs' }))
+
+    const item = await screen.findByRole('menuitem', { name: 'Change with Claude…' })
+
+    expect(item).toBeEnabled()
+    await userEvent.click(item)
+    expect(actions.onDescribe).toHaveBeenCalledTimes(2)
+  })
+
+  it('offers no change with Claude for a routine that can’t change here', async () => {
+    const theirs = routine({ otherAccount: true, account: 'octo-other' })
+
+    renderPane(theirs)
+
+    expect(screen.queryByRole('button', { name: 'Change with Claude…' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'More for Snooze passing bot PRs' }))
+
+    const item = await screen.findByRole('menuitem', { name: 'Change with Claude…' })
+
+    expect(item).toBeDisabled()
+    expect(item).toHaveAttribute('title', 'This routine can’t change here')
+    expect(actions.onDescribe).not.toHaveBeenCalled()
   })
 
   it('keeps a routine with steps this version can’t run yet in Dry run, and lists what is wrong with one', () => {

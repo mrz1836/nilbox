@@ -24,7 +24,11 @@ import {
   backlogText,
   checkText,
   chipOf,
+  describeAttach,
+  describeExamples,
+  describeSeesText,
   dirtyText,
+  editable,
   effectState,
   effectVerb,
   elsewhereText,
@@ -43,6 +47,7 @@ import {
   notReadyBanner,
   notReadyNames,
   notReadyText,
+  pendingText,
   readyOf,
   reviewPostLabel,
   reasonChips,
@@ -739,5 +744,38 @@ describe('the small words', () => {
     expect(sameSecond('2026-06-15T11:30:00Z', '2026-06-15T11:30:00.123456789Z')).toBe(true)
     expect(sameSecond('2026-06-15T11:30:00Z', '2026-06-15T11:30:01Z')).toBe(false)
     expect(sameSecond('', '2026-06-15T11:30:00Z')).toBe(false)
+  })
+})
+
+describe('the words that open Describe it', () => {
+  it('attaches the routine, then the item, a request names', () => {
+    expect(describeAttach({})).toEqual([])
+    expect(describeAttach({ routineId: 0, itemId: 0 })).toEqual([])
+    expect(describeAttach({ itemId: 7 })).toEqual([{ kind: 'item', id: 7 }])
+    expect(describeAttach({ routineId: 3 })).toEqual([{ kind: 'routine', id: 3 }])
+    expect(describeAttach({ itemId: 7, routineId: 3 })).toEqual([
+      { kind: 'routine', id: 3 },
+      { kind: 'item', id: 7 },
+    ])
+  })
+
+  it('counts the proposals from the user’s own Claude Code that wait', () => {
+    expect(pendingText(1)).toBe('1 proposal from your own Claude Code waits')
+    expect(pendingText(3)).toBe('3 proposals from your own Claude Code wait')
+  })
+
+  it('offers three examples, and says what Claude sees, never an item’s text or code', () => {
+    expect(describeExamples).toHaveLength(3)
+    expect(describeSeesText).toMatch(/never your items’ text or code\.$/)
+  })
+
+  it('lets a routine change here, with Claude too, only while it is the user’s and its spec reads', () => {
+    expect(editable(routine())).toBe(true)
+    expect(editable(routine({ problems: [{ part: 'steps', field: '[0]', message: 'Its prompt is gone.' }] }))).toBe(
+      true,
+    )
+    expect(editable(routine({ otherAccount: true }))).toBe(false)
+    expect(editable(routine({ brokenReason: 'newer', broken: 'Made by a newer build' }))).toBe(false)
+    expect(editable(routine({ brokenReason: 'unreadable', broken: 'It can’t be read' }))).toBe(false)
   })
 })

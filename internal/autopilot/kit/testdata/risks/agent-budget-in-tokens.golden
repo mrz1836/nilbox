@@ -1,0 +1,2 @@
+warning: Its agent may push to the pull request's own branch: one push, never by force.
+warning: Its agent may use up to 1,000,000 tokens a run, where a budget in tokens starts at 200,000.

@@ -21,7 +21,9 @@
 // items a routine watches (Watching), and a draft tried on its items now (Test). Describe
 // reads a draft as it is edited, asking GitHub nothing: its sentence, the problems that
 // keep it from being saved (the spec's own, and the prompts its steps name, checked
-// against the Library), and its warnings.
+// against the Library), and its warnings. Its checks, which Save's share, are the pure
+// draft leaf's (internal/autopilot/draft), so a routine checked outside the app's own
+// process reads as the builder reads it.
 //
 // The Engine runs the routines (engine.go): one loop, the only writer of the ledger
 // (ledger.go: what each routine did with each item it matched, once per occurrence), which
@@ -60,6 +62,7 @@ import (
 	"sync/atomic"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/draft"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/logging"
@@ -75,15 +78,17 @@ var (
 	// ErrNameTaken is returned for a name another routine has, ignoring case.
 	ErrNameTaken = errors.New("another routine has that name")
 
-	// ErrInvalidName is returned for a name that is empty, too long, or not one line.
-	ErrInvalidName = errors.New("invalid routine name")
+	// ErrInvalidName is returned for a name that is empty, too long, or not one line: the
+	// draft leaf's, which checks it.
+	ErrInvalidName = draft.ErrInvalidName
 
 	// ErrInvalidDescription is returned for a description that is too long or holds a
-	// control character.
-	ErrInvalidDescription = errors.New("invalid routine description")
+	// control character: the draft leaf's, which checks it.
+	ErrInvalidDescription = draft.ErrInvalidDescription
 
-	// ErrInvalidTemplate is returned for a template key that isn't one.
-	ErrInvalidTemplate = errors.New("invalid template key")
+	// ErrInvalidTemplate is returned for a template key that isn't one: the draft leaf's,
+	// which checks it.
+	ErrInvalidTemplate = draft.ErrInvalidTemplate
 
 	// ErrBroken is returned for a change a broken routine can't take: switching it on,
 	// choosing its mode, or saving over a spec a newer build wrote.
@@ -237,7 +242,7 @@ type Service struct {
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
 	clk := clock.Or(cfg.Clock)
-	offers := cfg.Offers.orCatalog()
+	offers := cfg.Offers.OrCatalog()
 
 	return &Service{
 		store: newRoutineStore(cfg.Pool, clk), prefs: cfg.Prefs, accounts: cfg.Accounts, names: cfg.Names,

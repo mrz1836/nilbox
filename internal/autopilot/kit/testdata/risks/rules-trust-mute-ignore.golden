@@ -1,0 +1,4 @@
+warning: Trusts renovate[bot]: its pull requests no longer count as an outside contributor's, so routines act on them without that hold, and a click launches them with the profile's permissions.
+warning: Mutes acme-org/legacy: its items wait in each list's Muted tab, count nowhere, show no banner, and nothing follows their checks.
+warning: Mutes acme-labs and every repository it owns: its items wait in each list's Muted tab, count nowhere, show no banner, and nothing follows their checks.
+warning: Ignores the held runs of “CI / flaky”: they never count toward where a pull request stands, even while GitHub reports its merge blocked.

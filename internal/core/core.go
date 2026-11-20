@@ -28,6 +28,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/clonelock"
+	"github.com/mrz1836/nilbox/internal/describeit"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/ghthreads"
@@ -184,6 +185,15 @@ type Core struct {
 	// Milestones keeps the log of the inbox reaching nil, which says what each time is
 	// worth to the party the window throws.
 	Milestones *milestones.Service
+
+	// DescribeIt is the Autopilot tab's conversation with a coding agent, which proposes
+	// routines, prompts, settings, and rules for the user to review.
+	DescribeIt *describeit.Service
+
+	// DescribeItWorker keeps Describe it's folder, snapshot, and plugin current, and follows
+	// the proposals from the user's own Claude Code; the desktop shell runs it as deferred
+	// work. It is not bound.
+	DescribeItWorker *describeit.Worker
 
 	// AutopilotEngine runs the routines: it records what each matched, and starts what may
 	// start, in the copy of the app that holds the lock in the data folder. The desktop
@@ -406,6 +416,7 @@ func (c *Core) Services() []any {
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Avatars, c.Integrations, c.ScriptRuns, c.Release,
 		c.Hooks, c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup, c.Updates, c.Autopilot, c.Milestones,
+		c.DescribeIt,
 	}
 }
 
@@ -485,6 +496,12 @@ func dataReset(ctx context.Context, reset *store.Reset, home string, logger *slo
 // what happened at startup, which the window is told, and holds the stores whose data is
 // kept outside the database, with their copies.
 func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, logger *slog.Logger) *Core {
+	// Describe it's worker hears, through every service's events, each change of what its
+	// snapshot holds: the routines, Autopilot's settings, the rules, and the inbox. It is
+	// built last, once what it reads is, and the waker tells it from then on.
+	describe := &describeWaker{}
+	opts.Events = describeOnChanges{sink: opts.Events, changed: describe}
+
 	shellEnv := shellenv.New(shellenv.Config{Start: opts.ShellStarter, Home: opts.Home, Logger: logger})
 	search := execpath.Search{Home: opts.Home}
 
@@ -970,6 +987,15 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	transfer.prompts = prompts.NewRoutinePrompts(c.Prompts)
 	routineAgents.profiles = c.Profiles
 	c.ShellSettings = newShellSettings(prefs, c.Setup, pool, opts.Clock)
+
+	// Describe it reads the setup and the inbox through the services above, so it is built
+	// once they are: Claude Code as readiness checks it, the routines, Autopilot (beta), which
+	// its worker waits for, the update engine's word on where the app runs, and the waker its
+	// worker hears the app's changes through.
+	c.DescribeIt, c.DescribeItWorker = newDescribeIt(ctx, opts, describeItDeps{
+		agents: agents, ready: readiness, routines: routines,
+		autopilot: autopilotPrefs{prefs: prefsstore.New(pool, opts.Clock)}, updates: updateEngine, waker: describe,
+	}, logger)
 
 	return c
 }

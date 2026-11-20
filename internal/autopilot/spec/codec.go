@@ -1,11 +1,9 @@
 package spec
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strconv"
 )
 
@@ -70,29 +68,19 @@ func Encode(s Spec) ([]byte, error) {
 	return data, nil
 }
 
-// Decode reads a spec strictly, refusing a field the format doesn't have, a key not
-// spelled exactly as the format spells it (encoding/json alone would take "Trigger" for
-// "trigger"), a key given twice, a value of the wrong type, anything after the document,
-// and more than MaxBytes, each as ErrUnreadable. It checks no value: Validate does.
+// Decode reads a spec strictly, as DecodeExact reads one within MaxBytes and the depth
+// cap: it refuses a field the format doesn't have, a key not spelled exactly as the
+// format spells it (encoding/json alone would take "Trigger" for "trigger"), a key given
+// twice, a value of the wrong type, anything after the document, and more than MaxBytes,
+// each as ErrUnreadable. It checks no value: Validate does.
 func Decode(data []byte) (Spec, error) {
-	if len(data) > MaxBytes {
-		return Spec{}, fmt.Errorf("%w: larger than %d bytes", ErrUnreadable, MaxBytes)
-	}
+	s, err := DecodeExact[Spec](data, MaxBytes, maxDepth)
 
-	if err := checkKeys(data); err != nil {
-		return Spec{}, fmt.Errorf("%w: %w", ErrUnreadable, err)
-	}
-
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-
-	var s Spec
-	if err := dec.Decode(&s); err != nil {
-		return Spec{}, fmt.Errorf("%w: %w", ErrUnreadable, err)
-	}
-
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+	switch {
+	case errors.Is(err, errAfter):
 		return Spec{}, fmt.Errorf("%w: more after the routine", ErrUnreadable)
+	case err != nil:
+		return Spec{}, fmt.Errorf("%w: %w", ErrUnreadable, err)
 	}
 
 	return s, nil

@@ -1,0 +1,14 @@
+Checked 2 routines and a settings change: no problems.
+
+Routine 1, new, saved as “Tell me about checks”:
+It reads: When checks fail on pull requests opened by you, once every check has settled, notify me.
+- No problems.
+
+Routine 2, a change to “Fix checks” (id 9), saved as “Fix checks”:
+It reads: When checks fail on pull requests opened by you, once every check has settled, run "Fix checks" in the background, without pushing. At most 2 tries per pull request.
+- No problems.
+
+Settings: Daily cap Off → $5.
+- No problems.
+
+It has no problems: it can be proposed with autopilot_propose, and the user reviews it in the Autopilot tab.
