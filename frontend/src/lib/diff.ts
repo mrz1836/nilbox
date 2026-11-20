@@ -4,9 +4,13 @@
 // before it reaches GitHub, so the two must agree line for line: the tests of each read
 // the same sample patches and expect the same lines.
 
+import type { DiffSide as ReviewSide } from '../platform'
+
 // DiffSide is which version of a file a comment is on: LEFT is the base version, where
-// removed lines are, and RIGHT the head version, where added and unchanged lines are.
-export type DiffSide = 'LEFT' | 'RIGHT'
+// removed lines are, and RIGHT the head version, where added and unchanged lines are. The
+// backend's side (review.Side) is also '' for a one-line comment's start, which no row is
+// on.
+export type DiffSide = Exclude<ReviewSide, ''>
 
 // DiffRowKind is what a row of a diff is: a hunk's header, a line both versions share
 // (context), an added or a removed line, or a note such as "\ No newline at end of file".
