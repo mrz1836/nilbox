@@ -1,20 +1,11 @@
-import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useId, useLayoutEffect, useRef, useState } from 'react'
 
 import { attempt } from '../../lib/call'
 import { refText } from '../../lib/format'
 import { changedSince, closeNote, issueHeldBack, keepsDraft, selectedIssueAction, standingTone } from '../../lib/issues'
 import type { IssueDraft, IssueDrafts } from '../../lib/issueDrafts'
-import type { LaunchOptions } from '../../lib/launch'
 import { pictureLogins, PicturesContext, usePictures } from '../../lib/pictures'
-import {
-  placeIn,
-  stepTo,
-  useActionProgress,
-  useEnded,
-  useSheetKeys,
-  type EndedItem,
-  type SheetBack,
-} from '../../lib/sheet'
+import { placeIn, stepTo, useActionProgress, useEnded, useSheetKeys, type SheetCommonProps } from '../../lib/sheet'
 import { toneDot, toneText } from '../../lib/signals'
 import { quoteInto } from '../../lib/timeline'
 import { formatAgo } from '../../lib/time'
@@ -26,16 +17,12 @@ import {
   issueAssigneeCandidates,
   learnIssueAssignees,
   searchIssueAssignees,
-  type AgentSession,
-  type ConversationOrder,
   type InboxItem,
   type Issue,
   type IssueAction,
   type IssueOffer,
   type IssueResult,
   type IssueStanding,
-  type ItemResolution,
-  type Worktree,
 } from '../../platform'
 import type { AssigneeReads } from '../AssigneePicker'
 import { Description } from '../conversation/Description'
@@ -54,48 +41,16 @@ import { IssueHeader } from './IssueHeader'
 import type { IssueEdit } from './IssuePickers'
 import { IssueSummary } from './IssueSummary'
 
-export interface IssueSheetProps {
-  // id is the issue the sheet shows, and item its inbox card.
-  id: number
-  item: InboxItem | undefined
-  // siblings are the cards of the list and tab it was opened from, in the order the list
-  // shows them, for stepping through them; listTitle names that list.
-  siblings: readonly InboxItem[]
-  listTitle: string
+// IssueSheetProps are what both sheets take (SheetCommonProps: an issue, its card, and the
+// list it was opened from), and the issue sheet's own.
+export interface IssueSheetProps extends SheetCommonProps {
   drafts: IssueDrafts
-  // order is the order the conversation is listed in, and onOrder hears the user choose
-  // another, which the window remembers.
-  order?: ConversationOrder
-  onOrder?: ((order: ConversationOrder) => void) | undefined
-  launch: LaunchOptions | null
-  resolution: ItemResolution | null
-  sessions: readonly AgentSession[] | undefined
-  // worktree is the issue's worktree, which the sheet's work line shows, if it has one.
-  worktree?: Worktree | undefined
-  onNavigate: (id: number) => void
-  onClose: () => void
   // onDone hears an action's outcome, once the sheet closes for it.
   onDone: (result: IssueResult, issue: Issue) => void
-  // onEnded hears a read find the issue closed on GitHub since the inbox last read it
-  // (useEnded), for the host to move the sheet on from it; without it, the sheet shows it
-  // as read.
-  onEnded?: ((ended: EndedItem) => void) | undefined
   // onUnassign takes the user off the issue on GitHub, and resolves with why it couldn't,
   // or '' once it did, when the inbox closes the sheet; without it the sheet doesn't offer
   // it.
   onUnassign?: ((item: InboxItem) => Promise<string>) | undefined
-  // onManageReplies opens the replies in the Prompts tab.
-  onManageReplies?: (() => void) | undefined
-  // initialFocus selects the control focus starts on as the sheet opens (see Sheet), and
-  // refocus moves it there again whenever it changes.
-  initialFocus?: string | undefined
-  refocus?: number | undefined
-  // back returns to the sheet a link was followed from, or is null.
-  back?: SheetBack | null
-  // triage is the card's triage, in the header, and toast the inbox's toast, which shows in
-  // the sheet while it is open, since the page behind it can't be reached.
-  triage?: ReactNode
-  toast?: ReactNode
 }
 
 // assigneeReads are the assignee picker's reads of an issue.

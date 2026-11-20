@@ -1,11 +1,20 @@
-// What the sheets over the inbox share: where the card they show sits among the cards they
-// step through, their keys, and the steps of an action under way.
+// What the sheets over the inbox share: the props both take, where the card they show sits
+// among the cards they step through, the openings their hosts hear, their keys, and the
+// steps of an action under way.
 
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react'
 
-import { on, type InboxItem } from '../platform'
+import {
+  on,
+  type AgentSession,
+  type ConversationOrder,
+  type InboxItem,
+  type ItemResolution,
+  type Worktree,
+} from '../platform'
 import { refText } from './format'
 import { isTyping } from './keys'
+import type { LaunchOptions } from './launch'
 import { isTopmost } from './useModalDialog'
 
 // Place is where a card sits among the cards a sheet steps through: the cards before and
@@ -189,6 +198,77 @@ export interface SheetBack {
   label: string
   title: string
   onBack: () => void
+}
+
+// SheetCommonProps are what both sheets over the inbox take alike (ReviewSheetProps and
+// IssueSheetProps extend them), which a host builds once and hands to either.
+export interface SheetCommonProps {
+  // id is the item the sheet shows, and item its inbox card.
+  id: number
+  item: InboxItem | undefined
+  // siblings are the cards of the list and tab it was opened from, in the order the list
+  // shows them, for stepping through them; listTitle names that list.
+  siblings: readonly InboxItem[]
+  listTitle: string
+  // order is the order the conversation is listed in, and onOrder hears the user choose
+  // another, which the window remembers.
+  order?: ConversationOrder
+  onOrder?: ((order: ConversationOrder) => void) | undefined
+  launch: LaunchOptions | null
+  resolution: ItemResolution | null
+  sessions: readonly AgentSession[] | undefined
+  // worktree is the item's worktree, which the sheet's work line shows, if it has one.
+  worktree?: Worktree | undefined
+  onNavigate: (id: number) => void
+  onClose: () => void
+  // onEnded hears a read find the item merged or closed on GitHub since the inbox last
+  // read it (useEnded), for the host to move the sheet on from it; without it, the sheet
+  // shows it as read.
+  onEnded?: ((ended: EndedItem) => void) | undefined
+  // onManageReplies opens the replies in the Prompts tab.
+  onManageReplies?: (() => void) | undefined
+  // initialFocus selects the control focus starts on as the sheet opens (see Sheet), and
+  // refocus moves it there again whenever it changes.
+  initialFocus?: string | undefined
+  refocus?: number | undefined
+  // back returns to the sheet a link was followed from, or is null.
+  back?: SheetBack | null
+  // triage is the card's triage, in the header, and toast the host's toast, which shows in
+  // the sheet while it is open, since the page behind it can't be reached.
+  triage?: ReactNode
+  toast?: ReactNode
+}
+
+// useSheetVisits hears a host's sheet move from the item it showed to the one it shows,
+// viewingId, either 0 for none: seen marks both read, the one left catching what the sheet
+// read while open and what the user did in it, and onOpened hears the one opened. Each
+// opening is heard once, however it was opened: the page shown again (Activity), or an
+// effect run twice, opens nothing anew, and never undoes a Mark unread made since.
+export function useSheetVisits(
+  viewingId: number,
+  seen: (ids: readonly number[]) => void,
+  onOpened: ((itemId: number) => void) | undefined,
+): void {
+  // opened is the item last opened in the sheet, or 0 while none is.
+  const opened = useRef(0)
+  const moved = useEffectEvent((left: number, now: number) => {
+    seen([left, now].filter((id) => id > 0))
+
+    if (now > 0) {
+      onOpened?.(now)
+    }
+  })
+
+  useEffect(() => {
+    const left = opened.current
+
+    if (viewingId === left) {
+      return
+    }
+
+    opened.current = viewingId
+    moved(left, viewingId)
+  }, [viewingId])
 }
 
 // SheetKeys is what a sheet's keys do.
