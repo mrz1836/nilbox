@@ -282,6 +282,14 @@ type Records interface {
 	Forget(ctx context.Context, clonePath, worktree string) error
 }
 
+// CopyRecords keeps the pull request each worktree's copied commits went into (see
+// copyrecords.go). *worklog.Store implements it.
+type CopyRecords interface {
+	Copies(ctx context.Context) ([]worklog.Copy, error)
+	RecordCopy(ctx context.Context, c worklog.Copy) error
+	ForgetCopy(ctx context.Context, worktreePath string) error
+}
+
 // History records the worktrees the app cleaned up. *worklog.Store implements it.
 type History interface {
 	RecordCleanup(ctx context.Context, c worklog.Cleanup) error
@@ -345,6 +353,10 @@ type Config struct {
 	// Records holds the worktrees the app made or found for pull requests and issues.
 	Records Records
 
+	// Copies holds the pull request each worktree's copied commits went into. Without it,
+	// nothing is kept of them between listings.
+	Copies CopyRecords
+
 	// Procs lists the running processes, to tell the worktrees a session works in.
 	// Without it no worktree counts as in use by a process; a lock Claude Code holds
 	// still counts.
@@ -404,6 +416,7 @@ type Service struct {
 	terminal FolderOpener
 	reveal   Revealer
 	launches Records
+	copyLog  CopyRecords
 	lister   procs.Lister
 	history  History
 	agents   AgentProcesses
@@ -467,6 +480,7 @@ func NewService(cfg Config) *Service {
 		terminal: cfg.Terminal,
 		reveal:   cfg.Reveal,
 		launches: cfg.Records,
+		copyLog:  cfg.Copies,
 		lister:   cfg.Procs,
 		history:  cfg.History,
 		agents:   cfg.Agents,

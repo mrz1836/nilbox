@@ -223,14 +223,16 @@ func (s *Service) removeFinished(ctx context.Context, g git, repoPath string, wt
 	return s.removeEntry(ctx, g, repoPath, e, false)
 }
 
-// forgetRecord removes the record of a removed worktree. A record left behind is dropped
-// by the next listing or sweep, so a failure is only logged.
+// forgetRecord removes the record of a removed worktree, and its copy record. A record left
+// behind is dropped by the next listing or sweep, so a failure is only logged.
 func (s *Service) forgetRecord(ctx context.Context, path string) {
 	for _, r := range s.records(ctx) {
 		if paths.Same(r.Dir(), path) {
 			s.forget(ctx, r)
 		}
 	}
+
+	s.forgetCopy(ctx, paths.Resolved(path))
 }
 
 // findWorktree returns the snapshot's row for path.

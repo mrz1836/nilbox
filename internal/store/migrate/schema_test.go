@@ -57,6 +57,9 @@ func TestSchemaConstraints(t *testing.T) {
 		VALUES ('claude', 'work', ` + at + `, ` + at + `)`
 	seedWorktree := `INSERT INTO worktree_records (clone_path, worktree, owner, name, kind, number, created_at)
 		VALUES ('/srv/projects/example-repo', 'pr-184', 'acme-org', 'example-repo', 'pr', 184, ` + at + `)`
+	seedCopy := `INSERT INTO worktree_copies (clone_path, worktree_path, head, ref, repo_owner, repo_name, pr_number, copy_tip,
+		created_at, updated_at) VALUES ('/srv/projects/example-repo', '/srv/wt/agent-1', 'a', 'refs/remotes/origin/x',
+		'acme-org', 'example-repo', 199, 'c', ` + at + `, ` + at + `)`
 	seedClear := `INSERT INTO gh_thread_clears (account_login, thread_id, repo_owner, repo_name, item_kind, number,
 		trigger, action, state, thread_updated_at, queued_at, send_after) VALUES ('octo-user', 20000000001, 'acme-org',
 		'example-repo', 'pr', 7, 'dismissed', 'done', 'queued', ` + at + `, ` + at + `, ` + at + `)`
@@ -142,6 +145,31 @@ func TestSchemaConstraints(t *testing.T) {
 			refused:  `UPDATE worktree_records SET launches = -1`,
 			want:     check + "launches >= 0",
 			accepted: `UPDATE worktree_records SET launches = 2`,
+		},
+		{
+			name:     "a worktree's copied commits that are an object",
+			seed:     seedCopy,
+			refused:  `UPDATE worktree_copies SET commits = '{}'`,
+			want:     check + "json_valid(commits) AND json_type(commits) = 'array'",
+			accepted: `UPDATE worktree_copies SET commits = '["fc1c3975011e66491785ace891c893e4fc716587"]'`,
+		},
+		{
+			name: "a second copy record of one worktree",
+			seed: seedCopy,
+			refused: `INSERT INTO worktree_copies (clone_path, worktree_path, head, ref, repo_owner, repo_name, pr_number,
+				copy_tip, created_at, updated_at) VALUES ('/srv/projects/example-repo', '/srv/wt/agent-1', 'b', 'r', 'acme-org',
+				'example-repo', 200, 'c', ` + at + `, ` + at + `)`,
+			want: unique + "worktree_copies.worktree_path",
+			accepted: `INSERT INTO worktree_copies (clone_path, worktree_path, head, ref, repo_owner, repo_name, pr_number,
+				copy_tip, created_at, updated_at) VALUES ('/srv/projects/example-repo', '/srv/wt/agent-2', 'b', 'r', 'acme-org',
+				'example-repo', 200, 'c', ` + at + `, ` + at + `)`,
+		},
+		{
+			name:     "a copy record of no pull request",
+			seed:     seedCopy,
+			refused:  `UPDATE worktree_copies SET pr_number = 0`,
+			want:     check + "pr_number > 0",
+			accepted: `UPDATE worktree_copies SET pr_number = 201`,
 		},
 		{
 			name: "a second queued clear of one thread",

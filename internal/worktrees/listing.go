@@ -187,6 +187,7 @@ func (s *Service) assessClones(ctx context.Context, g git, roots localrepos.Root
 	tracker.Start(event.WorktreesListing, len(clones))
 
 	running, known := s.processes(ctx)
+	copied := s.copyRecords(ctx)
 
 	listings := make([]cloneListing, len(clones))
 	remotes := make(map[string]map[string]repo.Name, len(clones))
@@ -227,6 +228,7 @@ func (s *Service) assessClones(ctx context.Context, g git, roots localrepos.Root
 	refs := s.readAllRefs(ctx, g, snap.Repos)
 	s.detectCopies(ctx, g, snap.Repos, remotes, refs)
 	snap.LinkError = s.link(ctx, snap.Repos, remotes, refs, recorded, tracker)
+	s.keepCopies(ctx, listings, snap.Repos, copied)
 	s.adopt(ctx, snap.Repos, recorded)
 	markSessions(snap.Repos, running, s.agentProcesses(ctx), s.runSessions(ctx))
 	snap.SessionsUnknown = !known

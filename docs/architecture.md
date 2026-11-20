@@ -2240,6 +2240,22 @@ again next time. `Details` marks each of its commits not on GitHub with its copy
 when one read of the clone's refs says nothing changed since, or else a comparison of its
 own; none when the refs can't be read.
 
+**The copy record** (`copyrecords.go`, migration `0109_worktree_copies`). A worktree fully
+copied onto a branch stays so only while the branch is there: a squash merge leaves the
+copies out of the default branch, and deleting the branch leaves them on no remote-tracking
+branch. The pull request keeps them (GitHub keeps every pull request's head commit), so when
+a listing finds a worktree fully copied onto a branch whose pull request it knows, it records
+that pull request in `worklog` (`worklog.Copy`, the `worktree_copies` table, one row per
+worktree by its resolved directory): the worktree's HEAD, the branch, the pull request, the
+commits not on GitHub, and `copy_tip`, the branch's commit, which moves on with the branch
+while it still holds every copy, so it is most likely the pull request's last head. A record
+that already says all a new one would isn't written again. Each listing checks the records
+against the worktrees it listed, as the launch records are: one whose worktree is gone (or
+its folder), or whose HEAD isn't the record's, is dropped, and so is one whose clone is gone
+from a folder that is still there; one whose clone wasn't listed, or couldn't be, is kept.
+Removing a worktree drops its record too. The worklog store stamps a record's
+`created_at` (kept while the HEAD is the same) and `updated_at` with its own clock.
+
 The rest of what a worktree's drawer shows comes from `Details(repoPath, path)`, which the
 window calls when the drawer first opens. It first checks the request as the removals do
 (`checkedGit`, then `entryOf`, which lists the clone's worktrees, then `ErrPrunable` for a

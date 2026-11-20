@@ -255,11 +255,16 @@ type linkDeps struct {
 
 	// base, when set, reads where a clone's default branch stands, for Details.
 	base BaseReader
+
+	// copies, when set, keeps the pull requests worktrees' copied commits went into.
+	copies CopyRecords
 }
 
 // linked builds a Service over the env that links worktrees through deps. Agent locks
 // are judged against deps.procs, which by default says every PID is dead.
 func (e *env) linked(deps linkDeps) *Service {
+	// The dependencies held as interfaces are nil when unset; the fakes held as pointers
+	// are set only when given, so an unset one is a nil interface too.
 	cfg := Config{
 		Settings: fakeSettings{root: cloneRoot, locations: deps.locations, auto: deps.auto, rules: deps.rules},
 		Git:      e.git,
@@ -267,6 +272,12 @@ func (e *env) linked(deps linkDeps) *Service {
 		Home:     e.home,
 		Clock:    testutil.NewClock(listedAt()),
 		Logger:   slog.New(slog.DiscardHandler),
+		Procs:    deps.running,
+		Runs:     deps.runs,
+		History:  deps.history,
+		Guard:    deps.guard,
+		Base:     deps.base,
+		Copies:   deps.copies,
 	}
 
 	if deps.gh != nil {
@@ -277,28 +288,8 @@ func (e *env) linked(deps linkDeps) *Service {
 		cfg.Records = deps.launches
 	}
 
-	if deps.running != nil {
-		cfg.Procs = deps.running
-	}
-
-	if deps.runs != nil {
-		cfg.Runs = deps.runs
-	}
-
 	if deps.events != nil {
 		cfg.Events = deps.events
-	}
-
-	if deps.history != nil {
-		cfg.History = deps.history
-	}
-
-	if deps.guard != nil {
-		cfg.Guard = deps.guard
-	}
-
-	if deps.base != nil {
-		cfg.Base = deps.base
 	}
 
 	svc := NewService(cfg)

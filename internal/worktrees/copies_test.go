@@ -12,6 +12,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/testutil"
+	"github.com/mrz1836/nilbox/internal/worklog"
 )
 
 // The words that start each of a comparison's git reads, as gitCalls counts them.
@@ -27,7 +28,8 @@ const authoredAt = int64(1780000000)
 
 // copyRig is a clone of acme-org/example-repo whose main is pushed, with an agent's worktree
 // under its .claude/worktrees on worktree-agent-1, and a worktree made by hand on
-// feat/parent, which the agent's commits are copied onto and pushed from.
+// feat/parent, which the agent's commits are copied onto and pushed from. Its Service keeps
+// copy records in a store of its own, whose clock the test moves.
 type copyRig struct {
 	e      *env
 	repo   string
@@ -37,6 +39,8 @@ type copyRig struct {
 	gh     *fakeGitHub
 	run    *testutil.Runner
 	svc    *Service
+	log    *worklog.Store
+	clock  *testutil.Clock
 }
 
 // newCopyRig makes a copyRig whose Service runs git through a recording runner, which
@@ -72,7 +76,9 @@ func newCopyRig(t *testing.T, intercept func(dir string, sub []string) (reply, b
 		return e.git.Run(ctx, argv[0], argv[1:]...)
 	}}
 
-	r.svc = e.linked(linkDeps{gh: r.gh})
+	r.clock = testutil.NewClock(listedAt())
+	r.log = worklog.New(testutil.DB(t), r.clock)
+	r.svc = e.linked(linkDeps{gh: r.gh, copies: r.log})
 	r.svc.run = r.run
 
 	return r

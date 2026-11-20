@@ -19,7 +19,7 @@ var errFakeHistory = errors.New("fake: history unavailable")
 func openHistory(t *testing.T) *worklog.Store {
 	t.Helper()
 
-	return worklog.New(testutil.DB(t))
+	return worklog.New(testutil.DB(t), nil)
 }
 
 // failingHistory fails every call.

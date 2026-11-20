@@ -13,6 +13,11 @@
 // The worktrees service records a cleanup once the worktree is gone, whether the user
 // asked for it or the automatic sweep did it, so the Worktrees view can show what was
 // removed and when, across restarts. Only the newest KeepCleanups records are kept.
+//
+// It also records the pull request a worktree's commits went into as copies (Copy), when
+// a listing finds each of them copied, as a cherry-pick or a rebase copies a commit, onto
+// one pushed branch whose pull request it knows, so a squash merge and the deletion of that
+// branch don't undo it. It owns the worktree_copies table for these.
 package worklog
 
 import (
@@ -24,6 +29,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/agent"
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/worklog/internal/queries"
 )
@@ -103,19 +109,21 @@ func (r Record) valid() bool {
 		r.Number > 0 && (r.Path == "" || filepath.IsAbs(r.Path)) && !r.CreatedAt.IsZero()
 }
 
-// Store reads and writes the launch and cleanup records.
+// Store reads and writes the launch, cleanup, and copy records.
 type Store struct {
-	db *sql.DB
-	q  *queries.Queries
+	db    *sql.DB
+	q     *queries.Queries
+	clock clock.Clock
 
 	// keepCleanups is how many cleanups are kept: KeepCleanups, or fewer in tests that
 	// need to run past the cap with few writes.
 	keepCleanups int64
 }
 
-// New returns a Store over the pool db.
-func New(db *sql.DB) *Store {
-	return &Store{db: db, q: queries.New(db), keepCleanups: KeepCleanups}
+// New returns a Store over the pool db, which stamps the copy records with c, or the system
+// clock for nil.
+func New(db *sql.DB, c clock.Clock) *Store {
+	return &Store{db: db, q: queries.New(db), clock: clock.Or(c), keepCleanups: KeepCleanups}
 }
 
 // Record stores where a clone's worktree for an item is, and the item it is for,
