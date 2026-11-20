@@ -17,6 +17,8 @@ export type {
     BranchPick,
     BranchResult,
     Cleanup,
+    Details,
+    FileEntry,
     LinkedItem,
     MergedBranch,
     MergedPullRequest,
@@ -26,5 +28,6 @@ export type {
     Session,
     Snapshot,
     SweepReport,
+    UnpushedCommit,
     Worktree
 } from "./models.js";

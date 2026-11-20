@@ -152,6 +152,9 @@ import type {
   Worktree,
   WorktreeBranch,
   WorktreeCleanup,
+  WorktreeCommit,
+  WorktreeDetails,
+  WorktreeFile,
   WorktreeRepo,
   WorktreesSnapshot,
   ServiceProvider,
@@ -2442,6 +2445,7 @@ export function worktree(overrides: Partial<Worktree> = {}): Worktree {
     prunableReason: '',
     dirty: false,
     dirtyCount: 0,
+    files: [],
     lastCommitUnix: 0,
     head: 'fc1c3975011e66491785ace891c893e4fc716587',
     unpushed: 0,
@@ -2485,6 +2489,45 @@ export function linkedItem(overrides: Partial<LinkedItem> = {}): LinkedItem {
 // finishedWorktree is a worktree whose pull request merged, ready to clean up.
 export function finishedWorktree(overrides: Partial<Worktree> = {}): Worktree {
   return worktree({ item: linkedItem(), stage: 'finished', canCleanUp: true, ...overrides })
+}
+
+// worktreeFileCodes are the status letters worktreeFiles gives its files, in turn.
+const worktreeFileCodes = [' M', '??', 'A ', ' D']
+
+// worktreeFiles is n changed files, sorted by path as Go sends them: src/file-001.ts on,
+// modified, untracked, added, and deleted in turn.
+export function worktreeFiles(n: number): WorktreeFile[] {
+  return Array.from({ length: n }, (_, i) => ({
+    code: worktreeFileCodes[i % worktreeFileCodes.length] ?? ' M',
+    path: `src/file-${String(i + 1).padStart(3, '0')}.ts`,
+  }))
+}
+
+// worktreeCommit is a commit on a worktree that isn't on GitHub, made two hours before the
+// tests' clock.
+export function worktreeCommit(overrides: Partial<WorktreeCommit> = {}): WorktreeCommit {
+  return {
+    oid: '0b1c3975011e66491785ace891c893e4fc716588',
+    unix: 1781517600,
+    subject: 'Keep the widget cache warm',
+    ...overrides,
+  }
+}
+
+// worktreeDetails is what a clean worktree's drawer reads, all of it on GitHub and level
+// with origin/main, which the app made a day before the tests' clock.
+export function worktreeDetails(overrides: Partial<WorktreeDetails> = {}): WorktreeDetails {
+  return {
+    files: [],
+    fileCount: 0,
+    commits: [],
+    unpushed: 0,
+    base: 'origin/main',
+    behind: 0,
+    createdAt: '2026-06-14T12:00:00Z',
+    errors: [],
+    ...overrides,
+  }
 }
 
 // worktreeCleanup is example-repo's pr-7, cleaned up automatically after its pull request

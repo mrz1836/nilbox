@@ -360,14 +360,36 @@ func (s *Service) commitTimes(ctx context.Context, g git, dir string, entries []
 }
 
 // fetchedHeads maps each recorded worktree's resolved directory to the commit it was made
-// at from GitHub (worklog.Record.FetchedHead), for those that have one.
+// at from GitHub (worklog.Record.FetchedHead), for those whose record has one (see
+// recordsByDir).
 func fetchedHeads(records []worklog.Record) map[string]string {
 	out := map[string]string{}
 
-	for _, r := range records {
+	for dir, r := range recordsByDir(records) {
 		if gitread.IsCommitID(r.FetchedHead) {
-			out[paths.Resolved(r.Dir())] = r.FetchedHead
+			out[dir] = r.FetchedHead
 		}
+	}
+
+	return out
+}
+
+// recordsByDir maps each recorded worktree's resolved directory to its record. Where
+// several records name one directory, the last that holds the commit the worktree was made
+// at from GitHub wins, or else the last: the worklog lists them oldest first, so that is the
+// newest such record. The listing's count of the commits not on GitHub (fetchedHeads) and
+// Details read the same one.
+func recordsByDir(records []worklog.Record) map[string]worklog.Record {
+	out := make(map[string]worklog.Record, len(records))
+
+	for _, r := range records {
+		dir := paths.Resolved(r.Dir())
+
+		if kept, ok := out[dir]; ok && gitread.IsCommitID(kept.FetchedHead) && !gitread.IsCommitID(r.FetchedHead) {
+			continue
+		}
+
+		out[dir] = r
 	}
 
 	return out
@@ -431,6 +453,7 @@ func (s *Service) row(ctx context.Context, g git, e Entry, managedDir, legacyDir
 		Legacy:         within(legacyDir, path),
 		Head:           e.HEAD,
 		Unpushed:       -1,
+		Files:          []FileEntry{},
 		InUse:          []Session{},
 		Branches:       []Branch{},
 		fetched:        fetched,
@@ -461,16 +484,16 @@ func (s *Service) judgeLock(wt *Worktree) {
 	wt.CanUnlock = wt.StaleLock && !wt.Main
 }
 
-// readState fills in a worktree's uncommitted-file count, last commit time, and unpushed
-// commits, those past the commit it was made at from GitHub too (Worktree.fetched). A git
-// refusal leaves the field unknown (and records why, for the status); failing to run git at
-// all is an error.
+// readState fills in a worktree's uncommitted files (their count, and the first by path),
+// last commit time, and unpushed commits, those past the commit it was made at from GitHub
+// too (Worktree.fetched). A git refusal leaves the field unknown (and records why, for the
+// status); failing to run git at all is an error.
 func (s *Service) readState(ctx context.Context, g git, wt *Worktree, times map[string]int64) error {
-	count, stderr, err := g.dirtyCount(ctx, wt.Path)
+	count, files, stderr, err := g.firstChanged(ctx, wt.Path, rowFiles)
 
 	switch {
 	case err == nil:
-		wt.Dirty, wt.DirtyCount = count > 0, count
+		wt.Dirty, wt.DirtyCount, wt.Files = count > 0, count, files
 	case guarded(err):
 		// The clone's own config refuses a status: the worktree says why, and nothing that
 		// needs its status, as a sweep's removal, touches it.

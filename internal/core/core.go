@@ -626,6 +626,10 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		logger: logger, touch: workLog, program: ownExecutable(), changes: inboxStore,
 	}
 
+	// A worktree's Open in Terminal goes through the terminal the runs open in, which is
+	// built once the launcher is, below.
+	worktreeTerm := &worktreeTerminal{}
+
 	// The worktrees find git with gitread's own finder, so the git a guarded command runs
 	// (its Setup's) is the one every other worktree command runs: one clone, one git build.
 	sweeps := worktrees.NewService(worktrees.Config{
@@ -638,6 +642,9 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Reader:   locations,
 		Clock:    opts.Clock,
 		GitHub:   itemStates{tokens: tokens, client: client, inbox: inboxStore, logger: logger},
+		Base:     shellGit,
+		Terminal: worktreeTerm,
+		Reveal:   revealer(runner),
 		Records:  workLog,
 		Procs:    procs.System{Run: runner},
 		History:  workLog,
@@ -685,6 +692,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		launch: opts.Paths.Launch, opener: launcher.NewCommandOpener(launch), clock: opts.Clock, logger: logger,
 		shell: shellEnv.Shell,
 	}
+	worktreeTerm.opener = terminals
 	runs := newRuns(pool, opts, clones, terminals, runner, dispatcher, logger)
 	scriptRuns := scriptrun.NewService(runs)
 	background.runner, background.runs = newAgentRunner(pool, opts, agentRunnerDeps{

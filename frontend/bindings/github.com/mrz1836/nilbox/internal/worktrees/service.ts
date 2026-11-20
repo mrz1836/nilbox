@@ -58,6 +58,24 @@ export function DeleteBranches(picks: $models.BranchPick[] | null): $Cancellable
 }
 
 /**
+ * Details reads what the drawer of the worktree at path, one of the linked worktrees of
+ * the clone at repoPath, shows beyond its row: its changed files, the commits on it that
+ * aren't on GitHub, how far it is behind origin's default branch, and when the app made
+ * it. It reads the status and counts the commits not on GitHub every time, so the drawer
+ * shows the worktree as it is now, and lists those commits only when the count is over 0.
+ * It reads the base in steps, each only once the one before found what it needs. These
+ * three run side by side. A read that fails is a sentence in Errors, not an error. Details
+ * fails only when the request can't be checked (git or the settings can't be found, or
+ * git can't list the clone's worktrees), when it isn't about a linked worktree, whose
+ * folder is there, of a clone the repository locations hold, or when ctx ends. It reads
+ * the clone's git and the worktree records alone, never GitHub, takes no lock, and emits
+ * no event.
+ */
+export function Details(repoPath: string, path: string): $CancellablePromise<$models.Details> {
+    return $Call.ByID(3552296446, repoPath, path);
+}
+
+/**
  * ForceRemove removes one unlocked linked worktree that has uncommitted changes,
  * discarding them, with a single --force, and the branches named as Remove does. Locked
  * worktrees, and ones a running process works in, are refused even here, so a running
@@ -105,6 +123,18 @@ export function MergedBranches(): $CancellablePromise<$models.MergedBranch[] | n
 }
 
 /**
+ * OpenTerminal opens the terminal chosen for launches in the worktree at path, one of the
+ * linked worktrees of the clone at repoPath, for its Open in Terminal: the user looks at
+ * the worktree or works in it there, and the app runs nothing in it. The request is
+ * checked as Details checks it, so a worktree whose folder is gone is refused with
+ * ErrPrunable; where no terminal can be opened, the error is ErrNoTerminal, in words the
+ * window shows.
+ */
+export function OpenTerminal(repoPath: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(403914312, repoPath, path);
+}
+
+/**
  * Prune clears the repository's entries for worktrees whose directories are gone. It
  * never touches a worktree that still exists or any branch.
  */
@@ -142,6 +172,16 @@ export function Remove(repoPath: string, path: string, branches: string[] | null
  */
 export function RemoveAllClean(picks: $models.Pick[] | null): $CancellablePromise<$models.RemoveResult[] | null> {
     return $Call.ByID(532446488, picks);
+}
+
+/**
+ * Reveal shows the worktree at path, one of the linked worktrees of the clone at repoPath,
+ * in Finder, for its Reveal in Finder. The request is checked as Details checks it, so a
+ * worktree whose folder is gone is refused with ErrPrunable; where Finder can't show it,
+ * the error is ErrNoFinder, in words the window shows.
+ */
+export function Reveal(repoPath: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(1254038269, repoPath, path);
 }
 
 /**

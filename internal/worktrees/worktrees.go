@@ -257,6 +257,11 @@ type Worktree struct {
 	// DirtyCount is the number of changed and untracked files.
 	DirtyCount int `json:"dirtyCount"`
 
+	// Files are the first 12 of those files by path, from the same status (rowFiles), which
+	// the view shows before it reads the rest (Details). A clean worktree has none, and so
+	// has one whose status couldn't be read.
+	Files []FileEntry `json:"files"`
+
 	// LastCommitUnix is the commit time of HEAD in Unix seconds, or 0 when unknown.
 	LastCommitUnix int64 `json:"lastCommitUnix"`
 
@@ -325,6 +330,19 @@ type Worktree struct {
 	// (worklog.Record.FetchedHead), or "": the commits it reaches count as on GitHub, its
 	// own branch's too. The window never sees it.
 	fetched string
+}
+
+// rowFiles is how many of a worktree's changed files its row lists (Worktree.Files).
+const rowFiles = 12
+
+// FileEntry is one changed or untracked file in a worktree, as git status reports it.
+type FileEntry struct {
+	// Code is git's two status letters for the file, the index's then the worktree's, as
+	// in " M", "A ", "R ", "UU", or "??" (git status --porcelain).
+	Code string `json:"code"`
+
+	// Path is the file's path in the worktree: for a rename or a copy, its new one.
+	Path string `json:"path"`
 }
 
 // BranchKind is why the app offers to delete a branch.

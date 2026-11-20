@@ -1,9 +1,25 @@
+import { useEffect, useEffectEvent } from 'react'
+
+import { counted, formatCount } from '../../lib/format'
+import { asReadNow, changesOf, notOnGitHub, type WorktreeDetailsState } from '../../lib/useWorktreeDetails'
 import type { Choice, Confirmation, Target } from '../../lib/useWorktrees'
-import type { BranchRules, LinkedItem, Worktree } from '../../platform'
+import { safety, type Safety } from '../../lib/worktrees'
+import type {
+  AgentID,
+  AgentSession,
+  BranchRules,
+  LinkedItem,
+  Worktree,
+  WorktreeCommit,
+  WorktreeRepo,
+} from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
+import { Spinner } from '../Spinner'
 import { chosenBranches, useTicks, WorktreeBranches } from './BranchChoices'
+import { CommitLine, FileLine, fileKey, RestInTerminal, waiting } from './ChangeLists'
 import { MergedBranchesDialog } from './MergedBranchesDialog'
-import { plural } from './shared'
+import { detachedOf } from './RowCells'
+import { SafetyBand, SafetyLine } from './SafetyBand'
 
 export interface ConfirmationDialogProps {
   confirmation: Confirmation
@@ -11,8 +27,31 @@ export interface ConfirmationDialogProps {
   rules: BranchRules
   // now is what ages are measured against.
   now: Date
+  // repos are the listed clones, details the worktrees' details read on demand
+  // (useWorktreeDetails), which Force remove reads as it opens, sessions the sessions the
+  // window follows, by the folder they work in (liveSessions), and agentName how an agent
+  // is named: the dialogs word what removing each worktree would cost from them.
+  repos: readonly WorktreeRepo[]
+  details: WorktreeDetailsState
+  sessions: ReadonlyMap<string, AgentSession>
+  agentName: (id: AgentID) => string
   onConfirm: (choice: Choice) => void
   onCancel: () => void
+}
+
+// Cost is what the confirmations need to say what removing a worktree would cost.
+type Cost = Pick<ConfirmationDialogProps, 'repos' | 'now' | 'sessions' | 'agentName' | 'details'>
+
+// costOf says what removing wt, a worktree of the clone at repoPath, would cost, as its
+// drawer says it (lib/worktrees' safety), counted as its details last counted it.
+function costOf(wt: Worktree, repoPath: string, { repos, now, sessions, agentName, details }: Cost): Safety {
+  return safety(
+    asReadNow(wt, details.of(wt.path)),
+    repos.find((r) => r.path === repoPath) ?? null,
+    now,
+    sessions.get(wt.displayPath),
+    agentName,
+  )
 }
 
 // itemText names the item a worktree was made for and where it stands, as in "pull
@@ -30,29 +69,131 @@ const singleWords: Readonly<Record<Single['kind'], { title: string; label: strin
   cleanUp: { title: 'Clean up this worktree?', label: 'Clean up', tone: 'primary' },
 }
 
-// folderText says what the action does to the worktree's folder.
-function folderText(kind: Single['kind'], wt: Worktree): string {
-  switch (kind) {
-    case 'remove':
-      return `This deletes the folder ${wt.displayPath}, which has no uncommitted changes.`
-    case 'force':
-      return `${wt.displayPath} has ${plural(wt.dirtyCount, 'uncommitted file')}, counting untracked files. Force removing it discards them for good.`
-    default:
-      return `This deletes the folder ${wt.displayPath}, whose work is finished: it has no uncommitted changes, and every commit on it is on GitHub.`
-  }
+// folderText says what removing or cleaning up a worktree does to its folder.
+function folderText(kind: Exclude<Single['kind'], 'force'>, wt: Worktree): string {
+  return kind === 'remove'
+    ? `This deletes the folder ${wt.displayPath}, which has no uncommitted changes.`
+    : `This deletes the folder ${wt.displayPath}, whose work is finished: it has no uncommitted changes, and every commit on it is on GitHub.`
 }
 
-// SingleConfirmation confirms removing, force removing, or cleaning up one worktree, with
-// a box for each of its branches.
+// listBoxClass frames each list Force remove shows, and listHeadingClass heads it, in
+// capitals, its count in the text's color.
+const listBoxClass = 'mt-2 rounded-lg border border-border/70 bg-background px-2.5 py-1.5'
+
+const listHeadingClass =
+  'mb-1 flex flex-wrap items-center gap-x-1.5 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase'
+
+const countClass = 'tracking-normal text-text tabular-nums'
+
+// Reading says the rest of a list is being read.
+function Reading({ text }: { text: string }) {
+  return (
+    <p role="status" className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+      <Spinner className="size-2.25" />
+      {text}
+    </p>
+  )
+}
+
+interface ForceListsProps {
+  repoPath: string
+  worktree: Worktree
+  details: WorktreeDetailsState
+}
+
+// ForceLists are what Force remove takes and what it leaves: the uncommitted files it
+// discards, those its details read (at most 200), else the listing's first 12, and the
+// commits that aren't on GitHub (notOnGitHub), which stay on its branch, or, on a detached
+// worktree, go with it, each saying where the rest are past the first 200. It reads the
+// worktree's details as it opens, which asks again after a read that failed, and again
+// after a listing that lands while it's open, once a listing.
+function ForceLists({ repoPath, worktree: wt, details }: ForceListsProps) {
+  const read = details.of(wt.path)
+  const { files, count, current } = changesOf(wt, read)
+  const reading = waiting(wt, read)
+  const rest = count - files.length
+  const commits: readonly WorktreeCommit[] = read?.state === 'read' ? read.details.commits : []
+  const unpushed = notOnGitHub(wt, read)
+  const detached = detachedOf(wt)
+  // unread reports nothing read for this listing: as the dialog opens, unless its drawer
+  // has read it, and again once a listing lands while it's open, which drops what was read.
+  const unread = read === undefined
+  const readAgain = useEffectEvent(() => {
+    details.read(repoPath, wt)
+  })
+
+  // It reads as it opens, and again each time unread changes: one that turns true is a new
+  // listing's, and one that turns false is the read starting, which asking again leaves be.
+  useEffect(() => {
+    readAgain()
+  }, [unread])
+
+  return (
+    <>
+      <section aria-label="Files it discards" className={listBoxClass}>
+        <h3 className={listHeadingClass}>
+          Discards <span className={countClass}>{formatCount(count)}</span> {count === 1 ? 'file' : 'files'}
+        </h3>
+        <ul className="flex max-h-40 flex-col overflow-y-auto text-xs text-text">
+          {files.map((file) => (
+            <FileLine key={fileKey(file)} file={file} />
+          ))}
+        </ul>
+        {rest > 0 &&
+          (!current && reading ? (
+            <Reading text={`reading the other ${formatCount(rest)}…`} />
+          ) : (
+            <p className="mt-1 text-xs text-muted">
+              <RestInTerminal listed={files.length} count={count} command="git status" />
+            </p>
+          ))}
+      </section>
+      {unpushed > 0 && (
+        <section aria-label="Commits not on GitHub" className={listBoxClass}>
+          <h3 className={listHeadingClass}>
+            {detached ? 'Loses' : 'Keeps'} <span className={countClass}>{formatCount(unpushed)}</span> not on GitHub
+            {detached ? (
+              ', which no branch holds'
+            ) : (
+              <>
+                , on <code className="font-mono font-medium tracking-normal normal-case">{wt.branch}</code>
+              </>
+            )}
+          </h3>
+          {commits.length > 0 && (
+            <ul className="flex flex-col text-xs text-text">
+              {commits.map((commit) => (
+                <CommitLine key={commit.oid} commit={commit} />
+              ))}
+            </ul>
+          )}
+          {commits.length > 0 && unpushed > commits.length && (
+            <p className="mt-1 text-xs text-muted">
+              <RestInTerminal listed={commits.length} count={unpushed} command="git log" />
+            </p>
+          )}
+          {reading && <Reading text="reading them…" />}
+        </section>
+      )}
+    </>
+  )
+}
+
+// SingleConfirmation confirms removing, force removing, or cleaning up one worktree: on
+// top, what it would cost, as the worktree's drawer says it; then, for Force remove, the
+// files it discards and the commits it keeps, else what it does to the folder; and a box
+// for each of its branches.
 function SingleConfirmation({
   confirmation,
   rules,
+  details,
   onConfirm,
   onCancel,
-}: Omit<ConfirmationDialogProps, 'confirmation' | 'now'> & { confirmation: Single }) {
+  ...cost
+}: Omit<ConfirmationDialogProps, 'confirmation'> & { confirmation: Single }) {
   const ticks = useTicks()
-  const wt = confirmation.worktree
-  const words = singleWords[confirmation.kind]
+  const { kind, repoPath, worktree: wt } = confirmation
+  const words = singleWords[kind]
   const boxKey = (name: string) => name
 
   return (
@@ -60,13 +201,22 @@ function SingleConfirmation({
       title={words.title}
       confirmLabel={words.label}
       tone={words.tone}
+      size="wide"
       onConfirm={() => {
         onConfirm({ branches: chosenBranches(wt, rules, ticks, boxKey) })
       }}
       onCancel={onCancel}
     >
-      <p>{folderText(confirmation.kind, wt)}</p>
-      {wt.item !== null && <p className="mt-1">Made for {itemText(wt.item)}.</p>}
+      <SafetyBand
+        safety={costOf(wt, repoPath, { ...cost, details })}
+        className="mb-2.5 rounded-lg border border-border/70 text-text"
+      />
+      {kind === 'force' ? (
+        <ForceLists repoPath={repoPath} worktree={wt} details={details} />
+      ) : (
+        <p>{folderText(kind, wt)}</p>
+      )}
+      {wt.item !== null && <p className="mt-1.5">Made for {itemText(wt.item)}.</p>}
       <div className="-mx-2 mt-3">
         <WorktreeBranches worktree={wt} rules={rules} ticks={ticks} boxKey={boxKey} />
       </div>
@@ -103,13 +253,14 @@ function branchKey(path: string): (name: string) => string {
 }
 
 // BulkConfirmation confirms a bulk action, with a box for each worktree, ticked to start
-// with, and boxes for each one's branches under it.
+// with, what removing it would cost in a line under it, and boxes for its branches.
 function BulkConfirmation({
   confirmation,
   rules,
   onConfirm,
   onCancel,
-}: Omit<ConfirmationDialogProps, 'confirmation' | 'now'> & { confirmation: Bulk }) {
+  ...cost
+}: Omit<ConfirmationDialogProps, 'confirmation'> & { confirmation: Bulk }) {
   const ticks = useTicks()
   const words = bulkWords[confirmation.kind]
   const chosen = confirmation.targets.filter((t) => ticks.on(t.worktree.path, true))
@@ -117,7 +268,7 @@ function BulkConfirmation({
   return (
     <ConfirmDialog
       title={words.title}
-      confirmLabel={`${words.verb} ${plural(chosen.length, 'worktree')}`}
+      confirmLabel={`${words.verb} ${counted(chosen.length, 'worktree', 'worktrees')}`}
       confirmDisabled={chosen.length === 0}
       tone={words.tone}
       size="wide"
@@ -134,7 +285,7 @@ function BulkConfirmation({
     >
       <p>{words.intro}</p>
       <ul aria-label="Worktrees" className="mt-3 flex max-h-80 flex-col gap-2 overflow-y-auto">
-        {confirmation.targets.map(({ worktree: wt }) => {
+        {confirmation.targets.map(({ repoPath, worktree: wt }) => {
           const on = ticks.on(wt.path, true)
 
           return (
@@ -153,6 +304,9 @@ function BulkConfirmation({
                   {wt.item !== null && <span className="text-xs">{itemText(wt.item)}</span>}
                 </span>
               </label>
+              <div className="pr-2 pb-1 pl-8.5">
+                <SafetyLine safety={costOf(wt, repoPath, cost)} />
+              </div>
               <div className="ml-6">
                 <WorktreeBranches worktree={wt} rules={rules} ticks={ticks} boxKey={branchKey(wt.path)} off={!on} />
               </div>
@@ -164,27 +318,27 @@ function BulkConfirmation({
   )
 }
 
-// ConfirmationDialog asks before each destructive action, showing what it does and a box
-// for each worktree and branch it would take, ticked as the user's rules say. Unticking a
-// box leaves that worktree or branch alone; a branch that can't go is shown, held, with
-// why.
-export function ConfirmationDialog({ confirmation, rules, now, onConfirm, onCancel }: ConfirmationDialogProps) {
+// ConfirmationDialog asks before each destructive action, showing what it would cost and
+// what it does, and a box for each worktree and branch it would take, ticked as the user's
+// rules say. Unticking a box leaves that worktree or branch alone; a branch that can't go
+// is shown, held, with why.
+export function ConfirmationDialog({ confirmation, details, ...props }: ConfirmationDialogProps) {
   switch (confirmation.kind) {
     case 'merged':
       return (
         <MergedBranchesDialog
-          rules={rules}
-          now={now}
+          rules={props.rules}
+          now={props.now}
           onConfirm={(branchPicks) => {
-            onConfirm({ branchPicks })
+            props.onConfirm({ branchPicks })
           }}
-          onCancel={onCancel}
+          onCancel={props.onCancel}
         />
       )
     case 'all':
     case 'finished':
-      return <BulkConfirmation confirmation={confirmation} rules={rules} onConfirm={onConfirm} onCancel={onCancel} />
+      return <BulkConfirmation confirmation={confirmation} details={details} {...props} />
     default:
-      return <SingleConfirmation confirmation={confirmation} rules={rules} onConfirm={onConfirm} onCancel={onCancel} />
+      return <SingleConfirmation confirmation={confirmation} details={details} {...props} />
   }
 }

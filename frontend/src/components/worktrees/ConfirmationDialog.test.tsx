@@ -1,0 +1,409 @@
+import { act, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
+
+import { useWorktreeDetails } from '../../lib/useWorktreeDetails'
+import type { Confirmation } from '../../lib/useWorktrees'
+import type { Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
+import { at, FIXED_NOW } from '../../test/clock'
+import {
+  finishedWorktree,
+  linkedItem,
+  ownBranch,
+  worktree,
+  worktreeCommit,
+  worktreeDetails,
+  worktreeFiles,
+  worktreeRepo,
+} from '../../test/fixtures'
+import { platform } from '../../test/platform'
+import { ConfirmationDialog } from './ConfirmationDialog'
+
+vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
+
+const repoPath = '/home/user/projects/example-repo'
+const linkedPath = '/home/user/projects/example-repo/.claude/worktrees/pr-7'
+
+const rules = { own: true, pullRequest: true, merged: true, protected: ['main', 'master'] }
+
+interface HarnessProps {
+  confirmation: Confirmation
+  repos?: readonly WorktreeRepo[] | undefined
+  // listing numbers the listing the page shows, 1 unless said.
+  listing?: number
+}
+
+// Harness is the dialog as the page shows it, with the page's details for its listing.
+function Harness({ confirmation, repos = [worktreeRepo()], listing = 1 }: HarnessProps) {
+  const details = useWorktreeDetails(listing)
+
+  return (
+    <ConfirmationDialog
+      confirmation={confirmation}
+      rules={rules}
+      now={FIXED_NOW}
+      repos={repos}
+      details={details}
+      sessions={new Map()}
+      agentName={(id) => id}
+      onConfirm={vi.fn()}
+      onCancel={vi.fn()}
+    />
+  )
+}
+
+// single draws the confirmation of kind for wt, a worktree of example-repo.
+function single(kind: 'remove' | 'force' | 'cleanUp', wt: Worktree, repos?: readonly WorktreeRepo[]) {
+  render(<Harness confirmation={{ kind, repoPath, worktree: wt }} repos={repos} />, { wrapper: at() })
+
+  return within(screen.getByRole('dialog'))
+}
+
+// held is a promise the test settles itself, to see what shows while it is pending.
+function held<T>() {
+  let resolve: (value: T) => void = () => undefined
+  const promise = new Promise<T>((settle) => {
+    resolve = settle
+  })
+
+  return { promise, resolve }
+}
+
+// dirty is a worktree with n uncommitted files, the listing's first 12 of them listed, and
+// unpushed commits not on GitHub, which the backend lets Force remove take.
+function dirty(n: number, unpushed = 0, overrides: Partial<Worktree> = {}): Worktree {
+  return worktree({
+    dirty: true,
+    dirtyCount: n,
+    files: worktreeFiles(Math.min(n, 12)),
+    unpushed,
+    onGitHub: unpushed === 0,
+    canRemove: false,
+    canForceRemove: true,
+    branches: [ownBranch({ deletable: unpushed === 0, reason: unpushed === 0 ? '' : 'it has commits not on GitHub' })],
+    ...overrides,
+  })
+}
+
+// paths are the paths a list of files in the dialog shows, in order, each without its
+// status letter.
+function paths(list: HTMLElement): string[] {
+  return within(list)
+    .getAllByRole('listitem')
+    .map((li) => li.textContent.replace(/^[A-Z]/, ''))
+}
+
+describe('ConfirmationDialog for one worktree', () => {
+  it('says on top what removing it would cost, then what it does to the folder, and its branches', () => {
+    const dialog = single(
+      'remove',
+      worktree({ item: linkedItem({ kind: 'issue', number: 9, state: 'open', headOid: '' }) }),
+    )
+
+    const band = dialog.getByText(/^Safe to remove/).closest('[data-tone]')
+    expect(band).toHaveAttribute('data-tone', 'success')
+    expect(band).toHaveTextContent('Safe to remove: no uncommitted files, and every commit is on GitHub.')
+    expect(screen.getByRole('dialog', { name: 'Remove this worktree?' })).toHaveTextContent(
+      'This deletes the folder ~/projects/example-repo/.claude/worktrees/pr-7, which has no uncommitted changes.',
+    )
+    expect(dialog.getByText('Made for issue #9, open.')).toBeInTheDocument()
+    expect(dialog.getByRole('checkbox', { name: /^Delete branch worktree-pr-7/ })).toBeChecked()
+    expect(dialog.queryByRole('region', { name: 'Files it discards' })).not.toBeInTheDocument()
+    // Only Force remove reads the worktree's details.
+    expect(platform.worktreeDetails).not.toHaveBeenCalled()
+  })
+
+  it('says a finished worktree’s clean up loses nothing', () => {
+    const dialog = single('cleanUp', finishedWorktree())
+
+    expect(dialog.getByText(/^Safe to remove/).closest('[data-tone]')).toHaveAttribute('data-tone', 'success')
+    expect(screen.getByRole('dialog', { name: 'Clean up this worktree?' })).toHaveTextContent(
+      'whose work is finished: it has no uncommitted changes, and every commit on it is on GitHub.',
+    )
+    expect(dialog.getByText('Made for pull request #7, merged.')).toBeInTheDocument()
+  })
+
+  it('words the cost without its clone when the clone isn’t listed', () => {
+    const dialog = single('remove', worktree(), [])
+
+    expect(dialog.getByText(/^Safe to remove/)).toBeInTheDocument()
+  })
+
+  it('words each cost as the worktree’s details counted it, once its drawer read them', () => {
+    const counted = worktreeDetails({ files: worktreeFiles(3), fileCount: 3 })
+    render(
+      <ConfirmationDialog
+        confirmation={{
+          kind: 'all',
+          targets: [{ repoPath, worktree: worktree() }],
+        }}
+        rules={rules}
+        now={FIXED_NOW}
+        repos={[worktreeRepo()]}
+        details={{ of: () => ({ state: 'read', details: counted }), read: vi.fn() }}
+        sessions={new Map()}
+        agentName={(id) => id}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { wrapper: at() },
+    )
+
+    expect(screen.getByText(/^Removing it would discard 3 uncommitted files/).closest('[data-tone]')).toHaveAttribute(
+      'data-tone',
+      'warning',
+    )
+  })
+})
+
+describe('ConfirmationDialog for Force remove', () => {
+  it('lists the files it discards and the commits it keeps, reading the rest as it opens', async () => {
+    const answer = held<WorktreeDetails>()
+    platform.worktreeDetails.mockReturnValue(answer.promise)
+    const dialog = single('force', dirty(30, 2))
+
+    expect(platform.worktreeDetails).toHaveBeenCalledExactlyOnceWith(repoPath, linkedPath)
+    expect(dialog.getByText(/^Removing it would discard 30 uncommitted files/).closest('[data-tone]')).toHaveAttribute(
+      'data-tone',
+      'warning',
+    )
+
+    const files = dialog.getByRole('region', { name: 'Files it discards' })
+    expect(within(files).getByRole('heading')).toHaveTextContent('Discards 30 files')
+    expect(within(files).getAllByRole('listitem')).toHaveLength(12)
+    expect(within(files).getByRole('status')).toHaveTextContent('reading the other 18…')
+
+    const commits = dialog.getByRole('region', { name: 'Commits not on GitHub' })
+    expect(within(commits).getByRole('heading')).toHaveTextContent('Keeps 2 not on GitHub, on worktree-pr-7')
+    expect(within(commits).getByRole('status')).toHaveTextContent('reading them…')
+    expect(within(commits).queryByRole('list')).not.toBeInTheDocument()
+
+    await act(async () => {
+      answer.resolve(
+        worktreeDetails({
+          files: worktreeFiles(30),
+          fileCount: 30,
+          unpushed: 2,
+          commits: [worktreeCommit(), worktreeCommit({ oid: '1'.repeat(40), subject: 'Warm it on start' })],
+        }),
+      )
+      await Promise.resolve()
+    })
+
+    expect(within(files).getAllByRole('listitem')).toHaveLength(30)
+    expect(within(files).queryByRole('status')).not.toBeInTheDocument()
+    expect(paths(within(files).getByRole('list')).at(-1)).toBe('src/file-030.ts')
+    expect(
+      within(commits)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['0b1c397Keep the widget cache warm2h', '1111111Warm it on start2h'])
+    expect(within(commits).queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('reads the details again after a listing that lands while it’s open', async () => {
+    platform.worktreeDetails.mockResolvedValue(worktreeDetails({ files: worktreeFiles(20), fileCount: 20 }))
+    const confirmation: Confirmation = { kind: 'force', repoPath, worktree: dirty(20) }
+    const { rerender } = render(<Harness confirmation={confirmation} />, { wrapper: at() })
+
+    const files = screen.getByRole('region', { name: 'Files it discards' })
+    await vi.waitFor(() => {
+      expect(within(files).getAllByRole('listitem')).toHaveLength(20)
+    })
+
+    rerender(<Harness confirmation={confirmation} listing={2} />)
+
+    await vi.waitFor(() => {
+      expect(platform.worktreeDetails).toHaveBeenCalledTimes(2)
+    })
+    await vi.waitFor(() => {
+      expect(within(files).getAllByRole('listitem')).toHaveLength(20)
+    })
+    expect(within(files).queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('says where the files past the 200 it lists are', async () => {
+    platform.worktreeDetails.mockResolvedValue(worktreeDetails({ files: worktreeFiles(200), fileCount: 250 }))
+    const dialog = single('force', dirty(250))
+
+    const files = dialog.getByRole('region', { name: 'Files it discards' })
+    expect(
+      await within(files).findByText(/^Only the first 200 are listed here; 50 more are in Terminal/),
+    ).toHaveTextContent('Only the first 200 are listed here; 50 more are in Terminal (git status)')
+    expect(within(files).getAllByRole('listitem')).toHaveLength(200)
+    expect(dialog.queryByRole('region', { name: 'Commits not on GitHub' })).not.toBeInTheDocument()
+  })
+
+  it('says where the commits past the 200 it lists are', async () => {
+    const commits = Array.from({ length: 200 }, (_, i) => worktreeCommit({ oid: i.toString(16).padStart(40, '0') }))
+    platform.worktreeDetails.mockResolvedValue(
+      worktreeDetails({ files: worktreeFiles(1), fileCount: 1, unpushed: 350, commits }),
+    )
+    const dialog = single('force', dirty(1, 350))
+
+    const listed = dialog.getByRole('region', { name: 'Commits not on GitHub' })
+    expect(
+      await within(listed).findByText(/^Only the first 200 are listed here; 150 more are in Terminal/),
+    ).toHaveTextContent('Only the first 200 are listed here; 150 more are in Terminal (git log)')
+    expect(within(listed).getByRole('heading')).toHaveTextContent('Keeps 350 not on GitHub')
+    expect(within(listed).getAllByRole('listitem')).toHaveLength(200)
+  })
+
+  it('keeps nothing as not on GitHub for one at its pull request’s head, whatever no remote has', async () => {
+    platform.worktreeDetails.mockResolvedValue(
+      worktreeDetails({ files: worktreeFiles(2), fileCount: 2, unpushed: 3, commits: [worktreeCommit()] }),
+    )
+    const dialog = single('force', dirty(2, 3, { onGitHub: true, branches: [ownBranch()] }))
+
+    await vi.waitFor(() => {
+      expect(within(dialog.getByRole('region', { name: 'Files it discards' })).queryByRole('status')).toBeNull()
+    })
+    expect(dialog.queryByRole('region', { name: 'Commits not on GitHub' })).not.toBeInTheDocument()
+    expect(dialog.queryByText(/not on GitHub/)).not.toBeInTheDocument()
+  })
+
+  it('lists a path git lists twice once for each status', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const files = [
+      { code: 'D ', path: 'notes.txt' },
+      { code: '??', path: 'notes.txt' },
+    ]
+    platform.worktreeDetails.mockResolvedValue(worktreeDetails({ files, fileCount: 2 }))
+    const dialog = single('force', dirty(2, 0, { files }))
+
+    const listed = dialog.getByRole('region', { name: 'Files it discards' })
+    await vi.waitFor(() => {
+      expect(platform.worktreeDetails).toHaveBeenCalledOnce()
+    })
+    expect(paths(within(listed).getByRole('list'))).toEqual(['notes.txt', 'notes.txt'])
+    expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key/)
+    errors.mockRestore()
+  })
+
+  it('reads the details again as it opens after a read that failed', () => {
+    const read = vi.fn()
+    const wt = dirty(3)
+    render(
+      <ConfirmationDialog
+        confirmation={{ kind: 'force', repoPath, worktree: wt }}
+        rules={rules}
+        now={FIXED_NOW}
+        repos={[worktreeRepo()]}
+        details={{ of: () => ({ state: 'failed', error: 'Couldn’t read the worktree.' }), read }}
+        sessions={new Map()}
+        agentName={(id) => id}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { wrapper: at() },
+    )
+
+    expect(read).toHaveBeenCalledExactlyOnceWith(repoPath, wt)
+  })
+
+  it('keeps the listing’s files and count when the details can’t be read', async () => {
+    platform.worktreeDetails.mockRejectedValue(new Error('git status: exit status 128'))
+    const dialog = single('force', dirty(30, 1))
+
+    const files = dialog.getByRole('region', { name: 'Files it discards' })
+    expect(
+      await within(files).findByText(/^Only the first 12 are listed here; 18 more are in Terminal/),
+    ).toBeInTheDocument()
+    expect(within(files).getByRole('heading')).toHaveTextContent('Discards 30 files')
+
+    const commits = dialog.getByRole('region', { name: 'Commits not on GitHub' })
+    expect(within(commits).getByRole('heading')).toHaveTextContent('Keeps 1 not on GitHub, on worktree-pr-7')
+    expect(within(commits).queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('counts the commits as the listing did when the details couldn’t count them', async () => {
+    platform.worktreeDetails.mockResolvedValue(worktreeDetails({ files: worktreeFiles(1), fileCount: 1, unpushed: -1 }))
+    const dialog = single('force', dirty(1, 3))
+
+    const files = dialog.getByRole('region', { name: 'Files it discards' })
+    expect(within(files).getByRole('heading')).toHaveTextContent('Discards 1 file')
+
+    const commits = dialog.getByRole('region', { name: 'Commits not on GitHub' })
+    await vi.waitFor(() => {
+      expect(within(commits).queryByRole('status')).not.toBeInTheDocument()
+    })
+    expect(within(commits).getByRole('heading')).toHaveTextContent('Keeps 3 not on GitHub')
+  })
+
+  it('says a detached worktree’s commits go with it', async () => {
+    platform.worktreeDetails.mockResolvedValue(
+      worktreeDetails({ files: worktreeFiles(2), fileCount: 2, unpushed: 1, commits: [worktreeCommit()] }),
+    )
+    const dialog = single('force', dirty(2, 1, { branch: '', detached: true, branches: [] }))
+
+    const commits = dialog.getByRole('region', { name: 'Commits not on GitHub' })
+    expect(within(commits).getByRole('heading')).toHaveTextContent('Loses 1 not on GitHub, which no branch holds')
+    expect(await within(commits).findByText('Keep the widget cache warm')).toBeInTheDocument()
+    expect(dialog.getByText(/^1 commit that no branch holds would be lost with it\./)).toBeInTheDocument()
+  })
+
+  it('confirms with the branches ticked', async () => {
+    const onConfirm = vi.fn()
+    render(
+      <ConfirmationDialog
+        confirmation={{ kind: 'force', repoPath, worktree: dirty(3) }}
+        rules={rules}
+        now={FIXED_NOW}
+        repos={[worktreeRepo()]}
+        details={{ of: () => undefined, read: vi.fn() }}
+        sessions={new Map()}
+        agentName={(id) => id}
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      />,
+      { wrapper: at() },
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Force remove' }))
+
+    expect(onConfirm).toHaveBeenCalledWith({ branches: ['worktree-pr-7'] })
+  })
+})
+
+describe('ConfirmationDialog in bulk', () => {
+  it('says in a line under each worktree what removing it would cost', () => {
+    const issue9 = worktree({
+      path: `${repoPath}/.claude/worktrees/issue-9`,
+      displayPath: '~/projects/example-repo/.claude/worktrees/issue-9',
+      branch: 'worktree-issue-9',
+      unpushed: 1,
+      onGitHub: false,
+      branches: [ownBranch({ name: 'worktree-issue-9', deletable: false, reason: 'it has commits not on GitHub' })],
+    })
+    render(
+      <Harness
+        confirmation={{
+          kind: 'all',
+          targets: [
+            { repoPath, worktree: worktree() },
+            { repoPath, worktree: issue9 },
+          ],
+        }}
+      />,
+      { wrapper: at() },
+    )
+
+    const listed = within(screen.getByRole('list', { name: 'Worktrees' }))
+    const [clean, ahead] = listed
+      .getAllByRole('listitem')
+      .filter((li) => li.parentElement?.getAttribute('aria-label') === 'Worktrees')
+    expect(
+      within(clean as HTMLElement)
+        .getByText(/^Safe to remove/)
+        .closest('[data-tone]'),
+    ).toHaveAttribute('data-tone', 'success')
+    const line = within(ahead as HTMLElement)
+      .getByText(/^Its folder is clean, but 1 commit on/)
+      .closest('[data-tone]')
+    expect(line).toHaveAttribute('data-tone', 'warning')
+    expect(line).toHaveTextContent('Its folder is clean, but 1 commit on worktree-issue-9 isn’t on GitHub.')
+    // The line sits apart from the worktree's box, whose name it leaves alone.
+    expect(listed.getByRole('checkbox', { name: '~/projects/example-repo/.claude/worktrees/issue-9' })).toBeChecked()
+    expect(platform.worktreeDetails).not.toHaveBeenCalled()
+  })
+})

@@ -28,9 +28,11 @@ export const worktreeSpec: QuerySpec = { keys: ['repo', 'branch', 'agent', 'is']
 export const worktreeHint = 'Matches branches, paths, repos, #numbers, titles · -word excludes'
 
 // states are the is: values, each with whether a worktree is in it: the worktree's own
-// state, then its pull request or issue's kind and state.
+// state, then its pull request or issue's kind and state. unpushed is a worktree with
+// commits that aren't on GitHub, never one whose commits couldn't be counted.
 const states: readonly (readonly [string, (wt: Worktree) => boolean])[] = [
   ['dirty', (wt) => wt.dirty],
+  ['unpushed', (wt) => wt.unpushed > 0 && !wt.onGitHub],
   ['locked', (wt) => wt.locked],
   ['in-use', (wt) => wt.inUse.length > 0 || wt.stage === 'in-use'],
   ['finished', (wt) => wt.stage === 'finished'],
@@ -49,6 +51,7 @@ const knownStates: ReadonlySet<string> = new Set(states.map(([name]) => name))
 // and the agents, show only while some worktree is.
 const facets: readonly Facet[] = [
   { label: 'Dirty', key: 'is', value: 'dirty' },
+  { label: 'Not on GitHub', key: 'is', value: 'unpushed', optional: true },
   { label: 'Locked', key: 'is', value: 'locked', optional: true },
   { label: 'In use', key: 'is', value: 'in-use', optional: true },
   { label: 'Ready to clean up', key: 'is', value: 'finished', optional: true },
@@ -167,10 +170,11 @@ interface Index {
   known: (key: string) => ReadonlySet<string>
 }
 
-// indexOf reads a listing for matching.
+// indexOf reads a listing for matching: its linked worktrees, since the page shows a
+// clone's main checkout in its heading, never as a row.
 function indexOf(repos: readonly WorktreeRepo[], options: WorktreeFilterOptions): Index {
   const name = options.agentName ?? ((id: AgentID) => id)
-  const entries = repos.flatMap((repo) => repo.worktrees.map((wt) => entryOf(repo, wt, name)))
+  const entries = repos.flatMap((repo) => repo.worktrees.filter((wt) => !wt.main).map((wt) => entryOf(repo, wt, name)))
   const sets = {
     repo: new Set(entries.flatMap((e) => e.repo)),
     branch: new Set(entries.flatMap((e) => e.branch)),
@@ -204,10 +208,11 @@ function namesRepo(repo: WorktreeRepo, query: Query, known: Index['known']): boo
   )
 }
 
-// filterWorktrees keeps the clones and worktrees a query matches, or returns null for a
-// query that filters nothing. A clone the query names shows all its worktrees; any other
-// shows those that match, and a clone with none is left out. A clone or worktree showing
-// an error stays in sight whatever the query, without counting as a match.
+// filterWorktrees keeps the clones and linked worktrees a query matches, or returns null
+// for a query that filters nothing. A clone the query names shows all its worktrees; any
+// other shows those that match, and a clone with none is left out. A clone or worktree
+// showing an error stays in sight whatever the query, without counting as a match. A
+// clone's main checkout is never kept: the page shows it in the clone's heading.
 export function filterWorktrees(
   repos: readonly WorktreeRepo[],
   query: string,
@@ -230,7 +235,7 @@ export function filterWorktrees(
       entries.filter((e) => e.clone === repo && (whole || matchesEntry(e, parsed, known))).map((e) => e.wt),
     )
     const worktrees = repo.worktrees.filter(
-      (wt) => matched.has(wt) || wt.error !== '' || (errors?.worktree(wt.path) ?? '') !== '',
+      (wt) => !wt.main && (matched.has(wt) || wt.error !== '' || (errors?.worktree(wt.path) ?? '') !== ''),
     )
     const failed = repo.error !== '' || (errors?.repo(repo.path) ?? '') !== ''
 

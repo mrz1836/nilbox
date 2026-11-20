@@ -328,7 +328,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
     const views = within(screen.getByLabelText('Views'))
     const away = await measure(async () => {
       await userEvent.click(views.getByLabelText('Worktrees'))
-      await screen.findByText(/^Worktrees of the clones under/, {}, wait)
+      await screen.findByText(/^\d+ worktrees? in \d+ clones? · checked/, {}, wait)
     })
     const back = await measure(async () => {
       await userEvent.click(views.getByLabelText('Inbox'))

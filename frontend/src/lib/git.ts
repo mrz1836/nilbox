@@ -16,3 +16,10 @@ const plainWord = /^[\w@%+=:,./-]+$/
 export function shellQuoted(text: string): string {
   return plainWord.test(text) ? text : `'${text.replaceAll("'", `'\\''`)}'`
 }
+
+// homeWord quotes a path for a command the window copies, as shellQuoted does, but keeps
+// a leading ~/ outside the quotes: a shell never expands a quoted ~ to the home directory,
+// so "~/projects/a b" becomes ~/'projects/a b'.
+export function homeWord(path: string): string {
+  return path.startsWith('~/') ? `~/${shellQuoted(path.slice(2))}` : shellQuoted(path)
+}

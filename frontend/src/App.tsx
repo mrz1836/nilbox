@@ -20,7 +20,7 @@ import { MoveDialog } from './components/MoveDialog'
 import { UpdateBanner } from './components/UpdateBanner'
 import { UpdateRestartDialog } from './components/UpdateRestartDialog'
 import { InboxView, type LaunchOptions, type Reveal } from './components/InboxView'
-import { LaunchControls } from './components/LaunchControls'
+import { LaunchControls, type LaunchPlace } from './components/LaunchControls'
 import { QuitDialog } from './components/QuitDialog'
 import type { SearchFieldProps } from './components/SearchField'
 import type { SettingsSection } from './components/SettingsView'
@@ -1138,9 +1138,10 @@ export function App() {
     terminal: config.settings?.terminal ?? null,
   }
 
-  // launchFor is the launch control for a worktree's item, when the inbox lists it: it
-  // launches in the item's worktree, which resumes it.
-  const launchFor = (linked: LinkedItem) => {
+  // launchFor is the launch control for a worktree's item, when the inbox lists it: the
+  // row's verb, placed in the row's cells (place), which launches in the item's worktree
+  // and so resumes it.
+  const launchFor = (linked: LinkedItem, place: LaunchPlace) => {
     const target = `${linked.owner}/${linked.name}`.toLowerCase()
     const found = config.items.find(
       (i) => i.kind === linked.kind && i.number === linked.number && i.repo.toLowerCase() === target,
@@ -1163,6 +1164,9 @@ export function App() {
         onSettingsSaved={launch.onSettingsSaved}
         initial={{ worktree: true }}
         running={runningSession(sessionsOf(agentSessions.byItem, found))}
+        variant="row"
+        boxClass={place.boxClass}
+        outcomeClass={place.outcomeClass}
       />
     )
   }
@@ -1419,16 +1423,23 @@ export function App() {
                       {nav.visited.has('worktrees') && (
                         <Activity mode={mode('worktrees')}>
                           <Suspense fallback={<PageLoading />}>
-                            <WorktreesView
-                              reloadKey={sweeps.seq}
-                              onSnapshot={sweeps.listed}
-                              focusHistory={nav.historyFocus}
-                              agentName={(id) => agentName(config.agents, id)}
-                              launchFor={launchFor}
-                              branchRules={config.settings?.branches}
-                              onSummary={reportChange}
-                              query={worktreesQuery}
-                            />
+                            <div className="h-full">
+                              <WorktreesView
+                                reloadKey={sweeps.seq}
+                                onSnapshot={sweeps.listed}
+                                focusHistory={nav.historyFocus}
+                                agentName={(id) => agentName(config.agents, id)}
+                                launchFor={launchFor}
+                                branchRules={config.settings?.branches}
+                                onSummary={reportChange}
+                                query={worktreesQuery}
+                                onQuery={(query) => {
+                                  go({ type: 'search', view: 'worktrees', query })
+                                }}
+                                sessions={agentSessions.snapshot}
+                                inboxItems={config.items}
+                              />
+                            </div>
                           </Suspense>
                         </Activity>
                       )}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { shellQuoted, shortCommit } from './git'
+import { homeWord, shellQuoted, shortCommit } from './git'
 
 describe('git', () => {
   it('shortens a commit as git and GitHub do', () => {
@@ -15,5 +15,17 @@ describe('git', () => {
     expect(shellQuoted("it's")).toBe(`'it'\\''s'`)
     expect(shellQuoted('$HOME')).toBe(`'$HOME'`)
     expect(shellQuoted('')).toBe(`''`)
+  })
+
+  it.each([
+    ['~/projects/example-repo', '~/projects/example-repo'],
+    ['~/projects/My Repo/pr-7', `~/'projects/My Repo/pr-7'`],
+    ["~/it's here", `~/'it'\\''s here'`],
+    ['/srv/clones/a b', `'/srv/clones/a b'`],
+    ['/srv/clones/example-repo', '/srv/clones/example-repo'],
+    ['~', `'~'`],
+    ['', `''`],
+  ])('keeps the leading ~/ of %j outside the quotes, so the shell expands it', (path, want) => {
+    expect(homeWord(path)).toBe(want)
   })
 })

@@ -1939,7 +1939,7 @@ matches item 123, and a bare `123` matches it too.
 |---|---|
 | Inbox | `is:pr`, `is:issue`, `is:draft`, `is:pinned` (pinned itself, or with its repository or org), `is:conflict`, `is:pushed` (pushed since you requested changes) (`is:open` matches everything); `repo:`, `org:`, `author:` (with `@me` for you), `label:`, `status:` (project status), `project:`; `checks:failing`, `checks:awaiting` (workflow runs held for a maintainer's approval), `checks:passing`, `checks:pending`; `review:approved`, `review:changes_requested`, `review:required` |
 | Notifications | `repo:` (`owner/name`), `type:` (on the Nilbox tab `review`, `assigned`, `snooze`, `release`, `run`; on the GitHub tab `pr`, `issue`, `release`, `actions`, `other`), `is:unread`, `is:read`; on the GitHub tab also `is:open`, `is:merged`, `is:closed` (the item's state), and `reason:` (GitHub's reason, such as `mention` or `review_requested`) |
-| Worktrees | `repo:`, `branch:`, `agent:`; `is:dirty`, `is:locked`, `is:in-use`, `is:finished`, `is:review` (needs a look), `is:pr`, `is:issue`, `is:open`, `is:merged`, `is:closed` |
+| Worktrees | `repo:`, `branch:`, `agent:`; `is:dirty`, `is:unpushed` (commits not on GitHub), `is:locked`, `is:in-use`, `is:finished`, `is:review` (needs a look), `is:pr`, `is:issue`, `is:open`, `is:merged`, `is:closed` |
 | Settings | Words only |
 
 **What the inbox searches.** An item's title, its repository as `owner/name`, its number, its
@@ -1972,10 +1972,11 @@ as **Mentioned**), and an entry's detail. The suggestions are the tab's own. Whe
 matches, the list says so and offers **Clear the filter**. **Cleared** isn't filtered.
 
 **The Worktrees view while filtered.** A clone with no matching worktree hides. A clone whose
-name matches shows all its worktrees; any other shows only the matching ones, and its header
-says **3 of 7 worktrees**. A clone or worktree showing an error stays in sight whatever the
-filter. When nothing matches, the top of the view says so. **Clean up finished**, **Remove all
-clean**, and **Recently cleaned up** aren't filtered: their confirmation lists everything they
+name matches shows all its worktrees; any other shows only the matching ones, and its heading
+says **3 of 7** where it counts its lanes, and stays unfolded. A clone or worktree showing an
+error stays in sight whatever the filter. When nothing matches, the top of the view says so and
+offers **Clear the filter**. A [chip](#the-worktrees-view) writes its own `is:` filter. The
+cleanups and **Recently cleaned up** aren't filtered: their confirmation lists everything they
 would take.
 
 **Find a setting.** The sidebar narrows to the sections with a matching setting, each with how
@@ -2261,11 +2262,12 @@ reader, and **✦ Codex** when the item's settings choose Codex) opens the launc
 item's [resolved launch settings](#launch-defaults), so you see what the session would start
 with, and can change any of it, before anything starts; the menu's **Open in Claude** starts
 it. Every launch button does the same: the review and issue sheets' **Open in Claude**, and a
-worktree's in the Worktrees view. The arrow beside it, named for the prompt and profile those settings choose (**Launch
-options: Review · default**), opens the same launch menu, as does **✦ Claude…** in the card's
-details. On a card that names a pull request's situation, the button opens the launch menu on
-the prompt your launch defaults choose for it (**Open in Claude: Fix checks** to a screen
-reader), with the settings that prompt brings; the card asks for nothing more until its
+worktree row's in the Worktrees view, which has no arrow. The arrow beside the others, named
+for the prompt and profile those settings choose (**Launch options: Review · default**), opens
+the same launch menu, as does **✦ Claude…** in the card's details. On a card that names a pull
+request's situation, the button opens the launch menu on the prompt your launch defaults
+choose for it (**Open in Claude: Fix checks** to a screen reader), with the settings that
+prompt brings; the card asks for nothing more until its
 launch menu opens, which then works out that prompt's settings once and opens on it, and **Save these choices as the default for** saves a prompt
 chosen there as the prompt for that situation, not for every pull request:
 
@@ -3645,8 +3647,9 @@ repository, leaves the start not ready.
   unattended note stays in the conversation.
 - **Where it shows.** The item's session pill and panel follow the run, with **Watch**,
   **Stop**, and **Take over** in place of Show in terminal and Resume, and its launch button
-  says **Watch**. The Worktrees view marks its worktree *made by ⚡ <routine>* and *in use ·
-  Claude in the background*, so the cleanup never removes it; a click's launch there is held
+  says **Watch**. The Worktrees view's row for its worktree says *⚡ <routine> · in the
+  background* where its agent goes, and its drawer that the routine made it, so the cleanup
+  never removes it; a click's launch there is held
   back, never started beside it: the dialog offers **Watch it** and **Take over** instead.
 - **Quitting** while agents work asks first, as for any run ([Runs](#runs)), naming them
   (*2 agents are still working.*). **Stop and quit** stops each (the agent's own Control-C
@@ -5277,8 +5280,9 @@ its terminal; ended, **✦ Findings · 2m**, which opens the item's sheet, where
 verdict shows what it last said; failed today, the next step is **What happened**, which opens
 the sessions, and a day later the card is back to its own next step, with a fresh launch
 beside it. While an agent works, the card's story says **Claude is on it**, and your own
-next step stays beside it, quiet. The [Worktrees view](#the-worktrees-view) shows the session
-as a tag beside the worktree's, such as **Claude · needs approval · 2m**.
+next step stays beside it, quiet. The [Worktrees view](#the-worktrees-view) shows how the
+session stands on its worktree's row, where its agent goes, such as **Claude 2.1.328 · needs
+approval · 2m**.
 
 | State | What it means |
 |---|---|
@@ -5395,8 +5399,9 @@ and nothing is written into an agent's config or conversation beyond the launch'
 `--session-id`. Nothing about sessions leaves your Mac.
 
 **One session per folder, unless you say so.** While a session is still running on an item, its
-card's button, and its worktree's in the Worktrees view, is **Show in terminal** rather than
-**Open in Claude**: getting back to it is the likely reason to click. Starting another from the
+card's button is **Show in terminal** rather than **Open in Claude**: getting back to it is the
+likely reason to click. Its worktree's row in the Worktrees view offers no launch while
+something runs in the worktree. Starting another from the
 launch options asks first when one is still running in the same folder (the item's worktree, or
 its clone, whichever item that session was started on, since items share their clone): two
 agents working in one folder can undo each other's changes and wait on each other's git
@@ -5431,21 +5436,76 @@ characters.
 
 The **Worktrees** tab lists every linked worktree of every git repository in the [repository
 locations](#repository-locations), including worktrees from sessions started outside the app. It
-names a location it couldn't read, such as a drive that isn't plugged in. It loads when you open
-it or click **Refresh**, and again after the automatic cleanup, not on the inbox's five-minute
-timer. While any listing runs, the toolbar says how far it has got: finding the clones, listing
-each clone's worktrees ("3 of 12 clones", with a bar), checking each worktree, and asking GitHub
-about their pull requests and issues. Otherwise it says when the list was last checked. It runs
-git only in the clones whose git folder registers a linked worktree or can't be read, and in
-those an app record names; any other clone has nothing to list, and is only looked at. Each
-row shows the repository,
-the path, the branch (or "detached"), clean or dirty with the count of uncommitted files
-(untracked files included), how many commits are not on GitHub, whether it is locked and by
-whom, whether its directory is gone, the age of its last commit, and who made it: **made by
-Nilbox**, or **made by Claude (legacy)** for a worktree under a clone's `.claude/worktrees/`. A
-worktree the app recorded also shows the agent of its latest session and when it started, and a
-row whose item is still in the inbox offers **Open in Claude** or **Open in Codex**, which
-opens the launch options and, from their **Open**, resumes it, and **Copy path**.
+loads when you open it or click **Check again**, and again after the automatic cleanup, not on
+the inbox's five-minute timer. It runs git only in the clones whose git folder registers a
+linked worktree or can't be read, and in those an app record names; any other clone has nothing
+to list, and is only looked at.
+
+**The head.** The top of the tab stays in place while the clones scroll under it. Its first
+line says how many worktrees there are, in how many clones, and when they were checked, as in
+**12 worktrees in 4 clones · checked 2m ago**. While a listing runs, its progress takes that
+place: finding the clones, listing each clone's worktrees ("3 of 12 clones", with a bar),
+checking each worktree, and asking GitHub about their pull requests and issues. While a change
+runs, the same place says what it is doing, as in **Removing example-repo/pr-7…**. Neither moves
+the rows. Then come **Check again** and the cleanups: **Clean up N finished** while any worktree
+is finished, with **⌄** beside it for **Remove N clean worktrees…** and **Clean up merged
+branches…**, or **Clean up ⌄** alone while none is, its menu saying why a cleanup has nothing to
+take.
+
+**Chips.** Under the title, a chip counts the worktrees in each state any of them is in:
+**running**, **uncommitted**, **not on GitHub**, **needs a look**, and **ready to clean up**. A
+chip writes its filter in the toolbar (`is:in-use`, `is:dirty`, `is:unpushed`, `is:review`,
+`is:finished`), and a second click clears it. Under the chips are the notes a listing carries: a
+location it couldn't read, such as a drive that isn't plugged in, a system whose running
+processes can't be listed, and GitHub that couldn't be reached. Last comes a one-line card that
+says what the latest change did.
+
+**Clones.** Each clone has a heading that stays at the top while its rows scroll by: its owner
+and name, its path, and its main checkout as a note, such as **on main · clean**, amber with the
+count while it holds uncommitted files. On the right it counts its worktrees that run, are at
+risk, are ready, and have a problem, and offers **Prune** when git still lists worktrees whose
+folders are gone. Clicking the heading folds the clone's rows away. The main checkout isn't a
+row of its own. Every clone shares one set of columns, so the rows line up down the whole page.
+
+**Rows.** Each linked worktree is one line, in the order of what needs you: something runs in
+it, it needs a look, it holds work that isn't on GitHub, it's open, it's ready to clean up, then
+a problem (its folder is gone, git couldn't read it, or it is locked by hand), each group with
+the newest commit first. An edge in the group's color marks it. The line shows the worktree's
+state, its branch, the pull request or issue it was made for (the number opens it on GitHub,
+and while the inbox lists the item, a dot for its checks and a draft tag), its work (the count
+of uncommitted files, and ↑ the commits not on GitHub), what works in it (an agent and how its
+session stands, a routine's agent in the background, another program by its pid, or, muted,
+the last session the app launched there), and the age of its last commit. Then comes at most
+one verb: **Clean up** for a finished worktree, **Unlock** for a lock an ended session left, or,
+on an open item the inbox lists, **Open in Claude** or **Open in Codex**, which opens the launch
+options and, from their **Open**, resumes it. Last come **›_**, which opens the worktree in the
+terminal your launches open in, **⋯**, and the chevron.
+
+**The drawer.** A click on a row, or on its chevron, unfolds its drawer; from the keyboard, →
+unfolds it, ← folds it, and ↑ and ↓ move between the rows. Several drawers can be open at once,
+and they stay open across listings. On top, one sentence says what removing the worktree would
+cost: green when nothing would be lost, amber when work would be or is only here, blue while
+something runs in it, and red for a real problem, with the way out (for a lock set by hand, the
+`git worktree unlock` command to copy). Under it are three columns. **Changes** lists the
+uncommitted files by their status letters, with **Copy list**. **Not on GitHub** lists the
+commits that aren't, then the branch, its head, and how far it is behind `origin`'s default
+branch. **About** says what the worktree is for, the session in it, its launches, who made it
+(Nilbox, a routine, Claude Code under a clone's `.claude/worktrees/`, or someone outside the
+app) and when, its path, its lock, and which branches a removal would delete. The first 12
+files show at once, from the listing; the drawer reads the rest from local git as it opens,
+with the commits and the base, once per listing (a read that failed is tried again when the
+drawer opens again), and lists at most 200 files and 200 commits (the rest are in Terminal, in
+`git status` and `git log`). The drawer's footer has **Open in Terminal**, **Reveal in
+Finder**, and **Copy path**, then **Clean up** or **Unlock**, and **Remove…**, or **Force
+remove…** for a worktree with uncommitted files, as the drawer last read them, each saying why
+when it can't run.
+
+**The ⋯ menu** holds everything a row offers: **Open in Terminal**, **Reveal in Finder**, **Copy
+path**, **Copy branch**, the item on GitHub, **Unlock** for a lock an ended session left,
+**Prune** for a folder that's gone, then **Clean up…**, **Remove…**, and **Force remove…**, in
+red. An item that can't run now says why under it. For a folder that's gone, or one git
+couldn't read, **Open in Terminal** and **Reveal in Finder** are disabled in ⋯, which says why,
+and the row and the drawer leave them out.
 
 **Keeping track.** The app records each worktree it makes or adopts, and checks every record
 against `git worktree list` each time it lists or sweeps:
@@ -5458,14 +5518,15 @@ against `git worktree list` each time it lists or sweeps:
   recorded once GitHub links it to its item.
 
 **In use.** A worktree is **in use** while a running process works inside it, whichever agent or
-tool it is, and whether a terminal or an editor runs it, as in **in use · codex (pid 4242)**. A
-session the app [follows](#following-a-session) is named by its agent, as in **Claude (pid
-63296)**, where the program's own name would be Claude Code's version, and a process a session
-started there, such as the `caffeinate` that keeps the Mac awake for it, is folded into it. The
-app lists the running processes' working folders once per listing or sweep, with `lsof` on macOS
-and `/proc` on Linux, leaving out its own git commands, and a coding agent's background service:
-the agent's own program running under launchd (or init or systemd) rather than a terminal or an
-app, with everything under it. Codex's app-server daemon is one: Codex starts it with its first
+tool it is, and whether a terminal or an editor runs it, as in **codex · pid 4242**. A coding
+agent's process is named for its agent, as in **Claude 2.1.328 · pid 63296**, where the
+program's own name would be Claude Code's version; while the app [follows](#following-a-session)
+its session there, the row says how the session stands instead, as in **Claude 2.1.328 · needs
+approval · 5m**. A process a session started there, such as the `caffeinate` that keeps the Mac
+awake for it, is folded into it. The app lists the running processes' working folders once per
+listing or sweep, with `lsof` on macOS and `/proc` on Linux, leaving out its own git commands,
+and a coding agent's background service: the agent's own program running under launchd (or init
+or systemd) rather than a terminal or an app, with everything under it. Codex's app-server daemon is one: Codex starts it with its first
 session and keeps it after you quit, and it keeps that session's folder as its working
 directory, so it would otherwise hold that worktree in use until you restart. Where the processes
 can't be listed, the view says so; the automatic cleanup then removes nothing, since it never
@@ -5477,7 +5538,7 @@ its own worktrees counts too.
 the app's record, or otherwise by its name (`pr-<n>` or `issue-<n>` in the app's or Claude Code's
 worktree folder) or its own branch, and the clone's GitHub remotes. One GraphQL request, for one
 point, asks GitHub whether each is open, merged, or closed, and the row links to it. Each linked
-worktree gets a stage:
+worktree gets a stage, which places its row (**Rows**, above):
 
 - **in use**: a session is running in it.
 - **ready to clean up**: its pull request merged or its issue closed, and removing it loses
@@ -5495,35 +5556,42 @@ so a name or branch that only looks like an item's can never cost work. If GitHu
 reached, the view says so and lists the worktrees without their items.
 
 **Actions.** Each row offers only what is allowed, and every removal checks again first that no
-session runs in the worktree. Each removal and cleanup asks first, in a dialog that says what
-it does to the folder and lists a box for each [branch](#branches) that could go with it,
-ticked as **Settings → Worktrees** says; untick any to keep it. When a change finishes, a
-toast says what it did (or why it failed), with **View** if another view is open by then, and
-a card at the top of the Worktrees view sums it up, with notes on anything left, until you
-dismiss it or make the next change.
+session runs in the worktree. Each removal and cleanup asks first, in a dialog that starts with
+the drawer's sentence on what removing the worktree would cost, says what it does to the
+folder, and lists a box for each [branch](#branches) that could go with it, ticked as
+**Settings → Worktrees** says; untick any to keep it. While a change runs, each worktree it
+takes dims and says what is happening; one a bulk change left in place keeps its color, with
+why on a line under it. When a change finishes, a toast says what it did (or why it failed),
+with **View** if another view is open by then, and a one-line card at the top of the Worktrees
+view sums it up, with notes on anything left under it, until you dismiss it, click **Check
+again**, or make the next change.
 
 - **Clean up** removes a finished worktree. It checks the worktree again first, releases the
   lock of a Claude Code session that has ended, and runs `git worktree remove` without
-  `--force`. **Clean up finished** does the same for every finished worktree: its dialog lists
-  each one, ticked, with its branches under it, and an unticked worktree is left alone.
+  `--force`. **Clean up N finished** does the same for every finished worktree: its dialog lists
+  each one, ticked, with what removing it would cost in a line and its branches under it, and
+  an unticked worktree is left alone.
 - **Unlock** appears when a Claude Code session's lock outlived the session (you closed the
   terminal, say). The lock records the session's process and start time. A lock counts as
   stale only when no process has that ID, or the process that has it now started after the
   session did (the ID was reused, after a restart for instance). Anything in doubt counts as a
-  running session. A lock you set yourself with `git worktree lock` is never released: the row
-  shows the `git worktree unlock` command to run instead.
-- **Remove** checks the worktree again and runs `git worktree remove` without `--force`. Git
-  refuses a dirty or locked worktree, and the row shows why. This works for an item still open,
+  running session. A lock you set yourself with `git worktree lock` is never released: the
+  drawer shows the `git worktree unlock` command to copy and run instead.
+- **Remove…** checks the worktree again and runs `git worktree remove` without `--force`. Git
+  refuses a dirty or locked worktree, and the row says why. This works for an item still open,
   such as a session that only answered a question; a branch kept with commits that aren't on
-  GitHub is picked up again by the item's next launch. **Remove all clean** removes every
-  clean, unlocked worktree no session runs in, listed in its dialog the same way as **Clean up
-  finished**.
-- **Force remove** is offered only on dirty, unlocked rows no session runs in, and only while
-  the running processes can be listed. It runs `git worktree remove --force` after a
-  confirmation that shows the number of uncommitted files.
-- **Prune** appears for a repository with entries whose directory is gone, and runs
-  `git worktree prune`.
-- The main worktree is listed for context and is never removable.
+  GitHub is picked up again by the item's next launch. **Remove N clean worktrees…** removes
+  every clean, unlocked worktree no session runs in, listed in its dialog the same way as
+  **Clean up N finished**.
+- **Force remove…** is offered only on dirty, unlocked worktrees no session runs in, and only
+  while the running processes can be listed. It runs `git worktree remove --force` after a
+  confirmation that lists the uncommitted files it discards (as the drawer lists them, read
+  from local git once per listing, at most 200) and the commits not on GitHub (at most 200
+  too), which stay in the clone on the worktree's branch, or, for a detached worktree, which no
+  branch holds, are lost with it.
+- **Prune** appears on the heading of a clone with entries whose folder is gone, and runs
+  `git worktree prune`, which touches no worktree that exists and no branch.
+- The main checkout shows only as its clone's note, and is never removable.
 
 **Cleaning up after a merge.** A worktree stays after its session ends, so the next launch on the
 item resumes it, and no agent removes one whose pull request merges later. So every five minutes
@@ -5538,10 +5606,13 @@ running git, and marks the tab while some worktrees are done on GitHub but still
 Removing a worktree also removes the files git ignores in it, such as build output.
 
 **Recently cleaned up.** A toast is easy to miss, so every cleanup, by hand or automatic, is
-also recorded, and the bottom of the Worktrees view lists the newest five (**Show more** for
-the rest). Each entry names the repository and worktree, links the pull request or issue it
-was for, says whether you or the automatic cleanup removed it, which branch went with it, the
-commit it was at (on GitHub, so `git fetch` and `git worktree add` bring it back), and when.
+also recorded, and the bottom of the Worktrees view lists the newest five (**Show N more** for
+the rest), one line each. Each line names the repository and worktree, the pull request or issue
+it was for, whether you or the automatic cleanup removed it, which branch went with it, the
+commit it was at, which is on GitHub, and when. Pointing at a line shows its actions: **Copy
+restore command** copies the `git worktree add` that brings the worktree back at that commit,
+on the branch that went with it when one did (for a pull request whose head git has pruned
+since, `git fetch origin pull/<n>/head` fetches it first), and the item opens on GitHub.
 The list survives restarts and keeps the newest 100; **Clear** empties it and removes nothing
 else.
 

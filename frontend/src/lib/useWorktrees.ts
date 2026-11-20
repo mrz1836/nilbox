@@ -24,6 +24,7 @@ import {
   type WorktreesSnapshot,
 } from '../platform'
 import { counted } from './format'
+import { sentence } from './update'
 import { useMutation } from './useMutation'
 import { useQuery } from './useQuery'
 import { branchSummary, bulkSummary, failedSummary, shortName, singleSummary, type Summary } from './worktreeSummary'
@@ -96,15 +97,18 @@ export interface Working {
   repo: string
   // listing reports the change done, and the list being read again to show it.
   listing: boolean
-  // left are the worktrees a bulk action took and left in place, as it reported them.
-  left: readonly string[]
+  // left are the worktrees a bulk action took and left in place, by path, each with why,
+  // as it reported it ('' when it gave no reason).
+  left: ReadonlyMap<string, string>
 }
 
 // RowWork is what a worktree shows of a change taking it: under way, done, or left in
-// place by a bulk action, with the words to say so.
+// place by a bulk action, with the words to say so, and for one left in place, the
+// sentence that says why, or ''.
 export interface RowWork {
   state: 'doing' | 'done' | 'left'
   text: string
+  reason: string
 }
 
 // WorktreeErrors looks up a single action's failure, which shows inline under the
@@ -122,6 +126,9 @@ export interface WorktreesState {
   snapshot: WorktreesSnapshot | null
   // repos are the listed repositories, none until the first listing arrives.
   repos: readonly WorktreeRepo[]
+  // listing numbers the listings that have arrived, 0 before the first. It changes with
+  // each, so what was read for one listing (useWorktreeDetails) is dropped at the next.
+  listing: number
   // now is when the listing arrived, or when the view opened until then; the ages are
   // measured against it.
   now: Date
@@ -219,7 +226,7 @@ type Action =
   | { type: 'refreshing' }
   | { type: 'refreshed' }
   | { type: 'working'; work: Work }
-  | { type: 'worked'; left: readonly string[] }
+  | { type: 'worked'; left: ReadonlyMap<string, string> }
   | { type: 'idle' }
 
 const initialState: State = {
@@ -234,6 +241,9 @@ const initialState: State = {
 
 // Work is a change about to start, as the view will show it.
 type Work = Omit<Working, 'listing' | 'left'>
+
+// noneLeft is a change that left nothing in place, shared so it stays the same object.
+const noneLeft: ReadonlyMap<string, string> = new Map()
 
 // workWords are what each kind of change says it is doing, and has done.
 const workWords: Readonly<Record<WorkKind, { doing: string; done: string }>> = {
@@ -255,16 +265,24 @@ function work(kind: WorkKind, what: string, paths: readonly string[], repo = '')
 }
 
 // rowWork is what the worktree at path shows of working, or null when it doesn't take it.
+// One left in place says why, as the action reported it: "Left in place: the worktree
+// changed since it was checked; refresh and try again."
 function rowWork(working: Working | null, path: string): RowWork | null {
   if (working === null || !working.paths.includes(path)) {
     return null
   }
 
   if (!working.listing) {
-    return { state: 'doing', text: working.doing }
+    return { state: 'doing', text: working.doing, reason: '' }
   }
 
-  return working.left.includes(path) ? { state: 'left', text: 'Left in place' } : { state: 'done', text: working.done }
+  const left = working.left.get(path)
+
+  if (left === undefined) {
+    return { state: 'done', text: working.done, reason: '' }
+  }
+
+  return { state: 'left', text: 'Left in place', reason: left === '' ? '' : sentence(`Left in place: ${left}`) }
 }
 
 // reducer applies an action to the state. Every change, bulk action, and refresh starts
@@ -290,7 +308,7 @@ function reducer(state: State, action: Action): State {
     case 'refreshed':
       return { ...state, refreshing: false }
     case 'working':
-      return { ...state, working: { ...action.work, listing: false, left: [] } }
+      return { ...state, working: { ...action.work, listing: false, left: noneLeft } }
     case 'worked':
       return state.working === null
         ? state
@@ -344,6 +362,17 @@ export function useWorktrees({
   // stay put.
   const focused = useRef(false)
   const snapshot = listing.data?.snapshot ?? null
+  // arrived is the latest listing counted, and how many have arrived with it. Each answer
+  // is a new object, so a new listing is a new answer; a listing that fails keeps the last.
+  // Setting state while rendering, as React suggests for state that follows a changed
+  // value, counts it without an extra render.
+  const [arrived, setArrived] = useState({ data: listing.data, n: 0 })
+
+  if (arrived.data !== listing.data) {
+    setArrived({ data: listing.data, n: arrived.n + 1 })
+  }
+
+  const listings = arrived.data === listing.data ? arrived.n : arrived.n + 1
   const repos = snapshot?.repos ?? []
   const history = cleanups.data ?? null
   const loading = state.refreshing || (listing.data === undefined && listing.error === '')
@@ -435,7 +464,7 @@ export function useWorktrees({
     if (result.ok) {
       dispatch({ type: 'changed', notice: result.data })
       onSummary?.(result.data)
-      dispatch({ type: 'worked', left: [] })
+      dispatch({ type: 'worked', left: noneLeft })
       await reload()
     } else {
       dispatch({ type: 'failed', failure: { scope, path, message: result.error } })
@@ -473,7 +502,7 @@ export function useWorktrees({
     if (result.ok) {
       dispatch({ type: 'branchesDone', results: result.data })
       onSummary?.(branchSummary(result.data))
-      dispatch({ type: 'worked', left: [] })
+      dispatch({ type: 'worked', left: noneLeft })
       await reload()
     } else {
       onSummary?.(failedSummary('Couldn’t delete the branches', result.error))
@@ -499,7 +528,7 @@ export function useWorktrees({
     if (result.ok) {
       dispatch({ type: 'bulkDone', bulk: { results: result.data, noun, verb } })
       onSummary?.(bulkSummary(result.data, noun, verb))
-      dispatch({ type: 'worked', left: result.data.filter((r) => !r.removed).map((r) => r.path) })
+      dispatch({ type: 'worked', left: new Map(result.data.filter((r) => !r.removed).map((r) => [r.path, r.reason])) })
       await reload()
     } else {
       onSummary?.(failedSummary(failed, result.error))
@@ -522,6 +551,7 @@ export function useWorktrees({
   return {
     snapshot,
     repos,
+    listing: listings,
     now: listing.data?.at ?? opened,
     history,
     historyRef,

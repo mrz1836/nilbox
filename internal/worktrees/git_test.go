@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -131,6 +134,27 @@ func TestGitArgvUsesDashC(t *testing.T) {
 			want:   append(gitArgv(repoDir, "rev-list --count --ignore-missing", headSHA, "--not --remotes"), otherSHA),
 		},
 		{
+			name:   "the commits not on GitHub are listed in the worktree",
+			stdout: headSHA + " 1700000000 Fix the cache\n",
+			call:   func(g git) error { _, _, err := g.unpushedCommits(ctx, treePath, ""); return err },
+			want: append(gitArgv(treePath, "log --no-show-signature --no-mailmap --max-count=200"), "--format=%H %ct %s",
+				"HEAD", "--not", "--remotes"),
+		},
+		{
+			name:   "the commits not on GitHub past the commit fetched from GitHub",
+			stdout: headSHA + " 1700000000 Fix the cache\n",
+			call:   func(g git) error { _, _, err := g.unpushedCommits(ctx, treePath, otherSHA); return err },
+			want: append(gitArgv(treePath, "log --no-show-signature --no-mailmap --max-count=200"), "--format=%H %ct %s",
+				"--ignore-missing", "HEAD", "--not", "--remotes", otherSHA),
+		},
+		{
+			name:   "the commits not on GitHub ignore a fetched head that is no commit",
+			stdout: headSHA + " 1700000000 Fix the cache\n",
+			call:   func(g git) error { _, _, err := g.unpushedCommits(ctx, treePath, "main"); return err },
+			want: append(gitArgv(treePath, "log --no-show-signature --no-mailmap --max-count=200"), "--format=%H %ct %s",
+				"HEAD", "--not", "--remotes"),
+		},
+		{
 			name: "unlock",
 			call: func(g git) error { _, err := g.unlock(ctx, repoDir, treePath); return err },
 			want: gitArgv(repoDir, "worktree unlock", treePath),
@@ -205,6 +229,22 @@ func TestGitRejectsCommandsOutsideAllowlist(t *testing.T) {
 		{"log", "--no-walk=unsorted", "--no-show-signature", "--no-mailmap", "--format=%H %ct", strings.Repeat("0", 40)},
 		{"log", "--no-walk=unsorted", "--format=%H %an", headSHA},
 		{"log", "--no-walk", "--format=%H %ct", headSHA},
+		append(unpushedLogCmd(), "main", "--not", "--remotes"),
+		append(unpushedLogCmd(), headSHA, "--not", "--remotes"),
+		append(unpushedLogCmd(), "HEAD", "--not", "--all"),
+		append(unpushedLogCmd(), "HEAD", "--remotes", "--not"),
+		append(unpushedLogCmd(), "HEAD", "--not", "--remotes", otherSHA),
+		append(unpushedLogCmd(), "HEAD", "--not", "--remotes", "--not", otherSHA),
+		append(unpushedLogCmd(), "HEAD", "--not", "--remotes", "-p"),
+		append(unpushedLogCmd(), "--ignore-missing", "HEAD", "--not", "--remotes", "main"),
+		append(unpushedLogCmd(), "--ignore-missing", "HEAD", "--not", "--remotes", strings.Repeat("0", 40)),
+		append(unpushedLogCmd(), "--ignore-missing", "main", "--not", "--remotes", otherSHA),
+		append(unpushedLogCmd(), "--ignore-missing", "HEAD", "--not", "--not", otherSHA),
+		append(unpushedLogCmd(), "--ignore-missing", "HEAD", "--not", "--remotes", otherSHA, headSHA),
+		append(argv("log --no-show-signature --no-mailmap --max-count=200"), "--format=%H %ct %s %b", "HEAD", "--not", "--remotes"),
+		append(argv("log --no-show-signature --no-mailmap --max-count=2000"), "--format=%H %ct %s", "HEAD", "--not", "--remotes"),
+		append(argv("log --no-mailmap --max-count=200"), "--format=%H %ct %s", "HEAD", "--not", "--remotes", "--all"),
+		append(argv("log --max-count=200"), "--format=%H %ct %s", "HEAD", "--not", "--remotes"),
 		argv("worktree list"),
 		argv("checkout main"),
 		argv("status"),
@@ -237,11 +277,36 @@ func TestGitAllowsDeletingAnyWellFormedBranchAtACommit(t *testing.T) {
 
 	for _, args := range [][]string{
 		branchListArgs(), remoteHeadsArgs(), branchUnpushedArgs(headSHA), ancestorArgs(headSHA, otherSHA),
-		unpushedPastArgs(headRef, otherSHA), unpushedPastArgs(headSHA, otherSHA),
+		unpushedPastArgs(headRef, otherSHA), unpushedPastArgs(headSHA, otherSHA), unpushedLogArgs(),
+		unpushedPastLogArgs(otherSHA),
 	} {
 		_, _, err := git{run: &testutil.Runner{}, bin: gitBin}.do(t.Context(), repoDir, args...)
 		require.NoError(t, err, args)
 	}
+}
+
+func TestTheCommitsNotOnGitHubAreListedAsARead(t *testing.T) {
+	t.Parallel()
+
+	for _, args := range [][]string{unpushedLogArgs(), unpushedPastLogArgs(otherSHA)} {
+		assert.True(t, readOnly(args), args)
+	}
+
+	readEnv := []string{"GIT_NO_LAZY_FETCH=1"}
+	guard := failingGuard{env: func() []string { return readEnv }, err: errFakeStart, calls: &atomic.Int32{}}
+
+	var envs [][]string
+
+	g := git{bin: gitPath, guard: guard, with: func(env []string) execpath.Runner {
+		envs = append(envs, env)
+
+		return &testutil.Runner{}
+	}}
+
+	_, _, err := g.unpushedCommits(t.Context(), treePath, otherSHA)
+	require.NoError(t, err)
+	assert.Equal(t, [][]string{readEnv}, envs, "it runs with gitread's read environment")
+	assert.Zero(t, guard.calls.Load(), "and works out no setup of the clone's own config, as a status would")
 }
 
 func TestGitBranchOutputParsing(t *testing.T) {
@@ -316,6 +381,29 @@ func TestGitOutputParsing(t *testing.T) {
 		require.ErrorIs(t, err, errFakeStart)
 	})
 
+	t.Run("the first changed files", func(t *testing.T) {
+		t.Parallel()
+
+		run := &testutil.Runner{Stdout: "?? z\x00 M f\x00R  new\x00old\x00"}
+		count, files, _, err := git{run: run, bin: gitPath}.firstChanged(ctx, treePath, 2)
+		require.NoError(t, err)
+		assert.Equal(t, 3, count)
+		assert.Equal(t, []FileEntry{{Code: " M", Path: "f"}, {Code: "R ", Path: "new"}}, files, "by path")
+		assert.Equal(t, [][]string{gitArgv(treePath, "status --porcelain=v1 -z --untracked-files=all")}, run.Calls(),
+			"the one status the count reads")
+	})
+
+	t.Run("the first changed files failure returns stderr", func(t *testing.T) {
+		t.Parallel()
+
+		run := &testutil.Runner{Stderr: "fatal: unreadable index", Err: exitError{code: 128}}
+		count, files, stderr, err := git{run: run, bin: gitPath}.firstChanged(ctx, treePath, 12)
+		require.Error(t, err)
+		assert.Zero(t, count)
+		assert.Nil(t, files)
+		assert.Equal(t, "fatal: unreadable index", string(stderr))
+	})
+
 	t.Run("last commit", func(t *testing.T) {
 		t.Parallel()
 
@@ -387,6 +475,45 @@ func TestGitOutputParsing(t *testing.T) {
 		}
 	})
 
+	t.Run("the commits not on GitHub", func(t *testing.T) {
+		t.Parallel()
+
+		run := &testutil.Runner{Stdout: headSHA + " 1700000100 Fix the cache: keep  two spaces\n\n" + otherSHA + " 1700000000 \n"}
+		commits, _, err := git{run: run, bin: gitBin}.unpushedCommits(ctx, treePath, "")
+		require.NoError(t, err)
+		assert.Equal(t, []UnpushedCommit{
+			{OID: headSHA, Unix: 1700000100, Subject: "Fix the cache: keep  two spaces"},
+			{OID: otherSHA, Unix: 1700000000},
+		}, commits, "in git's order, newest first, a subject's words as they are, an empty one, and no blank line")
+
+		commits, _, err = git{run: &testutil.Runner{}, bin: gitBin}.unpushedCommits(ctx, treePath, "")
+		require.NoError(t, err)
+		assert.NotNil(t, commits, "none is [], never null")
+		assert.Empty(t, commits)
+	})
+
+	t.Run("the commits not on GitHub with unexpected output", func(t *testing.T) {
+		t.Parallel()
+
+		for _, out := range []string{
+			"commits\n", headSHA + "\n", headSHA + " yesterday Fix\n", "not-a-commit 1700000000 Fix\n",
+			headSHA + " 1700000000 Fix\nsomething else\n",
+		} {
+			run := &testutil.Runner{Stdout: out}
+			_, _, err := git{run: run, bin: gitBin}.unpushedCommits(ctx, treePath, "")
+			require.ErrorIs(t, err, errParseCommits, out)
+		}
+	})
+
+	t.Run("the commits not on GitHub failure returns stderr", func(t *testing.T) {
+		t.Parallel()
+
+		run := &testutil.Runner{Stderr: "fatal: bad revision 'HEAD'", Err: exitError{code: 128}}
+		_, stderr, err := git{run: run, bin: gitBin}.unpushedCommits(ctx, treePath, otherSHA)
+		require.Error(t, err)
+		assert.Equal(t, "fatal: bad revision 'HEAD'", string(stderr))
+	})
+
 	t.Run("unpushed count failure returns stderr", func(t *testing.T) {
 		t.Parallel()
 
@@ -413,28 +540,95 @@ func TestOwnBranchRefs(t *testing.T) {
 	}
 }
 
-func TestCountStatusEntries(t *testing.T) {
+func TestReadStatus(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		out  string
-		want int
+		name  string
+		out   string
+		n     int
+		count int
+		want  []FileEntry
 	}{
-		{name: "clean", out: "", want: 0},
-		{name: "modified and untracked", out: " M f\x00?? g\x00", want: 2},
-		{name: "rename counts its source once", out: "R  new\x00a\x00 M f\x00", want: 2},
-		{name: "copy in the worktree column", out: " C copy\x00orig\x00", want: 1},
-		{name: "staged, deleted, and conflicted", out: "A  a\x00 D b\x00UU c\x00", want: 3},
-		{name: "untracked file with a space", out: "?? with space.txt\x00", want: 1},
+		{name: "clean", out: "", n: 12, want: []FileEntry{}},
+		{name: "modified in the worktree", out: " M f\x00", n: 12, count: 1, want: []FileEntry{{Code: " M", Path: "f"}}},
+		{name: "staged, then modified again", out: "MM f\x00", n: 12, count: 1, want: []FileEntry{{Code: "MM", Path: "f"}}},
+		{name: "untracked", out: "?? g\x00", n: 12, count: 1, want: []FileEntry{{Code: "??", Path: "g"}}},
+		{
+			name: "a rename is its new path, its source no file of its own", out: "R  new\x00old\x00 M f\x00", n: 12,
+			count: 2, want: []FileEntry{{Code: " M", Path: "f"}, {Code: "R ", Path: "new"}},
+		},
+		{
+			name: "a copy in the worktree column", out: " C copy\x00orig\x00?? g\x00", n: 12, count: 2,
+			want: []FileEntry{{Code: " C", Path: "copy"}, {Code: "??", Path: "g"}},
+		},
+		{
+			name: "a rename whose source looks like an entry", out: "RM new\x00?? old\x00", n: 12, count: 1,
+			want: []FileEntry{{Code: "RM", Path: "new"}},
+		},
+		{
+			name: "staged, deleted, and conflicted", out: "UU c\x00 D b\x00A  a\x00", n: 12, count: 3,
+			want: []FileEntry{{Code: "A ", Path: "a"}, {Code: " D", Path: "b"}, {Code: "UU", Path: "c"}},
+		},
+		{
+			name: "paths with spaces and beyond ASCII, unquoted, by their bytes", n: 12, count: 3,
+			out: "?? with space.txt\x00 M docs/café ☕.md\x00?? README.md\x00",
+			want: []FileEntry{
+				{Code: "??", Path: "README.md"}, {Code: " M", Path: "docs/café ☕.md"}, {Code: "??", Path: "with space.txt"},
+			},
+		},
+		{name: "a field too short to be an entry", out: "M\x00\x00 M f", n: 12, count: 1, want: []FileEntry{{Code: " M", Path: "f"}}},
+		{
+			name: "only the first n are kept, every one counted", out: "?? d\x00?? b\x00?? e\x00?? a\x00?? c\x00", n: 2,
+			count: 5, want: []FileEntry{{Code: "??", Path: "a"}, {Code: "??", Path: "b"}},
+		},
+		{name: "a count alone keeps none", out: " M f\x00?? g\x00", count: 2, want: []FileEntry{}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, tt.want, countStatusEntries([]byte(tt.out)))
+			count, files := readStatus([]byte(tt.out), tt.n)
+			assert.Equal(t, tt.count, count)
+			assert.Equal(t, tt.want, files, "never nil, so the window gets []")
 		})
+	}
+}
+
+func TestReadStatusKeepsTheFirstOfManyUnsortedFiles(t *testing.T) {
+	t.Parallel()
+
+	// 5,000 files in an order of their own, a rename among every ten, as git lists a
+	// worktree with many untracked files.
+	const total = 5000
+
+	var out []byte
+
+	want := make([]FileEntry, 0, total)
+
+	for i := range total {
+		path := fmt.Sprintf("dir-%02d/file-%04d.txt", (i*7919)%13, (i*7919)%total)
+
+		code := "??"
+		if i%10 == 0 {
+			code = "R "
+		}
+
+		out = append(out, code+" "+path+"\x00"...)
+		if code == "R " {
+			out = append(out, "old/"+path+"\x00"...)
+		}
+
+		want = append(want, FileEntry{Code: code, Path: path})
+	}
+
+	slices.SortFunc(want, func(a, b FileEntry) int { return strings.Compare(a.Path, b.Path) })
+
+	for _, n := range []int{1, 12, 200} {
+		count, files := readStatus(out, n)
+		assert.Equal(t, total, count, "every file counted, a rename once")
+		assert.Equal(t, want[:n], files, "the first %d by path", n)
 	}
 }
 

@@ -780,6 +780,8 @@ func TestServiceErrors(t *testing.T) {
 
 		row := mustRow(t, snap, feature)
 		assert.Contains(t, row.Error, "unreadable index")
+		assert.NotNil(t, row.Files, "no files read is [], never null")
+		assert.Empty(t, row.Files)
 		assert.Zero(t, row.LastCommitUnix)
 		assert.False(t, row.CanRemove, "a worktree whose status couldn't be read is never offered a removal")
 	})

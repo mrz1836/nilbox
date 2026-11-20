@@ -2073,8 +2073,9 @@ worktree holds a pull request's own files, and a pull request's worktree is made
 the head whose files the launch checked; a clone's own config-named hooks refuse every
 command that could fire one (below). With core's `Guard`, the worktree service's own
 commands on a clone or its worktrees are guarded too (`git.do`): the reads (`readOnly`:
-listing the worktrees and branches, resolving a ref, counting commits, an ancestor's
-check, and a commit's time, with `--no-show-signature` and `--no-mailmap`), which run no
+listing the worktrees and branches, resolving a ref, counting commits or listing those not
+on GitHub, an ancestor's check, and a commit's time, the logs with `--no-show-signature`
+and `--no-mailmap`), which run no
 filter or hook but could read an object a partial clone lacks, run with gitread's
 `ReadEnv` (no transport, no lazy fetch, no optional lock, no replace ref), so a promisor
 remote the clone names is never asked; every other (a status, which runs a file's clean
@@ -2132,6 +2133,52 @@ default never is. Every job that changes a clone holds that clone's lock from
 for one another. A run (a release, checks, a script) is never waited for: a launch or a
 click fails at once with a sentence naming the run, and the sweep and a listing's
 forgetting of a record skip the clone until next time.
+
+A listing reads each worktree's status once (`status --porcelain=v1 -z
+--untracked-files=all`, read by `readStatus`): every file it names counts toward the row's
+`DirtyCount`, and the first 12 by path are its `Files`, each with git's two status letters
+and its path (a rename or a copy by its new one, its source skipped), which the view shows
+before it reads the rest. Only those 12 are kept as the status is read, each file past them
+only counted, so a worktree with tens of thousands of untracked files costs little more
+than the count. A clean worktree's `Files` is `[]`, and so is one whose status couldn't be
+read. Keeping them runs no git of its own.
+
+The rest of what a worktree's drawer shows comes from `Details(repoPath, path)`, which the
+window calls when the drawer first opens. It first checks the request as the removals do
+(`checkedGit`, then `entryOf`, which lists the clone's worktrees, then `ErrPrunable` for a
+folder that's gone), and fails when the request can't be checked or isn't about a linked
+worktree of a clone the repository locations hold, or when its context ends. Past that,
+every read it can't make is a sentence in `Errors`, not an error. It runs three reads side
+by side:
+
+- the status, every time, so the drawer shows the files as they are now: the first by
+  path, at most 200, and `FileCount`, all of them;
+- the count of the commits not on GitHub, every time, the listing's own, and only when
+  it is over 0, their list (`log --no-show-signature --no-mailmap --max-count=200
+  --format=%H %ct %s HEAD --not --remotes`, or with `--ignore-missing` and the commit the
+  worktree was made at after `--remotes`, as `unpushedPastArgs` counts them;
+  `allowedUnpushedLog` takes HEAD as the tip and a full commit ID as that commit, and
+  nothing else);
+- origin's default branch as the clone last fetched it and how many commits it has that
+  HEAD doesn't (`Base`, `Behind`, -1 when unknown), through the `BaseReader` core gives,
+  gitread's `OriginHead`, `TrackingBranch`, and `CommitsBetween`, in steps, each only once
+  the one before found what it needs.
+
+When the app made the worktree comes from its record (`CreatedAt`). Where several records
+name one folder, `recordsByDir` picks the newest that holds the commit the worktree was
+made at, or else the newest, for the listing's count (`fetchedHeads`) and `Details` alike.
+`Details` never asks GitHub, takes no lock, and emits nothing.
+
+`OpenTerminal(repoPath, path)` and `Reveal(repoPath, path)` check the request as `Details`
+does, so a worktree whose folder is gone is refused with `ErrPrunable`, then open the
+terminal chosen for launches in the worktree through the service's own `FolderOpener`, which
+runs nothing there (without one, OpenTerminal fails with `ErrNoTerminal`, worded for the
+window), or show it in Finder with `open -R` (off macOS there is no `Revealer`, and Reveal
+fails with `ErrNoFinder`, likewise worded). The package never imports `internal/scriptrun`.
+Core builds the worktree service before the terminal, which needs the launcher, which needs
+the worktrees, so the service's `FolderOpener` is a core adapter (`worktreeTerminal`) filled
+in once the terminal is built, before any work starts, which opens the folder as
+`scriptrun.FolderScript`.
 
 ## internal/gitread
 
@@ -5253,3 +5300,47 @@ and takes the settings it returns. `components/scripts/GroupHeading`, which Rele
 and Repo scripts share, is sticky at the top of the page's scroll container, over the page's
 background, so a group's heading stays in view while its rows scroll under it, and its
 `note` may be a node, given the rest of the heading's width, as the readiness summary is.
+
+**The Worktrees page.** `components/WorktreesView.tsx` is `worktrees/PageHead` over a body that
+scrolls on its own (`overflow-y-auto`, as `ReleasePage`'s does), so the clone headings stick in
+it, and the head's progress, which takes the place of its line of counts, never moves a row. The
+pure half is `lib/worktrees.ts` and `lib/worktreeParts.ts`, which word what the backend decided
+and decide nothing themselves (the `can*` flags say what may be removed). `laneOf` puts a
+worktree in one lane from the `Worktree` alone, so the toolbar's filter (`lib/worktreeFilter`,
+which leaves the main checkout out and keeps a row showing an error) counts what the page
+shows, and `attentionSort` orders a clone's rows by lane, then the newest commit. `stateOf`,
+`workNotes`, and `agentLine` word a row's cells, `verbOf` its one verb, `removeWhy` why
+Remove… or Force remove… can't run, and `safety` what removing it would cost, as `Words` data
+the drawer's band, the confirmations, and the bulk confirmations' `SafetyLine` render.
+`cloneSummary` is a clone's heading (its main checkout as a `MainNote`, its lanes counted),
+`facetsOf` and `facetQuery` the head's chips, and `itemFacts` and `liveSessions` join what the
+window already has, the inbox's items by `itemKey` and the followed sessions by their folder,
+which add words and move no row to another lane. `lib/useWorktreeDetails` keeps the `Details`
+read for one listing, which `useWorktrees` numbers (`listing`): a new number drops them (state
+set while rendering), a ref dedupes the asks, so StrictMode's doubled effects make one call,
+and an answer for an older listing is dropped. A failed ask leaves the ref, so the next read
+asks again, but nothing retries on its own. An open drawer reads as it opens and after each
+listing (`useEffectEvent` and an effect), and Force remove's confirmation as it mounts and
+whenever a listing drops what it read while it's open, both through the page's one instance,
+and `readable` keeps the main checkout, a folder that's gone, and one git couldn't read from
+asking at all. `asReadNow` counts a worktree's files and commits as its details last did, and
+the drawer's band and removal, the ⋯ menu's removals, and the confirmations all go by it, so a
+read can hold a removal back but never allow one the `can*` flags refused. Details doesn't say
+whether HEAD is the pull request's head (on GitHub for a fork's, though no remote-tracking
+branch has it), so a count of commits equal to the listing's keeps the listing's `onGitHub`,
+and one that changed counts as not on GitHub; `notOnGitHub` is that count, which the drawer's
+column and Force remove's list go by, each saying where the rest are past the first 200 (`git
+log`). Every clone shares one grid, `worktreeGridClass`
+in `worktrees/layout.ts`, of nine columns, the verb's apart from the tools' so a launch's
+control never widens them; each `CloneSection`, its `<ul>`, and each `WorktreeLine` row is a
+`grid-cols-subgrid` of it, so the columns line up down the page, and the rows follow the
+grid's width (`@container`), as the Release rows do. Nothing in the grid clips, for the sticky
+headings and the menus' panels. A row's disclosure is its chevron, a `<button>` with
+`aria-expanded` and `aria-controls` whose keys unfold (→) and fold (←) it and move between rows
+(↑ ↓); the `<li>` takes a pointer's click as a shortcut for it, as a Release row does, and
+leaves alone a click that ends a text selection or lands on a control, a menu, or a dialog a
+control renders elsewhere, whose clicks still bubble through React. The page keeps the open
+drawers as a set of paths, which outlives a listing. App hands it `onQuery`, which a chip
+writes the toolbar's filter with, the sessions snapshot, the inbox's items, and
+`launchFor(item, place)`, `LaunchControls`' `row` variant placed in the row's cells
+(`LaunchPlace`).

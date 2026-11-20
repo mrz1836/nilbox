@@ -89,13 +89,17 @@ export interface LaunchControlsProps {
   // initial are the choices every launch from here starts with, such as the worktree on
   // for a launch from the Worktrees view; none by default.
   initial?: Partial<Choices>
-  // variant is how the launch shows: the split button (split, the default), or a Signal
-  // card's agent slot (card), which follows the card's session.
-  variant?: 'split' | 'card'
+  // variant is how the launch shows: the split button (split, the default), a Signal
+  // card's agent slot (card), which follows the card's session, or a Worktrees row's verb
+  // (row), one bordered button that opens the launch options.
+  variant?: 'split' | 'card' | 'row'
   // situation is the card's situation (nextStep): a pull request's, whose launch defaults'
   // prompt the card's agent button runs and is named for, and the launch options open on;
   // '' (the default) for the item's own prompt.
   situation?: Situation
+  // boxClass places the split button, or the row's verb, in the grid it renders into: by
+  // default centered in its row.
+  boxClass?: string
   // outcomeClass places the launch's outcome in the grid it renders into: by default under
   // the row's content, to its right edge.
   outcomeClass?: string
@@ -111,6 +115,13 @@ export interface LaunchControlsProps {
   // peek renders the card's peek (CardPeek), while it is open, after the action column,
   // handing it the agent's button that opens the launch options.
   peek?: ((launch: ReactNode) => ReactNode) | undefined
+}
+
+// LaunchPlace is where a row's launch control goes in the grid it renders into (boxClass and
+// outcomeClass): its button's cell, and its outcome's, under the row.
+export interface LaunchPlace {
+  boxClass: string
+  outcomeClass: string
 }
 
 // partRing draws a focus ring inside a part of the card's agent slot, so it follows that
@@ -179,7 +190,8 @@ interface Saved {
 //
 // It renders two grid children: the button, and below the row's content, the launch's
 // outcome, which runs to the card's right edge. The inbox row is the grid that places
-// them.
+// them, as a Worktrees row places its row variant's (LaunchPlace): one bordered button,
+// the row's verb, that opens the same launch options.
 export function LaunchControls({
   item,
   resolution,
@@ -195,6 +207,7 @@ export function LaunchControls({
   sessionFresh = true,
   variant = 'split',
   situation = '',
+  boxClass = 'self-center',
   outcomeClass = 'col-[2/-1] mt-1.5',
   sessions,
   onOpen,
@@ -472,6 +485,14 @@ export function LaunchControls({
   // it); '' for a pull request's own, which the agent's name stands for.
   const nickname = situationPrompt !== undefined || item.kind === 'issue' ? promptName : ''
   const chip = problem !== '' ? 'No prompt' : base === null ? '…' : `${promptName} · ${profileName}`
+
+  // opening is the launch button's words: what runs, else what it opens.
+  const opening =
+    state.kind === 'launching' || state.kind === 'linking'
+      ? 'Opening…'
+      : state.kind === 'cloning'
+        ? 'Cloning…'
+        : openLabel
 
   const launchTitle =
     problem !== '' ? problem : base === null ? openLabel : `${openLabel} with “${promptName}” as ${profileName}`
@@ -963,9 +984,38 @@ export function LaunchControls({
     )
   }
 
+  if (variant === 'row') {
+    // The row's verb opens the launch options, as the split button does, with no arrow: the
+    // dot of a choice changed for this launch, which its name says too, and the alert of a
+    // prompt that can't resolve, ride on it instead.
+    return (
+      <>
+        <div className={boxClass}>
+          <button
+            type="button"
+            disabled={busy || resolution === null}
+            onClick={showOptions}
+            aria-label={changed ? `${opening}, changed for this launch` : undefined}
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            aria-controls={open ? id : undefined}
+            title={firstTitle}
+            className="inline-flex h-6 items-center gap-1.25 rounded-md border border-border bg-surface px-2.25 text-xs font-semibold whitespace-nowrap text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-surface aria-expanded:bg-raised"
+          >
+            {changed && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />}
+            {problem !== '' && <AlertIcon className="size-3 shrink-0 text-warning" />}
+            {opening}
+          </button>
+          {dialog}
+        </div>
+        {outcomes}
+      </>
+    )
+  }
+
   return (
     <>
-      <div className="self-center">
+      <div className={boxClass}>
         <div className="inline-flex items-stretch rounded-md border border-border bg-surface text-[0.8125rem]">
           {running === null ? (
             <button
@@ -979,11 +1029,7 @@ export function LaunchControls({
               className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
             >
               <TerminalIcon className="size-3.5 text-accent" />
-              {state.kind === 'launching' || state.kind === 'linking'
-                ? 'Opening…'
-                : state.kind === 'cloning'
-                  ? 'Cloning…'
-                  : openLabel}
+              {opening}
             </button>
           ) : running.runId !== 0 ? (
             <button

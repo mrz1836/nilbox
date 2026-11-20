@@ -2,6 +2,7 @@ package worktrees
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -38,6 +39,10 @@ var errParseCommitTime = errors.New("unexpected commit time")
 
 // errParseCount is returned when git rev-list prints something other than a count.
 var errParseCount = errors.New("unexpected commit count")
+
+// errParseCommits is returned when git log prints something other than the commits asked
+// for.
+var errParseCommits = errors.New("unexpected commit list")
 
 // allowedFixedCommands are the complete argument lists, after `-C <dir>`, that git may
 // run with. `worktree remove`, `worktree unlock`, and `update-ref -d` are checked
@@ -116,6 +121,25 @@ const headRef = "HEAD"
 
 // unpushedArgs counts the commits on HEAD that no remote-tracking branch has.
 func unpushedArgs() []string { return []string{"rev-list", "--count", headRef, "--not", "--remotes"} }
+
+// unpushedLogCmd starts the argument list that prints the commits on HEAD that aren't on
+// GitHub, newest first and at most detailLimit: each one's commit ID, its commit time, and
+// its subject, separated by spaces, one line each, with no signature check and no mailmap.
+func unpushedLogCmd() []string {
+	return []string{"log", noSignatures, noMailmap, "--max-count=" + strconv.Itoa(detailLimit), "--format=%H %ct %s"}
+}
+
+// unpushedLogArgs lists the commits on HEAD that no remote-tracking branch has, those
+// unpushedArgs counts.
+func unpushedLogArgs() []string { return append(unpushedLogCmd(), headRef, "--not", "--remotes") }
+
+// unpushedPastLogArgs lists the commits on HEAD that neither a remote-tracking branch nor
+// fetched has, those unpushedPastArgs counts: fetched follows --remotes after the one
+// --not, so its commits are left out too, and a fetched commit the clone no longer has is
+// left out (--ignore-missing).
+func unpushedPastLogArgs(fetched string) []string {
+	return append(unpushedLogCmd(), "--ignore-missing", headRef, "--not", "--remotes", fetched)
+}
 
 // revParseArgs checks that ref names a commit, printing it.
 func revParseArgs(ref string) []string { return []string{"rev-parse", "--verify", "--quiet", ref} }
@@ -223,8 +247,9 @@ func (g git) localFor(ctx context.Context, dir string) (gitread.Local, error) {
 }
 
 // readOnly reports a command that only reads refs, commits, and the worktrees' own records:
-// listing the worktrees and the branches, resolving a ref, counting commits, an ancestor's
-// check, and a commit's time, with no signature check and no mailmap. None runs a filter
+// listing the worktrees and the branches, resolving a ref, counting commits or listing
+// those not on GitHub, an ancestor's check, and a commit's time, the logs with no
+// signature check and no mailmap. None runs a filter
 // or a hook, but each could read an object a partial clone lacks, which git would fetch
 // from the clone's promisor remote, through a transport the clone's config can name, so
 // each runs with gitread's read environment (ReadEnv): no transport, no lazy fetch, no
@@ -622,6 +647,51 @@ func (g git) unpushed(ctx context.Context, dir, fetched string) (int, []byte, er
 	return count, nil, err
 }
 
+// unpushedCommits lists the commits unpushed counts in the worktree at dir, newest first
+// and at most detailLimit: those on HEAD that no remote-tracking branch has, nor fetched,
+// the commit the worktree was made at from GitHub, when it is one.
+func (g git) unpushedCommits(ctx context.Context, dir, fetched string) ([]UnpushedCommit, []byte, error) {
+	args := unpushedLogArgs()
+	if gitread.IsCommitID(fetched) {
+		args = unpushedPastLogArgs(fetched)
+	}
+
+	stdout, stderr, err := g.do(ctx, dir, args...)
+	if err != nil {
+		return nil, stderr, err
+	}
+
+	commits, err := parseCommits(stdout)
+
+	return commits, nil, err
+}
+
+// parseCommits reads the log unpushedLogCmd prints: one commit a line, its commit ID, its
+// commit time, and its subject, which may be empty, separated by spaces. The list is never
+// nil.
+func parseCommits(stdout []byte) ([]UnpushedCommit, error) {
+	commits := []UnpushedCommit{}
+
+	for line := range strings.Lines(string(stdout)) {
+		line = strings.TrimSuffix(line, "\n")
+		if line == "" {
+			continue
+		}
+
+		oid, rest, _ := strings.Cut(line, " ")
+		unix, subject, ok := strings.Cut(rest, " ")
+
+		at, err := strconv.ParseInt(unix, 10, 64)
+		if !ok || err != nil || !gitread.IsCommitID(oid) {
+			return nil, fmt.Errorf("%w %q", errParseCommits, line)
+		}
+
+		commits = append(commits, UnpushedCommit{OID: oid, Unix: at, Subject: subject})
+	}
+
+	return commits, nil
+}
+
 // prune clears the entries of worktrees whose directories are gone.
 func (g git) prune(ctx context.Context, dir string) ([]byte, error) {
 	_, stderr, err := g.do(ctx, dir, pruneArgs()...)
@@ -631,12 +701,22 @@ func (g git) prune(ctx context.Context, dir string) ([]byte, error) {
 
 // dirtyCount returns the number of changed and untracked files in the worktree at dir.
 func (g git) dirtyCount(ctx context.Context, dir string) (int, []byte, error) {
+	count, _, stderr, err := g.firstChanged(ctx, dir, 0)
+
+	return count, stderr, err
+}
+
+// firstChanged counts the changed and untracked files in the worktree at dir and returns
+// the first n of them by path, never nil, from one status (see readStatus).
+func (g git) firstChanged(ctx context.Context, dir string, n int) (int, []FileEntry, []byte, error) {
 	stdout, stderr, err := g.do(ctx, dir, statusArgs()...)
 	if err != nil {
-		return 0, stderr, err
+		return 0, nil, stderr, err
 	}
 
-	return countStatusEntries(stdout), nil, nil
+	count, files := readStatus(stdout, n)
+
+	return count, files, nil, nil
 }
 
 // commitTimes returns the commit time of each of oids, in Unix seconds, by commit ID, read
@@ -689,8 +769,24 @@ func allowed(args []string) bool {
 		return true
 	}
 
-	return allowedCommitTimes(args) || allowedLookup(args) || allowedBranchLookup(args) || allowedCreate(args) ||
-		allowedChange(args)
+	return allowedCommitTimes(args) || allowedLookup(args) || allowedBranchLookup(args) || allowedUnpushedLog(args) ||
+		allowedCreate(args) || allowedChange(args)
+}
+
+// allowedUnpushedLog reports the log of the commits on HEAD that aren't on GitHub: past
+// the remote-tracking branches, or past them and the full commit ID the worktree was made
+// at. Its tip is HEAD alone.
+func allowedUnpushedLog(args []string) bool {
+	switch len(args) {
+	case len(unpushedLogArgs()):
+		return joinArgs(args) == joinArgs(unpushedLogArgs())
+	case len(unpushedPastLogArgs("")):
+		fetched := args[len(args)-1]
+
+		return gitread.IsCommitID(fetched) && joinArgs(args) == joinArgs(unpushedPastLogArgs(fetched))
+	default:
+		return false
+	}
 }
 
 // allowedChange reports a removal command with arguments it may run with: removing or
@@ -833,10 +929,26 @@ func joinArgs(args []string) string {
 	return strings.Join(args, "\x00")
 }
 
-// countStatusEntries counts the files in `git status --porcelain=v1 -z` output. A rename
-// or copy entry is followed by its source path, which is not counted again.
-func countStatusEntries(out []byte) int {
+// statusEntry is one file of a status, its two status letters and its path, each a slice of
+// git's output.
+type statusEntry struct {
+	code, path []byte
+}
+
+// compareEntries orders entries by path, then by status letters.
+func compareEntries(a, b statusEntry) int {
+	return cmp.Or(bytes.Compare(a.path, b.path), bytes.Compare(a.code, b.code))
+}
+
+// readStatus reads `git status --porcelain=v1 -z` output: how many files it names, and the
+// first n of them by path, never nil. Each entry is its two status letters, a space, and
+// its path, which -z leaves unquoted; a rename or copy entry is followed by its source
+// path, which is no file of its own. Only the first n are kept as it reads, in order, each
+// file past them only counted, so a status naming tens of thousands of files costs little
+// more than counting them.
+func readStatus(out []byte, n int) (int, []FileEntry) {
 	count := 0
+	first := firstEntries{n: n, kept: make([]statusEntry, 0, n)}
 	skip := false
 
 	for field := range bytes.SplitSeq(out, []byte{0}) {
@@ -848,10 +960,45 @@ func countStatusEntries(out []byte) int {
 		default:
 			count++
 			skip = field[0] == 'R' || field[0] == 'C' || field[1] == 'R' || field[1] == 'C'
+
+			first.offer(statusEntry{code: field[:2], path: field[3:]})
 		}
 	}
 
-	return count
+	return count, first.files()
+}
+
+// firstEntries keeps the first n status entries it is offered, by path, in order.
+type firstEntries struct {
+	n    int
+	kept []statusEntry
+}
+
+// offer keeps e when it is among the first n offered so far, letting go of the one past
+// them.
+func (f *firstEntries) offer(e statusEntry) {
+	full := len(f.kept) == f.n
+	if full && (f.n == 0 || compareEntries(e, f.kept[f.n-1]) >= 0) {
+		return
+	}
+
+	at, _ := slices.BinarySearchFunc(f.kept, e, compareEntries)
+	if !full {
+		f.kept = append(f.kept, e)
+	}
+
+	copy(f.kept[at+1:], f.kept[at:len(f.kept)-1])
+	f.kept[at] = e
+}
+
+// files returns the entries kept, as files, never nil.
+func (f *firstEntries) files() []FileEntry {
+	files := make([]FileEntry, 0, len(f.kept))
+	for _, e := range f.kept {
+		files = append(files, FileEntry{Code: string(e.code), Path: string(e.path)})
+	}
+
+	return files
 }
 
 // gitRefused reports whether err is a process exit with a non-zero status (git ran and

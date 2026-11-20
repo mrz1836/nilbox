@@ -2,6 +2,7 @@ package worktrees
 
 import (
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -95,4 +96,55 @@ func TestWorthListing(t *testing.T) {
 
 	_, _, known = linkedWorktrees(broken)
 	assert.False(t, known, "a git folder that isn't there is for git to explain")
+}
+
+func TestListKeepsTheFirstChangedFilesOfEachWorktree(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	alpha := e.newRepo(t, "alpha")
+	busy := addWorktree(t, alpha, filepath.Join(e.home, "wt", "busy"), "busy")
+	clean := addWorktree(t, alpha, filepath.Join(e.home, "wt", "clean"), "clean")
+
+	// 15 files: README.md's rename staged, a new README.md, and 13 more untracked, two in a
+	// folder and one named with a space and beyond ASCII.
+	testutil.RunGit(t, busy, "mv", "README.md", "GUIDE.md")
+	testutil.WriteFile(t, filepath.Join(busy, "README.md"), "again\n")
+
+	for i := range 10 {
+		testutil.WriteFile(t, filepath.Join(busy, "notes-"+strconv.Itoa(i)+".txt"), "draft\n")
+	}
+
+	testutil.WriteFile(t, filepath.Join(busy, "docs", "a.md"), "a\n")
+	testutil.WriteFile(t, filepath.Join(busy, "docs", "b.md"), "b\n")
+	testutil.WriteFile(t, filepath.Join(busy, "café notes.md"), "c\n")
+
+	snap := e.list(t)
+
+	row := mustRow(t, snap, busy)
+	assert.Equal(t, 15, row.DirtyCount, "the count is every file")
+	assert.Equal(t, []FileEntry{
+		{Code: "R ", Path: "GUIDE.md"},
+		{Code: "??", Path: "README.md"},
+		{Code: "??", Path: "café notes.md"},
+		{Code: "??", Path: "docs/a.md"},
+		{Code: "??", Path: "docs/b.md"},
+		{Code: "??", Path: "notes-0.txt"},
+		{Code: "??", Path: "notes-1.txt"},
+		{Code: "??", Path: "notes-2.txt"},
+		{Code: "??", Path: "notes-3.txt"},
+		{Code: "??", Path: "notes-4.txt"},
+		{Code: "??", Path: "notes-5.txt"},
+		{Code: "??", Path: "notes-6.txt"},
+	}, row.Files, "the first 12 by path, a rename by its new one")
+
+	for _, path := range []string{alpha, clean} {
+		files := mustRow(t, snap, path).Files
+		assert.NotNil(t, files, "a clean worktree's files are [], never null")
+		assert.Empty(t, files)
+	}
+
+	require.NoError(t, testutil.ErrOf(e.svc.ForceRemove(t.Context(), alpha, busy, nil)),
+		"a force removal still counts the files it discards")
+	assert.NoDirExists(t, busy)
 }

@@ -668,6 +668,7 @@ describe('App', () => {
               worktree({
                 path: '/home/user/projects/example-repo/.claude/worktrees/pr-8',
                 displayPath: '~/projects/example-repo/.claude/worktrees/pr-8',
+                branch: 'worktree-pr-8',
                 item: linkedItem({ number: 8 }),
               }),
             ],
@@ -681,21 +682,22 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
 
     const repo = within(await screen.findByRole('region', { name: 'example-repo' }))
-    const row = (path: string) => within(repo.getByText(path).closest('li') ?? document.body)
-    const listed = row('~/projects/example-repo/.claude/worktrees/pr-7')
+    const row = (name: string) =>
+      within(repo.getByRole('button', { name: `Unfold ${name}` }).closest('li') ?? document.body)
+    const listed = row('worktree-pr-7')
 
-    expect(listed.getByText(/Codex/)).toHaveTextContent(/Codex \S+ ago$/)
+    expect(listed.getByText(/Codex/)).toHaveTextContent(/^Codex · \S+ ago$/)
     // Pull request #8 is not in the inbox, so its worktree has no launch control.
-    expect(row('~/projects/example-repo/.claude/worktrees/pr-8').queryByRole('button', { name: /^Open/ })).toBeNull()
+    expect(row('worktree-pr-8').queryByRole('button', { name: 'Open in Claude' })).toBeNull()
 
-    // The row's launch options open in the dialog every launch control opens, worktree on.
-    await userEvent.click(listed.getByRole('button', { name: /^Launch options/ }))
+    // The row's verb opens the launch options every launch control opens, worktree on.
+    await userEvent.click(listed.getByRole('button', { name: 'Open in Claude' }))
     const options = within(screen.getByRole('dialog', { name: 'Launch options' }))
     expect(options.getByRole('checkbox', { name: /Start in a worktree/ })).toBeChecked()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()
 
-    // Its launch button opens them too, and their Open starts it.
+    // Opened again, their Open starts it.
     await userEvent.click(listed.getByRole('button', { name: 'Open in Claude' }))
     await userEvent.click(
       within(screen.getByRole('dialog', { name: 'Launch options' })).getByRole('button', { name: 'Open in Claude' }),
@@ -708,13 +710,23 @@ describe('App', () => {
     expect(await screen.findByTitle('~/projects/example-repo/.claude/worktrees/pr-7')).toHaveTextContent(/^2 changes$/)
   })
 
-  it('shows a running session’s terminal from its card and its worktree, rather than starting another', async () => {
+  it('shows a running session’s terminal from its card, and how it stands on its worktree’s row, rather than starting another', async () => {
     platform.listSessions.mockResolvedValue(sessionsSnapshot([agentSession({ state: 'working', stateAt: FIXED_ISO })]))
     platform.listWorktrees.mockResolvedValue(
       worktreesSnapshot({
         repos: [
           worktreeRepo({
-            worktrees: [mainWorktree(), worktree({ item: linkedItem({ state: 'open' }) })],
+            worktrees: [
+              mainWorktree(),
+              worktree({
+                path: `/home/user/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
+                displayPath: `~/projects/.${brand.slug}/worktrees/example-repo/pr-7`,
+                item: linkedItem({ state: 'open' }),
+                inUse: [{ pid: 4242, command: '2.1.319', agent: 'claude', by: '' }],
+                stage: 'in-use',
+                canRemove: false,
+              }),
+            ],
           }),
         ],
       }),
@@ -729,13 +741,13 @@ describe('App', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
 
+    // Its worktree's row says how the session the card follows stands, and offers no second
+    // launch while it runs.
     const repo = within(await screen.findByRole('region', { name: 'example-repo' }))
-    const listed = within(
-      repo.getByText('~/projects/example-repo/.claude/worktrees/pr-7').closest('li') ?? document.body,
-    )
+    const listed = within(repo.getByRole('button', { name: 'Unfold worktree-pr-7' }).closest('li') ?? document.body)
 
-    await userEvent.click(listed.getByRole('button', { name: 'Show in terminal' }))
-    expect(platform.focusSession).toHaveBeenCalledTimes(2)
+    expect(listed.getByText('working')).toBeInTheDocument()
+    expect(listed.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
     expect(platform.launch).not.toHaveBeenCalled()
   })
 
@@ -837,7 +849,8 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
 
     const clone = await screen.findByRole('region', { name: 'example-repo' })
-    await userEvent.click(within(clone).getByRole('button', { name: 'Remove' }))
+    await userEvent.click(within(clone).getByRole('button', { name: 'More for worktree-pr-7' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Remove…' }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }))
     await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
 
@@ -854,13 +867,11 @@ describe('App', () => {
 
     // A change finished while the view is open needs no View, and closes like any toast.
     platform.removeWorktree.mockResolvedValueOnce(removeResult({ deletedBranches: [] }))
-    const remove = within(await screen.findByRole('region', { name: 'example-repo' })).getByRole('button', {
-      name: 'Remove',
-    })
     await vi.waitFor(() => {
-      expect(remove).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled()
     })
-    await userEvent.click(remove)
+    await userEvent.click(screen.getByRole('button', { name: 'More for worktree-pr-7' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Remove…' }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }))
 
     const again = await screen.findByRole('group', { name: 'Notification' })
@@ -1859,6 +1870,25 @@ describe('App’s filter field', () => {
 
     await userEvent.keyboard('pr-7')
     expect(said()).toHaveTextContent('1 match')
+  })
+
+  it('filters the worktrees by a state from its chip, writing the toolbar’s filter', async () => {
+    platform.listWorktrees.mockResolvedValue(
+      worktreesSnapshot({
+        repos: [
+          worktreeRepo({ worktrees: [mainWorktree(), worktree({ dirty: true, dirtyCount: 2, canRemove: false })] }),
+        ],
+      }),
+    )
+    await renderApp()
+    await inboxShown()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
+    const chips = within(await screen.findByRole('group', { name: 'Filter by state' }))
+    await userEvent.click(chips.getByRole('button', { name: '1 uncommitted' }))
+
+    expect(field('Filter worktrees')).toHaveValue('is:dirty')
+    expect(chips.getByRole('button', { name: '1 uncommitted' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('forgets what was being found in the settings by every way out of them', async () => {
