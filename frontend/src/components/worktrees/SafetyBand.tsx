@@ -84,3 +84,16 @@ export function SafetyBand({ safety, className = 'border-b border-border/70' }: 
     </div>
   )
 }
+
+// SafetyLine says in one line what removing a worktree would cost, as a bulk confirmation
+// lists it under each worktree: the band's mark, in its tone, and its sentence, muted.
+export function SafetyLine({ safety }: { safety: Safety }) {
+  return (
+    <p data-tone={safety.tone} className="flex items-baseline gap-1.5 text-xs text-muted">
+      {safetyIcons[safety.icon](`relative top-0.5 size-3 shrink-0 ${tones[safety.tone].icon}`)}
+      <span>
+        <Words words={safety.text} />
+      </span>
+    </p>
+  )
+}

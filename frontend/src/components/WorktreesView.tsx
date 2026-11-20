@@ -266,6 +266,10 @@ export function WorktreesView({
           confirmation={confirmation}
           rules={branchRules}
           now={now}
+          repos={repos}
+          details={details}
+          sessions={live}
+          agentName={agentName}
           onConfirm={actions.confirm}
           onCancel={actions.cancel}
         />

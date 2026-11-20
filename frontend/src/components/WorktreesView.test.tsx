@@ -26,6 +26,8 @@ import {
   sessionsSnapshot,
   worktree,
   worktreeCleanup,
+  worktreeDetails,
+  worktreeFiles,
   worktreeRepo,
   worktreesSnapshot,
 } from '../test/fixtures'
@@ -1064,13 +1066,18 @@ describe('WorktreesView changes', () => {
   })
 
   it('force removes a worktree with uncommitted files from its ⋯ once confirmed', async () => {
-    listing([worktree({ dirty: true, dirtyCount: 3, canRemove: false, canForceRemove: true })], { cleanCount: 0 })
+    listing(
+      [worktree({ dirty: true, dirtyCount: 3, files: worktreeFiles(3), canRemove: false, canForceRemove: true })],
+      { cleanCount: 0 },
+    )
+    platform.worktreeDetails.mockResolvedValue(worktreeDetails({ files: worktreeFiles(3), fileCount: 3 }))
     draw()
     await clone('example-repo')
 
     await remove(pr7, 'Force remove…')
 
     const dialog = screen.getByRole('dialog', { name: 'Force remove this worktree?' })
+    expect(within(dialog).getByRole('region', { name: 'Files it discards' })).toHaveTextContent('Discards 3 files')
     expect(within(dialog).getByRole('checkbox', { name: /^Delete branch worktree-pr-7/ })).toBeChecked()
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
@@ -1079,6 +1086,8 @@ describe('WorktreesView changes', () => {
     expect(platform.forceRemoveWorktree).not.toHaveBeenCalled()
 
     await remove(pr7, 'Force remove…')
+    // Its details are read once a listing, however often it asks.
+    expect(platform.worktreeDetails).toHaveBeenCalledExactlyOnceWith(repoPath, linkedPath)
     await confirmWith('Force remove')
 
     expect(platform.forceRemoveWorktree).toHaveBeenCalledWith(repoPath, linkedPath, ['worktree-pr-7'])

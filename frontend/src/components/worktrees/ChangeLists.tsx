@@ -39,8 +39,8 @@ const letterTones: Readonly<Record<string, string>> = {
 }
 
 // FileLine is one changed file: its status letter, a dot when any of it is staged, and its
-// path, the folder muted.
-function FileLine({ file }: { file: WorktreeFile }) {
+// path, the folder muted. Force remove's confirmation lists the files it discards with it.
+export function FileLine({ file }: { file: WorktreeFile }) {
   const status = fileStatus(file)
 
   return (
@@ -180,7 +180,8 @@ export function Changes({ worktree, read }: ColumnProps) {
 }
 
 // CommitLine is one commit that isn't on GitHub: its short ID, its subject, and its age.
-function CommitLine({ commit }: { commit: WorktreeCommit }) {
+// Force remove's confirmation lists the commits it keeps, or loses, with it.
+export function CommitLine({ commit }: { commit: WorktreeCommit }) {
   const at = new Date(commit.unix * 1000).toISOString()
 
   return (
