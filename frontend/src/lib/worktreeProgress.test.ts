@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { formatCount } from './format'
 import { progressStep } from './worktreeProgress'
 
 describe('progressStep', () => {
@@ -28,6 +29,15 @@ describe('progressStep', () => {
     )
     expect(progressStep({ phase: 'github', done: 0, total: 5 }, '').text).toBe(
       'Asking GitHub about 5 pull requests and issues…',
+    )
+  })
+
+  it('groups the digits of both numbers from 1,000', () => {
+    expect(progressStep({ phase: 'listing', done: 1234, total: 2500 }, '').text).toBe(
+      `Listing worktrees · ${formatCount(1234)} of ${formatCount(2500)} clones`,
+    )
+    expect(progressStep({ phase: 'checking', done: 999, total: 1000 }, '').text).toBe(
+      `Checking each worktree · 999 of ${formatCount(1000)} worktrees`,
     )
   })
 })
