@@ -3671,7 +3671,10 @@ and Autopilot's settings; never your routines' definitions, your scripts, profil
 nor any name in your inbox. Its proposals are still checked against your whole setup, as their
 cards are. Claude Code starts the plugin's server, Nilbox's own binary in its tool mode, with
 every session of the profile; it reads nothing but the snapshot Nilbox writes as your setup
-changes and the proposals' folder, and writes nothing but proposals.
+changes and the proposals' folder, and writes nothing but proposals. The snapshot follows your
+routines, Autopilot's settings, your pinned and muted repositories, and your inbox as they
+change; a change to your prompts, your scripts, the trusted bots, or the ignored workflows
+reaches it with the next refresh of your inbox.
 
 ### Export and import
 

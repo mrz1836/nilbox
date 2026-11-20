@@ -5187,10 +5187,13 @@ describe/
   `prompts.Variables`); a part that can't be read fails it whole. The service keeps the live
   snapshot 2 seconds, forgets it on any change, and falls back on the last one read when the
   setup can't be read. It writes `context.json` before every turn, as the worker readies the
-  folder, and after each burst of changes while Autopilot is on: core's `describeOnChanges` passes the app's events on and wakes
-  the worker on `event.AutopilotUpdated`, `AutopilotChanged`, `RepoRulesChanged`, and
-  `InboxUpdated`, which writes once the burst has been quiet for 500 ms, or after 3 seconds in
-  all, so a session in the user's own Claude Code reads it current.
+  folder, and after each burst of changes while Autopilot is on: core's `describeOnChanges`
+  passes the app's events on and wakes the worker on `event.AutopilotUpdated`,
+  `AutopilotChanged`, `RepoRulesChanged`, and `InboxUpdated`, which writes once the burst has
+  been quiet for 500 ms, or after 3 seconds in all, so a session in the user's own Claude Code
+  reads it current. The prompt library, the scripts, the trusted bots, and the ignored
+  workflows emit no event when they change, so such a change reaches that session's snapshot
+  with the next inbox refresh; a turn in the app writes the snapshot fresh first.
 - **Attachments.** Core's `describeAttachments` words a routine as `kit.RoutineWords` does, and
   a stored item by its address and short facts (`inbox.Store.FactsRows`: kind, repository,
   author, labels, and a pull request's failed checks' names at its head), under a line saying
