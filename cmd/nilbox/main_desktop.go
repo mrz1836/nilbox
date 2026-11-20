@@ -46,6 +46,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/core"
+	"github.com/mrz1836/nilbox/internal/describeit"
 	"github.com/mrz1836/nilbox/internal/desktop"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -281,7 +282,7 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 		Workers:  workers,
 		Deferred: []desktop.Worker{
 			c.Deferred, c.ToolFinder, c.Runs, c.ReleaseFollower, c.ServiceStatusChecker, c.UpdateWorker,
-			c.AutopilotEngine, c.PushWatcher,
+			c.AutopilotEngine, c.PushWatcher, c.DescribeItWorker,
 		},
 		Updates:        c.Updates,
 		Autopilot:      c.ShellAutopilot,
@@ -473,6 +474,8 @@ func registerEvents() {
 	application.RegisterEvent[event.UpdatesUpdated](event.NameUpdatesUpdated)
 	application.RegisterEvent[event.AutopilotUpdated](event.NameAutopilotUpdated)
 	application.RegisterEvent[event.AutopilotRun](event.NameAutopilotRun)
+	application.RegisterEvent[event.DescribeItUpdated](event.NameDescribeItUpdated)
+	application.RegisterEvent[event.DescribeItProposals](event.NameDescribeItProposals)
 	application.RegisterEvent[event.UpdateRestartRequested](event.NameUpdateRestartRequested)
 }
 
@@ -519,6 +522,7 @@ func binders() []func(svc any) (application.Service, bool) {
 		binder[integrations.Service], binder[scriptrun.Service], binder[releases.Service], binder[hooks.Service],
 		binder[scripts.Service], binder[ghthreads.Service], binder[backup.Service], binder[svcstatus.Service],
 		binder[setup.Service], binder[update.Service], binder[autopilot.Service], binder[milestones.Service],
+		binder[describeit.Service],
 	}
 }
 

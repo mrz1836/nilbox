@@ -28,6 +28,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/budget"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/clonelock"
+	"github.com/mrz1836/nilbox/internal/describeit"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/ghthreads"
@@ -184,6 +185,15 @@ type Core struct {
 	// Milestones keeps the log of the inbox reaching nil, which says what each time is
 	// worth to the party the window throws.
 	Milestones *milestones.Service
+
+	// DescribeIt is the Autopilot tab's conversation with a coding agent, which proposes
+	// routines, prompts, settings, and rules for the user to review.
+	DescribeIt *describeit.Service
+
+	// DescribeItWorker keeps Describe it's folder, snapshot, and plugin current, and follows
+	// the proposals from the user's own Claude Code; the desktop shell runs it as deferred
+	// work. It is not bound.
+	DescribeItWorker *describeit.Worker
 
 	// AutopilotEngine runs the routines: it records what each matched, and starts what may
 	// start, in the copy of the app that holds the lock in the data folder. The desktop
@@ -406,6 +416,7 @@ func (c *Core) Services() []any {
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Avatars, c.Integrations, c.ScriptRuns, c.Release,
 		c.Hooks, c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup, c.Updates, c.Autopilot, c.Milestones,
+		c.DescribeIt,
 	}
 }
 
@@ -962,6 +973,10 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	transfer.prompts = prompts.NewRoutinePrompts(c.Prompts)
 	routineAgents.profiles = c.Profiles
 	c.ShellSettings = newShellSettings(prefs, c.Setup, pool, opts.Clock)
+
+	// Describe it reads the setup and the inbox through the services above, so it is built
+	// once they are.
+	c.DescribeIt, c.DescribeItWorker = newDescribeIt(opts, logger)
 
 	return c
 }

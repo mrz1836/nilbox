@@ -71,6 +71,8 @@ func TestEveryEventHasItsOwnName(t *testing.T) {
 		{event.InboxItemsChanged{}, event.NameInboxItemsChanged},
 		{event.AutopilotUpdated{}, event.NameAutopilotUpdated},
 		{event.AutopilotRun{}, event.NameAutopilotRun},
+		{event.DescribeItUpdated{}, event.NameDescribeItUpdated},
+		{event.DescribeItProposals{}, event.NameDescribeItProposals},
 		{event.UpdatesUpdated{}, event.NameUpdatesUpdated},
 		{event.UpdateRestartRequested{}, event.NameUpdateRestartRequested},
 		{event.UpdateRestartFailed{}, event.NameUpdateRestartFailed},
@@ -103,7 +105,7 @@ func TestTheWindowHearsOnlyTheWindowEvents(t *testing.T) {
 		event.NameToolsUpdated, event.NameScriptRunsUpdated, event.NameScriptRunProgress, event.NameQuitRequested,
 		event.NameReleasesUpdated, event.NameReleasesProgress, event.NameHooksUpdated, event.NameWorktreesProgress,
 		event.NameGHThreadsUpdated, event.NameServiceStatusUpdated, event.NameUpdatesUpdated, event.NameUpdateRestartRequested,
-		event.NameAutopilotUpdated, event.NameAutopilotRun,
+		event.NameAutopilotUpdated, event.NameAutopilotRun, event.NameDescribeItUpdated, event.NameDescribeItProposals,
 	}, names)
 
 	for _, e := range []event.Event{

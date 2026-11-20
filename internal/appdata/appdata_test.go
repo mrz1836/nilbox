@@ -186,6 +186,7 @@ func TestNewPaths(t *testing.T) {
 	assert.Equal(t, filepath.Join(root, "launch-defaults.json"), p.LaunchDefaults)
 	assert.Equal(t, filepath.Join(root, "autopilot.json"), p.Autopilot)
 	assert.Equal(t, filepath.Join(root, "backups"), p.Backups)
+	assert.Equal(t, filepath.Join(root, "describe"), p.Describe)
 	assert.Equal(t, filepath.Join(root, "launch"), p.Launch)
 	assert.Equal(t, filepath.Join(root, "logs"), p.Logs)
 	assert.Equal(t, filepath.Join(root, "reset-request.json"), p.ResetRequest)
@@ -235,7 +236,7 @@ func TestEnsureCreatesDirectories(t *testing.T) {
 
 	assert.Equal(t, filepath.Join(p.Root, "updates"), p.Updates)
 
-	for _, dir := range []string{p.Root, p.Launch, p.Logs, p.Updates} {
+	for _, dir := range []string{p.Root, p.Launch, p.Logs, p.Updates, p.Describe} {
 		info, err := os.Stat(dir)
 		require.NoError(t, err)
 		assert.True(t, info.IsDir(), dir)

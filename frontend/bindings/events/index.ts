@@ -29,6 +29,16 @@ export const AutopilotUpdated = "autopilot:updated";
 export const BudgetUpdated = "budget:updated";
 
 /**
+ * Name of the custom event "describeit:proposals".
+ */
+export const DescribeitProposals = "describeit:proposals";
+
+/**
+ * Name of the custom event "describeit:updated".
+ */
+export const DescribeitUpdated = "describeit:updated";
+
+/**
  * Name of the custom event "ghthreads:updated".
  */
 export const GhthreadsUpdated = "ghthreads:updated";

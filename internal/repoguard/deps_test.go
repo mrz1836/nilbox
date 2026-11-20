@@ -316,6 +316,16 @@ func boundaries() []boundary {
 				"launch itself, so a run has no more access than the launcher gave it",
 		},
 		{
+			pkg: "internal/describeit",
+			forbidden: append(slices.Clone(noService),
+				"internal/prompts", "internal/profiles", "internal/launcher", "internal/scriptrun", "internal/desktop",
+				"internal/notify"),
+			why: "Describe it reads the setup, the inbox's names, and the agents through its own Setup, Attachments, " +
+				"and Agents, which core adapts, and runs each turn itself: it knows no store (and so neither " +
+				"Autopilot's service nor the background runner), no GitHub client, and no service, and every " +
+				"proposal applies through the window's own bindings",
+		},
+		{
 			pkg:       "internal/autopilotprefs",
 			forbidden: append(slices.Clone(noService), "internal/autopilot", "internal/event"),
 			why: "autopilotprefs declares Autopilot's settings keys and a routine's modes, which settings writes " +
@@ -394,6 +404,10 @@ func leaves() []leaf {
 		pkg: "internal/fence", allowed: []string{"internal/sensitive", "internal/paths", "internal/textutil"},
 		why: "fence is the agent-independent fence policy, and its hook mode runs before the app opens anything, so " +
 			"it imports only sensitive's patterns, paths' readers, textutil's quoting, and the standard library",
+	}, leaf{
+		pkg: "internal/agentrun/stream", allowed: []string{"internal/agentrun/runevent"},
+		why: "stream reads an agent's stream into runevent's events, for the background runner and Describe it's " +
+			"turns alike, so it imports only runevent",
 	}, leaf{
 		pkg: "internal/agentrun/runevent", allowed: []string{},
 		why: "runevent is a background run's event model, which Autopilot and the window read without reaching " +

@@ -12,6 +12,8 @@ export type {
     AutopilotTarget,
     AutopilotUpdated,
     BudgetUpdated,
+    DescribeItProposals,
+    DescribeItUpdated,
     GHThreadsUpdated,
     HooksUpdated,
     InboxProgress,
