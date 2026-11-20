@@ -60,8 +60,8 @@ func (s *server) folderRefusal(err error) answer {
 			"start a new conversation in Describe it.")
 	case errors.Is(err, errNoFolder):
 		return refusal("Nothing was proposed: " + brand.Name + " hasn't made its folder for proposals from Claude " +
-			"Code yet. Ask the user to open Describe it in " + brand.Name + "'s Autopilot tab once, then propose it " +
-			"again.")
+			"Code, which it makes while Autopilot (beta) is on in its Settings. Ask the user to turn Autopilot on in " +
+			brand.Name + ", then propose it again.")
 	default:
 		return refusal(textutil.WithReason("Nothing was proposed: the folder for proposals can't be read", reason(err)) +
 			" Try again, and if it fails again, tell the user.")

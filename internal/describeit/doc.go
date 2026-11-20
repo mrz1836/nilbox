@@ -27,7 +27,11 @@
 // builder, Prompts, and Settings already use, and this service only records what the user
 // did, which the next turn tells the agent.
 //
+// Its background worker works only while Autopilot (beta) is on, which it reads through
+// Switch: off, it writes nothing and follows nothing, and it catches up once Autopilot is
+// turned on.
+//
 // It reaches the rest of the app only through the interfaces it declares (Agents, Setup,
-// Attachments), which core adapts: it imports no store, GitHub client, settings, inbox,
-// prompts, profiles, launcher, run engine, or window shell.
+// Attachments, Switch), which core adapts: it imports no store, GitHub client, settings,
+// inbox, prompts, profiles, launcher, run engine, or window shell.
 package describeit

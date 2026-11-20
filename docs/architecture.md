@@ -5090,8 +5090,8 @@ window's own builder, prompts, and settings (what the user sees is `docs/desktop
 [Describe it](desktop.md#describe-it)). It is a boundary: the repoguard test keeps it off the
 store (and so off Autopilot's service and the background runner), the GitHub client, every
 service, `prompts`, `profiles`, `launcher`, `scriptrun`, `desktop`, and `notify`, and it reaches
-the rest of the app through the interfaces it declares (`Agents`, `Setup`, `Attachments`), which
-`internal/core/adapters_describeit.go` adapts. It owns no table and no prefs key: what it keeps
+the rest of the app through the interfaces it declares (`Agents`, `Setup`, `Attachments`,
+`Switch`), which `internal/core/adapters_describeit.go` adapts. It owns no table and no prefs key: what it keeps
 is in the data folder's describe folder (`appdata.Paths.Describe`, which `Ensure` makes), every
 folder the user's alone and every file written whole (`appdata.WriteFile`).
 
@@ -5121,7 +5121,7 @@ describe/
   its agent as chosen and as resolved, whether its session started, the outcomes a turn already
   told the agent of, and its turns), whose UUID is the agent's session ID. One that started more
   than 30 days ago is removed with its proposals as it is read or sent to, or as the worker
-  starts; `NewConversation` sets the current one aside (refused while a turn runs), and a start
+  readies the folder; `NewConversation` sets the current one aside (refused while a turn runs), and a start
   over removes every conversation and proposal (core's `forgetConversations`).
 - **A turn.** `Send` reserves the one turn that may run (another is refused while it does, and
   every send once the app quits), plans it before its agent starts (its conversation, or a new
@@ -5157,7 +5157,7 @@ describe/
   far as init leaves the session started, so the next resumes it; one whose agent ended before
   init, on its own, names the session the other way next, so a conversation never sticks on a
   session Claude Code refused. A turn a crash left running is closed from its log as the worker
-  starts, or before the conversation's next turn.
+  readies the folder, or before the conversation's next turn.
 - **Events** (`Events(id, turn, after)`) are a turn's events after a sequence number, a page at
   a time, as a background run's are: from the follower's parser while it runs (none, not done,
   while it gets ready), and once it ended, from its log read whole by a parser of its own, which
@@ -5182,8 +5182,8 @@ describe/
   first, at most 200), and the vocabulary (`autopilot.Gallery`, `prompts.Starters`,
   `prompts.Variables`); a part that can't be read fails it whole. The service keeps the live
   snapshot 2 seconds, forgets it on any change, and falls back on the last one read when the
-  setup can't be read. It writes `context.json` before every turn, as the worker starts, and
-  after each burst of changes: core's `describeOnChanges` passes the app's events on and wakes
+  setup can't be read. It writes `context.json` before every turn, as the worker readies the
+  folder, and after each burst of changes while Autopilot is on: core's `describeOnChanges` passes the app's events on and wakes
   the worker on `event.AutopilotUpdated`, `AutopilotChanged`, `RepoRulesChanged`, and
   `InboxUpdated`, which writes once the burst has been quiet for 500 ms, or after 3 seconds in
   all, so a session in the user's own Claude Code reads it current.
@@ -5199,8 +5199,8 @@ describe/
 - **The plugin.** `Plugin(command, args)` is the plugin (`agent.PluginSpec`: `brand.Slug` in the
   marketplace `<slug>-app`, version 1.0.0, which changes only with the tool mode's protocol; its
   skill `autopilot`, `kit.SkillText(kit.Outside)`; its server `autopilot`), which `WritePlugin`
-  writes into `plugin/`, each file only when it differs. The worker rewrites it as the app
-  starts, and Claude Code loads it in place from there, so an installed plugin reads this
+  writes into `plugin/`, each file only when it differs. The worker rewrites it as it readies the
+  folder, and Claude Code loads it in place from there, so an installed plugin reads this
   build's words at its next session. Its server runs `bin/<slug>-mcp`, a link to the app's
   executable that only an app in a stable place re-points (`Config.Stable`, core's `stableApp`:
   the update engine's location check, never a build from source), through a link renamed over
@@ -5212,14 +5212,20 @@ describe/
   `agent.PluginArgs`, read with `agent.ParsePluginResult` or `ParsePluginList`, within a minute.
 - **From outside.** `Proposals` reads the outside folder's newest `kit.MaxOutsideRead` files,
   each a card checked against the live snapshot, newest first, leaving out those settled more
-  than a day ago. The worker looks at the folder every 3 seconds (a hash of each file's name,
-  size, and time) and tells the window `describeit:proposals` when it changed, and, as it
-  starts, removes the cards settled more than 30 days ago with their outcomes.
-- **The worker** (`Worker`, a deferred desktop worker, `Core.DescribeItWorker`) readies the
-  folder as the app starts (a turn a crash left running closed from its log, old conversations
-  pruned, and a proposals folder no conversation keeps once it is 30 days old, the instructions
-  and the snapshot written), keeps the plugin and its link current, follows the outside folder,
-  writes the snapshot after each burst of changes, and stops a running turn as the app quits.
+  than a day ago. While Autopilot is on, the worker looks at the folder every 3 seconds (a hash
+  of each file's name, size, and time) and tells the window `describeit:proposals` when it
+  changed, and, as it readies the folder, removes the cards settled more than 30 days ago with
+  their outcomes.
+- **The worker** (`Worker`, a deferred desktop worker, `Core.DescribeItWorker`) works only while
+  Autopilot (beta) is on, which it reads through `Switch` (core's `describeSwitch`, Autopilot's
+  settings as stored; none to read, or one that can't be read, is off): as the app starts, and
+  again after each change it hears, since the switch's own event reaches it as
+  `event.AutopilotUpdated`. Off, as on a fresh database, it writes nothing and follows nothing.
+  Once on, it catches up: it readies the folder (a turn a crash left running closed from its
+  log, old conversations pruned, and a proposals folder no conversation keeps once it is 30
+  days old, the instructions and the snapshot written), keeps the plugin and its link current,
+  follows the outside folder, and writes the snapshot after each burst of changes, until a
+  burst finds Autopilot off again. It stops a running turn as the app quits, on or off.
 - **The eval suite** (`evals/`: two cases with their graders, and mocks of the plugin's tools)
   is the plugin's own, run by hand with `magex autopilot:evals` (Claude Code's `claude plugin
   eval` over this build's plugin in a temporary folder, the baseline arm left out, $5 unless

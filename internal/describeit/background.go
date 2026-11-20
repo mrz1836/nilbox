@@ -9,9 +9,9 @@ import (
 	"github.com/mrz1836/nilbox/internal/agentrun/stream"
 )
 
-// The background work of the conversation's half: readying the folder as the app starts,
-// writing the snapshot again after each burst of changes, and stopping a turn as the app
-// quits.
+// The background work of the conversation's half: readying the folder as Autopilot is on,
+// writing the snapshot again after each burst of changes while it stays on, and stopping a
+// turn as the app quits.
 
 const (
 	// contextQuiet is how long the snapshot's writer waits after a change for the burst it
@@ -24,9 +24,70 @@ const (
 	killWait = time.Second
 )
 
-// start readies the describe folder as the app starts: a turn a crash left running closed
-// from its stream, conversations older than 30 days pruned, and the snapshot and the
-// instructions written.
+// autopilotOn reports whether Autopilot (beta) is on, which Describe it is part of: off
+// with no switch to read, and off, logged, when it can't be read, until a change says
+// otherwise.
+func (s *Service) autopilotOn(ctx context.Context) bool {
+	if s.cfg.Switch == nil {
+		return false
+	}
+
+	on, err := s.cfg.Switch.AutopilotOn(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			s.logger.WarnContext(ctx, "describe it couldn't read whether Autopilot is on; it waits", "error", err)
+		}
+
+		return false
+	}
+
+	return on
+}
+
+// awaitOn waits for Autopilot to be on, reading its switch at once and again after each
+// change, and reports false once ctx ends. Until then nothing is written or followed.
+func (s *Service) awaitOn(ctx context.Context, changed <-chan struct{}) bool {
+	for ctx.Err() == nil {
+		if s.autopilotOn(ctx) {
+			return true
+		}
+
+		select {
+		case <-ctx.Done():
+		case <-changed:
+		}
+	}
+
+	return false
+}
+
+// whileOn does the background work of Autopilot on until it is turned off, or ctx ends:
+// it catches up first, the describe folder readied (start) and the plugin kept current,
+// then follows the outside folder and writes the snapshot again after each burst of
+// changes (keepContext), which returns once it finds Autopilot off.
+func (s *Service) whileOn(ctx context.Context, changed <-chan struct{}) {
+	on, off := context.WithCancel(ctx)
+	defer off()
+
+	s.start(on)
+	s.preparePlugin(on)
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		s.followOutside(on)
+	}()
+
+	s.keepContext(on, changed)
+	off()
+	<-done
+}
+
+// start readies the describe folder as Autopilot is on, as the app starts or once it is
+// turned on: a turn a crash left running closed from its stream, conversations older than
+// 30 days pruned, and the snapshot and the instructions written.
 func (s *Service) start(ctx context.Context) {
 	for _, dir := range []string{s.cfg.Dir, s.workDir(), s.path(conversationsName), s.proposalsDir(Outside)} {
 		if err := ensureDir(dir); err != nil {
@@ -197,7 +258,8 @@ func (s *Service) closeFromLog(rec *record, t *turnRecord) {
 	}
 }
 
-// keepContext writes the snapshot again after each burst of changes, until ctx ends.
+// keepContext writes the snapshot again after each burst of changes, until ctx ends or a
+// burst leaves Autopilot off, which writes nothing.
 func (s *Service) keepContext(ctx context.Context, changed <-chan struct{}) {
 	for {
 		select {
@@ -206,7 +268,7 @@ func (s *Service) keepContext(ctx context.Context, changed <-chan struct{}) {
 		case <-changed:
 		}
 
-		if !settle(ctx, changed) {
+		if !settle(ctx, changed) || !s.autopilotOn(ctx) {
 			return
 		}
 

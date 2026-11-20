@@ -27,6 +27,11 @@ type Config struct {
 	Setup       Setup
 	Attachments Attachments
 
+	// Switch reads Autopilot (beta), which Describe it is part of: while it is off, the
+	// worker writes nothing and follows nothing. A nil Switch reads as off, as Autopilot is
+	// on a fresh database.
+	Switch Switch
+
 	Clock  clock.Clock
 	Sink   event.Sink
 	Logger *slog.Logger
@@ -81,6 +86,13 @@ type Profile struct {
 // the rules, and the inbox's names.
 type Setup interface {
 	Snapshot(ctx context.Context) (kit.Snapshot, error)
+}
+
+// Switch reads Autopilot (beta), the switch in Settings that shows the Autopilot tab, and
+// Describe it with it. Core adapts Autopilot's settings as stored.
+type Switch interface {
+	// AutopilotOn reports whether Autopilot is on.
+	AutopilotOn(ctx context.Context) (bool, error)
 }
 
 // Attachments words what the user attaches to a message. Core adapts the routines and the

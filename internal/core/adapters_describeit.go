@@ -34,8 +34,9 @@ import (
 // Describe it reaches the rest of the app through the adapters here: Claude Code found,
 // checked, and given its environment as a background run's agent is (describeAgents); the
 // user's setup, the inbox's names, and the parts of the vocabulary that packages above kit
-// hold, as one snapshot (describeSetup); and what a message attaches, worded for the agent
-// (describeAttachments). Every change the snapshot holds reaches its worker through the
+// hold, as one snapshot (describeSetup); what a message attaches, worded for the agent
+// (describeAttachments); and Autopilot (beta), which its worker waits for (describeSwitch).
+// Every change the snapshot holds, the switch's included, reaches its worker through the
 // app's events (describeOnChanges), and where the app runs, through the update engine
 // (stableApp).
 
@@ -44,14 +45,16 @@ var errItemGone = errors.New("the item isn't stored")
 
 // describeItDeps are what Describe it reads the app through: the agents' stores, settings,
 // readiness, and the login shell's environment; the routines, which read the builder's
-// suggestions and the user's scripts too; the update engine, which says where the app runs;
-// and the waker its worker hears the app's changes through.
+// suggestions and the user's scripts too; Autopilot's settings as stored, for its switch;
+// the update engine, which says where the app runs; and the waker its worker hears the
+// app's changes through.
 type describeItDeps struct {
-	agents   agentDeps
-	ready    *readyChecks
-	routines *autopilot.Service
-	updates  updateStatus
-	waker    *describeWaker
+	agents    agentDeps
+	ready     *readyChecks
+	routines  *autopilot.Service
+	autopilot autopilot.Prefs
+	updates   updateStatus
+	waker     *describeWaker
 }
 
 // newDescribeIt builds Describe it in the data folder's describe folder, with the app's own
@@ -82,8 +85,29 @@ func describeItConfig(ctx context.Context, opts Options, deps describeItDeps, lo
 			settings: deps.agents.settings, inbox: deps.agents.inbox, clock: opts.Clock,
 		},
 		Attachments: describeAttachments{routines: deps.routines, inbox: deps.agents.inbox, clock: opts.Clock},
+		Switch:      describeSwitch{prefs: deps.autopilot},
 		Clock:       opts.Clock, Sink: event.Or(opts.Events), Logger: logger,
 	}
+}
+
+// describeSwitch reads Autopilot (beta) for Describe it (describeit.Switch), from
+// Autopilot's settings as stored, as the routines read it: off with none to read.
+type describeSwitch struct {
+	prefs autopilot.Prefs
+}
+
+// AutopilotOn reports whether Autopilot is on.
+func (d describeSwitch) AutopilotOn(ctx context.Context) (bool, error) {
+	if d.prefs == nil {
+		return false, nil
+	}
+
+	c, err := d.prefs.Autopilot(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	return c.Enabled, nil
 }
 
 // describeWaker tells Describe it's worker that what its snapshot holds may have changed,
@@ -696,6 +720,7 @@ var (
 	_ describeit.Agents      = describeAgents{}
 	_ describeit.Setup       = describeSetup{}
 	_ describeit.Attachments = describeAttachments{}
+	_ describeit.Switch      = describeSwitch{}
 	_ event.Sink             = describeOnChanges{}
 	_ snapshotChanger        = (*describeWaker)(nil)
 	_ updateStatus           = (*update.Engine)(nil)

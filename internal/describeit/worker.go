@@ -11,7 +11,8 @@ import (
 type Worker struct {
 	s *Service
 
-	// changed wakes the snapshot's writer, once per burst of changes.
+	// changed wakes the snapshot's writer, once per burst of changes, and, while Autopilot
+	// is off, the worker's read of its switch.
 	changed chan struct{}
 	once    sync.Once
 }
@@ -21,9 +22,10 @@ func NewWorker(s *Service) *Worker {
 	return &Worker{s: s, changed: make(chan struct{}, 1)}
 }
 
-// Changed says something the snapshot holds may have changed: a routine, a setting, a
-// rule, or the inbox. The worker writes the snapshot again soon after, once per burst. It
-// never blocks.
+// Changed says something the snapshot holds may have changed: a routine, a setting
+// (Autopilot (beta) among them), a rule, or the inbox. The worker writes the snapshot again
+// soon after, once per burst, or, while Autopilot is off, reads its switch again. It never
+// blocks.
 func (w *Worker) Changed() {
 	w.s.forget()
 
@@ -33,26 +35,20 @@ func (w *Worker) Changed() {
 	}
 }
 
-// Run does Describe it's background work until ctx ends: it readies the describe folder
-// (an interrupted turn closed, old conversations pruned, the snapshot and the
-// instructions written), keeps the plugin's folder and its link current, follows the
-// outside folder for new proposals, and writes the snapshot again after each burst of
-// changes; as ctx ends, it stops a turn still running.
+// Run does Describe it's background work until ctx ends, while Autopilot (beta) is on: it
+// readies the describe folder (an interrupted turn closed, old conversations pruned, the
+// snapshot and the instructions written), keeps the plugin's folder and its link current,
+// follows the outside folder for new proposals, and writes the snapshot again after each
+// burst of changes. While Autopilot is off, as on a fresh database, it writes nothing and
+// follows nothing: it reads the switch as it starts and again after each change it is told
+// of, catches up on all of the above once Autopilot is turned on, and stops again once it
+// is turned off. As ctx ends, it stops a turn still running.
 func (w *Worker) Run(ctx context.Context) {
 	w.once.Do(func() {
-		w.s.start(ctx)
-		w.s.preparePlugin(ctx)
+		defer w.s.shutdown()
 
-		done := make(chan struct{})
-
-		go func() {
-			defer close(done)
-
-			w.s.followOutside(ctx)
-		}()
-
-		w.s.keepContext(ctx, w.changed)
-		<-done
-		w.s.shutdown()
+		for w.s.awaitOn(ctx, w.changed) {
+			w.s.whileOn(ctx, w.changed)
+		}
 	})
 }

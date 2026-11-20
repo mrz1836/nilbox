@@ -22,6 +22,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox"
+	prefsstore "github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/profiles"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
@@ -432,7 +433,7 @@ func TestDescribeItIsBuiltOverEveryPartItReachesTheAppThrough(t *testing.T) {
 			prompts: new(prompts.Store), profiles: new(profiles.Store), settings: new(settings.Service),
 			inbox: new(inbox.Store),
 		},
-		ready: new(readyChecks), routines: new(autopilot.Service),
+		ready: new(readyChecks), routines: new(autopilot.Service), autopilot: autopilotPrefs{prefs: new(prefsstore.Store)},
 		updates: fixedStatus{st: update.Status{Flavor: update.FlavorRelease, Location: update.Location{OK: true}}},
 	}
 	opts := Options{Paths: appdata.NewPaths(t.TempDir()), Clock: testutil.NewClock(time.Now()), Events: &eventLog{}}
@@ -463,9 +464,38 @@ func TestDescribeItIsBuiltOverEveryPartItReachesTheAppThrough(t *testing.T) {
 	require.True(t, ok, "a routine or an item, worded")
 	assert.Same(t, deps.routines, attachments.routines)
 	assert.Same(t, deps.agents.inbox, attachments.inbox)
+
+	beta, ok := cfg.Switch.(describeSwitch)
+	require.True(t, ok, "Autopilot (beta), as its settings are stored")
+	assert.Equal(t, deps.autopilot, beta.prefs)
 }
 
-func TestDescribeItsWorkerHearsWhatTheAppChanges(t *testing.T) {
+func TestDescribeItReadsAutopilotsSwitchAsStored(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, testOptions(t, ".claude"))
+	beta := describeSwitch{prefs: autopilotPrefs{prefs: prefsstore.New(c.DB, nil)}}
+
+	on, err := beta.AutopilotOn(t.Context())
+	require.NoError(t, err)
+	assert.False(t, on, "off on a fresh database")
+
+	_, err = c.Settings.SetAutopilotEnabled(t.Context(), true)
+	require.NoError(t, err)
+
+	on, err = beta.AutopilotOn(t.Context())
+	require.NoError(t, err)
+	assert.True(t, on, "on once the user turns it on")
+
+	_, err = describeSwitch{prefs: autopilotPrefs{prefs: prefsstore.New(testutil.ClosedDB(t), nil)}}.AutopilotOn(t.Context())
+	require.ErrorContains(t, err, "read Autopilot's settings", "a switch that can't be read says so")
+
+	on, err = describeSwitch{}.AutopilotOn(t.Context())
+	require.NoError(t, err)
+	assert.False(t, on, "with none to read, off")
+}
+
+func TestDescribeItsWorkerWaitsForAutopilotAndHearsWhatTheAppChanges(t *testing.T) {
 	t.Parallel()
 
 	opts := testOptions(t, ".claude")
@@ -486,11 +516,17 @@ func TestDescribeItsWorkerHearsWhatTheAppChanges(t *testing.T) {
 		<-done
 	})
 
-	require.Eventually(t, func() bool {
-		_, err := os.Stat(snapshot)
+	// Autopilot (beta) is off on a fresh database, so the worker waits: turning it on in
+	// Settings, whose event passes through the one sink every service is given, has it catch
+	// up.
+	_, err := c.Settings.SetAutopilotEnabled(t.Context(), true)
+	require.NoError(t, err)
 
-		return err == nil
-	}, 10*time.Second, 20*time.Millisecond, "the worker writes the snapshot as it starts")
+	require.Eventually(t, func() bool {
+		_, statErr := os.Stat(snapshot)
+
+		return statErr == nil
+	}, 10*time.Second, 20*time.Millisecond, "once Autopilot is on, the worker writes the snapshot")
 
 	// A routine saved through Autopilot, whose event passes through the one sink every
 	// service is given.

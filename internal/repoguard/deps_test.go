@@ -320,10 +320,10 @@ func boundaries() []boundary {
 			forbidden: append(slices.Clone(noService),
 				"internal/prompts", "internal/profiles", "internal/launcher", "internal/scriptrun", "internal/desktop",
 				"internal/notify"),
-			why: "Describe it reads the setup, the inbox's names, and the agents through its own Setup, Attachments, " +
-				"and Agents, which core adapts, and runs each turn itself: it knows no store (and so neither " +
-				"Autopilot's service nor the background runner), no GitHub client, and no service, and every " +
-				"proposal applies through the window's own bindings",
+			why: "Describe it reads the setup, the inbox's names, the agents, and Autopilot's switch through its own " +
+				"Setup, Attachments, Agents, and Switch, which core adapts, and runs each turn itself: it knows no " +
+				"store (and so neither Autopilot's service nor the background runner), no GitHub client, and no " +
+				"service, and every proposal applies through the window's own bindings",
 		},
 		{
 			pkg: "internal/mcpserver",

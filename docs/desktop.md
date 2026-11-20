@@ -3526,6 +3526,9 @@ on, as cards you review, test, and apply one part at a time. Nothing changes unt
 part, and each applies through the same calls as the builder, the Prompts tab, and Settings,
 so a routine from a card is checked, saved, and kept exactly as one you built. It is part of the
 Autopilot tab, so it shows while Autopilot (beta) is on, and it talks with Claude Code alone.
+While Autopilot is off, Describe it does nothing in the background either: it keeps neither the
+snapshot of your setup it hands Claude nor the plugin current, and watches for no proposal, and
+it catches up on all of it once you turn Autopilot on.
 
 **Ways in.**
 
@@ -3638,7 +3641,8 @@ profiles with the plugin's state there (*Installed · 1.0.0*, *Not installed*) a
   settings, hooks, or permission rules), points the program it runs (`describe/bin/nilbox-mcp`)
   at the app, and runs Claude Code's own `claude plugin install` for the profile. Claude Code
   loads the plugin in place from that folder, which each version of Nilbox rewrites as it starts
-  when its words differ, so an update reaches your next session with nothing to install again.
+  (or once Autopilot is turned on) when its words differ, so an update reaches your next session
+  with nothing to install again.
   Only Nilbox in a place that lasts, such as Applications, can point the plugin at itself: a
   build from source, or a copy macOS moved aside, says so and installs nothing, unless a release
   already did.

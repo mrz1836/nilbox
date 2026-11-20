@@ -141,6 +141,37 @@ func (f *fakeSetup) change(snap kit.Snapshot) {
 	f.snap = snap
 }
 
+// fakeSwitch is Autopilot (beta), which a test turns on or off, or makes fail to read.
+type fakeSwitch struct {
+	mu  sync.Mutex
+	on  bool
+	err error
+}
+
+// AutopilotOn returns what the test set.
+func (f *fakeSwitch) AutopilotOn(context.Context) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.on, f.err
+}
+
+// set turns Autopilot on or off.
+func (f *fakeSwitch) set(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.on = on
+}
+
+// fail makes the switch fail to read with err, nil to read again.
+func (f *fakeSwitch) fail(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.err = err
+}
+
 // fakeAttachments words a routine and an item by their IDs, and fails for any other.
 type fakeAttachments struct{}
 
@@ -222,37 +253,100 @@ func (s *waitingSink) proposalsEvents() int {
 }
 
 // rig is a service in a describe folder of its own, with fake agents, setup,
-// attachments, clock, and sink.
+// attachments, Autopilot switch, clock, and sink.
 type rig struct {
-	t      *testing.T
-	dir    string
-	exe    string
-	svc    *Service
-	agents *fakeAgents
-	setup  *fakeSetup
-	clock  *testutil.Clock
-	sink   *waitingSink
-	stable bool
+	t         *testing.T
+	dir       string
+	exe       string
+	svc       *Service
+	agents    *fakeAgents
+	setup     *fakeSetup
+	autopilot *fakeSwitch
+	clock     *testutil.Clock
+	sink      *waitingSink
+	stable    bool
 }
 
 // newRig returns a rig whose Claude Code isn't set up yet (agents' start is the zero one),
-// whose setup is testSnapshot, and whose app runs from a stable place.
+// whose setup is testSnapshot, whose Autopilot is on, and whose app runs from a stable
+// place.
 func newRig(t *testing.T) *rig {
 	t.Helper()
 
 	r := &rig{
 		t: t, dir: t.TempDir(), exe: filepath.Join(t.TempDir(), brand.Slug), agents: &fakeAgents{},
-		setup: &fakeSetup{snap: testSnapshot()}, clock: testutil.NewClock(testNow), sink: &waitingSink{}, stable: true,
+		setup: &fakeSetup{snap: testSnapshot()}, autopilot: &fakeSwitch{on: true}, clock: testutil.NewClock(testNow),
+		sink: &waitingSink{}, stable: true,
 	}
 
 	testutil.WriteExecutable(t, r.exe, "")
 
 	r.svc = New(Config{
 		Dir: r.dir, Executable: func() string { return r.exe }, Stable: func() bool { return r.stable },
-		Agents: r.agents, Setup: r.setup, Attachments: fakeAttachments{}, Clock: r.clock, Sink: r.sink,
+		Agents: r.agents, Setup: r.setup, Attachments: fakeAttachments{}, Switch: r.autopilot, Clock: r.clock,
+		Sink: r.sink,
 	})
 
 	return r
+}
+
+// runWorker runs a worker of the rig's service until the test stops it, and returns it with
+// what stops it, which waits for its Run to return.
+func (r *rig) runWorker() (*Worker, func()) {
+	r.t.Helper()
+
+	w := NewWorker(r.svc)
+	ctx, cancel := context.WithCancel(r.t.Context())
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		w.Run(ctx)
+	}()
+
+	return w, func() {
+		cancel()
+		<-done
+	}
+}
+
+// tree returns what the rig's describe folder holds: each folder, file, and link under it
+// by its path there, with a file's content and a link's target.
+func (r *rig) tree() map[string]string {
+	r.t.Helper()
+
+	out := map[string]string{}
+
+	require.NoError(r.t, filepath.WalkDir(r.dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || path == r.dir {
+			return err
+		}
+
+		rel, err := filepath.Rel(r.dir, path)
+		if err != nil {
+			return err
+		}
+
+		switch {
+		case d.Type()&os.ModeSymlink != 0:
+			target, err := os.Readlink(path)
+			out[rel] = "-> " + target
+
+			return err
+		case d.IsDir():
+			out[rel] = "folder"
+		default:
+			data, err := os.ReadFile(path) //nolint:gosec // the test's own folder
+			out[rel] = string(data)
+
+			return err
+		}
+
+		return nil
+	}))
+
+	return out
 }
 
 // path returns a path under the rig's describe folder.

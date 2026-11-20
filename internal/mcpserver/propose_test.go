@@ -165,7 +165,7 @@ func TestAProposalGoesOnlyIntoAFolderTheAppMade(t *testing.T) {
 		says  string
 	}{
 		{"the conversation's folder gone", kit.InApp, removeFolder(kit.InApp), "this conversation's folder for proposals is gone"},
-		{"the outside folder not made yet", kit.Outside, removeFolder(kit.Outside), "hasn't made its folder for proposals"},
+		{"the outside folder not made yet", kit.Outside, removeFolder(kit.Outside), "which it makes while Autopilot (beta) is on"},
 		{"no proposals folder at all", kit.InApp, func(t *testing.T, r rig) {
 			t.Helper()
 			require.NoError(t, os.RemoveAll(filepath.Join(r.dir, "proposals")))

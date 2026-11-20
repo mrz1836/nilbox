@@ -981,10 +981,12 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	c.ShellSettings = newShellSettings(prefs, c.Setup, pool, opts.Clock)
 
 	// Describe it reads the setup and the inbox through the services above, so it is built
-	// once they are: Claude Code as readiness checks it, the routines, the update engine's
-	// word on where the app runs, and the waker its worker hears the app's changes through.
+	// once they are: Claude Code as readiness checks it, the routines, Autopilot (beta), which
+	// its worker waits for, the update engine's word on where the app runs, and the waker its
+	// worker hears the app's changes through.
 	c.DescribeIt, c.DescribeItWorker = newDescribeIt(ctx, opts, describeItDeps{
-		agents: agents, ready: readiness, routines: routines, updates: updateEngine, waker: describe,
+		agents: agents, ready: readiness, routines: routines,
+		autopilot: autopilotPrefs{prefs: prefsstore.New(pool, opts.Clock)}, updates: updateEngine, waker: describe,
 	}, logger)
 
 	return c

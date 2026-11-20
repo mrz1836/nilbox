@@ -205,6 +205,142 @@ func TestTheSnapshotIsWrittenOncePerBurstOfChanges(t *testing.T) {
 	})
 }
 
+func TestTheWorkerDoesNothingWhileAutopilotIsOff(t *testing.T) {
+	t.Parallel()
+
+	for name, off := range map[string]func(r *rig){
+		"switched off":          func(r *rig) { r.autopilot.set(false) },
+		"its switch unreadable": func(r *rig) { r.autopilot.fail(errFake) },
+		"no switch to read":     func(r *rig) { r.svc.cfg.Switch = nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			synctest.Test(t, func(t *testing.T) {
+				r := newRig(t)
+				off(r)
+
+				// What Autopilot on left behind: a turn a crash left running, and a card from
+				// the user's own Claude Code.
+				id := r.crashedTurn(streamFixture(t, "turn-first.jsonl", 0))
+				r.writeProposal(Outside, testNow, 0, pinProposal())
+				before := r.tree()
+
+				w, stop := r.runWorker()
+
+				for range 3 {
+					w.Changed()
+					time.Sleep(time.Minute)
+				}
+
+				synctest.Wait()
+				assert.Equal(t, before, r.tree(), "nothing written: no snapshot, instructions, plugin, link, or folder")
+				assert.Zero(t, r.setup.count(), "and the setup never read")
+
+				rec, err := r.svc.readRecord(id)
+				require.NoError(t, err)
+				assert.Equal(t, TurnRunning, rec.Turns[0].State, "a turn a crash left running waits for Autopilot")
+
+				r.writeProposal(Outside, testNow, 1, pinProposal())
+				time.Sleep(2 * outsideEvery)
+				synctest.Wait()
+				assert.Zero(t, r.sink.proposalsEvents(), "a card from outside is no news: the folder isn't followed")
+
+				stop()
+
+				_, err = r.svc.Send(t.Context(), Message{Text: pinText})
+				require.ErrorIs(t, err, errClosing, "and as the app quits, no turn starts after")
+			})
+		})
+	}
+}
+
+func TestTheWorkerCatchesUpOnceAutopilotIsTurnedOn(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		r.autopilot.set(false)
+		id := r.crashedTurn(streamFixture(t, "turn-first.jsonl", 0))
+
+		w, stop := r.runWorker()
+
+		synctest.Wait()
+		require.NoFileExists(t, r.path(contextName), "off, nothing is written")
+
+		r.autopilot.set(true)
+		w.Changed()
+		synctest.Wait()
+
+		for _, dir := range []string{workName, conversationsName, proposalsName + "/" + Outside} {
+			assert.DirExists(t, r.path(dir), "the folder is readied once Autopilot is on")
+		}
+
+		assert.FileExists(t, r.path(contextName), "the snapshot written")
+		assert.FileExists(t, r.path(instructionsName), "and the instructions")
+		assert.FileExists(t, r.path(pluginName, ".claude-plugin", "marketplace.json"), "the plugin kept current")
+
+		link, err := os.Readlink(r.svc.linkFile())
+		require.NoError(t, err)
+		assert.Equal(t, r.exe, link, "and its link pointed at the app")
+
+		rec, err := r.svc.readRecord(id)
+		require.NoError(t, err)
+		assert.Equal(t, TurnDone, rec.Turns[0].State, "a turn a crash left running is closed from its stream")
+
+		r.writeProposal(Outside, testNow, 0, pinProposal())
+		time.Sleep(outsideEvery)
+		synctest.Wait()
+		assert.Equal(t, 1, r.sink.proposalsEvents(), "the outside folder is followed")
+
+		reads := r.setup.count()
+
+		w.Changed()
+		time.Sleep(contextQuiet)
+		synctest.Wait()
+		assert.Equal(t, reads+1, r.setup.count(), "and the snapshot written again after a change")
+
+		stop()
+	})
+}
+
+func TestTheWorkerStopsOnceAutopilotIsTurnedOff(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		r := newRig(t)
+		w, stop := r.runWorker()
+
+		synctest.Wait()
+		require.FileExists(t, r.path(contextName), "on, the worker readies the folder as it starts")
+
+		r.autopilot.set(false)
+		w.Changed()
+		time.Sleep(contextQuiet)
+		synctest.Wait()
+
+		reads := r.setup.count()
+
+		for range 3 {
+			w.Changed()
+			time.Sleep(time.Minute)
+		}
+
+		r.writeProposal(Outside, testNow, 0, pinProposal())
+		time.Sleep(2 * outsideEvery)
+		synctest.Wait()
+		assert.Equal(t, reads, r.setup.count(), "off, no change writes the snapshot")
+		assert.Zero(t, r.sink.proposalsEvents(), "and the outside folder isn't followed")
+
+		r.autopilot.set(true)
+		w.Changed()
+		synctest.Wait()
+		assert.Equal(t, reads+1, r.setup.count(), "on again, it catches up at once")
+
+		stop()
+	})
+}
+
 func TestTheWorkerRunsUntilTheAppQuits(t *testing.T) {
 	t.Parallel()
 

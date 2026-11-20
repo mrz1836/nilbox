@@ -193,15 +193,34 @@ func TestStartingOverForgetsDescribeItsConversationsAndKeepsItsPlugin(t *testing
 	assert.Equal(t, target, got)
 	assert.FileExists(t, target, "and what it points at is never touched")
 
-	// Describe it's worker makes its folders again first thing as it starts, so the user's
-	// own Claude Code, whose tool mode writes only into a folder the app made, can propose
-	// again at once.
-	quit, cancel := context.WithCancel(t.Context())
-	cancel()
-	c.DescribeItWorker.Run(quit)
+	// A start over turns Autopilot (beta) off with the rest of the settings. Once the user
+	// turns it on again, Describe it's worker makes its folders again first thing, so the
+	// user's own Claude Code, whose tool mode writes only into a folder the app made, can
+	// propose again at once.
+	_, err = c.Settings.SetAutopilotEnabled(t.Context(), true)
+	require.NoError(t, err)
 
-	assert.DirExists(t, filepath.Join(opts.Paths.Describe, "proposals", "outside"))
-	assert.DirExists(t, filepath.Join(opts.Paths.Describe, "conversations"))
+	quit, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		c.DescribeItWorker.Run(quit)
+	}()
+
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+
+	for _, dir := range []string{"proposals/outside", "conversations"} {
+		assert.Eventually(t, func() bool {
+			info, statErr := os.Stat(filepath.Join(opts.Paths.Describe, filepath.FromSlash(dir)))
+
+			return statErr == nil && info.IsDir()
+		}, 10*time.Second, 20*time.Millisecond, dir)
+	}
 }
 
 func TestStartingOverSaysWhatOfDescribeItItCouldntForget(t *testing.T) {
