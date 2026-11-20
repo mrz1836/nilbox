@@ -13,6 +13,7 @@ import * as appinfo from '../../bindings/github.com/mrz1836/nilbox/internal/appi
 import * as autopilot from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot'
 import type * as autopilotcatalog from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/catalog'
 import type * as autopiloteval from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/eval'
+import type * as autopilotkit from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/kit'
 import type * as autopilotspec from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/spec'
 import type * as autopilotwatch from '../../bindings/github.com/mrz1836/nilbox/internal/autopilot/watch'
 import type * as assignees from '../../bindings/github.com/mrz1836/nilbox/internal/assignees'
@@ -22,6 +23,7 @@ import type * as runevent from '../../bindings/github.com/mrz1836/nilbox/interna
 import * as backup from '../../bindings/github.com/mrz1836/nilbox/internal/backup'
 import * as branchrules from '../../bindings/github.com/mrz1836/nilbox/internal/branchrules'
 import * as budget from '../../bindings/github.com/mrz1836/nilbox/internal/budget'
+import * as describeit from '../../bindings/github.com/mrz1836/nilbox/internal/describeit'
 import type * as event from '../../bindings/github.com/mrz1836/nilbox/internal/event'
 import * as ghthreads from '../../bindings/github.com/mrz1836/nilbox/internal/ghthreads'
 import type * as gitread from '../../bindings/github.com/mrz1836/nilbox/internal/gitread'
@@ -420,6 +422,39 @@ export type AutopilotMode = autopilotprefs.Mode
 export const AutopilotMode = autopilotprefs.Mode
 export type AutopilotCurrent = autopilot.Current
 export type AutopilotMatching = NonNullLists<autopilot.Matching>
+
+// Describe it's data: the current conversation and its turns, each turn's cards (one
+// proposal each, checked against the live setup as it is shown: kit's Checked), what the
+// user did with each part, the agent a conversation runs with, and the plugin for the
+// user's own Claude Code in each profile.
+export type DescribeStatus = NonNullLists<describeit.Status>
+export type DescribeAgentChoice = NonNullLists<describeit.AgentChoice>
+export type DescribeConversation = NonNullLists<describeit.Conversation>
+export type DescribeTurn = NonNullLists<describeit.Turn>
+export type DescribeTurnState = describeit.TurnState
+export const DescribeTurnState = describeit.TurnState
+export type DescribeMessage = NonNullLists<describeit.Message>
+export type DescribeAttachKind = describeit.AttachKind
+export const DescribeAttachKind = describeit.AttachKind
+export type DescribeAttachRef = NonNullLists<describeit.AttachRef>
+export type DescribeAttachment = NonNullLists<describeit.Attachment>
+export type DescribeCard = NonNullLists<describeit.Card>
+export type DescribeCardRef = NonNullLists<describeit.CardRef>
+export type DescribeSettleRequest = NonNullLists<describeit.SettleRequest>
+export type DescribePluginState = NonNullLists<describeit.PluginState>
+export type KitChecked = NonNullLists<autopilotkit.Checked>
+export type KitCheckedRoutine = NonNullLists<autopilotkit.CheckedRoutine>
+export type KitCheckedPrompt = NonNullLists<autopilotkit.CheckedPrompt>
+export type KitCheckedSettings = NonNullLists<autopilotkit.CheckedSettings>
+export type KitCheckedRules = NonNullLists<autopilotkit.CheckedRules>
+export type KitRisk = NonNullLists<autopilotkit.Risk>
+export type KitRiskLevel = autopilotkit.RiskLevel
+export type KitOutcome = NonNullLists<autopilotkit.Outcome>
+export type KitOutcomeKind = autopilotkit.OutcomeKind
+export type KitPart = autopilotkit.Part
+export type KitNewPrompt = NonNullLists<autopilotkit.NewPrompt>
+export type KitRoutine = NonNullLists<autopilotkit.Routine>
+export type KitRules = NonNullLists<autopilotkit.Rules>
 // A step, and a run, has '' for a verdict until a Wait for the checks reaches one, and
 // for every step but that wait.
 export type AutopilotVerdict = autopilot.Verdict
@@ -1293,6 +1328,7 @@ export const {
   PreviewRun: previewRoutineRun,
   Delete: deleteRoutine,
   Matching: routineMatching,
+  MatchStored: routineMatchStored,
   Watching: routineWatching,
   Engine: getAutopilotEngine,
   Undo: undoAutopilot,
@@ -1326,6 +1362,36 @@ export const autopilotRunView = autopilotService.RunView as (id: number) => Canc
 export const autopilotWorking = autopilotService.Working
 
 export const saveRoutine = autopilotService.Save as (d: AutopilotDraft) => CancellablePromise<AutopilotRoutine>
+
+// Describe it: the Autopilot tab's conversation with Claude Code. Status says whether a
+// turn can run now (and why not, with the fix), with which agent; Agent and SetAgent are
+// the agent new conversations start with (Settings → Autopilot); Conversation is the
+// current one (ID '' for none) and NewConversation starts another; Send sends a message as
+// the next turn and returns at once with it running, which "describeit:updated" follows,
+// with Events the turn's events after a sequence number, as a run's are; Stop stops it.
+// Proposals are the cards from the user's own Claude Code ("describeit:proposals" says when
+// they change); Settle records what the user did with one part of a card, and
+// DiscardProposal discards every part left. Plugins, InstallPlugin, and RemovePlugin are the
+// plugin for the user's own Claude Code, per profile. A card applies through the bindings the
+// builder, Prompts, and Settings already use: nothing here writes the setup.
+const describeItService = narrow(describeit.Service)
+
+export const {
+  Status: describeItStatus,
+  Agent: describeItAgent,
+  SetAgent: setDescribeItAgent,
+  Conversation: describeItConversation,
+  NewConversation: newDescribeItConversation,
+  Send: sendToDescribeIt,
+  Stop: stopDescribeIt,
+  Events: describeItEvents,
+  Proposals: describeItProposals,
+  Settle: settleDescribeItCard,
+  DiscardProposal: discardDescribeItProposal,
+  Plugins: describeItPlugins,
+  InstallPlugin: installDescribeItPlugin,
+  RemovePlugin: removeDescribeItPlugin,
+} = describeItService
 
 // The calls whose results hold routines or matches, typed with the values the generated
 // unions leave out (AutopilotRoutine, AutopilotMatch).

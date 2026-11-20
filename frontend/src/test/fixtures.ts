@@ -7,6 +7,14 @@ import type {
   AssigneeCandidates,
   AutopilotCatalog,
   AutopilotDescribed,
+  DescribeAgentChoice,
+  DescribeCard,
+  DescribeConversation,
+  DescribePluginState,
+  DescribeStatus,
+  DescribeTurn,
+  KitChecked,
+  KitCheckedRoutine,
   AutopilotExplanation,
   AutopilotHold,
   AutopilotImportPreview,
@@ -4319,4 +4327,111 @@ export function routineImportPreview(overrides: Partial<AutopilotImportPreview> 
     ],
     ...overrides,
   }
+}
+
+// describeStatus is Describe it ready to run a turn, with the launch defaults' Claude
+// profile and the agent inherited.
+export function describeStatus(overrides: Partial<DescribeStatus> = {}): DescribeStatus {
+  return {
+    ready: true,
+    problem: '',
+    fix: '',
+    version: '2.1.328',
+    agent: describeAgentChoice(),
+    profile: 'default',
+    model: 'sonnet',
+    effort: '',
+    running: false,
+    pending: 0,
+    ...overrides,
+  }
+}
+
+// describeAgentChoice is the agent a conversation runs with: each part inherited.
+export function describeAgentChoice(overrides: Partial<DescribeAgentChoice> = {}): DescribeAgentChoice {
+  return { profile: '', model: '', effort: '', ...overrides }
+}
+
+// describeConversation is no conversation yet, unless overrides say.
+export function describeConversation(overrides: Partial<DescribeConversation> = {}): DescribeConversation {
+  return {
+    id: '',
+    agent: describeAgentChoice(),
+    profile: 'default',
+    model: 'sonnet',
+    effort: '',
+    createdAt: '2026-06-15T12:00:00Z',
+    turns: [],
+    running: false,
+    cost: null,
+    estimated: false,
+    tokensIn: 0,
+    tokensOut: 0,
+    ...overrides,
+  }
+}
+
+// describeTurn is a first turn that finished, without a card unless overrides say.
+export function describeTurn(overrides: Partial<DescribeTurn> = {}): DescribeTurn {
+  return {
+    n: 1,
+    text: 'When the checks fail on my pull requests, pin them.',
+    attach: [],
+    feedback: '',
+    state: 'done',
+    error: '',
+    startedAt: '2026-06-15T12:00:00Z',
+    endedAt: '2026-06-15T12:00:20Z',
+    reply: 'Here is a routine that pins them. It starts switched off, in Ask first.',
+    cost: 0.04,
+    estimated: true,
+    cards: [],
+    ...overrides,
+  }
+}
+
+// describeCard is a proposal of one new routine from the conversation's first turn, which
+// checks clean.
+export function describeCard(overrides: Partial<DescribeCard> = {}): DescribeCard {
+  return {
+    ref: { source: '00000000-0000-4000-8000-000000000001', proposal: '20260615T120010Z-9f2c4100ab31' },
+    at: '2026-06-15T12:00:10Z',
+    where: '',
+    turn: 1,
+    summary: 'A routine that pins your pull requests when their checks fail.',
+    checked: kitChecked(),
+    outcomes: [],
+    settled: false,
+    ...overrides,
+  }
+}
+
+// kitChecked is a proposal of one new routine, checked: no problem, no risk.
+export function kitChecked(overrides: Partial<KitChecked> = {}): KitChecked {
+  return { prompts: [], routines: [kitCheckedRoutine()], settings: null, rules: null, ...overrides }
+}
+
+// kitCheckedRoutine is a new routine, checked as the builder checks a draft.
+export function kitCheckedRoutine(overrides: Partial<KitCheckedRoutine> = {}): KitCheckedRoutine {
+  return {
+    index: 0,
+    name: 'Snooze passing bot PRs',
+    nameTaken: false,
+    spec: routineSpec(),
+    sentence:
+      'When checks pass on pull requests in Review requested, snooze it for 3 days. Once per head commit, at most 2 tries per pull request.',
+    problems: [],
+    warnings: [],
+    dryRunOnly: [],
+    before: null,
+    gone: false,
+    stale: false,
+    risks: [],
+    ...overrides,
+  }
+}
+
+// describePluginState is the plugin not installed in the launch defaults' profile.
+export function describePluginState(overrides: Partial<DescribePluginState> = {}): DescribePluginState {
+  return { profile: 'default', default: true, installed: false, version: '', problem: '', ...overrides }
 }
