@@ -1987,7 +1987,10 @@ single clone, its kind worked out once as it is added). `Roots` holds them, each
 and its links resolved once; `Roots.Clones` lists the clones in all of them at once,
 reading no git, a clone two locations reach listed once, the clone root's first, and an
 extra location it can't read skipped and named (`Found.Skipped`), while a clone root that
-can't be read is an error; `Holds` says whether the locations hold a clone, which every
+can't be read is an error. A linked worktree in a location is left out for its clone, as
+`CheckAddable` refuses one as a location: for the clone when the locations list it too,
+wherever, or else for the first of its worktrees (a bare repository's included), which
+stands for it, so each page lists a clone once however many of its worktrees sit beside it; `Holds` says whether the locations hold a clone, which every
 service checks before it changes one; `Key` is the clone root alone while there are no
 others, so a cache keyed by it stays valid. `Survey` previews a folder before it is added,
 with what to add instead (the folders inside one with no clones of its own, at most 100

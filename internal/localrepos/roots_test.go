@@ -168,6 +168,57 @@ func TestRootsClones(t *testing.T) {
 	assert.NotNil(t, empty.Dirs)
 }
 
+func TestRootsClonesListsEachCloneOnceBesideItsWorktrees(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	projects := filepath.Join(home, "projects")
+
+	app := fakeClone(t, filepath.Join(projects, "app"))
+	fakeWorktree(t, app, filepath.Join(projects, "app-feature"))
+	fakeWorktree(t, app, filepath.Join(home, "work", "app-fix"))
+	fakeWorktree(t, app, filepath.Join(home, "Desktop", "app-exp"))
+
+	b := fakeClone(t, filepath.Join(home, "work", "b"))
+	fakeWorktree(t, b, filepath.Join(projects, "b-wt"))
+
+	lib := fakeClone(t, filepath.Join(home, "src", "lib")) // in no location
+	libA := filepath.Join(projects, "lib-a")
+	fakeWorktree(t, lib, libA)
+	fakeWorktree(t, lib, filepath.Join(projects, "lib-b"))
+
+	bare := filepath.Join(home, "bare.git")
+	bareOne, bareTwo := filepath.Join(projects, "bare-one"), filepath.Join(projects, "bare-two")
+
+	for _, wt := range []string{bareOne, bareTwo} {
+		admin := filepath.Join(bare, "worktrees", filepath.Base(wt))
+		testutil.WriteFile(t, filepath.Join(admin, "commondir"), "../..\n")
+		testutil.WriteFile(t, filepath.Join(wt, ".git"), "gitdir: "+admin+"\n")
+	}
+
+	separate := filepath.Join(projects, "separate")
+	testutil.WriteFile(t, filepath.Join(separate, ".git"), "gitdir: "+filepath.Join(home, "gits", "separate")+"\n")
+	mkdir(t, filepath.Join(home, "gits", "separate"))
+
+	roots := rootsAt(t, "~/projects", home,
+		Location{Path: "~/Desktop/app-exp", Kind: KindClone},
+		Location{Path: workLocation, Kind: KindFolder},
+	)
+
+	found, err := roots.Clones(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []string{app, bareOne, libA, separate, b}, found.Dirs,
+		"a worktree of a listed clone is left out wherever either is, and one of a clone no location "+
+			"lists, or of a bare repository, stands for it, the first only; a clone whose git folder "+
+			"lives elsewhere is a clone of its own")
+	assert.Empty(t, found.Skipped)
+
+	alone, err := rootsAt(t, "~/projects", home).Clones(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, []string{app, filepath.Join(projects, "b-wt"), bareOne, libA, separate}, alone.Dirs,
+		"a worktree whose clone is in a location no longer set stands for it")
+}
+
 func TestRootsClonesNamesAFileLocation(t *testing.T) {
 	t.Parallel()
 

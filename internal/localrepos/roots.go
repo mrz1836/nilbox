@@ -268,7 +268,9 @@ func (u Unread) Words(home string) string {
 type Found struct {
 	// Dirs are the clones: the clone root's by name, then each other location's in the
 	// order they are stored, a folder's by name. A clone two locations reach is listed
-	// once, where it is reached first.
+	// once, where it is reached first, and so is a clone some of whose linked worktrees
+	// the locations hold too: a worktree is left out for its clone, or, when the clone
+	// isn't listed, for the first of its worktrees (see withoutExtraWorktrees).
 	Dirs []string
 
 	// Skipped are the other locations that couldn't be read, in the order they are stored.
@@ -277,10 +279,11 @@ type Found struct {
 
 // Clones lists the clones in every location, reading no git: the clones directly inside
 // the clone root and each folder location (see folderClones), and each clone location
-// that still holds a .git. The locations are read at once, the others through the Roots'
-// Reader, if any. A clone root that can't be read is an error, as it always was; another
-// location that can't be read, or doesn't answer in time, is skipped and named in
-// Found.Skipped.
+// that still holds a .git, each clone once however many of its linked worktrees the
+// locations also hold (see Found.Dirs). The locations are read at once, the others
+// through the Roots' Reader, if any. A clone root that can't be read is an error, as it
+// always was; another location that can't be read, or doesn't answer in time, is skipped
+// and named in Found.Skipped.
 func (r Roots) Clones(ctx context.Context) (Found, error) {
 	if len(r.places) == 0 {
 		return Found{}, fmt.Errorf("read clone root: %w", paths.ErrEmpty)
@@ -312,10 +315,23 @@ func (r Roots) Clones(ctx context.Context) (Found, error) {
 	}
 
 	found := Found{Dirs: append([]string{}, reads[0].dirs...), Skipped: []Unread{}}
-	if !r.Several() {
-		return found, nil
+	worktrees := map[string]string{}
+	maps.Copy(worktrees, reads[0].worktrees)
+
+	if r.Several() {
+		r.addOthers(&found, worktrees, reads)
 	}
 
+	found.Dirs = withoutExtraWorktrees(found.Dirs, worktrees)
+
+	return found, nil
+}
+
+// addOthers adds to found the clones the other locations' reads (reads, one per place,
+// the clone root's first) list, in the order they are stored, leaving out each one an
+// earlier location reached, and names each location that couldn't be read in
+// Found.Skipped. worktrees gains each read's linked worktrees.
+func (r Roots) addOthers(found *Found, worktrees map[string]string, reads []placeRead) {
 	seen := resolvedSet(found.Dirs)
 
 	for i, read := range reads[1:] {
@@ -329,9 +345,38 @@ func (r Roots) Clones(ctx context.Context) (Found, error) {
 		found.Dirs = append(found.Dirs, fresh...)
 
 		maps.Copy(seen, resolvedSet(fresh))
+		maps.Copy(worktrees, read.worktrees)
+	}
+}
+
+// withoutExtraWorktrees leaves out of dirs each linked worktree that would list its clone a
+// second time: one whose clone dirs list too, wherever it is, and one another worktree of
+// the same clone came before. worktrees maps each linked worktree among dirs to its clone's
+// common git folder, resolved. A clone is the folder that holds that git folder, as git
+// lays a clone out; a worktree whose clone isn't listed, or is laid out otherwise (a bare
+// repository's), stands for it, the first of them only. dirs keeps its order.
+func withoutExtraWorktrees(dirs []string, worktrees map[string]string) []string {
+	if len(worktrees) == 0 {
+		return dirs
 	}
 
-	return found, nil
+	listed := resolvedSet(dirs)
+	clones := make(map[string]bool, len(worktrees))
+
+	return slices.DeleteFunc(dirs, func(dir string) bool {
+		common, linked := worktrees[dir]
+
+		switch {
+		case !linked:
+			return false
+		case filepath.Base(common) == ".git" && listed[filepath.Dir(common)], clones[common]:
+			return true
+		default:
+			clones[common] = true
+
+			return false
+		}
+	})
 }
 
 // resolveAll resolves each place's links: directly, one after another, without a Reader,
@@ -390,19 +435,23 @@ func (s State) listed() bool {
 	return s == StateOK || s == StateNowAClone
 }
 
-// placeRead is what reading one location found: its clones, how it reads, and, for a
-// folder that couldn't be listed, the error.
+// placeRead is what reading one location found: its clones, the linked worktrees among
+// them, each mapped to its clone's common git folder, resolved (nil when there are none),
+// how it reads, and, for a folder that couldn't be listed, the error.
 type placeRead struct {
-	dirs  []string
-	state State
-	err   error
+	dirs      []string
+	worktrees map[string]string
+	state     State
+	err       error
 }
 
 // readPlace reads one location: a folder's clones, or a clone location itself.
 func readPlace(p Place) placeRead {
 	if p.Kind == KindClone {
 		if isRepo(p.Path) {
-			return placeRead{dirs: []string{p.Path}, state: StateOK}
+			dirs := []string{p.Path}
+
+			return placeRead{dirs: dirs, worktrees: worktreesAmong(dirs), state: StateOK}
 		}
 
 		return placeRead{state: notAClone(p.Path)}
@@ -414,10 +463,32 @@ func readPlace(p Place) placeRead {
 	}
 
 	if !p.Primary && hasGit(p.Path) {
-		return placeRead{dirs: dirs, state: StateNowAClone}
+		return placeRead{dirs: dirs, worktrees: worktreesAmong(dirs), state: StateNowAClone}
 	}
 
-	return placeRead{dirs: dirs, state: StateOK}
+	return placeRead{dirs: dirs, worktrees: worktreesAmong(dirs), state: StateOK}
+}
+
+// worktreesAmong maps each linked worktree among dirs to its clone's common git folder,
+// resolved through links, reading only each one's .git file and commondir; nil when none
+// is one.
+func worktreesAmong(dirs []string) map[string]string {
+	var out map[string]string
+
+	for _, dir := range dirs {
+		common, linked := linkedWorktree(dir)
+		if !linked {
+			continue
+		}
+
+		if out == nil {
+			out = map[string]string{}
+		}
+
+		out[dir] = paths.Resolved(common)
+	}
+
+	return out
 }
 
 // notAClone says why the clone location at dir, which holds no .git, isn't one: it is
