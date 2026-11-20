@@ -89,19 +89,19 @@ export interface Step {
   situation: Situation
 }
 
-// AutopilotState is where an Autopilot routine stands on the item: it needs the user, it
-// is working, or neither.
-export interface AutopilotState {
+// CardAutopilot is where an Autopilot routine stands on a card's item: it needs the
+// user, it is working, or neither.
+export interface CardAutopilot {
   state: '' | 'needs' | 'working'
   routine: string
 }
 
 // noAutopilot is a card no routine waits on or works on.
-const noAutopilot: AutopilotState = { state: '', routine: '' }
+const noAutopilot: CardAutopilot = { state: '', routine: '' }
 
 // autopilotState reads a card's autopilot prop, as the lists word it (rowAutopilot):
 // "needs:<routine>", "working:<routine>", or '' for neither.
-export function autopilotState(row: string): AutopilotState {
+export function autopilotState(row: string): CardAutopilot {
   const at = row.indexOf(':')
   const state = row.slice(0, at)
 
@@ -133,7 +133,7 @@ export interface StepInput {
   sessionFresh: boolean
   backFromSnooze: boolean
   nudge?: NudgeState
-  autopilot: AutopilotState
+  autopilot: CardAutopilot
   agent: string
   mutedTarget: string
 }
