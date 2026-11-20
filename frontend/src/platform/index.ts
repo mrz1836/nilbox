@@ -831,6 +831,17 @@ export type BranchRules = NonNullLists<branchrules.Rules>
 export type RepoRule = reporules.Rule
 export type RepoRules = NonNullLists<reporules.Rules>
 export type WorktreeStage = worktrees.Stage
+// WorktreeLinkKind is how a worktree was linked to its pull request or issue: by its name
+// or record, or by the pushed branch it is on; '' with no item.
+export type WorktreeLinkKind = worktrees.LinkKind
+// WorktreeCopies says how a worktree's commits that aren't on GitHub compare with the pushed
+// branches' commits, and WorktreeCopyMark how one of them does: an identical copy, an edited
+// one, or none.
+export type WorktreeCopies = NonNullLists<worktrees.Copies>
+export type WorktreeCopyMark = worktrees.CopyMark
+// WorktreeCopyComparison is how the drawer's own comparison of those commits went: whether
+// it ran, against which branch, and what it found.
+export type WorktreeCopyComparison = NonNullLists<worktrees.CopyComparison>
 export type WorktreeSession = NonNullLists<worktrees.Session>
 
 // The bound calls, under the names the app knows them by. What each one does is the Go

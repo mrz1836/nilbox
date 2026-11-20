@@ -150,6 +150,142 @@ export interface Cleanup {
 }
 
 /**
+ * Copies says how the commits of a worktree that aren't on GitHub compare with the pushed
+ * branches' commits, where cherry-picking or rebasing them puts their copies. Every field
+ * is a plain value; the zero value says nothing was compared, as for a worktree with every
+ * commit on GitHub.
+ */
+export interface Copies {
+    /**
+     * Ref is the pushed branch they were compared with, as in origin/feature-x: the one
+     * with an identical copy of each when there is one, else the one with the most; "" when
+     * none has a copy of any.
+     */
+    "ref": string;
+
+    /**
+     * Branch is Ref's branch on its remote, as in feature-x, worked out among the clone's
+     * remotes, whose names may hold a slash: origin/mirror/main of a remote called
+     * origin/mirror is main. It is "" when Ref is, or when no remote the clone names is
+     * Ref's.
+     */
+    "branch": string;
+
+    /**
+     * Count is how many there are (Worktree.Unpushed) when they were compared, or couldn't
+     * be (Note); 0 when there was nothing to compare them with.
+     */
+    "count": number;
+
+    /**
+     * Identical, Edited, and None count those with an identical copy on Ref, those whose
+     * copy there has another change, and those with neither: Count together, unless Note
+     * says they couldn't be compared.
+     */
+    "identical": number;
+    "edited": number;
+    "none": number;
+
+    /**
+     * Recorded reports that what an earlier listing recorded vouches for them: each had an
+     * identical copy on Ref, and the pull request Ref headed, which GitHub keeps, has those
+     * copies, and either Ref is gone or that pull request merged. Identical is Count then.
+     */
+    "recorded": boolean;
+
+    /**
+     * PR is the number of the pull request the copies went into: when Recorded, the one the
+     * record names, else the one Ref's branch heads, as this listing read it; 0 when none is
+     * known, as before GitHub was asked, or for a branch no pull request heads.
+     */
+    "pr": number;
+
+    /**
+     * Gone reports that Ref's remote-tracking branch is gone from the clone, deleted or
+     * pruned, as it can be only when Recorded: the window can't read that from Recorded,
+     * which a merged pull request sets with its branch still there.
+     */
+    "gone": boolean;
+
+    /**
+     * Unless it is "", Note says in a sentence why they couldn't be compared, or why their
+     * identical copies don't count.
+     */
+    "note": string;
+}
+
+/**
+ * CopyComparison is how comparing a worktree's commits not on GitHub with the pushed
+ * branches went when Details compared them, or found what the listing compared still
+ * holds. It reads no copy record, so a worktree its record vouches for
+ * (Worktree.Copies.Recorded) may have nothing on a pushed branch now. Every field is a plain
+ * value.
+ */
+export interface CopyComparison {
+    /**
+     * Compared reports that the comparison ran to completion, the pushed commits read and
+     * every branch holding likely copies compared, byte for byte, or that there was no pushed
+     * branch to compare with. With Identical at 0, none of the commits has an identical copy
+     * on a pushed branch now; false says only that this is unknown (Note says why).
+     */
+    "compared": boolean;
+
+    /**
+     * Ref is the pushed branch they were compared with, as in origin/feature-x, or "" when
+     * no pushed commit was a likely copy of any.
+     */
+    "ref": string;
+
+    /**
+     * Branch is Ref's branch on its remote, as Copies.Branch says it.
+     */
+    "branch": string;
+
+    /**
+     * Identical and Edited count the commits with an identical copy on Ref, and those with
+     * a copy there whose change differs.
+     */
+    "identical": number;
+    "edited": number;
+
+    /**
+     * Unless it is "", Note says in a sentence why the comparison couldn't run, or why
+     * identical copies on several branches don't count.
+     */
+    "note": string;
+}
+
+/**
+ * CopyMark is how a commit that isn't on GitHub compares with the pushed branch its
+ * worktree's commits were compared with (Copies.Ref).
+ */
+export type CopyMark = "" | "identical" | "edited";
+
+/**
+ * The values of CopyMark, by the names of their Go constants.
+ */
+export const CopyMark = {
+    /**
+     * How a commit compares with the pushed branch, as UnpushedCommit.Copy reports it.
+     *
+     * CopyNone is a commit with no copy there.
+     */
+    CopyNone: "",
+
+    /**
+     * CopyIdentical is a commit with a copy there, by its author, author time, and
+     * subject, whose change is identical.
+     */
+    CopyIdentical: "identical",
+
+    /**
+     * CopyEdited is a commit with a copy there, by its author, author time, and subject,
+     * whose change differs.
+     */
+    CopyEdited: "edited",
+} as const;
+
+/**
  * Details is what a worktree's drawer shows beyond its row, read when the drawer first
  * opens. Every field is a plain value.
  */
@@ -178,6 +314,13 @@ export interface Details {
      * Unpushed is how many such commits there are, or -1 when they couldn't be counted.
      */
     "unpushed": number;
+
+    /**
+     * Copies says how comparing those commits with the pushed branches went, now: whether
+     * it ran, against what, and what it found. Its zero value is for a worktree with none of
+     * them, or whose commits couldn't be read.
+     */
+    "copies": CopyComparison;
 
     /**
      * Base is origin's default branch as the clone last fetched it, as in "origin/main", or
@@ -234,6 +377,42 @@ export const ItemStatus = {
     ItemOpen: "open",
     ItemMerged: "merged",
     ItemClosed: "closed",
+} as const;
+
+/**
+ * LinkKind is how a worktree was linked to its pull request or issue.
+ */
+export type LinkKind = "" | "name" | "branch" | "copy";
+
+/**
+ * The values of LinkKind, by the names of their Go constants.
+ */
+export const LinkKind = {
+    /**
+     * How a worktree was linked to its item, as Worktree.LinkedBy reports it.
+     *
+     * LinkNone is a worktree linked to no item.
+     */
+    LinkNone: "",
+
+    /**
+     * LinkName is a worktree linked by its record, the name of the folder the app or
+     * Claude Code made it in (pr-<n>, issue-<n>), or an item's own branch
+     * (worktree-pr-<n>, worktree-issue-<n>).
+     */
+    LinkName: "name",
+
+    /**
+     * LinkBranch is a worktree on a pushed branch, linked to the pull request that branch
+     * heads in the repository it was pushed to.
+     */
+    LinkBranch: "branch",
+
+    /**
+     * LinkCopy is a worktree each of whose commits not on GitHub has an identical copy on
+     * one pushed branch, linked to the pull request that branch heads.
+     */
+    LinkCopy: "copy",
 } as const;
 
 /**
@@ -617,6 +796,17 @@ export interface UnpushedCommit {
      * Subject is the first line of its message.
      */
     "subject": string;
+
+    /**
+     * Copy is how it compares with the pushed branch the worktree's commits were compared
+     * with (Worktree.Copies.Ref): an identical copy there, an edited one, or none ("").
+     */
+    "copy": CopyMark;
+
+    /**
+     * CopyOID is that copy's commit ID, or "".
+     */
+    "copyOid": string;
 }
 
 /**
@@ -722,7 +912,9 @@ export interface Worktree {
     /**
      * OnGitHub reports that every commit the worktree has is on GitHub: none is missing
      * from the remote-tracking branches and the commit it was made at, or HEAD is its pull
-     * request's head commit, which GitHub keeps.
+     * request's head commit, which GitHub keeps, or the change of each that is has an
+     * identical copy on GitHub (Copies), on a pushed branch or in the pull request it went
+     * into. Unpushed still counts the commits missing by commit ID.
      */
     "onGitHub": boolean;
 
@@ -730,6 +922,19 @@ export interface Worktree {
      * Item is the pull request or issue the worktree was made for, or nil.
      */
     "item": LinkedItem | null;
+
+    /**
+     * LinkedBy is how the worktree was linked to Item: by its record, its name, or an
+     * item's own branch (LinkName), by the pushed branch it is on (LinkBranch), or by the
+     * pushed branch its commits were copied onto (LinkCopy); "" with no item.
+     */
+    "linkedBy": LinkKind;
+
+    /**
+     * Copies says how its commits that aren't on GitHub compare with the pushed branches'
+     * commits: whether they were copied onto one, by cherry-picking or rebasing them.
+     */
+    "copies": Copies;
 
     /**
      * Stage is where the worktree stands.

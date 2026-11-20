@@ -1,10 +1,8 @@
 package worktrees
 
 import (
-	"cmp"
 	"context"
 	"fmt"
-	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -36,30 +34,46 @@ type linkTarget struct {
 	launched bool
 }
 
-// link fills in the item of each worktree made for a pull request or issue, and returns
-// why GitHub could not be asked, or "". A record names the item exactly; otherwise the
-// worktree's name, or its branch, gives the kind and number, and the clone's GitHub
-// remotes the repositories it may be in. One request reads them all.
+// link fills in the item of each worktree made for a pull request or issue, or on a pushed
+// branch a pull request heads, and returns why GitHub could not be asked, or "". A record
+// names the item exactly; otherwise the worktree's name, or an item's own branch, gives the
+// kind and number, and the clone's GitHub remotes the repositories it may be in. A worktree
+// with none of these on a pushed branch is linked by that branch (see branchlink.go), and
+// one whose commits were copied onto a pushed branch by that branch, or by its copy record
+// once that branch is gone (see copyjudge.go), whose pull request the same request reads.
+// One request reads them all, unless there are more than fifty of either.
 //
-// remotes maps each repository's Path to its remotes (remote name to repository), and
-// recorded holds the live records by their worktree's resolved path.
+// remotes maps each repository's Path to its remotes (remote name to repository), refs to
+// its refs as read for this listing, and recorded holds the live records by their
+// worktree's resolved path.
 func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map[string]repo.Name,
-	recorded map[string]worklog.Record, tracker *listProgress,
+	refs map[string]cloneRefs, recorded map[string]worklog.Record, tracker *listProgress,
 ) string {
 	if s.github == nil {
 		return ""
 	}
 
 	targets := linkTargets(repos, remotes, recorded)
-	if len(targets) == 0 {
+	heads := branchTargets(repos, remotes, refs, namedOf(targets))
+	copied := copyTargets(repos, remotes, refs)
+	vouched := recordTargets(repos, refs)
+	all := slices.Concat(heads, copied)
+	now := s.clock.Now()
+	plan := s.heads.plan(all, now)
+
+	items := plan.refs(uniqueRefs(targets), all)
+	for _, t := range vouched {
+		items = appendRef(items, t.ref)
+	}
+
+	if len(items) == 0 && len(plan.asks) == 0 {
 		return ""
 	}
 
-	refs := uniqueRefs(targets)
-	tracker.Start(event.WorktreesAskingGitHub, len(refs))
+	tracker.Start(event.WorktreesAskingGitHub, len(items)+len(plan.asks))
 
-	states, err := s.github.ItemStates(ctx, refs)
-	tracker.Add(len(refs))
+	answer, err := s.github.LinkStates(ctx, items, headQueries(plan.asks))
+	tracker.Add(len(items) + len(plan.asks))
 
 	if err != nil {
 		err = fmt.Errorf("could not read the pull requests and issues from GitHub: %w", err)
@@ -69,10 +83,29 @@ func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map
 	}
 
 	for _, t := range targets {
-		t.wt.Item = pickItem(t, states)
+		if t.wt.Item = pickItem(t, answer.Items); t.wt.Item != nil {
+			t.wt.LinkedBy = LinkName
+		}
 	}
 
+	prs := s.heads.resolveHeads(all, plan, answer, now)
+	linkHeads(heads, prs, LinkBranch)
+	linkHeads(fullyCopied(copied), prs, LinkCopy)
+	copiedInto(copied, prs)
+	linkRecords(vouched, answer.Items)
+
 	return ""
+}
+
+// namedOf is the set of the worktrees targets name, which a name, a record, or an item's
+// own branch links.
+func namedOf(targets []linkTarget) map[*Worktree]bool {
+	named := make(map[*Worktree]bool, len(targets))
+	for _, t := range targets {
+		named[t.wt] = true
+	}
+
+	return named
 }
 
 // linkTargets lists the worktrees of repos that may belong to a pull request or issue.
@@ -135,9 +168,7 @@ func worktreeItem(wt *Worktree) (item.Kind, int, bool) {
 // remoteRefs lists item number in each GitHub repository the clone has a remote for:
 // origin's first, then the others by remote name, each repository once.
 func remoteRefs(remotes map[string]repo.Name, kind item.Kind, number int) []item.Ref {
-	names := slices.SortedFunc(maps.Keys(remotes), func(a, b string) int {
-		return cmp.Or(cmp.Compare(remoteRank(a), remoteRank(b)), strings.Compare(a, b))
-	})
+	names := rankedRemotes(remotes)
 
 	refs := make([]item.Ref, 0, len(names))
 
@@ -247,7 +278,7 @@ func assess(wt *Worktree, sessionsKnown bool) {
 	wt.CanRemove = free && !wt.Dirty && wt.Error == ""
 	wt.CanForceRemove = free && wt.Dirty && sessionsKnown
 
-	wt.OnGitHub = wt.Unpushed == 0 || headIsItemHead(wt)
+	wt.OnGitHub = onGitHubByID(wt) || wt.copies.onGitHub
 	wt.Stage = stageOf(wt)
 	wt.CanCleanUp = wt.Stage == StageFinished
 }
@@ -290,18 +321,45 @@ func lockedStage(wt *Worktree) Stage {
 // autoCleanable reports a finished worktree the automatic sweep may remove: its pull
 // request merged, or its issue closed. A worktree the app did not launch a session in
 // counts only when it is linked by commit too, its HEAD being the merged pull request's
-// head, so a name or branch that only looks like an item's is never enough.
+// head, so a name or branch that only looks like an item's is never enough. One linked by
+// the pushed branch it is on, or by its commits' copies, counts only when the app or Claude
+// Code made it (Managed), so a worktree the user made by hand is only ever cleaned up by
+// hand. One whose work is on GitHub only as copies counts only once its copy record's pull
+// request merged with every copy (copyState.merged), and, linked by those copies, only when
+// that is the pull request it is linked to: never while it is open.
 func autoCleanable(wt Worktree) bool {
 	it := wt.Item
 
 	switch {
-	case !wt.CanCleanUp || it == nil:
+	case !sweepMayTake(wt):
 		return false
+	case wt.LinkedBy == LinkCopy:
+		return it.Kind == item.KindPR && it.State == ItemMerged && wt.copies.merged && isRecordPR(it, wt.copies.record)
 	case it.Kind == item.KindPR:
 		return it.State == ItemMerged && (it.Launched || it.HeadOID == wt.Head)
 	default:
 		return it.State == ItemClosed && it.Launched
 	}
+}
+
+// sweepMayTake reports a finished worktree with an item that the sweep may look at at all:
+// one linked by a pushed branch or by copies only when the app or Claude Code made it, and
+// one whose work is on GitHub only as copies only once their pull request merged with them.
+func sweepMayTake(wt Worktree) bool {
+	switch {
+	case !wt.CanCleanUp || wt.Item == nil:
+		return false
+	case (wt.LinkedBy == LinkBranch || wt.LinkedBy == LinkCopy) && !wt.Managed:
+		return false
+	default:
+		return onGitHubByID(&wt) || wt.copies.merged
+	}
+}
+
+// isRecordPR reports it as the pull request rec's copies went into.
+func isRecordPR(it *LinkedItem, rec *worklog.Copy) bool {
+	return rec != nil && it.Kind == item.KindPR && it.Number == rec.Number &&
+		repo.Name{Owner: it.Owner, Repo: it.Name}.Key() == repo.Name{Owner: rec.Owner, Repo: rec.Name}.Key()
 }
 
 // itemName names an item for a result, e.g. "acme-org/example-repo#184", or is "".

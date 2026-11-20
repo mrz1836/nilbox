@@ -14,7 +14,10 @@ export function itemKey(repo: string, number: number): string {
 }
 
 // itemWorktrees maps each item a listed worktree is linked to, by itemKey, to the
-// worktree; the first listed wins when an item has two.
+// worktree; the first listed wins when an item has two. Only a worktree linked by its name
+// or record, or by the pushed branch it is on, is the item's: one linked to a pull request
+// because its commits were copied onto that pull request's branch (linkedBy 'copy'), as a
+// sub-agent's is, isn't, and a pull request can have many such.
 export function itemWorktrees(snapshot: WorktreesSnapshot | null): ReadonlyMap<string, Worktree> {
   if (snapshot === null) {
     return noWorktrees
@@ -24,7 +27,7 @@ export function itemWorktrees(snapshot: WorktreesSnapshot | null): ReadonlyMap<s
 
   for (const repo of snapshot.repos) {
     for (const wt of repo.worktrees) {
-      if (wt.item === null || wt.main || wt.prunable) {
+      if (wt.item === null || (wt.linkedBy !== 'name' && wt.linkedBy !== 'branch') || wt.main || wt.prunable) {
         continue
       }
 

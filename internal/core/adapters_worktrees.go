@@ -81,6 +81,60 @@ func (s itemStates) ItemStates(ctx context.Context, refs []item.Ref) (map[string
 	return out, nil
 }
 
+// LinkStates asks GitHub about refs, as ItemStates does, and in the same requests about
+// the pull requests whose head branch had each name heads asks about. A token GitHub
+// refuses is borrowed again once.
+func (s itemStates) LinkStates(ctx context.Context, refs []item.Ref, heads []worktrees.HeadQuery,
+) (worktrees.LinkAnswer, error) {
+	read := startRead(s.inbox)
+
+	asks := make([]github.HeadQuery, 0, len(heads))
+	for _, h := range heads {
+		asks = append(asks, github.HeadQuery{Repo: h.Repo, Branch: h.Branch})
+	}
+
+	type answer struct {
+		states map[string]github.ItemState
+		heads  map[string][]github.HeadPR
+	}
+
+	got, err := github.WithToken(ctx, s.tokens, func(tok github.Token) (answer, error) {
+		states, prs, fetchErr := s.client.FetchLinkStates(ctx, tok, refs, asks)
+
+		return answer{states: states, heads: prs}, fetchErr
+	})
+	if err != nil {
+		return worktrees.LinkAnswer{}, err
+	}
+
+	noteStates(ctx, s.inbox, read, refs, got.states, logging.Or(s.logger))
+
+	out := worktrees.LinkAnswer{
+		Items: make(map[string]worktrees.ItemState, len(got.states)),
+		Heads: make(map[worktrees.BranchKey][]worktrees.HeadPR, len(got.heads)),
+	}
+
+	for key, state := range got.states {
+		out.Items[key] = worktreeState(state)
+	}
+
+	for _, h := range heads {
+		prs := got.heads[github.HeadKey(h.Repo, h.Branch)]
+		if len(prs) == 0 {
+			continue
+		}
+
+		converted := make([]worktrees.HeadPR, 0, len(prs))
+		for _, pr := range prs {
+			converted = append(converted, worktrees.HeadPR{Number: pr.Number, State: worktreeState(pr.State), HeadRepo: pr.HeadRepo})
+		}
+
+		out.Heads[worktrees.BranchKey{Repo: h.Repo.Key(), Branch: h.Branch}] = converted
+	}
+
+	return out, nil
+}
+
 // MergedPullRequests asks GitHub which branch names were the head of a merged pull
 // request. A token GitHub refuses is borrowed again once.
 func (s itemStates) MergedPullRequests(ctx context.Context, queries []worktrees.BranchQuery,

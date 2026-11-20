@@ -543,7 +543,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// in a lane of its own, the notification writes of its chore lane.
 	client.Writes = tracker
 	client.Chores = tracker
-	workLog := worklog.New(pool)
+	workLog := worklog.New(pool, opts.Clock)
 
 	notices := notify.Config{
 		Pool: pool, Poster: opts.Banners, Events: opts.Events, Clock: opts.Clock, Logger: logger,
@@ -663,6 +663,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Terminal: worktreeTerm,
 		Reveal:   revealer(runner),
 		Records:  workLog,
+		Copies:   workLog,
 		Procs:    procs.System{Run: runner},
 		History:  workLog,
 		Agents:   follow.ledger,

@@ -155,9 +155,80 @@ func TestGitArgvUsesDashC(t *testing.T) {
 				"HEAD", "--not", "--remotes"),
 		},
 		{
+			name:   "the refs are read in the clone",
+			stdout: "refs/heads/main\x00" + headSHA + "\x00\x00\x00" + repoDir + "\n",
+			call:   func(g git) error { _, err := g.readRefs(ctx, repoDir); return err },
+			want: gitArgv(repoDir, "for-each-ref", "--format=%(refname)%00%(objectname)%00%(upstream)%00%(symref)%00%(worktreepath)",
+				"refs/heads/ refs/remotes/"),
+		},
+		{
 			name: "unlock",
 			call: func(g git) error { _, err := g.unlock(ctx, repoDir, treePath); return err },
 			want: gitArgv(repoDir, "worktree unlock", treePath),
+		},
+		{
+			name:   "the commits not on GitHub of several HEADs are listed in the clone",
+			stdout: headSHA + "\x00" + otherSHA + "\x001700000000\x00octo-user@example.com\x00Fix the cache\n",
+			call: func(g git) error {
+				_, err := g.copyUnpushed(ctx, repoDir, []string{headSHA, otherSHA}, "")
+
+				return err
+			},
+			want: append(gitArgv(repoDir, "log --no-show-signature --no-mailmap --max-count=10000"),
+				"--format=%H%x00%P%x00%at%x00%ae%x00%s", headSHA, otherSHA, "--not", "--remotes"),
+		},
+		{
+			name:   "and past the commit they were made at from GitHub",
+			stdout: headSHA + "\x00\x001700000000\x00octo-user@example.com\x00Fix the cache\n",
+			call: func(g git) error {
+				_, err := g.copyUnpushed(ctx, repoDir, []string{headSHA}, otherSHA)
+
+				return err
+			},
+			want: append(gitArgv(repoDir, "log --no-show-signature --no-mailmap --max-count=10000"),
+				"--format=%H%x00%P%x00%at%x00%ae%x00%s", "--ignore-missing", headSHA, "--not", "--remotes", otherSHA),
+		},
+		{
+			name:   "but not past a fetched head that is no commit",
+			stdout: headSHA + "\x00\x001700000000\x00octo-user@example.com\x00Fix the cache\n",
+			call: func(g git) error {
+				_, err := g.copyUnpushed(ctx, repoDir, []string{headSHA}, "main")
+
+				return err
+			},
+			want: append(gitArgv(repoDir, "log --no-show-signature --no-mailmap --max-count=10000"),
+				"--format=%H%x00%P%x00%at%x00%ae%x00%s", headSHA, "--not", "--remotes"),
+		},
+		{
+			name:   "the pushed commits that may be copies are listed in the clone",
+			stdout: otherSHA + "\x00origin/feature-x\x001700000000\x00octo-user@example.com\x00Fix the cache\n",
+			call: func(g git) error {
+				_, err := g.copyCandidates(ctx, repoDir, 1699913600, "refs/remotes/origin/main")
+
+				return err
+			},
+			want: append(gitArgv(repoDir, "log --no-show-signature --no-mailmap --no-merges --source --max-count=20000"),
+				"--format=%H%x00%S%x00%at%x00%ae%x00%s", "--since=@1699913600", "--remotes", "--not", "refs/remotes/origin/main"),
+		},
+		{
+			name:   "every one of them when the default branch isn't known",
+			stdout: otherSHA + "\x00origin/feature-x\x001700000000\x00octo-user@example.com\x00Fix the cache\n",
+			call:   func(g git) error { _, err := g.copyCandidates(ctx, repoDir, 0, ""); return err },
+			want: append(gitArgv(repoDir, "log --no-show-signature --no-mailmap --no-merges --source --max-count=20000"),
+				"--format=%H%x00%S%x00%at%x00%ae%x00%s", "--since=@0", "--remotes"),
+		},
+		{
+			name:   "the changes are compared in the clone",
+			stdout: "<" + otherSHA + "\n>" + headSHA + "\n",
+			call:   func(g git) error { _, err := g.copySides(ctx, repoDir, otherSHA, headSHA); return err },
+			want:   gitArgv(repoDir, "rev-list --left-right --no-merges", otherSHA+"..."+headSHA),
+		},
+		{
+			name:   "the changes themselves are read in the clone",
+			stdout: "\x00" + headSHA + "\n\ndiff --git a/f b/f\n",
+			call:   func(g git) error { _, err := g.copyPatches(ctx, repoDir, []string{headSHA, otherSHA}); return err },
+			want: append(gitArgv(repoDir, "log --no-show-signature --no-mailmap --no-walk=unsorted --root -p --no-ext-diff",
+				"--no-textconv --no-color --no-renames --full-index --unified=3"), "--format=%x00%H", headSHA, otherSHA),
 		},
 		{
 			name: "delete branch compares and deletes",
@@ -223,6 +294,10 @@ func TestGitRejectsCommandsOutsideAllowlist(t *testing.T) {
 		argv("merge-base", headSHA, headSHA),
 		argv("for-each-ref refs/heads/"),
 		argv("for-each-ref --format=%(refname) refs/"),
+		argv("for-each-ref --format=%(refname)%00%(objectname)%00%(upstream)%00%(symref)%00%(worktreepath) refs/"),
+		argv("for-each-ref --format=%(refname)%00%(objectname)%00%(upstream)%00%(symref)%00%(worktreepath) refs/heads/"),
+		append(refsArgs(), "refs/tags/"),
+		append(refsArgs()[:2], "--count=1", "refs/heads/", "refs/remotes/"),
 		{"log", "--no-walk=unsorted", "--no-show-signature", "--no-mailmap", "--format=%H %ct"},
 		{"log", "--no-walk=unsorted", "--no-show-signature", "--no-mailmap", "--format=%H %ct", "HEAD"},
 		{"log", "--no-walk=unsorted", "--no-show-signature", "--no-mailmap", "--format=%H %ct", headSHA, "--all"},
@@ -245,6 +320,54 @@ func TestGitRejectsCommandsOutsideAllowlist(t *testing.T) {
 		append(argv("log --no-show-signature --no-mailmap --max-count=2000"), "--format=%H %ct %s", "HEAD", "--not", "--remotes"),
 		append(argv("log --no-mailmap --max-count=200"), "--format=%H %ct %s", "HEAD", "--not", "--remotes", "--all"),
 		append(argv("log --max-count=200"), "--format=%H %ct %s", "HEAD", "--not", "--remotes"),
+		append(copyUnpushedCmd(), "--not", "--remotes"),
+		append(copyUnpushedCmd(), "HEAD", "--not", "--remotes"),
+		append(copyUnpushedCmd(), "main", "--not", "--remotes"),
+		append(copyUnpushedCmd(), headSHA, "--not", "--all"),
+		append(copyUnpushedCmd(), headSHA, "--remotes", "--not"),
+		append(copyUnpushedCmd(), headSHA, "--not", "--remotes", otherSHA),
+		append(copyUnpushedCmd(), headSHA, "--not", "--remotes", "-p"),
+		append(copyUnpushedCmd(), "--ignore-missing", headSHA, "--not", "--remotes"),
+		append(copyUnpushedCmd(), "--ignore-missing", headSHA, "--not", "--remotes", "main"),
+		append(copyUnpushedCmd(), "--ignore-missing", headSHA, "--not", "--remotes", otherSHA, headSHA),
+		append(copyUnpushedCmd(), "--ignore-missing", "--not", "--remotes", otherSHA),
+		append(copyUnpushedCmd(), "--all", headSHA, "--not", "--remotes"),
+		append(argv("log --no-show-signature --no-mailmap --max-count=99999"), "--format=%H%x00%P%x00%at%x00%ae%x00%s",
+			headSHA, "--not", "--remotes"),
+		append(argv("log --no-mailmap --max-count=10000"), "--format=%H%x00%P%x00%at%x00%ae%x00%s",
+			headSHA, "--not", "--remotes"),
+		copyCandidatesCmd(),
+		append(copyCandidatesCmd(), "--remotes"),
+		append(copyCandidatesCmd(), "--since=@-1", "--remotes"),
+		append(copyCandidatesCmd(), "--since=@01700000000", "--remotes"),
+		append(copyCandidatesCmd(), "--since=@+1700000000", "--remotes"),
+		append(copyCandidatesCmd(), "--since=1700000000", "--remotes"),
+		append(copyCandidatesCmd(), "--since=yesterday", "--remotes"),
+		append(copyCandidatesCmd(), "--since=@1700000000"),
+		append(copyCandidatesCmd(), "--since=@1700000000", "--all"),
+		append(copyCandidatesCmd(), "--since=@1700000000", "--remotes", "--not"),
+		append(copyCandidatesCmd(), "--since=@1700000000", "--remotes", "--not", "refs/heads/main"),
+		append(copyCandidatesCmd(), "--since=@1700000000", "--remotes", "--not", "HEAD"),
+		append(copyCandidatesCmd(), "--since=@1700000000", "--remotes", "--not", "refs/remotes/origin/HEAD/x/.."),
+		append(copyCandidatesCmd(), "--since=@1700000000", "--remotes", "--not", "refs/remotes/origin/main", "-p"),
+		append(copyCandidatesCmd(), "--since=@1700000000", "--remotes", "--all", "refs/remotes/origin/main"),
+		append(argv("log --no-show-signature --no-mailmap --source --max-count=20000"), "--format=%H%x00%S%x00%at%x00%ae%x00%s",
+			"--since=@1700000000", "--remotes"),
+		argv("rev-list --left-right --no-merges", "HEAD..."+headSHA),
+		argv("rev-list --left-right --no-merges", otherSHA+".."+headSHA),
+		argv("rev-list --left-right --no-merges", otherSHA+"..."+headSHA+"..."+headSHA),
+		argv("rev-list --left-only --no-merges", otherSHA+"..."+headSHA),
+		argv("rev-list --left-right", otherSHA+"..."+headSHA),
+		argv("rev-list --left-right --no-merges", otherSHA+"..."+headSHA, "--all"),
+		argv("rev-list --left-right --cherry-pick --no-merges", otherSHA+"..."+headSHA),
+		copyPatchesCmd(),
+		append(copyPatchesCmd(), "HEAD"),
+		append(copyPatchesCmd(), headSHA, "--all"),
+		append(copyPatchesCmd(), headSHA, "--ext-diff"),
+		append(copyPatchesCmd(), "--textconv", headSHA),
+		append(copyPatchesCmd()[1:], headSHA),
+		append(argv("log --no-show-signature --no-mailmap --no-walk=unsorted --root -p --no-textconv --no-color"),
+			"--no-renames", "--full-index", "--unified=3", "--format=%x00%H", headSHA),
 		argv("worktree list"),
 		argv("checkout main"),
 		argv("status"),
@@ -276,9 +399,12 @@ func TestGitAllowsDeletingAnyWellFormedBranchAtACommit(t *testing.T) {
 	}
 
 	for _, args := range [][]string{
-		branchListArgs(), remoteHeadsArgs(), branchUnpushedArgs(headSHA), ancestorArgs(headSHA, otherSHA),
+		branchListArgs(), remoteHeadsArgs(), refsArgs(), branchUnpushedArgs(headSHA), ancestorArgs(headSHA, otherSHA),
 		unpushedPastArgs(headRef, otherSHA), unpushedPastArgs(headSHA, otherSHA), unpushedLogArgs(),
-		unpushedPastLogArgs(otherSHA),
+		unpushedPastLogArgs(otherSHA), copyUnpushedArgs([]string{headSHA}, ""),
+		copyUnpushedArgs([]string{headSHA, otherSHA}, otherSHA), copyCandidatesArgs(0, ""),
+		copyCandidatesArgs(1699913600, "refs/remotes/origin/main"), copySidesArgs(otherSHA, headSHA),
+		copyPatchesArgs([]string{headSHA, otherSHA}),
 	} {
 		_, _, err := git{run: &testutil.Runner{}, bin: gitBin}.do(t.Context(), repoDir, args...)
 		require.NoError(t, err, args)
@@ -288,7 +414,10 @@ func TestGitAllowsDeletingAnyWellFormedBranchAtACommit(t *testing.T) {
 func TestTheCommitsNotOnGitHubAreListedAsARead(t *testing.T) {
 	t.Parallel()
 
-	for _, args := range [][]string{unpushedLogArgs(), unpushedPastLogArgs(otherSHA)} {
+	for _, args := range [][]string{
+		unpushedLogArgs(), unpushedPastLogArgs(otherSHA), refsArgs(), copyUnpushedArgs([]string{headSHA}, otherSHA),
+		copyCandidatesArgs(0, "refs/remotes/origin/main"), copySidesArgs(otherSHA, headSHA), copyPatchesArgs([]string{headSHA}),
+	} {
 		assert.True(t, readOnly(args), args)
 	}
 
@@ -307,6 +436,81 @@ func TestTheCommitsNotOnGitHubAreListedAsARead(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, [][]string{readEnv}, envs, "it runs with gitread's read environment")
 	assert.Zero(t, guard.calls.Load(), "and works out no setup of the clone's own config, as a status would")
+
+	// So do the reads that compare commits with the pushed branches', a partial clone's
+	// missing object failing them rather than being fetched.
+	envs = nil
+
+	_, err = g.copyUnpushed(t.Context(), repoDir, []string{headSHA}, otherSHA)
+	require.NoError(t, err)
+	_, err = g.copyCandidates(t.Context(), repoDir, 0, "")
+	require.NoError(t, err)
+	_, err = g.copySides(t.Context(), repoDir, otherSHA, headSHA)
+	require.NoError(t, err)
+	_, err = g.readRefs(t.Context(), repoDir)
+	require.NoError(t, err)
+	_, err = g.copyPatches(t.Context(), repoDir, []string{headSHA})
+	require.NoError(t, err)
+	assert.Equal(t, [][]string{readEnv, readEnv, readEnv, readEnv, readEnv}, envs)
+	assert.Zero(t, guard.calls.Load())
+}
+
+func TestCopyReadsParseWhatGitPrints(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	run := func(stdout, stderr string, err error) git {
+		return git{run: &testutil.Runner{Stdout: stdout, Stderr: stderr, Err: err}, bin: gitBin}
+	}
+
+	set, err := run(headSHA+"\x00"+otherSHA+" "+strings.Repeat("1", 40)+"\x001700000000\x00a@example.com\x00Fix: a\x00b\n\n", "", nil).
+		copyUnpushed(ctx, repoDir, []string{headSHA}, "")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]copyCommit{headSHA: {
+		oid: headSHA, parents: []string{otherSHA, strings.Repeat("1", 40)}, at: 1700000000, email: "a@example.com",
+		subject: "Fix: a\x00b",
+	}}, set, "a subject is kept whole, whatever it holds")
+
+	for _, bad := range []string{"not-a-commit\x00\x001\x00a\x00s\n", headSHA + "\x00\x00soon\x00a\x00s\n", headSHA + "\x00x\n"} {
+		_, err = run(bad, "", nil).copyUnpushed(ctx, repoDir, []string{headSHA}, "")
+		require.ErrorIs(t, err, errParseCommits, bad)
+	}
+
+	many := strings.Repeat(headSHA+"\x00\x001\x00a\x00s\n", copyBatchMax)
+	_, err = run(many, "", nil).copyUnpushed(ctx, repoDir, []string{headSHA}, "")
+	require.ErrorIs(t, err, errTooManyCommits)
+
+	candidates, err := run(headSHA+"\x00origin/feature-x\x001\x00a\x00s\n"+
+		otherSHA+"\x00refs/remotes/upstream/feature-y\x002\x00b\x00t\n", "", nil).copyCandidates(ctx, repoDir, 0, "")
+	require.NoError(t, err)
+	assert.Equal(t, []copyCommit{
+		{oid: headSHA, ref: "refs/remotes/origin/feature-x", at: 1, email: "a", subject: "s"},
+		{oid: otherSHA, ref: "refs/remotes/upstream/feature-y", at: 2, email: "b", subject: "t"},
+	}, candidates, "the branch each was found on, by its full name")
+
+	_, err = run(strings.Repeat(headSHA+"\x00origin/x\x001\x00a\x00s\n", copyCandidatesMax), "", nil).
+		copyCandidates(ctx, repoDir, 0, "")
+	require.ErrorIs(t, err, errTooManyCandidates)
+
+	sides, err := run(">"+headSHA+"\n<"+otherSHA+"\n", "", nil).copySides(ctx, repoDir, otherSHA, headSHA)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]bool{headSHA: false, otherSHA: true}, sides, "true for the tip's side")
+
+	for _, bad := range []string{"", "=" + headSHA, "-" + headSHA, "+" + headSHA, "<main", headSHA} {
+		_, err = run(bad+"\n", "", nil).copySides(ctx, repoDir, otherSHA, headSHA)
+		require.ErrorIs(t, err, errParseCommits, bad)
+	}
+
+	_, err = run(">"+headSHA+"\n", "warning: something odd", nil).copySides(ctx, repoDir, otherSHA, headSHA)
+	require.ErrorIs(t, err, errGitWarned, "an answer git warned about is no answer")
+
+	_, err = run("", "fatal: bad object", exitError{code: 128}).copySides(ctx, repoDir, otherSHA, headSHA)
+
+	gitErr, ok := errors.AsType[*copyGitError](err)
+	require.True(t, ok)
+	assert.Equal(t, "fatal: bad object", string(gitErr.stderr))
+	assert.Equal(t, exitError{code: 128}, errors.Unwrap(err))
+	assert.Equal(t, "exit status 128", err.Error())
 }
 
 func TestGitBranchOutputParsing(t *testing.T) {
@@ -324,6 +528,38 @@ func TestGitBranchOutputParsing(t *testing.T) {
 		{name: "main", head: headSHA, worktree: "/srv/clone"},
 		{name: "feature/x", head: otherSHA},
 	}, got, "lines that are not a branch and a commit are left out")
+
+	refs := parseRefs([]byte(strings.Join([]string{
+		"refs/heads/main\x00" + headSHA + "\x00refs/remotes/origin/main\x00\x00/srv/clone",
+		"refs/heads/feat/x\x00" + otherSHA + "\x00\x00\x00",
+		"refs/heads/\x00" + headSHA + "\x00\x00\x00",
+		"refs/heads/broken\x00not-a-commit\x00\x00\x00",
+		"refs/remotes/origin/HEAD\x00" + headSHA + "\x00\x00refs/remotes/origin/main\x00",
+		"refs/remotes/upstream/HEAD\x00" + headSHA + "\x00\x00refs/remotes/origin/develop\x00",
+		"refs/remotes/origin/main\x00" + headSHA + "\x00\x00\x00",
+		"refs/remotes/origin/feat/x\x00" + otherSHA + "\x00\x00\x00",
+		"refs/remotes/origin/-x\x00" + otherSHA + "\x00\x00\x00",
+		"refs/remotes/origin/linked\x00" + otherSHA + "\x00\x00refs/remotes/origin/feat/x\x00",
+		"refs/remotes/bad..remote/x\x00" + otherSHA + "\x00\x00\x00",
+		"too\x00few",
+	}, "\n") + "\n"))
+
+	assert.Equal(t, []localBranch{
+		{name: mainBranch, head: headSHA, worktree: "/srv/clone", upstream: "refs/remotes/origin/main"},
+		{name: "feat/x", head: otherSHA},
+	}, refs.locals, "lines that are not a branch and a commit are left out")
+	assert.Equal(t, map[string]string{
+		"refs/remotes/origin/main": headSHA, "refs/remotes/origin/feat/x": otherSHA,
+	}, refs.tracking, "remote-tracking branches with a plain remote and branch, no symbolic ref among them")
+	assert.Equal(t, map[string]string{originRemote: mainBranch}, refs.defaults,
+		"a remote's HEAD pointing at its own branch; one pointing at another remote's is no answer")
+	assert.Equal(t, []string{mainBranch}, refs.defaultNames())
+	assert.NotEqual(t, refs.fingerprint(), parseRefs(nil).fingerprint())
+	assert.Equal(t, refs.fingerprint(), parseRefs([]byte("refs/remotes/origin/feat/x\x00"+otherSHA+"\x00\x00\x00\n"+
+		"refs/remotes/origin/HEAD\x00"+headSHA+"\x00\x00refs/remotes/origin/main\x00\n"+
+		"refs/remotes/upstream/HEAD\x00"+otherSHA+"\x00\x00refs/remotes/origin/develop\x00\n"+
+		"refs/remotes/origin/main\x00"+headSHA+"\x00\x00\x00\n")).fingerprint(),
+		"the same remote state in another order, without the local branches")
 
 	heads := git{run: &testutil.Runner{Stdout: "main\n\nmain\ndevelop\n"}, bin: gitBin}.remoteHeads(t.Context(), repoDir)
 	assert.Equal(t, []string{"main", "develop"}, heads)

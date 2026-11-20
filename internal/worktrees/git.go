@@ -56,6 +56,7 @@ func allowedFixedCommands() []string {
 		joinArgs(unpushedArgs()),
 		joinArgs(branchListArgs()),
 		joinArgs(remoteHeadsArgs()),
+		joinArgs(refsArgs()),
 	}
 }
 
@@ -249,7 +250,9 @@ func (g git) localFor(ctx context.Context, dir string) (gitread.Local, error) {
 // readOnly reports a command that only reads refs, commits, and the worktrees' own records:
 // listing the worktrees and the branches, resolving a ref, counting commits or listing
 // those not on GitHub, an ancestor's check, and a commit's time, the logs with no
-// signature check and no mailmap. None runs a filter
+// signature check and no mailmap, and comparing commits with the pushed branches' (rev-list
+// --left-right, and the log of their changes, with no diff program and no text
+// conversion). None runs a filter
 // or a hook, but each could read an object a partial clone lacks, which git would fetch
 // from the clone's promisor remote, through a transport the clone's config can name, so
 // each runs with gitread's read environment (ReadEnv): no transport, no lazy fetch, no
@@ -542,6 +545,10 @@ type localBranch struct {
 
 	// worktree is the worktree that has it checked out, or "".
 	worktree string
+
+	// upstream is the branch it follows, as in refs/remotes/origin/feature-x, or "": read
+	// only with the rest of a clone's refs (readRefs).
+	upstream string
 }
 
 // branches lists the local branches of the clone at dir.
@@ -770,7 +777,7 @@ func allowed(args []string) bool {
 	}
 
 	return allowedCommitTimes(args) || allowedLookup(args) || allowedBranchLookup(args) || allowedUnpushedLog(args) ||
-		allowedCreate(args) || allowedChange(args)
+		allowedCopyRead(args) || allowedCreate(args) || allowedChange(args)
 }
 
 // allowedUnpushedLog reports the log of the commits on HEAD that aren't on GitHub: past

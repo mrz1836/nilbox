@@ -8,6 +8,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/gitread"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -37,6 +38,11 @@ type Details struct {
 	// Unpushed is how many such commits there are, or -1 when they couldn't be counted.
 	Unpushed int `json:"unpushed"`
 
+	// Copies says how comparing those commits with the pushed branches went, now: whether
+	// it ran, against what, and what it found. Its zero value is for a worktree with none of
+	// them, or whose commits couldn't be read.
+	Copies CopyComparison `json:"copies"`
+
 	// Base is origin's default branch as the clone last fetched it, as in "origin/main", or
 	// "" when the clone doesn't say.
 	Base string `json:"base"`
@@ -53,6 +59,43 @@ type Details struct {
 	Errors []string `json:"errors"`
 }
 
+// CopyComparison is how comparing a worktree's commits not on GitHub with the pushed
+// branches went when Details compared them, or found what the listing compared still
+// holds. It reads no copy record, so a worktree its record vouches for
+// (Worktree.Copies.Recorded) may have nothing on a pushed branch now. Every field is a plain
+// value.
+type CopyComparison struct {
+	// Compared reports that the comparison ran to completion, the pushed commits read and
+	// every branch holding likely copies compared, byte for byte, or that there was no pushed
+	// branch to compare with. With Identical at 0, none of the commits has an identical copy
+	// on a pushed branch now; false says only that this is unknown (Note says why).
+	Compared bool `json:"compared"`
+
+	// Ref is the pushed branch they were compared with, as in origin/feature-x, or "" when
+	// no pushed commit was a likely copy of any.
+	Ref string `json:"ref"`
+
+	// Branch is Ref's branch on its remote, as Copies.Branch says it.
+	Branch string `json:"branch"`
+
+	// Identical and Edited count the commits with an identical copy on Ref, and those with
+	// a copy there whose change differs.
+	Identical int `json:"identical"`
+	Edited    int `json:"edited"`
+
+	// Unless it is "", Note says in a sentence why the comparison couldn't run, or why
+	// identical copies on several branches don't count.
+	Note string `json:"note"`
+}
+
+// comparisonOf is how a comparison that found r went.
+func comparisonOf(r copyResult) CopyComparison {
+	return CopyComparison{
+		Compared: r.compared, Ref: r.copies.Ref, Branch: r.copies.Branch, Identical: r.copies.Identical,
+		Edited: r.copies.Edited, Note: r.copies.Note,
+	}
+}
+
 // UnpushedCommit is a commit on a worktree's HEAD that isn't on GitHub.
 type UnpushedCommit struct {
 	// OID is its commit ID.
@@ -63,6 +106,13 @@ type UnpushedCommit struct {
 
 	// Subject is the first line of its message.
 	Subject string `json:"subject"`
+
+	// Copy is how it compares with the pushed branch the worktree's commits were compared
+	// with (Worktree.Copies.Ref): an identical copy there, an edited one, or none ("").
+	Copy CopyMark `json:"copy"`
+
+	// CopyOID is that copy's commit ID, or "".
+	CopyOID string `json:"copyOid"`
 }
 
 // BaseReader reads where a clone's default branch stands, as the clone last fetched it,
@@ -111,7 +161,7 @@ func (s *Service) Details(ctx context.Context, repoPath, path string) (Details, 
 	)
 
 	wg.Go(func() { d.Files, d.FileCount, filesFailed = detailFiles(ctx, g, e.Path) })
-	wg.Go(func() { d.Commits, d.Unpushed, commitsFailed = detailCommits(ctx, g, e.Path, fetched) })
+	wg.Go(func() { d.Commits, d.Unpushed, d.Copies, commitsFailed = s.detailCommits(ctx, g, repoPath, e, fetched) })
 	wg.Go(func() { d.Base, d.Behind, baseFailed = s.detailBase(ctx, repoPath, e.HEAD) })
 	wg.Wait()
 
@@ -160,25 +210,78 @@ func detailFiles(ctx context.Context, g git, dir string) ([]FileEntry, int, stri
 	return files, count, ""
 }
 
-// detailCommits counts the commits on HEAD in the worktree at dir that aren't on GitHub,
-// past fetched, the commit it was made at from GitHub, when it is one, and lists them,
-// at most detailLimit, only when there are any; or says why they couldn't be read.
-func detailCommits(ctx context.Context, g git, dir, fetched string) ([]UnpushedCommit, int, string) {
-	count, stderr, err := g.unpushed(ctx, dir, fetched)
+// detailCommits counts the commits on HEAD in the worktree e of the clone at dir that aren't
+// on GitHub, past fetched, the commit it was made at from GitHub, when it is one, and lists
+// them, at most detailLimit, only when there are any, each with how it compares with the
+// pushed branches, and how that comparison went (copiesNow); or says why they couldn't be
+// read.
+func (s *Service) detailCommits(ctx context.Context, g git, dir string, e Entry, fetched string,
+) ([]UnpushedCommit, int, CopyComparison, string) {
+	count, stderr, err := g.unpushed(ctx, e.Path, fetched)
 
 	switch {
 	case err != nil:
-		return []UnpushedCommit{}, -1, readFailure("the commits not on GitHub", err, stderr)
+		return []UnpushedCommit{}, -1, CopyComparison{}, readFailure("the commits not on GitHub", err, stderr)
 	case count == 0:
-		return []UnpushedCommit{}, 0, ""
+		return []UnpushedCommit{}, 0, CopyComparison{}, ""
 	}
 
-	commits, stderr, err := g.unpushedCommits(ctx, dir, fetched)
+	commits, stderr, err := g.unpushedCommits(ctx, e.Path, fetched)
 	if err != nil {
-		return []UnpushedCommit{}, count, readFailure("the commits not on GitHub", err, stderr)
+		return []UnpushedCommit{}, count, CopyComparison{}, readFailure("the commits not on GitHub", err, stderr)
 	}
 
-	return commits, count, ""
+	compared := s.copiesNow(ctx, g, dir, e, fetched, count)
+
+	for i := range commits {
+		if m, ok := compared.marks[commits[i].OID]; ok {
+			commits[i].Copy, commits[i].CopyOID = m.mark, m.copy
+		}
+	}
+
+	return commits, count, comparisonOf(compared), ""
+}
+
+// copiesNow is how the count commits not on GitHub of the worktree e, of the clone at dir,
+// compare with the pushed branches now: what the listing found, when the clone's refs and
+// remotes, read once, say nothing it was worked out from changed since, or else what a comparison of
+// its own finds (see copies.go). It is a result that wasn't compared, with why, when that
+// can't be told.
+func (s *Service) copiesNow(ctx context.Context, g git, dir string, e Entry, fetched string, count int) copyResult {
+	if count > copyLimit {
+		return uncompared(tooManyToCompare())
+	}
+
+	read, err := g.readRefs(ctx, dir)
+	if err != nil {
+		return uncompared(compareFailure(err))
+	}
+
+	clone, err := localrepos.Inspect(ctx, dir, s.run)
+	if err != nil {
+		return uncompared(compareFailure(err))
+	}
+
+	refs := withOwners(read, clone.Names)
+	key := copyKey{head: e.HEAD, fetched: fetched, remotes: remotesKey(clone.Remotes, refs.names), refs: refs.fingerprint()}
+
+	if kept, ok := s.keptCopies(e.Path, key, count); ok {
+		return kept
+	}
+
+	wt := &Worktree{Path: e.Path, Head: e.HEAD, Unpushed: count, fetched: fetched}
+	s.detectCloneCopies(ctx, g, dir, []*Worktree{wt}, clone.Remotes, refs, false)
+
+	if wt.copies.result == nil {
+		return uncompared(compareFailure(nil))
+	}
+
+	return *wt.copies.result
+}
+
+// uncompared is a result of a comparison that couldn't be made, with why.
+func uncompared(note string) copyResult {
+	return copyResult{copies: Copies{Note: note}, marks: map[string]commitMark{}}
 }
 
 // detailBase reads origin's default branch in the clone at dir, as it last fetched it, and
@@ -215,6 +318,19 @@ func (s *Service) detailBase(ctx context.Context, dir, head string) (string, int
 	}
 
 	return base, behind, ""
+}
+
+// keptCopies returns what the listing found of the count commits not on GitHub of the
+// worktree at path, when nothing it was worked out from changed since: key, as the listing
+// keys it, holds its HEAD, the commit it was made at from GitHub, its clone's remotes, and
+// its remote-tracking branches, as they are now.
+func (s *Service) keptCopies(path string, key copyKey, count int) (copyResult, bool) {
+	kept, ok := s.copies.lookup(paths.Resolved(path), key)
+	if !ok {
+		return copyResult{}, false
+	}
+
+	return kept, kept.copies.Count == 0 || kept.copies.Count == count
 }
 
 // readFailure words a read Details couldn't make with the service's own git, for the

@@ -23,6 +23,7 @@ import {
   type AgentSession,
   type LinkedItem,
   type Worktree,
+  type WorktreeLinkKind,
   type WorktreeRepo,
 } from '../../platform'
 import { quietButtonClass } from '../controls'
@@ -225,6 +226,15 @@ interface AboutProps {
   agentName: (id: AgentID) => string
 }
 
+// itemTerms head the line of a worktree's pull request or issue by how it is linked to it:
+// made for it, on its branch, or with its commits copied onto it.
+const itemTerms: Readonly<Record<WorktreeLinkKind, string>> = {
+  '': 'For',
+  name: 'For',
+  branch: 'On the branch of',
+  copy: 'Copied onto',
+}
+
 // About is the drawer's third column: what a worktree is for, what works in it, its
 // launches, who made it and when, its path, its lock, and what a removal would delete.
 function About({ worktree, read, session, facts, agentName }: AboutProps) {
@@ -233,7 +243,7 @@ function About({ worktree, read, session, facts, agentName }: AboutProps) {
   const created = read?.state === 'read' ? read.details.createdAt : ''
   const rows: { term: string; value: ReactNode }[] = [
     {
-      term: 'For',
+      term: itemTerms[worktree.linkedBy],
       value:
         worktree.item === null ? (
           <span className={muted}>no pull request or issue</span>

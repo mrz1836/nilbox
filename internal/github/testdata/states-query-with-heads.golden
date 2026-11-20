@@ -1,0 +1,12 @@
+query ItemStates {
+  r0: repository(owner: "acme-org", name: "example-repo") { item: issueOrPullRequest(number: 184) { ...StateFields } }
+  h0: repository(owner: "acme-org", name: "example-repo") { pulls: pullRequests(headRefName: "feature-x", states: [OPEN, MERGED, CLOSED], first: 20, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title url state closedAt mergedAt headRefOid headRefName headRepository { nameWithOwner } } } }
+  h1: repository(owner: "acme\"org\\", name: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028") { pulls: pullRequests(headRefName: "x\") { viewer { login } }\n#\t\u0000\u003c\u0026\u003e\u2028", states: [OPEN, MERGED, CLOSED], first: 20, orderBy: {field: UPDATED_AT, direction: DESC}) { nodes { number title url state closedAt mergedAt headRefOid headRefName headRepository { nameWithOwner } } } }
+  rateLimit { cost }
+}
+
+fragment StateFields on IssueOrPullRequest {
+  __typename
+  ... on PullRequest { title url prState: state closedAt mergedAt headRefOid headRefName }
+  ... on Issue { title url issueState: state closedAt }
+}

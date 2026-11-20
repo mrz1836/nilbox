@@ -51,7 +51,20 @@ func TestBatchedQueriesText(t *testing.T) {
 		{
 			name: "states query",
 			query: func() (string, error) {
-				return statesQuery([]item.Ref{{Repo: plain, Number: 184}, {Repo: hostile, Number: 7}})
+				return statesQuery([]item.Ref{{Repo: plain, Number: 184}, {Repo: hostile, Number: 7}}, nil)
+			},
+		},
+		{
+			name: "states query with heads",
+			query: func() (string, error) {
+				return statesQuery([]item.Ref{{Repo: plain, Number: 184}},
+					[]HeadQuery{{Repo: plain, Branch: headBranch}, {Repo: hostile, Branch: hostileValue}})
+			},
+		},
+		{
+			name: "states query with heads alone",
+			query: func() (string, error) {
+				return statesQuery(nil, []HeadQuery{{Repo: plain, Branch: headBranch}})
 			},
 		},
 		{
@@ -129,9 +142,23 @@ func TestBatchedQueriesRefuseValuesThatAreNotUTF8(t *testing.T) {
 		{
 			name: "states, an owner",
 			query: func() (string, error) {
-				return statesQuery([]item.Ref{{Repo: badOwner, Number: 7}})
+				return statesQuery([]item.Ref{{Repo: badOwner, Number: 7}}, nil)
 			},
 			want: `encode the repository's owner: "acme-\xff"`,
+		},
+		{
+			name: "states, a head's repository",
+			query: func() (string, error) {
+				return statesQuery(nil, []HeadQuery{{Repo: badName, Branch: headBranch}})
+			},
+			want: `encode the repository's name: "example-\xff"`,
+		},
+		{
+			name: "states, a head's branch",
+			query: func() (string, error) {
+				return statesQuery(nil, []HeadQuery{{Repo: plain, Branch: "feat-\xff"}})
+			},
+			want: `encode a branch of acme-org/example-repo: "feat-\xff"`,
 		},
 		{
 			name: "merged branches, a name",

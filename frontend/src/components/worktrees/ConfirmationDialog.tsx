@@ -3,6 +3,7 @@ import { useEffect, useEffectEvent } from 'react'
 import { counted, formatCount } from '../../lib/format'
 import { asReadNow, changesOf, notOnGitHub, type WorktreeDetailsState } from '../../lib/useWorktreeDetails'
 import type { Choice, Confirmation, Target } from '../../lib/useWorktrees'
+import { copiedOf, linkWords, unpushedKnown, unpushedUnknown } from '../../lib/worktreeParts'
 import { safety, type Safety } from '../../lib/worktrees'
 import type {
   AgentID,
@@ -11,6 +12,7 @@ import type {
   LinkedItem,
   Worktree,
   WorktreeCommit,
+  WorktreeLinkKind,
   WorktreeRepo,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
@@ -40,24 +42,20 @@ export interface ConfirmationDialogProps {
 }
 
 // Cost is what the confirmations need to say what removing a worktree would cost.
-type Cost = Pick<ConfirmationDialogProps, 'repos' | 'now' | 'sessions' | 'agentName' | 'details'>
+type Cost = Pick<ConfirmationDialogProps, 'repos' | 'now' | 'sessions' | 'agentName'>
 
-// costOf says what removing wt, a worktree of the clone at repoPath, would cost, as its
-// drawer says it (lib/worktrees' safety), counted as its details last counted it.
-function costOf(wt: Worktree, repoPath: string, { repos, now, sessions, agentName, details }: Cost): Safety {
-  return safety(
-    asReadNow(wt, details.of(wt.path)),
-    repos.find((r) => r.path === repoPath) ?? null,
-    now,
-    sessions.get(wt.displayPath),
-    agentName,
-  )
+// costOf says what removing fresh, a worktree of the clone at repoPath counted as its
+// details last counted it (asReadNow), would cost, as its drawer says it (lib/worktrees'
+// safety).
+function costOf(fresh: Worktree, repoPath: string, { repos, now, sessions, agentName }: Cost): Safety {
+  return safety(fresh, repos.find((r) => r.path === repoPath) ?? null, now, sessions.get(fresh.displayPath), agentName)
 }
 
-// itemText names the item a worktree was made for and where it stands, as in "pull
-// request #7, merged".
-function itemText(item: LinkedItem): string {
-  return `${item.kind === 'pr' ? 'pull request' : 'issue'} #${String(item.number)}, ${item.state}`
+// itemText names the item a worktree is linked to, how (linkedBy), and where it stands, as
+// in "Made for pull request #7, merged", "On the branch of pull request #42, open", or "Its
+// commits were copied onto pull request #42, merged".
+function itemText(linkedBy: WorktreeLinkKind, item: LinkedItem): string {
+  return `${linkWords[linkedBy]} ${item.kind === 'pr' ? 'pull request' : 'issue'} #${String(item.number)}, ${item.state}`
 }
 
 type Single = Extract<Confirmation, { repoPath: string }>
@@ -69,11 +67,25 @@ const singleWords: Readonly<Record<Single['kind'], { title: string; label: strin
   cleanUp: { title: 'Clean up this worktree?', label: 'Clean up', tone: 'primary' },
 }
 
-// folderText says what removing or cleaning up a worktree does to its folder.
-function folderText(kind: Exclude<Single['kind'], 'force'>, wt: Worktree): string {
-  return kind === 'remove'
-    ? `This deletes the folder ${wt.displayPath}, which has no uncommitted changes.`
-    : `This deletes the folder ${wt.displayPath}, whose work is finished: it has no uncommitted changes, and every commit on it is on GitHub.`
+// folderText says what removing or cleaning up a worktree does to its folder, with fresh,
+// the worktree counted as its details last counted it (asReadNow), as the sentence over it
+// is. Clean up checks the worktree again first, and leaves one whose work isn't finished
+// any more, as when its copies on GitHub are gone.
+function folderText(kind: Exclude<Single['kind'], 'force'>, fresh: Worktree): string {
+  const path = fresh.displayPath
+
+  if (kind === 'remove') {
+    return `This deletes the folder ${path}, which has no uncommitted changes.`
+  }
+
+  if (fresh.dirtyCount > 0 || unpushedKnown(fresh) > 0 || unpushedUnknown(fresh)) {
+    return `Clean up checks it again first, and deletes the folder ${path} only if its work is still finished, which, as last read, it isn’t.`
+  }
+
+  const every =
+    copiedOf(fresh) === null ? 'every commit on it is on GitHub' : 'the change of every commit on it is on GitHub'
+
+  return `This deletes the folder ${path}, whose work is finished: it has no uncommitted changes, and ${every}.`
 }
 
 // listBoxClass frames each list Force remove shows, and listHeadingClass heads it, in
@@ -195,6 +207,9 @@ function SingleConfirmation({
   const { kind, repoPath, worktree: wt } = confirmation
   const words = singleWords[kind]
   const boxKey = (name: string) => name
+  // fresh is the worktree counted as its details last counted it, which the sentence on
+  // top and what it does to the folder both go by.
+  const fresh = asReadNow(wt, details.of(wt.path))
 
   return (
     <ConfirmDialog
@@ -208,15 +223,15 @@ function SingleConfirmation({
       onCancel={onCancel}
     >
       <SafetyBand
-        safety={costOf(wt, repoPath, { ...cost, details })}
+        safety={costOf(fresh, repoPath, cost)}
         className="mb-2.5 rounded-lg border border-border/70 text-text"
       />
       {kind === 'force' ? (
         <ForceLists repoPath={repoPath} worktree={wt} details={details} />
       ) : (
-        <p>{folderText(kind, wt)}</p>
+        <p>{folderText(kind, fresh)}</p>
       )}
-      {wt.item !== null && <p className="mt-1.5">Made for {itemText(wt.item)}.</p>}
+      {wt.item !== null && <p className="mt-1.5">{itemText(wt.linkedBy, wt.item)}.</p>}
       <div className="-mx-2 mt-3">
         <WorktreeBranches worktree={wt} rules={rules} ticks={ticks} boxKey={boxKey} />
       </div>
@@ -240,7 +255,7 @@ const bulkWords: Readonly<
   finished: {
     title: 'Clean up finished worktrees?',
     intro:
-      'The pull request or issue of each of these is finished, and each has no uncommitted changes and every commit on GitHub. Choose the worktrees to clean up, and the branches to delete with each. Each is checked again first.',
+      'The pull request or issue of each of these is finished, and each has no uncommitted changes, and every commit on it, or its change, is on GitHub. Choose the worktrees to clean up, and the branches to delete with each. Each is checked again first.',
     verb: 'Clean up',
     tone: 'primary',
   },
@@ -301,11 +316,11 @@ function BulkConfirmation({
                 />
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-sm font-medium break-all text-text">{wt.displayPath}</span>
-                  {wt.item !== null && <span className="text-xs">{itemText(wt.item)}</span>}
+                  {wt.item !== null && <span className="text-xs">{itemText(wt.linkedBy, wt.item)}</span>}
                 </span>
               </label>
               <div className="pr-2 pb-1 pl-8.5">
-                <SafetyLine safety={costOf(wt, repoPath, cost)} />
+                <SafetyLine safety={costOf(asReadNow(wt, cost.details.of(wt.path)), repoPath, cost)} />
               </div>
               <div className="ml-6">
                 <WorktreeBranches worktree={wt} rules={rules} ticks={ticks} boxKey={branchKey(wt.path)} off={!on} />

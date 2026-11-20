@@ -205,9 +205,48 @@ type GitHub interface {
 	// ref's Key.
 	ItemStates(ctx context.Context, refs []item.Ref) (map[string]ItemState, error)
 
+	// LinkStates returns the state of each item in refs that GitHub knows, as ItemStates
+	// does, and, in the same requests, the pull requests of each repository heads asks
+	// about whose head branch had its name, in any state, newest updated first, keyed by
+	// BranchKey. A name none had is left out. Asking about branches beside items costs no
+	// request of its own.
+	LinkStates(ctx context.Context, refs []item.Ref, heads []HeadQuery) (LinkAnswer, error)
+
 	// MergedPullRequests returns the merged pull requests whose head branch had each
 	// name asked about, newest first, keyed by BranchKey. A name none had is left out.
 	MergedPullRequests(ctx context.Context, queries []BranchQuery) (map[BranchKey][]MergedPR, error)
+}
+
+// HeadQuery asks which pull requests of a repository have a branch of a given name as
+// their head.
+type HeadQuery struct {
+	Repo   repo.Name
+	Branch string
+}
+
+// HeadPR is a pull request whose head branch had the name a HeadQuery asked about, as
+// GitHub reports it now.
+type HeadPR struct {
+	// Number is its number in the repository asked about.
+	Number int
+
+	// State is what GitHub says about it.
+	State ItemState
+
+	// HeadRepo is the repository its head branch is in, as owner/name, or "" when GitHub
+	// doesn't say, as for a fork that was deleted.
+	HeadRepo string
+}
+
+// LinkAnswer is what GitHub said about the items and the branches a listing asked about
+// (GitHub.LinkStates).
+type LinkAnswer struct {
+	// Items holds the state of each item GitHub knows, keyed by its ref's Key.
+	Items map[string]ItemState
+
+	// Heads holds the pull requests whose head branch had each name asked about, newest
+	// updated first, keyed by BranchKey.
+	Heads map[BranchKey][]HeadPR
 }
 
 // BranchQuery asks which of a repository's branch names were the head of a merged pull
@@ -241,6 +280,14 @@ type Records interface {
 	Worktrees(ctx context.Context) ([]worklog.Record, error)
 	Record(ctx context.Context, r worklog.Record) error
 	Forget(ctx context.Context, clonePath, worktree string) error
+}
+
+// CopyRecords keeps the pull request each worktree's copied commits went into (see
+// copyrecords.go). *worklog.Store implements it.
+type CopyRecords interface {
+	Copies(ctx context.Context) ([]worklog.Copy, error)
+	RecordCopy(ctx context.Context, c worklog.Copy) error
+	ForgetCopy(ctx context.Context, worktreePath string) error
 }
 
 // History records the worktrees the app cleaned up. *worklog.Store implements it.
@@ -306,6 +353,10 @@ type Config struct {
 	// Records holds the worktrees the app made or found for pull requests and issues.
 	Records Records
 
+	// Copies holds the pull request each worktree's copied commits went into. Without it,
+	// nothing is kept of them between listings.
+	Copies CopyRecords
+
 	// Procs lists the running processes, to tell the worktrees a session works in.
 	// Without it no worktree counts as in use by a process; a lock Claude Code holds
 	// still counts.
@@ -365,6 +416,7 @@ type Service struct {
 	terminal FolderOpener
 	reveal   Revealer
 	launches Records
+	copyLog  CopyRecords
 	lister   procs.Lister
 	history  History
 	agents   AgentProcesses
@@ -372,6 +424,12 @@ type Service struct {
 	events   event.Sink
 	logger   *slog.Logger
 	procs    processTable
+
+	// heads keeps which pull request each pushed branch heads, and copies what comparing
+	// each worktree's commits with the pushed branches' found, across listings (see
+	// branchlink.go and copies.go).
+	heads  *headCache
+	copies *copyCache
 
 	// progressEvery is how often, at most, the window's listing tells how far it has got.
 	progressEvery time.Duration
@@ -422,6 +480,7 @@ func NewService(cfg Config) *Service {
 		terminal: cfg.Terminal,
 		reveal:   cfg.Reveal,
 		launches: cfg.Records,
+		copyLog:  cfg.Copies,
 		lister:   cfg.Procs,
 		history:  cfg.History,
 		agents:   cfg.Agents,
@@ -432,6 +491,8 @@ func NewService(cfg Config) *Service {
 		procs:    osProcesses{},
 		zone:     time.Local, //nolint:gosmopolitan // the agent writes a session's start in the machine's zone or in UTC
 		last:     emptyReport(),
+		heads:    newHeadCache(),
+		copies:   newCopyCache(),
 
 		progressEvery: progress.Every,
 	}
@@ -616,13 +677,16 @@ func (s *Service) removeRow(ctx context.Context, g git, repoPath string, wt Work
 		}
 	}
 
+	// Where the folder is, worked out while it is there (see forgetRecord).
+	resolved := paths.Resolved(wt.Path)
+
 	if err = s.removeEntry(ctx, g, repoPath, e, force); err != nil {
 		return res, err
 	}
 
 	res.Removed = true
 
-	s.forgetRecord(ctx, wt.Path)
+	s.forgetRecord(ctx, wt.Path, resolved)
 
 	deleted, kept := s.deleteChosen(ctx, g, repoPath, wt, branches)
 	res.DeletedBranches, res.Reason = deleted, strings.Join(kept, "; ")

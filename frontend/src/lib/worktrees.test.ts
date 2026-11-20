@@ -3,7 +3,18 @@ import { describe, expect, it } from 'vitest'
 import { brand } from '../generated/brand'
 import type { AgentID, LinkedItem, Worktree } from '../platform'
 import { FIXED_NOW } from '../test/clock'
-import { agentSession, linkedItem, mainWorktree, worktree, worktreeRepo } from '../test/fixtures'
+import {
+  agentSession,
+  copiedPR,
+  copiedWorktree,
+  linkedItem,
+  mainWorktree,
+  partlyCopiedWorktree,
+  recordedWorktree,
+  worktree,
+  worktreeCopies,
+  worktreeRepo,
+} from '../test/fixtures'
 import {
   attentionSort,
   cloneSummary,
@@ -139,6 +150,47 @@ const detached = row({
   managed: false,
 })
 
+// The copies of a sub-agent's commits: copied is on GitHub as identical copies on pull
+// request #42's branch, open; recorded once #42 merged and its branch was deleted; partly
+// has only an edited copy there, so it isn't on GitHub.
+const copied = copiedWorktree()
+const recorded = recordedWorktree()
+const partly = partlyCopiedWorktree()
+
+// unlinked is copied onto a branch no pull request is known to head, linked to nothing:
+// they're named by the branch they're on.
+const unlinked = copiedWorktree({
+  item: null,
+  linkedBy: '',
+  copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10 }),
+})
+
+// elsewhere is recorded, linked by its name to pull request #7 rather than by its copies:
+// they're named by the pull request they went into, #42, whose state it isn't told.
+const elsewhere = recordedWorktree({ item: linkedItem({ headOid: '' }), linkedBy: 'name' })
+
+// held is recorded while #42's branch is still there, merged, but force-pushed since
+// without the copies: the record vouches for them, the branch no longer holds them all.
+const held = recordedWorktree({
+  copies: worktreeCopies({
+    ref: 'origin/feature-x',
+    branch: 'feature-x',
+    count: 10,
+    identical: 10,
+    recorded: true,
+    pr: 42,
+  }),
+})
+
+// ahead is partly, with n commits not on GitHub that compare with origin/feature-x as
+// copies says.
+function ahead(n: number, copies: Partial<Worktree['copies']>): Worktree {
+  return partlyCopiedWorktree({
+    unpushed: n,
+    copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: n, ...copies }),
+  })
+}
+
 describe('laneOf', () => {
   it.each([
     ['Claude running', runningClaude, 'running'],
@@ -158,6 +210,9 @@ describe('laneOf', () => {
     ['git couldn’t read it', erred, 'problem'],
     ['an error, though something runs in it', row({ error: 'unreadable', inUse: [codexHere] }), 'problem'],
     ['detached, no item', detached, 'open'],
+    ['copied onto an open pull request’s branch', copied, 'open'],
+    ['copied into a pull request since merged', recorded, 'ready'],
+    ['with only an edited copy', partly, 'risk'],
   ])('puts a worktree %s in its lane', (_, wt, want) => {
     expect(laneOf(wt)).toBe(want)
   })
@@ -240,8 +295,29 @@ describe('stateOf', () => {
     [unknown, 'ring', 'muted', 'couldn’t tell whether every commit is on GitHub'],
     [ready, 'check', 'success', 'clean, and every commit is on GitHub'],
     [openClean, 'check', 'muted', 'clean, and every commit is on GitHub'],
+    [copied, 'check', 'muted', 'clean; each commit’s change is on GitHub, copied onto PR #42’s branch'],
+    [unlinked, 'check', 'muted', 'clean; each commit’s change is on GitHub, copied onto origin/feature-x'],
+    [recorded, 'check', 'success', 'clean; each commit’s change went into PR #42'],
+    [elsewhere, 'check', 'success', 'clean; each commit’s change went into PR #42'],
+    [held, 'check', 'success', 'clean; each commit’s change went into PR #42'],
+    [
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10, pr: 43 }),
+      }),
+      'check',
+      'muted',
+      'clean; each commit’s change is on GitHub, copied onto PR #43’s branch',
+    ],
+    [partly, 'up', 'caution', 'commits that aren’t on GitHub'],
+    [copiedWorktree({ dirty: true, dirtyCount: 1 }), 'dot', 'warning', 'uncommitted changes'],
   ])('marks the state of %#', (wt, glyph, tone, words) => {
     expect(stateOf(wt)).toEqual({ glyph, tone, words })
+  })
+
+  it('says a worktree at its pull request’s head is on GitHub by its commit IDs, copies or not', () => {
+    expect(stateOf(copiedWorktree({ item: copiedPR({ headOid: copied.head }) })).words).toBe(
+      'clean, and every commit is on GitHub',
+    )
   })
 })
 
@@ -286,6 +362,175 @@ describe('workNotes', () => {
         title: 'Couldn’t count the commits that aren’t on GitHub',
       },
     ])
+  })
+
+  it('notes commits on GitHub only as copies, muted, saying where', () => {
+    expect(workNotes(copied)).toEqual([
+      {
+        kind: 'copied',
+        tone: 'muted',
+        text: '10 on #42',
+        sr: 'on GitHub as copies: ',
+        title: 'Its 10 commits aren’t on GitHub by ID, but each one’s change is on origin/feature-x (PR #42)',
+      },
+    ])
+  })
+
+  it.each([
+    [
+      'onto a branch no pull request links them by',
+      unlinked,
+      '10 on feature-x',
+      'Its 10 commits aren’t on GitHub by ID, but each one’s change is on origin/feature-x',
+    ],
+    [
+      'onto the main branch of a remote whose name holds a slash',
+      copiedWorktree({
+        item: null,
+        linkedBy: '',
+        copies: worktreeCopies({ ref: 'origin/mirror/main', branch: 'main', count: 10, identical: 10 }),
+      }),
+      '10 on main',
+      'Its 10 commits aren’t on GitHub by ID, but each one’s change is on origin/mirror/main',
+    ],
+    [
+      'into a pull request whose branch is gone',
+      recorded,
+      '10 on #42',
+      'Its 10 commits aren’t on GitHub by ID, but each one’s change went into PR #42, from origin/feature-x, a branch that’s gone now',
+    ],
+    [
+      'through a branch that’s gone, into a pull request it isn’t linked to',
+      elsewhere,
+      '10 on #42',
+      'Its 10 commits aren’t on GitHub by ID, but each one’s change went into PR #42, from origin/feature-x, a branch that’s gone now',
+    ],
+    [
+      'into a merged pull request whose branch no longer holds them all',
+      held,
+      '10 on #42',
+      'Its 10 commits aren’t on GitHub by ID, but each one’s change went into PR #42; origin/feature-x no longer holds all of them',
+    ],
+    [
+      'into a pull request whose number isn’t known',
+      recordedWorktree({
+        item: null,
+        linkedBy: '',
+        copies: worktreeCopies({
+          ref: 'origin/feature-x',
+          branch: 'feature-x',
+          count: 10,
+          identical: 10,
+          recorded: true,
+          gone: true,
+        }),
+      }),
+      '10 on feature-x',
+      'Its 10 commits aren’t on GitHub by ID, but each one’s change went into its pull request, from origin/feature-x, a branch that’s gone now',
+    ],
+    [
+      'onto the branch of another pull request than the one it is linked to',
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10, pr: 43 }),
+      }),
+      '10 on #43',
+      'Its 10 commits aren’t on GitHub by ID, but each one’s change is on origin/feature-x (PR #43)',
+    ],
+    [
+      'one commit',
+      copiedWorktree({
+        unpushed: 1,
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 1, identical: 1, pr: 42 }),
+      }),
+      '1 on #42',
+      'Its 1 commit isn’t on GitHub by ID, but its change is on origin/feature-x (PR #42)',
+    ],
+    [
+      'with the digits grouped, onto another remote’s branch with a slash in its name',
+      copiedWorktree({
+        unpushed: 1204,
+        item: null,
+        linkedBy: '',
+        copies: worktreeCopies({ ref: 'upstream/feat/x', branch: 'feat/x', count: 1204, identical: 1204 }),
+      }),
+      '1,204 on feat/x',
+      'Its 1,204 commits aren’t on GitHub by ID, but each one’s change is on upstream/feat/x',
+    ],
+  ])('notes commits copied %s', (_, wt, text, title) => {
+    expect(workNotes(wt)).toEqual([{ kind: 'copied', tone: 'muted', text, sr: 'on GitHub as copies: ', title }])
+  })
+
+  it('notes uncommitted files beside commits on GitHub only as copies', () => {
+    expect(workNotes(copiedWorktree({ dirtyCount: 3 })).map((n) => [n.kind, n.text])).toEqual([
+      ['dirty', '3 files'],
+      ['copied', '10 on #42'],
+    ])
+  })
+
+  it.each([
+    ['with only an edited copy', partly, '1 commit isn’t on GitHub: 1 has only an edited copy on origin/feature-x'],
+    [
+      'most with an identical copy, one with only an edited one',
+      ahead(10, { identical: 9, edited: 1 }),
+      '10 commits aren’t on GitHub: 9 have an identical copy on origin/feature-x, 1 only an edited one',
+    ],
+    [
+      'one with an identical copy, the others with none',
+      ahead(3, { identical: 1, none: 2 }),
+      '3 commits aren’t on GitHub: 1 has an identical copy on origin/feature-x, 2 none',
+    ],
+    [
+      'with edited copies alone',
+      ahead(2, { edited: 2 }),
+      '2 commits aren’t on GitHub: 2 have only an edited copy on origin/feature-x',
+    ],
+    [
+      'with an edited copy and none',
+      ahead(2, { edited: 1, none: 1 }),
+      '2 commits aren’t on GitHub: 1 has only an edited copy on origin/feature-x, 1 none',
+    ],
+    [
+      'with copies spread over several branches',
+      ahead(10, {
+        identical: 7,
+        edited: 2,
+        none: 1,
+        note: 'Each of its commits has an identical copy on one of the pushed branches, but no one branch has them all.',
+      }),
+      '10 commits aren’t on GitHub: 7 have an identical copy on origin/feature-x, 2 only an edited one, 1 none. Each of its commits has an identical copy on one of the pushed branches, but no one branch has them all.',
+    ],
+    [
+      'that couldn’t be compared',
+      ahead(3, { ref: '', branch: '', note: 'Couldn’t compare its commits with the pushed branches. Git refused it.' }),
+      '3 commits aren’t on GitHub. Couldn’t compare its commits with the pushed branches. Git refused it.',
+    ],
+    ['with no copy anywhere', ahead(3, { ref: '', branch: '', none: 3 }), '3 commits aren’t on GitHub'],
+    [
+      'compared when there were others',
+      partlyCopiedWorktree({
+        unpushed: 3,
+        copies: worktreeCopies({
+          ref: 'origin/feature-x',
+          branch: 'feature-x',
+          count: 2,
+          edited: 2,
+          note: 'Something.',
+        }),
+      }),
+      '3 commits aren’t on GitHub',
+    ],
+  ])('says how commits not on GitHub compare with the pushed branches: %s', (_, wt, title) => {
+    expect(workNotes(wt)).toEqual([
+      { kind: 'up', tone: 'caution', text: String(wt.unpushed), sr: 'not on GitHub: ', title },
+    ])
+  })
+
+  it.each([
+    ['as many as compared, but with a note', ahead(3, { identical: 3, note: 'Not counted.' })],
+    ['more than were compared', copiedWorktree({ unpushed: 11 })],
+    ['on no branch', copiedWorktree({ copies: worktreeCopies({ count: 10, identical: 10 }) })],
+  ])('notes nothing of copies the backend counts on GitHub that don’t back it: %s', (_, wt) => {
+    expect(workNotes({ ...wt, onGitHub: true })).toEqual([])
   })
 })
 
@@ -338,6 +583,19 @@ describe('verbOf', () => {
     ['nothing while it’s locked by hand', handLocked, true, null],
     ['nothing for a merged one that needs a look', reviewCommits, true, null],
     ['nothing without an item', detached, true, null],
+    [
+      'Clean up for one whose commits went into a pull request since merged, as copies',
+      recorded,
+      true,
+      {
+        act: 'cleanUp',
+        label: 'Clean up',
+        tone: 'success',
+        title: 'Removes the worktree, whose every commit’s change is on GitHub; asks which branches go with it',
+      },
+    ],
+    ['no launch on the pull request its commits were copied onto', copied, true, null],
+    ['no launch on the pull request whose branch it is on', row({ linkedBy: 'branch' }), true, null],
   ])('offers %s', (_, wt, listed, want) => {
     expect(verbOf(wt, listed)).toEqual(want)
   })
@@ -752,6 +1010,207 @@ describe('safety', () => {
     ],
   ])('says what removing one costs: %s', (_, wt, tone, icon, text, also) => {
     expect(read(wt)).toEqual({ tone, icon, text, also, command: '' })
+  })
+
+  it.each([
+    [
+      'onto an open pull request’s branch, which keeps its own',
+      copied,
+      'Safe to remove: no uncommitted files, and every commit’s change is on GitHub, copied onto PR #42’s branch.',
+      'Removing it keeps its branch, worktree-agent-a1b2c3, with the original commits.',
+    ],
+    [
+      'onto a branch no pull request links them by',
+      unlinked,
+      'Safe to remove: no uncommitted files, and every commit’s change is on GitHub, copied onto origin/feature-x.',
+      'Removing it keeps its branch, worktree-agent-a1b2c3, with the original commits.',
+    ],
+    [
+      'into a pull request since merged, whose branch is gone, its own free to go',
+      recorded,
+      'Safe to remove: no uncommitted files, and every commit’s change went into PR #42, merged 2d ago.',
+      '',
+    ],
+    [
+      'into a pull request still open, whose branch is gone',
+      recordedWorktree({ item: copiedPR() }),
+      'Safe to remove: no uncommitted files, and every commit’s change went into PR #42, which is open.',
+      '',
+    ],
+    [
+      'into a pull request closed at a time it isn’t told',
+      recordedWorktree({ item: copiedPR({ state: 'closed', closedAt: '' }) }),
+      'Safe to remove: no uncommitted files, and every commit’s change went into PR #42, closed.',
+      '',
+    ],
+    [
+      'through a branch that’s gone, into a pull request it isn’t linked to, whose state it isn’t told',
+      elsewhere,
+      'Safe to remove: no uncommitted files, and every commit’s change went into PR #42.',
+      '',
+    ],
+    [
+      'into a pull request since merged, whose branch no longer holds them all',
+      held,
+      'Safe to remove: no uncommitted files, and every commit’s change went into PR #42, merged 2d ago; origin/feature-x no longer holds all of them.',
+      '',
+    ],
+    [
+      'onto the branch of another pull request than the one it is linked to',
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10, pr: 43 }),
+      }),
+      'Safe to remove: no uncommitted files, and every commit’s change is on GitHub, copied onto PR #43’s branch.',
+      'Removing it keeps its branch, worktree-agent-a1b2c3, with the original commits.',
+    ],
+    [
+      'from a detached worktree, whose original commits go with it',
+      copiedWorktree({ detached: true, branch: '', branches: [] }),
+      'Safe to remove: no uncommitted files, and every commit’s change is on GitHub, copied onto PR #42’s branch.',
+      'Only the original commits, which no branch holds, go with it.',
+    ],
+    [
+      'with its branch not offered, an ended session’s lock aside',
+      copiedWorktree({ branches: [], locked: true, agentLock: true, staleLock: true, canUnlock: true }),
+      'Safe to remove: no uncommitted files, and every commit’s change is on GitHub, copied onto PR #42’s branch.',
+      'Removing it keeps its branch, worktree-agent-a1b2c3, with the original commits. A Claude session that has ended still locks it; Unlock releases the lock first.',
+    ],
+  ])('says nothing is lost with commits on GitHub only as copies: %s', (_, wt, text, also) => {
+    expect(read(wt)).toEqual({ tone: 'success', icon: 'shield', text, also, command: '' })
+  })
+
+  it('says it’s at its pull request’s head rather than copied, when it is', () => {
+    expect(read(copiedWorktree({ item: copiedPR({ headOid: copied.head }) })).text).toBe(
+      'Safe to remove: no uncommitted files, and every commit is on GitHub (it’s at PR #42’s head).',
+    )
+  })
+
+  it('sets the branch the copies are on, and the worktree’s own, in code', () => {
+    expect(safety(unlinked, clone, now, undefined, agentName)).toMatchObject({
+      text: [
+        'Safe to remove: no uncommitted files, and every commit’s change ',
+        'is on GitHub, copied onto ',
+        { code: 'origin/feature-x' },
+        '.',
+      ],
+      also: ['Removing it keeps its branch, ', { code: 'worktree-agent-a1b2c3' }, ', with the original commits.'],
+    })
+    expect(safety(held, clone, now, undefined, agentName).text).toEqual([
+      'Safe to remove: no uncommitted files, and every commit’s change ',
+      'went into PR #42',
+      ', merged 2d ago',
+      '; ',
+      { code: 'origin/feature-x' },
+      ' no longer holds all of them',
+      '.',
+    ])
+  })
+
+  it.each([
+    [
+      'something running',
+      copiedWorktree({ inUse: [codexHere], stage: 'in-use' }),
+      'Once it ends, nothing in it would be lost: every commit’s change is on GitHub.',
+    ],
+    [
+      'locked by hand',
+      copiedWorktree({ locked: true, lockReason: 'kept', stage: '' }),
+      'After that, nothing in it would be lost: every commit’s change is on GitHub.',
+    ],
+    [
+      'something running, detached',
+      copiedWorktree({ inUse: [codexHere], stage: 'in-use', detached: true, branch: '', branches: [] }),
+      'Once it ends, nothing in it would be lost: every commit’s change is on GitHub. Only the original commits, which no branch holds, go with it.',
+    ],
+    [
+      'something running, detached, with files',
+      copiedWorktree({ inUse: [codexHere], stage: 'in-use', detached: true, branch: '', dirtyCount: 2 }),
+      'Once it ends, removing it would discard 2 uncommitted files. Only the original commits, which no branch holds, go with it.',
+    ],
+    [
+      'locked by hand, detached',
+      copiedWorktree({ locked: true, lockReason: 'kept', stage: '', detached: true, branch: '' }),
+      'After that, nothing in it would be lost: every commit’s change is on GitHub. Only the original commits, which no branch holds, go with it.',
+    ],
+    [
+      'locked by hand, detached, with files',
+      copiedWorktree({ locked: true, lockReason: 'kept', stage: '', detached: true, branch: '', dirtyCount: 1 }),
+      'Then removing it would discard 1 uncommitted file. Only the original commits, which no branch holds, go with it.',
+    ],
+    [
+      'something running, a commit with only an edited copy',
+      partlyCopiedWorktree({ inUse: [codexHere], stage: 'in-use' }),
+      'Once it ends, its 1 commit not on GitHub stays in the clone on worktree-agent-d4e5f6, which removing it keeps. 1 has only an edited copy on origin/feature-x.',
+    ],
+    [
+      'something running, files and a commit with only an edited copy',
+      partlyCopiedWorktree({ inUse: [codexHere], stage: 'in-use', dirtyCount: 2 }),
+      'Once it ends, removing it would discard 2 uncommitted files. Its 1 commit not on GitHub stays in the clone on worktree-agent-d4e5f6, which removing it keeps. 1 has only an edited copy on origin/feature-x.',
+    ],
+    [
+      'locked by hand, a commit with only an edited copy',
+      partlyCopiedWorktree({ locked: true, lockReason: 'kept', stage: '' }),
+      'Then its 1 commit not on GitHub stays in the clone on worktree-agent-d4e5f6, which removing it keeps. 1 has only an edited copy on origin/feature-x.',
+    ],
+    [
+      'locked by hand, files and a commit with only an edited copy',
+      partlyCopiedWorktree({ locked: true, lockReason: 'kept', stage: '', dirtyCount: 1 }),
+      'Then removing it would discard 1 uncommitted file. Its 1 commit not on GitHub stays in the clone on worktree-agent-d4e5f6, which removing it keeps. 1 has only an edited copy on origin/feature-x.',
+    ],
+  ])('says what would be lost later from one copied with %s', (_, wt, also) => {
+    expect(read(wt).also).toBe(also)
+  })
+
+  it.each([
+    [
+      'commits, one with only an edited copy',
+      partly,
+      'up',
+      'Its folder is clean, but 1 commit on worktree-agent-d4e5f6 isn’t on GitHub.',
+      '1 has only an edited copy on origin/feature-x. Removing the worktree keeps that branch, so it stays in the clone; the app won’t delete it while it’s only here.',
+    ],
+    [
+      'commits copied onto several branches',
+      ahead(10, {
+        identical: 7,
+        edited: 2,
+        none: 1,
+        note: 'Each of its commits has an identical copy on one of the pushed branches, but no one branch has them all.',
+      }),
+      'up',
+      'Its folder is clean, but 10 commits on worktree-agent-d4e5f6 aren’t on GitHub.',
+      '7 have an identical copy on origin/feature-x, 2 only an edited one, 1 none. Each of its commits has an identical copy on one of the pushed branches, but no one branch has them all. Removing the worktree keeps that branch, so they stay in the clone; the app won’t delete it while they’re only here.',
+    ],
+    [
+      'commits that couldn’t be compared',
+      ahead(3, { ref: '', branch: '', note: 'Couldn’t compare its commits with the pushed branches.' }),
+      'up',
+      'Its folder is clean, but 3 commits on worktree-agent-d4e5f6 aren’t on GitHub.',
+      'Couldn’t compare its commits with the pushed branches. Removing the worktree keeps that branch, so they stay in the clone; the app won’t delete it while they’re only here.',
+    ],
+    [
+      'files, and a commit with only an edited copy',
+      partlyCopiedWorktree({ dirtyCount: 2 }),
+      'alert',
+      'Removing it would discard 2 uncommitted files, counting untracked ones.',
+      'Its 1 commit not on GitHub stays in the clone on worktree-agent-d4e5f6, which removing it keeps. 1 has only an edited copy on origin/feature-x.',
+    ],
+    [
+      'a commit no branch holds, with only an edited copy',
+      partlyCopiedWorktree({ detached: true, branch: '' }),
+      'alert',
+      '1 commit that no branch holds would be lost with it.',
+      '1 has only an edited copy on origin/feature-x. Its folder is clean.',
+    ],
+    [
+      'files, in a detached worktree whose commits are on GitHub as copies',
+      copiedWorktree({ detached: true, branch: '', branches: [], dirtyCount: 2 }),
+      'alert',
+      'Removing it would discard 2 uncommitted files, counting untracked ones.',
+      'Only the original commits, which no branch holds, go with it.',
+    ],
+  ])('says what of the work is copied where it holds work: %s', (_, wt, icon, text, also) => {
+    expect(read(wt)).toEqual({ tone: 'warning', icon, text, also, command: '' })
   })
 
   it('names the clone a gone folder’s Prune is for, or the clone', () => {

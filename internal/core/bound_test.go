@@ -1171,7 +1171,7 @@ func seedBound(t *testing.T) (*Core, seededItems) {
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, worklog.New(c.DB).RecordCleanup(ctx, worklog.Cleanup{
+	require.NoError(t, worklog.New(c.DB, nil).RecordCleanup(ctx, worklog.Cleanup{
 		CleanedAt: now, Repo: "example-repo", Worktree: "pr-7", Head: "abc123", ItemKind: string(item.KindPR),
 		ItemOwner: boundOwner, ItemName: "example-repo", ItemNumber: 7, ItemState: string(worktrees.ItemMerged),
 	}))

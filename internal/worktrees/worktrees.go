@@ -26,13 +26,17 @@
 //     ended, never a lock set by hand or one whose session may still run;
 //   - the main worktree is never removed.
 //
-// A worktree made for a pull request or issue is linked to that item, and GitHub says
-// whether it is done. GitHub decides when a worktree is finished; git alone decides
+// A worktree made for a pull request or issue is linked to that item, and one on a pushed
+// branch to the pull request that branch heads (see branchlink.go); GitHub says whether it
+// is done. GitHub decides when a worktree is finished; git alone decides
 // whether removing it is safe. CleanUp, CleanUpFinished, and the automatic Sweep remove a
 // worktree only when its item is merged or closed, it has no uncommitted changes, every
 // commit it has is on GitHub, and no session runs in it. Then they also delete its own
 // worktree-<name> branch, and only while it still points at the commit checked. No other
-// branch is ever deleted, and nothing on GitHub is touched.
+// branch is ever deleted, and nothing on GitHub is touched. A commit is on GitHub by its
+// commit ID, or by an identical copy of its change on a pushed branch (see copies.go); the
+// sweep takes a worktree whose work is on GitHub only as copies, and its own branch may go,
+// only once the pull request the copies went into merged (see copyjudge.go).
 //
 // Every git command runs as an argv `git -C <dir> ...` from a short allowlist, never
 // through a shell. Only create.go fetches and adds worktrees; nothing changes a clone's
@@ -106,6 +110,28 @@ const (
 	// StageNeedsReview is a worktree whose item is done but that holds uncommitted
 	// changes or commits that are not on GitHub, or whose state could not be read.
 	StageNeedsReview Stage = "needs-review"
+)
+
+// LinkKind is how a worktree was linked to its pull request or issue.
+type LinkKind string
+
+// How a worktree was linked to its item, as Worktree.LinkedBy reports it.
+const (
+	// LinkNone is a worktree linked to no item.
+	LinkNone LinkKind = ""
+
+	// LinkName is a worktree linked by its record, the name of the folder the app or
+	// Claude Code made it in (pr-<n>, issue-<n>), or an item's own branch
+	// (worktree-pr-<n>, worktree-issue-<n>).
+	LinkName LinkKind = "name"
+
+	// LinkBranch is a worktree on a pushed branch, linked to the pull request that branch
+	// heads in the repository it was pushed to.
+	LinkBranch LinkKind = "branch"
+
+	// LinkCopy is a worktree each of whose commits not on GitHub has an identical copy on
+	// one pushed branch, linked to the pull request that branch heads.
+	LinkCopy LinkKind = "copy"
 )
 
 // ItemStatus is whether a pull request or issue is open, merged, or closed.
@@ -275,11 +301,22 @@ type Worktree struct {
 
 	// OnGitHub reports that every commit the worktree has is on GitHub: none is missing
 	// from the remote-tracking branches and the commit it was made at, or HEAD is its pull
-	// request's head commit, which GitHub keeps.
+	// request's head commit, which GitHub keeps, or the change of each that is has an
+	// identical copy on GitHub (Copies), on a pushed branch or in the pull request it went
+	// into. Unpushed still counts the commits missing by commit ID.
 	OnGitHub bool `json:"onGitHub"`
 
 	// Item is the pull request or issue the worktree was made for, or nil.
 	Item *LinkedItem `json:"item"`
+
+	// LinkedBy is how the worktree was linked to Item: by its record, its name, or an
+	// item's own branch (LinkName), by the pushed branch it is on (LinkBranch), or by the
+	// pushed branch its commits were copied onto (LinkCopy); "" with no item.
+	LinkedBy LinkKind `json:"linkedBy"`
+
+	// Copies says how its commits that aren't on GitHub compare with the pushed branches'
+	// commits: whether they were copied onto one, by cherry-picking or rebasing them.
+	Copies Copies `json:"copies"`
 
 	// Stage is where the worktree stands.
 	Stage Stage `json:"stage"`
@@ -330,6 +367,10 @@ type Worktree struct {
 	// (worklog.Record.FetchedHead), or "": the commits it reaches count as on GitHub, its
 	// own branch's too. The window never sees it.
 	fetched string
+
+	// copies is what the listing found of the copies of its commits not on GitHub, which
+	// Copies shows (see copyjudge.go). The window never sees it.
+	copies copyState
 }
 
 // rowFiles is how many of a worktree's changed files its row lists (Worktree.Files).

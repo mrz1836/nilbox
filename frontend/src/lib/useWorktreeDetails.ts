@@ -1,8 +1,15 @@
 import { useRef, useState } from 'react'
 
-import { worktreeDetails, type Worktree, type WorktreeDetails, type WorktreeFile } from '../platform'
+import {
+  worktreeDetails,
+  type Worktree,
+  type WorktreeCopies,
+  type WorktreeCopyComparison,
+  type WorktreeDetails,
+  type WorktreeFile,
+} from '../platform'
 import { attempt, start } from './call'
-import { unpushedKnown } from './worktreeParts'
+import { copiedOf, unpushedKnown } from './worktreeParts'
 
 // DetailsRead is what the window has of one worktree's details (Worktrees.Details) for the
 // latest listing: a read under way, its answer, or why it failed, in which case the drawer
@@ -52,32 +59,99 @@ export function changesOf(wt: Worktree, read: DetailsRead | undefined): Changes 
 // them: its uncommitted files and its commits not on GitHub counted as Details counted them,
 // each once it could. Everything else is the listing's, the backend's decisions (its can*
 // flags) included, since the backend checks again as it removes.
+//
+// The backend rules commits that no remote-tracking branch holds on GitHub anyway when HEAD
+// is its pull request's head commit, as a fork's pull request's head is, or when each has an
+// identical copy on a pushed branch, or in the pull request its copies went into, as the app
+// recorded them (copies). Details reads no pull request and no record, but compares the
+// commits with the pushed branches again (Details.copies), so (commitsNow):
+//
+//   - commits it found as the listing did keep the listing's word, but copies on a pushed
+//     branch only while its comparison ran and found every one with an identical copy on
+//     the same branch, as it no longer does once that branch was deleted or force-pushed
+//     without them, and copies the app recorded whatever it finds there, as the record
+//     vouches for them;
+//   - any others mean HEAD moved, and only none puts them on GitHub.
+//
+// Whatever no longer holds is counted as Details counted it, and its copies as it compared
+// them, with why when it couldn't.
 export function asReadNow(wt: Worktree, read: DetailsRead | undefined): Worktree {
   if (read?.state !== 'read') {
     return wt
   }
 
-  const { fileCount, unpushed } = read.details
+  const { fileCount } = read.details
   const files = fileCount >= 0 ? { dirty: fileCount > 0, dirtyCount: fileCount } : {}
-  const commits = unpushed >= 0 ? { unpushed, onGitHub: onGitHubNow(wt, unpushed) } : {}
 
-  return { ...wt, ...files, ...commits }
+  return { ...wt, ...files, ...commitsNow(wt, read.details) }
 }
 
-// onGitHubNow reports whether the commits on wt are on GitHub, with unpushed, how many of
-// them no remote-tracking branch holds, as its details counted them now. The backend rules
-// them on GitHub when there are none, or when HEAD is its pull request's head commit, as a
-// fork's pull request's head is though no remote-tracking branch holds it. Details doesn't
-// read HEAD, so a count the listing made too keeps the listing's word, and one that changed
-// means HEAD moved, which only none puts on GitHub.
-function onGitHubNow(wt: Worktree, unpushed: number): boolean {
-  return unpushed === 0 || (unpushed === wt.unpushed && wt.onGitHub)
+// commitsNow is what details, as asReadNow reads them, change of wt's commits not on GitHub
+// and their copies: nothing when they couldn't be counted, or when the listing's word on
+// them holds, else their count, whether they're on GitHub, and the copies Details found.
+function commitsNow(wt: Worktree, details: WorktreeDetails): Partial<Worktree> {
+  const { unpushed } = details
+
+  if (unpushed < 0) {
+    return {}
+  }
+
+  const same = sameCommits(wt, details)
+  const byCopies = copiedOf(wt) !== null
+
+  if (same && (wt.copies.recorded || (byCopies && copiesHold(wt, details.copies)))) {
+    return {}
+  }
+
+  return {
+    unpushed,
+    onGitHub: unpushed === 0 || (same && wt.onGitHub && !byCopies),
+    copies: copiesNow(wt, details),
+  }
+}
+
+// sameCommits reports details that found, as far as they tell, the commits not on GitHub
+// the listing found on wt: as many, and the newest of those they list, which git lists
+// first, at the HEAD the listing found. Details that counted them but couldn't list them
+// tell only how many.
+function sameCommits(wt: Worktree, details: WorktreeDetails): boolean {
+  const newest = details.commits.at(0)
+
+  return details.unpushed === wt.unpushed && (newest === undefined || newest.oid === wt.head)
+}
+
+// copiesHold reports a comparison, compared, that still finds what the listing found of
+// wt's commits on a pushed branch: it ran, and every one of them has an identical copy on
+// the branch the listing compared them with.
+function copiesHold(wt: Worktree, compared: WorktreeCopyComparison): boolean {
+  return compared.compared && compared.ref === wt.copies.ref && compared.identical === wt.unpushed
+}
+
+// copiesNow is what Details' comparison found of the copies of its count commits not on
+// GitHub, as Worktree.copies says it: none recorded, and the pull request the listing found
+// the branch heads, while it's the same branch.
+function copiesNow(wt: Worktree, details: WorktreeDetails): WorktreeCopies {
+  const c = details.copies
+
+  return {
+    ref: c.ref,
+    branch: c.branch,
+    count: details.unpushed,
+    identical: c.identical,
+    edited: c.edited,
+    none: c.compared ? details.unpushed - c.identical - c.edited : 0,
+    recorded: false,
+    pr: c.ref !== '' && c.ref === wt.copies.ref ? wt.copies.pr : 0,
+    gone: false,
+    note: c.note,
+  }
 }
 
 // notOnGitHub is how many commits on wt aren't on GitHub, as its details count them now
 // once read, else as the listing did (asReadNow): 0 when every one is, at its pull
-// request's head included, or when they couldn't be counted. The drawer's commits and
-// Force remove's count and list them by it, so they agree with the sentence over them.
+// request's head or as identical copies included, or when they couldn't be counted. The
+// drawer's commits and Force remove's count and list them by it, so they agree with the
+// sentence over them.
 export function notOnGitHub(wt: Worktree, read: DetailsRead | undefined): number {
   return unpushedKnown(asReadNow(wt, read))
 }

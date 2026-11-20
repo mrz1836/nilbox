@@ -9,6 +9,7 @@ import {
   agentLine,
   checksOf,
   clockOf,
+  copiedTag,
   folderOf,
   itemRef,
   kindOf,
@@ -19,12 +20,13 @@ import {
   type ItemFacts,
   type KindIcon,
 } from '../../lib/worktreeParts'
-import { edgeTitle, laneOf, lanes, stateOf, workNotes, type StateGlyph } from '../../lib/worktrees'
+import { edgeTitle, laneOf, lanes, stateOf, workNotes, type StateGlyph, type WorkNote } from '../../lib/worktrees'
 import { openExternal, type AgentID, type AgentSession, type LinkedItem, type Worktree } from '../../platform'
 import {
   AlertIcon,
   ArrowUpIcon,
   CheckIcon,
+  CopyIcon,
   GhostIcon,
   IssueClosedIcon,
   IssueIcon,
@@ -171,10 +173,19 @@ interface ItemCellProps {
   facts: ItemFacts | undefined
 }
 
+interface LinkedCellProps {
+  item: LinkedItem
+  facts: ItemFacts | undefined
+  // copied is the tooltip of the tag on a pull request the worktree is linked to by its
+  // commits' copies on its branch (copiedTag), or '' for one linked otherwise, with no tag.
+  copied: string
+}
+
 // LinkedCell is the pull request or issue a worktree is for: its mark in its state's color,
-// its number, which opens it on GitHub, and its title; then its draft tag and its checks'
-// dot, as the inbox read them, while it lists it.
-function LinkedCell({ item, facts }: { item: LinkedItem; facts: ItemFacts | undefined }) {
+// its number, which opens it on GitHub, and its title; then a copied tag when the worktree
+// is linked to it by its commits' copies, and its draft tag and its checks' dot, as the
+// inbox read them, while it lists it.
+function LinkedCell({ item, facts, copied }: LinkedCellProps) {
   const now = useNow()
   const draft = facts?.draft ?? false
   const kind = kindOf(item, draft, now)
@@ -199,6 +210,11 @@ function LinkedCell({ item, facts }: { item: LinkedItem; facts: ItemFacts | unde
       <span title={`${item.owner}/${item.name}#${String(item.number)}: ${item.title}`} className="min-w-0 truncate">
         {item.title}
       </span>
+      {copied !== '' && (
+        <span title={copied} className={tagClass}>
+          copied
+        </span>
+      )}
       {draft && (
         <span title="A draft, as the inbox read it" className={`${tagClass} border-dashed`}>
           draft
@@ -221,7 +237,7 @@ function LinkedCell({ item, facts }: { item: LinkedItem; facts: ItemFacts | unde
 // name, muted, and a Claude Code tag on one Claude Code made.
 export function ItemCell({ worktree, facts }: ItemCellProps) {
   if (worktree.item !== null) {
-    return <LinkedCell item={worktree.item} facts={facts} />
+    return <LinkedCell item={worktree.item} facts={facts} copied={copiedTag(worktree)} />
   }
 
   return (
@@ -241,9 +257,23 @@ export function ItemCell({ worktree, facts }: ItemCellProps) {
   )
 }
 
+// NoteMark is a work note's mark: ⧉ for commits on GitHub only as copies, ↑ for commits
+// that aren't, or couldn't be counted; none for uncommitted files.
+function NoteMark({ kind }: { kind: WorkNote['kind'] }) {
+  switch (kind) {
+    case 'dirty':
+      return null
+    case 'copied':
+      return <CopyIcon className="size-2.75" />
+    default:
+      return <ArrowUpIcon className="size-2.75" />
+  }
+}
+
 // WorkCell is the work a worktree holds that isn't on GitHub: its uncommitted files, in
-// amber, and its commits not on GitHub, ↑2, or ↑? when they couldn't be counted. It is
-// empty when there is none: the state's ✓ says so already.
+// amber, and its commits not on GitHub, ↑2, or ↑? when they couldn't be counted; or,
+// muted, its commits on GitHub only as copies, ⧉ 10 on #42. It is empty when there is
+// none: the state's ✓ says so already.
 export function WorkCell({ worktree }: { worktree: Worktree }) {
   return (
     <span className={workCellClass}>
@@ -251,9 +281,9 @@ export function WorkCell({ worktree }: { worktree: Worktree }) {
         <span
           key={note.kind}
           title={note.title}
-          className={`inline-flex shrink-0 cursor-help items-center gap-0.75 ${toneText[note.tone]} ${note.kind === 'unknown' ? '' : 'font-medium'}`}
+          className={`inline-flex shrink-0 cursor-help items-center gap-0.75 ${toneText[note.tone]} ${note.tone === 'muted' ? '' : 'font-medium'}`}
         >
-          {note.kind !== 'dirty' && <ArrowUpIcon className="size-2.75" />}
+          <NoteMark kind={note.kind} />
           <span className="sr-only">{note.sr}</span>
           {note.text}
         </span>

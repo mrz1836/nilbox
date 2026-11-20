@@ -1,0 +1,953 @@
+package worktrees
+
+import (
+	"cmp"
+	"context"
+	"errors"
+	"maps"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+
+	"golang.org/x/sync/errgroup"
+
+	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/gitread"
+	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/textutil"
+)
+
+// Comparing a worktree's commits with the pushed branches'.
+//
+// A coding agent's session often works in a worktree of its own, on a branch no one pushes,
+// while the session that started it copies its commits onto a branch of its own, by
+// cherry-picking or rebasing them, and pushes that. A copy keeps the commit's change (git's
+// patch ID), author, author time, and subject, but gets a new commit ID, so the original
+// counts as not on GitHub (Worktree.Unpushed counts by commit ID) although its change is.
+//
+// For each linked worktree with commits not on GitHub (U), detectCopies compares them with
+// the commits of the clone's pushed branches: the remote-tracking branches of its GitHub
+// remotes, each remote's default branch aside. Per clone, one log reads U of every such
+// worktree with at most copyLimit (copyUnpushedArgs; one per commit the worktrees were made
+// at from GitHub), and one more the pushed commits not in the default branch whose commit
+// time is at most copyWindow before the oldest of U's author times (copyCandidatesArgs): a
+// copy keeps the author time and is made later; a window too wide to read fails only the
+// worktrees that need it (readCandidates). A pushed commit with a commit's author time,
+// author email, and subject is its likely copy. The log credits each pushed commit to one
+// branch only, so the branches it credits with likely copies, most first and at most
+// copyRefsMax of them, are only the order they are compared in: for each, one rev-list
+// --left-right (copySidesArgs) lists the commits it has that the worktree's HEAD hasn't, and
+// every likely copy among them is one there, whichever branch the log credited it to, as a
+// branch built on another holds that one's copies too. One log of their changes then
+// compares each pair byte for byte (see copypatch.go). A commit whose change and a likely
+// copy's are the same has an identical copy; one with a likely copy whose change differs, if
+// only by a space, has an edited copy, which is never taken for the commit; any other has
+// none. A worktree whose every commit has an identical copy on one branch is fully
+// copied onto it (Copies.full), and links to that branch's pull request when nothing else
+// links it (LinkCopy). Anything that goes wrong, as git failing or warning, an object a
+// partial clone lacks (the reads never fetch one), too many commits, a merge among U, or the
+// copies spread over several branches, leaves it not fully copied, with the reason in
+// Copies.Note, and never fails the listing.
+//
+// What a comparison found is kept in memory (copyCache) by the worktree's HEAD, the commit
+// it was made at from GitHub, its clone's GitHub remotes, and every remote-tracking branch
+// and where it points (cloneRefs.fingerprint), so a listing in which none of those changed
+// runs no git for it.
+
+// copyLimit is the most commits not on GitHub a worktree's copies are looked for among.
+const copyLimit = detailLimit
+
+// copyRefsMax is the most pushed branches one worktree's commits are compared with.
+const copyRefsMax = 3
+
+// copyBatchMax caps the commits one log of the commits not on GitHub lists, and
+// copyCandidatesMax one log of the pushed commits: a log that reaches its cap compares
+// nothing.
+const (
+	copyBatchMax      = 10_000
+	copyCandidatesMax = 20_000
+)
+
+// copyWindow is how long before a commit's author time, in seconds, its copy's commit time
+// may be: a copy is made after the commit, so only clocks that disagree put it before.
+const copyWindow = 86_400
+
+// CopyMark is how a commit that isn't on GitHub compares with the pushed branch its
+// worktree's commits were compared with (Copies.Ref).
+type CopyMark string
+
+// How a commit compares with the pushed branch, as UnpushedCommit.Copy reports it.
+const (
+	// CopyNone is a commit with no copy there.
+	CopyNone CopyMark = ""
+
+	// CopyIdentical is a commit with a copy there, by its author, author time, and
+	// subject, whose change is identical.
+	CopyIdentical CopyMark = "identical"
+
+	// CopyEdited is a commit with a copy there, by its author, author time, and subject,
+	// whose change differs.
+	CopyEdited CopyMark = "edited"
+)
+
+// Copies says how the commits of a worktree that aren't on GitHub compare with the pushed
+// branches' commits, where cherry-picking or rebasing them puts their copies. Every field
+// is a plain value; the zero value says nothing was compared, as for a worktree with every
+// commit on GitHub.
+type Copies struct {
+	// Ref is the pushed branch they were compared with, as in origin/feature-x: the one
+	// with an identical copy of each when there is one, else the one with the most; "" when
+	// none has a copy of any.
+	Ref string `json:"ref"`
+
+	// Branch is Ref's branch on its remote, as in feature-x, worked out among the clone's
+	// remotes, whose names may hold a slash: origin/mirror/main of a remote called
+	// origin/mirror is main. It is "" when Ref is, or when no remote the clone names is
+	// Ref's.
+	Branch string `json:"branch"`
+
+	// Count is how many there are (Worktree.Unpushed) when they were compared, or couldn't
+	// be (Note); 0 when there was nothing to compare them with.
+	Count int `json:"count"`
+
+	// Identical, Edited, and None count those with an identical copy on Ref, those whose
+	// copy there has another change, and those with neither: Count together, unless Note
+	// says they couldn't be compared.
+	Identical int `json:"identical"`
+	Edited    int `json:"edited"`
+	None      int `json:"none"`
+
+	// Recorded reports that what an earlier listing recorded vouches for them: each had an
+	// identical copy on Ref, and the pull request Ref headed, which GitHub keeps, has those
+	// copies, and either Ref is gone or that pull request merged. Identical is Count then.
+	Recorded bool `json:"recorded"`
+
+	// PR is the number of the pull request the copies went into: when Recorded, the one the
+	// record names, else the one Ref's branch heads, as this listing read it; 0 when none is
+	// known, as before GitHub was asked, or for a branch no pull request heads.
+	PR int `json:"pr"`
+
+	// Gone reports that Ref's remote-tracking branch is gone from the clone, deleted or
+	// pruned, as it can be only when Recorded: the window can't read that from Recorded,
+	// which a merged pull request sets with its branch still there.
+	Gone bool `json:"gone"`
+
+	// Unless it is "", Note says in a sentence why they couldn't be compared, or why their
+	// identical copies don't count.
+	Note string `json:"note"`
+}
+
+// full reports a worktree each of whose commits that aren't on GitHub has an identical copy
+// on Ref, as this listing found.
+func (c Copies) full() bool {
+	return c.Count > 0 && c.Note == "" && c.Ref != "" && c.Identical == c.Count && !c.Recorded
+}
+
+// commitMark is how one commit compares with the branch compared with: its mark, and its
+// likely copy there, for an identical or an edited one.
+type commitMark struct {
+	mark CopyMark
+	copy string
+}
+
+// copyResult is what comparing a worktree's commits found.
+type copyResult struct {
+	copies Copies
+
+	// ref is Copies.Ref's remote-tracking branch, as in refs/remotes/origin/feature-x, and
+	// tip the commit it pointed at; both "" when there is no Ref.
+	ref string
+	tip string
+
+	// commits are the worktree's commits that aren't on GitHub, when they were read.
+	commits []string
+
+	// marks says how each of commits compares with ref, by commit ID; one with none isn't
+	// there.
+	marks map[string]commitMark
+
+	// compared reports a comparison that ran to completion, the candidates read and every
+	// branch compared with, or that had no pushed branch to compare with; false for one
+	// that couldn't be made (copies.Note says why).
+	compared bool
+}
+
+// full reports a worktree fully copied onto ref.
+func (r *copyResult) full() bool {
+	return r != nil && r.copies.full()
+}
+
+// copyKey is what a worktree's copyResult was worked out from: its HEAD, the commit it was
+// made at from GitHub, and its clone's GitHub remotes and remote-tracking branches.
+type copyKey struct {
+	head, fetched, remotes, refs string
+}
+
+// copyEntry is a copyResult kept for a worktree, with its clone and its key.
+type copyEntry struct {
+	clone  string
+	key    copyKey
+	result copyResult
+}
+
+// coverEntry is whether a worktree's copy record covers it, kept with its clone and key.
+type coverEntry struct {
+	clone   string
+	key     coverKey
+	covered bool
+}
+
+// copyCache keeps across listings each worktree's copyResult and whether its copy record
+// covers it, by the worktree's resolved directory, whether a pull request's head has a
+// record's branch commit (see copyjudge.go), and whether a commit and a likely copy make the
+// same change byte for byte (see copypatch.go). It is safe for concurrent use.
+type copyCache struct {
+	mu      sync.Mutex
+	entries map[string]copyEntry
+	covers  map[string]coverEntry
+	holds   map[holdKey]bool
+	pairs   map[copyPair]bool
+}
+
+// newCopyCache returns an empty copyCache.
+func newCopyCache() *copyCache {
+	return &copyCache{
+		entries: map[string]copyEntry{}, covers: map[string]coverEntry{}, holds: map[holdKey]bool{},
+		pairs: map[copyPair]bool{},
+	}
+}
+
+// pairsMax is how many verdicts of samePatch the cache keeps before it starts over.
+const pairsMax = 16384
+
+// samePair returns whether a commit and a likely copy make the same change, when that is
+// kept.
+func (c *copyCache) samePair(pair copyPair) (same, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	same, ok = c.pairs[pair]
+
+	return same, ok
+}
+
+// keepPair keeps whether a commit and a likely copy make the same change, for good: neither
+// commit ever changes.
+func (c *copyCache) keepPair(pair copyPair, same bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if len(c.pairs) >= pairsMax {
+		clear(c.pairs)
+	}
+
+	c.pairs[pair] = same
+}
+
+// coverage returns whether the record of the worktree at path covers it, when that was
+// worked out from key.
+func (c *copyCache) coverage(path string, key coverKey) (covered, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	e, found := c.covers[path]
+
+	return e.covered, found && e.key == key
+}
+
+// keepCoverage keeps whether the record of the worktree at path, of clone, covers it, as
+// worked out from key.
+func (c *copyCache) keepCoverage(clone, path string, key coverKey, covered bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if _, kept := c.covers[path]; !kept && len(c.covers) >= worktreesMax {
+		clear(c.covers)
+	}
+
+	c.covers[path] = coverEntry{clone: clone, key: key, covered: covered}
+}
+
+// worktreesMax is how many worktrees' results, and as many coverages, the cache keeps
+// before it starts over: a listing of every clone drops those of clones it didn't list
+// (pruneClones), so only listings of a few clones at a time, as a sweep's, could fill it.
+const worktreesMax = 4096
+
+// holdsMax is how many answers of prHolds the cache keeps before it starts over.
+const holdsMax = 4096
+
+// held returns whether a pull request's head has a record's branch commit, as key names
+// them, when that is kept: a yes for good, a no for the remote-tracking branches fp sums up.
+func (c *copyCache) held(key holdKey, fp string) (held, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.holds[key] {
+		return true, true
+	}
+
+	key.refs = fp
+	_, ok = c.holds[key]
+
+	return false, ok
+}
+
+// keepHeld keeps whether a pull request's head has a record's branch commit, as key names
+// them, a no for the remote-tracking branches fp sums up.
+func (c *copyCache) keepHeld(key holdKey, fp string, held bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if len(c.holds) >= holdsMax {
+		clear(c.holds)
+	}
+
+	if !held {
+		key.refs = fp
+	}
+
+	c.holds[key] = held
+}
+
+// lookup returns the result kept for the worktree at path, when it was worked out from key.
+func (c *copyCache) lookup(path string, key copyKey) (copyResult, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	e, ok := c.entries[path]
+
+	return e.result, ok && e.key == key
+}
+
+// has reports a result kept for the worktree at path, whatever its key.
+func (c *copyCache) has(path string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	_, ok := c.entries[path]
+
+	return ok
+}
+
+// keep keeps the result worked out for the worktree at path, of clone, from key.
+func (c *copyCache) keep(clone, path string, key copyKey, result copyResult) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if _, kept := c.entries[path]; !kept && len(c.entries) >= worktreesMax {
+		clear(c.entries)
+	}
+
+	c.entries[path] = copyEntry{clone: clone, key: key, result: result}
+}
+
+// prune drops what is kept for clone's worktrees but those at listed.
+func (c *copyCache) prune(clone string, listed map[string]bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	maps.DeleteFunc(c.entries, func(path string, e copyEntry) bool { return e.clone == clone && !listed[path] })
+	maps.DeleteFunc(c.covers, func(path string, e coverEntry) bool { return e.clone == clone && !listed[path] })
+}
+
+// pruneClones drops what is kept for the worktrees of every clone but those of listed, the
+// clones a listing of them all listed, by their Path: a clone it didn't list has no linked
+// worktree, or is gone.
+func (c *copyCache) pruneClones(listed map[string]bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	maps.DeleteFunc(c.entries, func(_ string, e copyEntry) bool { return !listed[e.clone] })
+	maps.DeleteFunc(c.covers, func(_ string, e coverEntry) bool { return !listed[e.clone] })
+}
+
+// remotesKey sums up a clone's GitHub remotes, the only ones whose branches it compares
+// with, and names, every remote it has, which tell whose each remote-tracking branch is.
+func remotesKey(remotes map[string]repo.Name, names []string) string {
+	var b strings.Builder
+
+	for _, name := range slices.Sorted(maps.Keys(remotes)) {
+		b.WriteString(name + "=" + remotes[name].Key() + "\n")
+	}
+
+	b.WriteString(strings.Join(names, "\x00"))
+
+	return b.String()
+}
+
+// copyWork is one worktree whose commits a clone's comparison compares.
+type copyWork struct {
+	wt   *Worktree
+	path string
+	key  copyKey
+
+	// result is what was found, once done; retry marks one git couldn't be run for, which the
+	// next listing works out again rather than keep.
+	result copyResult
+	done   bool
+	retry  bool
+
+	// unpushed are its commits not on GitHub, once read, and candidates the pushed commits
+	// that may be their copies, once read (readCandidates).
+	unpushed   []copyCommit
+	candidates []copyCommit
+}
+
+// copyCommit is a commit as a comparison's logs read it: a commit not on GitHub with its
+// parents, or a pushed one with the branch it was found on.
+type copyCommit struct {
+	oid     string
+	parents []string
+	ref     string
+	at      int64
+	email   string
+	subject string
+}
+
+// likeness is what a copy keeps of a commit: its author time, author email, and subject.
+func (c copyCommit) likeness() string {
+	return strconv.FormatInt(c.at, 10) + "\x00" + c.email + "\x00" + c.subject
+}
+
+// detectCopies compares the commits not on GitHub of each linked worktree of repos with the
+// pushed branches', a few clones at a time, and fills in each one's Copies (see this file's
+// doc). remotes maps each repository's Path to its GitHub remotes, and refs to its refs, as
+// read for this listing. A clone whose refs couldn't be read compares nothing, and one with
+// no pushed branch of a GitHub remote has nothing to compare with, which takes no git.
+func (s *Service) detectCopies(ctx context.Context, g git, repos []Repo, remotes map[string]map[string]repo.Name,
+	refs map[string]cloneRefs,
+) {
+	var eg errgroup.Group
+
+	eg.SetLimit(listConcurrency)
+
+	for i := range repos {
+		r := &repos[i]
+
+		cr, ok := refs[r.Path]
+		if !ok {
+			continue
+		}
+
+		eg.Go(func() error {
+			wts := make([]*Worktree, 0, len(r.Worktrees))
+			for j := range r.Worktrees {
+				wts = append(wts, &r.Worktrees[j])
+			}
+
+			s.detectCloneCopies(ctx, g, r.Path, wts, remotes[r.Path], cr, true)
+
+			return nil
+		})
+	}
+
+	_ = eg.Wait() // a comparison that fails only leaves its worktrees not copied
+}
+
+// detectCloneCopies compares the commits not on GitHub of wts, worktrees of the clone at
+// dir, with what the cache keeps for those whose key is the same. With prune, wts are all
+// the clone's worktrees, and what the cache keeps for any other is dropped.
+func (s *Service) detectCloneCopies(ctx context.Context, g git, dir string, wts []*Worktree,
+	remotes map[string]repo.Name, refs cloneRefs, prune bool,
+) {
+	todo, listed := s.copiesToCompare(wts, copyKey{remotes: remotesKey(remotes, refs.names), refs: refs.fingerprint()})
+
+	if prune {
+		s.copies.prune(dir, listed)
+	}
+
+	if len(todo) == 0 {
+		return
+	}
+
+	compareCopies(ctx, g, s.copies, dir, remotes, refs, todo)
+
+	for _, w := range todo {
+		w.wt.copies.result, w.wt.Copies = &w.result, w.result.copies
+
+		if !w.retry && ctx.Err() == nil {
+			s.copies.keep(dir, w.path, w.key, w.result)
+		}
+	}
+}
+
+// copiesToCompare fills in what the cache keeps for each of wts that may have copies, whose
+// key, clone's key with the worktree's HEAD and the commit it was made at, is the same, and
+// returns the others, to compare, and the resolved directories of all of them.
+func (s *Service) copiesToCompare(wts []*Worktree, clone copyKey) ([]*copyWork, map[string]bool) {
+	var todo []*copyWork
+
+	listed := map[string]bool{}
+
+	for _, wt := range wts {
+		if !mayHaveCopies(wt) {
+			continue
+		}
+
+		path := paths.Resolved(wt.Path)
+		listed[path] = true
+		key := copyKey{head: wt.Head, fetched: wt.fetched, remotes: clone.remotes, refs: clone.refs}
+
+		// The same key means the same commits not on GitHub, and so the same count; a count
+		// that differs was read amiss, and is compared again.
+		if result, ok := s.copies.lookup(path, key); ok && (result.copies.Count == 0 || result.copies.Count == wt.Unpushed) {
+			wt.copies.result, wt.Copies = &result, result.copies
+		} else {
+			todo = append(todo, &copyWork{wt: wt, path: path, key: key})
+		}
+	}
+
+	return todo, listed
+}
+
+// mayHaveCopies reports a linked worktree whose directory is there, with commits not on
+// GitHub, at a HEAD git can be asked about.
+func mayHaveCopies(wt *Worktree) bool {
+	return !wt.Main && !wt.Prunable && wt.Unpushed > 0 && gitread.IsCommitID(wt.Head)
+}
+
+// compareCopies compares the commits not on GitHub of todo, worktrees of the clone at dir,
+// with its pushed branches, settling each one's result. A clone with no pushed branch has
+// nothing to compare them with.
+func compareCopies(ctx context.Context, g git, cache *copyCache, dir string, remotes map[string]repo.Name, refs cloneRefs,
+	todo []*copyWork,
+) {
+	branches := pushedBranches(remotes, refs)
+
+	for _, w := range todo {
+		switch {
+		case len(branches) == 0:
+			w.done, w.result = true, copyResult{marks: map[string]commitMark{}, compared: true}
+		case w.wt.Unpushed > copyLimit:
+			w.finish(tooManyToCompare())
+		}
+	}
+
+	readUnpushed(ctx, g, dir, todo)
+	readCandidates(ctx, g, dir, defaultBase(remotes, refs), todo)
+
+	for _, w := range todo {
+		if !w.done {
+			w.compare(ctx, g, cache, dir, refs, branches)
+		}
+	}
+}
+
+// tooManyToCompare says a worktree has more commits not on GitHub than are compared.
+func tooManyToCompare() string {
+	return "It has more than " + strconv.Itoa(copyLimit) + " commits that aren't on GitHub, more than are " +
+		"compared with the pushed branches."
+}
+
+// pushedBranches are the remote-tracking branches of a clone's GitHub remotes that copies
+// are looked for on: every one but each remote's default branch.
+func pushedBranches(remotes map[string]repo.Name, refs cloneRefs) map[string]bool {
+	out := map[string]bool{}
+
+	for ref := range refs.tracking {
+		remote, branch, ok := refs.owner(ref)
+		if _, onGitHub := remotes[remote]; ok && onGitHub && refs.defaults[remote] != branch {
+			out[ref] = true
+		}
+	}
+
+	return out
+}
+
+// finish settles a worktree whose commits couldn't be compared, with why.
+func (w *copyWork) finish(note string) {
+	w.done = true
+	w.result = copyResult{copies: Copies{Count: w.wt.Unpushed, Note: note}, marks: map[string]commitMark{}}
+}
+
+// fail settles a worktree whose commits couldn't be compared because of err. One git could
+// not be run for at all, or that ran past ctx's end, is compared again next time; any other
+// failure would be the same again for the same key.
+func (w *copyWork) fail(ctx context.Context, err error) {
+	w.finish(compareFailure(err))
+	w.retry = retryable(ctx, err)
+}
+
+// readUnpushed reads the commits not on GitHub of the worktrees of todo not yet settled, in
+// one log for each commit they were made at from GitHub ("" for none), and settles each one
+// whose commits can't be compared: a log that failed, a count that isn't the listing's (they
+// changed meanwhile), or a merge among them.
+func readUnpushed(ctx context.Context, g git, dir string, todo []*copyWork) {
+	groups := map[string][]*copyWork{}
+
+	for _, w := range todo {
+		if !w.done {
+			groups[w.wt.fetched] = append(groups[w.wt.fetched], w)
+		}
+	}
+
+	for _, fetched := range slices.Sorted(maps.Keys(groups)) {
+		group := groups[fetched]
+		set, err := g.copyUnpushed(ctx, dir, headsOf(group), fetched)
+
+		for _, w := range group {
+			if err != nil {
+				w.fail(ctx, err)
+			} else {
+				w.readFrom(set)
+			}
+		}
+	}
+}
+
+// headsOf lists the HEADs of group's worktrees, each once.
+func headsOf(group []*copyWork) []string {
+	heads := make([]string, 0, len(group))
+
+	for _, w := range group {
+		if !slices.Contains(heads, w.wt.Head) {
+			heads = append(heads, w.wt.Head)
+		}
+	}
+
+	return heads
+}
+
+// readFrom takes the worktree's commits not on GitHub from set, its clone's worktrees'
+// commits not on GitHub by commit ID, which reach one another through their parents.
+func (w *copyWork) readFrom(set map[string]copyCommit) {
+	reached := reach(set, w.wt.Head)
+
+	switch {
+	case len(reached) != w.wt.Unpushed:
+		w.finish("Its commits that aren't on GitHub changed while they were compared with the pushed branches.")
+	case slices.ContainsFunc(reached, func(c copyCommit) bool { return len(c.parents) > 1 }):
+		w.finish("A merge is among its commits that aren't on GitHub, and a merge isn't compared with the " +
+			"pushed branches.")
+	default:
+		w.unpushed = reached
+	}
+}
+
+// reach returns the commits of set that head reaches through their parents, head first,
+// each once: those set has of the commits head has.
+func reach(set map[string]copyCommit, head string) []copyCommit {
+	var out []copyCommit
+
+	seen := map[string]bool{}
+	stack := []string{head}
+
+	for len(stack) > 0 {
+		oid := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		c, ok := set[oid]
+		if !ok || seen[oid] {
+			continue
+		}
+
+		seen[oid] = true
+
+		out = append(out, c)
+		stack = append(stack, c.parents...)
+	}
+
+	return out
+}
+
+// readCandidates reads, for each worktree of todo not yet settled, the commits of the
+// clone's remote-tracking branches that may be copies of its commits not on GitHub: those
+// not in the default branch, base, whose commit time is at most copyWindow before the
+// oldest of those commits' author times (copyCommit.since), each with the ref the log
+// credits it to, which may be a remote's HEAD or a branch no copy is looked for on: a
+// pushed branch built on it holds it too (see compareWith). One log, from the oldest
+// worktree's time, serves them all. When it reaches
+// copyCandidatesMax, the worktrees that need that time alone can't be compared, and the
+// next log starts from the next oldest's: so one old worktree, as one left for months,
+// never keeps the others from being compared. Any other failure settles every worktree
+// waiting.
+func readCandidates(ctx context.Context, g git, dir, base string, todo []*copyWork) {
+	waiting := slices.DeleteFunc(slices.Clone(todo), func(w *copyWork) bool { return w.done || len(w.unpushed) == 0 })
+	slices.SortStableFunc(waiting, func(a, b *copyWork) int { return cmp.Compare(a.since(), b.since()) })
+
+	for len(waiting) > 0 {
+		since := waiting[0].since()
+		candidates, err := g.copyCandidates(ctx, dir, since, base)
+
+		if errors.Is(err, errTooManyCandidates) {
+			waiting = failSince(ctx, waiting, since, err)
+
+			continue
+		}
+
+		for _, w := range waiting {
+			if err != nil {
+				w.fail(ctx, err)
+			} else {
+				w.candidates = candidates
+			}
+		}
+
+		return
+	}
+}
+
+// failSince settles the worktrees of waiting, sorted by since, that need the window from
+// since with err, and returns the others.
+func failSince(ctx context.Context, waiting []*copyWork, since int64, err error) []*copyWork {
+	for len(waiting) > 0 && waiting[0].since() == since {
+		waiting[0].fail(ctx, err)
+		waiting = waiting[1:]
+	}
+
+	return waiting
+}
+
+// since is the earliest commit time a copy of the worktree's commits not on GitHub may
+// have: copyWindow before the oldest of their author times, in Unix seconds, never before 0.
+func (w *copyWork) since() int64 {
+	oldest := w.unpushed[0].at
+	for _, c := range w.unpushed[1:] {
+		oldest = min(oldest, c.at)
+	}
+
+	return max(oldest-copyWindow, 0)
+}
+
+// defaultBase is the default branch of the clone's first GitHub remote, origin first, whose
+// HEAD the clone knows and whose branch it has, as in refs/remotes/origin/main, or "".
+func defaultBase(remotes map[string]repo.Name, refs cloneRefs) string {
+	for _, remote := range rankedRemotes(remotes) {
+		branch, ok := refs.defaults[remote]
+		if !ok {
+			continue
+		}
+
+		if ref := remotesRef + remote + "/" + branch; refs.tracking[ref] != "" {
+			return ref
+		}
+	}
+
+	return ""
+}
+
+// compare compares the worktree's commits not on GitHub with its candidates, the commits of
+// its clone's remote-tracking branches that may be their copies, and settles its result:
+// one comparison (compareWith) with each of branches, the pushed branches copies are looked
+// for on, that the candidates' log credits with likely copies of them, the most first and at
+// most copyRefsMax, until one has an identical copy of every one.
+func (w *copyWork) compare(ctx context.Context, g git, cache *copyCache, dir string, refs cloneRefs, branches map[string]bool) {
+	byRef, likely := likelyCopies(w.unpushed, w.candidates)
+
+	var best *refComparison
+
+	anywhere := map[string]bool{}
+
+	for _, ref := range rankRefs(byRef, branches) {
+		got, err := compareWith(ctx, g, cache, dir, w.wt.Head, ref, refs.tracking[ref], w.unpushed, likely)
+		if err != nil {
+			w.fail(ctx, err)
+
+			return
+		}
+
+		got.identicalTo(anywhere)
+
+		if best == nil || got.closer(*best) {
+			best = &got
+		}
+
+		if got.identical == len(w.unpushed) {
+			break
+		}
+	}
+
+	w.settle(best, refs)
+
+	if best != nil && best.identical < len(w.unpushed) && len(anywhere) == len(w.unpushed) {
+		w.result.copies.Note = "Each of its commits has an identical copy on one of the pushed branches, but no " +
+			"one branch has them all."
+	}
+}
+
+// settle fills in the worktree's result from the comparison with the branch that came
+// closest, or, for nil, as having no copy on any, with refs the clone's.
+func (w *copyWork) settle(best *refComparison, refs cloneRefs) {
+	w.done = true
+	w.result = copyResult{
+		copies: Copies{Count: w.wt.Unpushed, None: w.wt.Unpushed}, marks: map[string]commitMark{}, compared: true,
+	}
+
+	w.result.commits = make([]string, 0, len(w.unpushed))
+	for _, c := range w.unpushed {
+		w.result.commits = append(w.result.commits, c.oid)
+	}
+
+	if best == nil {
+		return
+	}
+
+	w.result.ref, w.result.tip, w.result.marks = best.ref, best.tip, best.marks
+	w.result.copies.Ref = strings.TrimPrefix(best.ref, remotesRef)
+	w.result.copies.Branch = refs.branchOf(best.ref)
+	w.result.copies.Identical, w.result.copies.Edited = best.identical, best.edited
+	w.result.copies.None = w.wt.Unpushed - best.identical - best.edited
+}
+
+// likelyCopies are the likely copies of each of unpushed, by its commit ID: candidates with
+// its author time, author email, and subject, newest first, wherever they are (all); and the
+// same by the pushed branch the candidates' log found each on (byRef), which only orders the
+// branches compared with, as the log names one branch for a commit many have.
+func likelyCopies(unpushed, candidates []copyCommit) (byRef map[string]map[string][]string, all map[string][]string) {
+	found := alike(unpushed, candidates)
+	byRef, all = map[string]map[string][]string{}, map[string][]string{}
+
+	for _, u := range unpushed {
+		for _, c := range found[u.likeness()] {
+			if byRef[c.ref] == nil {
+				byRef[c.ref] = map[string][]string{}
+			}
+
+			byRef[c.ref][u.oid] = append(byRef[c.ref][u.oid], c.oid)
+
+			if !slices.Contains(all[u.oid], c.oid) {
+				all[u.oid] = append(all[u.oid], c.oid)
+			}
+		}
+	}
+
+	return byRef, all
+}
+
+// alike groups the candidates with the author time, author email, and subject of one of
+// unpushed by those (copyCommit.likeness), newest first.
+func alike(unpushed, candidates []copyCommit) map[string][]copyCommit {
+	wanted := map[string]bool{}
+	for _, c := range unpushed {
+		wanted[c.likeness()] = true
+	}
+
+	found := map[string][]copyCommit{}
+
+	for _, c := range candidates {
+		if wanted[c.likeness()] {
+			found[c.likeness()] = append(found[c.likeness()], c)
+		}
+	}
+
+	return found
+}
+
+// rankRefs orders the refs of likely that are among branches by how many commits have a
+// likely copy there, most first, then by name, and keeps the first copyRefsMax.
+func rankRefs(likely map[string]map[string][]string, branches map[string]bool) []string {
+	refs := slices.DeleteFunc(slices.Collect(maps.Keys(likely)), func(ref string) bool { return !branches[ref] })
+	slices.SortFunc(refs, func(a, b string) int {
+		return cmp.Or(cmp.Compare(len(likely[b]), len(likely[a])), strings.Compare(a, b))
+	})
+
+	return refs[:min(len(refs), copyRefsMax)]
+}
+
+// refComparison is how a worktree's commits compare with one pushed branch, ref, at tip.
+type refComparison struct {
+	ref, tip          string
+	identical, edited int
+	marks             map[string]commitMark
+}
+
+// identicalTo adds to found each commit with an identical copy on the branch compared with.
+func (c refComparison) identicalTo(found map[string]bool) {
+	for oid, m := range c.marks {
+		if m.mark == CopyIdentical {
+			found[oid] = true
+		}
+	}
+}
+
+// closer reports a comparison that came closer than other: more identical copies, then more
+// edited ones. A tie keeps other, the branch with more likely copies.
+func (c refComparison) closer(other refComparison) bool {
+	return c.identical > other.identical || (c.identical == other.identical && c.edited > other.edited)
+}
+
+// compareWith compares unpushed, head's commits not on GitHub, with the pushed branch ref,
+// at tip. One rev-list --left-right (copySides) tells the commits ref has that head hasn't;
+// of those, each with a commit's author time, email, and subject (likely, a commit's likely
+// copies anywhere, by its commit ID) is a likely copy of it there, whichever branch the
+// candidates' log found it on, as a branch built on another holds that one's copies too.
+// Each pair is then compared byte for byte (confirmCopies): a commit with a likely copy there
+// whose change is the same has an identical copy, one with likely copies there whose changes
+// differ, by as little as a space, an edited copy, and any other none.
+func compareWith(ctx context.Context, g git, cache *copyCache, dir, head, ref, tip string, unpushed []copyCommit,
+	likely map[string][]string,
+) (refComparison, error) {
+	got := refComparison{ref: ref, tip: tip, marks: map[string]commitMark{}}
+
+	sides, err := g.copySides(ctx, dir, tip, head)
+	if err != nil {
+		return refComparison{}, err
+	}
+
+	there, err := copiesThere(unpushed, likely, sides)
+	if err != nil {
+		return refComparison{}, err
+	}
+
+	confirmed, err := confirmCopies(ctx, g, cache, dir, there)
+	if err != nil {
+		return refComparison{}, err
+	}
+
+	for _, u := range unpushed {
+		copies := there[u.oid]
+
+		switch {
+		case len(copies) == 0:
+		case confirmed[u.oid] != "":
+			got.identical++
+			got.marks[u.oid] = commitMark{mark: CopyIdentical, copy: confirmed[u.oid]}
+		default:
+			got.edited++
+			got.marks[u.oid] = commitMark{mark: CopyEdited, copy: copies[0]}
+		}
+	}
+
+	return got, nil
+}
+
+// copiesThere keeps, of likely, each of unpushed's likely copies by its commit ID, those on
+// the pushed branch's side of sides (copySides), by the same. It fails when sides leaves one
+// of unpushed out, or puts it on the branch's side.
+func copiesThere(unpushed []copyCommit, likely map[string][]string, sides map[string]bool) (map[string][]string, error) {
+	there := map[string][]string{}
+
+	for _, u := range unpushed {
+		if tips, listed := sides[u.oid]; !listed || tips {
+			return nil, errSidesIncomplete
+		}
+
+		if copies := slices.DeleteFunc(slices.Clone(likely[u.oid]), func(c string) bool { return !sides[c] }); len(copies) > 0 {
+			there[u.oid] = copies
+		}
+	}
+
+	return there, nil
+}
+
+// errSidesIncomplete is returned when git's listing of what a pushed branch and HEAD each
+// have leaves out a commit that isn't on GitHub, or puts it on the branch's side, as it never
+// does when the two reads agree.
+var errSidesIncomplete = errors.New("the comparison left out a commit that isn't on GitHub")
+
+// compareFailure words why a worktree's commits couldn't be compared with the pushed
+// branches, for Copies.Note: in git's own words when it gave any.
+func compareFailure(err error) string {
+	why := ""
+
+	switch gitErr, ok := errors.AsType[*copyGitError](err); {
+	case errors.Is(err, errTooManyCommits), errors.Is(err, errTooManyCandidates):
+		why = textutil.Sentence(err.Error())
+	case ok:
+		why = textutil.Sentence(execpath.GitMessage(gitErr.stderr))
+	}
+
+	return strings.TrimSpace("Couldn't compare its commits with the pushed branches. " + why)
+}

@@ -5,22 +5,31 @@ import type { AgentID, Worktree } from '../platform'
 import { FIXED_NOW } from '../test/clock'
 import {
   agentSession,
+  copiedPR,
+  copiedWorktree,
   details,
   item,
   linkedItem,
   mainWorktree,
+  partlyCopiedWorktree,
+  recordedWorktree,
   sessionsSnapshot,
   worktree,
   worktreeCleanup,
+  worktreeCopies,
   worktreeRepo,
 } from '../test/fixtures'
 import {
   agentLine,
   agoWords,
+  atItemHead,
   byHand,
   checksOf,
   clockOf,
   cloneOf,
+  copiedOf,
+  prOfCopies,
+  copiedTag,
   facetOn,
   facetQuery,
   facetsOf,
@@ -30,6 +39,7 @@ import {
   itemFacts,
   itemRef,
   kindOf,
+  linkWords,
   liveSessions,
   lockInfo,
   madeBy,
@@ -98,6 +108,150 @@ describe('the row’s predicates', () => {
   it('names a worktree’s folder', () => {
     expect(folderOf(row())).toBe('pr-7')
     expect(folderOf(row({ displayPath: '' }))).toBe('')
+  })
+
+  it.each([
+    ['at its pull request’s head', row({ item: linkedItem({ headOid: 'a'.repeat(40) }), head: 'a'.repeat(40) }), true],
+    ['past it', row({ item: linkedItem({ headOid: 'a'.repeat(40) }), head: 'b'.repeat(40) }), false],
+    ['for an item with no head', row({ item: linkedItem({ headOid: '' }), head: '' }), false],
+    ['for no item', row({ item: null }), false],
+  ])('knows a worktree %s', (_, wt, want) => {
+    expect(atItemHead(wt)).toBe(want)
+  })
+})
+
+describe('copiedOf', () => {
+  it('says where commits on GitHub only as copies are, the pull request they went into, and as linked', () => {
+    expect(copiedOf(copiedWorktree())).toEqual({
+      n: 10,
+      ref: 'origin/feature-x',
+      branch: 'feature-x',
+      pr: 42,
+      item: copiedPR(),
+      recorded: false,
+      gone: false,
+    })
+  })
+
+  it('names the branch as the backend tells it apart, on a remote whose name holds a slash', () => {
+    const wt = copiedWorktree({
+      copies: worktreeCopies({ ref: 'origin/mirror/main', branch: 'main', count: 10, identical: 10, pr: 42 }),
+    })
+
+    expect(copiedOf(wt)).toMatchObject({ ref: 'origin/mirror/main', branch: 'main' })
+  })
+
+  it('names the branch by its whole ref when no remote the clone names is its', () => {
+    const wt = copiedWorktree({ copies: worktreeCopies({ ref: 'stranger/x', count: 10, identical: 10, pr: 42 }) })
+
+    expect(copiedOf(wt)).toMatchObject({ branch: 'stranger/x' })
+  })
+
+  it('says copies a record vouches for, and whether their branch is gone', () => {
+    expect(copiedOf(recordedWorktree())).toMatchObject({
+      n: 10,
+      pr: 42,
+      item: { number: 42, state: 'merged' },
+      recorded: true,
+      gone: true,
+    })
+    expect(
+      copiedOf(
+        recordedWorktree({
+          copies: worktreeCopies({
+            ref: 'origin/feature-x',
+            branch: 'feature-x',
+            count: 10,
+            identical: 10,
+            recorded: true,
+            pr: 42,
+          }),
+        }),
+      ),
+    ).toMatchObject({ recorded: true, gone: false })
+  })
+
+  it.each([
+    ['linked by its name', copiedWorktree({ item: linkedItem(), linkedBy: 'name' }), 42],
+    ['linked to nothing', copiedWorktree({ item: null, linkedBy: '' }), 42],
+    ['linked by copies, its item not read', copiedWorktree({ item: null }), 42],
+    [
+      'linked by copies to another pull request than the one its branch heads',
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10, pr: 43 }),
+      }),
+      43,
+    ],
+    [
+      'whose branch no pull request is known to head',
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10 }),
+      }),
+      0,
+    ],
+  ])('names the pull request copies went into, by its number alone, for one %s', (_, wt, pr) => {
+    expect(copiedOf(wt)).toMatchObject({ pr, item: null })
+  })
+
+  it.each([
+    ['the backend counts them not on GitHub', copiedWorktree({ onGitHub: false })],
+    ['every commit is on GitHub by its ID', copiedWorktree({ unpushed: 0 })],
+    ['its commits couldn’t be counted', copiedWorktree({ unpushed: -1 })],
+    ['the comparison counted other commits', copiedWorktree({ unpushed: 11 })],
+    [
+      'some have no identical copy',
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 9, edited: 1 }),
+      }),
+    ],
+    [
+      'the backend says why they don’t count',
+      copiedWorktree({
+        copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 10, identical: 10, note: 'No.' }),
+      }),
+    ],
+    ['no branch has them', copiedWorktree({ copies: worktreeCopies({ count: 10, identical: 10 }) })],
+    ['it’s at its pull request’s head', copiedWorktree({ item: copiedPR({ headOid: copiedWorktree().head }) })],
+  ])('says nothing of copies when %s', (_, wt) => {
+    expect(copiedOf(wt)).toBeNull()
+  })
+
+  it('names the pull request copies went into, or says it has one when its number isn’t known', () => {
+    expect(prOfCopies({ n: 1, ref: 'origin/x', branch: 'x', pr: 42, item: null, recorded: true, gone: true })).toBe(
+      'PR #42',
+    )
+    expect(prOfCopies({ n: 1, ref: 'origin/x', branch: 'x', pr: 0, item: null, recorded: true, gone: true })).toBe(
+      'its pull request',
+    )
+  })
+})
+
+describe('how a worktree is linked', () => {
+  it.each([
+    [
+      'one linked by its copies, the pull request holding them',
+      copiedWorktree(),
+      'PR #42 is the pull request its commits were copied onto',
+    ],
+    [
+      'one linked by its copies, the pull request no longer holding them all',
+      copiedWorktree({ onGitHub: false }),
+      'Its commits were copied onto PR #42’s branch, but PR #42 doesn’t hold them all now',
+    ],
+    ['one linked by its name', row(), ''],
+    ['one linked by its branch', row({ linkedBy: 'branch' }), ''],
+    ['one linked by its copies, its item not read', copiedWorktree({ item: null }), ''],
+  ])('words the copied tag of %s', (_, wt, want) => {
+    expect(copiedTag(wt)).toBe(want)
+  })
+
+  it('says how each kind of link names its item', () => {
+    expect(linkWords).toEqual({
+      '': 'Made for',
+      name: 'Made for',
+      branch: 'On the branch of',
+      copy: 'Its commits were copied onto',
+    })
   })
 })
 
@@ -546,6 +700,17 @@ describe('the chips', () => {
       'Show the 2 worktrees that have commits that aren’t on GitHub (is:unpushed)',
       'Show the 2 worktrees that are done on GitHub but hold work that isn’t (is:review)',
       'Show the 1 worktree that Clean up removes without losing anything (is:finished)',
+    ])
+  })
+
+  it('counts as not on GitHub commits with only an edited copy, never those on GitHub as copies', () => {
+    const copies = [
+      worktreeRepo({ worktrees: [mainWorktree(), copiedWorktree(), recordedWorktree(), partlyCopiedWorktree()] }),
+    ]
+
+    expect(facetsOf(copies, '').map((c) => [c.key, c.n])).toEqual([
+      ['unpushed', 1],
+      ['finished', 1],
     ])
   })
 

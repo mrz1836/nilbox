@@ -108,9 +108,11 @@ func (s *Service) adopt(ctx context.Context, repos []Repo, recorded map[string]w
 }
 
 // adoptable reports a linked worktree with no record that the app made, Claude Code made,
-// or that has an item's own branch checked out.
+// or that has an item's own branch checked out, linked to its item by its name or branch's
+// name. One linked through a pushed branch is never adopted: a launch on the item would
+// resume it as the item's own worktree.
 func adoptable(wt *Worktree, recorded map[string]worklog.Record) bool {
-	if wt.Main || wt.Prunable || wt.Item == nil {
+	if wt.Main || wt.Prunable || wt.Item == nil || wt.LinkedBy != LinkName {
 		return false
 	}
 

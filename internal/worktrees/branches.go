@@ -31,37 +31,32 @@ import (
 // deletable: every commit on it is on GitHub, nothing protects it (the user's protected
 // patterns, or being a remote's default branch), and no worktree has it checked out. It is
 // then deleted with `update-ref -d <ref> <commit>`, which git refuses once the branch has
-// moved since it was checked.
+// moved since it was checked. A worktree's branch at its HEAD whose commits are on GitHub
+// only as copies counts as on GitHub only once the pull request its copy record names
+// merged with every copy (headSafety); copies on an open pull request's branch don't.
 
 // ownPullPrefix starts the name of a pull request's worktree, pr-<n>.
 const ownPullPrefix = "pr-"
 
-// markBranches fills in each linked worktree's Branches, listing the branches of each
-// clone that has a worktree once.
-func (s *Service) markBranches(ctx context.Context, g git, repos []Repo, rules branchrules.Rules) {
+// markBranches fills in each linked worktree's Branches from its clone's refs, read once
+// for the listing (refs, by the repository's Path; see readAllRefs).
+func (s *Service) markBranches(ctx context.Context, g git, repos []Repo, refs map[string]cloneRefs, rules branchrules.Rules) {
 	for i := range repos {
-		if offersBranches(&repos[i]) {
-			s.markRepo(ctx, g, &repos[i], rules)
+		if cr, ok := refs[repos[i].Path]; ok && offersBranches(&repos[i]) {
+			s.markRepo(ctx, g, &repos[i], cr, rules)
 		}
 	}
 }
 
-// markRepo fills in the Branches of each linked worktree of r. A clone whose branches
-// cannot be listed offers none.
-func (s *Service) markRepo(ctx context.Context, g git, r *Repo, rules branchrules.Rules) {
-	locals, _, err := g.branches(ctx, r.Path)
-	if err != nil {
-		s.logger.DebugContext(ctx, "the branches could not be listed", "repo", r.DisplayPath, "error", err)
-
-		return
-	}
-
-	defaults := g.remoteHeads(ctx, r.Path)
+// markRepo fills in the Branches of each linked worktree of r, whose refs are refs. A
+// clone whose refs could not be read offers none.
+func (s *Service) markRepo(ctx context.Context, g git, r *Repo, refs cloneRefs, rules branchrules.Rules) {
+	defaults := refs.defaultNames()
 
 	for j := range r.Worktrees {
 		wt := &r.Worktrees[j]
 		if !wt.Main && !wt.Prunable {
-			wt.Branches = s.branchesOf(ctx, g, r.Path, wt, locals, defaults, rules)
+			wt.Branches = s.branchesOf(ctx, g, r.Path, wt, refs.locals, defaults, rules)
 		}
 	}
 }
@@ -80,26 +75,91 @@ func (s *Service) branchesOf(ctx context.Context, g git, repoPath string, wt *Wo
 	out := []Branch{}
 	own := ownBranchName(wt)
 
-	switch {
-	case own == "":
-	case wt.Branch == own:
-		out = append(out, s.judge(Branch{Name: own, Head: wt.Head, Kind: BranchOwn}, wt.Unpushed, wt.OnGitHub, "",
-			defaults, rules))
-	default:
-		if lb, ok := findBranch(locals, own); ok {
-			unpushed, onGitHub := s.branchOnGitHub(ctx, g, repoPath, lb.head, wt.fetched, wt.Item)
-			out = append(out, s.judge(Branch{Name: own, Head: lb.head, Kind: BranchOwn}, unpushed, onGitHub,
-				s.checkedOut(repoPath, lb.worktree), defaults, rules))
-		}
+	if b, ok := s.ownBranchOf(ctx, g, repoPath, wt, own, locals, defaults, rules); ok {
+		out = append(out, b)
 	}
 
-	if wt.Item != nil && wt.Item.Kind == item.KindPR && wt.Branch != "" && wt.Branch != own &&
-		wt.Branch == wt.Item.HeadRef {
-		out = append(out, s.judge(Branch{Name: wt.Branch, Head: wt.Head, Kind: BranchPullRequest}, wt.Unpushed,
-			wt.OnGitHub, "", defaults, rules))
+	// Only a worktree linked by its name or record offers its pull request's branch: one
+	// linked by the branch it is on keeps it, as before it was linked.
+	if wt.Item != nil && wt.LinkedBy == LinkName && wt.Item.Kind == item.KindPR && wt.Branch != "" &&
+		wt.Branch != own && wt.Branch == wt.Item.HeadRef {
+		out = append(out, s.judge(Branch{Name: wt.Branch, Head: wt.Head, Kind: BranchPullRequest}, headSafety(wt), "",
+			defaults, rules))
 	}
 
 	return out
+}
+
+// ownBranchOf judges wt's own branch, own, when it has one: the one it has checked out, or
+// one of locals left beside it, which counts as on GitHub as its HEAD does when it points
+// there.
+func (s *Service) ownBranchOf(ctx context.Context, g git, repoPath string, wt *Worktree, own string,
+	locals []localBranch, defaults []string, rules branchrules.Rules,
+) (Branch, bool) {
+	if own == "" {
+		return Branch{}, false
+	}
+
+	if wt.Branch == own {
+		return s.judge(Branch{Name: own, Head: wt.Head, Kind: BranchOwn}, headSafety(wt), "", defaults, rules), true
+	}
+
+	lb, ok := findBranch(locals, own)
+	if !ok {
+		return Branch{}, false
+	}
+
+	safety := safetyByID(s.branchOnGitHub(ctx, g, repoPath, lb.head, wt.fetched, wt.Item))
+	if !safety.onGitHub && lb.head == wt.Head {
+		safety = headSafety(wt)
+	}
+
+	return s.judge(Branch{Name: own, Head: lb.head, Kind: BranchOwn}, safety, s.checkedOut(repoPath, lb.worktree),
+		defaults, rules), true
+}
+
+// branchSafety is whether every commit on a branch is on GitHub, so deleting the branch
+// loses none, and why not when it isn't.
+type branchSafety struct {
+	onGitHub bool
+	why      string
+}
+
+// safetyByID is the safety of a branch with unpushed commits no remote-tracking branch has
+// (-1 when they couldn't be counted), every commit on it being on GitHub by commit ID
+// (onGitHub) or not.
+func safetyByID(unpushed int, onGitHub bool) branchSafety {
+	if onGitHub {
+		return branchSafety{onGitHub: true}
+	}
+
+	return branchSafety{why: unpushedText(unpushed) + " on it " + aren(unpushed) + " on GitHub"}
+}
+
+// headSafety is the safety of a branch at wt's HEAD: every commit on it is on GitHub by
+// commit ID, or as copies in the pull request its copy record names, which merged with
+// every copy (copyState.merged). Copies on GitHub while that pull request is open, or on a
+// branch alone, don't make the branch deletable.
+func headSafety(wt *Worktree) branchSafety {
+	switch {
+	case onGitHubByID(wt), wt.copies.merged:
+		return branchSafety{onGitHub: true}
+	case wt.copies.onGitHub:
+		return branchSafety{why: copiesNotMerged(wt.copies)}
+	default:
+		return safetyByID(wt.Unpushed, false)
+	}
+}
+
+// copiesNotMerged says why a branch whose commits are on GitHub only as copies stays.
+func copiesNotMerged(st copyState) string {
+	pr := cmp.Or(st.recordPR, st.pr)
+	if pr == nil {
+		return "its commits are on GitHub only as copies, which no merged pull request has yet"
+	}
+
+	return "its commits are on GitHub only as copies, in pull request #" + strconv.Itoa(pr.Number) +
+		", which hasn't merged with them"
 }
 
 // ownBranchName is the worktree-<name> branch of a worktree the app or Claude Code made,
@@ -145,8 +205,9 @@ func (s *Service) branchOnGitHub(ctx context.Context, g git, repoPath, head, fet
 
 // judge sets whether b may go, and why not: it is a remote's default branch, the user
 // protects it, the clone or a worktree other than the one removed has it checked out
-// (elsewhere, the reason checkedOut gives, or ""), or some commit on it is not on GitHub.
-func (s *Service) judge(b Branch, unpushed int, onGitHub bool, elsewhere string, defaults []string,
+// (elsewhere, the reason checkedOut gives, or ""), or some commit on it is not on GitHub
+// (safety says why).
+func (s *Service) judge(b Branch, safety branchSafety, elsewhere string, defaults []string,
 	rules branchrules.Rules,
 ) Branch {
 	switch {
@@ -156,8 +217,8 @@ func (s *Service) judge(b Branch, unpushed int, onGitHub bool, elsewhere string,
 		b.Reason = "it is protected in Settings"
 	case elsewhere != "":
 		b.Reason = elsewhere
-	case !onGitHub:
-		b.Reason = unpushedText(unpushed) + " on it " + aren(unpushed) + " on GitHub"
+	case !safety.onGitHub:
+		b.Reason = safety.why
 	default:
 		b.Deletable = true
 	}

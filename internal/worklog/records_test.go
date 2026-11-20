@@ -26,7 +26,7 @@ func openStore(t *testing.T) (*worklog.Store, *sql.DB) {
 
 	db := testutil.DB(t)
 
-	return worklog.New(db), db
+	return worklog.New(db, testutil.NewClock(time.Date(2026, 11, 5, 9, 30, 0, 0, time.UTC))), db
 }
 
 // closedStore returns a Store over a database that is already closed.

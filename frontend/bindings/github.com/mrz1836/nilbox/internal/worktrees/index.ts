@@ -8,7 +8,9 @@ export {
 
 export {
     BranchKind,
+    CopyMark,
     ItemStatus,
+    LinkKind,
     Stage
 } from "./models.js";
 
@@ -17,6 +19,8 @@ export type {
     BranchPick,
     BranchResult,
     Cleanup,
+    Copies,
+    CopyComparison,
     Details,
     FileEntry,
     LinkedItem,

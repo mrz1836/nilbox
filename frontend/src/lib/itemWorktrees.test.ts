@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import { item, linkedItem, mainWorktree, worktree, worktreeRepo, worktreesSnapshot } from '../test/fixtures'
+import {
+  copiedPR,
+  copiedWorktree,
+  item,
+  linkedItem,
+  mainWorktree,
+  recordedWorktree,
+  worktree,
+  worktreeRepo,
+  worktreesSnapshot,
+} from '../test/fixtures'
 import { itemKey, itemWorktrees, worktreeOf } from './itemWorktrees'
 
 describe('itemWorktrees', () => {
@@ -28,6 +38,17 @@ describe('itemWorktrees', () => {
     expect([...all.keys()]).toEqual(['acme-org/example-repo#7'])
     expect(worktreeOf(all, item())).toBe(linked)
     expect(worktreeOf(all, item({ number: 9 }))).toBeUndefined()
+  })
+
+  it('maps a pull request to the worktree on its branch, never to those its commits were copied from', () => {
+    const copied = copiedWorktree()
+    const onBranch = worktree({ path: '/feature-x', branch: 'feature-x', item: copiedPR(), linkedBy: 'branch' })
+    const all = itemWorktrees(worktreesSnapshot({ repos: [worktreeRepo({ worktrees: [copied, onBranch] })] }))
+
+    expect(worktreeOf(all, item({ number: 42 }))).toBe(onBranch)
+    expect(
+      itemWorktrees(worktreesSnapshot({ repos: [worktreeRepo({ worktrees: [copied, recordedWorktree()] })] })).size,
+    ).toBe(0)
   })
 
   it('keeps the first worktree listed for an item', () => {

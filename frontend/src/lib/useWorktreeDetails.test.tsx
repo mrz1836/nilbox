@@ -2,10 +2,23 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { StrictMode, useEffect } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { Worktree, WorktreeDetails } from '../platform'
-import { mainWorktree, worktree, worktreeDetails, worktreeFiles } from '../test/fixtures'
+import type { Worktree, WorktreeCopyMark, WorktreeDetails } from '../platform'
+import {
+  copiedWorktree,
+  copyComparison,
+  linkedItem,
+  mainWorktree,
+  partlyCopiedWorktree,
+  recordedWorktree,
+  worktree,
+  worktreeCommit,
+  worktreeCopies,
+  worktreeDetails,
+  worktreeFiles,
+} from '../test/fixtures'
 import { platform } from '../test/platform'
 import { asReadNow, changesOf, notOnGitHub, readable, useWorktreeDetails, type DetailsRead } from './useWorktreeDetails'
+import { copiedOf, unpushedKnown } from './worktreeParts'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -300,6 +313,22 @@ const ahead = worktree({ unpushed: 2, onGitHub: false })
 // the listing counted 3 commits there, and the backend ruled them on GitHub.
 const atHead = worktree({ unpushed: 3, onGitHub: true })
 
+// copied has 10 commits no remote-tracking branch has, each with an identical copy on
+// origin/feature-x, pull request #42's branch, and recorded the same once #42 merged and
+// its branch is gone, the app's record vouching for them: the backend ruled them on GitHub.
+const copied = copiedWorktree()
+const recorded = recordedWorktree()
+
+// read is details read for this listing.
+function read(overrides: Partial<WorktreeDetails> = {}): DetailsRead {
+  return { state: 'read', details: worktreeDetails(overrides) }
+}
+
+// atCopiedHead lists copied's commits from its HEAD, each marked as copy says.
+function atCopiedHead(copy: WorktreeCopyMark): WorktreeDetails['commits'] {
+  return [worktreeCommit({ oid: copied.head, copy, copyOid: copy === '' ? '' : '3'.repeat(40) })]
+}
+
 describe('asReadNow', () => {
   it.each<[string, Worktree, DetailsRead | undefined, Partial<Worktree>]>([
     ['nothing read yet', ahead, undefined, {}],
@@ -308,42 +337,184 @@ describe('asReadNow', () => {
     [
       'files and commits counted now',
       ahead,
-      { state: 'read', details: worktreeDetails({ files: worktreeFiles(3), fileCount: 3, unpushed: 5 }) },
-      { dirty: true, dirtyCount: 3, unpushed: 5, onGitHub: false },
+      read({ files: worktreeFiles(3), fileCount: 3, unpushed: 5 }),
+      { dirty: true, dirtyCount: 3, unpushed: 5, onGitHub: false, copies: worktreeCopies({ count: 5 }) },
     ],
-    [
-      'everything on GitHub now, and clean',
-      dirty,
-      { state: 'read', details: worktreeDetails() },
-      { dirty: false, dirtyCount: 0, unpushed: 0, onGitHub: true },
-    ],
-    ['neither counted', ahead, { state: 'read', details: worktreeDetails({ fileCount: -1, unpushed: -1 }) }, {}],
+    ['everything on GitHub now, and clean', dirty, read(), { dirty: false, dirtyCount: 0 }],
+    ['neither counted', ahead, read({ fileCount: -1, unpushed: -1 }), {}],
     [
       'the same count, not at its pull request’s head',
       ahead,
-      { state: 'read', details: worktreeDetails({ unpushed: 2 }) },
-      { unpushed: 2, onGitHub: false },
+      read({ unpushed: 2 }),
+      { copies: worktreeCopies({ count: 2 }) },
     ],
     [
       'the same count at its pull request’s head, which is on GitHub',
       atHead,
-      { state: 'read', details: worktreeDetails({ unpushed: 3 }) },
-      { unpushed: 3, onGitHub: true },
+      read({ unpushed: 3 }),
+      { copies: worktreeCopies({ count: 3 }) },
     ],
     [
       'a count that changed since, so HEAD moved off the head',
       atHead,
-      { state: 'read', details: worktreeDetails({ unpushed: 4 }) },
-      { unpushed: 4, onGitHub: false },
+      read({ unpushed: 4 }),
+      { unpushed: 4, onGitHub: false, copies: worktreeCopies({ count: 4 }) },
+    ],
+    ['none since, off the head or on it', atHead, read({ unpushed: 0 }), { unpushed: 0, onGitHub: true }],
+    [
+      'the same commits at its pull request’s head, HEAD listed first',
+      atHead,
+      read({ unpushed: 3, commits: [worktreeCommit({ oid: atHead.head })] }),
+      { copies: worktreeCopies({ count: 3 }) },
     ],
     [
-      'none since, off the head or on it',
+      'as many commits, but HEAD moved off the head, as an amend leaves it',
       atHead,
-      { state: 'read', details: worktreeDetails({ unpushed: 0 }) },
-      { unpushed: 0, onGitHub: true },
+      read({ unpushed: 3, commits: [worktreeCommit()] }),
+      { onGitHub: false, copies: worktreeCopies({ count: 3 }) },
     ],
-  ])('counts what removing it would cost from %s', (_, wt, read, changed) => {
-    expect(asReadNow(wt, read)).toEqual({ ...wt, ...changed })
+    [
+      'the same commits at its pull request’s head, whatever copies they have',
+      worktree({ unpushed: 1, onGitHub: true, item: linkedItem({ state: 'open' }) }),
+      read({
+        unpushed: 1,
+        commits: [worktreeCommit({ oid: atHead.head, copy: 'edited', copyOid: '3'.repeat(40) })],
+        copies: copyComparison({ identical: 0, edited: 1 }),
+      }),
+      { copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 1, edited: 1 }) },
+    ],
+    [
+      'the same commits, each still with its identical copy on the same branch',
+      copied,
+      read({ unpushed: 10, copies: copyComparison() }),
+      {},
+    ],
+    [
+      'the same commits, HEAD listed first, each still with its identical copy',
+      copied,
+      read({ unpushed: 10, commits: atCopiedHead('identical'), copies: copyComparison() }),
+      {},
+    ],
+    [
+      'the same commits, their branch deleted since, so none has a copy on a pushed branch',
+      copied,
+      read({ unpushed: 10, commits: atCopiedHead(''), copies: copyComparison({ ref: '', branch: '', identical: 0 }) }),
+      { onGitHub: false, copies: worktreeCopies({ count: 10, none: 10 }) },
+    ],
+    [
+      'the same commits, each with an identical copy on another branch',
+      copied,
+      read({ unpushed: 10, copies: copyComparison({ ref: 'origin/feature-y', branch: 'feature-y' }) }),
+      {
+        onGitHub: false,
+        copies: worktreeCopies({ ref: 'origin/feature-y', branch: 'feature-y', count: 10, identical: 10 }),
+      },
+    ],
+    [
+      'the same commits, one with only an edited copy now, as a force-push leaves it',
+      copied,
+      read({ unpushed: 10, commits: atCopiedHead('edited'), copies: copyComparison({ identical: 9, edited: 1 }) }),
+      {
+        onGitHub: false,
+        copies: worktreeCopies({
+          ref: 'origin/feature-x',
+          branch: 'feature-x',
+          count: 10,
+          identical: 9,
+          edited: 1,
+          pr: 42,
+        }),
+      },
+    ],
+    [
+      'the same commits, which Details couldn’t compare, saying why',
+      copied,
+      read({
+        unpushed: 10,
+        copies: copyComparison({
+          compared: false,
+          ref: '',
+          branch: '',
+          identical: 0,
+          note: 'Couldn’t compare its commits.',
+        }),
+      }),
+      { onGitHub: false, copies: worktreeCopies({ count: 10, note: 'Couldn’t compare its commits.' }) },
+    ],
+    [
+      'the same count, the commits themselves unread, so not compared',
+      copied,
+      read({ unpushed: 10, errors: ['Couldn’t read the commits not on GitHub.'] }),
+      { onGitHub: false, copies: worktreeCopies({ count: 10 }) },
+    ],
+    [
+      'the same commits a record vouches for, whatever the pushed branches hold now',
+      recorded,
+      read({ unpushed: 10, commits: atCopiedHead('edited'), copies: copyComparison({ identical: 0, edited: 1 }) }),
+      {},
+    ],
+    ['the same commits a record vouches for, with nothing compared', recorded, read({ unpushed: 10 }), {}],
+    [
+      'commits a record vouched for, HEAD moved since',
+      recorded,
+      read({
+        unpushed: 10,
+        commits: [worktreeCommit()],
+        copies: copyComparison({ ref: '', branch: '', identical: 0 }),
+      }),
+      { onGitHub: false, copies: worktreeCopies({ count: 10, none: 10 }) },
+    ],
+    [
+      'a commit more than were copied',
+      copied,
+      read({ unpushed: 11 }),
+      { unpushed: 11, onGitHub: false, copies: worktreeCopies({ count: 11 }) },
+    ],
+    [
+      'every copied commit pushed since',
+      recorded,
+      read({ unpushed: 0 }),
+      { unpushed: 0, onGitHub: true, copies: worktreeCopies() },
+    ],
+    ['commits that couldn’t be counted, copies or not', copied, read({ unpushed: -1 }), {}],
+    [
+      'the same commit, its edited copy identical now, which only a listing counts on GitHub',
+      partlyCopiedWorktree(),
+      read({
+        unpushed: 1,
+        commits: [worktreeCommit({ oid: partlyCopiedWorktree().head, copy: 'identical', copyOid: '3'.repeat(40) })],
+        copies: copyComparison({ identical: 1 }),
+      }),
+      { copies: worktreeCopies({ ref: 'origin/feature-x', branch: 'feature-x', count: 1, identical: 1, pr: 42 }) },
+    ],
+    [
+      'the same commit, still with only an edited copy',
+      partlyCopiedWorktree(),
+      read({ unpushed: 1, copies: copyComparison({ identical: 0, edited: 1 }) }),
+      {},
+    ],
+  ])('counts what removing it would cost from %s', (_, wt, details, changed) => {
+    expect(asReadNow(wt, details)).toEqual({ ...wt, ...changed })
+  })
+
+  it('words copies only while the comparison still finds them, and says why it couldn’t compare', () => {
+    const gone = asReadNow(
+      copied,
+      read({ unpushed: 10, copies: copyComparison({ ref: '', branch: '', identical: 0 }) }),
+    )
+    const unknown = asReadNow(
+      copied,
+      read({
+        unpushed: 10,
+        copies: copyComparison({ compared: false, ref: '', branch: '', identical: 0, note: 'No.' }),
+      }),
+    )
+
+    expect(copiedOf(copied)).not.toBeNull()
+    expect(copiedOf(gone)).toBeNull()
+    expect(unpushedKnown(gone)).toBe(10)
+    expect(copiedOf(unknown)).toBeNull()
+    expect(unknown.copies.note).toBe('No.')
   })
 })
 
@@ -351,13 +522,23 @@ describe('notOnGitHub', () => {
   it.each<[string, Worktree, DetailsRead | undefined, number]>([
     ['the listing’s, before a read', ahead, undefined, 2],
     ['the listing’s, after a read that failed', ahead, { state: 'failed', error: 'no' }, 2],
-    ['a plain count, not at the head', ahead, { state: 'read', details: worktreeDetails({ unpushed: 2 }) }, 2],
-    ['a fresh count, not at the head', ahead, { state: 'read', details: worktreeDetails({ unpushed: 350 }) }, 350],
-    ['none at the pull request’s head', atHead, { state: 'read', details: worktreeDetails({ unpushed: 3 }) }, 0],
+    ['a plain count, not at the head', ahead, read({ unpushed: 2 }), 2],
+    ['a fresh count, not at the head', ahead, read({ unpushed: 350 }), 350],
+    ['none at the pull request’s head', atHead, read({ unpushed: 3 }), 0],
     ['none at the head before a read', atHead, undefined, 0],
-    ['the fresh count once HEAD moved', atHead, { state: 'read', details: worktreeDetails({ unpushed: 4 }) }, 4],
+    ['the fresh count once HEAD moved', atHead, read({ unpushed: 4 }), 4],
     ['none when they couldn’t be counted', worktree({ unpushed: -1, onGitHub: false }), undefined, 0],
-  ])('counts %s', (_, wt, read, want) => {
-    expect(notOnGitHub(wt, read)).toBe(want)
+    ['none on GitHub as copies before a read', copied, undefined, 0],
+    ['none on GitHub as copies, the same once compared', copied, read({ unpushed: 10, copies: copyComparison() }), 0],
+    [
+      'all of them once their copies are gone',
+      copied,
+      read({ unpushed: 10, copies: copyComparison({ ref: '', branch: '', identical: 0 }) }),
+      10,
+    ],
+    ['none a record vouches for once read', recorded, read({ unpushed: 10 }), 0],
+    ['the fresh count past the copies', copied, read({ unpushed: 12 }), 12],
+  ])('counts %s', (_, wt, details, want) => {
+    expect(notOnGitHub(wt, details)).toBe(want)
   })
 })

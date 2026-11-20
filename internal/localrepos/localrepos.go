@@ -59,6 +59,11 @@ type LocalRepo struct {
 	// Remotes maps each remote's name to the GitHub repository it points at, as its URL
 	// writes it. Remotes that are not on GitHub are left out.
 	Remotes map[string]repo.Name
+
+	// Names lists every remote with a URL, on GitHub or not, by name, each once, sorted: what
+	// tells which remote a remote-tracking branch is of when one remote's name begins with
+	// another's and a slash, as origin/mirror's does with origin's.
+	Names []string
 }
 
 // RemoteFor returns the name of the remote that points at name, preferring origin and
@@ -172,12 +177,12 @@ func Scan(ctx context.Context, dirs []string, git execpath.Runner) ([]LocalRepo,
 
 	for i, dir := range dirs {
 		g.Go(func() error {
-			remotes, readErr := readRemotes(gctx, dir, git)
+			remotes, names, readErr := readRemotes(gctx, dir, git)
 			if readErr != nil {
 				return readErr
 			}
 
-			repos[i] = LocalRepo{Path: dir, Remotes: remotes}
+			repos[i] = LocalRepo{Path: dir, Remotes: remotes, Names: names}
 
 			return nil
 		})
@@ -197,12 +202,12 @@ func Inspect(ctx context.Context, dir string, git execpath.Runner) (LocalRepo, e
 		return LocalRepo{}, fmt.Errorf("%w: %s", ErrNotARepo, dir)
 	}
 
-	remotes, err := readRemotes(ctx, dir, git)
+	remotes, names, err := readRemotes(ctx, dir, git)
 	if err != nil {
 		return LocalRepo{}, err
 	}
 
-	return LocalRepo{Path: dir, Remotes: remotes}, nil
+	return LocalRepo{Path: dir, Remotes: remotes, Names: names}, nil
 }
 
 // parseRemoteURL returns the GitHub repository a git remote URL points at, as the URL
@@ -234,21 +239,38 @@ func isRepo(dir string) bool {
 	return err == nil && info.IsDir() && hasGit(dir)
 }
 
-// readRemotes lists dir's remote URLs with git config and keeps the GitHub ones. A git
-// config that exits with a status (1 when there are no remotes, or another status for an
-// unreadable config) yields no remotes, so one broken clone never hides the rest; failing
-// to run git at all is an error.
-func readRemotes(ctx context.Context, dir string, git execpath.Runner) (map[string]repo.Name, error) {
+// readRemotes lists dir's remote URLs with git config, and returns the GitHub ones and every
+// remote's name. A git config that exits with a status (1 when there are no remotes, or
+// another status for an unreadable config) yields no remotes, so one broken clone never
+// hides the rest; failing to run git at all is an error.
+func readRemotes(ctx context.Context, dir string, git execpath.Runner) (map[string]repo.Name, []string, error) {
 	stdout, _, err := git.Run(ctx, "git", "-C", dir, "config", "--get-regexp", remoteURLPattern)
 	if err != nil {
 		if ctx.Err() == nil && execpath.ExitCode(err) > 0 {
-			return map[string]repo.Name{}, nil
+			return map[string]repo.Name{}, []string{}, nil
 		}
 
-		return nil, fmt.Errorf("read remotes of %s: %w", dir, err)
+		return nil, nil, fmt.Errorf("read remotes of %s: %w", dir, err)
 	}
 
-	return parseRemotes(string(stdout)), nil
+	return parseRemotes(string(stdout)), parseRemoteNames(string(stdout)), nil
+}
+
+// parseRemoteNames lists the remotes `git config --get-regexp` lines name, on GitHub or
+// not, each once, sorted; never nil.
+func parseRemoteNames(out string) []string {
+	names := []string{}
+
+	for line := range strings.SplitSeq(out, "\n") {
+		key, _, found := strings.Cut(strings.TrimRight(line, "\r"), " ")
+		if name, ok := remoteName(key); found && ok && !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+
+	slices.Sort(names)
+
+	return names
 }
 
 // parseRemotes turns `git config --get-regexp` lines ("remote.<name>.url <url>") into a

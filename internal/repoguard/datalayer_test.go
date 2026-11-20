@@ -72,6 +72,7 @@ func tableOwners() map[string]string {
 		"launch_defaults":         "launchdefaults",
 		"worktree_records":        "worklog",
 		"worktree_cleanups":       "worklog",
+		"worktree_copies":         "worklog",
 		"notifications":           "notify",
 		"agent_sessions":          "sessions",
 		"review_diffs":            "review",

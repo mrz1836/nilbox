@@ -18,6 +18,7 @@ import {
   type Suggestions,
 } from './query'
 import type { WorktreeErrors } from './useWorktrees'
+import { unpushedKnown } from './worktreeParts'
 
 // worktreeSpec is what the Worktrees view's filter understands: the clone, the branch,
 // the agent that worked there, and the states below. A worktree can be in several states
@@ -29,10 +30,12 @@ export const worktreeHint = 'Matches branches, paths, repos, #numbers, titles ·
 
 // states are the is: values, each with whether a worktree is in it: the worktree's own
 // state, then its pull request or issue's kind and state. unpushed is a worktree with
-// commits that aren't on GitHub, never one whose commits couldn't be counted.
+// commits that aren't on GitHub, as the not on GitHub chip counts them (unpushedKnown):
+// never one whose commits couldn't be counted, nor one whose commits are on GitHub as
+// identical copies, or at its pull request's head (onGitHub).
 const states: readonly (readonly [string, (wt: Worktree) => boolean])[] = [
   ['dirty', (wt) => wt.dirty],
-  ['unpushed', (wt) => wt.unpushed > 0 && !wt.onGitHub],
+  ['unpushed', (wt) => unpushedKnown(wt) > 0],
   ['locked', (wt) => wt.locked],
   ['in-use', (wt) => wt.inUse.length > 0 || wt.stage === 'in-use'],
   ['finished', (wt) => wt.stage === 'finished'],

@@ -213,7 +213,7 @@ func TestQueryCost(t *testing.T) {
 func TestTheStatesQueryAsksForItsCost(t *testing.T) {
 	t.Parallel()
 
-	query, err := statesQuery([]item.Ref{{Repo: repo.Name{Owner: filesOwner, Repo: exampleRepo}, Number: 7}})
+	query, err := statesQuery([]item.Ref{{Repo: repo.Name{Owner: filesOwner, Repo: exampleRepo}, Number: 7}}, nil)
 	require.NoError(t, err)
 	assert.Contains(t, query, "rateLimit { cost }")
 }

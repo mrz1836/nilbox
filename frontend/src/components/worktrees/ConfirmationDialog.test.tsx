@@ -7,9 +7,13 @@ import type { Confirmation } from '../../lib/useWorktrees'
 import type { Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
 import { at, FIXED_NOW } from '../../test/clock'
 import {
+  copiedWorktree,
+  copyComparison,
   finishedWorktree,
   linkedItem,
   ownBranch,
+  partlyCopiedWorktree,
+  recordedWorktree,
   worktree,
   worktreeCommit,
   worktreeDetails,
@@ -121,6 +125,107 @@ describe('ConfirmationDialog for one worktree', () => {
       'whose work is finished: it has no uncommitted changes, and every commit on it is on GitHub.',
     )
     expect(dialog.getByText('Made for pull request #7, merged.')).toBeInTheDocument()
+  })
+
+  it('says a clean up of one whose commits went into a merged pull request as copies loses nothing', () => {
+    const dialog = single('cleanUp', recordedWorktree())
+
+    expect(dialog.getByText(/^Safe to remove/).closest('[data-tone]')).toHaveTextContent(
+      'Safe to remove: no uncommitted files, and every commit’s change went into PR #42, merged 2d ago.',
+    )
+    expect(screen.getByRole('dialog', { name: 'Clean up this worktree?' })).toHaveTextContent(
+      'whose work is finished: it has no uncommitted changes, and the change of every commit on it is on GitHub.',
+    )
+    expect(dialog.getByText('Its commits were copied onto pull request #42, merged.')).toBeInTheDocument()
+    expect(dialog.getByRole('checkbox', { name: /^Delete branch worktree-agent-a1b2c3/ })).toBeChecked()
+  })
+
+  it('says a clean up holds back a worktree whose copies are gone since, as its details read, in both its words', () => {
+    const gone = worktreeDetails({
+      unpushed: 10,
+      commits: [worktreeCommit({ oid: copiedWorktree().head })],
+      copies: copyComparison({ ref: '', branch: '', identical: 0 }),
+    })
+    render(
+      <ConfirmationDialog
+        confirmation={{ kind: 'cleanUp', repoPath, worktree: copiedWorktree({ stage: 'finished', canCleanUp: true }) }}
+        rules={rules}
+        now={FIXED_NOW}
+        repos={[worktreeRepo()]}
+        details={{ of: () => ({ state: 'read', details: gone }), read: vi.fn() }}
+        sessions={new Map()}
+        agentName={(id) => id}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { wrapper: at() },
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Clean up this worktree?' })
+    expect(
+      within(dialog)
+        .getByText(/^Its folder is clean, but 10 commits/)
+        .closest('[data-tone]'),
+    ).toHaveAttribute('data-tone', 'warning')
+    expect(dialog).toHaveTextContent(
+      'Clean up checks it again first, and deletes the folder ~/projects/example-repo/.claude/worktrees/agent-a1b2c3 only if its work is still finished, which, as last read, it isn’t.',
+    )
+    expect(dialog).not.toHaveTextContent(/whose work is finished/)
+  })
+
+  it.each([
+    ['uncommitted files since', finishedWorktree(), worktreeDetails({ files: worktreeFiles(2), fileCount: 2 })],
+    ['commits not on GitHub since', finishedWorktree(), worktreeDetails({ unpushed: 1, commits: [worktreeCommit()] })],
+    [
+      'commits it couldn’t count, as listed and as read',
+      finishedWorktree({ unpushed: -1, onGitHub: false }),
+      worktreeDetails({ unpushed: -1 }),
+    ],
+  ])('says a clean up holds back a worktree with %s, as its details read', (_, wt, read) => {
+    render(
+      <ConfirmationDialog
+        confirmation={{ kind: 'cleanUp', repoPath, worktree: wt }}
+        rules={rules}
+        now={FIXED_NOW}
+        repos={[worktreeRepo()]}
+        details={{ of: () => ({ state: 'read', details: read }), read: vi.fn() }}
+        sessions={new Map()}
+        agentName={(id) => id}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { wrapper: at() },
+    )
+
+    expect(screen.getByRole('dialog', { name: 'Clean up this worktree?' })).toHaveTextContent(
+      /Clean up checks it again first, and deletes the folder .+ only if its work is still finished, which, as last read, it isn’t\./,
+    )
+  })
+
+  it.each([
+    ['by its branch', 'branch', 'On the branch of pull request #7, open.'],
+    ['by its commits’ copies', 'copy', 'Its commits were copied onto pull request #7, open.'],
+  ] as const)('says how a worktree linked %s is linked to its pull request', (_, linkedBy, words) => {
+    const dialog = single('remove', worktree({ item: linkedItem({ state: 'open', headOid: '' }), linkedBy }))
+
+    expect(dialog.getByText(words)).toBeInTheDocument()
+  })
+
+  it('holds the branch of one whose commits are copied onto an open pull request’s, saying why', () => {
+    const dialog = single('remove', copiedWorktree())
+
+    expect(dialog.getByText(/^Safe to remove/).closest('[data-tone]')).toHaveTextContent(
+      'Safe to remove: no uncommitted files, and every commit’s change is on GitHub, copied onto PR #42’s branch.Removing it keeps its branch, worktree-agent-a1b2c3, with the original commits.',
+    )
+
+    const branch = dialog.getByRole('checkbox', { name: /^Delete branch worktree-agent-a1b2c3/ })
+    expect(branch).toBeDisabled()
+    expect(branch).not.toBeChecked()
+    expect(
+      dialog.getByText(
+        "Stays: its commits are on GitHub only as copies, in pull request #42, which hasn't merged with them.",
+      ),
+    ).toBeInTheDocument()
   })
 
   it('words the cost without its clone when the clone isn’t listed', () => {
@@ -250,16 +355,76 @@ describe('ConfirmationDialog for Force remove', () => {
   })
 
   it('keeps nothing as not on GitHub for one at its pull request’s head, whatever no remote has', async () => {
+    const atHead = dirty(14, 3, { onGitHub: true, branches: [ownBranch()] })
     platform.worktreeDetails.mockResolvedValue(
-      worktreeDetails({ files: worktreeFiles(2), fileCount: 2, unpushed: 3, commits: [worktreeCommit()] }),
+      worktreeDetails({
+        files: worktreeFiles(14),
+        fileCount: 14,
+        unpushed: 3,
+        commits: [worktreeCommit({ oid: atHead.head })],
+      }),
     )
-    const dialog = single('force', dirty(2, 3, { onGitHub: true, branches: [ownBranch()] }))
+    const dialog = single('force', atHead)
 
+    // The rest of the files read means the details landed.
     await vi.waitFor(() => {
       expect(within(dialog.getByRole('region', { name: 'Files it discards' })).queryByRole('status')).toBeNull()
     })
     expect(dialog.queryByRole('region', { name: 'Commits not on GitHub' })).not.toBeInTheDocument()
     expect(dialog.queryByText(/not on GitHub/)).not.toBeInTheDocument()
+  })
+
+  it('keeps nothing as not on GitHub for one whose commits are on GitHub as copies', async () => {
+    const copied = copiedWorktree({
+      dirty: true,
+      dirtyCount: 14,
+      files: worktreeFiles(12),
+      canRemove: false,
+      canForceRemove: true,
+    })
+    platform.worktreeDetails.mockResolvedValue(
+      worktreeDetails({
+        files: worktreeFiles(14),
+        fileCount: 14,
+        unpushed: 10,
+        commits: [worktreeCommit({ oid: copied.head, copy: 'identical', copyOid: '3'.repeat(40) })],
+        copies: copyComparison(),
+      }),
+    )
+    const dialog = single('force', copied)
+
+    await vi.waitFor(() => {
+      expect(within(dialog.getByRole('region', { name: 'Files it discards' })).queryByRole('status')).toBeNull()
+    })
+    expect(dialog.getByText(/^Removing it would discard 14 uncommitted files/)).toBeInTheDocument()
+    expect(dialog.queryByRole('region', { name: 'Commits not on GitHub' })).not.toBeInTheDocument()
+  })
+
+  it('marks a commit it keeps that has only an edited copy', async () => {
+    const partly = partlyCopiedWorktree({
+      dirty: true,
+      dirtyCount: 2,
+      files: worktreeFiles(2),
+      canRemove: false,
+      canForceRemove: true,
+    })
+    platform.worktreeDetails.mockResolvedValue(
+      worktreeDetails({
+        files: worktreeFiles(2),
+        fileCount: 2,
+        unpushed: 1,
+        commits: [worktreeCommit({ oid: partly.head, copy: 'edited', copyOid: '5'.repeat(40) })],
+        copies: copyComparison({ identical: 0, edited: 1 }),
+      }),
+    )
+    const dialog = single('force', partly)
+
+    const commits = dialog.getByRole('region', { name: 'Commits not on GitHub' })
+    expect(within(commits).getByRole('heading')).toHaveTextContent('Keeps 1 not on GitHub, on worktree-agent-d4e5f6')
+    expect(await within(commits).findByText(/^≈ edited copy/)).toHaveTextContent('≈ edited copy 5555555')
+    expect(
+      dialog.getByText(/^Its 1 commit not on GitHub stays in the clone on/).closest('[data-tone]'),
+    ).toHaveTextContent('1 has only an edited copy on origin/feature-x.')
   })
 
   it('lists a path git lists twice once for each status', async () => {
@@ -405,5 +570,21 @@ describe('ConfirmationDialog in bulk', () => {
     // The line sits apart from the worktree's box, whose name it leaves alone.
     expect(listed.getByRole('checkbox', { name: '~/projects/example-repo/.claude/worktrees/issue-9' })).toBeChecked()
     expect(platform.worktreeDetails).not.toHaveBeenCalled()
+  })
+
+  it('says under a finished worktree whose commits went in as copies where they went', () => {
+    render(<Harness confirmation={{ kind: 'finished', targets: [{ repoPath, worktree: recordedWorktree() }] }} />, {
+      wrapper: at(),
+    })
+
+    const line = screen.getByText(/^Safe to remove/).closest('[data-tone]')
+    expect(line).toHaveAttribute('data-tone', 'success')
+    expect(line).toHaveTextContent(
+      'Safe to remove: no uncommitted files, and every commit’s change went into PR #42, merged 2d ago.',
+    )
+    expect(screen.getByRole('dialog', { name: 'Clean up finished worktrees?' })).toHaveTextContent(
+      'each has no uncommitted changes, and every commit on it, or its change, is on GitHub.',
+    )
+    expect(screen.getByText('Its commits were copied onto pull request #42, merged')).toBeInTheDocument()
   })
 })
