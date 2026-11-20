@@ -1,7 +1,8 @@
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useState } from 'react'
 
-import { checkServiceStatus, getServiceStatus, on, type ServiceStatus, type StatusConfig } from '../platform'
+import { checkServiceStatus, getServiceStatus, type ServiceStatus, type StatusConfig } from '../platform'
 import { attempt } from './call'
+import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
 // ServiceStatusState is the service status check as the window shows it.
@@ -24,17 +25,10 @@ export function useServiceStatus(every: number | undefined, watch?: StatusConfig
   const watching = watch === undefined ? '' : JSON.stringify(watch)
   const status = useQuery(() => getServiceStatus(), [every, watching], { log: 'could not read the service status' })
   const [checking, setChecking] = useState(false)
-  const reloadOnUpdate = useEffectEvent(() => {
+
+  useOn('servicestatus:updated', () => {
     void status.refetch()
   })
-
-  useEffect(
-    () =>
-      on('servicestatus:updated', () => {
-        reloadOnUpdate()
-      }),
-    [],
-  )
 
   const check = () => {
     setChecking(true)

@@ -80,6 +80,7 @@ import { useIssueDrafts } from './lib/issueDrafts'
 import { useReviewDrafts } from './lib/reviewDrafts'
 import { useLaunchConfig } from './lib/useLaunchConfig'
 import { useNotifications } from './lib/useNotifications'
+import { useOn } from './lib/useOn'
 import { useQuery } from './lib/useQuery'
 import { useTheme } from './lib/useTheme'
 import { useTriage } from './lib/useTriage'
@@ -93,7 +94,6 @@ import {
   getAppInfo,
   getScriptRun,
   lastWorktreeSweep,
-  on,
   openExternal,
   setNotificationsTab,
   setIgnoredWorkflows,
@@ -180,17 +180,10 @@ function cleanedToast(seq: number, cleaned: readonly RemoveResult[]): ToastMessa
 // removed a worktree.
 function useWorktreeSweeps() {
   const sweep = useQuery(() => lastWorktreeSweep(), [], { log: 'could not read the latest worktree sweep' })
-  const readOnUpdate = useEffectEvent(() => {
+
+  useOn('worktrees:updated', () => {
     void sweep.refetch()
   })
-
-  useEffect(
-    () =>
-      on('worktrees:updated', () => {
-        readOnUpdate()
-      }),
-    [],
-  )
 
   const [counts, setCounts] = useState({ count: 0, attention: 0 })
   // reported is the latest sweep reported, so each one is reported once.
@@ -274,11 +267,12 @@ function useReveal(
   }
 
   // The menu bar's request is read against the inbox as shown when it arrives.
-  const showOnRequest = useEffectEvent((click: BannerClick, runStarted: string) => {
+  useOn('inbox:reveal', ({ itemId, url, runId, runStarted, notificationId, autopilot }) => {
     if (held) {
       return
     }
 
+    const click: BannerClick = { notificationId, itemId, url, runId, autopilot }
     const named = click.notificationId > 0
 
     if (named) {
@@ -300,14 +294,6 @@ function useReveal(
         break
     }
   })
-
-  useEffect(
-    () =>
-      on('inbox:reveal', ({ itemId, url, runId, runStarted, notificationId, autopilot }) => {
-        showOnRequest({ notificationId, itemId, url, runId, autopilot }, runStarted)
-      }),
-    [],
-  )
 
   const clear = () => {
     setReveal(null)

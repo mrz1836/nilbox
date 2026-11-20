@@ -1,11 +1,12 @@
-import { useEffect, useEffectEvent, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import { brand } from '../generated/brand'
 import { attempt } from '../lib/call'
 import { counted } from '../lib/format'
 import { carryOnText, heldReleaseText, heldRunText, releaseTagRisk, tagRisk } from '../lib/runsGoing'
 import { runWhere } from '../lib/scriptRuns'
-import { keepRunning, letThemFinish, listScriptRuns, on, quitAnyway, type ScriptRun } from '../platform'
+import { useOn } from '../lib/useOn'
+import { keepRunning, letThemFinish, listScriptRuns, quitAnyway, type ScriptRun } from '../platform'
 import { ConfirmDialog } from './ConfirmDialog'
 import { quietButtonClass } from './controls'
 
@@ -162,7 +163,7 @@ export function QuitDialog() {
     })
   }
 
-  const ask = useEffectEvent(async () => {
+  const ask = async () => {
     const listed = await attempt(listScriptRuns({ kinds: [], repo: '', withAgents: true }))
 
     if (!listed.ok) {
@@ -181,15 +182,11 @@ export function QuitDialog() {
     } else {
       setGoing(stoppable)
     }
-  })
+  }
 
-  useEffect(
-    () =>
-      on('app:quitRequested', () => {
-        void ask()
-      }),
-    [],
-  )
+  useOn('app:quitRequested', () => {
+    void ask()
+  })
 
   if (going === null) {
     return null

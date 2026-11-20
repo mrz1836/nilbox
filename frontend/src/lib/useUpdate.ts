@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { brand } from '../generated/brand'
 import {
@@ -7,7 +7,6 @@ import {
   getUpdateStatus,
   hideUpdateBanner,
   listScriptRuns,
-  on,
   restartToUpdateNow,
   showUpdateBanner,
   type Refused,
@@ -29,6 +28,7 @@ import {
   type RestartStep,
 } from './update'
 import { useMoveToApplications, type MoveControl } from './useMove'
+import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
 // UpdateQuery is the app's update as the window shows it.
@@ -45,17 +45,10 @@ export interface UpdateQuery {
 // the status shown is always the latest read's.
 export function useUpdate(): UpdateQuery {
   const status = useQuery(() => getUpdateStatus(), [], { log: 'could not read the update’s status' })
-  const readOnUpdate = useEffectEvent(() => {
+
+  useOn('updates:updated', () => {
     void status.refetch()
   })
-
-  useEffect(
-    () =>
-      on('updates:updated', () => {
-        readOnUpdate()
-      }),
-    [],
-  )
 
   return { status: status.data ?? null, reload: status.refetch }
 }
@@ -68,6 +61,12 @@ const downloadTries = 3
 // finishing, before the banner offers the update again: the start settling, which tells
 // the window, usually ends the wait well before.
 export const waitFor = 60_000
+
+// settled is a restart's step once a wait ends: back to idle from waiting, and any other
+// step as it was.
+function settled(was: RestartStep): RestartStep {
+  return was.step === 'waiting' ? { step: 'idle' } : was
+}
 
 // RestartFlow is the window's one restart to update, which the banner, About, and the menu
 // bar (through "updates:restart") all start.
@@ -347,17 +346,9 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
   // A wait while the last update finishes ends at the next change of the update, as the
   // start settling is, or after waitFor, whichever comes first: the banner then offers the
   // update again, and the same click goes ahead once it can.
-  const settled = useEffectEvent(() => {
-    setStep((was) => (was.step === 'waiting' ? { step: 'idle' } : was))
+  useOn('updates:updated', () => {
+    setStep(settled)
   })
-
-  useEffect(
-    () =>
-      on('updates:updated', () => {
-        settled()
-      }),
-    [],
-  )
 
   useEffect(() => {
     if (step.step !== 'waiting') {
@@ -365,7 +356,7 @@ export function useRestartToUpdate(unsent: () => number): RestartFlow {
     }
 
     const timer = setTimeout(() => {
-      settled()
+      setStep(settled)
     }, waitFor)
 
     return () => {
@@ -480,17 +471,9 @@ export function useUpdateControl(flow: RestartFlow, update: UpdateQuery): Update
     flow.start()
   }
 
-  const restartOnRequest = useEffectEvent(() => {
+  useOn('updates:restart', () => {
     restart()
   })
-
-  useEffect(
-    () =>
-      on('updates:restart', () => {
-        restartOnRequest()
-      }),
-    [],
-  )
 
   return {
     status,

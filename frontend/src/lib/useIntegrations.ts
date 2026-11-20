@@ -1,7 +1,6 @@
-import { useEffect, useEffectEvent } from 'react'
-
-import { checkIntegrationsAgain, listIntegrations, on, type IntegrationTools } from '../platform'
+import { checkIntegrationsAgain, listIntegrations, type IntegrationTools } from '../platform'
 import { useMutation } from './useMutation'
+import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
 // IntegrationsState is the tools the app runs for the user, as the settings show them.
@@ -31,17 +30,10 @@ export interface IntegrationsState {
 export function useIntegrations(): IntegrationsState {
   const list = useQuery(() => listIntegrations(), [])
   const checker = useMutation(() => checkIntegrationsAgain())
-  const reloadOnUpdate = useEffectEvent(() => {
+
+  useOn('tools:updated', () => {
     void list.refetch()
   })
-
-  useEffect(
-    () =>
-      on('tools:updated', () => {
-        reloadOnUpdate()
-      }),
-    [],
-  )
 
   const checkAgain = async () => {
     const result = await checker.run()

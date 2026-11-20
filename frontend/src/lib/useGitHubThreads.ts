@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useState } from 'react'
 
 import {
   checkGitHubThreadsNow,
@@ -7,12 +7,12 @@ import {
   keepGitHubThreads,
   markGitHubThreadsDone,
   markGitHubThreadsRead,
-  on,
   type GitHubThreadList,
   type GitHubThreadsSnapshot,
 } from '../platform'
 import { attempt, start, type Result } from './call'
 import { useMutation } from './useMutation'
+import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
 // GitHubThreadsState is the user's GitHub notifications as the window shows them.
@@ -70,17 +70,9 @@ export function useGitHubThreads(listing = false): GitHubThreadsState {
     await Promise.all([mirror.refetch(), listing ? listed.refetch() : Promise.resolve()])
   }
 
-  const reloadOnUpdate = useEffectEvent(() => {
+  useOn('ghthreads:updated', () => {
     void reread()
   })
-
-  useEffect(
-    () =>
-      on('ghthreads:updated', () => {
-        reloadOnUpdate()
-      }),
-    [],
-  )
 
   const checking = useMutation(() => checkGitHubThreadsNow())
   const snapshot = mirror.data ?? null

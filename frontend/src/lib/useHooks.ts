@@ -1,8 +1,9 @@
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useState } from 'react'
 
-import { installAllHooks, listHooks, on, type HookInstallAllResult, type HooksList, type ScriptRun } from '../platform'
+import { installAllHooks, listHooks, type HookInstallAllResult, type HooksList, type ScriptRun } from '../platform'
 import { liveDirs } from './hooks'
 import { useMutation } from './useMutation'
+import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
 // HooksState is the Hooks page's list as the Scripts tab holds it.
@@ -48,19 +49,14 @@ export function useHooks(enabled: boolean, runs: readonly ScriptRun[] | null): H
   const refresher = useMutation(() => listHooks(true))
   const installer = useMutation((dirs: string[]) => installAllHooks(dirs))
   const [installed, setInstalled] = useState<HookInstallAllResult | null>(null)
-  const readOnUpdate = useEffectEvent(() => {
-    void query.refetch()
-  })
 
-  useEffect(() => {
-    if (!enabled) {
-      return undefined
-    }
-
-    return on('hooks:updated', () => {
-      readOnUpdate()
-    })
-  }, [enabled])
+  useOn(
+    'hooks:updated',
+    () => {
+      void query.refetch()
+    },
+    enabled,
+  )
 
   const installEvery = async (dirs: string[]) => {
     setInstalled(null)

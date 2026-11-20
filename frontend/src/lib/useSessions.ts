@@ -1,7 +1,6 @@
-import { useEffect, useEffectEvent } from 'react'
-
-import { listSessions, on, type AgentSession, type SessionsSnapshot } from '../platform'
+import { listSessions, type AgentSession, type SessionsSnapshot } from '../platform'
 import { itemSessions } from './sessions'
+import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
 // SessionsState is the agent sessions as the inbox's cards follow them.
@@ -20,17 +19,10 @@ export interface SessionsState {
 // first: listing them reads the local ledger alone.
 export function useSessions(): SessionsState {
   const sessions = useQuery(() => listSessions(), [], { log: 'could not load the agent sessions' })
-  const reloadOnUpdate = useEffectEvent(() => {
+
+  useOn('sessions:updated', () => {
     void sessions.refetch()
   })
-
-  useEffect(
-    () =>
-      on('sessions:updated', () => {
-        reloadOnUpdate()
-      }),
-    [],
-  )
 
   const snapshot = sessions.data ?? null
 

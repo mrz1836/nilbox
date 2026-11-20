@@ -1,8 +1,7 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 import {
   moveToApplications,
-  on,
   openInApplications,
   showAppInFinder,
   type MoveResult,
@@ -10,6 +9,7 @@ import {
 } from '../platform'
 import { attempt } from './call'
 import type { Offer } from './update'
+import { useOn } from './useOn'
 
 // MoveVariant is which question the move dialog asks: move asks to move the app into
 // Applications; exists says a copy is there already, and offers to open it.
@@ -140,21 +140,13 @@ export function useMoveToApplications(offer: Offer, location: UpdateLocation | n
 
   // A quit held while runs go asks in its own dialog: this one gives way, and the copy opens
   // only if the user lets that quit through.
-  const onQuitAsked = useEffectEvent(() => {
+  useOn('app:quitRequested', () => {
     if (stage.current === 'leaving') {
       giveWay()
     } else if (stage.current === 'working') {
       quitAsked.current = true
     }
   })
-
-  useEffect(
-    () =>
-      on('app:quitRequested', () => {
-        onQuitAsked()
-      }),
-    [],
-  )
 
   const open = offer.move && shown !== 'closed'
 
