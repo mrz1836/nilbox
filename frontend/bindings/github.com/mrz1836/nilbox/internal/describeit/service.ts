@@ -38,17 +38,22 @@ export function Conversation(): $CancellablePromise<$models.Conversation> {
 /**
  * DiscardProposal discards every part of the card ref the user hasn't dealt with yet.
  */
-export function DiscardProposal($0: $models.CardRef): $CancellablePromise<void> {
-    return $Call.ByID(1830817352, $0);
+export function DiscardProposal(ref: $models.CardRef): $CancellablePromise<void> {
+    return $Call.ByID(1830817352, ref);
 }
 
 /**
  * Events returns the events of turn in the conversation id after the sequence number
  * after: what the agent said and each tool it used, read from the turn's stream, a page at
  * a time, as a background run's are (autopilot.Service.RunEvents).
+ *
+ * While the turn runs, they come from its follower's parser, and a turn still getting
+ * ready, whose agent hasn't started, has none yet; neither is done. Once it has ended, its
+ * stream is read again whole by a parser of its own, which numbers its events as the
+ * follower's did, so the window asks on after the last it has across the turn's end.
  */
-export function Events($0: string, $1: number, $2: number): $CancellablePromise<runevent$0.Page> {
-    return $Call.ByID(3060607497, $0, $1, $2);
+export function Events(id: string, turn: number, after: number): $CancellablePromise<runevent$0.Page> {
+    return $Call.ByID(3060607497, id, turn, after);
 }
 
 /**
@@ -58,16 +63,16 @@ export function Events($0: string, $1: number, $2: number): $CancellablePromise<
  * profile's state. An app that doesn't run from a stable place (a build from source, or
  * one macOS translocated) can't point the link at itself, and says so.
  */
-export function InstallPlugin($0: string): $CancellablePromise<$models.PluginState[] | null> {
-    return $Call.ByID(2854653024, $0);
+export function InstallPlugin(profile: string): $CancellablePromise<$models.PluginState[] | null> {
+    return $Call.ByID(2854653024, profile);
 }
 
 /**
  * NewConversation sets the current conversation aside and makes an empty one, with the
  * agent a, or Agent's for the zero choice. It is refused while a turn runs.
  */
-export function NewConversation($0: $models.AgentChoice): $CancellablePromise<$models.Conversation> {
-    return $Call.ByID(3302100317, $0);
+export function NewConversation(a: $models.AgentChoice): $CancellablePromise<$models.Conversation> {
+    return $Call.ByID(3302100317, a);
 }
 
 /**
@@ -91,8 +96,8 @@ export function Proposals(): $CancellablePromise<$models.Card[] | null> {
  * RemovePlugin uninstalls the plugin from the profile's Claude Code, and removes its
  * marketplace there, and returns every profile's state.
  */
-export function RemovePlugin($0: string): $CancellablePromise<$models.PluginState[] | null> {
-    return $Call.ByID(2700316627, $0);
+export function RemovePlugin(profile: string): $CancellablePromise<$models.PluginState[] | null> {
+    return $Call.ByID(2700316627, profile);
 }
 
 /**
@@ -103,8 +108,8 @@ export function RemovePlugin($0: string): $CancellablePromise<$models.PluginStat
  * last turn (kit.OutcomeWords); a fresh snapshot is written first. It is refused while a
  * turn runs, for an empty message, and while Status isn't ready, each worded.
  */
-export function Send($0: $models.Message): $CancellablePromise<$models.Conversation> {
-    return $Call.ByID(1046467030, $0);
+export function Send(m: $models.Message): $CancellablePromise<$models.Conversation> {
+    return $Call.ByID(1046467030, m);
 }
 
 /**
@@ -112,8 +117,8 @@ export function Send($0: $models.Message): $CancellablePromise<$models.Conversat
  * doesn't have and a model or effort the agent's own checks refuse, and returns it as
  * stored.
  */
-export function SetAgent($0: $models.AgentChoice): $CancellablePromise<$models.AgentChoice> {
-    return $Call.ByID(952897337, $0);
+export function SetAgent(c: $models.AgentChoice): $CancellablePromise<$models.AgentChoice> {
+    return $Call.ByID(952897337, c);
 }
 
 /**
@@ -121,8 +126,8 @@ export function SetAgent($0: $models.AgentChoice): $CancellablePromise<$models.A
  * outcomes, which the next turn tells the agent and the tool mode's proposal status reads.
  * A part already settled keeps its first outcome.
  */
-export function Settle($0: $models.SettleRequest): $CancellablePromise<void> {
-    return $Call.ByID(1052487047, $0);
+export function Settle(req: $models.SettleRequest): $CancellablePromise<void> {
+    return $Call.ByID(1052487047, req);
 }
 
 /**
@@ -139,6 +144,6 @@ export function Status(): $CancellablePromise<$models.Status> {
  * Stop stops the turn running in the conversation id, if any: the agent is asked to stop
  * (execpath.StopLadder), its turn ends as stopped, and the conversation goes on from it.
  */
-export function Stop($0: string): $CancellablePromise<void> {
-    return $Call.ByID(3270759488, $0);
+export function Stop(id: string): $CancellablePromise<void> {
+    return $Call.ByID(3270759488, id);
 }

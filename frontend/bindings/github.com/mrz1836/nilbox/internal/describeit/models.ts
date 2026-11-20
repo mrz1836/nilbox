@@ -178,7 +178,9 @@ export interface SettleRequest {
     "kind": kit$0.OutcomeKind;
 
     /**
-     * Words say it as the next turn tells the agent: `Added "Fix checks", switched off`.
+     * Words say it as the next turn tells the agent, its names in curly quotes and with no
+     * full stop: `Added “Fix checks”, switched off`. kit.OutcomeWords joins a turn's into one
+     * sentence.
      */
     "words": string;
 
