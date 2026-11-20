@@ -28,7 +28,7 @@ import { defaultToastSeconds, Toast, ToastQueue, type ToastMessage } from './com
 import { activityTarget, autopilotBadge, type AutopilotRequest } from './lib/autopilot'
 import { attempt, serial } from './lib/call'
 import { filterInbox, inboxItems, inboxSpec, inboxSuggestions } from './lib/inboxFilter'
-import { isFindKey, isTyping } from './lib/keys'
+import { isFindKey, isTyping, useKeyDown } from './lib/keys'
 import { filterThreads } from './lib/githubThreads'
 import { cloneWhere } from './lib/locations'
 import {
@@ -961,7 +961,7 @@ export function App() {
   // ⌘, opens the settings page, as in every Mac app. ⌘F, or / while not typing, focuses
   // the toolbar's field with its text selected; on Prompts, ⌘F belongs to the page's own
   // search. None of them reaches the window beneath the first-run setup.
-  const onShortcut = useEffectEvent((e: KeyboardEvent) => {
+  useKeyDown((e) => {
     if (setup.showing) {
       return
     }
@@ -981,18 +981,6 @@ export function App() {
       searchRef.current?.select()
     }
   })
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      onShortcut(e)
-    }
-
-    document.addEventListener('keydown', onKeyDown)
-
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [])
 
   const { reload, setSettings } = config
   const { reload: reloadInbox } = inbox

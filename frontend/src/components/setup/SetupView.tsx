@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useId, useRef, useState, type KeyboardEvent 
 
 import { brand } from '../../generated/brand'
 import type { Result } from '../../lib/call'
+import { useKeyDown } from '../../lib/keys'
 import {
   agentsNeedAttention,
   announceText,
@@ -213,24 +214,12 @@ export default function SetupView(props: SetupViewProps) {
   }
 
   // A key pressed with focus on nothing at all reaches the document, not the setup.
-  const onLooseKey = useEffectEvent((e: KeyboardEvent) => {
+  useKeyDown((e) => {
     if (e.key === 'Enter' && !e.defaultPrevented && !e.isComposing && e.target === document.body && !skipping) {
       e.preventDefault()
       advance()
     }
   })
-
-  useEffect(() => {
-    const listener = (e: KeyboardEvent) => {
-      onLooseKey(e)
-    }
-
-    document.addEventListener('keydown', listener)
-
-    return () => {
-      document.removeEventListener('keydown', listener)
-    }
-  }, [])
 
   const { number, total } = progressOf(step, toolsShown)
   const hero = step === 'welcome' || step === 'finish'

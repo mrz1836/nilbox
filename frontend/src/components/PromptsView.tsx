@@ -1,9 +1,9 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 
 import { brand } from '../generated/brand'
 import { counted, errorMessage, fileDate, fileName } from '../lib/format'
-import { isFindKey, isPreviewKey, isSaveKey } from '../lib/keys'
+import { isFindKey, isPreviewKey, isSaveKey, useKeyDown } from '../lib/keys'
 import { kindPlural, promptApplies, routinePlaces, usageCount, usagePlaces } from '../lib/launch'
 import { replyDefaultsText, replySlotPlaces, replySlots } from '../lib/replies'
 import { useMutation } from '../lib/useMutation'
@@ -466,7 +466,7 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
   // ⌘S saves while the page is showing, ⇧⌘P switches between editing and previewing,
   // even while typing, and ⌘F finds a prompt in the library: a page hidden behind
   // another runs no effects, so it stops listening.
-  const saveOnKey = useEffectEvent((e: globalThis.KeyboardEvent) => {
+  useKeyDown((e) => {
     if (isSaveKey(e)) {
       e.preventDefault()
 
@@ -485,18 +485,6 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
       searchRef.current?.select()
     }
   })
-
-  useEffect(() => {
-    const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      saveOnKey(e)
-    }
-
-    document.addEventListener('keydown', onKeyDown)
-
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [])
 
   // run performs an action on the library and says how it went.
   const run = async (action: () => Promise<Selection | null>, done: string) => {

@@ -1,10 +1,10 @@
-import { useEffect, useEffectEvent, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import type { Result } from '../lib/call'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import type { UpdateControl } from '../lib/useUpdate'
 import { counted, formatCount } from '../lib/format'
-import { isTyping } from '../lib/keys'
+import { isTyping, useKeyDown } from '../lib/keys'
 import { useScrollEdges } from '../lib/useScrollEdges'
 import {
   hiddenOf,
@@ -198,23 +198,11 @@ export function SettingsView({
     }
   }, [section, openedAt])
 
-  const closeOnEscape = useEffectEvent((e: KeyboardEvent) => {
+  useKeyDown((e) => {
     if (e.key === 'Escape' && !e.defaultPrevented && !isTyping(e)) {
       onClose()
     }
   })
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      closeOnEscape(e)
-    }
-
-    document.addEventListener('keydown', onKeyDown)
-
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [])
 
   const loading = <p className="text-sm text-muted">Loading the settings…</p>
 
