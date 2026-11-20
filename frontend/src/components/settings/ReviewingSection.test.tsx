@@ -250,4 +250,47 @@ describe('ReviewingSection', () => {
     expect(screen.queryByRole('list', { name: 'Ignored workflows' })).not.toBeInTheDocument()
     expect(onSaved).not.toHaveBeenCalled()
   })
+
+  it('says how many people the app learned, and forgets them all once the user confirms', async () => {
+    renderSection()
+
+    const people = within(screen.getByRole('region', { name: 'People' }))
+    expect(await people.findByText('12 people across 3 repositories.')).toBeInTheDocument()
+
+    await userEvent.click(people.getByRole('button', { name: 'Forget the people the app learned' }))
+
+    const confirm = within(await screen.findByRole('dialog', { name: 'Forget the people the app learned?' }))
+    await userEvent.click(confirm.getByRole('button', { name: 'Cancel' }))
+    expect(platform.forgetPeople, 'cancelled').not.toHaveBeenCalled()
+
+    await userEvent.click(people.getByRole('button', { name: 'Forget the people the app learned' }))
+    await userEvent.click(
+      within(await screen.findByRole('dialog', { name: 'Forget the people the app learned?' })).getByRole('button', {
+        name: 'Forget',
+      }),
+    )
+
+    expect(platform.forgetPeople).toHaveBeenCalledOnce()
+    expect(await people.findByText(/Nothing yet/)).toBeInTheDocument()
+    expect(
+      people.getByRole('button', { name: 'Forget the people the app learned' }),
+      'nothing to forget',
+    ).toBeDisabled()
+  })
+
+  it('says why the people couldn’t be forgotten', async () => {
+    platform.forgetPeople.mockRejectedValue(new Error('The database is busy.'))
+    renderSection()
+
+    const people = within(screen.getByRole('region', { name: 'People' }))
+    await userEvent.click(await people.findByRole('button', { name: 'Forget the people the app learned' }))
+    await userEvent.click(
+      within(await screen.findByRole('dialog', { name: 'Forget the people the app learned?' })).getByRole('button', {
+        name: 'Forget',
+      }),
+    )
+
+    expect(await people.findByText('The database is busy.')).toBeInTheDocument()
+    expect(people.getByText('12 people across 3 repositories.'), 'what was learned stays').toBeInTheDocument()
+  })
 })

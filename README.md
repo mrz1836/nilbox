@@ -591,6 +591,12 @@ More in [The item menu and edits on GitHub](docs/desktop.md#the-item-menu-and-ed
   Dependabot pull request, and **Update branch** whenever GitHub lets you. Neither is the button
   unless the rules hold the pull request back for being behind (or, for the rebase, it has
   conflicts); with nothing else to run, the button reads **Choose an action** and opens the menu.
+- **Assignees:** the summary lists who the pull request is assigned to and, with triage access,
+  edits them from a picker that suggests you, its author, who took part, and the people who work
+  on the repository and its org, from what Nilbox learned, with no request. Typing searches GitHub
+  only when nothing Nilbox kept answers it, an edit takes at most two requests, and the sheet shows
+  GitHub's answer without reading the pull request again. **Settings → Reviewing → People** forgets
+  what Nilbox learned.
 - **Workflow runs waiting for approval:** the runs GitHub holds until a maintainer approves them,
   as it does a fork's, show on the card as held rather than as passed checks, and the sheet names
   them in a bar with **Approve workflows to run**, which asks first when the pull request changes
@@ -634,7 +640,8 @@ More in [Reviewing a pull request](docs/desktop.md#reviewing-a-pull-request).
   **Replies** fills your comment in from one of your comment replies for issues; none is picked
   for you.
 - **Labels and assignees,** with triage access: edit them from the details, each answer checked,
-  since GitHub ignores a change it won't make rather than refusing it.
+  since GitHub ignores a change it won't make rather than refusing it. The assignees use the
+  review sheet's picker, with **×** to unassign someone and **Assign yourself** in one click.
 - **Your agent's verdict** shows with **Use as comment**, and **Open in Claude** (or Codex) hands
   the issue to an agent from the sheet.
 - **One list, both kinds:** **←** and **→** step through the list's cards as it shows them, pull

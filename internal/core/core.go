@@ -20,6 +20,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/appinfo"
+	"github.com/mrz1836/nilbox/internal/assignees"
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/avatars"
 	"github.com/mrz1836/nilbox/internal/backup"
@@ -792,18 +793,21 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	actor := inbox.NewActor(inboxSvc)
 	pictures := avatars.NewService(avatars.Config{Pool: pool, Fetcher: client, Clock: opts.Clock, Logger: logger})
 	// The review sheet learns who works on each repository into the people directory, and
-	// its reviewer picker suggests from it.
+	// its reviewer picker suggests from it. Both sheets' assignee pickers offer people from
+	// it through one Finder, so a repository's assignable users are read at most once at a
+	// time, whichever sheet asks.
 	directory := people.NewService(people.Config{Pool: pool, Clock: opts.Clock})
+	finder := assignees.NewFinder(assigneesDirectory{directory: directory}, logger)
 	reviewSheet := review.NewService(review.Config{
 		Pool: pool, Inbox: reviewInbox{store: inboxStore, actor: actor}, GitHub: client,
 		Settings: reviewSettings{settings: prefs}, Replies: reviewReplies{replyFiller{store: promptStore, source: previews}},
-		Events: opts.Events, Merges: releaseRefresher, People: reviewPeople{directory: directory}, Clock: opts.Clock,
-		Logger: logger,
+		Events: opts.Events, Merges: releaseRefresher, People: reviewPeople{directory: directory}, Assignees: finder,
+		Clock: opts.Clock, Logger: logger,
 	})
 	issueSheet := issues.NewService(issues.Config{
 		Pool: pool, Inbox: issuesInbox{store: inboxStore, actor: actor}, GitHub: client,
 		Replies: issuesReplies{replyFiller{store: promptStore, source: previews}}, Events: opts.Events,
-		Pictures: pictures, Clock: opts.Clock, Logger: logger,
+		Pictures: pictures, Assignees: finder, Clock: opts.Clock, Logger: logger,
 	})
 
 	budgetSvc := budget.NewService(budget.Config{

@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/assignees"
+	"github.com/mrz1836/nilbox/internal/assignees/assigneestest"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/github/githubtest"
@@ -294,10 +296,11 @@ type fakeGitHub struct {
 	closedBy string
 	reasons  []string
 
-	// repoLabels answers a read of the repository's labels, and people a search for whom
-	// the issue can be assigned to, which searched records.
+	// repoLabels answers a read of the repository's labels, and people a read of whom the
+	// issue can be assigned to, of total, which searched records, as "kind:words".
 	repoLabels *github.RepoLabels
-	people     []github.Assignable
+	people     []github.Person
+	total      int
 	searched   []string
 
 	// editErr fails the edit whose name it is keyed by, as "+label", "-label:bug",
@@ -322,14 +325,16 @@ func (g *fakeGitHub) FetchRepoLabels(context.Context, github.Token, string) (*gi
 	return g.repoLabels, nil
 }
 
-func (g *fakeGitHub) FetchAssignable(_ context.Context, _ github.Token, _, query string) ([]github.Assignable, error) {
+func (g *fakeGitHub) FetchAssignable(
+	_ context.Context, _ github.Token, kind item.Kind, _, query string,
+) (*github.AssignableUsers, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	g.count(callPeople)
-	g.searched = append(g.searched, query)
+	g.searched = append(g.searched, string(kind)+":"+query)
 
-	return g.people, nil
+	return &github.AssignableUsers{People: slices.Clone(g.people), Total: max(g.total, len(g.people))}, nil
 }
 
 func (g *fakeGitHub) AddLabels(_ context.Context, _ github.Token, _ item.Ref, names []string) ([]github.Label, error) {
@@ -344,8 +349,8 @@ func (g *fakeGitHub) AddAssignees(_ context.Context, _ github.Token, _ item.Ref,
 	return &github.Edited{}, g.made("+assignee:" + strings.Join(logins, ","))
 }
 
-func (g *fakeGitHub) RemoveAssignee(_ context.Context, _ github.Token, _ item.Ref, login string) (*github.Edited, error) {
-	return &github.Edited{}, g.made("-assignee:" + login)
+func (g *fakeGitHub) RemoveAssignees(_ context.Context, _ github.Token, _ item.Ref, logins []string) (*github.Edited, error) {
+	return &github.Edited{}, g.made("-assignee:" + strings.Join(logins, ","))
 }
 
 func (g *fakeGitHub) FetchIssueView(
@@ -554,6 +559,9 @@ type harness struct {
 	clock   *testutil.Clock
 	events  *testutil.Events
 	logs    *testutil.Logs
+
+	// assignable is the directory the assignee Finder learns into and offers from.
+	assignable *assigneestest.Directory
 }
 
 // newHarness returns a harness whose GitHub answers with issueView.
@@ -568,9 +576,10 @@ func newHarness(t *testing.T) *harness {
 		replies: &fakeReplies{}, clock: testutil.NewClock(testNow), events: &testutil.Events{}, logs: &testutil.Logs{},
 	}
 
+	h.assignable = assigneestest.NewDirectory()
 	h.svc = NewService(Config{
 		Pool: db, Inbox: h.inbox, GitHub: h.github, Replies: h.replies, Events: h.events, Clock: h.clock,
-		Logger: h.logs.Logger(),
+		Assignees: assignees.NewFinder(h.assignable, nil), Logger: h.logs.Logger(),
 	})
 
 	return h

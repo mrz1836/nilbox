@@ -94,8 +94,10 @@ type Person struct {
 	Authored  int
 	Committed int
 
-	// LastAt is the latest time they were seen there.
+	// LastAt is the latest time they were seen there, and Where the repository they were
+	// seen in then, as "owner/name", for OrgRanked; "" for Ranked, whose rows are all of one.
 	LastAt time.Time
+	Where  string
 
 	// Score is what they rank by: what they did there, the latest counting most.
 	Score float64
@@ -132,14 +134,18 @@ type Service struct {
 	q     *queries.Queries
 	clock clock.Clock
 
-	// maxSeen is how many rows of what was seen are kept in all: maxSeen, which a test
-	// lowers to prune a small table.
-	maxSeen int64
+	// maxSeen is how many rows of what was seen are kept in all, and maxAssignable how many
+	// of who can be assigned where: maxSeen and maxAssignable, which a test lowers to prune a
+	// small table.
+	maxSeen       int64
+	maxAssignable int64
 }
 
 // NewService returns a Service over cfg.
 func NewService(cfg Config) *Service {
-	return &Service{db: cfg.Pool, q: queries.New(cfg.Pool), clock: clock.Or(cfg.Clock), maxSeen: maxSeen}
+	return &Service{
+		db: cfg.Pool, q: queries.New(cfg.Pool), clock: clock.Or(cfg.Clock), maxSeen: maxSeen, maxAssignable: maxAssignable,
+	}
 }
 
 // Learn keeps what a read saw people do on the pull requests of the repository name, in one

@@ -594,6 +594,22 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			// The directory knows no one yet, so the lists are empty, never null.
 			return c.Review.ReviewerCandidates(ctx, ids.item)
 		},
+		"review.Service.AssigneeCandidates": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			got, err := c.Review.AssigneeCandidates(ctx, ids.item)
+			require.NotEmpty(t, got.People, "the user, at least")
+
+			return got, err
+		},
+		"review.Service.SearchAssignees": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			// No words search nothing on GitHub.
+			return c.Review.SearchAssignees(ctx, ids.item, "")
+		},
+		"issues.Service.AssigneeCandidates": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			return c.Issues.AssigneeCandidates(ctx, ids.stuck)
+		},
+		"issues.Service.SearchAssignees": func(ctx context.Context, c *Core, ids seededItems) (any, error) {
+			return c.Issues.SearchAssignees(ctx, ids.stuck, "  ")
+		},
 		"review.Service.Replies": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Review.Replies(ctx, review.ReplyApprove)
 			require.NotEmpty(t, got.Replies)
@@ -980,13 +996,14 @@ func unreachedBound() map[string]string {
 		"review.Service.ReadAgain":          "reads GitHub; its review is built as Open's",
 		"review.Service.Act":                "edits GitHub; its steps start empty",
 		"review.Service.LearnReviewers":     "reads GitHub; its result is built as ReviewerCandidates'",
+		"review.Service.LearnAssignees":     "reads GitHub; its result is built as AssigneeCandidates'",
+		"issues.Service.LearnAssignees":     "reads GitHub; its result is built as AssigneeCandidates'",
 		"issues.Service.Refresh":            "reads GitHub; its issue is built as Open's",
 		"issues.Service.ReadAgain":          "reads GitHub; its issue is built as Open's",
 		"issues.Service.Earlier":            "reads GitHub; its items are converted as Open's",
 		"review.Service.Earlier":            "reads GitHub; its items are converted as Open's",
 		"issues.Service.Act":                "edits GitHub; its steps start empty",
 		"issues.Service.Labels":             "reads GitHub; its labels start empty, and an error returns them empty",
-		"issues.Service.Assignable":         "reads GitHub; it starts its list empty, and an error returns it empty",
 		"release.Service.Candidates":        "scans the clone root and reads GitHub; its lists start empty",
 		"release.Service.Prepare":           "needs a clone of a GitHub repository; Decide starts every list empty",
 		"hooks.Service.InstallAll":          "needs go-pre-commit; its lines start empty",

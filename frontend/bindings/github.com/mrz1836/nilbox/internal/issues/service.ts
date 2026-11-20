@@ -12,6 +12,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as assignees$0 from "../assignees/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as timeline$0 from "../timeline/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -34,12 +37,11 @@ export function Act(req: $models.ActRequest): $CancellablePromise<$models.Result
 }
 
 /**
- * Assignable returns the people the issue can be assigned to whose login or name matches
- * query, the first twenty: read with one GraphQL point a search, one at a time for the
- * same words in the same repository, then kept ten minutes. The user is marked.
+ * AssigneeCandidates returns whom the picker offers to assign to the issue with id, from the
+ * sheet's cache and the People directory alone, with no request.
  */
-export function Assignable(id: number, query: string): $CancellablePromise<$models.Candidate[] | null> {
-    return $Call.ByID(3319554465, id, query);
+export function AssigneeCandidates(id: number): $CancellablePromise<assignees$0.Candidates> {
+    return $Call.ByID(1881290621, id);
 }
 
 /**
@@ -63,15 +65,16 @@ export function Earlier(id: number, before: string): $CancellablePromise<timelin
 
 /**
  * Edit changes the labels and assignees of the issue with req.ItemID as req asks, with one
- * REST request for the labels added, one for each label taken off, one for the people
- * assigned, and one for each person unassigned, through the inbox's Actor (the item's
- * lock, the account check, and a token borrowed again once when GitHub refuses one, which
- * never sends a step twice). GitHub ignores a change an account can't make rather than
- * refusing it, so every answer is checked. It stops at the first step that fails, and
- * those before it stand: once GitHub made any, the result counts them and says why the
- * next failed, while a failure before any is the error. A name given twice is sent once,
- * and one both added and taken off not at all. The sheet's copy of the issue is marked out
- * of date, for the read the sheet makes next.
+ * REST request for the labels added, one for each label taken off, one for everyone
+ * unassigned, then one for everyone assigned, through the inbox's Actor (the item's lock, the
+ * account check, and a token borrowed again once when GitHub refuses one, which never sends
+ * a step twice). Unassigning first lets a swap work at GitHub's cap of ten. GitHub ignores a
+ * change an account can't make rather than refusing it, so every answer is checked. It stops
+ * at the first step that fails, and those before it stand: once GitHub made any, the result
+ * counts them and says why the next failed, while a failure before any is the error. A name
+ * given twice is sent once, and one both added and taken off not at all. The sheet's copy of
+ * the issue is marked out of date, for the read the sheet makes next, and each person
+ * assigned is kept in the People directory as assigned in the repository.
  */
 export function Edit(req: $models.EditRequest): $CancellablePromise<$models.EditResult> {
     return $Call.ByID(4216690548, req);
@@ -92,6 +95,15 @@ export function FillReply(itemID: number, replyID: number): $CancellablePromise<
  */
 export function Labels(id: number): $CancellablePromise<$models.RepoLabels> {
     return $Call.ByID(2961028679, id);
+}
+
+/**
+ * LearnAssignees reads who can be assigned in the issue's repository, when a read is due
+ * (Candidates.Stale), and returns AssigneeCandidates with what it learned: one GraphQL
+ * request of one point, at most weekly per repository, whichever sheet asks.
+ */
+export function LearnAssignees(id: number): $CancellablePromise<assignees$0.Candidates> {
+    return $Call.ByID(111663302, id);
 }
 
 /**
@@ -132,4 +144,13 @@ export function Refresh(id: number): $CancellablePromise<$models.Issue> {
  */
 export function Replies(): $CancellablePromise<$models.Reply[] | null> {
     return $Call.ByID(230097536);
+}
+
+/**
+ * SearchAssignees returns whom the picker offers to assign to the issue with id whose login
+ * or name matches query: from what the app holds when that answers the search, else after
+ * one GraphQL request of one point.
+ */
+export function SearchAssignees(id: number, query: string): $CancellablePromise<assignees$0.Candidates> {
+    return $Call.ByID(3208463900, id, query);
 }

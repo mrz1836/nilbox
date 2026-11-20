@@ -81,35 +81,6 @@ func TestTheMemoKeepsTheNewestReads(t *testing.T) {
 	assert.False(t, ok, "a read from the future is no read")
 }
 
-func TestAssignableSearchesOnceForTheSameWordsAndMarksTheUser(t *testing.T) {
-	t.Parallel()
-
-	h := newHarness(t)
-	h.github.people = []github.Assignable{{Login: "Octo-User", Name: "Octo"}, {Login: octoOther}}
-
-	got, err := h.svc.Assignable(t.Context(), issueID, " octo")
-	require.NoError(t, err)
-	assert.Equal(t, []Candidate{{Login: "Octo-User", Name: "Octo", Mine: true}, {Login: octoOther}}, got)
-
-	_, err = h.svc.Assignable(t.Context(), issueID, "OCTO ")
-	require.NoError(t, err)
-	_, err = h.svc.Assignable(t.Context(), issueID, "")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"octo", ""}, h.github.searched, "the same words are kept ten minutes")
-
-	h.clock.Advance(10 * time.Minute)
-
-	_, err = h.svc.Assignable(t.Context(), issueID, "octo")
-	require.NoError(t, err)
-	assert.Len(t, h.github.searched, 3)
-
-	h.inbox.issue.Kind = item.KindPR
-
-	got, err = h.svc.Assignable(t.Context(), issueID, "octo")
-	require.ErrorIs(t, err, ErrNotIssue)
-	assert.NotNil(t, got)
-}
-
 func TestEditSendsEachChangeOnce(t *testing.T) {
 	t.Parallel()
 
@@ -125,9 +96,44 @@ func TestEditSendsEachChangeOnce(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, EditResult{Sent: 4}, got)
 
-	assert.Equal(t, []string{"+label:triage", "-label:p1", "+assignee:" + octoOther, "-assignee:octo-third"},
-		h.github.edits, "a name given twice goes once, and one both added and taken off not at all")
+	assert.Equal(t, []string{"+label:triage", "-label:p1", "-assignee:octo-third", "+assignee:" + octoOther},
+		h.github.edits, "a name given twice goes once, one both added and taken off not at all, and the unassigned first")
 	assert.True(t, h.cached(t).fetchedAt.IsZero(), "the sheet reads it again next")
+	assert.Equal(t, []string{octoUser, octoOther}, h.assignable.SeenAssigned(), "the read's, then whom the user assigned")
+}
+
+func TestEditUnassignsEveryoneInOneRequest(t *testing.T) {
+	t.Parallel()
+
+	h := readHarness(t)
+
+	got, err := h.svc.Edit(t.Context(), EditRequest{
+		ItemID: issueID, AddAssignees: []string{"octo-fifth"}, RemoveAssignees: []string{octoThird, "octo-fourth"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, EditResult{Sent: 2}, got)
+	assert.Equal(t, []string{"-assignee:octo-third,octo-fourth", "+assignee:octo-fifth"}, h.github.edits,
+		"one request takes everyone off, then one assigns")
+}
+
+func TestEditRefusesMoreThanTenAssignees(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	nine := []string{octoUser, "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9"}
+	h.github.views[0].Assignees = github.People{Logins: nine, Total: len(nine)}
+	h.refreshed(t)
+
+	_, err := h.svc.Edit(t.Context(), EditRequest{ItemID: issueID, AddAssignees: []string{"a10", "a11", "A2"}})
+	require.ErrorIs(t, err, ErrCannotEdit)
+	assert.Equal(t, "GitHub assigns an issue to 10 people at most. Unassign someone first.", uierr.Message(err))
+	assert.Empty(t, h.github.edits, "nothing is sent")
+
+	got, err := h.svc.Edit(t.Context(), EditRequest{
+		ItemID: issueID, AddAssignees: []string{"a10", "a11"}, RemoveAssignees: []string{"A9"},
+	})
+	require.NoError(t, err, "a swap at the cap fits: the unassignment goes first")
+	assert.Equal(t, EditResult{Sent: 2}, got)
 }
 
 func TestEditNeverSendsAStepTwice(t *testing.T) {
@@ -163,18 +169,6 @@ func TestEditStopsAtTheFirstStepThatFails(t *testing.T) {
 
 	_, err = h.svc.Edit(t.Context(), EditRequest{ItemID: issueID, AddLabels: []string{"triage"}})
 	require.ErrorIs(t, err, github.ErrEditIgnored, "nothing was made, so nothing to read again")
-}
-
-func TestEditWordsSomeoneElseGitHubKeptAssigned(t *testing.T) {
-	t.Parallel()
-
-	h := readHarness(t)
-	h.github.editErr = map[string]error{"-assignee:" + octoOther: github.ErrEditIgnored}
-
-	_, err := h.svc.Edit(t.Context(), EditRequest{ItemID: issueID, RemoveAssignees: []string{octoOther}})
-	require.ErrorIs(t, err, github.ErrEditIgnored)
-	assert.Equal(t, "GitHub kept "+octoOther+" assigned to "+exampleRepo+"#12. "+
-		"Your account may not be allowed to change its assignees.", uierr.Message(err))
 }
 
 func TestEditRefusesWhatTheUserCantDoThere(t *testing.T) {

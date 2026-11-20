@@ -10,6 +10,76 @@ import (
 	"time"
 )
 
+const countPeople = `-- name: CountPeople :one
+SELECT COUNT(*) FROM people
+`
+
+// CountPeople counts the people the directory knows.
+func (q *Queries) CountPeople(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPeople)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countRepos = `-- name: CountRepos :one
+SELECT COUNT(*) FROM (
+    SELECT seen.repo FROM people_seen seen
+    UNION SELECT teams.repo FROM people_teams teams
+    UNION SELECT assignable.repo FROM people_assignable assignable
+) AS known
+`
+
+// CountRepos counts the repositories the directory knows anyone of: who works there, its
+// teams, or who can be assigned there.
+func (q *Queries) CountRepos(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countRepos)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const forgetAssignableReads = `-- name: ForgetAssignableReads :exec
+DELETE FROM people_assignable_reads
+`
+
+// ForgetAssignableReads drops every read of a repository's assignable users.
+func (q *Queries) ForgetAssignableReads(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, forgetAssignableReads)
+	return err
+}
+
+const forgetPeople = `-- name: ForgetPeople :exec
+DELETE FROM people
+`
+
+// ForgetPeople drops every person, and with them, by their keys, what was seen of them and
+// where they can be assigned.
+func (q *Queries) ForgetPeople(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, forgetPeople)
+	return err
+}
+
+const forgetReads = `-- name: ForgetReads :exec
+DELETE FROM people_reads
+`
+
+// ForgetReads drops every read of a repository's recent pull requests.
+func (q *Queries) ForgetReads(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, forgetReads)
+	return err
+}
+
+const forgetTeams = `-- name: ForgetTeams :exec
+DELETE FROM people_teams
+`
+
+// ForgetTeams drops every repository's teams.
+func (q *Queries) ForgetTeams(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, forgetTeams)
+	return err
+}
+
 const getRead = `-- name: GetRead :one
 SELECT read_at, failed_at, pulls, org FROM people_reads WHERE repo = ?
 `
@@ -32,6 +102,98 @@ func (q *Queries) GetRead(ctx context.Context, repo string) (GetReadRow, error) 
 		&i.Org,
 	)
 	return i, err
+}
+
+const listAssignable = `-- name: ListAssignable :many
+SELECT a.login_key, p.login, p.name, a.listed_at, a.assigned_at
+FROM people_assignable a
+JOIN people p ON p.login_key = a.login_key
+WHERE a.repo = ?
+ORDER BY a.login_key
+`
+
+type ListAssignableRow struct {
+	LoginKey   string
+	Login      string
+	Name       string
+	ListedAt   *time.Time
+	AssignedAt *time.Time
+}
+
+// ListAssignable returns who the app learned can be assigned in a repository, with each
+// person's login and name, by login.
+func (q *Queries) ListAssignable(ctx context.Context, repo string) ([]ListAssignableRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAssignable, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAssignableRow{}
+	for rows.Next() {
+		var i ListAssignableRow
+		if err := rows.Scan(
+			&i.LoginKey,
+			&i.Login,
+			&i.Name,
+			&i.ListedAt,
+			&i.AssignedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAssignableReads = `-- name: ListAssignableReads :many
+SELECT query_key, read_at, failed_at, total, listed
+FROM people_assignable_reads
+WHERE repo = ?
+`
+
+type ListAssignableReadsRow struct {
+	QueryKey string
+	ReadAt   *time.Time
+	FailedAt *time.Time
+	Total    int64
+	Listed   int64
+}
+
+// ListAssignableReads returns the reads of a repository's assignable users, the whole list's
+// and each search's.
+func (q *Queries) ListAssignableReads(ctx context.Context, repo string) ([]ListAssignableReadsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAssignableReads, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAssignableReadsRow{}
+	for rows.Next() {
+		var i ListAssignableReadsRow
+		if err := rows.Scan(
+			&i.QueryKey,
+			&i.ReadAt,
+			&i.FailedAt,
+			&i.Total,
+			&i.Listed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listSeen = `-- name: ListSeen :many
@@ -63,6 +225,68 @@ func (q *Queries) ListSeen(ctx context.Context, repo string) ([]ListSeenRow, err
 	for rows.Next() {
 		var i ListSeenRow
 		if err := rows.Scan(
+			&i.LoginKey,
+			&i.Login,
+			&i.Name,
+			&i.Number,
+			&i.Role,
+			&i.Access,
+			&i.At,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSeenOfOwner = `-- name: ListSeenOfOwner :many
+SELECT s.repo, s.login_key, p.login, p.name, s.number, s.role, s.access, s.at
+FROM people_seen s
+JOIN people p ON p.login_key = s.login_key
+WHERE s.repo LIKE ?1 AND s.repo <> ?2
+    AND (s.access = 1 OR s.role IN ('requested', 'suggested', 'picked'))
+ORDER BY s.at DESC
+LIMIT ?3
+`
+
+type ListSeenOfOwnerParams struct {
+	OwnerPrefix string
+	Repo        string
+	RowLimit    int64
+}
+
+type ListSeenOfOwnerRow struct {
+	Repo     string
+	LoginKey string
+	Login    string
+	Name     string
+	Number   int64
+	Role     string
+	Access   bool
+	At       time.Time
+}
+
+// ListSeenOfOwner returns what was seen, the latest first, at most row_limit rows, on the
+// pull requests of the owner's other repositories (owner_prefix is "owner/%"), of the
+// people who work there: those with access, and those someone asked to review.
+func (q *Queries) ListSeenOfOwner(ctx context.Context, arg ListSeenOfOwnerParams) ([]ListSeenOfOwnerRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSeenOfOwner, arg.OwnerPrefix, arg.Repo, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSeenOfOwnerRow{}
+	for rows.Next() {
+		var i ListSeenOfOwnerRow
+		if err := rows.Scan(
+			&i.Repo,
 			&i.LoginKey,
 			&i.Login,
 			&i.Name,
@@ -128,6 +352,55 @@ func (q *Queries) ListTeams(ctx context.Context, repo string) ([]ListTeamsRow, e
 	return items, nil
 }
 
+const markAssignableFailed = `-- name: MarkAssignableFailed :exec
+INSERT INTO people_assignable_reads (repo, query_key, failed_at)
+VALUES (?, ?, ?)
+ON CONFLICT (repo, query_key) DO UPDATE SET failed_at = excluded.failed_at
+`
+
+type MarkAssignableFailedParams struct {
+	Repo     string
+	QueryKey string
+	FailedAt *time.Time
+}
+
+// MarkAssignableFailed records a read of a repository's assignable users that failed.
+func (q *Queries) MarkAssignableFailed(ctx context.Context, arg MarkAssignableFailedParams) error {
+	_, err := q.db.ExecContext(ctx, markAssignableFailed, arg.Repo, arg.QueryKey, arg.FailedAt)
+	return err
+}
+
+const markAssignableRead = `-- name: MarkAssignableRead :exec
+INSERT INTO people_assignable_reads (repo, query_key, read_at, failed_at, total, listed)
+VALUES (?, ?, ?, NULL, ?, ?)
+ON CONFLICT (repo, query_key) DO UPDATE SET
+    read_at = excluded.read_at,
+    failed_at = NULL,
+    total = excluded.total,
+    listed = excluded.listed
+`
+
+type MarkAssignableReadParams struct {
+	Repo     string
+	QueryKey string
+	ReadAt   *time.Time
+	Total    int64
+	Listed   int64
+}
+
+// MarkAssignableRead records a read of a repository's assignable users that went through,
+// which clears a failure.
+func (q *Queries) MarkAssignableRead(ctx context.Context, arg MarkAssignableReadParams) error {
+	_, err := q.db.ExecContext(ctx, markAssignableRead,
+		arg.Repo,
+		arg.QueryKey,
+		arg.ReadAt,
+		arg.Total,
+		arg.Listed,
+	)
+	return err
+}
+
 const markFailed = `-- name: MarkFailed :exec
 INSERT INTO people_reads (repo, failed_at)
 VALUES (?, ?)
@@ -172,6 +445,67 @@ func (q *Queries) MarkRead(ctx context.Context, arg MarkReadParams) error {
 		arg.Org,
 	)
 	return err
+}
+
+const pruneAssignableBefore = `-- name: PruneAssignableBefore :execrows
+DELETE FROM people_assignable
+WHERE (listed_at IS NULL OR listed_at < ?1)
+    AND (assigned_at IS NULL OR assigned_at < ?1)
+`
+
+// PruneAssignableBefore drops who can be assigned where neither listed nor seen assigned
+// since a time.
+func (q *Queries) PruneAssignableBefore(ctx context.Context, before *time.Time) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pruneAssignableBefore, before)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const pruneAssignablePast = `-- name: PruneAssignablePast :execrows
+DELETE FROM people_assignable
+WHERE rowid IN (
+    SELECT oldest.rowid FROM people_assignable oldest
+    ORDER BY max(ifnull(oldest.listed_at, ''), ifnull(oldest.assigned_at, '')), oldest.rowid
+    LIMIT max(0, (SELECT COUNT(*) FROM people_assignable) - CAST(?1 AS INTEGER))
+)
+`
+
+// PruneAssignablePast drops the rows of who can be assigned where, last listed or seen
+// assigned earliest, past the newest row_limit rows in all.
+func (q *Queries) PruneAssignablePast(ctx context.Context, rowLimit int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pruneAssignablePast, rowLimit)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const pruneAssignableReads = `-- name: PruneAssignableReads :execrows
+DELETE FROM people_assignable_reads
+WHERE (read_at IS NULL OR read_at < ?1)
+    AND (failed_at IS NULL OR failed_at < ?1)
+    AND (query_key <> '' OR (
+        (read_at IS NULL OR read_at < ?2)
+        AND (failed_at IS NULL OR failed_at < ?2)
+    ))
+`
+
+type PruneAssignableReadsParams struct {
+	SearchesBefore *time.Time
+	ListsBefore    *time.Time
+}
+
+// PruneAssignableReads drops the reads of assignable users neither read nor failed since a
+// time: a search's since searches_before, and the whole list's since lists_before, the
+// earlier.
+func (q *Queries) PruneAssignableReads(ctx context.Context, arg PruneAssignableReadsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pruneAssignableReads, arg.SearchesBefore, arg.ListsBefore)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const pruneReads = `-- name: PruneReads :execrows
@@ -260,16 +594,30 @@ func (q *Queries) PruneTeams(ctx context.Context, requestedAt *time.Time) (int64
 }
 
 const pruneUnseenPeople = `-- name: PruneUnseenPeople :execrows
-DELETE FROM people WHERE login_key NOT IN (SELECT seen.login_key FROM people_seen seen)
+DELETE FROM people
+WHERE login_key NOT IN (SELECT seen.login_key FROM people_seen seen)
+    AND login_key NOT IN (SELECT assignable.login_key FROM people_assignable assignable)
 `
 
-// PruneUnseenPeople drops the people nothing seen names any longer.
+// PruneUnseenPeople drops the people nothing names any longer: nothing seen, and no
+// repository they can be assigned in.
 func (q *Queries) PruneUnseenPeople(ctx context.Context) (int64, error) {
 	result, err := q.db.ExecContext(ctx, pruneUnseenPeople)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const unlistAssignable = `-- name: UnlistAssignable :exec
+UPDATE people_assignable SET listed_at = NULL WHERE repo = ?
+`
+
+// UnlistAssignable marks no one of a repository as listed, before a read of its whole list
+// that named everyone marks its own again.
+func (q *Queries) UnlistAssignable(ctx context.Context, repo string) error {
+	_, err := q.db.ExecContext(ctx, unlistAssignable, repo)
+	return err
 }
 
 const unlistTeams = `-- name: UnlistTeams :exec
@@ -280,6 +628,44 @@ UPDATE people_teams SET listed = 0 WHERE repo = ?
 // just read marks its own again.
 func (q *Queries) UnlistTeams(ctx context.Context, repo string) error {
 	_, err := q.db.ExecContext(ctx, unlistTeams, repo)
+	return err
+}
+
+const upsertAssignableAssigned = `-- name: UpsertAssignableAssigned :exec
+INSERT INTO people_assignable (repo, login_key, assigned_at)
+VALUES (?, ?, ?)
+ON CONFLICT (repo, login_key) DO UPDATE SET assigned_at = excluded.assigned_at
+`
+
+type UpsertAssignableAssignedParams struct {
+	Repo       string
+	LoginKey   string
+	AssignedAt *time.Time
+}
+
+// UpsertAssignableAssigned keeps a person the app saw assigned to one of a repository's
+// issues or pull requests, at assigned_at.
+func (q *Queries) UpsertAssignableAssigned(ctx context.Context, arg UpsertAssignableAssignedParams) error {
+	_, err := q.db.ExecContext(ctx, upsertAssignableAssigned, arg.Repo, arg.LoginKey, arg.AssignedAt)
+	return err
+}
+
+const upsertAssignableListed = `-- name: UpsertAssignableListed :exec
+INSERT INTO people_assignable (repo, login_key, listed_at)
+VALUES (?, ?, ?)
+ON CONFLICT (repo, login_key) DO UPDATE SET listed_at = excluded.listed_at
+`
+
+type UpsertAssignableListedParams struct {
+	Repo     string
+	LoginKey string
+	ListedAt *time.Time
+}
+
+// UpsertAssignableListed keeps a person a read of a repository's assignable users named, at
+// listed_at.
+func (q *Queries) UpsertAssignableListed(ctx context.Context, arg UpsertAssignableListedParams) error {
+	_, err := q.db.ExecContext(ctx, upsertAssignableListed, arg.Repo, arg.LoginKey, arg.ListedAt)
 	return err
 }
 

@@ -16,6 +16,7 @@ import { useQuery } from '../../lib/useQuery'
 import { learnReviewers, type Review, type ReviewEntry, type Reviewers, type TeamCandidate } from '../../platform'
 import { PersonAvatar } from '../Avatar'
 import { PeopleIcon } from '../icons'
+import { personLabel } from '../PeopleParts'
 import { fold, PickerDialog, type Choice } from '../Picker'
 
 // OnReviewers changes who the pull request asks to review, by the picker's keys (a login, or
@@ -53,21 +54,6 @@ function TeamGlyph() {
       className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-raised text-muted"
     >
       <PeopleIcon className="size-3" />
-    </span>
-  )
-}
-
-// personLabel is a person's row: their login, then their name, quieter.
-function personLabel(login: string, name: string) {
-  return (
-    <span className="min-w-0 truncate">
-      {login}
-      {name !== '' && name !== login && (
-        <>
-          {' '}
-          <span className="text-muted">{name}</span>
-        </>
-      )}
     </span>
   )
 }

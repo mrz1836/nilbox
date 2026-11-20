@@ -52,8 +52,9 @@ export function pictureLogins(issue: Issue): string[] {
 
 // reviewPictureLogins are the people the review sheet shows a picture beside: who opened the
 // pull request, the people its conversation shows, its reviewers the conversation shows are
-// people, but a bot, and the people it asks to review, but a team. A reviewer's review in no
-// page read is left out: a cache an older build kept says nothing of who is a bot.
+// people, but a bot, the people it asks to review, but a team, and who it is assigned to. A
+// reviewer's review in no page read is left out: a cache an older build kept says nothing of
+// who is a bot.
 export function reviewPictureLogins(review: Review): string[] {
   const author = review.author !== '' && !review.isBot ? [review.author] : []
   const people = new Set(
@@ -63,6 +64,7 @@ export function reviewPictureLogins(review: Review): string[] {
   return sorted([
     ...author,
     ...review.reviews.filter((r) => !r.team && (r.requested || people.has(r.author))).map((r) => r.author),
+    ...review.assignees.map((a) => a.login),
     ...timelineLogins(review.timeline.items),
   ])
 }

@@ -348,7 +348,7 @@ budget: it reads only when you open a pull request, and nothing ahead of time.
 | What you do | Requests |
 |---|---|
 | Open the sheet | None: it shows what it read last time |
-| Its refresh, nothing pushed since | 1 GraphQL point (none within 20 seconds of the last, unless GitHub was still working out whether it can merge, when it asks up to twice more, or the header's refresh button asked) |
+| Its refresh, nothing pushed since | 1 GraphQL point, its assignees included (none within 20 seconds of the last, unless GitHub was still working out whether it can merge, when it asks up to twice more, or the header's refresh button asked) |
 | Its first refresh of a pull request of up to 100 files | 1 GraphQL point and 1 REST request |
 | Its refresh after a push | 1 GraphQL point, 1 REST request per 100 files, and 1 more to confirm the head when the file list doesn't name it |
 | Approve | 1 GraphQL point to check nothing was pushed since, then 1 REST request |
@@ -356,6 +356,7 @@ budget: it reads only when you open a pull request, and nothing ahead of time.
 | Merge, or merge past the rules | 1 GraphQL point per merge-state read (one, or up to three a second apart while GitHub works it out), then 1 REST request, plus 1 REST request when your text is posted as a comment first |
 | Turn on auto-merge | 1 GraphQL point, plus 1 GraphQL point and 1 REST request when your text is posted as a comment first |
 | Close pull request | 1 GraphQL point to check nothing was pushed since, then 1 REST request, plus 1 more for your comment |
+| Assignees | 1 REST request for everyone you unassign, then 1 for everyone you assign; no read after, since GitHub's answer says who it is assigned to |
 | A merged pull request leaving the inbox | None |
 
 GitHub's file list names the commit it listed each file at, so a read whose files all name the
@@ -376,8 +377,20 @@ projects or without them (measured on a public issue of over a hundred entries).
 | Close as completed, or as not planned | 1 GraphQL point to check for new comments, then 1 REST request, plus 1 more for your comment |
 | Unassign me | 1 REST request |
 | Labels | 1 GraphQL point to list the repository's labels, kept 10 minutes; 1 REST request for all you add, 1 for each you remove; then the sheet's read, once GitHub made any of it |
-| Assignees | 1 GraphQL point a search, the same words kept 10 minutes; 1 REST request for all you assign, 1 for each you unassign; then the sheet's read, once GitHub made any of it |
+| Assignees | 1 REST request for everyone you unassign, then 1 for everyone you assign; then the sheet's read, once GitHub made any of it |
 | A closed issue leaving the inbox | None |
+
+Both sheets' assignee pickers suggest from what Nilbox learned, with no request: who opened the
+item and took part in it, who was assigned in the repository before (every read of either sheet
+notes who is assigned, for nothing), who works on it, and who works on the owner's other
+repositories. What a picker reads it shares with the other sheet and keeps for long, since
+people change rarely:
+
+| What you do | Requests |
+|---|---|
+| Open the picker | None, or 1 GraphQL point for the repository's first 100 people who can be assigned (measured with GitHub's dry run), at most weekly per repository, whichever sheet asks |
+| Type in it | None while Nilbox holds everyone who can be assigned (a repository of up to 100), or when a search that named everyone it matched covers the words (for a week, every longer search that starts with them) or the same words were searched in the last 10 minutes; otherwise 1 GraphQL point, 300 ms after you stop typing |
+| Forget what was learned (Settings) | None |
 
 [Following a release](desktop.md#release) to published costs at most 20 GraphQL points and 20
 REST requests per release: a check a minute after the release ends, then one every three

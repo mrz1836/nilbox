@@ -1,9 +1,9 @@
 import { useState } from 'react'
 
 import { useQuery } from '../../lib/useQuery'
-import { issueAssignable, issueLabels, type Issue, type IssueCandidate } from '../../platform'
+import { issueLabels, type Issue } from '../../platform'
 import { LabelChip } from '../ItemSignals'
-import { fold, Picker } from '../Picker'
+import { Picker } from '../Picker'
 
 // IssueEdit is a change to an issue's labels or assignees, as the pickers ask for it.
 export interface IssueEdit {
@@ -73,58 +73,6 @@ export function LabelPicker({ issue, onEdit }: { issue: Issue; onEdit: OnEdit })
       note={labelsNote(loading, held.length, labels.data?.total ?? 0, shown.length)}
       current={issue.labels.map((l) => l.name)}
       onApply={(add, remove) => onEdit({ addLabels: add, removeLabels: remove })}
-    />
-  )
-}
-
-// AssigneePicker edits the issue's assignees: who it is assigned to, and the people a
-// search finds it can be, a search costing one point as the user stops typing, kept ten
-// minutes. The user takes themselves off with Unassign me, never here.
-export function AssigneePicker({ issue, onEdit }: { issue: Issue; onEdit: OnEdit }) {
-  const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState('')
-  const found = useQuery(() => issueAssignable(issue.id, query.trim()), [issue.id, query.trim()], {
-    enabled: open,
-    delay: 300,
-  })
-  const assigned = issue.assignees.map((p) => ({ login: p.login, name: '', mine: p.mine }))
-  const people: IssueCandidate[] = [
-    ...assigned,
-    ...(found.data ?? []).filter((p) => !assigned.some((a) => fold(a.login) === fold(p.login))),
-  ]
-  const loading = loadNote(found.pending && found.data === undefined, found.error)
-
-  return (
-    <Picker
-      open={open}
-      onOpen={setOpen}
-      title="Assignees"
-      buttonLabel="Edit assignees"
-      placeholder="Search people"
-      query={query}
-      onQuery={setQuery}
-      choices={people.map((p) => ({
-        key: p.login,
-        label: (
-          <span className="truncate">
-            {p.login}
-            {p.mine && (
-              <>
-                {' '}
-                <span className="text-muted">(you)</span>
-              </>
-            )}
-          </span>
-        ),
-        hint: p.name,
-        locked:
-          p.mine && issue.assignees.some((a) => a.mine)
-            ? 'Take yourself off with Unassign me, in the action menu.'
-            : '',
-      }))}
-      note={loading === '' && people.length === 0 ? 'No one matches.' : loading}
-      current={issue.assignees.map((p) => p.login)}
-      onApply={(add, remove) => onEdit({ addAssignees: add, removeAssignees: remove })}
     />
   )
 }

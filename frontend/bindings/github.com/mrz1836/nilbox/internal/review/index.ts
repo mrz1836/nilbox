@@ -23,6 +23,9 @@ export {
 
 export type {
     ActRequest,
+    Assignee,
+    AssigneesRequest,
+    AssigneesResult,
     Change,
     Check,
     CheckCounts,
@@ -34,6 +37,7 @@ export type {
     LabelsResult,
     LineComment,
     Offer,
+    PeopleSummary,
     Readiness,
     Reply,
     ReplyList,

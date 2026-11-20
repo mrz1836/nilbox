@@ -34,6 +34,11 @@ import (
 // point with them (measured in November 2026 on a pull request with a review and a review
 // request).
 //
+// ReviewFields also asks for the pull request's assignees, all of them: GitHub assigns at
+// most ten (MaxAssignees), which the review sheet shows and its assignee picker edits. The
+// whole read still costs one point with them (GitHub's own dry run, in November 2026: 2,722
+// nodes, ten more than without them).
+//
 // GitHub prices the whole read at one point, the conversation's newest hundred items and
 // each review's first twenty line comments included (measured in November 2026 on a pull
 // request with reviews, line comments, force pushes, and review requests), and still at one
@@ -71,6 +76,7 @@ fragment ReviewFields on PullRequest {
     nodes { state url submittedAt authorAssociation author { __typename login ... on User { name } } commit { oid } }
   }
   suggestedReviewers { isAuthor isCommenter reviewer { login name } }
+  assignees(first: 10) { totalCount nodes { login } }
   reviewRequests(first: 50) {
     nodes { requestedReviewer { __typename ... on User { login name } ... on Team { slug name } } }
   }
@@ -248,6 +254,10 @@ type PullReview struct {
 	// RequestedTeams are the teams it asks, with their names. Both are never nil.
 	Requested      []Person
 	RequestedTeams []Team
+
+	// Assignees are who the pull request is assigned to, all of them, in GitHub's order, and
+	// how many there are.
+	Assignees People
 }
 
 // Person is a GitHub user an answer named: their login, and their profile's display name,
@@ -555,6 +565,7 @@ type reviewNode struct {
 			Commit            *graphQLCommit `json:"commit"`
 		} `json:"nodes"`
 	} `json:"reviewBodies"`
+	Assignees          graphQLPeople `json:"assignees"`
 	SuggestedReviewers []*struct {
 		IsAuthor    bool `json:"isAuthor"`
 		IsCommenter bool `json:"isCommenter"`
@@ -828,6 +839,7 @@ func (n *reviewNode) fill(r *PullReview, self ItemRef, head string) {
 	r.BehindBy = n.behindBy()
 	r.Suggested = n.suggested()
 	r.Requested, r.RequestedTeams = n.requested()
+	r.Assignees = n.Assignees.people()
 }
 
 // suggested converts the reviewers GitHub suggests, skipping nulls and those without a

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/mrz1836/nilbox/internal/assignees"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/flight"
@@ -125,11 +126,13 @@ type GitHub interface {
 	AddComment(ctx context.Context, tok github.Token, ref item.Ref, body string) (*github.Comment, error)
 	CloseIssue(ctx context.Context, tok github.Token, ref item.Ref, reason string) (*github.IssueClosed, error)
 	FetchRepoLabels(ctx context.Context, tok github.Token, id string) (*github.RepoLabels, error)
-	FetchAssignable(ctx context.Context, tok github.Token, id, query string) ([]github.Assignable, error)
+	FetchAssignable(
+		ctx context.Context, tok github.Token, kind item.Kind, id, query string,
+	) (*github.AssignableUsers, error)
 	AddLabels(ctx context.Context, tok github.Token, ref item.Ref, names []string) ([]github.Label, error)
 	RemoveLabel(ctx context.Context, tok github.Token, ref item.Ref, name string) ([]github.Label, error)
 	AddAssignees(ctx context.Context, tok github.Token, ref item.Ref, logins []string) (*github.Edited, error)
-	RemoveAssignee(ctx context.Context, tok github.Token, ref item.Ref, login string) (*github.Edited, error)
+	RemoveAssignees(ctx context.Context, tok github.Token, ref item.Ref, logins []string) (*github.Edited, error)
 }
 
 // Replies is the prompt library's replies the composer offers: the comment replies that
@@ -145,8 +148,8 @@ type Pictures interface {
 	Pictures(ctx context.Context, logins []string) (map[string]string, error)
 }
 
-// Config holds a Service's dependencies. Every one but Pictures, Events, Clock, and Logger
-// is required.
+// Config holds a Service's dependencies. Every one but Pictures, Assignees, Events, Clock,
+// and Logger is required.
 type Config struct {
 	// Pool is the database, which holds the sheet's cache.
 	Pool *sql.DB
@@ -157,6 +160,10 @@ type Config struct {
 
 	// Pictures serves the people's profile pictures; without it the sheet shows none.
 	Pictures Pictures
+
+	// Assignees offers people to assign, and learns and searches who can be, shared with
+	// the review sheet; without it, the assignee picker offers no one.
+	Assignees *assignees.Finder
 
 	// Events hears what an action is doing as it goes (event.IssueProgress), for the sheet
 	// to show while the user waits.
@@ -174,15 +181,14 @@ type Service struct {
 	pictures Pictures
 	cache    *cacheStore
 
-	// labels and searches keep what the pickers read, and labelReads and searchReads make
-	// one read of each at a time.
-	labels      *memo[RepoLabels]
-	searches    *memo[[]github.Assignable]
-	labelReads  flight.Group[RepoLabels]
-	searchReads flight.Group[[]github.Assignable]
-	events      event.Sink
-	clock       clock.Clock
-	logger      *slog.Logger
+	// labels keeps what the label picker read, and labelReads makes one read of a
+	// repository's labels at a time.
+	labels     *memo[RepoLabels]
+	labelReads flight.Group[RepoLabels]
+	finder     *assignees.Finder
+	events     event.Sink
+	clock      clock.Clock
+	logger     *slog.Logger
 
 	// refreshes reads each issue once at a time.
 	refreshes flight.Group[Issue]
@@ -192,9 +198,8 @@ type Service struct {
 func NewService(cfg Config) *Service {
 	return &Service{
 		inbox: cfg.Inbox, github: cfg.GitHub, replies: cfg.Replies, pictures: cfg.Pictures, cache: newCacheStore(cfg.Pool),
-		labels: &memo[RepoLabels]{size: labelRepos}, searches: &memo[[]github.Assignable]{size: keptSearches},
-		events: event.Or(cfg.Events),
-		clock:  clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
+		labels: &memo[RepoLabels]{size: labelRepos}, finder: cfg.Assignees, events: event.Or(cfg.Events),
+		clock: clock.Or(cfg.Clock), logger: logging.Or(cfg.Logger),
 	}
 }
 
@@ -309,7 +314,10 @@ func (s *Service) read(ctx context.Context, id int64) (Issue, error) {
 		return Issue{}, err
 	}
 
-	var closing *Issue
+	var (
+		closing  *Issue
+		assigned []string
+	)
 
 	err = s.inbox.Read(ctx, id, func(ctx context.Context, tok github.Token, t Target) (IssueRead, error) {
 		view, readErr := s.github.FetchIssueView(ctx, tok, t.NodeID, github.DetailOptions{Projects: t.Projects})
@@ -324,11 +332,17 @@ func (s *Service) read(ctx context.Context, id int64) (Issue, error) {
 
 		closing = shown
 
+		if view.Update.Found {
+			assigned = view.Assignees.Logins
+		}
+
 		return IssueRead{Update: &view.Update}, nil
 	})
 	if err != nil {
 		return Issue{}, err
 	}
+
+	s.finder.Seen(ctx, card.ref().Repo, assigned)
 
 	if closing != nil {
 		return *closing, nil

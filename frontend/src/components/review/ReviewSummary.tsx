@@ -1,10 +1,9 @@
-import { Fragment, useState, type ReactNode } from 'react'
+import { Fragment, useState } from 'react'
 
 import { counted } from '../../lib/format'
 import { refText } from '../../lib/format'
 import { workflowsOf } from '../../lib/ignoredWorkflows'
 import { issueLook } from '../../lib/issues'
-import { PicturesContext, usePictures } from '../../lib/pictures'
 import { candidateHint, teamKey } from '../../lib/reviewers'
 import { toneDot, toneText, type Tone } from '../../lib/signals'
 import { useNow } from '../../lib/useNow'
@@ -20,10 +19,12 @@ import type {
   ReviewUnrun,
 } from '../../platform'
 import { openExternal } from '../../platform'
+import { AssigneesSection, type AssigneesEditing } from '../Assignees'
 import { PersonAvatar } from '../Avatar'
 import { chipClass, quietButtonClass } from '../controls'
 import { ExternalIcon, RereviewIcon, XIcon } from '../icons'
 import { ItemLink } from '../ItemLink'
+import { RowAction, SuggestionChips } from '../PeopleParts'
 import { SensitiveFiles } from '../SensitiveFiles'
 import { StatusDot } from '../StatusDot'
 import { ReviewerPicker, type OnReviewers } from './ReviewerPicker'
@@ -52,6 +53,9 @@ export interface ReviewSummaryProps extends IgnoreProps {
   // reviewers changes who the pull request asks to review, while the user may
   // (review.canEditReviewers); without it, the reviewers only show.
   reviewers?: ReviewersEditing | undefined
+  // assignees changes who the pull request is assigned to, while the user may
+  // (review.canEditAssignees); without it, the assignees only show.
+  assignees?: AssigneesEditing | undefined
 }
 
 // readyTone is each readiness's color.
@@ -486,35 +490,6 @@ function ReviewerLine({ r }: { r: ReviewEntry }) {
 // requests while no one is asked.
 const suggestionChips = 3
 
-// RowAction is the quiet button at the end of a reviewer's line, shown while the line is
-// hovered or holds focus: take a request off, or ask someone who reviewed again.
-function RowAction({
-  label,
-  title,
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string
-  title: string
-  disabled: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={`${quietButtonClass} shrink-0 p-0.5 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100`}
-    >
-      {children}
-    </button>
-  )
-}
-
 // requestKey is the picker's key for a reviewer's request: their login, or a team's teamKey.
 function requestKey(r: ReviewEntry): string {
   return r.team ? teamKey(r.author.slice(r.author.indexOf('/') + 1)) : r.author
@@ -534,39 +509,14 @@ function Suggestions({
   onMore: () => void
 }) {
   const now = useNow()
-  const chips = (candidates?.people ?? []).slice(0, suggestionChips)
-  const pictures = usePictures(chips.map((c) => c.login))
+  const chips = (candidates?.people ?? []).slice(0, suggestionChips).map((c) => ({
+    login: c.login,
+    text: c.login,
+    label: `Ask ${c.login} to review`,
+    title: [c.name, candidateHint(c, now)].filter((w) => w !== '').join(' · '),
+  }))
 
-  if (chips.length === 0) {
-    return null
-  }
-
-  return (
-    <PicturesContext value={pictures}>
-      <div aria-label="Suggested reviewers" role="group" className="flex flex-wrap items-center gap-1.5">
-        {chips.map((c) => (
-          <button
-            key={c.login}
-            type="button"
-            aria-label={`Ask ${c.login} to review`}
-            aria-busy={busy === c.login || undefined}
-            title={[c.name, candidateHint(c, now)].filter((w) => w !== '').join(' · ')}
-            disabled={busy !== ''}
-            onClick={() => {
-              onAsk(c.login)
-            }}
-            className={`${chipClass} inline-flex items-center gap-1.5 text-text enabled:hover:border-accent/60 enabled:hover:text-accent disabled:opacity-60`}
-          >
-            <PersonAvatar login={c.login} />
-            {c.login}
-          </button>
-        ))}
-        <button type="button" onClick={onMore} className={quietButtonClass}>
-          More…
-        </button>
-      </div>
-    </PicturesContext>
-  )
+  return <SuggestionChips label="Suggested reviewers" chips={chips} busy={busy} onPick={onAsk} onMore={onMore} />
 }
 
 // Reviewers lists each reviewer in a line: those who reviewed, each with their latest
@@ -771,9 +721,9 @@ export function Readiness({ review }: { review: Review }) {
 
 // ReviewSummary sums up a pull request in a few lines: what kind of change it is and where,
 // what a dependency update bumps, its sensitive files, the issues it closes, its reviewers,
-// and its checks, with the held runs that don't count, whose workflows it offers to ignore.
-// The reviewers come before the checks, so however many checks run, who reviewed and who
-// still has to stays in view.
+// who it is assigned to, and its checks, with the held runs that don't count, whose
+// workflows it offers to ignore. The reviewers and the assignees come before the checks, so
+// however many checks run, who reviewed, who still has to, and whose it is stay in view.
 export function ReviewSummary({
   review,
   item,
@@ -783,6 +733,7 @@ export function ReviewSummary({
   onIgnore,
   mark = 'current',
   reviewers,
+  assignees,
 }: ReviewSummaryProps) {
   const { change } = review
 
@@ -796,6 +747,16 @@ export function ReviewSummary({
       </div>
       <Closes review={review} />
       <Reviewers review={review} onShow={onShowReview} editing={reviewers} />
+      <AssigneesSection
+        look="summary"
+        itemId={review.id}
+        repo={review.repo}
+        noun="pull request"
+        url={review.url}
+        assignees={review.assignees}
+        more={review.moreAssignees}
+        editing={assignees}
+      />
       <Checks review={review} mark={mark} ignored={ignored} onIgnore={onIgnore} />
     </section>
   )

@@ -31,11 +31,23 @@ type RepoLabel struct {
 	Description string
 }
 
-// Assignable is someone an issue can be assigned to: their login, and their name, or "".
-type Assignable struct {
-	Login string
-	Name  string
+// AssignableUsers are the people a read of a repository's assignable users named, the
+// first AssignableMax in GitHub's order, never nil, and how many match in all: a read with
+// len(People) >= Total named everyone.
+type AssignableUsers struct {
+	People []Person
+	Total  int
 }
+
+// AssignableMax is how many people one read of a repository's assignable users names at
+// most: one page.
+const AssignableMax = 100
+
+// assignableMaxText is AssignableMax in the query's text.
+const assignableMaxText = "100"
+
+// MaxAssignees is how many people GitHub lets an issue or a pull request be assigned to.
+const MaxAssignees = 10
 
 // ErrInvalidLabel is returned for a label name no label can have, before anything is sent.
 var ErrInvalidLabel = errors.New("invalid label name")
@@ -58,14 +70,16 @@ const repoLabelsQuery = `query RepoLabels($id: ID!) {
 }
 `
 
-// assignableQuery reads the people an issue can be assigned to whose login or name
-// matches $query, by the issue's node ID. It costs one point.
+// assignableQuery reads the people an issue or a pull request can be assigned to whose
+// login or name matches $query, "" for everyone, by the item's node ID, so the caller needs
+// no more than the item: the first page of 100, and how many match. It costs one point
+// (GitHub's own dry run, in November 2026: 100 nodes).
 const assignableQuery = `query Assignable($id: ID!, $query: String!) {
   node(id: $id) {
     __typename
-    ... on Issue {
+    ... on RepositoryNode {
       repository {
-        assignableUsers(first: 20, query: $query) { nodes { login name } }
+        assignableUsers(first: ` + assignableMaxText + `, query: $query) { totalCount nodes { login name } }
       }
     }
   }
@@ -82,11 +96,14 @@ func (c *Client) FetchRepoLabels(ctx context.Context, tok Token, id string) (*Re
 	return labels, Redact(err, tok)
 }
 
-// FetchAssignable reads the people the issue with node ID id can be assigned to whose
-// login or name matches query, the first twenty, with one GraphQL request of one point.
-// An issue GitHub can no longer find returns ErrIssueGone.
-func (c *Client) FetchAssignable(ctx context.Context, tok Token, id, query string) ([]Assignable, error) {
-	people, err := c.fetchAssignable(ctx, tok, id, query)
+// FetchAssignable reads the people the issue or pull request (kind) with node ID id can be
+// assigned to whose login or name matches query, "" for everyone, the first AssignableMax,
+// with how many match, with one GraphQL request of one point. An item GitHub can no longer
+// find returns ErrIssueGone or ErrPullGone.
+func (c *Client) FetchAssignable(
+	ctx context.Context, tok Token, kind item.Kind, id, query string,
+) (*AssignableUsers, error) {
+	people, err := c.fetchAssignable(ctx, tok, kind, id, query)
 
 	return people, Redact(err, tok)
 }
@@ -112,12 +129,24 @@ func (c *Client) RemoveLabel(ctx context.Context, tok Token, ref item.Ref, name 
 	return labels, Redact(err, tok)
 }
 
-// AddAssignees assigns logins to the issue ref, with one REST request (POST
-// /repos/{owner}/{repo}/issues/{number}/assignees). GitHub answers with the issue; a login
-// missing from its assignees is one GitHub didn't assign, as it does for someone who can't
-// be instead of refusing, and ErrEditIgnored is returned naming them.
+// AddAssignees assigns logins to the issue or pull request ref, with one REST request (POST
+// /repos/{owner}/{repo}/issues/{number}/assignees, where GitHub keeps a pull request's
+// assignees too). GitHub answers with the item, whose assignees the result holds
+// (Edited.Assignees); a login missing from them is one GitHub didn't assign, as it does for
+// someone who can't be instead of refusing, and ErrEditIgnored is returned naming them.
 func (c *Client) AddAssignees(ctx context.Context, tok Token, ref item.Ref, logins []string) (*Edited, error) {
 	edited, err := c.addAssignees(ctx, tok, ref, logins)
+
+	return edited, Redact(err, tok)
+}
+
+// RemoveAssignees takes logins off the assignees of the issue or pull request ref, with one
+// REST request (DELETE /repos/{owner}/{repo}/issues/{number}/assignees). GitHub answers with
+// the item as it stands after the edit, whose assignees the result holds; anyone it still
+// has is a change GitHub ignored, and ErrEditIgnored is returned naming them. Taking off
+// someone it doesn't have changes nothing.
+func (c *Client) RemoveAssignees(ctx context.Context, tok Token, ref item.Ref, logins []string) (*Edited, error) {
+	edited, err := c.removeAssignees(ctx, tok, ref, logins)
 
 	return edited, Redact(err, tok)
 }
@@ -143,7 +172,8 @@ func (c *Client) fetchRepoLabels(ctx context.Context, tok Token, id string) (*Re
 		} `json:"repository"`
 	}
 
-	if err := c.issueRepoRead(ctx, tok, "repository labels", repoLabelsQuery, map[string]any{"id": id}, &node); err != nil {
+	vars := map[string]any{"id": id}
+	if err := c.itemRepoRead(ctx, tok, item.KindIssue, "repository labels", repoLabelsQuery, vars, &node); err != nil {
 		return nil, err
 	}
 
@@ -161,11 +191,14 @@ func (c *Client) fetchRepoLabels(ctx context.Context, tok Token, id string) (*Re
 }
 
 // fetchAssignable sends the assignable people read.
-func (c *Client) fetchAssignable(ctx context.Context, tok Token, id, query string) ([]Assignable, error) {
+func (c *Client) fetchAssignable(
+	ctx context.Context, tok Token, kind item.Kind, id, query string,
+) (*AssignableUsers, error) {
 	var node struct {
 		Repository struct {
 			AssignableUsers struct {
-				Nodes []*struct {
+				TotalCount int `json:"totalCount"`
+				Nodes      []*struct {
 					Login string `json:"login"`
 					Name  string `json:"name"`
 				} `json:"nodes"`
@@ -174,25 +207,35 @@ func (c *Client) fetchAssignable(ctx context.Context, tok Token, id, query strin
 	}
 
 	vars := map[string]any{"id": id, "query": strings.TrimSpace(query)}
-	if err := c.issueRepoRead(ctx, tok, "assignable people", assignableQuery, vars, &node); err != nil {
+	if err := c.itemRepoRead(ctx, tok, kind, "assignable people", assignableQuery, vars, &node); err != nil {
 		return nil, err
 	}
 
-	out := []Assignable{}
+	out := &AssignableUsers{People: []Person{}}
 
 	for _, n := range node.Repository.AssignableUsers.Nodes {
 		if n != nil && n.Login != "" {
-			out = append(out, Assignable{Login: n.Login, Name: n.Name})
+			out.People = append(out.People, Person{Login: n.Login, Name: n.Name})
 		}
 	}
+
+	out.Total = max(node.Repository.AssignableUsers.TotalCount, len(out.People))
 
 	return out, nil
 }
 
-// issueRepoRead sends a read, named name in errors, of the repository of the issue whose
-// node ID vars holds, and decodes the issue's node into into. An issue GitHub can no longer
-// find is ErrIssueGone, and a node that is not an issue is malformed.
-func (c *Client) issueRepoRead(ctx context.Context, tok Token, name, query string, vars map[string]any, into any) error {
+// itemRepoRead sends a read, named name in errors, of the repository of the issue or pull
+// request (kind) whose node ID vars holds, and decodes the item's node into into. An item
+// GitHub can no longer find is ErrIssueGone or ErrPullGone, and a node of another kind is
+// malformed.
+func (c *Client) itemRepoRead(
+	ctx context.Context, tok Token, kind item.Kind, name, query string, vars map[string]any, into any,
+) error {
+	want, gone, err := nodeOf(kind)
+	if err != nil {
+		return err
+	}
+
 	if id, _ := vars["id"].(string); id == "" {
 		return fmt.Errorf("%w: no node ID", ErrInvalidItemRef)
 	}
@@ -202,20 +245,20 @@ func (c *Client) issueRepoRead(ctx context.Context, tok Token, name, query strin
 		return err
 	}
 
-	if gone, goneErr := goneNode(resp); gone || goneErr != nil {
+	if isGone, goneErr := goneNode(resp); isGone || goneErr != nil {
 		if goneErr != nil {
 			return goneErr
 		}
 
-		return ErrIssueGone
+		return gone
 	}
 
-	var kind struct {
+	var node struct {
 		TypeName string `json:"__typename"`
 	}
 
-	if err = json.Unmarshal(resp.Data.Node, &kind); err != nil || kind.TypeName != typeIssue {
-		return fmt.Errorf("%w: the ID is not an issue", ErrMalformedResponse)
+	if err = json.Unmarshal(resp.Data.Node, &node); err != nil || node.TypeName != want {
+		return fmt.Errorf("%w: the ID is not %s", ErrMalformedResponse, kindWords(kind))
 	}
 
 	if err = json.Unmarshal(resp.Data.Node, into); err != nil {
@@ -223,6 +266,28 @@ func (c *Client) issueRepoRead(ctx context.Context, tok Token, name, query strin
 	}
 
 	return nil
+}
+
+// nodeOf is the GraphQL type of an item of kind, and the error for one GitHub can no longer
+// find; a kind that is neither an issue nor a pull request is an error.
+func nodeOf(kind item.Kind) (typeName string, gone, err error) {
+	switch kind {
+	case item.KindIssue:
+		return typeIssue, ErrIssueGone, nil
+	case item.KindPR:
+		return typePullRequest, ErrPullGone, nil
+	default:
+		return "", nil, fmt.Errorf("%w: kind %q", ErrInvalidItemRef, kind)
+	}
+}
+
+// kindWords names an item of kind in a sentence: "an issue" or "a pull request".
+func kindWords(kind item.Kind) string {
+	if kind == item.KindPR {
+		return "a pull request"
+	}
+
+	return "an issue"
 }
 
 // restLabel is a label as a REST answer names it.
@@ -305,8 +370,48 @@ func labelGone(err error) bool {
 
 // addAssignees sends the edit and checks GitHub's answer.
 func (c *Client) addAssignees(ctx context.Context, tok Token, ref item.Ref, logins []string) (*Edited, error) {
+	answer, err := c.assigneesEdit(ctx, tok, ref, http.MethodPost, logins)
+	if err != nil {
+		return nil, editError(ref, fmt.Errorf("assign %s: %w", ref, err))
+	}
+
+	if missing := missingNames(logins, answer.Assignees); len(missing) > 0 {
+		return nil, uierr.New(
+			fmt.Sprintf("GitHub didn't assign %s to %s. They may not be someone it can be assigned to.",
+				strings.Join(missing, ", "), ref),
+			fmt.Errorf("assign %s: %w", ref, ErrEditIgnored),
+		)
+	}
+
+	return answer, nil
+}
+
+// removeAssignees sends the edit and checks GitHub's answer.
+func (c *Client) removeAssignees(ctx context.Context, tok Token, ref item.Ref, logins []string) (*Edited, error) {
+	answer, err := c.assigneesEdit(ctx, tok, ref, http.MethodDelete, logins)
+	if err != nil {
+		return nil, editError(ref, fmt.Errorf("unassign people from %s: %w", ref, err))
+	}
+
+	if kept := keptNames(logins, answer.Assignees); len(kept) > 0 {
+		return nil, uierr.New(
+			fmt.Sprintf("GitHub kept %s assigned to %s. Your account may not be allowed to change its assignees.",
+				strings.Join(kept, ", "), ref),
+			fmt.Errorf("unassign people from %s: %w", ref, ErrEditIgnored),
+		)
+	}
+
+	return answer, nil
+}
+
+// assigneesEdit sends one edit of the assignees of the issue or pull request ref, method
+// POST to assign logins or DELETE to take them off, at the issues endpoint, where GitHub
+// keeps a pull request's assignees too, and decodes GitHub's answer, the item as it stands
+// after: when it was last updated, and who it is assigned to. Every login is checked before
+// anything is sent. An error is the edit's own, for the caller to word.
+func (c *Client) assigneesEdit(ctx context.Context, tok Token, ref item.Ref, method string, logins []string) (*Edited, error) {
 	if len(logins) == 0 {
-		return nil, fmt.Errorf("%w: no one to assign", ErrInvalidLogin)
+		return nil, fmt.Errorf("%w: no one to assign or unassign", ErrInvalidLogin)
 	}
 
 	for _, login := range logins {
@@ -320,9 +425,9 @@ func (c *Client) addAssignees(ctx context.Context, tok Token, ref item.Ref, logi
 		return nil, fmt.Errorf("encode the edit: %w", err)
 	}
 
-	raw, err := c.edit(ctx, tok, http.MethodPost, issuePath(ref)+"/assignees", body)
+	raw, err := c.edit(ctx, tok, method, issuePath(ref)+"/assignees", body)
 	if err != nil {
-		return nil, editError(ref, fmt.Errorf("assign %s: %w", ref, err))
+		return nil, err
 	}
 
 	var answer struct {
@@ -334,20 +439,15 @@ func (c *Client) addAssignees(ctx context.Context, tok Token, ref item.Ref, logi
 		return nil, fmt.Errorf("%w: decode %s: %w", ErrMalformedResponse, ref, err)
 	}
 
-	assigned := make([]string, 0, len(answer.Assignees))
+	out := &Edited{UpdatedAt: answer.UpdatedAt.UTC(), Assignees: []string{}}
+
 	for _, a := range answer.Assignees {
-		assigned = append(assigned, a.Login)
+		if a.Login != "" {
+			out.Assignees = append(out.Assignees, a.Login)
+		}
 	}
 
-	if missing := missingNames(logins, assigned); len(missing) > 0 {
-		return nil, uierr.New(
-			fmt.Sprintf("GitHub didn't assign %s to %s. They may not be someone it can be assigned to.",
-				strings.Join(missing, ", "), ref),
-			fmt.Errorf("assign %s: %w", ref, ErrEditIgnored),
-		)
-	}
-
-	return &Edited{UpdatedAt: answer.UpdatedAt.UTC()}, nil
+	return out, nil
 }
 
 // decodeLabels reads an issue's labels from a REST answer.

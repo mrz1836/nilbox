@@ -119,7 +119,7 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   reviewing: {
     label: 'Reviewing',
     description:
-      'How the review sheet merges a pull request, the workflows whose held runs never count, and where its replies are kept.',
+      'How the review sheet merges a pull request, the workflows whose held runs never count, the people the pickers suggest, and where its replies are kept.',
   },
   autopilot: {
     label: 'Autopilot',
@@ -357,6 +357,14 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
         'checks',
         'fork',
       ],
+    },
+    {
+      label: 'People',
+      keywords: ['reviewers', 'assignees', 'assign', 'suggest', 'picker', 'who works', 'collaborators', 'org'],
+    },
+    {
+      label: 'Learned people',
+      keywords: ['forget', 'clear', 'reset', 'reviewers', 'assignees', 'cache', 'directory', 'privacy'],
     },
     {
       label: 'Review replies',

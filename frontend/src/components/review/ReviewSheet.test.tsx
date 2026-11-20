@@ -2189,6 +2189,52 @@ describe('ReviewSheet tabs', () => {
     expect(platform.rebuildReview).not.toHaveBeenCalled()
   })
 
+  it('assigns and unassigns from the summary, then builds the sheet again with no read', async () => {
+    const editable = review({ canEditAssignees: true, assignees: [{ login: 'octo-other', mine: false }] })
+    platform.openReview.mockResolvedValue(editable)
+    platform.refreshReview.mockResolvedValue(editable)
+    platform.rebuildReview.mockResolvedValue(
+      review({ canEditAssignees: true, assignees: [{ login: 'octo-member', mine: false }] }),
+    )
+    platform.editAssignees.mockResolvedValue({ sent: 2, failed: '' })
+    render(<Harness />)
+
+    const assignees = await screen.findByRole('region', { name: 'Assignees' })
+    await waitFor(() => {
+      expect(platform.reviewAssigneeCandidates).toHaveBeenCalledWith(1)
+    })
+
+    await userEvent.click(within(assignees).getByRole('button', { name: 'Edit assignees' }))
+
+    const picker = within(await screen.findByRole('dialog', { name: 'Assignees' }))
+    await userEvent.click(picker.getByRole('checkbox', { name: /^octo-other/ }))
+    await userEvent.click(picker.getByRole('checkbox', { name: /^octo-member/ }))
+
+    const reads = platform.readReviewAgain.mock.calls.length + platform.refreshReview.mock.calls.length
+    await userEvent.click(picker.getByRole('button', { name: 'Assign 1 · Unassign 1' }))
+
+    expect(platform.editAssignees).toHaveBeenCalledExactlyOnceWith({
+      itemId: 1,
+      add: ['octo-member'],
+      remove: ['octo-other'],
+    })
+    expect(await within(assignees).findByText('octo-member')).toBeInTheDocument()
+    expect(platform.rebuildReview).toHaveBeenCalledWith(1)
+    expect(platform.readReviewAgain.mock.calls.length + platform.refreshReview.mock.calls.length, 'no read').toBe(reads)
+  })
+
+  it('shows who a pull request is assigned to, with no edits, while the user can’t change them', async () => {
+    const shown = review({ assignees: [{ login: 'octo-user', mine: true }] })
+    platform.openReview.mockResolvedValue(shown)
+    platform.refreshReview.mockResolvedValue(shown)
+    render(<Harness />)
+
+    const assignees = await screen.findByRole('region', { name: 'Assignees' })
+    expect(assignees).toHaveTextContent('octo-user (you)')
+    expect(within(assignees).queryByRole('button', { name: 'Edit assignees' })).not.toBeInTheDocument()
+    expect(platform.reviewAssigneeCandidates).not.toHaveBeenCalled()
+  })
+
   it('quotes a comment into the review, as a comment, and focuses it', async () => {
     platform.refreshReview.mockResolvedValue(withConversation())
     render(<Harness tab="comments" />)

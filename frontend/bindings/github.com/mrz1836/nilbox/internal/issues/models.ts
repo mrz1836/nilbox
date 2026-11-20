@@ -51,16 +51,6 @@ export const Action = {
 } as const;
 
 /**
- * Candidate is someone the issue can be assigned to: their login, their name or "", and
- * whether they are the user.
- */
-export interface Candidate {
-    "login": string;
-    "name": string;
-    "mine": boolean;
-}
-
-/**
  * ChecksWord is a pull request's checks, in a word.
  */
 export type ChecksWord = "" | "passing" | "failing" | "running";

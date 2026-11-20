@@ -111,7 +111,10 @@ export function AccountSection({ account, projectAccess }: AccountSectionProps) 
       <ProjectsAccess access={projectAccess} />
       <Note>
         {brand.name} signs in through the GitHub CLI: it borrows gh&apos;s token, keeps it in memory, and never stores
-        it. To use another account, run <code className="font-mono">gh auth switch</code>, then refresh the inbox.
+        it. The token needs the <code className="font-mono">repo</code> and <code className="font-mono">read:org</code>{' '}
+        scopes, which <code className="font-mono">gh auth login</code> grants; to add them, run{' '}
+        <code className="font-mono">gh auth refresh -s repo,read:org</code>. To use another account, run{' '}
+        <code className="font-mono">gh auth switch</code>, then refresh the inbox.
       </Note>
     </div>
   )

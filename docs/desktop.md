@@ -2526,7 +2526,7 @@ clearing on: it marks a notification done, or read, when the work behind it is f
 | Comment on an issue | The issue sheet | 1 REST point |
 | Close an issue as completed, or as not planned | The issue sheet, after you confirm | 1 GraphQL point to check for new comments, then 1 REST point (1 more for your comment) |
 | Add or remove labels | The issue sheet's **Labels**, with triage access | 1 GraphQL point to list the repository's labels (kept 10 minutes), then 1 REST point for all you add, and 1 for each you remove |
-| Assign or unassign someone else | The issue sheet's **Assignees**, with triage access | 1 GraphQL point a search (kept 10 minutes), then 1 REST point for all you assign, and 1 for each you unassign |
+| Assign or unassign someone else | **Assignees** on the review sheet or the issue sheet, with triage access | 1 REST point for everyone you unassign, then 1 for everyone you assign; the picker reads who can be assigned for 1 GraphQL point at most weekly per repository, and 1 a search only when nothing kept answers it |
 | Mark a GitHub notification done, or read | On its own, once you turn on **Clear them automatically** in Settings → GitHub notifications | 1 REST point each, at most 50 a minute and 300 an hour, and 1 more for one that changed after the work was done, to read who commented last |
 
 From the card's menu, once GitHub has taken you off, the item leaves that list (and the inbox,
@@ -2622,7 +2622,8 @@ Every card gets it, in any list.
   opening in the [issue sheet](#reading-an-issue) when it is in your inbox; the checks, listed open
   with the failing ones first, then those running, then those passed, the required ones marked,
   and the skipped ones folded away below them under their count (click a count to open or fold
-  it); the card's sensitive-file chip; and each reviewer's latest review. A check that is queued
+  it); the card's sensitive-file chip; each reviewer's latest review; and who it is assigned to
+  (see [Assignees](#reviewing-a-pull-request) below). A check that is queued
   or in progress has a ring swelling slowly out of its amber dot, as a working session's dot
   does on its card, and so does the count of those running (**43 checks · 5 failing · 5
   running**), so a folded list still shows that CI is at work. With reduced motion, the dots
@@ -2825,6 +2826,34 @@ each repository offers first** (the default, GitHub's own first choice for you t
 and merge**, **Create a merge commit**, or **Rebase and merge**. A repository that doesn't allow
 the one you chose starts on the one it offers first.
 
+**Assignees.** The summary lists who the pull request is assigned to, under its reviewers, each
+with their picture, yours marked **(you)**. With triage access or more to an open pull request
+the sheet has read, **Edit** opens a picker of the same kind as the reviewers': who it is
+assigned to first, then **Suggested** (you, its author, the people who took part in it, and
+whoever was assigned in the repository before), the people who **work on** the repository, the
+others GitHub lists as **can be assigned** there, the people who work on the owner's **other
+repositories**, and those a search **found on GitHub**, each with a word on why. Typing filters
+them at once on this Mac. While Nilbox's list of who can be assigned is cut short (a repository
+with more than 100), a pause in typing searches GitHub too, but only when nothing Nilbox kept
+answers the words: a search that named everyone it matched answers every longer one for a week,
+and the same words again for ten minutes. The picker reads who can be assigned in the repository
+once a week at most, as it opens. **Apply** (named for what it does, as in **Assign 2 · Unassign
+1**) takes everyone off in one request, then assigns everyone added in one more, so a swap works
+at GitHub's cap of ten, and the sheet shows GitHub's answer at once, without reading the pull
+request again. Hover a line for **×** to unassign that person; with no one assigned, the summary
+offers **Assign yourself**, the author, and one more in one click, and **More…** for the picker.
+You take yourself off with **Unassign me**, in the card's menu, never here; your own row in the
+picker stays checked. A pull request read by an older Nilbox shows its assignees once it is read
+again. The card learns that you assigned yourself at the next refresh.
+
+**People.** **Settings → Reviewing** → **People** says how much Nilbox learned of who works on
+each repository and who can be assigned there (as in **12 people across 3 repositories**), which
+the reviewer and assignee pickers suggest from without asking GitHub. It learns from the pull
+requests and issues you open, and from the pickers' own reads, and keeps it on this Mac.
+**Forget…**, after you confirm, empties it: the pickers start again from what Nilbox reads next,
+and read who can be assigned in each repository again as you open them. Nothing on GitHub
+changes.
+
 **Nudges.** **Settings → Reviewing** → **Nudges** decides when a pull request you requested
 changes on, waiting on its author, offers **Nudge** on its card. **Offer a nudge after** is how
 long it has to be quiet first: **Off**, **12 hours**, **1 day** (the default), **2 days**, **3
@@ -2950,14 +2979,15 @@ items.
   their progress, the issue it is part of, and who took part.
 - **Labels and assignees,** with triage access or more to an open issue's repository: **Edit**
   beside **Labels** lists the repository's labels, the first hundred in name order, to filter
-  and check, each checked while the issue has it; **Edit** beside **Assignees** lists who it is
-  assigned to and searches the people it can be as you stop typing (a search is kept ten
-  minutes). They wait for the sheet's first read, so they start from who the issue is
-  assigned to. **Apply** (or **⌘↩**) sends only what differs from the issue, checks every
-  answer, since GitHub ignores a change an account can't make rather than refusing it, and
-  reads the issue again once GitHub made any of it; the picker stays open until GitHub
+  and check, each checked while the issue has it; **Assignees** works as on the review sheet
+  (see [Assignees](#reviewing-a-pull-request)): the same picker, sections, and search, **×** to
+  unassign someone, and, with no one assigned, **Assign yourself** and a few others in one
+  click. They wait for the sheet's first read, so they start from who the issue is assigned to.
+  **Apply** (or **⌘↩**) sends only what differs from the issue, unassigning before it assigns,
+  checks every answer, since GitHub ignores a change an account can't make rather than refusing
+  it, and reads the issue again once GitHub made any of it; the picker stays open until GitHub
   answers, and a step that failed says why there, while those before it stand. You take
-  yourself off with **Unassign me**, never here.
+  yourself off with **Unassign me**, in the action menu, never here.
 - **The latest agent session** on the issue, as on the review sheet, with **Use as comment**.
 
 **Links between the sheets.** A pull request or issue either sheet names, in the details, the

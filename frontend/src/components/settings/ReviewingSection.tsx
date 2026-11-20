@@ -1,16 +1,23 @@
 import { startTransition, useActionState, useId, useState } from 'react'
 
+import { attempt } from '../../lib/call'
+import { counted } from '../../lib/format'
 import { snoozeLength } from '../../lib/triage'
+import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
+  forgetPeople,
+  peopleSummary,
   setIgnoredWorkflows,
   setMergeMethod,
   setNudgeAfterHours,
   setNudgeSnooze,
   type MergeMethodSetting,
+  type PeopleSummary,
 } from '../../platform'
-import { Segmented, type SegmentOption } from '../controls'
-import { ChoiceRow, ErrorText, Group, joinIds, Note, SectionIntro, SwitchRow } from './rows'
+import { ConfirmDialog } from '../ConfirmDialog'
+import { buttonClass, Segmented, type SegmentOption } from '../controls'
+import { ChoiceRow, ErrorText, Group, joinIds, Note, SectionIntro, SettingRow, SwitchRow } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
 
@@ -82,6 +89,91 @@ function nudgeOptions(stored: number): SegmentOption<string>[] {
   return hours.map((n) => ({ value: String(n), ...nudgeWords(n) }))
 }
 
+// learnedWords say how much the app learned of who works where, as in "12 people across 3
+// repositories", or that it is still counting.
+function learnedWords(summary: PeopleSummary | undefined): string {
+  if (summary === undefined) {
+    return 'Counting what the app learned…'
+  }
+
+  if (summary.people === 0) {
+    return 'Nothing yet: the app learns as you open pull requests and issues.'
+  }
+
+  return `${counted(summary.people, 'person', 'people')} across ${counted(summary.repos, 'repository', 'repositories')}.`
+}
+
+// People says how much the app learned of who works on each repository and who can be
+// assigned there, which the reviewer and assignee pickers suggest from, and forgets it all
+// once the user confirms, after which the pickers learn again from what the app reads next.
+function People() {
+  const id = useId()
+  const summary = useQuery(() => peopleSummary(), [], { log: 'Count the people the app learned' })
+  const [confirming, setConfirming] = useState(false)
+  const [forgetting, setForgetting] = useState(false)
+  const [error, setError] = useState('')
+  const controlId = `${id}-forget`
+
+  const forget = async () => {
+    setForgetting(true)
+    setError('')
+
+    const result = await attempt(forgetPeople())
+
+    setForgetting(false)
+    setConfirming(false)
+
+    if (result.ok) {
+      summary.set(() => result.data)
+    } else {
+      setError(result.error)
+    }
+  }
+
+  return (
+    <section aria-labelledby={`${id}-people`} className="flex flex-col gap-3">
+      <SectionIntro id={`${id}-people`} title="People">
+        Who works on each repository, and who can be assigned there, which the reviewer and assignee pickers suggest
+        from without asking GitHub. The app learns it from the pull requests and issues you open, and keeps it on this
+        Mac.
+      </SectionIntro>
+      <Group>
+        <SettingRow label="Learned people" controlId={controlId} description={learnedWords(summary.data)} error={error}>
+          <button
+            id={controlId}
+            type="button"
+            aria-label="Forget the people the app learned"
+            aria-describedby={joinIds(`${controlId}-help`, error !== '' && `${controlId}-error`)}
+            disabled={summary.data === undefined || summary.data.people === 0 || forgetting}
+            onClick={() => {
+              setConfirming(true)
+            }}
+            className={buttonClass}
+          >
+            Forget…
+          </button>
+        </SettingRow>
+      </Group>
+      {confirming && (
+        <ConfirmDialog
+          title="Forget the people the app learned?"
+          confirmLabel={forgetting ? 'Forgetting…' : 'Forget'}
+          busy={forgetting}
+          onCancel={() => {
+            setConfirming(false)
+          }}
+          onConfirm={() => {
+            void forget()
+          }}
+        >
+          The pickers start again from what the app reads next, and read who can be assigned in each repository from
+          GitHub again as you open them. Nothing on GitHub changes.
+        </ConfirmDialog>
+      )}
+    </section>
+  )
+}
+
 export interface ReviewingSectionProps extends SectionProps {
   // onManageReplies opens the review replies in the Prompts tab, from the nudges' note;
   // without it the note names the place alone.
@@ -91,8 +183,8 @@ export interface ReviewingSectionProps extends SectionProps {
 // ReviewingSection holds how the review sheet merges a pull request, saved as soon as it
 // is chosen, when a pull request waiting on its author offers a nudge and whether a nudge
 // snoozes it, each saved as soon as it is chosen, the workflows whose held runs never count
-// (Ignored workflows), each change stored as it is made, and points at where the review
-// replies are kept.
+// (Ignored workflows), each change stored as it is made, the people the app learned, which
+// it forgets on request, and points at where the review replies are kept.
 export function ReviewingSection({ settings: stored, onSaved, onManageReplies }: ReviewingSectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
@@ -292,6 +384,7 @@ export function ReviewingSection({ settings: stored, onSaved, onManageReplies }:
         />
         <Note id={`${id}-names`}>A name matches a workflow’s whole name, case and all.</Note>
       </section>
+      <People />
       <SectionIntro title="Review replies">
         Reply templates for approvals, requests for changes, comments, and nudges live in{' '}
         <span className="text-text">Prompts → Review replies</span>.

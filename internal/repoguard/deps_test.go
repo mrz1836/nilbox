@@ -266,6 +266,14 @@ func boundaries() []boundary {
 				"sheet hands it in its own tables, and knows no GitHub client, no service, and neither sheet",
 		},
 		{
+			pkg: "internal/assignees",
+			forbidden: append(slices.Clone(noService),
+				"internal/review", "internal/issues", "internal/people", "internal/avatars"),
+			why: "assignees is what both sheets' assignee pickers share: it reaches the people directory through its " +
+				"own Directory interface, which core adapts, and GitHub only through the Read each sheet hands it; it " +
+				"knows no store, no service, and neither sheet",
+		},
+		{
 			pkg: "internal/timeline",
 			forbidden: append(slices.Clone(sheets),
 				"internal/store", "internal/review", "internal/issues", "internal/avatars", "internal/notify"),

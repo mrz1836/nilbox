@@ -12,6 +12,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as assignees$0 from "../assignees/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as timeline$0 from "../timeline/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -42,11 +45,38 @@ export function Act(req: $models.ActRequest): $CancellablePromise<$models.Result
 }
 
 /**
+ * AssigneeCandidates returns whom the picker offers to assign to the pull request with id,
+ * from the sheet's cache and the People directory alone, with no request.
+ */
+export function AssigneeCandidates(id: number): $CancellablePromise<assignees$0.Candidates> {
+    return $Call.ByID(3368772797, id);
+}
+
+/**
  * Earlier reads the page of the conversation before the cursor before, which a page the
  * sheet holds gave: one GraphQL request, which stores nothing, not even in the cache.
  */
 export function Earlier(id: number, before: string): $CancellablePromise<timeline$0.Page> {
     return $Call.ByID(3742553140, id, before);
+}
+
+/**
+ * EditAssignees changes who the pull request with req.ItemID is assigned to as req asks:
+ * one REST request takes off everyone unassigned, then one assigns everyone added, through
+ * the inbox's Actor (the item's lock, the account check, and a token borrowed again once
+ * when GitHub refuses one, which never sends a step twice). Taking off first lets a swap
+ * work at GitHub's cap of ten. It needs the sheet to have read who the pull request is
+ * assigned to, open, and the user's account to have triage access or more. A name given
+ * twice is sent once, and one both added and taken off not at all; taking the user off
+ * (Unassign me) and an edit that would leave more than ten assigned are refused, before
+ * anything is sent. GitHub's answers say who the pull request is assigned to after each
+ * step, which the sheet keeps in its cache, so it rebuilds with no read; a cache it can't
+ * rewrite is marked out of date instead. Once GitHub made a step, the result counts it and
+ * says why the next failed, while a failure before any is the error. Each person assigned
+ * is kept in the People directory as assigned in the repository.
+ */
+export function EditAssignees(req: $models.AssigneesRequest): $CancellablePromise<$models.AssigneesResult> {
+    return $Call.ByID(626602868, req);
 }
 
 /**
@@ -94,6 +124,25 @@ export function FillReply(itemID: number, replyID: number): $CancellablePromise<
 }
 
 /**
+ * ForgetPeople empties the People directory: everyone the app learned of, who works where,
+ * who can be assigned where, the teams, and every read, so the pickers learn again from the
+ * next read, and the next picker opened reads its repository again. Nothing on GitHub
+ * changes.
+ */
+export function ForgetPeople(): $CancellablePromise<$models.PeopleSummary> {
+    return $Call.ByID(167225618);
+}
+
+/**
+ * LearnAssignees reads who can be assigned in the pull request's repository, when a read is
+ * due (Candidates.Stale), and returns AssigneeCandidates with what it learned: one GraphQL
+ * request of one point, at most weekly per repository, whichever sheet asks.
+ */
+export function LearnAssignees(id: number): $CancellablePromise<assignees$0.Candidates> {
+    return $Call.ByID(1586805254, id);
+}
+
+/**
  * LearnReviewers reads who works on the repository of the pull request with id, when a read
  * is due (Reviewers.Stale), and returns ReviewerCandidates with what it learned: one GraphQL
  * request of one point for the repository's most recently updated pull requests, and, for
@@ -124,6 +173,14 @@ export function Open(id: number): $CancellablePromise<$models.Review> {
  */
 export function Patches(id: number, head: string, paths: string[] | null): $CancellablePromise<$models.FilePatch[] | null> {
     return $Call.ByID(3740437158, id, head, paths);
+}
+
+/**
+ * PeopleSummary counts what the People directory holds, which both sheets' pickers suggest
+ * from: the reviewers' and the assignees'.
+ */
+export function PeopleSummary(): $CancellablePromise<$models.PeopleSummary> {
+    return $Call.ByID(1733672141);
 }
 
 /**
@@ -171,4 +228,13 @@ export function Replies(action: $models.ReplyAction): $CancellablePromise<$model
  */
 export function ReviewerCandidates(id: number): $CancellablePromise<$models.Reviewers> {
     return $Call.ByID(1708857317, id);
+}
+
+/**
+ * SearchAssignees returns whom the picker offers to assign to the pull request with id whose
+ * login or name matches query: from what the app holds when that answers the search, else
+ * after one GraphQL request of one point.
+ */
+export function SearchAssignees(id: number, query: string): $CancellablePromise<assignees$0.Candidates> {
+    return $Call.ByID(2756493148, id, query);
 }

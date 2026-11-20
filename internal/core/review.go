@@ -203,3 +203,18 @@ func (r reviewPeople) Ranked(ctx context.Context, name repo.Name) (review.Direct
 
 	return out, nil
 }
+
+// Summary counts the people the directory knows, and the repositories it knows anyone of.
+func (r reviewPeople) Summary(ctx context.Context) (review.PeopleSummary, error) {
+	got, err := r.directory.Summary(ctx)
+	if err != nil {
+		return review.PeopleSummary{}, err
+	}
+
+	return review.PeopleSummary{People: got.People, Repos: got.Repos}, nil
+}
+
+// Forget empties the directory.
+func (r reviewPeople) Forget(ctx context.Context) error {
+	return r.directory.Forget(ctx)
+}

@@ -19,8 +19,10 @@ func weights() map[Role]float64 {
 	}
 }
 
-// seenRow is one row of what was seen, as rank reads it.
+// seenRow is one row of what was seen, as rank reads it: on the repository repo, "" when
+// the rows are all of one.
 type seenRow struct {
+	repo   string
 	key    string
 	login  string
 	name   string
@@ -77,8 +79,8 @@ func (t *tally) add(r seenRow, weight float64, now time.Time) {
 	t.eligible = t.eligible || r.access || vouches(r.role)
 	t.person.Score += weight * math.Exp2(-float64(max(now.Sub(r.at), 0))/float64(halfLife))
 
-	if r.at.After(t.person.LastAt) {
-		t.person.LastAt = r.at
+	if r.at.After(t.person.LastAt) || t.person.LastAt.IsZero() {
+		t.person.LastAt, t.person.Where = r.at, r.repo
 	}
 
 	switch r.role {

@@ -326,6 +326,16 @@ type Review struct {
 	// access or more.
 	CanEditReviewers bool `json:"canEditReviewers"`
 
+	// Assignees are who it is assigned to, as the sheet last read it or an edit since left
+	// it, in GitHub's order, the user's marked; none before the sheet read them, and in a
+	// read an older build cached. MoreAssignees is how many others GitHub has, which the read
+	// didn't name. CanEditAssignees reports that the user may change them (EditAssignees):
+	// it is open, the sheet has read who it is assigned to, and their account has triage
+	// access or more.
+	Assignees        []Assignee `json:"assignees"`
+	MoreAssignees    int        `json:"moreAssignees"`
+	CanEditAssignees bool       `json:"canEditAssignees"`
+
 	// Timeline is the newest page of the conversation, oldest first: its comments, its
 	// reviews with their line comments, and its events.
 	Timeline timeline.Page `json:"timeline"`
@@ -549,6 +559,12 @@ type ReviewEntry struct {
 
 	// Outdated reports a review left on an earlier head.
 	Outdated bool `json:"outdated"`
+}
+
+// Assignee is someone a pull request is assigned to: Mine says it is the user.
+type Assignee struct {
+	Login string `json:"login"`
+	Mine  bool   `json:"mine"`
 }
 
 // Readiness says how close a pull request is to merging.
