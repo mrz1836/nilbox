@@ -226,6 +226,7 @@ export type ScriptRunChunk = NonNullLists<scriptrun.Chunk>
 export type ScriptRunProgress = NonNullLists<scriptrun.Progress>
 export type ScriptSources = NonNullLists<integrationprefs.ScriptSources>
 export type ScriptsPage = integrationprefs.ScriptsPage
+export type ReleaseSort = integrationprefs.ReleaseSort
 export type ScriptsSection = integrationprefs.ScriptsSection
 
 // UserScript is one of the user's own scripts, as saved: its scope, which clones it shows
@@ -977,6 +978,7 @@ export const {
   SetScriptsLastRepo: setScriptsLastRepo,
   SetScriptsSectionOpen: setScriptsSectionOpen,
   SetShowRuns: setShowRuns,
+  SetReleaseSort: setReleaseSort,
   SetRefreshInterval: setRefreshInterval,
   SetWatchPushes: setWatchPushes,
   SetStatusProvider: setStatusProvider,

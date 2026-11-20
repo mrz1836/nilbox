@@ -42,9 +42,9 @@ func NewBackupPart(s *Service) *BackupPart {
 // Portable is the user's settings in portable form, as a backup holds them: every setting
 // but the repositories (see PortableRepos) and the window's memory (its size, the folded
 // sections, the tips put away, the review sheet's tab, the Notifications page's tab, the
-// conversations' order, and the Scripts tab's last page and clone). Each field is a
-// pointer, or a map whose entries each stand alone, so a field a backup lacks is left as it
-// is when the backup is imported.
+// conversations' order, the Scripts tab's last page and clone, and the Release page's
+// sort). Each field is a pointer, or a map whose entries each stand alone, so a field a
+// backup lacks is left as it is when the backup is imported.
 type Portable struct {
 	DefaultAgent        *agent.ID            `json:"defaultAgent,omitempty"`
 	DefaultProfiles     map[agent.ID]string  `json:"defaultProfiles,omitempty"`

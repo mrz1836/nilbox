@@ -3,6 +3,7 @@
 
 export {
     ID,
+    ReleaseSort,
     RunsIn,
     ScriptsPage,
     ScriptsSection,

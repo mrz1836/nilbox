@@ -1,6 +1,7 @@
-// Releases as the Release page and its sheet word them: the groups, how far a read of the
-// list has got, a clone's state, the steps a release goes through, how one came out, and
-// the recent ones, from the runs.
+// Releases as the Release page and its sheet word them: the groups, the rows' order and
+// readiness, how far a read of the list has got, a clone's state, the bump the commits
+// suggest, the steps a release goes through, how one came out, and the recent ones, from
+// the runs.
 
 import type {
   CommitChecks,
@@ -11,6 +12,7 @@ import type {
   ReleaseResult,
   ReleaseResultKind,
   ReleasesProgress,
+  ReleaseSort,
   ScriptRun,
   ScriptRunProgress,
 } from '../platform'
@@ -55,6 +57,95 @@ export function matchCandidates(repos: readonly ReleaseCandidate[], search: stri
 // the rail shows beside Release.
 export function unreleasedCount(repos: readonly ReleaseCandidate[] | undefined): number {
   return repos?.filter((r) => r.group === 'unreleased').length ?? 0
+}
+
+// compare orders two values as Go's cmp.Compare does: -1 when x comes first, 1 when y
+// does, and 0 when they're equal.
+function compare<T extends string | number>(x: T, y: T): number {
+  if (x < y) {
+    return -1
+  }
+
+  return x > y ? 1 : 0
+}
+
+// headTime reads when a candidate's newest commit came, in milliseconds, or -Infinity for
+// one without a time, such as a muted repository GitHub wasn't asked about, so it sorts
+// after every commit that has one.
+function headTime(c: Pick<ReleaseCandidate, 'headAt'>): number {
+  const at = Date.parse(c.headAt)
+
+  return Number.isNaN(at) ? -Infinity : at
+}
+
+// byName orders candidates by "owner/name", ignoring case, as the release service does
+// (cmp.Compare of the lowered names, not the locale's collation).
+function byName(a: ReleaseCandidate, b: ReleaseCandidate): number {
+  return compare(a.repo.toLowerCase(), b.repo.toLowerCase())
+}
+
+// byNewest orders candidates by their newest commit, the newest first and one without a
+// time last, then by name.
+function byNewest(a: ReleaseCandidate, b: ReleaseCandidate): number {
+  return compare(headTime(b), headTime(a)) || byName(a, b)
+}
+
+// byCommits orders candidates by their commits since the newest version, the most first,
+// then as byNewest does.
+function byCommits(a: ReleaseCandidate, b: ReleaseCandidate): number {
+  return compare(b.ahead, a.ahead) || byNewest(a, b)
+}
+
+// candidateOrder is how a sort orders two candidates, pinning aside.
+function candidateOrder(sort: ReleaseSort): (a: ReleaseCandidate, b: ReleaseCandidate) => number {
+  switch (sort) {
+    case 'newest':
+      return byNewest
+    case 'name':
+      return byName
+    case 'commits':
+      return byCommits
+  }
+}
+
+// sortCandidates orders the candidates as the page lists them, in a new array: the
+// pinned repositories first, then each part in the chosen sort. The sort is stable, so
+// candidates it can't tell apart keep their order.
+export function sortCandidates(
+  rows: readonly ReleaseCandidate[],
+  sort: ReleaseSort,
+  isPinned: (repo: string) => boolean,
+): ReleaseCandidate[] {
+  const order = candidateOrder(sort)
+  const rank = (c: ReleaseCandidate) => (isPinned(c.repo) ? 0 : 1)
+
+  return [...rows].sort((a, b) => compare(rank(a), rank(b)) || order(a, b))
+}
+
+// waveAt is how many of the listed rows must share a headline before their rows show a ×N
+// badge for it.
+export const waveAt = 3
+
+// sharedHeadlines maps each headline the rows have to the repositories whose newest
+// commit it is, in the rows' order. A row without a headline is left out.
+export function sharedHeadlines(rows: readonly Pick<ReleaseCandidate, 'repo' | 'headline'>[]): Map<string, string[]> {
+  const shared = new Map<string, string[]>()
+
+  for (const { repo, headline } of rows) {
+    if (headline === '') {
+      continue
+    }
+
+    const repos = shared.get(headline)
+
+    if (repos === undefined) {
+      shared.set(headline, [repo])
+    } else {
+      repos.push(repo)
+    }
+  }
+
+  return shared
 }
 
 // listProgressWords says how far a read of the list has got, phase by phase: finding the
@@ -103,43 +194,165 @@ export function isBumpResult(line: string): boolean {
   }
 }
 
-// cloneNotes says what matters about a clone before releasing from it, in a few words
-// each: the branch it's on when that isn't the default, a detached commit, uncommitted
-// files, commits not on GitHub, commits it lacks, and versions only it has.
-export function cloneNotes(clone: ReleaseCloneState | null, defaultBranch: string): string[] {
+// CloneNoteKind is what a note about a clone is about: a clone git couldn't read, a
+// detached commit, a branch that isn't the default, uncommitted files, commits not on
+// GitHub, commits it lacks, or a version only it has.
+export type CloneNoteKind = 'unreadable' | 'detached' | 'branch' | 'dirty' | 'notPushed' | 'behind' | 'localOnly'
+
+// CloneNote is one thing that matters about a clone before releasing from it: what it's
+// about, the few words its row shows (a branch's name alone, which the row reads as "on"
+// it), whether it stops a release until it's fixed, and the sentence its tooltip says.
+export interface CloneNote {
+  kind: CloneNoteKind
+  text: string
+  blocks: boolean
+  title: string
+}
+
+// cloneNotes says what matters about a clone before releasing from it, in order: a
+// detached commit, or the branch it's on when that isn't the default, then uncommitted
+// files, commits not on GitHub, commits it lacks, and versions only it has. A clone git
+// couldn't read gets that note alone, and no clone gets none. Only the branch and the
+// commits it lacks let a release go ahead: magex switches branches and back, and pulls
+// first.
+export function cloneNotes(clone: ReleaseCloneState | null, defaultBranch: string): CloneNote[] {
   if (clone === null) {
     return []
   }
 
   if (clone.unreadable) {
-    return ['couldn’t read the clone']
+    return [
+      {
+        kind: 'unreadable',
+        text: 'couldn’t read the clone',
+        blocks: true,
+        title: 'git couldn’t read this clone, so Release can’t check it.',
+      },
+    ]
   }
 
-  const notes: string[] = []
+  const def = defaultBranch === '' ? 'the default branch' : defaultBranch
+  const notes: CloneNote[] = []
 
   if (clone.detached) {
-    notes.push('on a detached commit')
+    notes.push({
+      kind: 'detached',
+      text: 'on a detached commit',
+      blocks: true,
+      title: 'Your clone is on a detached commit. Switch to a branch first.',
+    })
   } else if (clone.branch !== '' && clone.branch !== defaultBranch) {
-    notes.push(`on ${clone.branch}`)
+    notes.push({
+      kind: 'branch',
+      text: clone.branch,
+      blocks: false,
+      title: `You’re on ${clone.branch}. magex switches to ${def}, then back.`,
+    })
   }
 
   if (clone.dirty > 0) {
-    notes.push(`${String(clone.dirty)} uncommitted`)
+    notes.push({
+      kind: 'dirty',
+      text: `${String(clone.dirty)} uncommitted`,
+      blocks: true,
+      title: `${counted(clone.dirty, 'file has', 'files have')} uncommitted changes. Commit or stash them first.`,
+    })
   }
 
   if (clone.notPushed > 0) {
-    notes.push(`${String(clone.notPushed)} not pushed`)
+    notes.push({
+      kind: 'notPushed',
+      text: `${String(clone.notPushed)} not pushed`,
+      blocks: true,
+      title: `${counted(clone.notPushed, 'commit isn’t', 'commits aren’t')} on GitHub yet. Push first.`,
+    })
   }
 
   if (clone.behind) {
-    notes.push('behind origin')
+    notes.push({
+      kind: 'behind',
+      text: 'behind',
+      blocks: false,
+      title: `origin/${def} has commits your clone doesn’t. magex pulls them first.`,
+    })
   }
 
   for (const tag of clone.localOnly) {
-    notes.push(`${tag} only on this Mac`)
+    notes.push({
+      kind: 'localOnly',
+      text: `${tag} only on this Mac`,
+      blocks: true,
+      title: `The tag ${tag} is in this clone but not on GitHub. Push it or delete it first.`,
+    })
   }
 
   return notes
+}
+
+// shownNotes are the notes a row shows: only those that stop a release, in order, when
+// any does; else the commits the clone lacks, then the branch it's on.
+export function shownNotes(notes: readonly CloneNote[]): CloneNote[] {
+  const blocking = notes.filter((n) => n.blocks)
+
+  if (blocking.length > 0) {
+    return blocking
+  }
+
+  return [...notes.filter((n) => n.kind === 'behind'), ...notes.filter((n) => n.kind === 'branch')]
+}
+
+// Readiness is how ready a repository is to release, at a glance: its newest commit's
+// checks failing, a clone note that stops a release, checks still running, checks passed
+// with nothing in the way, or no checks at all.
+export type Readiness = 'failing' | 'blocked' | 'running' | 'ready' | 'none'
+
+// readiness reads a repository's readiness from its checks and its clone, the first that
+// applies: failing checks, a clone note that blocks, running checks, passed checks, and
+// then none. A clone that is failing and blocked reads as failing, the louder of the two.
+export function readiness(c: Pick<ReleaseCandidate, 'checks' | 'clone' | 'defaultBranch'>): Readiness {
+  const { checks } = c
+
+  if (checks === 'FAILURE' || checks === 'ERROR') {
+    return 'failing'
+  }
+
+  if (cloneNotes(c.clone, c.defaultBranch).some((n) => n.blocks)) {
+    return 'blocked'
+  }
+
+  switch (checks) {
+    case 'PENDING':
+    case 'EXPECTED':
+      return 'running'
+    case 'SUCCESS':
+      return 'ready'
+    case '':
+      return 'none'
+  }
+}
+
+// readinessOrder is the order readinesses come in, what needs a look first.
+export const readinessOrder: readonly Readiness[] = ['failing', 'blocked', 'running', 'ready', 'none']
+
+// readinessWords say each readiness in the words a group's summary counts it with.
+export const readinessWords: Readonly<Record<Readiness, string>> = {
+  failing: 'failing',
+  blocked: 'blocked',
+  running: 'running',
+  ready: 'ready',
+  none: 'without checks',
+}
+
+// readinessCounts counts the rows of each readiness, in readinessOrder, leaving out a
+// readiness no row has.
+export function readinessCounts(
+  rows: readonly Pick<ReleaseCandidate, 'checks' | 'clone' | 'defaultBranch'>[],
+): { readiness: Readiness; count: number }[] {
+  const all = rows.map(readiness)
+
+  return readinessOrder
+    .map((r) => ({ readiness: r, count: all.filter((a) => a === r).length }))
+    .filter((c) => c.count > 0)
 }
 
 // commitChecksText says how the checks on a commit went, as words beside their icon.
@@ -165,13 +378,34 @@ const breakingHeadline = /^(?:([a-z]+)(?:\([^)]*\))?!:|BREAKING[ -]CHANGE:)/i
 // featHeadline matches a conventional commit that adds a feature: feat: or feat(scope):.
 const featHeadline = /^feat(?:\([^)]*\))?:/i
 
+// breakingMarks are the matches of the headlines marked breaking, in order.
+function breakingMarks(headlines: readonly string[]): RegExpExecArray[] {
+  return headlines.map((h) => breakingHeadline.exec(h.trim())).filter((m) => m !== null)
+}
+
+// featCount counts the headlines that start with feat:.
+function featCount(headlines: readonly string[]): number {
+  return headlines.filter((h) => featHeadline.test(h.trim())).length
+}
+
+// bumpKind reads, from the headlines of the commits a release would ship, the bump their
+// conventional-commit prefixes usually mean, as bumpHint words it: major when any is
+// marked breaking, else minor when any starts with feat:, else ''.
+export function bumpKind(headlines: readonly string[]): 'major' | 'minor' | '' {
+  if (breakingMarks(headlines).length > 0) {
+    return 'major'
+  }
+
+  return featCount(headlines) > 0 ? 'minor' : ''
+}
+
 // bumpHint suggests, from the headlines of the commits a release would ship, the bump
 // their conventional-commit prefixes usually mean: a major one when any is marked
 // breaking, else a minor one when any starts with feat:. It only words the suggestion and
 // never changes the choice, which starts at Patch every time (D11); '' when there is
 // nothing to suggest.
 export function bumpHint(headlines: readonly string[]): string {
-  const breaking = headlines.map((h) => breakingHeadline.exec(h.trim())).filter((m) => m !== null)
+  const breaking = breakingMarks(headlines)
 
   if (breaking.length > 0) {
     const kind = breaking[0]?.[1]?.toLowerCase()
@@ -182,7 +416,7 @@ export function bumpHint(headlines: readonly string[]): string {
       : `${counted(breaking.length, 'commit', 'commits')} are marked breaking (such as ${marker}), which usually means a major release.`
   }
 
-  const feats = headlines.filter((h) => featHeadline.test(h.trim())).length
+  const feats = featCount(headlines)
 
   if (feats === 0) {
     return ''

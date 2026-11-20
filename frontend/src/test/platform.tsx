@@ -464,6 +464,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setScriptsSectionOpen: (section, open) =>
       stored({ integrations: integrationsConfig({ sections: { [section]: open } }) }),
     setShowRuns: (showRuns) => stored({ integrations: integrationsConfig({ showRuns }) }),
+    setReleaseSort: (releaseSort) => stored({ integrations: integrationsConfig({ releaseSort }) }),
     setRefreshInterval: (kind, seconds) => stored({ refresh: { ...settings().refresh, [kind]: seconds } }),
     setWatchPushes: (watchPushes) => stored({ watchPushes }),
     setStatusProvider: (id, on) =>

@@ -573,6 +573,14 @@ export function SetRefreshInterval(kind: $models.RefreshKind, seconds: number): 
 }
 
 /**
+ * SetReleaseSort stores the order the Release page lists each group in, and returns the
+ * settings with it. An order that isn't one of the page's is refused.
+ */
+export function SetReleaseSort(sort: integrationprefs$0.ReleaseSort): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(3715882906, sort);
+}
+
+/**
  * SetRepoRule pins or mutes a repository ("owner/name") or an org ("owner"), or takes its
  * rule off with reporules.RuleNone, and returns the settings with it. A target is in one
  * list at most, so pinning a muted one unmutes it. The rules are read and written in one

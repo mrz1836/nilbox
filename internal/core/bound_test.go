@@ -455,6 +455,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetShowRuns": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetShowRuns(ctx, true)
 		},
+		"settings.Service.SetReleaseSort": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetReleaseSort(ctx, integrationprefs.ReleaseSortName)
+		},
 		"settings.Service.SetRefreshInterval": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetRefreshInterval(ctx, settings.RefreshChecks, 30)
 		},

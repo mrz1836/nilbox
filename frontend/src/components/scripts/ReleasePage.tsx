@@ -115,7 +115,7 @@ function CandidateRow({ candidate, onRelease }: { candidate: ReleaseCandidate; o
           <p className="flex items-center gap-1 text-xs text-warning">
             <AlertIcon className="size-3.5 shrink-0" />
             <span className="sr-only">Your clone: </span>
-            {notes.join(' · ')}
+            {notes.map((n) => (n.kind === 'branch' ? `on ${n.text}` : n.text)).join(' · ')}
           </p>
         )}
       </div>
