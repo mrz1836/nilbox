@@ -514,7 +514,7 @@ func TestListComparesAgainOnlyWhenSomethingChanged(t *testing.T) {
 	// A worktree that is gone is forgotten.
 	testutil.RunGit(t, r.repo, "worktree", "remove", "--force", r.agent)
 	listOf(t, r.svc)
-	_, kept := r.svc.copies.entry(paths.Resolved(r.agent))
+	kept := r.svc.copies.has(paths.Resolved(r.agent))
 	assert.False(t, kept)
 }
 
@@ -535,6 +535,58 @@ func TestListComparesEveryWorktreeOfAClonesInOneLog(t *testing.T) {
 	assert.True(t, mustRow(t, snap, second).Copies.full())
 	assert.Equal(t, map[string]int{callUnpushed: 1, callCandidates: 1, callSides: 2}, r.copies(),
 		"one log of each kind for the clone, and a comparison for each worktree")
+}
+
+func TestListDropsWhatTheCopyCacheKeepsForClonesItNoLongerLists(t *testing.T) {
+	t.Parallel()
+
+	r, _, _ := copiedRig(t)
+	r.list(t)
+
+	// A clone that was listed once, since gone from the clone root.
+	gone := filepath.Join(r.e.home, "projects", "gone-repo")
+	r.svc.copies.keep(gone, filepath.Join(gone, "wt"), copyKey{head: headSHA}, copyResult{})
+	r.svc.copies.keepCoverage(gone, filepath.Join(gone, "wt"), coverKey{}, true)
+
+	r.list(t)
+
+	kept := r.svc.copies.has(filepath.Join(gone, "wt"))
+	assert.False(t, kept, "a listing of every clone drops what it keeps for one it didn't list")
+
+	_, kept = r.svc.copies.coverage(filepath.Join(gone, "wt"), coverKey{})
+	assert.False(t, kept)
+
+	kept = r.svc.copies.has(paths.Resolved(r.agent))
+	assert.True(t, kept, "and keeps what it keeps for the clones it listed")
+
+	// A listing of the one clone alone drops nothing of the others'.
+	r.svc.copies.keep(gone, filepath.Join(gone, "wt"), copyKey{head: headSHA}, copyResult{})
+
+	_, err := r.svc.Details(t.Context(), r.repo, r.agent)
+	require.NoError(t, err)
+
+	kept = r.svc.copies.has(filepath.Join(gone, "wt"))
+	assert.True(t, kept)
+}
+
+func TestCopyCacheStartsOverWhenFull(t *testing.T) {
+	t.Parallel()
+
+	c := newCopyCache()
+
+	for i := range worktreesMax {
+		path := "/wt/" + strconv.Itoa(i)
+		c.keep("/clone", path, copyKey{}, copyResult{})
+		c.keepCoverage("/clone", path, coverKey{}, true)
+	}
+
+	c.keep("/clone", "/wt/0", copyKey{head: headSHA}, copyResult{})
+	assert.Len(t, c.entries, worktreesMax, "a worktree kept again takes no more room")
+
+	c.keep("/clone", "/wt/more", copyKey{}, copyResult{})
+	c.keepCoverage("/clone", "/wt/more", coverKey{}, true)
+	assert.Len(t, c.entries, 1, "a full cache starts over")
+	assert.Len(t, c.covers, 1)
 }
 
 // markedRig is a copyRig whose agent made three commits: the first copied as it is onto

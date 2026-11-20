@@ -263,8 +263,17 @@ func (c *copyCache) keepCoverage(clone, path string, key coverKey, covered bool)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if _, kept := c.covers[path]; !kept && len(c.covers) >= worktreesMax {
+		clear(c.covers)
+	}
+
 	c.covers[path] = coverEntry{clone: clone, key: key, covered: covered}
 }
+
+// worktreesMax is how many worktrees' results, and as many coverages, the cache keeps
+// before it starts over: a listing of every clone drops those of clones it didn't list
+// (pruneClones), so only listings of a few clones at a time, as a sweep's, could fill it.
+const worktreesMax = 4096
 
 // holdsMax is how many answers of prHolds the cache keeps before it starts over.
 const holdsMax = 4096
@@ -312,20 +321,24 @@ func (c *copyCache) lookup(path string, key copyKey) (copyResult, bool) {
 	return e.result, ok && e.key == key
 }
 
-// entry returns what is kept for the worktree at path.
-func (c *copyCache) entry(path string) (copyEntry, bool) {
+// has reports a result kept for the worktree at path, whatever its key.
+func (c *copyCache) has(path string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	e, ok := c.entries[path]
+	_, ok := c.entries[path]
 
-	return e, ok
+	return ok
 }
 
 // keep keeps the result worked out for the worktree at path, of clone, from key.
 func (c *copyCache) keep(clone, path string, key copyKey, result copyResult) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	if _, kept := c.entries[path]; !kept && len(c.entries) >= worktreesMax {
+		clear(c.entries)
+	}
 
 	c.entries[path] = copyEntry{clone: clone, key: key, result: result}
 }
@@ -337,6 +350,17 @@ func (c *copyCache) prune(clone string, listed map[string]bool) {
 
 	maps.DeleteFunc(c.entries, func(path string, e copyEntry) bool { return e.clone == clone && !listed[path] })
 	maps.DeleteFunc(c.covers, func(path string, e coverEntry) bool { return e.clone == clone && !listed[path] })
+}
+
+// pruneClones drops what is kept for the worktrees of every clone but those of listed, the
+// clones a listing of them all listed, by their Path: a clone it didn't list has no linked
+// worktree, or is gone.
+func (c *copyCache) pruneClones(listed map[string]bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	maps.DeleteFunc(c.entries, func(_ string, e copyEntry) bool { return !listed[e.clone] })
+	maps.DeleteFunc(c.covers, func(_ string, e coverEntry) bool { return !listed[e.clone] })
 }
 
 // remotesKey sums up a clone's GitHub remotes, the only ones whose branches it compares

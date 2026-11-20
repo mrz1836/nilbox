@@ -2272,8 +2272,10 @@ or a comparison that leaves a commit out. What a comparison found is kept in mem
 (`copyCache`) by the worktree's HEAD, the commit it was made at from GitHub, its clone's
 GitHub remotes, and every remote-tracking branch and where it points
 (`cloneRefs.fingerprint`), so a listing after which nothing of those changed runs no git to
-compare, and a worktree that is gone is forgotten; git that couldn't be run at all is tried
-again next time. `Details` marks each of its commits not on GitHub with its copy
+compare, and a worktree that is gone is forgotten, as is every worktree of a clone the
+window's listing, which lists every clone with a linked worktree, didn't list (the cache
+starts over, too, past 4,096 worktrees); git that couldn't be run at all is tried again next
+time. `Details` marks each of its commits not on GitHub with its copy
 (`UnpushedCommit.Copy`, `identical` or `edited`, and `CopyOID`): what the listing found,
 when one read of the clone's refs and one of its remotes say nothing changed since (the
 listing's key: its HEAD, the commit it was made at, the GitHub remotes and every remote's

@@ -75,6 +75,15 @@ func (s *Service) list(ctx context.Context, tracker *listProgress) (Snapshot, er
 		return Snapshot{}, err
 	}
 
+	// Every clone with a linked worktree was listed, so what the copy cache keeps for any
+	// other is of worktrees that are gone.
+	listed := make(map[string]bool, len(snap.Repos))
+	for _, r := range snap.Repos {
+		listed[r.Path] = true
+	}
+
+	s.copies.pruneClones(listed)
+
 	snap.Unread = unreadOf(found, s.home)
 
 	return snap, nil
