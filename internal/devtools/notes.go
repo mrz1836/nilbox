@@ -39,26 +39,30 @@ type Element struct {
 
 // A Note is what the user said about an element they pointed at in the window (⌥⌘P, or
 // inspect:point): their words; the control it is in as the trail names it (Target), and
-// where (Where); the view the window showed; the element as the agent describes it, and
-// its text around it; under React's development build (app:dev), the components that
-// render it, outermost first, and the file whose JSX made it, its line approximate; and
-// the viewport's size and a picture of the window, taken as the note came, or why there
-// is none. N numbers the notes from 1 each time the app starts.
+// where (Where); the view the window showed; the element as the agent describes it, its
+// computed styles that are set, as name and value, and its text around it; under React's
+// development build (app:dev), the components that render it, outermost first, and the
+// file whose JSX made it, its line approximate; the viewport's size; and a picture of the
+// window, taken as the note came, the element boxed (Outline), or why there is none. N
+// numbers the notes from 1, after the last one kept; Done is set once the note is dealt
+// with (inspect:notes done=).
 type Note struct {
-	N              int       `json:"n"`
-	Time           time.Time `json:"time"`
-	Text           string    `json:"text"`
-	Target         string    `json:"target"`
-	Where          string    `json:"where,omitempty"`
-	View           string    `json:"view,omitempty"`
-	Components     string    `json:"components,omitempty"`
-	Source         string    `json:"source,omitempty"`
-	Nearby         string    `json:"nearby,omitempty"`
-	Element        Element   `json:"element"`
-	ViewportWidth  int       `json:"viewportWidth"`
-	ViewportHeight int       `json:"viewportHeight"`
-	Shot           []byte    `json:"shot,omitempty"`
-	ShotError      string    `json:"shotError,omitempty"`
+	N              int         `json:"n"`
+	Time           time.Time   `json:"time"`
+	Text           string      `json:"text"`
+	Target         string      `json:"target"`
+	Where          string      `json:"where,omitempty"`
+	View           string      `json:"view,omitempty"`
+	Components     string      `json:"components,omitempty"`
+	Source         string      `json:"source,omitempty"`
+	Nearby         string      `json:"nearby,omitempty"`
+	Element        Element     `json:"element"`
+	Styles         [][2]string `json:"styles,omitempty"`
+	ViewportWidth  int         `json:"viewportWidth"`
+	ViewportHeight int         `json:"viewportHeight"`
+	Done           bool        `json:"done,omitempty"`
+	Shot           []byte      `json:"shot,omitempty"`
+	ShotError      string      `json:"shotError,omitempty"`
 }
 
 // Outline returns the PNG picture with a box drawn just outside rect, where a note's

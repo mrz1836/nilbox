@@ -17,6 +17,7 @@ import {
 import { buttonClass, dangerButtonClass } from '../controls'
 import { ExternalIcon, ResetIcon } from '../icons'
 import { Logo } from '../Logo'
+import { InspectorCard } from './InspectorCard'
 import { cardMatchClass, useSetting } from './match'
 import { ResetDialog } from './ResetDialog'
 import { ErrorText, Group, Note, SectionIntro } from './rows'
@@ -188,8 +189,9 @@ export interface AboutSectionProps {
 }
 
 // AboutSection shows the product, the build it runs and its updates, the coding agents'
-// and tools' versions, and a way to report a bug with all of them filled in; then the
-// first-run setup, to run again, and a reset of the app, to start over.
+// and tools' versions, the inspector in a build from source that carries one, and a way to
+// report a bug with all of them filled in; then the first-run setup, to run again, and a
+// reset of the app, to start over.
 export function AboutSection({ onRunSetup, update, settings = null, onSaved = () => undefined }: AboutSectionProps) {
   const id = useId()
   const about = useQuery(() => getAppInfo(), [])
@@ -224,6 +226,7 @@ export function AboutSection({ onRunSetup, update, settings = null, onSaved = ()
         </SectionIntro>
         <Versions list={tools.data} error={tools.error} what="tools" />
       </section>
+      <InspectorCard />
       {info !== null && (
         <div className="flex items-center justify-between gap-6">
           <p className="text-sm text-muted">

@@ -53,9 +53,10 @@ func (s *Server) table() map[string]command {
 		"console": {args: "n level grep follow", about: "the page's console and its uncaught errors", run: s.console},
 		"trail":   {args: "n grep follow", about: "what the user clicked, pressed, typed in, and chose", run: s.trail},
 		"notes": {
-			args:  "n follow wait clear",
-			about: "the notes the user left on elements they pointed at (⌥⌘P), each with a picture of the window",
-			run:   s.notes,
+			args: "n all follow wait done clear",
+			about: "the open notes the user left on elements they pointed at (⌥⌘P), each with a picture of the window; " +
+				"done= marks them dealt with",
+			run: s.notes,
 		},
 		"point": {
 			args: "on", about: "turns pointing on in the window, for the user to point at an element and leave a note; on=false ends it",
@@ -138,17 +139,25 @@ func (s *Server) trail(ctx context.Context, out *writer, a args) error {
 	return stream(ctx, out, a.number("n", defaultLast), a.flag("follow"), s.trailSource(a))
 }
 
-// notes streams the notes the user left, as logs streams the log. With wait it sends
-// only the next note, once the user leaves it; with clear it drops every note kept and
-// says how many.
+// notes answers with the open notes the user left, the last n of them, or all of them,
+// done too, with all; with follow, it then sends each new one as it comes. With wait it
+// sends only the next note, once the user leaves it; with done (note numbers, as 2,3, or
+// all) it marks those dealt with; with clear it drops every note kept. Each says how many.
 func (s *Server) notes(ctx context.Context, out *writer, a args) error {
-	notes := s.cfg.Page.Notes()
+	page := s.cfg.Page
 
 	switch {
 	case a.flag("clear"):
-		return out.send(LineText, clearedText(notes.Clear()))
+		n, err := page.ClearNotes()
+		if err != nil {
+			return err
+		}
+
+		return out.send(LineText, "Cleared "+notesText(n)+".\n")
+	case a.text("done") != "":
+		return s.markDone(out, a.text("done"))
 	case a.flag("wait"):
-		next, stop := notes.Follow()
+		next, stop := page.Notes().Follow()
 		defer stop()
 
 		select {
@@ -158,14 +167,117 @@ func (s *Server) notes(ctx context.Context, out *writer, a args) error {
 			return out.send(LineNote, note)
 		}
 	default:
-		return stream(ctx, out, a.number("n", defaultLast), a.flag("follow"),
-			sourceOf(LineNote, notes, func(Note) bool { return true }))
+		return s.listNotes(ctx, out, a)
 	}
 }
 
-// point turns pointing on in the window, or off with on=false.
+// listNotes sends the open notes, or all of them, the last n; or says there are none. With
+// follow it then sends each new note until ctx ends, once: one added as the list is read
+// is not sent twice.
+func (s *Server) listNotes(ctx context.Context, out *writer, a args) error {
+	notes := s.cfg.Page.Notes()
+	all, follow := a.flag("all"), a.flag("follow")
+
+	if !follow {
+		_, err := sendNotes(out, notes.List(all), a.number("n", defaultLast), noNotesText(all, false))
+
+		return err
+	}
+
+	// Following starts before the list is read, so no note left in between is missed.
+	next, stop := notes.Follow()
+	defer stop()
+
+	sent, err := sendNotes(out, notes.List(all), a.number("n", defaultLast), noNotesText(all, true))
+	if err != nil {
+		return err
+	}
+
+	return sendNewNotes(ctx, out, next, sent)
+}
+
+// sendNewNotes sends each note next hands it numbered after sent, until ctx ends.
+func sendNewNotes(ctx context.Context, out *writer, next <-chan Note, sent int) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case note := <-next:
+			if note.N <= sent {
+				continue
+			}
+
+			if err := out.send(LineNote, note); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// sendNotes sends the last n of notes, or none when it says so, and returns the highest
+// number it sent.
+func sendNotes(out *writer, notes []Note, n int, none string) (int, error) {
+	if n >= 0 && len(notes) > n {
+		notes = notes[len(notes)-n:]
+	}
+
+	if len(notes) == 0 {
+		return 0, out.send(LineText, none)
+	}
+
+	sent := 0
+
+	for _, note := range notes {
+		if err := out.send(LineNote, note); err != nil {
+			return sent, err
+		}
+
+		sent = max(sent, note.N)
+	}
+
+	return sent, nil
+}
+
+// markDone marks done the notes list names, as 2,3, or all of them, and says how many it
+// marked and how many are still open.
+func (s *Server) markDone(out *writer, list string) error {
+	all := strings.EqualFold(list, "all")
+
+	var ns []int
+
+	if !all {
+		for field := range strings.FieldsFuncSeq(list, func(r rune) bool { return r == ',' || r == ' ' }) {
+			n, err := strconv.Atoi(strings.TrimPrefix(field, "#"))
+			if err != nil {
+				return fmt.Errorf("%w: %q", ErrBadNoteList, list)
+			}
+
+			ns = append(ns, n)
+		}
+	}
+
+	marked, err := s.cfg.Page.MarkDone(ns, all)
+	if err != nil {
+		return err
+	}
+
+	open := s.cfg.Page.State().Open
+
+	if marked == 0 {
+		return out.send(LineText, "No open note has that number; "+notesText(open)+" open.\n")
+	}
+
+	return out.send(LineText, "Marked "+notesText(marked)+" done; "+notesText(open)+" open.\n")
+}
+
+// point turns pointing on in the window, or off with on=false. It refuses to turn it on
+// while the user has it turned off.
 func (s *Server) point(ctx context.Context, out *writer, a args) error {
 	on := a.text("on") == "" || a.flag("on")
+
+	if on && !s.cfg.Page.State().Enabled {
+		return ErrPointingOff
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, defaultScriptSeconds*time.Second)
 	defer cancel()
@@ -182,16 +294,31 @@ func (s *Server) point(ctx context.Context, out *writer, a args) error {
 		"Esc or ⌥⌘P ends it; magex inspect:notes reads the notes.\n")
 }
 
-// clearedText says that n notes were dropped.
-func clearedText(n int) string {
+// notesText is n notes, in words: "no notes", "1 note", or "3 notes".
+func notesText(n int) string {
 	switch n {
 	case 0:
-		return "There were no notes to clear.\n"
+		return "no notes"
 	case 1:
-		return "Cleared 1 note.\n"
+		return "1 note"
 	default:
-		return "Cleared " + strconv.Itoa(n) + " notes.\n"
+		return strconv.Itoa(n) + " notes"
 	}
+}
+
+// noNotesText says there are no notes to show: no open ones, or none at all with all, and,
+// when following, that it waits for the next.
+func noNotesText(all, follow bool) string {
+	text := "No open notes"
+	if all {
+		text = "No notes"
+	}
+
+	if follow {
+		return text + "; waiting for the next one.\n"
+	}
+
+	return text + ".\n"
 }
 
 // watch follows the log, the events, the console, and the trail together, in the order

@@ -44,6 +44,10 @@ var ErrMissingArg = errors.New("missing argument")
 // ErrUnknownCommand is returned for a command the inspector doesn't have.
 var ErrUnknownCommand = errors.New("no such command; ask for help")
 
+// ErrBadNoteList is returned for done= that names no notes: it takes note numbers, as 2,3,
+// or all.
+var ErrBadNoteList = errors.New("done= takes note numbers, as 2,3, or all")
+
 // Request is what a client asks the inspector: the first line a connection carries.
 type Request struct {
 	Command string            `json:"cmd"`

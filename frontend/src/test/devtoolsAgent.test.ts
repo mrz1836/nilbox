@@ -29,13 +29,30 @@ interface Message {
   nearby?: string
   components?: string
   source?: string
+  styles?: [string, string][]
   width?: number
+  enabled?: boolean
+  clear?: boolean
+}
+
+interface InspectorState {
+  enabled: boolean
+  pointing: boolean
+  open: number
+  kept: number
 }
 
 interface Agent {
   run: (id: number, code: string) => void
   nb: { point: (on?: boolean) => boolean }
   noted: (n: number) => void
+  sync: (state: Partial<InspectorState>) => void
+  inspector: {
+    state: () => InspectorState
+    subscribe: (watcher: () => void) => () => void
+    setEnabled: (on: boolean) => void
+    clearNotes: () => void
+  }
 }
 
 // posted holds what the agent posted to the app, newest last.
@@ -222,6 +239,7 @@ beforeEach(() => {
 
 afterEach(() => {
   agent().nb.point(false)
+  agent().sync({ enabled: true, open: 0, kept: 0 })
 })
 
 describe('the inspector’s agent', () => {
@@ -657,5 +675,130 @@ describe('pointing at an element', () => {
     expect(note.target).toBe('button “Snooze for 3 days”')
     expect(note).not.toHaveProperty('components')
     expect(note).not.toHaveProperty('source')
+  })
+})
+
+// caption is what the outline's label says, or undefined while nothing is outlined.
+const caption = () => {
+  const label = pointLayer()?.children[2] as HTMLElement | undefined
+
+  return label?.style.display === 'none' ? undefined : label?.textContent
+}
+
+describe('pointing, as the user tunes it', () => {
+  it('widens the outline with ↑ and narrows it with ↓, and the click picks what is outlined', () => {
+    const zz = document.querySelector('[aria-label="Snooze for 3 days"] span') as HTMLElement
+    const heard: string[] = []
+    const listening = new AbortController()
+    document.addEventListener('keydown', (e) => heard.push(e.key), { capture: true, signal: listening.signal })
+
+    agent().nb.point(true)
+    zz.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }))
+    expect(caption()).toBe('span “zz”')
+
+    for (const [key, want] of [
+      ['ArrowUp', 'button “Snooze for 3 days”'],
+      ['ArrowUp', 'li'],
+      ['ArrowUp', 'ul'],
+      ['ArrowUp', 'section “Review requested”'],
+      ['ArrowUp', 'section “Review requested”'],
+      ['ArrowDown', 'ul'],
+    ] as const) {
+      expect(press(document.body, { key }), `${key} is swallowed`).toBe(false)
+      expect(caption(), `after ${key}`).toBe(want)
+    }
+
+    listening.abort()
+    expect(heard, 'the arrows are the pointing’s alone').toEqual([])
+
+    // The pointer moving inside the element outlined keeps it outlined.
+    const title = document.querySelector('[data-card-title]') as HTMLElement
+    title.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }))
+    expect(caption()).toBe('ul')
+
+    title.click()
+    expect(pointLayer()?.textContent).toContain('Note on ul')
+  })
+
+  it('widens no further than a dialog, which it names by the heading that labels it', () => {
+    const merge = el('button', {}, 'Merge')
+    document.body.append(
+      el(
+        'dialog',
+        { open: '', 'aria-labelledby': 'sheet-heading' },
+        el('h2', { id: 'sheet-heading' }, 'Fix the cache'),
+        merge,
+      ),
+    )
+
+    agent().nb.point(true)
+    merge.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }))
+
+    press(document.body, { key: 'ArrowUp' })
+    press(document.body, { key: 'ArrowUp' })
+    expect(caption()).toBe('dialog “Fix the cache”')
+  })
+
+  it('keeps the element’s styles that are set with a note', async () => {
+    const snooze = document.querySelector('[aria-label="Snooze for 3 days"]') as HTMLElement
+    snooze.style.color = 'rgb(255, 0, 0)'
+    snooze.style.opacity = '1'
+
+    const note = await noteOn(snooze, 'Too red')
+
+    expect(note.styles).toContainEqual(['color', 'rgb(255, 0, 0)'])
+    expect(note.styles?.map(([name]) => name)).not.toContain('opacity')
+  })
+
+  it('counts the open notes the app tells it of in the badge', () => {
+    agent().nb.point(true)
+
+    agent().sync({ enabled: true, open: 2, kept: 3 })
+    expect(pointLayer()?.textContent).toContain('Esc ends it · 2 open notes')
+
+    agent().sync({ enabled: true, open: 1, kept: 3 })
+    expect(pointLayer()?.textContent).toContain('Esc ends it · 1 open note')
+    expect(agent().inspector.state()).toEqual({ enabled: true, pointing: true, open: 1, kept: 3 })
+  })
+
+  it('leaves ⌥⌘P to the app, and starts no pointing, while the user has it turned off', () => {
+    agent().nb.point(true)
+    agent().sync({ enabled: false, open: 0, kept: 0 })
+    expect(pointLayer(), 'turning it off ends it').toBeNull()
+
+    const heard: string[] = []
+    const listening = new AbortController()
+    document.addEventListener('keydown', (e) => heard.push(e.code), { capture: true, signal: listening.signal })
+
+    expect(press(document.body, pointKey)).toBe(true)
+    expect(agent().nb.point(true)).toBe(false)
+    expect(pointLayer()).toBeNull()
+
+    listening.abort()
+    expect(heard).toEqual(['KeyP'])
+  })
+
+  it('hands the window’s Settings the inspector, and posts the user’s choices', () => {
+    const { inspector } = agent()
+    const before = posted.length
+    let heard = 0
+    const stop = inspector.subscribe(() => (heard += 1))
+    const first = inspector.state()
+
+    inspector.setEnabled(false)
+    expect(inspector.state()).not.toBe(first)
+    expect(inspector.state().enabled).toBe(false)
+    expect(heard).toBe(1)
+
+    inspector.clearNotes()
+    stop()
+    inspector.setEnabled(true)
+    expect(heard, 'a watcher that stopped hears no more').toBe(1)
+
+    expect(posted.slice(before).filter((m) => m.t === 'inspector')).toEqual([
+      { t: 'inspector', enabled: false },
+      { t: 'inspector', clear: true },
+      { t: 'inspector', enabled: true },
+    ])
   })
 })

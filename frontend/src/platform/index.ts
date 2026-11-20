@@ -1770,6 +1770,35 @@ export async function chooseFileToSave(choice: FileChoice): Promise<string> {
   })
 }
 
+// The inspector a build from source carries (internal/devtools) runs an agent in the page,
+// which talks to the app through the web view on its own, never through the bindings. Its
+// part of Settings (About → Inspector) reads and drives it here. A release, or a rehearsal
+// of one, runs no agent, so inspector() is null there, and the part never shows.
+
+// InspectorState is the inspector as Settings shows it: whether the user lets pointing at
+// an element start (⌥⌘P), whether it is on now, and how many notes the user left are open,
+// and kept in all.
+export interface InspectorState {
+  enabled: boolean
+  pointing: boolean
+  open: number
+  kept: number
+}
+
+// Inspector is the agent's part for Settings: its state, a way to hear it change, and the
+// user's choices, which the app keeps.
+export interface Inspector {
+  state: () => InspectorState
+  subscribe: (onChange: () => void) => () => void
+  setEnabled: (on: boolean) => void
+  clearNotes: () => void
+}
+
+// inspector returns the inspector's part for Settings, or null in a build without one.
+export function inspector(): Inspector | null {
+  return (window as { __appDevtools?: { inspector?: Inspector } }).__appDevtools?.inspector ?? null
+}
+
 // WindowEvent names an event the shell sends the window, and WindowEventData is what the
 // event carries. Both come from the Go event types, through the generated bindings.
 type WindowEvent = keyof Events.CustomEvents

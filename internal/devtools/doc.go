@@ -12,7 +12,9 @@
 // runs in the window's page on every load (Page), the page's console, the trail of what
 // the user did there, clicks and keys, so a bug can be followed without the steps being
 // told, and the notes the user leaves on elements they point at (⌥⌘P), each with what
-// the element is and a picture of the window (Note). It also reads the database
+// the element is and a picture of the window (Note), which it keeps in its folder in the
+// data directory (InspectorDir), with whether the user lets pointing start, a choice the
+// window's Settings show in a build from source alone. It also reads the database
 // (read-only, through internal/store), runs JavaScript in the page and returns what it
 // gives back, describes the page's elements and the inbox's cards as the web view lays
 // them out, takes a picture of the window as the web view draws it, and dumps the

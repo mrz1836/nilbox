@@ -3,10 +3,13 @@
 // installs once. It posts to the app through the web view's message handler, each message
 // prefixed as Page.Receive expects: the page describing itself ("hello"), each console line
 // and each error nothing caught ("console"), each thing the user does ("trail"), each note
-// the user leaves on an element they point at ("note"), and each evaluation's result
-// ("result"). What the user types into the app is never posted, only the field it went
-// into; a note's words are, since the user typed them into the agent's own box to say
-// them. Nothing leaves the Mac: the app keeps it in memory for the inspector's socket.
+// the user leaves on an element they point at ("note"), the user's choices in the
+// inspector's part of Settings ("inspector"), and each evaluation's result ("result").
+// What the user types into the app is never posted, only the field it went into; a note's
+// words are, since the user typed them into the agent's own box to say them. Nothing
+// leaves the Mac: the app keeps it for the inspector's socket, the notes in the data
+// folder. It is window.__appDevtools: run and nb for an evaluation, noted and sync for
+// the app, and inspector for the window's Settings, which find nothing there in a release.
 ;(() => {
   'use strict'
 
@@ -243,16 +246,6 @@
 
   const control = (el) => el.closest(controls) ?? el
 
-  // targetText names what the user acted on: a control by its name, anything else by its
-  // label or title, or its text when it holds no other element, so a container never reads
-  // out the page.
-  const targetText = (el) => {
-    const plain = !el.matches(controls) && el.childElementCount > 0
-    const name = clip(plain ? squash(el.getAttribute('aria-label') || el.getAttribute('title') || '') : nameOf(el), 80)
-
-    return `${el.getAttribute('role') || el.tagName.toLowerCase()}${name === '' ? '' : ` “${name}”`}`
-  }
-
   // labelOf is what labels el: its aria-label, or else the text of the elements its
   // aria-labelledby names.
   const labelOf = (el) => {
@@ -265,6 +258,16 @@
     const ids = (el.getAttribute('aria-labelledby') ?? '').split(/\s+/).filter(Boolean)
 
     return squash(ids.map((id) => document.getElementById(id)?.innerText ?? '').join(' '))
+  }
+
+  // targetText names what the user acted on: a control by its name, anything else by its
+  // label (labelOf) or title, or its text when it holds no other element, so a container
+  // never reads out the page.
+  const targetText = (el) => {
+    const plain = !el.matches(controls) && el.childElementCount > 0
+    const name = clip(plain ? labelOf(el) || squash(el.getAttribute('title') ?? '') : nameOf(el), 80)
+
+    return `${el.getAttribute('role') || el.tagName.toLowerCase()}${name === '' ? '' : ` “${name}”`}`
   }
 
   const where = (el) => {
@@ -453,7 +456,7 @@
   const ink = 'var(--color-text, #fafafa)'
   const muted = 'var(--color-muted, #a1a1aa)'
   const rule = 'var(--color-border, #3f3f46)'
-  const idleWords = 'Pointing: click what you mean · Esc ends it'
+  const idleWords = 'Pointing: click what you mean · ↑ ↓ wider or narrower · Esc ends it'
 
   const make = (tag, style, text) => {
     const node = document.createElement(tag)
@@ -525,17 +528,38 @@
   )
   layer.append(cursor, box, caption, badge)
 
-  // pointing is whether pointing is on; hovered is the element outlined, and picked the one
-  // the note being written is on; focusBack had focus before its box opened; saving is a
-  // note on its way, the layer hidden for the window's picture the app takes.
+  // pointing is whether pointing is on; hovered is the element outlined, base the one under
+  // the pointer, and depth how many levels above base hovered is (↑ and ↓); picked is the
+  // element the note being written is on; focusBack had focus before its box opened;
+  // saving is a note on its way, the layer hidden for the window's picture the app takes;
+  // badgeWords are what the badge says, before the count of open notes.
   let pointing = false
   let hovered = null
+  let base = null
+  let depth = 0
   let picked = null
   let focusBack = null
   let saving = false
   let keeper = 0
   let revealTimer = 0
   let idleTimer = 0
+  let badgeWords = idleWords
+
+  // state is the inspector as the window's Settings show it (internal/devtools'
+  // InspectorState: whether the user lets pointing start, and how many notes are open and
+  // kept), and whether pointing is on now. The app tells the agent the rest (sync) as the
+  // page loads and after each change. Each change makes a new object, so a store that
+  // reads it sees the change; watchers hear each one.
+  let state = Object.freeze({ enabled: true, pointing: false, open: 0, kept: 0 })
+  const watchers = new Set()
+
+  const update = (patch) => {
+    state = Object.freeze({ ...state, ...patch })
+
+    for (const watcher of watchers) {
+      watcher()
+    }
+  }
 
   const inLayer = (node) => node instanceof Node && layer.contains(node)
 
@@ -591,16 +615,59 @@
     mount(fine ? host : (open.at(-1) ?? document.body))
   }
 
+  // showBadge has the badge say its words, then how many notes are open.
+  const showBadge = () => {
+    const open = state.open
+    badge.textContent = open > 0 ? `${badgeWords} · ${open} open note${open === 1 ? '' : 's'}` : badgeWords
+  }
+
   // say puts words in the badge, which goes back to saying pointing is on after a while.
   const say = (words) => {
-    badge.textContent = words
+    badgeWords = words
+    showBadge()
     clearTimeout(idleTimer)
 
     if (words !== idleWords) {
       idleTimer = setTimeout(() => {
-        badge.textContent = idleWords
+        badgeWords = idleWords
+        showBadge()
       }, 3000)
     }
+  }
+
+  // outlined is the element depth levels above base: what ↑ and ↓ outline.
+  const outlined = () => {
+    let el = base
+
+    for (let i = 0; i < depth && el; i++) {
+      el = el.parentElement
+    }
+
+    return el
+  }
+
+  // widens reports whether ↑ may outline el's parent: not the body, nor above a dialog.
+  const widens = (el) =>
+    el?.parentElement != null &&
+    el.parentElement !== document.body &&
+    el.parentElement !== document.documentElement &&
+    !el.matches('dialog')
+
+  // hover outlines what the pointer is over: target, or, after ↑, the element outlined
+  // still, while the pointer stays inside it.
+  const hover = (target) => {
+    if (target !== base) {
+      const kept = depth > 0 && hovered?.contains(target) ? hovered : null
+
+      base = target
+      depth = 0
+
+      for (let el = target; kept && el && el !== kept; el = el.parentElement) {
+        depth++
+      }
+    }
+
+    outline(outlined())
   }
 
   // outline outlines el, its name and its components above it, or nothing for none.
@@ -682,7 +749,43 @@
     clearTimeout(revealTimer)
     saving = false
     layer.style.visibility = ''
-    say(n > 0 ? `Note ${n} saved · magex inspect:notes reads it` : 'Note sent')
+    say(n > 0 ? `Note ${n} saved` : 'Note sent')
+  }
+
+  // noteStyles are the computed styles a note keeps of its element, as CSS names them, and
+  // unset the values that say nothing about it: a default, or nothing at all.
+  const noteStyles = [
+    'display',
+    'position',
+    'color',
+    'background-color',
+    'font-size',
+    'font-weight',
+    'line-height',
+    'padding',
+    'margin',
+    'gap',
+    'border-width',
+    'border-style',
+    'border-color',
+    'border-radius',
+    'opacity',
+    'overflow',
+    'text-align',
+    'white-space',
+  ]
+  const unset = new Set(['', 'none', 'normal', 'auto', '0px', 'visible', 'static', 'start', 'rgba(0, 0, 0, 0)'])
+
+  // stylesOf is el's computed styles that say something about it, as name and value pairs,
+  // in noteStyles' order: a border's style and color only with a width.
+  const stylesOf = (el) => {
+    const style = getComputedStyle(el)
+    const set = noteStyles
+      .map((name) => [name, squash(style.getPropertyValue(name))])
+      .filter(([name, value]) => !unset.has(value) && !(name === 'opacity' && value === '1'))
+    const bordered = set.some(([name]) => name === 'border-width')
+
+    return set.filter(([name]) => bordered || (name !== 'border-style' && name !== 'border-color'))
   }
 
   const afterPaint = (fn) =>
@@ -715,6 +818,7 @@
       where: where(hit),
       view: viewOf(),
       element: describe(el),
+      styles: stylesOf(el),
       nearby: nearbyText(el),
       ...reactOf(el),
       width: innerWidth,
@@ -726,13 +830,15 @@
     afterPaint(() => post(note))
   }
 
-  // setPointing starts or ends pointing, and reports whether it is on.
+  // setPointing starts or ends pointing, and reports whether it is on. It never starts
+  // while the user has pointing turned off.
   const setPointing = (on) => {
-    if (on === pointing) {
+    if (on === pointing || (on && !state.enabled)) {
       return pointing
     }
 
     pointing = on
+    update({ pointing: on })
 
     if (on) {
       layer.style.visibility = ''
@@ -752,6 +858,8 @@
       clearTimeout(idleTimer)
       saving = false
       outline(null)
+      base = null
+      depth = 0
 
       if (popoverOpen(layer)) {
         layer.hidePopover()
@@ -765,21 +873,62 @@
     return pointing
   }
 
+  // sync takes in the inspector's state the app tells the agent: as the page loads, and
+  // after each change. Pointing turned off ends it.
+  const sync = (next) => {
+    update({ enabled: next?.enabled !== false, open: Number(next?.open) || 0, kept: Number(next?.kept) || 0 })
+
+    if (!state.enabled) {
+      setPointing(false)
+    }
+
+    showBadge()
+  }
+
+  // inspector is the inspector's part of the window's Settings (About → Inspector): its
+  // state, a way to hear it change, and the user's choices, which go to the app, which
+  // keeps them and tells the agent the state they leave (sync).
+  const inspector = Object.freeze({
+    state: () => state,
+    subscribe: (watcher) => {
+      watchers.add(watcher)
+
+      return () => {
+        watchers.delete(watcher)
+      }
+    },
+    setEnabled: (on) => {
+      update({ enabled: on === true })
+
+      if (!state.enabled) {
+        setPointing(false)
+      }
+
+      post({ t: 'inspector', enabled: on === true })
+    },
+    clearNotes: () => {
+      post({ t: 'inspector', clear: true })
+    },
+  })
+
   const swallow = (e) => {
     e.preventDefault()
     e.stopImmediatePropagation()
   }
 
   // The keys, heard before anything in the page hears them: ⌥⌘P starts and ends pointing
-  // anywhere (matched by the key's place, since ⌥P types π); while pointing, Escape drops
-  // the note being written, or ends pointing; and in the note's box, Enter saves and every
-  // key is the box's alone.
+  // anywhere (matched by the key's place, since ⌥P types π), unless the user has pointing
+  // turned off, when the key is the app's; while pointing, ↑ and ↓ outline the element
+  // around the one outlined, or back in, Escape drops the note being written, or ends
+  // pointing; and in the note's box, Enter saves and every key is the box's alone.
   window.addEventListener(
     'keydown',
     (e) => {
       if (e.code === 'KeyP' && e.altKey && e.metaKey && !e.ctrlKey && !e.shiftKey) {
-        swallow(e)
-        setPointing(!pointing)
+        if (state.enabled) {
+          swallow(e)
+          setPointing(!pointing)
+        }
 
         return
       }
@@ -804,6 +953,23 @@
         } else if (e.key === 'Tab') {
           e.preventDefault()
         }
+
+        return
+      }
+
+      const arrow = e.key === 'ArrowUp' || e.key === 'ArrowDown'
+      const plain = !e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey
+
+      if (arrow && plain && !picked && !saving && hovered) {
+        swallow(e)
+
+        if (e.key === 'ArrowUp' && widens(hovered)) {
+          depth++
+        } else if (e.key === 'ArrowDown' && depth > 0) {
+          depth--
+        }
+
+        outline(outlined())
 
         return
       }
@@ -896,8 +1062,9 @@
 
       swallow(e)
 
+      // The click picks what is outlined, which ↑ may have widened to around it.
       if (e.target instanceof Element && !saving) {
-        pick(e.target)
+        pick(hovered?.contains(e.target) ? hovered : e.target)
       }
     },
     true,
@@ -911,7 +1078,7 @@
       }
 
       mount(e.target.closest('dialog[open]') ?? modals().at(-1) ?? document.body)
-      outline(e.target)
+      hover(e.target)
     },
     true,
   )
@@ -1076,7 +1243,7 @@
       )
   }
 
-  window.__appDevtools = Object.freeze({ run, nb, noted: reveal })
+  window.__appDevtools = Object.freeze({ run, nb, noted: reveal, sync, inspector })
 
   post({
     t: 'hello',

@@ -199,12 +199,18 @@ func renderEntry[T any](value json.RawMessage, format func(T) string) (string, e
 	return format(e) + "\n", nil
 }
 
-// noteText is a note as a terminal shows it: its time, number, and words, then a line for
-// each thing known of the element it is on. Its picture is the client's to save.
+// noteText is a note as a terminal shows it: its time, number, whether it is done, and its
+// words, then a line for each thing known of the element it is on. Its picture is the
+// client's to save.
 func noteText(n Note) string {
 	var b strings.Builder
 
-	_, _ = fmt.Fprintf(&b, "%s NOTE  #%d “%s”", clockText(n.Time), n.N, strings.ReplaceAll(n.Text, "\n", "\n  "))
+	done := ""
+	if n.Done {
+		done = " (done)"
+	}
+
+	_, _ = fmt.Fprintf(&b, "%s NOTE  #%d%s “%s”", clockText(n.Time), n.N, done, strings.ReplaceAll(n.Text, "\n", "\n  "))
 
 	field := func(label, value string) {
 		if value != "" {
@@ -222,6 +228,13 @@ func noteText(n Note) string {
 
 	field("element", elementText(n.Element))
 	field("classes", n.Element.Classes)
+
+	styles := make([]string, 0, len(n.Styles))
+	for _, style := range n.Styles {
+		styles = append(styles, style[0]+": "+style[1])
+	}
+
+	field("styles", strings.Join(styles, "; "))
 
 	if n.Nearby != "" {
 		field("nearby", "“"+n.Nearby+"”")

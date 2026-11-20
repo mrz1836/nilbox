@@ -12,3 +12,8 @@ func (f *Feed[T]) Followers() int {
 
 	return len(f.followers)
 }
+
+// Followers is how many follow the notes, for the tests.
+func (s *Notes) Followers() int {
+	return s.feed.Followers()
+}

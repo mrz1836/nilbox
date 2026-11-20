@@ -108,6 +108,7 @@ func TestRenderANote(t *testing.T) {
 			Tag: "span", ID: "z", Role: "img", Name: "zz", Classes: "size-3 text-muted",
 			Rect: devtools.Rect{X: 10, Y: 20, Width: 30, Height: 40}, Marks: map[string]string{"data-verb": "snooze", "aria-hidden": "true"},
 		},
+		Styles:        [][2]string{{"color", "rgb(1, 2, 3)"}, {"font-size", "13px"}},
 		ViewportWidth: 1440, Shot: []byte("png"),
 	}
 
@@ -118,12 +119,15 @@ func TestRenderANote(t *testing.T) {
 		"  source     frontend/src/components/TriageControls.tsx:120 (the line approximate)\n"+
 		`  element    span #z role=img “zz” at 10,20 30×40 · aria-hidden="true" data-verb="snooze"`+"\n"+
 		"  classes    size-3 text-muted\n"+
+		"  styles     color: rgb(1, 2, 3); font-size: 13px\n"+
 		"  nearby     “Fix the cache”\n",
 		rendered(t, line(t, devtools.LineNote, full)), "the picture is the client's to save")
 
-	bare := devtools.Note{N: 1, Time: fixedNow, Text: "Grey?", Target: "div", ShotError: "the window has not opened yet"}
+	bare := devtools.Note{
+		N: 1, Time: fixedNow, Text: "Grey?", Target: "div", Done: true, ShotError: "the window has not opened yet",
+	}
 
-	assert.Equal(t, clock+" NOTE  #1 “Grey?”\n  on         div\n  picture    none: the window has not opened yet\n",
+	assert.Equal(t, clock+" NOTE  #1 (done) “Grey?”\n  on         div\n  picture    none: the window has not opened yet\n",
 		rendered(t, line(t, devtools.LineNote, bare)), "what isn't known is left out")
 }
 

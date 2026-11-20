@@ -36,5 +36,11 @@ func (*devKit) configure(*application.Options) {}
 // start does nothing.
 func (*devKit) start(*application.App, launch) {}
 
+// menu adds nothing to the menu bar's menu.
+func (*devKit) menu(*application.Menu, func()) {}
+
+// redrawMenu never redraws the menu bar's menu.
+func (*devKit) redrawMenu(func()) {}
+
 // stop does nothing.
 func (*devKit) stop() {}

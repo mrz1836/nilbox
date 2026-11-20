@@ -110,6 +110,23 @@ describe('on', () => {
   })
 })
 
+describe('inspector', () => {
+  it('finds none in a build without the inspector’s agent, as a release', () => {
+    expect(platform.inspector()).toBeNull()
+  })
+
+  it('hands on the agent’s part for Settings, in a build from source', () => {
+    const part = { state: vi.fn(), subscribe: vi.fn(), setEnabled: vi.fn(), clearNotes: vi.fn() }
+    Object.assign(window, { __appDevtools: { inspector: part } })
+
+    try {
+      expect(platform.inspector()).toBe(part)
+    } finally {
+      Reflect.deleteProperty(window, '__appDevtools')
+    }
+  })
+})
+
 describe('openExternal', () => {
   it('opens the URL in the browser', () => {
     mocks.browser.OpenURL.mockResolvedValue(undefined)

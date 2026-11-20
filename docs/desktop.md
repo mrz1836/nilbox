@@ -173,14 +173,25 @@ changed, with the card, dialog, or list it happened in. So when something goes w
 no need to retrace the steps: `magex inspect:trail` already has them.
 
 When something in the window looks wrong, you can point at it instead of describing it. Press
-⌥⌘P (or run `magex inspect:point`), and the window outlines whatever the pointer is over and
-names it. Click it (the app doesn't act on the click), type what's wrong in the box that opens,
-and press Enter; click another element for another note. Escape drops the note you're writing,
-then stops pointing, and leaves an open sheet or dialog open. Each note keeps your words, what
-you clicked and where (the card, dialog, and list), the view, the text around it, and a picture
-of the window with the element boxed; under `magex app:dev` it also keeps the React components
-that render the element and the source file that wrote it. `magex inspect:notes` reads them
-back, and each note shows on the trail too, in order with your clicks.
+⌥⌘P, or choose **Point at an Element** in the menu bar's menu (or run `magex inspect:point`),
+and the window outlines whatever the pointer is over and names it. ↑ outlines the element
+around it, and ↓ goes back in, so a whole row or section is as easy to point at as a button.
+Click it (the app doesn't act on the click), type what's wrong in the box that opens, and press
+Enter; click another element for another note. Escape drops the note you're writing, then stops
+pointing, and leaves an open sheet or dialog open. Each note keeps your words, what you clicked
+and where (the card, dialog, and list), the view, its styles that are set, the text around it,
+and a picture of the window with the element boxed; under `magex app:dev` it also keeps the
+React components that render the element and the source file that wrote it. `magex
+inspect:notes` reads the open ones back, and each note shows on the trail too, in order with
+your clicks.
+
+Notes are kept, with their pictures, in `devtools/` in the data folder, so they outlive a
+restart, until they are cleared: with **Clear notes** in Settings → About → Inspector, or
+`magex inspect:notes clear=true`. Whoever fixes one marks it done (`inspect:notes done=3`), and
+the badge at the bottom of the window counts the notes still open while you point. The
+**Point at elements** switch beside **Clear notes** turns pointing off: ⌥⌘P is then the app's
+again, and the menu bar's item goes. Only a build from source has any of this: a release runs
+no inspector, so About shows no Inspector there.
 
 It answers on a socket in the data folder (`devtools.sock`), which only your account can open,
 and sends nothing anywhere. It reads the database read-only: a statement that would write is
@@ -192,8 +203,9 @@ refused, and the connection can't write besides.
 | `magex inspect:logs [n=] [level=] [grep=] [follow=true]` | The log, the last `n` (100) records at `level` and up holding `grep`; `follow=true` keeps printing until interrupted |
 | `magex inspect:events`, `inspect:console`, `inspect:trail` | The services' events, the page's console, and your trail, read the same way |
 | `magex inspect:watch [level=] [grep=]` | The log, the events, the console, and the trail together, live, until interrupted |
-| `magex inspect:point [on=false]` | Turns pointing on in the window, as ⌥⌘P does; `on=false` turns it off |
-| `magex inspect:notes [n=] [follow=true] [wait=true] [clear=true]` | The notes you left by pointing, each picture saved as `bin/inspect/note-<n>.png` with the element boxed; `wait=true` waits for the next note, prints it, and returns; `clear=true` empties the list |
+| `magex inspect:point [on=false]` | Turns pointing on in the window, as ⌥⌘P does (not while it is turned off in Settings); `on=false` turns it off |
+| `magex inspect:notes [n=] [all=true] [follow=true] [wait=true]` | The open notes you left by pointing, each picture saved as `bin/inspect/note-<n>.png` with the element boxed; `all=true` shows the done ones too, `follow=true` keeps printing each new note until interrupted, and `wait=true` waits for the next note, prints it, and returns |
+| `magex inspect:notes done=2,3` or `done=all`, `clear=true` | Marks notes done, or empties the list |
 | `magex inspect:sql q="SELECT …" [max=]` | One statement that reads, against the live database, at most `max` (200) rows; a long value is cut short (`json=true` prints it whole) |
 | `magex inspect:tables` | The database's tables and their row counts |
 | `magex inspect:js code="…"` or `file=probe.js` | Runs JavaScript in the window's page and prints what it returns, once a promise settles: an expression, or statements that `return`. `nb` holds helpers: `nb.$`, `nb.$$`, `nb.find`, `nb.describe`, `nb.dom`, `nb.text`, `nb.cards`, `nb.click`, `nb.type`, `nb.press`, `nb.scroll`, `nb.wait`, and `nb.waitFor`, each taking a selector or the name a control shows |
@@ -945,7 +957,10 @@ your home directory on every start. `backups/` holds the copies of your setup an
 [backup](#backing-up-your-setup) saves before it changes anything, the five newest, and the
 copies a reset saves first (`nilbox before reset <UTC time>.json`), the five newest of those.
 A reset asked for and not yet carried out waits in `reset-request.json`, and `autopilot.lock`,
-which holds nothing, lets one copy of the app on this data folder run Autopilot. GitHub tokens are never
+which holds nothing, lets one copy of the app on this data folder run Autopilot. A build from
+source also keeps [its inspector](#the-inspector)'s socket there, `devtools.sock`, and in
+`devtools/` the notes you leave by pointing and whether pointing is on; a release writes
+neither. GitHub tokens are never
 stored there, nor anywhere else: the app borrows the token from `gh auth token` and keeps it in
 memory only. It reuses the token for up to ten minutes, and asks `gh` again sooner when GitHub
 refuses it or `gh`'s account changes (`gh auth switch`, `login`, or `logout`).

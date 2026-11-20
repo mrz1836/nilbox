@@ -78,23 +78,25 @@ func (Inspect) Trail() error {
 	return hostRunner().inspect("trail", appdata.Resolve, "n", "grep", "follow")
 }
 
-// Notes prints the notes left on the window's elements: ⌥⌘P in the window (or
-// inspect:point) lets the user point at an element, click it, and say what is wrong with
-// it. Each note says what the element is and where, and, under app:dev, the components
-// that render it and its source file; its picture of the window, the element boxed, is
-// saved as bin/inspect/note-<n>.png. follow=true keeps printing each new note until
-// interrupted; wait=true waits for the next one, prints it, and returns; clear=true
-// empties the list.
+// Notes prints the open notes left on the window's elements: ⌥⌘P in the window, its menu
+// bar's Point at an Element, or inspect:point lets the user point at an element, click
+// it, and say what is wrong with it. Each note says what the element is and where, its
+// styles, and, under app:dev, the components that render it and its source file; its
+// picture of the window, the element boxed, is saved as bin/inspect/note-<n>.png. The app
+// keeps the notes across restarts. done=2,3 (or done=all) marks notes dealt with, and
+// all=true shows those too; follow=true keeps printing each new note until interrupted;
+// wait=true waits for the next one, prints it, and returns; clear=true empties the list.
 //
 //	magex inspect:notes
-//	magex inspect:notes wait=true
+//	magex inspect:notes follow=true
+//	magex inspect:notes done=3
 func (Inspect) Notes() error {
-	return hostRunner().inspect("notes", appdata.Resolve, "n", "follow", "wait", "clear")
+	return hostRunner().inspect("notes", appdata.Resolve, "n", "all", "follow", "wait", "done", "clear")
 }
 
 // Point turns pointing on in the window, as ⌥⌘P does there: the user points at an
 // element, clicks it, types a note, and presses Enter, which inspect:notes then reads.
-// on=false turns it off.
+// on=false turns it off. It refuses while the user has pointing turned off in Settings.
 //
 //	magex inspect:point
 func (Inspect) Point() error {
@@ -298,7 +300,8 @@ func (r runner) saveShot(line devtools.Line) error {
 }
 
 // printNote prints the note line holds, as printLine prints a line, without its picture,
-// which it saves in shotsDir as note-<n>.png, the note's element boxed, and says where.
+// which it saves in shotsDir as note-<n>.png, and says where. The app boxed the note's
+// element on the picture as it kept it.
 func (r runner) printNote(line devtools.Line, raw bool) error {
 	var note devtools.Note
 	if err := json.Unmarshal(line.Value, &note); err != nil {
@@ -319,11 +322,6 @@ func (r runner) printNote(line devtools.Line, raw bool) error {
 
 	if len(picture) == 0 {
 		return nil
-	}
-
-	// A picture the box can't be drawn on is saved as it came.
-	if boxed, boxErr := devtools.Outline(picture, note.Element.Rect, note.ViewportWidth); boxErr == nil {
-		picture = boxed
 	}
 
 	abs, err := r.savePicture(filepath.Join(shotsDir, "note-"+strconv.Itoa(note.N)+".png"), picture)
