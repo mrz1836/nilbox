@@ -22,7 +22,7 @@ import {
   type ScriptRunResult,
   type TerminalID,
 } from '../../platform'
-import { terminalNames } from '../../lib/terminals'
+import { terminalLabel } from '../../lib/terminals'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
@@ -147,7 +147,7 @@ function StopNote({ id, run, terminal }: { id: string; run: ScriptRun; terminal:
   }
 
   if (run.runsIn === 'terminal') {
-    const where = terminal === null ? 'your terminal' : terminalNames[terminal]
+    const where = terminalLabel(terminal, 'your terminal')
 
     return (
       <p id={id} className="text-xs text-muted">

@@ -5,7 +5,7 @@ import { counted } from '../../lib/format'
 import { shellQuoted } from '../../lib/git'
 import { bumpHint, intentOf } from '../../lib/release'
 import { isLive } from '../../lib/scriptRuns'
-import { terminalNames } from '../../lib/terminals'
+import { terminalLabel } from '../../lib/terminals'
 import { formatAgo } from '../../lib/time'
 import { useMutation } from '../../lib/useMutation'
 import { useQuery } from '../../lib/useQuery'
@@ -297,7 +297,7 @@ export function ReleaseSheet({
 
   const version = offer?.version ?? ''
   const title = live ? `Releasing ${repo} ${intentOf(run).version}`.trimEnd() : `Release ${repo}`
-  const terminalName = terminal === null ? 'your terminal' : terminalNames[terminal]
+  const terminalName = terminalLabel(terminal, 'your terminal')
   const placeOptions = [
     { value: 'app' as const, label: brand.name },
     { value: 'terminal' as const, label: terminalName },
