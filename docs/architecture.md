@@ -2097,10 +2097,14 @@ app control Finder; `Reveal` shows such a copy in Finder (`open -R`). It writes 
 `tools.*` preferences and only reads `integrations.*`, which settings writes through the leaf `internal/integrationprefs`
 (the switches, automatic, on, or off, and the chosen copies; the leaf also declares the
 window's memory of the Scripts tab, `integrations.announced`, `scripts.lastPage`,
-`scripts.lastRepo`, and `scripts.sections` (the Release, Hooks, and Repo scripts sections the user
-opened or folded), and `scripts.showRuns`, whether a run Repo scripts starts opens beside
-it, off by default, which settings stores for the window alone), so settings never imports
-integrations. One rule says which folders are go install's (`goFolders`), for a copy's
+`scripts.lastRepo`, `scripts.sections` (the Release, Hooks, and Repo scripts sections the user
+opened or folded), and `scripts.releaseSort` (`KeyReleaseSort`, the order the Release page
+lists each group in, a `ReleaseSort`: `newest`, the default, `name`, or `commits`;
+`DecodeReleaseSort` reads any other value as newest, and `EncodeReleaseSort` refuses one),
+none of which a backup holds (`settings.Portable` leaves them out), and `scripts.showRuns`,
+whether a run Repo scripts starts opens beside it, off by default, which settings stores for
+the window alone), so settings never imports integrations. One rule says which folders are
+go install's (`goFolders`), for a copy's
 source and for its own updater alike: `$GOBIN`, each `$GOPATH` folder's bin, and
 `~/go/bin`, from the shell's environment and, while `go` is on its `PATH`, from `go env
 GOBIN GOPATH` too (run once per detection with `GOTOOLCHAIN=local`; one that fails leaves the
@@ -4976,3 +4980,40 @@ hands `onShowCardGuide` to `InboxView` (How to read a card, beside the last-refr
 and `SettingsView` (Settings → Cards' row). Setup's Finish step shows the compact guide, and
 App provides `CardPrefsContext` around the setup too. `useModalDialog`'s Tab wrap passes
 over the controls of an inert part of a dialog, which take no focus.
+
+**The Release page's rows.** `components/scripts/ReleaseRow.tsx` draws each group of the
+Release page as a table, one line per repository: `releaseListClass` makes the group's `<ul>`
+an `@container` and a grid of nine columns (the readiness edge, the checks, the repository,
+the version, the count, the headline, the clone's notes, the age, and the action), and each
+row, `CandidateRow` or `MutedRow` (its folder in the headline's place, Unmute in Release…'s),
+is a `grid-cols-subgrid` of it across every column, each cell placed by its own column and
+row classes, so the columns line up down the group and the headline takes the room the rest
+leave. The rows follow the list's width, never the window's: under 56rem (`@max-4xl`) the
+headline and the notes move to a second line under the repository, the edge spanning both,
+and under 36rem (`@max-xl`) a row is a five-column grid of its own whose second line holds
+the version, the headline, the notes, and the age (`metaClass`, `display: contents` while
+they sit in the row's columns). `rowButtonClass` keeps Release… and Unmute quiet, muted words,
+until the row is hovered or holds the focus (`group-hover/row`, `group-focus-within/row`).
+The pure half is `lib/release.ts`. `cloneNotes` turns a clone's state into `CloneNote`s,
+each its `kind`, the few words the row shows (`text`), whether it `blocks` a release, and
+its tooltip's `title`: uncommitted files, commits not pushed, a detached commit, a tag only
+on this Mac, and a clone git can't read block; behind and a branch other than the default
+don't, since magex pulls first and switches branches and back. `shownNotes` keeps only the
+blockers while there are any, else behind, then the branch. `readiness` reads the edge of a
+row with Release… (`releasable`), the first of failing checks, a blocking note, running
+checks, passed checks, and none, and
+`readinessCounts` counts a group's rows in that order for `ReadinessSummary`, the heading's
+note, whose counts wrap onto a hidden second line so one that doesn't fit drops whole.
+`sortCandidates` orders a group, whatever order the service sent, stably: the pinned
+repositories first, then `newest` (the newest commit, then the name), `name` (`owner/name`
+lowered, compared as the release service compares it), or `commits` (the most since the
+newest version, then as `newest`). `sharedHeadlines` maps each headline to the repositories
+of the group, as the search leaves it, whose newest commit it is, and a row shows the ×N
+badge once `waveAt` (3) share it; `bumpKind` picks the count's feat or breaking chip from the
+commits' headlines, as `bumpHint` words the sheet's hint. `ReleasePage` holds the sort the
+user picks in local state over the stored one (`picked ?? releaseSort`), so the groups
+reorder at once while App stores it with `settings.SetReleaseSort` (`scripts.releaseSort`)
+and takes the settings it returns. `components/scripts/GroupHeading`, which Release, Hooks,
+and Repo scripts share, is sticky at the top of the page's scroll container, over the page's
+background, so a group's heading stays in view while its rows scroll under it, and its
+`note` may be a node, given the rest of the heading's width, as the readiness summary is.
