@@ -219,8 +219,8 @@ func skillMessages(p *page, w Where) {
 		return
 	}
 
-	p.para("A message may start with what the user did with your earlier proposals, such as `Added \"Fix " +
-		"failing checks\", switched off; discarded the settings change.` Take it as where things stand, and " +
+	p.para("A message may start with what the user did with your earlier proposals, such as `Added “Fix " +
+		"failing checks”, switched off; discarded the settings change.` Take it as where things stand, and " +
 		"read `" + ToolMySetup + "` again before you propose a change to what they applied. When something is " +
 		"unclear, ask the user one short question rather than guess.")
 }

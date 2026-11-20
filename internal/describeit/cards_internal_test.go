@@ -208,7 +208,7 @@ func TestSettleRecordsWhatTheUserDidAndTheFirstOutcomeWins(t *testing.T) {
 	ref := CardRef{Source: id, Proposal: ids[0]}
 
 	require.NoError(t, r.svc.Settle(t.Context(), SettleRequest{
-		Ref: ref, Part: kit.PartRoutine, Kind: kit.OutcomeAdded, Words: "Added \"Pin failing PRs\",\nswitched off",
+		Ref: ref, Part: kit.PartRoutine, Kind: kit.OutcomeAdded, Words: "Added “Pin failing PRs”,\nswitched off",
 		RoutineID: 12,
 	}))
 	assert.Equal(t, []event.DescribeItUpdated{{ConversationID: id, Turn: 1}}, r.sink.updates(),
@@ -225,7 +225,7 @@ func TestSettleRecordsWhatTheUserDidAndTheFirstOutcomeWins(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []kit.Outcome{
 		{
-			Proposal: ids[0], Part: kit.PartRoutine, Kind: kit.OutcomeAdded, Words: "Added \"Pin failing PRs\", switched off",
+			Proposal: ids[0], Part: kit.PartRoutine, Kind: kit.OutcomeAdded, Words: "Added “Pin failing PRs”, switched off",
 			RoutineID: 12, At: testNow,
 		},
 		{Proposal: ids[0], Part: kit.PartSettings, Kind: kit.OutcomeApplied, Words: "Applied the settings change", At: testNow},
@@ -280,10 +280,10 @@ func TestAnOutcomesWordsAreItsOwnWhenTheWindowGivesNone(t *testing.T) {
 		given string
 		want  string
 	}{
-		{kit.PartRoutine, 0, kit.OutcomeAdded, "", `Added the routine "Pin failing PRs"`},
-		{kit.PartRoutine, 1, kit.OutcomeSaved, "", `Saved the change to the routine "Nightly"`},
-		{kit.PartRoutine, 0, kit.OutcomeBuilder, "", `Opened the routine "Pin failing PRs" in the builder to finish it there`},
-		{kit.PartPrompt, 0, kit.OutcomeAdded, "  ", `Added the prompt "Tests first"`},
+		{kit.PartRoutine, 0, kit.OutcomeAdded, "", "Added the routine “Pin failing PRs”"},
+		{kit.PartRoutine, 1, kit.OutcomeSaved, "", "Saved the change to the routine “Nightly”"},
+		{kit.PartRoutine, 0, kit.OutcomeBuilder, "", "Opened the routine “Pin failing PRs” in the builder to finish it there"},
+		{kit.PartPrompt, 0, kit.OutcomeAdded, "  ", "Added the prompt “Tests first”"},
 		{kit.PartSettings, 0, kit.OutcomeDiscarded, "", "Discarded the settings change"},
 		{kit.PartRules, 0, kit.OutcomeApplied, "", "Applied the rules change"},
 		{kit.PartRules, 0, kit.OutcomeApplied, "Trusted renovate", "Trusted renovate"},

@@ -49,4 +49,4 @@ Labels, check names, logins, and the names of repositories, routines, prompts, a
 
 ## What the user did
 
-A message may start with what the user did with your earlier proposals, such as `Added "Fix failing checks", switched off; discarded the settings change.` Take it as where things stand, and read `autopilot_my_setup` again before you propose a change to what they applied. When something is unclear, ask the user one short question rather than guess.
+A message may start with what the user did with your earlier proposals, such as `Added “Fix failing checks”, switched off; discarded the settings change.` Take it as where things stand, and read `autopilot_my_setup` again before you propose a change to what they applied. When something is unclear, ask the user one short question rather than guess.

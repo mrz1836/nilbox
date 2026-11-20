@@ -457,8 +457,9 @@ func keepable(words string) bool {
 	return err == nil
 }
 
-// defaultWords says what was done with a part as the next turn tells the agent:
-// `Added the routine "Fix checks"`, `Discarded the settings change`.
+// defaultWords says what was done with a part as the next turn tells the agent, its
+// names in curly quotes and with no full stop, as the window words an outcome: `Added the
+// routine “Fix checks”`, `Discarded the settings change`.
 func defaultWords(p kit.Proposal, part kit.Part, index int, kind kit.OutcomeKind) string {
 	what := partWords(p, part, index)
 
@@ -477,14 +478,14 @@ func defaultWords(p kit.Proposal, part kit.Part, index int, kind kit.OutcomeKind
 	return "Discarded " + what
 }
 
-// partWords names a part of p: `the routine "Fix checks"`, `the prompt "Tests first"`, `the
+// partWords names a part of p: `the routine “Fix checks”`, `the prompt “Tests first”`, `the
 // settings change`, `the rules change`.
 func partWords(p kit.Proposal, part kit.Part, index int) string {
 	switch {
 	case part == kit.PartRoutine && index >= 0 && index < len(p.Routines):
-		return `the routine "` + textutil.Truncate(kit.Name(p.Routines[index].Name), 80) + `"`
+		return "the routine “" + textutil.Truncate(kit.Name(p.Routines[index].Name), 80) + "”"
 	case part == kit.PartPrompt && index >= 0 && index < len(p.Prompts):
-		return `the prompt "` + textutil.Truncate(kit.Name(p.Prompts[index].Nickname), 80) + `"`
+		return "the prompt “" + textutil.Truncate(kit.Name(p.Prompts[index].Nickname), 80) + "”"
 	case part == kit.PartSettings:
 		return "the settings change"
 	default:

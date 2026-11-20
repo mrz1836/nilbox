@@ -167,7 +167,7 @@ func TestOutcomesReadBackAsThemselves(t *testing.T) {
 	o := kit.Outcomes{Items: []kit.Outcome{
 		{
 			Proposal: "20261120T053103Z-9f2c4100ab31", Part: kit.PartRoutine, Kind: kit.OutcomeAdded,
-			Words: `Added "Fix checks", switched off`, RoutineID: 12, At: at,
+			Words: "Added “Fix checks”, switched off", RoutineID: 12, At: at,
 		},
 		{
 			Proposal: "20261120T053103Z-9f2c4100ab31", Part: kit.PartSettings, Kind: kit.OutcomeDiscarded, At: at,
@@ -252,9 +252,9 @@ func TestOutcomeWordsAreOneSentenceForTheNextTurn(t *testing.T) {
 	assert.Empty(t, kit.OutcomeWords(nil), "nothing done, nothing said")
 	assert.Empty(t, kit.OutcomeWords([]kit.Outcome{{Words: " "}}))
 
-	assert.Equal(t, `Added "Fix checks", switched off; discarded the settings change; LGTM added to your prompts.`,
+	assert.Equal(t, "Added “Fix checks”, switched off; discarded the settings change; LGTM added to your prompts.",
 		kit.OutcomeWords([]kit.Outcome{
-			{Words: `Added "Fix checks", switched off`},
+			{Words: "Added “Fix checks”, switched off"},
 			{Words: ""},
 			{Words: "Discarded the settings change."},
 			{Words: "LGTM added to your prompts"},

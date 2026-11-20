@@ -76,6 +76,19 @@ func TestAFirstTurnRunsClaudeCodeWithTheAppsToolsAlone(t *testing.T) {
 	assert.Empty(t, turn.Error)
 	assert.Equal(t, 1, turn.N)
 	assert.True(t, strings.HasPrefix(turn.Reply, "I've proposed a routine"), turn.Reply)
+
+	page, err := r.svc.Events(t.Context(), id, 1, 0)
+	require.NoError(t, err)
+
+	said := ""
+
+	for _, e := range page.Events {
+		if e.Kind == runevent.KindText {
+			said = e.Text
+		}
+	}
+
+	assert.Equal(t, said, turn.Reply, "the reply is the last thing the agent said, whole, which the window shows in its place")
 	require.NotNil(t, turn.Cost)
 	assert.InDelta(t, 0.00173011, *turn.Cost, 1e-12)
 	assert.True(t, turn.Estimated, "a turn on the user's plan costs an estimate")
@@ -150,7 +163,7 @@ func TestTheNextTurnResumesAndTellsWhatTheUserDid(t *testing.T) {
 
 	require.NoError(t, r.svc.Settle(t.Context(), SettleRequest{
 		Ref: CardRef{Source: id, Proposal: proposal}, Part: kit.PartRoutine, Kind: kit.OutcomeAdded,
-		Words: `Added "Pin failing PRs", switched off`, RoutineID: 12,
+		Words: "Added “Pin failing PRs”, switched off", RoutineID: 12,
 	}))
 	require.NoError(t, r.svc.Settle(t.Context(), SettleRequest{
 		Ref: CardRef{Source: id, Proposal: proposal}, Part: kit.PartSettings, Kind: kit.OutcomeDiscarded,
@@ -167,7 +180,7 @@ func TestTheNextTurnResumesAndTellsWhatTheUserDid(t *testing.T) {
 
 	prompt, err := os.ReadFile(stdin) //nolint:gosec // the fake's copy of its stdin
 	require.NoError(t, err)
-	assert.Equal(t, "Added \"Pin failing PRs\", switched off; discarded the settings change.\n\nSkip drafts.\n",
+	assert.Equal(t, "Added “Pin failing PRs”, switched off; discarded the settings change.\n\nSkip drafts.\n",
 		string(prompt), "what the user did with the cards leads the next turn's prompt")
 
 	conv, err := r.svc.Conversation(t.Context())
@@ -176,7 +189,7 @@ func TestTheNextTurnResumesAndTellsWhatTheUserDid(t *testing.T) {
 
 	second := conv.Turns[1]
 	assert.Equal(t, TurnDone, second.State)
-	assert.Equal(t, "Added \"Pin failing PRs\", switched off; discarded the settings change.", second.Feedback)
+	assert.Equal(t, "Added “Pin failing PRs”, switched off; discarded the settings change.", second.Feedback)
 	require.NotNil(t, second.Cost)
 	assert.InDelta(t, 0.00062771, *second.Cost, 1e-12, "a resumed turn's cost is its own")
 	require.NotNil(t, conv.Cost)

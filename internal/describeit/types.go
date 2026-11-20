@@ -203,7 +203,9 @@ type SettleRequest struct {
 
 	Kind kit.OutcomeKind `json:"kind"`
 
-	// Words say it as the next turn tells the agent: `Added "Fix checks", switched off`.
+	// Words say it as the next turn tells the agent, its names in curly quotes and with no
+	// full stop: `Added “Fix checks”, switched off`. kit.OutcomeWords joins a turn's into one
+	// sentence.
 	Words string `json:"words"`
 
 	// RoutineID is the routine a routine's part added or saved, 0 for none.

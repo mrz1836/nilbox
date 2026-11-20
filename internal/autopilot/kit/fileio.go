@@ -58,7 +58,8 @@ var proposalIDPattern = regexp.MustCompile(`^\d{8}T\d{6}Z-[0-9a-f]{12}$`)
 
 // conversationPattern is what an in-app conversation's ID looks like: a UUID.
 var conversationPattern = regexp.MustCompile(
-	`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`,
+)
 
 // NewProposalID returns a new proposal's ID, which names its file: now, in UTC, to the
 // second, a hyphen, and 12 lowercase hex digits from 6 bytes of random, so two sessions
@@ -196,7 +197,7 @@ func DecodeOutcomes(data []byte) (Outcomes, error) {
 
 // OutcomeWords says what the user did with the parts of proposals, as the next turn tells
 // the agent: each outcome's words, one line each, joined with "; " into one sentence,
-// `Added "Fix checks", switched off; discarded the settings change.`, and "" for none.
+// `Added “Fix checks”, switched off; discarded the settings change.`, and "" for none.
 func OutcomeWords(items []Outcome) string {
 	words := make([]string, 0, len(items))
 
