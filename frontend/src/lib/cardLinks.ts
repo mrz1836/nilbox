@@ -6,14 +6,14 @@
 
 import { createContext } from 'react'
 
-import type { InboxItem, InboxSnapshot } from '../platform'
+import type { InboxItem, InboxSnapshot, ItemKind } from '../platform'
 import { itemKey } from './itemWorktrees'
 import { inboxLists } from './triage'
 
 // CardLink is an item a card links to: on an issue's card, a pull request that closes it
 // once it merges; on a pull request's, a listed issue it closes.
 export interface CardLink {
-  kind: 'pr' | 'issue'
+  kind: ItemKind
   repo: string
   number: number
   title: string
