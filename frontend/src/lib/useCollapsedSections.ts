@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { getCollapsedSections, setSectionCollapsed, type ListKey } from '../platform'
-import { serial } from './call'
+import { logFailure, serial } from './call'
 import { useQuery } from './useQuery'
 
 // CollapsedSections is which inbox sections are collapsed, as the inbox was last left.
@@ -43,9 +43,10 @@ export function useCollapsedSections(): CollapsedSections {
       return next
     })
 
-    queue(() => setSectionCollapsed(section, on)).catch((err: unknown) => {
-      console.error(`could not store whether the ${section} section is collapsed`, err)
-    })
+    logFailure(
+      queue(() => setSectionCollapsed(section, on)),
+      `could not store whether the ${section} section is collapsed`,
+    )
   }
 
   return { collapsed: loaded ? (stored.data ?? noneCollapsed) : null, setCollapsed }

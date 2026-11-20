@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 
 import { brand } from '../../generated/brand'
-import type { Result } from '../../lib/call'
+import { logFailure, type Result } from '../../lib/call'
 import { useKeyDown } from '../../lib/keys'
 import {
   agentsNeedAttention,
@@ -154,9 +154,7 @@ export default function SetupView(props: SetupViewProps) {
   const filled = useRef(false)
   const fill = useEffectEvent(() => {
     props.inbox.refresh()
-    checkGitHubThreadsNow().catch((err: unknown) => {
-      console.error('could not read the GitHub notifications', err)
-    })
+    logFailure(checkGitHubThreadsNow(), 'could not read the GitHub notifications')
   })
 
   useEffect(() => {
