@@ -2195,6 +2195,51 @@ branch with its removal (`BranchPullRequest` stays `name`'s); and the sweep remo
 when the app or Claude Code made it (`Managed`) and, as always, its HEAD is the merged pull
 request's head.
 
+**Copies of a worktree's commits** (`copies.go`). A coding agent's sub-session works in a
+worktree of its own, on a branch no one pushes, and the session that started it copies its
+commits (a cherry-pick or a rebase) onto its own branch and pushes that. A copy keeps the
+commit's change (git's patch ID), author, author time, and subject, but not its commit ID,
+so the original counts as not on GitHub (`Unpushed` counts by ID, and keeps doing so). Each
+listing compares the commits not on GitHub (U) of every linked worktree that has any with
+the commits on the clone's pushed branches: the remote-tracking branches of its GitHub
+remotes, each remote's default branch aside. Per clone, one log reads U of every worktree
+with at most 200, with each commit's parents, author time, author email, and subject
+(`copyUnpushedArgs`: `log --no-show-signature --no-mailmap --max-count=10000
+--format=%H%x00%P%x00%at%x00%ae%x00%s <HEAD>... --not --remotes`, with `--ignore-missing` and
+the commit they were made at from GitHub when they have one, one log per such commit), each
+worktree's own U then walked by its parents within it; and one more log reads the pushed
+commits not in the default branch whose commit time is at most a day before the oldest of
+those author times (`copyCandidatesArgs`: `log ... --no-merges --source --max-count=20000
+--format=%H%x00%S%x00%at%x00%ae%x00%s --since=@<seconds> --remotes --not
+refs/remotes/<remote>/<default>`; a copy keeps the author time and is made later). A pushed
+commit with a commit's author time, email, and subject is its likely copy. For each pushed
+branch holding likely copies, most first and at most three, one `rev-list --cherry-mark
+--right-only --no-merges <tip>...<HEAD>` (`copyCherryArgs`, commit IDs only) says which of U
+have an identical change there (`=`): a commit with an identical change and a likely copy
+has an identical copy; one with a likely copy whose change differs (`+`) an edited copy,
+which never counts (an edited change isn't the commit's); any other none. A worktree each of
+whose commits has an identical copy on one branch is fully copied onto it, and links to that
+branch's pull request, asked about as a branch link is, when nothing else links it
+(`LinkCopy`). `Worktree.Copies` says what was found: the branch (`ref`, as in
+`origin/feature-x`), how many commits (`count`), and how many have an identical copy, an
+edited one, or none, with `note` saying why they couldn't be compared, or why identical
+copies on several branches don't count; its zero value means there was nothing to compare
+with. Each read is a read (`readOnly`, with `ReadEnv`, so an object a partial clone lacks
+fails it rather than being fetched), and the allowlist holds each to its exact words: commit
+IDs, a remote-tracking branch, and a whole number of seconds. Anything that goes wrong leaves
+the worktree not fully copied and never fails the listing: git refusing a read, or warning
+on its way (a patch ID it couldn't work out would mark a commit as having no copy), a log
+reaching its cap, more than 200 commits, a merge among U, a count that changed meanwhile,
+or a comparison that leaves a commit out. What a comparison found is kept in memory
+(`copyCache`) by the worktree's HEAD, the commit it was made at from GitHub, its clone's
+GitHub remotes, and every remote-tracking branch and where it points
+(`cloneRefs.fingerprint`), so a listing after which nothing of those changed runs no git to
+compare, and a worktree that is gone is forgotten; git that couldn't be run at all is tried
+again next time. `Details` marks each of its commits not on GitHub with its copy
+(`UnpushedCommit.Copy`, `identical` or `edited`, and `CopyOID`): what the listing found,
+when one read of the clone's refs says nothing changed since, or else a comparison of its
+own; none when the refs can't be read.
+
 The rest of what a worktree's drawer shows comes from `Details(repoPath, path)`, which the
 window calls when the drawer first opens. It first checks the request as the removals do
 (`checkedGit`, then `entryOf`, which lists the clone's worktrees, then `ErrPrunable` for a

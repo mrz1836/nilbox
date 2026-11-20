@@ -412,9 +412,11 @@ type Service struct {
 	logger   *slog.Logger
 	procs    processTable
 
-	// heads keeps which pull request each pushed branch heads, across listings (see
-	// branchlink.go).
-	heads *headCache
+	// heads keeps which pull request each pushed branch heads, and copies what comparing
+	// each worktree's commits with the pushed branches' found, across listings (see
+	// branchlink.go and copies.go).
+	heads  *headCache
+	copies *copyCache
 
 	// progressEvery is how often, at most, the window's listing tells how far it has got.
 	progressEvery time.Duration
@@ -476,6 +478,7 @@ func NewService(cfg Config) *Service {
 		zone:     time.Local, //nolint:gosmopolitan // the agent writes a session's start in the machine's zone or in UTC
 		last:     emptyReport(),
 		heads:    newHeadCache(),
+		copies:   newCopyCache(),
 
 		progressEvery: progress.Every,
 	}

@@ -8,6 +8,7 @@ export {
 
 export {
     BranchKind,
+    CopyMark,
     ItemStatus,
     LinkKind,
     Stage
@@ -18,6 +19,7 @@ export type {
     BranchPick,
     BranchResult,
     Cleanup,
+    Copies,
     Details,
     FileEntry,
     LinkedItem,

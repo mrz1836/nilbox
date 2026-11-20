@@ -2467,6 +2467,7 @@ export function worktree(overrides: Partial<Worktree> = {}): Worktree {
     onGitHub: true,
     item: null,
     linkedBy: '',
+    copies: { ref: '', count: 0, identical: 0, edited: 0, none: 0, note: '' },
     stage: '',
     ownBranch: true,
     managed: true,
@@ -2526,6 +2527,8 @@ export function worktreeCommit(overrides: Partial<WorktreeCommit> = {}): Worktre
     oid: '0b1c3975011e66491785ace891c893e4fc716588',
     unix: 1781517600,
     subject: 'Keep the widget cache warm',
+    copy: '',
+    copyOid: '',
     ...overrides,
   }
 }

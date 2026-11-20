@@ -125,6 +125,10 @@ const (
 	// LinkBranch is a worktree on a pushed branch, linked to the pull request that branch
 	// heads in the repository it was pushed to.
 	LinkBranch LinkKind = "branch"
+
+	// LinkCopy is a worktree each of whose commits not on GitHub has an identical copy on
+	// one pushed branch, linked to the pull request that branch heads.
+	LinkCopy LinkKind = "copy"
 )
 
 // ItemStatus is whether a pull request or issue is open, merged, or closed.
@@ -301,9 +305,13 @@ type Worktree struct {
 	Item *LinkedItem `json:"item"`
 
 	// LinkedBy is how the worktree was linked to Item: by its record, its name, or an
-	// item's own branch (LinkName), or by the pushed branch it is on (LinkBranch); "" with
-	// no item.
+	// item's own branch (LinkName), by the pushed branch it is on (LinkBranch), or by the
+	// pushed branch its commits were copied onto (LinkCopy); "" with no item.
 	LinkedBy LinkKind `json:"linkedBy"`
+
+	// Copies says how its commits that aren't on GitHub compare with the pushed branches'
+	// commits: whether they were copied onto one, by cherry-picking or rebasing them.
+	Copies Copies `json:"copies"`
 
 	// Stage is where the worktree stands.
 	Stage Stage `json:"stage"`
@@ -354,6 +362,12 @@ type Worktree struct {
 	// (worklog.Record.FetchedHead), or "": the commits it reaches count as on GitHub, its
 	// own branch's too. The window never sees it.
 	fetched string
+
+	// copies is what comparing its commits not on GitHub with the pushed branches' found,
+	// which Copies shows, or nil when they weren't compared; copyPR is the pull request the
+	// branch they were fully copied onto heads, or nil. The window sees neither.
+	copies *copyResult
+	copyPR *LinkedItem
 }
 
 // rowFiles is how many of a worktree's changed files its row lists (Worktree.Files).

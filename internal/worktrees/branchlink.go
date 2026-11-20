@@ -312,6 +312,26 @@ func branchTargets(repos []Repo, remotes map[string]map[string]repo.Name, refs m
 	return out
 }
 
+// copyTargets lists the worktrees of repos fully copied onto a pushed branch (see
+// copies.go), with that branch, whose pull request each may be linked to. remotes maps each
+// repository's Path to its GitHub remotes.
+func copyTargets(repos []Repo, remotes map[string]map[string]repo.Name) []headTarget {
+	var out []headTarget
+
+	for r, wt := range rows(repos) {
+		if !wt.copies.full() {
+			continue
+		}
+
+		remote, branch, ok := trackingOf(wt.copies.ref)
+		if target, onGitHub := remotes[r.Path][remote]; ok && onGitHub {
+			out = append(out, headTarget{wt: wt, ask: headAsk{repo: target, branch: branch, tip: wt.copies.tip}})
+		}
+	}
+
+	return out
+}
+
 // branchAsk works out the pushed branch a linked worktree on a local branch may be linked
 // through: the remote-tracking branch of the same name the clone has, of its upstream's
 // remote first, then origin's, then the other GitHub remotes' by name. An upstream of

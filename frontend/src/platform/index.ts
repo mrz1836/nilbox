@@ -834,6 +834,11 @@ export type WorktreeStage = worktrees.Stage
 // WorktreeLinkKind is how a worktree was linked to its pull request or issue: by its name
 // or record, or by the pushed branch it is on; '' with no item.
 export type WorktreeLinkKind = worktrees.LinkKind
+// WorktreeCopies says how a worktree's commits that aren't on GitHub compare with the pushed
+// branches' commits, and WorktreeCopyMark how one of them does: an identical copy, an edited
+// one, or none.
+export type WorktreeCopies = NonNullLists<worktrees.Copies>
+export type WorktreeCopyMark = worktrees.CopyMark
 export type WorktreeSession = NonNullLists<worktrees.Session>
 
 // The bound calls, under the names the app knows them by. What each one does is the Go

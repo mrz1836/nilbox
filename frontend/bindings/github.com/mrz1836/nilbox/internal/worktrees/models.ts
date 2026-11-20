@@ -150,6 +150,72 @@ export interface Cleanup {
 }
 
 /**
+ * Copies says how the commits of a worktree that aren't on GitHub compare with the pushed
+ * branches' commits, where cherry-picking or rebasing them puts their copies. Every field
+ * is a plain value; the zero value says nothing was compared, as for a worktree with every
+ * commit on GitHub.
+ */
+export interface Copies {
+    /**
+     * Ref is the pushed branch they were compared with, as in origin/feature-x: the one
+     * with an identical copy of each when there is one, else the one with the most; "" when
+     * none has a copy of any.
+     */
+    "ref": string;
+
+    /**
+     * Count is how many there are (Worktree.Unpushed) when they were compared, or couldn't
+     * be (Note); 0 when there was nothing to compare them with.
+     */
+    "count": number;
+
+    /**
+     * Identical, Edited, and None count those with an identical copy on Ref, those whose
+     * copy there has another change, and those with neither: Count together, unless Note
+     * says they couldn't be compared.
+     */
+    "identical": number;
+    "edited": number;
+    "none": number;
+
+    /**
+     * Unless it is "", Note says in a sentence why they couldn't be compared, or why their
+     * identical copies don't count.
+     */
+    "note": string;
+}
+
+/**
+ * CopyMark is how a commit that isn't on GitHub compares with the pushed branch its
+ * worktree's commits were compared with (Copies.Ref).
+ */
+export type CopyMark = "" | "identical" | "edited";
+
+/**
+ * The values of CopyMark, by the names of their Go constants.
+ */
+export const CopyMark = {
+    /**
+     * How a commit compares with the pushed branch, as UnpushedCommit.Copy reports it.
+     *
+     * CopyNone is a commit with no copy there.
+     */
+    CopyNone: "",
+
+    /**
+     * CopyIdentical is a commit with a copy there, by its author, author time, and
+     * subject, whose change is identical.
+     */
+    CopyIdentical: "identical",
+
+    /**
+     * CopyEdited is a commit with a copy there, by its author, author time, and subject,
+     * whose change differs.
+     */
+    CopyEdited: "edited",
+} as const;
+
+/**
  * Details is what a worktree's drawer shows beyond its row, read when the drawer first
  * opens. Every field is a plain value.
  */
@@ -239,7 +305,7 @@ export const ItemStatus = {
 /**
  * LinkKind is how a worktree was linked to its pull request or issue.
  */
-export type LinkKind = "" | "name" | "branch";
+export type LinkKind = "" | "name" | "branch" | "copy";
 
 /**
  * The values of LinkKind, by the names of their Go constants.
@@ -264,6 +330,12 @@ export const LinkKind = {
      * heads in the repository it was pushed to.
      */
     LinkBranch: "branch",
+
+    /**
+     * LinkCopy is a worktree each of whose commits not on GitHub has an identical copy on
+     * one pushed branch, linked to the pull request that branch heads.
+     */
+    LinkCopy: "copy",
 } as const;
 
 /**
@@ -647,6 +719,17 @@ export interface UnpushedCommit {
      * Subject is the first line of its message.
      */
     "subject": string;
+
+    /**
+     * Copy is how it compares with the pushed branch the worktree's commits were compared
+     * with (Worktree.Copies.Ref): an identical copy there, an edited one, or none ("").
+     */
+    "copy": CopyMark;
+
+    /**
+     * CopyOID is that copy's commit ID, or "".
+     */
+    "copyOid": string;
 }
 
 /**
@@ -763,10 +846,16 @@ export interface Worktree {
 
     /**
      * LinkedBy is how the worktree was linked to Item: by its record, its name, or an
-     * item's own branch (LinkName), or by the pushed branch it is on (LinkBranch); "" with
-     * no item.
+     * item's own branch (LinkName), by the pushed branch it is on (LinkBranch), or by the
+     * pushed branch its commits were copied onto (LinkCopy); "" with no item.
      */
     "linkedBy": LinkKind;
+
+    /**
+     * Copies says how its commits that aren't on GitHub compare with the pushed branches'
+     * commits: whether they were copied onto one, by cherry-picking or rebasing them.
+     */
+    "copies": Copies;
 
     /**
      * Stage is where the worktree stands.

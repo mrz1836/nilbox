@@ -8,6 +8,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/gitread"
+	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -63,6 +64,13 @@ type UnpushedCommit struct {
 
 	// Subject is the first line of its message.
 	Subject string `json:"subject"`
+
+	// Copy is how it compares with the pushed branch the worktree's commits were compared
+	// with (Worktree.Copies.Ref): an identical copy there, an edited one, or none ("").
+	Copy CopyMark `json:"copy"`
+
+	// CopyOID is that copy's commit ID, or "".
+	CopyOID string `json:"copyOid"`
 }
 
 // BaseReader reads where a clone's default branch stands, as the clone last fetched it,
@@ -111,7 +119,7 @@ func (s *Service) Details(ctx context.Context, repoPath, path string) (Details, 
 	)
 
 	wg.Go(func() { d.Files, d.FileCount, filesFailed = detailFiles(ctx, g, e.Path) })
-	wg.Go(func() { d.Commits, d.Unpushed, commitsFailed = detailCommits(ctx, g, e.Path, fetched) })
+	wg.Go(func() { d.Commits, d.Unpushed, commitsFailed = s.detailCommits(ctx, g, repoPath, e, fetched) })
 	wg.Go(func() { d.Base, d.Behind, baseFailed = s.detailBase(ctx, repoPath, e.HEAD) })
 	wg.Wait()
 
@@ -160,11 +168,13 @@ func detailFiles(ctx context.Context, g git, dir string) ([]FileEntry, int, stri
 	return files, count, ""
 }
 
-// detailCommits counts the commits on HEAD in the worktree at dir that aren't on GitHub,
-// past fetched, the commit it was made at from GitHub, when it is one, and lists them,
-// at most detailLimit, only when there are any; or says why they couldn't be read.
-func detailCommits(ctx context.Context, g git, dir, fetched string) ([]UnpushedCommit, int, string) {
-	count, stderr, err := g.unpushed(ctx, dir, fetched)
+// detailCommits counts the commits on HEAD in the worktree e of the clone at dir that aren't
+// on GitHub, past fetched, the commit it was made at from GitHub, when it is one, and lists
+// them, at most detailLimit, only when there are any, each with how it compares with the
+// pushed branches (copyMarks); or says why they couldn't be read.
+func (s *Service) detailCommits(ctx context.Context, g git, dir string, e Entry, fetched string,
+) ([]UnpushedCommit, int, string) {
+	count, stderr, err := g.unpushed(ctx, e.Path, fetched)
 
 	switch {
 	case err != nil:
@@ -173,12 +183,53 @@ func detailCommits(ctx context.Context, g git, dir, fetched string) ([]UnpushedC
 		return []UnpushedCommit{}, 0, ""
 	}
 
-	commits, stderr, err := g.unpushedCommits(ctx, dir, fetched)
+	commits, stderr, err := g.unpushedCommits(ctx, e.Path, fetched)
 	if err != nil {
 		return []UnpushedCommit{}, count, readFailure("the commits not on GitHub", err, stderr)
 	}
 
+	marks := s.copyMarks(ctx, g, dir, e, fetched, count)
+
+	for i := range commits {
+		if m, ok := marks[commits[i].OID]; ok {
+			commits[i].Copy, commits[i].CopyOID = m.mark, m.copy
+		}
+	}
+
 	return commits, count, ""
+}
+
+// copyMarks says how each of the count commits not on GitHub of the worktree e, of the clone
+// at dir, compares with the pushed branches, by commit ID: what the listing found, when the
+// clone's refs, read once, say nothing it was worked out from changed since, or else what a
+// comparison of its own finds (see copies.go). None when that can't be told.
+func (s *Service) copyMarks(ctx context.Context, g git, dir string, e Entry, fetched string, count int) map[string]commitMark {
+	if count > copyLimit || !gitread.IsCommitID(e.HEAD) {
+		return nil
+	}
+
+	refs, err := g.readRefs(ctx, dir)
+	if err != nil {
+		return nil
+	}
+
+	if marks, ok := s.keptMarks(e, fetched, refs, count); ok {
+		return marks
+	}
+
+	clone, err := localrepos.Inspect(ctx, dir, s.run)
+	if err != nil {
+		return nil
+	}
+
+	wt := &Worktree{Path: e.Path, Head: e.HEAD, Unpushed: count, fetched: fetched}
+	s.detectCloneCopies(ctx, g, dir, []*Worktree{wt}, clone.Remotes, refs, false)
+
+	if wt.copies == nil {
+		return nil
+	}
+
+	return wt.copies.marks
 }
 
 // detailBase reads origin's default branch in the clone at dir, as it last fetched it, and
@@ -215,6 +266,18 @@ func (s *Service) detailBase(ctx context.Context, dir, head string) (string, int
 	}
 
 	return base, behind, ""
+}
+
+// keptMarks returns the marks the listing found for the worktree e's count commits not on
+// GitHub, when nothing they were worked out from changed since: its HEAD, the commit it was
+// made at from GitHub, and its clone's remote-tracking branches, as refs has them now.
+func (s *Service) keptMarks(e Entry, fetched string, refs cloneRefs, count int) (map[string]commitMark, bool) {
+	kept, ok := s.copies.entry(paths.Resolved(e.Path))
+	if !ok || kept.key.head != e.HEAD || kept.key.fetched != fetched || kept.key.refs != refs.fingerprint() {
+		return nil, false
+	}
+
+	return kept.result.marks, kept.result.copies.Count == 0 || kept.result.copies.Count == count
 }
 
 // readFailure words a read Details couldn't make with the service's own git, for the

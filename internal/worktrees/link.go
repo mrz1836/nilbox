@@ -53,10 +53,12 @@ func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map
 
 	targets := linkTargets(repos, remotes, recorded)
 	heads := branchTargets(repos, remotes, refs, namedOf(targets))
+	copied := copyTargets(repos, remotes)
+	all := slices.Concat(heads, copied)
 	now := s.clock.Now()
-	plan := s.heads.plan(heads, now)
+	plan := s.heads.plan(all, now)
 
-	items := plan.refs(uniqueRefs(targets), heads)
+	items := plan.refs(uniqueRefs(targets), all)
 	if len(items) == 0 && len(plan.asks) == 0 {
 		return ""
 	}
@@ -79,7 +81,16 @@ func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map
 		}
 	}
 
-	linkHeads(heads, s.heads.resolveHeads(heads, plan, answer, now), LinkBranch)
+	prs := s.heads.resolveHeads(all, plan, answer, now)
+	linkHeads(heads, prs, LinkBranch)
+	linkHeads(copied, prs, LinkCopy)
+
+	for _, t := range copied {
+		if pr := prs[t.ask.cacheKey()]; pr != nil {
+			linked := *pr
+			t.wt.copyPR = &linked
+		}
+	}
 
 	return ""
 }
