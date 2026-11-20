@@ -7,10 +7,9 @@ import { useConversation } from '../../../lib/useConversation'
 import { useQuery } from '../../../lib/useQuery'
 import {
   describeItStatus,
-  getAutopilotCatalog,
-  getSettings,
   listAgents,
   listProfiles,
+  type AutopilotCatalog,
   type AutopilotDraft,
   type DescribeAgentChoice,
   type DescribeAttachRef,
@@ -39,6 +38,12 @@ export interface DescribeRequest {
 export interface DescribeViewProps {
   // request is the latest request from elsewhere, undefined for none.
   request?: DescribeRequest
+
+  // settings are the stored settings, null until they load, whose mode new routines start
+  // in the cards take; catalog is what a routine can do, undefined until it is read. Both
+  // are the tab's own, so a change made elsewhere reaches the view while it is hidden.
+  settings: Settings | null
+  catalog: AutopilotCatalog | undefined
 
   // onEditInBuilder opens the builder on a draft, as a template's Customize does
   // (AutopilotView's newFrom).
@@ -171,14 +176,14 @@ function AgentForm({ initial, busy, error, onStart, onCancel }: AgentFormProps) 
 // message at once, or puts what it attaches in the composer, once per request.
 export function DescribeView({
   request,
+  settings,
+  catalog,
   onEditInBuilder,
   onShowRoutine,
   onSettingsSaved,
 }: DescribeViewProps): ReactElement {
   const talk = useConversation()
   const status = useQuery(() => describeItStatus(), [])
-  const settings = useQuery(() => getSettings(), [], { log: 'could not read the settings for Describe it' })
-  const catalog = useQuery(() => getAutopilotCatalog(), [], { log: 'could not read what a routine can do' })
   const [text, setText] = useState('')
   const [chips, setChips] = useState<Chip[]>([])
   const [changing, setChanging] = useState(false)
@@ -191,16 +196,12 @@ export function DescribeView({
   const tokens = c === undefined ? 0 : c.tokensIn + c.tokensOut
   const cost = c === undefined ? '' : costWords(c.cost, c.estimated)
   const kit = {
-    defaultMode: settings.data?.autopilot.defaultMode ?? 'ask',
-    catalog: catalog.data,
+    defaultMode: settings?.autopilot.defaultMode ?? 'ask',
+    catalog,
     onEditInBuilder,
     onShowRoutine,
-    // The settings a card leaves reach the window's own, and this view reads its own again,
-    // for the mode new routines start in.
-    onSettingsSaved: (saved: Settings) => {
-      onSettingsSaved(saved)
-      void settings.refetch()
-    },
+    // The settings a card leaves reach the window's own, which come back as settings.
+    onSettingsSaved,
     describeDelay,
   } satisfies Omit<CardKit, 'onSettled'>
 

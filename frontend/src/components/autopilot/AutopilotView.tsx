@@ -1433,6 +1433,8 @@ export default function AutopilotView({
             <Activity mode={describing ? 'visible' : 'hidden'}>
               <DescribeView
                 {...(describeRequest === undefined ? {} : { request: describeRequest })}
+                settings={settings}
+                catalog={catalog.data}
                 onEditInBuilder={(draft) => {
                   newFrom(draft)
                 }}
