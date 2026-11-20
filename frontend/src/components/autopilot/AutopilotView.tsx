@@ -1121,16 +1121,17 @@ export default function AutopilotView({
         routines.some((r) => r.id === rid),
       )
 
-      for (const rid of order) {
-        const watched = await attempt(routineWatching(rid))
+      // Every routine is asked at once, from the local database alone; the first in order
+      // that watches it wins, and one that couldn't be read is passed over.
+      const lists = await Promise.all(order.map((rid) => attempt(routineWatching(rid))))
+      const rid = order[lists.findIndex((watched) => watched.ok && watched.data.includes(item.id))]
 
-        if (watched.ok && watched.data.includes(item.id)) {
-          toasts.current += 1
-          go(rid)
-          setWatchHighlight({ routineId: rid, id: item.id, seq: toasts.current })
+      if (rid !== undefined) {
+        toasts.current += 1
+        go(rid)
+        setWatchHighlight({ routineId: rid, id: item.id, seq: toasts.current })
 
-          return
-        }
+        return
       }
 
       const stored = await attempt(itemsByID([item.id]))

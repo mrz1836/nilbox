@@ -10,6 +10,7 @@ import { useReviewDrafts } from '../../lib/reviewDrafts'
 import { useAutopilot } from '../../lib/useAutopilot'
 import { useInbox } from '../../lib/useInbox'
 import type { AutopilotMatch, KitOutcome, Settings } from '../../platform'
+import { deferred, nextTask } from '../../test/async'
 import { at } from '../../test/clock'
 import {
   activityGroup,
@@ -545,6 +546,56 @@ describe('Activity', () => {
     const again = (await screen.findByRole('button', { name: 'The widget forgets its size' })).closest('li')
 
     expect(again).not.toHaveAttribute('data-highlighted')
+    expect(platform.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('asks every routine at once, and shows the item in the first in order that watches it', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(activityPage())
+    // The Dry run line is routine 4's, which no longer watches the item; routines 3 and 5
+    // both do, and 5 answers first.
+    const earlier = deferred<number[]>()
+    platform.routineWatching.mockImplementation((rid) =>
+      rid === 3 ? earlier.promise : Promise.resolve(rid === 5 ? [2] : []),
+    )
+    platform.itemsByID.mockResolvedValue([
+      item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' }),
+    ])
+    renderTab()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Open example-repo #9' }))
+
+    expect(platform.routineWatching.mock.calls.map(([rid]) => rid)).toEqual([4, 3, 5, 6])
+    await nextTask()
+    expect(screen.queryByRole('region', { name: 'Someone else’s' })).not.toBeInTheDocument()
+
+    earlier.resolve([2])
+
+    const pane = within(await screen.findByRole('region', { name: 'Snooze passing bot PRs' }))
+    const row = (await pane.findByRole('button', { name: 'The widget forgets its size' })).closest('li')
+
+    expect(row).toHaveAttribute('data-highlighted', 'true')
+    expect(screen.queryByRole('region', { name: 'Someone else’s' })).not.toBeInTheDocument()
+  })
+
+  it('passes over a routine whose list couldn’t be read when it opens an item', async () => {
+    platform.listRoutines.mockResolvedValue(routines())
+    platform.autopilotActivity.mockResolvedValue(activityPage())
+    // The line's own routine, 4, would come first, but its list can't be read.
+    platform.routineWatching.mockImplementation((rid) =>
+      rid === 4 ? Promise.reject(new Error('The database is locked.')) : Promise.resolve(rid === 3 ? [2] : []),
+    )
+    platform.itemsByID.mockResolvedValue([
+      item({ id: 2, kind: 'issue', number: 9, title: 'The widget forgets its size' }),
+    ])
+    renderTab()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Open example-repo #9' }))
+
+    const pane = within(await screen.findByRole('region', { name: 'Snooze passing bot PRs' }))
+    const row = (await pane.findByRole('button', { name: 'The widget forgets its size' })).closest('li')
+
+    expect(row).toHaveAttribute('data-highlighted', 'true')
     expect(platform.openExternal).not.toHaveBeenCalled()
   })
 
