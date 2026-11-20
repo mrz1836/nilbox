@@ -997,6 +997,22 @@ describe('WatchingList', () => {
     expect(platform.openExternal).not.toHaveBeenCalled()
   })
 
+  it('scrolls the row Activity asked for into view, and no other', async () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
+    platform.routineWatching.mockResolvedValue([1, 2])
+    platform.itemsByID.mockResolvedValue([item({ id: 2, number: 8, title: 'Fix the flaky test' }), item()])
+    render(<Watching highlight={{ id: 1, seq: 1 }} />, { wrapper: rows })
+
+    const row = (await screen.findByRole('button', { name: 'Add the widget cache' })).closest('[data-item-id]')
+
+    await waitFor(() => {
+      expect(onHighlighted).toHaveBeenCalledOnce()
+    })
+    expect(row).toHaveAttribute('data-item-id', '1')
+    expect(scroll.mock.contexts).toEqual([row])
+    expect(scroll).toHaveBeenCalledWith({ block: 'center' })
+  })
+
   it('hands back an ask when what it watches couldn’t be read', async () => {
     platform.routineWatching.mockResolvedValue([1])
     platform.itemsByID.mockRejectedValue(new Error('database is locked'))

@@ -97,9 +97,7 @@ export function WatchingList({ routineId, kit, highlight, onHighlighted }: Watch
     }
 
     if (asked !== 0) {
-      const row = [...(listRef.current?.querySelectorAll('[data-item-id]') ?? [])].find(
-        (el) => el.getAttribute('data-item-id') === String(asked),
-      )
+      const row = listRef.current?.querySelector(`[data-item-id="${String(asked)}"]`)
 
       row?.scrollIntoView({ block: 'center' })
     }
