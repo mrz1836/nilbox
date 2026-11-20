@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { counted, errorMessage, fileDate, fileName, formatCount, joinList, refText } from './format'
+import { badgeText, counted, errorMessage, fileDate, fileName, formatCount, joinList, refText } from './format'
 
 describe('formatCount', () => {
   it('formats with the locale grouping', () => {
@@ -19,6 +19,17 @@ describe('counted', () => {
   it('groups the digits of a count from 1,000', () => {
     expect(counted(1000, 'clone', 'clones')).toBe(`${formatCount(1000)} clones`)
     expect(counted(999, 'clone', 'clones')).toBe('999 clones')
+  })
+})
+
+describe('badgeText', () => {
+  it('shows the count up to 99, then caps it at 99+', () => {
+    expect(badgeText(0)).toBe('0')
+    expect(badgeText(1)).toBe('1')
+    expect(badgeText(7)).toBe('7')
+    expect(badgeText(99)).toBe('99')
+    expect(badgeText(100)).toBe('99+')
+    expect(badgeText(1000)).toBe('99+')
   })
 })
 

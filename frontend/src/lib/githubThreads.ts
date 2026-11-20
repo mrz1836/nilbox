@@ -105,11 +105,6 @@ export function reasonsText(reasons: readonly string[]): string {
   return [...new Set(reasons.filter((r) => r !== '').map(reasonText))].join(', ')
 }
 
-// badgeText is the toolbar button's count: the number, up to 99, then 99+.
-export function badgeText(count: number): string {
-  return count > 99 ? '99+' : formatCount(count)
-}
-
 // countsText says what the user's GitHub inbox holds, the unread first, as the toolbar's
 // badge counts them: "5 unread · 38 in your GitHub inbox", or that it is empty, or that it
 // hasn't been read yet.

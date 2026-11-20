@@ -45,6 +45,12 @@ export function counted(n: number, one: string, many: string): string {
   return `${formatCount(n)} ${n === 1 ? one : many}`
 }
 
+// badgeText is a toolbar button's count, as its badge shows it: the number, up to 99,
+// then 99+.
+export function badgeText(count: number): string {
+  return count > 99 ? '99+' : formatCount(count)
+}
+
 // joinList joins names for a sentence: "a", "a and b", or "a, b, and c".
 export function joinList(names: readonly string[]): string {
   if (names.length <= 2) {

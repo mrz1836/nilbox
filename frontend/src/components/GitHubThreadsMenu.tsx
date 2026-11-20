@@ -1,14 +1,7 @@
 import { useId } from 'react'
 
-import {
-  badgeText,
-  buttonLabel,
-  groupURL,
-  inboxURL,
-  summaryText,
-  threadGroups,
-  type ThreadGroup,
-} from '../lib/githubThreads'
+import { badgeText } from '../lib/format'
+import { buttonLabel, groupURL, inboxURL, summaryText, threadGroups, type ThreadGroup } from '../lib/githubThreads'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import { useNowAs } from '../lib/useNow'
 import { usePopover } from '../lib/usePopover'

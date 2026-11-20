@@ -1,6 +1,6 @@
 import { useId } from 'react'
 
-import { formatCount } from '../lib/format'
+import { badgeText, formatCount } from '../lib/format'
 import { quickViewMax } from '../lib/notifications'
 import type { NotificationsState } from '../lib/useNotifications'
 import { usePopover } from '../lib/usePopover'
@@ -77,7 +77,7 @@ export function NotificationsMenu({ notifications, onOpen, onSettings, onViewAll
             aria-hidden="true"
             className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-surface tabular-nums"
           >
-            {log.unread > 99 ? '99+' : formatCount(log.unread)}
+            {badgeText(log.unread)}
           </span>
         )}
       </button>
