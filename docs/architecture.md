@@ -2245,11 +2245,14 @@ moved base whose context lines differ is marked `+` by git itself, and so is edi
 worktree each of
 whose commits has an identical copy on one branch is fully copied onto it, and links to that
 branch's pull request, asked about as a branch link is, when nothing else links it
-(`LinkCopy`). `Worktree.Copies` says what was found: the branch (`ref`, as in
-`origin/feature-x`), how many commits (`count`), and how many have an identical copy, an
-edited one, or none, with `note` saying why they couldn't be compared, or why identical
-copies on several branches don't count; its zero value means there was nothing to compare
-with. Each read is a read (`readOnly`, with `ReadEnv`, so an object a partial clone lacks
+(`LinkCopy`); the pull request of the branch a worktree copied only in part is asked about
+the same way, without linking it. `Worktree.Copies` says what was found: the branch (`ref`,
+as in `origin/feature-x`), how many commits (`count`), and how many have an identical copy,
+an edited one, or none, with `note` saying why they couldn't be compared, or why identical
+copies on several branches don't count; `pr` is the number of the pull request the copies
+went into (the one `ref`'s branch heads, or, when `recorded`, the one the record names; 0
+when none is known), and `gone` says `ref`'s remote-tracking branch is gone, as it can be
+only when `recorded`. Its zero value means there was nothing to compare with. Each read is a read (`readOnly`, with `ReadEnv`, so an object a partial clone lacks
 fails it rather than being fetched), and the allowlist holds each to its exact words: commit
 IDs, a remote-tracking branch, and a whole number of seconds. Anything that goes wrong leaves
 the worktree not fully copied and never fails the listing: git refusing a read, or warning

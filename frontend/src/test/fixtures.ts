@@ -2513,7 +2513,18 @@ export function finishedWorktree(overrides: Partial<Worktree> = {}): Worktree {
 // worktreeCopies is what comparing a worktree's commits not on GitHub with the pushed
 // branches found: by default nothing, as for a worktree with every commit on GitHub.
 export function worktreeCopies(overrides: Partial<WorktreeCopies> = {}): WorktreeCopies {
-  return { ref: '', count: 0, identical: 0, edited: 0, none: 0, recorded: false, note: '', ...overrides }
+  return {
+    ref: '',
+    count: 0,
+    identical: 0,
+    edited: 0,
+    none: 0,
+    recorded: false,
+    pr: 0,
+    gone: false,
+    note: '',
+    ...overrides,
+  }
 }
 
 // copiedPR is pull request #42, open, whose branch, feature-x, a session pushed with the

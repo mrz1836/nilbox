@@ -83,7 +83,17 @@ export function asReadNow(wt: Worktree, read: DetailsRead | undefined): Worktree
 }
 
 // noCopies is what comparing no commits with the pushed branches finds: nothing.
-const noCopies: WorktreeCopies = { ref: '', count: 0, identical: 0, edited: 0, none: 0, recorded: false, note: '' }
+const noCopies: WorktreeCopies = {
+  ref: '',
+  count: 0,
+  identical: 0,
+  edited: 0,
+  none: 0,
+  recorded: false,
+  pr: 0,
+  gone: false,
+  note: '',
+}
 
 // sameCommits reports details that found, as far as they tell, the commits not on GitHub
 // the listing found on wt: as many, and the newest of those they list, which git lists

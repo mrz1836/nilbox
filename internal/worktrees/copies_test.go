@@ -155,7 +155,7 @@ func TestListSeesCommitsCherryPickedOntoAPushedBranch(t *testing.T) {
 	r.gh.set(exampleName, 199, headPR(199, ItemOpen, head, parentBranch, ownRepo).State)
 
 	row := r.list(t)
-	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 2, Identical: 2}, row.Copies)
+	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 2, Identical: 2, PR: 199}, row.Copies)
 	assert.Equal(t, 2, row.Unpushed, "the count by commit ID is kept as it is")
 	assert.Equal(t, LinkCopy, row.LinkedBy)
 	require.NotNil(t, row.Item)
@@ -227,7 +227,7 @@ func TestListTellsAnEditedCopyApart(t *testing.T) {
 	r.gh.setHead(parentBranch, headPR(199, ItemOpen, head, parentBranch, ownRepo))
 
 	row := r.list(t)
-	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 2, Identical: 1, Edited: 1}, row.Copies)
+	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 2, Identical: 1, Edited: 1, PR: 199}, row.Copies)
 	assert.Nil(t, row.Item, "an edited copy is no copy: the worktree isn't linked by it")
 	assert.Empty(t, row.LinkedBy)
 }

@@ -90,7 +90,7 @@ func (s *Service) link(ctx context.Context, repos []Repo, remotes map[string]map
 
 	prs := s.heads.resolveHeads(all, plan, answer, now)
 	linkHeads(heads, prs, LinkBranch)
-	linkHeads(copied, prs, LinkCopy)
+	linkHeads(fullyCopied(copied), prs, LinkCopy)
 	copiedInto(copied, prs)
 	linkRecords(vouched, answer.Items)
 

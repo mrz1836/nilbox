@@ -186,6 +186,20 @@ export interface Copies {
     "recorded": boolean;
 
     /**
+     * PR is the number of the pull request the copies went into: when Recorded, the one the
+     * record names, else the one Ref's branch heads, as this listing read it; 0 when none is
+     * known, as before GitHub was asked, or for a branch no pull request heads.
+     */
+    "pr": number;
+
+    /**
+     * Gone reports that Ref's remote-tracking branch is gone from the clone, deleted or
+     * pruned, as it can be only when Recorded: the window can't read that from Recorded,
+     * which a merged pull request sets with its branch still there.
+     */
+    "gone": boolean;
+
+    /**
      * Unless it is "", Note says in a sentence why they couldn't be compared, or why their
      * identical copies don't count.
      */

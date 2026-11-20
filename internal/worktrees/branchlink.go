@@ -1,6 +1,7 @@
 package worktrees
 
 import (
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -321,28 +322,35 @@ func branchTargets(repos []Repo, remotes map[string]map[string]repo.Name, refs m
 	return out
 }
 
-// copyTargets lists the worktrees of repos fully copied onto a pushed branch (see
-// copies.go), with that branch, whose pull request each may be linked to. remotes maps each
-// repository's Path to its GitHub remotes.
+// copyTargets lists the worktrees of repos with copies of their commits on a pushed branch
+// (see copies.go), all or some, with that branch, whose pull request Copies.PR names and
+// each fully copied one may be linked to. remotes maps each repository's Path to its GitHub
+// remotes, and refs to its refs.
 func copyTargets(repos []Repo, remotes map[string]map[string]repo.Name, refs map[string]cloneRefs) []headTarget {
 	var out []headTarget
 
 	for r, wt := range rows(repos) {
-		if !wt.copies.result.full() {
+		res := wt.copies.result
+		if res == nil || res.ref == "" {
 			continue
 		}
 
-		remote, branch, ok := refs[r.Path].owner(wt.copies.result.ref)
+		remote, branch, ok := refs[r.Path].owner(res.ref)
 		if target, onGitHub := remotes[r.Path][remote]; ok && onGitHub {
-			out = append(out, headTarget{wt: wt, ask: headAsk{repo: target, branch: branch, tip: wt.copies.result.tip}})
+			out = append(out, headTarget{wt: wt, ask: headAsk{repo: target, branch: branch, tip: res.tip}})
 		}
 	}
 
 	return out
 }
 
-// copiedInto keeps, for each of targets, worktrees fully copied onto a pushed branch, the
-// pull request that branch heads, from prs, which resolveHeads returned, whatever links it.
+// fullyCopied keeps the targets fully copied onto their branch.
+func fullyCopied(targets []headTarget) []headTarget {
+	return slices.DeleteFunc(slices.Clone(targets), func(t headTarget) bool { return !t.wt.copies.result.full() })
+}
+
+// copiedInto keeps, for each of targets, worktrees with copies on a pushed branch, the pull
+// request that branch heads, from prs, which resolveHeads returned, whatever links it.
 func copiedInto(targets []headTarget, prs map[headKey]*LinkedItem) {
 	for _, t := range targets {
 		if pr := prs[t.ask.cacheKey()]; pr != nil {

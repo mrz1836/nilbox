@@ -110,7 +110,7 @@ func TestASquashMergeAndTheBranchsDeletionKeepTheCopiesOnGitHub(t *testing.T) {
 	row := r.list(t)
 	assert.Equal(t, 2, row.Unpushed)
 	assert.True(t, row.OnGitHub, "the merged pull request's head has every copy")
-	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 2, Identical: 2, Recorded: true}, row.Copies)
+	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 2, Identical: 2, Recorded: true, PR: 199, Gone: true}, row.Copies)
 	assert.Equal(t, LinkCopy, row.LinkedBy, "linked by its record, its branch gone")
 	require.NotNil(t, row.Item)
 	assert.Equal(t, 199, row.Item.Number)
@@ -294,7 +294,8 @@ func TestACopyRecordVouchesOnceItsPullRequestMergedWhateverBecameOfItsBranch(t *
 
 	row := r.list(t)
 	assert.True(t, row.OnGitHub, "the merged pull request's head has every copy")
-	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 2, Identical: 2, Recorded: true}, row.Copies)
+	assert.Equal(t, Copies{Ref: "origin/" + parentBranch, Count: 2, Identical: 2, Recorded: true, PR: 199}, row.Copies,
+		"recorded, though its branch isn't gone")
 	assert.Equal(t, LinkCopy, row.LinkedBy)
 	require.NotNil(t, row.Item)
 	assert.Equal(t, 199, row.Item.Number)

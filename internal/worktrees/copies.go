@@ -115,6 +115,16 @@ type Copies struct {
 	// copies, and either Ref is gone or that pull request merged. Identical is Count then.
 	Recorded bool `json:"recorded"`
 
+	// PR is the number of the pull request the copies went into: when Recorded, the one the
+	// record names, else the one Ref's branch heads, as this listing read it; 0 when none is
+	// known, as before GitHub was asked, or for a branch no pull request heads.
+	PR int `json:"pr"`
+
+	// Gone reports that Ref's remote-tracking branch is gone from the clone, deleted or
+	// pruned, as it can be only when Recorded: the window can't read that from Recorded,
+	// which a merged pull request sets with its branch still there.
+	Gone bool `json:"gone"`
+
 	// Unless it is "", Note says in a sentence why they couldn't be compared, or why their
 	// identical copies don't count.
 	Note string `json:"note"`

@@ -291,13 +291,16 @@ func (s *Service) judgeOneCopied(ctx context.Context, g git, dir string, wt *Wor
 	st := &wt.copies
 	st.onGitHub = wt.Unpushed > 0 && st.result.full()
 
-	rec, pr := st.record, st.recordPR
-	if rec == nil || !st.covered || pr == nil || wt.Unpushed <= 0 ||
-		!s.prHolds(ctx, g, dir, rec.CopyTip, pr.HeadOID, refs.fingerprint()) {
+	if st.pr != nil && wt.Copies.Ref != "" {
+		wt.Copies.PR = st.pr.Number
+	}
+
+	if !s.recordHolds(ctx, g, dir, wt, refs.fingerprint()) {
 		return
 	}
 
-	st.merged = pr.State == ItemMerged
+	rec := st.record
+	st.merged = st.recordPR.State == ItemMerged
 
 	// The record vouches once its branch is gone, or, whatever became of the branch, once
 	// its pull request merged with every copy; while that is open, only the copies this
@@ -306,8 +309,19 @@ func (s *Service) judgeOneCopied(ctx context.Context, g git, dir string, wt *Wor
 		st.onGitHub = true
 		wt.Copies = Copies{
 			Ref: strings.TrimPrefix(rec.Ref, remotesRef), Count: wt.Unpushed, Identical: wt.Unpushed, Recorded: true,
+			PR: rec.Number, Gone: !there,
 		}
 	}
+}
+
+// recordHolds reports a worktree with commits not on GitHub whose copy record covers them,
+// whose pull request this listing read, and whose head has the record's branch commit
+// (prHolds), in the clone at dir, whose remote-tracking branches fp sums up.
+func (s *Service) recordHolds(ctx context.Context, g git, dir string, wt *Worktree, fp string) bool {
+	rec, pr := wt.copies.record, wt.copies.recordPR
+
+	return rec != nil && wt.copies.covered && pr != nil && wt.Unpushed > 0 &&
+		s.prHolds(ctx, g, dir, rec.CopyTip, pr.HeadOID, fp)
 }
 
 // prHolds reports a pull request's head, head, that is tip or has it, in the clone at dir,
