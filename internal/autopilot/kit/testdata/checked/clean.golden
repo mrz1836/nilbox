@@ -1,4 +1,4 @@
-Checked 2 routines and a settings change.
+Checked 2 routines and a settings change: no problems.
 
 Routine 1, new, saved as “Tell me about checks”:
 It reads: When checks fail on pull requests opened by you, once every check has settled, notify me.

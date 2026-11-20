@@ -182,6 +182,20 @@ describe('toolWords', () => {
     expect(toolWords(use('autopilot_reference'), result('# GitHub actions\nWhat it may send.'))).toBe(
       'Read about GitHub actions',
     )
+    // The headings the app's reference opens with, read as a sentence carries on.
+    expect(toolWords(use('autopilot_reference'), result('# The GitHub step\n…'))).toBe('Read about the GitHub step')
+    expect(toolWords(use('autopilot_reference'), result("# A routine's definition\n…"))).toBe(
+      "Read about a routine's definition",
+    )
+    expect(toolWords(use('autopilot_reference'), result('# A routine on a schedule\n…'))).toBe(
+      'Read about a routine on a schedule',
+    )
+    expect(toolWords(use('autopilot_reference'), result("# Autopilot's settings\n…"))).toBe(
+      "Read about Autopilot's settings",
+    )
+    expect(toolWords(use('autopilot_reference'), result(`# ${brand.name} and you\n…`))).toBe(
+      `Read about ${brand.name} and you`,
+    )
     expect(toolWords(use('autopilot_reference'), result('One per routine.'))).toBe('Read Autopilot’s reference')
     expect(toolWords(use('autopilot_reference', ''), undefined)).toBe('Read Autopilot’s reference')
   })

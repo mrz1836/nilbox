@@ -1,4 +1,4 @@
-# On a schedule
+# A routine on a schedule
 
 A routine whose trigger is `schedule` fires at a time of day by the Mac's own clock, once a day, on the items its watch holds that meet its conditions then. A time missed while the Mac slept runs once it wakes, the same day, never for a day gone by.
 

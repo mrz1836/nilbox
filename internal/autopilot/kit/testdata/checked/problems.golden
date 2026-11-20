@@ -1,4 +1,4 @@
-Checked 2 new prompts, 4 routines, a settings change, and a rules change.
+Checked 2 new prompts, 4 routines, a settings change, and a rules change: 9 problems.
 
 Prompt 1, “Fix flaky”:
 - Problem at prompts[0]: .Body isn't a variable a prompt can use: the prompts topic lists the ones it can.

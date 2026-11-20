@@ -45,7 +45,7 @@ func (s *server) propose(ctx context.Context, raw json.RawMessage) answer {
 			" Try again, and if it fails again, tell the user.")
 	}
 
-	return said(proposedWords(id, checked, s.where))
+	return said(proposedWords(id, p, checked, s.where))
 }
 
 // folderRefusal refuses a proposal its folder can't take: err says why.
@@ -68,17 +68,19 @@ func (s *server) folderRefusal(err error) answer {
 	}
 }
 
-// proposedWords says what the proposal id, checked as c, put in the Autopilot tab, and how
-// the agent hears what the user did with it, where w says it runs.
-func proposedWords(id string, c kit.Checked, w kit.Where) string {
+// proposedWords says what the proposal id, p checked as c, put in the Autopilot tab, and how
+// the agent hears what the user did with it, where w says it runs. Its first sentence says
+// what was proposed ("Proposed 2 routines and a settings change."), which the window shows
+// as the proposal's line.
+func proposedWords(id string, p kit.Proposal, c kit.Checked, w kit.Where) string {
 	hear := " The user's next message says what they did with it."
 	if w == kit.Outside {
 		hear = " Read `" + kit.ToolProposalStatus + "` to hear what they did with it."
 	}
 
-	return "Proposed `" + id + "`: " + textutil.Series(checkedParts(c)) + ". It waits for the user in " +
-		brand.Name + "'s Autopilot tab, where they add, test, change, or discard each part; nothing changes until " +
-		"they apply it." + hear
+	return "Proposed " + holds(p) + ". Its ID is `" + id + "`: " + textutil.Series(checkedParts(c)) + ". It waits " +
+		"for the user in " + brand.Name + "'s Autopilot tab, where they add, test, change, or discard each part; " +
+		"nothing changes until they apply it." + hear
 }
 
 // checkedParts says each part of a checked proposal, in the order a card applies them: a

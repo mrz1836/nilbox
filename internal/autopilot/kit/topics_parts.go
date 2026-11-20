@@ -253,7 +253,7 @@ func rangeWords(r catalog.Range) string {
 func scheduleTopic(_ Vocabulary) string {
 	var p page
 
-	p.heading(1, "On a schedule")
+	p.heading(1, "A routine on a schedule")
 	p.para("A routine whose trigger is `" + string(catalog.EventSchedule) + "` fires at a time of day by the " +
 		"Mac's own clock, once a day, on the items its watch holds that meet its conditions then. A time " +
 		"missed while the Mac slept runs once it wakes, the same day, never for a day gone by.")

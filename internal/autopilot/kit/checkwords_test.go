@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/kit"
@@ -40,6 +41,19 @@ func TestTheWordsOfACheckAreWhatTheAgentReads(t *testing.T) {
 	})
 	checkGolden(t, "checked/problems.golden", problems.Words())
 
+	// Each part is numbered by its place in the proposal's own lists, whatever its problems,
+	// which the window reads a part of the proposal by.
+	require.Len(t, problems.Routines, 4)
+	require.Len(t, problems.Prompts, 2)
+
+	for i, r := range problems.Routines {
+		assert.Equal(t, i, r.Index)
+	}
+
+	for i, p := range problems.Prompts {
+		assert.Equal(t, i, p.Index)
+	}
+
 	clean := kit.Check(t.Context(), snap, kit.Proposal{
 		Summary: "Tell me when my checks fail, and cap the day.",
 		Routines: []kit.RoutineChange{
@@ -51,6 +65,13 @@ func TestTheWordsOfACheckAreWhatTheAgentReads(t *testing.T) {
 		Settings: &kit.SettingsChange{DailyCap: &autopilotprefs.DailyCap{Amount: 5, Unit: autopilotprefs.UnitUSD}},
 	})
 	checkGolden(t, "checked/clean.golden", clean.Words())
+
+	one := kit.Check(t.Context(), snap, kit.Proposal{
+		Summary:  "Tells you when checks fail.",
+		Routines: []kit.RoutineChange{newRoutine(strings.Repeat("n", 81), checksFailSpec(notifyStep()))},
+	})
+	assert.Equal(t, "Checked 1 routine: 1 problem.", strings.SplitN(one.Words(), "\n", 2)[0],
+		"the first sentence, which the window shows as the check's line")
 
 	assert.Equal(t, "Checked nothing: the proposal holds no part.\n\nIt has no problems: it can be proposed with "+
 		"autopilot_propose, and the user reviews it in the Autopilot tab.", kit.Check(t.Context(), snap, kit.Proposal{}).Words())

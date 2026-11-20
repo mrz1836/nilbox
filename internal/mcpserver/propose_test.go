@@ -78,6 +78,8 @@ func TestAProposalIsWrittenWholeIntoItsFolder(t *testing.T) {
 			text := answer.text(t)
 			id := idOf(t, text)
 			assert.Equal(t, "20261120T073103Z-010203040506", id, "the moment, to the second, and random hex")
+			assert.True(t, strings.HasPrefix(text, "Proposed a new prompt, a routine, and a settings change. Its ID is `"+
+				id+"`: "), "what it proposed first, the window's line for it, then its ID: %s", text)
 			assert.Contains(t, text, "the new prompt “Explain”, the new routine “Nightly 2”, and a change to "+
 				"Autopilot's settings", "each part, a taken name as it is saved")
 			assert.Contains(t, text, "Autopilot tab")

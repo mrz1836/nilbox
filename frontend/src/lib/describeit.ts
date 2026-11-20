@@ -82,6 +82,10 @@ export function headline(text: string): string {
   return sentence.replace(/\.$/, '')
 }
 
+// headingNames are the names a reference topic's heading may start with, which keep their
+// capital in a sentence.
+const headingNames: ReadonlySet<string> = new Set(['Autopilot', brand.name])
+
 // topicOf is the reference topic a read of autopilot_reference was for: the tool's event
 // names it when its text holds more than the tool's name ("triggers", or its input,
 // {"topic":"triggers"}); else the result's heading says it ("# Triggers"); else ''.
@@ -96,10 +100,12 @@ function topicOf(tool: AutopilotRunEvent, result: AutopilotRunEvent | undefined)
 
   const heading = /^#+\s+(.+)$/.exec(result?.text.trim().split('\n', 1).join('') ?? '')
   const words = heading?.[1]?.trim() ?? ''
+  const lead = /^[A-Z][a-z]*\b/.exec(words)?.[0]
 
-  // A heading's first word starts with a capital a sentence's middle doesn't have, unless it
-  // is a name, as GitHub is.
-  return /^[A-Z][a-z]+\b/.test(words) ? words.charAt(0).toLowerCase() + words.slice(1) : words
+  // A heading's first word starts with a capital a sentence's middle doesn't have ("The
+  // proposal", "A routine's definition"), unless it is a name: one capitalized within, as
+  // GitHub is, or one of the app's own, as Autopilot is.
+  return lead === undefined || headingNames.has(lead) ? words : words.charAt(0).toLowerCase() + words.slice(1)
 }
 
 // toolWords say what one of Claude's tools did, as a plain line: "Read how Autopilot

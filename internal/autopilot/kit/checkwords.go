@@ -14,7 +14,9 @@ import (
 const maxCheckedWords = 48 << 10
 
 // Words says the checked proposal as the agent reads it in a check's result: what was
-// checked; each part, with where each problem and warning is in the proposal
+// checked and how many problems it has, in a first sentence the window shows as the
+// check's line ("Checked 2 routines: 1 problem."); each part, with where each problem and
+// warning is in the proposal
 // ("routines[0].spec.steps[1].agent.prompt"), the sentence each routine reads as, the
 // name it is saved under, and the risks the user sees on the card; and a closing line
 // saying whether it can be proposed. It stays within maxCheckedWords, its last lines cut
@@ -41,7 +43,8 @@ func (c Checked) Words() string {
 	return keptLines(lines, "", closingLine(c.Problems()))
 }
 
-// checkedLead says what was checked.
+// checkedLead says what was checked, and how many problems it has: "Checked 2 routines and
+// a settings change: 1 problem.", "Checked 1 routine: no problems.".
 func checkedLead(c Checked) string {
 	var parts []string
 
@@ -65,7 +68,12 @@ func checkedLead(c Checked) string {
 		return "Checked nothing: the proposal holds no part."
 	}
 
-	return "Checked " + textutil.Series(parts) + "."
+	problems := "no problems"
+	if n := c.Problems(); n > 0 {
+		problems = textutil.Counted(n, "problem", "problems")
+	}
+
+	return "Checked " + textutil.Series(parts) + ": " + problems + "."
 }
 
 // promptLines says a checked prompt.
