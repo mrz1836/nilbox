@@ -9,6 +9,7 @@ import {
   haystack,
   isEmpty,
   matchesFilter,
+  matchesQuery,
   matchesTerms,
   parseQuery,
   suggest,
@@ -192,10 +193,7 @@ function indexOf(repos: readonly WorktreeRepo[], options: WorktreeFilterOptions)
 
 // matchesEntry reports whether a worktree matches a query.
 function matchesEntry(e: Entry, query: Query, known: Index['known']): boolean {
-  return (
-    matchesTerms(query.terms, e.hay, e.number) &&
-    query.filters.every((f) => matchesFilter(f, haveOf(e, f.key), known(f.key)))
-  )
+  return matchesQuery(query, e.hay, e.number, (key) => haveOf(e, key), known)
 }
 
 // namesRepo reports a query that names a clone itself: words that match the clone's name

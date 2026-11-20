@@ -10,8 +10,7 @@ import {
   fold,
   haystack,
   isEmpty,
-  matchesFilter,
-  matchesTerms,
+  matchesQuery,
   parseQuery,
   suggest,
   weakCache,
@@ -138,10 +137,7 @@ function knownOf(entries: readonly Entry[]): (key: string) => ReadonlySet<string
 
 // matchesEntry reports whether a notification matches a query.
 function matchesEntry(e: Entry, query: Query, known: (key: string) => ReadonlySet<string>): boolean {
-  return (
-    matchesTerms(query.terms, e.hay, e.number) &&
-    query.filters.every((f) => matchesFilter(f, haveOf(e, f.key), known(f.key)))
-  )
+  return matchesQuery(query, e.hay, e.number, (key) => haveOf(e, key), known)
 }
 
 // filterBy keeps the items a query matches, in their order, or returns null for a query

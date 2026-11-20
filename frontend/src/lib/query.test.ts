@@ -9,6 +9,7 @@ import {
   markRanges,
   markTerms,
   matchesFilter,
+  matchesQuery,
   matchesTerms,
   parseQuery,
   quoteValue,
@@ -215,6 +216,64 @@ describe('matching', () => {
 
     expect(matchesFilter({ key: 'label', values: ['bug'], negated: false }, null, known)).toBe(false)
     expect(matchesFilter({ key: 'label', values: ['bug'], negated: true }, null, known)).toBe(true)
+  })
+
+  describe('matchesQuery', () => {
+    const values: Readonly<Record<string, readonly string[]>> = { repo: ['acme-org/example-repo'], label: ['bug'] }
+    const have = (key: string) => values[key] ?? null
+    const known = (key: string): ReadonlySet<string> => new Set(key === 'label' ? ['bug', 'bugfix'] : [])
+    const matches = (src: string, number?: number) =>
+      matchesQuery(parseQuery(src, spec), 'add the widget cache', number, have, known)
+
+    it.each([
+      ['', true],
+      ['widget', true],
+      ['-widget', false],
+      ['#7', true],
+      ['#8', false],
+      ['repo:example', true],
+      ['repo:other', false],
+      ['label:bug', true],
+      ['label:bu', true],
+      ['-label:bug', false],
+      ['widget repo:example label:bug', true],
+      ['widget repo:other', false],
+      ['nothing repo:example', false],
+      // An item that can't tell its values matches no filter of that key.
+      ['is:open', false],
+      ['-is:open', true],
+    ])('matches %s by its words, its number, and its filters', (src, want) => {
+      expect(matches(src, 7)).toBe(want)
+    })
+
+    it('matches no number when the item has none', () => {
+      expect(matches('#7')).toBe(false)
+      expect(matches('-7')).toBe(true)
+    })
+
+    it('reads the values of each filter’s key only, and only once the words match', () => {
+      const asked: string[] = []
+      const query = parseQuery('cache label:bug repo:acme', spec)
+
+      expect(
+        matchesQuery(
+          query,
+          'cache',
+          undefined,
+          (key) => {
+            asked.push(key)
+
+            return have(key)
+          },
+          known,
+        ),
+      ).toBe(true)
+      expect(asked).toEqual(['label', 'repo'])
+
+      asked.length = 0
+      expect(matchesQuery(parseQuery('widget label:bug', spec), 'cache', undefined, have, known)).toBe(false)
+      expect(asked).toEqual([])
+    })
   })
 })
 

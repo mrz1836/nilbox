@@ -7,8 +7,7 @@ import {
   haystack,
   isEmpty,
   markTerms,
-  matchesFilter,
-  matchesTerms,
+  matchesQuery,
   parseQuery,
   suggest,
   weakCache,
@@ -205,9 +204,12 @@ function withViewer(query: Query, viewer: string): Query {
 export function matchesItem(item: InboxItem, query: Query, known: Known): boolean {
   const facts = factsOf(item)
 
-  return (
-    matchesTerms(query.terms, facts.hay, item.number) &&
-    query.filters.every((f) => matchesFilter(f, facts.values.get(f.key) ?? null, known.get(f.key) ?? noValues))
+  return matchesQuery(
+    query,
+    facts.hay,
+    item.number,
+    (key) => facts.values.get(key) ?? null,
+    (key) => known.get(key) ?? noValues,
   )
 }
 
