@@ -5647,13 +5647,16 @@ it, it needs a look, it holds work that isn't on GitHub, it's open, it's ready t
 a problem (its folder is gone, git couldn't read it, or it is locked by hand), each group with
 the newest commit first. An edge in the group's color marks it. The line shows the worktree's
 state, its branch, the pull request or issue it was made for (the number opens it on GitHub,
-and while the inbox lists the item, a dot for its checks and a draft tag), its work (the count
-of uncommitted files, and ↑ the commits not on GitHub), what works in it (an agent and how its
-session stands, a routine's agent in the background, another program by its pid, or, muted,
-the last session the app launched there), and the age of its last commit. Then comes at most
-one verb: **Clean up** for a finished worktree, **Unlock** for a lock an ended session left, or,
-on an open item the inbox lists, **Open in Claude** or **Open in Codex**, which opens the launch
-options and, from their **Open**, resumes it. Last come **›_**, which opens the worktree in the
+a **copied** tag when it is linked by its commits' copies, and while the inbox lists the item,
+a dot for its checks and a draft tag), its work (the count of uncommitted files, and ↑ the
+commits not on GitHub, or, muted, ⧉ the commits on GitHub only as copies, as in **⧉ 10 on
+#42**: see [copied work](#copied-work)), what works in it (an agent and how its session
+stands, a routine's agent in the background, another program by its pid, or, muted, the last
+session the app launched there), and the age of its last commit. Then comes at most one verb:
+**Clean up** for a finished worktree, **Unlock** for a lock an ended session left, or, on an
+open item the inbox lists whose own worktree it is (linked by its record, its name, or the
+branch made for it), **Open in Claude** or **Open in Codex**, which opens the launch options
+and, from their **Open**, resumes it. Last come **›_**, which opens the worktree in the
 terminal your launches open in, **⋯**, and the chevron.
 
 **The drawer.** A click on a row, or on its chevron, unfolds its drawer; from the keyboard, →
@@ -5663,8 +5666,11 @@ cost: green when nothing would be lost, amber when work would be or is only here
 something runs in it, and red for a real problem, with the way out (for a lock set by hand, the
 `git worktree unlock` command to copy). Under it are three columns. **Changes** lists the
 uncommitted files by their status letters, with **Copy list**. **Not on GitHub** lists the
-commits that aren't, then the branch, its head, and how far it is behind `origin`'s default
-branch. **About** says what the worktree is for, the session in it, its launches, who made it
+commits that aren't, each marked with its copy on a pushed branch when it has one (**=
+copied as** and the copy's commit for an identical copy, **≈ edited copy** for an edited
+one), then the branch, its head, and how far it is behind `origin`'s default branch; when
+every one of them is on GitHub as an identical copy, it is headed **Copied to PR #42** (or the
+branch the copies are on) instead. **About** says what the worktree is for, the session in it, its launches, who made it
 (Nilbox, a routine, Claude Code under a clone's `.claude/worktrees/`, or someone outside the
 app) and when, its path, its lock, and which branches a removal would delete. The first 12
 files show at once, from the listing; the drawer reads the rest from local git as it opens,
@@ -5711,17 +5717,23 @@ its own worktrees counts too.
 
 **Linked pull requests and issues.** A worktree made for an item is linked to it: exactly, from
 the app's record, or otherwise by its name (`pr-<n>` or `issue-<n>` in the app's or Claude Code's
-worktree folder) or its own branch, and the clone's GitHub remotes. One GraphQL request, for one
-point, asks GitHub whether each is open, merged, or closed, and the row links to it. Each linked
+worktree folder) or its own branch, and the clone's GitHub remotes. A worktree with none of
+these, on a branch pushed to one of the clone's GitHub remotes, is linked by that branch to the
+pull request it heads in that same repository, the one updated last, so a fork's branch of the
+same name never links it. One whose commits were copied onto a pushed branch is linked to that
+branch's pull request ([copied work](#copied-work), below). One GraphQL request, for one
+point, asks GitHub whether each is open, merged, or closed, and the row links to it; the
+branches ride in that same request, and one is asked about again only once it moves, or now and
+then while no pull request heads it. Each linked
 worktree gets a stage, which places its row (**Rows**, above):
 
 - **in use**: a session is running in it.
 - **ready to clean up**: its pull request merged or its issue closed, and removing it loses
   nothing. It has no uncommitted changes, every commit it has is on GitHub (on a
   remote-tracking branch, as the pull request's head, which GitHub keeps after the branch is
-  deleted, or in the commit the app made the worktree at, which it had just fetched from
-  GitHub, so a pull request that moves on after the launch still counts), and no session
-  runs in it.
+  deleted, in the commit the app made the worktree at, which it had just fetched from
+  GitHub, so a pull request that moves on after the launch still counts, or as an identical
+  [copy](#copied-work)), and no session runs in it.
 - **needs a look**: its item is done, but it holds uncommitted changes or commits that are not
   on GitHub.
 - An item still open gets no marker; the row just says it is open.
@@ -5775,7 +5787,10 @@ every clone, and, with **Clean up after merging** on (**Settings → Worktrees**
 cleans up each finished worktree whose pull request merged or whose issue closed and that no
 session runs in, with the branches **Settings → Worktrees** deletes. It takes only worktrees the app launched a session in, or whose HEAD is the
 merged pull request's own head commit, so a worktree is never matched by its name or branch
-alone. A toast names what was cleaned up, with **View** to open the list below. The same check
+alone. One linked by its pushed branch or by its commits' copies is taken only when the app or
+Claude Code made it, and one whose work is on GitHub only as copies only once the pull request
+they went into merged with every copy, never while it is open. A toast names what was cleaned
+up, with **View** to open the list below. The same check
 updates the **Worktrees** tab's count, which it reads from each clone's git directory without
 running git, and marks the tab while some worktrees are done on GitHub but still on disk.
 Removing a worktree also removes the files git ignores in it, such as build output.
@@ -5790,6 +5805,59 @@ on the branch that went with it when one did (for a pull request whose head git 
 since, `git fetch origin pull/<n>/head` fetches it first), and the item opens on GitHub.
 The list survives restarts and keeps the newest 100; **Clear** empties it and removes nothing
 else.
+
+### Copied work
+
+A coding agent's session often hands parts of its work to sub-agents, each in a worktree of its
+own (Claude Code makes them under the clone's `.claude/worktrees/`) on a branch no one pushes,
+then copies their commits onto its own branch, with a cherry-pick or a rebase, and pushes that.
+A copy keeps the commit's change, author, author time, and subject, but gets a new commit ID,
+so the original is on no remote-tracking branch, and by its ID it isn't on GitHub.
+
+Each listing compares a worktree's commits that aren't on GitHub with the commits on the clone's
+pushed branches, from local git alone: a pushed commit with the same author, author time, and
+subject is a likely copy, and git's patch IDs say whether its change is identical. When every
+one of them has an identical copy on one pushed branch, the worktree's work is on GitHub as that
+branch. Its row is calm, with no amber: its state says each commit's change is on GitHub, its
+work says **⧉ 10 on #42** (or **⧉ 10 on feature-x**, the branch, when no pull request links
+it by its copies), and its tooltip says where. When nothing else links it, it is linked to that
+branch's pull request, with a **copied** tag. The drawer's sentence says every commit's change
+is on GitHub, copied onto the pull request's branch, and its second column, headed **Copied to
+PR #42**, marks each commit **= copied as** its copy.
+
+A commit whose likely copy has another change, an edited copy, isn't on GitHub: the row stays
+amber, with **↑**, and its tooltip and the drawer's sentence say how many have an identical
+copy, how many only an edited one, and how many none, as in **9 have an identical copy on
+origin/feature-x, 1 only an edited one**; the drawer marks that commit **≈ edited copy**.
+Identical copies spread over several branches don't count either, and a comparison that can't
+run (more than 200 commits, a merge among them, or git refusing a read) counts none: the tooltip
+says why.
+
+A squash merge leaves the copies out of the default branch, and deleting the branch takes them
+off every remote-tracking branch, but the pull request keeps them. So when a listing finds a
+worktree fully copied onto a branch whose pull request it knows, the app records it. While the
+worktree's HEAD stays where it was, and the pull request's head still has the copies, the
+worktree counts as on GitHub after the branch is gone, and the drawer says that the branch is
+gone and what the app recorded vouches for each copy; it marks no commit then, having no branch
+to compare them with.
+
+What that means for removing it:
+
+- While the pull request is open, **Remove…** loses nothing: removing the worktree keeps its
+  branch, with the original commits, and that branch can't go yet, saying why. Nothing removes
+  the worktree on its own.
+- Once the pull request merged with every copy, the worktree is ready to clean up, its own
+  branch can go with it as your branch rules say, and the automatic cleanup takes it when the
+  app or Claude Code made it.
+- A detached worktree's original commits, which no branch holds, go with it, but their changes
+  are on GitHub.
+
+A sub-agent's worktree isn't its pull request's own: the inbox's worktree chip never counts one
+linked by its copies, and neither it nor one linked by its pushed branch offers **Open in
+Claude** or **Open in Codex**, which would open the item's own worktree, not this one.
+`is:unpushed` and the **not on GitHub** chip leave out commits on GitHub as identical copies.
+The drawer goes by the commits as it reads them: once HEAD moved, or the pushed branch changed
+so a copy no longer matches, they count as not on GitHub until the next listing.
 
 ### Branches
 
@@ -5820,7 +5888,9 @@ checked out in a worktree are always kept too.
 A branch is deleted only when nothing is lost: every commit on it is on GitHub (on a
 remote-tracking branch, as the pull request's head, which GitHub keeps after the branch is
 deleted, or in the commit the app made its worktree at, fetched from GitHub), or, for a merged
-branch, it points at the merged pull request's head or a commit before it. A branch that can't go is shown unticked and held, with why, such as "2 commits on it
+branch, it points at the merged pull request's head or a commit before it. A worktree's branch
+whose commits are on GitHub only as [copies](#copied-work) can go only once the pull request
+they went into merged with every copy. A branch that can't go is shown unticked and held, with why, such as "2 commits on it
 aren't on GitHub". Each is checked again as it is deleted, and deleted with `git update-ref -d`
 only while it still points at the commit the dialog showed, so a branch that moved in between is
 kept. The outcome lists why each branch kept stayed and, folded away, each deleted branch with
