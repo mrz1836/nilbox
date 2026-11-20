@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { counted, errorMessage, fileDate, fileName, formatCount, refText } from './format'
+import { counted, errorMessage, fileDate, fileName, formatCount, joinList, refText } from './format'
 
 describe('formatCount', () => {
   it('formats with the locale grouping', () => {
@@ -14,6 +14,21 @@ describe('counted', () => {
     expect(counted(1, 'file', 'files')).toBe('1 file')
     expect(counted(0, 'file', 'files')).toBe('0 files')
     expect(counted(1204, 'file', 'files')).toBe(`${formatCount(1204)} files`)
+  })
+
+  it('groups the digits of a count from 1,000', () => {
+    expect(counted(1000, 'clone', 'clones')).toBe(`${formatCount(1000)} clones`)
+    expect(counted(999, 'clone', 'clones')).toBe('999 clones')
+  })
+})
+
+describe('joinList', () => {
+  it('joins names for a sentence, with a comma before the last of three or more', () => {
+    expect(joinList([])).toBe('')
+    expect(joinList(['model'])).toBe('model')
+    expect(joinList(['model', 'effort'])).toBe('model and effort')
+    expect(joinList(['model', 'effort', 'plan mode'])).toBe('model, effort, and plan mode')
+    expect(joinList(['model', 'effort', 'plan mode', 'profile'])).toBe('model, effort, plan mode, and profile')
   })
 })
 

@@ -417,7 +417,7 @@ describe('ReviewSummary', () => {
     expect(areasText([])).toBe('')
     expect(areasText(['.github'])).toBe('.github/')
     expect(areasText(['wallet', '.'])).toBe('wallet/ and the top level')
-    expect(areasText(['cmd', 'internal', '.'])).toBe('cmd/, internal/ and the top level')
+    expect(areasText(['cmd', 'internal', '.'])).toBe('cmd/, internal/, and the top level')
   })
 })
 

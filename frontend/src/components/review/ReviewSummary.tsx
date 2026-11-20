@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react'
 
-import { counted } from '../../lib/format'
+import { counted, joinList } from '../../lib/format'
 import { refText } from '../../lib/format'
 import { workflowsOf } from '../../lib/ignoredWorkflows'
 import { issueLook } from '../../lib/issues'
@@ -191,10 +191,7 @@ function BumpChip({ review }: { review: Review }) {
 // areasText names the folders a change touches, as in "wallet/ and the top level": the
 // files at the repository's root are its top level.
 export function areasText(areas: readonly string[]): string {
-  const names = areas.map((a) => (a === '.' ? 'the top level' : `${a}/`))
-  const last = names.at(-1)
-
-  return names.length < 2 || last === undefined ? names.join('') : `${names.slice(0, -1).join(', ')} and ${last}`
+  return joinList(areas.map((a) => (a === '.' ? 'the top level' : `${a}/`)))
 }
 
 // CheckList lists checks, each with its dot and whether it is required; each opens its

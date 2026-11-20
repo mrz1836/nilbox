@@ -45,6 +45,15 @@ export function counted(n: number, one: string, many: string): string {
   return `${formatCount(n)} ${n === 1 ? one : many}`
 }
 
+// joinList joins names for a sentence: "a", "a and b", or "a, b, and c".
+export function joinList(names: readonly string[]): string {
+  if (names.length <= 2) {
+    return names.join(' and ')
+  }
+
+  return `${names.slice(0, -1).join(', ')}, and ${names.at(-1) ?? ''}`
+}
+
 // refText names a pull request or an issue as "owner/name#number".
 export function refText(ref: { repo: string; number: number }): string {
   return `${ref.repo}#${String(ref.number)}`

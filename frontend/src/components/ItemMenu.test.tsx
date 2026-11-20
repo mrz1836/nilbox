@@ -539,7 +539,7 @@ describe('teamsText', () => {
     expect(teamsText([])).toBe('a team')
     expect(teamsText(['backend'])).toBe('the @backend team')
     expect(teamsText(['backend', 'infra'])).toBe('the @backend and @infra teams')
-    expect(teamsText(['backend', 'infra', 'web'])).toBe('the @backend, @infra and @web teams')
+    expect(teamsText(['backend', 'infra', 'web'])).toBe('the @backend, @infra, and @web teams')
   })
 })
 

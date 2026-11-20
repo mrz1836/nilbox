@@ -9,7 +9,7 @@ import type {
   IntegrationTools,
   ScriptRun,
 } from '../platform'
-import { counted } from './format'
+import { counted, joinList } from './format'
 import { isLive } from './scriptRuns'
 
 // toolOf is a tool the integrations list, by its integration, or undefined until listed.
@@ -104,7 +104,7 @@ export function foundToolsText(tools: IntegrationTools | null): string {
   if (rest.length > 0) {
     const names = [first, ...rest].map((t) => t.binary)
 
-    return `Found ${names.slice(0, -1).join(', ')} and ${names.slice(-1).join('')}. They’re in the new Scripts tab.`
+    return `Found ${joinList(names)}. They’re in the new Scripts tab.`
   }
 
   return first.id === 'mage-x'

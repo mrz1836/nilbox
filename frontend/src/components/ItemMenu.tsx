@@ -1,6 +1,7 @@
 import { use } from 'react'
 
 import { CardPrefsContext } from '../lib/cardPrefs'
+import { joinList } from '../lib/format'
 import { nudgeable } from '../lib/nudge'
 import { orgOf, ownRule } from '../lib/repoRules'
 import { leaving, workWords, type RowWork, type StartWork } from '../lib/rowWork'
@@ -85,7 +86,7 @@ export function teamsText(teams: readonly string[]): string {
     return `the ${named[0] ?? ''} team`
   }
 
-  return `the ${named.slice(0, -1).join(', ')} and ${named.at(-1) ?? ''} teams`
+  return `the ${joinList(named)} teams`
 }
 
 // repoRuleItems pin or mute the item's repository, or every repository of its org, or take

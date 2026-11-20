@@ -12,6 +12,7 @@ import type {
   Resolution,
   Situation,
 } from '../platform'
+import { joinList } from './format'
 import { situationInfo } from './launch'
 
 // Choices are the launch menu's own choices. Each is unset (0, '', or null) until the
@@ -233,15 +234,6 @@ export function shadowedChoices(c: Choices, r: Resolution, scope: 'repo' | 'org'
   check(c.worktree !== null, 'worktree setting', r.worktree.inheritedSource)
 
   return out
-}
-
-// joinList joins names for a sentence: "a", "a and b", or "a, b, and c".
-export function joinList(names: readonly string[]): string {
-  if (names.length <= 2) {
-    return names.join(' and ')
-  }
-
-  return `${names.slice(0, -1).join(', ')}, and ${names.at(-1) ?? ''}`
 }
 
 // SaveStatus is the launch menu's report on its last save.

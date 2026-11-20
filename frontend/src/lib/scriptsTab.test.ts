@@ -82,6 +82,13 @@ describe('scriptsTab', () => {
 
   it('announces the tools found, by their commands’ names', () => {
     expect(foundToolsText(integrationTools())).toBe('Found magex and go-pre-commit. They’re in the new Scripts tab.')
+    expect(
+      foundToolsText(
+        integrationTools({
+          tools: [integrationTool(), goPreCommitTool(), goPreCommitTool({ binary: 'go-broadcast' })],
+        }),
+      ),
+    ).toBe('Found magex, go-pre-commit, and go-broadcast. They’re in the new Scripts tab.')
     expect(foundToolsText(integrationTools({ tools: [integrationTool()] }))).toBe(
       'Found magex. Release is in the new Scripts tab.',
     )
