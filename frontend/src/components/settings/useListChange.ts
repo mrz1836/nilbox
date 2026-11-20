@@ -5,19 +5,23 @@ import type { Settings } from '../../platform'
 
 // Refusal is why a change was refused, and the draft typed when it was: typing again
 // clears a refused draft. field is where it shows, in a section that shows refusals in
-// more than one place; a section with one place leaves it out.
+// more than one place; a section with one place leaves it out, and so does no refusal.
 export interface Refusal<F extends string> {
   field?: F | undefined
   draft: string
   message: string
 }
 
+// At is the field a change names: a section that shows refusals in more than one place
+// (F, its fields) must name one, so that no refusal shows nowhere, and a section with one
+// place (F is never) names none.
+type At<F extends string> = [F] extends [never] ? { field?: never } : { field: F }
+
 // ListChange is a change made through useListChange: how it shows at once, the call that
 // stores it, where a refusal of it shows, and what to do once it is stored.
-export interface ListChange<F extends string> {
+export type ListChange<F extends string> = At<F> & {
   shows: Partial<Settings>
   call: () => PromiseLike<Settings>
-  field?: F | undefined
   then?: (() => void) | undefined
 }
 
@@ -31,8 +35,8 @@ export interface ListChanges<F extends string> {
   // change's, or none.
   refusal: Refusal<F>
   // refuse refuses the draft before asking the backend, with message, under field, until
-  // the next change.
-  refuse: (message: string, field?: F) => void
+  // the next change; like a change's, field is named in a section with fields alone.
+  refuse: (message: string, ...field: [F] extends [never] ? [] : [field: F]) => void
   // store makes a change through the section's one action, and busy reports one running.
   store: (change: ListChange<F>) => void
   busy: boolean
@@ -50,11 +54,11 @@ export function useListChange<F extends string = never>(save: SettingsSave['save
   // invalid is why the draft cannot be added, found before asking the backend.
   const [invalid, setInvalid] = useState<Refusal<F>>(noRefusal)
   const [refused, change, busy] = useActionState(
-    async (_: Refusal<F>, next: ListChange<F> & { draft: string }): Promise<Refusal<F>> => {
+    async (_: Refusal<F>, { next, draft: typed }: { next: ListChange<F>; draft: string }): Promise<Refusal<F>> => {
       const result = await save(next.shows, next.call)
 
       if (!result.ok) {
-        return { field: next.field, draft: next.draft, message: result.error }
+        return { field: next.field, draft: typed, message: result.error }
       }
 
       next.then?.()
@@ -71,7 +75,7 @@ export function useListChange<F extends string = never>(save: SettingsSave['save
   const store = (next: ListChange<F>) => {
     setInvalid(noRefusal)
     startTransition(() => {
-      change({ ...next, draft })
+      change({ next, draft })
     })
   }
 
