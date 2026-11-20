@@ -4,18 +4,12 @@
 
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react'
 
-import {
-  on,
-  type AgentSession,
-  type ConversationOrder,
-  type InboxItem,
-  type ItemResolution,
-  type Worktree,
-} from '../platform'
+import type { AgentSession, ConversationOrder, InboxItem, ItemResolution, Worktree } from '../platform'
 import { refText } from './format'
 import { isTyping, useKeyDown } from './keys'
 import type { LaunchOptions } from './launch'
 import { isTopmost } from './useModalDialog'
+import { useOn } from './useOn'
 
 // Place is where a card sits among the cards a sheet steps through: the cards before and
 // after it, if any, and its position, as in "3 of 8 in Assigned", or '' when the list
@@ -364,19 +358,11 @@ export function useActionProgress(
 ): [Progress | null, (progress: Progress | null) => void] {
   const [progress, setProgress] = useState<Progress | null>(null)
 
-  const heard = useEffectEvent((itemId: number, step: string) => {
+  useOn(event, ({ itemId, step }) => {
     if (itemId === id) {
       setProgress((p) => withStep(p, step))
     }
   })
-
-  useEffect(
-    () =>
-      on(event, (data) => {
-        heard(data.itemId, data.step)
-      }),
-    [event],
-  )
 
   return [progress, setProgress]
 }

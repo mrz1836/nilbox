@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { item } from '../test/fixtures'
-import { emit, listening } from '../test/platform'
+import { emit, listening, send } from '../test/platform'
 import {
   cameBy,
   endedState,
@@ -19,6 +19,7 @@ import {
   useSheetVisits,
   withStep,
   type EndedItem,
+  type ProgressEvent,
   type SheetKeys,
 } from './sheet'
 
@@ -402,5 +403,20 @@ describe('useActionProgress', () => {
 
     unmount()
     expect(listening('review:progress')).toBe(0)
+  })
+
+  it('listens on its new event once the event changes', () => {
+    const initialProps: { event: ProgressEvent } = { event: 'review:progress' }
+    const { result, rerender } = renderHook(({ event }) => useActionProgress(event, 7), { initialProps })
+
+    act(() => {
+      result.current[1]({ title: 'Close', target: 'acme-org/example-repo#7', steps: [] })
+    })
+    rerender({ event: 'issue:progress' })
+    expect(listening('review:progress')).toBe(0)
+    expect(listening('issue:progress')).toBe(1)
+
+    send('issue:progress', { itemId: 7, step: 'Closing' })
+    expect(result.current[0]?.steps).toEqual(['Closing'])
   })
 })
