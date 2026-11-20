@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useId, useState, type MouseEvent, type ReactNode } from 'react'
+import { Suspense, useEffect, useId, useState, type MouseEvent, type ReactNode } from 'react'
 
 import { attempt } from '../lib/call'
 import { agentName as agentLabel, type LaunchOptions } from '../lib/launch'
@@ -48,41 +48,10 @@ import {
 import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
 import { ConfirmDialog } from './ConfirmDialog'
 import { AlertIcon, AutopilotIcon, ChevronDownIcon, LockIcon, SparkIcon, TerminalIcon } from './icons'
+import { LaunchDialog, LaunchHoldDialog, LaunchMenu, preloadDialogs, TakeOverDialog } from './launchDialogs'
 import { RelativeTime } from './RelativeTime'
 import { SessionDot } from './SessionDot'
 import { SessionsButton } from './SessionTag'
-
-// The dialogs a launch opens load on their own: the launch options (LaunchDialog, with the
-// LaunchMenu it holds and the preview the menu shows), and the dialogs a held launch and a
-// take-over ask with. No card needs them until it is clicked, so the inbox's first paint
-// doesn't wait for them. The first launch control to paint starts loading them all
-// (preloadDialogs), so a first opening rarely waits for its code.
-const loadLaunchDialog = () => import('./LaunchDialog')
-const loadLaunchMenu = () => import('./LaunchMenu')
-const loadLaunchHoldDialog = () => import('./LaunchHoldDialog')
-const loadTakeOverDialog = () => import('./autopilot/TakeOverDialog')
-const LaunchDialog = lazy(() => loadLaunchDialog().then((m) => ({ default: m.LaunchDialog })))
-const LaunchMenu = lazy(() => loadLaunchMenu().then((m) => ({ default: m.LaunchMenu })))
-const LaunchHoldDialog = lazy(() => loadLaunchHoldDialog().then((m) => ({ default: m.LaunchHoldDialog })))
-const TakeOverDialog = lazy(() => loadTakeOverDialog().then((m) => ({ default: m.TakeOverDialog })))
-
-// preloading records that the dialogs' code was asked for, so the many launch controls of a
-// list ask once between them.
-let preloading = false
-
-// preloadDialogs starts loading the dialogs' code, once. A load that fails is left to the
-// dialog's own load on its first opening, which tries again.
-function preloadDialogs() {
-  if (preloading) {
-    return
-  }
-
-  preloading = true
-
-  for (const load of [loadLaunchDialog, loadLaunchMenu, loadLaunchHoldDialog, loadTakeOverDialog]) {
-    load().catch(() => undefined)
-  }
-}
 
 // LaunchControlsProps are the launch options every launch control shares, and the item's
 // own.

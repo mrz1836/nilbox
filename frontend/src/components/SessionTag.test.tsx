@@ -512,7 +512,7 @@ describe('SessionTag for an agent working in the background', () => {
 
     await user.click(within(run).getByRole('button', { name: 'Take over' }))
 
-    const dialog = within(screen.getByRole('dialog', { name: 'Take over this run?' }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Take over this run?' }))
     expect(dialog.getByText(/opens its conversation in iTerm2/)).toBeInTheDocument()
     await user.click(dialog.getByRole('button', { name: 'Take over' }))
 
@@ -540,7 +540,9 @@ describe('SessionTag for an agent working in the background', () => {
 
     await user.click(within(run).getByRole('button', { name: 'Take over' }))
     await user.click(
-      within(screen.getByRole('dialog', { name: 'Take over this run?' })).getByRole('button', { name: 'Take over' }),
+      within(await screen.findByRole('dialog', { name: 'Take over this run?' })).getByRole('button', {
+        name: 'Take over',
+      }),
     )
     expect(await within(run).findByRole('status')).toHaveTextContent('Its worktree was already there.')
 
@@ -570,6 +572,6 @@ describe('SessionTag for an agent working in the background', () => {
     expect(within(run).queryByRole('button', { name: 'Stop' })).toBeNull()
 
     await user.click(within(run).getByRole('button', { name: 'Take over' }))
-    expect(screen.getByRole('dialog', { name: 'Take over this conversation?' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Take over this conversation?' })).toBeInTheDocument()
   })
 })
