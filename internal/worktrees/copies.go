@@ -33,7 +33,8 @@ import (
 // worktree with at most copyLimit (copyUnpushedArgs; one per commit the worktrees were made
 // at from GitHub), and one more the pushed commits not in the default branch whose commit
 // time is at most copyWindow before the oldest of U's author times (copyCandidatesArgs): a
-// copy keeps the author time and is made later. A pushed commit with a commit's author time,
+// copy keeps the author time and is made later; a window too wide to read fails only the
+// worktrees that need it (readCandidates). A pushed commit with a commit's author time,
 // author email, and subject is its likely copy. For each pushed branch holding likely
 // copies, most first and at most copyRefsMax of them, one rev-list --cherry-mark
 // (copyCherryArgs) says which of U git takes for an identical change on it, which one log of
@@ -338,8 +339,10 @@ type copyWork struct {
 	done   bool
 	retry  bool
 
-	// unpushed are its commits not on GitHub, once read.
-	unpushed []copyCommit
+	// unpushed are its commits not on GitHub, once read, and candidates the pushed commits
+	// that may be their copies, once read (readCandidates).
+	unpushed   []copyCommit
+	candidates []copyCommit
 }
 
 // copyCommit is a commit as a comparison's logs read it: a commit not on GitHub with its
@@ -474,16 +477,11 @@ func compareCopies(ctx context.Context, g git, cache *copyCache, dir string, rem
 	}
 
 	readUnpushed(ctx, g, dir, todo)
-
-	candidates, err := readCandidates(ctx, g, dir, remotes, refs, todo, branches)
+	readCandidates(ctx, g, dir, defaultBase(remotes, refs), todo, branches)
 
 	for _, w := range todo {
-		switch {
-		case w.done:
-		case err != nil:
-			w.fail(ctx, err)
-		default:
-			w.compare(ctx, g, cache, dir, refs, candidates)
+		if !w.done {
+			w.compare(ctx, g, cache, dir, refs, w.candidates)
 		}
 	}
 }
@@ -599,34 +597,63 @@ func reach(set map[string]copyCommit, head string) []copyCommit {
 	return out
 }
 
-// readCandidates reads the commits of the clone's pushed branches that may be copies of the
-// todo worktrees' commits not on GitHub, in one log: those not in the default branch whose
-// commit time is at most copyWindow before the oldest of those commits' author times, each
-// with the branch it was found on, kept to branches. None is read when no worktree's
-// commits were.
-func readCandidates(ctx context.Context, g git, dir string, remotes map[string]repo.Name, refs cloneRefs,
-	todo []*copyWork, branches map[string]bool,
-) ([]copyCommit, error) {
-	since := int64(-1)
+// readCandidates reads, for each worktree of todo not yet settled, the commits of the
+// clone's pushed branches that may be copies of its commits not on GitHub: those not in the
+// default branch, base, whose commit time is at most copyWindow before the oldest of those
+// commits' author times (copyCommit.since), each with the branch it was found on, kept to
+// branches. One log, from the oldest worktree's time, serves them all. When it reaches
+// copyCandidatesMax, the worktrees that need that time alone can't be compared, and the
+// next log starts from the next oldest's: so one old worktree, as one left for months,
+// never keeps the others from being compared. Any other failure settles every worktree
+// waiting.
+func readCandidates(ctx context.Context, g git, dir, base string, todo []*copyWork, branches map[string]bool) {
+	waiting := slices.DeleteFunc(slices.Clone(todo), func(w *copyWork) bool { return w.done || len(w.unpushed) == 0 })
+	slices.SortStableFunc(waiting, func(a, b *copyWork) int { return cmp.Compare(a.since(), b.since()) })
 
-	for _, w := range todo {
-		for _, c := range w.unpushed {
-			if since < 0 || c.at < since {
-				since = c.at
+	for len(waiting) > 0 {
+		since := waiting[0].since()
+		candidates, err := g.copyCandidates(ctx, dir, since, base)
+
+		if errors.Is(err, errTooManyCandidates) {
+			waiting = failSince(ctx, waiting, since, err)
+
+			continue
+		}
+
+		kept := slices.DeleteFunc(candidates, func(c copyCommit) bool { return !branches[c.ref] })
+
+		for _, w := range waiting {
+			if err != nil {
+				w.fail(ctx, err)
+			} else {
+				w.candidates = kept
 			}
 		}
+
+		return
+	}
+}
+
+// failSince settles the worktrees of waiting, sorted by since, that need the window from
+// since with err, and returns the others.
+func failSince(ctx context.Context, waiting []*copyWork, since int64, err error) []*copyWork {
+	for len(waiting) > 0 && waiting[0].since() == since {
+		waiting[0].fail(ctx, err)
+		waiting = waiting[1:]
 	}
 
-	if since < 0 {
-		return nil, nil
+	return waiting
+}
+
+// since is the earliest commit time a copy of the worktree's commits not on GitHub may
+// have: copyWindow before the oldest of their author times, in Unix seconds, never before 0.
+func (w *copyWork) since() int64 {
+	oldest := w.unpushed[0].at
+	for _, c := range w.unpushed[1:] {
+		oldest = min(oldest, c.at)
 	}
 
-	candidates, err := g.copyCandidates(ctx, dir, max(since-copyWindow, 0), defaultBase(remotes, refs))
-	if err != nil {
-		return nil, err
-	}
-
-	return slices.DeleteFunc(candidates, func(c copyCommit) bool { return !branches[c.ref] }), nil
+	return max(oldest-copyWindow, 0)
 }
 
 // defaultBase is the default branch of the clone's first GitHub remote, origin first, whose

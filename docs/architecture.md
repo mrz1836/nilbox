@@ -2211,8 +2211,11 @@ worktree's own U then walked by its parents within it; and one more log reads th
 commits not in the default branch whose commit time is at most a day before the oldest of
 those author times (`copyCandidatesArgs`: `log ... --no-merges --source --max-count=20000
 --format=%H%x00%S%x00%at%x00%ae%x00%s --since=@<seconds> --remotes --not
-refs/remotes/<remote>/<default>`; a copy keeps the author time and is made later). A pushed
-commit with a commit's author time, email, and subject is its likely copy. For each pushed
+refs/remotes/<remote>/<default>`; a copy keeps the author time and is made later). When that
+log reaches its cap, only the worktrees that need its window (the oldest) can't be compared,
+and one more log, from the next oldest worktree's window, serves the rest, so one worktree
+left for months never keeps its clone's others from being compared. A pushed commit with a
+commit's author time, email, and subject is its likely copy. For each pushed
 branch holding likely copies, most first and at most three, one `rev-list --cherry-mark
 --right-only --no-merges <tip>...<HEAD>` (`copyCherryArgs`, commit IDs only) says which of U
 have an identical change there (`=`). A `=` is only where looking starts: git's patch IDs

@@ -3,6 +3,7 @@ package worktrees
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -571,6 +572,36 @@ func TestDetailsMarkNothingWhenTheRefsCantBeRead(t *testing.T) {
 	}
 
 	assert.Empty(t, d.Errors, "and no read the drawer shows failed")
+}
+
+func TestAnOldWorktreeNeverKeepsTheOthersOfItsCloneFromBeingCompared(t *testing.T) {
+	t.Parallel()
+
+	// A worktree left for two months, whose window of pushed commits is too wide to read.
+	const longAgo = authoredAt - 60*86400
+
+	tooMany := strings.Repeat(otherSHA+"\x00origin/elsewhere\x001\x00octo-user@example.com\x00Old\n", copyCandidatesMax)
+	oldSince := "--since=@" + strconv.FormatInt(longAgo-copyWindow, 10)
+
+	r := newCopyRig(t, func(_ string, sub []string) (reply, bool) {
+		return reply{stdout: tooMany}, startsWith(sub, callCandidates) && slices.Contains(sub, oldSince)
+	})
+
+	old := filepath.Join(r.repo, ".claude", "worktrees", "agent-old")
+	testutil.RunGit(t, r.repo, "worktree", "add", "-q", "-b", ownBranchPrefix+"agent-old", old, r.main)
+	commitAt(t, old, "old.txt", "old\n", "Add old", longAgo)
+
+	oids := r.work(t, 2)
+	r.publish(t, copyOnto(t, r.parent, oids...))
+
+	snap := listOf(t, r.svc)
+	assert.True(t, mustRow(t, snap, r.agent).Copies.full(), "the fresh worktree is compared all the same")
+
+	got := mustRow(t, snap, old).Copies
+	assert.Equal(t, 1, got.Count)
+	assert.Equal(t, "Couldn't compare its commits with the pushed branches. Too many pushed commits to compare with.",
+		got.Note, "only the old one, whose window was too wide, isn't")
+	assert.Equal(t, 2, r.copies()[callCandidates], "the wide window's log, then the next one's")
 }
 
 func TestListComparesNothingInAClonePushedNowhere(t *testing.T) {
