@@ -1,7 +1,9 @@
 package describeit
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -311,6 +313,29 @@ func TestPluginsReadsEachProfilesOwnList(t *testing.T) {
 	states, err = r.svc.Plugins(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, agentWords+" couldn't list its plugins.", states[0].Problem)
+}
+
+func TestPluginsWarnOnlyOfAListTheWindowStillWaitsFor(t *testing.T) {
+	t.Parallel()
+
+	r, _ := pluginRig(t, map[string]string{})
+
+	var logs bytes.Buffer
+
+	r.svc.logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	states, err := r.svc.Plugins(ctx)
+	require.NoError(t, err)
+	require.Len(t, states, 2)
+	assert.Equal(t, agentWords+" couldn't list its plugins.", states[0].Problem)
+	assert.Empty(t, logs.String(), "the window moved on: no warning")
+
+	_, err = r.svc.Plugins(t.Context())
+	require.NoError(t, err)
+	assert.Contains(t, logs.String(), "describe it couldn't list a profile's plugins", "a list that failed on its own is")
 }
 
 func TestPluginsSaysWhyAProfileCantBeRead(t *testing.T) {

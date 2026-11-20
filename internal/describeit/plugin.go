@@ -213,8 +213,11 @@ func (s *Service) pluginState(ctx context.Context, p Profile) PluginState {
 
 	listing, perr := agent.ParsePluginList(stdout)
 	if perr != nil {
-		s.logger.WarnContext(ctx, "describe it couldn't list a profile's plugins", "profile", p.Name, "error",
-			errors.Join(err, perr), "stderr", textutil.Truncate(textutil.OneLine(string(stderr)), 300))
+		// A list the window stopped waiting for, as it moves on from Settings, is no news.
+		if ctx.Err() == nil {
+			s.logger.WarnContext(ctx, "describe it couldn't list a profile's plugins", "profile", p.Name, "error",
+				errors.Join(err, perr), "stderr", textutil.Truncate(textutil.OneLine(string(stderr)), 300))
+		}
 
 		st.Problem = agentWords + " couldn't list its plugins."
 
