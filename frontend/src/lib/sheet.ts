@@ -13,7 +13,7 @@ import {
   type Worktree,
 } from '../platform'
 import { refText } from './format'
-import { isTyping } from './keys'
+import { isTyping, useKeyDown } from './keys'
 import type { LaunchOptions } from './launch'
 import { isTopmost } from './useModalDialog'
 
@@ -302,7 +302,7 @@ function onRadio(e: KeyboardEvent): boolean {
 // through its list while the user isn't typing, with no modifier held, unless a control in
 // the sheet took the key first.
 export function useSheetKeys(titleId: string, keys: SheetKeys): void {
-  const onKey = useEffectEvent((e: KeyboardEvent) => {
+  useKeyDown((e) => {
     const dialog = document.querySelector(`dialog[aria-labelledby="${titleId}"]`)
 
     // A key pressed in a menu or a picker is its own, ⌘↩ included, which applies a picker.
@@ -330,18 +330,6 @@ export function useSheetKeys(titleId: string, keys: SheetKeys): void {
       step.onStep()
     }
   })
-
-  useEffect(() => {
-    const listener = (e: KeyboardEvent) => {
-      onKey(e)
-    }
-
-    document.addEventListener('keydown', listener)
-
-    return () => {
-      document.removeEventListener('keydown', listener)
-    }
-  }, [])
 }
 
 // Progress is an action under way: what it is, the item it acts on, the steps the backend

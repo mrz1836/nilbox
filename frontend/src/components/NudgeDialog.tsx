@@ -1,8 +1,9 @@
-import { use, useEffect, useEffectEvent, useId, useState, type ReactNode } from 'react'
+import { use, useId, useState, type ReactNode } from 'react'
 
 import type { Result } from '../lib/call'
 import { CardPrefsContext } from '../lib/cardPrefs'
 import { withReply } from '../lib/issues'
+import { useKeyDown } from '../lib/keys'
 import { quietWords } from '../lib/nudge'
 import { replyMenuItems } from '../lib/replies'
 import { snoozeLength } from '../lib/triage'
@@ -79,25 +80,14 @@ export function NudgeDialog({ item, snoozeDays, snoozeFirst, onPost, onCancel, o
     })
   }
 
-  // ⌘↩ posts from anywhere in the dialog, as the sheets' do.
-  const onKey = useEffectEvent((e: KeyboardEvent) => {
+  // ⌘↩ posts from anywhere in the dialog, as the sheets' do: heard on the window, after
+  // anything in the page had the key first.
+  useKeyDown((e) => {
     if (e.key === 'Enter' && e.metaKey && !e.defaultPrevented) {
       e.preventDefault()
       post()
     }
-  })
-
-  useEffect(() => {
-    const listen = (e: KeyboardEvent) => {
-      onKey(e)
-    }
-
-    window.addEventListener('keydown', listen)
-
-    return () => {
-      window.removeEventListener('keydown', listen)
-    }
-  }, [])
+  }, window)
 
   // replyItems are the library's comment replies for pull requests, the default Nudge reply
   // marked, or why there are none to pick.
