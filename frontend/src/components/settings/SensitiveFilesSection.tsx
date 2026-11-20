@@ -1,4 +1,4 @@
-import { startTransition, useActionState, useId, useState } from 'react'
+import { useId } from 'react'
 
 import { brand } from '../../generated/brand'
 import { counted } from '../../lib/format'
@@ -11,7 +11,6 @@ import {
   setSensitiveScope,
   type SensitiveCategory,
   type SensitiveScope,
-  type Settings,
 } from '../../platform'
 import { Segmented, Switch } from '../controls'
 import { ChevronRightIcon } from '../icons'
@@ -19,31 +18,11 @@ import { PathTester } from './PathTester'
 import { ChoiceRow, ErrorText, Group, joinIds, Note, SectionIntro } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
+import { useListChange } from './useListChange'
 
 // Field is where a refusal shows: under the settings above the patterns, or under the
 // pattern field.
 type Field = 'settings' | 'patterns'
-
-// Refusal is why a change was refused, where it shows, and the draft typed when it was:
-// typing again clears a refused pattern.
-interface Refusal {
-  field: Field
-  draft: string
-  message: string
-}
-
-// Change is a change to the sensitive-file settings: how it shows at once, the call that
-// stores it, where a refusal shows, the draft typed when it was made, and what to do once
-// it is stored.
-interface Change {
-  shows: Partial<Settings>
-  call: () => PromiseLike<Settings>
-  field: Field
-  draft: string
-  then?: () => void
-}
-
-const noRefusal: Refusal = { field: 'settings', draft: '', message: '' }
 
 const scopeOptions: readonly { value: SensitiveScope; label: string; title: string }[] = [
   {
@@ -120,39 +99,17 @@ function CategoryRow({ category, on, busy, onChange, describedBy }: CategoryRowP
 export function SensitiveFilesSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
-  const [draft, setDraft] = useState('')
-  // invalid is why the draft cannot be added, found before asking the backend.
-  const [invalid, setInvalid] = useState<Refusal>(noRefusal)
-  // Every change runs through one action: one at a time, with the controls held while it
-  // runs.
-  const [refused, change, busy] = useActionState(async (_: Refusal, next: Change): Promise<Refusal> => {
-    const result = await save(next.shows, next.call)
-
-    if (!result.ok) {
-      return { field: next.field, draft: next.draft, message: result.error }
-    }
-
-    next.then?.()
-
-    return noRefusal
-  }, noRefusal)
+  // Every change to the sensitive-file settings runs through one action (store): one at a
+  // time, with the controls held while it runs, its refusal under its field.
+  const { draft, setDraft, refusal, refuse, store, busy } = useListChange<Field>(save)
 
   const config = settings.sensitiveFiles
   const off = config.off
   const patterns = config.patterns
   const categories = settings.sensitiveCategories
-  const refusal = invalid.message !== '' ? invalid : busy ? noRefusal : refused
   const error = refusal.field === 'settings' ? refusal.message : ''
   const patternError = refusal.field === 'patterns' && refusal.draft === draft ? refusal.message : ''
   const errorId = error !== '' && `${id}-error`
-
-  // store makes a change through the action.
-  const store = (next: Omit<Change, 'draft'>) => {
-    setInvalid(noRefusal)
-    startTransition(() => {
-      change({ ...next, draft })
-    })
-  }
 
   // storePatterns replaces the user's own patterns.
   const storePatterns = (next: string[], then?: () => void) => {
@@ -160,7 +117,7 @@ export function SensitiveFilesSection({ settings: stored, onSaved }: SectionProp
       shows: { sensitiveFiles: { ...config, patterns: next } },
       call: () => setSensitivePatterns(next),
       field: 'patterns',
-      ...(then === undefined ? {} : { then }),
+      then,
     })
   }
 
@@ -186,7 +143,7 @@ export function SensitiveFilesSection({ settings: stored, onSaved }: SectionProp
     const pattern = draft.trim()
 
     if (patterns.some((p) => p.toLowerCase() === pattern.toLowerCase())) {
-      setInvalid({ field: 'patterns', draft, message: `${pattern} is already on the list.` })
+      refuse(`${pattern} is already on the list.`, 'patterns')
 
       return
     }

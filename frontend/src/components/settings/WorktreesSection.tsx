@@ -1,36 +1,16 @@
-import { startTransition, useActionState, useId, useState } from 'react'
+import { useId } from 'react'
 
 import { useSettingsSave } from '../../lib/useSettingsSave'
-import { setBranchRules, setWorktreeAutoCleanup, sweepWorktrees, type BranchRules, type Settings } from '../../platform'
+import { setBranchRules, setWorktreeAutoCleanup, sweepWorktrees, type BranchRules } from '../../platform'
 import { quietButtonClass, Switch } from '../controls'
 import { ErrorText, Group, joinIds, Note, rowDescribedBy, SectionIntro, SettingRow } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
+import { useListChange } from './useListChange'
 
 // Field is where a refusal shows: under the cleanup switch, under the branch switches, or
 // under the protected branch field.
 type Field = 'cleanup' | 'rules' | 'protected'
-
-// Refusal is why a change was refused, where it shows, and the draft typed when it was:
-// typing again clears a refused pattern.
-interface Refusal {
-  field: Field
-  draft: string
-  message: string
-}
-
-// Change is a change to the worktree settings: how it shows at once, the call that
-// stores it, where a refusal shows, the draft typed when it was made, and what to do once
-// it is stored.
-interface Change {
-  shows: Partial<Settings>
-  call: () => PromiseLike<Settings>
-  field: Field
-  draft: string
-  then?: () => void
-}
-
-const noRefusal: Refusal = { field: 'rules', draft: '', message: '' }
 
 // sameList reports whether two lists hold the same patterns in the same order.
 function sameList(a: readonly string[], b: readonly string[]): boolean {
@@ -78,37 +58,15 @@ const ruleSwitches: readonly RuleSwitch[] = [
 export function WorktreesSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
-  const [draft, setDraft] = useState('')
-  // invalid is why the draft cannot be added, found before asking the backend.
-  const [invalid, setInvalid] = useState<Refusal>(noRefusal)
-  // Every change runs through one action: one at a time, with the controls held while it
-  // runs.
-  const [refused, change, busy] = useActionState(async (_: Refusal, next: Change): Promise<Refusal> => {
-    const result = await save(next.shows, next.call)
-
-    if (!result.ok) {
-      return { field: next.field, draft: next.draft, message: result.error }
-    }
-
-    next.then?.()
-
-    return noRefusal
-  }, noRefusal)
+  // Every change to the worktree settings runs through one action (store): one at a time,
+  // with the controls held while it runs, its refusal under its field.
+  const { draft, setDraft, refusal, refuse, store, busy } = useListChange<Field>(save)
 
   const rules = settings.branches
   const defaults = settings.defaultProtectedBranches
-  const refusal = invalid.message !== '' ? invalid : busy ? noRefusal : refused
   // errorOf is the refusal under one field, or ''.
   const errorOf = (field: Field) =>
     refusal.field !== field ? '' : field !== 'protected' || refusal.draft === draft ? refusal.message : ''
-
-  // store makes a change through the action.
-  const store = (next: Omit<Change, 'draft'>) => {
-    setInvalid(noRefusal)
-    startTransition(() => {
-      change({ ...next, draft })
-    })
-  }
 
   // storeRules replaces the branch rules, showing a refusal under field.
   const storeRules = (next: BranchRules, field: Field, then?: () => void) => {
@@ -116,7 +74,7 @@ export function WorktreesSection({ settings: stored, onSaved }: SectionProps) {
       shows: { branches: next },
       call: () => setBranchRules(next),
       field,
-      ...(then === undefined ? {} : { then }),
+      then,
     })
   }
 
@@ -125,7 +83,7 @@ export function WorktreesSection({ settings: stored, onSaved }: SectionProps) {
     const pattern = draft.trim()
 
     if (rules.protected.includes(pattern)) {
-      setInvalid({ field: 'protected', draft, message: `${pattern} is already protected.` })
+      refuse(`${pattern} is already protected.`, 'protected')
 
       return
     }

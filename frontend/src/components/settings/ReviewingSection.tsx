@@ -1,4 +1,4 @@
-import { startTransition, useActionState, useId, useState } from 'react'
+import { useId, useState } from 'react'
 
 import { attempt } from '../../lib/call'
 import { counted } from '../../lib/format'
@@ -21,15 +21,7 @@ import { buttonClass, Segmented, type SegmentOption } from '../controls'
 import { ChoiceRow, ErrorText, Group, joinIds, Note, SectionIntro, SettingRow, SwitchRow } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
-
-// Refusal is why a change of the ignored workflows was refused, and the draft typed when it
-// was: typing again clears it.
-interface Refusal {
-  draft: string
-  message: string
-}
-
-const noRefusal: Refusal = { draft: '', message: '' }
+import { useListChange } from './useListChange'
 
 // mergeChoices are the ways the review sheet can merge, as GitHub's merge button words
 // them, each with what it does.
@@ -198,28 +190,11 @@ export function ReviewingSection({ settings: stored, onSaved, onManageReplies }:
   const [bypassError, setBypassError] = useState('')
   const [nudgeError, setNudgeError] = useState('')
   const [snoozeError, setSnoozeError] = useState('')
-  const [draft, setDraft] = useState('')
-  // invalid is why the draft cannot be added, found before asking the backend.
-  const [invalid, setInvalid] = useState<Refusal>(noRefusal)
   // Every change of the ignored workflows runs through one action: one at a time, with the
   // list's controls held while it runs.
-  const [refused, change, busy] = useActionState(
-    async (_: Refusal, next: { names: string[]; draft: string; then?: () => void }): Promise<Refusal> => {
-      const result = await save({ ignoredWorkflows: next.names }, () => setIgnoredWorkflows(next.names))
-
-      if (!result.ok) {
-        return { draft: next.draft, message: result.error }
-      }
-
-      next.then?.()
-
-      return noRefusal
-    },
-    noRefusal,
-  )
+  const { draft, setDraft, refusal, refuse, store: change, busy } = useListChange(save)
 
   const names = settings.ignoredWorkflows
-  const refusal = invalid.message !== '' ? invalid : busy ? noRefusal : refused
   const ignoreError = refusal.draft === draft ? refusal.message : ''
 
   const choose = async (mergeMethod: MergeMethodSetting) => {
@@ -258,10 +233,7 @@ export function ReviewingSection({ settings: stored, onSaved, onManageReplies }:
 
   // store replaces the ignored workflows.
   const store = (next: string[], then?: () => void) => {
-    setInvalid(noRefusal)
-    startTransition(() => {
-      change({ names: next, draft, ...(then === undefined ? {} : { then }) })
-    })
+    change({ shows: { ignoredWorkflows: next }, call: () => setIgnoredWorkflows(next), then })
   }
 
   const add = () => {
@@ -269,7 +241,7 @@ export function ReviewingSection({ settings: stored, onSaved, onManageReplies }:
     const name = draft.trim()
 
     if (names.includes(name)) {
-      setInvalid({ draft, message: `${name} is already ignored.` })
+      refuse(`${name} is already ignored.`)
 
       return
     }
