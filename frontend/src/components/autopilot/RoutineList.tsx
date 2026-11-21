@@ -2,23 +2,17 @@ import { useId } from 'react'
 
 import { canSwitch, editable, modeLabel, type StatusLine } from '../../lib/autopilot'
 import { formatAgo } from '../../lib/time'
+import { toneText } from '../../lib/tone'
 import type { AutopilotRoutine } from '../../platform'
 import { Switch } from '../controls'
 import { CopyIcon, ExportIcon, MoreIcon, RingIcon, RoutineIcon, SparkIcon, TrashIcon } from '../icons'
 import { MenuButton, type MenuItem } from '../Menu'
 import { RelativeTime } from '../RelativeTime'
 
-// statusTones color a status line by its tone.
-const statusTones: Readonly<Record<StatusLine['tone'], string>> = {
-  muted: 'text-muted',
-  warning: 'text-warning',
-  danger: 'text-danger',
-}
-
 // Status is a routine's status line, the time it last ran shown against now.
 export function Status({ line }: { line: StatusLine }) {
   return (
-    <span className={`block truncate text-xs ${statusTones[line.tone]}`} title={line.text}>
+    <span className={`block truncate text-xs ${toneText[line.tone]}`} title={line.text}>
       {line.text}
       {line.since !== undefined && (
         <>
