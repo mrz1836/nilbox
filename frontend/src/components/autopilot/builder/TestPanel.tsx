@@ -56,7 +56,7 @@ export interface Pinned {
 }
 
 // pinnedFirst puts the item pinned names first among items, else leaves them as they are.
-export function pinnedFirst(items: readonly AutopilotTestItem[], pinned: Pinned | undefined): AutopilotTestItem[] {
+function pinnedFirst(items: readonly AutopilotTestItem[], pinned: Pinned | undefined): AutopilotTestItem[] {
   if (pinned === undefined) {
     return [...items]
   }

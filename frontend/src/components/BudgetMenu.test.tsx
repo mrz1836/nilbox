@@ -1,9 +1,9 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { BudgetGauge as Gauge } from '../platform'
-import { at } from '../test/clock'
+import { renderAt } from '../test/clock'
 import { budgetGauge, reading, unreadBudget } from '../test/fixtures'
 import { BudgetMenu, checkEveryMs } from './BudgetMenu'
 
@@ -14,12 +14,11 @@ const healthy: Gauge = budgetGauge({
 })
 
 function renderMenu(gauge: Gauge | null) {
-  return render(
+  return renderAt(
     <>
       <BudgetMenu gauge={gauge} />
       <button type="button">Elsewhere</button>
     </>,
-    { wrapper: at() },
   )
 }
 
@@ -118,26 +117,22 @@ describe('BudgetMenu', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     const onCheck = vi.fn()
 
-    try {
-      render(<BudgetMenu gauge={healthy} onCheck={onCheck} />, { wrapper: at() })
+    renderAt(<BudgetMenu gauge={healthy} onCheck={onCheck} />)
 
-      expect(onCheck).not.toHaveBeenCalled()
+    expect(onCheck).not.toHaveBeenCalled()
 
-      await userEvent.click(screen.getByRole('button', { name: /^API budget/ }))
-      expect(onCheck).toHaveBeenCalledOnce()
+    await userEvent.click(screen.getByRole('button', { name: /^API budget/ }))
+    expect(onCheck).toHaveBeenCalledOnce()
 
-      act(() => {
-        vi.advanceTimersByTime(checkEveryMs)
-      })
-      expect(onCheck).toHaveBeenCalledTimes(2)
+    act(() => {
+      vi.advanceTimersByTime(checkEveryMs)
+    })
+    expect(onCheck).toHaveBeenCalledTimes(2)
 
-      await userEvent.click(screen.getByRole('button', { name: /^API budget/ }))
-      act(() => {
-        vi.advanceTimersByTime(checkEveryMs * 3)
-      })
-      expect(onCheck).toHaveBeenCalledTimes(2)
-    } finally {
-      vi.useRealTimers()
-    }
+    await userEvent.click(screen.getByRole('button', { name: /^API budget/ }))
+    act(() => {
+      vi.advanceTimersByTime(checkEveryMs * 3)
+    })
+    expect(onCheck).toHaveBeenCalledTimes(2)
   })
 })

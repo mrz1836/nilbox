@@ -2,8 +2,9 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { MoveResult, UpdateLocationKind, UpdateStatus } from '../platform'
+import { deferred } from '../test/async'
 import { moveResult, updateLocation, updateReady, updateStatus } from '../test/fixtures'
-import { emit, platform } from '../test/platform'
+import { platform, send } from '../test/platform'
 import { offerOf, type RestartStep } from './update'
 import { useMoveToApplications } from './useMove'
 
@@ -16,17 +17,12 @@ function failure(message: string): Error {
 
 // held is a call that waits until released, then answers with result.
 function held(result: MoveResult) {
-  const gate: { open?: () => void } = {}
-  const call = new Promise<MoveResult>((resolve) => {
-    gate.open = () => {
-      resolve(result)
-    }
-  })
+  const d = deferred<MoveResult>()
 
   return {
-    call,
+    call: d.promise,
     release: () => {
-      gate.open?.()
+      d.resolve(result)
     },
   }
 }
@@ -241,9 +237,7 @@ describe('useMoveToApplications', () => {
     const { result } = move()
 
     // Asked before anything went ahead, the quit's question changes nothing here.
-    act(() => {
-      emit('app:quitRequested')
-    })
+    send('app:quitRequested')
     expect(result.current.dialog?.variant).toBe('move')
 
     act(() => {
@@ -253,9 +247,7 @@ describe('useMoveToApplications', () => {
       expect(result.current.dialog?.leaving).toBe(true)
     })
 
-    act(() => {
-      emit('app:quitRequested')
-    })
+    send('app:quitRequested')
     expect(result.current.dialog).toBeNull()
 
     platform.moveToApplications.mockResolvedValueOnce(moveResult({ outcome: 'exists' }))
@@ -275,9 +267,7 @@ describe('useMoveToApplications', () => {
     act(() => {
       result.current.confirm()
     })
-    act(() => {
-      emit('app:quitRequested')
-    })
+    send('app:quitRequested')
     expect(result.current.dialog?.work).toBe('moving')
 
     await act(async () => {

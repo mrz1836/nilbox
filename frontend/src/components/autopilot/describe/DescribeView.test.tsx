@@ -1,11 +1,14 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Activity } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../../generated/brand'
 import type { AutopilotDraft, AutopilotRunEvent, DescribeConversation, Settings } from '../../../platform'
-import { at } from '../../../test/clock'
+import { deferred } from '../../../test/async'
+import { renderAt } from '../../../test/clock'
 import {
+  autopilotCatalog,
   describeAttachment,
   describeCard,
   describeConversation,
@@ -19,7 +22,7 @@ import {
   runEventsPage,
   settings,
 } from '../../../test/fixtures'
-import { emit, platform } from '../../../test/platform'
+import { platform, send } from '../../../test/platform'
 import { DescribeView, type DescribeRequest } from './DescribeView'
 
 vi.mock('../../../platform', () => import('../../../test/platform').then((fake) => fake.platform))
@@ -41,6 +44,12 @@ function conversation(turns = [describeTurn()], overrides: Partial<DescribeConve
   return describeConversation({ id, turns, ...overrides })
 }
 
+// held are what the tab hands Describe it as it holds them: the settings stored, and the
+// catalog read.
+function held() {
+  return { settings: settings(), catalog: autopilotCatalog() }
+}
+
 // show renders Describe it with request, and returns its callbacks.
 function show(request?: DescribeRequest) {
   const calls = {
@@ -48,7 +57,7 @@ function show(request?: DescribeRequest) {
     onShowRoutine: vi.fn<(id: number) => void>(),
     onSettingsSaved: vi.fn<(settings: Settings) => void>(),
   }
-  const view = render(<DescribeView {...(request === undefined ? {} : { request })} {...calls} />, { wrapper: at() })
+  const view = renderAt(<DescribeView {...(request === undefined ? {} : { request })} {...held()} {...calls} />)
 
   return { ...calls, ...view }
 }
@@ -137,13 +146,9 @@ describe('DescribeView', () => {
 
   it('keeps what you typed while a message was sent', async () => {
     const user = userEvent.setup()
-    let answer: (c: DescribeConversation) => void = () => undefined
+    const answer = deferred<DescribeConversation>()
 
-    platform.sendToDescribeIt.mockReturnValueOnce(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    platform.sendToDescribeIt.mockReturnValueOnce(answer.promise)
     show()
 
     const box = composer().getByRole('textbox', { name: 'Tell Autopilot what you want' })
@@ -154,7 +159,7 @@ describe('DescribeView', () => {
     await user.type(box, ' And more.')
 
     await act(async () => {
-      answer(conversation([describeTurn({ text: 'First.', state: 'running' })], { running: true }))
+      answer.resolve(conversation([describeTurn({ text: 'First.', state: 'running' })], { running: true }))
       await Promise.resolve()
     })
     expect(box).toHaveValue('First. And more.')
@@ -203,7 +208,13 @@ describe('DescribeView', () => {
     expect(await screen.findByText('Claude is working on it…')).toBeInTheDocument()
 
     rerender(
-      <DescribeView request={request} onEditInBuilder={vi.fn()} onShowRoutine={vi.fn()} onSettingsSaved={vi.fn()} />,
+      <DescribeView
+        request={request}
+        {...held()}
+        onEditInBuilder={vi.fn()}
+        onShowRoutine={vi.fn()}
+        onSettingsSaved={vi.fn()}
+      />,
     )
     unmount()
     show(request)
@@ -222,6 +233,7 @@ describe('DescribeView', () => {
     rerender(
       <DescribeView
         request={{ seq: 2, text: 'Skip drafts.' }}
+        {...held()}
         onEditInBuilder={vi.fn()}
         onShowRoutine={vi.fn()}
         onSettingsSaved={vi.fn()}
@@ -265,6 +277,7 @@ describe('DescribeView', () => {
             { kind: 'routine', id: 3 },
           ],
         }}
+        {...held()}
         onEditInBuilder={vi.fn()}
         onShowRoutine={vi.fn()}
         onSettingsSaved={vi.fn()}
@@ -380,9 +393,7 @@ describe('DescribeView', () => {
         ],
       }),
     )
-    act(() => {
-      emit('describeit:updated', { conversationId: id, turn: 1 })
-    })
+    send('describeit:updated', { conversationId: id, turn: 1 })
     expect(await log.findByText('Checked 1 routine: no problems')).toBeInTheDocument()
     expect(log.getByText('Proposing it')).toBeInTheDocument()
     expect(log.getByRole('img', { name: 'under way' })).toBeInTheDocument()
@@ -397,9 +408,7 @@ describe('DescribeView', () => {
         events: [runEvent({ seq: 5, offset: 500, kind: 'toolResult', text: 'Proposed 1 routine.' })],
       }),
     )
-    act(() => {
-      emit('describeit:updated', { conversationId: id, turn: 1 })
-    })
+    send('describeit:updated', { conversationId: id, turn: 1 })
 
     expect(await log.findByText('Done: one routine, waiting for you.')).toBeInTheDocument()
     expect(log.queryByText('Claude is working on it…')).not.toBeInTheDocument()
@@ -466,7 +475,7 @@ describe('DescribeView', () => {
     expect(onEditInBuilder).toHaveBeenCalledWith(expect.objectContaining({ name: 'Snooze passing bot PRs', id: 0 }))
   })
 
-  it('hands the window the settings a card’s settings change left, and reads its own again', async () => {
+  it('hands the window the settings a card’s settings change left, reading none of its own', async () => {
     const user = userEvent.setup()
     const card = describeCard({
       proposal: { summary: 'One at a time.', settings: { agentsAtOnce: 1 } },
@@ -479,14 +488,64 @@ describe('DescribeView', () => {
 
     const { onSettingsSaved } = show()
     const row = within(await screen.findByRole('group', { name: 'Autopilot’s settings' }))
-    const reads = platform.getSettings.mock.calls.length
 
     await user.click(row.getByRole('button', { name: 'Apply' }))
     expect(await row.findByText('Applied')).toBeInTheDocument()
     expect(onSettingsSaved).toHaveBeenCalledExactlyOnceWith(stored)
-    await waitFor(() => {
-      expect(platform.getSettings.mock.calls.length).toBeGreaterThan(reads)
-    })
+    expect(platform.getSettings).not.toHaveBeenCalled()
+    expect(platform.getAutopilotCatalog).not.toHaveBeenCalled()
+  })
+
+  it('takes the settings as they change elsewhere, while it is hidden too', async () => {
+    platform.describeItConversation.mockResolvedValue(conversation([describeTurn({ cards: [describeCard()] })]))
+
+    const props = { onEditInBuilder: vi.fn(), onShowRoutine: vi.fn(), onSettingsSaved: vi.fn() }
+    const inMode = (defaultMode: Settings['autopilot']['defaultMode']) =>
+      settings({ autopilot: { ...settings().autopilot, defaultMode } })
+    const { rerender } = renderAt(
+      <Activity mode="visible">
+        <DescribeView settings={inMode('ask')} catalog={autopilotCatalog()} {...props} />
+      </Activity>,
+    )
+    const mode = () =>
+      within(
+        within(screen.getByRole('group', { name: 'Snooze passing bot PRs' })).getByRole('radiogroup', { name: 'Mode' }),
+      )
+
+    await screen.findByRole('group', { name: 'Snooze passing bot PRs' })
+    expect(mode().getByRole('radio', { name: 'Ask first' })).toBeChecked()
+
+    rerender(
+      <Activity mode="hidden">
+        <DescribeView settings={inMode('dryRun')} catalog={autopilotCatalog()} {...props} />
+      </Activity>,
+    )
+    rerender(
+      <Activity mode="visible">
+        <DescribeView settings={inMode('dryRun')} catalog={autopilotCatalog()} {...props} />
+      </Activity>,
+    )
+    expect(mode().getByRole('radio', { name: 'Dry run' })).toBeChecked()
+    expect(platform.getSettings).not.toHaveBeenCalled()
+  })
+
+  it('starts a new routine in Ask first while the settings load', async () => {
+    platform.describeItConversation.mockResolvedValue(conversation([describeTurn({ cards: [describeCard()] })]))
+    renderAt(
+      <DescribeView
+        settings={null}
+        catalog={undefined}
+        onEditInBuilder={vi.fn()}
+        onShowRoutine={vi.fn()}
+        onSettingsSaved={vi.fn()}
+      />,
+    )
+
+    const row = within(await screen.findByRole('group', { name: 'Snooze passing bot PRs' }))
+
+    expect(
+      within(row.getByRole('radiogroup', { name: 'Mode' })).getByRole('radio', { name: 'Ask first' }),
+    ).toBeChecked()
   })
 
   it('starts a new conversation with the profile, model, and effort chosen', async () => {

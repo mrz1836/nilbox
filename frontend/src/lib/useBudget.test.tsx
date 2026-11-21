@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { budgetGauge, reading } from '../test/fixtures'
-import { emit, platform } from '../test/platform'
+import { platform, send } from '../test/platform'
 import { useBudget } from './useBudget'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -18,9 +18,7 @@ describe('useBudget', () => {
     })
 
     platform.getBudget.mockResolvedValue(budgetGauge({ graphql: reading({ used: 25 }) }))
-    act(() => {
-      emit('budget:updated')
-    })
+    send('budget:updated')
 
     await waitFor(() => {
       expect(result.current.gauge?.graphql.used).toBe(25)
@@ -47,7 +45,8 @@ describe('useBudget', () => {
   it('keeps the gauge as it was when a check fails, and logs why', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     platform.getBudget.mockResolvedValue(budgetGauge({ graphql: reading({ used: 20 }) }))
-    platform.checkBudget.mockRejectedValue(new Error('offline'))
+    const offline = new Error('offline')
+    platform.checkBudget.mockRejectedValue(offline)
     const { result } = renderHook(() => useBudget())
 
     await waitFor(() => {
@@ -59,7 +58,7 @@ describe('useBudget', () => {
     })
 
     await waitFor(() => {
-      expect(logged).toHaveBeenCalledWith('could not read the API budget:', 'offline')
+      expect(logged).toHaveBeenCalledWith('could not read the API budget:', offline)
     })
     expect(result.current.gauge?.graphql.used).toBe(20)
   })

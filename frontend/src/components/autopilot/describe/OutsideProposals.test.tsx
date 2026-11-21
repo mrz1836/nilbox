@@ -1,11 +1,11 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { DescribeCard } from '../../../platform'
-import { at } from '../../../test/clock'
+import { renderAt } from '../../../test/clock'
 import { autopilotCatalog, describeCard } from '../../../test/fixtures'
-import { emit, listening, platform } from '../../../test/platform'
+import { listening, platform, send } from '../../../test/platform'
 import { OutsideProposals } from './OutsideProposals'
 
 vi.mock('../../../platform', () => import('../../../test/platform').then((fake) => fake.platform))
@@ -25,7 +25,7 @@ function outside(overrides: Partial<DescribeCard> = {}): DescribeCard {
 
 // show renders the cards from the user's own Claude Code.
 function show() {
-  return render(
+  return renderAt(
     <OutsideProposals
       kit={{
         defaultMode: 'ask',
@@ -36,7 +36,6 @@ function show() {
         describeDelay: 0,
       }}
     />,
-    { wrapper: at() },
   )
 }
 
@@ -56,9 +55,7 @@ describe('OutsideProposals', () => {
       outside(),
       outside({ ref: { source: 'outside', proposal: '20260615T115000Z-000000000004' }, where: '' }),
     ])
-    act(() => {
-      emit('describeit:proposals')
-    })
+    send('describeit:proposals')
 
     const region = within(await screen.findByRole('region', { name: 'From your Claude Code' }))
 

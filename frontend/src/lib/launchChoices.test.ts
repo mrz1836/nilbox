@@ -6,7 +6,6 @@ import {
   emptyDefaults,
   findDefaults,
   hasChoices,
-  joinList,
   launchRequest,
   noChoices,
   withAgent,
@@ -197,13 +196,6 @@ describe('saving defaults that would not apply', () => {
     expect(saveStatus('x', 'Quick look', 'x', { byPrompt: ['model'], byRepo: ['profile', 'effort'] }).text).toContain(
       'so it applies only with other prompts. x has its own profile and effort, which still win there.',
     )
-  })
-
-  it('joins names for a sentence', () => {
-    expect(joinList([])).toBe('')
-    expect(joinList(['model'])).toBe('model')
-    expect(joinList(['model', 'effort'])).toBe('model and effort')
-    expect(joinList(['model', 'effort', 'plan mode'])).toBe('model, effort, and plan mode')
   })
 })
 

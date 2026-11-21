@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { defaultTheme, resolveDark, schemeSwitch, themes, type Theme } from './theme'
+import { palettes } from '../generated/brand'
+import { darkTokens, defaultTheme, resolveDark, schemeSwitch, themes, type Theme } from './theme'
 
 // fakeAppearance is a window whose reduced-motion setting the test controls, over a
 // document of its own.
@@ -31,6 +32,15 @@ describe('themes', () => {
   it('offers the choices in order, System first and by default', () => {
     expect(defaultTheme).toBe('system')
     expect(themes).toEqual(['system', 'light', 'dark'])
+  })
+})
+
+describe('darkTokens', () => {
+  it('sets color-scheme, then every token of the dark palette, in the palette’s order', () => {
+    const tokens = Object.keys(palettes.dark)
+
+    expect(Object.keys(darkTokens)).toEqual(['colorScheme', ...tokens.map((t) => `--color-${t}`)])
+    expect(Object.values(darkTokens)).toEqual(['dark', ...Object.values(palettes.dark)])
   })
 })
 

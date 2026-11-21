@@ -15,7 +15,7 @@ import type {
   Profile,
   Prompt,
 } from '../../../platform'
-import { fieldClass, quietButtonClass, Segmented } from '../../controls'
+import { fieldClass, quietButtonClass, Segmented, Select } from '../../controls'
 import { ChevronDownIcon, ChevronRightIcon, ExternalIcon, PlusIcon, TrashIcon } from '../../icons'
 import { LaunchOverrideFields } from '../../LaunchOverrideFields'
 import { Notes, NumberField, Reset, type BuilderKit } from './parts'
@@ -122,6 +122,9 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
     onChange({ ...step, ...change })
   }
   const fence = step.fence ?? {}
+  // tools is the step's tools preset as the catalog lists it, or '' for one it doesn't,
+  // which the menu shows as none of its own.
+  const tools = kit.catalog.presets.find((p) => p.id === toolsOf(step))?.id ?? ''
   const setFence = (next: AutopilotFence) => {
     onChange(Object.keys(next).length === 0 ? omit(step, 'fence') : { ...step, fence: next })
   }
@@ -371,32 +374,29 @@ export function AgentStepBlock({ kit, agentKit, path, kinds, step, onChange }: A
             <label htmlFor={`${id}-tools`} className="text-muted">
               Tools
             </label>
-            <select
+            <Select<AutopilotPreset | ''>
               id={`${id}-tools`}
-              value={toolsOf(step)}
-              onChange={(e) => {
-                setFence({ ...fence, tools: e.target.value as AutopilotPreset })
-              }}
-              className={`${fieldClass} py-1`}
-            >
-              {kit.catalog.presets.map((p) => {
+              value={tools}
+              options={kit.catalog.presets.map((p) => {
                 // A preset the step's own agent can't keep isn't offered, and says why;
                 // one that inherits its agent is checked as it starts, per repository.
                 const keep = inherits ? undefined : agent?.background.presets.find((k) => k.preset === p.id)
                 const offered = keep === undefined || keep.kept
 
-                return (
-                  <option
-                    key={p.id}
-                    value={p.id}
-                    title={offered ? p.help : keep.why}
-                    disabled={!offered && toolsOf(step) !== p.id}
-                  >
-                    {offered ? p.label : `${p.label} (not for ${agent?.name ?? 'this agent'})`}
-                  </option>
-                )
+                return {
+                  value: p.id,
+                  label: offered ? p.label : `${p.label} (not for ${agent?.name ?? 'this agent'})`,
+                  title: offered ? p.help : keep.why,
+                  disabled: !offered && toolsOf(step) !== p.id,
+                }
               })}
-            </select>
+              onChange={(preset) => {
+                if (preset !== '') {
+                  setFence({ ...fence, tools: preset })
+                }
+              }}
+              className={`${fieldClass} py-1`}
+            />
             {(fence.tools ?? '') !== '' ? (
               <Reset
                 label="Reset the tools"

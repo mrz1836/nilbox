@@ -42,7 +42,7 @@ const ruleFor: Readonly<Record<BranchKind, 'own' | 'pullRequest' | 'merged'>> = 
 
 // tickedByDefault reports whether a branch starts ticked: it may go, and the rules delete
 // its kind.
-export function tickedByDefault(branch: WorktreeBranch, rules: BranchRules): boolean {
+function tickedByDefault(branch: WorktreeBranch, rules: BranchRules): boolean {
   return branch.deletable && rules[ruleFor[branch.kind]]
 }
 

@@ -2,9 +2,6 @@ import { copyLabel, useCopy } from '../lib/useCopy'
 import { quietButtonClass } from './controls'
 import { CheckIcon, CopyIcon } from './icons'
 
-// copiedMs is how long the button says how a copy went before it offers to copy again.
-export { copiedMs } from '../lib/useCopy'
-
 export interface CommandLineProps {
   // command is the shell command, as the user types it.
   command: string

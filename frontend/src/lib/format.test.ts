@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { counted, errorMessage, fileDate, fileName, formatCount, refText } from './format'
+import { badgeText, counted, errorMessage, fileDate, fileName, formatCount, joinList, refText } from './format'
 
 describe('formatCount', () => {
   it('formats with the locale grouping', () => {
@@ -14,6 +14,32 @@ describe('counted', () => {
     expect(counted(1, 'file', 'files')).toBe('1 file')
     expect(counted(0, 'file', 'files')).toBe('0 files')
     expect(counted(1204, 'file', 'files')).toBe(`${formatCount(1204)} files`)
+  })
+
+  it('groups the digits of a count from 1,000', () => {
+    expect(counted(1000, 'clone', 'clones')).toBe(`${formatCount(1000)} clones`)
+    expect(counted(999, 'clone', 'clones')).toBe('999 clones')
+  })
+})
+
+describe('badgeText', () => {
+  it('shows the count up to 99, then caps it at 99+', () => {
+    expect(badgeText(0)).toBe('0')
+    expect(badgeText(1)).toBe('1')
+    expect(badgeText(7)).toBe('7')
+    expect(badgeText(99)).toBe('99')
+    expect(badgeText(100)).toBe('99+')
+    expect(badgeText(1000)).toBe('99+')
+  })
+})
+
+describe('joinList', () => {
+  it('joins names for a sentence, with a comma before the last of three or more', () => {
+    expect(joinList([])).toBe('')
+    expect(joinList(['model'])).toBe('model')
+    expect(joinList(['model', 'effort'])).toBe('model and effort')
+    expect(joinList(['model', 'effort', 'plan mode'])).toBe('model, effort, and plan mode')
+    expect(joinList(['model', 'effort', 'plan mode', 'profile'])).toBe('model, effort, plan mode, and profile')
   })
 })
 
@@ -34,7 +60,23 @@ describe('errorMessage', () => {
     expect(errorMessage(new Error('no local clone', { cause: { message: '' } }))).toBe('no local clone')
     expect(errorMessage(new Error('no local clone', { cause: { message: 7 } }))).toBe('no local clone')
     expect(errorMessage(new Error('no local clone', { cause: 'text' }))).toBe('no local clone')
+    expect(errorMessage(new Error('no local clone', { cause: 7 }))).toBe('no local clone')
+    expect(errorMessage(new Error('no local clone', { cause: undefined }))).toBe('no local clone')
     expect(errorMessage(new Error('', { cause: null }))).toBe('Something went wrong.')
+    expect(errorMessage(new Error('', { cause: { message: 7, detail: 'x' } }))).toBe('Something went wrong.')
+  })
+
+  it('reads the words beside any detail the cause carries', () => {
+    const err = new Error('the command needs the user’s trust', {
+      cause: { message: 'Confirm “Test” before it runs.', detail: { ref: 't3:Test' } },
+    })
+    expect(errorMessage(err)).toBe('Confirm “Test” before it runs.')
+  })
+
+  it('reads only an Error’s cause', () => {
+    expect(errorMessage({ message: 'no local clone', cause: { message: 'Could not reach GitHub.' } })).toBe(
+      'Something went wrong.',
+    )
   })
 
   it('uses a string error as is', () => {

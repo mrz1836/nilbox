@@ -1,21 +1,15 @@
-import { render as renderPlain, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { NotificationsState } from '../lib/useNotifications'
 import type { AppNotification, NotificationKind } from '../platform'
-import { at } from '../test/clock'
+import { renderAt } from '../test/clock'
 import { notification } from '../test/fixtures'
 import { mocks } from '../test/platform'
 import { bellLabel, NotificationsMenu } from './NotificationsMenu'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
-
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
-}
 
 const onOpen = vi.fn()
 const onSettings = vi.fn()
@@ -72,7 +66,7 @@ describe('NotificationsMenu', () => {
   })
 
   it('counts the unread on the bell', () => {
-    render(
+    renderAt(
       <NotificationsMenu
         notifications={state({ log: logOf([review, read]) })}
         onOpen={onOpen}
@@ -85,7 +79,7 @@ describe('NotificationsMenu', () => {
   })
 
   it('caps the count at 99+', () => {
-    render(
+    renderAt(
       <NotificationsMenu
         notifications={state({ log: { items: [review], unread: 140 } })}
         onOpen={onOpen}
@@ -97,7 +91,7 @@ describe('NotificationsMenu', () => {
   })
 
   it('shows no count when everything is read', () => {
-    render(<NotificationsMenu notifications={state()} onOpen={onOpen} onSettings={onSettings} />)
+    renderAt(<NotificationsMenu notifications={state()} onOpen={onOpen} onSettings={onSettings} />)
 
     expect(screen.getByRole('button', { name: 'No unread notifications' })).toBeInTheDocument()
     expect(screen.queryByTestId('notifications-unread')).not.toBeInTheDocument()
@@ -105,7 +99,7 @@ describe('NotificationsMenu', () => {
 
   it('marks nothing on opening, and lists only the unread, newest first', async () => {
     const notifications = state({ log: logOf([review, woke, read]) })
-    render(<NotificationsMenu notifications={notifications} onOpen={onOpen} onSettings={onSettings} />)
+    renderAt(<NotificationsMenu notifications={notifications} onOpen={onOpen} onSettings={onSettings} />)
 
     const panel = await open()
 
@@ -130,7 +124,7 @@ describe('NotificationsMenu', () => {
   it('shows a kind it does not know with the bell, titled plainly', async () => {
     // A kind another build stored, outside the ones this build knows.
     const mentions = notification({ id: 4, kind: 'mentions' as unknown as NotificationKind, title: 'Ping' })
-    render(
+    renderAt(
       <NotificationsMenu notifications={state({ log: logOf([mentions]) })} onOpen={onOpen} onSettings={onSettings} />,
     )
 
@@ -140,7 +134,7 @@ describe('NotificationsMenu', () => {
   })
 
   it('opens an entry and closes', async () => {
-    render(
+    renderAt(
       <NotificationsMenu notifications={state({ log: logOf([review]) })} onOpen={onOpen} onSettings={onSettings} />,
     )
 
@@ -153,7 +147,7 @@ describe('NotificationsMenu', () => {
 
   it('marks one entry done with its ✓, which keeps the panel open', async () => {
     const notifications = state({ log: logOf([review, woke]) })
-    render(<NotificationsMenu notifications={notifications} onOpen={onOpen} onSettings={onSettings} />)
+    renderAt(<NotificationsMenu notifications={notifications} onOpen={onOpen} onSettings={onSettings} />)
 
     const panel = await open()
     const done = panel.getByRole('button', { name: 'Done: Add the widget cache' })
@@ -169,7 +163,7 @@ describe('NotificationsMenu', () => {
 
   it('marks them all done', async () => {
     const notifications = state({ log: logOf([review, woke]) })
-    render(<NotificationsMenu notifications={notifications} onOpen={onOpen} onSettings={onSettings} />)
+    renderAt(<NotificationsMenu notifications={notifications} onOpen={onOpen} onSettings={onSettings} />)
 
     const panel = await open()
     await userEvent.click(panel.getByRole('button', { name: 'Mark all done' }))
@@ -179,7 +173,7 @@ describe('NotificationsMenu', () => {
 
   it('lists at most twenty, and says how many more wait on the page', async () => {
     const many = Array.from({ length: 35 }, (_, i) => notification({ id: 100 - i, title: `Entry ${String(i)}` }))
-    render(
+    renderAt(
       <NotificationsMenu
         notifications={state({ log: logOf(many) })}
         onOpen={onOpen}
@@ -202,7 +196,7 @@ describe('NotificationsMenu', () => {
 
   it('says how many more without a page to view them on', async () => {
     const many = Array.from({ length: 21 }, (_, i) => notification({ id: 100 - i, title: `Entry ${String(i)}` }))
-    render(<NotificationsMenu notifications={state({ log: logOf(many) })} onOpen={onOpen} onSettings={onSettings} />)
+    renderAt(<NotificationsMenu notifications={state({ log: logOf(many) })} onOpen={onOpen} onSettings={onSettings} />)
 
     const panel = await open()
 
@@ -211,7 +205,7 @@ describe('NotificationsMenu', () => {
   })
 
   it('opens the page from its footer', async () => {
-    render(
+    renderAt(
       <NotificationsMenu
         notifications={state({ log: logOf([read]) })}
         onOpen={onOpen}
@@ -252,7 +246,7 @@ describe('NotificationsMenu', () => {
       detail: '',
       runId: 10,
     })
-    render(
+    renderAt(
       <NotificationsMenu
         notifications={state({ log: logOf([failed, elsewhere]) })}
         onOpen={onOpen}
@@ -294,7 +288,7 @@ describe('NotificationsMenu', () => {
       title: 'The release workflow failed for acme-org/sdk v1.4.4',
       url: 'https://github.com/acme-org/sdk/actions/runs/7',
     })
-    render(
+    renderAt(
       <NotificationsMenu
         notifications={state({ log: logOf([published, workflowFailed]) })}
         onOpen={onOpen}
@@ -324,7 +318,7 @@ describe('NotificationsMenu', () => {
       detail: 'Claude API · Elevated errors on Claude API',
       url: 'https://status.claude.com/incidents/x1',
     })
-    render(
+    renderAt(
       <NotificationsMenu notifications={state({ log: logOf([change]) })} onOpen={onOpen} onSettings={onSettings} />,
     )
 
@@ -342,7 +336,7 @@ describe('NotificationsMenu', () => {
   })
 
   it('says when there is nothing yet, offers no Clear, and opens the settings', async () => {
-    render(<NotificationsMenu notifications={state()} onOpen={onOpen} onSettings={onSettings} />)
+    renderAt(<NotificationsMenu notifications={state()} onOpen={onOpen} onSettings={onSettings} />)
 
     const panel = await open()
 
@@ -358,7 +352,9 @@ describe('NotificationsMenu', () => {
   })
 
   it('says when everything is read, and where the past ones are', async () => {
-    render(<NotificationsMenu notifications={state({ log: logOf([read]) })} onOpen={onOpen} onSettings={onSettings} />)
+    renderAt(
+      <NotificationsMenu notifications={state({ log: logOf([read]) })} onOpen={onOpen} onSettings={onSettings} />,
+    )
 
     const panel = await open()
 
@@ -369,7 +365,7 @@ describe('NotificationsMenu', () => {
   })
 
   it('says when the entries could not be marked read', async () => {
-    render(
+    renderAt(
       <NotificationsMenu
         notifications={state({ log: logOf([review]), markError: 'database is locked' })}
         onOpen={onOpen}
@@ -383,7 +379,7 @@ describe('NotificationsMenu', () => {
   })
 
   it('says when the history could not be loaded', async () => {
-    render(
+    renderAt(
       <NotificationsMenu
         notifications={state({ error: 'database is locked' })}
         onOpen={onOpen}

@@ -1,7 +1,7 @@
-import { useId, type ReactNode } from 'react'
+import { useId, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 
-// Shared styles and small controls for forms: text fields, buttons, and a segmented
-// choice. Every control is a native element, so it works with the keyboard and screen
+// Shared styles and small controls for forms: text fields, buttons, a segmented choice,
+// and a select. Every control is a native element, so it works with the keyboard and screen
 // readers as is.
 
 export const fieldClass =
@@ -44,7 +44,7 @@ export const captionClass = 'text-[0.6875rem] font-semibold tracking-wide text-m
 
 // switchClass draws a native checkbox as a switch; give it role="switch" so assistive
 // tech announces on and off.
-export const switchClass =
+const switchClass =
   'relative h-5 w-9 shrink-0 appearance-none rounded-full bg-border transition-colors checked:bg-accent before:absolute before:top-0.5 before:left-0.5 before:size-4 before:rounded-full before:bg-white before:shadow before:transition-transform checked:before:translate-x-4 disabled:opacity-60'
 
 export interface SegmentOption<T extends string> {
@@ -116,6 +116,75 @@ export function Segmented<T extends string>({
         </label>
       ))}
     </div>
+  )
+}
+
+export interface SelectOption<T extends string> {
+  value: T
+  label: string
+  // title is the option's tooltip, if any.
+  title?: string | undefined
+  // disabled turns the option off alone, such as one the choice around it can't take.
+  disabled?: boolean | undefined
+}
+
+// SelectGroup is a run of options under a heading, an optgroup; its heading names it among
+// the others, so each is its own.
+export interface SelectGroup<T extends string> {
+  group: string
+  options: readonly SelectOption<T>[]
+}
+
+// SelectProps are a select's own attributes (id, className, aria-*, title, disabled, ...),
+// which it carries as they are, with its value, its options in order, and onChange, which
+// receives the option chosen.
+export type SelectProps<T extends string> = Omit<
+  ComponentPropsWithoutRef<'select'>,
+  'value' | 'defaultValue' | 'onChange' | 'children' | 'multiple'
+> & {
+  value: T
+  options: readonly (SelectOption<T> | SelectGroup<T>)[]
+  onChange: (value: T) => void
+}
+
+// selectOption draws one option of a Select.
+function selectOption<T extends string>(o: SelectOption<T>) {
+  return (
+    <option key={o.value} value={o.value} title={o.title} disabled={o.disabled}>
+      {o.label}
+    </option>
+  )
+}
+
+// Select is a native select of options typed T, for a choice among strings: the value the
+// DOM reports is read back through the options, so onChange receives one of theirs. Its
+// options' values are unique within it, as are its groups' headings; a heading may equal
+// an option's value, since the groups are keyed apart from the options.
+export function Select<T extends string>({ value, options, onChange, ...attributes }: SelectProps<T>) {
+  const listed = options.flatMap((o) => ('group' in o ? o.options : [o]))
+
+  return (
+    <select
+      {...attributes}
+      value={value}
+      onChange={(e) => {
+        const chosen = listed.find((o) => o.value === e.target.value)
+
+        if (chosen !== undefined) {
+          onChange(chosen.value)
+        }
+      }}
+    >
+      {options.map((o) =>
+        'group' in o ? (
+          <optgroup key={`group:${o.group}`} label={o.group}>
+            {o.options.map(selectOption)}
+          </optgroup>
+        ) : (
+          selectOption(o)
+        ),
+      )}
+    </select>
   )
 }
 

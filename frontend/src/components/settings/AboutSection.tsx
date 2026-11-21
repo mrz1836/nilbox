@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
-import type { Result } from '../../lib/call'
+import { logFailure, type Result } from '../../lib/call'
 import type { UpdateControl } from '../../lib/useUpdate'
 import { useQuery } from '../../lib/useQuery'
 import {
@@ -238,9 +238,7 @@ export function AboutSection({ onRunSetup, update, settings = null, onSaved = ()
             type="button"
             onClick={() => {
               // The link is made now, so it carries the agents' versions as they are.
-              bugReportURL().then(openExternal, (err: unknown) => {
-                console.error('could not make the bug report link', err)
-              })
+              logFailure(bugReportURL(), 'could not make the bug report link', openExternal)
             }}
             className={`${buttonClass} shrink-0`}
           >

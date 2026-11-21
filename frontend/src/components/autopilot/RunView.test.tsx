@@ -1,10 +1,11 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { formatClock } from '../../lib/time'
 import type { AutopilotRunEvents } from '../../platform'
-import { at } from '../../test/clock'
+import { deferred } from '../../test/async'
+import { renderAt } from '../../test/clock'
 import {
   agentMatch,
   agentRun,
@@ -17,7 +18,7 @@ import {
   runEvent,
   runEventsPage,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { emit, platform, send } from '../../test/platform'
 import { RunView } from './RunView'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -40,7 +41,7 @@ function renderView(
     platform.autopilotRunEvents.mockResolvedValue(events)
   }
 
-  render(
+  renderAt(
     <RunView
       runId={81}
       terminal="iterm2"
@@ -50,7 +51,6 @@ function renderView(
       onClose={vi.fn()}
       {...props}
     />,
-    { wrapper: at() },
   )
 
   return { onToast, onOpenItem }
@@ -115,9 +115,7 @@ describe('RunView', () => {
     await screen.findByText('“Step 2”')
 
     platform.autopilotRunEvents.mockResolvedValueOnce(runEventsPage({ events: [say(3, 3)] }))
-    act(() => {
-      emit('autopilot:run', { runId: 81 })
-    })
+    send('autopilot:run', { runId: 81 })
 
     await screen.findByText('“Step 3”')
     expect(platform.autopilotRunEvents).toHaveBeenLastCalledWith(81, 2)
@@ -148,7 +146,7 @@ describe('RunView', () => {
     await within(timeline).findByText('“Step 1”')
     expect(platform.autopilotRunEventsBefore).toHaveBeenLastCalledWith(81, 20000)
 
-    expect(within(timeline).queryByRole('button', { name: 'Show earlier events' })).toBeNull()
+    expect(within(timeline).queryByRole('button', { name: 'Show earlier events' })).not.toBeInTheDocument()
     expect(
       within(timeline)
         .getAllByText(/^“Step \d+”$/)
@@ -190,7 +188,7 @@ describe('RunView', () => {
     expect(ended).toHaveTextContent('The agent reports:Moved esbuild to 0.25.1, which fixes GHSA-xxxx.')
     expect(ended).toHaveTextContent('12 turns · 6 min 12 s · on 4f2a9c1 · changed 2 files')
     expect(screen.getByRole('status')).toHaveTextContent('Finished: fixed. · 30 min · ≈ $0.61 of $3.00')
-    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
   })
 
   it('stops the run', async () => {
@@ -223,7 +221,7 @@ describe('RunView', () => {
     expect(screen.getByRole('button', { name: 'Diff' })).toHaveAttribute('aria-pressed', 'true')
 
     await user.click(screen.getByRole('button', { name: 'Diff' }))
-    expect(screen.queryByRole('region', { name: 'Diff' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Diff' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Timeline' })).toBeInTheDocument()
   })
 
@@ -283,7 +281,7 @@ describe('RunView', () => {
     renderView()
 
     await screen.findByRole('button', { name: 'Stop' })
-    expect(screen.queryByRole('button', { name: /Take over/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Take over/ })).not.toBeInTheDocument()
   })
 
   it('shows every kind of row, each command marked with how it came out', async () => {
@@ -346,25 +344,19 @@ describe('RunView', () => {
     expect(await screen.findByText('This run’s events couldn’t be read.')).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'Timeline' })).getByText('Reading the run…')).toBeInTheDocument()
 
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     expect(await screen.findByText('“Step 1”')).toBeInTheDocument()
-    expect(screen.queryByText('This run’s events couldn’t be read.')).toBeNull()
+    expect(screen.queryByText('This run’s events couldn’t be read.')).not.toBeInTheDocument()
     expect(platform.autopilotRunView).toHaveBeenCalledTimes(2)
   })
 
   it('reads one page at a time, the reads asked for meanwhile once it ends', async () => {
-    let answer: (page: AutopilotRunEvents) => void = () => undefined
+    const answer = deferred<AutopilotRunEvents>()
 
     platform.autopilotRunEvents
       .mockResolvedValueOnce(runEventsPage({ events: [say(1, 1)] }))
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
-          answer = resolve
-        }),
-      )
+      .mockReturnValueOnce(answer.promise)
       .mockResolvedValueOnce(runEventsPage({ events: [say(3, 3)], done: true }))
     renderView({}, null)
 
@@ -378,16 +370,14 @@ describe('RunView', () => {
     expect(platform.autopilotRunEvents).toHaveBeenCalledTimes(2)
 
     act(() => {
-      answer(runEventsPage({ events: [say(2, 2)] }))
+      answer.resolve(runEventsPage({ events: [say(2, 2)] }))
     })
 
     await screen.findByText('“Step 3”')
     expect(platform.autopilotRunEvents).toHaveBeenCalledTimes(3)
     expect(platform.autopilotRunEvents).toHaveBeenLastCalledWith(81, 2)
 
-    act(() => {
-      emit('autopilot:run', { runId: 81 })
-    })
+    send('autopilot:run', { runId: 81 })
     expect(platform.autopilotRunEvents).toHaveBeenCalledTimes(3)
   })
 
@@ -492,7 +482,7 @@ describe('RunView', () => {
 
     await user.click(screen.getByRole('button', { name: 'Take over in iTerm2' }))
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
-    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(platform.takeOverRun).not.toHaveBeenCalled()
   })
 
@@ -503,9 +493,9 @@ describe('RunView', () => {
     renderView()
 
     expect(await screen.findByText(/It runs in your terminal, not in the background/)).toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'Timeline' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Diff' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Show the log file' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Timeline' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Diff' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show the log file' })).not.toBeInTheDocument()
   })
 
   it('marks the routine’s steps done before the one it is at', async () => {

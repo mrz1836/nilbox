@@ -1,4 +1,4 @@
-import { Activity, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Activity, useId, useLayoutEffect, useRef, useState } from 'react'
 
 import { commitsSinceAnchor } from '../../lib/commits'
 import { refText } from '../../lib/format'
@@ -6,15 +6,7 @@ import { ignoreKey, type IgnoredWorkflows } from '../../lib/ignoredWorkflows'
 import { PicturesContext, reviewPictureLogins, usePictures } from '../../lib/pictures'
 import { reviewersRequest } from '../../lib/reviewers'
 import type { ReviewDrafts } from '../../lib/reviewDrafts'
-import {
-  placeIn,
-  stepTo,
-  useActionProgress,
-  useEnded,
-  useSheetKeys,
-  type EndedItem,
-  type SheetBack,
-} from '../../lib/sheet'
+import { placeIn, stepTo, useActionProgress, useEnded, useSheetKeys, type SheetCommonProps } from '../../lib/sheet'
 import { commentCount, entryAnchor, quoteInto } from '../../lib/timeline'
 import { attempt } from '../../lib/call'
 import { useMutation } from '../../lib/useMutation'
@@ -30,17 +22,12 @@ import {
   searchReviewAssignees,
   openExternal,
   reviewerCandidates,
-  type AgentSession,
-  type ConversationOrder,
-  type InboxItem,
-  type ItemResolution,
   type MergeMethod,
   type Review,
   type ReviewAction,
   type ReviewOffer,
   type ReviewResult,
   type ReviewTab,
-  type Worktree,
 } from '../../platform'
 import type { AssigneeReads } from '../AssigneePicker'
 import { Description } from '../conversation/Description'
@@ -48,7 +35,6 @@ import { Timeline } from '../conversation/Timeline'
 import { buttonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { CommentIcon, CommitIcon, DocumentIcon } from '../icons'
-import type { LaunchOptions } from '../ItemRow'
 import { Sheet } from '../Sheet'
 import { TabPanel, Tabs } from '../Tabs'
 import type { ToastMessage } from '../Toast'
@@ -76,50 +62,19 @@ import {
 import { Readiness, ReviewSummary } from './ReviewSummary'
 import { SinceYourReview } from './SinceYourReview'
 
-export interface ReviewSheetProps {
-  // id is the pull request the sheet shows, and item its inbox card.
-  id: number
-  item: InboxItem | undefined
-  // siblings are the pull requests of the list and tab it was opened from, in the order
-  // the list shows them, for stepping through them; listTitle names that list.
-  siblings: readonly InboxItem[]
-  listTitle: string
+// ReviewSheetProps are what both sheets take (SheetCommonProps: a pull request, its card,
+// and the list it was opened from), and the review sheet's own.
+export interface ReviewSheetProps extends SheetCommonProps {
   drafts: ReviewDrafts
   // tab is the tab of the larger column the sheet opens on, the one the user last chose,
   // and onTab hears each choice, which the window remembers.
   tab: ReviewTab
   onTab: (tab: ReviewTab) => void
-  // order is the order the conversation is listed in, and onOrder hears the user choose
-  // another, which the window remembers.
-  order?: ConversationOrder
-  onOrder?: ((order: ConversationOrder) => void) | undefined
-  launch: LaunchOptions | null
-  resolution: ItemResolution | null
-  sessions: readonly AgentSession[] | undefined
-  // worktree is the pull request's worktree, which the sheet's work line shows, if it has
-  // one.
-  worktree?: Worktree | undefined
-  onNavigate: (id: number) => void
-  onClose: () => void
   // onDone hears an action's outcome, once the sheet closes for it.
   onDone: (result: ReviewResult, review: Review) => void
-  // onEnded hears a read find the pull request merged or closed on GitHub since the inbox
-  // last read it (useEnded), for the host to move the sheet on from it; without it, the
-  // sheet shows it as read.
-  onEnded?: ((ended: EndedItem) => void) | undefined
   onFilesSettings?: (() => void) | undefined
-  onManageReplies?: (() => void) | undefined
-  // initialFocus selects the control focus starts on as the sheet opens (see Sheet), and
-  // refocus moves it there again whenever it changes.
-  initialFocus?: string | undefined
-  refocus?: number | undefined
-  // back returns to the sheet a link was followed from, or is null.
-  back?: SheetBack | null
-  // triage is the card's triage, in the header, and toast the inbox's toast, which shows in
-  // the sheet while it is open, since the page behind it can't be reached; onToast raises
-  // it, as Ignore this workflow does with its Undo.
-  triage?: ReactNode
-  toast?: ReactNode
+  // onToast raises the toast the sheet shows (toast), as Ignore this workflow does with its
+  // Undo.
   onToast?: ((message: Omit<ToastMessage, 'id'>) => void) | undefined
   // ignoring is Settings → Reviewing's Ignored workflows, which the held runs' lines name and
   // add to; without it, they offer to ignore none.

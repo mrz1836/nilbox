@@ -49,7 +49,7 @@ describe('Markdown', () => {
   it('shows a javascript: link as text that opens nothing', async () => {
     render(<Markdown text="[click me](javascript:alert(1))" />)
 
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByText('click me'))
 

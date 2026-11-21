@@ -60,6 +60,7 @@ import type * as timeline from '../../bindings/github.com/mrz1836/nilbox/interna
 import * as update from '../../bindings/github.com/mrz1836/nilbox/internal/update'
 import type * as updateprefs from '../../bindings/github.com/mrz1836/nilbox/internal/updateprefs'
 import * as worktrees from '../../bindings/github.com/mrz1836/nilbox/internal/worktrees'
+import { causeOf } from './cause'
 
 export type { CancellablePromise }
 
@@ -130,15 +131,11 @@ export type GitHubThread = Omit<NonNullLists<ghthreads.Thread>, 'kind'> & { kind
 export type GitHubThreadList = Omit<NonNullLists<ghthreads.ThreadList>, 'threads'> & { threads: GitHubThread[] }
 export type GitHubThreadState = threadrules.State
 // Clearing them: the clears waiting to be sent (each of which Undo keeps), those that
-// settled, and how each stands; and what clearing would do now, for the cleanup sheet.
+// settled, and how each stands.
 export type QueuedClear = NonNullLists<ghthreads.QueuedClear>
 export type SettledClear = NonNullLists<ghthreads.SettledClear>
 export type ClearState = ghthreads.ClearState
 export type ClearSkipReason = ghthreads.SkipReason
-export type GitHubThreadsPreview = NonNullLists<ghthreads.Preview>
-export type PreviewRepo = NonNullLists<ghthreads.PreviewRepo>
-export type PreviewHeld = NonNullLists<ghthreads.PreviewHeld>
-export type PreviewThread = NonNullLists<ghthreads.PreviewThread>
 // The user's rules for their GitHub notifications, from the settings, and the names their
 // setters take.
 export type ThreadRules = NonNullLists<threadrules.Rules>
@@ -432,10 +429,8 @@ export type DescribeAgentChoice = NonNullLists<describeit.AgentChoice>
 export type DescribeConversation = NonNullLists<describeit.Conversation>
 export type DescribeTurn = NonNullLists<describeit.Turn>
 export type DescribeTurnState = describeit.TurnState
-export const DescribeTurnState = describeit.TurnState
 export type DescribeMessage = NonNullLists<describeit.Message>
 export type DescribeAttachKind = describeit.AttachKind
-export const DescribeAttachKind = describeit.AttachKind
 export type DescribeAttachRef = NonNullLists<describeit.AttachRef>
 export type DescribeAttachment = NonNullLists<describeit.Attachment>
 export type DescribeCard = NonNullLists<describeit.Card>
@@ -464,6 +459,10 @@ export type KitRules = NonNullLists<autopilotkit.Rules>
 // A step, and a run, has '' for a verdict until a Wait for the checks reaches one, and
 // for every step but that wait.
 export type AutopilotVerdict = autopilot.Verdict
+// AutopilotReviewVerdict is what a routine's read-only agent's review says of a pull
+// request, which a Post the review step posts; the review sheet's own choices are
+// ReviewAction.
+export type AutopilotReviewVerdict = autopilot.ReviewVerdict
 export type AutopilotMatchStep = Omit<NonNullLists<autopilot.MatchStep>, 'verdict' | 'reviewAs'> & {
   verdict: autopilot.Verdict | ''
   reviewAs: autopilotcatalog.ReviewAs | ''
@@ -1224,14 +1223,10 @@ const questionFields = ['ref', 'name', 'source', 'command', 'trust', 'trusted', 
 // refusal reads what a failed call's cause carries beside its message: the backend's words
 // for the user, and the question to ask, or null when it holds none.
 function refusal(err: unknown): { question: ScriptQuestion; message: string } | null {
-  if (!(err instanceof Error) || typeof err.cause !== 'object' || err.cause === null) {
-    return null
-  }
+  const cause = causeOf(err)
+  const detail = cause?.detail
 
-  const { cause } = err
-  const detail: unknown = 'detail' in cause ? cause.detail : undefined
-
-  if (typeof detail !== 'object' || detail === null) {
+  if (cause === null || typeof detail !== 'object' || detail === null) {
     return null
   }
 
@@ -1241,9 +1236,7 @@ function refusal(err: unknown): { question: ScriptQuestion; message: string } | 
     return null
   }
 
-  const message = 'message' in cause && typeof cause.message === 'string' ? cause.message : ''
-
-  return { question: detail as ScriptQuestion, message }
+  return { question: detail as ScriptQuestion, message: cause.message }
 }
 
 // runScript asks to run a script in its clone. It resolves with the run's ID once it
@@ -1291,27 +1284,17 @@ export const {
 // alone and never asks GitHub, and List every thread it mirrors, read and unread, for the
 // Notifications page; CheckNow runs a pass now, once any pass under way has ended, and
 // returns the Snapshot after it. A pass also sends the clears that are due, once the user
-// turned clearing on or cleared one by hand. A "ghthreads:updated" event follows each pass
-// that changed what Snapshot or List shows.
+// turned clearing on. A "ghthreads:updated" event follows each pass that changed what
+// Snapshot or List shows.
 //
-// Preview says, from the database alone, what clearing would do now, as if it were on;
-// Clear and ClearItem clear threads by the user's own hand, at once and whether clearing is
-// on or off; Keep takes back queued clears, the toast's Undo; and MarkDone and MarkRead
-// mark threads done or read on GitHub at the user's click in the panel, whatever their
-// subject. Each returns the Snapshot.
+// Keep takes back queued clears, the toast's Undo, and MarkDone and MarkRead mark threads
+// done or read on GitHub at the user's click in the panel, whatever their subject. Each
+// returns the Snapshot.
 const githubThreads = narrow(ghthreads.Service)
 
 export const githubThreadsSnapshot: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.Snapshot
 export const githubThreadsList: () => CancellablePromise<GitHubThreadList> = githubThreads.List
 export const checkGitHubThreadsNow: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.CheckNow
-export const previewGitHubThreads: () => CancellablePromise<GitHubThreadsPreview> = githubThreads.Preview
-export const clearGitHubThreads: (threadIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> =
-  githubThreads.Clear
-export const clearGitHubItemThreads: (
-  owner: string,
-  name: string,
-  number: number,
-) => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.ClearItem
 export const keepGitHubThreads: (clearIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.Keep
 export const markGitHubThreadsDone: (threadIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> =
   githubThreads.MarkDone
@@ -1662,19 +1645,6 @@ export type RestartAnswer =
 // DownloadAnswer is how asking to download the newer version ended: downloaded and
 // checked, with the status, ready; or refused for a reason the window answers on its own.
 export type DownloadAnswer = { downloaded: true; status: UpdateStatus } | ({ downloaded: false } & Refused)
-
-// causeOf reads what a failed call's cause carries beside its message: the backend's words
-// for the user, and its detail, or null when the failure carries no cause.
-function causeOf(err: unknown): { detail: unknown; message: string } | null {
-  if (!(err instanceof Error) || typeof err.cause !== 'object' || err.cause === null) {
-    return null
-  }
-
-  const { cause } = err
-  const message = 'message' in cause && typeof cause.message === 'string' ? cause.message : ''
-
-  return { detail: 'detail' in cause ? cause.detail : undefined, message }
-}
 
 // runFields are the fields of a RunGoing, with the type each holds.
 const runFields = {

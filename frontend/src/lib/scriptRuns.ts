@@ -11,7 +11,7 @@ import {
   type TerminalID,
 } from '../platform'
 import { plainText } from './ansi'
-import { terminalNames } from './terminals'
+import { terminalLabel } from './terminals'
 
 // runStatusLabels name each status, as a run's chip says it.
 export const runStatusLabels: Readonly<Record<ScriptRunStatus, string>> = {
@@ -44,7 +44,7 @@ export function runPlace(runsIn: RunsIn, terminal: TerminalID | null): string {
     return `In ${brand.name}`
   }
 
-  return terminal === null ? 'In your terminal' : `In ${terminalNames[terminal]}`
+  return `In ${terminalLabel(terminal, 'your terminal')}`
 }
 
 // runWhere is what a run ran in: its repository, or its folder when that isn't one.

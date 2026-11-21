@@ -1,8 +1,8 @@
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { CardGuideDialog } from './CardGuideDialog'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -11,7 +11,7 @@ vi.mock('../../platform', () => import('../../test/platform').then((fake) => fak
 function showDialog() {
   const onClose = vi.fn()
 
-  render(<CardGuideDialog onClose={onClose} />, { wrapper: at() })
+  renderAt(<CardGuideDialog onClose={onClose} />)
 
   return onClose
 }

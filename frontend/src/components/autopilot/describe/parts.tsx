@@ -1,7 +1,14 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 
 import type { Result } from '../../../lib/call'
-import { outcomeText, settleWords, type CardPart, type Settled } from '../../../lib/describeit'
+import {
+  outcomeText,
+  settleWords,
+  type CardPart,
+  type RulesPart,
+  type Settled,
+  type SettingsPart,
+} from '../../../lib/describeit'
 import type {
   AutopilotCatalog,
   AutopilotDraft,
@@ -242,6 +249,60 @@ export function RowTitle({
         {kind}
       </span>
       {children}
+    </div>
+  )
+}
+
+export interface ChangeRowProps extends RowProps<SettingsPart | RulesPart> {
+  // title heads the row, and kind says what kind of change it is beside it.
+  title: string
+  kind: string
+  // items are the list's rows, one for each change it makes.
+  items: ReactNode
+  // apply makes the change, resolving with the settings as stored after it, undefined when
+  // it stored none.
+  apply: () => Promise<Result<Settings | undefined>>
+}
+
+// ChangeRow is a card's change to the settings, or to the rules routines lean on: each
+// change it makes, its problems and risks, and Apply, which makes it and hands the window
+// the settings it left, or Discard.
+export function ChangeRow({ title, kind, items, apply, p, outcome, held, onSettle, kit }: ChangeRowProps) {
+  const id = useId()
+  const act = useAct(p, onSettle)
+
+  return (
+    <div role="group" aria-labelledby={`${id}-title`} className={rowClass}>
+      <RowTitle id={`${id}-title`} title={title} kind={kind} />
+      <ul aria-label="What it changes" className="flex flex-col gap-0.5">
+        {items}
+      </ul>
+      <Problems problems={p.checked.problems} />
+      <Risks risks={p.checked.risks} />
+      {outcome !== undefined ? (
+        <OutcomeLine part={p.part} outcome={outcome} onShowRoutine={kit.onShowRoutine} />
+      ) : (
+        <RowActions
+          label="Apply"
+          blocked={p.checked.problems.length > 0}
+          busy={held || act.busy}
+          error={act.error}
+          onApply={() => {
+            void act.act('applied', async () => {
+              const done = await apply()
+
+              if (done.ok && done.data !== undefined) {
+                kit.onSettingsSaved(done.data)
+              }
+
+              return done.ok ? { ok: true, data: 0 } : done
+            })
+          }}
+          onDiscard={() => {
+            void act.act('discarded')
+          }}
+        />
+      )}
     </div>
   )
 }

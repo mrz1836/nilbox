@@ -1,6 +1,6 @@
-import { act, render, screen, within, type BoundFunctions, type queries } from '@testing-library/react'
+import { act, screen, within, type BoundFunctions, type queries } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type {
@@ -12,7 +12,8 @@ import type {
   Worktree,
   WorktreeRepo,
 } from '../platform'
-import { at, fixedNow } from '../test/clock'
+import { deferred } from '../test/async'
+import { FIXED_NOW, fixedNow, renderAt } from '../test/clock'
 import {
   agentSession,
   details as itemDetails,
@@ -31,7 +32,7 @@ import {
   worktreeRepo,
   worktreesSnapshot,
 } from '../test/fixtures'
-import { emit, platform } from '../test/platform'
+import { platform, send } from '../test/platform'
 import { launchPlace } from './worktrees/layout'
 import { WorktreesView, type WorktreesViewProps } from './WorktreesView'
 
@@ -45,7 +46,7 @@ const pr7 = 'worktree-pr-7'
 
 // draw renders the page at the tests' clock, its listing arriving at it too.
 function draw(props: Partial<WorktreesViewProps> = {}) {
-  const view = render(<WorktreesView clock={fixedNow} {...props} />, { wrapper: at() })
+  const view = renderAt(<WorktreesView clock={fixedNow} {...props} />)
 
   return {
     ...view,
@@ -174,16 +175,6 @@ function other(worktrees: Worktree[], overrides: Partial<WorktreeRepo> = {}): Wo
   })
 }
 
-// held is a promise the test settles itself, to see what shows while it is pending.
-function held<T>() {
-  let resolve: (value: T) => void = () => undefined
-  const promise = new Promise<T>((settle) => {
-    resolve = settle
-  })
-
-  return { promise, resolve }
-}
-
 // settle runs fn and lets what it settles land.
 async function settle(fn: () => void) {
   await act(async () => {
@@ -191,10 +182,6 @@ async function settle(fn: () => void) {
     await Promise.resolve()
   })
 }
-
-afterEach(() => {
-  vi.useRealTimers()
-})
 
 describe('WorktreesView head', () => {
   it('lists again only when Check again is clicked, never on a timer', async () => {
@@ -264,7 +251,7 @@ describe('WorktreesView head', () => {
   })
 
   it('says it is listing until the first listing arrives, holding the place of the clones', async () => {
-    const first = held<ReturnType<typeof worktreesSnapshot>>()
+    const first = deferred<ReturnType<typeof worktreesSnapshot>>()
     platform.listWorktrees.mockReturnValue(first.promise)
     draw()
 
@@ -275,9 +262,7 @@ describe('WorktreesView head', () => {
     expect(screen.queryByRole('button', { name: 'More cleanups' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Worktrees' }).querySelector('[aria-hidden="true"]')).not.toBeNull()
 
-    act(() => {
-      emit('worktrees:progress', { phase: 'listing', done: 3, total: 12 })
-    })
+    send('worktrees:progress', { phase: 'listing', done: 3, total: 12 })
     expect(within(meta()).getByRole('status')).toHaveTextContent('Listing worktrees · 3 of 12 clones')
 
     await settle(() => {
@@ -297,7 +282,7 @@ describe('WorktreesView head', () => {
     const { rerender } = draw({ reloadKey: 1 })
     await clone('example-repo')
 
-    const quiet = held<ReturnType<typeof worktreesSnapshot>>()
+    const quiet = deferred<ReturnType<typeof worktreesSnapshot>>()
     platform.listWorktrees.mockReturnValueOnce(quiet.promise)
     rerender({ reloadKey: 2 })
 
@@ -307,14 +292,10 @@ describe('WorktreesView head', () => {
     expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled()
     expect(chevron(pr7)).toBeInTheDocument()
 
-    act(() => {
-      emit('worktrees:progress', { phase: 'clones', done: 0, total: 0 })
-    })
+    send('worktrees:progress', { phase: 'clones', done: 0, total: 0 })
     expect(status).toHaveTextContent('Finding the clones under ~/projects…')
 
-    act(() => {
-      emit('worktrees:progress', { phase: 'checking', done: 1, total: 4 })
-    })
+    send('worktrees:progress', { phase: 'checking', done: 1, total: 4 })
     expect(status).toHaveTextContent('Checking each worktree · 1 of 4 worktrees')
     expect(status.querySelector('[style]')).toHaveStyle({ width: '25%' })
 
@@ -334,7 +315,7 @@ describe('WorktreesView head', () => {
     draw()
     await clone('example-repo')
 
-    const again = held<ReturnType<typeof worktreesSnapshot>>()
+    const again = deferred<ReturnType<typeof worktreesSnapshot>>()
     platform.listWorktrees.mockReturnValue(again.promise)
     await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
 
@@ -584,7 +565,7 @@ describe('WorktreesView clones', () => {
   })
 
   it('lists each clone’s worktrees in attention order, newest commit first, without its main checkout', async () => {
-    const unix = (hours: number) => Date.parse('2026-06-15T12:00:00Z') / 1000 - hours * 3600
+    const unix = (hours: number) => FIXED_NOW.getTime() / 1000 - hours * 3600
     listing([
       finishedWorktree({ lastCommitUnix: unix(1) }),
       linked('open-old', { stage: 'active', lastCommitUnix: unix(30) }),
@@ -1444,7 +1425,7 @@ describe('WorktreesView merged branches', () => {
   }
 
   it('checks the branches against GitHub, groups them by clone, closed, and deletes those ticked', async () => {
-    const answer = held<MergedBranch[]>()
+    const answer = deferred<MergedBranch[]>()
     platform.mergedBranches.mockReturnValue(answer.promise)
     platform.deleteBranches.mockResolvedValue([
       result('feature-x'),
@@ -1841,7 +1822,7 @@ describe('WorktreesView progress', () => {
     draw()
     await clone('example-repo')
 
-    const removal = held<RemoveResult>()
+    const removal = deferred<RemoveResult>()
     platform.removeWorktree.mockReturnValue(removal.promise)
     await remove(pr7)
     await confirmWith('Remove')
@@ -1852,7 +1833,7 @@ describe('WorktreesView progress', () => {
     expect(row(pr7).queryByRole('button', { name: `More for ${pr7}` })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Check again' })).toHaveAttribute('title', 'A change is under way')
 
-    const relisting = held<ReturnType<typeof worktreesSnapshot>>()
+    const relisting = deferred<ReturnType<typeof worktreesSnapshot>>()
     platform.listWorktrees.mockReturnValue(relisting.promise)
     await settle(() => {
       removal.resolve(removeResult())
@@ -1879,7 +1860,7 @@ describe('WorktreesView progress', () => {
     draw()
     await clone('example-repo')
 
-    const removal = held<RemoveResult[]>()
+    const removal = deferred<RemoveResult[]>()
     platform.removeAllCleanWorktrees.mockReturnValue(removal.promise)
     await choose(await cleanupMenu(), 'Remove 2 clean worktrees…')
     await userEvent.click(screen.getByRole('button', { name: 'Remove 2 worktrees' }))
@@ -1888,7 +1869,7 @@ describe('WorktreesView progress', () => {
     expect(row(pr7).getByText('Removing…')).toBeInTheDocument()
     expect(row('worktree-issue-9').getByText('Removing…')).toBeInTheDocument()
 
-    platform.listWorktrees.mockReturnValue(held<ReturnType<typeof worktreesSnapshot>>().promise)
+    platform.listWorktrees.mockReturnValue(deferred<ReturnType<typeof worktreesSnapshot>>().promise)
     await settle(() => {
       removal.resolve([
         removeResult(),
@@ -1916,7 +1897,7 @@ describe('WorktreesView progress', () => {
     draw()
     await clone('example-repo')
 
-    const unlock = held<undefined>()
+    const unlock = deferred<undefined>()
     platform.unlockWorktree.mockReturnValue(unlock.promise)
     await userEvent.click(row(pr7).getByRole('button', { name: 'Unlock' }))
 
@@ -1934,7 +1915,7 @@ describe('WorktreesView progress', () => {
     platform.listWorktrees.mockResolvedValue(worktreesSnapshot({ repos: [worktreeRepo({ hasStale: true })] }))
     draw()
 
-    const prune = held<undefined>()
+    const prune = deferred<undefined>()
     platform.pruneWorktrees.mockReturnValue(prune.promise)
     await userEvent.click((await clone('example-repo')).getByRole('button', { name: 'Prune' }))
 
@@ -1954,7 +1935,7 @@ describe('WorktreesView progress', () => {
     draw()
     await clone('example-repo')
 
-    const deletion = held<BranchResult[]>()
+    const deletion = deferred<BranchResult[]>()
     platform.deleteBranches.mockReturnValue(deletion.promise)
     await choose(await cleanupMenu(), 'Clean up merged branches…')
     await userEvent.click(await screen.findByRole('button', { name: 'Delete 1 branch' }))
@@ -1977,7 +1958,7 @@ describe('WorktreesView progress', () => {
     platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
     draw()
 
-    const clear = held<undefined>()
+    const clear = deferred<undefined>()
     platform.clearCleanups.mockReturnValue(clear.promise)
 
     const list = within(await screen.findByRole('region', { name: 'Recently cleaned up' }))

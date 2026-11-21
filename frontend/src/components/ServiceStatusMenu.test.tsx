@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { ServiceStatusState } from '../lib/useServiceStatus'
 import type { ServiceStatus } from '../platform'
-import { at } from '../test/clock'
+import { renderAt } from '../test/clock'
 import { claudeOutage, serviceIncident, serviceProvider, serviceStatus } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { ServiceStatusMenu } from './ServiceStatusMenu'
@@ -15,9 +15,7 @@ function renderMenu(status: ServiceStatus | null, state: Partial<ServiceStatusSt
   const check = vi.fn()
   const onChooseWatch = vi.fn()
 
-  render(<ServiceStatusMenu service={{ status, checking: false, check, ...state }} onChooseWatch={onChooseWatch} />, {
-    wrapper: at(),
-  })
+  renderAt(<ServiceStatusMenu service={{ status, checking: false, check, ...state }} onChooseWatch={onChooseWatch} />)
 
   return { check, onChooseWatch }
 }

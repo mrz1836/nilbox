@@ -17,6 +17,16 @@ export async function attempt<T>(call: PromiseLike<T>): Promise<Result<T>> {
   }
 }
 
+// logFailure lets a call run on for a caller that shows nothing of its failure, writing
+// the failure to the console under log, with the error as it came: its full text is for
+// the console, and errorMessage's sentence for the user. onData, if given, gets the
+// answer; a throw in it is its own, as in any then. The failure is always handled.
+export function logFailure<T>(call: PromiseLike<T>, log: string, onData?: (data: T) => void): void {
+  void call.then(onData, (err: unknown) => {
+    console.error(log, err)
+  })
+}
+
 // start makes a call with make, turning a synchronous throw into a rejected call, so the
 // caller meets every failure the same way.
 export function start<T>(make: () => PromiseLike<T>): PromiseLike<T> {

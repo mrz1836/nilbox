@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AutopilotMatch } from '../platform'
-import { at } from '../test/clock'
+import { at, renderAt } from '../test/clock'
 import { agentMatch, agentRun, agents, autopilotMatch } from '../test/fixtures'
 import { AutopilotRowsContext } from './autopilot/AutopilotChip'
 import { WorkLine } from './WorkLine'
@@ -49,9 +49,9 @@ describe('WorkLine’s Autopilot line', () => {
 
   it('says nothing of a match with no background run, nor without the rows’ Autopilot', () => {
     showLine(autopilotMatch())
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
 
-    render(<WorkLine worktree={undefined} sessions={[]} agents={agents()} itemId={1} />, { wrapper: at() })
-    expect(screen.queryByText(/Fix failing checks/)).toBeNull()
+    renderAt(<WorkLine worktree={undefined} sessions={[]} agents={agents()} itemId={1} />)
+    expect(screen.queryByText(/Fix failing checks/)).not.toBeInTheDocument()
   })
 })

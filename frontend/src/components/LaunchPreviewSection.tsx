@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 
 import { launchRequest, type Choices } from '../lib/launchChoices'
-import { terminalNames } from '../lib/terminals'
+import { terminalLabel } from '../lib/terminals'
 import { useDebouncedQuery } from '../lib/useQuery'
 import { counted } from '../lib/format'
 import { previewLaunch, type InboxItem, type LaunchPreview, type Situation, type WorktreePlan } from '../platform'
@@ -58,11 +58,6 @@ export function worktreeLine(wt: PlannedWorktree): string {
   }
 }
 
-// terminalLabel names the terminal a plan opens in, by the app's name.
-function terminalLabel(id: string): string {
-  return (terminalNames as Readonly<Record<string, string | undefined>>)[id] ?? id
-}
-
 // PlannedLaunch shows a plan: the prompt as the session receives it, what it does to the
 // worktree, where it starts with its permissions and the terminal it opens in, the changes
 // to its environment, and the command.
@@ -75,7 +70,7 @@ export function PlannedLaunch({ plan }: { plan: Plan }) {
       {plan.worktree !== null && <p className="text-xs text-text">{worktreeLine(plan.worktree)}</p>}
       <p className="text-xs text-muted">
         In <span className="font-mono text-text">{plan.dir}</span> · {plan.permission}
-        {plan.terminal !== '' && ` · opens in ${terminalLabel(plan.terminal)}`}
+        {plan.terminal !== '' && ` · opens in ${terminalLabel(plan.terminal, plan.terminal)}`}
       </p>
       {plan.env.length > 0 && <p className="font-mono text-[0.6875rem] break-all text-muted">{plan.env.join(' · ')}</p>}
       <code className="block rounded-md bg-raised px-2 py-1.5 font-mono text-[0.6875rem] leading-snug break-all text-text">

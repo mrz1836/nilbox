@@ -1,10 +1,11 @@
 import { useEffect, useEffectEvent, useId, useRef, type CSSProperties, type RefObject } from 'react'
 
-import { brand, palettes } from '../../generated/brand'
+import { brand } from '../../generated/brand'
 import { throwsBursts, useCelebrations } from '../../lib/celebrations'
 import { prefersReducedMotion } from '../../lib/motion'
 import { earnedBurst } from '../../lib/nil'
-import { finishLog, finishMarks, goDuration, inboxPreview, logName } from '../../lib/setup'
+import { finishLog, finishMarks, goDuration, inboxPreview, logName, type SetupInbox } from '../../lib/setup'
+import { darkTokens } from '../../lib/theme'
 import { useQuery } from '../../lib/useQuery'
 import { listTemplates } from '../../platform'
 import type {
@@ -23,14 +24,6 @@ import { Confetti, useConfetti } from '../Confetti'
 import { buttonClass, captionClass, primaryButtonClass } from '../controls'
 import { ChevronRightIcon, InboxIcon, TrophyIcon } from '../icons'
 import { Spinner } from '../Spinner'
-import type { SetupInbox } from './SetupView'
-
-// terminalTokens set the log in the dark palette in either theme, as terminals are, as the
-// inbox-nil party's terminal is.
-const terminalTokens = {
-  colorScheme: 'dark',
-  ...Object.fromEntries(Object.entries(palettes.dark).map(([token, value]) => [`--color-${token}`, value])),
-} as CSSProperties
 
 // command is what the log runs.
 const command = `${brand.slug} setup`
@@ -214,7 +207,7 @@ export function FinishStep({
       <figure
         aria-label="Setup log"
         className="nil-rise mt-8 w-full overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-[0.8125rem] leading-6 text-text shadow-2xl shadow-black/40"
-        style={{ ...terminalTokens, animationDelay: '200ms' }}
+        style={{ ...darkTokens, animationDelay: '200ms' }}
       >
         <div className="flex items-center gap-1.5 border-b border-border bg-raised px-3 py-2">
           <span aria-hidden="true" className="size-2.5 rounded-full bg-danger" />

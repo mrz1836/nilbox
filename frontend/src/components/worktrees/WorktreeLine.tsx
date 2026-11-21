@@ -31,7 +31,7 @@ import {
   verbButtonClass,
   verbCellClass,
 } from './layout'
-import { rowMenuItems } from './menus'
+import { rowMenuItems, type WorktreeRowActions } from './menus'
 import {
   AgeCell,
   AgentCell,
@@ -78,7 +78,8 @@ function neighbor(from: HTMLElement, step: number): HTMLElement | undefined {
   return toggles[toggles.indexOf(from) + step]
 }
 
-export interface WorktreeLineProps {
+// WorktreeLineProps are a row's, which opens Terminal and Finder on its worktree itself.
+export interface WorktreeLineProps extends Omit<WorktreeRowActions, 'onTerminal' | 'onReveal'> {
   // repo is the clone the worktree belongs to.
   repo: WorktreeRepo
   worktree: Worktree
@@ -107,11 +108,6 @@ export interface WorktreeLineProps {
   // launchFor is the launch control for an item the inbox lists, placed in the row's verb
   // column (LaunchControls' row variant): the row's verb when that's what fits.
   launchFor?: ((item: LinkedItem, place: LaunchPlace) => ReactNode) | undefined
-  onCleanUp: (repo: WorktreeRepo, worktree: Worktree) => void
-  onUnlock: (repo: WorktreeRepo, worktree: Worktree) => void
-  onRemove: (repo: WorktreeRepo, worktree: Worktree) => void
-  onForceRemove: (repo: WorktreeRepo, worktree: Worktree) => void
-  onPrune: (repo: WorktreeRepo) => void
 }
 
 // WorktreeLine is one worktree on one line of the page's grid: its lane's edge, its state,

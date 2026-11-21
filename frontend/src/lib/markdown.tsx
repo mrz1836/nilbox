@@ -2017,9 +2017,17 @@ function lineAt(lines: readonly string[], i: number): string {
   return lines[i] ?? ''
 }
 
-// last returns the last of items, which callers never leave empty.
+// last returns the last of items, which callers never leave empty: the frames and the
+// open tags keep their root, and a block's lines their first. An empty list, which every
+// caller would fail on, fails here.
 function last<T>(items: readonly T[]): T {
-  return items[items.length - 1] as T
+  const item = items.at(-1)
+
+  if (item === undefined) {
+    throw new Error('last: the list is empty')
+  }
+
+  return item
 }
 
 // group returns a match's group n, or '' when the group took no part in it.

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { CardLinksContext, linkIndex, type CardLinks } from '../../lib/cardLinks'
 import { CardPrefsContext, defaultCardPrefs } from '../../lib/cardPrefs'
 import type { Step } from '../../lib/nextStep'
-import type { AgentSession, InboxItem, RepoRules } from '../../platform'
+import type { AgentSession, InboxItem } from '../../platform'
 import { at } from '../../test/clock'
 import {
   agentSession,
@@ -22,8 +22,8 @@ import {
   workflowsGroup,
 } from '../../test/fixtures'
 import { platform } from '../../test/platform'
+import { triageActionsOf } from '../../test/query'
 import { AutopilotRowsContext, type AutopilotRows } from '../autopilot/AutopilotChip'
-import type { TriageActions } from '../TriageControls'
 import { CardPeek, type CardPeekProps } from './CardPeek'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -36,25 +36,6 @@ const open: Step = {
   primary: 'open',
   quiet: true,
   situation: '',
-}
-
-// triageActions are a row's triage, each a mock.
-function triageActions(repoRules: RepoRules = { pinned: [], muted: [] }): TriageActions {
-  return {
-    snoozeDays: 3,
-    onDismiss: vi.fn(),
-    onSnooze: vi.fn(),
-    onRestore: vi.fn(),
-    onPin: vi.fn(),
-    onUnpin: vi.fn(),
-    onRefresh: vi.fn(() => Promise.resolve()),
-    onChangeDefault: vi.fn(),
-    repoRules,
-    onRepoRule: vi.fn(),
-    onRepoRuleSettings: vi.fn(),
-    onMarkRead: vi.fn(),
-    onMarkUnread: vi.fn(),
-  }
 }
 
 interface Setup extends Partial<CardPeekProps> {
@@ -339,7 +320,7 @@ describe('CardPeek', () => {
 
   it('offers no pin for an item pinned only with its repository', () => {
     const peek = openPeek(item({ details: details(), repoRule: 'pinned' }), {
-      triage: triageActions({ pinned: ['acme-org'], muted: [] }),
+      triage: triageActionsOf({ repoRules: { pinned: ['acme-org'], muted: [] } }),
     })
 
     expect(peek.getByRole('button', { name: 'Snooze' })).toBeInTheDocument()
@@ -348,7 +329,7 @@ describe('CardPeek', () => {
 
   it('offers Mark as read on an unread item, after GitHub, which marks it read too', async () => {
     const unread = item({ details: details(), unread: true })
-    const triage = triageActions()
+    const triage = triageActionsOf()
     const peek = openPeek(unread, { triage })
 
     const bar = peek.getAllByRole('button').map((b) => b.textContent)
@@ -365,7 +346,7 @@ describe('CardPeek', () => {
 
   it('offers Mark as unread on a read item', async () => {
     const read = item({ details: details() })
-    const triage = triageActions()
+    const triage = triageActionsOf()
     const peek = openPeek(read, { triage })
 
     expect(peek.queryByRole('button', { name: 'Mark as read' })).not.toBeInTheDocument()
@@ -375,7 +356,7 @@ describe('CardPeek', () => {
 
   it('offers neither mark while the cards show no unread dots, and still marks an item opened on GitHub read', async () => {
     const unread = item({ details: details(), unread: true })
-    const triage = triageActions()
+    const triage = triageActionsOf()
     const peek = openPeek(unread, { triage, unreadDots: false })
 
     expect(peek.queryByRole('button', { name: /^Mark as/ })).not.toBeInTheDocument()

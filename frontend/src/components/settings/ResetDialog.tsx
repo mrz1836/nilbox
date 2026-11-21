@@ -7,7 +7,7 @@ import { ConfirmDialog } from '../ConfirmDialog'
 import { fieldClass } from '../controls'
 
 // confirmWord is what the user types to confirm the reset (internal/setup's ResetWord).
-export const confirmWord = 'reset'
+const confirmWord = 'reset'
 
 // wiped and kept say what a reset starts over and what it keeps.
 const wiped = [

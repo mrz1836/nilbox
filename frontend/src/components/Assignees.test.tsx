@@ -1,20 +1,15 @@
-import { render as renderPlain, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Assigned } from '../lib/assignees'
-import { at } from '../test/clock'
+import { deferred } from '../test/async'
+import { renderAt } from '../test/clock'
 import { assigneeCandidates } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { AssigneesSection, type AssigneesEditing } from './Assignees'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
-
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
-}
 
 // editing is what the section edits the assignees with, its edit answering as told, and its
 // reads the review sheet's.
@@ -32,7 +27,7 @@ function editing(edit = vi.fn().mockResolvedValue('')): AssigneesEditing {
 
 // section renders the summary's assignees of pull request #1, assigned to assigned.
 function section(assigned: Assigned[], edits?: AssigneesEditing, more = 0) {
-  return render(
+  return renderAt(
     <AssigneesSection
       look="summary"
       itemId={1}
@@ -72,8 +67,8 @@ describe('AssigneesSection', () => {
   })
 
   it('unassigns anyone but the user with ×, a line fading while it runs', async () => {
-    let finish: (why: string) => void = () => undefined
-    const edit = vi.fn(() => new Promise<string>((resolve) => (finish = resolve)))
+    const unassigning = deferred<string>()
+    const edit = vi.fn(() => unassigning.promise)
     section(assigned, editing(edit))
 
     expect(
@@ -88,7 +83,7 @@ describe('AssigneesSection', () => {
     expect(line).toHaveAttribute('aria-busy', 'true')
     expect(line).toHaveClass('opacity-50')
 
-    finish('')
+    unassigning.resolve('')
     await waitFor(() => {
       expect(line).not.toHaveAttribute('aria-busy')
     })

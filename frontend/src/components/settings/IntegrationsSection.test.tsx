@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { IntegrationTools, Settings } from '../../platform'
+import { deferred } from '../../test/async'
 import {
   goPreCommitTool,
   installPlan,
@@ -13,7 +14,7 @@ import {
   integrationTools,
   settings,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import { IntegrationsSection } from './IntegrationsSection'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -77,9 +78,7 @@ describe('IntegrationsSection', () => {
 
     await screen.findByRole('region', { name: 'mage-x' })
     platform.listIntegrations.mockResolvedValue(integrationTools({ tools: [integrationTool({ state: 'missing' })] }))
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     await waitFor(() => {
       expect(cards()).toEqual(['mage-x', 'Scripts'])
@@ -97,12 +96,8 @@ describe('IntegrationsSection', () => {
   })
 
   it('checks again, busy until it is done, showing what it found', async () => {
-    let finish: (tools: IntegrationTools) => void = () => undefined
-    platform.checkIntegrationsAgain.mockReturnValue(
-      new Promise<IntegrationTools>((resolve) => {
-        finish = resolve
-      }),
-    )
+    const checking = deferred<IntegrationTools>()
+    platform.checkIntegrationsAgain.mockReturnValue(checking.promise)
     renderSection()
 
     await screen.findByRole('region', { name: 'mage-x' })
@@ -114,7 +109,7 @@ describe('IntegrationsSection', () => {
     expect(within(screen.getByRole('region', { name: 'go-pre-commit' })).getByText('Checking…')).toBeInTheDocument()
 
     act(() => {
-      finish(integrationTools({ tools: [integrationTool({ state: 'update' })] }))
+      checking.resolve(integrationTools({ tools: [integrationTool({ state: 'update' })] }))
     })
 
     expect(await screen.findByRole('button', { name: 'Check again' })).toBeEnabled()

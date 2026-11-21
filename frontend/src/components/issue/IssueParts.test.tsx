@@ -1,9 +1,8 @@
-import { render as renderPlain, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { issue, issueRef, project, pullRef } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { ItemLink, LinksContext } from '../ItemLink'
@@ -12,14 +11,9 @@ import { IssueSummary } from './IssueSummary'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
-}
-
 describe('IssueSummary', () => {
   it('shows the pull requests that fix the issue, where each stands, and what mentioned it', async () => {
-    render(
+    renderAt(
       <IssueSummary
         issue={issue({
           fixes: [
@@ -67,7 +61,7 @@ describe('IssueSummary', () => {
   })
 
   it('says when no pull request is linked, nobody is assigned, and there are no labels', () => {
-    render(<IssueSummary issue={issue({ fixes: [], mentioned: [], assignees: [], labels: [], participants: [] })} />)
+    renderAt(<IssueSummary issue={issue({ fixes: [], mentioned: [], assignees: [], labels: [], participants: [] })} />)
 
     expect(screen.getByRole('region', { name: 'Development' })).toHaveTextContent('No pull request is linked to it.')
     expect(screen.getByRole('region', { name: 'Assignees' })).toHaveTextContent('No one')
@@ -77,7 +71,7 @@ describe('IssueSummary', () => {
   })
 
   it('shows the projects, the milestone, the sub-issues, the parent, and who took part', async () => {
-    render(
+    renderAt(
       <IssueSummary
         issue={issue({
           projects: [project()],
@@ -113,7 +107,7 @@ describe('IssueSummary', () => {
   })
 
   it('says when a milestone is due, until that day has passed', () => {
-    render(
+    renderAt(
       <IssueSummary
         issue={issue({
           milestone: { title: '2.0', url: '', dueOn: '2026-07-01T00:00:00Z', state: 'OPEN', progress: 0 },
@@ -125,7 +119,7 @@ describe('IssueSummary', () => {
   })
 
   it('says a closed milestone was due, without the warning', () => {
-    render(
+    renderAt(
       <IssueSummary
         issue={issue({
           milestone: { title: '1.0', url: '', dueOn: '2026-01-01T00:00:00Z', state: 'CLOSED', progress: 100 },
@@ -137,7 +131,7 @@ describe('IssueSummary', () => {
   })
 
   it('shows a milestone with no due date', () => {
-    render(
+    renderAt(
       <IssueSummary
         issue={issue({ milestone: { title: '3.0', url: '', dueOn: '', state: 'OPEN', progress: 12.6 } })}
       />,
@@ -151,7 +145,7 @@ describe('IssueSummary', () => {
 
 describe('IssueHeader', () => {
   it('names the card while nothing is read, and nothing before the card comes', () => {
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <IssueHeader
         titleId="t"
         issue={null}
@@ -189,7 +183,7 @@ describe('IssueHeader', () => {
 
 describe('ItemLink', () => {
   it('names an item of the same repository by its number, and opens it on GitHub', async () => {
-    render(<ItemLink linked={pullRef()} from="acme-org/example-repo" />)
+    renderAt(<ItemLink linked={pullRef()} from="acme-org/example-repo" />)
 
     const link = screen.getByRole('button', { name: '#14' })
     expect(link).toHaveAttribute('title', 'Keep the trailing newline\nOpen it on GitHub')
@@ -199,7 +193,7 @@ describe('ItemLink', () => {
 
   it('opens an item the inbox holds in its sheet', async () => {
     const follow = vi.fn()
-    render(
+    renderAt(
       <LinksContext value={{ holds: (repo, number) => repo === 'acme-org/example-repo' && number === 14, follow }}>
         <ItemLink linked={pullRef()} from="acme-org/example-repo" />
         <ItemLink linked={issueRef()} from="acme-org/example-repo" />
@@ -217,7 +211,7 @@ describe('ItemLink', () => {
   })
 
   it('names one of another repository in full, with its title when asked', () => {
-    render(<ItemLink linked={issueRef({ repo: 'acme-org/api', title: '' })} from="acme-org/example-repo" titled />)
+    renderAt(<ItemLink linked={issueRef({ repo: 'acme-org/api', title: '' })} from="acme-org/example-repo" titled />)
 
     expect(screen.getByRole('button', { name: 'acme-org/api#3' })).toBeInTheDocument()
   })

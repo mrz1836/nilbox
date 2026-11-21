@@ -1,5 +1,7 @@
 import { vi } from 'vitest'
 
+import type { EditActions } from '../components/ItemMenu'
+import type { TriageActions } from '../components/TriageControls'
 import { bannerOf, offerOf, type RestartStep } from '../lib/update'
 import type { IntegrationsState } from '../lib/useIntegrations'
 import type { MoveControl } from '../lib/useMove'
@@ -73,6 +75,40 @@ export function updateOf(
     dismiss: vi.fn(),
     reveal: vi.fn(() => Promise.resolve(true)),
     reload: vi.fn(() => Promise.resolve()),
+    ...overrides,
+  }
+}
+
+// triageActionsOf is a row's triage as the inbox hands it to a card: Snooze's three days, no
+// repository pinned or muted, and every action a mock a test reads, onRefresh settling at
+// once.
+export function triageActionsOf(overrides: Partial<TriageActions> = {}): TriageActions {
+  return {
+    snoozeDays: 3,
+    onDismiss: vi.fn(),
+    onSnooze: vi.fn(),
+    onRestore: vi.fn(),
+    onPin: vi.fn(),
+    onUnpin: vi.fn(),
+    onRefresh: vi.fn(() => Promise.resolve()),
+    onChangeDefault: vi.fn(),
+    repoRules: { pinned: [], muted: [] },
+    onRepoRule: vi.fn(),
+    onRepoRuleSettings: vi.fn(),
+    onMarkRead: vi.fn(),
+    onMarkUnread: vi.fn(),
+    ...overrides,
+  }
+}
+
+// editActionsOf is a row's edits as the inbox hands them to its menu: every one a mock a
+// test reads, the edits on GitHub settling at once, and no nudge or sheet to open unless
+// given.
+export function editActionsOf(overrides: Partial<EditActions> = {}): EditActions {
+  return {
+    onCopyLink: vi.fn(),
+    onUnassign: vi.fn(() => Promise.resolve()),
+    onRemoveReview: vi.fn(() => Promise.resolve()),
     ...overrides,
   }
 }

@@ -70,8 +70,8 @@ export const settlingWords = 'The last update is still finishing. This can take 
 // finishingText and finishingDetail are what the window says while a restart whose quit
 // was held sees the app out (finishing): the app quits on its own, and the update's helper
 // installs the update and opens it.
-export const finishingText = 'Finishing the update…'
-export const finishingDetail = `${brand.name} will reopen in a moment.`
+const finishingText = 'Finishing the update…'
+const finishingDetail = `${brand.name} will reopen in a moment.`
 
 // finishingWords say both, as one line.
 export const finishingWords = `${finishingText} ${finishingDetail}`
@@ -121,18 +121,18 @@ function versionName(version: string): string {
 }
 
 // downloadingWords says a version is downloading: "Downloading 0.3.0…".
-export function downloadingWords(version: string): string {
+function downloadingWords(version: string): string {
   return `Downloading ${versionName(version)}…`
 }
 
 // restartingText says the app is restarting into a version.
-export function restartingText(version: string): string {
+function restartingText(version: string): string {
   return `Restarting into ${versionName(version)}…`
 }
 
 // backingUp is what a restart under way (installing) says it does, true from its start to
 // the quit: it backs the data up, then stages the update beside the app.
-export const backingUp = 'Backing up your data and preparing the update…'
+const backingUp = 'Backing up your data and preparing the update…'
 
 // finishing is what a restart whose quit was held shows while the app quits on its own.
 const finishing: Banner = { kind: 'working', text: finishingText, progress: null, detail: finishingDetail }

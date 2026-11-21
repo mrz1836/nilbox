@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useRef } from 'react'
 
-import { attempt } from '../../lib/call'
+import { logFailure } from '../../lib/call'
 import { toolsReason } from '../../lib/setup'
 import type { IntegrationsState } from '../../lib/useIntegrations'
 import { setIntegrationsAnnounced, type Settings, type SetupSignals } from '../../platform'
@@ -32,13 +32,7 @@ export function ToolsStep({ settings, onSaved, integrations, signals }: ToolsSte
     }
 
     announced.current = true
-    void attempt(setIntegrationsAnnounced(true)).then((result) => {
-      if (result.ok) {
-        onSaved(result.data)
-      } else {
-        console.error('could not remember that the tools were announced:', result.error)
-      }
-    })
+    logFailure(setIntegrationsAnnounced(true), 'could not remember that the tools were announced:', onSaved)
   })
 
   useEffect(() => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { AgentID, Worktree } from '../platform'
-import { FIXED_NOW } from '../test/clock'
+import { FIXED_NOW, isoAgo } from '../test/clock'
 import {
   agentSession,
   copiedPR,
@@ -54,11 +54,6 @@ import {
 } from './worktreeParts'
 
 const now = FIXED_NOW
-
-// ago is the time m minutes before the tests' clock.
-function ago(m: number): string {
-  return new Date(now.getTime() - m * 60_000).toISOString()
-}
 
 const agentName = (id: AgentID) => (id === 'codex' ? 'Codex' : 'Claude')
 
@@ -393,13 +388,13 @@ describe('lockInfo', () => {
 
 describe('agentLine', () => {
   const claudeHere = { pid: 47890, command: '2.1.328', agent: 'claude', by: '' } as const
-  const followed = agentSession({ state: 'needs_input', launchedAt: ago(40) })
+  const followed = agentSession({ state: 'needs_input', launchedAt: isoAgo({ m: 40 }) })
 
   it.each([
     [
       'a routine’s agent, as the session followed there stands',
       row({ inUse: [{ pid: 61022, command: '2.1.328', agent: 'claude', by: '⚡ Fix checks' }] }),
-      agentSession({ state: 'working', launchedAt: ago(3) }),
+      agentSession({ state: 'working', launchedAt: isoAgo({ m: 3 }) }),
       {
         kind: 'routine',
         name: 'Claude',
@@ -407,7 +402,7 @@ describe('agentLine', () => {
         pid: 61022,
         by: 'Fix checks',
         state: 'working',
-        since: ago(3),
+        since: isoAgo({ m: 3 }),
       },
     ],
     [
@@ -427,7 +422,7 @@ describe('agentLine', () => {
         pid: 47890,
         followed: true,
         state: 'needs_input',
-        since: ago(40),
+        since: isoAgo({ m: 40 }),
       },
     ],
     [
@@ -477,9 +472,9 @@ describe('agentLine', () => {
     ],
     [
       'the last launch, past an ended session’s lock',
-      row({ locked: true, agentLock: true, staleLock: true, agent: 'claude', lastLaunchedAt: ago(265) }),
+      row({ locked: true, agentLock: true, staleLock: true, agent: 'claude', lastLaunchedAt: isoAgo({ m: 265 }) }),
       undefined,
-      { kind: 'past', name: 'Claude', at: ago(265) },
+      { kind: 'past', name: 'Claude', at: isoAgo({ m: 265 }) },
     ],
     ['nothing, never launched there', row(), undefined, null],
     ['nothing, with no launch time', row({ agent: 'codex' }), undefined, null],
@@ -511,7 +506,7 @@ describe('agentLine', () => {
       'the Claude session that locked it still runs',
     ],
     ['a program', row({ inUse: [{ pid: 1, command: 'node', agent: '', by: '' }] }), 'node runs in it'],
-    ['the last launch', row({ stage: 'in-use', agent: 'codex', lastLaunchedAt: ago(5) }), 'Codex runs in it'],
+    ['the last launch', row({ stage: 'in-use', agent: 'codex', lastLaunchedAt: isoAgo({ m: 5 }) }), 'Codex runs in it'],
   ])('says what runs in it: %s', (_, wt, want) => {
     expect(runsIn(wt, agentName)).toBe(want)
   })

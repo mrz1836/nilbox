@@ -1,21 +1,15 @@
-import { render as renderPlain, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import type { GitHubThreadsSnapshot, Settings, ThreadRules } from '../platform'
-import { at } from '../test/clock'
+import { renderAt } from '../test/clock'
 import { githubThread, githubThreads, settings } from '../test/fixtures'
 import { mocks, platform } from '../test/platform'
 import { GitHubThreadsMenu } from './GitHubThreadsMenu'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
-
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
-}
 
 // state is the notifications the button shows, with spies for what it does.
 function state(
@@ -65,7 +59,7 @@ function menu(threads: GitHubThreadsState, auto: boolean | null = true, read = t
 
 // renderMenu renders the menu.
 function renderMenu(threads: GitHubThreadsState, auto: boolean | null = true, read = true) {
-  return render(menu(threads, auto, read))
+  return renderAt(menu(threads, auto, read))
 }
 
 // button is the toolbar's GitHub notifications button.
@@ -421,7 +415,7 @@ describe('GitHubThreadsMenu', () => {
 
   it('opens the Notifications page from its footer', async () => {
     const onViewAll = vi.fn()
-    render(
+    renderAt(
       <GitHubThreadsMenu
         threads={state(githubThreads())}
         settings={settings()}

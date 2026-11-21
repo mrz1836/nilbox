@@ -1,10 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Result } from '../lib/call'
 import type { InboxItem, Nudged } from '../platform'
-import { at } from '../test/clock'
+import { renderAt } from '../test/clock'
 import { details, item, replyList, snapshot } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { NudgeDialog, useNudge, type NudgeOptions } from './NudgeDialog'
@@ -52,7 +52,7 @@ function shown(why = '', snoozeFirst = false) {
   const onCancel = vi.fn()
   const onManageReplies = vi.fn()
 
-  render(
+  renderAt(
     <NudgeDialog
       item={waiting}
       snoozeDays={3}
@@ -61,7 +61,6 @@ function shown(why = '', snoozeFirst = false) {
       onCancel={onCancel}
       onManageReplies={onManageReplies}
     />,
-    { wrapper: at() },
   )
 
   return { onPost, onCancel, onManageReplies }
@@ -71,8 +70,12 @@ function shown(why = '', snoozeFirst = false) {
 const text = () => screen.getByRole('textbox', { name: 'Your comment' })
 
 describe('NudgeDialog', () => {
-  it('names the author and the pull request, says how long it has been quiet, and starts from the Nudge reply', async () => {
+  // Each test starts with the Nudge and Question replies, unless it answers otherwise.
+  beforeEach(() => {
     withReplies()
+  })
+
+  it('names the author and the pull request, says how long it has been quiet, and starts from the Nudge reply', async () => {
     shown()
 
     const dialog = screen.getByRole('dialog', { name: 'Nudge @contributor-a' })
@@ -102,7 +105,6 @@ describe('NudgeDialog', () => {
   })
 
   it('replaces the text it started with by a reply picked, and keeps what the user wrote', async () => {
-    withReplies()
     shown()
     await waitFor(() => {
       expect(text()).toHaveValue(nudgeText)
@@ -124,7 +126,6 @@ describe('NudgeDialog', () => {
   })
 
   it('posts the text, snoozing after when ticked', async () => {
-    withReplies()
     const { onPost } = shown()
     await waitFor(() => {
       expect(text()).toHaveValue(nudgeText)
@@ -137,14 +138,12 @@ describe('NudgeDialog', () => {
   })
 
   it('starts with Then snooze ticked when the setting says so', () => {
-    withReplies()
     shown('', true)
 
     expect(screen.getByRole('checkbox', { name: /Then snooze/ })).toBeChecked()
   })
 
   it('posts on ⌘↩', async () => {
-    withReplies()
     const { onPost } = shown()
     await waitFor(() => {
       expect(text()).toHaveValue(nudgeText)
@@ -157,7 +156,6 @@ describe('NudgeDialog', () => {
   })
 
   it('says why GitHub refused it, in the dialog, and lets the user try again', async () => {
-    withReplies()
     const { onPost } = shown('GitHub refused the comment.')
     await waitFor(() => {
       expect(text()).toHaveValue(nudgeText)
@@ -172,9 +170,8 @@ describe('NudgeDialog', () => {
 
   it('says why the replies couldn’t load, while they load, and when there are none', async () => {
     platform.reviewReplies.mockRejectedValue(new Error('the library is locked'))
-    const { unmount: unmountFirst } = render(
+    const { unmount: unmountFirst } = renderAt(
       <NudgeDialog item={waiting} snoozeDays={3} snoozeFirst={false} onPost={vi.fn()} onCancel={vi.fn()} />,
-      { wrapper: at() },
     )
 
     await waitFor(() => {
@@ -189,18 +186,15 @@ describe('NudgeDialog', () => {
     unmountFirst()
 
     platform.reviewReplies.mockReturnValue(new Promise(() => undefined))
-    const { unmount: unmountSecond } = render(
+    const { unmount: unmountSecond } = renderAt(
       <NudgeDialog item={waiting} snoozeDays={3} snoozeFirst={false} onPost={vi.fn()} onCancel={vi.fn()} />,
-      { wrapper: at() },
     )
     await userEvent.click(screen.getByRole('button', { name: 'Choose a reply' }))
     expect(screen.getByRole('menuitem', { name: 'Loading replies…' })).toBeInTheDocument()
     unmountSecond()
 
     platform.reviewReplies.mockResolvedValue(replyList({ replies: [], nudge: 0 }))
-    render(<NudgeDialog item={waiting} snoozeDays={3} snoozeFirst={false} onPost={vi.fn()} onCancel={vi.fn()} />, {
-      wrapper: at(),
-    })
+    renderAt(<NudgeDialog item={waiting} snoozeDays={3} snoozeFirst={false} onPost={vi.fn()} onCancel={vi.fn()} />)
     await waitFor(() => {
       expect(platform.reviewReplies).toHaveBeenCalledTimes(3)
     })
@@ -209,7 +203,6 @@ describe('NudgeDialog', () => {
   })
 
   it('cancels, and opens the replies from the menu’s foot', async () => {
-    withReplies()
     const { onCancel, onManageReplies } = shown()
 
     await userEvent.click(screen.getByRole('button', { name: 'Choose a reply' }))
@@ -256,7 +249,7 @@ function hostOptions(answer: Result<Nudged>) {
 function hosted(answer: Result<Nudged>) {
   const options = hostOptions(answer)
 
-  render(<Host {...options} />, { wrapper: at() })
+  renderAt(<Host {...options} />)
 
   return options
 }
@@ -268,8 +261,12 @@ const posted: Result<Nudged> = {
 }
 
 describe('useNudge', () => {
-  it('posts the nudge, closes, marks the item read, and says so with the comment', async () => {
+  // Each test starts with the Nudge and Question replies, unless it answers otherwise.
+  beforeEach(() => {
     withReplies()
+  })
+
+  it('posts the nudge, closes, marks the item read, and says so with the comment', async () => {
     const options = hosted(posted)
 
     await userEvent.click(screen.getByRole('button', { name: 'Nudge it' }))
@@ -299,7 +296,6 @@ describe('useNudge', () => {
   })
 
   it('snoozes after the nudge when ticked, its toast saying both', async () => {
-    withReplies()
     const options = hosted(posted)
 
     await userEvent.click(screen.getByRole('button', { name: 'Nudge it' }))
@@ -316,9 +312,8 @@ describe('useNudge', () => {
   })
 
   it('closes for the replies, from its menu’s foot', async () => {
-    withReplies()
     const onManageReplies = vi.fn()
-    render(<Host {...hostOptions(posted)} onManageReplies={onManageReplies} />, { wrapper: at() })
+    renderAt(<Host {...hostOptions(posted)} onManageReplies={onManageReplies} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Nudge it' }))
     await userEvent.click(screen.getByRole('button', { name: 'Choose a reply' }))
@@ -329,7 +324,6 @@ describe('useNudge', () => {
   })
 
   it('closes on Cancel, posting nothing', async () => {
-    withReplies()
     const options = hosted(posted)
 
     await userEvent.click(screen.getByRole('button', { name: 'Nudge it' }))
@@ -340,7 +334,6 @@ describe('useNudge', () => {
   })
 
   it('keeps the dialog open with why GitHub refused it', async () => {
-    withReplies()
     const options = hosted({ ok: false, error: 'You can’t comment on this pull request.' })
 
     await userEvent.click(screen.getByRole('button', { name: 'Nudge it' }))

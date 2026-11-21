@@ -1,6 +1,7 @@
 import { startTransition, useActionState, useId, useState } from 'react'
 
 import { attempt } from '../../lib/call'
+import { counted, joinList } from '../../lib/format'
 import type { Query } from '../../lib/useQuery'
 import type { SettingsSave } from '../../lib/useSettingsSave'
 import {
@@ -47,16 +48,6 @@ type Step =
   | { kind: 'check'; path: string }
   | { kind: 'cancel' }
 
-// counted is "1 clone" or "3 clones".
-function counted(n: number, one = 'clone', many = 'clones'): string {
-  return `${String(n)} ${n === 1 ? one : many}`
-}
-
-// listed joins words as a sentence does: "a", "a and b", "a, b and c".
-function listed(words: readonly string[]): string {
-  return words.length < 2 ? (words[0] ?? '') : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1] ?? ''}`
-}
-
 // Marker is what a location's row says of it now, whether that is a warning, and whether
 // Check again may help.
 interface Marker {
@@ -71,7 +62,7 @@ export function marker(state: LocationState | undefined): Marker {
     return { text: '', warn: false, recheck: false }
   }
 
-  const folder = `folder · ${counted(state.clones)}`
+  const folder = `folder · ${counted(state.clones, 'clone', 'clones')}`
 
   switch (state.state) {
     case 'ok':
@@ -101,7 +92,10 @@ export function marker(state: LocationState | undefined): Marker {
 // or a warning such as Not found; nothing while it is being read.
 export function rootMarker(state: LocationState | undefined): { text: string; warn: boolean } {
   if (state?.state === 'ok') {
-    return { text: `${state.clones === 0 ? 'No clones' : counted(state.clones)} directly inside`, warn: false }
+    return {
+      text: `${state.clones === 0 ? 'No clones' : counted(state.clones, 'clone', 'clones')} directly inside`,
+      warn: false,
+    }
   }
 
   const { text, warn } = marker(state)
@@ -122,7 +116,7 @@ function addedNote(path: string, replaced: readonly string[]): string {
     return ''
   }
 
-  return `Added ${path}. It holds ${listed(replaced)}, so ${replaced.length === 1 ? 'that clone is' : 'those clones are'} no longer listed on ${replaced.length === 1 ? 'its' : 'their'} own.`
+  return `Added ${path}. It holds ${joinList(replaced)}, so ${replaced.length === 1 ? 'that clone is' : 'those clones are'} no longer listed on ${replaced.length === 1 ? 'its' : 'their'} own.`
 }
 
 interface CloneLocationsProps {
@@ -352,7 +346,7 @@ function Offer({ preview, busy, onAdd, onCancel }: OfferProps) {
     better = { label: `Add ${preview.parent.path}`, locations: [{ path: preview.parent.path, kind: 'folder' }] }
     anyway = 'Add only this clone'
   } else if (preview.inside.length > 0) {
-    const inside = listed(preview.inside.map((s) => `${s.path} (${String(s.clones)})`))
+    const inside = joinList(preview.inside.map((s) => `${s.path} (${String(s.clones)})`))
     const more = preview.moreInside ? ', among others,' : ''
 
     text = `${preview.path} has no clones directly inside; ${inside}${more} do.`

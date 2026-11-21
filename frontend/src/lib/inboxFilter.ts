@@ -7,8 +7,7 @@ import {
   haystack,
   isEmpty,
   markTerms,
-  matchesFilter,
-  matchesTerms,
+  matchesQuery,
   parseQuery,
   suggest,
   weakCache,
@@ -30,7 +29,7 @@ export const inboxSpec: QuerySpec = {
 }
 
 // inboxHint is the line under the filters the field offers: what words match.
-export const inboxHint = 'Matches titles, repos, #numbers, branches, authors, labels · -word excludes'
+const inboxHint = 'Matches titles, repos, #numbers, branches, authors, labels · -word excludes'
 
 // fixedValues are the values of the keys whose every value is known ahead, which a filter
 // names exactly. is:open matches every item, as the inbox holds only open ones.
@@ -205,9 +204,12 @@ function withViewer(query: Query, viewer: string): Query {
 export function matchesItem(item: InboxItem, query: Query, known: Known): boolean {
   const facts = factsOf(item)
 
-  return (
-    matchesTerms(query.terms, facts.hay, item.number) &&
-    query.filters.every((f) => matchesFilter(f, facts.values.get(f.key) ?? null, known.get(f.key) ?? noValues))
+  return matchesQuery(
+    query,
+    facts.hay,
+    item.number,
+    (key) => facts.values.get(key) ?? null,
+    (key) => known.get(key) ?? noValues,
   )
 }
 

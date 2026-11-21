@@ -19,16 +19,16 @@ import { ErrorBanner } from './components/ErrorBanner'
 import { MoveDialog } from './components/MoveDialog'
 import { UpdateBanner } from './components/UpdateBanner'
 import { UpdateRestartDialog } from './components/UpdateRestartDialog'
-import { InboxView, type LaunchOptions, type Reveal } from './components/InboxView'
+import { InboxView, type Reveal } from './components/InboxView'
 import { LaunchControls, type LaunchPlace } from './components/LaunchControls'
 import { QuitDialog } from './components/QuitDialog'
 import type { SearchFieldProps } from './components/SearchField'
 import type { SettingsSection } from './components/SettingsView'
 import { defaultToastSeconds, Toast, ToastQueue, type ToastMessage } from './components/Toast'
 import { activityTarget, autopilotBadge, type AutopilotRequest } from './lib/autopilot'
-import { attempt, serial } from './lib/call'
+import { attempt, logFailure, serial } from './lib/call'
 import { filterInbox, inboxItems, inboxSpec, inboxSuggestions } from './lib/inboxFilter'
-import { isFindKey, isTyping } from './lib/keys'
+import { isFindKey, isTyping, useKeyDown } from './lib/keys'
 import { filterThreads } from './lib/githubThreads'
 import { cloneWhere } from './lib/locations'
 import {
@@ -63,7 +63,7 @@ import { CardPrefsContext, defaultCardPrefs, type CardPrefs } from './lib/cardPr
 import { CelebrationsContext, defaultCelebrations } from './lib/celebrations'
 import type { IgnoredWorkflows } from './lib/ignoredWorkflows'
 import { CardPicturesContext, useCardPictures } from './lib/pictures'
-import { agentName } from './lib/launch'
+import { agentName, type LaunchOptions } from './lib/launch'
 import { offersProjects } from './lib/projects'
 import { useTextSize } from './lib/textSize'
 import { defaultSnoozeDays, findItem } from './lib/triage'
@@ -80,6 +80,7 @@ import { useIssueDrafts } from './lib/issueDrafts'
 import { useReviewDrafts } from './lib/reviewDrafts'
 import { useLaunchConfig } from './lib/useLaunchConfig'
 import { useNotifications } from './lib/useNotifications'
+import { useOn } from './lib/useOn'
 import { useQuery } from './lib/useQuery'
 import { useTheme } from './lib/useTheme'
 import { useTriage } from './lib/useTriage'
@@ -93,7 +94,6 @@ import {
   getAppInfo,
   getScriptRun,
   lastWorktreeSweep,
-  on,
   openExternal,
   setNotificationsTab,
   setIgnoredWorkflows,
@@ -180,17 +180,10 @@ function cleanedToast(seq: number, cleaned: readonly RemoveResult[]): ToastMessa
 // removed a worktree.
 function useWorktreeSweeps() {
   const sweep = useQuery(() => lastWorktreeSweep(), [], { log: 'could not read the latest worktree sweep' })
-  const readOnUpdate = useEffectEvent(() => {
+
+  useOn('worktrees:updated', () => {
     void sweep.refetch()
   })
-
-  useEffect(
-    () =>
-      on('worktrees:updated', () => {
-        readOnUpdate()
-      }),
-    [],
-  )
 
   const [counts, setCounts] = useState({ count: 0, attention: 0 })
   // reported is the latest sweep reported, so each one is reported once.
@@ -274,11 +267,12 @@ function useReveal(
   }
 
   // The menu bar's request is read against the inbox as shown when it arrives.
-  const showOnRequest = useEffectEvent((click: BannerClick, runStarted: string) => {
+  useOn('inbox:reveal', ({ itemId, url, runId, runStarted, notificationId, autopilot }) => {
     if (held) {
       return
     }
 
+    const click: BannerClick = { notificationId, itemId, url, runId, autopilot }
     const named = click.notificationId > 0
 
     if (named) {
@@ -300,14 +294,6 @@ function useReveal(
         break
     }
   })
-
-  useEffect(
-    () =>
-      on('inbox:reveal', ({ itemId, url, runId, runStarted, notificationId, autopilot }) => {
-        showOnRequest({ notificationId, itemId, url, runId, autopilot }, runStarted)
-      }),
-    [],
-  )
 
   const clear = () => {
     setReveal(null)
@@ -371,11 +357,7 @@ function useUpdatedToast(status: UpdateStatus | null, held: boolean) {
       return
     }
 
-    void attempt(ackUpdated()).then((result) => {
-      if (!result.ok) {
-        console.error('could not record that the update was said:', result.error)
-      }
-    })
+    logFailure(ackUpdated(), 'could not record that the update was said:')
   }, [told])
 
   const close = () => {
@@ -975,7 +957,7 @@ export function App() {
   // ⌘, opens the settings page, as in every Mac app. ⌘F, or / while not typing, focuses
   // the toolbar's field with its text selected; on Prompts, ⌘F belongs to the page's own
   // search. None of them reaches the window beneath the first-run setup.
-  const onShortcut = useEffectEvent((e: KeyboardEvent) => {
+  useKeyDown((e) => {
     if (setup.showing) {
       return
     }
@@ -995,18 +977,6 @@ export function App() {
       searchRef.current?.select()
     }
   })
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      onShortcut(e)
-    }
-
-    document.addEventListener('keydown', onKeyDown)
-
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [])
 
   const { reload, setSettings } = config
   const { reload: reloadInbox } = inbox
@@ -1051,13 +1021,7 @@ export function App() {
   // projects. The inbox hides it at once; a store that fails only means it is offered
   // again at the next start.
   const dismissProjects = () => {
-    void attempt(setProjectsTipDismissed(true)).then((result) => {
-      if (result.ok) {
-        saveSettings(result.data)
-      } else {
-        console.error('could not store that the projects tip was put away:', result.error)
-      }
-    })
+    logFailure(setProjectsTipDismissed(true), 'could not store that the projects tip was put away:', saveSettings)
   }
 
   // remember stores a change to the window's memory: that the Scripts tab was announced, the
@@ -1065,13 +1029,7 @@ export function App() {
   // Notifications page's tab, or the conversations' order. What shows has changed already;
   // a store that fails only means the next start doesn't remember it.
   const remember = (store: Promise<Settings>, what: string) => {
-    void attempt(store).then((result) => {
-      if (result.ok) {
-        saveSettings(result.data)
-      } else {
-        console.error(`could not remember ${what}:`, result.error)
-      }
-    })
+    logFailure(store, `could not remember ${what}:`, saveSettings)
   }
 
   // Once the found-tools toast shows, that is stored, so a later start never shows it again.
@@ -1163,13 +1121,7 @@ export function App() {
       <LaunchControls
         item={found}
         resolution={config.resolutions.get(found.id) ?? null}
-        agents={launch.agents}
-        profiles={launch.profiles}
-        prompts={launch.prompts}
-        launchDefaults={launch.launchDefaults}
-        onDefaultsSaved={launch.onDefaultsSaved}
-        onManagePrompts={launch.onManagePrompts}
-        onSettingsSaved={launch.onSettingsSaved}
+        {...launch}
         initial={{ worktree: true }}
         running={runningSession(sessionsOf(agentSessions.byItem, found))}
         variant="row"
@@ -1534,6 +1486,7 @@ export function App() {
                               update={update}
                               onShowCardGuide={showCardGuide}
                               onManageReplies={openPrompts}
+                              autopilotEngine={autopilot.engine}
                             />
                           </Suspense>
                         </Activity>

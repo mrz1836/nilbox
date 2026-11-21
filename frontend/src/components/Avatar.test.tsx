@@ -1,9 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { PicturesContext } from '../lib/pictures'
 import { account, avatarDataURL, signedOut } from '../test/fixtures'
 import { Avatar, PersonAvatar } from './Avatar'
+
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 // picture returns the rendered image; it is decorative, so it has no accessible role.
 function picture(container: HTMLElement): HTMLImageElement | null {

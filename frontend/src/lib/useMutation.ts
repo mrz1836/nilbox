@@ -10,7 +10,8 @@ export interface Mutation<A extends unknown[], T> {
   pending: boolean
   // error is the message for the latest write's failure, worded for the user, or ''.
   error: string
-  // reset clears the error.
+  // reset clears the error. With none to clear it changes nothing and renders nothing, so
+  // it can be called whenever an error would be out of date, from any closure.
   reset: () => void
 }
 
@@ -45,7 +46,8 @@ export function useMutation<A extends unknown[], T>(mutate: (...args: A) => Prom
     pending: state.pending,
     error: state.error,
     reset: () => {
-      setState((was) => ({ ...was, error: '' }))
+      // The state kept as it is, React skips the render.
+      setState((was) => (was.error === '' ? was : { ...was, error: '' }))
     },
   }
 }

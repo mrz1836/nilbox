@@ -15,7 +15,7 @@ import { modeLabels } from './autopilot'
 
 // blankValue is what a blank of a template holds as it ships: a search's where, or a
 // condition's values.
-export function blankValue(spec: AutopilotSpec, blank: AutopilotBlank): string[] {
+function blankValue(spec: AutopilotSpec, blank: AutopilotBlank): string[] {
   if (blank.kind === 'where') {
     return [...(spec.watch.sources[blank.source]?.search?.where ?? [])]
   }

@@ -5,7 +5,7 @@ import { useNow } from '../lib/useNow'
 import { usePopover } from '../lib/usePopover'
 import type { BudgetGauge } from '../platform'
 import { GaugeIcon } from './GaugeIcon'
-import { PopoverPanel } from './PopoverPanel'
+import { PopoverPanel, ToolbarPopoverButton } from './PopoverPanel'
 import { RateGauge } from './RateGauge'
 
 // checkEveryMs is how often an open panel reads the budgets from GitHub again, so what gh
@@ -29,7 +29,7 @@ export function BudgetMenu({ gauge, onCheck }: BudgetMenuProps) {
   const id = useId()
   const now = useNow()
   const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ focus: 'panel' })
-  const { open, toggle, triggerRef } = popover
+  const { open } = popover
   const check = useEffectEvent(() => {
     onCheck?.()
   })
@@ -54,19 +54,14 @@ export function BudgetMenu({ gauge, onCheck }: BudgetMenuProps) {
 
   return (
     <div className="relative">
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-label={label}
-        title={label}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        onClick={toggle}
+      <ToolbarPopoverButton
+        popover={popover}
+        id={id}
+        label={label}
         className={`flex size-8 items-center justify-center rounded-md transition-colors hover:bg-raised aria-expanded:bg-raised ${levelText[summary.level]}`}
       >
         <GaugeIcon percent={summary.percent} known={summary.level !== 'unknown'} />
-      </button>
+      </ToolbarPopoverButton>
       <PopoverPanel
         state={popover}
         align="right"

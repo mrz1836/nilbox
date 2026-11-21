@@ -54,7 +54,7 @@ magex format:fix
 magex lint
 magex test:race
 go-pre-commit run --all-files
-magex frontend:gate   # format, lint, typecheck, tests, compiled render check; CI runs it too
+magex frontend:gate   # format, lint, typecheck, tests, compiled render check, build; CI runs it too
 magex db:check        # the generated queries are current and every query prepares; CI runs it too
 ```
 

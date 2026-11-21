@@ -3,6 +3,7 @@ import { StrictMode, useEffect } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Worktree, WorktreeCopyMark, WorktreeDetails } from '../platform'
+import { deferred } from '../test/async'
 import {
   copiedWorktree,
   copyComparison,
@@ -29,18 +30,6 @@ const dirty = worktree({ dirty: true, dirtyCount: 30, files: worktreeFiles(12), 
 
 // all30 is what Details reads of it: every file.
 const all30 = worktreeDetails({ files: worktreeFiles(30), fileCount: 30 })
-
-// held is a call that answers only once the test says.
-function held<T>() {
-  let resolve: (value: T) => void = () => undefined
-  let reject: (err: unknown) => void = () => undefined
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-
-  return { promise, resolve, reject }
-}
 
 // renderDetails keeps the details for listing, which rerender changes.
 function renderDetails(listing = 1) {
@@ -73,7 +62,7 @@ describe('useWorktreeDetails', () => {
 
   it('reads several worktrees side by side, each kept apart', async () => {
     const other = worktree({ path: `${repoPath}/.claude/worktrees/pr-8` })
-    const first = held<WorktreeDetails>()
+    const first = deferred<WorktreeDetails>()
     platform.worktreeDetails.mockReturnValueOnce(first.promise).mockResolvedValueOnce(worktreeDetails())
     const { result } = renderDetails()
 
@@ -137,8 +126,8 @@ describe('useWorktreeDetails', () => {
   })
 
   it('drops an answer that lands for an older listing', async () => {
-    const old = held<WorktreeDetails>()
-    const now = held<WorktreeDetails>()
+    const old = deferred<WorktreeDetails>()
+    const now = deferred<WorktreeDetails>()
     platform.worktreeDetails.mockReturnValueOnce(old.promise).mockReturnValueOnce(now.promise)
     const { result, rerender } = renderDetails(1)
 
@@ -165,7 +154,7 @@ describe('useWorktreeDetails', () => {
     expect(result.current.of(dirty.path)).toEqual({ state: 'read', details: worktreeDetails() })
 
     // An older listing's failure is dropped too.
-    const late = held<WorktreeDetails>()
+    const late = deferred<WorktreeDetails>()
     platform.worktreeDetails.mockReturnValueOnce(late.promise)
     rerender({ at: 3 })
     act(() => {
@@ -182,7 +171,7 @@ describe('useWorktreeDetails', () => {
   })
 
   it('says why a read failed, keeps the listing’s files, and asks again only when read again', async () => {
-    const failing = held<WorktreeDetails>()
+    const failing = deferred<WorktreeDetails>()
     platform.worktreeDetails.mockReturnValueOnce(failing.promise).mockResolvedValueOnce(all30)
     const { result } = renderDetails()
 
@@ -221,7 +210,7 @@ describe('useWorktreeDetails', () => {
   })
 
   it('lets an older listing’s failure leave the newer listing’s ask be', async () => {
-    const old = held<WorktreeDetails>()
+    const old = deferred<WorktreeDetails>()
     platform.worktreeDetails.mockReturnValueOnce(old.promise).mockReturnValueOnce(new Promise(() => undefined))
     const { result, rerender } = renderDetails(1)
 

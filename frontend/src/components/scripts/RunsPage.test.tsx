@@ -1,22 +1,17 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { ScriptRun, TerminalID } from '../../platform'
-import { at, fromNow } from '../../test/clock'
+import { isoAgo, renderAt } from '../../test/clock'
 import { scriptRun } from '../../test/fixtures'
 import { useScriptRuns } from '../../lib/useScriptRuns'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import { RunsPage } from './RunsPage'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
-
-// ago is the time minutes before the test clock's, as a run records it.
-function ago(minutes: number, seconds = 0): string {
-  return fromNow(-(minutes * 60_000 + seconds * 1000)).toISOString()
-}
 
 // release is a release that is going in the terminal, started two minutes ago.
 const release = scriptRun({
@@ -29,14 +24,14 @@ const release = scriptRun({
   status: 'running',
   exitCode: null,
   summary: '',
-  startedAt: ago(2),
+  startedAt: isoAgo({ m: 2 }),
   finishedAt: '',
   canStop: false,
   canRunAgain: false,
 })
 
 // lint is a magex lint run that took 38 seconds, an hour ago.
-const lint = scriptRun({ id: 1, startedAt: ago(60, 38), finishedAt: ago(60) })
+const lint = scriptRun({ id: 1, startedAt: isoAgo({ m: 60, s: 38 }), finishedAt: isoAgo({ m: 60 }) })
 
 // Listed is the page as the tab shows it: fed every run the tab lists.
 function Listed({ terminal }: { terminal: TerminalID | null }) {
@@ -48,7 +43,7 @@ function Listed({ terminal }: { terminal: TerminalID | null }) {
 // renderPage shows the page with runs listed.
 function renderPage(runs: ScriptRun[] = [release, lint], terminal: TerminalID | null = 'iterm2') {
   platform.listScriptRuns.mockResolvedValue(runs)
-  render(<Listed terminal={terminal} />, { wrapper: at() })
+  renderAt(<Listed terminal={terminal} />)
 }
 
 // list is the list of runs, once it shows.
@@ -98,7 +93,7 @@ describe('RunsPage', () => {
 
   it('says why the runs couldn’t be listed', async () => {
     platform.listScriptRuns.mockRejectedValue(new Error('database is locked'))
-    render(<Listed terminal="iterm2" />, { wrapper: at() })
+    renderAt(<Listed terminal="iterm2" />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t list the runs: database is locked')
     expect(screen.queryByText('Listing the runs…')).not.toBeInTheDocument()
@@ -154,9 +149,7 @@ describe('RunsPage', () => {
     await list()
 
     platform.listScriptRuns.mockResolvedValue([release, lint])
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     await waitFor(async () => {
       expect(await rows()).toHaveLength(2)

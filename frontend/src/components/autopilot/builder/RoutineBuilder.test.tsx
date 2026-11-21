@@ -11,6 +11,7 @@ import type {
   AutopilotSpec,
   AutopilotStepKind,
 } from '../../../platform'
+import { deferred } from '../../../test/async'
 import {
   agents,
   autopilotCatalog,
@@ -1114,19 +1115,15 @@ describe('the Test panel', () => {
   })
 
   it('says what a Dry run would do, and that it is trying', async () => {
-    let answer: (r: ReturnType<typeof routineTest>) => void = () => undefined
-    platform.testRoutine.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const answer = deferred<ReturnType<typeof routineTest>>()
+    platform.testRoutine.mockReturnValue(answer.promise)
     platform.describeRoutine.mockResolvedValue(described({ dryRunOnly: ['agent'] }))
     const user = userEvent.setup()
     renderBuilder({ heldKinds: ['agent'] })
     await testNow(user)
 
     expect(await screen.findByText('Trying it on your items…')).toBeInTheDocument()
-    answer(routineTest())
+    answer.resolve(routineTest())
     expect(await screen.findByText('would run, in Dry run')).toBeInTheDocument()
   })
 

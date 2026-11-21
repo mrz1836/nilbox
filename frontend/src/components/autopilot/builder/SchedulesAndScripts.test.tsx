@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AutopilotDraft, AutopilotSpec } from '../../../platform'
 import {
@@ -212,10 +212,13 @@ describe('Run on the matches now', () => {
     await screen.findByRole('list', { name: 'Items it watches' })
   }
 
+  beforeEach(() => {
+    platform.testRoutine.mockResolvedValue(matching())
+  })
+
   it('asks with the list first, then runs on exactly those', async () => {
     const user = userEvent.setup()
 
-    platform.testRoutine.mockResolvedValue(matching())
     render(<Harness />)
     await tested(user)
 
@@ -238,7 +241,6 @@ describe('Run on the matches now', () => {
   it('cancels with nothing run, and keeps a refusal in the question', async () => {
     const user = userEvent.setup()
 
-    platform.testRoutine.mockResolvedValue(matching())
     platform.runOnMatches.mockRejectedValue(new Error('Switch the routine on to run it.'))
     render(<Harness />)
     await tested(user)
@@ -255,8 +257,6 @@ describe('Run on the matches now', () => {
 
   it('is offered only for the routine as saved, and only with something to run on', async () => {
     const user = userEvent.setup()
-
-    platform.testRoutine.mockResolvedValue(matching())
 
     const { unmount } = render(<Harness isNew />)
 

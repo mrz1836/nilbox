@@ -1,10 +1,11 @@
 import { useEffect, useEffectEvent, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
-import { brand, palettes } from '../generated/brand'
+import { brand } from '../generated/brand'
 import { confettiGlyphs } from '../lib/confetti'
 import { nilChip, type NilChip } from '../lib/milestones'
 import { prefersReducedMotion } from '../lib/motion'
 import { earnedBurst, nextQuip, openingQuip, replayBurst, replayLabel, type Flourish, type NilStats } from '../lib/nil'
+import { darkTokens } from '../lib/theme'
 import { formatWhen } from '../lib/time'
 import { inboxLists, listTitles } from '../lib/triage'
 import { useClock, useNowAs } from '../lib/useNow'
@@ -38,15 +39,6 @@ export interface InboxNilProps {
   // shows only with it.
   onCollapse?: (() => void) | undefined
 }
-
-// terminalTokens set the terminal in the dark palette in either theme, as terminals are.
-// Every utility and style inside reads the theme's --color-* tokens, so overriding them
-// here is enough. color-scheme alone would not do: the bundle's tokens resolve once, on
-// the root, for the page's theme.
-const terminalTokens = {
-  colorScheme: 'dark',
-  ...Object.fromEntries(Object.entries(palettes.dark).map(([token, value]) => [`--color-${token}`, value])),
-} as CSSProperties
 
 // lists are what the terminal checks off, by the names the inbox gives them.
 const lists = inboxLists.map((list) => listTitles[list].toLowerCase())
@@ -396,7 +388,7 @@ export function InboxNil({
         <figure
           aria-label="Terminal"
           className="nil-rise mt-9 w-full max-w-xl overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-[0.8125rem] leading-6 text-text shadow-2xl shadow-black/40"
-          style={{ ...terminalTokens, animationDelay: '320ms' }}
+          style={{ ...darkTokens, animationDelay: '320ms' }}
         >
           <div className="flex items-center gap-1.5 border-b border-border bg-raised px-3 py-2">
             <span aria-hidden="true" className="size-2.5 rounded-full bg-danger" />

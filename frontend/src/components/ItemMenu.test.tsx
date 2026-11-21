@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -6,54 +6,28 @@ import { describe, expect, it, vi } from 'vitest'
 import { CardPrefsContext, defaultCardPrefs } from '../lib/cardPrefs'
 import type { TriageTab } from '../lib/triage'
 import type { AutopilotRoutine, InboxItem, RepoRules } from '../platform'
-import { at } from '../test/clock'
+import { deferred } from '../test/async'
+import { renderAt } from '../test/clock'
 import { autopilotMatch, details, explanation, item, routine, routineSpec } from '../test/fixtures'
 import { platform } from '../test/platform'
+import { editActionsOf, triageActionsOf } from '../test/query'
 import { AutopilotMenuContext, useRoutineMenu } from './autopilot/RoutineMenu'
-import { teamsText, type EditActions } from './ItemMenu'
+import { teamsText } from './ItemMenu'
 import { ItemRow } from './ItemRow'
 import { defaultToastSeconds } from './Toast'
-import type { TriageActions } from './TriageControls'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
-
-function triageActions(repoRules: RepoRules = { pinned: [], muted: [] }): TriageActions {
-  return {
-    snoozeDays: 3,
-    onDismiss: vi.fn(),
-    onSnooze: vi.fn(),
-    onRestore: vi.fn(),
-    onPin: vi.fn(),
-    onUnpin: vi.fn(),
-    onRefresh: vi.fn(() => Promise.resolve()),
-    onChangeDefault: vi.fn(),
-    repoRules,
-    onRepoRule: vi.fn(),
-    onRepoRuleSettings: vi.fn(),
-    onMarkRead: vi.fn(),
-    onMarkUnread: vi.fn(),
-  }
-}
-
-function editActions(): EditActions {
-  return {
-    onCopyLink: vi.fn(),
-    onUnassign: vi.fn(() => Promise.resolve()),
-    onRemoveReview: vi.fn(() => Promise.resolve()),
-  }
-}
 
 // renderRow renders one row with its triage buttons and its menu, and returns what they
 // do.
 function renderRow(it: InboxItem, tab: TriageTab = 'inbox', repoRules?: RepoRules) {
-  const triage = triageActions(repoRules)
-  const edits = editActions()
+  const triage = triageActionsOf(repoRules === undefined ? {} : { repoRules })
+  const edits = editActionsOf()
 
-  render(
+  renderAt(
     <ul>
       <ItemRow item={it} launch={null} tab={tab} triage={triage} edits={edits} />
     </ul>,
-    { wrapper: at() },
   )
 
   return { triage, edits }
@@ -179,15 +153,14 @@ describe('ItemMenu', () => {
 
   it('offers neither mark while the cards show no unread dots, and still marks an item opened on GitHub read', async () => {
     const unread = item({ unread: true })
-    const triage = triageActions()
+    const triage = triageActionsOf()
 
-    render(
+    renderAt(
       <CardPrefsContext value={{ ...defaultCardPrefs, unread: false }}>
         <ul>
-          <ItemRow item={unread} launch={null} triage={triage} edits={editActions()} />
+          <ItemRow item={unread} launch={null} triage={triage} edits={editActionsOf()} />
         </ul>
       </CardPrefsContext>,
-      { wrapper: at() },
     )
 
     await openMenu()
@@ -323,14 +296,10 @@ describe('ItemMenu', () => {
   })
 
   it('takes the user off an item assigned to them, holding the row while GitHub makes the change', async () => {
-    let done: () => void = () => undefined
+    const unassigning = deferred()
     const it = item({ assigned: true })
     const { edits, triage } = renderRow(it)
-    vi.mocked(edits.onUnassign).mockReturnValue(
-      new Promise((resolve) => {
-        done = resolve
-      }),
-    )
+    vi.mocked(edits.onUnassign).mockReturnValue(unassigning.promise)
 
     const menu = await openMenu()
     expect(menu.getByText('On GitHub')).toHaveAttribute('aria-hidden', 'true')
@@ -360,7 +329,7 @@ describe('ItemMenu', () => {
     await userEvent.keyboard('{Escape}')
 
     await act(async () => {
-      done()
+      unassigning.resolve()
       await Promise.resolve()
     })
 
@@ -380,14 +349,13 @@ describe('ItemMenu', () => {
       updatedAt: '2026-06-15T11:00:00Z',
       details: details({ viewerVerdict: 'changes' }),
     })
-    const triage = triageActions()
-    const edits = { ...editActions(), onNudge: vi.fn() }
+    const triage = triageActionsOf()
+    const edits = editActionsOf({ onNudge: vi.fn() })
 
-    render(
+    renderAt(
       <ul>
         <ItemRow item={it} launch={null} tab="snoozed" triage={triage} edits={edits} />
       </ul>,
-      { wrapper: at() },
     )
 
     expect(screen.getByRole('button', { name: 'Unsnooze' }), 'the primary stays Unsnooze').toBeInTheDocument()
@@ -411,16 +379,15 @@ describe('ItemMenu', () => {
   it('offers no nudge of a bot, nor where the menu can’t post one', async () => {
     const waiting = { author: 'contributor-a', details: details({ viewerVerdict: 'changes' }) }
 
-    render(
+    renderAt(
       <ul>
         <ItemRow
           item={item({ ...waiting, authorIsBot: true })}
           launch={null}
-          triage={triageActions()}
-          edits={{ ...editActions(), onNudge: vi.fn() }}
+          triage={triageActionsOf()}
+          edits={editActionsOf({ onNudge: vi.fn() })}
         />
       </ul>,
-      { wrapper: at() },
     )
     await openMenu()
     expect(names(screen.getByRole('menu'))).toEqual(['Open on GitHub', 'Copy link', 'Inbox actions'])
@@ -447,10 +414,11 @@ describe('ItemMenu', () => {
     let done: () => void = () => undefined
     const it = item({ reviewRequest: 'you' })
     const { edits, triage } = renderRow(it)
-    const hold = () =>
-      new Promise<void>((resolve) => {
-        done = resolve
-      })
+    const hold = () => {
+      const d = deferred()
+      done = d.resolve
+      return d.promise
+    }
     vi.mocked(edits.onRemoveReview).mockImplementation(hold)
     vi.mocked(triage.onRefresh).mockImplementation(hold)
 
@@ -505,14 +473,10 @@ describe('ItemMenu', () => {
   })
 
   it('refreshes from the menu as the row’s button does, and shows it on the button', async () => {
-    let done: () => void = () => undefined
+    const refreshing = deferred()
     const it = item()
     const { triage } = renderRow(it)
-    vi.mocked(triage.onRefresh).mockReturnValue(
-      new Promise((resolve) => {
-        done = resolve
-      }),
-    )
+    vi.mocked(triage.onRefresh).mockReturnValue(refreshing.promise)
 
     await openMenu()
     await openSubmenu('Inbox actions')
@@ -526,7 +490,7 @@ describe('ItemMenu', () => {
     expect(screen.getByRole('button', { name: 'More actions' })).toHaveAttribute('title', 'Refreshing from GitHub…')
 
     await act(async () => {
-      done()
+      refreshing.resolve()
       await Promise.resolve()
     })
 
@@ -539,21 +503,20 @@ describe('teamsText', () => {
     expect(teamsText([])).toBe('a team')
     expect(teamsText(['backend'])).toBe('the @backend team')
     expect(teamsText(['backend', 'infra'])).toBe('the @backend and @infra teams')
-    expect(teamsText(['backend', 'infra', 'web'])).toBe('the @backend, @infra and @web teams')
+    expect(teamsText(['backend', 'infra', 'web'])).toBe('the @backend, @infra, and @web teams')
   })
 })
 
 describe('ItemMenu open', () => {
   it('opens a pull request in the review sheet', async () => {
-    const triage = triageActions()
-    const edits = { ...editActions(), onOpen: vi.fn() }
+    const triage = triageActionsOf()
+    const edits = editActionsOf({ onOpen: vi.fn() })
     const it = item()
 
-    render(
+    renderAt(
       <ul>
         <ItemRow item={it} launch={null} tab="inbox" triage={triage} edits={edits} />
       </ul>,
-      { wrapper: at() },
     )
 
     const menu = await openMenu()
@@ -562,14 +525,13 @@ describe('ItemMenu open', () => {
   })
 
   it('opens an issue in the issue sheet', async () => {
-    const edits = { ...editActions(), onOpen: vi.fn() }
+    const edits = editActionsOf({ onOpen: vi.fn() })
     const it = item({ kind: 'issue' })
 
-    render(
+    renderAt(
       <ul>
-        <ItemRow item={it} launch={null} tab="inbox" triage={triageActions()} edits={edits} />
+        <ItemRow item={it} launch={null} tab="inbox" triage={triageActionsOf()} edits={edits} />
       </ul>,
-      { wrapper: at() },
     )
 
     const menu = await openMenu()
@@ -579,11 +541,10 @@ describe('ItemMenu open', () => {
   })
 
   it('offers neither without a sheet', async () => {
-    render(
+    renderAt(
       <ul>
-        <ItemRow item={item()} launch={null} triage={triageActions()} edits={editActions()} />
+        <ItemRow item={item()} launch={null} triage={triageActionsOf()} edits={editActionsOf()} />
       </ul>,
-      { wrapper: at() },
     )
 
     const menu = await openMenu()
@@ -627,13 +588,12 @@ function WithRoutines({ routines, children }: { routines: readonly AutopilotRout
 // renderWithRoutines renders one row whose menu offers Autopilot, once the catalog that
 // says what each routine acts on is read.
 async function renderWithRoutines(it: InboxItem = item(), routines = menuRoutines()) {
-  render(
+  renderAt(
     <WithRoutines routines={routines}>
       <ul>
-        <ItemRow item={it} launch={null} triage={triageActions()} edits={editActions()} />
+        <ItemRow item={it} launch={null} triage={triageActionsOf()} edits={editActionsOf()} />
       </ul>
     </WithRoutines>,
-    { wrapper: at() },
   )
 
   await waitFor(() => {
@@ -856,13 +816,12 @@ describe('ItemMenu Autopilot', () => {
     const made = vi.fn<(it: InboxItem) => void>()
     const described = vi.fn<(it: InboxItem) => void>()
 
-    render(
+    renderAt(
       <MakeRoutines onMake={made} onDescribe={described}>
         <ul>
-          <ItemRow item={item()} launch={null} triage={triageActions()} edits={editActions()} />
+          <ItemRow item={item()} launch={null} triage={triageActionsOf()} edits={editActionsOf()} />
         </ul>
       </MakeRoutines>,
-      { wrapper: at() },
     )
 
     await openMenu()
@@ -877,13 +836,12 @@ describe('ItemMenu Autopilot', () => {
     const made = vi.fn<(it: InboxItem) => void>()
     const described = vi.fn<(it: InboxItem) => void>()
 
-    render(
+    renderAt(
       <MakeRoutines onMake={made} onDescribe={described}>
         <ul>
-          <ItemRow item={item()} launch={null} triage={triageActions()} edits={editActions()} />
+          <ItemRow item={item()} launch={null} triage={triageActionsOf()} edits={editActionsOf()} />
         </ul>
       </MakeRoutines>,
-      { wrapper: at() },
     )
 
     await openMenu()

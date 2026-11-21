@@ -1,14 +1,6 @@
 import { useId } from 'react'
 
-import {
-  badgeText,
-  buttonLabel,
-  groupURL,
-  inboxURL,
-  summaryText,
-  threadGroups,
-  type ThreadGroup,
-} from '../lib/githubThreads'
+import { buttonLabel, groupURL, inboxURL, summaryText, threadGroups, type ThreadGroup } from '../lib/githubThreads'
 import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import { useNowAs } from '../lib/useNow'
 import { usePopover } from '../lib/usePopover'
@@ -17,7 +9,7 @@ import { quietButtonClass } from './controls'
 import { ExternalIcon, GitHubMarkIcon, HistoryIcon, RefreshIcon, SlidersIcon, XIcon } from './icons'
 import { Refused, TurnOnClearing } from './notifications/GitHubNotes'
 import { ThreadRow } from './notifications/ThreadRow'
-import { PopoverPanel } from './PopoverPanel'
+import { CountDot, PopoverPanel, ToolbarPopoverButton } from './PopoverPanel'
 
 export interface GitHubThreadsMenuProps {
   // threads is the user's GitHub notifications as the app mirrors them (useGitHubThreads).
@@ -55,7 +47,7 @@ export function GitHubThreadsMenu({
 }: GitHubThreadsMenuProps) {
   const id = useId()
   const popover = usePopover<HTMLButtonElement, HTMLDivElement>({ focus: 'panel' })
-  const { open, toggle, close, triggerRef } = popover
+  const { open, toggle, close } = popover
   const { snapshot, reload, checkNow, checking, checkError } = threads
   const { markDone, markRead, finishing, reading, markError, dismissMarkError } = threads
   const summary = useNowAs((now) => (snapshot === null ? '' : summaryText(now, snapshot.status, checking)))
@@ -99,14 +91,10 @@ export function GitHubThreadsMenu({
 
   return (
     <div className="relative">
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-label={label}
-        title={label}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
+      <ToolbarPopoverButton
+        popover={popover}
+        id={id}
+        label={label}
         onClick={onToggle}
         className="relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text"
       >
@@ -118,17 +106,9 @@ export function GitHubThreadsMenu({
             className="absolute top-1 right-1 size-2 rounded-full bg-warning ring-2 ring-surface"
           />
         ) : (
-          status.unread > 0 && (
-            <span
-              data-testid="github-threads-count"
-              aria-hidden="true"
-              className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-surface tabular-nums"
-            >
-              {badgeText(status.unread)}
-            </span>
-          )
+          <CountDot count={status.unread} testId="github-threads-count" />
         )}
-      </button>
+      </ToolbarPopoverButton>
       <PopoverPanel
         state={popover}
         align="right"

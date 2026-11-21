@@ -86,7 +86,7 @@ describe('LaunchControls, card variant', () => {
 
     await userEvent.click(open)
 
-    const dialog = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Launch options' }))
     expect(open).toHaveAttribute('aria-expanded', 'true')
     expect(platform.launch).not.toHaveBeenCalled()
 
@@ -107,7 +107,7 @@ describe('LaunchControls, card variant', () => {
 
     await userEvent.click(open)
 
-    const dialog = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Launch options' }))
     expect(dialog.getByText(problem)).toBeInTheDocument()
     expect(platform.launch).not.toHaveBeenCalled()
   })
@@ -117,7 +117,7 @@ describe('LaunchControls, card variant', () => {
 
     await userEvent.click(options())
 
-    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
     expect(options()).toHaveAttribute('aria-expanded', 'true')
   })
 
@@ -236,7 +236,7 @@ describe('LaunchControls, card variant', () => {
     expect(onOpen).toHaveBeenCalledOnce()
 
     await userEvent.click(options())
-    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
   })
 
   it('opens what an ended session found on GitHub without a sheet', async () => {
@@ -368,7 +368,7 @@ describe('LaunchControls, card variant', () => {
     const peek = within(screen.getByTestId('peek'))
     await userEvent.click(peek.getByRole('button', { name: 'Claude…' }))
 
-    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
     expect(peek.getByRole('button', { name: 'Claude…' })).toHaveAttribute('aria-expanded', 'true')
 
     rerender(
@@ -404,7 +404,7 @@ describe('LaunchControls, card variant, for a situation', () => {
 
     await userEvent.click(open)
 
-    const dialog = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Launch options' }))
     expect(platform.resolveLaunch).toHaveBeenCalledWith(expect.objectContaining({ situation: 'checks_failing' }))
 
     await userEvent.click(dialog.getByRole('button', { name: 'Open in Claude' }))
@@ -455,7 +455,7 @@ describe('LaunchControls, card variant, for a situation', () => {
 
     await userEvent.click(options())
 
-    const dialog = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Launch options' }))
 
     expect(dialog.getByRole('combobox', { name: 'Prompt' })).toHaveValue('3')
     expect(dialog.getByRole('option', { name: 'Fix checks · app default' })).toBeInTheDocument()
@@ -488,7 +488,7 @@ describe('LaunchControls, card variant, for a situation', () => {
 
     await userEvent.click(options())
 
-    const dialog = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Launch options' }))
 
     await userEvent.selectOptions(dialog.getByRole('combobox', { name: 'Prompt' }), '2')
     await userEvent.click(dialog.getByRole('button', { name: 'example-repo' }))

@@ -2,18 +2,18 @@ import { useEffect, useEffectEvent, useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
 import { plainText } from '../../lib/ansi'
-import { attempt } from '../../lib/call'
+import { logFailure } from '../../lib/call'
 import { counted } from '../../lib/format'
 import { isBumpResult } from '../../lib/release'
 import { formatDuration, isLive, readLog, runDuration, runPlace } from '../../lib/scriptRuns'
 import { useMutation } from '../../lib/useMutation'
 import { useNow } from '../../lib/useNow'
+import { useOn } from '../../lib/useOn'
 import { useQuery } from '../../lib/useQuery'
 import {
   copyText,
   getScriptRun,
   markScriptRunSeen,
-  on,
   openScriptRunInTerminal,
   runScriptAgain,
   showScriptRunLog,
@@ -22,7 +22,7 @@ import {
   type ScriptRunResult,
   type TerminalID,
 } from '../../platform'
-import { terminalNames } from '../../lib/terminals'
+import { terminalLabel } from '../../lib/terminals'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
@@ -147,7 +147,7 @@ function StopNote({ id, run, terminal }: { id: string; run: ScriptRun; terminal:
   }
 
   if (run.runsIn === 'terminal') {
-    const where = terminal === null ? 'your terminal' : terminalNames[terminal]
+    const where = terminalLabel(terminal, 'your terminal')
 
     return (
       <p id={id} className="text-xs text-muted">
@@ -173,9 +173,6 @@ function StopNote({ id, run, terminal }: { id: string; run: ScriptRun; terminal:
 export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   const headingId = useId()
   const query = useQuery(() => getScriptRun(id), [id])
-  const reloadOnUpdate = useEffectEvent(() => {
-    void query.refetch()
-  })
   const stop = useMutation(() => stopScriptRun(id))
   const again = useMutation(() => runScriptAgain(id))
   const openTerminal = useMutation(() => openScriptRunInTerminal(id))
@@ -198,28 +195,17 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
 
   // The run is read again as it changes status or ends, and as its own progress moves:
   // a step reached, or Stop turned on or off.
-  useEffect(() => {
-    const offUpdated = on('scriptruns:updated', () => {
-      reloadOnUpdate()
-    })
-    const offProgress = on('scriptruns:progress', ({ id: moved }) => {
-      if (moved === id) {
-        reloadOnUpdate()
-      }
-    })
-
-    return () => {
-      offUpdated()
-      offProgress()
+  useOn('scriptruns:updated', () => {
+    void query.refetch()
+  })
+  useOn('scriptruns:progress', ({ id: moved }) => {
+    if (moved === id) {
+      void query.refetch()
     }
-  }, [id])
+  })
 
   const markSeen = useEffectEvent(() => {
-    void attempt(markScriptRunSeen(id)).then((result) => {
-      if (!result.ok) {
-        console.error('could not mark the run seen:', result.error)
-      }
-    })
+    logFailure(markScriptRunSeen(id), 'could not mark the run seen:')
   })
 
   useEffect(() => {

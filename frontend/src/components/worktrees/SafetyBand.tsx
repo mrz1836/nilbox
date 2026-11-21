@@ -6,7 +6,7 @@ import { CopyButton } from './CopyButton'
 
 // Words show a sentence as the page words it (lib/worktrees' Words): its plain text, and
 // the parts set in code, such as a branch's name, as code.
-export function Words({ words }: { words: WordsData }) {
+function Words({ words }: { words: WordsData }) {
   return words.map((part, i) =>
     typeof part === 'string' ? (
       part

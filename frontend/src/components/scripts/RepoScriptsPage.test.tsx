@@ -7,6 +7,7 @@ import { brand } from '../../generated/brand'
 import type { SettingsSection } from '../../lib/settingsIndex'
 import type { OnSection, StoredSections } from '../../lib/useSections'
 import type { RepoScripts, RunsIn, ScriptSection, ScriptStart, TerminalID } from '../../platform'
+import { deferred } from '../../test/async'
 import {
   branchStatus,
   bumpInput,
@@ -18,7 +19,7 @@ import {
   scriptRun,
   scriptSection,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import { RepoScriptsPage } from './RepoScriptsPage'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -472,12 +473,8 @@ describe('RepoScriptsPage', () => {
   })
 
   it('holds the buttons while a run is being asked for', async () => {
-    let finish: (start: ScriptStart) => void = () => undefined
-    platform.runScript.mockReturnValueOnce(
-      new Promise<ScriptStart>((resolve) => {
-        finish = resolve
-      }),
-    )
+    const starting = deferred<ScriptStart>()
+    platform.runScript.mockReturnValueOnce(starting.promise)
     const { onFollow } = renderPage()
 
     const fix = await row('From t3.json', 'Fix all')
@@ -487,7 +484,7 @@ describe('RepoScriptsPage', () => {
     expect(screen.getByRole('button', { name: 'Run magex lint' })).toBeDisabled()
 
     act(() => {
-      finish({ started: true, id: 41 })
+      starting.resolve({ started: true, id: 41 })
     })
     await waitFor(() => {
       expect(onFollow).toHaveBeenCalledExactlyOnceWith(41)
@@ -844,12 +841,8 @@ describe('RepoScriptsPage', () => {
     await list('From t3.json')
     expect(platform.listScriptRepos).toHaveBeenCalledOnce()
 
-    let finish: (page: RepoScripts) => void = () => undefined
-    platform.listRepoScripts.mockReturnValueOnce(
-      new Promise<RepoScripts>((resolve) => {
-        finish = resolve
-      }),
-    )
+    const reading = deferred<RepoScripts>()
+    platform.listRepoScripts.mockReturnValueOnce(reading.promise)
     await userEvent.click(screen.getByRole('button', { name: 'Read again' }))
 
     expect(screen.getByRole('button', { name: 'Reading…' })).toBeDisabled()
@@ -857,7 +850,7 @@ describe('RepoScriptsPage', () => {
     expect(platform.listScriptRepos).toHaveBeenCalledOnce()
 
     act(() => {
-      finish(
+      reading.resolve(
         repoScripts({
           sections: [scriptSection({ entries: [scriptEntry({ name: 'Lint only', ref: 't3:Lint only' })] })],
         }),
@@ -869,12 +862,8 @@ describe('RepoScriptsPage', () => {
   })
 
   it('never lets an answer to an earlier read land over Read again’s', async () => {
-    let first: (page: RepoScripts) => void = () => undefined
-    platform.listRepoScripts.mockReturnValueOnce(
-      new Promise<RepoScripts>((resolve) => {
-        first = resolve
-      }),
-    )
+    const first = deferred<RepoScripts>()
+    platform.listRepoScripts.mockReturnValueOnce(first.promise)
     platform.listRepoScripts.mockResolvedValueOnce(
       repoScripts({ sections: [scriptSection({ entries: [scriptEntry({ name: 'Fresh', ref: 't3:Fresh' })] })] }),
     )
@@ -888,7 +877,9 @@ describe('RepoScriptsPage', () => {
     ])
 
     act(() => {
-      first(repoScripts({ sections: [scriptSection({ entries: [scriptEntry({ name: 'Stale', ref: 't3:Stale' })] })] }))
+      first.resolve(
+        repoScripts({ sections: [scriptSection({ entries: [scriptEntry({ name: 'Stale', ref: 't3:Stale' })] })] }),
+      )
     })
     await act(async () => {
       await Promise.resolve()
@@ -1038,9 +1029,7 @@ describe('RepoScriptsPage', () => {
     platform.getScriptRun.mockResolvedValue(
       scriptRun({ ...pull, summary: 'Updated master from 1a2b3c4 to 5d6e7f8, 2 new commits.' }),
     )
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     expect(await screen.findByText('Up to date')).toBeInTheDocument()
     await waitFor(() => {
@@ -1117,9 +1106,7 @@ describe('RepoScriptsPage', () => {
 
     platform.getBranchStatus.mockResolvedValue(branchStatus())
     platform.getScriptRun.mockResolvedValue(scriptRun({ ...pull, summary: 'Updated master.' }))
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     expect(await screen.findByText('Up to date')).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Pull master' })).not.toBeInTheDocument()

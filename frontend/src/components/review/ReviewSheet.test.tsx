@@ -1,14 +1,16 @@
-import { act, fireEvent, render as renderPlain, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Activity, useState, type ReactElement } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Activity, useState } from 'react'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { Result } from '../../lib/call'
+import type { LaunchOptions } from '../../lib/launch'
 import { useReviewDrafts } from '../../lib/reviewDrafts'
 import { approvalWait } from '../../lib/useReview'
 import { isTopmost } from '../../lib/useModalDialog'
 import type { InboxItem, Review, ReviewResult, Settings } from '../../platform'
-import { at } from '../../test/clock'
+import { deferred } from '../../test/async'
+import { renderAt } from '../../test/clock'
 import {
   agentSession,
   agents,
@@ -38,7 +40,6 @@ import {
   yourReview,
 } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
-import type { LaunchOptions } from '../ItemRow'
 import { ReviewSheet, selectedAction, type ReviewSheetProps } from './ReviewSheet'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -51,11 +52,6 @@ const launch: LaunchOptions = {
   onDefaultsSaved: () => Promise.resolve(),
   onManagePrompts: () => undefined,
   onSettingsSaved: () => undefined,
-}
-
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
 }
 
 interface HarnessProps extends Partial<ReviewSheetProps> {
@@ -126,10 +122,6 @@ async function choose(label: string) {
 }
 
 describe('ReviewSheet', () => {
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
   it('shows the pull request', async () => {
     platform.refreshReview.mockResolvedValue(
       review({
@@ -149,7 +141,7 @@ describe('ReviewSheet', () => {
         ],
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('cache')).toBeInTheDocument()
     expect(sheet()).toHaveAttribute('open')
@@ -164,7 +156,7 @@ describe('ReviewSheet', () => {
 
   it('scrolls the diff to a file picked in the list, and clips rather than scrolls the sheet around its header', async () => {
     const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView')
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await userEvent.click(within(await screen.findByRole('navigation', { name: 'Files' })).getByTitle('cache/cache.go'))
 
@@ -178,7 +170,7 @@ describe('ReviewSheet', () => {
   it('says what it reads from GitHub while the pull request loads, and that it has no description', async () => {
     platform.openReview.mockReturnValue(new Promise(() => undefined))
     platform.refreshReview.mockReturnValue(new Promise(() => undefined))
-    const { unmount } = render(<Harness />)
+    const { unmount } = renderAt(<Harness />)
 
     // Nothing to show yet: the banner names the pull request and what its read brings.
     const reading = screen.getByRole('region', { name: 'Reading from GitHub' })
@@ -195,7 +187,7 @@ describe('ReviewSheet', () => {
     // where the files, the description, and the summary come.
     platform.openReview.mockResolvedValue(review({ body: '', fetchedAt: '', files: [] }))
     platform.refreshReview.mockReturnValue(new Promise(() => undefined))
-    const { unmount: unmountStub } = render(<Harness />)
+    const { unmount: unmountStub } = renderAt(<Harness />)
     expect(await screen.findByRole('region', { name: 'Reading from GitHub' })).toHaveTextContent(
       'Reading acme-org/example-repo#7 from GitHub…',
     )
@@ -208,26 +200,22 @@ describe('ReviewSheet', () => {
     // Once GitHub answers, the banner goes, and an empty description says so.
     platform.openReview.mockResolvedValue(review({ body: '', fetchedAt: '' }))
     platform.refreshReview.mockResolvedValue(review({ body: '' }))
-    render(<Harness />)
+    renderAt(<Harness />)
     expect(await screen.findByText('No description.')).toBeInTheDocument()
     expect(screen.queryByText(/from GitHub…/)).not.toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Files' })).toBeInTheDocument()
   })
 
   it('keeps one reading banner, counting on, as the inbox’s copy arrives mid-read', async () => {
-    let opened: (r: ReturnType<typeof review>) => void = () => undefined
-    platform.openReview.mockReturnValue(
-      new Promise((resolve) => {
-        opened = resolve
-      }),
-    )
+    const opened = deferred<ReturnType<typeof review>>()
+    platform.openReview.mockReturnValue(opened.promise)
     platform.refreshReview.mockReturnValue(new Promise(() => undefined))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const banner = screen.getByRole('region', { name: 'Reading from GitHub' })
 
     act(() => {
-      opened(review({ body: '', fetchedAt: '', files: [] }))
+      opened.resolve(review({ body: '', fetchedAt: '', files: [] }))
     })
 
     expect(await screen.findByRole('article', { name: 'Description' })).toBeInTheDocument()
@@ -237,7 +225,7 @@ describe('ReviewSheet', () => {
   it('shows placeholders while a read runs, even with the last pull request’s error showing', async () => {
     platform.openReview.mockRejectedValue(new Error('the database is busy'))
     platform.refreshReview.mockReturnValue(new Promise(() => undefined))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('the database is busy')
     expect(screen.getByRole('region', { name: 'Reading from GitHub' })).toBeInTheDocument()
@@ -246,7 +234,7 @@ describe('ReviewSheet', () => {
   it('says a pull request GitHub never answered for has not been read', async () => {
     platform.openReview.mockResolvedValue(review({ body: '', fetchedAt: '' }))
     platform.refreshReview.mockRejectedValue(new Error('GitHub is down'))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('Not read from GitHub yet.')).toBeInTheDocument()
     expect(screen.queryByText(/from GitHub…/)).not.toBeInTheDocument()
@@ -254,15 +242,11 @@ describe('ReviewSheet', () => {
 
   it('reads the pull request from GitHub again on request, turning while it reads', async () => {
     platform.refreshReview.mockResolvedValueOnce(review({ body: 'Adds a **cache**.' }))
-    render(<Harness />)
+    renderAt(<Harness />)
     expect(await screen.findByText('cache')).toBeInTheDocument()
 
-    let answer: (r: ReturnType<typeof review>) => void = () => undefined
-    platform.readReviewAgain.mockReturnValueOnce(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const answer = deferred<ReturnType<typeof review>>()
+    platform.readReviewAgain.mockReturnValueOnce(answer.promise)
     const refresh = screen.getByRole('button', { name: 'Read it from GitHub again' })
     await userEvent.click(refresh)
 
@@ -277,7 +261,7 @@ describe('ReviewSheet', () => {
     expect(platform.readReviewAgain).toHaveBeenCalledOnce()
 
     act(() => {
-      answer(review({ body: 'Adds a **faster cache**.' }))
+      answer.resolve(review({ body: 'Adds a **faster cache**.' }))
     })
 
     expect(await screen.findByText('faster cache')).toBeInTheDocument()
@@ -286,7 +270,7 @@ describe('ReviewSheet', () => {
 
   it('approves with the default reply, and closes', async () => {
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     await choose('Approve')
     await waitFor(() => {
@@ -311,15 +295,11 @@ describe('ReviewSheet', () => {
   })
 
   it('shows each step while an action runs, and waits for it', async () => {
-    let finish: (result: ReviewResult) => void = () => undefined
-    platform.actOnReview.mockReturnValue(
-      new Promise<ReviewResult>((resolve) => {
-        finish = resolve
-      }),
-    )
+    const finish = deferred<ReviewResult>()
+    platform.actOnReview.mockReturnValue(finish.promise)
     const onClose = vi.fn()
     const onDone = vi.fn()
-    render(<Harness onClose={onClose} onDone={onDone} />)
+    renderAt(<Harness onClose={onClose} onDone={onDone} />)
 
     await choose('Approve')
     await userEvent.click(await actionButton('Approve'))
@@ -353,7 +333,7 @@ describe('ReviewSheet', () => {
     expect(screen.getByRole('heading', { name: 'Add the widget cache', hidden: true })).toBeInTheDocument()
 
     act(() => {
-      finish(reviewResult())
+      finish.resolve(reviewResult())
     })
 
     await waitFor(() => {
@@ -378,7 +358,7 @@ describe('ReviewSheet', () => {
       }),
     )
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     await userEvent.click(await actionButton('Approve & squash-merge'))
 
@@ -404,7 +384,7 @@ describe('ReviewSheet', () => {
 
   it('sends the text with a merge, which posts it as a comment first, and says so', async () => {
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     const box = await screen.findByRole('textbox', { name: 'Your review' })
     await waitFor(() => {
@@ -438,7 +418,7 @@ describe('ReviewSheet', () => {
   })
 
   it('merges with no comment once the text is cleared', async () => {
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await choose('Squash-merge')
 
@@ -480,7 +460,7 @@ describe('ReviewSheet', () => {
         primary: 'merge_now',
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const box = await screen.findByRole('textbox', { name: 'Your review' })
     await waitFor(() => {
@@ -521,7 +501,7 @@ describe('ReviewSheet', () => {
       }),
     )
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     await choose('Squash-merge')
 
@@ -552,7 +532,7 @@ describe('ReviewSheet', () => {
     platform.actOnReview.mockResolvedValue(closed)
     const onDone = vi.fn()
     const onClose = vi.fn()
-    render(<Harness onDone={onDone} onClose={onClose} />)
+    renderAt(<Harness onDone={onDone} onClose={onClose} />)
 
     const box = await screen.findByRole('textbox', { name: 'Your review' })
     await waitFor(() => {
@@ -600,7 +580,7 @@ describe('ReviewSheet', () => {
   })
 
   it('closes with no comment while the text is the default reply the user never touched', async () => {
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const box = await screen.findByRole('textbox', { name: 'Your review' })
     await waitFor(() => {
@@ -646,7 +626,7 @@ describe('ReviewSheet', () => {
       )
     }
 
-    render(<Reopening />)
+    renderAt(<Reopening />)
 
     const button = await actionButton('Approve & squash-merge')
     expect(button).toHaveClass('rounded-r-none')
@@ -688,7 +668,7 @@ describe('ReviewSheet', () => {
         primary: '',
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('Nothing to do here now.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Choose an action' })).not.toBeInTheDocument()
@@ -719,7 +699,7 @@ describe('ReviewSheet', () => {
       }),
     )
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     const box = await screen.findByRole('textbox', { name: 'Your review' })
     await waitFor(() => {
@@ -745,7 +725,7 @@ describe('ReviewSheet', () => {
   })
 
   it('cancels a merge', async () => {
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await userEvent.click(await actionButton('Approve & squash-merge'))
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -756,7 +736,7 @@ describe('ReviewSheet', () => {
 
   it('holds a request for changes back until it says something', async () => {
     platform.reviewReplies.mockResolvedValue(replyList({ replies: [], default: 0, defaultBots: 0 }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await choose('Request changes')
     await waitFor(() => {
@@ -780,7 +760,7 @@ describe('ReviewSheet', () => {
     // With no default reply, the box is empty however late each action's replies come.
     platform.reviewReplies.mockResolvedValue(replyList({ replies: [], default: 0, defaultBots: 0 }))
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     await choose('Comment')
     await userEvent.type(screen.getByRole('textbox', { name: 'Your review' }), 'Why?')
@@ -811,7 +791,7 @@ describe('ReviewSheet', () => {
 
   it('shows why an action failed', async () => {
     platform.actOnReview.mockRejectedValue(new Error('GitHub refused it.'))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await choose('Approve')
     await userEvent.click(await actionButton('Approve'))
@@ -826,7 +806,7 @@ describe('ReviewSheet', () => {
       reviewResult({ outcome: 'pushed_since', message: 'acme-org/example-repo#7 was pushed to since you opened it.' }),
     )
     platform.actOnReview.mockRejectedValueOnce(new Error('GitHub refused it.'))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await choose('Approve')
     await userEvent.click(await actionButton('Approve'))
@@ -850,7 +830,7 @@ describe('ReviewSheet', () => {
     platform.openReview.mockImplementation((id) => Promise.resolve(review({ id })))
     platform.refreshReview.mockImplementation((id) => Promise.resolve(review({ id })))
     const onClose = vi.fn()
-    render(<Harness onClose={onClose} />)
+    renderAt(<Harness onClose={onClose} />)
 
     await actionButton('Approve & squash-merge')
     await userEvent.keyboard('{ArrowRight}')
@@ -892,14 +872,14 @@ describe('ReviewSheet', () => {
     platform.openReview.mockImplementation((id) => Promise.resolve(review({ id })))
     platform.refreshReview.mockImplementation((id) => Promise.resolve(review({ id })))
     const onClose = vi.fn()
-    render(<Harness onClose={onClose} launch={launch} resolution={itemResolution()} />)
+    renderAt(<Harness onClose={onClose} launch={launch} resolution={itemResolution()} />)
 
     await actionButton('Approve & squash-merge')
 
     const arrow = screen.getByRole('button', { name: /^Launch options/ })
     await userEvent.click(arrow)
 
-    const options = screen.getByRole<HTMLDialogElement>('dialog', { name: 'Launch options' })
+    const options = await screen.findByRole<HTMLDialogElement>('dialog', { name: 'Launch options' })
     expect(isTopmost(options)).toBe(true)
     expect(within(options).getByRole('heading', { name: 'Open in Claude' })).toBeInTheDocument()
     expect(within(options).getByRole('combobox', { name: 'Prompt' })).toHaveFocus()
@@ -931,13 +911,13 @@ describe('ReviewSheet', () => {
 
   it('stays open when the launch options over it get a close request', async () => {
     const onClose = vi.fn()
-    render(<Harness onClose={onClose} launch={launch} resolution={itemResolution()} />)
+    renderAt(<Harness onClose={onClose} launch={launch} resolution={itemResolution()} />)
 
     await actionButton('Approve & squash-merge')
     await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
 
     // React hands a dialog's cancel event on to the dialogs around it, as if it bubbled.
-    fireEvent(screen.getByRole('dialog', { name: 'Launch options' }), new Event('cancel', { cancelable: true }))
+    fireEvent(await screen.findByRole('dialog', { name: 'Launch options' }), new Event('cancel', { cancelable: true }))
 
     expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()
     expect(sheet()).toHaveAttribute('open')
@@ -951,11 +931,11 @@ describe('ReviewSheet', () => {
         <Harness onClose={onClose} launch={launch} resolution={itemResolution()} />
       </Activity>
     )
-    const { rerender } = render(page('visible'))
+    const { rerender } = renderAt(page('visible'))
 
     await actionButton('Approve & squash-merge')
     await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
-    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
 
     // Another view shows (⌘, opens Settings), then the inbox again.
     rerender(page('hidden'))
@@ -976,12 +956,12 @@ describe('ReviewSheet', () => {
   it('starts each pull request’s launch from its own settings, not the last one’s choices', async () => {
     platform.openReview.mockImplementation((id) => Promise.resolve(review({ id })))
     platform.refreshReview.mockImplementation((id) => Promise.resolve(review({ id })))
-    render(<Harness launch={launch} resolution={itemResolution()} />)
+    renderAt(<Harness launch={launch} resolution={itemResolution()} />)
 
     await actionButton('Approve & squash-merge')
     await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
 
-    const options = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    const options = within(await screen.findByRole('dialog', { name: 'Launch options' }))
     await userEvent.selectOptions(options.getByRole('combobox', { name: 'Prompt' }), 'Quick look')
     await userEvent.click(options.getByRole('button', { name: 'Close' }))
     expect(screen.getByRole('button', { name: /^Launch options/ })).toHaveAccessibleName(
@@ -999,7 +979,7 @@ describe('ReviewSheet', () => {
   })
 
   it('writes line comments, with a suggested change, and sends them with the review', async () => {
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const user = userEvent.setup()
     const diff = await screen.findByRole('table', { name: 'Diff of cache/cache.go' })
@@ -1045,7 +1025,7 @@ describe('ReviewSheet', () => {
   })
 
   it('deletes and discards line comments, and comments on a removed line', async () => {
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const diff = await screen.findByRole('table', { name: 'Diff of cache/cache.go' })
     await userEvent.click(within(diff).getByRole('button', { name: 'Comment on line 2' }))
@@ -1079,7 +1059,7 @@ describe('ReviewSheet', () => {
         filesComplete: false,
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('GitHub lists only the first 4 of 5 files.')).toBeInTheDocument()
     expect(screen.getByText('GitHub shows no diff for this file (binary or too large).')).toBeInTheDocument()
@@ -1133,7 +1113,7 @@ describe('ReviewSheet', () => {
         moreCloses: 2,
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const closes = await screen.findByRole('region', { name: 'Closes' })
     expect(closes).toHaveTextContent('and 2 more on GitHub')
@@ -1146,7 +1126,7 @@ describe('ReviewSheet', () => {
 
   it('shows the latest agent session, and uses its words as the review', async () => {
     platform.sessionLastWords.mockResolvedValue({ text: 'The **whole** verdict.', partial: true })
-    render(<Harness sessions={[agentSession()]} launch={launch} />)
+    renderAt(<Harness sessions={[agentSession()]} launch={launch} />)
 
     expect(await screen.findByText('I need to run the test suite. May I?')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Show all' }))
@@ -1159,7 +1139,7 @@ describe('ReviewSheet', () => {
   })
 
   it('shows the work on the pull request under what it needs, and opens its sessions', async () => {
-    render(<Harness sessions={[agentSession()]} worktree={worktree()} launch={launch} />)
+    renderAt(<Harness sessions={[agentSession()]} worktree={worktree()} launch={launch} />)
 
     const pill = await screen.findByRole('button', { name: /Claude session: needs approval/ })
     expect(screen.getByText('worktree')).toBeInTheDocument()
@@ -1169,7 +1149,7 @@ describe('ReviewSheet', () => {
   })
 
   it('shows no work line on a pull request with no worktree and no session', async () => {
-    render(<Harness sessions={[]} launch={launch} />)
+    renderAt(<Harness sessions={[]} launch={launch} />)
 
     expect(await screen.findByText('Ready to merge')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /session:/ })).not.toBeInTheDocument()
@@ -1179,7 +1159,7 @@ describe('ReviewSheet', () => {
   it('offers the review replies, and opens them in Prompts', async () => {
     const onManageReplies = vi.fn()
     platform.fillReply.mockImplementation((_item, reply) => Promise.resolve(reply === 22 ? 'Update OK.' : 'LGTM!'))
-    render(<Harness onManageReplies={onManageReplies} />)
+    renderAt(<Harness onManageReplies={onManageReplies} />)
 
     await choose('Approve')
     await userEvent.click(screen.getByRole('button', { name: 'Choose a reply' }))
@@ -1199,7 +1179,7 @@ describe('ReviewSheet', () => {
 
   it('reloads a pull request the inbox saw pushed', async () => {
     platform.refreshReview.mockResolvedValue(review({ stale: true }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('This pull request changed since it was read.')).toBeInTheDocument()
   })
@@ -1213,7 +1193,7 @@ describe('ReviewSheet', () => {
     )
     platform.actOnReview.mockResolvedValue(reviewResult({ outcome: 'branch_updating', message: 'Updating' }))
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     await userEvent.click(await actionButton('Update branch'))
     await waitFor(() => {
@@ -1245,7 +1225,7 @@ describe('ReviewSheet', () => {
     )
     platform.actOnReview.mockResolvedValue(reviewResult({ outcome: 'branch_updating', message: 'Updating' }))
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     // Both wait in the menu while the pull request is neither behind nor in conflict.
     expect(await actionButton('Comment')).toBeInTheDocument()
@@ -1312,7 +1292,7 @@ describe('ReviewSheet', () => {
         primary: '',
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const choose = await screen.findByRole('button', { name: 'Choose an action' })
     expect(screen.queryByText('Nothing to do here now.')).not.toBeInTheDocument()
@@ -1348,7 +1328,7 @@ describe('ReviewSheet', () => {
       }),
     )
     platform.actOnReview.mockResolvedValue(reviewResult({ outcome: 'asked_bot', message: 'Asked' }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await userEvent.click(await actionButton('Ask Dependabot to rebase'))
 
@@ -1366,7 +1346,7 @@ describe('ReviewSheet', () => {
 
   it('says when there is nothing to do', async () => {
     platform.refreshReview.mockResolvedValue(review({ offers: [], primary: '' }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('Nothing to do here now.')).toBeInTheDocument()
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
@@ -1388,7 +1368,7 @@ describe('ReviewSheet', () => {
         primary: '',
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('Nothing to do here now.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Choose an action' })).not.toBeInTheDocument()
@@ -1397,14 +1377,14 @@ describe('ReviewSheet', () => {
   it('runs nothing before the pull request loads', async () => {
     platform.openReview.mockReturnValue(new Promise(() => undefined))
     platform.refreshReview.mockReturnValue(new Promise(() => undefined))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
     expect(platform.actOnReview).not.toHaveBeenCalled()
   })
 
   it('keeps the text when a reply can’t be filled in, and says why', async () => {
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await choose('Approve')
     await waitFor(() => {
@@ -1423,14 +1403,10 @@ describe('ReviewSheet', () => {
   })
 
   it('never lets a default reply that comes after you typed replace what you wrote', async () => {
-    let fill: (text: string) => void = () => undefined
-    platform.fillReply.mockReturnValue(
-      new Promise<string>((resolve) => {
-        fill = resolve
-      }),
-    )
+    const fill = deferred<string>()
+    platform.fillReply.mockReturnValue(fill.promise)
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     await choose('Approve')
     await waitFor(() => {
@@ -1441,7 +1417,7 @@ describe('ReviewSheet', () => {
 
     // The default reply answers only now, after the first keystroke made the text yours.
     await act(async () => {
-      fill('Reviewed and approved. Thanks, @octo-other!')
+      fill.resolve('Reviewed and approved. Thanks, @octo-other!')
       await Promise.resolve()
     })
 
@@ -1474,10 +1450,6 @@ const queued = () =>
   })
 
 describe('ReviewSheet with workflow runs held for approval', () => {
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
   it('names them, approves them from its bar, and stays open, reading again until their checks start', async () => {
     // Fake time runs along with real time, so the queries' own waits still pass.
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
@@ -1494,7 +1466,7 @@ describe('ReviewSheet with workflow runs held for approval', () => {
     )
     platform.reviewReplies.mockResolvedValue(replyList({ replies: [], default: 0, defaultBots: 0 }))
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     const bar = await runsBar()
     expect(bar).toHaveTextContent('2 workflow runs are waiting for approval: GoFortress, CodeQL')
@@ -1541,14 +1513,10 @@ describe('ReviewSheet with workflow runs held for approval', () => {
   })
 
   it('says the progress panel leaves the sheet open', async () => {
-    let finish: (result: ReviewResult) => void = () => undefined
+    const finish = deferred<ReviewResult>()
     platform.refreshReview.mockResolvedValue(held())
-    platform.actOnReview.mockReturnValue(
-      new Promise<ReviewResult>((resolve) => {
-        finish = resolve
-      }),
-    )
-    render(<Harness />)
+    platform.actOnReview.mockReturnValue(finish.promise)
+    renderAt(<Harness />)
 
     await userEvent.click(within(await runsBar()).getByRole('button', { name: 'Approve workflows to run' }))
 
@@ -1556,7 +1524,9 @@ describe('ReviewSheet with workflow runs held for approval', () => {
     expect(panel.closest('[role="status"]')).toHaveTextContent('the sheet stays open once it’s done')
 
     act(() => {
-      finish(reviewResult({ outcome: 'runs_approved', message: 'Approved 2 workflow runs on acme-org/example-repo#7' }))
+      finish.resolve(
+        reviewResult({ outcome: 'runs_approved', message: 'Approved 2 workflow runs on acme-org/example-repo#7' }),
+      )
     })
     await waitFor(() => {
       expect(screen.queryByRole('heading', { name: /^Approve workflows to run/ })).not.toBeInTheDocument()
@@ -1572,7 +1542,7 @@ describe('ReviewSheet with workflow runs held for approval', () => {
         }),
       ),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const bar = await runsBar()
     expect(bar).toHaveTextContent('Only people with write access to the repository can approve its workflow runs.')
@@ -1585,7 +1555,7 @@ describe('ReviewSheet with workflow runs held for approval', () => {
     platform.actOnReview.mockResolvedValue(
       reviewResult({ outcome: 'runs_approved', message: 'Approved 2 workflow runs on acme-org/example-repo#7' }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await userEvent.click(within(await runsBar()).getByRole('button', { name: 'Approve workflows to run' }))
 
@@ -1610,7 +1580,7 @@ describe('ReviewSheet with workflow runs held for approval', () => {
         'GitHub wouldn’t approve workflow run 101 of acme-org/example-repo: Resource not accessible by integration.',
       ),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const bar = await runsBar()
     await userEvent.click(within(bar).getByRole('button', { name: 'Approve workflows to run' }))
@@ -1639,7 +1609,7 @@ describe('ReviewSheet with workflow runs held for approval', () => {
         reason: 'GitHub wouldn’t approve it',
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const bar = await runsBar()
     await userEvent.click(within(bar).getByRole('button', { name: 'Approve workflows to run' }))
@@ -1657,7 +1627,7 @@ describe('ReviewSheet with workflow runs held for approval', () => {
     platform.actOnReview.mockResolvedValue(
       reviewResult({ outcome: 'runs_approved', message: 'Approved 2 workflow runs on acme-org/example-repo#7' }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await runsBar()
     expect(await actionButton('Approve & squash-merge')).toBeInTheDocument()
@@ -1677,7 +1647,7 @@ describe('ReviewSheet with workflow runs held for approval', () => {
         offers: [...review().offers, approveRunsOffer()],
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const bar = await runsBar()
     expect(bar).toHaveTextContent('1 workflow run is waiting for approval: GoFortress')
@@ -1694,7 +1664,7 @@ describe('ReviewSheet with workflow runs held for approval', () => {
     platform.refreshReview.mockResolvedValue(
       review({ unrun: [blockedOnGitHub('Auto-merge Trigger', 103), blockedOnGitHub('PR Management', 104)] }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const bar = await runsBar()
     expect(bar).toHaveTextContent(
@@ -1724,7 +1694,7 @@ describe('ReviewSheet with workflow runs held for approval', () => {
       }),
     )
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     const bar = await runsBar()
     await userEvent.click(within(bar).getByRole('button', { name: 'Approve workflows to run' }))
@@ -1747,7 +1717,7 @@ describe('ReviewSheet with workflow runs held for approval', () => {
   it('shows no bar on a pull request no longer open', async () => {
     platform.openReview.mockResolvedValue(held())
     platform.refreshReview.mockResolvedValue({ ...held(), state: 'MERGED' })
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('Adds a cache in front of the widget store.')).toBeInTheDocument()
     await waitFor(() => {
@@ -1801,7 +1771,7 @@ describe('ReviewSheet with held runs that don’t count', () => {
     // The owner's case: 23 checks passed on a fork's pull request, and the run a review
     // started, which GitHub holds and approves only on its site.
     platform.refreshReview.mockResolvedValue(review({ unrun: [heldOnGitHub('Auto-merge Trigger', 103)] }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const quiet = await quietRuns()
     expect(within(quiet).getByRole('listitem')).toHaveTextContent(
@@ -1817,7 +1787,7 @@ describe('ReviewSheet with held runs that don’t count', () => {
 
   it('keeps the bar while GitHub reports the merge blocked', async () => {
     platform.refreshReview.mockResolvedValue(review({ unrun: [blockedOnGitHub('Auto-merge Trigger', 103)] }))
-    render(<IgnoringHarness save={stores()} />)
+    renderAt(<IgnoringHarness save={stores()} />)
 
     const bar = await runsBar()
     expect(bar).toHaveTextContent('1 workflow run is waiting for approval on GitHub: Auto-merge Trigger')
@@ -1833,7 +1803,7 @@ describe('ReviewSheet with held runs that don’t count', () => {
 
     platform.refreshReview.mockResolvedValue(review({ unrun: [held] }))
     platform.rebuildReview.mockResolvedValue(review({ unrun: [held] }))
-    render(<IgnoringHarness save={save} onToast={onToast} />)
+    renderAt(<IgnoringHarness save={save} onToast={onToast} />)
 
     await userEvent.click(within(await quietRuns()).getByRole('button', { name: 'Ignore this workflow' }))
 
@@ -1877,7 +1847,7 @@ describe('ReviewSheet with held runs that don’t count', () => {
       }),
     )
     platform.rebuildReview.mockResolvedValue(review({ unrun: [{ ...preview, ignored: true }] }))
-    render(<IgnoringHarness save={save} />)
+    renderAt(<IgnoringHarness save={save} />)
 
     const bar = await runsBar()
     await userEvent.click(within(bar).getByRole('button', { name: 'Ignore this workflow' }))
@@ -1897,7 +1867,7 @@ describe('ReviewSheet with held runs that don’t count', () => {
         offers: [...review().offers, approveRunsOffer()],
       }),
     )
-    const { unmount } = render(<IgnoringHarness save={stores()} />)
+    const { unmount } = renderAt(<IgnoringHarness save={stores()} />)
 
     const ignoreButtons = async () =>
       within(await runsBar())
@@ -1907,7 +1877,7 @@ describe('ReviewSheet with held runs that don’t count', () => {
     expect(await ignoreButtons()).toEqual(['Ignore Deploy Preview', 'Ignore Lint'])
 
     unmount()
-    render(<IgnoringHarness save={stores()} initial={['Lint']} />)
+    renderAt(<IgnoringHarness save={stores()} initial={['Lint']} />)
 
     expect(await ignoreButtons()).toEqual(['Ignore this workflow'])
   })
@@ -1916,7 +1886,7 @@ describe('ReviewSheet with held runs that don’t count', () => {
     const onToast = vi.fn()
 
     platform.refreshReview.mockResolvedValue(review({ unrun: [heldOnGitHub('Auto-merge Trigger', 103)] }))
-    render(
+    renderAt(
       <IgnoringHarness save={() => Promise.resolve({ ok: false, error: 'database is locked' })} onToast={onToast} />,
     )
 
@@ -1934,7 +1904,7 @@ describe('ReviewSheet with held runs that don’t count', () => {
 
   it('offers to ignore nothing outside the window', async () => {
     platform.refreshReview.mockResolvedValue(review({ unrun: [heldOnGitHub('Auto-merge Trigger', 103)] }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(within(await quietRuns()).queryByRole('button', { name: /^Ignore/ })).not.toBeInTheDocument()
   })
@@ -2012,7 +1982,7 @@ describe('ReviewSheet tabs', () => {
   it('counts the files and what people wrote, and opens on the tab last chosen', async () => {
     platform.openReview.mockResolvedValue(withConversation({ fetchedAt: '' }))
     platform.refreshReview.mockReturnValue(new Promise(() => undefined))
-    const { unmount } = render(<Harness />)
+    const { unmount } = renderAt(<Harness />)
 
     expect(await screen.findByRole('tab', { name: 'Files 2' })).toHaveAttribute('aria-selected', 'true')
     expect(tabOf('Comments'), 'blank until the first read').toHaveAccessibleName('Comments')
@@ -2022,7 +1992,7 @@ describe('ReviewSheet tabs', () => {
     platform.refreshReview.mockResolvedValue(
       withConversation({ timeline: reviewTimeline({ total: 9, before: 'Y3Vyc29y' }) }),
     )
-    render(<Harness tab="comments" />)
+    renderAt(<Harness tab="comments" />)
 
     expect(await screen.findByRole('tab', { name: 'Comments 4+' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('region', { name: 'Conversation' })).toBeVisible()
@@ -2034,7 +2004,7 @@ describe('ReviewSheet tabs', () => {
   it('remembers each tab chosen, and moves between them with the arrows without stepping the list', async () => {
     const onTab = vi.fn()
     platform.refreshReview.mockResolvedValue(withConversation())
-    render(<Harness onTab={onTab} />)
+    renderAt(<Harness onTab={onTab} />)
 
     await userEvent.click(await screen.findByRole('tab', { name: 'Comments 4' }))
     expect(onTab).toHaveBeenLastCalledWith('comments')
@@ -2053,7 +2023,7 @@ describe('ReviewSheet tabs', () => {
 
   it('keeps a line comment being written while the conversation shows', async () => {
     platform.refreshReview.mockResolvedValue(withConversation())
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const diff = await screen.findByRole('table', { name: 'Diff of cache/cache.go' })
     await userEvent.click(within(diff).getByRole('button', { name: 'Comment on line 3' }))
@@ -2068,7 +2038,7 @@ describe('ReviewSheet tabs', () => {
   it('shows the file a line comment is on, opening it if it is folded', async () => {
     const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView')
     platform.refreshReview.mockResolvedValue(withConversation())
-    render(<Harness tab="comments" />)
+    renderAt(<Harness tab="comments" />)
 
     // A hidden tab's controls have no names, so the file's block is found by its anchor, once
     // React has rendered the hidden tab, which it does after the one shown.
@@ -2088,7 +2058,7 @@ describe('ReviewSheet tabs', () => {
   it('shows a reviewer’s review in the conversation, or on GitHub when the sheet has none of it', async () => {
     const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView')
     platform.refreshReview.mockResolvedValue(withConversation())
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const reviewers = await screen.findByRole('region', { name: 'Reviewers' })
     await userEvent.click(within(reviewers).getByRole('button', { name: /octo-reviewer/ }))
@@ -2140,7 +2110,7 @@ describe('ReviewSheet tabs', () => {
       }),
     )
     platform.editReviewers.mockResolvedValue({ sent: 2, failed: '' })
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const reviewers = await screen.findByRole('region', { name: 'Reviewers' })
     await waitFor(() => {
@@ -2177,7 +2147,7 @@ describe('ReviewSheet tabs', () => {
     platform.openReview.mockResolvedValue(editable)
     platform.refreshReview.mockResolvedValue(editable)
     platform.editReviewers.mockRejectedValue(new Error('Your account can’t change this pull request’s reviewers.'))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const reviewers = await screen.findByRole('region', { name: 'Reviewers' })
     const chips = within(await within(reviewers).findByRole('group', { name: 'Suggested reviewers' }))
@@ -2197,7 +2167,7 @@ describe('ReviewSheet tabs', () => {
       review({ canEditAssignees: true, assignees: [{ login: 'octo-member', mine: false }] }),
     )
     platform.editAssignees.mockResolvedValue({ sent: 2, failed: '' })
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const assignees = await screen.findByRole('region', { name: 'Assignees' })
     await waitFor(() => {
@@ -2227,7 +2197,7 @@ describe('ReviewSheet tabs', () => {
     const shown = review({ assignees: [{ login: 'octo-user', mine: true }] })
     platform.openReview.mockResolvedValue(shown)
     platform.refreshReview.mockResolvedValue(shown)
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const assignees = await screen.findByRole('region', { name: 'Assignees' })
     expect(assignees).toHaveTextContent('octo-user (you)')
@@ -2237,7 +2207,7 @@ describe('ReviewSheet tabs', () => {
 
   it('quotes a comment into the review, as a comment, and focuses it', async () => {
     platform.refreshReview.mockResolvedValue(withConversation())
-    render(<Harness tab="comments" />)
+    renderAt(<Harness tab="comments" />)
 
     const reply = await screen.findByRole('article', { name: 'octo-other’s comment' })
     await userEvent.click(within(reply).getByRole('button', { name: 'Quote reply' }))
@@ -2255,7 +2225,7 @@ describe('ReviewSheet tabs', () => {
     const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView')
     platform.openReview.mockResolvedValue(withConversation({ lastSeenAt: '2026-06-15T10:30:00Z' }))
     platform.refreshReview.mockResolvedValue(withConversation({ lastSeenAt: '2026-06-15T10:30:00Z' }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(
       await screen.findByRole('separator', { name: 'New since your last visit', hidden: true }),
@@ -2273,7 +2243,7 @@ describe('ReviewSheet tabs', () => {
     const scrolls = scrollLog()
     platform.openReview.mockResolvedValue(withConversation({ lastSeenAt: '2026-06-15T10:30:00Z' }))
     platform.refreshReview.mockResolvedValue(withConversation({ lastSeenAt: '2026-06-15T10:30:00Z' }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await screen.findByRole('separator', { name: 'New since your last visit', hidden: true })
     await userEvent.click(tabOf('Comments'))
@@ -2286,7 +2256,7 @@ describe('ReviewSheet tabs', () => {
   it('puts a tab back where it was left, and starts the next pull request’s tabs afresh', async () => {
     const scrolls = scrollLog()
     platform.refreshReview.mockResolvedValue(withConversation())
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const files = await screen.findByRole('main')
 
@@ -2316,7 +2286,7 @@ describe('ReviewSheet tabs', () => {
       total: 5,
       before: '',
     })
-    render(<Harness tab="comments" />)
+    renderAt(<Harness tab="comments" />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Show 2 earlier entries' }))
 
@@ -2326,7 +2296,7 @@ describe('ReviewSheet tabs', () => {
   })
 
   it('says a conversation with nothing in it holds no comments', async () => {
-    render(<Harness tab="comments" />)
+    renderAt(<Harness tab="comments" />)
 
     expect(await screen.findByText('No comments yet.')).toBeVisible()
     expect(screen.getByRole('tab', { name: 'Comments 0' })).toBeInTheDocument()
@@ -2356,7 +2326,7 @@ describe('ReviewSheet commits', () => {
   it('lists the commits in a third tab, which the window remembers', async () => {
     const onTab = vi.fn()
     platform.refreshReview.mockResolvedValue(withCommits())
-    render(<Harness onTab={onTab} />)
+    renderAt(<Harness onTab={onTab} />)
 
     const tabs = await screen.findAllByRole('tab')
     expect(tabs.map((t) => t.textContent)).toEqual(['Files1', 'Comments0', 'Commits3'])
@@ -2372,7 +2342,7 @@ describe('ReviewSheet commits', () => {
 
   it('opens on the commits when they were the tab last chosen', async () => {
     platform.refreshReview.mockResolvedValue(withCommits())
-    render(<Harness tab="commits" />)
+    renderAt(<Harness tab="commits" />)
 
     expect(await screen.findByRole('tab', { name: 'Commits 3' })).toHaveAttribute('aria-selected', 'true')
     expect(await screen.findByRole('list', { name: 'Commits' })).toBeVisible()
@@ -2381,7 +2351,7 @@ describe('ReviewSheet commits', () => {
   it('says how many commits came since your review, and shows them', async () => {
     const onTab = vi.fn()
     platform.refreshReview.mockResolvedValue(withCommits())
-    render(<Harness onTab={onTab} />)
+    renderAt(<Harness onTab={onTab} />)
 
     expect(await screen.findByText('2 commits since you requested changes')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Show commits' }))
@@ -2394,7 +2364,7 @@ describe('ReviewSheet commits', () => {
     platform.refreshReview.mockResolvedValue(
       withCommits({ yourReview: yourReview({ commit: 'e'.repeat(40), since: 'rewritten', count: 0 }) }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('The branch was rewritten since you requested changes')).toBeInTheDocument()
   })
@@ -2411,7 +2381,7 @@ describe('ReviewSheet commits', () => {
       reviewResult({ outcome: 'review_rerequested', message: 'Re-requested your review of acme-org/example-repo#7' }),
     )
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     expect(await screen.findByText('2 commits since you requested changes')).toBeInTheDocument()
     expect(await actionButton('Comment')).toBeInTheDocument()
@@ -2446,7 +2416,7 @@ describe('ReviewSheet commits', () => {
         primary: 'comment',
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('GitHub already asks you to review it again.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Re-request my review' })).not.toBeInTheDocument()
@@ -2456,7 +2426,7 @@ describe('ReviewSheet commits', () => {
     platform.refreshReview.mockResolvedValue(
       withCommits({ yourReview: yourReview({ state: 'APPROVED', commit: a, count: 2 }) }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('2 commits since you approved')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Re-request my review' })).not.toBeInTheDocument()
@@ -2466,14 +2436,14 @@ describe('ReviewSheet commits', () => {
     platform.refreshReview.mockResolvedValue(
       withCommits({ yourReview: yourReview({ commit: c, since: '', count: 0 }) }),
     )
-    const { unmount } = render(<Harness />)
+    const { unmount } = renderAt(<Harness />)
 
     expect(await screen.findByRole('tab', { name: 'Commits 3' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Show commits' })).not.toBeInTheDocument()
     unmount()
 
     platform.refreshReview.mockResolvedValue(withCommits({ state: 'MERGED' }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByRole('tab', { name: 'Commits 3' })).toBeInTheDocument()
     expect(screen.queryByText('2 commits since you requested changes')).not.toBeInTheDocument()
@@ -2494,7 +2464,7 @@ describe('ReviewSheet behind its base', () => {
       reviewResult({ outcome: 'branch_updating', message: 'Updating the branch of acme-org/example-repo#7' }),
     )
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     const bar = await strip()
     expect(within(bar).getByText('12 commits behind main')).toBeInTheDocument()
@@ -2521,7 +2491,7 @@ describe('ReviewSheet behind its base', () => {
         primary: 'update_branch',
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const bar = await strip()
     expect(within(bar).getByText('Behind main')).toBeInTheDocument()
@@ -2544,7 +2514,7 @@ describe('ReviewSheet behind its base', () => {
       }),
     )
     platform.actOnReview.mockResolvedValue(reviewResult({ outcome: 'asked_bot', message: 'Asked Dependabot' }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const bar = await strip()
     expect(within(bar).queryByRole('button', { name: /Update branch/ })).not.toBeInTheDocument()
@@ -2563,7 +2533,7 @@ describe('ReviewSheet behind its base', () => {
         offers: [...review().offers, updateBranchOffer({ confirm: true, warnings: ['Careful.'] })],
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await userEvent.click(within(await strip()).getByRole('button', { name: 'Update branch…' }))
 
@@ -2591,7 +2561,7 @@ describe('ReviewSheet behind its base', () => {
         ],
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const bar = await strip()
     expect(within(bar).getByText('Your account can’t update this branch.')).toBeInTheDocument()
@@ -2600,7 +2570,7 @@ describe('ReviewSheet behind its base', () => {
 
   it('shows nothing for a branch up to date, or once the pull request is closed', async () => {
     platform.refreshReview.mockResolvedValue(review())
-    const { unmount } = render(<Harness />)
+    const { unmount } = renderAt(<Harness />)
 
     expect(await actionButton('Approve & squash-merge')).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Behind its base' })).not.toBeInTheDocument()
@@ -2609,7 +2579,7 @@ describe('ReviewSheet behind its base', () => {
     platform.refreshReview.mockResolvedValue(
       review({ state: 'MERGED', behind: false, behindBy: 4, offers: [updateBranchOffer()] }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByRole('tab', { name: 'Files 1' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Behind its base' })).not.toBeInTheDocument()
@@ -2620,7 +2590,7 @@ describe('ReviewSheet conversation order', () => {
   it('moves between the orders with the arrows without stepping the list', async () => {
     const onOrder = vi.fn()
     platform.refreshReview.mockResolvedValue(review({ timeline: reviewTimeline() }))
-    render(<Harness tab="comments" onOrder={onOrder} />)
+    renderAt(<Harness tab="comments" onOrder={onOrder} />)
 
     const oldest = await screen.findByRole('radio', { name: 'Oldest first' })
     oldest.focus()
@@ -2649,7 +2619,7 @@ describe('ReviewSheet of a pull request no longer open', () => {
   it('hands on a pull request a read finds merged or closed, once', async () => {
     platform.refreshReview.mockResolvedValue(ended('MERGED'))
     const onEnded = vi.fn()
-    const { unmount } = render(<Harness onEnded={onEnded} />)
+    const { unmount } = renderAt(<Harness onEnded={onEnded} />)
 
     await waitFor(() => {
       expect(onEnded).toHaveBeenCalledExactlyOnceWith(merged)
@@ -2657,7 +2627,7 @@ describe('ReviewSheet of a pull request no longer open', () => {
     unmount()
 
     platform.refreshReview.mockResolvedValue(ended('CLOSED'))
-    render(<Harness onEnded={onEnded} />)
+    renderAt(<Harness onEnded={onEnded} />)
 
     await waitFor(() => {
       expect(onEnded).toHaveBeenLastCalledWith({ ...merged, state: 'closed' })
@@ -2668,7 +2638,7 @@ describe('ReviewSheet of a pull request no longer open', () => {
   it('hands on a pull request the read its card’s moved checks asked for finds merged', async () => {
     platform.rebuildReview.mockResolvedValue(review({ counts: { ...review().counts, newer: true }, moved: true }))
     const onEnded = vi.fn()
-    const { rerender } = render(<Harness onEnded={onEnded} item={item({ id: 1, details: details() })} />)
+    const { rerender } = renderAt(<Harness onEnded={onEnded} item={item({ id: 1, details: details() })} />)
 
     await waitFor(() => {
       expect(platform.refreshReview).toHaveBeenCalledOnce()
@@ -2695,7 +2665,7 @@ describe('ReviewSheet of a pull request no longer open', () => {
       new Error('This pull request changed since the sheet read it. Reload it to see the new diff.'),
     )
     const onEnded = vi.fn()
-    render(<Harness onEnded={onEnded} />)
+    renderAt(<Harness onEnded={onEnded} />)
 
     expect(await screen.findByText('GitHub is not answering.')).toBeInTheDocument()
 
@@ -2721,7 +2691,7 @@ describe('ReviewSheet of a pull request no longer open', () => {
     )
     platform.readReviewAgain.mockResolvedValue(ended('MERGED'))
     const onEnded = vi.fn()
-    render(<Harness onEnded={onEnded} />)
+    renderAt(<Harness onEnded={onEnded} />)
 
     await choose('Approve')
     await userEvent.click(await actionButton('Approve'))
@@ -2758,18 +2728,14 @@ describe('ReviewSheet that stays current', () => {
   })
 
   it('takes the inbox’s newer checks from the card’s change, then reads GitHub once', async () => {
-    let answer: (r: Review) => void = () => undefined
+    const answer = deferred<Review>()
     platform.refreshReview
       .mockResolvedValueOnce(
         review({ checks: [running], counts: { ...review().counts, state: 'PENDING', passed: 0, pending: 1 } }),
       )
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
-          answer = resolve
-        }),
-      )
+      .mockReturnValueOnce(answer.promise)
     platform.rebuildReview.mockResolvedValue(passed)
-    const { rerender } = render(<Harness item={card('2026-06-15T11:59:00Z')} />)
+    const { rerender } = renderAt(<Harness item={card('2026-06-15T11:59:00Z')} />)
 
     expect(await screen.findByText('1 check · 1 running')).toBeInTheDocument()
     expect(platform.rebuildReview).not.toHaveBeenCalled()
@@ -2781,10 +2747,14 @@ describe('ReviewSheet that stays current', () => {
     expect(await screen.findByText(/^Reading checks…/)).toHaveTextContent('Reading checks… · read 1h ago')
     expect(screen.getByText('1 check').tagName).toBe('SUMMARY')
     expect(platform.rebuildReview).toHaveBeenCalledExactlyOnceWith(1)
-    expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+    // The read starts in the effects of the render that says it runs, which can come after
+    // the findBy above has returned.
+    await waitFor(() => {
+      expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+    })
 
     act(() => {
-      answer(review())
+      answer.resolve(review())
     })
 
     await waitFor(() => {
@@ -2799,7 +2769,7 @@ describe('ReviewSheet that stays current', () => {
     platform.rebuildReview.mockResolvedValue(
       review({ title: 'Add the widget cache, retitled', counts: { ...review().counts, newer: true } }),
     )
-    const { rerender } = render(<Harness item={card('2026-06-15T11:59:00Z')} />)
+    const { rerender } = renderAt(<Harness item={card('2026-06-15T11:59:00Z')} />)
 
     await waitFor(() => {
       expect(platform.refreshReview).toHaveBeenCalledOnce()
@@ -2813,14 +2783,10 @@ describe('ReviewSheet that stays current', () => {
   })
 
   it('marks what an older copy holds as being read until GitHub answers', async () => {
-    let answer: (r: Review) => void = () => undefined
+    const answer = deferred<Review>()
     platform.openReview.mockResolvedValue({ ...passed, unrun: [heldRun('Deploy Preview', 101)] })
-    platform.refreshReview.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
-    render(<Harness />)
+    platform.refreshReview.mockReturnValue(answer.promise)
+    renderAt(<Harness />)
 
     expect(await screen.findByText(/^Reading checks…/)).toHaveTextContent('Reading checks… · read 1h ago')
     expect(screen.getByText('1 check').tagName).toBe('SUMMARY')
@@ -2830,7 +2796,7 @@ describe('ReviewSheet that stays current', () => {
     expect(await screen.findByText(/^Reading the conversation…/)).toBeInTheDocument()
 
     act(() => {
-      answer(review())
+      answer.resolve(review())
     })
 
     await waitFor(() => {
@@ -2841,13 +2807,11 @@ describe('ReviewSheet that stays current', () => {
   })
 
   it('reads once when the window comes back five minutes after the last read', async () => {
-    let answer: (r: Review) => void = () => undefined
-    platform.refreshReview.mockResolvedValueOnce(review({ fetchedAt: '2026-06-15T11:50:00Z' })).mockReturnValueOnce(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
-    render(<Harness />)
+    const answer = deferred<Review>()
+    platform.refreshReview
+      .mockResolvedValueOnce(review({ fetchedAt: '2026-06-15T11:50:00Z' }))
+      .mockReturnValueOnce(answer.promise)
+    renderAt(<Harness />)
 
     await waitFor(() => {
       expect(platform.refreshReview).toHaveBeenCalledOnce()
@@ -2863,7 +2827,7 @@ describe('ReviewSheet that stays current', () => {
     expect(platform.refreshReview).toHaveBeenCalledTimes(2)
 
     act(() => {
-      answer(review())
+      answer.resolve(review())
     })
 
     await waitFor(() => {
@@ -2875,7 +2839,7 @@ describe('ReviewSheet that stays current', () => {
   it('marks an older copy with its age beside a read that failed', async () => {
     platform.openReview.mockResolvedValue(review({ fetchedAt: '2026-06-15T11:00:00Z' }))
     platform.refreshReview.mockRejectedValue(new Error('GitHub is not answering.'))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('GitHub is not answering.')).toBeInTheDocument()
     expect(screen.getByText(/^Checks as read/)).toHaveTextContent('Checks as read 1h ago')

@@ -1,11 +1,11 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { ScriptRun } from '../platform'
 import { scriptRun } from '../test/fixtures'
-import { emit, listening, platform } from '../test/platform'
+import { listening, platform, send } from '../test/platform'
 import { QuitDialog } from './QuitDialog'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -38,9 +38,7 @@ async function askToQuit(runs: ScriptRun[]) {
   platform.listScriptRuns.mockResolvedValue(runs)
   render(<QuitDialog />)
 
-  act(() => {
-    emit('app:quitRequested')
-  })
+  send('app:quitRequested')
 
   await waitFor(() => {
     expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '', withAgents: true })
@@ -172,7 +170,8 @@ describe('QuitDialog', () => {
 
   it('keeps running on Escape too, and tells the shell even when that fails', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.keepRunning.mockRejectedValue(new Error('the shell is gone'))
+    const gone = new Error('the shell is gone')
+    platform.keepRunning.mockRejectedValue(gone)
     await askToQuit([release])
     await dialog()
 
@@ -180,7 +179,7 @@ describe('QuitDialog', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     await waitFor(() => {
-      expect(logged).toHaveBeenCalledWith('could not keep running:', 'the shell is gone')
+      expect(logged).toHaveBeenCalledWith('could not keep running:', gone)
     })
     expect(platform.keepRunning).toHaveBeenCalledOnce()
     expect(platform.quitAnyway).not.toHaveBeenCalled()
@@ -222,9 +221,7 @@ describe('QuitDialog', () => {
 
     platform.listScriptRuns.mockRejectedValue(new Error('database is locked'))
     render(<QuitDialog />)
-    act(() => {
-      emit('app:quitRequested')
-    })
+    send('app:quitRequested')
 
     expect(
       (await dialog()).getByText(`Runs are going in ${brand.name}. Stopping them now ends them partway. Quit anyway?`),
@@ -307,13 +304,14 @@ describe('QuitDialog', () => {
 
     it('writes a failure to let them finish to the console', async () => {
       const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const gone = new Error('the shell is gone')
 
-      platform.letThemFinish.mockRejectedValueOnce(new Error('the shell is gone'))
+      platform.letThemFinish.mockRejectedValueOnce(gone)
       await askToQuit([agent])
       await userEvent.click((await dialog()).getByRole('button', { name: 'Let it finish' }))
 
       await waitFor(() => {
-        expect(logged).toHaveBeenCalledWith('could not quit letting the agents finish:', 'the shell is gone')
+        expect(logged).toHaveBeenCalledWith('could not quit letting the agents finish:', gone)
       })
     })
 
@@ -335,13 +333,14 @@ describe('QuitDialog', () => {
 
   it('writes a failure to quit to the console', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const gone = new Error('the shell is gone')
 
-    platform.quitAnyway.mockRejectedValue(new Error('the shell is gone'))
+    platform.quitAnyway.mockRejectedValue(gone)
     await askToQuit([release])
     await userEvent.click((await dialog()).getByRole('button', { name: 'Stop and quit' }))
 
     await waitFor(() => {
-      expect(logged).toHaveBeenCalledWith('could not quit:', 'the shell is gone')
+      expect(logged).toHaveBeenCalledWith('could not quit:', gone)
     })
   })
 })

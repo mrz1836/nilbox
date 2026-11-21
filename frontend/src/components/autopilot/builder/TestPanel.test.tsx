@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AutopilotDraft } from '../../../platform'
-import { routineTest } from '../../../test/fixtures'
+import { itemRef, routineTest } from '../../../test/fixtures'
 import { platform } from '../../../test/platform'
 import { TestPanel } from './TestPanel'
 
@@ -85,14 +85,12 @@ describe('TestPanel’s Preview', () => {
 describe('TestPanel’s pinned item', () => {
   // pinned is pull request 46, which a routine was made from, matched from what is stored.
   const pinned = {
-    item: {
+    item: itemRef({
       id: 2,
-      kind: 'pr' as const,
-      repo: 'acme-org/example-repo',
       number: 46,
       title: 'Bump zod from 3 to 4',
       url: 'https://github.com/acme-org/example-repo/pull/46',
-    },
+    }),
     match: 'yes' as const,
     trace: [{ path: 'trigger', condition: 'checks fail', result: 'yes' as const, actual: 'CodeQL failed' }],
   }

@@ -8,7 +8,8 @@ import { startLists, type NotificationLists } from '../../lib/notifications'
 import type { GitHubThreadsState } from '../../lib/useGitHubThreads'
 import type { NotificationsState } from '../../lib/useNotifications'
 import type { AppNotification, GitHubThread, GitHubThreadsSnapshot, NotificationsTab, Settings } from '../../platform'
-import { at } from '../../test/clock'
+import { deferred } from '../../test/async'
+import { clockAt, FIXED_NOW, renderAt, withClock } from '../../test/clock'
 import {
   autopilotAlert,
   githubThread,
@@ -126,7 +127,7 @@ function Page({
 }
 
 function renderPage(options: PageOptions = {}) {
-  return render(<Page {...options} />, { wrapper: at() })
+  return renderAt(<Page {...options} />)
 }
 
 // own matches a row's own button by its title, never one of its actions.
@@ -668,14 +669,9 @@ describe('NotificationsView', () => {
     })
 
     it('shows an Undo under way, and why it failed', async () => {
-      let answer: (value: Awaited<ReturnType<GitHubThreadsState['keep']>>) => void = () => undefined
+      const answer = deferred<Awaited<ReturnType<GitHubThreadsState['keep']>>>()
       const threads = mirror([], githubThreads({ queued: [queuedClear()] }), {
-        keep: vi.fn(
-          () =>
-            new Promise<Awaited<ReturnType<GitHubThreadsState['keep']>>>((resolve) => {
-              answer = resolve
-            }),
-        ),
+        keep: vi.fn(() => answer.promise),
       })
       renderPage({ tab: 'github', lists: cleared, threads })
 
@@ -684,7 +680,7 @@ describe('NotificationsView', () => {
       expect(screen.getByRole('button', { name: 'Undo: Add the widget cache' })).toHaveTextContent('Keeping…')
 
       await act(async () => {
-        answer({ ok: false, error: 'database is locked' })
+        answer.resolve({ ok: false, error: 'database is locked' })
         await Promise.resolve()
       })
 
@@ -692,36 +688,31 @@ describe('NotificationsView', () => {
       expect(screen.getByRole('button', { name: 'Undo: Add the widget cache' })).toHaveTextContent('Undo')
     })
 
-    it('moves the countdown on every second while a clear waits', async () => {
+    it('moves the countdown on every second while a clear waits', () => {
       vi.useFakeTimers()
 
-      try {
-        let now = new Date('2026-06-15T12:00:00Z')
-        const { clockAt, withClock } = await import('../../test/clock')
-        const clock = clockAt(() => now)
+      let now = FIXED_NOW
+      const clock = clockAt(() => now)
 
-        render(<Page tab="github" lists={cleared} threads={mirror([], githubThreads({ queued: [queuedClear()] }))} />, {
-          wrapper: withClock(clock),
-        })
+      render(<Page tab="github" lists={cleared} threads={mirror([], githubThreads({ queued: [queuedClear()] }))} />, {
+        wrapper: withClock(clock),
+      })
 
-        expect(screen.getByText('in 15s')).toBeInTheDocument()
+      expect(screen.getByText('in 15s')).toBeInTheDocument()
 
-        now = new Date('2026-06-15T12:00:05Z')
-        act(() => {
-          vi.advanceTimersByTime(1000)
-        })
+      now = new Date('2026-06-15T12:00:05Z')
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
 
-        expect(screen.getByText('in 10s')).toBeInTheDocument()
+      expect(screen.getByText('in 10s')).toBeInTheDocument()
 
-        now = new Date('2026-06-15T12:00:20Z')
-        act(() => {
-          vi.advanceTimersByTime(1000)
-        })
+      now = new Date('2026-06-15T12:00:20Z')
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
 
-        expect(screen.getByText('any moment')).toBeInTheDocument()
-      } finally {
-        vi.useRealTimers()
-      }
+      expect(screen.getByText('any moment')).toBeInTheDocument()
     })
 
     it('says how each recent clear settled, hiding the skips decided again, and opens one on GitHub', async () => {

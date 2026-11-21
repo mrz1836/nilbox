@@ -7,6 +7,7 @@ import { offerOf } from '../lib/update'
 import type { MoveDialogState } from '../lib/useMove'
 import { useMoveToApplications } from '../lib/useMove'
 import type { MoveResult, UpdateLocationKind, UpdateStatus } from '../platform'
+import { deferred } from '../test/async'
 import { moveResult, updateLocation, updateStatus } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { moveOf } from '../test/query'
@@ -139,12 +140,8 @@ describe('MoveDialog', () => {
   })
 
   it('moves, working, then offers the copy in Applications, and opens it, over the real move', async () => {
-    const gate: { answer?: (result: MoveResult) => void } = {}
-    platform.moveToApplications.mockReturnValue(
-      new Promise((resolve) => {
-        gate.answer = resolve
-      }),
-    )
+    const moving = deferred<MoveResult>()
+    platform.moveToApplications.mockReturnValue(moving.promise)
     render(<Live status={updateStatus({ flavor: 'rehearsal', location: updateLocation('diskImage') })} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Move to Applications' }))
@@ -153,7 +150,7 @@ describe('MoveDialog', () => {
     await userEvent.dblClick(screen.getByRole('button', { name: 'Moving to Applications…' }))
     expect(platform.moveToApplications).toHaveBeenCalledOnce()
 
-    gate.answer?.(moveResult({ outcome: 'exists' }))
+    moving.resolve(moveResult({ outcome: 'exists' }))
 
     // The new question is told, and starts on its safe choice, as a dialog that opens does.
     // ConfirmDialog moves focus there in an effect React runs after the commit that shows

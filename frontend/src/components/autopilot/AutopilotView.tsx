@@ -28,8 +28,10 @@ import { attempt } from '../../lib/call'
 import { formatCount } from '../../lib/format'
 import { agentName } from '../../lib/launch'
 import { dryRunWhy, NEW_ROUTINE, newRoutineName, routineDraft, sameDraft, scratchDraft } from '../../lib/routineBuilder'
-import { useNeedsYou, useReadiness, type AutopilotState } from '../../lib/useAutopilot'
+import { useNeedsYou, useReadiness, type SharedAutopilot } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
+import { useMutation } from '../../lib/useMutation'
+import { useOn } from '../../lib/useOn'
 import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
@@ -40,7 +42,6 @@ import {
   getAutopilotCatalog,
   itemsByID,
   listTemplates,
-  on,
   openExternal,
   routineFromItem,
   routineWatching,
@@ -61,7 +62,7 @@ import {
   type Settings,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, captionClass, fieldClass, primaryButtonClass, quietButtonClass } from '../controls'
+import { buttonClass, captionClass, fieldClass, primaryButtonClass, quietButtonClass, Select } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import {
   AlertIcon,
@@ -97,7 +98,7 @@ import { WorkingList } from './WorkingList'
 
 export interface AutopilotViewProps {
   // autopilot is Autopilot as the window shares it: at a glance, the routines, the engine.
-  autopilot: AutopilotState
+  autopilot: SharedAutopilot
   // settings are the stored settings, null until they load, whose Pause Autopilot the
   // header's button and the paused banner's Resume change; onSettingsSaved receives them
   // as stored after.
@@ -195,7 +196,7 @@ function PauseButton({ settings, onSaved }: { settings: Settings; onSaved: (sett
 }
 
 interface BannersProps {
-  autopilot: AutopilotState
+  autopilot: SharedAutopilot
   settings: Settings | null
   onSettingsSaved: (settings: Settings) => void
 }
@@ -491,7 +492,7 @@ export default function AutopilotView({
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const toasts = useRef(0)
   const [deleting, setDeleting] = useState<AutopilotRoutine | null>(null)
-  const [deleteBusy, setDeleteBusy] = useState(false)
+  const remover = useMutation((routineId: number) => deleteRoutine(routineId))
   const [focus, setFocus] = useState<Focus | null>(null)
   const [highlight, setHighlight] = useState<{ matchId: number; seq: number } | null>(null)
   // runShown is the agent's run open in the run view beside Activity, 0 for none.
@@ -519,19 +520,11 @@ export default function AutopilotView({
   })
   // The stored inbox changed, the sheet's own triage included, which the backend says
   // once it is stored: the item is read again once, as it is now.
-  const readLone = useEffectEvent(() => {
+  useOn('inbox:updated', () => {
     if (loneId > 0) {
       void loneRead.refetch()
     }
   })
-
-  useEffect(
-    () =>
-      on('inbox:updated', () => {
-        readLone()
-      }),
-    [],
-  )
   const [handled, setHandled] = useState(0)
   const { routines, engine, reload } = autopilot
   // editing is the routine the builder holds, null on Activity; leaving is where the user
@@ -551,20 +544,24 @@ export default function AutopilotView({
   // needs, and how many proposals from the user's own Claude Code wait, Describe it's count:
   // read as the tab shows, and again as those proposals change.
   const describeStatus = useQuery(() => describeItStatus(), [])
-  const readDescribeStatus = useEffectEvent(() => {
+
+  useOn('describeit:proposals', () => {
     void describeStatus.refetch()
   })
-
-  useEffect(
-    () =>
-      on('describeit:proposals', () => {
-        readDescribeStatus()
-      }),
-    [],
-  )
   const pending = describeStatus.data?.pending ?? 0
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState('')
+  // saver saves a new routine, and saving reports it under way. saveError is why the last
+  // save failed, shown in the builder's footer: a new routine's from saver, a change to the
+  // routine shown from changeError, which its change sets. clearSaveError clears both,
+  // whatever its closure saw: some callers run it once an await is over, after a save
+  // that failed meanwhile.
+  const saver = useMutation((draft: AutopilotDraft) => saveRoutine(draft))
+  const saving = saver.pending
+  const [changeError, setChangeError] = useState('')
+  const saveError = changeError !== '' ? changeError : saver.error
+  const clearSaveError = () => {
+    setChangeError('')
+    saver.reset()
+  }
   // justSaved is the routine a save made, shown until the list read again holds it, and
   // synced the routine as the builder last took it from the list.
   const [justSaved, setJustSaved] = useState<AutopilotRoutine | null>(null)
@@ -625,7 +622,7 @@ export default function AutopilotView({
       return
     }
 
-    setSaveError('')
+    clearSaveError()
 
     if (next === NEW_ROUTINE) {
       const d = scratchDraft(newRoutineName(routines), settings?.autopilot.defaultMode ?? 'ask')
@@ -653,7 +650,7 @@ export default function AutopilotView({
 
     setSelected(NEW_ROUTINE)
     setQuickKey('')
-    setSaveError('')
+    clearSaveError()
     setEditing({ key: NEW_ROUTINE, baseline: scratch, draft, ...extra })
   }
 
@@ -894,25 +891,20 @@ export default function AutopilotView({
       )
     }
 
-    setSaveError('')
+    clearSaveError()
 
     if (!made) {
       if (chosen !== undefined) {
-        changes.request(chosen, { kind: 'save', draft }, done, setSaveError)
+        changes.request(chosen, { kind: 'save', draft }, done, setChangeError)
       }
 
       return
     }
 
-    setSaving(true)
-    void attempt(saveRoutine(draft)).then((result) => {
-      setSaving(false)
-
+    void saver.run(draft).then((result) => {
       if (result.ok) {
         reload()
         done(result.data)
-      } else {
-        setSaveError(result.error)
       }
     })
   }
@@ -930,7 +922,7 @@ export default function AutopilotView({
       setEditing({ ...editing, draft: editing.baseline })
     }
 
-    setSaveError('')
+    clearSaveError()
   }
 
   // builderFor is the builder of the routine the draft is of, once the catalog is read.
@@ -960,7 +952,7 @@ export default function AutopilotView({
         saveError={saveError}
         onChange={(draft) => {
           setEditing({ ...editing, draft })
-          setSaveError('')
+          clearSaveError()
         }}
         onSave={saveEditing}
         onDiscard={discardEditing}
@@ -1091,9 +1083,7 @@ export default function AutopilotView({
 
     const gone = deleting
 
-    setDeleteBusy(true)
-    void attempt(deleteRoutine(gone.id)).then((result) => {
-      setDeleteBusy(false)
+    void remover.run(gone.id).then((result) => {
       setDeleting(null)
 
       if (result.ok) {
@@ -1130,16 +1120,17 @@ export default function AutopilotView({
         routines.some((r) => r.id === rid),
       )
 
-      for (const rid of order) {
-        const watched = await attempt(routineWatching(rid))
+      // Every routine is asked at once, from the local database alone; the first in order
+      // that watches it wins, and one that couldn't be read is passed over.
+      const lists = await Promise.all(order.map((rid) => attempt(routineWatching(rid))))
+      const rid = order[lists.findIndex((watched) => watched.ok && watched.data.includes(item.id))]
 
-        if (watched.ok && watched.data.includes(item.id)) {
-          toasts.current += 1
-          go(rid)
-          setWatchHighlight({ routineId: rid, id: item.id, seq: toasts.current })
+      if (rid !== undefined) {
+        toasts.current += 1
+        go(rid)
+        setWatchHighlight({ routineId: rid, id: item.id, seq: toasts.current })
 
-          return
-        }
+        return
       }
 
       const stored = await attempt(itemsByID([item.id]))
@@ -1433,6 +1424,8 @@ export default function AutopilotView({
             <Activity mode={describing ? 'visible' : 'hidden'}>
               <DescribeView
                 {...(describeRequest === undefined ? {} : { request: describeRequest })}
+                settings={settings}
+                catalog={catalog.data}
                 onEditInBuilder={(draft) => {
                   newFrom(draft)
                 }}
@@ -1502,20 +1495,15 @@ export default function AutopilotView({
                 <label htmlFor={`${id}-result`} className="sr-only">
                   Result
                 </label>
-                <select
+                <Select<ActivityResult>
                   id={`${id}-result`}
-                  value={filter.result}
-                  onChange={(e) => {
-                    setFilter({ ...filter, result: e.target.value as ActivityResult })
-                  }}
                   className={`${fieldClass} py-1`}
-                >
-                  {resultOrder.map((result) => (
-                    <option key={result} value={result}>
-                      {resultLabels[result]}
-                    </option>
-                  ))}
-                </select>
+                  value={filter.result}
+                  options={resultOrder.map((r) => ({ value: r, label: resultLabels[r] }))}
+                  onChange={(result) => {
+                    setFilter({ ...filter, result })
+                  }}
+                />
                 {filters(filter) && (
                   <button
                     type="button"
@@ -1661,7 +1649,7 @@ export default function AutopilotView({
         <ConfirmDialog
           title={`Delete “${deleting.name}”?`}
           confirmLabel="Delete"
-          busy={deleteBusy}
+          busy={remover.pending}
           onConfirm={removeChosen}
           onCancel={() => {
             setDeleting(null)

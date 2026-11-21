@@ -19,7 +19,6 @@ import {
   shownSettled,
   stateWords,
   triggerText,
-  badgeText,
   buttonLabel,
   checkedText,
   countsText,
@@ -90,12 +89,6 @@ describe('reasonText', () => {
 })
 
 describe('the counts', () => {
-  it('caps the badge at 99+', () => {
-    expect(badgeText(7)).toBe('7')
-    expect(badgeText(99)).toBe('99')
-    expect(badgeText(100)).toBe('99+')
-  })
-
   it('says what the GitHub inbox holds, the unread first, as the badge counts them', () => {
     expect(countsText(threadsStatus({ count: 38, unread: 5 }))).toBe('5 unread · 38 in your GitHub inbox')
     expect(countsText(threadsStatus({ count: 38 }))).toBe('38 in your GitHub inbox')

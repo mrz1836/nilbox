@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { DataReset, Info, Restored } from '../platform'
+import { deferred } from '../test/async'
 import { appInfo } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { DataResetNotice } from './DataResetNotice'
@@ -130,16 +131,12 @@ describe('DataResetNotice', () => {
   })
 
   it('ignores app info that arrives after it is gone', async () => {
-    let resolve: (got: Info) => void = () => undefined
-    platform.getAppInfo.mockReturnValue(
-      new Promise<Info>((r) => {
-        resolve = r
-      }),
-    )
+    const answer = deferred<Info>()
+    platform.getAppInfo.mockReturnValue(answer.promise)
 
     const { unmount } = render(<DataResetNotice />)
     unmount()
-    resolve(info(reset))
+    answer.resolve(info(reset))
 
     await Promise.resolve()
     expect(screen.queryByText(reset.path)).not.toBeInTheDocument()

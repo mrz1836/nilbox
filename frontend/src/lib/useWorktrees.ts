@@ -7,7 +7,6 @@ import {
   deleteBranches,
   forceRemoveWorktree,
   listWorktrees,
-  on,
   pruneWorktrees,
   recentCleanups,
   removeAllCleanWorktrees,
@@ -26,6 +25,7 @@ import {
 import { counted } from './format'
 import { sentence } from './update'
 import { useMutation } from './useMutation'
+import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 import { branchSummary, bulkSummary, failedSummary, shortName, singleSummary, type Summary } from './worktreeSummary'
 
@@ -391,13 +391,9 @@ export function useWorktrees({
     }
   }
 
-  useEffect(
-    () =>
-      on('worktrees:progress', (progress) => {
-        setHeard(progress)
-      }),
-    [],
-  )
+  useOn('worktrees:progress', (progress) => {
+    setHeard(progress)
+  })
 
   // Each listing is reported, to the latest onSnapshot, so a new callback never lists
   // again.

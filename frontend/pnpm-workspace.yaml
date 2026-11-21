@@ -5,14 +5,14 @@
 # compromised publish has time to be noticed and pulled before it reaches this project.
 minimumReleaseAge: 10080
 
-minimumReleaseAgeExclude:
-  # @wailsio/runtime is the frontend half of the desktop runtime. package.json pins
-  # 3.1.0 exactly, its newest stable release, while go.mod pins the Go module
-  # (github.com/wailsapp/wails/v3) at v3.2.0-nightly.20261103. 3.1.0 was published on
-  # 2026-11-01, inside the release-age window, so the exclusion names that exact
-  # version and no other release can slip through. It is unneeded once 3.1.0 is older
-  # than the window (from 2026-11-08); drop it then.
-  - '@wailsio/runtime@3.1.0'
+# A version published with less trust evidence than an earlier one of the same package
+# (no trusted publisher or provenance where an earlier release had it) fails the install,
+# as a hijacked maintainer account usually publishes that way.
+trustPolicy: no-downgrade
+
+# Only the packages this project names directly may come from outside the registry (a git
+# repository or a tarball URL); a transitive dependency that does fails the install.
+blockExoticSubdeps: true
 
 # Each override closes a published advisory in a transitive dependency that its parent
 # has not picked up yet. Every entry names the advisory, its scope, and when to drop it.

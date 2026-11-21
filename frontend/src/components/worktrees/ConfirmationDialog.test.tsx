@@ -1,11 +1,12 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { useWorktreeDetails } from '../../lib/useWorktreeDetails'
 import type { Confirmation } from '../../lib/useWorktrees'
 import type { Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
-import { at, FIXED_NOW } from '../../test/clock'
+import { deferred } from '../../test/async'
+import { FIXED_NOW, renderAt } from '../../test/clock'
 import {
   copiedWorktree,
   copyComparison,
@@ -58,19 +59,9 @@ function Harness({ confirmation, repos = [worktreeRepo()], listing = 1 }: Harnes
 
 // single draws the confirmation of kind for wt, a worktree of example-repo.
 function single(kind: 'remove' | 'force' | 'cleanUp', wt: Worktree, repos?: readonly WorktreeRepo[]) {
-  render(<Harness confirmation={{ kind, repoPath, worktree: wt }} repos={repos} />, { wrapper: at() })
+  renderAt(<Harness confirmation={{ kind, repoPath, worktree: wt }} repos={repos} />)
 
   return within(screen.getByRole('dialog'))
-}
-
-// held is a promise the test settles itself, to see what shows while it is pending.
-function held<T>() {
-  let resolve: (value: T) => void = () => undefined
-  const promise = new Promise<T>((settle) => {
-    resolve = settle
-  })
-
-  return { promise, resolve }
 }
 
 // dirty is a worktree with n uncommitted files, the listing's first 12 of them listed, and
@@ -146,7 +137,7 @@ describe('ConfirmationDialog for one worktree', () => {
       commits: [worktreeCommit({ oid: copiedWorktree().head })],
       copies: copyComparison({ ref: '', branch: '', identical: 0 }),
     })
-    render(
+    renderAt(
       <ConfirmationDialog
         confirmation={{ kind: 'cleanUp', repoPath, worktree: copiedWorktree({ stage: 'finished', canCleanUp: true }) }}
         rules={rules}
@@ -158,7 +149,6 @@ describe('ConfirmationDialog for one worktree', () => {
         onConfirm={vi.fn()}
         onCancel={vi.fn()}
       />,
-      { wrapper: at() },
     )
 
     const dialog = screen.getByRole('dialog', { name: 'Clean up this worktree?' })
@@ -182,7 +172,7 @@ describe('ConfirmationDialog for one worktree', () => {
       worktreeDetails({ unpushed: -1 }),
     ],
   ])('says a clean up holds back a worktree with %s, as its details read', (_, wt, read) => {
-    render(
+    renderAt(
       <ConfirmationDialog
         confirmation={{ kind: 'cleanUp', repoPath, worktree: wt }}
         rules={rules}
@@ -194,7 +184,6 @@ describe('ConfirmationDialog for one worktree', () => {
         onConfirm={vi.fn()}
         onCancel={vi.fn()}
       />,
-      { wrapper: at() },
     )
 
     expect(screen.getByRole('dialog', { name: 'Clean up this worktree?' })).toHaveTextContent(
@@ -236,7 +225,7 @@ describe('ConfirmationDialog for one worktree', () => {
 
   it('words each cost as the worktree’s details counted it, once its drawer read them', () => {
     const counted = worktreeDetails({ files: worktreeFiles(3), fileCount: 3 })
-    render(
+    renderAt(
       <ConfirmationDialog
         confirmation={{
           kind: 'all',
@@ -251,7 +240,6 @@ describe('ConfirmationDialog for one worktree', () => {
         onConfirm={vi.fn()}
         onCancel={vi.fn()}
       />,
-      { wrapper: at() },
     )
 
     expect(screen.getByText(/^Removing it would discard 3 uncommitted files/).closest('[data-tone]')).toHaveAttribute(
@@ -263,7 +251,7 @@ describe('ConfirmationDialog for one worktree', () => {
 
 describe('ConfirmationDialog for Force remove', () => {
   it('lists the files it discards and the commits it keeps, reading the rest as it opens', async () => {
-    const answer = held<WorktreeDetails>()
+    const answer = deferred<WorktreeDetails>()
     platform.worktreeDetails.mockReturnValue(answer.promise)
     const dialog = single('force', dirty(30, 2))
 
@@ -309,7 +297,7 @@ describe('ConfirmationDialog for Force remove', () => {
   it('reads the details again after a listing that lands while it’s open', async () => {
     platform.worktreeDetails.mockResolvedValue(worktreeDetails({ files: worktreeFiles(20), fileCount: 20 }))
     const confirmation: Confirmation = { kind: 'force', repoPath, worktree: dirty(20) }
-    const { rerender } = render(<Harness confirmation={confirmation} />, { wrapper: at() })
+    const { rerender } = renderAt(<Harness confirmation={confirmation} />)
 
     const files = screen.getByRole('region', { name: 'Files it discards' })
     await vi.waitFor(() => {
@@ -368,7 +356,9 @@ describe('ConfirmationDialog for Force remove', () => {
 
     // The rest of the files read means the details landed.
     await vi.waitFor(() => {
-      expect(within(dialog.getByRole('region', { name: 'Files it discards' })).queryByRole('status')).toBeNull()
+      expect(
+        within(dialog.getByRole('region', { name: 'Files it discards' })).queryByRole('status'),
+      ).not.toBeInTheDocument()
     })
     expect(dialog.queryByRole('region', { name: 'Commits not on GitHub' })).not.toBeInTheDocument()
     expect(dialog.queryByText(/not on GitHub/)).not.toBeInTheDocument()
@@ -394,7 +384,9 @@ describe('ConfirmationDialog for Force remove', () => {
     const dialog = single('force', copied)
 
     await vi.waitFor(() => {
-      expect(within(dialog.getByRole('region', { name: 'Files it discards' })).queryByRole('status')).toBeNull()
+      expect(
+        within(dialog.getByRole('region', { name: 'Files it discards' })).queryByRole('status'),
+      ).not.toBeInTheDocument()
     })
     expect(dialog.getByText(/^Removing it would discard 14 uncommitted files/)).toBeInTheDocument()
     expect(dialog.queryByRole('region', { name: 'Commits not on GitHub' })).not.toBeInTheDocument()
@@ -448,7 +440,7 @@ describe('ConfirmationDialog for Force remove', () => {
   it('reads the details again as it opens after a read that failed', () => {
     const read = vi.fn()
     const wt = dirty(3)
-    render(
+    renderAt(
       <ConfirmationDialog
         confirmation={{ kind: 'force', repoPath, worktree: wt }}
         rules={rules}
@@ -460,7 +452,6 @@ describe('ConfirmationDialog for Force remove', () => {
         onConfirm={vi.fn()}
         onCancel={vi.fn()}
       />,
-      { wrapper: at() },
     )
 
     expect(read).toHaveBeenCalledExactlyOnceWith(repoPath, wt)
@@ -509,7 +500,7 @@ describe('ConfirmationDialog for Force remove', () => {
 
   it('confirms with the branches ticked', async () => {
     const onConfirm = vi.fn()
-    render(
+    renderAt(
       <ConfirmationDialog
         confirmation={{ kind: 'force', repoPath, worktree: dirty(3) }}
         rules={rules}
@@ -521,7 +512,6 @@ describe('ConfirmationDialog for Force remove', () => {
         onConfirm={onConfirm}
         onCancel={vi.fn()}
       />,
-      { wrapper: at() },
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Force remove' }))
@@ -540,7 +530,7 @@ describe('ConfirmationDialog in bulk', () => {
       onGitHub: false,
       branches: [ownBranch({ name: 'worktree-issue-9', deletable: false, reason: 'it has commits not on GitHub' })],
     })
-    render(
+    renderAt(
       <Harness
         confirmation={{
           kind: 'all',
@@ -550,7 +540,6 @@ describe('ConfirmationDialog in bulk', () => {
           ],
         }}
       />,
-      { wrapper: at() },
     )
 
     const listed = within(screen.getByRole('list', { name: 'Worktrees' }))
@@ -573,9 +562,7 @@ describe('ConfirmationDialog in bulk', () => {
   })
 
   it('says under a finished worktree whose commits went in as copies where they went', () => {
-    render(<Harness confirmation={{ kind: 'finished', targets: [{ repoPath, worktree: recordedWorktree() }] }} />, {
-      wrapper: at(),
-    })
+    renderAt(<Harness confirmation={{ kind: 'finished', targets: [{ repoPath, worktree: recordedWorktree() }] }} />)
 
     const line = screen.getByText(/^Safe to remove/).closest('[data-tone]')
     expect(line).toHaveAttribute('data-tone', 'success')

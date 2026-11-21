@@ -1,4 +1,4 @@
-import { startTransition, useActionState, useId, useState } from 'react'
+import { useId, useState } from 'react'
 
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import { setCardAvatars, setCardDensity, setCardUnread, setHiddenLabels, type CardDensity } from '../../platform'
@@ -6,15 +6,7 @@ import { buttonClass, quietButtonClass, Segmented } from '../controls'
 import { ChoiceRow, Group, joinIds, Note, SectionIntro, SwitchRow } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
-
-// Refusal is why a change was refused, and the draft typed when it was: typing again
-// clears a refused pattern.
-interface Refusal {
-  draft: string
-  message: string
-}
-
-const noRefusal: Refusal = { draft: '', message: '' }
+import { useListChange } from './useListChange'
 
 // densities are the cards' densities, in the order the Density row offers them.
 const densities: readonly { value: CardDensity; label: string }[] = [
@@ -40,40 +32,20 @@ export function CardsSection({ settings: stored, onSaved, onShowCardGuide }: Car
   const [densityError, setDensityError] = useState('')
   const [picturesError, setPicturesError] = useState('')
   const [unreadError, setUnreadError] = useState('')
-  const [draft, setDraft] = useState('')
-  // invalid is why the draft cannot be added, found before asking the backend.
-  const [invalid, setInvalid] = useState<Refusal>(noRefusal)
-  // Every change runs through one action: one at a time, with the controls held while it
-  // runs.
-  const [refused, change, busy] = useActionState(
-    async (_: Refusal, next: { patterns: string[]; draft: string; then?: () => void }): Promise<Refusal> => {
-      const result = await save({ hiddenLabels: next.patterns }, () => setHiddenLabels(next.patterns))
-
-      if (!result.ok) {
-        return { draft: next.draft, message: result.error }
-      }
-
-      next.then?.()
-
-      return noRefusal
-    },
-    noRefusal,
-  )
+  // Every change of the hidden labels runs through one action: one at a time, with the
+  // controls held while it runs.
+  const { draft, setDraft, refusal, refuse, store: change, busy } = useListChange(save)
 
   const patterns = settings.hiddenLabels
   const defaults = settings.defaultHiddenLabels
   // A pattern matches ignoring case, so one of the defaults typed in another case is one.
   const isDefault = (pattern: string) => defaults.some((d) => d.toLowerCase() === pattern.toLowerCase())
   const atDefaults = patterns.length === defaults.length && patterns.every(isDefault)
-  const refusal = invalid.message !== '' ? invalid : busy ? noRefusal : refused
   const error = refusal.draft === draft ? refusal.message : ''
 
   // store replaces the hidden labels.
   const store = (next: string[], then?: () => void) => {
-    setInvalid(noRefusal)
-    startTransition(() => {
-      change({ patterns: next, draft, ...(then === undefined ? {} : { then }) })
-    })
+    change({ shows: { hiddenLabels: next }, call: () => setHiddenLabels(next), then })
   }
 
   const add = () => {
@@ -81,7 +53,7 @@ export function CardsSection({ settings: stored, onSaved, onShowCardGuide }: Car
     const pattern = draft.trim()
 
     if (patterns.some((p) => p.toLowerCase() === pattern.toLowerCase())) {
-      setInvalid({ draft, message: `${pattern} is already hidden.` })
+      refuse(`${pattern} is already hidden.`)
 
       return
     }

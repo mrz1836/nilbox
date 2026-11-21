@@ -1,21 +1,16 @@
-import { act, render as renderPlain, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Assigned } from '../lib/assignees'
 import type { AssigneeCandidates } from '../platform'
-import { at } from '../test/clock'
+import { deferred } from '../test/async'
+import { renderAt } from '../test/clock'
 import { assigneeCandidates } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { AssigneePicker, type AssigneeReads } from './AssigneePicker'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
-
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
-}
 
 // reads are the issue sheet's reads.
 function reads(): AssigneeReads {
@@ -38,7 +33,7 @@ async function open(
   const onLearned = vi.fn()
   const onClose = vi.fn()
 
-  render(
+  renderAt(
     <AssigneePicker
       itemId={1}
       repo="acme-org/example-repo"
@@ -106,8 +101,8 @@ describe('AssigneePicker', () => {
 
   it('learns who can be assigned as it opens, when a read is due, and only then', async () => {
     const learned = assigneeCandidates({ readAt: '2026-06-14T12:00:00Z', complete: true, total: 5 })
-    let finish: (got: AssigneeCandidates) => void = () => undefined
-    platform.learnIssueAssignees.mockImplementation(() => new Promise((resolve) => (finish = resolve)))
+    const learning = deferred<AssigneeCandidates>()
+    platform.learnIssueAssignees.mockImplementation(() => learning.promise)
 
     const { dialog, onLearned } = await open([], assigneeCandidates({ stale: true }))
 
@@ -115,7 +110,7 @@ describe('AssigneePicker', () => {
       'Learning who can be assigned in acme-org/example-repo…',
     )
 
-    finish(learned)
+    learning.resolve(learned)
 
     expect(
       await dialog.findByText('Everyone who can be assigned in acme-org/example-repo · read 1d ago'),
@@ -127,42 +122,38 @@ describe('AssigneePicker', () => {
   it('searches GitHub a pause after typing, and lists whom it found', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
 
-    try {
-      platform.searchIssueAssignees.mockResolvedValue(
-        assigneeCandidates({
-          people: [
-            {
-              login: 'octo-zed',
-              name: 'Octo Zed',
-              mine: false,
-              source: 'found',
-              reviewed: 0,
-              authored: 0,
-              committed: 0,
-              assignedAt: '',
-              lastAt: '',
-              where: '',
-            },
-          ],
-        }),
-      )
+    platform.searchIssueAssignees.mockResolvedValue(
+      assigneeCandidates({
+        people: [
+          {
+            login: 'octo-zed',
+            name: 'Octo Zed',
+            mine: false,
+            source: 'found',
+            reviewed: 0,
+            authored: 0,
+            committed: 0,
+            assignedAt: '',
+            lastAt: '',
+            where: '',
+          },
+        ],
+      }),
+    )
 
-      const { dialog } = await open([])
-      const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) })
+    const { dialog } = await open([])
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) })
 
-      await user.type(dialog.getByRole('searchbox', { name: 'Filter or search people' }), 'zed')
-      expect(platform.searchIssueAssignees, 'not while typing').not.toHaveBeenCalled()
-      expect(dialog.getByText('Searching…')).toBeInTheDocument()
+    await user.type(dialog.getByRole('searchbox', { name: 'Filter or search people' }), 'zed')
+    expect(platform.searchIssueAssignees, 'not while typing').not.toHaveBeenCalled()
+    expect(dialog.getByText('Searching…')).toBeInTheDocument()
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(300)
-      })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
 
-      expect(platform.searchIssueAssignees).toHaveBeenCalledExactlyOnceWith(1, 'zed')
-      expect(await dialog.findByRole('group', { name: 'Found on GitHub' })).toHaveTextContent('octo-zed')
-    } finally {
-      vi.useRealTimers()
-    }
+    expect(platform.searchIssueAssignees).toHaveBeenCalledExactlyOnceWith(1, 'zed')
+    expect(await dialog.findByRole('group', { name: 'Found on GitHub' })).toHaveTextContent('octo-zed')
   })
 
   it('never searches once the app holds everyone who can be assigned', async () => {

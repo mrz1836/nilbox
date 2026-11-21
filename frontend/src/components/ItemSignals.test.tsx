@@ -1,8 +1,10 @@
 import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { project } from '../test/fixtures'
 import { FieldPill, ProgressBar, ProjectLink } from './ItemSignals'
+
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 describe('ProgressBar', () => {
   // fill is how far the bar is filled.

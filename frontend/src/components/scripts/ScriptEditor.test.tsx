@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../../generated/brand'
 import { newUserScript } from '../../lib/userScripts'
 import type { UserScript } from '../../platform'
+import { deferred } from '../../test/async'
 import { scriptVariables, userScript } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { ScriptEditor } from './ScriptEditor'
@@ -50,16 +51,15 @@ describe('ScriptEditor', () => {
     await userEvent.click(dialog.getByRole('radio', { name: 'Test' }))
     await userEvent.click(save)
 
-    const made: UserScript = {
+    const made = userScript({
       id: 0,
       name: 'Test all',
       command: 'magex test:race',
       icon: 'test',
       scope: 'go',
-      repos: [],
       runsIn: 'terminal',
       confirm: true,
-    }
+    })
     expect(platform.saveUserScript).toHaveBeenCalledExactlyOnceWith(made)
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledExactlyOnceWith({ ...made, id: 41 })
@@ -125,18 +125,14 @@ describe('ScriptEditor', () => {
   })
 
   it('reads the clones’ repositories only once Chosen is picked, and says how it went', async () => {
-    let answer: (names: string[]) => void = () => undefined
-    platform.listScriptRepoNames.mockReturnValueOnce(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const reading = deferred<string[]>()
+    platform.listScriptRepoNames.mockReturnValueOnce(reading.promise)
     const { dialog } = renderEditor()
 
     await userEvent.click(dialog.getByRole('radio', { name: 'Chosen…' }))
     expect(dialog.getByRole('status')).toHaveTextContent('Reading your clones…')
 
-    answer([])
+    reading.resolve([])
     expect(await dialog.findByText('None of your clones is on GitHub.')).toBeInTheDocument()
     expect(dialog.queryByRole('list', { name: 'Repositories' })).not.toBeInTheDocument()
   })

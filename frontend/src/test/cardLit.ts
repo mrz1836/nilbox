@@ -1,7 +1,7 @@
 // cardLitAway is index.css's card-lit selector without its :hover, which jsdom doesn't
 // follow: what lights a card with the pointer off it, keyboard focus in it (:focus-visible)
 // or a menu or panel it opened open.
-export const cardLitAway = ':has(:focus-visible), :has([aria-haspopup][aria-expanded="true"])'
+const cardLitAway = ':has(:focus-visible), :has([aria-haspopup][aria-expanded="true"])'
 
 // shownAway reports whether a card's hover controls (its triage, or a compact card's hover
 // row) show with the pointer off the card, by the variants they carry: card-lit while the

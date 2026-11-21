@@ -1,12 +1,13 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Profiler, type ReactNode } from 'react'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ItemRowProps } from './components/ItemRow'
 import { triageList } from './lib/triage'
 import type { AutopilotMatch, AutopilotState, CardDensity, InboxItem, InboxSnapshot, ListKey } from './platform'
-import { FIXED_NOW, fromNow } from './test/clock'
+import { deferred, nextTask } from './test/async'
+import { FIXED_NOW, isoAgo } from './test/clock'
 import {
   autopilotMatch,
   avatarDataURL,
@@ -21,7 +22,7 @@ import {
   settings,
   snapshot,
 } from './test/fixtures'
-import { emit, platform, renderApp } from './test/platform'
+import { platform, renderApp, send } from './test/platform'
 
 // The render profile: a 300-item inbox, and how much of it renders again for its authors'
 // pictures landing, a minute tick, a background update that changes one item, a GitHub
@@ -72,26 +73,14 @@ vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platfo
 
 // The window's clock reads a faked time, starting at the fixtures' FIXED_NOW, so the
 // minute tick can be stepped. renderApp makes the clock as the window renders, once the
-// timers are faked.
-beforeAll(() => {
+// timers are faked. Each run fakes them afresh, since the setup file puts the real timers
+// back after every test, and so starts at FIXED_NOW, however far the run before it
+// stepped the clock.
+beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'], now: FIXED_NOW })
 })
 
-// Each run starts at FIXED_NOW, however far the run before it stepped the clock.
-beforeEach(() => {
-  vi.setSystemTime(FIXED_NOW)
-})
-
-afterAll(() => {
-  vi.useRealTimers()
-})
-
 const minute = 60_000
-
-// ago is a time minutes before FIXED_NOW.
-function ago(minutes: number): string {
-  return fromNow(-minutes * minute).toISOString()
-}
 
 // row is one of the inbox's items. About one in ten moved within the hour, so a minute
 // tick changes its age; the rest are hours to days old. A few are snoozed, back from a
@@ -104,12 +93,12 @@ function row(id: number): InboxItem {
     number: id,
     title: `Item ${String(id)}`,
     url: `https://github.com/acme-org/example-repo/pull/${String(id)}`,
-    updatedAt: ago(minutes),
+    updatedAt: isoAgo({ m: minutes }),
     details: details(),
     files: id % 7 === 0 ? fileCheck() : null,
-    snoozedUntil: id % 13 === 0 ? ago(-3 * 24 * 60) : id % 17 === 0 ? ago(120) : '',
-    dismissedAt: id % 19 === 0 ? ago(600) : '',
-    pinnedAt: id % 23 === 0 ? ago(30) : '',
+    snoozedUntil: id % 13 === 0 ? isoAgo({ m: -3 * 24 * 60 }) : id % 17 === 0 ? isoAgo({ m: 120 }) : '',
+    dismissedAt: id % 19 === 0 ? isoAgo({ m: 600 }) : '',
+    pinnedAt: id % 23 === 0 ? isoAgo({ m: 30 }) : '',
   })
 }
 
@@ -122,7 +111,7 @@ function inbox(change: (item: InboxItem) => InboxItem = (i) => i): InboxSnapshot
     reviewRequested: list(ids(1, 100)),
     yours: list(ids(101, 200)),
     rate: { graphql: rate(), core: rate(), search: rate() },
-    lastRefreshedAt: ago(5),
+    lastRefreshedAt: isoAgo({ m: 5 }),
   })
 }
 
@@ -139,11 +128,7 @@ function mountedRows(): number {
 // settle lets every answer, and every render it causes, finish.
 async function settle() {
   for (let i = 0; i < 5; i++) {
-    await act(async () => {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 0)
-      })
-    })
+    await nextTask()
   }
 }
 
@@ -231,12 +216,12 @@ describe.each(densities)('App rendering, %s cards', (density) => {
     const rows = shown('reviewRequested') + shown('yours')
     // The authors' pictures wait until the test lands them.
     let land: (pictures: Record<string, string>) => void = () => undefined
-    platform.cardPictures.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          land = resolve
-        }),
-    )
+    platform.cardPictures.mockImplementation(() => {
+      const request = deferred<Record<string, string>>()
+      land = request.resolve
+
+      return request.promise
+    })
 
     const mounted = await measure(async () => {
       await renderApp({ now: () => new Date(), wrapper: Profiled })
@@ -277,9 +262,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
     // A background update that changes one item.
     answer(inbox((i) => (i.id === 50 ? { ...i, title: 'Item 50, renamed' } : i)))
     const update = await measure(async () => {
-      act(() => {
-        emit('inbox:updated')
-      })
+      send('inbox:updated')
       await screen.findByText('Item 50, renamed', {}, wait)
     })
 
@@ -289,9 +272,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
     // part in it.
     answerThreads(4)
     const threads = await measure(async () => {
-      act(() => {
-        emit('ghthreads:updated')
-      })
+      send('ghthreads:updated')
       await waitFor(() => {
         expect(screen.getByTestId('github-threads-count')).toHaveTextContent('4')
       }, wait)
@@ -306,9 +287,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
       Promise.resolve({ items: [notification({ id: 1, itemId: 1 }), notification({ id: 2, itemId: 2 })], unread: 2 }),
     )
     const notifications = await measure(async () => {
-      act(() => {
-        emit('notifications:updated')
-      })
+      send('notifications:updated')
       await waitFor(() => {
         expect(screen.getByTestId('notifications-unread')).toHaveTextContent('2')
       }, wait)
@@ -466,9 +445,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
       // Item 2's chip changes, but not where its routine stands; item 3's routine starts work.
       matches = [match(1, 'waiting'), match(2, 'closed'), match(3, 'running')]
       const update = await measure(async () => {
-        act(() => {
-          emit('autopilot:updated')
-        })
+        send('autopilot:updated')
         await waitFor(() => {
           expect(rule(3)).toBe('agent_working')
         }, wait)

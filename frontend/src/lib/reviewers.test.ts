@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { FIXED_NOW } from '../test/clock'
 import { reviewerCandidates } from '../test/fixtures'
 import {
   applyLabel,
@@ -14,7 +15,7 @@ import {
   teamName,
 } from './reviewers'
 
-const now = new Date('2026-06-15T12:00:00Z')
+const now = FIXED_NOW
 
 // person is octo-member as the picker offers them, with overrides.
 function person(overrides: Partial<ReturnType<typeof reviewerCandidates>['people'][number]> = {}) {

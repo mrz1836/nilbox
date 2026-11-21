@@ -7,7 +7,7 @@
 // test file a module registry of its own, so each file has its own fake; the
 // configuration's mockReset puts every function back to its default before each test.
 
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import type { ComponentType, ReactNode } from 'react'
 import { vi, type Mock } from 'vitest'
 
@@ -72,7 +72,6 @@ import {
   prompt,
   promptBackup,
   prompts,
-  queuedClear,
   readiness,
   releaseCandidates,
   releaseOffer,
@@ -105,7 +104,6 @@ import {
   snoozeTemplate,
   statusWatch,
   sweepReport,
-  threadsPreview,
   updateReady,
   updateStatus,
   moveResult,
@@ -134,6 +132,12 @@ export type FakePlatform = {
 // WindowEvent names an event the shell sends the window, and EventData is what it carries.
 type WindowEvent = Parameters<Platform['on']>[0]
 type EventData<E extends WindowEvent> = Parameters<Parameters<typeof real.on<E>>[1]>[0]
+
+// EventArgs is what emit and send take after an event's name: its data, which an event
+// that carries nothing may leave out.
+type EventArgs<E extends WindowEvent> = [keyof EventData<E>] extends [never]
+  ? [data?: EventData<E>]
+  : [data: EventData<E>]
 
 // Listener is a subscription the fake keeps, whatever its event's data.
 type Listener = (data: unknown) => void
@@ -196,8 +200,6 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     routineMatchStored: () => Promise.resolve({ count: 0, pullRequests: 0, issues: 0, unknown: 0, incomplete: false }),
     // Describe it is ready, with no conversation, no card from outside, and the plugin not
     // installed, unless a test says so. A message starts a turn that runs.
-    DescribeTurnState: { TurnRunning: 'running', TurnDone: 'done', TurnStopped: 'stopped', TurnFailed: 'failed' },
-    DescribeAttachKind: { AttachRoutine: 'routine', AttachItem: 'item' },
     describeItStatus: () => Promise.resolve(describeStatus()),
     describeItAgent: () => Promise.resolve(describeAgentChoice()),
     setDescribeItAgent: (choice) => Promise.resolve(choice),
@@ -536,23 +538,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     githubThreadsSnapshot: () => Promise.resolve(githubThreads()),
     githubThreadsList: () => Promise.resolve(githubThreadList()),
     checkGitHubThreadsNow: () => Promise.resolve(githubThreads()),
-    previewGitHubThreads: () => Promise.resolve(threadsPreview()),
-    // A clear by hand is queued to go at once; Undo takes a queued one back, which leaves
-    // none queued.
-    clearGitHubThreads: (threadIDs) =>
-      Promise.resolve(
-        githubThreads({
-          queued: threadIDs.map((threadId, i) =>
-            queuedClear({ id: i + 1, threadId, trigger: 'by_hand', sendAfter: '2026-06-15T12:00:00Z' }),
-          ),
-        }),
-      ),
-    clearGitHubItemThreads: (owner, name, number) =>
-      Promise.resolve(
-        githubThreads({
-          queued: [queuedClear({ owner, name, number, trigger: 'by_hand', sendAfter: '2026-06-15T12:00:00Z' })],
-        }),
-      ),
+    // Undo takes a queued clear back, which leaves none queued.
     keepGitHubThreads: () => Promise.resolve(githubThreads()),
     markGitHubThreadsDone: () => Promise.resolve(githubThreads()),
     markGitHubThreadsRead: () => Promise.resolve(githubThreads()),
@@ -674,7 +660,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
 
 // createPlatform returns a fresh fake platform, with emit to send its window events and
 // listening to count who listens for one.
-export function createPlatform() {
+function createPlatform() {
   const listeners = new Map<WindowEvent, Set<Listener>>()
 
   const subscribe: Loose<Platform['on']> = (event, listener) => {
@@ -704,10 +690,7 @@ export function createPlatform() {
   // emit sends an event as the shell would: every listener subscribed for it now gets its
   // data, which an event that carries nothing may leave out. It fails the test when
   // nothing listens for event, so a test cannot send an event into the void.
-  function emit<E extends WindowEvent>(
-    event: E,
-    ...data: [keyof EventData<E>] extends [never] ? [data?: EventData<E>] : [data: EventData<E>]
-  ): void {
+  function emit<E extends WindowEvent>(event: E, ...data: EventArgs<E>): void {
     const subscribed = [...(listeners.get(event) ?? [])]
 
     if (subscribed.length === 0) {
@@ -719,16 +702,24 @@ export function createPlatform() {
     }
   }
 
+  // send emits an event inside act, so every render and effect its listeners cause has
+  // run when it returns. Use emit itself inside an act that does more than send it.
+  function send<E extends WindowEvent>(event: E, ...data: EventArgs<E>): void {
+    act(() => {
+      emit(event, ...data)
+    })
+  }
+
   // listening counts the listeners subscribed for event now.
   function listening(event: WindowEvent): number {
     return listeners.get(event)?.size ?? 0
   }
 
-  return { platform, emit, listening }
+  return { platform, emit, send, listening }
 }
 
 // The test file's fake, the one its vi.mock line installs.
-export const { platform, emit, listening } = createPlatform()
+export const { platform, emit, send, listening } = createPlatform()
 
 // mocks lists the fake's functions by name, for a test that reads every call made, leaving
 // out the values the platform hands out as they are.

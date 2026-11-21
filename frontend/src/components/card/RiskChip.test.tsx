@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { InboxItem } from '../../platform'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { agentGroup, fileCheck, item } from '../../test/fixtures'
 import { RiskChip, RiskIcon } from './RiskChip'
 
@@ -23,7 +23,7 @@ const dependencies = agentGroup({
 })
 
 function renderChip(overrides: Partial<InboxItem>, onFilesSettings?: () => void) {
-  return render(<RiskChip item={item(overrides)} onFilesSettings={onFilesSettings} />, { wrapper: at() })
+  return renderAt(<RiskChip item={item(overrides)} onFilesSettings={onFilesSettings} />)
 }
 
 describe('RiskChip', () => {

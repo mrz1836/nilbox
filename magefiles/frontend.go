@@ -84,10 +84,11 @@ func (r runner) gateFrontend() error {
 }
 
 // frontendGateScripts are the frontend/package.json scripts the gate runs, in order: the
-// format check, lint, typecheck, the tests with coverage, and the render profile through
-// the React Compiler.
+// format check, lint, typecheck, the tests with coverage, the render profile through the
+// React Compiler, and the production build, which fails on a chunk over its size limit
+// (vite.config.ts). The build writes frontend/dist, as frontend:build does.
 func frontendGateScripts() []string {
-	return []string{"format:check", "lint", "typecheck", "test:coverage", "test:renders"}
+	return []string{"format:check", "lint", "typecheck", "test:coverage", "test:renders", "build"}
 }
 
 // requirePNPM returns an actionable error naming the pinned pnpm version when pnpm is

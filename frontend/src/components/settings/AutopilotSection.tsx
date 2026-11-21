@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useId, useState } from 'react'
+import { useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
 import { elsewhereText, notReadyNames } from '../../lib/autopilot'
@@ -7,13 +7,10 @@ import { dayHeading, formatDateTime, formatFull, formatWhen } from '../../lib/ti
 import { useReadiness } from '../../lib/useAutopilot'
 import { useMutation } from '../../lib/useMutation'
 import { useNowAs } from '../../lib/useNow'
-import { useQuery } from '../../lib/useQuery'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import {
   AutopilotMode,
   clearAutopilotHistory,
-  getAutopilotEngine,
-  on,
   setAutopilotActionsPerDay,
   setAutopilotAgentsAtOnce,
   setAutopilotCatchUpHours,
@@ -38,7 +35,7 @@ import {
 } from '../../platform'
 import { CommandLine } from '../CommandLine'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, fieldClass, Segmented, type SegmentOption } from '../controls'
+import { buttonClass, fieldClass, Segmented, Select, type SegmentOption, type SelectOption } from '../controls'
 import { AlertIcon, CheckIcon, RefreshIcon, XIcon } from '../icons'
 import { Spinner } from '../Spinner'
 import { DescribeItSettings } from './DescribeItSettings'
@@ -107,6 +104,13 @@ const modeOptions: readonly SegmentOption<AutopilotMode>[] = [
 // CapChoice is what the daily cap counts, or off.
 type CapChoice = 'off' | AutopilotUnit
 
+// capChoices are the Daily cap's choices: off, or a unit to count in.
+const capChoices: readonly SelectOption<CapChoice>[] = [
+  { value: 'off', label: 'Off (default)' },
+  { value: 'usd', label: 'In dollars' },
+  { value: 'tokens', label: 'In tokens' },
+]
+
 // Range is the least and the most a setting takes.
 interface Range {
   min: number
@@ -161,9 +165,9 @@ function checkedAt(now: Date, iso: string): string {
 
 // lastCheckedText is the engine's heartbeat, as Settings says it: what its last cycle did
 // and when, that it waits for the first refresh, that it hasn't checked yet, or that
-// another copy of the app runs it. It is '' until the engine is read.
-export function lastCheckedText(now: Date, engine: AutopilotEngine | undefined): string {
-  if (engine === undefined) {
+// another copy of the app runs it. It is '' until the engine is read (null).
+export function lastCheckedText(now: Date, engine: AutopilotEngine | null): string {
+  if (engine === null) {
     return ''
   }
 
@@ -267,22 +271,17 @@ function CapRow({ controlId, cap, error, onChange }: CapRowProps) {
           className={`${fieldClass} w-32 text-right tabular-nums`}
         />
       )}
-      <select
+      <Select
         id={controlId}
         value={choice}
+        options={capChoices}
         aria-describedby={describedBy}
-        onChange={(e) => {
-          const next = e.target.value as CapChoice
-
+        onChange={(next) => {
           setDraft(null)
           onChange(next === 'off' ? { amount: 0, unit: cap.unit } : { amount: defaults.cap[next], unit: next })
         }}
         className="rounded-md border border-border bg-surface px-2 py-1 text-sm"
-      >
-        <option value="off">Off (default)</option>
-        <option value="usd">In dollars</option>
-        <option value="tokens">In tokens</option>
-      </select>
+      />
     </SettingRow>
   )
 }
@@ -340,25 +339,12 @@ function NumberRow({
 }
 
 // LastChecked is the engine's heartbeat: when it last checked the routines and what it
-// did, kept current as the clock moves on and read again whenever Autopilot changes.
-function LastChecked() {
+// did, kept current as the clock moves on, from the engine as the window last read it
+// (null until it has), which it reads again whenever Autopilot changes.
+function LastChecked({ engine }: { engine: AutopilotEngine | null }) {
   const [marks] = useSetting('Last checked')
-  const engine = useQuery(() => getAutopilotEngine(), [], { log: 'could not read what Autopilot last did' })
-  const readAgain = useEffectEvent(() => {
-    void engine.refetch()
-  })
-
-  useEffect(
-    () =>
-      on('autopilot:updated', () => {
-        readAgain()
-      }),
-    [],
-  )
-
-  const data = engine.data
-  const text = useNowAs((now) => lastCheckedText(now, data))
-  const at = data?.elsewhere === false ? (data.lastCycle?.at ?? '') : ''
+  const text = useNowAs((now) => lastCheckedText(now, engine))
+  const at = engine?.elsewhere === false ? (engine.lastCycle?.at ?? '') : ''
 
   return (
     <div {...marks} className={`px-4 py-3.5 ${rowMatchClass}`}>
@@ -563,6 +549,9 @@ export interface AutopilotSectionProps extends SectionProps {
   // agent picks Claude Code's.
   agents: readonly AgentInfo[]
   profiles: readonly Profile[]
+  // engine is Autopilot's engine as the window last read it, or null until it has, which
+  // Last checked says.
+  engine: AutopilotEngine | null
 }
 
 // AutopilotSection holds Autopilot's settings, each saved as soon as it is set: Pause
@@ -570,7 +559,7 @@ export interface AutopilotSectionProps extends SectionProps {
 // them all; what holds a coding agent back; how long the history and the run logs are
 // kept, and Clear history; the Claude Code Describe it runs, and the plugin for the user's
 // own; what the routines need on this Mac; and when the engine last checked the routines.
-export function AutopilotSection({ settings: stored, onSaved, agents, profiles }: AutopilotSectionProps) {
+export function AutopilotSection({ settings: stored, onSaved, agents, profiles, engine }: AutopilotSectionProps) {
   const id = useId()
   const { settings, save, error } = useSettingsSave(stored, onSaved)
   const config = settings.autopilot
@@ -770,7 +759,7 @@ export function AutopilotSection({ settings: stored, onSaved, agents, profiles }
       />
       <ThisMac />
       <Group>
-        <LastChecked />
+        <LastChecked engine={engine} />
       </Group>
       <Note>
         Local steps, such as a snooze or a pin, keep only to Pause Autopilot and a routine’s own active hours; Undo in

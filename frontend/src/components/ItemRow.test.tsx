@@ -1,13 +1,15 @@
-import { act, render as renderPlain, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { CardPrefsContext, defaultCardPrefs } from '../lib/cardPrefs'
 import { HiddenLabelsContext, labelMatcher } from '../lib/labels'
+import type { LaunchOptions } from '../lib/launch'
 import type { TriageTab } from '../lib/triage'
-import type { InboxItem, ItemDetails, RepoRules, Worktree } from '../platform'
-import { at } from '../test/clock'
+import type { InboxItem, ItemDetails, Worktree } from '../platform'
+import { deferred } from '../test/async'
+import { renderAt } from '../test/clock'
 import {
   agentSession,
   agents,
@@ -25,10 +27,10 @@ import {
 } from '../test/fixtures'
 import { clipper, shownAway } from '../test/cardLit'
 import { platform } from '../test/platform'
+import { editActionsOf, triageActionsOf } from '../test/query'
+import { followResizes } from '../test/stubs'
 import { AutopilotRowsContext, type AutopilotRows } from './autopilot/AutopilotChip'
-import type { EditActions } from './ItemMenu'
-import { CardChips, ItemRow, TrustTag, WorktreeTag, type ItemRowProps, type LaunchOptions } from './ItemRow'
-import type { TriageActions } from './TriageControls'
+import { CardChips, ItemRow, TrustTag, WorktreeTag, type ItemRowProps } from './ItemRow'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -40,37 +42,6 @@ const launch: LaunchOptions = {
   onDefaultsSaved: () => Promise.resolve(),
   onManagePrompts: () => undefined,
   onSettingsSaved: () => undefined,
-}
-
-function triageActions(repoRules: RepoRules = { pinned: [], muted: [] }): TriageActions {
-  return {
-    snoozeDays: 3,
-    onDismiss: vi.fn(),
-    onSnooze: vi.fn(),
-    onRestore: vi.fn(),
-    onPin: vi.fn(),
-    onUnpin: vi.fn(),
-    onRefresh: vi.fn(() => Promise.resolve()),
-    onChangeDefault: vi.fn(),
-    repoRules,
-    onRepoRule: vi.fn(),
-    onRepoRuleSettings: vi.fn(),
-    onMarkRead: vi.fn(),
-    onMarkUnread: vi.fn(),
-  }
-}
-
-function editActions(): EditActions {
-  return {
-    onCopyLink: vi.fn(),
-    onUnassign: vi.fn(() => Promise.resolve()),
-    onRemoveReview: vi.fn(() => Promise.resolve()),
-  }
-}
-
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
 }
 
 interface Setup extends Partial<ItemRowProps> {
@@ -89,7 +60,7 @@ function mountCard(it: InboxItem, { rows, ...props }: Setup = {}): HTMLElement {
   const wrapped: ReactNode =
     rows === undefined ? card : <AutopilotRowsContext value={rows}>{card}</AutopilotRowsContext>
 
-  render(<>{wrapped}</>)
+  renderAt(<>{wrapped}</>)
 
   return screen.getByRole('listitem')
 }
@@ -140,7 +111,7 @@ function body(row: HTMLElement): HTMLElement {
 
 describe('ItemRow', () => {
   it('names its item and its rule for the inbox to find, and marks it when highlighted', () => {
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <ul>
         <ItemRow item={item({ id: 42 })} launch={launch} />
       </ul>,
@@ -307,7 +278,7 @@ describe('ItemRow waiting on the author', () => {
   })
 
   it('offers to nudge the author once they have been quiet a day, where the card can', async () => {
-    const edits = { ...editActions(), onNudge: vi.fn() }
+    const edits = editActionsOf({ onNudge: vi.fn() })
     const quiet = { ...theirs(), updatedAt: '2026-06-13T12:00:00Z' }
     const row = mountCard(quiet, { resolution, edits })
 
@@ -327,7 +298,7 @@ describe('ItemRow waiting on the author', () => {
   })
 
   it('says when the user nudged the author, and waits again from then', () => {
-    const edits = { ...editActions(), onNudge: vi.fn() }
+    const edits = editActionsOf({ onNudge: vi.fn() })
     const row = mountCard(
       { ...theirs(), updatedAt: '2026-06-10T12:00:00Z', nudgedAt: '2026-06-15T09:00:00Z' },
       {
@@ -351,13 +322,13 @@ describe('ItemRow waiting on the author', () => {
   })
 
   it('offers no nudge while Offer a nudge after is Off', () => {
-    render(
+    renderAt(
       <CardPrefsContext value={{ ...defaultCardPrefs, nudgeAfterHours: 0 }}>
         <ul>
           <ItemRow
             item={{ ...theirs(), updatedAt: '2026-06-01T12:00:00Z' }}
             launch={launch}
-            edits={{ ...editActions(), onNudge: vi.fn() }}
+            edits={editActionsOf({ onNudge: vi.fn() })}
           />
         </ul>
       </CardPrefsContext>,
@@ -441,24 +412,7 @@ describe('ItemRow labels', () => {
   })
 
   it('folds a label that would not show whole into the count, beside a long title', () => {
-    const resized: (() => void)[] = []
-
-    vi.stubGlobal(
-      'ResizeObserver',
-      class {
-        constructor(callback: () => void) {
-          resized.push(callback)
-        }
-
-        observe() {
-          // The test reports the layout itself.
-        }
-
-        disconnect() {
-          // Nothing to stop following.
-        }
-      },
-    )
+    const resizes = followResizes()
 
     const labels = [
       { name: 'bug-P3', color: '#d73a4a' },
@@ -477,11 +431,7 @@ describe('ItemRow labels', () => {
     layOut(first as HTMLElement, 408, 60)
     layOut(second as HTMLElement, 472, 150)
     layOut(strip.querySelector('[data-label-count]') as HTMLElement, 626, 14)
-    act(() => {
-      resized.forEach((callback) => {
-        callback()
-      })
-    })
+    resizes.resize()
 
     expect(first).not.toHaveAttribute('inert')
     expect(second, 'laid out unseen, to be measured').toHaveAttribute('inert')
@@ -492,7 +442,7 @@ describe('ItemRow labels', () => {
 
   it('leaves out the labels the user hid before taking the first two', () => {
     const labels = ['size/XL', 'one', 'wontfix', 'two', 'three'].map((name) => ({ name, color: '#d73a4a' }))
-    render(
+    renderAt(
       <HiddenLabelsContext value={labelMatcher(['size/*', 'wontfix'])}>
         <ul>
           <ItemRow item={asked({ details: details({ labels }) })} launch={null} />
@@ -506,7 +456,7 @@ describe('ItemRow labels', () => {
   })
 
   it('shows no labels when every one is hidden, or there are none', () => {
-    render(
+    renderAt(
       <HiddenLabelsContext value={labelMatcher(['size/*'])}>
         <ul>
           <ItemRow item={asked({ details: details({ labels: [{ name: 'size/M', color: '' }] }) })} launch={null} />
@@ -609,8 +559,8 @@ describe('ItemRow chips', () => {
 
   it('opens the risk chip’s panel whole, over the triage, which its second line doesn’t clip', async () => {
     const row = mountCard(asked({ trusted: false, trust: 'outside', files: fileCheck() }), {
-      triage: triageActions(),
-      edits: editActions(),
+      triage: triageActionsOf(),
+      edits: editActionsOf(),
     })
     const chip = screen.getByRole('button', { name: 'Outside · Agent config · Workflows' })
 
@@ -646,7 +596,7 @@ describe('ItemRow chips', () => {
 
   it('marks a worktree with changes or in use, and nothing else', () => {
     const shown = (wt: Worktree) => {
-      const { unmount } = render(
+      const { unmount } = renderAt(
         <ul>
           <ItemRow item={asked()} launch={null} worktree={wt} />
         </ul>,
@@ -665,7 +615,7 @@ describe('ItemRow chips', () => {
 
   it('shows a routine’s chip, except when the story already is the routine’s', () => {
     const rows: AutopilotRows = { names: new Map(), chips: new Map([[1, autopilotMatch()]]) }
-    const { unmount } = render(
+    const { unmount } = renderAt(
       <AutopilotRowsContext value={rows}>
         <ul>
           <ItemRow item={asked()} launch={null} />
@@ -676,7 +626,7 @@ describe('ItemRow chips', () => {
     expect(screen.getByRole('button', { name: /^Autopilot: Snoozed/ })).toBeInTheDocument()
     unmount()
 
-    render(
+    renderAt(
       <AutopilotRowsContext value={rows}>
         <ul>
           <ItemRow item={asked()} launch={null} autopilot="needs:Heal bot PRs" />
@@ -691,7 +641,7 @@ describe('ItemRow chips', () => {
   })
 
   it('folds the chips past the second into a count that names them', () => {
-    render(
+    renderAt(
       <CardChips
         chips={[
           { key: 'a', words: 'First', node: <span>First</span> },
@@ -709,13 +659,15 @@ describe('ItemRow chips', () => {
 
 describe('ItemRow pin', () => {
   it('marks a pinned card before its title', () => {
-    mountCard(asked({ pinnedAt: '2026-06-15T11:00:00Z' }), { triage: triageActions() })
+    mountCard(asked({ pinnedAt: '2026-06-15T11:00:00Z' }), { triage: triageActionsOf() })
 
     expect(screen.getByRole('img', { name: 'Pinned to the top of the list' })).toBeInTheDocument()
   })
 
   it('names the rule that pins it, which the card doesn’t unpin', () => {
-    mountCard(asked({ repoRule: 'pinned' }), { triage: triageActions({ pinned: ['acme-org'], muted: [] }) })
+    mountCard(asked({ repoRule: 'pinned' }), {
+      triage: triageActionsOf({ repoRules: { pinned: ['acme-org'], muted: [] } }),
+    })
 
     const mark = screen.getByRole('img', { name: 'Pinned with acme-org' })
     expect(mark).toHaveAttribute('title', expect.stringContaining('Settings → Repositories'))
@@ -724,7 +676,7 @@ describe('ItemRow pin', () => {
 
   it('names its repository while the rules are unknown, and the routine that pinned it', () => {
     const rows: AutopilotRows = { names: new Map([[4, 'Pin outside PRs']]), chips: new Map() }
-    render(
+    renderAt(
       <AutopilotRowsContext value={rows}>
         <ul>
           <ItemRow item={asked({ repoRule: 'pinned' })} launch={null} />
@@ -741,7 +693,7 @@ describe('ItemRow pin', () => {
 describe('ItemRow tabs', () => {
   // inTab renders an item's card in a tab, with the row's triage.
   function inTab(it: InboxItem, tab: TriageTab) {
-    const triage = triageActions({ pinned: [], muted: ['acme-org'] })
+    const triage = triageActionsOf({ repoRules: { pinned: [], muted: ['acme-org'] } })
     mountCard(it, { tab, triage })
 
     return triage
@@ -767,7 +719,7 @@ describe('ItemRow tabs', () => {
         snoozedUntil: '2026-06-16T18:45:00Z',
         details: details({ viewerVerdict: 'changes', mergeable: 'CONFLICTING' }),
       }),
-      { tab: 'snoozed', triage: triageActions() },
+      { tab: 'snoozed', triage: triageActionsOf() },
     )
 
     expect(row).toHaveAttribute('data-rule', 'snoozed')
@@ -789,7 +741,7 @@ describe('ItemRow tabs', () => {
         dismissedAt: '2026-06-15T10:00:00Z',
         details: details({ checks: { ...details().checks, passed: 10, failed: 2 } }),
       }),
-      { tab: 'dismissed', triage: triageActions() },
+      { tab: 'dismissed', triage: triageActionsOf() },
     )
 
     expect(row).toHaveAttribute('data-rule', 'dismissed')
@@ -835,7 +787,7 @@ describe('ItemRow tabs', () => {
 
 describe('ItemRow agent', () => {
   it('has no agent slot until the launch options load, but its own move', () => {
-    render(
+    renderAt(
       <ul>
         <ItemRow item={asked()} launch={null} />
       </ul>,
@@ -887,7 +839,7 @@ describe('ItemRow agent', () => {
   it('starts every card’s primary, and ends every card’s ▾, at the same place', () => {
     const failed = agentSession({ state: 'failed', stateAt: '2026-06-15T11:00:00Z', detail: '' })
     const ended = agentSession({ state: 'ended', endedAt: '2026-06-15T11:59:00Z', canFocus: false })
-    render(
+    renderAt(
       <ul>
         <ItemRow item={asked()} launch={launch} resolution={itemResolution()} />
         <ItemRow item={asked({ id: 2 })} launch={launch} resolution={itemResolution()} sessions={[ended]} />
@@ -898,7 +850,7 @@ describe('ItemRow agent', () => {
           launch={launch}
           resolution={itemResolution()}
           tab="snoozed"
-          triage={triageActions()}
+          triage={triageActionsOf()}
         />
       </ul>,
     )
@@ -1036,7 +988,7 @@ describe('ItemRow agent', () => {
 
   it('offers what happened after a session failed today, and a fresh launch beside the item’s move after a day', () => {
     const failed = (at: string) => agentSession({ state: 'failed', stateAt: at, detail: '' })
-    render(
+    renderAt(
       <ul>
         <ItemRow
           item={asked()}
@@ -1122,8 +1074,8 @@ describe('ItemRow peek', () => {
         unread: true,
       }),
       {
-        triage: triageActions(),
-        edits: editActions(),
+        triage: triageActionsOf(),
+        edits: editActionsOf(),
         onOpen: vi.fn(),
         onFilterBy: vi.fn(),
         sessions: [working],
@@ -1289,7 +1241,7 @@ describe('ItemRow peek', () => {
     })
     const closed = issueInfo({ milestone: { ...milestone, dueOn: '2026-06-01', closed: true } })
 
-    render(
+    renderAt(
       <ul>
         <ItemRow item={item({ kind: 'issue', details: details({ issue: overdue }) })} launch={null} />
         <ItemRow item={item({ id: 2, kind: 'issue', details: details({ issue: closed }) })} launch={null} />
@@ -1308,7 +1260,7 @@ describe('ItemRow peek', () => {
   })
 
   it('leaves out where an item stands while it has nothing to say', async () => {
-    render(
+    renderAt(
       <ul>
         <ItemRow item={item({ kind: 'issue', details: details({ labels: [] }) })} launch={null} />
         <ItemRow item={item({ id: 2, title: 'Not read yet' })} launch={null} />
@@ -1330,7 +1282,7 @@ describe('ItemRow peek', () => {
   })
 
   it('names the teams and the push that put a pull request here', async () => {
-    render(
+    renderAt(
       <ul>
         <ItemRow item={asked({ reviewRequest: 'team', reviewTeams: [] })} launch={null} />
         <ItemRow item={asked({ id: 2, reviewRequest: 'pushed', details: details({ comments: 0 }) })} launch={null} />
@@ -1356,7 +1308,7 @@ describe('ItemRow peek', () => {
   })
 
   it('acts from its action bar: the primary, the agent’s options, triage, and GitHub', async () => {
-    const triage = triageActions()
+    const triage = triageActionsOf()
     const onOpen = vi.fn()
     const it = asked()
     const row = mountCard(it, { triage, onOpen })
@@ -1378,7 +1330,7 @@ describe('ItemRow peek', () => {
 
     const options = peek().getByRole('button', { name: 'Claude…' })
     await userEvent.click(options)
-    expect(screen.getByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Launch options' })).toBeInTheDocument()
     expect(options).toHaveAttribute('aria-expanded', 'true')
   })
 
@@ -1386,7 +1338,7 @@ describe('ItemRow peek', () => {
     platform.focusSession.mockRejectedValueOnce(new Error('The terminal tab is gone.'))
     const onOpen = vi.fn()
     const it = asked({ pinnedAt: '2026-06-15T11:00:00Z' })
-    const triage = triageActions()
+    const triage = triageActionsOf()
     const row = mountCard(it, { sessions: [agentSession()], onOpen, triage, tab: 'inbox' })
     await userEvent.click(toggles(row).stretched)
 
@@ -1402,8 +1354,8 @@ describe('ItemRow peek', () => {
 
   it('reads an issue on GitHub without a sheet, and offers only its pin in a set-aside tab', async () => {
     const it = item({ kind: 'issue', details: details(), dismissedAt: '2026-06-15T10:00:00Z' })
-    const triage = triageActions()
-    render(
+    const triage = triageActionsOf()
+    renderAt(
       <ul>
         <ItemRow item={it} launch={null} tab="dismissed" triage={triage} sessions={[agentSession()]} />
       </ul>,
@@ -1421,7 +1373,7 @@ describe('ItemRow peek', () => {
 
 describe('ItemRow triage', () => {
   it('hides the triage until the card is lit, over the state column', () => {
-    const row = mountCard(asked(), { triage: triageActions(), edits: editActions() })
+    const row = mountCard(asked(), { triage: triageActionsOf(), edits: editActionsOf() })
 
     const triage = row.querySelector('[data-triage]')
     expect(triage).toHaveClass('opacity-0', 'card-lit:opacity-100')
@@ -1432,23 +1384,20 @@ describe('ItemRow triage', () => {
   })
 
   it('keeps the triage shown, and the state column faded, while the card works with GitHub', async () => {
-    let done: () => void = () => undefined
-    const triage = triageActions()
-    triage.onRefresh = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          done = resolve
-        }),
-    )
+    const refreshing = deferred()
+    const onRefresh = vi.fn(() => refreshing.promise)
+    const triage = triageActionsOf()
+    triage.onRefresh = onRefresh
     const row = mountCard(asked(), { triage })
 
     await userEvent.click(screen.getByRole('button', { name: 'Refresh from GitHub' }))
 
+    expect(onRefresh).toHaveBeenCalledOnce()
     expect(row.querySelector('[data-triage]')).toHaveClass('opacity-100')
     expect(row.querySelector('[data-state-column]')).toHaveClass('opacity-0')
 
     await act(async () => {
-      done()
+      refreshing.resolve()
       await Promise.resolve()
     })
 
@@ -1456,26 +1405,23 @@ describe('ItemRow triage', () => {
   })
 
   it('fades the card under a note while an edit will likely take it out of the list', async () => {
-    let done: () => void = () => undefined
-    const edits = editActions()
-    edits.onUnassign = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          done = resolve
-        }),
-    )
-    const row = mountCard(item({ assigned: true, details: details() }), { triage: triageActions(), edits })
+    const unassigning = deferred()
+    const onUnassign = vi.fn(() => unassigning.promise)
+    const edits = editActionsOf()
+    edits.onUnassign = onUnassign
+    const row = mountCard(item({ assigned: true, details: details() }), { triage: triageActionsOf(), edits })
 
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
     await userEvent.click(screen.getByRole('menuitem', { name: 'Unassign me' }))
 
+    expect(onUnassign).toHaveBeenCalledOnce()
     expect(row).toHaveAttribute('aria-busy', 'true')
     const note = within(row).getByRole('status')
     expect(note).toHaveTextContent('Unassigning you on GitHub…')
     expect(note.closest('[data-row-status]')).toHaveClass('z-30')
 
     await act(async () => {
-      done()
+      unassigning.resolve()
       await Promise.resolve()
     })
 
@@ -1487,7 +1433,7 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
   // mountLit renders an item's card in the density, after a button the keyboard can start
   // from, and returns the row.
   function mountLit(it: InboxItem, props: Partial<ItemRowProps> = {}): HTMLElement {
-    render(
+    renderAt(
       <CardPrefsContext value={{ ...defaultCardPrefs, density }}>
         <button type="button">Before</button>
         <ul>
@@ -1501,9 +1447,9 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
 
   it('lights only while the pointer is on the card, whatever a click focused in it', async () => {
     const user = userEvent.setup()
-    const triage = triageActions()
+    const triage = triageActionsOf()
     const onOpen = vi.fn()
-    const row = mountLit(asked(), { triage, edits: editActions(), onOpen })
+    const row = mountLit(asked(), { triage, edits: editActionsOf(), onOpen })
     const { stretched, chevron } = toggles(row)
     const title = within(row).getAllByRole('button')[0] as HTMLElement
 
@@ -1535,7 +1481,7 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
 
   it('lights as the keyboard moves focus into the card, through to Show details', async () => {
     const user = userEvent.setup()
-    const row = mountLit(asked(), { triage: triageActions(), edits: editActions() })
+    const row = mountLit(asked(), { triage: triageActionsOf(), edits: editActionsOf() })
     const { chevron } = toggles(row)
 
     // jsdom rings focus that Tab moved while the key is down, and remembers the last
@@ -1559,10 +1505,11 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
 
   it('gives the ▾ focus back unringed after a pointer closes the launch options, ringed after Escape', async () => {
     const user = userEvent.setup()
-    const row = mountLit(asked(), { triage: triageActions(), edits: editActions() })
+    const row = mountLit(asked(), { triage: triageActionsOf(), edits: editActionsOf() })
     const options = within(row).getByRole('button', { name: /^Launch options/ })
 
     await user.click(options)
+    await screen.findByRole('dialog', { name: 'Launch options' })
     expect(shownAway(row)).toBe(true)
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
@@ -1582,8 +1529,8 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
 
   it('gives a menu’s button focus back unringed after a pointer picks from it', async () => {
     const user = userEvent.setup()
-    const triage = triageActions()
-    const edits = editActions()
+    const triage = triageActionsOf()
+    const edits = editActionsOf()
     const row = mountLit(asked(), { triage, edits })
 
     const snooze = within(row).getByRole('button', { name: 'Snooze for…' })
@@ -1610,7 +1557,7 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
 
 describe('ItemRow unread dot', () => {
   it('marks an unread card first on its first line, before the pin and the title', () => {
-    const row = mountCard(asked({ unread: true, pinnedAt: '2026-06-15T11:00:00Z' }), { triage: triageActions() })
+    const row = mountCard(asked({ unread: true, pinnedAt: '2026-06-15T11:00:00Z' }), { triage: triageActionsOf() })
 
     const dot = within(row).getByTitle('New since you last opened it')
     expect(dot).toHaveTextContent('Unread')
@@ -1626,7 +1573,7 @@ describe('ItemRow unread dot', () => {
   })
 
   it('shows no dot while the cards show no unread dots', () => {
-    render(
+    renderAt(
       <CardPrefsContext value={{ ...defaultCardPrefs, unread: false }}>
         <ul>
           <ItemRow item={asked({ unread: true })} launch={null} />
@@ -1643,8 +1590,8 @@ describe('ItemRow open', () => {
     const onOpen = vi.fn()
     const user = userEvent.setup()
     const pull = item()
-    const triage = triageActions()
-    render(
+    const triage = triageActionsOf()
+    renderAt(
       <ul>
         <ItemRow item={pull} launch={null} tab="dismissed" triage={triage} onOpen={onOpen} />
       </ul>,
@@ -1677,7 +1624,7 @@ describe('ItemRow open', () => {
       title: 'Crash on start',
       url: 'https://github.com/acme-org/example-repo/issues/8',
     })
-    render(
+    renderAt(
       <ul>
         <ItemRow item={crash} launch={null} onOpen={onOpen} />
       </ul>,
@@ -1694,7 +1641,7 @@ describe('ItemRow open', () => {
   })
 
   it('opens a card on GitHub when no sheet does', async () => {
-    render(
+    renderAt(
       <ul>
         <ItemRow item={item({ kind: 'issue', title: 'Crash on start' })} launch={null} />
       </ul>,
@@ -1709,7 +1656,7 @@ describe('ItemRow open', () => {
 describe('TrustTag', () => {
   it('marks a trusted bot quietly, an untrusted bot or outside contributor as a warning, and no one else', () => {
     const tag = (it: InboxItem) => {
-      const { container, unmount } = render(<TrustTag item={it} />)
+      const { container, unmount } = renderAt(<TrustTag item={it} />)
       const shown = container.firstElementChild
       const words = shown === null ? null : [shown.textContent, shown.className.includes('text-warning')]
       unmount()
@@ -1727,7 +1674,7 @@ describe('TrustTag', () => {
 describe('WorktreeTag', () => {
   // tag renders a worktree's tag and returns its words.
   function tag(overrides: Partial<Worktree>): string | null {
-    const { container, unmount } = render(<WorktreeTag wt={worktree(overrides)} agents={agents()} />)
+    const { container, unmount } = renderAt(<WorktreeTag wt={worktree(overrides)} agents={agents()} />)
     const words = container.textContent
     unmount()
 

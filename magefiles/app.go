@@ -48,7 +48,7 @@ const (
 	devServerURL = "http://127.0.0.1:9245"
 
 	// macOSMinVersion is the oldest macOS the app supports; Go's own objects target it.
-	macOSMinVersion = "13.0"
+	macOSMinVersion = "13.3"
 
 	// lintVersionKey names the pinned golangci-lint version in the MAGE-X env file.
 	lintVersionKey = "MAGE_X_GOLANGCI_LINT_VERSION"

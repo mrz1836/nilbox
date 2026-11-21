@@ -7,13 +7,11 @@
 import { brand } from '../generated/brand'
 import type {
   AutopilotActivityDay,
-  AutopilotActivityPage,
   AutopilotEffect,
   AutopilotEngine,
   AutopilotGitHubActionKind,
   AutopilotGlance,
   AutopilotGroup,
-  AutopilotHold,
   AutopilotItemRef,
   AutopilotLeftAlone,
   AutopilotMatch,
@@ -22,6 +20,7 @@ import type {
   AutopilotReadiness,
   AutopilotReadyCheck,
   AutopilotReason,
+  AutopilotReviewVerdict,
   AutopilotRoutine,
   AutopilotRoutineReady,
   AutopilotRun,
@@ -102,12 +101,6 @@ export function autopilotBadge(
     .join(' · ')
 
   return { count: working, attention: waiting > 0, failed: broken > 0, title }
-}
-
-// touched reports a match that did something with its item, or waits to: every match but
-// a baseline and one that closed as the item or the routine moved on.
-export function touched(m: AutopilotMatch): boolean {
-  return m.state !== 'baseline' && m.state !== 'closed'
 }
 
 // StatusLine is a routine's line under its name: what it says, its tone, and, for "ran 12
@@ -484,7 +477,7 @@ function githubChip(m: AutopilotMatch): Chip | undefined {
 
 // githubAhead is the GitHub step a match is at and the actions of it still to send, or
 // undefined when its next step isn't one.
-export function githubAhead(
+function githubAhead(
   m: Pick<AutopilotMatch, 'steps' | 'step'>,
 ): { actions: AutopilotGitHubActionKind[]; sent: number } | undefined {
   const st = m.steps.at(m.step)
@@ -503,7 +496,7 @@ export type FollowUp =
   | { kind: 'merge'; does: string; verdict: string }
   | {
       kind: 'review'
-      verdict: 'approve' | 'request_changes' | 'comment'
+      verdict: AutopilotReviewVerdict
       body: string
       comments: number
       allowApprove: boolean
@@ -541,7 +534,7 @@ export function followUpOf(m: Pick<AutopilotMatch, 'steps' | 'step'>): FollowUp 
 }
 
 // reviewVerdictLabels name an agent review's verdicts.
-export const reviewVerdictLabels: Readonly<Record<'approve' | 'request_changes' | 'comment', string>> = {
+export const reviewVerdictLabels: Readonly<Record<AutopilotReviewVerdict, string>> = {
   approve: 'Approves',
   request_changes: 'Requests changes',
   comment: 'Comments',
@@ -671,7 +664,7 @@ function lineResult(line: ActivityLine): Exclude<ActivityResult, 'all'> {
 }
 
 // lineRoutine is the routine a line is about.
-export function lineRoutine(line: ActivityLine): number {
+function lineRoutine(line: ActivityLine): number {
   switch (line.kind) {
     case 'group':
       return line.group.routineId
@@ -756,14 +749,6 @@ export function activityLines(
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
 }
 
-// lineOf finds the line that shows the match id, a grouped one included, or undefined.
-export function lineOf(lines: readonly ActivityLine[], id: number): ActivityLine | undefined {
-  return lines.find(
-    (line) =>
-      (line.kind === 'match' && line.match.id === id) || (line.kind === 'group' && line.group.matches.includes(id)),
-  )
-}
-
 // mergeGroups puts together a grouped line that two pages split: its counts, what Undo
 // would put back, and its matches and items, under one line.
 function mergeGroups(a: AutopilotGroup, b: AutopilotGroup): AutopilotGroup {
@@ -817,11 +802,6 @@ export function mergeDays(
   }
 
   return out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-}
-
-// matchCount counts the matches the pages hold.
-export function matchCount(page: Pick<AutopilotActivityPage, 'days'>): number {
-  return page.days.reduce((n, day) => n + day.matches.length, 0)
 }
 
 // itemText names an item as a line does: "example-repo #12".
@@ -964,13 +944,6 @@ export function skippedBacklogText(b: Backlog, skipped: number): string {
 // shortHead is a commit as the window names it: its first seven characters.
 export function shortHead(sha: string): string {
   return sha.slice(0, 7)
-}
-
-// dirtyText says what holds a start in a worktree back: "pr-88 has 3 uncommitted files".
-export function dirtyText(hold: Pick<AutopilotHold, 'worktree' | 'dir' | 'dirty'>): string {
-  const where = hold.worktree === '' ? hold.dir : hold.worktree
-
-  return `${where} has ${counted(hold.dirty, 'uncommitted file', 'uncommitted files')}`
 }
 
 // runLabel is what a waiting match's Run says: for a hold of a pull request's files, the

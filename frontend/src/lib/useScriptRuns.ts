@@ -1,6 +1,5 @@
-import { useEffect, useEffectEvent } from 'react'
-
-import { listScriptRuns, on, type ScriptRun } from '../platform'
+import { listScriptRuns, type ScriptRun } from '../platform'
+import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
 // ScriptRunsState is every run, as the Scripts tab lists them.
@@ -20,19 +19,14 @@ export interface ScriptRunsState {
 export function useScriptRuns(enabled = true): ScriptRunsState {
   // The agents' runs are the Autopilot tab's, never the Runs page's.
   const runs = useQuery(() => listScriptRuns({ kinds: [], repo: '', withAgents: false }), [], { enabled })
-  const reloadOnUpdate = useEffectEvent(() => {
-    void runs.refetch()
-  })
 
-  useEffect(() => {
-    if (!enabled) {
-      return undefined
-    }
-
-    return on('scriptruns:updated', () => {
-      reloadOnUpdate()
-    })
-  }, [enabled])
+  useOn(
+    'scriptruns:updated',
+    () => {
+      void runs.refetch()
+    },
+    enabled,
+  )
 
   return { runs: runs.data ?? null, error: runs.error, reload: runs.refetch }
 }

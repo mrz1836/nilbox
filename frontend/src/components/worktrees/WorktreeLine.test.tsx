@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -10,7 +10,8 @@ import type { RowWork } from '../../lib/useWorktrees'
 import type { ItemFacts } from '../../lib/worktreeParts'
 import type { Lane } from '../../lib/worktrees'
 import type { AgentID, AgentSession, LinkedItem, Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
-import { at, FIXED_NOW } from '../../test/clock'
+import { deferred } from '../../test/async'
+import { FIXED_NOW, isoAgo, renderAt } from '../../test/clock'
 import {
   agentSession,
   copiedWorktree,
@@ -37,11 +38,7 @@ const minute = 60
 const hour = 60 * minute
 const day = 24 * hour
 
-// ago is the time s seconds before the clock, and unixAgo the same in Unix seconds.
-function ago(s: number): string {
-  return new Date(now.getTime() - s * 1000).toISOString()
-}
-
+// unixAgo is the time s seconds before the clock, in Unix seconds.
 function unixAgo(s: number): number {
   return Math.floor(now.getTime() / 1000) - s
 }
@@ -99,7 +96,7 @@ function facts(checks: string, overrides: Partial<ItemFacts> = {}): ItemFacts {
 
 // session is the session the app follows in a worktree, started s seconds ago.
 function session(state: AgentSession['state'], s: number): AgentSession {
-  return agentSession({ state, launchedAt: ago(s) })
+  return agentSession({ state, launchedAt: isoAgo({ s }) })
 }
 
 const er = worktreeRepo()
@@ -130,7 +127,7 @@ const inspect = row('inspect-point', {
   lastCommitUnix: unixAgo(25 * minute),
   item: pr(192, 'Inspect the point under the cursor'),
   agent: 'claude',
-  lastLaunchedAt: ago(12 * minute),
+  lastLaunchedAt: isoAgo({ s: 12 * minute }),
   launches: 3,
   stage: 'in-use',
   canRemove: false,
@@ -139,7 +136,7 @@ const codexRun = row('issue-91', {
   item: issue(91, 'Paste loses the trailing newline'),
   inUse: [{ pid: 60311, command: 'codex', agent: 'codex', by: '' }],
   agent: 'codex',
-  lastLaunchedAt: ago(6 * minute),
+  lastLaunchedAt: isoAgo({ s: 6 * minute }),
   dirty: true,
   dirtyCount: 2,
   files: worktreeFiles(2),
@@ -159,49 +156,49 @@ const issue88 = row('issue-88', {
   item: issue(88, 'Rate limits reset at the wrong hour', { name: 'api-gateway' }),
   inUse: [{ pid: 51207, command: 'codex', agent: 'codex', by: '' }],
   agent: 'codex',
-  lastLaunchedAt: ago(40 * minute),
+  lastLaunchedAt: isoAgo({ s: 40 * minute }),
   dirty: true,
   dirtyCount: 4,
   stage: 'in-use',
   canRemove: false,
 })
 const pr209 = row('pr-209', {
-  item: pr(209, 'Drop the v1 config loader', { state: 'merged', closedAt: ago(26 * hour) }),
+  item: pr(209, 'Drop the v1 config loader', { state: 'merged', closedAt: isoAgo({ s: 26 * hour }) }),
   stage: 'finished',
   canCleanUp: true,
   agent: 'codex',
-  lastLaunchedAt: ago(2 * day + 90 * minute),
+  lastLaunchedAt: isoAgo({ s: 2 * day + 90 * minute }),
   launches: 1,
 })
 const closedIssue = row('issue-64', {
-  item: issue(64, 'Document the config precedence', { state: 'closed', closedAt: ago(5 * hour) }),
+  item: issue(64, 'Document the config precedence', { state: 'closed', closedAt: isoAgo({ s: 5 * hour }) }),
   stage: 'finished',
   canCleanUp: true,
   agent: 'codex',
-  lastLaunchedAt: ago(8 * hour),
+  lastLaunchedAt: isoAgo({ s: 8 * hour }),
 })
 const pr131 = row('pr-131', {
-  item: pr(131, 'Keep the cursor where it was on reload', { state: 'merged', closedAt: ago(6 * day) }),
+  item: pr(131, 'Keep the cursor where it was on reload', { state: 'merged', closedAt: isoAgo({ s: 6 * day }) }),
   unpushed: 2,
   onGitHub: false,
   stage: 'needs-review',
   agent: 'claude',
-  lastLaunchedAt: ago(7 * day + 30 * minute),
+  lastLaunchedAt: isoAgo({ s: 7 * day + 30 * minute }),
 })
 const mergedDirty = row('pr-150', {
-  item: pr(150, 'Cache the avatar reads', { state: 'merged', closedAt: ago(2 * day) }),
+  item: pr(150, 'Cache the avatar reads', { state: 'merged', closedAt: isoAgo({ s: 2 * day }) }),
   dirty: true,
   dirtyCount: 3,
   stage: 'needs-review',
   canRemove: false,
   canForceRemove: true,
   agent: 'claude',
-  lastLaunchedAt: ago(2 * hour),
+  lastLaunchedAt: isoAgo({ s: 2 * hour }),
 })
 const pr214 = row('pr-214', {
   item: pr(214, 'Retry the upload when the token expires'),
   agent: 'claude',
-  lastLaunchedAt: ago(2 * hour),
+  lastLaunchedAt: isoAgo({ s: 2 * hour }),
   launches: 2,
 })
 const both = row('pr-221', {
@@ -213,9 +210,13 @@ const both = row('pr-221', {
   canRemove: false,
   canForceRemove: true,
   agent: 'claude',
-  lastLaunchedAt: ago(65 * minute),
+  lastLaunchedAt: isoAgo({ s: 65 * minute }),
 })
-const draft = row('pr-244', { item: pr(244, 'Try a virtualized file list'), agent: 'claude', lastLaunchedAt: ago(day) })
+const draft = row('pr-244', {
+  item: pr(244, 'Try a virtualized file list'),
+  agent: 'claude',
+  lastLaunchedAt: isoAgo({ s: day }),
+})
 const dirtyOnly = row('pr-246', {
   item: pr(246, 'Add the keyboard shortcuts sheet'),
   dirty: true,
@@ -255,7 +256,7 @@ const staleLock = row('pr-253', {
   lockReason: 'claude session pr-253 (pid 66120 start Mon Jun 15 07:14:09 2026)',
   canRemove: false,
   agent: 'claude',
-  lastLaunchedAt: ago(4 * hour + 25 * minute),
+  lastLaunchedAt: isoAgo({ s: 4 * hour + 25 * minute }),
 })
 const handLocked = row('pr-254', {
   item: pr(254, 'Pin the release branch'),
@@ -658,11 +659,10 @@ function renderLine(wt: Worktree, options: LineOptions = {}) {
     ...handlers,
     ...options,
   }
-  const view = render(
+  const view = renderAt(
     <ul>
       <WorktreeLine {...props} />
     </ul>,
-    { wrapper: at() },
   )
 
   return { ...view, ...handlers, props, line: within(screen.getAllByRole('listitem')[0] as HTMLElement) }
@@ -780,14 +780,14 @@ describe('WorktreeLine gallery', () => {
     ['an open pull request', pr(7, 'Open'), 'Pull request, open', 'text-success'],
     [
       'a closed pull request',
-      pr(7, 'Closed', { state: 'closed', closedAt: ago(3 * hour) }),
+      pr(7, 'Closed', { state: 'closed', closedAt: isoAgo({ s: 3 * hour }) }),
       'Pull request, closed without merging 3h ago',
       'text-danger',
     ],
     ['an open issue', issue(7, 'Open issue'), 'Issue, open', 'text-success'],
     [
       'a closed issue',
-      issue(7, 'Closed issue', { state: 'closed', closedAt: ago(2 * day) }),
+      issue(7, 'Closed issue', { state: 'closed', closedAt: isoAgo({ s: 2 * day }) }),
       'Issue, closed 2d ago',
       'text-info',
     ],
@@ -1113,7 +1113,7 @@ describe('WorktreeLine disclosure', () => {
 
   it('moves to the rows around it with ↓ and ↑, across clones', async () => {
     const shared = { details: readsNothing(), listing: 1, disabled: false, agentName, ...actions(), open: false }
-    render(
+    renderAt(
       <>
         <ul>
           <WorktreeLine repo={er} worktree={pr214} {...shared} />
@@ -1123,7 +1123,6 @@ describe('WorktreeLine disclosure', () => {
           <WorktreeLine repo={ag} worktree={issue88} {...shared} />
         </ul>
       </>,
-      { wrapper: at() },
     )
 
     const first = screen.getByRole('button', { name: 'Unfold worktree-pr-214' })
@@ -1208,14 +1207,10 @@ describe('WorktreeLine details', () => {
   }
 
   it('lists the first twelve files at once, then the rest once read', async () => {
-    let answer: (details: WorktreeDetails) => void = () => undefined
-    platform.worktreeDetails.mockReturnValueOnce(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const answer = deferred<WorktreeDetails>()
+    platform.worktreeDetails.mockReturnValueOnce(answer.promise)
     const wt = row('pr-7', { dirty: true, dirtyCount: 30, files: worktreeFiles(12), canRemove: false })
-    render(<Page wt={wt} listing={1} />, { wrapper: at() })
+    renderAt(<Page wt={wt} listing={1} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Unfold worktree-pr-7' }))
 
@@ -1225,7 +1220,7 @@ describe('WorktreeLine details', () => {
     expect(drawer.getByText('reading the other 18…')).toBeInTheDocument()
 
     act(() => {
-      answer(worktreeDetails({ files: worktreeFiles(30), fileCount: 30 }))
+      answer.resolve(worktreeDetails({ files: worktreeFiles(30), fileCount: 30 }))
     })
 
     await userEvent.click(await drawer.findByRole('button', { name: 'Show all 30' }))

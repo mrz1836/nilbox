@@ -1,17 +1,14 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ScriptRunChunk } from '../../platform'
+import { deferred } from '../../test/async'
 import { scriptRunChunk } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { LogView, pollMs, retryMs } from './LogView'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
-
-afterEach(() => {
-  vi.useRealTimers()
-})
 
 // numbered is lines "line from" up to before "line to", each ended.
 function numbered(from: number, to: number): string {
@@ -143,6 +140,25 @@ describe('LogView', () => {
     expect(await screen.findByText('No output.')).toBeInTheDocument()
   })
 
+  it('cancels a live run’s read under way as it goes, and takes no answer after', async () => {
+    const cancelled = vi.fn()
+    const read = deferred<ScriptRunChunk>()
+
+    platform.scriptRunOutput.mockReturnValue(Object.assign(read.promise, { cancel: cancelled }))
+    const { unmount } = render(<LogView runId={7} live />)
+
+    unmount()
+    expect(cancelled).toHaveBeenCalledOnce()
+
+    // A read that answers anyway is let go: nothing more is read.
+    await act(async () => {
+      read.resolve(chunk('late\n', 0, { done: false }))
+      await read.promise
+    })
+
+    expect(platform.scriptRunOutput).toHaveBeenCalledOnce()
+  })
+
   describe('the tail window', () => {
     it('shows the newest 2,000 lines, and the ones above them on Show earlier output', async () => {
       platform.scriptRunOutput.mockResolvedValue(chunk(numbered(0, 2_500), 0))
@@ -181,13 +197,9 @@ describe('LogView', () => {
     })
 
     it('says it is reading earlier output until it has', async () => {
-      let answer: (c: ScriptRunChunk) => void = () => undefined
+      const earlier = deferred<ScriptRunChunk>()
 
-      platform.scriptRunOutput.mockResolvedValueOnce(chunk('tail\n', 14)).mockReturnValueOnce(
-        new Promise((resolve) => {
-          answer = resolve
-        }),
-      )
+      platform.scriptRunOutput.mockResolvedValueOnce(chunk('tail\n', 14)).mockReturnValueOnce(earlier.promise)
       render(<LogView runId={7} live={false} />)
 
       await userEvent.click(await screen.findByRole('button', { name: 'Show earlier output' }))
@@ -195,7 +207,7 @@ describe('LogView', () => {
       expect(screen.getByRole('button', { name: 'Reading earlier output…' })).toBeDisabled()
 
       act(() => {
-        answer(chunk('head\nmiddle\n', 0, { size: 19 }))
+        earlier.resolve(chunk('head\nmiddle\n', 0, { size: 19 }))
       })
 
       expect(await within(output()).findByText('head')).toBeInTheDocument()
@@ -246,8 +258,11 @@ describe('LogView', () => {
   })
 
   describe('a live run', () => {
-    it('reads on from where it left off, at once while more is there, then every so often until done', async () => {
+    beforeEach(() => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    })
+
+    it('reads on from where it left off, at once while more is there, then every so often until done', async () => {
       platform.scriptRunOutput
         .mockResolvedValueOnce(chunk('one\n', 0, { size: 8, done: false }))
         .mockResolvedValueOnce(chunk('two\n', 4, { size: 8, done: false }))
@@ -275,7 +290,6 @@ describe('LogView', () => {
     })
 
     it('says no output came yet', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       platform.scriptRunOutput.mockResolvedValue(chunk('', 0, { done: false }))
       render(<LogView runId={7} live />)
 
@@ -285,7 +299,6 @@ describe('LogView', () => {
     })
 
     it('stops reading once it is gone', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       platform.scriptRunOutput.mockResolvedValue(chunk('', 0, { done: false }))
       const { unmount } = render(<LogView runId={7} live />)
 
@@ -296,30 +309,7 @@ describe('LogView', () => {
       expect(platform.scriptRunOutput).toHaveBeenCalledOnce()
     })
 
-    it('cancels a read under way as it goes, and takes no answer after', async () => {
-      const cancelled = vi.fn()
-      let answer: (c: ScriptRunChunk) => void = () => undefined
-      const read = new Promise<ScriptRunChunk>((resolve) => {
-        answer = resolve
-      })
-
-      platform.scriptRunOutput.mockReturnValue(Object.assign(read, { cancel: cancelled }))
-      const { unmount } = render(<LogView runId={7} live />)
-
-      unmount()
-      expect(cancelled).toHaveBeenCalledOnce()
-
-      // A read that answers anyway is let go: nothing more is read.
-      await act(async () => {
-        answer(chunk('late\n', 0, { done: false }))
-        await read
-      })
-
-      expect(platform.scriptRunOutput).toHaveBeenCalledOnce()
-    })
-
     it('reads the log again from its tail when it was cut down as the run ended', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       platform.scriptRunOutput
         .mockResolvedValueOnce(chunk(numbered(0, 3), 100, { done: false }))
         .mockResolvedValueOnce(scriptRunChunk({ text: '', offset: 121, next: 121, size: 40, restart: true }))
@@ -338,7 +328,6 @@ describe('LogView', () => {
     })
 
     it('reads the log again from its tail when it grew smaller while the view was behind', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       // The view read up to 121 of 200 bytes; the run ended, and its log was cut down to
       // 150, so the read from 121 is within it and comes back with what is there now.
       platform.scriptRunOutput
@@ -359,7 +348,6 @@ describe('LogView', () => {
     })
 
     it('tries a failed read again, and clears the failure once one works', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       platform.scriptRunOutput
         .mockRejectedValueOnce(new Error('database is locked'))
         .mockResolvedValueOnce(chunk('back\n', 0))
@@ -376,7 +364,6 @@ describe('LogView', () => {
     })
 
     it('leaves a failed read of an ended run’s log there', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       platform.scriptRunOutput.mockRejectedValue(new Error('the run is no longer recorded'))
       render(<LogView runId={7} live={false} />)
 
@@ -387,16 +374,11 @@ describe('LogView', () => {
     })
 
     it('lets earlier output read for a log since read again go', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      let answer: (c: ScriptRunChunk) => void = () => undefined
+      const earlier = deferred<ScriptRunChunk>()
 
       platform.scriptRunOutput
         .mockResolvedValueOnce(chunk('tail\n', 5, { done: false }))
-        .mockReturnValueOnce(
-          new Promise((resolve) => {
-            answer = resolve
-          }),
-        )
+        .mockReturnValueOnce(earlier.promise)
         .mockResolvedValueOnce(scriptRunChunk({ text: '', offset: 10, next: 10, size: 4, restart: true }))
         .mockResolvedValueOnce(chunk('new\n', 0))
       render(<LogView runId={7} live />)
@@ -409,7 +391,7 @@ describe('LogView', () => {
       expect(shown()).toEqual(['new'])
 
       await act(async () => {
-        answer(chunk('head\n', 0, { size: 10 }))
+        earlier.resolve(chunk('head\n', 0, { size: 10 }))
         await vi.advanceTimersByTimeAsync(0)
       })
 
@@ -435,8 +417,11 @@ describe('LogView', () => {
       platform.scriptRunOutput.mockResolvedValue(chunk('', offset, { done: false }))
     }
 
-    it('keeps the newest output in view as it arrives', async () => {
+    beforeEach(() => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    })
+
+    it('keeps the newest output in view as it arrives', async () => {
       live([10, 12])
       render(<LogView runId={7} live />)
 
@@ -455,7 +440,6 @@ describe('LogView', () => {
     })
 
     it('stops following once scrolled up, and offers Jump to latest, which follows again', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       live([10, 12], [12, 15])
       render(<LogView runId={7} live />)
 
@@ -479,7 +463,6 @@ describe('LogView', () => {
     })
 
     it('follows again once scrolled back to the end', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       live([10, 11])
       render(<LogView runId={7} live />)
 
@@ -496,7 +479,6 @@ describe('LogView', () => {
     })
 
     it('holds the window where it is while scrolled up, and slides it again once following', async () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       live([10, 2_005])
       render(<LogView runId={7} live />)
 

@@ -1,7 +1,8 @@
 import { useEffect, useEffectEvent, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 
 import { brand } from '../../generated/brand'
-import type { Result } from '../../lib/call'
+import { logFailure, type Result } from '../../lib/call'
+import { useKeyDown } from '../../lib/keys'
 import {
   agentsNeedAttention,
   announceText,
@@ -16,6 +17,7 @@ import {
   rootNeedsAttention,
   stepInfo,
   toolsFit,
+  type SetupInbox,
 } from '../../lib/setup'
 import type { Theme } from '../../lib/theme'
 import type { IntegrationsState } from '../../lib/useIntegrations'
@@ -32,7 +34,6 @@ import {
   notificationBannerStatus,
   setupSignals,
   type AgentInfo,
-  type InboxSnapshot,
   type Profile,
   type Settings,
   type SetupStep,
@@ -49,14 +50,6 @@ import { NotificationsStep } from './NotificationsStep'
 import { SetupRail } from './SetupRail'
 import { ToolsStep } from './ToolsStep'
 import { WelcomeStep } from './WelcomeStep'
-
-// SetupInbox is what the setup reads of the inbox: the stored inbox, which Finish
-// previews, and the refresh the GitHub step starts once the sign-in is ready.
-export interface SetupInbox {
-  snapshot: InboxSnapshot | null
-  refreshing: boolean
-  refresh: () => void
-}
 
 export interface SetupViewProps {
   // control is where the setup stands, and the moves it makes.
@@ -161,9 +154,7 @@ export default function SetupView(props: SetupViewProps) {
   const filled = useRef(false)
   const fill = useEffectEvent(() => {
     props.inbox.refresh()
-    checkGitHubThreadsNow().catch((err: unknown) => {
-      console.error('could not read the GitHub notifications', err)
-    })
+    logFailure(checkGitHubThreadsNow(), 'could not read the GitHub notifications')
   })
 
   useEffect(() => {
@@ -221,24 +212,12 @@ export default function SetupView(props: SetupViewProps) {
   }
 
   // A key pressed with focus on nothing at all reaches the document, not the setup.
-  const onLooseKey = useEffectEvent((e: KeyboardEvent) => {
+  useKeyDown((e) => {
     if (e.key === 'Enter' && !e.defaultPrevented && !e.isComposing && e.target === document.body && !skipping) {
       e.preventDefault()
       advance()
     }
   })
-
-  useEffect(() => {
-    const listener = (e: KeyboardEvent) => {
-      onLooseKey(e)
-    }
-
-    document.addEventListener('keydown', listener)
-
-    return () => {
-      document.removeEventListener('keydown', listener)
-    }
-  }, [])
 
   const { number, total } = progressOf(step, toolsShown)
   const hero = step === 'welcome' || step === 'finish'

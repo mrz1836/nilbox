@@ -1,12 +1,8 @@
 import { act, render, renderHook, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { FIXED_NOW, fromNow, withClock } from '../test/clock'
 import { createClock, useClock, useNow, useNowAs } from './useNow'
-
-afterEach(() => {
-  vi.useRealTimers()
-})
 
 // Reading shows the time the clock reads, as a component that shows the time would.
 function Reading({ label }: { label: string }) {

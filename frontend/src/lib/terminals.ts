@@ -9,3 +9,14 @@ export const terminals: readonly { id: TerminalID; label: string }[] = [
   { id: 'iterm2', label: terminalNames.iterm2 },
   { id: 'terminal', label: terminalNames.terminal },
 ]
+
+// isTerminal reports an id this build names: one of terminalNames' own keys.
+function isTerminal(id: string): id is TerminalID {
+  return Object.hasOwn(terminalNames, id)
+}
+
+// terminalLabel names the terminal app with id, as terminalNames does, or says fallback
+// for an id this build doesn't know and for none at all (null, or undefined).
+export function terminalLabel(id: string | null | undefined, fallback: string): string {
+  return id !== null && id !== undefined && isTerminal(id) ? terminalNames[id] : fallback
+}

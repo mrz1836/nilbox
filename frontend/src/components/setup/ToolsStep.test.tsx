@@ -80,7 +80,8 @@ describe('ToolsStep', () => {
 
   it('logs a store of the announcement that failed', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.setIntegrationsAnnounced.mockRejectedValue(new Error('locked'))
+    const locked = new Error('locked')
+    platform.setIntegrationsAnnounced.mockRejectedValue(locked)
 
     render(
       <ToolsStep
@@ -92,7 +93,7 @@ describe('ToolsStep', () => {
     )
 
     await waitFor(() => {
-      expect(error).toHaveBeenCalledWith('could not remember that the tools were announced:', 'locked')
+      expect(error).toHaveBeenCalledWith('could not remember that the tools were announced:', locked)
     })
   })
 })

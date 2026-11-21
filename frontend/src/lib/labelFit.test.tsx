@@ -1,6 +1,7 @@
 import { act, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
+import { followResizes } from '../test/stubs'
 import { labelsShown, measureLabelRoom, useLabelRoom, type LabelRoom } from './labelFit'
 
 // room is a title line's measure with a 600px line, a title that fits it, two chips, and
@@ -112,32 +113,6 @@ describe('measureLabelRoom', () => {
 })
 
 describe('useLabelRoom', () => {
-  // resized are the callbacks of the ResizeObservers made, which a test calls as a layout
-  // change would; observed is what each one follows.
-  let resized: (() => void)[] = []
-  let observed: Element[] = []
-
-  beforeEach(() => {
-    resized = []
-    observed = []
-    vi.stubGlobal(
-      'ResizeObserver',
-      class {
-        constructor(callback: () => void) {
-          resized.push(callback)
-        }
-
-        observe(el: Element) {
-          observed.push(el)
-        }
-
-        disconnect() {
-          observed = []
-        }
-      },
-    )
-  })
-
   // Line is a title line whose labels' strip follows its room, and says what it measured.
   function Line({ text }: { text: string }) {
     const [fit, measured] = useLabelRoom()
@@ -166,17 +141,14 @@ describe('useLabelRoom', () => {
   }
 
   it('measures as the line changes size, and follows the line, the title, and the strip', () => {
+    const { observed, resize } = followResizes()
     const { unmount } = render(<Line text="A title" />)
 
     expect(screen.getByRole('status')).toHaveTextContent('unmeasured')
     expect(observed).toEqual([screen.getByTestId('line'), screen.getByTestId('strip'), screen.getByRole('button')])
 
     layOut(200)
-    act(() => {
-      resized.forEach((callback) => {
-        callback()
-      })
-    })
+    resize()
 
     expect(screen.getByRole('status')).toHaveTextContent('592 200')
 

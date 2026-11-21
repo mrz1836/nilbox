@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react'
 
-import { counted } from '../../lib/format'
+import { counted, joinList } from '../../lib/format'
 import { refText } from '../../lib/format'
 import { workflowsOf } from '../../lib/ignoredWorkflows'
 import { issueLook } from '../../lib/issues'
@@ -154,7 +154,7 @@ export function checksSummary(checks: readonly ReviewCheck[]): ChecksSummary {
 
 // countsSummary sums up the checks GitHub's rollup counted, as the inbox read them since the
 // sheet listed them.
-export function countsSummary(counts: ReviewCheckCounts): ChecksSummary {
+function countsSummary(counts: ReviewCheckCounts): ChecksSummary {
   return summaryOf(counts.passed + counts.failed + counts.pending + counts.skipped, counts.failed, counts.pending)
 }
 
@@ -191,10 +191,7 @@ function BumpChip({ review }: { review: Review }) {
 // areasText names the folders a change touches, as in "wallet/ and the top level": the
 // files at the repository's root are its top level.
 export function areasText(areas: readonly string[]): string {
-  const names = areas.map((a) => (a === '.' ? 'the top level' : `${a}/`))
-  const last = names.at(-1)
-
-  return names.length < 2 || last === undefined ? names.join('') : `${names.slice(0, -1).join(', ')} and ${last}`
+  return joinList(areas.map((a) => (a === '.' ? 'the top level' : `${a}/`)))
 }
 
 // CheckList lists checks, each with its dot and whether it is required; each opens its
@@ -365,7 +362,7 @@ function Ignored({ review, ignored = [], onIgnore }: IgnoreProps & { review: Rev
 // openChecks is how many checks the list shows open. A failing check always shows; the
 // checks running show beside them while every one of them fits, and the ones that passed
 // while they all do; any that don't fit fold away under their count.
-export const openChecks = 8
+const openChecks = 8
 
 // CheckGroup is a group of checks folded away under its count, as in "23 passed · 2
 // required", with the dot of their outcome.

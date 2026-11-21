@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { all, andThen, attempt, cancel, serial, start } from './call'
+import { deferred } from '../test/async'
+import { all, andThen, attempt, cancel, logFailure, serial, start } from './call'
 
 // cancellable is a call that records its cancellation, as a bound call does.
 function cancellable<T>(value: T) {
@@ -20,6 +21,51 @@ describe('attempt', () => {
     const err = new Error('graphql: 502 Bad Gateway', { cause: { message: 'Could not reach GitHub.' } })
 
     expect(await attempt(Promise.reject(err))).toEqual({ ok: false, error: 'Could not reach GitHub.' })
+  })
+})
+
+describe('logFailure', () => {
+  it('logs a failure under its message with the error as it came, not the user’s sentence', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const err = new Error('graphql: 502 Bad Gateway', { cause: { message: 'Could not reach GitHub.' } })
+    const onData = vi.fn()
+
+    logFailure(Promise.reject(err), 'could not quit:', onData)
+
+    await vi.waitFor(() => {
+      expect(logged).toHaveBeenCalledExactlyOnceWith('could not quit:', err)
+    })
+    expect(onData).not.toHaveBeenCalled()
+  })
+
+  it('hands the answer to onData, logging nothing', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const onData = vi.fn()
+
+    logFailure(Promise.resolve(4), 'could not count', onData)
+    logFailure(Promise.resolve('ignored'), 'could not say')
+
+    await vi.waitFor(() => {
+      expect(onData).toHaveBeenCalledExactlyOnceWith(4)
+    })
+    expect(logged).not.toHaveBeenCalled()
+  })
+
+  it('handles a cancelled call’s rejection too', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const refused = deferred()
+    const call = Object.assign(refused.promise, {
+      cancel: () => {
+        refused.reject(new Error('cancelled'))
+      },
+    })
+
+    logFailure(call, 'could not keep running:')
+    cancel(call)
+
+    await vi.waitFor(() => {
+      expect(logged).toHaveBeenCalledExactlyOnceWith('could not keep running:', new Error('cancelled'))
+    })
   })
 })
 
@@ -89,15 +135,13 @@ describe('serial', () => {
   it('starts each task once the one before it has settled, however it ended', async () => {
     const queue = serial()
     const order: string[] = []
-    let fail: (err: Error) => void = () => undefined
+    const stuck = deferred()
 
-    const first = queue(
-      () =>
-        new Promise<void>((_, reject) => {
-          order.push('first')
-          fail = reject
-        }),
-    )
+    const first = queue(() => {
+      order.push('first')
+
+      return stuck.promise
+    })
     const second = queue(() => {
       order.push('second')
 
@@ -107,7 +151,7 @@ describe('serial', () => {
     await Promise.resolve()
     expect(order).toEqual(['first'])
 
-    fail(new Error('database is locked'))
+    stuck.reject(new Error('database is locked'))
 
     await expect(first).rejects.toThrow('database is locked')
     expect(await second).toBe('done')

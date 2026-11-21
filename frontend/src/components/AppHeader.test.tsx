@@ -1,9 +1,9 @@
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import { at } from '../test/clock'
+import { renderAt } from '../test/clock'
 import {
   account,
   budgetGauge,
@@ -70,7 +70,7 @@ function renderHeader(overrides: Partial<AppHeaderProps> = {}) {
     ...overrides,
   }
 
-  render(<AppHeader {...props} />, { wrapper: at() })
+  renderAt(<AppHeader {...props} />)
 
   return props
 }
@@ -149,7 +149,7 @@ describe('AppHeader', () => {
   })
 
   it('counts GitHub’s unread only while the app reads them', () => {
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <AppHeader
         view="inbox"
         onViewChange={vi.fn()}
@@ -159,7 +159,6 @@ describe('AppHeader', () => {
         githubThreads={threadsState(githubThreads({ status: { count: 30, unread: 12 } }))}
         settings={settings({ githubNotifications: { ...settings().githubNotifications, read: false } })}
       />,
-      { wrapper: at() },
     )
 
     expect(screen.queryByTestId('notifications-count')).not.toBeInTheDocument()

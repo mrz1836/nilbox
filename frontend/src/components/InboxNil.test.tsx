@@ -1,14 +1,15 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { StrictMode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import { earnedBurst, earnedQuip, firstQuip, quips, replayBurst, type Flourish } from '../lib/nil'
 import { triageInbox } from '../lib/triage'
 import type { Celebrations, InboxSnapshot, NilMoment } from '../platform'
-import { at, FIXED_NOW } from '../test/clock'
+import { FIXED_NOW, renderAt } from '../test/clock'
 import { item, list, nilMoment, snapshot } from '../test/fixtures'
+import { reduceMotion } from '../test/stubs'
 import { InboxNil, type InboxNilProps } from './InboxNil'
 
 const empty = snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' })
@@ -33,7 +34,7 @@ const fourthDay = nilMoment({ streak: 4, best: 9 })
 
 // renderNil throws the party for an inbox, as triaged at now, on a clock that stands at now.
 function renderNil(props: Partial<InboxNilProps> = {}, inbox: InboxSnapshot = empty) {
-  return render(<InboxNil stats={triageInbox(inbox, FIXED_NOW)} earned={false} {...props} />, { wrapper: at() })
+  return renderAt(<InboxNil stats={triageInbox(inbox, FIXED_NOW)} earned={false} {...props} />)
 }
 
 // party returns the party's region.
@@ -64,16 +65,6 @@ function nudging(name = 'go run ./party') {
 function flourish() {
   return party().dataset.flourish ?? null
 }
-
-// reduceMotion makes the system ask for less motion.
-function reduceMotion() {
-  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(prefers-reduced-motion: reduce)' }))
-}
-
-afterEach(() => {
-  vi.useRealTimers()
-  vi.unstubAllGlobals()
-})
 
 describe('InboxNil', () => {
   it('announces the inbox at nil with the badge, a quip, and the terminal', () => {
@@ -168,11 +159,10 @@ describe('InboxNil', () => {
   })
 
   it('starts the party once when development mounts it twice', () => {
-    render(
+    renderAt(
       <StrictMode>
         <InboxNil stats={stats} earned moment={first} />
       </StrictMode>,
-      { wrapper: at() },
     )
 
     expect(confetti()).toBe(earnedBurst)
@@ -325,7 +315,7 @@ describe('InboxNil as a strip', () => {
   function renderStrip(props: Partial<InboxNilProps> = {}) {
     const handlers = { onOpen: vi.fn(), onCollapse: vi.fn() }
 
-    render(<InboxNil stats={stats} earned={false} compact {...handlers} {...props} />, { wrapper: at() })
+    renderAt(<InboxNil stats={stats} earned={false} compact {...handlers} {...props} />)
 
     return handlers
   }
@@ -371,7 +361,7 @@ describe('InboxNil as a strip', () => {
 
   it('asks for nothing when the full party runs again', async () => {
     const open = vi.fn()
-    render(<InboxNil stats={stats} earned={false} onOpen={open} />, { wrapper: at() })
+    renderAt(<InboxNil stats={stats} earned={false} onOpen={open} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'go run ./party' }))
 
@@ -380,7 +370,7 @@ describe('InboxNil as a strip', () => {
 
   it('keeps its runs and quip when it opens in full', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    const { rerender } = render(<InboxNil stats={stats} earned={false} compact />, { wrapper: at() })
+    const { rerender } = renderAt(<InboxNil stats={stats} earned={false} compact />)
 
     await userEvent.click(screen.getByRole('button', { name: 'go run ./party' }))
     rerender(<InboxNil stats={stats} earned={false} />)
@@ -398,9 +388,7 @@ describe('InboxNil with celebrations off', () => {
     ['a nil found empty', fourthDay],
     ['an earned nil that would throw confetti', first],
   ] satisfies [string, NilMoment][])('is a still strip for %s, with no chip, flourish, or button', (_, moment) => {
-    render(<InboxNil stats={stats} earned={moment.earned} moment={moment} mode={off} compact flourish="sparks" />, {
-      wrapper: at(),
-    })
+    renderAt(<InboxNil stats={stats} earned={moment.earned} moment={moment} mode={off} compact flourish="sparks" />)
 
     expect(screen.getByRole('heading', { name: 'inbox == nil' })).toBeInTheDocument()
     expect(party()).toHaveClass('nil-still')

@@ -8,6 +8,7 @@ import {
   list,
   moveResult,
   notification,
+  runGoing,
   scriptRun,
   snapshot,
   updateLocation,
@@ -15,7 +16,7 @@ import {
   updateStatus,
   autopilotTarget,
 } from './test/fixtures'
-import { emit, platform, renderApp } from './test/platform'
+import { platform, renderApp, send } from './test/platform'
 
 vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platform))
 
@@ -80,9 +81,7 @@ describe('App’s update', () => {
     })
 
     // The acknowledgement says it changed; the status read again tells nothing new.
-    act(() => {
-      emit('updates:updated')
-    })
+    send('updates:updated')
 
     await userEvent.click(within(toast).getByRole('button', { name: 'What’s new' }))
 
@@ -103,9 +102,7 @@ describe('App’s update', () => {
     expect(platform.ackUpdated).not.toHaveBeenCalled()
 
     platform.getUpdateStatus.mockResolvedValue(updateStatus({ current: '0.3.0', justUpdated: '0.3.0' }))
-    act(() => {
-      emit('updates:updated')
-    })
+    send('updates:updated')
 
     expect(await screen.findByRole('group', { name: 'Notification' })).toHaveTextContent('Updated to 0.3.0')
     await waitFor(() => {
@@ -159,24 +156,12 @@ describe('App’s update', () => {
     platform.restartToUpdateNow.mockResolvedValueOnce({
       restarted: false,
       message: '',
-      runsGoing: [
-        {
-          id: 7,
-          kind: 'release',
-          title: 'Release v1.2.0',
-          repo: 'acme-org/sdk',
-          dir: '',
-          stopRefused: '',
-          outlives: false,
-        },
-      ],
+      runsGoing: [runGoing({ dir: '' })],
     })
     await renderApp()
     await screen.findByRole('region', { name: 'Review requested' })
 
-    act(() => {
-      emit('updates:restart')
-    })
+    send('updates:restart')
     const asked = await screen.findByRole('dialog', { name: 'Restart to update?' })
 
     expect(asked).toHaveTextContent('Restarting stops Release v1.2.0 in acme-org/sdk.')
@@ -200,9 +185,7 @@ describe('App’s update', () => {
     await userEvent.type(await within(sheet).findByRole('textbox', { name: 'Your review' }), 'Wait.')
     await userEvent.keyboard('{Escape}')
 
-    act(() => {
-      emit('updates:restart')
-    })
+    send('updates:restart')
 
     expect(await screen.findByRole('dialog', { name: 'Restart to update?' })).toHaveTextContent(
       'Restarting stops Release v1.2.0 in acme-org/sdk and loses the text you haven’t sent in a sheet.',
@@ -222,15 +205,13 @@ describe('App’s update', () => {
 
     expect(banner()).toBeEmptyDOMElement()
 
-    act(() => {
-      emit('inbox:reveal', {
-        itemId: 0,
-        url: '',
-        runId: 0,
-        runStarted: '',
-        notificationId: 9,
-        autopilot: autopilotTarget(),
-      })
+    send('inbox:reveal', {
+      itemId: 0,
+      url: '',
+      runId: 0,
+      runStarted: '',
+      notificationId: 9,
+      autopilot: autopilotTarget(),
     })
 
     await waitFor(() => {
@@ -246,15 +227,13 @@ describe('App’s update', () => {
     await renderApp()
     await screen.findByRole('region', { name: 'Review requested' })
 
-    act(() => {
-      emit('inbox:reveal', {
-        itemId: 0,
-        url: '',
-        runId: 0,
-        runStarted: '',
-        notificationId: 9,
-        autopilot: autopilotTarget(),
-      })
+    send('inbox:reveal', {
+      itemId: 0,
+      url: '',
+      runId: 0,
+      runStarted: '',
+      notificationId: 9,
+      autopilot: autopilotTarget(),
     })
 
     expect(await screen.findByRole('region', { name: 'About' })).toBeInTheDocument()
@@ -269,15 +248,13 @@ describe('App’s update', () => {
     await renderApp()
     await screen.findByRole('button', { name: '1 unread notifications' })
 
-    act(() => {
-      emit('inbox:reveal', {
-        itemId: 0,
-        url: '',
-        runId: 0,
-        runStarted: '',
-        notificationId: 9,
-        autopilot: autopilotTarget(),
-      })
+    send('inbox:reveal', {
+      itemId: 0,
+      url: '',
+      runId: 0,
+      runStarted: '',
+      notificationId: 9,
+      autopilot: autopilotTarget(),
     })
 
     expect(await screen.findByRole('region', { name: 'About' })).toBeInTheDocument()
@@ -301,15 +278,13 @@ describe('App’s update', () => {
     await renderApp()
     await screen.findByRole('button', { name: '1 unread notifications' })
 
-    act(() => {
-      emit('inbox:reveal', {
-        itemId: 0,
-        url: page,
-        runId: 7,
-        runStarted: '',
-        notificationId: 5,
-        autopilot: autopilotTarget(),
-      })
+    send('inbox:reveal', {
+      itemId: 0,
+      url: page,
+      runId: 7,
+      runStarted: '',
+      notificationId: 5,
+      autopilot: autopilotTarget(),
     })
 
     await waitFor(() => {
@@ -371,9 +346,7 @@ describe('App’s move into Applications', () => {
     expect(platform.moveToApplications).not.toHaveBeenCalled()
 
     // The status read again, as every change of the update has it read, asks nothing more.
-    act(() => {
-      emit('updates:updated')
-    })
+    send('updates:updated')
     await waitFor(() => {
       expect(platform.getUpdateStatus).toHaveBeenCalledTimes(2)
     })
@@ -422,9 +395,7 @@ describe('App’s move into Applications', () => {
     const moving = await screen.findByRole('dialog', moveQuestion)
     await userEvent.click(within(moving).getByRole('button', { name: 'Move to Applications' }))
 
-    act(() => {
-      emit('app:quitRequested')
-    })
+    send('app:quitRequested')
     const quit = await screen.findByRole('dialog', { name: `Quit ${brand.name}?` })
 
     await userEvent.keyboard('{Escape}')

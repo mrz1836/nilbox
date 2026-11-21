@@ -12,6 +12,7 @@ import type {
   RefState,
 } from '../platform'
 import type { Tone } from './signals'
+import { unlisted } from './unlisted'
 
 // IssueLook is how an issue's state shows beside its title: the icon's color, and what the
 // icon says to a screen reader.
@@ -20,8 +21,12 @@ export interface IssueLook {
   words: string
 }
 
+// closedAsCompleted is how an issue closed as completed shows.
+const closedAsCompleted: IssueLook = { color: 'text-info', words: 'Closed as completed' }
+
 // issueLook is an issue's state as its icon shows it: open in the success color, closed as
-// completed in the info color, and closed as not planned or as a duplicate muted.
+// completed in the info color, and closed as not planned or as a duplicate muted. Go passes
+// GitHub's reason on unchecked, so one GitHub adds later shows as completed.
 export function issueLook(state: RefState, reason: IssueStateReason): IssueLook {
   if (state === 'OPEN') {
     return { color: 'text-success', words: 'Open issue' }
@@ -32,8 +37,12 @@ export function issueLook(state: RefState, reason: IssueStateReason): IssueLook 
       return { color: 'text-muted', words: 'Closed as not planned' }
     case 'DUPLICATE':
       return { color: 'text-muted', words: 'Closed as a duplicate' }
+    case '':
+    case 'COMPLETED':
+    case 'REOPENED':
+      return closedAsCompleted
     default:
-      return { color: 'text-info', words: 'Closed as completed' }
+      return unlisted(reason, closedAsCompleted)
   }
 }
 
@@ -107,7 +116,8 @@ export function issueTone(result: IssueResult): 'success' | 'warning' {
     case 'new_activity':
     case 'already_closed':
       return 'warning'
-    default:
+    case 'commented':
+    case 'closed':
       return 'success'
   }
 }

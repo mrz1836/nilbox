@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import type { RefState } from '../platform'
 import { closeIssueOffer, details, issue, issueOffer, issueResult, item } from '../test/fixtures'
 import {
   changedSince,
@@ -12,6 +13,7 @@ import {
   standingTone,
   withReply,
   writeFirst,
+  type IssueLook,
 } from './issues'
 
 describe('issueLook', () => {
@@ -22,6 +24,17 @@ describe('issueLook', () => {
     expect(issueLook('CLOSED', '')).toEqual({ color: 'text-info', words: 'Closed as completed' })
     expect(issueLook('CLOSED', 'NOT_PLANNED')).toEqual({ color: 'text-muted', words: 'Closed as not planned' })
     expect(issueLook('CLOSED', 'DUPLICATE')).toEqual({ color: 'text-muted', words: 'Closed as a duplicate' })
+  })
+
+  it('shows a reason GitHub adds later, which Go passes on unchecked, as completed', () => {
+    // The window takes the reason as Go's JSON decodes, whatever it holds. A method's
+    // parameters are compared both ways, so this one takes the decoded value with no cast.
+    const fromGo: { look(state: RefState, reason: unknown): IssueLook } = { look: issueLook }
+
+    expect(fromGo.look('CLOSED', JSON.parse('"WONT_FIX"'))).toEqual({
+      color: 'text-info',
+      words: 'Closed as completed',
+    })
   })
 })
 

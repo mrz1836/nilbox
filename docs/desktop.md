@@ -16,7 +16,8 @@ in [performance.md](performance.md).
 
 ## Prerequisites
 
-- **macOS 13 or newer.** The app is built and supported on macOS only for now.
+- **macOS 13.3 or newer.** The app is built and supported on macOS only for now. macOS 13.3
+  ships Safari 16.4, the oldest WebKit the window's bundle targets.
 - **Xcode Command Line Tools** (`xcode-select --install`), which provide the C toolchain the
   desktop build needs.
 - **Go** at the version in `go.mod`.
@@ -51,7 +52,7 @@ pins.
 |---|---|
 | `magex frontend:install` | Installs the frontend dependencies exactly as `pnpm-lock.yaml` pins them |
 | `magex frontend:build` | Type-checks the frontend and builds it into `frontend/dist` |
-| `magex frontend:gate` | The frontend gate: frozen-lockfile install, format check, lint, typecheck, tests with coverage, and the render profile through the React Compiler, stopping at the first failure (`magefiles/frontend.go`; CI runs this same target) |
+| `magex frontend:gate` | The frontend gate: frozen-lockfile install, format check, lint, typecheck, tests with coverage, the render profile through the React Compiler, and the production build into `frontend/dist`, which fails on a JS chunk over `chunkSizeWarningLimit` (`vite.config.ts`), stopping at the first failure (`magefiles/frontend.go`; CI runs this same target) |
 | `magex brand:generate` | Regenerates the theme tokens, frontend brand constants, `build/darwin/Info.plist`, and the icon artwork (the app icon `build/appicon.svg` and the menu bar icon `build/trayicon.svg`) from `internal/brand` |
 | `magex brand:icons` | Renders `build/appicon.svg` into the bundle's icon set `build/darwin/icons.icns` and the development Dock icon `cmd/nilbox/appicon.png`, and `build/trayicon.svg` into the menu bar icon `cmd/nilbox/trayicon.png` (needs `rsvg-convert`: `brew install librsvg`); run it after changing the mark or the artwork |
 | `magex app:bindings` | Regenerates the committed TypeScript bindings in `frontend/bindings`, writing each Go string type with constants as a union of its values; fails, naming it, on a bound type whose constants are declared in more than one file, since the generator orders those differently from run to run |

@@ -9,11 +9,10 @@ import type {
   SessionsSnapshot,
   SessionUsage,
   SessionWorktreeAction,
-  TerminalID,
 } from '../platform'
 import { counted, formatCount } from './format'
 import { itemKey } from './itemWorktrees'
-import { terminalNames } from './terminals'
+import { terminalLabel } from './terminals'
 
 // noSessions is the empty map, shared so it stays the same object.
 export const noSessions: ReadonlyMap<string, readonly AgentSession[]> = new Map()
@@ -216,7 +215,8 @@ export function githubEventTone(s: AgentSession): string {
       return 'text-success'
     case 'changes_requested':
       return 'text-warning'
-    default:
+    case 'closed':
+    case '':
       return 'text-muted'
   }
 }
@@ -224,7 +224,7 @@ export function githubEventTone(s: AgentSession): string {
 // terminalName names the terminal app a session runs in, "iTerm2", or '' for one this
 // build doesn't know.
 export function terminalName(s: AgentSession): string {
-  return Object.hasOwn(terminalNames, s.terminal) ? terminalNames[s.terminal as TerminalID] : ''
+  return terminalLabel(s.terminal, '')
 }
 
 const compactCounts = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 })

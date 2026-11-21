@@ -40,8 +40,10 @@ const themeVarPrefix = "--color-"
 
 // Bundle metadata that does not come from internal/brand.
 const (
-	// MinimumMacOS is the oldest macOS release the app bundle supports.
-	MinimumMacOS = "13.0"
+	// MinimumMacOS is the oldest macOS release the app bundle supports: 13.3, whose
+	// WebKit is Safari 16.4, the engine the window's bundle targets
+	// (frontend/vite.config.ts).
+	MinimumMacOS = "13.3"
 
 	// PlaceholderVersion is the committed bundle version; builds stamp the real one on
 	// their copy of the Info.plist.

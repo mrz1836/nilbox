@@ -29,7 +29,7 @@ function ruleChangeWords(target: string, was: RepoRule, rule: RepoRule): { text:
       return { text: `Pinned ${target}`, detail: 'Its items stay at the top of every list.' }
     case 'muted':
       return { text: `Muted ${target}`, detail: 'Its items wait in each list’s Muted tab.' }
-    default:
+    case '':
       return was === 'muted'
         ? { text: `Unmuted ${target}`, detail: 'Its items are back in the lists.' }
         : { text: `Unpinned ${target}`, detail: 'Its items are back among the rest.' }

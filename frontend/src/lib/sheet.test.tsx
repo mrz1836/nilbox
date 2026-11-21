@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { item } from '../test/fixtures'
-import { emit, listening } from '../test/platform'
+import { emit, listening, send } from '../test/platform'
 import {
   cameBy,
   endedState,
@@ -16,8 +16,10 @@ import {
   useActionProgress,
   useEnded,
   useSheetKeys,
+  useSheetVisits,
   withStep,
   type EndedItem,
+  type ProgressEvent,
   type SheetKeys,
 } from './sheet'
 
@@ -190,6 +192,49 @@ describe('useEnded', () => {
   })
 })
 
+describe('useSheetVisits', () => {
+  it('hears each opening once, marking read the item opened and the one it moved from', () => {
+    const seen = vi.fn<(ids: readonly number[]) => void>()
+    const onOpened = vi.fn<(itemId: number) => void>()
+    const { rerender } = renderHook(
+      ({ id }) => {
+        useSheetVisits(id, seen, onOpened)
+      },
+      { initialProps: { id: 0 } },
+    )
+
+    expect(seen, 'no sheet open').not.toHaveBeenCalled()
+
+    rerender({ id: 7 })
+    expect(seen).toHaveBeenLastCalledWith([7])
+    expect(onOpened).toHaveBeenLastCalledWith(7)
+
+    rerender({ id: 7 })
+    expect(seen, 'heard once').toHaveBeenCalledOnce()
+
+    rerender({ id: 8 })
+    expect(seen).toHaveBeenLastCalledWith([7, 8])
+    expect(onOpened).toHaveBeenLastCalledWith(8)
+
+    rerender({ id: 0 })
+    expect(seen).toHaveBeenLastCalledWith([8])
+    expect(onOpened, 'a close opens nothing').toHaveBeenCalledTimes(2)
+  })
+
+  it('needs no one to hear the openings', () => {
+    const seen = vi.fn<(ids: readonly number[]) => void>()
+    const { rerender } = renderHook(
+      ({ id }) => {
+        useSheetVisits(id, seen, undefined)
+      },
+      { initialProps: { id: 0 } },
+    )
+
+    rerender({ id: 3 })
+    expect(seen).toHaveBeenCalledExactlyOnceWith([3])
+  })
+})
+
 describe('stepTo', () => {
   it('names the card it steps to, and steps there', () => {
     const onNavigate = vi.fn()
@@ -328,9 +373,7 @@ describe('useActionProgress', () => {
     })
 
     // Before any action, a step is no news.
-    act(() => {
-      emit('review:progress', { itemId: 7, step: 'Approving' })
-    })
+    send('review:progress', { itemId: 7, step: 'Approving' })
     expect(result.current[0]).toBeNull()
 
     act(() => {
@@ -358,5 +401,20 @@ describe('useActionProgress', () => {
 
     unmount()
     expect(listening('review:progress')).toBe(0)
+  })
+
+  it('listens on its new event once the event changes', () => {
+    const initialProps: { event: ProgressEvent } = { event: 'review:progress' }
+    const { result, rerender } = renderHook(({ event }) => useActionProgress(event, 7), { initialProps })
+
+    act(() => {
+      result.current[1]({ title: 'Close', target: 'acme-org/example-repo#7', steps: [] })
+    })
+    rerender({ event: 'issue:progress' })
+    expect(listening('review:progress')).toBe(0)
+    expect(listening('issue:progress')).toBe(1)
+
+    send('issue:progress', { itemId: 7, step: 'Closing' })
+    expect(result.current[0]?.steps).toEqual(['Closing'])
   })
 })

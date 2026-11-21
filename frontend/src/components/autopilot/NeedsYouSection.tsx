@@ -398,9 +398,7 @@ export function NeedsYouSection({
       return
     }
 
-    const card = [...(listRef.current?.querySelectorAll('[data-match]') ?? [])].find((el) =>
-      (el.getAttribute('data-match') ?? '').split(' ').includes(String(marked.matchId)),
-    )
+    const card = listRef.current?.querySelector(`[data-match~="${String(marked.matchId)}"]`)
 
     card?.scrollIntoView({ block: 'center' })
   }, [marked])

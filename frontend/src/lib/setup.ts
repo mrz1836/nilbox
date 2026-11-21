@@ -22,8 +22,8 @@ import { counted, formatCount } from './format'
 // setupValue (internal/desktop's SetupParam and SetupValue). The page reads it before its
 // first render, so its first frame is the setup's, never a flash of the inbox; the stored
 // state, read next, is what counts.
-export const setupParam = 'setup'
-export const setupValue = '1'
+const setupParam = 'setup'
+const setupValue = '1'
 
 // setupFromURL reports whether a page URL's query string says the setup shows.
 export function setupFromURL(search: string): boolean {
@@ -415,6 +415,14 @@ export function goDuration(ms: number): string {
   }
 
   return minutes > 0 ? `${String(minutes)}m${String(seconds)}s` : `${String(seconds)}s`
+}
+
+// SetupInbox is what the setup reads of the inbox: the stored inbox, which Finish
+// previews, and the refresh the GitHub step starts once the sign-in is ready.
+export interface SetupInbox {
+  snapshot: InboxSnapshot | null
+  refreshing: boolean
+  refresh: () => void
 }
 
 // inboxPreview says what the inbox holds: "5 review requests · 7 of yours", or '' before

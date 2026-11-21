@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -6,7 +6,7 @@ import { brand } from '../../generated/brand'
 import type { DetailsRead } from '../../lib/useWorktreeDetails'
 import type { ItemFacts } from '../../lib/worktreeParts'
 import type { AgentID, AgentSession, Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
-import { at, FIXED_NOW } from '../../test/clock'
+import { FIXED_NOW, isoAgo, renderAt } from '../../test/clock'
 import {
   agentSession,
   copiedWorktree,
@@ -33,11 +33,7 @@ const minute = 60
 const hour = 60 * minute
 const day = 24 * hour
 
-// ago is the time s seconds before the clock, and unixAgo the same in Unix seconds.
-function ago(s: number): string {
-  return new Date(now.getTime() - s * 1000).toISOString()
-}
-
+// unixAgo is the time s seconds before the clock, in Unix seconds.
 function unixAgo(s: number): number {
   return Math.floor(now.getTime() / 1000) - s
 }
@@ -91,7 +87,7 @@ const handLocked = row({
 })
 
 // working is the session the app follows in a worktree, at work since twelve minutes ago.
-const working: AgentSession = agentSession({ state: 'working', launchedAt: ago(12 * minute) })
+const working: AgentSession = agentSession({ state: 'working', launchedAt: isoAgo({ s: 12 * minute }) })
 
 // renderDrawer draws wt's drawer, its details as read, with every handler a mock.
 function renderDrawer(wt: Worktree, options: Partial<DrawerProps> = {}) {
@@ -105,7 +101,7 @@ function renderDrawer(wt: Worktree, options: Partial<DrawerProps> = {}) {
     onPrune: vi.fn<(repo: WorktreeRepo) => void>(),
   }
 
-  render(
+  renderAt(
     <ul>
       <Drawer
         id="drawer"
@@ -122,7 +118,6 @@ function renderDrawer(wt: Worktree, options: Partial<DrawerProps> = {}) {
         {...options}
       />
     </ul>,
-    { wrapper: at() },
   )
 
   const li = screen.getAllByRole('listitem')[0] as HTMLElement
@@ -885,7 +880,7 @@ describe('Drawer about', () => {
 
   it('says how long ago its item merged, and changes requested', () => {
     const facts: ItemFacts = { item: item(), checks: '', review: 'CHANGES_REQUESTED', draft: false }
-    renderDrawer(row({ item: linkedItem({ closedAt: ago(2 * day) }) }), { facts })
+    renderDrawer(row({ item: linkedItem({ closedAt: isoAgo({ s: 2 * day }) }) }), { facts })
 
     expect(about('For')).toHaveTextContent('PR #7 Add the widget cache merged 2d ago · changes requested')
   })
@@ -952,13 +947,13 @@ describe('Drawer about', () => {
   })
 
   it('says nothing works in it when only a past session did', () => {
-    renderDrawer(row({ agent: 'claude', lastLaunchedAt: ago(hour) }))
+    renderDrawer(row({ agent: 'claude', lastLaunchedAt: isoAgo({ s: hour }) }))
 
     expect(column('About').queryByText('Session')).not.toBeInTheDocument()
   })
 
   it('counts its launches, with the last', () => {
-    renderDrawer(row({ agent: 'codex', lastLaunchedAt: ago(2 * hour), launches: 3 }))
+    renderDrawer(row({ agent: 'codex', lastLaunchedAt: isoAgo({ s: 2 * hour }), launches: 3 }))
 
     expect(about('Launches')).toHaveTextContent('3 launches · last Codex, 2h ago')
   })

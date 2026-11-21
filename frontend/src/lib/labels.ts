@@ -9,7 +9,7 @@ import { createContext } from 'react'
 export type LabelMatcher = (name: string) => boolean
 
 // hidesNone matches no label, as an empty list of patterns does.
-export const hidesNone: LabelMatcher = () => false
+const hidesNone: LabelMatcher = () => false
 
 // defaultHiddenLabels are the patterns a fresh install hides, the backend's
 // DefaultHiddenLabels: the cards use them until the settings load, so the size labels

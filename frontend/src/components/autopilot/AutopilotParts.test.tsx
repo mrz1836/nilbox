@@ -5,17 +5,20 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { maxIDs, type ActivityLine } from '../../lib/autopilot'
 import { useIssueDrafts } from '../../lib/issueDrafts'
+import type { LaunchOptions } from '../../lib/launch'
 import { useReviewDrafts } from '../../lib/reviewDrafts'
 import { useAutopilot, useAutopilotChips } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
 import { useInbox } from '../../lib/useInbox'
-import { at, clockAt, FIXED_NOW, withClock } from '../../test/clock'
+import { deferred } from '../../test/async'
+import { at, clockAt, FIXED_NOW, renderAt, withClock } from '../../test/clock'
 import {
   activityGroup,
   activityPage,
   agents,
   autopilotMatch,
   details,
+  githubStep,
   issue,
   item,
   itemRef,
@@ -25,8 +28,7 @@ import {
   routine,
   settings,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
-import type { LaunchOptions } from '../ItemRow'
+import { emit, platform, send } from '../../test/platform'
 import { ActivityList } from './ActivityList'
 import { AutopilotRowsContext } from './AutopilotChip'
 import { RoutinePane } from './RoutinePane'
@@ -62,9 +64,7 @@ describe('ActivityList', () => {
   const onToast = vi.fn()
 
   function renderList(lines: ActivityLine[]) {
-    render(<ActivityList lines={lines} onOpen={onOpen} onToast={onToast} empty={<p>Nothing</p>} />, {
-      wrapper: at(),
-    })
+    renderAt(<ActivityList lines={lines} onOpen={onOpen} onToast={onToast} empty={<p>Nothing</p>} />)
   }
 
   it('says what each match did in a word or two', () => {
@@ -75,27 +75,7 @@ describe('ActivityList', () => {
       matchLine({
         id: 4,
         words: '',
-        steps: [
-          {
-            kind: 'tellMe',
-            label: 'Tell me',
-            status: 'done',
-            outcome: '',
-            note: '',
-            runId: 0,
-            actions: [],
-            sent: 0,
-            verdict: '',
-            review: null,
-            postAs: '',
-            reviewAs: '',
-            allowApprove: false,
-            merge: '',
-            autoMerge: false,
-            startedAt: null,
-            endedAt: null,
-          },
-        ],
+        steps: [githubStep({ kind: 'tellMe', label: 'Tell me', status: 'done', actions: [] })],
       }),
       matchLine({ id: 5, steps: [], words: 'It ran.' }),
     ])
@@ -172,20 +152,9 @@ function answer(page: ReturnType<typeof activityPage>): Answer {
 
 // heldAnswer is a page the test gives when it lets go.
 function heldAnswer() {
-  let give: (page: ReturnType<typeof activityPage>) => void = () => undefined
-  const call = Object.assign(
-    new Promise<ReturnType<typeof activityPage>>((done) => {
-      give = done
-    }),
-    { cancel: vi.fn() },
-  )
+  const d = deferred<ReturnType<typeof activityPage>>()
 
-  return {
-    call,
-    give: (page: ReturnType<typeof activityPage>) => {
-      give(page)
-    },
-  }
+  return { call: Object.assign(d.promise, { cancel: vi.fn() }), give: d.resolve }
 }
 
 // fakeLedger is a ledger of count matches, IDs count down to 1, which Activity reads as the
@@ -289,9 +258,7 @@ describe('useAutopilotActivity', () => {
     // 150 newer matches: only the first page is read again, from where it began, so it
     // meets the pages past it with nothing between.
     ledger.grow(150)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     await waitFor(() => {
       expect(loadedIds(result.current.days)[0]).toBe(850)
@@ -320,9 +287,7 @@ describe('useAutopilotActivity', () => {
     // The engine's next cycle reads the first page again, by its bounds, never as a fresh
     // first page, which would drop the page past it.
     ledger.grow(5)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     await waitFor(() => {
       expect(loadedIds(result.current.days)).toEqual(countdown(305, 101))
@@ -366,9 +331,7 @@ describe('useAutopilotActivity', () => {
     // 600 newer: the newest page becomes the first again, and the rest is read in slices
     // down to where the first page began, so nothing loaded goes.
     ledger.grow(600)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     await waitFor(() => {
       expect(loadedIds(result.current.days)).toEqual(countdown(900, 1))
@@ -383,9 +346,7 @@ describe('useAutopilotActivity', () => {
 
     // The next change reads that page alone again, a page and what came since.
     ledger.grow(1)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     await waitFor(() => {
       expect(loadedIds(result.current.days)).toEqual(countdown(901, 1))
@@ -400,9 +361,7 @@ describe('useAutopilotActivity', () => {
 
     // Cleared, the history starts again from ID 1, below every page loaded.
     ledger.clear(20)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     await waitFor(() => {
       expect(loadedIds(result.current.days)).toEqual(countdown(20, 1))
@@ -508,9 +467,7 @@ describe('useAutopilotActivity', () => {
 
     // With nothing past the first page, a read again is the first page's own, a page long.
     platform.autopilotActivity.mockReturnValueOnce(held.call)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     expect(platform.autopilotActivity).toHaveBeenLastCalledWith(0, 100)
 
@@ -646,9 +603,7 @@ describe('useAutopilotChips', () => {
     })
     expect(platform.latestAutopilotMatches).toHaveBeenCalledWith([1, 2])
 
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
     await waitFor(() => {
       expect(platform.latestAutopilotMatches).toHaveBeenCalledTimes(2)
     })
@@ -669,7 +624,7 @@ describe('RoutinePane', () => {
   }
 
   function renderPane(r = routine()) {
-    render(
+    renderAt(
       <RoutinePane
         routine={r}
         status={{ text: 'Autopilot · 6 today', tone: 'muted' }}
@@ -679,7 +634,6 @@ describe('RoutinePane', () => {
         watching={<p>Watched</p>}
         activity={<p>Done</p>}
       />,
-      { wrapper: at() },
     )
   }
 
@@ -946,9 +900,7 @@ describe('WatchingList', () => {
     expect(await screen.findByText('Dismissed')).toBeInTheDocument()
 
     platform.itemsByID.mockResolvedValue([item({ dismissedAt: '2026-06-15T12:00:00Z' })])
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     expect(await screen.findByRole('button', { name: 'Restore' })).toBeInTheDocument()
   })
@@ -985,9 +937,7 @@ describe('WatchingList', () => {
     // An ask for an item it doesn't hold, once it has read what it watches, is handed back
     // at once, marking nothing, so it can't land later unasked.
     rerender(<Watching />)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
     rerender(<Watching highlight={{ id: 9, seq: 2 }} />)
 
     await waitFor(() => {
@@ -995,6 +945,22 @@ describe('WatchingList', () => {
     })
     expect(platform.routineWatching.mock.calls.length).toBeGreaterThan(1)
     expect(platform.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('scrolls the row Activity asked for into view, and no other', async () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
+    platform.routineWatching.mockResolvedValue([1, 2])
+    platform.itemsByID.mockResolvedValue([item({ id: 2, number: 8, title: 'Fix the flaky test' }), item()])
+    render(<Watching highlight={{ id: 1, seq: 1 }} />, { wrapper: rows })
+
+    const row = (await screen.findByRole('button', { name: 'Add the widget cache' })).closest('[data-item-id]')
+
+    await waitFor(() => {
+      expect(onHighlighted).toHaveBeenCalledOnce()
+    })
+    expect(row).toHaveAttribute('data-item-id', '1')
+    expect(scroll.mock.contexts).toEqual([row])
+    expect(scroll).toHaveBeenCalledWith({ block: 'center' })
   })
 
   it('hands back an ask when what it watches couldn’t be read', async () => {

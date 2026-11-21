@@ -58,7 +58,7 @@ describe('LaunchControls, row variant', () => {
 
     await userEvent.click(open)
 
-    const dialog = screen.getByRole('dialog', { name: 'Launch options' })
+    const dialog = await screen.findByRole('dialog', { name: 'Launch options' })
     expect(open).toHaveAttribute('aria-expanded', 'true')
     expect(open).toHaveAttribute('aria-controls', dialog.id)
     expect(platform.launch).not.toHaveBeenCalled()
@@ -77,7 +77,7 @@ describe('LaunchControls, row variant', () => {
     expect(open.querySelector('.bg-accent')).toBeNull()
 
     await userEvent.click(open)
-    const menu = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    const menu = within(await screen.findByRole('dialog', { name: 'Launch options' }))
     const select = menu.getByRole('combobox', { name: 'Prompt' })
     await userEvent.selectOptions(select, within(select).getByRole('option', { name: /^Quick look/ }))
     await userEvent.click(menu.getByRole('button', { name: 'Close' }))
@@ -110,7 +110,9 @@ describe('LaunchControls, row variant', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
     await userEvent.click(
-      within(screen.getByRole('dialog', { name: 'Launch options' })).getByRole('button', { name: 'Open in Claude' }),
+      within(await screen.findByRole('dialog', { name: 'Launch options' })).getByRole('button', {
+        name: 'Open in Claude',
+      }),
     )
 
     expect(screen.getByRole('button', { name: 'Opening…' })).toBeDisabled()
@@ -126,7 +128,9 @@ describe('LaunchControls, row variant', () => {
     const launchIt = async () => {
       await userEvent.click(screen.getByRole('button', { name: 'Open in Claude' }))
       await userEvent.click(
-        within(screen.getByRole('dialog', { name: 'Launch options' })).getByRole('button', { name: 'Open in Claude' }),
+        within(await screen.findByRole('dialog', { name: 'Launch options' })).getByRole('button', {
+          name: 'Open in Claude',
+        }),
       )
     }
 
@@ -152,7 +156,9 @@ describe('LaunchControls, row variant', () => {
 
     await userEvent.click(open)
     await userEvent.click(
-      within(screen.getByRole('dialog', { name: 'Launch options' })).getByRole('button', { name: 'Open in Claude' }),
+      within(await screen.findByRole('dialog', { name: 'Launch options' })).getByRole('button', {
+        name: 'Open in Claude',
+      }),
     )
 
     expect(await screen.findByRole('alert')).toHaveClass('col-[2/-1]', 'mt-1.5')

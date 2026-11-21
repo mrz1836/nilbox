@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent, useOptimistic, useRef, useState } from 'react'
+import { startTransition, useOptimistic, useRef, useState } from 'react'
 
 import {
   dismissItem,
@@ -7,7 +7,6 @@ import {
   markItemsSeen,
   markItemUnseen,
   nudgeAuthor,
-  on,
   pinItem,
   refreshInbox,
   removeReviewRequest as removeItemReviewRequest,
@@ -24,6 +23,7 @@ import { shareSnapshot } from './share'
 import { applyTriage, snoozeEnd, type TriageChange } from './triage'
 import { useMutation } from './useMutation'
 import { useClock } from './useNow'
+import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
 // InboxState is the stored inbox and what the window is doing with it.
@@ -172,30 +172,19 @@ export function useInbox(): InboxState {
   }
 
   const loaded = useQuery(() => ask(next(), getInboxSnapshot()), [])
-  const reloadOnUpdate = useEffectEvent(() => {
+
+  useOn('inbox:updated', () => {
     void loaded.refetch()
   })
-
-  useEffect(
-    () =>
-      on('inbox:updated', () => {
-        reloadOnUpdate()
-      }),
-    [],
-  )
 
   // heard is the latest progress a refresh told, with the number of the last request
   // started when it came: an answer to a request started after it that says no refresh
   // runs means that refresh ended, while one started before it may not know of it yet.
   const [heard, setHeard] = useState<{ progress: InboxProgress; at: number } | null>(null)
 
-  useEffect(
-    () =>
-      on('inbox:progress', (progress) => {
-        setHeard({ progress, at: started.current })
-      }),
-    [],
-  )
+  useOn('inbox:progress', (progress) => {
+    setHeard({ progress, at: started.current })
+  })
 
   const shown = newer(loaded.data, answered)
   const [snapshot, showChange] = useOptimistic(shown?.snapshot ?? null, showTriage)

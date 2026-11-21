@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import { deferred } from '../test/async'
 import { useDebouncedQuery, useQuery } from './useQuery'
 
 // Call is a request the test answers, which records whether it was cancelled, as a bound
@@ -13,12 +14,7 @@ interface Call<T> extends Promise<T> {
 }
 
 function call<T>(): Call<T> {
-  let resolve: (value: T) => void = () => undefined
-  let reject: (err: unknown) => void = () => undefined
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
+  const { promise, resolve, reject } = deferred<T>()
   const made = Object.assign(promise, {
     cancelled: false,
     resolve,
@@ -44,10 +40,6 @@ function calls<T>() {
 
   return { made, load }
 }
-
-afterEach(() => {
-  vi.useRealTimers()
-})
 
 describe('useQuery', () => {
   it('is pending until the answer arrives, then holds it', async () => {
@@ -85,11 +77,8 @@ describe('useQuery', () => {
   })
 
   it('never shows a replaced answer that cannot be cancelled', async () => {
-    let answer: (value: string) => void = () => undefined
-    const slow = new Promise<string>((resolve) => {
-      answer = resolve
-    })
-    const load = vi.fn<(id: number) => Promise<string>>().mockReturnValueOnce(slow).mockResolvedValue('newer')
+    const slow = deferred<string>()
+    const load = vi.fn<(id: number) => Promise<string>>().mockReturnValueOnce(slow.promise).mockResolvedValue('newer')
     const { result, rerender } = renderHook(({ id }) => useQuery(() => load(id), [id]), { initialProps: { id: 1 } })
 
     rerender({ id: 2 })
@@ -98,8 +87,8 @@ describe('useQuery', () => {
     })
 
     await act(async () => {
-      answer('older')
-      await slow
+      slow.resolve('older')
+      await slow.promise
     })
 
     expect(result.current.data).toBe('newer')

@@ -1,8 +1,9 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { deferred } from '../test/async'
 import { serviceIncident, serviceStatus, statusWatch } from '../test/fixtures'
-import { emit, platform } from '../test/platform'
+import { platform, send } from '../test/platform'
 import { useServiceStatus } from './useServiceStatus'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -17,9 +18,7 @@ describe('useServiceStatus', () => {
     })
 
     platform.getServiceStatus.mockResolvedValue(serviceIncident())
-    act(() => {
-      emit('servicestatus:updated')
-    })
+    send('servicestatus:updated')
 
     await waitFor(() => {
       expect(result.current.status?.state).toBe('major')
@@ -66,12 +65,8 @@ describe('useServiceStatus', () => {
   })
 
   it('checks now and shows the answer, saying while it checks', async () => {
-    let answer: (status: ReturnType<typeof serviceStatus>) => void = () => undefined
-    platform.checkServiceStatus.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const answer = deferred<ReturnType<typeof serviceStatus>>()
+    platform.checkServiceStatus.mockReturnValue(answer.promise)
     const { result } = renderHook(() => useServiceStatus(1800))
 
     await waitFor(() => {
@@ -84,7 +79,7 @@ describe('useServiceStatus', () => {
     expect(result.current.checking).toBe(true)
 
     await act(async () => {
-      answer(serviceIncident())
+      answer.resolve(serviceIncident())
       await Promise.resolve()
     })
 

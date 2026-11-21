@@ -2,10 +2,10 @@ import { startTransition, useId, useOptimistic, useState, useTransition, type Re
 
 import { brand } from '../../generated/brand'
 import { attempt, start, type Result } from '../../lib/call'
+import { pickFileToOpen } from '../../lib/dialogs'
 import { exportLine } from '../../lib/shell'
 import { formatDateTime } from '../../lib/time'
 import {
-  chooseFileToOpen,
   installIntegration,
   openExternal,
   reinstallIntegration,
@@ -242,8 +242,9 @@ function Details({ tool, id, busy, save, reinstall, trash }: DetailsProps) {
   }
 
   const choose = async () => {
-    const chosen = await attempt(
-      chooseFileToOpen({ title: `Choose a copy of ${tool.binary}`, button: 'Use', filters: [] }),
+    const chosen = await pickFileToOpen(
+      { title: `Choose a copy of ${tool.binary}`, button: 'Use', filters: [] },
+      (why) => why,
     )
 
     if (!chosen.ok) {

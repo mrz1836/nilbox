@@ -1,12 +1,12 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { ReleaseCandidate, ReleasePrepareRequest, RunsIn } from '../../platform'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { releaseCandidate, releaseCheck, releaseOffer, releaseResult, releaseRun } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import { ReleaseSheet, type ReleaseTarget } from './ReleaseSheet'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -26,7 +26,7 @@ function renderSheet(options: Options = {}) {
     onClose: vi.fn<() => void>(),
   }
 
-  render(
+  renderAt(
     <ReleaseSheet
       target={{ repo: 'acme-org/sdk', dir: '~/projects/sdk', branch: '', ...target }}
       candidate={candidate}
@@ -34,7 +34,6 @@ function renderSheet(options: Options = {}) {
       terminal="iterm2"
       {...handlers}
     />,
-    { wrapper: at() },
   )
 
   return handlers
@@ -499,14 +498,10 @@ describe('ReleaseSheet', () => {
     const reads = platform.getScriptRun.mock.calls.length
 
     platform.getScriptRun.mockResolvedValue(going('tagCreated', 'tagPushed'))
-    act(() => {
-      emit('scriptruns:progress', { id: 99 })
-    })
+    send('scriptruns:progress', { id: 99 })
     expect(platform.getScriptRun).toHaveBeenCalledTimes(reads)
 
-    act(() => {
-      emit('scriptruns:progress', { id: 7 })
-    })
+    send('scriptruns:progress', { id: 7 })
 
     await waitFor(() => {
       expect(steps()).toEqual([
@@ -520,9 +515,7 @@ describe('ReleaseSheet', () => {
     expect(await dialog.findByRole('button', { name: 'Stop' })).toBeInTheDocument()
 
     platform.getScriptRun.mockResolvedValue(releaseRun())
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     expect(await dialog.findByRole('heading', { name: 'acme-org/sdk v1.4.3 is on GitHub' })).toBeInTheDocument()
 

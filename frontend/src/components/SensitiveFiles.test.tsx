@@ -1,9 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { FileCheck } from '../platform'
-import { at } from '../test/clock'
+import { deferred } from '../test/async'
+import { renderAt } from '../test/clock'
 import { agentGroup, fileCheck, workflowsGroup } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { expectWraps } from '../test/wrap'
@@ -12,7 +13,7 @@ import { SensitiveFiles } from './SensitiveFiles'
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 function renderChip(check: FileCheck = fileCheck(), onSettings?: () => void) {
-  render(<SensitiveFiles itemId={7} check={check} onSettings={onSettings} />, { wrapper: at() })
+  renderAt(<SensitiveFiles itemId={7} check={check} onSettings={onSettings} />)
 }
 
 async function openPanel(name: RegExp) {
@@ -63,7 +64,7 @@ describe('SensitiveFiles', () => {
 
   it('shows a file it cannot link as plain text', async () => {
     const file = { path: '.claude/settings.json', previousPath: '', change: 'added', pattern: '.claude/', url: '' }
-    const group = { ...agentGroup(), files: [file] }
+    const group = agentGroup({ files: [file] })
     renderChip(fileCheck({ groups: [group] }))
 
     const panel = await openPanel(/^Changes sensitive files/)
@@ -79,11 +80,10 @@ describe('SensitiveFiles', () => {
       description:
         'Run on CI with the repository’s token and secrets once merged, and some run on the pull request itself.',
     })
-    render(
+    renderAt(
       <div className="whitespace-nowrap">
         <SensitiveFiles itemId={7} check={fileCheck({ groups: [agentGroup(), workflows], complete: false })} />
       </div>,
-      { wrapper: at() },
     )
 
     const panel = await openPanel(/^Changes sensitive files/)
@@ -153,12 +153,8 @@ describe('SensitiveFiles', () => {
   })
 
   it('checks the files again on request', async () => {
-    let finish: (check: FileCheck) => void = () => undefined
-    platform.checkItemFiles.mockReturnValue(
-      new Promise<FileCheck>((resolve) => {
-        finish = resolve
-      }),
-    )
+    const check = deferred<FileCheck>()
+    platform.checkItemFiles.mockReturnValue(check.promise)
     renderChip(fileCheck({ status: 'failed', groups: [], error: 'GitHub answered 502' }))
 
     const panel = await openPanel(/^Couldn’t check the changed files/)
@@ -169,7 +165,7 @@ describe('SensitiveFiles', () => {
     expect(platform.checkItemFiles).toHaveBeenCalledWith(7)
     expect(panel.getByRole('button', { name: 'Checking…' })).toBeDisabled()
 
-    finish(fileCheck())
+    check.resolve(fileCheck())
     expect(await panel.findByRole('button', { name: 'Check now' })).toBeEnabled()
   })
 
@@ -216,11 +212,10 @@ describe('SensitiveFiles', () => {
   })
 
   it('fits the panel inside the area it scrolls in', async () => {
-    render(
+    renderAt(
       <div style={{ overflowY: 'auto' }}>
         <SensitiveFiles itemId={7} check={fileCheck()} />
       </div>,
-      { wrapper: at() },
     )
 
     await userEvent.click(screen.getByRole('button', { name: /^Changes sensitive files/ }))

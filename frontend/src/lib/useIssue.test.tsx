@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Issue } from '../platform'
+import { deferred } from '../test/async'
 import { issue, issueComment, issueTimeline } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { useIssue } from './useIssue'
@@ -17,13 +18,9 @@ function comments(first: number, count: number) {
 
 describe('useIssue', () => {
   it('shows what the sheet read before, then what GitHub says', async () => {
-    let answer: (is: Issue) => void = () => undefined
+    const answer = deferred<Issue>()
     platform.openIssue.mockResolvedValue(issue({ stale: true, fetchedAt: '', lastSeenAt: '2026-06-14T00:00:00Z' }))
-    platform.refreshIssue.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    platform.refreshIssue.mockReturnValue(answer.promise)
 
     const { result } = renderHook(() => useIssue(1))
 
@@ -34,7 +31,7 @@ describe('useIssue', () => {
     expect(result.current.lastSeenAt).toBe('2026-06-14T00:00:00Z')
 
     act(() => {
-      answer(issue({ lastSeenAt: '2026-06-15T00:00:00Z' }))
+      answer.resolve(issue({ lastSeenAt: '2026-06-15T00:00:00Z' }))
     })
 
     await waitFor(() => {
@@ -88,12 +85,8 @@ describe('useIssue', () => {
   })
 
   it('keeps a failed read of earlier entries to its own issue', async () => {
-    let fail: (e: Error) => void = () => undefined
-    platform.issueEarlier.mockReturnValueOnce(
-      new Promise((_, reject) => {
-        fail = reject
-      }),
-    )
+    const earlier = deferred<ReturnType<typeof issueTimeline>>()
+    platform.issueEarlier.mockReturnValueOnce(earlier.promise)
     const { result, rerender } = renderHook(({ id }) => useIssue(id), { initialProps: { id: 1 } })
 
     await waitFor(() => {
@@ -110,7 +103,7 @@ describe('useIssue', () => {
     expect(result.current.loadingEarlier, 'another issue isn’t loading').toBe(false)
 
     await act(async () => {
-      fail(new Error('GitHub is down'))
+      earlier.reject(new Error('GitHub is down'))
       await read
     })
     expect(result.current.earlierError, 'nor did it fail').toBe('')

@@ -1,24 +1,20 @@
-import { act, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { screen, within } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 
 import { CardPrefsContext, defaultCardPrefs, type CardPrefs } from '../../lib/cardPrefs'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { mocks } from '../../test/platform'
+import { followResizes } from '../../test/stubs'
 import { CardGuide, guideParts } from './CardGuide'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
-afterEach(() => {
-  vi.unstubAllGlobals()
-})
-
 // showGuide renders the guide in variant, with the cards' settings as prefs says.
 function showGuide(variant: 'full' | 'compact', prefs: Partial<CardPrefs> = {}) {
-  return render(
+  return renderAt(
     <CardPrefsContext value={{ ...defaultCardPrefs, ...prefs }}>
       <CardGuide variant={variant} />
     </CardPrefsContext>,
-    { wrapper: at() },
   )
 }
 
@@ -158,40 +154,6 @@ function marker(part: string): HTMLElement {
   return found
 }
 
-// relayOut tells the guide its box changed size, as the layout would.
-function relayOut() {
-  act(() => {
-    for (const callback of resized) {
-      callback()
-    }
-  })
-}
-
-// resized are the callbacks of the ResizeObservers made, which a test calls as a layout
-// change would.
-let resized: (() => void)[] = []
-
-// followSizes stands in for ResizeObserver, keeping each callback for the test to call.
-function followSizes() {
-  resized = []
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      constructor(callback: () => void) {
-        resized.push(callback)
-      }
-
-      observe() {
-        // The test reports changes itself.
-      }
-
-      disconnect() {
-        // Nothing to stop following.
-      }
-    },
-  )
-}
-
 describe('CardGuide', () => {
   it('shows the real card on its sample, inert, with every part it numbers', () => {
     showGuide('full')
@@ -236,7 +198,7 @@ describe('CardGuide', () => {
   })
 
   it('hides its markers until their parts are measured, then places each over its part', () => {
-    followSizes()
+    const resizes = followResizes()
     showGuide('full')
 
     expect(markers().map((m) => m.getAttribute('data-marker'))).toEqual(guideParts.map((g) => g.part))
@@ -247,7 +209,7 @@ describe('CardGuide', () => {
     }
 
     layOut({ ...laidOut })
-    relayOut()
+    resizes.resize()
 
     for (const m of markers()) {
       const part = m.getAttribute('data-marker') ?? ''
@@ -262,7 +224,7 @@ describe('CardGuide', () => {
   })
 
   it('puts the track’s marker over the track and the action column’s over its primary, not over their columns', () => {
-    followSizes()
+    followResizes()
     layOut({ ...laidOut })
     showGuide('full')
 
@@ -279,7 +241,7 @@ describe('CardGuide', () => {
   })
 
   it('places each marker over its part while the dialog’s pop-in still scales the sample', () => {
-    followSizes()
+    followResizes()
     layOut({ ...laidOut }, popIn)
     showGuide('full')
 
@@ -296,7 +258,7 @@ describe('CardGuide', () => {
 
   it('hides a marker again once its part is no longer laid out, as a narrow list drops the track', () => {
     const parts = { ...laidOut }
-    followSizes()
+    const resizes = followResizes()
     layOut(parts)
     showGuide('full')
 
@@ -304,7 +266,7 @@ describe('CardGuide', () => {
     expect(track()).toBeVisible()
 
     parts.track = nothing
-    relayOut()
+    resizes.resize()
 
     expect(track()).not.toBeVisible()
     expect(document.querySelector('[data-marker="title"]')).toBeVisible()

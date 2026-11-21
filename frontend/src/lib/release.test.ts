@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { ReleaseCandidate, ReleaseCloneState, ReleaseFollow, ScriptRunProgress } from '../platform'
 import { releaseCandidate, releaseFollow, releaseResult, releaseRun, scriptRun } from '../test/fixtures'
@@ -30,6 +30,8 @@ import {
   waveAt,
   type ReleaseIntent,
 } from './release'
+
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 // clone is a clone on master with nothing to say about it.
 function clone(change: Partial<ReleaseCloneState> = {}): ReleaseCloneState {

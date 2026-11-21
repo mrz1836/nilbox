@@ -1,8 +1,8 @@
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { agentSession, item, sessionsSnapshot } from '../test/fixtures'
-import { emit, listening, platform } from '../test/platform'
+import { listening, platform, send } from '../test/platform'
 import { sessionsOf } from './sessions'
 import { useSessions } from './useSessions'
 
@@ -19,9 +19,7 @@ describe('useSessions', () => {
     })
 
     platform.listSessions.mockResolvedValue(sessionsSnapshot([agentSession({ state: 'idle' })]))
-    act(() => {
-      emit('sessions:updated')
-    })
+    send('sessions:updated')
 
     await waitFor(() => {
       expect(sessionsOf(result.current.byItem, item())?.[0]?.state).toBe('idle')

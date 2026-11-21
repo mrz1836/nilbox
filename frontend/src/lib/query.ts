@@ -313,6 +313,21 @@ export function matchesFilter(filter: Filter, have: readonly string[] | null, kn
   return hit !== filter.negated
 }
 
+// matchesQuery reports whether an item matches every part of a query: each word or phrase
+// part of its haystack, or its number (matchesTerms), and each filter by the item's values
+// for the filter's key, have, and the values some item has for it, known (matchesFilter).
+export function matchesQuery(
+  query: Query,
+  hay: string,
+  number: number | undefined,
+  have: (key: string) => readonly string[] | null,
+  known: (key: string) => ReadonlySet<string>,
+): boolean {
+  return (
+    matchesTerms(query.terms, hay, number) && query.filters.every((f) => matchesFilter(f, have(f.key), known(f.key)))
+  )
+}
+
 // markTerms is the words and phrases a query looks for, folded, as one string a row can
 // take as a prop and keep from one query to the next while they stay the same. Highlight
 // marks them.

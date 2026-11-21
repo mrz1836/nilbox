@@ -6,6 +6,7 @@ import { useState } from 'react'
 
 import { CelebrationsContext } from '../lib/celebrations'
 import { filterInbox } from '../lib/inboxFilter'
+import type { LaunchOptions } from '../lib/launch'
 import { earnedBurst } from '../lib/nil'
 import { offersProjects } from '../lib/projects'
 import { useCollapsedSections } from '../lib/useCollapsedSections'
@@ -26,6 +27,7 @@ import type {
   ReviewResult,
   Settings,
 } from '../platform'
+import { deferred } from '../test/async'
 import { clockAt, FIXED_NOW, fixedNow, fromNow } from '../test/clock'
 import {
   afterMerge,
@@ -49,8 +51,8 @@ import {
   settings,
   snapshot,
 } from '../test/fixtures'
-import { emit, listening, platform } from '../test/platform'
-import { InboxView, type LaunchOptions, type Reveal } from './InboxView'
+import { emit, listening, platform, send } from '../test/platform'
+import { InboxView, type Reveal } from './InboxView'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -179,10 +181,6 @@ function storing(after: InboxSnapshot) {
 async function section(title: string) {
   return within(await screen.findByRole('region', { name: title }))
 }
-
-afterEach(() => {
-  vi.useRealTimers()
-})
 
 describe('InboxView', () => {
   it('links an issue and the pull request fixing it, each card showing the other', async () => {
@@ -329,19 +327,15 @@ describe('InboxView', () => {
   })
 
   it('refreshes on click and shows the new snapshot', async () => {
-    let finish: (value: InboxSnapshot) => void = () => undefined
-    platform.refreshInbox.mockReturnValue(
-      new Promise((resolve) => {
-        finish = resolve
-      }),
-    )
+    const refresh = deferred<InboxSnapshot>()
+    platform.refreshInbox.mockReturnValue(refresh.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Refresh' }))
     expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled()
 
     await act(async () => {
-      finish(
+      refresh.resolve(
         snapshot({
           yours: list([item({ title: 'Fresh from GitHub' })]),
           lastRefreshedAt: FIXED_NOW.toISOString(),
@@ -397,15 +391,11 @@ describe('InboxView', () => {
 
   it('keeps a closed stored error closed while a refresh runs, and shows it again once it clears and returns', async () => {
     const message = 'read the item details: the GitHub API returned HTTP 502'
-    let finish: (value: InboxSnapshot) => void = () => undefined
+    const refresh = deferred<InboxSnapshot>()
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z', lastError: message }),
     )
-    platform.refreshInbox.mockReturnValue(
-      new Promise<InboxSnapshot>((resolve) => {
-        finish = resolve
-      }),
-    )
+    platform.refreshInbox.mockReturnValue(refresh.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await userEvent.click(within(await screen.findByRole('alert')).getByRole('button', { name: 'Close' }))
@@ -418,7 +408,7 @@ describe('InboxView', () => {
     // It succeeds, the error clears, and a later background refresh fails the same way.
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' }))
     act(() => {
-      finish(snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' }))
+      refresh.resolve(snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' }))
       emit('inbox:updated')
     })
     await waitFor(() => {
@@ -428,9 +418,7 @@ describe('InboxView', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z', lastError: message }),
     )
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     expect(await screen.findByRole('alert')).toHaveTextContent(message)
   })
 
@@ -465,9 +453,7 @@ describe('InboxView', () => {
     expect(listening('inbox:updated')).toBe(1)
     expect(listening('inbox:progress')).toBe(1)
 
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     expect(await screen.findByRole('button', { name: 'Updated in the background' })).toBeInTheDocument()
     expect(platform.getInboxSnapshot).toHaveBeenCalledTimes(2)
@@ -516,8 +502,11 @@ describe('InboxView collapsing', () => {
     ]),
   })
 
-  it('collapses a list from its header to just its tabs, and opens it again', async () => {
+  beforeEach(() => {
     platform.getInboxSnapshot.mockResolvedValue(authored)
+  })
+
+  it('collapses a list from its header to just its tabs, and opens it again', async () => {
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const list = await section('Yours')
@@ -548,7 +537,6 @@ describe('InboxView collapsing', () => {
   })
 
   it('opens with the lists collapsed the way they were left', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(authored)
     platform.getCollapsedSections.mockResolvedValue(['yours'])
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -560,13 +548,8 @@ describe('InboxView collapsing', () => {
   })
 
   it('waits for the collapsed lists before showing any, so none flashes open', async () => {
-    let resolve: (sections: ListKey[]) => void = () => undefined
-    platform.getInboxSnapshot.mockResolvedValue(authored)
-    platform.getCollapsedSections.mockReturnValue(
-      new Promise<ListKey[]>((r) => {
-        resolve = r
-      }),
-    )
+    const collapsed = deferred<ListKey[]>()
+    platform.getCollapsedSections.mockReturnValue(collapsed.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await waitFor(() => {
@@ -576,7 +559,7 @@ describe('InboxView collapsing', () => {
     expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
 
     act(() => {
-      resolve(['yours'])
+      collapsed.resolve(['yours'])
     })
 
     const list = await section('Yours')
@@ -584,7 +567,6 @@ describe('InboxView collapsing', () => {
   })
 
   it('opens a collapsed list when one of its tabs is chosen', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(authored)
     platform.getCollapsedSections.mockResolvedValue(['yours'])
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -607,6 +589,11 @@ describe('InboxView triage', () => {
   const fresh = item({ id: 1, title: 'Add the widget cache' })
   const snoozed = item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' })
   const dismissed = item({ id: 3, number: 9, title: 'Rename the flag', dismissedAt: '2026-06-15T09:00:00Z' })
+
+  // Each test starts from an inbox holding fresh alone, unless it answers otherwise.
+  beforeEach(() => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+  })
 
   it('sets a muted repository’s items apart in the Muted tab, out of the count', async () => {
     const quiet = item({ id: 4, number: 11, title: 'Quiet change', repo: 'acme-org/quiet', repoRule: 'muted' })
@@ -633,15 +620,12 @@ describe('InboxView triage', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ reviewRequested: list([fresh, { ...quiet, repoRule: '' }]) }),
     )
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     expect(await review.findByRole('tab', { name: 'Review requested 2' })).toBeInTheDocument()
     expect(review.getByRole('tab', { name: 'Muted' })).toBeInTheDocument()
   })
 
   it('mutes a card’s org from its menu, and undoes it from the toast', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.setRepoRule.mockResolvedValue(settings({ repoRules: { pinned: [], muted: ['acme-org'] } }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -667,7 +651,6 @@ describe('InboxView triage', () => {
   })
 
   it('says why a rule could not be changed', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.setRepoRule.mockRejectedValue(new Error('database is locked'))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -684,7 +667,6 @@ describe('InboxView triage', () => {
   })
 
   it('opens the pinned and muted repositories in Settings from a card’s menu', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
@@ -734,7 +716,6 @@ describe('InboxView triage', () => {
   })
 
   it('explains empty tabs', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
     const review = await section('Review requested')
 
@@ -746,7 +727,6 @@ describe('InboxView triage', () => {
   })
 
   it('moves between tabs with the arrow keys', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
     const review = await section('Review requested')
     const inbox = review.getByRole('tab', { name: 'Review requested 1' })
@@ -780,7 +760,6 @@ describe('InboxView triage', () => {
   })
 
   it('dismisses an item, and undoes it from the toast', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.dismissItem.mockResolvedValue(
       snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: FIXED_NOW.toISOString() }]) }),
     )
@@ -803,7 +782,6 @@ describe('InboxView triage', () => {
   })
 
   it('snoozes for the default length in one click', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.snoozeItem.mockResolvedValue(
       snapshot({ reviewRequested: list([{ ...fresh, snoozedUntil: '2026-06-22T12:00:00Z' }]) }),
     )
@@ -826,7 +804,6 @@ describe('InboxView triage', () => {
   })
 
   it('snoozes for another length from the menu, or opens the default', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.snoozeItem.mockResolvedValue(
       snapshot({ reviewRequested: list([{ ...fresh, snoozedUntil: '2026-06-16T12:00:00Z' }]) }),
     )
@@ -878,9 +855,7 @@ describe('InboxView triage', () => {
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([dismissed]) }))
     platform.restoreItem.mockResolvedValue(snapshot({ reviewRequested: list([{ ...dismissed, dismissedAt: '' }]) }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     await userEvent.click(await review.findByRole('tab', { name: 'Dismissed 1' }))
     await userEvent.click(review.getByRole('button', { name: 'Restore' }))
 
@@ -985,14 +960,10 @@ describe('InboxView triage', () => {
   })
 
   it('shows a pin at once, and puts the item back with the reason when it is refused', async () => {
-    let refuse: (err: Error) => void = () => undefined
+    const pin = deferred<InboxSnapshot>()
     const other = item({ id: 4, number: 10, title: 'Tidy the docs', updatedAt: '2026-06-15T08:00:00Z' })
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh, other]) }))
-    platform.pinItem.mockReturnValue(
-      new Promise((_, reject) => {
-        refuse = reject
-      }),
-    )
+    platform.pinItem.mockReturnValue(pin.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
@@ -1004,7 +975,7 @@ describe('InboxView triage', () => {
     expect(titles()).toEqual(['Tidy the docs', 'Add the widget cache'])
 
     await act(async () => {
-      refuse(new Error('database is locked'))
+      pin.reject(new Error('database is locked'))
       await Promise.resolve()
     })
 
@@ -1019,14 +990,9 @@ describe('InboxView triage', () => {
   })
 
   it('sets a dismissed item aside at once, before the backend answers', async () => {
-    let answer: (value: InboxSnapshot) => void = () => undefined
+    const dismissal = deferred<InboxSnapshot>()
     const dismissedNow = snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: FIXED_NOW.toISOString() }]) })
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
-    platform.dismissItem.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    platform.dismissItem.mockReturnValue(dismissal.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
@@ -1036,7 +1002,7 @@ describe('InboxView triage', () => {
     expect(review.queryByRole('button', { name: 'Add the widget cache' })).not.toBeInTheDocument()
 
     await act(async () => {
-      answer(dismissedNow)
+      dismissal.resolve(dismissedNow)
       await Promise.resolve()
     })
 
@@ -1044,7 +1010,6 @@ describe('InboxView triage', () => {
   })
 
   it('says why a triage action failed', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.dismissItem.mockRejectedValue(new Error('item not found; refresh the inbox and try again'))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -1061,7 +1026,6 @@ describe('InboxView triage', () => {
   })
 
   it('reports an undo that failed', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.snoozeItem.mockRejectedValue(new Error('database is locked'))
     platform.dismissItem.mockResolvedValue(snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: '' }]) }))
     platform.restoreItem.mockRejectedValue(new Error('database is locked'))
@@ -1081,7 +1045,6 @@ describe('InboxView triage', () => {
   })
 
   it('says a snooze without a stored end was snoozed', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.snoozeItem.mockResolvedValue(snapshot())
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -1110,7 +1073,6 @@ describe('InboxView triage', () => {
   })
 
   it('says why a refreshed item left the inbox', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.refreshItem.mockResolvedValue(snapshot())
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -1123,13 +1085,8 @@ describe('InboxView triage', () => {
   })
 
   it('holds the row controls while a refresh runs, and says why it failed', async () => {
-    let fail: (err: Error) => void = () => undefined
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
-    platform.refreshItem.mockReturnValue(
-      new Promise((_, reject) => {
-        fail = reject
-      }),
-    )
+    const refresh = deferred<InboxSnapshot>()
+    platform.refreshItem.mockReturnValue(refresh.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
@@ -1146,7 +1103,7 @@ describe('InboxView triage', () => {
     expect(button.querySelector('svg')).toHaveClass('motion-safe:animate-spin')
 
     act(() => {
-      fail(new Error('the GitHub GraphQL API returned errors: timeout'))
+      refresh.reject(new Error('the GitHub GraphQL API returned errors: timeout'))
     })
 
     expect(await screen.findByRole('status')).toHaveTextContent(
@@ -1224,13 +1181,8 @@ describe('InboxView triage', () => {
   })
 
   it('never lets an older answer replace a newer one', async () => {
-    let finishDismiss: (value: InboxSnapshot) => void = () => undefined
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
-    platform.dismissItem.mockReturnValue(
-      new Promise((resolve) => {
-        finishDismiss = resolve
-      }),
-    )
+    const dismissal = deferred<InboxSnapshot>()
+    platform.dismissItem.mockReturnValue(dismissal.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
@@ -1240,14 +1192,12 @@ describe('InboxView triage', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ reviewRequested: list([{ ...fresh, title: 'Read later', dismissedAt: FIXED_NOW.toISOString() }]) }),
     )
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     expect(await review.findByRole('tab', { name: 'Dismissed 1' })).toBeInTheDocument()
 
     // The dismissal's own, older answer arrives last and is not shown.
     await act(async () => {
-      finishDismiss(snapshot({ reviewRequested: list([fresh]) }))
+      dismissal.resolve(snapshot({ reviewRequested: list([fresh]) }))
       await Promise.resolve()
     })
 
@@ -1700,17 +1650,13 @@ describe('InboxView empty lists', () => {
     await userEvent.click(authored.getByRole('tab', { name: 'Dismissed 1' }))
     expect(authored.getByRole('button', { name: 'Rename the flag' })).toBeInTheDocument()
 
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     await waitFor(() => {
       expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
     })
 
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     const back = await section('Yours')
     expect(back.getByRole('tab', { name: 'Yours 1' })).toHaveAttribute('aria-selected', 'true')
@@ -1731,7 +1677,7 @@ describe('InboxView empty lists', () => {
 
     view.rerender(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    expect(await section('Review requested')).toBeTruthy()
+    expect(await screen.findByRole('region', { name: 'Review requested' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
   })
 })
@@ -1832,8 +1778,11 @@ describe('InboxView’s projects tip', () => {
       projectAccess: 'needs_scope',
     })
 
-  it('offers to show issue projects while the token cannot read them', async () => {
+  beforeEach(() => {
     platform.getInboxSnapshot.mockResolvedValue(needsScope())
+  })
+
+  it('offers to show issue projects while the token cannot read them', async () => {
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect(
@@ -1851,7 +1800,6 @@ describe('InboxView’s projects tip', () => {
   })
 
   it('checks again with a refresh, then says the projects are on and shows them', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(needsScope())
     platform.refreshInbox.mockResolvedValue(
       snapshot({
         yours: list([
@@ -1875,7 +1823,6 @@ describe('InboxView’s projects tip', () => {
   })
 
   it('puts the offer away for good', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(needsScope())
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Don’t show this again' }))
@@ -2206,7 +2153,7 @@ describe('InboxView filtering', () => {
     await userEvent.click(yours.getByRole('tab', { name: 'Snoozed 1' }))
     view.rerender(<Harness launch={launchOptions} clock={fixedNow} query="widget" />)
 
-    expect(await section('Review requested')).toBeTruthy()
+    expect(await screen.findByRole('region', { name: 'Review requested' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
 
     view.rerender(<Harness launch={launchOptions} clock={fixedNow} />)
@@ -2470,31 +2417,28 @@ describe('InboxView review sheet', () => {
 
     it('writes a failure to ask to the console, and offers nothing', async () => {
       const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const failure = new Error('database is locked')
 
-      platform.offerReleaseAfterMerge.mockRejectedValue(new Error('database is locked'))
+      platform.offerReleaseAfterMerge.mockRejectedValue(failure)
 
       const toast = within(await merge())
 
       await waitFor(() => {
-        expect(logged).toHaveBeenCalledWith('could not ask whether the merge offers a release:', 'database is locked')
+        expect(logged).toHaveBeenCalledWith('could not ask whether the merge offers a release:', failure)
       })
       expect(toast.queryByRole('button', { name: /^Release/ })).not.toBeInTheDocument()
     })
 
     it('adds nothing to a toast already gone when the answer comes', async () => {
-      let answer: (offer: AfterMerge) => void = () => undefined
+      const offer = deferred<AfterMerge>()
 
-      platform.offerReleaseAfterMerge.mockReturnValue(
-        new Promise((resolve) => {
-          answer = resolve
-        }),
-      )
+      platform.offerReleaseAfterMerge.mockReturnValue(offer.promise)
 
       const toast = within(await merge())
 
       await userEvent.click(toast.getByRole('button', { name: 'Close' }))
       await act(async () => {
-        answer(afterMerge())
+        offer.resolve(afterMerge())
         await Promise.resolve()
       })
 
@@ -2672,10 +2616,14 @@ describe('InboxView issue sheet', () => {
     assigned: true,
   })
 
-  it('opens an issue from its title, and reports what the action came to', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash]) }))
+  // The sheet reads crash, unless a test answers otherwise.
+  beforeEach(() => {
     platform.openIssue.mockResolvedValue(issue({ id: 2 }))
     platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
+  })
+
+  it('opens an issue from its title, and reports what the action came to', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash]) }))
     platform.actOnIssue.mockResolvedValue(
       issueResult({
         outcome: 'commented_not_closed',
@@ -2701,8 +2649,6 @@ describe('InboxView issue sheet', () => {
   it('steps from a pull request to an issue and back, switching sheets', async () => {
     const third = item({ id: 3, number: 9, title: 'Third' })
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item({ id: 1 }), crash, third]) }))
-    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
-    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     platform.openReview.mockImplementation((id) =>
       Promise.resolve(review({ id, title: id === 3 ? 'Third' : 'Add the widget cache' })),
     )
@@ -2741,8 +2687,6 @@ describe('InboxView issue sheet', () => {
 
   it('lists both sheets’ conversations in the order chosen in either, and remembers it', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash, item({ id: 1 })]) }))
-    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
-    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     platform.openReview.mockResolvedValue(review({ id: 1, timeline: reviewTimeline() }))
     platform.refreshReview.mockResolvedValue(review({ id: 1, timeline: reviewTimeline() }))
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
@@ -2764,8 +2708,6 @@ describe('InboxView issue sheet', () => {
 
   it('opens an issue from its menu', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash]) }))
-    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
-    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
 
     const row = (await screen.findAllByRole('listitem')).find((li) =>
@@ -2779,8 +2721,6 @@ describe('InboxView issue sheet', () => {
 
   it('takes the user off the issue from its sheet, which closes, and says why it couldn’t', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash]) }))
-    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
-    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     platform.unassignItem.mockRejectedValueOnce(new Error('GitHub refused it.'))
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
 
@@ -2803,8 +2743,6 @@ describe('InboxView issue sheet', () => {
   it('follows a link between the sheets, and steps back', async () => {
     const pull = item({ id: 1, number: 14, title: 'Keep the trailing newline' })
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([pull]), yours: list([crash]) }))
-    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
-    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     platform.openReview.mockResolvedValue(review({ id: 1, title: 'Keep the trailing newline', number: 14 }))
     platform.refreshReview.mockResolvedValue(
       review({
@@ -2895,9 +2833,7 @@ describe('InboxView issue sheet', () => {
 
     // Its card leaves the inbox while the sheet stays open, as when someone closes it.
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([parent]) }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     await waitFor(() => {
       expect(within(sheet).queryByText('1 of 2 in Yours')).not.toBeInTheDocument()
     })
@@ -3021,7 +2957,10 @@ describe('InboxView triage in the sheets', () => {
     await userEvent.click(assigned.getByRole('tab', { name: 'Dismissed 1' }))
     await userEvent.click(assigned.getByRole('button', { name: 'Parser drops the trailing newline' }))
     const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
-    expect(within(sheet).queryByRole('button', { name: 'Dismiss' }), 'a dismissed card is brought back').toBeNull()
+    expect(
+      within(sheet).queryByRole('button', { name: 'Dismiss' }),
+      'a dismissed card is brought back',
+    ).not.toBeInTheDocument()
 
     await userEvent.click(within(sheet).getByRole('button', { name: 'Restore' }))
 
@@ -3095,9 +3034,7 @@ describe('InboxView triage in the sheets', () => {
 
     // Its snooze ends while the sheet is open, so it is back in the list, and the sheet keeps it.
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([parser, other]) }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     const snooze = await within(sheet).findByRole('button', { name: 'Snooze for 3 days' })
 
     await userEvent.click(snooze)
@@ -3153,9 +3090,7 @@ describe('InboxView while a refresh runs', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([item()]), refreshing: true }),
     )
-    act(() => {
-      emit('inbox:progress', { phase: 'search', done: 0, total: 0 })
-    })
+    send('inbox:progress', { phase: 'search', done: 0, total: 0 })
 
     const button = screen.getByRole('button', { name: 'Refreshing…' })
     expect(button).toBeDisabled()
@@ -3166,25 +3101,19 @@ describe('InboxView while a refresh runs', () => {
     // The lists stay as they were while it runs.
     expect(screen.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
 
-    act(() => {
-      emit('inbox:progress', { phase: 'details', done: 3, total: 8 })
-    })
+    send('inbox:progress', { phase: 'details', done: 3, total: 8 })
 
     const status = screen.getByText('Reading 3 of 8 new items…').closest('[role="status"]')
     expect(status?.querySelector('[style]')).toHaveStyle({ width: '38%' })
 
-    act(() => {
-      emit('inbox:progress', { phase: 'files', done: 2, total: 5 })
-    })
+    send('inbox:progress', { phase: 'files', done: 2, total: 5 })
     expect(screen.getByText('Checking files: 2 of 5…')).toBeInTheDocument()
 
     // It ends: the update brings a snapshot that says so.
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ lastRefreshedAt: FIXED_NOW.toISOString(), reviewRequested: list([item()]) }),
     )
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     expect(await screen.findByRole('button', { name: 'Refresh' })).toBeEnabled()
     expect(screen.getByText('just now')).toBeInTheDocument()
@@ -3221,9 +3150,7 @@ describe('InboxView while a refresh runs', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ lastRefreshedAt: FIXED_NOW.toISOString(), yours: list([item({ title: 'Fresh from GitHub' })]) }),
     )
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     expect(await screen.findByRole('button', { name: 'Fresh from GitHub' })).toBeInTheDocument()
     expect(screen.queryByTestId('inbox-skeleton')).not.toBeInTheDocument()
@@ -3237,9 +3164,7 @@ describe('InboxView while a refresh runs', () => {
     expect(await screen.findByTestId('inbox-skeleton')).toBeInTheDocument()
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastError: 'the network is down' }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('the network is down')
     expect(screen.getByText('Not refreshed yet')).toBeInTheDocument()
@@ -3259,16 +3184,12 @@ describe('InboxView while a refresh runs', () => {
     expect(party()).not.toBeInTheDocument()
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: FIXED_NOW.toISOString() }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
 
     // A later refresh leaves the party where it is.
-    act(() => {
-      emit('inbox:progress', { phase: 'search', done: 0, total: 0 })
-    })
+    send('inbox:progress', { phase: 'search', done: 0, total: 0 })
     expect(party()).toBeInTheDocument()
   })
 })

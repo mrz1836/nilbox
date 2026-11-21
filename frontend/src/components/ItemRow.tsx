@@ -4,7 +4,7 @@ import { CardPrefsContext } from '../lib/cardPrefs'
 import { counted } from '../lib/format'
 import { labelsShown, useLabelRoom } from '../lib/labelFit'
 import { HiddenLabelsContext } from '../lib/labels'
-import { agentName } from '../lib/launch'
+import { agentName, type LaunchOptions } from '../lib/launch'
 import { autopilotState, nextStep } from '../lib/nextStep'
 import { nudgeDue, nudgeWords } from '../lib/nudge'
 import { leaving, useRowWork, workWords } from '../lib/rowWork'
@@ -12,18 +12,7 @@ import { cardSession, endedShownMs, sinceWhen } from '../lib/sessions'
 import { formatAge, formatAgo } from '../lib/time'
 import { isBackFromSnooze, isPinned, type TriageTab } from '../lib/triage'
 import { useNowAs } from '../lib/useNow'
-import {
-  type AgentInfo,
-  type InboxItem,
-  type ItemResolution,
-  type Label,
-  type LaunchDefaults,
-  type AgentSession,
-  type Profile,
-  type Prompt,
-  type Settings,
-  type Worktree,
-} from '../platform'
+import type { AgentInfo, AgentSession, InboxItem, ItemResolution, Label, Worktree } from '../platform'
 import { AutopilotChip } from './autopilot/AutopilotChip'
 import { CardActions, cardOutcomeClass } from './card/CardActions'
 import { CardAvatar } from './card/CardAvatar'
@@ -44,22 +33,6 @@ import { LaunchControls } from './LaunchControls'
 import { RelativeTime } from './RelativeTime'
 import { Spinner } from './Spinner'
 import { ghostClass, hoverClass, mutedTarget, openOnGitHub, TriageControls, type TriageActions } from './TriageControls'
-
-// LaunchOptions are what every row's launch controls share: the coding agents, profiles,
-// and prompts to choose from, and the saved launch defaults. Each row's own resolved
-// settings and worktree come apart from them, so a change to one item's renders only its
-// row.
-export interface LaunchOptions {
-  agents: readonly AgentInfo[]
-  profiles: readonly Profile[]
-  prompts: readonly Prompt[]
-  launchDefaults: readonly LaunchDefaults[]
-  onDefaultsSaved: () => Promise<void>
-  onManagePrompts: () => void
-  // onSettingsSaved takes the settings a change made from a launch stored, such as a
-  // repository location added for a clone found elsewhere.
-  onSettingsSaved: (settings: Settings) => void
-}
 
 export interface ItemRowProps {
   item: InboxItem
@@ -468,13 +441,7 @@ export const ItemRow = memo(function ItemRow({
         variant="card"
         item={item}
         resolution={resolution}
-        agents={launch.agents}
-        profiles={launch.profiles}
-        prompts={launch.prompts}
-        launchDefaults={launch.launchDefaults}
-        onDefaultsSaved={launch.onDefaultsSaved}
-        onManagePrompts={launch.onManagePrompts}
-        onSettingsSaved={launch.onSettingsSaved}
+        {...launch}
         running={session}
         sessionFresh={sessionFresh}
         sessions={sessions}

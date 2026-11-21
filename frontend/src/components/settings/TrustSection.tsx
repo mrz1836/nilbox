@@ -1,4 +1,4 @@
-import { startTransition, useActionState, useId, useState } from 'react'
+import { useId } from 'react'
 
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import { resetTrustedBots, setTrustedBots, type Settings } from '../../platform'
@@ -6,23 +6,7 @@ import { quietButtonClass } from '../controls'
 import { Note, SectionIntro } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
-
-// Refusal is why a change was refused, with the draft typed when it was, since typing
-// again clears it.
-interface Refusal {
-  draft: string
-  message: string
-}
-
-// Change is a change to the trusted bots: the list it leaves, the call that stores it,
-// and the draft typed when it was made.
-interface Change {
-  bots: string[]
-  call: () => PromiseLike<Settings>
-  draft: string
-}
-
-const noRefusal: Refusal = { draft: '', message: '' }
+import { useListChange } from './useListChange'
 
 // foldBot writes a bot's login the way the trusted list keeps it: lowercase, without an
 // "app/" prefix or "[bot]" suffix.
@@ -46,34 +30,24 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
 export function TrustSection({ settings: stored, onSaved }: SectionProps) {
   const id = useId()
   const { settings, save } = useSettingsSave(stored, onSaved)
-  const [draft, setDraft] = useState('')
-  // invalid is why the draft cannot be added, found before asking the backend.
-  const [invalid, setInvalid] = useState<Refusal>(noRefusal)
   // Every change, the form's and the list's, runs through one action: one at a time, with
   // the controls held while it runs, and the draft cleared once it is stored.
-  const [refused, change, busy] = useActionState(async (_: Refusal, next: Change): Promise<Refusal> => {
-    const result = await save({ trustedBots: next.bots }, next.call)
-
-    if (!result.ok) {
-      return { draft: next.draft, message: result.error }
-    }
-
-    setDraft('')
-
-    return noRefusal
-  }, noRefusal)
+  const { draft, setDraft, refusal, refuse, store: change, busy } = useListChange(save)
 
   const bots = settings.trustedBots
   const defaults = settings.defaultTrustedBots
   const changed = !sameList(bots, defaults)
-  const refusal = invalid.message !== '' ? invalid : busy ? noRefusal : refused
   const error = refusal.draft === draft ? refusal.message : ''
 
-  // store makes a change through the action.
-  const store = (next: Omit<Change, 'draft'>) => {
-    setInvalid(noRefusal)
-    startTransition(() => {
-      change({ ...next, draft })
+  // store replaces the trusted bots with next, which call stores, through the action, and
+  // clears the draft once it is stored.
+  const store = (next: string[], call: () => PromiseLike<Settings>) => {
+    change({
+      shows: { trustedBots: next },
+      call,
+      then: () => {
+        setDraft('')
+      },
     })
   }
 
@@ -81,20 +55,20 @@ export function TrustSection({ settings: stored, onSaved }: SectionProps) {
     const login = foldBot(draft)
 
     if (login === '') {
-      setInvalid({ draft, message: 'Enter a bot’s login, such as renovate.' })
+      refuse('Enter a bot’s login, such as renovate.')
 
       return
     }
 
     if (bots.includes(login)) {
-      setInvalid({ draft, message: `${login} is already trusted.` })
+      refuse(`${login} is already trusted.`)
 
       return
     }
 
     const next = [...bots, login]
 
-    store({ bots: next, call: () => setTrustedBots(next) })
+    store(next, () => setTrustedBots(next))
   }
 
   return (
@@ -109,7 +83,7 @@ export function TrustSection({ settings: stored, onSaved }: SectionProps) {
                 type="button"
                 disabled={busy}
                 onClick={() => {
-                  store({ bots: defaults, call: () => resetTrustedBots() })
+                  store(defaults, () => resetTrustedBots())
                 }}
                 className={`${quietButtonClass} shrink-0`}
               >
@@ -129,7 +103,7 @@ export function TrustSection({ settings: stored, onSaved }: SectionProps) {
           onRemove={(bot) => {
             const next = bots.filter((b) => b !== bot)
 
-            store({ bots: next, call: () => setTrustedBots(next) })
+            store(next, () => setTrustedBots(next))
           }}
           extra={(bot) => defaults.includes(bot) && <span className="text-xs text-muted">default</span>}
           inputLabel="Bot to trust"

@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useId, useState } from 'react'
+import { useId, useState } from 'react'
 
 import { brand } from '../../generated/brand'
 import { itemText, runVerdictWords } from '../../lib/autopilot'
@@ -20,8 +20,9 @@ import {
   type TimelineRow,
 } from '../../lib/runView'
 import { formatDuration } from '../../lib/scriptRuns'
-import { terminalNames } from '../../lib/terminals'
+import { terminalLabel } from '../../lib/terminals'
 import { formatClock, formatFull } from '../../lib/time'
+import { useOnAutopilot } from '../../lib/useAutopilot'
 import { useMutation } from '../../lib/useMutation'
 import { useNow } from '../../lib/useNow'
 import { useQuery } from '../../lib/useQuery'
@@ -29,7 +30,6 @@ import { useRunTimeline, type RunTimeline } from '../../lib/useRunTimeline'
 import {
   autopilotRunDiff,
   autopilotRunView,
-  on,
   openExternal,
   showScriptRunLog,
   showSessionFolder,
@@ -274,18 +274,11 @@ export function RunView({ runId, terminal, agents, onOpenItem, onToast, onClose 
   const [last, setLast] = useState<Action | null>(null)
   const [shown, setShown] = useState<AutopilotRunDiff | null>(null)
   const [takingOver, setTakingOver] = useState(false)
-  const reload = useEffectEvent(() => {
-    void query.refetch()
-  })
 
   // The run is read again as Autopilot changes, which its end does.
-  useEffect(
-    () =>
-      on('autopilot:updated', () => {
-        reload()
-      }),
-    [],
-  )
+  useOnAutopilot(() => {
+    void query.refetch()
+  })
 
   const view = query.data
   const close = (
@@ -322,7 +315,7 @@ export function RunView({ runId, terminal, agents, onOpenItem, onToast, onClose 
   const background = run.runner === 'background'
   const live = view.live && !timeline.done
   const error = last === null ? '' : actions[last].error
-  const where = terminal === null ? 'your terminal' : terminalNames[terminal]
+  const where = terminalLabel(terminal, 'your terminal')
   const progress = timeline.progress
   const tokens = progress.tokensIn + progress.tokensOut
   const started = run.startedAt === null ? Number.NaN : Date.parse(run.startedAt)

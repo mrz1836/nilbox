@@ -1,10 +1,11 @@
-import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useRef, useState, type ReactNode } from 'react'
 
 import type { IgnoredWorkflows } from '../../lib/ignoredWorkflows'
 import { issueTone } from '../../lib/issues'
 import { worktreeOf } from '../../lib/itemWorktrees'
+import type { LaunchOptions } from '../../lib/launch'
 import { sessionsOf } from '../../lib/sessions'
-import { cameBy, stepPast, type Came, type EndedItem } from '../../lib/sheet'
+import { cameBy, stepPast, useSheetVisits, type Came, type EndedItem, type SheetCommonProps } from '../../lib/sheet'
 import { isDismissed, isMuted, isSnoozed, type TriageTab } from '../../lib/triage'
 import type { InboxState } from '../../lib/useInbox'
 import { useNowAs } from '../../lib/useNow'
@@ -23,7 +24,6 @@ import {
 } from '../../platform'
 import { resultTone, type SheetDrafts } from '../InboxView'
 import type { EditActions } from '../ItemMenu'
-import type { LaunchOptions } from '../ItemRow'
 import { defaultToastSeconds, Toast, type ToastMessage } from '../Toast'
 import { SheetTriage, type TriageActions } from '../TriageControls'
 import { useItemActions } from '../useItemActions'
@@ -167,24 +167,7 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
 
   // An item opened in its sheet is heard once per opening, as the inbox's are, and marked
   // read, as is the one the sheet steps away from or closes on.
-  const opened = useRef(0)
-  const sheetMoved = useEffectEvent((left: number, now: number) => {
-    seen([left, now].filter((id) => id > 0))
-
-    if (now > 0) {
-      kit.onItemOpened(now)
-    }
-  })
-  const viewingId = viewing?.id ?? 0
-
-  useEffect(() => {
-    const left = opened.current
-
-    if (viewingId !== left) {
-      opened.current = viewingId
-      sheetMoved(left, viewingId)
-    }
-  }, [viewingId])
+  useSheetVisits(viewing?.id ?? 0, seen, kit.onItemOpened)
 
   const viewed = viewing === null ? undefined : items.find((i) => i.id === viewing.id)
   const resolutionOf = (id: number) => resolutions.data?.get(id) ?? null
@@ -217,65 +200,55 @@ export function useSheetHost({ kit, items, listTitle, onClose }: SheetHostOption
     close()
     showToast({ text: message, detail: title, tone })
   }
+  // sheetProps are what both sheets take alike, for the item the sheet shows.
+  const sheetProps: SheetCommonProps | null =
+    viewing === null
+      ? null
+      : {
+          id: viewing.id,
+          item: viewed,
+          siblings: items,
+          listTitle,
+          order: kit.conversationOrder ?? 'oldest',
+          onOrder: kit.onConversationOrder,
+          launch: kit.launch,
+          resolution: resolutionOf(viewing.id),
+          sessions: viewed === undefined ? undefined : sessionsOf(kit.sessions, viewed),
+          worktree: viewed === undefined ? undefined : worktreeOf(kit.worktrees, viewed),
+          onNavigate: navigate,
+          onClose: close,
+          onEnded: (gone) => {
+            endedHere(viewing, gone)
+          },
+          onManageReplies: kit.onManageReplies,
+          triage: sheetTriage,
+          toast: sheetToast,
+        }
 
   const node = (
     <>
       <Suspense fallback={null}>
-        {viewing !== null && viewing.kind === 'pr' && (
+        {sheetProps !== null && viewing?.kind === 'pr' && (
           <ReviewSheet
-            id={viewing.id}
-            item={viewed}
-            siblings={items}
-            listTitle={listTitle}
+            {...sheetProps}
             drafts={kit.drafts.review}
             tab={kit.reviewTab ?? 'files'}
             onTab={kit.onReviewTab}
-            order={kit.conversationOrder ?? 'oldest'}
-            onOrder={kit.onConversationOrder}
-            launch={kit.launch}
-            resolution={resolutionOf(viewing.id)}
-            sessions={viewed === undefined ? undefined : sessionsOf(kit.sessions, viewed)}
-            worktree={viewed === undefined ? undefined : worktreeOf(kit.worktrees, viewed)}
-            onNavigate={navigate}
-            onClose={close}
             onDone={(result, r) => {
               done(result.message, r.title, resultTone(result))
             }}
-            onEnded={(gone) => {
-              endedHere(viewing, gone)
-            }}
             onFilesSettings={kit.onFilesSettings}
-            onManageReplies={kit.onManageReplies}
-            triage={sheetTriage}
-            toast={sheetToast}
             onToast={showToast}
             ignoring={kit.ignoring}
           />
         )}
-        {viewing !== null && viewing.kind === 'issue' && (
+        {sheetProps !== null && viewing?.kind === 'issue' && (
           <IssueSheet
-            id={viewing.id}
-            item={viewed}
-            siblings={items}
-            listTitle={listTitle}
+            {...sheetProps}
             drafts={kit.drafts.issue}
-            order={kit.conversationOrder ?? 'oldest'}
-            onOrder={kit.onConversationOrder}
-            launch={kit.launch}
-            resolution={resolutionOf(viewing.id)}
-            sessions={viewed === undefined ? undefined : sessionsOf(kit.sessions, viewed)}
-            worktree={viewed === undefined ? undefined : worktreeOf(kit.worktrees, viewed)}
-            onNavigate={navigate}
-            onClose={close}
             onDone={(result, issue) => {
               done(result.message, issue.title, issueTone(result))
             }}
-            onEnded={(gone) => {
-              endedHere(viewing, gone)
-            }}
-            onManageReplies={kit.onManageReplies}
-            triage={sheetTriage}
-            toast={sheetToast}
           />
         )}
       </Suspense>

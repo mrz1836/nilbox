@@ -19,6 +19,7 @@ import {
   type AgentID,
   type AgentInfo,
   type DefaultPrompts,
+  type ItemKind,
   type Profile,
   type Prompt,
   type Settings,
@@ -77,7 +78,7 @@ export function LaunchingSection({
 
   // savePrompt makes a prompt the app's default for a kind of item, then loads the
   // prompts again, since which one is the default shows in the library.
-  const savePrompt = async (kind: 'pr' | 'issue', promptId: number) => {
+  const savePrompt = async (kind: ItemKind, promptId: number) => {
     shows(kind, '')
 
     const result = await attempt(setDefaultPrompt(kind, promptId))

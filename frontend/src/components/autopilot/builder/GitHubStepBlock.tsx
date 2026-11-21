@@ -33,7 +33,7 @@ export interface GitHubStepBlockProps {
 const actionKinds: readonly AutopilotGitHubActionKind[] = ['rebase', 'updateBranch', 'reply', 'labels']
 
 // actionKindOf is the kind of action an action is, or undefined for one that sets none.
-export function actionKindOf(a: AutopilotGitHubAction): AutopilotGitHubActionKind | undefined {
+function actionKindOf(a: AutopilotGitHubAction): AutopilotGitHubActionKind | undefined {
   return actionKinds.find((k) => a[k] !== undefined && a[k] !== null)
 }
 

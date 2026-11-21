@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent, useOptimistic, useState } from 'react'
+import { startTransition, useOptimistic, useState } from 'react'
 
 import {
   clearNotifications,
@@ -6,11 +6,11 @@ import {
   markAllNotificationsRead,
   markNotificationsRead,
   markNotificationsUnread,
-  on,
   type NotificationLog,
 } from '../platform'
 import { attempt, start } from './call'
 import { unreadOf } from './notifications'
+import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
 // NotificationsState is the notification history as the window shows it.
@@ -64,17 +64,10 @@ function store(mark: Mark): PromiseLike<void> {
 // A load that a newer one replaces is cancelled, so only the latest load's answer shows.
 export function useNotifications(): NotificationsState {
   const history = useQuery(() => listNotifications(), [])
-  const reloadOnUpdate = useEffectEvent(() => {
+
+  useOn('notifications:updated', () => {
     void history.refetch()
   })
-
-  useEffect(
-    () =>
-      on('notifications:updated', () => {
-        reloadOnUpdate()
-      }),
-    [],
-  )
 
   const [log, show] = useOptimistic<NotificationLog, Mark>(history.data ?? emptyLog, marked)
   const [markError, setMarkError] = useState('')

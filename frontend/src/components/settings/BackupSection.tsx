@@ -3,12 +3,11 @@ import { useId, useState } from 'react'
 import { brand } from '../../generated/brand'
 import { backupFiles, backupSections, doneText, neverBacked, sectionLabel } from '../../lib/backup'
 import { attempt, type Result } from '../../lib/call'
-import { errorMessage, fileDate, fileName } from '../../lib/format'
+import { pickFileToOpen, pickFileToSave } from '../../lib/dialogs'
+import { fileDate, fileName } from '../../lib/format'
 import type { Theme } from '../../lib/theme'
 import { useMutation } from '../../lib/useMutation'
 import {
-  chooseFileToOpen,
-  chooseFileToSave,
   exportBackup,
   getSettings,
   type BackupExported,
@@ -72,26 +71,24 @@ export function BackupSection({ onSaved, onLaunchChanged, theme, onThemeChange }
   const save = async () => {
     setChoosing(false)
 
-    let path: string
+    const picked = await pickFileToSave({
+      title: 'Back up your setup',
+      button: 'Save',
+      filters: backupFiles,
+      filename: `${brand.name} backup ${fileDate(new Date())}.json`,
+    })
 
-    try {
-      path = await chooseFileToSave({
-        title: 'Back up your setup',
-        button: 'Save',
-        filters: backupFiles,
-        filename: `${brand.name} backup ${fileDate(new Date())}.json`,
-      })
-    } catch (err) {
-      setExported({ tone: 'error', text: `Couldn’t open the save dialog: ${errorMessage(err)}` })
+    if (!picked.ok) {
+      setExported({ tone: 'error', text: picked.error })
 
       return
     }
 
-    if (path === '') {
+    if (picked.data === '') {
       return
     }
 
-    const result = await exporter.run(path, included)
+    const result = await exporter.run(picked.data, included)
 
     setExported(
       result.ok
@@ -104,14 +101,12 @@ export function BackupSection({ onSaved, onLaunchChanged, theme, onThemeChange }
   const open = async () => {
     setImported(null)
 
-    try {
-      const path = await chooseFileToOpen({ title: 'Restore from a backup', button: 'Open', filters: backupFiles })
+    const picked = await pickFileToOpen({ title: 'Restore from a backup', button: 'Open', filters: backupFiles })
 
-      if (path !== '') {
-        setOpened(path)
-      }
-    } catch (err) {
-      setImported({ tone: 'error', text: `Couldn’t open the file dialog: ${errorMessage(err)}` })
+    if (!picked.ok) {
+      setImported({ tone: 'error', text: picked.error })
+    } else if (picked.data !== '') {
+      setOpened(picked.data)
     }
   }
 

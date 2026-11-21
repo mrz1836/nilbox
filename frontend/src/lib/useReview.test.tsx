@@ -1,7 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { at } from '../test/clock'
+import { deferred } from '../test/async'
+import { at, FIXED_NOW } from '../test/clock'
 import { details, heldRun, item, review, reviewFile } from '../test/fixtures'
 import { platform } from '../test/platform'
 import {
@@ -41,17 +42,9 @@ describe('useReview', () => {
     platform.openReview.mockResolvedValue(review({ stale: true, fetchedAt: '' }))
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
   it('shows what the sheet read before, then what GitHub says', async () => {
-    let answer: (r: ReturnType<typeof review>) => void = () => undefined
-    platform.refreshReview.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const answer = deferred<ReturnType<typeof review>>()
+    platform.refreshReview.mockReturnValue(answer.promise)
 
     const { result } = renderHook(() => useReview(1))
 
@@ -61,7 +54,7 @@ describe('useReview', () => {
     expect(result.current.checking).toBe(true)
 
     act(() => {
-      answer(review())
+      answer.resolve(review())
     })
 
     await waitFor(() => {
@@ -274,12 +267,8 @@ describe('useReview', () => {
   })
 
   it('builds the sheet again from what it read when the card changes, once a read under way answers', async () => {
-    let answer: (r: ReturnType<typeof review>) => void = () => undefined
-    platform.refreshReview.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const answer = deferred<ReturnType<typeof review>>()
+    platform.refreshReview.mockReturnValue(answer.promise)
     const newer = review({ counts: { ...review().counts, passed: 2, newer: true } })
     platform.rebuildReview.mockResolvedValue(newer)
 
@@ -293,7 +282,7 @@ describe('useReview', () => {
     expect(platform.rebuildReview, 'a read under way is never cut short').not.toHaveBeenCalled()
 
     act(() => {
-      answer(review())
+      answer.resolve(review())
     })
 
     await waitFor(() => {
@@ -312,6 +301,10 @@ describe('useReview', () => {
   })
 
   describe('when the card’s checks move', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
     // moved is #7 rebuilt from a card whose checks moved since the sheet read it, at 11:59.
     const moved = review({ counts: { ...review().counts, passed: 2, newer: true }, moved: true })
     // still is #7 rebuilt from a card the inbox read again with nothing moved.
@@ -319,7 +312,7 @@ describe('useReview', () => {
 
     // open opens #7 on a clock standing at now, its card at 'a', and lets its first read
     // answer.
-    async function open(now = new Date('2026-06-15T12:00:00Z')) {
+    async function open(now = FIXED_NOW) {
       const view = renderHook(({ card }) => useReview(1, '', card), {
         initialProps: { card: 'a' },
         wrapper: at(now),
@@ -332,7 +325,6 @@ describe('useReview', () => {
     }
 
     it('reads GitHub once after the rebuild, and never for a card that moved nothing', async () => {
-      vi.useFakeTimers()
       platform.rebuildReview.mockResolvedValueOnce(still).mockResolvedValueOnce(moved).mockResolvedValue(still)
       const { result, rerender } = await open()
 
@@ -353,16 +345,11 @@ describe('useReview', () => {
     })
 
     it('reads once more at most for however many card changes came during a read', async () => {
-      vi.useFakeTimers()
-      let answer: (r: ReturnType<typeof review>) => void = () => undefined
+      const answer = deferred<ReturnType<typeof review>>()
       platform.rebuildReview.mockResolvedValueOnce(moved).mockResolvedValueOnce(moved).mockResolvedValue(still)
       const { rerender } = await open()
 
-      platform.refreshReview.mockReturnValueOnce(
-        new Promise((resolve) => {
-          answer = resolve
-        }),
-      )
+      platform.refreshReview.mockReturnValueOnce(answer.promise)
       rerender({ card: 'b' })
       await settle()
       expect(platform.refreshReview).toHaveBeenCalledTimes(2)
@@ -375,7 +362,7 @@ describe('useReview', () => {
       expect(platform.refreshReview).toHaveBeenCalledTimes(2)
 
       await act(async () => {
-        answer(review())
+        answer.resolve(review())
         await vi.advanceTimersByTimeAsync(0)
       })
       await settle()
@@ -388,7 +375,6 @@ describe('useReview', () => {
     })
 
     it('waits until 20 seconds after the last read, and a closed sheet never reads', async () => {
-      vi.useFakeTimers()
       platform.rebuildReview.mockResolvedValue(moved)
       const { rerender, unmount } = await open(new Date('2026-06-15T11:59:05Z'))
 
@@ -411,7 +397,6 @@ describe('useReview', () => {
     })
 
     it('makes no read again after one that failed, until the card moves on', async () => {
-      vi.useFakeTimers()
       platform.rebuildReview.mockResolvedValue(moved)
       const { result, rerender } = await open()
 
@@ -431,6 +416,10 @@ describe('useReview', () => {
   })
 
   describe('when the window comes back to the front', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
     // focus brings the window back to the front.
     async function focus() {
       await act(async () => {
@@ -452,7 +441,6 @@ describe('useReview', () => {
     }
 
     it('reads once when the last read is more than five minutes old', async () => {
-      vi.useFakeTimers()
       await open(new Date(Date.parse('2026-06-15T11:59:00Z') + oldAfter))
 
       await focus()
@@ -464,7 +452,6 @@ describe('useReview', () => {
     })
 
     it('reads nothing within five minutes of the last read', async () => {
-      vi.useFakeTimers()
       await open(new Date(Date.parse('2026-06-15T11:59:00Z') + oldAfter - 1000))
 
       await focus()
@@ -473,13 +460,8 @@ describe('useReview', () => {
     })
 
     it('reads nothing while a read is under way, nor once the sheet is closed', async () => {
-      vi.useFakeTimers()
-      let answer: (r: ReturnType<typeof review>) => void = () => undefined
-      platform.refreshReview.mockReturnValueOnce(
-        new Promise((resolve) => {
-          answer = resolve
-        }),
-      )
+      const answer = deferred<ReturnType<typeof review>>()
+      platform.refreshReview.mockReturnValueOnce(answer.promise)
       const { result, unmount } = renderHook(() => useReview(1), { wrapper: at(new Date('2026-06-15T13:00:00Z')) })
 
       await settle()
@@ -488,7 +470,7 @@ describe('useReview', () => {
       expect(platform.refreshReview, 'the read under way brings it up to date').toHaveBeenCalledOnce()
 
       await act(async () => {
-        answer(review())
+        answer.resolve(review())
         await vi.advanceTimersByTimeAsync(0)
       })
       await settle()
@@ -513,7 +495,7 @@ describe('useReview', () => {
   })
 
   it('marks what the sheet read as being read, or as read then, once it is older than what it shows', () => {
-    const now = new Date('2026-06-15T12:00:00Z')
+    const now = FIXED_NOW
     const counts = review().counts
     const recent = review({ fetchedAt: '2026-06-15T11:59:00Z' })
     const old = review({ fetchedAt: '2026-06-15T11:50:00Z' })

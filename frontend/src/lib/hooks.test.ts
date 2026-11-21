@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { HookAction, HookChangedFile, HookLastRun, HookRepo, ScriptRunStatus } from '../platform'
 import { hookChecksResult, hookRepo, hooksList, scriptRun } from '../test/fixtures'
@@ -27,6 +27,8 @@ import {
   uninstallable,
   uninstallQuestion,
 } from './hooks'
+
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 // row is a fixture's repository by its name.
 function row(name: string): HookRepo {

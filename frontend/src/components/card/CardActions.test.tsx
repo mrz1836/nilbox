@@ -10,29 +10,11 @@ import type { AgentSession, AutopilotMatch, InboxItem } from '../../platform'
 import { at } from '../../test/clock'
 import { agentSession, agents, autopilotMatch, item } from '../../test/fixtures'
 import { platform } from '../../test/platform'
+import { triageActionsOf } from '../../test/query'
 import { AutopilotRowsContext, type AutopilotRows } from '../autopilot/AutopilotChip'
-import type { TriageActions } from '../TriageControls'
 import { CardActions, cardOutcomeClass, type CardActionsProps } from './CardActions'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
-
-function triageActions(): TriageActions {
-  return {
-    snoozeDays: 3,
-    onDismiss: vi.fn(),
-    onSnooze: vi.fn(),
-    onRestore: vi.fn(),
-    onPin: vi.fn(),
-    onUnpin: vi.fn(),
-    onRefresh: vi.fn(() => Promise.resolve()),
-    onChangeDefault: vi.fn(),
-    repoRules: { pinned: [], muted: ['acme-org'] },
-    onRepoRule: vi.fn(),
-    onRepoRuleSettings: vi.fn(),
-    onMarkRead: vi.fn(),
-    onMarkUnread: vi.fn(),
-  }
-}
 
 // step is a step whose primary is verb: loud, in the yours edge, unless changed.
 function step(primary: Verb, overrides: Partial<Step> = {}): Step {
@@ -56,7 +38,7 @@ interface Setup {
 // returns what they call.
 function renderActions(s: Step, { props = {}, rows = null }: Setup = {}) {
   const onOpen = vi.fn<(item: InboxItem, tab: TriageTab) => void>()
-  const triage = triageActions()
+  const triage = triageActionsOf({ repoRules: { pinned: [], muted: ['acme-org'] } })
   const Clock = at()
   const wrap = (children: ReactNode) =>
     rows === null ? children : <AutopilotRowsContext value={rows}>{children}</AutopilotRowsContext>

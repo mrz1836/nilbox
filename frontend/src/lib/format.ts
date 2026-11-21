@@ -1,5 +1,7 @@
 // Small display helpers shared by the views.
 
+import { causeOf } from '../platform/cause'
+
 const counts = new Intl.NumberFormat()
 
 // formatCount formats a whole number with the user's digit grouping, e.g. "4,980".
@@ -13,7 +15,7 @@ export function formatCount(n: number): string {
 // without one shows its message verbatim.
 export function errorMessage(err: unknown): string {
   if (err instanceof Error) {
-    const worded = userMessage(err.cause)
+    const worded = causeOf(err)?.message ?? ''
     if (worded !== '') {
       return worded
     }
@@ -30,19 +32,24 @@ export function errorMessage(err: unknown): string {
   return 'Something went wrong.'
 }
 
-// userMessage reads the message for the user from a failed call's cause, or '' when the
-// cause carries none.
-function userMessage(cause: unknown): string {
-  if (typeof cause !== 'object' || cause === null || !('message' in cause)) {
-    return ''
-  }
-
-  return typeof cause.message === 'string' ? cause.message : ''
-}
-
 // counted reads a count with its noun, e.g. "1 file" or "1,204 files".
 export function counted(n: number, one: string, many: string): string {
   return `${formatCount(n)} ${n === 1 ? one : many}`
+}
+
+// badgeText is a toolbar button's count, as its badge shows it: the number, up to 99,
+// then 99+.
+export function badgeText(count: number): string {
+  return count > 99 ? '99+' : formatCount(count)
+}
+
+// joinList joins names for a sentence: "a", "a and b", or "a, b, and c".
+export function joinList(names: readonly string[]): string {
+  if (names.length <= 2) {
+    return names.join(' and ')
+  }
+
+  return `${names.slice(0, -1).join(', ')}, and ${names.at(-1) ?? ''}`
 }
 
 // refText names a pull request or an issue as "owner/name#number".

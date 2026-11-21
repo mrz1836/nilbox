@@ -1,5 +1,5 @@
 import type { BranchResult, RemoveResult, Worktree } from '../platform'
-import { counted } from './format'
+import { counted, joinList } from './format'
 import { capitalize } from './time'
 
 // Summary says what a change in the Worktrees view did, in a headline and a line of
@@ -25,15 +25,6 @@ export function shortName(displayPath: string): string {
   return repo === undefined ? name : `${repo}/${name}`
 }
 
-// branchList names branches for a sentence: "a", "a and b", or "a, b, and c".
-function branchList(names: readonly string[]): string {
-  if (names.length <= 2) {
-    return names.join(' and ')
-  }
-
-  return `${names.slice(0, -1).join(', ')}, and ${names.at(-1) ?? ''}`
-}
-
 // singleSummary says what removing, force removing, or cleaning up one worktree did:
 // verb is "Removed", "Force removed", or "Cleaned up". It names the branches deleted with
 // it, and why any branch ticked was kept.
@@ -42,7 +33,7 @@ export function singleSummary(verb: string, wt: Worktree, res: RemoveResult): Su
   const branches =
     deleted.length === 0
       ? 'No branch was deleted.'
-      : `${deleted.length === 1 ? 'Its branch' : 'Its branches'} ${branchList(deleted)} ${deleted.length === 1 ? 'was' : 'were'} deleted.`
+      : `${deleted.length === 1 ? 'Its branch' : 'Its branches'} ${joinList(deleted)} ${deleted.length === 1 ? 'was' : 'were'} deleted.`
   const kept = res.reason === '' ? '' : ` ${capitalize(res.reason)}.`
 
   return {

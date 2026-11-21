@@ -5,8 +5,9 @@ import { all, andThen } from '../../lib/call'
 import { worktreeOf } from '../../lib/itemWorktrees'
 import { sessionsOf } from '../../lib/sessions'
 import { useAutopilotChips, useOnAutopilot } from '../../lib/useAutopilot'
+import { useOn } from '../../lib/useOn'
 import { useQuery } from '../../lib/useQuery'
-import { itemsByID, on, routineWatching, type InboxItem } from '../../platform'
+import { itemsByID, routineWatching, type InboxItem } from '../../platform'
 import { ItemRow } from '../ItemRow'
 import { AutopilotRowsContext } from './AutopilotChip'
 import { useSheetHost, type RowsKit } from './useSheetHost'
@@ -16,7 +17,7 @@ export type { RowsKit } from './useSheetHost'
 // readItems reads the stored items among ids, as many at a time as the backend reads
 // (inChunks), so a routine that watches more never loses the rest, newest activity first.
 // Cancelling it cancels every read.
-export function readItems(ids: readonly number[]): Promise<InboxItem[]> & { cancel: () => void } {
+function readItems(ids: readonly number[]): Promise<InboxItem[]> & { cancel: () => void } {
   return andThen(all(inChunks(ids).map((chunk) => itemsByID(chunk))), (pages) =>
     pages.flat().sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
   )
@@ -60,17 +61,9 @@ export function WatchingList({ routineId, kit, highlight, onHighlighted }: Watch
   })
 
   // The rows' triage changes the stored items, which the inbox says it changed.
-  const readAgain = useEffectEvent(() => {
+  useOn('inbox:updated', () => {
     void items.refetch()
   })
-
-  useEffect(
-    () =>
-      on('inbox:updated', () => {
-        readAgain()
-      }),
-    [],
-  )
 
   const listed = items.data !== undefined
   const failed = ids.error !== '' || items.error !== ''
@@ -97,9 +90,7 @@ export function WatchingList({ routineId, kit, highlight, onHighlighted }: Watch
     }
 
     if (asked !== 0) {
-      const row = [...(listRef.current?.querySelectorAll('[data-item-id]') ?? [])].find(
-        (el) => el.getAttribute('data-item-id') === String(asked),
-      )
+      const row = listRef.current?.querySelector(`[data-item-id="${String(asked)}"]`)
 
       row?.scrollIntoView({ block: 'center' })
     }

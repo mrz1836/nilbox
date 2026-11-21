@@ -3,7 +3,7 @@ import { useEffect, useEffectEvent, useId, useState, type ReactNode } from 'reac
 import { brand } from '../../generated/brand'
 import { emptyReason, otherPlace, shownSections, yoursSection } from '../../lib/repoScripts'
 import type { SettingsSection } from '../../lib/settingsIndex'
-import { terminalNames } from '../../lib/terminals'
+import { terminalLabel } from '../../lib/terminals'
 import { useMutation } from '../../lib/useMutation'
 import { useQuery } from '../../lib/useQuery'
 import { useSections, type OnSection, type Sections, type StoredSections } from '../../lib/useSections'
@@ -547,7 +547,7 @@ export function RepoScriptsPage({
   const chosen = clones?.find((c) => c.dir === dir) ?? clones?.[0]
   const shownDir = chosen?.dir ?? ''
   const other = otherPlace(runsIn)
-  const terminalName = terminal === null ? 'your terminal' : terminalNames[terminal]
+  const terminalName = terminalLabel(terminal, 'your terminal')
   const otherName = other === 'app' ? brand.name : terminalName
   const remember = useEffectEvent((shown: string) => {
     onDir(shown)

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 
 import type { IgnoredWorkflows } from '../lib/ignoredWorkflows'
-import { attempt } from '../lib/call'
+import { logFailure } from '../lib/call'
 import { CardLinksContext, linkIndex, type CardLinks } from '../lib/cardLinks'
 import { refText } from '../lib/format'
 import type { InboxFilter } from '../lib/inboxFilter'
@@ -9,6 +9,7 @@ import { progressStep } from '../lib/inboxProgress'
 import type { IssueDrafts } from '../lib/issueDrafts'
 import { issueTone } from '../lib/issues'
 import { itemKey, noWorktrees, worktreeOf } from '../lib/itemWorktrees'
+import type { LaunchOptions } from '../lib/launch'
 import { sheetCards, shownOrder } from '../lib/listOrder'
 import { useCelebrations } from '../lib/celebrations'
 import { nilChip } from '../lib/milestones'
@@ -26,7 +27,15 @@ import type { ReviewDrafts } from '../lib/reviewDrafts'
 import { ruleFor, withRepoRule } from '../lib/repoRules'
 import { holdPlace } from '../lib/scroll'
 import { noSessions, sessionsOf } from '../lib/sessions'
-import { cameBy, movesOnTo, stepPast, type Came, type EndedItem } from '../lib/sheet'
+import {
+  cameBy,
+  movesOnTo,
+  stepPast,
+  useSheetVisits,
+  type Came,
+  type EndedItem,
+  type SheetCommonProps,
+} from '../lib/sheet'
 import { formatAgo } from '../lib/time'
 import {
   byList,
@@ -63,7 +72,6 @@ import { HelpIcon, RefreshIcon } from './icons'
 import { InboxFilling } from './InboxFilling'
 import { InboxNil } from './InboxNil'
 import { LinksContext, type Links } from './ItemLink'
-import type { LaunchOptions } from './ItemRow'
 import { ListSection, type Reveal } from './ListSection'
 import { ProgressStatus } from './ProgressStatus'
 import { ProjectsTip } from './ProjectsTip'
@@ -72,7 +80,6 @@ import { defaultToastSeconds, Toast, type ToastMessage } from './Toast'
 import { SheetTriage, type TriageActions } from './TriageControls'
 import { useItemActions } from './useItemActions'
 
-export type { LaunchOptions } from './ItemRow'
 export type { Reveal } from './ListSection'
 
 // The review and issue sheets load on their own: the diff, the conversation, and the
@@ -586,34 +593,30 @@ export function InboxView({
 
     const slash = r.repo.indexOf('/')
 
-    void attempt(offerReleaseAfterMerge(r.repo.slice(0, slash), r.repo.slice(slash + 1), r.baseRef)).then((answer) => {
-      if (!answer.ok) {
-        console.error('could not ask whether the merge offers a release:', answer.error)
+    logFailure(
+      offerReleaseAfterMerge(r.repo.slice(0, slash), r.repo.slice(slash + 1), r.baseRef),
+      'could not ask whether the merge offers a release:',
+      (offer) => {
+        if (!offer.offer) {
+          return
+        }
 
-        return
-      }
-
-      const offer = answer.data
-
-      if (!offer.offer) {
-        return
-      }
-
-      setToast((shown) =>
-        shown?.id === toastId
-          ? {
-              ...shown,
-              action: {
-                label: `Release ${offer.repo}…`,
-                onClick: () => {
-                  setToast(null)
-                  onRelease(offer)
+        setToast((shown) =>
+          shown?.id === toastId
+            ? {
+                ...shown,
+                action: {
+                  label: `Release ${offer.repo}…`,
+                  onClick: () => {
+                    setToast(null)
+                    onRelease(offer)
+                  },
                 },
-              },
-            }
-          : shown,
-      )
-    })
+              }
+            : shown,
+        )
+      },
+    )
   }
 
   // What every row's controls and menu do, and the triage a sheet's header makes, each said
@@ -632,32 +635,11 @@ export function InboxView({
       onManageReplies,
     })
 
-  // openedItem is the item last opened in its sheet, or 0 while none is, so each opening
-  // is heard once: the page shown again (Activity), or an effect run twice, opens nothing
-  // anew, and never undoes a Mark unread made since.
-  const openedItem = useRef(0)
-  // sheetMoved hears the sheet move from the item it showed to the one it shows, either 0
-  // for none: both are marked read, the one left catching what the sheet read while open
-  // and what the user did in it.
-  const sheetMoved = useEffectEvent((left: number, opened: number) => {
-    seen([left, opened].filter((id) => id > 0))
-
-    if (opened > 0) {
-      onItemOpened?.(opened)
-    }
-  })
+  // Each opening of a sheet is heard once, and marks read the item it opened on and the one
+  // it moved from.
   const viewingId = viewing === null || !sheets ? 0 : viewing.id
 
-  useEffect(() => {
-    const left = openedItem.current
-
-    if (viewingId === left) {
-      return
-    }
-
-    openedItem.current = viewingId
-    sheetMoved(left, viewingId)
-  }, [viewingId])
+  useSheetVisits(viewingId, seen, onItemOpened)
 
   const viewed = viewing === null || snapshot === null ? undefined : findItem(snapshot, viewing.id)
   // A sheet steps through the cards of its list and tab as the list shows them, pull
@@ -834,6 +816,35 @@ export function InboxView({
   // couldn't be reached there.
   const sheetOpen = viewing !== null && sheets
   const sheetToast = <Toast toast={toast} seconds={toastSeconds} onClose={closeToast} />
+  // sheetProps are what both sheets take alike, for the card the sheet shows.
+  const sheetProps: SheetCommonProps | null =
+    viewing === null
+      ? null
+      : {
+          id: viewing.id,
+          item: viewed,
+          siblings,
+          listTitle,
+          order: conversation,
+          onOrder: chooseConversation,
+          launch,
+          resolution: resolutions.get(viewing.id) ?? null,
+          sessions: viewed === undefined ? undefined : sessionsOf(sessions, viewed),
+          worktree: viewed === undefined ? undefined : worktreeOf(worktrees, viewed),
+          onNavigate: step,
+          onClose: () => {
+            setViewing(null)
+          },
+          onEnded: (gone) => {
+            endedHere(viewing, gone)
+          },
+          onManageReplies,
+          initialFocus,
+          refocus: viewing.refocus,
+          back,
+          triage: sheetTriageButtons,
+          toast: sheetToast,
+        }
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -973,26 +984,13 @@ export function InboxView({
       )}
       <LinksContext value={links}>
         <Suspense fallback={null}>
-          {viewing !== null && sheets && viewing.kind === 'pr' && (
+          {sheetProps !== null && sheets && viewing?.kind === 'pr' && (
             <ReviewSheet
-              id={viewing.id}
-              item={viewed}
-              siblings={siblings}
-              listTitle={listTitle}
+              {...sheetProps}
               drafts={drafts.review}
               tab={reviewTab}
               onTab={(tab) => {
                 onReviewTab?.(tab)
-              }}
-              order={conversation}
-              onOrder={chooseConversation}
-              launch={launch}
-              resolution={resolutions.get(viewing.id) ?? null}
-              sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
-              worktree={viewed === undefined ? undefined : worktreeOf(worktrees, viewed)}
-              onNavigate={step}
-              onClose={() => {
-                setViewing(null)
               }}
               onDone={(result, r) => {
                 setViewing(null)
@@ -1002,51 +1000,20 @@ export function InboxView({
                   offerRelease(r, toastCount.current)
                 }
               }}
-              onEnded={(gone) => {
-                endedHere(viewing, gone)
-              }}
               onFilesSettings={onFilesSettings}
-              onManageReplies={onManageReplies}
-              initialFocus={initialFocus}
-              refocus={viewing.refocus}
-              back={back}
-              triage={sheetTriageButtons}
-              toast={sheetToast}
               onToast={showToast}
               ignoring={ignoring}
             />
           )}
-          {viewing !== null && sheets && viewing.kind === 'issue' && (
+          {sheetProps !== null && sheets && viewing?.kind === 'issue' && (
             <IssueSheet
-              id={viewing.id}
-              item={viewed}
-              siblings={siblings}
-              listTitle={listTitle}
+              {...sheetProps}
               drafts={drafts.issue}
-              order={conversation}
-              onOrder={chooseConversation}
-              launch={launch}
-              resolution={resolutions.get(viewing.id) ?? null}
-              sessions={viewed === undefined ? undefined : sessionsOf(sessions, viewed)}
-              worktree={viewed === undefined ? undefined : worktreeOf(worktrees, viewed)}
-              onNavigate={step}
-              onClose={() => {
-                setViewing(null)
-              }}
               onDone={(result, is) => {
                 setViewing(null)
                 showToast({ text: result.message, detail: is.title, tone: issueTone(result) })
               }}
-              onEnded={(gone) => {
-                endedHere(viewing, gone)
-              }}
               onUnassign={unassignHere}
-              onManageReplies={onManageReplies}
-              initialFocus={initialFocus}
-              refocus={viewing.refocus}
-              back={back}
-              triage={sheetTriageButtons}
-              toast={sheetToast}
             />
           )}
         </Suspense>

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 
+import { logFailure } from '../lib/call'
 import { stateLabel, toneFill, toneOf, toneText, troubled, watched, worst } from '../lib/serviceStatus'
 import {
   bugReportURL,
@@ -61,9 +62,7 @@ function serviceItems(status: ServiceStatus | null, chooseWatch: () => void): Me
 // openMade opens a link Go makes now, such as a bug report with the versions as they are,
 // in the browser.
 function openMade(make: () => Promise<string>, what: string) {
-  make().then(openExternal, (err: unknown) => {
-    console.error(`could not make the ${what} link`, err)
-  })
+  logFailure(make(), `could not make the ${what} link`, openExternal)
 }
 
 // AccountCard heads the menu with who is signed in, or why no one is yet. Signed in, it

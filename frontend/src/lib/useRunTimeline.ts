@@ -3,7 +3,6 @@ import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   autopilotRunEvents,
   autopilotRunEventsBefore,
-  on,
   type AutopilotRunEnding,
   type AutopilotRunEvent,
   type AutopilotRunEvents,
@@ -11,6 +10,7 @@ import {
 } from '../platform'
 import { attempt } from './call'
 import { appendEvents, joinEvents } from './runView'
+import { useOn } from './useOn'
 
 // RunTimeline is a run's timeline as the run view holds it: the events read so far, oldest
 // first, how far the run has got, how it came out once it ended, and whether earlier
@@ -102,7 +102,7 @@ export function useRunTimeline(runId: number): RunTimeline {
   // readNew reads what is new since the event numbered from, one read at a time: one asked
   // for while another is under way runs once it ends, from the last event that read brought,
   // until the run has ended.
-  const readNew = useEffectEvent(async (from: number) => {
+  const readNew = async (from: number) => {
     if (reading.current) {
       again.current = true
 
@@ -134,33 +134,35 @@ export function useRunTimeline(runId: number): RunTimeline {
     } while (askedAgain())
 
     reading.current = false
-  })
+  }
 
   // moved reads what is new, while the run goes.
-  const moved = useEffectEvent(() => {
+  const moved = () => {
     if (!held.done) {
       void readNew(lastSeq(held.events))
     }
+  }
+
+  // readFirst reads the run's last events.
+  const readFirst = useEffectEvent(() => {
+    void readNew(0)
   })
 
-  // The view is keyed by its run, so a run's timeline starts empty and is read once here.
+  // The view is keyed by its run, so a run's timeline starts empty and is read once here,
+  // before it follows the run.
   useEffect(() => {
-    void readNew(0)
-
-    const offRun = on('autopilot:run', ({ runId: changed }) => {
-      if (changed === runId) {
-        moved()
-      }
-    })
-    const offUpdated = on('autopilot:updated', () => {
-      moved()
-    })
-
-    return () => {
-      offRun()
-      offUpdated()
-    }
+    readFirst()
   }, [runId])
+
+  useOn('autopilot:run', ({ runId: changed }) => {
+    if (changed === runId) {
+      moved()
+    }
+  })
+
+  useOn('autopilot:updated', () => {
+    moved()
+  })
 
   const loadEarlier = () => {
     const { earlier, before } = held

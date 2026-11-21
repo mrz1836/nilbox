@@ -13,7 +13,7 @@ import {
   stepKindOf,
 } from '../../../lib/routineBuilder'
 import type { AutopilotOutcome, AutopilotProblem, AutopilotSpec, AutopilotStep, ItemKind } from '../../../platform'
-import { fieldClass, quietButtonClass } from '../../controls'
+import { fieldClass, quietButtonClass, Select, type SelectOption } from '../../controls'
 import { PlusIcon, TrashIcon } from '../../icons'
 import { MenuButton, type MenuItem } from '../../Menu'
 import { AgentStepBlock, type AgentKit } from './AgentStepBlock'
@@ -111,6 +111,8 @@ function StepRow({ kit, agentKit, steps, index, kinds, step, onChange, onMove, o
   // problem with it shows where it is.
   const only: AutopilotOutcome[] = onlyIfChoices(kit.catalog, steps, index).map((o) => o.id)
   const shownOnly = onlyIf !== '' && !only.includes(onlyIf) ? [...only, onlyIf] : only
+  // Every kind of step but a merge may run always, whatever came before.
+  const always: SelectOption<''>[] = kind === 'merge' ? [] : [{ value: '', label: 'always' }]
   // The agent step's block, and the GitHub step's, show what is wrong inside them.
   const inside = [`${path}.agent`, `${path}.github`]
   const own = (list: readonly AutopilotProblem[]) =>
@@ -133,23 +135,15 @@ function StepRow({ kit, agentKit, steps, index, kinds, step, onChange, onMove, o
             <label htmlFor={`${id}-only`} className="sr-only">
               {`Step ${n} runs`}
             </label>
-            <select
+            <Select<AutopilotOutcome | ''>
               id={`${id}-only`}
               value={onlyIf}
-              onChange={(e) => {
-                const next = e.target.value as AutopilotOutcome | ''
-
+              options={[...always, ...shownOnly.map((o) => ({ value: o, label: outcomeLabel(kit.catalog, o) }))]}
+              onChange={(next) => {
                 onChange(next === '' ? omit(step, 'onlyIf') : { ...step, onlyIf: next })
               }}
               className={`${fieldClass} py-0.5 text-xs`}
-            >
-              {kind !== 'merge' && <option value="">always</option>}
-              {shownOnly.map((o) => (
-                <option key={o} value={o}>
-                  {outcomeLabel(kit.catalog, o)}
-                </option>
-              ))}
-            </select>
+            />
           </>
         )}
         <StepSettings kit={kit} step={step} onChange={onChange} id={id} n={n} />

@@ -1,5 +1,3 @@
-import { useEffect, useEffectEvent } from 'react'
-
 import {
   autopilotNeedsYou,
   checkAutopilotReadiness,
@@ -8,7 +6,6 @@ import {
   getAutopilotReadiness,
   latestAutopilotMatches,
   listRoutines,
-  on,
   routineNames,
   type AutopilotEngine,
   type AutopilotGlance,
@@ -20,12 +17,13 @@ import { inChunks } from './autopilot'
 import { all, andThen } from './call'
 import { useMutation } from './useMutation'
 import { useNowAs } from './useNow'
+import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
-// AutopilotState is Autopilot as the whole window shares it: at a glance (what the tab
+// SharedAutopilot is Autopilot as the whole window shares it: at a glance (what the tab
 // counts), the routines, by ID for the names the rows say ("Snoozed by ⚡ ..."), and the
 // engine (its problems color the tab's red dot), each as last read.
-export interface AutopilotState {
+export interface SharedAutopilot {
   glance: AutopilotGlance | null
   routines: readonly AutopilotRoutine[]
   // loaded reports the routines read at least once.
@@ -44,24 +42,16 @@ const noRoutines: readonly AutopilotRoutine[] = []
 // useOnAutopilot calls reload on every "autopilot:updated" event, which comes at most four
 // times a second.
 export function useOnAutopilot(reload: () => void) {
-  const onUpdate = useEffectEvent(() => {
+  useOn('autopilot:updated', () => {
     reload()
   })
-
-  useEffect(
-    () =>
-      on('autopilot:updated', () => {
-        onUpdate()
-      }),
-    [],
-  )
 }
 
 // useAutopilot reads Autopilot at a glance, the routines, and the engine as the window
 // opens, and again whenever Autopilot says it changed. Each reads the database alone. The
 // routines are read again as a new local day begins too, so a status line's "today" turns
 // over at midnight even while nothing changes, on the window's own clock.
-export function useAutopilot(): AutopilotState {
+export function useAutopilot(): SharedAutopilot {
   const day = useNowAs((now) => now.toDateString())
   const glance = useQuery(() => getAutopilotGlance(), [], { log: 'could not read Autopilot at a glance' })
   const routines = useQuery(() => listRoutines(), [day])

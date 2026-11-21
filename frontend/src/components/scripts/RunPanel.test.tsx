@@ -1,28 +1,20 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { ScriptRun, ScriptRunStatus, TerminalID } from '../../platform'
-import { at, FIXED_NOW, fromNow } from '../../test/clock'
+import { deferred } from '../../test/async'
+import { FIXED_NOW, isoAgo, renderAt } from '../../test/clock'
 import { checksRun, hookActionResult, hooksRun, scriptRun, scriptRunChunk } from '../../test/fixtures'
-import { emit, listening, platform } from '../../test/platform'
+import { listening, platform, send } from '../../test/platform'
 import { RunPanel } from './RunPanel'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
-afterEach(() => {
-  vi.useRealTimers()
-})
-
-// ago is the time ms milliseconds before the test clock's, as a run records it.
-function ago(ms: number): string {
-  return fromNow(-ms).toISOString()
-}
-
 // ended is a run that ran for 38 seconds, ending a minute ago, with changes made.
 function ended(change: Partial<ScriptRun> = {}): ScriptRun {
-  return scriptRun({ startedAt: ago(98_000), finishedAt: ago(60_000), ...change })
+  return scriptRun({ startedAt: isoAgo({ ms: 98_000 }), finishedAt: isoAgo({ ms: 60_000 }), ...change })
 }
 
 // running is a run going in the app for five seconds so far.
@@ -31,7 +23,7 @@ function running(change: Partial<ScriptRun> = {}): ScriptRun {
     status: 'running',
     summary: '',
     exitCode: null,
-    startedAt: ago(5_000),
+    startedAt: isoAgo({ ms: 5_000 }),
     finishedAt: '',
     canStop: true,
     seen: false,
@@ -46,9 +38,7 @@ function renderPanel(run: ScriptRun = ended(), terminal: TerminalID | null = 'it
   const onClose = vi.fn<() => void>()
 
   platform.getScriptRun.mockResolvedValue(run)
-  const { unmount } = render(<RunPanel id={1} terminal={terminal} onSelect={onSelect} onClose={onClose} />, {
-    wrapper: at(),
-  })
+  const { unmount } = renderAt(<RunPanel id={1} terminal={terminal} onSelect={onSelect} onClose={onClose} />)
 
   return { onSelect, onClose, unmount }
 }
@@ -158,9 +148,7 @@ describe('RunPanel', () => {
 
     await shownRun()
     platform.getScriptRun.mockResolvedValue(ended({ status: 'failed', summary: 'It exited with status 2.' }))
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent('FailedIt exited with status 2.')
@@ -184,14 +172,10 @@ describe('RunPanel', () => {
     const reads = platform.getScriptRun.mock.calls.length
 
     platform.getScriptRun.mockResolvedValue(running())
-    act(() => {
-      emit('scriptruns:progress', { id: 2 })
-    })
+    send('scriptruns:progress', { id: 2 })
     expect(platform.getScriptRun).toHaveBeenCalledTimes(reads)
 
-    act(() => {
-      emit('scriptruns:progress', { id: 1 })
-    })
+    send('scriptruns:progress', { id: 1 })
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled()
     })
@@ -205,7 +189,7 @@ describe('RunPanel', () => {
     platform.getScriptRun.mockRejectedValue(new Error('the run is no longer recorded'))
     const onClose = vi.fn<() => void>()
 
-    render(<RunPanel id={1} terminal="iterm2" onSelect={vi.fn()} onClose={onClose} />, { wrapper: at() })
+    renderAt(<RunPanel id={1} terminal="iterm2" onSelect={vi.fn()} onClose={onClose} />)
 
     expect(screen.getByText('Reading the run…')).toBeInTheDocument()
     expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t read the run: the run is no longer recorded')
@@ -220,9 +204,7 @@ describe('RunPanel', () => {
 
     await shownRun()
     platform.getScriptRun.mockRejectedValue(new Error('database is locked'))
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t read the run again: database is locked')
     expect(screen.getByRole('heading', { name: 'magex lint' })).toBeInTheDocument()
@@ -253,9 +235,7 @@ describe('RunPanel', () => {
 
       await shownRun()
       platform.getScriptRun.mockResolvedValue(ended({ seen: true }))
-      act(() => {
-        emit('scriptruns:updated')
-      })
+      send('scriptruns:updated')
       await waitFor(() => {
         expect(screen.getByRole('status')).toHaveTextContent('Done')
       })
@@ -268,9 +248,7 @@ describe('RunPanel', () => {
 
       await shownRun()
       platform.getScriptRun.mockResolvedValue(ended({ status: 'failed', seen: false }))
-      act(() => {
-        emit('scriptruns:updated')
-      })
+      send('scriptruns:updated')
 
       await waitFor(() => {
         expect(platform.markScriptRunSeen).toHaveBeenCalledExactlyOnceWith(1)
@@ -279,14 +257,15 @@ describe('RunPanel', () => {
 
     it('writes a failure to mark it seen to the console', async () => {
       const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const locked = new Error('database is locked')
 
-      platform.markScriptRunSeen.mockRejectedValue(new Error('database is locked'))
+      platform.markScriptRunSeen.mockRejectedValue(locked)
       renderPanel(ended({ seen: false }))
 
       await shownRun()
 
       await waitFor(() => {
-        expect(logged).toHaveBeenCalledWith('could not mark the run seen:', 'database is locked')
+        expect(logged).toHaveBeenCalledWith('could not mark the run seen:', locked)
       })
     })
   })
@@ -331,9 +310,7 @@ describe('RunPanel', () => {
       expect(stop).toHaveAccessibleDescription(refused)
 
       platform.getScriptRun.mockResolvedValue(running())
-      act(() => {
-        emit('scriptruns:updated')
-      })
+      send('scriptruns:updated')
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled()
@@ -377,7 +354,7 @@ describe('RunPanel', () => {
 
     it('has no close button where the panel closes with what holds it', async () => {
       platform.getScriptRun.mockResolvedValue(ended())
-      render(<RunPanel id={1} terminal="iterm2" onSelect={vi.fn()} />, { wrapper: at() })
+      renderAt(<RunPanel id={1} terminal="iterm2" onSelect={vi.fn()} />)
 
       await shownRun()
 
@@ -492,13 +469,9 @@ describe('RunPanel', () => {
     })
 
     it('says it is copying until it has, and why it couldn’t', async () => {
-      let refuse: (err: Error) => void = () => undefined
+      const copying = deferred()
 
-      platform.copyText.mockReturnValue(
-        new Promise((_, reject) => {
-          refuse = reject
-        }),
-      )
+      platform.copyText.mockReturnValue(copying.promise)
       renderPanel()
 
       await shownRun()
@@ -507,7 +480,7 @@ describe('RunPanel', () => {
       expect(await screen.findByRole('button', { name: 'Copying…' })).toBeDisabled()
 
       act(() => {
-        refuse(new Error('The clipboard refused it.'))
+        copying.reject(new Error('The clipboard refused it.'))
       })
 
       expect(await screen.findByRole('alert')).toHaveTextContent('The clipboard refused it.')
@@ -602,7 +575,7 @@ describe('RunPanel', () => {
   })
   describe('the result of a hooks action or a checks run', () => {
     it('shows what a hooks action did, read from the hook files, once it ended', async () => {
-      renderPanel(hooksRun({ startedAt: ago(98_000), finishedAt: ago(60_000) }))
+      renderPanel(hooksRun({ startedAt: isoAgo({ ms: 98_000 }), finishedAt: isoAgo({ ms: 60_000 }) }))
 
       await shownRun('Install the hook')
 
@@ -617,14 +590,12 @@ describe('RunPanel', () => {
       // React warns when siblings share a key, which is what showed the result twice.
       const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
-      renderPanel(hooksRun({ startedAt: ago(98_000), finishedAt: ago(60_000) }))
+      renderPanel(hooksRun({ startedAt: isoAgo({ ms: 98_000 }), finishedAt: isoAgo({ ms: 60_000 }) }))
 
       await screen.findByRole('heading', { name: /Installed the pre-commit hook in acme-org\/api\./ })
 
       for (let i = 0; i < 3; i++) {
-        act(() => {
-          emit('scriptruns:updated')
-        })
+        send('scriptruns:updated')
         await waitFor(() => {
           expect(platform.getScriptRun).toHaveBeenCalledTimes(i + 2)
         })

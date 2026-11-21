@@ -1,13 +1,15 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import { CelebrationsContext } from '../../lib/celebrations'
 import type { Celebrations, ReleaseResult as Result, ScriptRun } from '../../platform'
-import { at } from '../../test/clock'
+import { nextTask } from '../../test/async'
+import { renderAt } from '../../test/clock'
 import { releaseFollow, releaseResult, releaseRun } from '../../test/fixtures'
 import { platform } from '../../test/platform'
+import { reduceMotion } from '../../test/stubs'
 import { ReleaseResult } from './ReleaseResult'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -25,13 +27,12 @@ function renderResult(
 
   const handlers = { onTryAgain: vi.fn<() => void>(), onDone: vi.fn<() => void>() }
 
-  render(
+  renderAt(
     <CelebrationsContext value={celebrations}>
       <dialog open>
         <ReleaseResult run={run} repo="acme-org/sdk" {...handlers} />
       </dialog>
     </CelebrationsContext>,
-    { wrapper: at() },
   )
 
   return handlers
@@ -89,19 +90,14 @@ describe('ReleaseResult', () => {
   })
 
   it('throws no confetti when the system asks for less motion', async () => {
-    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(prefers-reduced-motion: reduce)' }))
+    reduceMotion()
     renderResult()
 
     await card()
     // Let the effect that would throw it run.
-    await act(async () => {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 0)
-      })
-    })
+    await nextTask()
 
     expect(document.querySelector('[data-testid="confetti"]')).toBeNull()
-    vi.unstubAllGlobals()
   })
 
   it.each(['quiet', 'off'] as const)('throws no confetti with celebrations %s', async (mode) => {
@@ -109,11 +105,7 @@ describe('ReleaseResult', () => {
 
     const c = await card()
     // Let the effect that would throw it run.
-    await act(async () => {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 0)
-      })
-    })
+    await nextTask()
 
     expect(c.getByRole('heading', { name: 'acme-org/sdk v1.4.3 is on GitHub' })).toBeInTheDocument()
     expect(document.querySelector('[data-testid="confetti"]')).toBeNull()
@@ -346,11 +338,10 @@ describe('ReleaseResult', () => {
     platform.getReleaseResult.mockResolvedValue(releaseResult({ follow: releaseFollow() }))
 
     const handlers = { onTryAgain: vi.fn<() => void>(), onDone: vi.fn<() => void>() }
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <dialog open>
         <ReleaseResult run={following('following')} repo="acme-org/sdk" {...handlers} />
       </dialog>,
-      { wrapper: at() },
     )
 
     const c = await card()

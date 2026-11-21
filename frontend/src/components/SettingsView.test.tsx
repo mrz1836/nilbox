@@ -1,6 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
@@ -9,6 +8,7 @@ import type { Theme } from '../lib/theme'
 import type {
   Account,
   AgentInfo,
+  AutopilotEngine,
   DefaultPrompts,
   LaunchDefaults,
   NotificationKind,
@@ -16,10 +16,12 @@ import type {
   ProjectAccess,
   Settings,
 } from '../platform'
+import { deferred } from '../test/async'
 import {
   account,
   agents,
   appInfo,
+  autopilotEngine,
   autopilotOff,
   defaultPrompts,
   launchDefaults,
@@ -29,6 +31,7 @@ import {
   signedOut,
 } from '../test/fixtures'
 import { platform } from '../test/platform'
+import { renderSaving } from '../test/settings'
 import { SettingsView, type SettingsSection, type SettingsViewProps } from './SettingsView'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -44,24 +47,6 @@ beforeEach(() => {
   )
 })
 
-// StoredSettings keeps the settings each save returns and shows the page with them, as App
-// does, so a second change starts from the first.
-function StoredSettings(props: SettingsViewProps) {
-  const { settings: initial, onSaved } = props
-  const [current, setCurrent] = useState(initial)
-
-  return (
-    <SettingsView
-      {...props}
-      settings={current}
-      onSaved={(next) => {
-        onSaved(next)
-        setCurrent(next)
-      }}
-    />
-  )
-}
-
 interface Options {
   section?: SettingsSection
   agents?: AgentInfo[]
@@ -73,6 +58,7 @@ interface Options {
   appPrompts?: DefaultPrompts | null
   theme?: Theme
   onThemeChange?: (theme: Theme) => Promise<Result<void>>
+  engine?: AutopilotEngine | null
 }
 
 function renderSettings({
@@ -86,28 +72,36 @@ function renderSettings({
   appPrompts = defaultPrompts(),
   theme = 'system',
   onThemeChange = vi.fn(() => Promise.resolve<Result<void>>({ ok: true, data: undefined })),
+  engine,
 }: Options = {}) {
-  const onSaved = vi.fn()
   const onClose = vi.fn()
   const onLaunchChanged = vi.fn(() => Promise.resolve())
+  // The library is built once, so every render hands the page the same list, as App does.
+  const library = prompts()
 
-  render(
-    <StoredSettings
-      {...(section === undefined ? {} : { initialSection: section })}
-      settings={current}
-      agents={coding}
-      profiles={profiles}
-      prompts={prompts()}
-      defaultPrompts={appPrompts}
-      launchDefaults={defaults}
-      account={who}
-      projectAccess={access}
-      theme={theme}
-      onThemeChange={onThemeChange}
-      onSaved={onSaved}
-      onLaunchChanged={onLaunchChanged}
-      onClose={onClose}
-    />,
+  // The page keeps the settings each save returns, as App does, so a second change starts
+  // from the first; it renders on the window's own clock.
+  const { onSaved } = renderSaving<Settings | null>(
+    (props) => (
+      <SettingsView
+        {...(section === undefined ? {} : { initialSection: section })}
+        agents={coding}
+        profiles={profiles}
+        prompts={library}
+        defaultPrompts={appPrompts}
+        launchDefaults={defaults}
+        account={who}
+        projectAccess={access}
+        theme={theme}
+        onThemeChange={onThemeChange}
+        onLaunchChanged={onLaunchChanged}
+        onClose={onClose}
+        {...(engine === undefined ? {} : { autopilotEngine: engine })}
+        {...props}
+      />
+    ),
+    current,
+    { now: null },
   )
 
   return { onSaved, onClose, onLaunchChanged, onThemeChange }
@@ -777,12 +771,8 @@ describe('SettingsView', () => {
   })
 
   it('shows a worktree default the backend refused, and switches it back', async () => {
-    let refuse: (err: Error) => void = () => undefined
-    platform.setWorktreeDefault.mockReturnValue(
-      new Promise((_, reject) => {
-        refuse = reject
-      }),
-    )
+    const saving = deferred<Settings>()
+    platform.setWorktreeDefault.mockReturnValue(saving.promise)
     renderSettings()
     await openSection('Launching')
 
@@ -792,7 +782,7 @@ describe('SettingsView', () => {
     // The switch moves before the backend answers.
     expect(toggle).not.toBeChecked()
 
-    refuse(new Error('database is locked'))
+    saving.reject(new Error('database is locked'))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
     await waitFor(() => {
@@ -1546,6 +1536,24 @@ describe('SettingsView Labs and Autopilot (beta)', () => {
 
     expect(screen.getByRole('region', { name: 'Labs' })).toBeInTheDocument()
     expect(screen.queryByText('Beta')).not.toBeInTheDocument()
+  })
+
+  // lastChecked is what Autopilot's Last checked says.
+  function lastChecked() {
+    return screen.getByText('Last checked', { selector: 'p' }).nextElementSibling
+  }
+
+  it('says when the engine it is given last checked', () => {
+    renderSettings({ section: 'autopilot', engine: autopilotEngine() })
+
+    expect(lastChecked()).toHaveTextContent(/^Last checked .+ · 34 ms · 7 matches · 1 start$/)
+    expect(platform.getAutopilotEngine).not.toHaveBeenCalled()
+  })
+
+  it('says nothing of the last check without an engine read', () => {
+    renderSettings({ section: 'autopilot' })
+
+    expect(lastChecked()).toHaveTextContent(/^$/)
   })
 
   it('marks no other section’s heading Beta', () => {

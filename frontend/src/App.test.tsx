@@ -14,6 +14,8 @@ import type {
   PictureBot,
   CardDensity,
 } from './platform'
+import { deferred } from './test/async'
+import { FIXED_NOW } from './test/clock'
 import {
   afterMerge,
   appInfo,
@@ -47,6 +49,7 @@ import {
   agentSession,
   sessionsSnapshot,
   autopilotAlert,
+  autopilotEngine,
   autopilotMatch,
   autopilotOff,
   autopilotTarget,
@@ -58,12 +61,9 @@ import {
   heldRun,
   review,
 } from './test/fixtures'
-import { emit, listening, mocks, platform, renderApp } from './test/platform'
+import { emit, listening, mocks, platform, renderApp, send } from './test/platform'
 
 vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platform))
-
-// FIXED_ISO is the test clock's time, when the session came to its state.
-const FIXED_ISO = '2026-06-15T12:00:00Z'
 
 // stored is every setting as the backend stores it after a change, as each setter returns
 // them.
@@ -113,7 +113,7 @@ beforeEach(() => {
 async function rowOptions() {
   await userEvent.click(await screen.findByRole('button', { name: /^Launch options/ }))
 
-  return within(screen.getByRole('dialog', { name: 'Launch options' }))
+  return within(await screen.findByRole('dialog', { name: 'Launch options' }))
 }
 
 // openSettingsFromMenu opens the settings page the way a person would: the account menu.
@@ -169,7 +169,9 @@ describe('App', () => {
   })
 
   it('follows each item’s agent session on its card, without the worktrees view', async () => {
-    platform.listSessions.mockResolvedValue(sessionsSnapshot([agentSession({ state: 'working', stateAt: FIXED_ISO })]))
+    platform.listSessions.mockResolvedValue(
+      sessionsSnapshot([agentSession({ state: 'working', stateAt: FIXED_NOW.toISOString() })]),
+    )
 
     await renderApp()
 
@@ -178,9 +180,7 @@ describe('App', () => {
     expect(platform.listWorktrees).not.toHaveBeenCalled()
 
     platform.listSessions.mockResolvedValue(sessionsSnapshot([agentSession()]))
-    act(() => {
-      emit('sessions:updated')
-    })
+    send('sessions:updated')
 
     const terminal = await screen.findByRole('button', { name: 'Show terminal' })
     expect(terminal.closest('li')).toHaveAttribute('data-rule', 'session_needs_you')
@@ -287,9 +287,7 @@ describe('App', () => {
     await screen.findByRole('region', { name: 'Worktrees' })
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T11:58:00Z' }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     await vi.waitFor(() => {
       expect(platform.getInboxSnapshot).toHaveBeenCalledTimes(2)
     })
@@ -575,24 +573,13 @@ describe('App', () => {
         leftover: 1,
         worktreeCount: 3,
         cleaned: [
-          {
-            repoPath: '/home/user/projects/example-repo',
-            path: '/home/user/projects/example-repo/.claude/worktrees/pr-7',
-            displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
-            removed: true,
-            deletedBranches: ['worktree-pr-7'],
-            item: 'acme-org/example-repo#7',
-            reason: '',
-          },
-          {
-            repoPath: '/home/user/projects/example-repo',
+          removeResult(),
+          removeResult({
             path: '/home/user/projects/example-repo/.claude/worktrees/pr-8',
             displayPath: '~/projects/example-repo/.claude/worktrees/pr-8',
-            removed: true,
             deletedBranches: [],
             item: '',
-            reason: '',
-          },
+          }),
         ],
       }),
     )
@@ -620,15 +607,13 @@ describe('App', () => {
         seq: 3,
         worktreeCount: 2,
         cleaned: [
-          {
+          removeResult({
             repoPath: '/r',
             path: '/r/.claude/worktrees/pr-9',
             displayPath: '~/r/.claude/worktrees/pr-9',
-            removed: true,
             deletedBranches: [],
             item: 'acme-org/r#9',
-            reason: '',
-          },
+          }),
         ],
       }),
     )
@@ -688,11 +673,11 @@ describe('App', () => {
 
     expect(listed.getByText(/Codex/)).toHaveTextContent(/^Codex · \S+ ago$/)
     // Pull request #8 is not in the inbox, so its worktree has no launch control.
-    expect(row('worktree-pr-8').queryByRole('button', { name: 'Open in Claude' })).toBeNull()
+    expect(row('worktree-pr-8').queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
 
     // The row's verb opens the launch options every launch control opens, worktree on.
     await userEvent.click(listed.getByRole('button', { name: 'Open in Claude' }))
-    const options = within(screen.getByRole('dialog', { name: 'Launch options' }))
+    const options = within(await screen.findByRole('dialog', { name: 'Launch options' }))
     expect(options.getByRole('checkbox', { name: /Start in a worktree/ })).toBeChecked()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('dialog', { name: 'Launch options' })).not.toBeInTheDocument()
@@ -711,7 +696,9 @@ describe('App', () => {
   })
 
   it('shows a running session’s terminal from its card, and how it stands on its worktree’s row, rather than starting another', async () => {
-    platform.listSessions.mockResolvedValue(sessionsSnapshot([agentSession({ state: 'working', stateAt: FIXED_ISO })]))
+    platform.listSessions.mockResolvedValue(
+      sessionsSnapshot([agentSession({ state: 'working', stateAt: FIXED_NOW.toISOString() })]),
+    )
     platform.listWorktrees.mockResolvedValue(
       worktreesSnapshot({
         repos: [
@@ -807,16 +794,7 @@ describe('App', () => {
 
   it("opens the recently cleaned-up list from a cleanup toast's View", async () => {
     const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
-    const cleaned = {
-      repoPath: '/home/user/projects/example-repo',
-      path: '/home/user/projects/example-repo/.claude/worktrees/pr-7',
-      displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
-      removed: true,
-      deletedBranches: ['worktree-pr-7'],
-      item: 'acme-org/example-repo#7',
-      reason: '',
-    }
-    platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 1, cleaned: [cleaned] }))
+    platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 1, cleaned: [removeResult()] }))
     platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
 
     await renderApp()
@@ -839,12 +817,8 @@ describe('App', () => {
   })
 
   it('confirms a change made in the Worktrees view with a toast, offering View once another view is open', async () => {
-    let finish: (result: RemoveResult) => void = () => undefined
-    platform.removeWorktree.mockReturnValueOnce(
-      new Promise((resolve) => {
-        finish = resolve
-      }),
-    )
+    const removal = deferred<RemoveResult>()
+    platform.removeWorktree.mockReturnValueOnce(removal.promise)
     await renderApp()
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
 
@@ -855,7 +829,7 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
 
     act(() => {
-      finish(removeResult())
+      removal.resolve(removeResult())
     })
 
     const toast = await screen.findByRole('group', { name: 'Notification' })
@@ -891,15 +865,13 @@ describe('App', () => {
       sweepReport({
         seq: 2,
         cleaned: [
-          {
+          removeResult({
             repoPath: '/r',
             path: '/r/.claude/worktrees/pr-9',
             displayPath: '~/r/.claude/worktrees/pr-9',
-            removed: true,
             deletedBranches: [],
             item: 'acme-org/r#9',
-            reason: '',
-          },
+          }),
         ],
       }),
     )
@@ -951,9 +923,7 @@ describe('App', () => {
     ])
     await renderApp()
 
-    act(() => {
-      emit('app:quitRequested')
-    })
+    send('app:quitRequested')
 
     const dialog = within(await screen.findByRole('dialog', { name: `Quit ${brand.name}?` }))
 
@@ -977,9 +947,7 @@ describe('App', () => {
     // reveal sends a request to show an item, as the shell does for a click in the menu
     // bar or on a notification.
     function reveal(itemId: number, url = '') {
-      act(() => {
-        emit('inbox:reveal', { itemId, url, runId: 0, runStarted: '', notificationId: 0, autopilot: autopilotTarget() })
-      })
+      send('inbox:reveal', { itemId, url, runId: 0, runStarted: '', notificationId: 0, autopilot: autopilotTarget() })
     }
 
     // row returns the inbox row of the item titled title in the Review requested list.
@@ -1103,12 +1071,12 @@ describe('App’s card pictures', () => {
   function hold(): Held[] {
     const held: Held[] = []
 
-    platform.cardPictures.mockImplementation(
-      (people, bots) =>
-        new Promise((answer) => {
-          held.push({ people: people ?? [], bots: bots ?? [], answer })
-        }),
-    )
+    platform.cardPictures.mockImplementation((people, bots) => {
+      const request = deferred<Record<string, string>>()
+      held.push({ people: people ?? [], bots: bots ?? [], answer: request.resolve })
+
+      return request.promise
+    })
 
     return held
   }
@@ -1202,14 +1170,11 @@ describe('App’s card pictures', () => {
 
     platform.cardPictures.mockImplementation(() => {
       const cancel = vi.fn()
+      const request = deferred<Record<string, string>>()
       cancels.push(cancel)
+      answers.push(request.resolve)
 
-      return Object.assign(
-        new Promise<Record<string, string>>((answer) => {
-          answers.push(answer)
-        }),
-        { cancel },
-      )
+      return Object.assign(request.promise, { cancel })
     })
 
     return { answers, cancels }
@@ -1655,9 +1620,10 @@ describe('App’s GitHub notifications', () => {
     let answer: (value: Settings) => void = () => undefined
     platform.setGitHubNotificationSwitch.mockImplementation((name, on) => {
       if (name === 'auto') {
-        return new Promise<Settings>((resolve) => {
-          answer = resolve
-        })
+        const auto = deferred<Settings>()
+        answer = auto.resolve
+
+        return auto.promise
       }
 
       // The backend has stored the button's change first, so it holds it too.
@@ -1700,8 +1666,11 @@ describe('App’s projects tip', () => {
       projectAccess: 'needs_scope',
     })
 
-  it('offers to show issue projects, and stores that the offer was put away', async () => {
+  beforeEach(() => {
     platform.getInboxSnapshot.mockResolvedValue(needsScope())
+  })
+
+  it('offers to show issue projects, and stores that the offer was put away', async () => {
     platform.setProjectsTipDismissed.mockResolvedValue(settings({ projectsTipDismissed: true }))
     await renderApp()
 
@@ -1712,7 +1681,6 @@ describe('App’s projects tip', () => {
   })
 
   it('offers nothing once the offer was put away', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(needsScope())
     platform.getSettings.mockResolvedValue(settings({ projectsTipDismissed: true }))
     await renderApp()
 
@@ -1721,7 +1689,6 @@ describe('App’s projects tip', () => {
   })
 
   it('keeps the command in Settings → Account', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(needsScope())
     await renderApp()
 
     await openSettingsFromMenu()
@@ -1746,15 +1713,13 @@ describe('App’s filter field', () => {
   }
 
   function reveal(itemId: number) {
-    act(() => {
-      emit('inbox:reveal', {
-        itemId,
-        url: '',
-        runId: 0,
-        runStarted: '',
-        notificationId: 0,
-        autopilot: autopilotTarget(),
-      })
+    send('inbox:reveal', {
+      itemId,
+      url: '',
+      runId: 0,
+      runStarted: '',
+      notificationId: 0,
+      autopilot: autopilotTarget(),
     })
   }
 
@@ -2015,9 +1980,7 @@ describe('the Scripts tab', () => {
     expect(views().queryByRole('button', { name: 'Scripts' })).not.toBeInTheDocument()
 
     platform.listIntegrations.mockResolvedValue(integrationTools())
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     const shown = within(await toast())
 
@@ -2032,16 +1995,12 @@ describe('the Scripts tab', () => {
 
     // Gone and back again, it isn't announced twice.
     platform.listIntegrations.mockResolvedValue(off())
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
     await waitFor(() => {
       expect(views().queryByRole('button', { name: 'Scripts' })).not.toBeInTheDocument()
     })
     platform.listIntegrations.mockResolvedValue(integrationTools())
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     expect(await views().findByRole('button', { name: 'Scripts' })).toBeInTheDocument()
     expect(screen.queryByText(/in the new Scripts tab/)).not.toBeInTheDocument()
@@ -2054,9 +2013,7 @@ describe('the Scripts tab', () => {
 
     await screen.findByRole('region', { name: 'Review requested' })
     platform.listIntegrations.mockResolvedValue(integrationTools())
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     expect(await views().findByRole('button', { name: 'Scripts' })).toBeInTheDocument()
     expect(screen.queryByText(/in the new Scripts tab/)).not.toBeInTheDocument()
@@ -2088,7 +2045,8 @@ describe('the Scripts tab', () => {
 
   it('still shows the page picked when it can’t be remembered, and logs why', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.setScriptsLastPage.mockRejectedValue(new Error('database gone'))
+    const gone = new Error('database gone')
+    platform.setScriptsLastPage.mockRejectedValue(gone)
     await renderApp()
 
     await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
@@ -2097,7 +2055,7 @@ describe('the Scripts tab', () => {
 
     expect(rail.getByRole('button', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page')
     await vi.waitFor(() => {
-      expect(error).toHaveBeenCalledWith('could not remember the Scripts page shown:', 'database gone')
+      expect(error).toHaveBeenCalledWith('could not remember the Scripts page shown:', gone)
     })
     error.mockRestore()
   })
@@ -2120,7 +2078,8 @@ describe('the Scripts tab', () => {
 
   it('still lists Release in the order picked when it can’t be remembered, and logs why', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.setReleaseSort.mockRejectedValue(new Error('database gone'))
+    const gone = new Error('database gone')
+    platform.setReleaseSort.mockRejectedValue(gone)
     await renderApp()
 
     await userEvent.click(await views().findByRole('button', { name: 'Scripts' }))
@@ -2129,7 +2088,7 @@ describe('the Scripts tab', () => {
 
     expect(sorts.getByRole('radio', { name: 'A–Z' })).toBeChecked()
     await vi.waitFor(() => {
-      expect(error).toHaveBeenCalledWith('could not remember the Release page’s order:', 'database gone')
+      expect(error).toHaveBeenCalledWith('could not remember the Release page’s order:', gone)
     })
     error.mockRestore()
   })
@@ -2140,9 +2099,7 @@ describe('the Scripts tab', () => {
 
     await screen.findByRole('region', { name: 'Review requested' })
     platform.listIntegrations.mockResolvedValue(integrationTools({ tools: [integrationTool()] }))
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     const shown = within(await toast())
 
@@ -2166,9 +2123,7 @@ describe('the Scripts tab', () => {
     await screen.findByRole('navigation', { name: 'Scripts' })
 
     platform.listIntegrations.mockResolvedValue(off())
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     expect(await screen.findByRole('region', { name: 'Review requested' })).toBeVisible()
     expect(views().getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
@@ -2285,15 +2240,13 @@ describe('the Scripts tab', () => {
     await renderApp()
 
     await views().findByRole('button', { name: 'Scripts' })
-    act(() => {
-      emit('inbox:reveal', {
-        itemId: 0,
-        url: '',
-        runId: 7,
-        runStarted: '2026-11-10T16:00:00Z',
-        notificationId: 0,
-        autopilot: autopilotTarget(),
-      })
+    send('inbox:reveal', {
+      itemId: 0,
+      url: '',
+      runId: 7,
+      runStarted: '2026-11-10T16:00:00Z',
+      notificationId: 0,
+      autopilot: autopilotTarget(),
     })
 
     expect(await screen.findByRole('heading', { name: 'Checks · all files', level: 2 })).toBeInTheDocument()
@@ -2348,15 +2301,13 @@ describe('the Scripts tab', () => {
 
     // The banner's click says so too.
     await userEvent.click(within(await toast()).getByRole('button', { name: 'Close' }))
-    act(() => {
-      emit('inbox:reveal', {
-        itemId: 0,
-        url: '',
-        runId: 7,
-        runStarted: '2026-11-10T16:00:00Z',
-        notificationId: 0,
-        autopilot: autopilotTarget(),
-      })
+    send('inbox:reveal', {
+      itemId: 0,
+      url: '',
+      runId: 7,
+      runStarted: '2026-11-10T16:00:00Z',
+      notificationId: 0,
+      autopilot: autopilotTarget(),
     })
 
     expect(within(await toast()).getByText('Turn on an integration in Settings to see your runs.')).toBeInTheDocument()
@@ -2541,9 +2492,7 @@ describe('the Notifications page', () => {
       notificationId: number
       autopilot?: AutopilotTarget
     }) {
-      act(() => {
-        emit('inbox:reveal', { itemId: 0, url: '', runId: 0, runStarted: '', autopilot: autopilotTarget(), ...change })
-      })
+      send('inbox:reveal', { itemId: 0, url: '', runId: 0, runStarted: '', autopilot: autopilotTarget(), ...change })
     }
 
     it('marks a clicked banner’s entry read, but only while the entry is the one it stood for', async () => {
@@ -2597,15 +2546,13 @@ describe('the Notifications page', () => {
       await renderApp()
       await screen.findByRole('button', { name: '1 unread notifications' })
 
-      act(() => {
-        emit('inbox:reveal', {
-          itemId: 1,
-          url: alert.url,
-          runId: 0,
-          runStarted: '',
-          notificationId: 7,
-          autopilot: alert.autopilot,
-        })
+      send('inbox:reveal', {
+        itemId: 1,
+        url: alert.url,
+        runId: 0,
+        runStarted: '',
+        notificationId: 7,
+        autopilot: alert.autopilot,
       })
 
       expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([7])
@@ -2873,15 +2820,13 @@ describe('Autopilot (beta)', () => {
     await renderApp()
     await screen.findByRole('region', { name: 'Review requested' })
 
-    act(() => {
-      emit('inbox:reveal', {
-        itemId: 0,
-        url: '',
-        runId: 0,
-        runStarted: '',
-        notificationId: 0,
-        autopilot: autopilotTarget({ activity: true }),
-      })
+    send('inbox:reveal', {
+      itemId: 0,
+      url: '',
+      runId: 0,
+      runStarted: '',
+      notificationId: 0,
+      autopilot: autopilotTarget({ activity: true }),
     })
 
     const said = await screen.findByRole('group', { name: 'Notification' })
@@ -2916,5 +2861,26 @@ describe('Autopilot (beta)', () => {
 
     expect(platform.setAutopilotEnabled).toHaveBeenLastCalledWith(true)
     expect(within(await views().findByRole('button', { name: 'Autopilot' })).getByText('Beta')).toBeInTheDocument()
+  })
+
+  it('says in Settings → Autopilot when the engine last checked, as the window reads it again on a change', async () => {
+    const engine = autopilotEngine()
+    platform.getAutopilotEngine.mockResolvedValue(engine)
+    await renderApp()
+
+    await openSettingsFromMenu()
+    await userEvent.click(
+      within(screen.getByRole('navigation', { name: 'Settings sections' })).getByRole('button', { name: 'Autopilot' }),
+    )
+    expect(await screen.findByText('Last checked today, 11:59 AM · 34 ms · 7 matches · 1 start')).toBeInTheDocument()
+
+    platform.getAutopilotEngine.mockResolvedValue({
+      ...engine,
+      lastCycle: engine.lastCycle && { ...engine.lastCycle, at: '2026-06-15T12:00:00Z', matches: 9, starts: 2 },
+    })
+    send('autopilot:updated')
+
+    expect(await screen.findByText('Last checked today, 12:00 PM · 34 ms · 9 matches · 2 starts')).toBeInTheDocument()
+    expect(screen.queryByText(/^Last checked today, 11:59 AM/)).not.toBeInTheDocument()
   })
 })

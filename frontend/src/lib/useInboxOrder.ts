@@ -9,7 +9,7 @@ import {
   type ListKey,
   type ListKind,
 } from '../platform'
-import { serial } from './call'
+import { logFailure, serial } from './call'
 import { useQuery } from './useQuery'
 
 // InboxOrderState is how the inbox orders its lists, as the user last left it.
@@ -42,9 +42,7 @@ export function useInboxOrder(): InboxOrderState {
 
   const change = (next: (was: InboxOrder) => InboxOrder, write: () => PromiseLike<unknown>, what: string) => {
     stored.set((was) => next(was ?? newestFirst))
-    queue(write).catch((err: unknown) => {
-      console.error(`could not store ${what}`, err)
-    })
+    logFailure(queue(write), `could not store ${what}`)
   }
 
   return {

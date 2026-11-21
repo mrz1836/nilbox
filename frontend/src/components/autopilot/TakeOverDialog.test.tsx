@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { LaunchResult } from '../../platform'
+import { deferred } from '../../test/async'
 import { launchResult, runningHold } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { TakeOverDialog, type TakeOverDialogProps } from './TakeOverDialog'
@@ -34,13 +35,9 @@ function renderDialog(props: Partial<TakeOverDialogProps> = {}) {
 
 describe('TakeOverDialog', () => {
   it('opens an ended run’s conversation without stopping anything, saying it opens while it does', async () => {
-    let answer: (r: LaunchResult) => void = () => undefined
+    const answer = deferred<LaunchResult>()
 
-    platform.takeOverRun.mockReturnValueOnce(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    platform.takeOverRun.mockReturnValueOnce(answer.promise)
     const { onTaken } = renderDialog({ live: false, where: '' })
 
     const dialog = within(screen.getByRole('dialog', { name: 'Take over this conversation?' }))
@@ -52,7 +49,7 @@ describe('TakeOverDialog', () => {
     expect(dialog.getByRole('button', { name: /Opening…/ })).toBeDisabled()
 
     const result = launchResult()
-    answer(result)
+    answer.resolve(result)
 
     await vi.waitFor(() => {
       expect(onTaken).toHaveBeenCalledExactlyOnceWith(result)

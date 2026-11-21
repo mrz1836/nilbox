@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -15,7 +15,8 @@ import type {
   ScriptRun,
   Settings,
 } from '../../platform'
-import { at } from '../../test/clock'
+import { deferred } from '../../test/async'
+import { renderAt } from '../../test/clock'
 import {
   integrationTool,
   releaseCandidate,
@@ -25,7 +26,7 @@ import {
   settings,
   toolCopy,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import { ReleasePage, type ReleasePageProps } from './ReleasePage'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -51,7 +52,7 @@ function renderPage(props: Partial<Omit<PageProps, 'onRelease' | 'onOpenRun' | '
     onOpenSettings: vi.fn<(section: SettingsSection) => void>(),
   }
 
-  render(<Page tool={integrationTool()} {...handlers} {...props} />, { wrapper: at() })
+  renderAt(<Page tool={integrationTool()} {...handlers} {...props} />)
 
   return handlers
 }
@@ -64,18 +65,11 @@ function group(title: RegExp) {
 // heldList makes the next read of the list wait until the test answers it, as a read of
 // GitHub does, and returns the answer.
 function heldList(): (list: ReleaseCandidates) => void {
-  let answer: (list: ReleaseCandidates) => void = () => undefined
+  const d = deferred<ReleaseCandidates>()
 
-  platform.listReleaseCandidates.mockImplementationOnce(
-    () =>
-      new Promise<ReleaseCandidates>((resolve) => {
-        answer = resolve
-      }),
-  )
+  platform.listReleaseCandidates.mockImplementationOnce(() => d.promise)
 
-  return (list) => {
-    answer(list)
-  }
+  return d.resolve
 }
 
 // listed is the page's list as read, holding repos, with no read of GitHub under way.
@@ -123,7 +117,7 @@ function renderSorted(props: Partial<ReleasePageProps> = {}) {
       {...props}
     />
   )
-  const view = render(page(), { wrapper: at() })
+  const view = renderAt(page())
 
   return {
     onReleaseSort,
@@ -173,7 +167,7 @@ function holding(...names: string[]): unknown[] {
 describe('ReleasePage', () => {
   it('keeps each group open or folded as the user left it, across starts', async () => {
     const onSection = vi.fn<OnSection>()
-    render(
+    renderAt(
       <ReleasePage
         candidates={{
           list: releaseCandidates(),
@@ -192,7 +186,6 @@ describe('ReleasePage', () => {
         sections={{ 'release.unreleased': false, 'release.upToDate': true }}
         onSection={onSection}
       />,
-      { wrapper: at() },
     )
 
     expect(group(/^Unreleased changes · 1: 1 ready$/)).toHaveAttribute('aria-expanded', 'false')
@@ -284,7 +277,7 @@ describe('ReleasePage', () => {
     const saved = vi.fn<(settings: Settings) => void>()
     const rules: RepoRules = { pinned: [], muted: ['acme-org'] }
 
-    render(
+    renderAt(
       <ReleasePage
         candidates={{
           list: releaseCandidates({ repos: [releaseCandidate(), muted] }),
@@ -303,7 +296,6 @@ describe('ReleasePage', () => {
         repoRules={rules}
         onSettingsSaved={saved}
       />,
-      { wrapper: at() },
     )
 
     expect(group(/^Muted · 1/)).toHaveAttribute('aria-expanded', 'false')
@@ -332,7 +324,7 @@ describe('ReleasePage', () => {
       refresh: () => Promise.resolve(),
     }
 
-    render(
+    renderAt(
       <ReleasePage
         candidates={candidates}
         tool={integrationTool()}
@@ -344,7 +336,6 @@ describe('ReleasePage', () => {
         sections={{ 'release.muted': true }}
         repoRules={{ pinned: [], muted: ['beta/x'] }}
       />,
-      { wrapper: at() },
     )
 
     const list = within(screen.getByRole('list', { name: 'Muted' }))
@@ -432,24 +423,16 @@ describe('ReleasePage', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('Listing your repositories…')
 
-    act(() => {
-      emit('releases:progress', { phase: 'clones', done: 0, total: 0 })
-    })
+    send('releases:progress', { phase: 'clones', done: 0, total: 0 })
     expect(screen.getByRole('status')).toHaveTextContent('Finding your clones…')
 
-    act(() => {
-      emit('releases:progress', { phase: 'github', done: 45, total: 151 })
-    })
+    send('releases:progress', { phase: 'github', done: 45, total: 151 })
     expect(screen.getByRole('status')).toHaveTextContent('Asking GitHub: 45 of 151 repositories…')
 
-    act(() => {
-      emit('releases:progress', { phase: 'compare', done: 1, total: 1 })
-    })
+    send('releases:progress', { phase: 'compare', done: 1, total: 1 })
     expect(screen.getByRole('status')).toHaveTextContent('Asking GitHub what changed: 1 of 1 repository…')
 
-    act(() => {
-      emit('releases:progress', { phase: 'checking', done: 3, total: 12 })
-    })
+    send('releases:progress', { phase: 'checking', done: 3, total: 12 })
     expect(screen.getByRole('status')).toHaveTextContent('Checking your clones: 3 of 12…')
 
     act(() => {
@@ -473,17 +456,13 @@ describe('ReleasePage', () => {
     expect(status).toHaveTextContent('From 2h ago · checking again…')
     expect(screen.queryByText(/Read 2h ago/)).not.toBeInTheDocument()
 
-    act(() => {
-      emit('releases:progress', { phase: 'github', done: 45, total: 151 })
-    })
+    send('releases:progress', { phase: 'github', done: 45, total: 151 })
     expect(status).toHaveTextContent('From 2h ago · checking again… Asking GitHub: 45 of 151 repositories…')
 
     platform.listReleaseCandidates.mockResolvedValue(
       releaseCandidates({ repos: [releaseCandidate({ repo: 'acme-org/cli', dir: '~/projects/cli' })] }),
     )
-    act(() => {
-      emit('releases:updated')
-    })
+    send('releases:updated')
 
     expect(await screen.findByRole('button', { name: 'Release acme-org/cli…' })).toBeInTheDocument()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
@@ -508,9 +487,7 @@ describe('ReleasePage', () => {
     const answer = heldList()
 
     await userEvent.click(screen.getByRole('button', { name: 'Read GitHub again' }))
-    act(() => {
-      emit('releases:progress', { phase: 'github', done: 15, total: 151 })
-    })
+    send('releases:progress', { phase: 'github', done: 15, total: 151 })
 
     expect(screen.getByRole('status')).toHaveTextContent('Asking GitHub: 15 of 151 repositories…')
     expect(screen.getByRole('list', { name: 'Unreleased changes' })).toBeInTheDocument()
@@ -558,9 +535,7 @@ describe('ReleasePage', () => {
     platform.listReleaseCandidates.mockResolvedValue(
       releaseCandidates({ repos: [releaseCandidate({ repo: 'acme-org/cli', dir: '~/projects/cli' })] }),
     )
-    act(() => {
-      emit('releases:updated')
-    })
+    send('releases:updated')
 
     expect(await screen.findByRole('button', { name: 'Release acme-org/cli…' })).toBeInTheDocument()
     expect(platform.listReleaseCandidates).toHaveBeenLastCalledWith(false)

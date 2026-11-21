@@ -1,17 +1,18 @@
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { deferred, type Deferred } from '../test/async'
 import { usePickReply } from './usePickReply'
 
 // later is a fill whose answer for each pick the test gives when it chooses.
 function later() {
-  const answers: { resolve: (text: string) => void; reject: (err: Error) => void }[] = []
-  const fill = vi.fn(
-    () =>
-      new Promise<string>((resolve, reject) => {
-        answers.push({ resolve, reject })
-      }),
-  )
+  const answers: Deferred<string>[] = []
+  const fill = vi.fn(() => {
+    const answer = deferred<string>()
+    answers.push(answer)
+
+    return answer.promise
+  })
 
   return { fill, answers }
 }

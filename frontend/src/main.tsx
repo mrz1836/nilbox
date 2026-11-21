@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
 import './index.css'
+import { logFailure } from './lib/call'
 import { applyTextSize, textSizeFromURL } from './lib/textSize'
 import { reportFirstPaint } from './platform'
 
@@ -28,8 +29,6 @@ createRoot(container).render(
 // second after it has, so the report marks the first frame actually on screen.
 requestAnimationFrame(() => {
   requestAnimationFrame(() => {
-    reportFirstPaint().catch((err: unknown) => {
-      console.error('could not report the first paint', err)
-    })
+    logFailure(reportFirstPaint(), 'could not report the first paint')
   })
 })

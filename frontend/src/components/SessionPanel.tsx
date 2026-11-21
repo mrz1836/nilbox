@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { Suspense, useRef, useState } from 'react'
 
 import { agentName } from '../lib/launch'
 import {
@@ -29,10 +29,9 @@ import {
   type ResumeRequest,
 } from '../platform'
 import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
-import { TakeOverDialog } from './autopilot/TakeOverDialog'
 import { quietButtonClass } from './controls'
 import { AlertIcon, CheckIcon, CopyIcon, EyeIcon, FolderIcon, PlayIcon, StopIcon, TerminalIcon, XIcon } from './icons'
-import { LaunchHoldDialog } from './LaunchHoldDialog'
+import { LaunchHoldDialog, TakeOverDialog } from './launchDialogs'
 import { RelativeTime } from './RelativeTime'
 import { SessionDot } from './SessionDot'
 
@@ -346,40 +345,46 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
           {error}
         </p>
       )}
+      {/* The take-over and hold dialogs load on their own, as a launch's do (launchDialogs),
+          each under its own boundary, with nothing in its place in the entry until it shows. */}
       {takingOver && (
-        <TakeOverDialog
-          sessionId={session.id}
-          live={live}
-          terminal={takeOverIn}
-          where={session.worktree}
-          agentName={agentName(agents, session.agent)}
-          onCancel={() => {
-            setTakingOver(false)
-          }}
-          onTaken={(result) => {
-            setTakingOver(false)
-            setNotice(result.notice === '' ? `Its conversation carries on in ${takeOverIn}.` : result.notice)
-          }}
-        />
+        <Suspense fallback={null}>
+          <TakeOverDialog
+            sessionId={session.id}
+            live={live}
+            terminal={takeOverIn}
+            where={session.worktree}
+            agentName={agentName(agents, session.agent)}
+            onCancel={() => {
+              setTakingOver(false)
+            }}
+            onTaken={(result) => {
+              setTakingOver(false)
+              setNotice(result.notice === '' ? `Its conversation carries on in ${takeOverIn}.` : result.notice)
+            }}
+          />
+        </Suspense>
       )}
       {held !== null && (
-        <LaunchHoldDialog
-          hold={held.hold}
-          agentName={agentName(agents, session.agent)}
-          agents={agents}
-          item={{ repo: session.repo, number: session.number }}
-          onCancel={() => {
-            setHeld(null)
-          }}
-          onConfirm={() => {
-            void resumeNow(confirmed(held))
-          }}
-          onShow={(sessionId) => {
-            setHeld(null)
-            press('focus')
-            void focus.run(sessionId)
-          }}
-        />
+        <Suspense fallback={null}>
+          <LaunchHoldDialog
+            hold={held.hold}
+            agentName={agentName(agents, session.agent)}
+            agents={agents}
+            item={{ repo: session.repo, number: session.number }}
+            onCancel={() => {
+              setHeld(null)
+            }}
+            onConfirm={() => {
+              void resumeNow(confirmed(held))
+            }}
+            onShow={(sessionId) => {
+              setHeld(null)
+              press('focus')
+              void focus.run(sessionId)
+            }}
+          />
+        </Suspense>
       )}
     </li>
   )

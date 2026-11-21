@@ -1,32 +1,9 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 
 import { ScrollFades } from '../components/ScrollFades'
+import { followResizes } from '../test/stubs'
 import { useScrollEdges } from './useScrollEdges'
-
-// resized are the callbacks of the ResizeObservers made, which a test calls as a layout
-// change would.
-let resized: (() => void)[] = []
-
-beforeEach(() => {
-  resized = []
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      constructor(callback: () => void) {
-        resized.push(callback)
-      }
-
-      observe() {
-        // The test reports changes itself.
-      }
-
-      disconnect() {
-        // Nothing to stop following.
-      }
-    },
-  )
-})
 
 // Scroller is a list in a scroller with its fades, as the settings page lays them out.
 function Scroller() {
@@ -82,24 +59,17 @@ describe('useScrollEdges', () => {
   })
 
   it('measures again when the scroller or its content changes size', () => {
+    const { resize } = followResizes()
     render(<Scroller />)
     const scroller = screen.getByTestId('scroller')
 
     layout(scroller, { scrollTop: 0, scrollHeight: 900, clientHeight: 300 })
-    act(() => {
-      resized.forEach((callback) => {
-        callback()
-      })
-    })
+    resize()
     expect(shown()).toEqual(['below'])
 
     // A taller window shows the whole list.
     layout(scroller, { scrollTop: 0, scrollHeight: 900, clientHeight: 900 })
-    act(() => {
-      resized.forEach((callback) => {
-        callback()
-      })
-    })
+    resize()
     expect(shown()).toEqual([])
   })
 

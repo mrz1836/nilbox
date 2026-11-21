@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { scriptRun } from '../test/fixtures'
-import { emit, listening, platform } from '../test/platform'
+import { listening, platform, send } from '../test/platform'
 import { useScriptRuns } from './useScriptRuns'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -17,9 +17,7 @@ describe('useScriptRuns', () => {
     expect(platform.listScriptRuns).toHaveBeenLastCalledWith({ kinds: [], repo: '', withAgents: false })
 
     platform.listScriptRuns.mockResolvedValue([scriptRun({ id: 2 }), scriptRun()])
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     await waitFor(() => {
       expect(result.current.runs?.map((r) => r.id)).toEqual([2, 1])

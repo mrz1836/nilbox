@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { goPreCommitTool, integrationsConfig, integrationTool, integrationTools, scriptRun } from '../test/fixtures'
 import {
@@ -11,6 +11,8 @@ import {
   unusable,
   usable,
 } from './scriptsTab'
+
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 // off is a tool switched off.
 const off = { switch: 'off' as const, on: false }
@@ -82,6 +84,13 @@ describe('scriptsTab', () => {
 
   it('announces the tools found, by their commands’ names', () => {
     expect(foundToolsText(integrationTools())).toBe('Found magex and go-pre-commit. They’re in the new Scripts tab.')
+    expect(
+      foundToolsText(
+        integrationTools({
+          tools: [integrationTool(), goPreCommitTool(), goPreCommitTool({ binary: 'go-broadcast' })],
+        }),
+      ),
+    ).toBe('Found magex, go-pre-commit, and go-broadcast. They’re in the new Scripts tab.')
     expect(foundToolsText(integrationTools({ tools: [integrationTool()] }))).toBe(
       'Found magex. Release is in the new Scripts tab.',
     )

@@ -67,7 +67,7 @@ export function ownRule(rules: RepoRules, target: string): RepoRule {
 function sortTargets(list: readonly string[]): string[] {
   const keyOf = (target: string) => (target.includes('/') ? targetKey(target) : `${targetKey(target)}/`)
 
-  return [...list].sort((a, b) => (keyOf(a) < keyOf(b) ? -1 : keyOf(a) > keyOf(b) ? 1 : 0))
+  return list.toSorted((a, b) => (keyOf(a) < keyOf(b) ? -1 : keyOf(a) > keyOf(b) ? 1 : 0))
 }
 
 // withRepoRule returns the rules with rule set for target, as the backend's Set stores

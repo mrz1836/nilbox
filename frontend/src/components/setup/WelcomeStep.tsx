@@ -3,10 +3,11 @@ import { useState, type RefObject } from 'react'
 import { brand } from '../../generated/brand'
 import { backupFiles } from '../../lib/backup'
 import { attempt, type Result } from '../../lib/call'
+import { pickFileToOpen } from '../../lib/dialogs'
 import { cameBack } from '../../lib/restored'
 import { welcomeText } from '../../lib/setup'
 import type { Theme } from '../../lib/theme'
-import { chooseFileToOpen, getSettings, type Info, type Settings } from '../../platform'
+import { getSettings, type Info, type Settings } from '../../platform'
 import { buttonClass, primaryButtonClass, quietButtonClass } from '../controls'
 import { ChevronRightIcon, ImportIcon } from '../icons'
 import { LogoMark } from '../Logo'
@@ -126,12 +127,10 @@ export function WelcomeStep({
   const open = async () => {
     setFailure('')
 
-    const chosen = await attempt(
-      chooseFileToOpen({ title: 'Restore from a backup', button: 'Open', filters: backupFiles }),
-    )
+    const chosen = await pickFileToOpen({ title: 'Restore from a backup', button: 'Open', filters: backupFiles })
 
     if (!chosen.ok) {
-      setFailure(`Couldn’t open the file dialog: ${chosen.error}`)
+      setFailure(chosen.error)
     } else if (chosen.data !== '') {
       setOpened(chosen.data)
     }

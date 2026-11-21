@@ -1,9 +1,11 @@
-import { use, useEffect, useEffectEvent, useId, useState, type ReactNode } from 'react'
+import { use, useId, useState, type ReactNode } from 'react'
 
 import type { Result } from '../lib/call'
 import { CardPrefsContext } from '../lib/cardPrefs'
 import { withReply } from '../lib/issues'
+import { useKeyDown } from '../lib/keys'
 import { quietWords } from '../lib/nudge'
+import { replyMenuItems } from '../lib/replies'
 import { snoozeLength } from '../lib/triage'
 import { usePickReply } from '../lib/usePickReply'
 import { useNowAs } from '../lib/useNow'
@@ -12,7 +14,7 @@ import { fillReply, openExternal, reviewReplies, type InboxItem, type Nudged } f
 import { ConfirmDialog } from './ConfirmDialog'
 import { fieldClass, quietButtonClass } from './controls'
 import { ChevronDownIcon } from './icons'
-import { MenuButton, type MenuItem } from './Menu'
+import { MenuButton } from './Menu'
 import type { ToastMessage } from './Toast'
 
 // Draft is the comment as the user left it: its text, and the text the last reply they
@@ -78,53 +80,26 @@ export function NudgeDialog({ item, snoozeDays, snoozeFirst, onPost, onCancel, o
     })
   }
 
-  // ⌘↩ posts from anywhere in the dialog, as the sheets' do.
-  const onKey = useEffectEvent((e: KeyboardEvent) => {
+  // ⌘↩ posts from anywhere in the dialog, as the sheets' do: heard on the window, after
+  // anything in the page had the key first.
+  useKeyDown((e) => {
     if (e.key === 'Enter' && e.metaKey && !e.defaultPrevented) {
       e.preventDefault()
       post()
     }
-  })
+  }, window)
 
-  useEffect(() => {
-    const listen = (e: KeyboardEvent) => {
-      onKey(e)
-    }
-
-    window.addEventListener('keydown', listen)
-
-    return () => {
-      window.removeEventListener('keydown', listen)
-    }
-  }, [])
-
-  // replyChoices are the library's comment replies for pull requests, the default Nudge
-  // reply marked, or why there are none to pick.
-  const replyChoices = (): MenuItem[] => {
-    const list = replies.data?.replies ?? []
-
-    if (list.length > 0) {
-      return list.map((r) => ({
-        label: r.nickname,
-        hint: r.id === fallback ? 'default' : undefined,
-        title: r.name,
-        onSelect: () => {
-          picking.pick(r.id)
-        },
-      }))
-    }
-
-    if (replies.data === undefined && replies.error !== '') {
-      return [{ label: 'Couldn’t load the replies', title: replies.error, disabled: true }]
-    }
-
-    return [{ label: replies.data === undefined ? 'Loading replies…' : 'No comment replies yet', disabled: true }]
-  }
-
-  const replyItems = (): MenuItem[] => [
-    ...replyChoices(),
-    ...(onManageReplies === undefined ? [] : [{ label: 'Manage replies…', divided: true, onSelect: onManageReplies }]),
-  ]
+  // replyItems are the library's comment replies for pull requests, the default Nudge reply
+  // marked, or why there are none to pick.
+  const replyItems = () =>
+    replyMenuItems({
+      replies: replies.data?.replies,
+      error: replies.error,
+      none: 'No comment replies yet',
+      fallback,
+      onPick: picking.pick,
+      onManage: onManageReplies,
+    })
 
   return (
     <ConfirmDialog

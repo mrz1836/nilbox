@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { FIXED_NOW, fromNow } from '../test/clock'
+import { FIXED_NOW, isoAgo } from '../test/clock'
 import {
   capitalize,
   dayHeading,
@@ -21,11 +21,6 @@ function plain(text: string): string {
   return text.replace(/\s/g, ' ')
 }
 
-// ago returns the RFC 3339 time the given number of seconds before now.
-function ago(seconds: number): string {
-  return fromNow(-seconds * 1000).toISOString()
-}
-
 describe('formatAge', () => {
   it.each([
     [0, 'just now'],
@@ -43,11 +38,11 @@ describe('formatAge', () => {
     [365 * 86400, '1y'],
     [3 * 365 * 86400, '3y'],
   ])('formats %i seconds ago as %s', (seconds, want) => {
-    expect(formatAge(FIXED_NOW, ago(seconds))).toBe(want)
+    expect(formatAge(FIXED_NOW, isoAgo({ s: seconds }))).toBe(want)
   })
 
   it('reads a future time as just now', () => {
-    expect(formatAge(FIXED_NOW, ago(-120))).toBe('just now')
+    expect(formatAge(FIXED_NOW, isoAgo({ s: -120 }))).toBe('just now')
   })
 
   it('returns an empty string for an empty or invalid time', () => {
@@ -58,13 +53,13 @@ describe('formatAge', () => {
 
 describe('formatUntil', () => {
   it('formats the time remaining', () => {
-    expect(formatUntil(FIXED_NOW, ago(-42 * 60))).toBe('42m')
-    expect(formatUntil(FIXED_NOW, ago(-2 * 3600))).toBe('2h')
+    expect(formatUntil(FIXED_NOW, isoAgo({ s: -42 * 60 }))).toBe('42m')
+    expect(formatUntil(FIXED_NOW, isoAgo({ s: -2 * 3600 }))).toBe('2h')
   })
 
   it('reads a passed or imminent time as now', () => {
-    expect(formatUntil(FIXED_NOW, ago(30))).toBe('now')
-    expect(formatUntil(FIXED_NOW, ago(-10))).toBe('now')
+    expect(formatUntil(FIXED_NOW, isoAgo({ s: 30 }))).toBe('now')
+    expect(formatUntil(FIXED_NOW, isoAgo({ s: -10 }))).toBe('now')
   })
 
   it('returns an empty string for an empty or invalid time', () => {
@@ -75,9 +70,9 @@ describe('formatUntil', () => {
 
 describe('formatAgo', () => {
   it('reads an age as a phrase', () => {
-    expect(formatAgo(FIXED_NOW, ago(5 * 60))).toBe('5m ago')
-    expect(formatAgo(FIXED_NOW, ago(3 * 86400))).toBe('3d ago')
-    expect(formatAgo(FIXED_NOW, ago(20))).toBe('just now')
+    expect(formatAgo(FIXED_NOW, isoAgo({ s: 5 * 60 }))).toBe('5m ago')
+    expect(formatAgo(FIXED_NOW, isoAgo({ s: 3 * 86400 }))).toBe('3d ago')
+    expect(formatAgo(FIXED_NOW, isoAgo({ s: 20 }))).toBe('just now')
     expect(formatAgo(FIXED_NOW, '')).toBe('')
   })
 })

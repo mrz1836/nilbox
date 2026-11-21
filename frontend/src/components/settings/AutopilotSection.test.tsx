@@ -1,11 +1,12 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
-import type { AutopilotConfig, Settings } from '../../platform'
-import { at } from '../../test/clock'
+import type { AutopilotConfig, AutopilotEngine, Settings } from '../../platform'
+import { deferred } from '../../test/async'
+import { FIXED_NOW } from '../../test/clock'
 import {
   agents,
   autopilotEngine,
@@ -16,7 +17,8 @@ import {
   routineReady,
   settings,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
+import { renderSaving, type SavingProps } from '../../test/settings'
 import { AutopilotSection, clearedText, lastCheckedText } from './AutopilotSection'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -26,29 +28,44 @@ function withAutopilot(change: Partial<AutopilotConfig>): Settings {
   return settings({ autopilot: { ...settings().autopilot, ...change } })
 }
 
-// Harness keeps the settings as a settings page does: each one stored becomes the one shown.
-function Harness({ initial, onSaved }: { initial: Settings; onSaved: (settings: Settings) => void }) {
-  const [current, setCurrent] = useState(initial)
+// renderSection shows the section with current, as a settings page holds it, and engine as
+// the window last read it; showEngine shows it with another, keeping what was stored.
+function renderSection(current: Settings = settings(), engine: AutopilotEngine | null = autopilotEngine()) {
+  let shown = engine
+  let changed: () => void = () => undefined
 
-  return (
-    <AutopilotSection
-      settings={current}
-      onSaved={(next) => {
-        onSaved(next)
-        setCurrent(next)
-      }}
-      agents={agents()}
-      profiles={[profile(), profile({ agent: 'codex', name: 'default', folder: '~/.codex' })]}
-    />
-  )
-}
+  function WithEngine(props: SavingProps) {
+    const read = useSyncExternalStore(
+      (onChange) => {
+        changed = onChange
 
-function renderSection(current: Settings = settings()) {
-  const onSaved = vi.fn()
+        return () => {
+          changed = () => undefined
+        }
+      },
+      () => shown,
+    )
 
-  render(<Harness initial={current} onSaved={onSaved} />, { wrapper: at() })
+    return (
+      <AutopilotSection
+        {...props}
+        agents={agents()}
+        profiles={[profile(), profile({ agent: 'codex', name: 'default', folder: '~/.codex' })]}
+        engine={read}
+      />
+    )
+  }
 
-  return { onSaved }
+  const { onSaved } = renderSaving(WithEngine, current)
+
+  const showEngine = (next: AutopilotEngine | null) => {
+    act(() => {
+      shown = next
+      changed()
+    })
+  }
+
+  return { onSaved, showEngine }
 }
 
 // labels lists a select's options as they read.
@@ -296,21 +313,34 @@ describe('AutopilotSection', () => {
     ).toBeInTheDocument()
   })
 
-  it('reads the engine again whenever Autopilot changes', async () => {
-    renderSection()
+  it('says when the engine last checked as the window reads it again', () => {
+    const { showEngine } = renderSection()
 
-    expect(await screen.findByText(/^Last checked today, 11:59 AM/)).toBeInTheDocument()
+    const line = screen.getByText(/^Last checked today, 11:59 AM/)
 
-    platform.getAutopilotEngine.mockResolvedValue(autopilotEngine({ elsewhere: true, holds: false }))
-    act(() => {
-      emit('autopilot:updated')
-    })
+    expect(line).toHaveAttribute('title')
+
+    showEngine(autopilotEngine({ elsewhere: true, holds: false }))
 
     expect(
-      await screen.findByText(
+      screen.getByText(
         `Autopilot is running in another copy of ${brand.name}. This one shows them and starts nothing.`,
       ),
-    ).toBeInTheDocument()
+    ).not.toHaveAttribute('title')
+    expect(platform.getAutopilotEngine).not.toHaveBeenCalled()
+  })
+
+  it('says nothing of the last check until the window has read the engine', () => {
+    const { showEngine } = renderSection(settings(), null)
+
+    const heading = screen.getByText('Last checked', { selector: 'p' })
+
+    expect(heading.nextElementSibling).toHaveTextContent(/^$/)
+    expect(heading.nextElementSibling).not.toHaveAttribute('title')
+
+    showEngine(autopilotEngine())
+
+    expect(heading.nextElementSibling).toHaveTextContent('Last checked today, 11:59 AM · 34 ms · 7 matches · 1 start')
   })
 })
 
@@ -360,13 +390,9 @@ describe('This Mac', () => {
   })
 
   it('checks again on asking, held off while it checks, and shows what the checks found', async () => {
-    let finish: (r: ReturnType<typeof readiness>) => void = () => undefined
+    const checking = deferred<ReturnType<typeof readiness>>()
     platform.getAutopilotReadiness.mockResolvedValue(mac())
-    platform.checkAutopilotReadiness.mockReturnValue(
-      new Promise((resolve) => {
-        finish = resolve
-      }),
-    )
+    platform.checkAutopilotReadiness.mockReturnValue(checking.promise)
     renderSection()
 
     await screen.findByText('Not ready here: Snooze passing bot PRs')
@@ -376,7 +402,7 @@ describe('This Mac', () => {
     expect(screen.getByRole('button', { name: 'Checking…' })).toBeDisabled()
 
     await act(async () => {
-      finish(readiness())
+      checking.resolve(readiness())
       await Promise.resolve()
     })
 
@@ -390,9 +416,7 @@ describe('This Mac', () => {
 
     await screen.findByRole('list', { name: 'This Mac' })
     platform.getAutopilotReadiness.mockResolvedValue(mac())
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     expect(await screen.findByText('Not ready here: Snooze passing bot PRs')).toBeInTheDocument()
   })
@@ -409,7 +433,7 @@ describe('clearedText', () => {
 })
 
 describe('lastCheckedText', () => {
-  const now = new Date('2026-06-15T12:00:00Z')
+  const now = FIXED_NOW
 
   it('says what the last cycle did, and when', () => {
     expect(lastCheckedText(now, autopilotEngine())).toBe('Last checked today, 11:59 AM · 34 ms · 7 matches · 1 start')
@@ -429,6 +453,6 @@ describe('lastCheckedText', () => {
     expect(lastCheckedText(now, autopilotEngine({ elsewhere: true }))).toBe(
       `Autopilot is running in another copy of ${brand.name}. This one shows them and starts nothing.`,
     )
-    expect(lastCheckedText(now, undefined)).toBe('')
+    expect(lastCheckedText(now, null)).toBe('')
   })
 })

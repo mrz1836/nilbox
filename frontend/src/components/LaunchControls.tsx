@@ -1,7 +1,7 @@
-import { useId, useState, type MouseEvent, type ReactNode } from 'react'
+import { Suspense, useEffect, useId, useState, type MouseEvent, type ReactNode } from 'react'
 
 import { attempt } from '../lib/call'
-import { agentName as agentLabel } from '../lib/launch'
+import { agentName as agentLabel, type LaunchOptions } from '../lib/launch'
 import { sinceWhen, stateLabel, stateText } from '../lib/sessions'
 import { formatAge } from '../lib/time'
 import {
@@ -32,7 +32,6 @@ import {
   removeLaunchDefaults,
   resolveLaunch,
   saveLaunchDefaults,
-  type AgentInfo,
   type AgentSession,
   type CloneTarget,
   type InboxItem,
@@ -43,40 +42,23 @@ import {
   type LaunchRequest,
   type LaunchResult,
   type LinkedClone,
-  type Profile,
-  type Prompt,
   type Resolution,
-  type Settings,
   type Situation,
 } from '../platform'
 import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
-import { TakeOverDialog } from './autopilot/TakeOverDialog'
 import { ConfirmDialog } from './ConfirmDialog'
 import { AlertIcon, AutopilotIcon, ChevronDownIcon, LockIcon, SparkIcon, TerminalIcon } from './icons'
-import { LaunchDialog } from './LaunchDialog'
-import { LaunchHoldDialog } from './LaunchHoldDialog'
-import { LaunchMenu } from './LaunchMenu'
+import { LaunchDialog, LaunchHoldDialog, LaunchMenu, preloadDialogs, TakeOverDialog } from './launchDialogs'
 import { RelativeTime } from './RelativeTime'
 import { SessionDot } from './SessionDot'
 import { SessionsButton } from './SessionTag'
 
-export interface LaunchControlsProps {
+// LaunchControlsProps are the launch options every launch control shares, and the item's
+// own.
+export interface LaunchControlsProps extends LaunchOptions {
   item: InboxItem
   // resolution is the item's default launch settings, or null while they load.
   resolution: ItemResolution | null
-  // agents are the coding agents a launch can start, each with whether it is installed.
-  agents: readonly AgentInfo[]
-  profiles: readonly Profile[]
-  prompts: readonly Prompt[]
-  // launchDefaults are every saved org and repo default, for saving this launch's choices.
-  launchDefaults: readonly LaunchDefaults[]
-  // onDefaultsSaved reloads the launch defaults and every row's settings.
-  onDefaultsSaved: () => Promise<void>
-  // onManagePrompts opens the Prompts page.
-  onManagePrompts: () => void
-  // onSettingsSaved takes the settings stored once a clone found elsewhere is added as a
-  // repository location.
-  onSettingsSaved: (settings: Settings) => void
   // running is the item's newest session still running, if any: the button then brings
   // its terminal tab forward instead, and a launch from the menu asks first. In the card
   // variant it is the card's session (cardSession): the newest still running, else one
@@ -232,6 +214,11 @@ export function LaunchControls({
   const [status, setStatus] = useState<SaveStatus | null>(null)
   // saved is the last save, while Undo can still take it back.
   const [saved, setSaved] = useState<Saved | null>(null)
+
+  // Once a launch control has painted, the dialogs it opens start loading.
+  useEffect(() => {
+    preloadDialogs()
+  }, [])
 
   const untrusted = !item.trusted
   const problem = resolution?.problem ?? ''
@@ -511,65 +498,73 @@ export function LaunchControls({
     setOpen(true)
   }
 
+  // dialog is the launch options while they show. Its code loads on its own, the dialog and
+  // the menu in it under one boundary, so the dialog opens whole, focus starting where it
+  // should, with nothing in its place until then: it is drawn in the page's body, so the
+  // card it is opened from holds no room for it. The dialog's code waits for the menu's
+  // (launchDialogs), so a menu that replaces Loading later is drawn at once, never hiding
+  // the open dialog.
   const dialog = open && (
-    <LaunchDialog id={id} title={openLabel} item={item} onClose={close}>
-      {base === null ? (
-        <div className="flex flex-col gap-2 p-3.5 text-sm">
-          <p className="flex items-start gap-2 text-warning">
-            <AlertIcon className="mt-0.5 size-4 shrink-0" />
-            {problem !== '' ? problem : 'Loading the launch settings…'}
-          </p>
-          {problem !== '' && (
-            <button
-              type="button"
-              onClick={() => {
-                close()
-                onManagePrompts()
-              }}
-              className="self-start text-sm font-medium text-accent hover:underline"
-            >
-              Open the Prompts page
-            </button>
-          )}
-        </div>
-      ) : (
-        <LaunchMenu
-          item={item}
-          resolved={base}
-          choices={choices}
-          onChoices={(next) => {
-            setChoices(next)
-            setStatus(null)
-            setSaved(null)
-          }}
-          agents={agents}
-          profiles={profiles}
-          prompts={prompts}
-          agentName={agentName}
-          onLaunch={launchNow}
-          busy={busy}
-          onSave={(scope) => {
-            void save(scope)
-          }}
-          saving={saver.pending || undoer.pending}
-          status={status}
-          onUndo={
-            saved === null
-              ? null
-              : () => {
-                  void undo()
-                }
-          }
-          resolveError={resolveError}
-          situation={situation}
-          onManagePrompts={() => {
-            close()
-            onManagePrompts()
-          }}
-          onCancel={close}
-        />
-      )}
-    </LaunchDialog>
+    <Suspense fallback={null}>
+      <LaunchDialog id={id} title={openLabel} item={item} onClose={close}>
+        {base === null ? (
+          <div className="flex flex-col gap-2 p-3.5 text-sm">
+            <p className="flex items-start gap-2 text-warning">
+              <AlertIcon className="mt-0.5 size-4 shrink-0" />
+              {problem !== '' ? problem : 'Loading the launch settings…'}
+            </p>
+            {problem !== '' && (
+              <button
+                type="button"
+                onClick={() => {
+                  close()
+                  onManagePrompts()
+                }}
+                className="self-start text-sm font-medium text-accent hover:underline"
+              >
+                Open the Prompts page
+              </button>
+            )}
+          </div>
+        ) : (
+          <LaunchMenu
+            item={item}
+            resolved={base}
+            choices={choices}
+            onChoices={(next) => {
+              setChoices(next)
+              setStatus(null)
+              setSaved(null)
+            }}
+            agents={agents}
+            profiles={profiles}
+            prompts={prompts}
+            agentName={agentName}
+            onLaunch={launchNow}
+            busy={busy}
+            onSave={(scope) => {
+              void save(scope)
+            }}
+            saving={saver.pending || undoer.pending}
+            status={status}
+            onUndo={
+              saved === null
+                ? null
+                : () => {
+                    void undo()
+                  }
+            }
+            resolveError={resolveError}
+            situation={situation}
+            onManagePrompts={() => {
+              close()
+              onManagePrompts()
+            }}
+            onCancel={close}
+          />
+        )}
+      </LaunchDialog>
+    </Suspense>
   )
 
   // cardOptions is the card's ▾, the launch options: on its own, or the last part of the
@@ -880,50 +875,56 @@ export function LaunchControls({
           }}
         />
       )}
+      {/* The hold and take-over dialogs load on their own, as the launch options do, each
+          under its own boundary, with nothing in its place in the grid until it shows. */}
       {state.kind === 'held' && (
-        <LaunchHoldDialog
-          hold={state.hold}
-          agentName={agentName}
-          agents={agents}
-          item={{ repo: item.repo, number: item.number }}
-          onCancel={() => {
-            setState({ kind: 'idle' })
-          }}
-          onConfirm={() => {
-            confirmHold(state.hold, state.request)
-          }}
-          onShow={(sessionId) => {
-            void showTerminal(sessionId)
-          }}
-          onWatch={
-            watch === undefined
-              ? undefined
-              : (sessionId) => {
-                  setState({ kind: 'idle' })
-                  watch(sessionId)
-                }
-          }
-          onTakeOver={(sessionId) => {
-            setTakingOver({ sessionId, where: state.hold.worktree })
-            setState({ kind: 'idle' })
-          }}
-        />
+        <Suspense fallback={null}>
+          <LaunchHoldDialog
+            hold={state.hold}
+            agentName={agentName}
+            agents={agents}
+            item={{ repo: item.repo, number: item.number }}
+            onCancel={() => {
+              setState({ kind: 'idle' })
+            }}
+            onConfirm={() => {
+              confirmHold(state.hold, state.request)
+            }}
+            onShow={(sessionId) => {
+              void showTerminal(sessionId)
+            }}
+            onWatch={
+              watch === undefined
+                ? undefined
+                : (sessionId) => {
+                    setState({ kind: 'idle' })
+                    watch(sessionId)
+                  }
+            }
+            onTakeOver={(sessionId) => {
+              setTakingOver({ sessionId, where: state.hold.worktree })
+              setState({ kind: 'idle' })
+            }}
+          />
+        </Suspense>
       )}
       {takingOver !== null && (
-        <TakeOverDialog
-          sessionId={takingOver.sessionId}
-          live
-          terminal={takeOverIn}
-          where={takingOver.where}
-          agentName={agentName}
-          onCancel={() => {
-            setTakingOver(null)
-          }}
-          onTaken={(result) => {
-            setTakingOver(null)
-            setState({ kind: 'launched', result })
-          }}
-        />
+        <Suspense fallback={null}>
+          <TakeOverDialog
+            sessionId={takingOver.sessionId}
+            live
+            terminal={takeOverIn}
+            where={takingOver.where}
+            agentName={agentName}
+            onCancel={() => {
+              setTakingOver(null)
+            }}
+            onTaken={(result) => {
+              setTakingOver(null)
+              setState({ kind: 'launched', result })
+            }}
+          />
+        </Suspense>
       )}
       {confirmingClone && state.kind === 'noClone' && (
         <ConfirmDialog

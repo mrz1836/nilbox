@@ -1,4 +1,5 @@
 import type { WorktreesProgress } from '../platform'
+import { counted, formatCount } from './format'
 
 // The words for how far a listing of the worktrees has got, as the Worktrees page shows
 // them while it lists (see useWorktrees). The backend names the phases
@@ -11,14 +12,9 @@ export interface Step {
   share: number | null
 }
 
-// counted is "1 clone" or "3 clones".
-function counted(n: number, one: string, many: string): string {
-  return `${String(n)} ${n === 1 ? one : many}`
-}
-
-// of is "3 of 12 clones", and "1 of 1 clone".
+// of is "3 of 12 clones", "1 of 1 clone", and "1,234 of 2,500 clones".
 function of(done: number, total: number, one: string, many: string): string {
-  return `${String(done)} of ${counted(total, one, many)}`
+  return `${formatCount(done)} of ${counted(total, one, many)}`
 }
 
 // progressStep words where a listing stands: what it is doing now, and how far through.

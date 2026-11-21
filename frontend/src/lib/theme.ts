@@ -8,6 +8,9 @@
 // From then on the page pins the palette it shows on <html> (data-theme wins over the
 // media query) and cross-fades on a switch.
 
+import type { CSSProperties } from 'react'
+
+import { palettes } from '../generated/brand'
 import type { Theme } from '../platform'
 import { prefersReducedMotion } from './motion'
 
@@ -19,6 +22,15 @@ export const themes: readonly Theme[] = ['system', 'light', 'dark']
 // defaultTheme is the theme of a fresh install, and the one shown until the stored theme
 // has loaded.
 export const defaultTheme: Theme = 'system'
+
+// darkTokens set an element in the dark palette in either theme, as a terminal is, such as
+// the inbox-nil party's and the setup's Finish log. Every utility and style inside reads
+// the theme's --color-* tokens, so overriding them here is enough. color-scheme alone would
+// not do: the bundle's tokens resolve once, on the root, for the page's theme.
+export const darkTokens: CSSProperties = {
+  colorScheme: 'dark',
+  ...Object.fromEntries(Object.entries(palettes.dark).map(([token, value]) => [`--color-${token}`, value])),
+}
 
 // darkQuery matches while the web view's appearance is dark: the system's, or the one the
 // desktop shell pinned for a Light or Dark theme.

@@ -1,7 +1,8 @@
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useEffect, useState } from 'react'
 
-import { listReleaseCandidates, on, type ReleaseCandidates, type ReleasesProgress } from '../platform'
+import { listReleaseCandidates, type ReleaseCandidates, type ReleasesProgress } from '../platform'
 import { useMutation } from './useMutation'
+import { useOn } from './useOn'
 import { useQuery } from './useQuery'
 
 // ReleaseCandidatesState is the Release page's list as the Scripts tab holds it.
@@ -34,30 +35,35 @@ export function useReleaseCandidates(enabled: boolean): ReleaseCandidatesState {
   const query = useQuery(() => listReleaseCandidates(false), [], { enabled })
   const refresher = useMutation(() => listReleaseCandidates(true))
   const [heard, setHeard] = useState<ReleasesProgress | null>(null)
-  const readOnUpdate = useEffectEvent(() => {
-    setHeard(null)
-    void query.refetch()
-  })
 
-  useEffect(() => {
-    if (!enabled) {
-      return undefined
-    }
-
-    const offUpdated = on('releases:updated', () => {
-      readOnUpdate()
-    })
-    const offProgress = on('releases:progress', (progress) => {
-      setHeard(progress)
-    })
-
-    return () => {
-      offUpdated()
-      offProgress()
-      // What it heard is out of date by the time it listens again.
+  useOn(
+    'releases:updated',
+    () => {
       setHeard(null)
-    }
-  }, [enabled])
+      void query.refetch()
+    },
+    enabled,
+  )
+
+  useOn(
+    'releases:progress',
+    (progress) => {
+      setHeard(progress)
+    },
+    enabled,
+  )
+
+  // What it heard is out of date by the time it listens again, so it is dropped as it stops
+  // listening, after both listeners have gone.
+  useEffect(
+    () =>
+      enabled
+        ? () => {
+            setHeard(null)
+          }
+        : undefined,
+    [enabled],
+  )
 
   const refresh = async () => {
     const result = await refresher.run()

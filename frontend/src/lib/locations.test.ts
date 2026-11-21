@@ -33,7 +33,7 @@ describe('unreadWords', () => {
       'Couldn’t read /Volumes/ext/src, so its clones aren’t listed. Check it in Settings → Repositories.',
     )
     expect(unreadWords(['~/a', '~/b', '~/c'])).toBe(
-      'Couldn’t read ~/a, ~/b and ~/c, so their clones aren’t listed. Check them in Settings → Repositories.',
+      'Couldn’t read ~/a, ~/b, and ~/c, so their clones aren’t listed. Check them in Settings → Repositories.',
     )
   })
 })

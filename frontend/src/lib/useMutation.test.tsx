@@ -2,20 +2,9 @@ import { act, render, renderHook, screen } from '@testing-library/react'
 import { Activity } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { deferred } from '../test/async'
 import type { Result } from './call'
 import { useMutation, type Mutation } from './useMutation'
-
-// deferred is a write the test settles.
-function deferred<T>() {
-  let resolve: (value: T) => void = () => undefined
-  let reject: (err: unknown) => void = () => undefined
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-
-  return { promise, resolve, reject }
-}
 
 describe('useMutation', () => {
   it('is pending while the write runs, and resolves with its value', async () => {
@@ -70,6 +59,45 @@ describe('useMutation', () => {
     })
 
     expect(result.current.error).toBe('')
+  })
+
+  it('renders nothing again on a reset with no error to clear', async () => {
+    const mutate = vi.fn<() => Promise<string>>().mockResolvedValue('stored')
+    let mutation: Mutation<[], string> | undefined
+    let shown = 0
+
+    // Shown counts its renders, one each time Page's state changes.
+    function Shown({ error }: { error: string }) {
+      shown += 1
+
+      return <p>{error === '' ? 'saved' : error}</p>
+    }
+
+    function Page() {
+      mutation = useMutation(mutate)
+
+      return <Shown error={mutation.error} />
+    }
+
+    render(<Page />)
+    act(() => {
+      mutation?.reset()
+    })
+
+    expect(shown).toBe(1)
+
+    await act(async () => {
+      await mutation?.run()
+    })
+
+    const ran = shown
+
+    act(() => {
+      mutation?.reset()
+    })
+
+    expect(shown).toBe(ran)
+    expect(mutation).toMatchObject({ pending: false, error: '' })
   })
 
   it('reports a write that throws before it starts as a failure', async () => {
