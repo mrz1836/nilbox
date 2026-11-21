@@ -5,6 +5,7 @@ import { useCloseWhenHidden, useModalDialog } from '../lib/useModalDialog'
 import {
   buttonClass,
   captionClass,
+  ErrorText,
   fieldClass,
   iconButtonClass,
   primaryButtonClass,
@@ -373,11 +374,7 @@ export function PickerDialog({
             ))
           )}
         </div>
-        {error !== '' && (
-          <p role="alert" className="shrink-0 border-t border-border px-4 py-2 text-xs text-danger">
-            {error}
-          </p>
-        )}
+        <ErrorText error={error} className="shrink-0 border-t border-border px-4 py-2" />
         <footer className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-3">
           <p className="min-w-0 flex-1 text-xs text-muted">{choices.length === 0 ? '' : note}</p>
           <button type="button" disabled={applying} onClick={onClose} className={buttonClass}>

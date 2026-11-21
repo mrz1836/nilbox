@@ -11,7 +11,7 @@ import type {
   PromptReplyAction,
   PromptVariable,
 } from '../platform'
-import { chipClass, describedBy, Field, fieldClass, Segmented, type SegmentOption } from './controls'
+import { chipClass, describedBy, ErrorText, Field, fieldClass, Segmented, type SegmentOption } from './controls'
 import { AlertIcon, ChevronRightIcon, CircleCheckIcon, EyeIcon, PencilIcon, StarIcon } from './icons'
 import { LaunchOverrideFields } from './LaunchOverrideFields'
 import { TemplateEditor, type TemplateEditorHandle } from './TemplateEditor'
@@ -154,11 +154,7 @@ export function PromptEditor({
           />
           {actions !== undefined && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
         </div>
-        {(fieldErrors.name ?? '') !== '' && (
-          <p id={`${id}-name-error`} role="alert" className="text-xs text-danger">
-            {fieldErrors.name}
-          </p>
-        )}
+        <ErrorText id={`${id}-name-error`} error={fieldErrors.name ?? ''} />
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pt-4 pb-4">
@@ -196,11 +192,7 @@ export function PromptEditor({
                   set(replyAction === 'comment' ? { replyAction } : { replyAction, appliesTo: 'pr' })
                 }}
               />
-              {(fieldErrors.replyAction ?? '') !== '' && (
-                <p role="alert" className="max-w-sm text-xs text-danger">
-                  {fieldErrors.replyAction}
-                </p>
-              )}
+              <ErrorText error={fieldErrors.replyAction ?? ''} className="max-w-sm" />
             </div>
           )}
           {/* A comment reply can be for issues too; an approval and a request for changes
@@ -216,11 +208,7 @@ export function PromptEditor({
                   set({ appliesTo })
                 }}
               />
-              {(fieldErrors.appliesTo ?? '') !== '' && (
-                <p role="alert" className="max-w-sm text-xs text-danger">
-                  {fieldErrors.appliesTo}
-                </p>
-              )}
+              <ErrorText error={fieldErrors.appliesTo ?? ''} className="max-w-sm" />
             </div>
           )}
           {saved !== null && (

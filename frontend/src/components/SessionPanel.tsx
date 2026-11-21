@@ -29,7 +29,7 @@ import {
   type ResumeRequest,
 } from '../platform'
 import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
-import { dangerIconButtonClass, quietButtonClass } from './controls'
+import { dangerIconButtonClass, ErrorText, quietButtonClass } from './controls'
 import { AlertIcon, CheckIcon, CopyIcon, EyeIcon, FolderIcon, PlayIcon, StopIcon, TerminalIcon, XIcon } from './icons'
 import { LaunchHoldDialog, TakeOverDialog } from './launchDialogs'
 import { RelativeTime } from './RelativeTime'
@@ -340,11 +340,7 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
           {notice}
         </p>
       )}
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
       {/* The take-over and hold dialogs load on their own, as a launch's do (launchDialogs),
           each under its own boundary, with nothing in its place in the entry until it shows. */}
       {takingOver && (

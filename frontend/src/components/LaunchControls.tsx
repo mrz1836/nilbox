@@ -47,7 +47,7 @@ import {
 } from '../platform'
 import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
 import { ConfirmDialog } from './ConfirmDialog'
-import { linkClass, smallButtonClass } from './controls'
+import { ErrorText, linkClass, smallButtonClass } from './controls'
 import { AlertIcon, AutopilotIcon, ChevronDownIcon, LockIcon, SparkIcon, TerminalIcon } from './icons'
 import { LaunchDialog, LaunchHoldDialog, LaunchMenu, preloadDialogs, TakeOverDialog } from './launchDialogs'
 import { RelativeTime } from './RelativeTime'
@@ -804,11 +804,7 @@ export function LaunchControls({
           <span>{state.result.notice}</span>
         </p>
       )}
-      {state.kind === 'failed' && (
-        <p role="alert" className={`${outcomeClass} text-xs text-danger`}>
-          {state.message}
-        </p>
-      )}
+      {state.kind === 'failed' && <ErrorText error={state.message} className={outcomeClass} />}
       {state.kind === 'cloning' && (
         <p role="status" className={`${outcomeClass} truncate text-xs text-muted`}>
           {`Cloning ${state.target.repo} into ${state.target.dir}…`}

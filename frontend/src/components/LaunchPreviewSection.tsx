@@ -5,6 +5,7 @@ import { terminalLabel } from '../lib/terminals'
 import { useDebouncedQuery } from '../lib/useQuery'
 import { counted } from '../lib/format'
 import { previewLaunch, type InboxItem, type LaunchPreview, type Situation, type WorktreePlan } from '../platform'
+import { ErrorText } from './controls'
 import { ChevronRightIcon } from './icons'
 
 export interface LaunchPreviewSectionProps {
@@ -122,9 +123,7 @@ export function LaunchPreviewSection({ item, choices, untrusted, situation = '' 
           {state.kind === 'loading' ? (
             <p className="text-xs text-muted">Planning the launch…</p>
           ) : state.kind === 'failed' ? (
-            <p role="alert" className="text-xs text-danger">
-              {state.message}
-            </p>
+            <ErrorText error={state.message} />
           ) : (
             <PlannedLaunch plan={state.preview} />
           )}
