@@ -827,6 +827,28 @@ func refusedForScope(err error) bool {
 	return ok && failed.scopes
 }
 
+// resendWithoutProjects sends a read with opts and, when GitHub refuses the projects opts
+// asks for, for want of a scope, sends it once more with only the projects left out, so
+// whatever else opts asks for, as FetchDetails' repository, is still read. refused marks
+// the second answer as read without the projects. A read that succeeds, fails any other
+// way, or never asked for the projects is sent once.
+func resendWithoutProjects[T any](opts DetailOptions, send func(DetailOptions) (*T, error), refused func(*T)) (*T, error) {
+	answer, err := send(opts)
+	if !opts.Projects || !refusedForScope(err) {
+		return answer, err
+	}
+
+	opts.Projects = false
+
+	if answer, err = send(opts); err != nil {
+		return nil, err
+	}
+
+	refused(answer)
+
+	return answer, nil
+}
+
 // scopeRefused reports whether any of errs is GitHub refusing a field for want of a scope.
 func scopeRefused(errs []graphQLError) bool {
 	return hasErrorType(errs, errorInsufficientScopes)

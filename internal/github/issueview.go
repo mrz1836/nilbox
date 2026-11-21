@@ -610,18 +610,9 @@ func (o DetailOptions) issueViewQuery() string {
 // fetchIssueView reads the view, again without the projects when GitHub refuses them for
 // want of a scope.
 func (c *Client) fetchIssueView(ctx context.Context, tok Token, id string, opts DetailOptions) (*IssueView, error) {
-	view, err := c.issueViewPaged(ctx, tok, id, opts)
-	if !opts.Projects || !refusedForScope(err) {
-		return view, err
-	}
-
-	if view, err = c.issueViewPaged(ctx, tok, id, DetailOptions{}); err != nil {
-		return nil, err
-	}
-
-	view.Update.ProjectsRefused = true
-
-	return view, nil
+	return resendWithoutProjects(opts, func(o DetailOptions) (*IssueView, error) {
+		return c.issueViewPaged(ctx, tok, id, o)
+	}, func(view *IssueView) { view.Update.ProjectsRefused = true })
 }
 
 // issueViewPaged sends the view query, with a smaller page of the timeline should the

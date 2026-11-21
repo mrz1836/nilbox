@@ -65,18 +65,9 @@ func (c *Client) FetchItem(ctx context.Context, tok Token, id string, opts Detai
 // fetchItem sends the item query. When GitHub refuses the projects opts asks for, for
 // want of a scope, it sends the query again without them.
 func (c *Client) fetchItem(ctx context.Context, tok Token, id string, opts DetailOptions) (*ItemUpdate, error) {
-	update, err := c.sendItem(ctx, tok, id, opts)
-	if !opts.Projects || !refusedForScope(err) {
-		return update, err
-	}
-
-	if update, err = c.sendItem(ctx, tok, id, DetailOptions{}); err != nil {
-		return nil, err
-	}
-
-	update.ProjectsRefused = true
-
-	return update, nil
+	return resendWithoutProjects(opts, func(o DetailOptions) (*ItemUpdate, error) {
+		return c.sendItem(ctx, tok, id, o)
+	}, func(update *ItemUpdate) { update.ProjectsRefused = true })
 }
 
 // sendItem sends the item query, with what opts adds, and decodes the response.
