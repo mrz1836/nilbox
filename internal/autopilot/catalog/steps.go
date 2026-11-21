@@ -1,5 +1,7 @@
 package catalog
 
+import "slices"
+
 import "github.com/mrz1836/nilbox/internal/item"
 
 // StepKind is one kind of step a routine's Then runs, as the spec spells its key.
@@ -148,13 +150,7 @@ type Step struct {
 
 // Applies reports whether the step can act on an item of kind.
 func (s Step) Applies(kind item.Kind) bool {
-	for _, k := range s.Kinds {
-		if k == kind {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(s.Kinds, kind)
 }
 
 // Steps returns every kind of step, in the builder's order.

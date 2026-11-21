@@ -393,8 +393,8 @@ func shapeLines(root reflect.Type, stop ...reflect.Type) []string {
 
 		lines = append(lines, head)
 
-		for i := range t.NumField() {
-			if line, ok := shapeKey(t, t.Field(i)); ok {
+		for field := range t.Fields() {
+			if line, ok := shapeKey(t, field); ok {
 				lines = append(lines, "  "+line)
 			}
 		}
@@ -429,8 +429,8 @@ func shapeStructs(root reflect.Type, stop []reflect.Type) []reflect.Type {
 		seen[t] = true
 		out = append(out, t)
 
-		for i := range t.NumField() {
-			if inner := structIn(t.Field(i).Type); inner != nil && !seen[inner] {
+		for field := range t.Fields() {
+			if inner := structIn(field.Type); inner != nil && !seen[inner] {
 				queue = append(queue, inner)
 			}
 		}

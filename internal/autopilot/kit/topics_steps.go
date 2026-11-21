@@ -79,8 +79,7 @@ func stepSettingLines(kind catalog.StepKind) []string {
 
 	var out []string
 
-	for i := range t.NumField() {
-		f := t.Field(i)
+	for f := range t.Fields() {
 
 		key, optional, ok := jsonKeyOf(f)
 		if !ok {
@@ -102,9 +101,9 @@ func stepSettingLines(kind catalog.StepKind) []string {
 func stepStruct(kind catalog.StepKind) (reflect.Type, bool) {
 	t := reflect.TypeFor[spec.Step]()
 
-	for i := range t.NumField() {
-		if key, _, ok := jsonKeyOf(t.Field(i)); ok && key == string(kind) {
-			inner := elemOf(t.Field(i).Type)
+	for field := range t.Fields() {
+		if key, _, ok := jsonKeyOf(field); ok && key == string(kind) {
+			inner := elemOf(field.Type)
 
 			return inner, inner.Kind() == reflect.Struct
 		}
@@ -356,8 +355,8 @@ func agentKeyLines(t reflect.Type) []string {
 
 	out := make([]string, 0, t.NumField())
 
-	for i := range t.NumField() {
-		key, _, ok := jsonKeyOf(t.Field(i))
+	for field := range t.Fields() {
+		key, _, ok := jsonKeyOf(field)
 		if !ok {
 			continue
 		}

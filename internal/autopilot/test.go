@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -562,9 +563,7 @@ func (s *Service) testSearches(ctx context.Context, queries []watch.Query, out *
 
 		s.tests.keep(read, now)
 
-		for q, r := range read {
-			results[q] = r
-		}
+		maps.Copy(results, read)
 	}
 
 	out.Cached = len(queries) > 0 && len(missing) == 0

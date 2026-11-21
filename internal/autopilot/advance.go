@@ -169,9 +169,9 @@ func onlyIfHolds(before []stepRun, want catalog.Outcome) bool {
 		}
 	}
 
-	for i := len(before) - 1; i >= 0; i-- {
-		if before[i].Step.Kind() == from {
-			return before[i].Outcome == string(want)
+	for _, b := range slices.Backward(before) {
+		if b.Step.Kind() == from {
+			return b.Outcome == string(want)
 		}
 	}
 
@@ -715,13 +715,7 @@ func onDay(days []catalog.Weekday, day catalog.Weekday) bool {
 		return true
 	}
 
-	for _, d := range days {
-		if d == day {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(days, day)
 }
 
 // job is what a dispatcher is asked to run for m's step.
