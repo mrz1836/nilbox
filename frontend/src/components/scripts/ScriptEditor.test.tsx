@@ -51,16 +51,15 @@ describe('ScriptEditor', () => {
     await userEvent.click(dialog.getByRole('radio', { name: 'Test' }))
     await userEvent.click(save)
 
-    const made: UserScript = {
+    const made = userScript({
       id: 0,
       name: 'Test all',
       command: 'magex test:race',
       icon: 'test',
       scope: 'go',
-      repos: [],
       runsIn: 'terminal',
       confirm: true,
-    }
+    })
     expect(platform.saveUserScript).toHaveBeenCalledExactlyOnceWith(made)
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledExactlyOnceWith({ ...made, id: 41 })

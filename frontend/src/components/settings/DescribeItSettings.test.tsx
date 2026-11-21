@@ -95,7 +95,7 @@ describe('the agent Describe it starts with', () => {
     })
     await user.selectOptions(model, 'opus')
 
-    expect(platform.setDescribeItAgent).toHaveBeenCalledExactlyOnceWith({ profile: '', model: 'opus', effort: '' })
+    expect(platform.setDescribeItAgent).toHaveBeenCalledExactlyOnceWith(describeAgentChoice({ model: 'opus' }))
     expect(model).toHaveValue('opus')
 
     await waitFor(() => {
@@ -103,7 +103,7 @@ describe('the agent Describe it starts with', () => {
     })
     await user.selectOptions(screen.getByRole('combobox', { name: 'Effort' }), 'max')
 
-    expect(platform.setDescribeItAgent).toHaveBeenLastCalledWith({ profile: '', model: 'opus', effort: 'max' })
+    expect(platform.setDescribeItAgent).toHaveBeenLastCalledWith(describeAgentChoice({ model: 'opus', effort: 'max' }))
     await waitFor(() => {
       expect(screen.getByRole('combobox', { name: 'Effort' })).toHaveValue('high')
     })
