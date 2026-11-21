@@ -8,8 +8,11 @@
 // internal/github/githubtest) imported anywhere but a _test.go file or another
 // test-support package, production code that logs through slog's default logger or the
 // standard log package instead of the logger it was given, frontend text sized in px,
-// which the text size setting cannot scale, and a shell, Python, or other script file
-// outside the directories go-broadcast syncs, where a magex target belongs instead.
+// which the text size setting cannot scale, a frontend color, text size, dialog backdrop,
+// or disabled fade written out rather than taken from the theme's tokens (a Tailwind
+// palette utility such as text-white among them, which the theme resets to nothing), and
+// a shell, Python, or other script file outside the directories go-broadcast syncs, where
+// a magex target belongs instead.
 //
 // The data-layer guards keep SQL with the tables' owners, with no exceptions: no ORM
 // import anywhere, no SQLite driver import outside internal/store, no SQL statement or
