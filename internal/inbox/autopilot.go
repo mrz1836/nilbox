@@ -149,8 +149,9 @@ func (s *Store) ReadStatus(ctx context.Context) (ReadStatus, error) {
 // WatchNow sends the routines' searches now, outside a whole refresh, as a refresh's watch
 // pass sends them, and waits for the pass to store what they watch: a routine turned on
 // with a search no pass has read yet reads it at once, for a point or so, rather than at
-// the next refresh. It sends nothing while a pass runs, and nothing before an account
-// signed in; the pass runs on the watch passes' worker, so nothing reads them without it.
+// the next refresh. It sends nothing while a pass runs, before an account signed in, or
+// while the routines' searches can't be told for that account yet; the pass runs on the
+// watch passes' worker, so nothing reads them without it.
 func (r *Routines) WatchNow(ctx context.Context) error {
 	s := r.svc
 	started := s.now()
