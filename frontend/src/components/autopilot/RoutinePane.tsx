@@ -135,7 +135,7 @@ export function RoutinePane({
         )}
         {r.description !== '' && <p className="text-sm text-muted">{r.description}</p>}
         {r.problems.length > 0 && (
-          <ul aria-label="What is wrong with it" className="flex flex-col gap-1 rounded-md border border-danger/40 p-3">
+          <ul aria-label="What is wrong with it" className="flex flex-col gap-1 rounded-md border border-danger/45 p-3">
             {r.problems.map((p) => (
               <li key={`${p.part}:${p.field}`} className="text-xs text-danger">
                 {p.message}

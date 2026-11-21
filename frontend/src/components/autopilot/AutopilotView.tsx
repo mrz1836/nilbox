@@ -259,7 +259,7 @@ function NotReadyBanner({ count, onSettings }: { count: number; onSettings: () =
   return (
     <div
       role="status"
-      className="flex items-center gap-3 rounded-md border border-danger/50 bg-danger/10 px-3 py-2 text-sm"
+      className="flex items-center gap-3 rounded-md border border-danger/45 bg-danger/10 px-3 py-2 text-sm"
     >
       <AlertIcon className="size-4 shrink-0 text-danger" />
       <span className="min-w-0 flex-1">{notReadyBanner(count)}</span>
@@ -319,7 +319,7 @@ function CountBadge({ count, words }: { count: number; words: string }) {
       {' '}
       <span
         aria-hidden="true"
-        className="rounded-full bg-accent/15 px-1.5 text-caption leading-[1.125rem] font-medium text-text tabular-nums"
+        className="rounded-full bg-accent/14 px-1.5 text-caption leading-[1.125rem] font-medium text-text tabular-nums"
       >
         {formatCount(count)}
       </span>

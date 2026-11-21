@@ -44,7 +44,7 @@ function TemplateCard({ template: t, onPick, withWhy }: TemplateCardProps) {
 
   return (
     <li
-      className={`relative ${withWhy ? 'row-span-3' : 'row-span-2'} grid min-w-0 grid-rows-subgrid gap-y-2.5 rounded-lg border border-border bg-surface p-4 transition-colors hover:border-accent/50 hover:bg-raised`}
+      className={`relative ${withWhy ? 'row-span-3' : 'row-span-2'} grid min-w-0 grid-rows-subgrid gap-y-2.5 rounded-lg border border-border bg-surface p-4 transition-colors hover:border-accent/45 hover:bg-raised`}
     >
       <button
         type="button"

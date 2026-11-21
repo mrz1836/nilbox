@@ -239,7 +239,7 @@ function Card({ match: m, highlighted, agentFor, actions, onOpen, onToast, onCha
       <FollowUpDetails match={m} />
 
       {held !== null && (m.blockedBy === 'hold' || m.blockedBy === 'dirty_worktree') && (
-        <div className="flex flex-col gap-1.5 rounded-md border border-warning/40 bg-warning/5 px-3 py-2 text-xs text-muted">
+        <div className="flex flex-col gap-1.5 rounded-md border border-warning/45 bg-warning/5 px-3 py-2 text-xs text-muted">
           <p className="font-medium text-text">{holdTitle(held)}</p>
           <HoldDetails hold={held} agentName={agentFor(m)} go="run it" />
         </div>
