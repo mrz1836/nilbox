@@ -12,7 +12,7 @@ import {
   sensitiveCount,
   type FilesChip,
 } from '../lib/sensitive'
-import { toneText } from '../lib/signals'
+import { toneText } from '../lib/tone'
 import { useMutation } from '../lib/useMutation'
 import { usePopover, type Popover } from '../lib/usePopover'
 import { checkItemFiles, openExternal, type FileCheck, type SensitiveFile, type SensitiveGroup } from '../platform'
