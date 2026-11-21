@@ -5,6 +5,15 @@
 # compromised publish has time to be noticed and pulled before it reaches this project.
 minimumReleaseAge: 10080
 
+# A version published with less trust evidence than an earlier one of the same package
+# (no trusted publisher or provenance where an earlier release had it) fails the install,
+# as a hijacked maintainer account usually publishes that way.
+trustPolicy: no-downgrade
+
+# Only the packages this project names directly may come from outside the registry (a git
+# repository or a tarball URL); a transitive dependency that does fails the install.
+blockExoticSubdeps: true
+
 # Each override closes a published advisory in a transitive dependency that its parent
 # has not picked up yet. Every entry names the advisory, its scope, and when to drop it.
 overrides:
