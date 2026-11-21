@@ -431,7 +431,10 @@ change to a routine, and when `autopilot_routines` holds no row at all, deleted 
 included, `autopilot.Restore` brings them back after the prompts and the launch defaults,
 from the database set aside or else from the copy, each switched off, its spec stored as it
 was (a newer build's stays broken, never rewritten); a routine names its prompts by
-nickname, which the restored library keeps. The user's own scripts
+nickname, which the restored library keeps. What neither copy nor a restore carries is the
+user's confirmation that a routine may merge past the rules (`autopilot_routines.past_rules_hash`,
+added by migration `0110_routine_past_rules`, which `Restore` never reads): a restored routine
+with a tick asks for it again. The user's own scripts
 have no copy, but come back from a database set aside, whatever the reason (`scripts.Restore`,
 beside the restore of the prompts, only into an empty list, each checked as `Save` checks
 it), so a reset keeps them. Agent profiles need no
@@ -663,6 +666,19 @@ connection nodes, which GitHub's formula rounds to one). `FetchRepoTeams` reads 
 organization's repository's teams (`GET /repos/{owner}/{repo}/teams?per_page=100`, through
 `do`, one REST point); GitHub refuses (403) or hides (404) them from an account it won't show
 them to, as it hides them from one that isn't a member, which is `ErrTeamsHidden`.
+`FetchMergeState` reads, by node, what a merge checks right before it (the merge state, the
+head, open, draft, merge queue, auto-merge, and `viewerCanMergeAsAdmin`), one point.
+`FetchOwnMergeState` sends the same query with `$own` set, which adds, under
+`@include(if: $own)`, what a routine's merge of the viewer's own pull request past the rules
+checks (`OwnMergeFields`, `ownmerge.go`): the viewer's login, `viewerDidAuthor`,
+`reviewDecision`, the head's `statusCheckRollup` (its state and first hundred contexts), the
+newest hundred commits' `signature { isValid signer { login } }`, the first hundred review
+threads, and the base branch's classic protection and ruleset rules (the first fifty, with a
+required-checks rule's contexts). Every list keeps GitHub's count beside its page, and a null
+reads as not read, so `ChecksWhole`, `CommitsWhole`, `ThreadsWhole`, and `RulesWhole` fail
+closed; any GraphQL error but the pull request's being gone fails the read. It still costs one
+point (measured in November 2026 on a pull request with 39 checks, one signed commit, and a
+ruleset of five rules); every other merge sends `$own` false and reads what it always did.
 
 **Assignees.** Both sheets assign and unassign people with at most two REST requests at the
 issues endpoint, where GitHub keeps a pull request's assignees too: `RemoveAssignees` takes
@@ -1471,7 +1487,24 @@ rule it skips to accept, and never the sheet's button unless the user turns on
 `review.bypassOwn` (`Prefs.BypassOwn`, which `Decide` takes with the merge method): then
 `primary` puts it first on the user's own pull request that waits only on an approval
 (`waitsOnReview`: BLOCKED, an approval required, no required check failing or pending, no
-changes requested), and it still asks first. An UNSTABLE pull request's readiness
+changes requested), and it still asks first. The one other `merge_bypass` is a routine's
+(`ActRequest.Routine`, `json:"-"`, so the window can't send it; `pastrules.go`): `Act`
+refuses it unless the read finds the user's own pull request in that same state, offered past
+the rules (`OwnAwaitsApproval`, which the sheet also returns), warning of nothing but the
+approval (`OwnApprovalSkipped`) and, with `RoutineMerge.Sensitive`, the sensitive files
+(`SensitiveWarning`, `StrayWarning`); never takes its `Accept` for accepted failing checks;
+and its guard reads `FetchOwnMergeState` instead and merges past the rules only when
+`pastRules` finds every check holding: the viewer opened it; every commit, at most 100, has a
+signature GitHub verified whose signer is the viewer; each ruleset rule is one it can account
+for (`allowedRules`: the pull request rule, required checks and signatures, no force push, no
+deletion, creation, the push-time file rules, Copilot's review, and a linear history for squash
+or rebase) and classic protection neither requires deployments nor locks the branch; BLOCKED,
+`viewerCanMergeAsAdmin`, and `REVIEW_REQUIRED`; the rollup SUCCESS with each required check
+(the rules' and classic protection's) present by name and passed; and no review thread
+unresolved. A list longer than its page, and a null, fail closed. GitHub still working it out
+(UNKNOWN, a rollup pending or missing) is `ErrPastRulesNotYet`; anything else
+`ErrPastRulesRefused`, which wraps `ErrNotOffered`. A state GitHub would merge anyway merges as
+any other. An UNSTABLE pull request's readiness
 line and merge warning say what GitHub counts as not passing: optional checks failing or
 running, and the head commit's workflow runs that ended without a check (`Unrun`, read in
 the review query from the head commit's own check suites, `headSuites: commits(last: 1)`,
@@ -3300,7 +3333,13 @@ key and every closed set of values.
   most; Wait for the checks only after an agent step in the background that may push, and
   never only if it didn't push; Merge it only after a Wait for the checks that runs only if
   the agent pushed, so the pass it follows is on the agent's own commit and never a flaky
-  check run again, with `onlyIf: "passed"`; Post the agent's
+  check run again, with `onlyIf: "passed"`, or, in a spec with no agent step and no wait
+  (`Spec.Agentless`), on the trigger `checks_passed`, once per head commit, with no Only if
+  and no rebase, update of the branch, or script step before it (`agentlessMerge`, from
+  `validator.event`, `oncePer`, and `before.changesBranch`); `allowBypass` and
+  `allowSensitive` only there, with `how: "whenMergeable"`, and `allowSensitive` only with
+  `allowBypass` (`pastRules`; `TestOnlyMergeItNamesABypass` holds them the format's only keys
+  naming a bypass); Post the agent's
   review only after a read-only agent step in the background; Allow approving only with
   `as: "verdict"`; only a notice after an agent step in the terminal, whose end the app
   can't see; and an Only if only on an outcome an earlier step ends with (the checks', the
@@ -3513,15 +3552,19 @@ lists the category as **Autopilot routines**, beside the others.
 `autopilot.dailyCap` and `autopilot.dailyCapUnit` (0 for none, else 1 to 500 dollars or
 100,000 to 50,000,000 tokens; `usd` or `tokens`), `autopilot.keepAwake` (off),
 `autopilot.holdOnOutage` (on), `autopilot.catchUpHours` (24, 1 to 168),
-`autopilot.historyDays` (90, 7 to 365), and `autopilot.logDays` (30, 1 to 90, never more than
-the history). `Decode` reads a value out of range as its default, a cap that doesn't fit its
+`autopilot.historyDays` (90, 7 to 365), `autopilot.logDays` (30, 1 to 90, never more than
+the history), and `autopilot.mergePastRules` (Let routines merge your own pull requests past
+the rules, off: see *Past the rules* under Merge it, below). `Decode` reads a value out of range as its default, a cap that doesn't fit its
 unit as none, and logs longer than the history as long as it. Settings alone writes them:
 each `SetAutopilot…` setter reads them and writes the change in the transaction that reads
 the settings back, refuses what `Config.Check` refuses with a worded sentence, writes only
 the keys that change (`Writes`: a setting never touched keeps following its default), and
 emits the Go-only `event.AutopilotChanged`; a shorter history shortens the logs with it, and
 logs past the history are refused. Backups carry them as `Portable.Autopilot`, the switch
-(`enabled`) among them, the history and the logs checked together against this Mac's. The bug
+(`enabled`) among them, the history and the logs checked together against this Mac's, but
+`mergePastRules`, which neither `PortableAutopilot` nor `autopilotFields` holds, so no backup
+sets it either way; nor can Describe it, whose `SettingsChange` has no field for it and whose
+decoder names it the user's alone. The bug
 report's Labs line always says whether Autopilot is on. While it is on, or the user has a
 routine (not deleted), the report states the settings, then Describe it's agent, with the
 routines counted by mode, by switch, broken, and another account's, none named; while it is
@@ -3939,9 +3982,13 @@ What the user sees is in `docs/desktop.md`'s *Merge it and Post the agent's revi
   before it is sent, paced by `pace` and the GitHub actions a day, and never sent twice on its
   own (`writesGitHub`). The dispatcher's `ReadItem` is the sheet's read, and the job carries
   the commit it is pinned to (`followUp`): for Merge it, `mergeHead`, the commit the step's
-  Wait for the checks passed on (`stepRun.Commit`, which `applyVerdict` records), and
-  `Job.AutoMerge`, whether to turn auto-merge back on (`autoMergeBack`: `MergeHow` says so,
-  and it was on as the routine matched, `autopilot_matches.auto_merge_at_match`); for Post the agent's review, `agentReviewOf`, the review
+  Wait for the checks passed on (`stepRun.Commit`, which `applyVerdict` records), or, with
+  no agent step and no wait, the match's own head, only while its fire key is that commit's
+  `checks_passed` key (`agentlessHead`, `eval.CommitKey`: a click's run, keyed `manual:`,
+  merges nothing), `Job.AutoMerge`, whether to turn auto-merge back on (`autoMergeBack`:
+  `MergeHow` says so, and it was on as the routine matched,
+  `autopilot_matches.auto_merge_at_match`), and `Job.PastReview`, `Sensitive`, and
+  `PastReviewWhy` (`pastReview`, below); for Post the agent's review, `agentReviewOf`, the review
   the read-only agent's report held (`agentrun.Report.Review`, kept to `ReportSchema`'s
   `review` object, carried on `RunEnd.Review` into the agent step's `stepRun.Review`) and the
   commit its run started at, and `Job.Review`, what `reviewEvent` decided to post. A run whose
@@ -3954,9 +4001,41 @@ What the user sees is in `docs/desktop.md`'s *Merge it and Post the agent's revi
   bot's pull request (`guardOf`, from `FieldTrust`), every file checked and none sensitive
   (`FieldSensitive`, known and not partial), and no routine's run that recorded a commit
   there (`pushedTo`); else it posts as a comment, saying which guard held it.
+- **An agentless merge is decided again** (`recheck`, second in the gate): a match that ran a
+  step before its Merge it is never settled again by `closeMoved`, so right before the merge
+  (and again on the cycle after its fresh read) the routine's decision on the item must be yes
+  on the match's own fire key. A yes on another key closes it `moved_on`; a no whose trigger
+  held (a condition, such as a label taken off) `no_longer_matches`; anything else, a trigger
+  that doesn't hold now (checks running again) or a condition not known yet, waits
+  `settling`, reading nothing.
+- **Past the rules** (`pastrules.go`). `pastReview` lets a Merge it go past the rules only
+  with every consent the user gave and the engine can see: the step's `AllowBypass`
+  (`AllowSensitive` for sensitive files); a routine's own run (`matchWhy`: not a click's, at
+  the commit its checks passed on); `autopilotprefs.Config.MergePastRules` on; the routine's
+  `past_rules_hash` equal to the full SHA-256 of its stored spec (`accepted`), and the match's
+  steps that routine's (`SpecHash`); and no routine's run having pushed to it (`pushedTo`,
+  as for an approval). A step that allows it but may not says why (`PastReviewWhy`); one that
+  doesn't allow it says nothing. `Service.Save` stores the hash only with
+  `Draft.AcceptPastRules`, or when the new spec text is the very one accepted
+  (`pastRulesToWrite`), refuses a spec with a tick otherwise as a problem at its first
+  `merge.allowBypass` (`ProblemsError`), and clears it for a spec with no tick; `Routine.PastRules`
+  (`allowed`, `needsTick`, or `""`) says where it stands. Duplicate, Restore, and Import
+  insert none; a backup's import clears it; the prompt rename's follower carries it only while
+  it stood; no export, backup, or `autopilot.json` holds it.
 - **Core** (`internal/core/adapters_followups.go`, `githubSteps.Merge` and `PostReview`):
   each reads through the review sheet (`Refresh`, serving the read just made), then decides
-  on it with the pure `mergeDecision` or `reviewDecision`: a head other than the pinned one
+  on it. A merge of the user's own pull request that lacks only an approval
+  (`Review.OwnAwaitsApproval`), with `PastReview` or `PastReviewWhy` set, goes to
+  `pastReview` (`adapters_pastreview.go`, the only file of core that names
+  `review.ActionMergeBypass`, each request there with `Routine` set, which
+  `TestOnlyThePastReviewAdapterMergesPastTheRules` parses core to hold): `PastReviewWhy`
+  closes it `not_offered` with the reason; else it reads the switch again
+  (`autopilotSettings`), refuses an offer warning of more than the approval and, as the step
+  allows, sensitive files (`pastReviewOffer`), and sends `merge_bypass` with
+  `review.RoutineMerge`; `ErrPastRulesNotYet` comes back `GitHubNotYet`, which waits
+  `settling` and is tried a tick later, never asking the user, and a merge past the rules says
+  *Squash-merged #12 past the rules: it lacked only an approval from someone else.* Any other
+  merge goes on with the pure `mergeDecision` or `reviewDecision`: a head other than the pinned one
   is not offered; auto-merge already on is nothing; a merge the sheet won't send but would
   approve and merge (`waitsOnReview`) is `GitHubNeedsReview`, which waits
   `review_required` for the user, never approving; and anything else goes only as the sheet
@@ -3968,14 +4047,14 @@ What the user sees is in `docs/desktop.md`'s *Merge it and Post the agent's revi
   never fails whole on a line GitHub would refuse). Then the sheet's `Act` sends it under
   the inbox's `Actor` and the write gate: only `merge_now` (`mergeMethodOf`, the step's
   method) or `auto_merge`, and only `comment`, `request_changes`, or `approve`;
-  `TestMergeAndReviewReachNoForbiddenAction` parses the adapter and fails on
+  `TestMergeAndReviewReachNoForbiddenAction` parses `adapters_followups.go` and fails on
   `merge_bypass`, `approve_auto_merge`, a close, approving workflow runs, or sending
   `approve_merge`, whose offer it only reads. A merge GitHub refuses, by the merge state the
   sheet reads right before it or by the merge itself (`github.ErrNotMergeable`), merged
   nothing, so `mergeSent` makes it not offered, in the sheet's words, never a failure after
   which GitHub may have taken it.
 - **Ask first** (`askFirst`): both steps ask again once reached (`followsRun`, the wait's
-  words from `followWords`), whatever the routine's OK to start, and `Approve` records the
+  words from `followWords`), whatever the routine's OK to start, a click's run's too, and `Approve` records the
   OK on the step (`stepRun.OK`), so the card shows what the run came to. The window's card
   reads it from `MatchStep` (`Merge`, the merge's words; `AutoMerge`; `Review`, `ReviewAs`,
   `AllowApprove`, `PostAs`).

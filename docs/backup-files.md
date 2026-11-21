@@ -129,7 +129,7 @@ is each entry left out.
 | `ignoredWorkflows` | *Ignored workflows*: the names of the workflows whose runs, held for approval, never count toward where a pull request stands on its card or in the review sheet, each matched whole and case-sensitively. An empty list, the default, ignores none. |
 | `integrations` | Each integration's switch (`switches`), the copy of each tool you chose (`paths`, absolute, `""` for the one your shell finds), `runsIn`, `offerAfterMerge`, `magexTargets`, `repoFiles`, and `showRuns`. |
 | `updateMode` | What the app does when a new version is out: `download` (download it and tell me), `notify` (just tell me), or `off` (don't check). |
-| `autopilot` | Autopilot's settings: `enabled` (Autopilot (beta), which a file brings to this Mac with the rest: on, it shows and runs here), `paused`, `defaultMode` (`dryRun`, `ask`, or `auto`), `agentsAtOnce` (1 to 3), `runsPerDay` and `actionsPerDay` (1 to 200), `dailyCap` (`{"amount", "unit"}`: `0` for none, else 1 to 500 in `usd` or 100,000 to 50,000,000 in `tokens`), `keepAwake`, `holdOnOutage`, `catchUpHours` (1 to 168), `historyDays` (7 to 365), and `logDays` (1 to 90, never more than the history). The history and the logs are checked together, against this Mac's when the file holds only one. |
+| `autopilot` | Autopilot's settings: `enabled` (Autopilot (beta), which a file brings to this Mac with the rest: on, it shows and runs here), `paused`, `defaultMode` (`dryRun`, `ask`, or `auto`), `agentsAtOnce` (1 to 3), `runsPerDay` and `actionsPerDay` (1 to 200), `dailyCap` (`{"amount", "unit"}`: `0` for none, else 1 to 500 in `usd` or 100,000 to 50,000,000 in `tokens`), `keepAwake`, `holdOnOutage`, `catchUpHours` (1 to 168), `historyDays` (7 to 365), and `logDays` (1 to 90, never more than the history). The history and the logs are checked together, against this Mac's when the file holds only one. Let routines merge your own pull requests past the rules is never in a file: it stays as it is on each Mac. |
 
 ### Repositories
 
@@ -173,7 +173,10 @@ Each routine has its `name` (unique, ignoring case), `description` (left out whe
 `template` (the template it was made from, left out for none), and `spec`, its definition: one
 JSON object with its own `version`, naming prompts by nickname or by starter and profiles by
 agent and name, never by ID, so it works on another Mac. A routine has no ID and no account in
-a file, and never its history: what it matched, ran, or was told.
+a file, and never its history: what it matched, ran, or was told. Nor does a file hold your
+confirmation that a routine may merge your own pull requests past the rules (its Merge it's
+`allowBypass`): a routine with that tick arrives asking for it again, and merges only what
+GitHub allows until you save it, confirming it.
 
 An import matches routines by name, ignoring case in any alphabet. A routine the same as the
 file's (its `spec`, `description`, and `mode`) is left as it is, on or off, under either mode;

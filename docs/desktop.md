@@ -2509,7 +2509,9 @@ one. Each is made with your `gh` token, and GitHub's answer is checked before th
 A combined action, such as **Approve & merge**, makes its changes one at a time and costs the sum
 of their rows, and so does a merge that posts your text as a comment first (Merge when ready
 then reads the merge state before the comment, 1 GraphQL point more). Nilbox never goes past branch protection on its own (only **Merge past the
-rules** does, when you choose it), and no agent ever approves, merges, or closes: every
+rules** does, when you choose it, and an Autopilot routine you
+[allow](#merge-it-and-post-the-agents-review) on your own signed pull request that lacks only an
+approval), and no agent ever approves, merges, or closes: every
 approval, merge, and close happens only because you clicked. The one change Nilbox makes on its
 own is [clearing your GitHub notifications](#github-notifications), and only once you turn
 clearing on: it marks a notification done, or read, when the work behind it is finished.
@@ -2903,7 +2905,9 @@ each nudge with **Then snooze** ticked, for your snooze length. A note under the
   merges only once you tick **I'm merging past the rules**. It still reads the merge state first:
   it refuses after a push, on conflicts, or once GitHub no longer lets you, and when GitHub would
   merge anyway by then, it's a plain merge. The toast says **Merged acme-org/api#212 past the
-  rules (squash)**.
+  rules (squash)**. Nothing else in Nilbox merges past the rules but a routine you allow, on your
+  own signed pull request that lacks only an approval ([how](#merge-it-and-post-the-agents-review)),
+  and no agent can.
 - **A step GitHub made stands.** An approval GitHub took and a merge it won't make yet comes back
   as **Approved, but GitHub won't merge yet: 1 required check failing**, never as an error. A
   token GitHub refuses midway is borrowed again, and the approval is not sent twice.
@@ -3366,8 +3370,12 @@ you have.
   if** on a step before it (*only if it pushed*, *only if the checks passed*), **↑ ↓** to move
   it, and **🗑**. **+ Add a step** offers only what fits at the end: one agent step at most,
   **Wait for the checks** only after an agent step that may push, **Merge it** only after a
-  wait on its push, **Post the agent's review** only after a read-only agent step, and only a
-  notice after an agent step in your terminal.
+  wait on its push, or with no agent step in a routine that fires when **Checks pass**, **Post
+  the agent's review** only after a read-only agent step, and only a notice after an agent
+  step in your terminal. A Merge it with no agent step has two more ticks, **Merge past the
+  rules when an approval is all it lacks** and **Also when it changes workflow, agent, or
+  tooling files**, which [Merge it](#merge-it-and-post-the-agents-review) explains; with
+  either, **Save** first asks you to confirm what the routine may do, a box for each.
 - **The GitHub step** lists its actions in the order they are sent, each with **↑ ↓** and
   **🗑**, and **+ Add an action** offers what it hasn't and what fits the items: **Ask
   Dependabot to rebase** and **Update branch** for pull requests, **Comment one of my replies**
@@ -3906,20 +3914,77 @@ sends nothing. In Ask first, each asks again once it is reached, showing what th
 whatever your OK to start the routine.
 
 **Merge it** comes after a **Wait for the checks** (*only if the checks passed*, as **+ Add a
-step** sets it), and merges only the commit the checks passed on.
+step** sets it), and merges only the commit the checks passed on. Or, in a routine with no
+agent step that fires when **Checks pass**, it merges the commit the checks passed on, after
+any steps before it that don't change the branch (a reply or labels, say, never **Ask
+Dependabot to rebase**, **Update branch**, or a script). Such a routine acts once per head
+commit, and **+ Add a step** offers Merge it there with no *only if*. Right before it merges,
+the routine is decided again on what the item's read found: a push since closes the match as
+moved on, a condition that no longer holds (a label taken off) as no longer matching, and
+checks running again wait. A run you start by hand (**Run anyway**) never merges in such a
+routine: there was no pass to merge.
 
 - **How:** *auto-merge if it was on, else when GitHub allows* (where it starts) turns GitHub's
   auto-merge back on when it was on as the routine matched, as a push to the branch turns it
   off; else, and with *when GitHub allows*, it merges at once, but only when GitHub says it
   would merge now. **Method:** the repository's own, a merge commit, squash, or rebase.
-- It never merges past branch protection or as an admin. When GitHub holds the merge for an
-  approving review, it waits in [Needs you](#needs-you) (*GitHub wants an approving review
-  before it merges this: approve it, then let the merge go.*) with **Approve and merge…**,
-  which opens the review sheet for you to approve, and **Merge**, which tries again.
+- It merges past branch protection in one case alone, below; otherwise never, nor as an admin.
+  When GitHub holds the merge for an approving review, it waits in [Needs you](#needs-you)
+  (*GitHub wants an approving review before it merges this: approve it, then let the merge
+  go.*) with **Approve and merge…**, which opens the review sheet for you to approve, and
+  **Merge**, which tries again. Your own pull request, which GitHub never lets you approve,
+  closes instead, as no longer offered.
 - It never merges where the agent's commits changed workflow, agent, or tooling files, or
   where not every file they changed could be checked, *Its agent's commits changed workflow
   files, so it isn't merged: a person reviews those.*, nor an outside contributor's pull
   request.
+
+**Merge past the rules when an approval is all it lacks** is a tick on a Merge it with no agent
+step, in a routine that fires when **Checks pass**, merging *when GitHub allows*. It is for your
+own pull requests that nobody else reviews, such as a sync a tool opens in your name: on a
+repository whose rules want an approving review, the merge waits for one that never comes, and
+the review sheet's own [Merge past the rules](#reviewing-a-pull-request) is what you'd click by
+hand. With the tick, the routine merges it so with no click, once three things are yours:
+
+1. **Let routines merge your own pull requests past the rules** is on in **Settings →
+   Autopilot** (off where it starts). It is never in a backup, Describe it can't propose it,
+   and turning it off stops every such merge at once. While it is off, the builder and
+   Describe it's card warn on the step, and it merges only what GitHub allows.
+2. You confirm the routine when you save it, in the builder or from Describe it's card: Save
+   lists exactly what it may do, a box to tick for each tick, and saves only once they are.
+   That confirms the routine as it is: any change to what it does asks again (a new name
+   doesn't), and so does a copy, an import, a restored routine, or one a backup brings back.
+3. **Also when it changes workflow, agent, or tooling files**, a second tick, for a pull
+   request that changes [sensitive files](#sensitive-files) too; without it, such a pull request
+   isn't merged past the rules.
+
+Each time, right before it merges, it reads the pull request again (one GraphQL point, with the
+merge state) and goes only if every one of these holds:
+
+- It is your own pull request, at the commit the routine's checks passed on, and no routine's
+  run pushed to it. Every one of its commits, at most 100, is signed, with a signature GitHub
+  verified, by you: anyone can write your name on a commit, but not sign it with your key.
+- GitHub holds it back (BLOCKED) only for an approving review: no request for changes, not
+  behind its base, no conflicts, and GitHub lets you merge past the rules, as it lets a
+  repository admin.
+- Every check on the head passed, each check its branch requires among them, by name, and no
+  review thread is left unresolved.
+- Each rule on its base branch is one a routine can account for: the pull request rule it goes
+  past, required checks and signatures (checked above), no force pushes, no deletion, the
+  rules about files that pushes keep to, Copilot's automatic review, and a linear history for
+  squash or rebase. Any other (a merge queue, required deployments, a locked branch, one it
+  can't read) stops it.
+- The merge warns of nothing but the approval and, with the second tick, the sensitive files.
+
+When all hold it squash-merges (or merges with the step's method) at the head, and Activity
+says *Squash-merged #12 past the rules: it lacked only an approval from someone else.* When
+GitHub would merge it anyway, it merges as any Merge it does. While GitHub still works out the
+merge state, or the checks still report, it tries again on a later cycle. Anything else closes
+the match as no longer offered, saying why (*Its commit 4f2a9c1 wasn't signed by you.*):
+nothing ever waits for your click. In Ask first, the step asks before it merges, as Merge it
+always does. A GitHub admin merge has the same moment between its read and its merge as the
+review sheet's own: a push in that second is refused by GitHub, which merges only the head the
+routine named.
 
 **Post the agent's review** comes after an agent step in **Read only**, and posts what the
 agent wrote in its report (its verdict, its text, and its line comments) at the commit the
@@ -4060,8 +4125,10 @@ at the pace above. A GitHub action never merges,
 approves, requests changes, closes, or approves workflow runs, and a test fails the build if one
 could reach any of them: merging and posting a review are steps of their own, each opt-in
 and behind its own guards ([Merge it and Post the agent's
-review](#merge-it-and-post-the-agents-review)), which never close anything, approve workflow
-runs, or merge past GitHub's rules. A reply that approves (*LGTM*,
+review](#merge-it-and-post-the-agents-review)), which never close anything or approve workflow
+runs, and merge past GitHub's rules only your own signed pull request that lacks only an
+approval from someone else, as a routine you confirmed allows it while **Let routines merge
+your own pull requests past the rules** is on. A reply that approves (*LGTM*,
 *Update OK*) or requests changes is refused where the routine is built and again right before
 each action; one your library changed since holds the action back (**⚡ Can't start yet**) and
 says why, reading nothing from GitHub.
@@ -4189,6 +4256,7 @@ This section, marked **Beta**, shows while Autopilot (beta) is on in **Settings 
 | **Ask before catching up after** | 24 hours | After Nilbox was closed this long, a routine's agent and GitHub steps will wait for your OK; local steps never do |
 | **History kept** | 90 days | How long what the routines did is kept; lowering it lowers the run logs with it |
 | **Run logs kept** | 30 days | How long an agent run's log will be kept, never longer than the history |
+| **Let routines merge your own pull requests past the rules** | Off | A routine whose Merge it allows it, and that you confirmed as you saved it, may merge your own signed pull request that lacks only an approval from someone else ([how](#merge-it-and-post-the-agents-review)); off, none does, and turning it off stops every such merge at once. Never in a backup, and Describe it can't propose it |
 | **Clear history…** | | Removes now, after asking, what the routines did with items that are done with: gone, merged, or closed, or out of every list and search for longer than the history is kept. Your routines and what still waits stay, and it says *Nothing to clear.* when there was nothing |
 | **Stop all** | | Stops at once every routine's coding agent working in the background, and every script a routine's step runs; the runs you started yourself carry on |
 | **Describe it's agent**, under **Claude Code** | Inherit | The Claude Code profile, model, and effort a new [Describe it](#describe-it) conversation starts with, each **Inherit** until you choose one; the profile inherits the launch defaults' Claude Code profile, and the model and effort that profile's own, which every turn runs with (a profile with none of its own runs Claude Code's default). A conversation keeps the agent it started with, and its **Change ▸** starts another |
@@ -4198,9 +4266,10 @@ This section, marked **Beta**, shows while Autopilot (beta) is on in **Settings 
 The limits hold every routine's coding agents, in the background and in your terminal, and its
 [GitHub actions](#what-autopilot-may-change-on-github). A limit delays a match and never loses
 it: one over today's limit starts tomorrow, and a day runs from local midnight. Local steps keep
-only to Pause Autopilot and a routine's own active hours. Backups carry these settings, and the
-**Autopilot routines** category carries the routines (see
-[Backing up your setup](#backing-up-your-setup)).
+only to Pause Autopilot and a routine's own active hours. Backups carry these settings but **Let
+routines merge your own pull requests past the rules**, which stays as it is here, and the
+**Autopilot routines** category carries the routines, never your confirmation that one merges
+past the rules (see [Backing up your setup](#backing-up-your-setup)).
 
 ### Budgets and caps
 
@@ -4260,9 +4329,14 @@ each start, the item's own agent and profile are checked again.
 - It changes on GitHub only the [five things](#what-autopilot-may-change-on-github) the sheets
   already change, and merges or posts an agent's review only through the opt-in
   [steps that follow a run](#merge-it-and-post-the-agents-review), inside GitHub's own rules.
-  It never closes anything, approves workflow runs, or merges past branch protection, and a
-  test fails the build if any of its code could; nor does it approve a pull request a routine
-  pushed to.
+  It never closes anything or approves workflow runs, and a test fails the build if any of its
+  code could; nor does it approve a pull request a routine pushed to, or anything at all but
+  through Post the agent's review.
+- It merges past branch protection only your own pull request whose every commit you signed,
+  that lacks only an approval from someone else, through a Merge it with no agent step that
+  allows it, in a routine you confirmed as it is, while **Let routines merge your own pull
+  requests past the rules** is on; never anyone else's, never one an agent or a routine
+  pushed to, and never a run you started by hand. No agent can merge at all.
 - It never starts an agent on an outside contributor's item unless its org or repository
   allows it, and then read only; never runs a pull request you didn't open that changes agent
   configuration without your OK; and never pushes but once, to the pull request's own branch,
