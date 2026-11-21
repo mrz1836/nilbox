@@ -1,10 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { FileCheck } from '../platform'
 import { deferred } from '../test/async'
-import { at } from '../test/clock'
+import { renderAt } from '../test/clock'
 import { agentGroup, fileCheck, workflowsGroup } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { expectWraps } from '../test/wrap'
@@ -13,7 +13,7 @@ import { SensitiveFiles } from './SensitiveFiles'
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 function renderChip(check: FileCheck = fileCheck(), onSettings?: () => void) {
-  render(<SensitiveFiles itemId={7} check={check} onSettings={onSettings} />, { wrapper: at() })
+  renderAt(<SensitiveFiles itemId={7} check={check} onSettings={onSettings} />)
 }
 
 async function openPanel(name: RegExp) {
@@ -80,11 +80,10 @@ describe('SensitiveFiles', () => {
       description:
         'Run on CI with the repository’s token and secrets once merged, and some run on the pull request itself.',
     })
-    render(
+    renderAt(
       <div className="whitespace-nowrap">
         <SensitiveFiles itemId={7} check={fileCheck({ groups: [agentGroup(), workflows], complete: false })} />
       </div>,
-      { wrapper: at() },
     )
 
     const panel = await openPanel(/^Changes sensitive files/)
@@ -213,11 +212,10 @@ describe('SensitiveFiles', () => {
   })
 
   it('fits the panel inside the area it scrolls in', async () => {
-    render(
+    renderAt(
       <div style={{ overflowY: 'auto' }}>
         <SensitiveFiles itemId={7} check={fileCheck()} />
       </div>,
-      { wrapper: at() },
     )
 
     await userEvent.click(screen.getByRole('button', { name: /^Changes sensitive files/ }))

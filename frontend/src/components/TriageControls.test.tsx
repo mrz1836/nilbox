@@ -1,11 +1,11 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { RowWork } from '../lib/rowWork'
 import type { TriageTab } from '../lib/triage'
 import type { InboxItem } from '../platform'
-import { at } from '../test/clock'
+import { renderAt } from '../test/clock'
 import { item } from '../test/fixtures'
 import { triageActionsOf } from '../test/query'
 import { SheetTriage, TriageControls } from './TriageControls'
@@ -17,9 +17,7 @@ const pinned = item({ pinnedAt: '2026-06-15T10:00:00Z' })
 // cardTriage renders a card's triage for an item in a tab, the row doing work.
 function cardTriage(it: InboxItem, tab: TriageTab, work: RowWork = null) {
   const actions = triageActionsOf()
-  render(<TriageControls item={it} tab={tab} actions={actions} work={work} start={vi.fn()} mode="card" />, {
-    wrapper: at(),
-  })
+  renderAt(<TriageControls item={it} tab={tab} actions={actions} work={work} start={vi.fn()} mode="card" />)
 
   return actions
 }
@@ -102,9 +100,8 @@ describe('TriageControls, card mode', () => {
 describe('TriageControls, row mode', () => {
   it('keeps a pinned item’s Unpin always shown, and brings a set-aside item back', () => {
     const actions = triageActionsOf()
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <TriageControls item={pinned} tab="inbox" actions={actions} work={null} start={vi.fn()} />,
-      { wrapper: at() },
     )
 
     expect(hidden(screen.getByRole('button', { name: 'Unpin' }))).toBe(false)
@@ -116,7 +113,7 @@ describe('TriageControls, row mode', () => {
 
 describe('SheetTriage', () => {
   it('shows Snooze, Dismiss, and Pin at once in the inbox tab', () => {
-    render(<SheetTriage item={item()} tab="inbox" actions={triageActionsOf()} />, { wrapper: at() })
+    renderAt(<SheetTriage item={item()} tab="inbox" actions={triageActionsOf()} />)
 
     for (const name of ['Snooze for 3 days', 'Dismiss', 'Pin to top']) {
       expect(hidden(screen.getByRole('button', { name }))).toBe(false)
@@ -129,7 +126,7 @@ describe('SheetTriage', () => {
     ['dismissed', 'Restore'],
   ] as const)('brings an item back from the %s tab', async (tab, name) => {
     const actions = triageActionsOf()
-    render(<SheetTriage item={item()} tab={tab} actions={actions} />, { wrapper: at() })
+    renderAt(<SheetTriage item={item()} tab={tab} actions={actions} />)
 
     await userEvent.click(screen.getByRole('button', { name }))
 
@@ -138,7 +135,7 @@ describe('SheetTriage', () => {
 
   it('unmutes what mutes the item from the Muted tab', async () => {
     const actions = triageActionsOf()
-    render(<SheetTriage item={item()} tab="muted" actions={actions} />, { wrapper: at() })
+    renderAt(<SheetTriage item={item()} tab="muted" actions={actions} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Unmute acme-org/example-repo' }))
 

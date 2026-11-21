@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { AgentSession } from '../platform'
-import { at } from '../test/clock'
+import { at, renderAt } from '../test/clock'
 import { agentSession, agents, launchHold, launchResult, runningHold } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { AutopilotRowsContext } from './autopilot/AutopilotChip'
@@ -21,7 +21,7 @@ function entries(want: number): HTMLElement[] {
 }
 
 function renderTag(sessions: readonly AgentSession[]) {
-  return render(<SessionTag sessions={sessions} agents={agents()} />, { wrapper: at() })
+  return renderAt(<SessionTag sessions={sessions} agents={agents()} />)
 }
 
 describe('SessionTag', () => {

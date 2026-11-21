@@ -1,22 +1,16 @@
-import { act, render as renderPlain, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Assigned } from '../lib/assignees'
 import type { AssigneeCandidates } from '../platform'
 import { deferred } from '../test/async'
-import { at } from '../test/clock'
+import { renderAt } from '../test/clock'
 import { assigneeCandidates } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { AssigneePicker, type AssigneeReads } from './AssigneePicker'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
-
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
-}
 
 // reads are the issue sheet's reads.
 function reads(): AssigneeReads {
@@ -39,7 +33,7 @@ async function open(
   const onLearned = vi.fn()
   const onClose = vi.fn()
 
-  render(
+  renderAt(
     <AssigneePicker
       itemId={1}
       repo="acme-org/example-repo"

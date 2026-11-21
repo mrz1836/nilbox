@@ -15,7 +15,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../generated/brand'
 import type { LaunchPreview } from '../platform'
 import { deferred } from '../test/async'
-import { at } from '../test/clock'
+import { at, renderAt } from '../test/clock'
 import {
   agentSession,
   agents,
@@ -1067,7 +1067,7 @@ describe('LaunchControls', () => {
   })
 
   it('shows the running session’s terminal rather than starting another', async () => {
-    render(<LaunchControls {...props({ running: agentSession() })} />, { wrapper: at() })
+    renderAt(<LaunchControls {...props({ running: agentSession() })} />)
 
     expect(screen.queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
 
@@ -1145,9 +1145,7 @@ describe('LaunchControls', () => {
   })
 
   it('waits for a starting session’s terminal before it can show it', () => {
-    render(<LaunchControls {...props({ running: agentSession({ state: 'starting', canFocus: false }) })} />, {
-      wrapper: at(),
-    })
+    renderAt(<LaunchControls {...props({ running: agentSession({ state: 'starting', canFocus: false }) })} />)
 
     const show = screen.getByRole('button', { name: 'Show in terminal' })
     expect(show).toBeDisabled()
@@ -1160,7 +1158,7 @@ describe('LaunchControls', () => {
       .mockResolvedValueOnce(launchResult({ hold }))
       .mockResolvedValueOnce(launchResult({ hold }))
       .mockResolvedValueOnce(launchResult())
-    render(<LaunchControls {...props({ running: agentSession() })} />, { wrapper: at() })
+    renderAt(<LaunchControls {...props({ running: agentSession() })} />)
 
     const menu = await openMenu()
     await userEvent.click(menu.getByRole('button', { name: 'Open in Claude' }))
@@ -1192,7 +1190,7 @@ describe('LaunchControls', () => {
     const base = runningHold()
     const running = base.running.map((r) => ({ ...r, number: 12, worktree: '' }))
     platform.launch.mockResolvedValueOnce(launchResult({ hold: { ...base, worktree: '', running } }))
-    render(<LaunchControls {...props()} />, { wrapper: at() })
+    renderAt(<LaunchControls {...props()} />)
 
     await launchIt()
 
@@ -1209,7 +1207,7 @@ describe('LaunchControls', () => {
       .mockResolvedValueOnce(launchResult({ hold: running }))
       .mockResolvedValueOnce(launchResult({ hold: files }))
       .mockResolvedValueOnce(launchResult())
-    render(<LaunchControls {...props()} />, { wrapper: at() })
+    renderAt(<LaunchControls {...props()} />)
 
     await launchIt()
     await userEvent.click(await screen.findByRole('button', { name: 'Start another' }))

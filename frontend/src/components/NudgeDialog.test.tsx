@@ -1,10 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Result } from '../lib/call'
 import type { InboxItem, Nudged } from '../platform'
-import { at } from '../test/clock'
+import { renderAt } from '../test/clock'
 import { details, item, replyList, snapshot } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { NudgeDialog, useNudge, type NudgeOptions } from './NudgeDialog'
@@ -52,7 +52,7 @@ function shown(why = '', snoozeFirst = false) {
   const onCancel = vi.fn()
   const onManageReplies = vi.fn()
 
-  render(
+  renderAt(
     <NudgeDialog
       item={waiting}
       snoozeDays={3}
@@ -61,7 +61,6 @@ function shown(why = '', snoozeFirst = false) {
       onCancel={onCancel}
       onManageReplies={onManageReplies}
     />,
-    { wrapper: at() },
   )
 
   return { onPost, onCancel, onManageReplies }
@@ -171,9 +170,8 @@ describe('NudgeDialog', () => {
 
   it('says why the replies couldn’t load, while they load, and when there are none', async () => {
     platform.reviewReplies.mockRejectedValue(new Error('the library is locked'))
-    const { unmount: unmountFirst } = render(
+    const { unmount: unmountFirst } = renderAt(
       <NudgeDialog item={waiting} snoozeDays={3} snoozeFirst={false} onPost={vi.fn()} onCancel={vi.fn()} />,
-      { wrapper: at() },
     )
 
     await waitFor(() => {
@@ -188,18 +186,15 @@ describe('NudgeDialog', () => {
     unmountFirst()
 
     platform.reviewReplies.mockReturnValue(new Promise(() => undefined))
-    const { unmount: unmountSecond } = render(
+    const { unmount: unmountSecond } = renderAt(
       <NudgeDialog item={waiting} snoozeDays={3} snoozeFirst={false} onPost={vi.fn()} onCancel={vi.fn()} />,
-      { wrapper: at() },
     )
     await userEvent.click(screen.getByRole('button', { name: 'Choose a reply' }))
     expect(screen.getByRole('menuitem', { name: 'Loading replies…' })).toBeInTheDocument()
     unmountSecond()
 
     platform.reviewReplies.mockResolvedValue(replyList({ replies: [], nudge: 0 }))
-    render(<NudgeDialog item={waiting} snoozeDays={3} snoozeFirst={false} onPost={vi.fn()} onCancel={vi.fn()} />, {
-      wrapper: at(),
-    })
+    renderAt(<NudgeDialog item={waiting} snoozeDays={3} snoozeFirst={false} onPost={vi.fn()} onCancel={vi.fn()} />)
     await waitFor(() => {
       expect(platform.reviewReplies).toHaveBeenCalledTimes(3)
     })
@@ -254,7 +249,7 @@ function hostOptions(answer: Result<Nudged>) {
 function hosted(answer: Result<Nudged>) {
   const options = hostOptions(answer)
 
-  render(<Host {...options} />, { wrapper: at() })
+  renderAt(<Host {...options} />)
 
   return options
 }
@@ -318,7 +313,7 @@ describe('useNudge', () => {
 
   it('closes for the replies, from its menu’s foot', async () => {
     const onManageReplies = vi.fn()
-    render(<Host {...hostOptions(posted)} onManageReplies={onManageReplies} />, { wrapper: at() })
+    renderAt(<Host {...hostOptions(posted)} onManageReplies={onManageReplies} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Nudge it' }))
     await userEvent.click(screen.getByRole('button', { name: 'Choose a reply' }))

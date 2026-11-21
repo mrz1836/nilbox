@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -7,7 +7,7 @@ import { CardPrefsContext, defaultCardPrefs } from '../lib/cardPrefs'
 import type { TriageTab } from '../lib/triage'
 import type { AutopilotRoutine, InboxItem, RepoRules } from '../platform'
 import { deferred } from '../test/async'
-import { at } from '../test/clock'
+import { renderAt } from '../test/clock'
 import { autopilotMatch, details, explanation, item, routine, routineSpec } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { editActionsOf, triageActionsOf } from '../test/query'
@@ -24,11 +24,10 @@ function renderRow(it: InboxItem, tab: TriageTab = 'inbox', repoRules?: RepoRule
   const triage = triageActionsOf(repoRules === undefined ? {} : { repoRules })
   const edits = editActionsOf()
 
-  render(
+  renderAt(
     <ul>
       <ItemRow item={it} launch={null} tab={tab} triage={triage} edits={edits} />
     </ul>,
-    { wrapper: at() },
   )
 
   return { triage, edits }
@@ -156,13 +155,12 @@ describe('ItemMenu', () => {
     const unread = item({ unread: true })
     const triage = triageActionsOf()
 
-    render(
+    renderAt(
       <CardPrefsContext value={{ ...defaultCardPrefs, unread: false }}>
         <ul>
           <ItemRow item={unread} launch={null} triage={triage} edits={editActionsOf()} />
         </ul>
       </CardPrefsContext>,
-      { wrapper: at() },
     )
 
     await openMenu()
@@ -354,11 +352,10 @@ describe('ItemMenu', () => {
     const triage = triageActionsOf()
     const edits = editActionsOf({ onNudge: vi.fn() })
 
-    render(
+    renderAt(
       <ul>
         <ItemRow item={it} launch={null} tab="snoozed" triage={triage} edits={edits} />
       </ul>,
-      { wrapper: at() },
     )
 
     expect(screen.getByRole('button', { name: 'Unsnooze' }), 'the primary stays Unsnooze').toBeInTheDocument()
@@ -382,7 +379,7 @@ describe('ItemMenu', () => {
   it('offers no nudge of a bot, nor where the menu can’t post one', async () => {
     const waiting = { author: 'contributor-a', details: details({ viewerVerdict: 'changes' }) }
 
-    render(
+    renderAt(
       <ul>
         <ItemRow
           item={item({ ...waiting, authorIsBot: true })}
@@ -391,7 +388,6 @@ describe('ItemMenu', () => {
           edits={editActionsOf({ onNudge: vi.fn() })}
         />
       </ul>,
-      { wrapper: at() },
     )
     await openMenu()
     expect(names(screen.getByRole('menu'))).toEqual(['Open on GitHub', 'Copy link', 'Inbox actions'])
@@ -517,11 +513,10 @@ describe('ItemMenu open', () => {
     const edits = editActionsOf({ onOpen: vi.fn() })
     const it = item()
 
-    render(
+    renderAt(
       <ul>
         <ItemRow item={it} launch={null} tab="inbox" triage={triage} edits={edits} />
       </ul>,
-      { wrapper: at() },
     )
 
     const menu = await openMenu()
@@ -533,11 +528,10 @@ describe('ItemMenu open', () => {
     const edits = editActionsOf({ onOpen: vi.fn() })
     const it = item({ kind: 'issue' })
 
-    render(
+    renderAt(
       <ul>
         <ItemRow item={it} launch={null} tab="inbox" triage={triageActionsOf()} edits={edits} />
       </ul>,
-      { wrapper: at() },
     )
 
     const menu = await openMenu()
@@ -547,11 +541,10 @@ describe('ItemMenu open', () => {
   })
 
   it('offers neither without a sheet', async () => {
-    render(
+    renderAt(
       <ul>
         <ItemRow item={item()} launch={null} triage={triageActionsOf()} edits={editActionsOf()} />
       </ul>,
-      { wrapper: at() },
     )
 
     const menu = await openMenu()
@@ -595,13 +588,12 @@ function WithRoutines({ routines, children }: { routines: readonly AutopilotRout
 // renderWithRoutines renders one row whose menu offers Autopilot, once the catalog that
 // says what each routine acts on is read.
 async function renderWithRoutines(it: InboxItem = item(), routines = menuRoutines()) {
-  render(
+  renderAt(
     <WithRoutines routines={routines}>
       <ul>
         <ItemRow item={it} launch={null} triage={triageActionsOf()} edits={editActionsOf()} />
       </ul>
     </WithRoutines>,
-    { wrapper: at() },
   )
 
   await waitFor(() => {
@@ -824,13 +816,12 @@ describe('ItemMenu Autopilot', () => {
     const made = vi.fn<(it: InboxItem) => void>()
     const described = vi.fn<(it: InboxItem) => void>()
 
-    render(
+    renderAt(
       <MakeRoutines onMake={made} onDescribe={described}>
         <ul>
           <ItemRow item={item()} launch={null} triage={triageActionsOf()} edits={editActionsOf()} />
         </ul>
       </MakeRoutines>,
-      { wrapper: at() },
     )
 
     await openMenu()
@@ -845,13 +836,12 @@ describe('ItemMenu Autopilot', () => {
     const made = vi.fn<(it: InboxItem) => void>()
     const described = vi.fn<(it: InboxItem) => void>()
 
-    render(
+    renderAt(
       <MakeRoutines onMake={made} onDescribe={described}>
         <ul>
           <ItemRow item={item()} launch={null} triage={triageActionsOf()} edits={editActionsOf()} />
         </ul>
       </MakeRoutines>,
-      { wrapper: at() },
     )
 
     await openMenu()

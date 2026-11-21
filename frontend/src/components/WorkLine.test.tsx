@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AutopilotMatch } from '../platform'
-import { at } from '../test/clock'
+import { at, renderAt } from '../test/clock'
 import { agentMatch, agentRun, agents, autopilotMatch } from '../test/fixtures'
 import { AutopilotRowsContext } from './autopilot/AutopilotChip'
 import { WorkLine } from './WorkLine'
@@ -51,7 +51,7 @@ describe('WorkLine’s Autopilot line', () => {
     showLine(autopilotMatch())
     expect(screen.queryByRole('button')).toBeNull()
 
-    render(<WorkLine worktree={undefined} sessions={[]} agents={agents()} itemId={1} />, { wrapper: at() })
+    renderAt(<WorkLine worktree={undefined} sessions={[]} agents={agents()} itemId={1} />)
     expect(screen.queryByText(/Fix failing checks/)).toBeNull()
   })
 })

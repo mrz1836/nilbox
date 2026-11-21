@@ -1,6 +1,6 @@
-import { act, render as renderPlain, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { CardPrefsContext, defaultCardPrefs } from '../lib/cardPrefs'
@@ -9,7 +9,7 @@ import type { LaunchOptions } from '../lib/launch'
 import type { TriageTab } from '../lib/triage'
 import type { InboxItem, ItemDetails, Worktree } from '../platform'
 import { deferred } from '../test/async'
-import { at } from '../test/clock'
+import { renderAt } from '../test/clock'
 import {
   agentSession,
   agents,
@@ -44,11 +44,6 @@ const launch: LaunchOptions = {
   onSettingsSaved: () => undefined,
 }
 
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
-}
-
 interface Setup extends Partial<ItemRowProps> {
   // rows are the rows' Autopilot, if Autopilot is on.
   rows?: AutopilotRows
@@ -65,7 +60,7 @@ function mountCard(it: InboxItem, { rows, ...props }: Setup = {}): HTMLElement {
   const wrapped: ReactNode =
     rows === undefined ? card : <AutopilotRowsContext value={rows}>{card}</AutopilotRowsContext>
 
-  render(<>{wrapped}</>)
+  renderAt(<>{wrapped}</>)
 
   return screen.getByRole('listitem')
 }
@@ -116,7 +111,7 @@ function body(row: HTMLElement): HTMLElement {
 
 describe('ItemRow', () => {
   it('names its item and its rule for the inbox to find, and marks it when highlighted', () => {
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <ul>
         <ItemRow item={item({ id: 42 })} launch={launch} />
       </ul>,
@@ -327,7 +322,7 @@ describe('ItemRow waiting on the author', () => {
   })
 
   it('offers no nudge while Offer a nudge after is Off', () => {
-    render(
+    renderAt(
       <CardPrefsContext value={{ ...defaultCardPrefs, nudgeAfterHours: 0 }}>
         <ul>
           <ItemRow
@@ -447,7 +442,7 @@ describe('ItemRow labels', () => {
 
   it('leaves out the labels the user hid before taking the first two', () => {
     const labels = ['size/XL', 'one', 'wontfix', 'two', 'three'].map((name) => ({ name, color: '#d73a4a' }))
-    render(
+    renderAt(
       <HiddenLabelsContext value={labelMatcher(['size/*', 'wontfix'])}>
         <ul>
           <ItemRow item={asked({ details: details({ labels }) })} launch={null} />
@@ -461,7 +456,7 @@ describe('ItemRow labels', () => {
   })
 
   it('shows no labels when every one is hidden, or there are none', () => {
-    render(
+    renderAt(
       <HiddenLabelsContext value={labelMatcher(['size/*'])}>
         <ul>
           <ItemRow item={asked({ details: details({ labels: [{ name: 'size/M', color: '' }] }) })} launch={null} />
@@ -601,7 +596,7 @@ describe('ItemRow chips', () => {
 
   it('marks a worktree with changes or in use, and nothing else', () => {
     const shown = (wt: Worktree) => {
-      const { unmount } = render(
+      const { unmount } = renderAt(
         <ul>
           <ItemRow item={asked()} launch={null} worktree={wt} />
         </ul>,
@@ -620,7 +615,7 @@ describe('ItemRow chips', () => {
 
   it('shows a routine’s chip, except when the story already is the routine’s', () => {
     const rows: AutopilotRows = { names: new Map(), chips: new Map([[1, autopilotMatch()]]) }
-    const { unmount } = render(
+    const { unmount } = renderAt(
       <AutopilotRowsContext value={rows}>
         <ul>
           <ItemRow item={asked()} launch={null} />
@@ -631,7 +626,7 @@ describe('ItemRow chips', () => {
     expect(screen.getByRole('button', { name: /^Autopilot: Snoozed/ })).toBeInTheDocument()
     unmount()
 
-    render(
+    renderAt(
       <AutopilotRowsContext value={rows}>
         <ul>
           <ItemRow item={asked()} launch={null} autopilot="needs:Heal bot PRs" />
@@ -646,7 +641,7 @@ describe('ItemRow chips', () => {
   })
 
   it('folds the chips past the second into a count that names them', () => {
-    render(
+    renderAt(
       <CardChips
         chips={[
           { key: 'a', words: 'First', node: <span>First</span> },
@@ -681,7 +676,7 @@ describe('ItemRow pin', () => {
 
   it('names its repository while the rules are unknown, and the routine that pinned it', () => {
     const rows: AutopilotRows = { names: new Map([[4, 'Pin outside PRs']]), chips: new Map() }
-    render(
+    renderAt(
       <AutopilotRowsContext value={rows}>
         <ul>
           <ItemRow item={asked({ repoRule: 'pinned' })} launch={null} />
@@ -792,7 +787,7 @@ describe('ItemRow tabs', () => {
 
 describe('ItemRow agent', () => {
   it('has no agent slot until the launch options load, but its own move', () => {
-    render(
+    renderAt(
       <ul>
         <ItemRow item={asked()} launch={null} />
       </ul>,
@@ -844,7 +839,7 @@ describe('ItemRow agent', () => {
   it('starts every card’s primary, and ends every card’s ▾, at the same place', () => {
     const failed = agentSession({ state: 'failed', stateAt: '2026-06-15T11:00:00Z', detail: '' })
     const ended = agentSession({ state: 'ended', endedAt: '2026-06-15T11:59:00Z', canFocus: false })
-    render(
+    renderAt(
       <ul>
         <ItemRow item={asked()} launch={launch} resolution={itemResolution()} />
         <ItemRow item={asked({ id: 2 })} launch={launch} resolution={itemResolution()} sessions={[ended]} />
@@ -993,7 +988,7 @@ describe('ItemRow agent', () => {
 
   it('offers what happened after a session failed today, and a fresh launch beside the item’s move after a day', () => {
     const failed = (at: string) => agentSession({ state: 'failed', stateAt: at, detail: '' })
-    render(
+    renderAt(
       <ul>
         <ItemRow
           item={asked()}
@@ -1246,7 +1241,7 @@ describe('ItemRow peek', () => {
     })
     const closed = issueInfo({ milestone: { ...milestone, dueOn: '2026-06-01', closed: true } })
 
-    render(
+    renderAt(
       <ul>
         <ItemRow item={item({ kind: 'issue', details: details({ issue: overdue }) })} launch={null} />
         <ItemRow item={item({ id: 2, kind: 'issue', details: details({ issue: closed }) })} launch={null} />
@@ -1265,7 +1260,7 @@ describe('ItemRow peek', () => {
   })
 
   it('leaves out where an item stands while it has nothing to say', async () => {
-    render(
+    renderAt(
       <ul>
         <ItemRow item={item({ kind: 'issue', details: details({ labels: [] }) })} launch={null} />
         <ItemRow item={item({ id: 2, title: 'Not read yet' })} launch={null} />
@@ -1287,7 +1282,7 @@ describe('ItemRow peek', () => {
   })
 
   it('names the teams and the push that put a pull request here', async () => {
-    render(
+    renderAt(
       <ul>
         <ItemRow item={asked({ reviewRequest: 'team', reviewTeams: [] })} launch={null} />
         <ItemRow item={asked({ id: 2, reviewRequest: 'pushed', details: details({ comments: 0 }) })} launch={null} />
@@ -1360,7 +1355,7 @@ describe('ItemRow peek', () => {
   it('reads an issue on GitHub without a sheet, and offers only its pin in a set-aside tab', async () => {
     const it = item({ kind: 'issue', details: details(), dismissedAt: '2026-06-15T10:00:00Z' })
     const triage = triageActionsOf()
-    render(
+    renderAt(
       <ul>
         <ItemRow item={it} launch={null} tab="dismissed" triage={triage} sessions={[agentSession()]} />
       </ul>,
@@ -1434,7 +1429,7 @@ describe.each(['comfortable', 'compact'] as const)('ItemRow lit, %s', (density) 
   // mountLit renders an item's card in the density, after a button the keyboard can start
   // from, and returns the row.
   function mountLit(it: InboxItem, props: Partial<ItemRowProps> = {}): HTMLElement {
-    render(
+    renderAt(
       <CardPrefsContext value={{ ...defaultCardPrefs, density }}>
         <button type="button">Before</button>
         <ul>
@@ -1574,7 +1569,7 @@ describe('ItemRow unread dot', () => {
   })
 
   it('shows no dot while the cards show no unread dots', () => {
-    render(
+    renderAt(
       <CardPrefsContext value={{ ...defaultCardPrefs, unread: false }}>
         <ul>
           <ItemRow item={asked({ unread: true })} launch={null} />
@@ -1592,7 +1587,7 @@ describe('ItemRow open', () => {
     const user = userEvent.setup()
     const pull = item()
     const triage = triageActionsOf()
-    render(
+    renderAt(
       <ul>
         <ItemRow item={pull} launch={null} tab="dismissed" triage={triage} onOpen={onOpen} />
       </ul>,
@@ -1625,7 +1620,7 @@ describe('ItemRow open', () => {
       title: 'Crash on start',
       url: 'https://github.com/acme-org/example-repo/issues/8',
     })
-    render(
+    renderAt(
       <ul>
         <ItemRow item={crash} launch={null} onOpen={onOpen} />
       </ul>,
@@ -1642,7 +1637,7 @@ describe('ItemRow open', () => {
   })
 
   it('opens a card on GitHub when no sheet does', async () => {
-    render(
+    renderAt(
       <ul>
         <ItemRow item={item({ kind: 'issue', title: 'Crash on start' })} launch={null} />
       </ul>,
@@ -1657,7 +1652,7 @@ describe('ItemRow open', () => {
 describe('TrustTag', () => {
   it('marks a trusted bot quietly, an untrusted bot or outside contributor as a warning, and no one else', () => {
     const tag = (it: InboxItem) => {
-      const { container, unmount } = render(<TrustTag item={it} />)
+      const { container, unmount } = renderAt(<TrustTag item={it} />)
       const shown = container.firstElementChild
       const words = shown === null ? null : [shown.textContent, shown.className.includes('text-warning')]
       unmount()
@@ -1675,7 +1670,7 @@ describe('TrustTag', () => {
 describe('WorktreeTag', () => {
   // tag renders a worktree's tag and returns its words.
   function tag(overrides: Partial<Worktree>): string | null {
-    const { container, unmount } = render(<WorktreeTag wt={worktree(overrides)} agents={agents()} />)
+    const { container, unmount } = renderAt(<WorktreeTag wt={worktree(overrides)} agents={agents()} />)
     const words = container.textContent
     unmount()
 

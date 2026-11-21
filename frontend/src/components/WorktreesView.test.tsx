@@ -1,4 +1,4 @@
-import { act, render, screen, within, type BoundFunctions, type queries } from '@testing-library/react'
+import { act, screen, within, type BoundFunctions, type queries } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -13,7 +13,7 @@ import type {
   WorktreeRepo,
 } from '../platform'
 import { deferred } from '../test/async'
-import { at, fixedNow } from '../test/clock'
+import { fixedNow, renderAt } from '../test/clock'
 import {
   agentSession,
   details as itemDetails,
@@ -46,7 +46,7 @@ const pr7 = 'worktree-pr-7'
 
 // draw renders the page at the tests' clock, its listing arriving at it too.
 function draw(props: Partial<WorktreesViewProps> = {}) {
-  const view = render(<WorktreesView clock={fixedNow} {...props} />, { wrapper: at() })
+  const view = renderAt(<WorktreesView clock={fixedNow} {...props} />)
 
   return {
     ...view,
