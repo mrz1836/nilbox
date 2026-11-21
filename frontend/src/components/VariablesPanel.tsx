@@ -1,7 +1,7 @@
-import { useId, useState } from 'react'
+import { useState } from 'react'
 
 import type { PromptVariable } from '../platform'
-import { SearchIcon } from './icons'
+import { SearchBox } from './SearchBox'
 
 export interface VariablesPanelProps {
   variables: readonly PromptVariable[]
@@ -60,7 +60,6 @@ export function VariablesPanel({
   onInsertVariable,
   onInsertText,
 }: VariablesPanelProps) {
-  const searchId = useId()
   const [query, setQuery] = useState('')
 
   const q = query.trim().toLowerCase()
@@ -74,22 +73,13 @@ export function VariablesPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-4 pt-3 pb-2">
-        <label htmlFor={searchId} className="sr-only">
-          Search variables
-        </label>
-        <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 focus-within:border-accent/60">
-          <SearchIcon className="size-3.5 shrink-0 text-muted" />
-          <input
-            id={searchId}
-            type="search"
-            value={query}
-            placeholder="Search variables"
-            onChange={(e) => {
-              setQuery(e.target.value)
-            }}
-            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted/70"
-          />
-        </div>
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          label="Search variables"
+          placeholder="Search variables"
+          dense={false}
+        />
         <p className="mt-2 text-xs text-muted">Click one to insert it. Values are for {valuesFor}.</p>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">

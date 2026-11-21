@@ -5,8 +5,9 @@ import { routinePlaces, routinesUsing, usagePlaces } from '../lib/launch'
 import { replyGroups, replySlotBadges } from '../lib/replies'
 import type { Prompt, PromptAppliesTo, PromptPurpose } from '../platform'
 import { quietButtonClass, Segmented, type SegmentOption } from './controls'
-import { ChevronDownIcon, MoreIcon, PlusIcon, SearchIcon, StarIcon } from './icons'
+import { ChevronDownIcon, MoreIcon, PlusIcon, StarIcon } from './icons'
 import { MenuButton, type MenuItem } from './Menu'
+import { SearchBox } from './SearchBox'
 
 // Selection is the prompt open in the editor: a stored one by ID, or a new one.
 export type Selection = { kind: 'prompt'; id: number } | { kind: 'new' }
@@ -235,23 +236,14 @@ export function PromptLibrary({
         <Segmented label="Kind of prompt" size="sm" value={mode} options={modeOptions} onChange={onModeChange} />
       </div>
       <div className="px-3 pb-2">
-        <label htmlFor={`${id}-search`} className="sr-only">
-          {replies ? 'Search replies' : 'Search prompts'}
-        </label>
-        <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 focus-within:border-accent/60">
-          <SearchIcon className="size-3.5 shrink-0 text-muted" />
-          <input
-            ref={searchRef}
-            id={`${id}-search`}
-            type="search"
-            value={query}
-            placeholder="Search"
-            onChange={(e) => {
-              setQuery(e.target.value)
-            }}
-            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted/70"
-          />
-        </div>
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          label={replies ? 'Search replies' : 'Search prompts'}
+          placeholder="Search"
+          inputRef={searchRef}
+          dense={false}
+        />
       </div>
       <nav aria-label={replies ? 'Review replies' : 'Prompts'} className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         {selection?.kind === 'new' && (
