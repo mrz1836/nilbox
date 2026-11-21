@@ -9,14 +9,16 @@ import { useWorktreeDetails, type WorktreeDetailsState } from '../../lib/useWork
 import type { RowWork } from '../../lib/useWorktrees'
 import type { ItemFacts } from '../../lib/worktreeParts'
 import type { Lane } from '../../lib/worktrees'
-import type { AgentID, AgentSession, LinkedItem, Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
+import type { AgentSession, LinkedItem, Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
 import { deferred } from '../../test/async'
 import { FIXED_NOW, isoAgo, renderAt } from '../../test/clock'
 import {
+  agentName,
   agentSession,
   copiedWorktree,
   item,
   linkedItem,
+  managed,
   partlyCopiedWorktree,
   worktree,
   worktreeCopies,
@@ -43,14 +45,7 @@ function unixAgo(s: number): number {
   return Math.floor(now.getTime() / 1000) - s
 }
 
-const agentName = (id: AgentID) => (id === 'codex' ? 'Codex' : 'Claude')
-
-// managed and legacy are a worktree's path under the managed root, and in a clone's
-// .claude/worktrees.
-function managed(name: string, clone = 'example-repo'): string {
-  return `~/projects/.${brand.slug}/worktrees/${clone}/${name}`
-}
-
+// legacy is a worktree's path in a clone's .claude/worktrees.
 function legacy(name: string, clone = 'example-repo'): string {
   return `~/projects/${clone}/.claude/worktrees/${name}`
 }

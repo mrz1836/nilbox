@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AgentID, Worktree, WorktreeRepo } from '../../platform'
+import type { Worktree, WorktreeRepo } from '../../platform'
 import {
+  agentName,
   finishedWorktree,
   linkedItem,
   worktree,
@@ -16,7 +17,6 @@ import { cleanupMenuItems, goneWhy, rowMenuItems, type CleanupMenuOptions, type 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
 const er = worktreeRepo()
-const agentName = (id: AgentID) => (id === 'codex' ? 'Codex' : 'Claude')
 
 // options are a row menu's, for wt, with every handler a mock.
 function options(wt: Worktree, overrides: Partial<RowMenuOptions> = {}): RowMenuOptions {
