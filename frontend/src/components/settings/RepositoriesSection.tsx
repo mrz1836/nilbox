@@ -111,7 +111,7 @@ export function RepositoriesSection({
               onChange={(e) => {
                 setDraft(e.target.value)
               }}
-              className={`${fieldClass} w-56 font-mono text-[0.8125rem]`}
+              className={`${fieldClass} w-56 font-mono text-body`}
             />
             <button
               type="button"

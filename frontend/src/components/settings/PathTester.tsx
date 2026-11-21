@@ -55,7 +55,7 @@ export function PathTester({ settings }: { settings: Settings }) {
         onChange={(e) => {
           setPath(e.target.value)
         }}
-        className={`${fieldClass} w-full font-mono text-[0.8125rem]`}
+        className={`${fieldClass} w-full font-mono text-body`}
       />
       <p id={`${id}-result`} role="status" className="min-h-4 text-xs">
         {trimmed !== '' && shown !== null && <TryResult result={shown} />}

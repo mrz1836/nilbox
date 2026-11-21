@@ -135,7 +135,7 @@ export function RepoRules({ settings, save }: RepoRulesProps) {
                 setDraft(e.target.value)
                 setError('')
               }}
-              className={`${fieldClass} w-full font-mono text-[0.8125rem]`}
+              className={`${fieldClass} w-full font-mono text-body`}
             />
             <datalist id={`${id}-targets`}>
               {offered.map((t) => (
@@ -181,7 +181,7 @@ function RuleRowItem({ row, nested, busy, onChange, onRemove }: RuleRowItemProps
 
   return (
     <li className={`flex items-center gap-3 py-2.5 pr-4 ${nested ? 'bg-background/40 pl-8' : 'pl-4'}`}>
-      <span className="min-w-0 truncate font-mono text-[0.8125rem]">{row.target}</span>
+      <span className="min-w-0 truncate font-mono text-body">{row.target}</span>
       <span className="shrink-0 text-xs text-muted">{repository ? 'Repository' : 'All repositories'}</span>
       <span className="ml-auto">
         <Segmented

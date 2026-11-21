@@ -151,7 +151,7 @@ function ProviderCard({ provider, on, picked, live, checkOff, error, errorOn, on
             className="flex flex-col gap-1.5"
           >
             {group !== '' && (
-              <p aria-hidden="true" className="text-[0.6875rem] font-medium tracking-wide text-muted uppercase">
+              <p aria-hidden="true" className="text-caption font-medium tracking-wide text-muted uppercase">
                 {group}
               </p>
             )}

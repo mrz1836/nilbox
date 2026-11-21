@@ -339,7 +339,7 @@ function Details({ tool, id, busy, save, reinstall, trash }: DetailsProps) {
               setDraft(e.target.value)
               setError('')
             }}
-            className={`${fieldClass} min-w-0 flex-1 font-mono text-[0.8125rem]`}
+            className={`${fieldClass} min-w-0 flex-1 font-mono text-body`}
           />
           <button
             type="button"

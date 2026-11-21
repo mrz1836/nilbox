@@ -498,7 +498,7 @@ function DefaultsEditor({
             onChange={(e) => {
               setTargetDraft(e.target.value)
             }}
-            className={`${fieldClass} w-full font-mono text-[0.8125rem]`}
+            className={`${fieldClass} w-full font-mono text-body`}
           />
           <datalist id={`${id}-targets`}>
             {offered.map((t) => (
