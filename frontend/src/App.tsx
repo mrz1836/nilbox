@@ -52,7 +52,6 @@ import {
 import type { ReleaseRequest } from './lib/release'
 import type { RunRequest } from './lib/scriptRuns'
 import { foundToolsText, scriptsBadge, showsScripts } from './lib/scriptsTab'
-import { hiddenOf, matchSettings } from './lib/settingsIndex'
 import { itemWorktrees } from './lib/itemWorktrees'
 import { runningSession, sessionsOf } from './lib/sessions'
 import { useGitHubThreads } from './lib/useGitHubThreads'
@@ -138,6 +137,25 @@ const SetupView = lazy(() => import('./components/setup/SetupView'))
 const CardGuideDialog = lazy(() =>
   import('./components/card/CardGuideDialog').then((m) => ({ default: m.CardGuideDialog })),
 )
+// The settings' index, the words Find a setting searches, loads on its own as well: the
+// toolbar counts its matches only on the Settings page, which loads it with its own code
+// on its first visit, so the inbox's first paint never pays for it.
+const loadSettingsIndex = () => import('./lib/settingsIndex')
+
+type SettingsIndex = Awaited<ReturnType<typeof loadSettingsIndex>>
+
+// useSettingsIndex is the settings' index, null until it has loaded, which the window
+// starts once it has painted, long before the Settings page can show. A load that fails
+// leaves the toolbar without a count; the page imports the index itself.
+function useSettingsIndex(): SettingsIndex | null {
+  const [index, setIndex] = useState<SettingsIndex | null>(null)
+
+  useEffect(() => {
+    loadSettingsIndex().then(setIndex, () => undefined)
+  }, [])
+
+  return index
+}
 
 // SetupCover stands over the window while the setup's code loads, opaque, so the inbox
 // never shows through before the setup's first frame.
@@ -604,6 +622,7 @@ export function App() {
   const worktreesQuery = useQueryOf(nav.queries.worktrees)
   const notificationsQuery = useQueryOf(nav.queries.notifications)
   const settingsQuery = useQueryOf(nav.queries.settings)
+  const settingsIndex = useSettingsIndex()
   // onFilterBy is made once, so the inbox's cards, which take it, keep their identity.
   const [onFilterBy] = useState(() => (key: string, value: string) => {
     go({ type: 'filterBy', key, value })
@@ -1195,7 +1214,11 @@ export function App() {
         }
       }
       case 'settings':
-        return { ...base, matches: matchSettings(settingsQuery, hiddenOf(config.settings))?.matches ?? null }
+        return {
+          ...base,
+          matches:
+            settingsIndex?.matchSettings(settingsQuery, settingsIndex.hiddenOf(config.settings))?.matches ?? null,
+        }
     }
   }
 
