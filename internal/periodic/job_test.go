@@ -137,6 +137,14 @@ func TestAJobsWakeNeverBlocksAndCoalesces(t *testing.T) {
 	})
 }
 
+func TestANilJobIgnoresAWake(t *testing.T) {
+	t.Parallel()
+
+	var job *periodic.Job
+
+	assert.NotPanics(t, job.Wake, "a job never made, as a worker's zero value holds, ignores a wake")
+}
+
 func TestAJobStopsWithItsContextOnceTheRunInFlightReturns(t *testing.T) {
 	t.Parallel()
 

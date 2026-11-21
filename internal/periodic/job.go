@@ -32,8 +32,12 @@ func (j *Job) Run(ctx context.Context) {
 
 // Wake has the job ask its Every again at once, as when the user changed the setting. It
 // never blocks: a wake while another still waits to be read is dropped, since that one
-// already has Run ask again.
+// already has Run ask again. A nil job, as a worker's zero value holds, ignores it.
 func (j *Job) Wake() {
+	if j == nil {
+		return
+	}
+
 	select {
 	case j.wake <- struct{}{}:
 	default:

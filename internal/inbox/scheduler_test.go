@@ -91,6 +91,13 @@ func TestNewSchedulerDefaults(t *testing.T) {
 	})
 }
 
+func TestAZeroWorkerIgnoresAWake(t *testing.T) {
+	t.Parallel()
+
+	assert.NotPanics(t, (&Scheduler{}).Wake, "a scheduler never made ignores a wake")
+	assert.NotPanics(t, (&ChecksFollower{}).Wake, "so does a checks follower")
+}
+
 func TestSchedulerFollowsTheSettingAndWakesToAChange(t *testing.T) {
 	t.Parallel()
 

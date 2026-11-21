@@ -417,6 +417,12 @@ func TestSweepClones(t *testing.T) {
 	assert.Empty(t, svc.sweepClones(t.Context(), rootsOf(t, missing), localrepos.Found{Dirs: cloneDirs(t, missing)}, nil))
 }
 
+func TestAZeroSweeperIgnoresAWake(t *testing.T) {
+	t.Parallel()
+
+	assert.NotPanics(t, Sweeper{}.Wake, "a sweeper never made, the zero value, ignores a wake")
+}
+
 func TestSweeperRunsUntilCanceled(t *testing.T) {
 	t.Parallel()
 
