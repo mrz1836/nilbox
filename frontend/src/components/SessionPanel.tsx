@@ -197,8 +197,8 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
     <li className="flex flex-col gap-1.5 border-b border-border py-2.5 first:pt-0 last:border-b-0 last:pb-0">
       <div className="flex min-w-0 items-baseline gap-2">
         <span className="text-xs font-semibold text-text">{agentName(agents, session.agent)}</span>
-        <span className="min-w-0 truncate text-[0.6875rem] text-muted">{sessionWhat(session)}</span>
-        <span className="ml-auto shrink-0 text-[0.6875rem] text-muted" title={formatFull(session.launchedAt)}>
+        <span className="min-w-0 truncate text-caption text-muted">{sessionWhat(session)}</span>
+        <span className="ml-auto shrink-0 text-caption text-muted" title={formatFull(session.launchedAt)}>
           started <RelativeTime iso={session.launchedAt} show={formatAgo} />
         </span>
         {!isLive(session.state) && (
@@ -215,10 +215,10 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
         )}
       </div>
       <StateLine session={session} />
-      {setup !== '' && <p className="truncate text-[0.6875rem] text-muted">{setup}</p>}
+      {setup !== '' && <p className="truncate text-caption text-muted">{setup}</p>}
       {onGitHub !== '' && (
         <p
-          className="truncate text-[0.6875rem] text-muted"
+          className="truncate text-caption text-muted"
           title="What came of it on GitHub while this session ran. It doesn’t say who did it."
         >
           On GitHub: <span className={githubEventTone(session)}>{onGitHub}</span> ·{' '}
@@ -226,11 +226,11 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
         </p>
       )}
       {tokens !== null && (
-        <p className="truncate text-[0.6875rem] text-muted" title={tokens.title}>
+        <p className="truncate text-caption text-muted" title={tokens.title}>
           {tokens.text}
         </p>
       )}
-      <p className="truncate font-mono text-[0.6875rem] text-muted" title={session.dir}>
+      <p className="truncate font-mono text-caption text-muted" title={session.dir}>
         {session.dir}
       </p>
       {session.notice !== '' && (

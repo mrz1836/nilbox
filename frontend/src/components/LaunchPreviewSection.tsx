@@ -64,7 +64,7 @@ export function worktreeLine(wt: PlannedWorktree): string {
 export function PlannedLaunch({ plan }: { plan: Plan }) {
   return (
     <>
-      <pre className="max-h-44 overflow-y-auto rounded-md border border-border bg-background p-2.5 font-mono text-[0.6875rem] leading-[1.35rem] break-words whitespace-pre-wrap">
+      <pre className="max-h-44 overflow-y-auto rounded-md border border-border bg-background p-2.5 font-mono text-caption leading-[1.35rem] break-words whitespace-pre-wrap">
         {plan.prompt}
       </pre>
       {plan.worktree !== null && <p className="text-xs text-text">{worktreeLine(plan.worktree)}</p>}
@@ -72,8 +72,8 @@ export function PlannedLaunch({ plan }: { plan: Plan }) {
         In <span className="font-mono text-text">{plan.dir}</span> · {plan.permission}
         {plan.terminal !== '' && ` · opens in ${terminalLabel(plan.terminal, plan.terminal)}`}
       </p>
-      {plan.env.length > 0 && <p className="font-mono text-[0.6875rem] break-all text-muted">{plan.env.join(' · ')}</p>}
-      <code className="block rounded-md bg-raised px-2 py-1.5 font-mono text-[0.6875rem] leading-snug break-all text-text">
+      {plan.env.length > 0 && <p className="font-mono text-caption break-all text-muted">{plan.env.join(' · ')}</p>}
+      <code className="block rounded-md bg-raised px-2 py-1.5 font-mono text-caption leading-snug break-all text-text">
         {plan.command}
       </code>
     </>
@@ -112,7 +112,7 @@ export function LaunchPreviewSection({ item, choices, untrusted, situation = '' 
         onClick={() => {
           setOpen((was) => !was)
         }}
-        className="flex w-full items-center gap-1.5 px-3.5 py-2 text-left text-[0.8125rem] text-muted transition-colors hover:text-text"
+        className="flex w-full items-center gap-1.5 px-3.5 py-2 text-left text-body text-muted transition-colors hover:text-text"
       >
         <ChevronRightIcon className={`size-3.5 transition-transform ${open ? 'rotate-90' : ''}`} />
         Preview

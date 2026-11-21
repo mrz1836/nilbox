@@ -123,7 +123,7 @@ interface GroupHeadingProps {
 }
 
 // headingTextClass is a group heading's text: small capitals in the muted color.
-const headingTextClass = 'text-[0.6875rem] font-semibold tracking-wide text-muted uppercase'
+const headingTextClass = 'text-caption font-semibold tracking-wide text-muted uppercase'
 
 // GroupHeading is a group's title, underlined, with a badge of how many prompts it lists.
 // The whole heading is a toggle that folds the group away and opens it again, its chevron
@@ -338,14 +338,14 @@ export function PromptLibrary({
                           </span>
                           <span className="block w-full max-w-full truncate text-xs text-muted">{p.name}</span>
                           {used.length > 0 && (
-                            <span className="block w-full max-w-full truncate text-[0.6875rem] text-muted">
+                            <span className="block w-full max-w-full truncate text-caption text-muted">
                               {used.join(' · ')}
                             </span>
                           )}
                           {/* A reply is for pull requests unless it says otherwise, as a comment
                             reply the issue sheet offers does. */}
                           {replies && p.appliesTo !== 'pr' && (
-                            <span className="text-[0.6875rem] text-muted">
+                            <span className="text-caption text-muted">
                               {p.appliesTo === 'issue' ? 'For issues' : 'For pull requests and issues'}
                             </span>
                           )}
@@ -354,7 +354,7 @@ export function PromptLibrary({
                               {badges.map((badge) => (
                                 <span
                                   key={badge}
-                                  className="rounded-full bg-accent/15 px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium text-text"
+                                  className="rounded-full bg-accent/15 px-1.5 text-caption leading-[1.125rem] font-medium text-text"
                                 >
                                   {badge}
                                 </span>

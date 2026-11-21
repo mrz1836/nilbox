@@ -597,7 +597,7 @@ export function LaunchControls({
   // words short when the action column is short, then the ▾, always last, so the ▾ sits at
   // the slot's right edge whatever the session's state.
   const split = (parts: ReactNode) => (
-    <div className="inline-flex h-7.5 max-w-full min-w-0 items-stretch text-[0.8125rem]">
+    <div className="inline-flex h-7.5 max-w-full min-w-0 items-stretch text-body">
       {parts}
       {cardOptions(true)}
     </div>
@@ -1017,7 +1017,7 @@ export function LaunchControls({
   return (
     <>
       <div className={boxClass}>
-        <div className="inline-flex items-stretch rounded-md border border-border bg-surface text-[0.8125rem]">
+        <div className="inline-flex items-stretch rounded-md border border-border bg-surface text-body">
           {running === null ? (
             <button
               type="button"

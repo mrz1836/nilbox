@@ -43,7 +43,7 @@ export interface LaunchMenuProps {
   onCancel: () => void
 }
 
-const sectionTitle = 'px-2 pb-1 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase'
+const sectionTitle = 'px-2 pb-1 text-caption font-semibold tracking-wide text-muted uppercase'
 
 // saveButtonClass is the footer's save buttons: small, but outlined, so they read as
 // buttons beside the dialog's own. Each may shrink, its name cut short, so a long
@@ -135,7 +135,7 @@ export function LaunchMenu({
                         ? sourceLabel(resolved.agentInheritedSource)
                         : a.path
                   }
-                  className="flex-1 cursor-pointer rounded-md border border-border px-2.5 py-1 text-center text-[0.8125rem] text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent has-disabled:cursor-not-allowed has-disabled:opacity-50"
+                  className="flex-1 cursor-pointer rounded-md border border-border px-2.5 py-1 text-center text-body text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent has-disabled:cursor-not-allowed has-disabled:opacity-50"
                 >
                   <input
                     type="radio"
@@ -214,7 +214,7 @@ export function LaunchMenu({
                       ? sourceLabel(resolved.profile.inheritedSource)
                       : p.folder
                 }
-                className="cursor-pointer rounded-full border border-border px-2.5 py-0.5 text-[0.8125rem] text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent"
+                className="cursor-pointer rounded-full border border-border px-2.5 py-0.5 text-body text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent"
               >
                 <input
                   type="radio"
@@ -227,7 +227,7 @@ export function LaunchMenu({
                   className="sr-only"
                 />
                 {p.name}
-                {!p.signedIn && <span className="ml-1 text-[0.6875rem] text-warning">· not signed in</span>}
+                {!p.signedIn && <span className="ml-1 text-caption text-warning">· not signed in</span>}
               </label>
             ))}
           </div>
@@ -246,7 +246,7 @@ export function LaunchMenu({
 
                 set({ model: value === '' || value === resolved.model.inherited ? null : value })
               }}
-              className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-[0.8125rem]"
+              className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-body"
             >
               <option value="">{defaultLabel(resolved.model, (v) => modelLabel(v, agent.models))}</option>
               {choices.model !== null && !agent.models.some((c) => c.value === choices.model) && (
@@ -267,7 +267,7 @@ export function LaunchMenu({
                 value=""
                 disabled
                 aria-describedby={`${id}-effort-help`}
-                className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-[0.8125rem] disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-body disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <option value="">{agent.name}’s own</option>
               </select>
@@ -280,7 +280,7 @@ export function LaunchMenu({
 
                   set({ effort: value === '' || value === resolved.effort.inherited ? null : value })
                 }}
-                className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-[0.8125rem]"
+                className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-body"
               >
                 <option value="">{defaultLabel(resolved.effort, (v) => effortLabel(v, agent.effortLevels))}</option>
                 {agent.effortLevels.map((c) => (
@@ -307,7 +307,7 @@ export function LaunchMenu({
               className="checkbox"
             />
             Start in a worktree
-            <span className="ml-auto text-[0.6875rem] text-muted">
+            <span className="ml-auto text-caption text-muted">
               {choices.worktree === null ? sourceLabel(resolved.worktree.inheritedSource) : 'this launch'}
             </span>
           </label>
@@ -322,7 +322,7 @@ export function LaunchMenu({
               className="checkbox"
             />
             <span className={forcedPlan ? 'text-muted' : ''}>{planToggleLabel(agent)}</span>
-            <span className="ml-auto text-[0.6875rem] text-muted">
+            <span className="ml-auto text-caption text-muted">
               {forcedPlan
                 ? 'outside contributor'
                 : choices.planMode === null
@@ -343,7 +343,7 @@ export function LaunchMenu({
                   className="checkbox"
                 />
                 Fast mode
-                <span className="ml-auto text-[0.6875rem] text-muted">
+                <span className="ml-auto text-caption text-muted">
                   {choices.fast === null ? sourceLabel(resolved.fast.inheritedSource) : 'this launch'}
                 </span>
               </label>
@@ -390,7 +390,7 @@ export function LaunchMenu({
 
       <div className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-2.5">
         <div className="mr-auto flex min-w-0 flex-col gap-1">
-          <span className="text-[0.6875rem] text-muted">
+          <span className="text-caption text-muted">
             {savable ? 'Save these choices as the default for' : 'Change a choice above to save it as the default for'}
           </span>
           {/* The two wrap onto two lines when the footer is short of room, rather than run
@@ -422,7 +422,7 @@ export function LaunchMenu({
             </button>
           </span>
           {status !== null && (
-            <span className="flex flex-wrap items-baseline gap-x-1.5 text-[0.6875rem] leading-snug">
+            <span className="flex flex-wrap items-baseline gap-x-1.5 text-caption leading-snug">
               <span
                 role={status.tone === 'error' ? 'alert' : 'status'}
                 className={

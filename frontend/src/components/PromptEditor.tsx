@@ -69,7 +69,7 @@ function Counter({ value, limit }: { value: string; limit: number }) {
   const n = Array.from(value).length
 
   return (
-    <span aria-hidden="true" className={`text-[0.6875rem] tabular-nums ${n > limit ? 'text-danger' : 'text-muted'}`}>
+    <span aria-hidden="true" className={`text-caption tabular-nums ${n > limit ? 'text-danger' : 'text-muted'}`}>
       {n}/{limit}
     </span>
   )
@@ -227,14 +227,14 @@ export function PromptEditor({
             <div className="flex flex-col gap-1">
               <span className="text-xs font-medium text-muted">Used as a default</span>
               {reply ? (
-                <p className="flex items-center gap-1.5 py-1 text-[0.8125rem] text-text">
+                <p className="flex items-center gap-1.5 py-1 text-body text-text">
                   {saved.usage.replies.length > 0 && <StarIcon className="size-3.5 text-accent" />}
                   {replyUsageSummary(saved.usage.replies)}
                 </p>
               ) : (
                 <p
                   title={usagePlaces(saved.usage).join('\n') || undefined}
-                  className="flex items-center gap-1.5 py-1 text-[0.8125rem] text-text"
+                  className="flex items-center gap-1.5 py-1 text-body text-text"
                 >
                   {(saved.usage.defaults.length > 0 || saved.usage.slots.length > 0) && (
                     <StarIcon className="size-3.5 text-accent" />
@@ -243,7 +243,7 @@ export function PromptEditor({
                 </p>
               )}
               {saved.usage.routines.length > 0 && (
-                <p title={routinePlaces(saved.usage).join('\n')} className="text-[0.8125rem] text-text">
+                <p title={routinePlaces(saved.usage).join('\n')} className="text-body text-text">
                   {routinesUsing(saved.usage)}
                 </p>
               )}
@@ -261,7 +261,7 @@ export function PromptEditor({
               options={viewOptions}
               onChange={onViewChange}
             />
-            <span className="ml-auto text-[0.6875rem] text-muted">
+            <span className="ml-auto text-caption text-muted">
               {view === 'edit' ? (
                 <>
                   Type <code className="font-mono">{'{{'}</code> for variables
