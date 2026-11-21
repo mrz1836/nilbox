@@ -6,13 +6,14 @@
 import type { FileCheck, SensitiveFile, SensitiveLevel } from '../platform'
 import { counted, formatCount } from './format'
 import type { Tone } from './signals'
+import { toneFill } from './tone'
 
 // levelDot is a category's level as the color of the dot beside its name, on the card's
 // panel and in Settings.
 export const levelDot: Readonly<Record<SensitiveLevel, string>> = {
-  danger: 'bg-danger',
-  warning: 'bg-warning',
-  '': 'bg-muted',
+  danger: toneFill.danger,
+  warning: toneFill.warning,
+  '': toneFill.muted,
 }
 
 // FilesChipIcon picks the chip's icon: a warning shield, a checked shield, or none.

@@ -8,6 +8,7 @@
 // the app's share from everything else signed in as the same account.
 
 import type { BudgetGauge, BudgetReading, BudgetWrites } from '../platform'
+import { toneFill, toneText } from './tone'
 
 // BudgetLevel grades the share of a budget left: healthy (green), moderate (yellow), low
 // (orange), and critical (red). Unknown means it was never read.
@@ -37,22 +38,21 @@ export const levelLabels: Readonly<Record<BudgetLevel, string>> = {
   critical: 'Critical',
 }
 
-// levelText and levelFill are each level's text and fill color. They are spelled out in
-// full so Tailwind finds them.
+// levelText and levelFill are each level's text and fill color: its tone's.
 export const levelText: Readonly<Record<BudgetLevel, string>> = {
-  unknown: 'text-muted',
-  healthy: 'text-success',
-  moderate: 'text-warning',
-  low: 'text-caution',
-  critical: 'text-danger',
+  unknown: toneText.muted,
+  healthy: toneText.success,
+  moderate: toneText.warning,
+  low: toneText.caution,
+  critical: toneText.danger,
 }
 
 export const levelFill: Readonly<Record<BudgetLevel, string>> = {
-  unknown: 'bg-muted',
-  healthy: 'bg-success',
-  moderate: 'bg-warning',
-  low: 'bg-caution',
-  critical: 'bg-danger',
+  unknown: toneFill.muted,
+  healthy: toneFill.success,
+  moderate: toneFill.warning,
+  low: toneFill.caution,
+  critical: toneFill.danger,
 }
 
 // Budget is one budget as of now.

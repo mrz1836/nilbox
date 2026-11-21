@@ -1,9 +1,9 @@
 import { memo, type ReactNode } from 'react'
 
 import { counted } from '../../lib/format'
-import { toneText, type Tone } from '../../lib/signals'
 import type { LabelRow, TimelineRow } from '../../lib/timeline'
 import { formatAgo, formatFull } from '../../lib/time'
+import { toneText, type Tone } from '../../lib/tone'
 import {
   openExternal,
   type IssueStateReason,

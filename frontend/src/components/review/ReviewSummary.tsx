@@ -5,7 +5,7 @@ import { refText } from '../../lib/format'
 import { workflowsOf } from '../../lib/ignoredWorkflows'
 import { issueLook } from '../../lib/issues'
 import { candidateHint, teamKey } from '../../lib/reviewers'
-import { toneDot, toneText, type Tone } from '../../lib/signals'
+import { toneFill, toneText, type Tone } from '../../lib/tone'
 import { useNow } from '../../lib/useNow'
 import { ignoredRuns, type ListMark } from '../../lib/useReview'
 import type {
@@ -120,7 +120,7 @@ function checkTone(outcome: string): Tone {
 // while the check runs, as out of a working session's. The count of the checks running
 // carries the running one, so the list and its summary always match.
 function CheckDot({ outcome }: { outcome: string }) {
-  return <StatusDot color={toneDot[checkTone(outcome)]} ping={outcome === runningOutcome} />
+  return <StatusDot color={toneFill[checkTone(outcome)]} ping={outcome === runningOutcome} />
 }
 
 // ChecksSummary sums up checks: how many there are and how many fail, as in "12 checks · 1

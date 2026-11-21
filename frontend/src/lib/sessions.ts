@@ -13,6 +13,7 @@ import type {
 import { counted, formatCount } from './format'
 import { itemKey } from './itemWorktrees'
 import { terminalLabel } from './terminals'
+import { toneFill, toneText } from './tone'
 
 // noSessions is the empty map, shared so it stays the same object.
 export const noSessions: ReadonlyMap<string, readonly AgentSession[]> = new Map()
@@ -106,26 +107,26 @@ export function stateLabel(state: SessionState): string {
 // stateDot is each state's dot: blue while working, amber while it waits for the user,
 // green once its turn is done, red when it failed, grey otherwise.
 export const stateDot: Readonly<Record<SessionState, string>> = {
-  starting: 'bg-muted',
-  working: 'bg-info',
-  needs_approval: 'bg-warning',
-  needs_input: 'bg-warning',
-  idle: 'bg-success',
-  ended: 'bg-muted',
-  failed: 'bg-danger',
-  unknown: 'bg-muted',
+  starting: toneFill.muted,
+  working: toneFill.info,
+  needs_approval: toneFill.warning,
+  needs_input: toneFill.warning,
+  idle: toneFill.success,
+  ended: toneFill.muted,
+  failed: toneFill.danger,
+  unknown: toneFill.muted,
 }
 
 // stateText is each state's text color on the card's tag.
 export const stateText: Readonly<Record<SessionState, string>> = {
-  starting: 'text-muted',
-  working: 'text-info',
-  needs_approval: 'text-warning',
-  needs_input: 'text-warning',
-  idle: 'text-success',
-  ended: 'text-muted',
-  failed: 'text-danger',
-  unknown: 'text-muted',
+  starting: toneText.muted,
+  working: toneText.info,
+  needs_approval: toneText.warning,
+  needs_input: toneText.warning,
+  idle: toneText.success,
+  ended: toneText.muted,
+  failed: toneText.danger,
+  unknown: toneText.muted,
 }
 
 // stateTint is the faint backing of the card's tag in a state the user should see at a
