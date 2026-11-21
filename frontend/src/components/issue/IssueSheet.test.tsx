@@ -340,7 +340,11 @@ describe('IssueSheet', () => {
     const partly = await labels('bug Something isn’t working')
 
     expect(await partly.findByRole('alert')).toHaveTextContent('GitHub kept “bug” on it.')
-    expect(platform.readIssueAgain, 'what it made shows').toHaveBeenCalledWith(1)
+    // The read starts in the effects of the render that shows the alert, which can come after
+    // the findBy above has returned.
+    await waitFor(() => {
+      expect(platform.readIssueAgain, 'what it made shows').toHaveBeenCalledWith(1)
+    })
 
     // Nothing sent, so nothing to read again.
     await userEvent.click(partly.getByRole('button', { name: 'Cancel' }))

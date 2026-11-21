@@ -2747,7 +2747,11 @@ describe('ReviewSheet that stays current', () => {
     expect(await screen.findByText(/^Reading checks…/)).toHaveTextContent('Reading checks… · read 1h ago')
     expect(screen.getByText('1 check').tagName).toBe('SUMMARY')
     expect(platform.rebuildReview).toHaveBeenCalledExactlyOnceWith(1)
-    expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+    // The read starts in the effects of the render that says it runs, which can come after
+    // the findBy above has returned.
+    await waitFor(() => {
+      expect(platform.refreshReview).toHaveBeenCalledTimes(2)
+    })
 
     act(() => {
       answer.resolve(review())
