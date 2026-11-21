@@ -64,7 +64,7 @@ describe('SensitiveFiles', () => {
 
   it('shows a file it cannot link as plain text', async () => {
     const file = { path: '.claude/settings.json', previousPath: '', change: 'added', pattern: '.claude/', url: '' }
-    const group = { ...agentGroup(), files: [file] }
+    const group = agentGroup({ files: [file] })
     renderChip(fileCheck({ groups: [group] }))
 
     const panel = await openPanel(/^Changes sensitive files/)

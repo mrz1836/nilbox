@@ -573,24 +573,13 @@ describe('App', () => {
         leftover: 1,
         worktreeCount: 3,
         cleaned: [
-          {
-            repoPath: '/home/user/projects/example-repo',
-            path: '/home/user/projects/example-repo/.claude/worktrees/pr-7',
-            displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
-            removed: true,
-            deletedBranches: ['worktree-pr-7'],
-            item: 'acme-org/example-repo#7',
-            reason: '',
-          },
-          {
-            repoPath: '/home/user/projects/example-repo',
+          removeResult(),
+          removeResult({
             path: '/home/user/projects/example-repo/.claude/worktrees/pr-8',
             displayPath: '~/projects/example-repo/.claude/worktrees/pr-8',
-            removed: true,
             deletedBranches: [],
             item: '',
-            reason: '',
-          },
+          }),
         ],
       }),
     )
@@ -618,15 +607,13 @@ describe('App', () => {
         seq: 3,
         worktreeCount: 2,
         cleaned: [
-          {
+          removeResult({
             repoPath: '/r',
             path: '/r/.claude/worktrees/pr-9',
             displayPath: '~/r/.claude/worktrees/pr-9',
-            removed: true,
             deletedBranches: [],
             item: 'acme-org/r#9',
-            reason: '',
-          },
+          }),
         ],
       }),
     )
@@ -805,16 +792,7 @@ describe('App', () => {
 
   it("opens the recently cleaned-up list from a cleanup toast's View", async () => {
     const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
-    const cleaned = {
-      repoPath: '/home/user/projects/example-repo',
-      path: '/home/user/projects/example-repo/.claude/worktrees/pr-7',
-      displayPath: '~/projects/example-repo/.claude/worktrees/pr-7',
-      removed: true,
-      deletedBranches: ['worktree-pr-7'],
-      item: 'acme-org/example-repo#7',
-      reason: '',
-    }
-    platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 1, cleaned: [cleaned] }))
+    platform.lastWorktreeSweep.mockResolvedValue(sweepReport({ seq: 1, cleaned: [removeResult()] }))
     platform.recentCleanups.mockResolvedValue([worktreeCleanup()])
 
     await renderApp()
@@ -885,15 +863,13 @@ describe('App', () => {
       sweepReport({
         seq: 2,
         cleaned: [
-          {
+          removeResult({
             repoPath: '/r',
             path: '/r/.claude/worktrees/pr-9',
             displayPath: '~/r/.claude/worktrees/pr-9',
-            removed: true,
             deletedBranches: [],
             item: 'acme-org/r#9',
-            reason: '',
-          },
+          }),
         ],
       }),
     )
