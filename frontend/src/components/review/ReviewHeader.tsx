@@ -63,7 +63,7 @@ export function ReviewHeader({
           </span>
           {item !== undefined && <TrustTag item={item} />}
           {review !== null && review.headRef !== '' && (
-            <span className="font-mono text-[0.6875rem]">
+            <span className="font-mono text-caption">
               {review.headRef} → {review.baseRef}
             </span>
           )}

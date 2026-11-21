@@ -33,7 +33,7 @@ export interface TimelineEntryProps {
 }
 
 // tagClass is a comment's small tags.
-const tagClass = 'rounded-full border border-border px-1.5 py-px text-[0.6875rem]'
+const tagClass = 'rounded-full border border-border px-1.5 py-px text-caption'
 
 // someone names an actor GitHub no longer names, as for a deleted account.
 function someone(actor: string): string {
@@ -281,7 +281,7 @@ function LineCommentEntry({
       {comment.hunk.length > 0 && (
         <div
           aria-label={`The diff at ${where}`}
-          className="overflow-x-auto border-b border-border font-mono text-[0.75rem] leading-5"
+          className="overflow-x-auto border-b border-border font-mono text-small leading-5"
         >
           {comment.hunk.map((line, i) => (
             <div key={i} className={`min-w-max px-2 whitespace-pre ${hunkTint(line)}`}>

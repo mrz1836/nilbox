@@ -174,7 +174,7 @@ function FileDiff({
         </label>
       </header>
       {open && (
-        <div className="overflow-x-auto font-mono text-[0.75rem] leading-5">
+        <div className="overflow-x-auto font-mono text-small leading-5">
           <FileBody
             file={file}
             url={url}

@@ -45,21 +45,21 @@ const MAX_LABEL = 999
 // The classes each element takes. Sizes are in rem, so they follow the text size setting,
 // and colors come from the theme tokens, so they read in both themes.
 const LINK = 'cursor-pointer text-left text-accent underline-offset-2 hover:underline'
-const INLINE_CODE = 'rounded bg-raised px-1 py-0.5 font-mono text-[0.75rem]'
+const INLINE_CODE = 'rounded bg-raised px-1 py-0.5 font-mono text-small'
 const CODE_BLOCK =
-  'overflow-x-auto rounded-md border border-border bg-raised px-3 py-2 font-mono text-[0.75rem] leading-normal whitespace-pre text-text'
+  'overflow-x-auto rounded-md border border-border bg-raised px-3 py-2 font-mono text-small leading-normal whitespace-pre text-text'
 const QUOTE = 'space-y-2 border-l-2 border-muted/50 pl-3 text-muted'
 const RULE = 'border-border'
 const BULLETS = 'list-disc space-y-0.5 pl-5'
 const NUMBERS = 'list-decimal space-y-0.5 pl-5'
 const ITEM = 'space-y-1'
 const TASK_ITEM = '-ml-5 flex list-none items-start gap-1.5'
-const TABLE = 'border-collapse text-[0.75rem]'
+const TABLE = 'border-collapse text-small'
 const CELL = 'border border-border px-2 py-1 align-top'
 const HEAD_CELL = `${CELL} bg-raised font-semibold`
 const DETAILS = 'rounded-md border border-border px-3 py-2'
 const SUMMARY = 'cursor-pointer font-medium'
-const KBD = 'rounded border border-border bg-raised px-1 font-mono text-[0.75rem]'
+const KBD = 'rounded border border-border bg-raised px-1 font-mono text-small'
 const MARK = 'rounded-sm bg-warning/25 text-inherit'
 const STRONG = 'font-semibold'
 
@@ -67,12 +67,12 @@ type Level = 1 | 2 | 3 | 4 | 5 | 6
 
 // HEADINGS are kept small: the text sits inside a sheet, under the sheet's own title.
 const HEADINGS: Record<Level, { tag: string; className: string }> = {
-  1: { tag: 'h1', className: 'border-b border-border pb-1 text-[0.9375rem] leading-snug font-semibold' },
-  2: { tag: 'h2', className: 'border-b border-border pb-1 text-[0.875rem] leading-snug font-semibold' },
-  3: { tag: 'h3', className: 'text-[0.8125rem] leading-snug font-semibold' },
-  4: { tag: 'h4', className: 'text-[0.8125rem] leading-snug font-semibold' },
-  5: { tag: 'h5', className: 'text-[0.75rem] leading-snug font-semibold' },
-  6: { tag: 'h6', className: 'text-[0.75rem] leading-snug font-semibold text-muted' },
+  1: { tag: 'h1', className: 'border-b border-border pb-1 text-heading leading-snug font-semibold' },
+  2: { tag: 'h2', className: 'border-b border-border pb-1 text-heading-sm leading-snug font-semibold' },
+  3: { tag: 'h3', className: 'text-body leading-snug font-semibold' },
+  4: { tag: 'h4', className: 'text-body leading-snug font-semibold' },
+  5: { tag: 'h5', className: 'text-small leading-snug font-semibold' },
+  6: { tag: 'h6', className: 'text-small leading-snug font-semibold text-muted' },
 }
 
 type Align = 'left' | 'center' | 'right' | 'none'
