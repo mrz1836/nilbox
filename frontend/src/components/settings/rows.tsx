@@ -4,10 +4,8 @@ import { ErrorText, Switch } from '../controls'
 import { headingMatchClass, rowMatchClass, useSetting } from './match'
 
 // The building blocks every settings section lays itself out with: cards of rows, the
-// heading over a part of a section, and the note under one. The text of a refusal,
-// ErrorText, is a control the whole window shares; it is exported here too, for the
-// views that still import it from here.
-export { ErrorText }
+// heading over a part of a section, and the note under one. The text of a refusal is
+// ErrorText, a control the whole window shares (controls.tsx).
 
 // joinIds joins the ids a control points aria-describedby at, leaving out those not shown
 // (false), or returns undefined when none are left.
