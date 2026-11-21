@@ -120,10 +120,12 @@ func TestStartPrunesWhatIsOlderThanThirtyDays(t *testing.T) {
 	require.NoError(t, os.MkdirAll(r.path("proposals", orphan), 0o700))
 	require.NoError(t, os.MkdirAll(r.path("proposals", fresh), 0o700))
 
-	long := time.Now().Add(-40 * 24 * time.Hour)
+	// The folders' ages, like the records', count from the rig's clock, at testNow, so
+	// the test holds whatever the date it runs on.
+	long := testNow.Add(-40 * 24 * time.Hour)
 	require.NoError(t, os.Chtimes(r.path("proposals", orphan), long, long))
+	require.NoError(t, os.Chtimes(r.path("proposals", fresh), testNow, testNow))
 
-	r.clock.Set(time.Now())
 	r.svc.start(t.Context())
 
 	assert.NoDirExists(t, r.path("conversations", old.ID), "a conversation older than 30 days is gone")
