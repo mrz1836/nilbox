@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { formatCount } from '../../lib/format'
 import { shortCommit } from '../../lib/git'
-import { formatAge, formatAgo, formatFull } from '../../lib/time'
+import { formatAge, formatAgo, formatFull, unixISO } from '../../lib/time'
 import { asReadNow, changesOf, notOnGitHub, readable, type DetailsRead } from '../../lib/useWorktreeDetails'
 import {
   copiedOf,
@@ -234,7 +234,7 @@ function CopyMark({ commit }: { commit: WorktreeCommit }) {
 // pushed branch its worktree's commits were compared with, if it has one (CopyMark), and its
 // age. Force remove's confirmation lists the commits it keeps, or loses, with it.
 export function CommitLine({ commit }: { commit: WorktreeCommit }) {
-  const at = new Date(commit.unix * 1000).toISOString()
+  const at = unixISO(commit.unix)
 
   return (
     <li className="flex min-h-4.75 min-w-0 items-baseline gap-2 whitespace-nowrap">
@@ -373,7 +373,7 @@ function Base({ worktree, read }: ColumnProps) {
 // last commit's age, and its base.
 function BranchLines({ worktree, read }: ColumnProps) {
   const detached = worktree.detached || worktree.branch === ''
-  const last = worktree.lastCommitUnix > 0 ? new Date(worktree.lastCommitUnix * 1000).toISOString() : ''
+  const last = worktree.lastCommitUnix > 0 ? unixISO(worktree.lastCommitUnix) : ''
   const line = 'flex min-w-0 items-baseline gap-2 whitespace-nowrap'
   const key = 'w-14 shrink-0 text-muted'
 

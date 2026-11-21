@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 
 import { brand } from '../../generated/brand'
 import { shortCommit } from '../../lib/git'
-import { capitalize, formatAge, formatAgo, formatFull } from '../../lib/time'
+import { capitalize, formatAge, formatAgo, formatFull, unixISO } from '../../lib/time'
 import { toneFill, toneText } from '../../lib/tone'
 import { useNow } from '../../lib/useNow'
 import type { RowWork } from '../../lib/useWorktrees'
@@ -413,7 +413,7 @@ export function AgeCell({ worktree }: { worktree: Worktree }) {
     return null
   }
 
-  const iso = new Date(worktree.lastCommitUnix * 1000).toISOString()
+  const iso = unixISO(worktree.lastCommitUnix)
 
   return (
     <span title={`Last commit: ${formatFull(iso)}`} className={ageCellClass}>
