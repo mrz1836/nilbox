@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { ScriptRun, ScriptRunStatus, TerminalID } from '../../platform'
+import { deferred } from '../../test/async'
 import { at, FIXED_NOW, fromNow } from '../../test/clock'
 import { checksRun, hookActionResult, hooksRun, scriptRun, scriptRunChunk } from '../../test/fixtures'
 import { emit, listening, platform } from '../../test/platform'
@@ -493,13 +494,9 @@ describe('RunPanel', () => {
     })
 
     it('says it is copying until it has, and why it couldn’t', async () => {
-      let refuse: (err: Error) => void = () => undefined
+      const copying = deferred()
 
-      platform.copyText.mockReturnValue(
-        new Promise((_, reject) => {
-          refuse = reject
-        }),
-      )
+      platform.copyText.mockReturnValue(copying.promise)
       renderPanel()
 
       await shownRun()
@@ -508,7 +505,7 @@ describe('RunPanel', () => {
       expect(await screen.findByRole('button', { name: 'Copying…' })).toBeDisabled()
 
       act(() => {
-        refuse(new Error('The clipboard refused it.'))
+        copying.reject(new Error('The clipboard refused it.'))
       })
 
       expect(await screen.findByRole('alert')).toHaveTextContent('The clipboard refused it.')

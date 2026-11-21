@@ -10,6 +10,7 @@ import type { RowWork } from '../../lib/useWorktrees'
 import type { ItemFacts } from '../../lib/worktreeParts'
 import type { Lane } from '../../lib/worktrees'
 import type { AgentID, AgentSession, LinkedItem, Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
+import { deferred } from '../../test/async'
 import { at, FIXED_NOW } from '../../test/clock'
 import {
   agentSession,
@@ -1208,12 +1209,8 @@ describe('WorktreeLine details', () => {
   }
 
   it('lists the first twelve files at once, then the rest once read', async () => {
-    let answer: (details: WorktreeDetails) => void = () => undefined
-    platform.worktreeDetails.mockReturnValueOnce(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const answer = deferred<WorktreeDetails>()
+    platform.worktreeDetails.mockReturnValueOnce(answer.promise)
     const wt = row('pr-7', { dirty: true, dirtyCount: 30, files: worktreeFiles(12), canRemove: false })
     render(<Page wt={wt} listing={1} />, { wrapper: at() })
 
@@ -1225,7 +1222,7 @@ describe('WorktreeLine details', () => {
     expect(drawer.getByText('reading the other 18…')).toBeInTheDocument()
 
     act(() => {
-      answer(worktreeDetails({ files: worktreeFiles(30), fileCount: 30 }))
+      answer.resolve(worktreeDetails({ files: worktreeFiles(30), fileCount: 30 }))
     })
 
     await userEvent.click(await drawer.findByRole('button', { name: 'Show all 30' }))

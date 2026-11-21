@@ -1,10 +1,11 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import { CelebrationsContext } from '../../lib/celebrations'
 import type { Celebrations, ReleaseResult as Result, ScriptRun } from '../../platform'
+import { nextTask } from '../../test/async'
 import { at } from '../../test/clock'
 import { releaseFollow, releaseResult, releaseRun } from '../../test/fixtures'
 import { platform } from '../../test/platform'
@@ -94,11 +95,7 @@ describe('ReleaseResult', () => {
 
     await card()
     // Let the effect that would throw it run.
-    await act(async () => {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 0)
-      })
-    })
+    await nextTask()
 
     expect(document.querySelector('[data-testid="confetti"]')).toBeNull()
     vi.unstubAllGlobals()
@@ -109,11 +106,7 @@ describe('ReleaseResult', () => {
 
     const c = await card()
     // Let the effect that would throw it run.
-    await act(async () => {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 0)
-      })
-    })
+    await nextTask()
 
     expect(c.getByRole('heading', { name: 'acme-org/sdk v1.4.3 is on GitHub' })).toBeInTheDocument()
     expect(document.querySelector('[data-testid="confetti"]')).toBeNull()

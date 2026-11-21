@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { AutopilotConfig, AutopilotEngine, Settings } from '../../platform'
+import { deferred } from '../../test/async'
 import { at } from '../../test/clock'
 import {
   agents,
@@ -388,13 +389,9 @@ describe('This Mac', () => {
   })
 
   it('checks again on asking, held off while it checks, and shows what the checks found', async () => {
-    let finish: (r: ReturnType<typeof readiness>) => void = () => undefined
+    const checking = deferred<ReturnType<typeof readiness>>()
     platform.getAutopilotReadiness.mockResolvedValue(mac())
-    platform.checkAutopilotReadiness.mockReturnValue(
-      new Promise((resolve) => {
-        finish = resolve
-      }),
-    )
+    platform.checkAutopilotReadiness.mockReturnValue(checking.promise)
     renderSection()
 
     await screen.findByText('Not ready here: Snooze passing bot PRs')
@@ -404,7 +401,7 @@ describe('This Mac', () => {
     expect(screen.getByRole('button', { name: 'Checking…' })).toBeDisabled()
 
     await act(async () => {
-      finish(readiness())
+      checking.resolve(readiness())
       await Promise.resolve()
     })
 

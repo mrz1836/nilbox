@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { IntegrationTools, Settings } from '../../platform'
+import { deferred } from '../../test/async'
 import {
   goPreCommitTool,
   installPlan,
@@ -97,12 +98,8 @@ describe('IntegrationsSection', () => {
   })
 
   it('checks again, busy until it is done, showing what it found', async () => {
-    let finish: (tools: IntegrationTools) => void = () => undefined
-    platform.checkIntegrationsAgain.mockReturnValue(
-      new Promise<IntegrationTools>((resolve) => {
-        finish = resolve
-      }),
-    )
+    const checking = deferred<IntegrationTools>()
+    platform.checkIntegrationsAgain.mockReturnValue(checking.promise)
     renderSection()
 
     await screen.findByRole('region', { name: 'mage-x' })
@@ -114,7 +111,7 @@ describe('IntegrationsSection', () => {
     expect(within(screen.getByRole('region', { name: 'go-pre-commit' })).getByText('Checking…')).toBeInTheDocument()
 
     act(() => {
-      finish(integrationTools({ tools: [integrationTool({ state: 'update' })] }))
+      checking.resolve(integrationTools({ tools: [integrationTool({ state: 'update' })] }))
     })
 
     expect(await screen.findByRole('button', { name: 'Check again' })).toBeEnabled()

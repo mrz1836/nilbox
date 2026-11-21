@@ -15,6 +15,7 @@ import type {
   ScriptRun,
   Settings,
 } from '../../platform'
+import { deferred } from '../../test/async'
 import { at } from '../../test/clock'
 import {
   integrationTool,
@@ -64,18 +65,11 @@ function group(title: RegExp) {
 // heldList makes the next read of the list wait until the test answers it, as a read of
 // GitHub does, and returns the answer.
 function heldList(): (list: ReleaseCandidates) => void {
-  let answer: (list: ReleaseCandidates) => void = () => undefined
+  const d = deferred<ReleaseCandidates>()
 
-  platform.listReleaseCandidates.mockImplementationOnce(
-    () =>
-      new Promise<ReleaseCandidates>((resolve) => {
-        answer = resolve
-      }),
-  )
+  platform.listReleaseCandidates.mockImplementationOnce(() => d.promise)
 
-  return (list) => {
-    answer(list)
-  }
+  return d.resolve
 }
 
 // listed is the page's list as read, holding repos, with no read of GitHub under way.

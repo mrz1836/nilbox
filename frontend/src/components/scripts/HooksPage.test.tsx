@@ -7,6 +7,7 @@ import type { SettingsSection } from '../../lib/settingsIndex'
 import type { OnSection, StoredSections } from '../../lib/useSections'
 import { useHooks } from '../../lib/useHooks'
 import type { HookInstallAllResult, IntegrationTool, ScriptRun } from '../../platform'
+import { deferred } from '../../test/async'
 import { at } from '../../test/clock'
 import { goPreCommitTool, hookInstallAll, hookRepo, hooksList, scriptRun, toolCopy } from '../../test/fixtures'
 import { emit, platform } from '../../test/platform'
@@ -147,12 +148,8 @@ describe('HooksPage', () => {
   })
 
   it('installs and updates every repository it can at once, a line for each, each opening its run', async () => {
-    let finish: (result: HookInstallAllResult) => void = () => undefined
-    platform.installAllHooks.mockReturnValue(
-      new Promise<HookInstallAllResult>((resolve) => {
-        finish = resolve
-      }),
-    )
+    const installing = deferred<HookInstallAllResult>()
+    platform.installAllHooks.mockReturnValue(installing.promise)
     const { onOpenRun } = renderPage()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Install and update all (2)' }))
@@ -166,7 +163,7 @@ describe('HooksPage', () => {
     expect(card.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument()
 
     act(() => {
-      finish(
+      installing.resolve(
         hookInstallAll({
           lines: [
             ...hookInstallAll().lines,

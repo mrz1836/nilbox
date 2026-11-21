@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../../generated/brand'
 import { settlingWords, type RestartStep } from '../../lib/update'
 import type { Settings, UpdateStatus } from '../../platform'
+import { deferred } from '../../test/async'
 import { at } from '../../test/clock'
 import { settings, updateLocation, updateReady, updateStatus } from '../../test/fixtures'
 import { platform } from '../../test/platform'
@@ -190,18 +191,14 @@ describe('UpdatesCard', () => {
   })
 
   it('checks now, saying so while it does, and shows what it found in place', async () => {
-    let answer: (status: UpdateStatus) => void = () => undefined
-    platform.checkForUpdates.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const checking = deferred<UpdateStatus>()
+    platform.checkForUpdates.mockReturnValue(checking.promise)
     const { update } = card(updateStatus())
 
     await userEvent.click(screen.getByRole('button', check))
     expect(screen.getByRole('button', { name: 'Checking…' })).toBeDisabled()
 
-    answer(updateReady())
+    checking.resolve(updateReady())
     await waitFor(() => {
       expect(screen.getByRole('button', check)).toBeEnabled()
     })

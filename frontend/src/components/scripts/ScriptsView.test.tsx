@@ -15,6 +15,7 @@ import type {
   ScriptsPage as StoredScriptsPage,
   TerminalID,
 } from '../../platform'
+import { deferred } from '../../test/async'
 import { at } from '../../test/clock'
 import {
   goPreCommitTool,
@@ -571,12 +572,8 @@ describe('ScriptsView', () => {
 
     it('keeps Install and update all going, and its result, while another page shows', async () => {
       hooksOnly()
-      let finish: (result: HookInstallAllResult) => void = () => undefined
-      platform.installAllHooks.mockReturnValue(
-        new Promise<HookInstallAllResult>((resolve) => {
-          finish = resolve
-        }),
-      )
+      const installing = deferred<HookInstallAllResult>()
+      platform.installAllHooks.mockReturnValue(installing.promise)
       renderView()
 
       await userEvent.click(await screen.findByRole('button', { name: 'Install and update all (2)' }))
@@ -588,7 +585,7 @@ describe('ScriptsView', () => {
 
       await userEvent.click(rail().getByRole('button', { name: /^Runs/ }))
       act(() => {
-        finish(hookInstallAll())
+        installing.resolve(hookInstallAll())
       })
       await userEvent.click(rail().getByRole('button', { name: /^Hooks/ }))
 

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { useWorktreeDetails } from '../../lib/useWorktreeDetails'
 import type { Confirmation } from '../../lib/useWorktrees'
 import type { Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
+import { deferred } from '../../test/async'
 import { at, FIXED_NOW } from '../../test/clock'
 import {
   copiedWorktree,
@@ -61,16 +62,6 @@ function single(kind: 'remove' | 'force' | 'cleanUp', wt: Worktree, repos?: read
   render(<Harness confirmation={{ kind, repoPath, worktree: wt }} repos={repos} />, { wrapper: at() })
 
   return within(screen.getByRole('dialog'))
-}
-
-// held is a promise the test settles itself, to see what shows while it is pending.
-function held<T>() {
-  let resolve: (value: T) => void = () => undefined
-  const promise = new Promise<T>((settle) => {
-    resolve = settle
-  })
-
-  return { promise, resolve }
 }
 
 // dirty is a worktree with n uncommitted files, the listing's first 12 of them listed, and
@@ -263,7 +254,7 @@ describe('ConfirmationDialog for one worktree', () => {
 
 describe('ConfirmationDialog for Force remove', () => {
   it('lists the files it discards and the commits it keeps, reading the rest as it opens', async () => {
-    const answer = held<WorktreeDetails>()
+    const answer = deferred<WorktreeDetails>()
     platform.worktreeDetails.mockReturnValue(answer.promise)
     const dialog = single('force', dirty(30, 2))
 

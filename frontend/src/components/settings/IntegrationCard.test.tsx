@@ -14,6 +14,7 @@ import type {
   Settings,
   ToolCopy,
 } from '../../platform'
+import { deferred } from '../../test/async'
 import {
   goPreCommitTool,
   installPlan,
@@ -242,12 +243,8 @@ describe('IntegrationCard', () => {
   })
 
   it('stores the opposite of what the switch shows, for good, and shows it at once', async () => {
-    let finish: (stored: Settings) => void = () => undefined
-    platform.setIntegrationEnabled.mockReturnValue(
-      new Promise<Settings>((resolve) => {
-        finish = resolve
-      }),
-    )
+    const storing = deferred<Settings>()
+    platform.setIntegrationEnabled.mockReturnValue(storing.promise)
     const { card, onSaved, reload } = renderCard()
     const toggle = card.getByRole('switch', { name: 'mage-x' })
 
@@ -258,7 +255,7 @@ describe('IntegrationCard', () => {
     expect(toggle).toBeDisabled()
     expect(card.getByText('Off')).toBeInTheDocument()
 
-    finish(withSwitch('off'))
+    storing.resolve(withSwitch('off'))
 
     await waitFor(() => {
       expect(onSaved).toHaveBeenCalledExactlyOnceWith(withSwitch('off'))
@@ -703,12 +700,8 @@ describe('IntegrationCard installs', () => {
   })
 
   it('holds the button while the install runs', async () => {
-    let finish: (result: InstallResult) => void = () => undefined
-    platform.updateIntegration.mockReturnValue(
-      new Promise<InstallResult>((resolve) => {
-        finish = resolve
-      }),
-    )
+    const installing = deferred<InstallResult>()
+    platform.updateIntegration.mockReturnValue(installing.promise)
     const { card } = renderCard(updateTool())
     const button = card.getByRole('button', { name: 'Update to 1.30.0' })
 
@@ -718,7 +711,7 @@ describe('IntegrationCard installs', () => {
     expect(button).toBeDisabled()
     expect(card.getByRole('switch', { name: 'mage-x' })).toBeDisabled()
 
-    finish(installResult({ message: 'Updated magex to 1.30.0' }))
+    installing.resolve(installResult({ message: 'Updated magex to 1.30.0' }))
 
     expect(await card.findByText('Updated magex to 1.30.0')).toBeInTheDocument()
     await waitFor(() => {

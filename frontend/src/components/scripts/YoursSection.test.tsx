@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { RepoScripts, RunsIn, ScriptEntry, ScriptSection, UserScript } from '../../platform'
+import { deferred, type Deferred } from '../../test/async'
 import { repoScripts, scriptSection, userScript, yourEntry } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { RepoScriptsPage } from './RepoScriptsPage'
@@ -238,13 +239,13 @@ describe('Yours', () => {
   })
 
   it('reads the page again after each of two moves that end one after another', async () => {
-    const answers: (() => void)[] = []
-    platform.moveUserScript.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          answers.push(resolve)
-        }),
-    )
+    const answers: Deferred<void>[] = []
+    platform.moveUserScript.mockImplementation(() => {
+      const move = deferred()
+      answers.push(move)
+
+      return move.promise
+    })
     withYours(yours([yourEntry(), yourEntry(test)]))
     renderPage()
 
@@ -254,12 +255,12 @@ describe('Yours', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Move up' }))
     expect(answers).toHaveLength(2)
 
-    answers[0]?.()
+    answers[0]?.resolve()
     await waitFor(() => {
       expect(platform.listRepoScripts).toHaveBeenCalledTimes(2)
     })
 
-    answers[1]?.()
+    answers[1]?.resolve()
     await waitFor(() => {
       expect(platform.listRepoScripts).toHaveBeenCalledTimes(3)
     })

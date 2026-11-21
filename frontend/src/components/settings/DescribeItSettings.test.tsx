@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { DescribeAgentChoice, DescribePluginState, Profile } from '../../platform'
+import { deferred } from '../../test/async'
 import { agents, describeAgentChoice, describePluginState, profile } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { DescribeItSettings, installedText, pluginLabel } from './DescribeItSettings'
@@ -29,16 +30,6 @@ function options(name: string): string[] {
   return within(screen.getByRole('combobox', { name }))
     .getAllByRole('option')
     .map((o) => o.textContent)
-}
-
-// deferred is a call that settles when the test says.
-function deferred<T>() {
-  let settle: (value: T) => void = () => undefined
-  const promise = new Promise<T>((resolve) => {
-    settle = resolve
-  })
-
-  return { promise, settle }
 }
 
 // line returns the queries scoped to the plugin's line for a profile.
@@ -137,7 +128,7 @@ describe('the agent Describe it starts with', () => {
       expect(field).toBeDisabled()
     }
 
-    saving.settle(describeAgentChoice({ profile: 'work' }))
+    saving.resolve(describeAgentChoice({ profile: 'work' }))
 
     await waitFor(() => {
       expect(profileField).toBeEnabled()
@@ -250,7 +241,7 @@ describe('the plugin for the user’s own Claude Code', () => {
     expect(line('default').getByRole('button', { name: 'Installing…' })).toBeDisabled()
     expect(line('work').getByRole('button', { name: 'Remove' })).toBeDisabled()
 
-    installing.settle([
+    installing.resolve([
       describePluginState({ installed: true, version: '1.0.0' }),
       describePluginState({ profile: 'work', default: false, installed: true, version: '1.0.0' }),
     ])
