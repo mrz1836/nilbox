@@ -91,7 +91,7 @@ export function teamsText(teams: readonly string[]): string {
 
 // repoRuleItems pin or mute the item's repository, or every repository of its org, or take
 // either rule off, each target by its own rule, then open the rules in Settings.
-export function repoRuleItems(item: InboxItem, triage: TriageActions): MenuItem[] {
+function repoRuleItems(item: InboxItem, triage: TriageActions): MenuItem[] {
   const repo = item.repo
   const org = orgOf(repo)
   const toggles = (target: string, scope: string, divided: boolean): MenuItem[] => {

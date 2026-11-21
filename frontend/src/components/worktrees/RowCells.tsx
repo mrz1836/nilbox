@@ -163,7 +163,7 @@ const kindIcons: Readonly<Record<KindIcon, (className: string) => ReactNode>> = 
 }
 
 // KindMark marks a pull request or issue as it stands, its words in its tooltip.
-export function KindMark({ icon, className }: { icon: KindIcon; className: string }) {
+function KindMark({ icon, className }: { icon: KindIcon; className: string }) {
   return kindIcons[icon](className)
 }
 

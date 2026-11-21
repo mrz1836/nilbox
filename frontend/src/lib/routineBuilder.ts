@@ -215,7 +215,7 @@ export function stepKindOf(st: AutopilotStep): AutopilotStepKind | undefined {
 
 // defaultTools is the tools preset an agent step runs with when it names none
 // (catalog.DefaultPreset).
-export const defaultTools = 'editTestPush'
+const defaultTools = 'editTestPush'
 
 // toolsOf is an agent step's tools preset, its default when it sets none.
 export function toolsOf(a: AutopilotAgentStep): string {
@@ -332,7 +332,7 @@ export interface AddChoice {
 }
 
 // maxSteps is the most steps a routine has.
-export const maxSteps = 10
+const maxSteps = 10
 
 // addable are the kinds of step that fit at the end of spec's steps, in the catalog's
 // order: one that acts on the items it watches, an agent step only while there is none,
@@ -374,7 +374,7 @@ export function addable(catalog: AutopilotCatalog, spec: AutopilotSpec): AddChoi
 
 // firstPlace is where a new agent step runs: the first place this build runs agents in, or
 // undefined when the catalog offers none, which leaves the spec's own default.
-export function firstPlace(places: readonly Pick<AutopilotPlace, 'id' | 'offered'>[]): AutopilotWhere | undefined {
+function firstPlace(places: readonly Pick<AutopilotPlace, 'id' | 'offered'>[]): AutopilotWhere | undefined {
   return places.find((p) => p.offered)?.id
 }
 

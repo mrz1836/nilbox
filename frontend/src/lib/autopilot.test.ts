@@ -28,7 +28,6 @@ import {
   describeAttach,
   describeExamples,
   describeSeesText,
-  dirtyText,
   editable,
   effectState,
   effectVerb,
@@ -38,7 +37,6 @@ import {
   inActivity,
   inChunks,
   itemText,
-  lineOf,
   matchingWords,
   maxIDs,
   mergeDays,
@@ -239,10 +237,6 @@ describe('needs you', () => {
     expect(runLabel(files)).toBe('Run on a1b2c3d')
     expect(runLabel(dirty)).toBe('Run in pr-88 anyway')
     expect(runLabel(autopilotMatch({ state: 'waiting', blockedBy: 'ask' }))).toBe('Run')
-    expect(dirtyText(autopilotHold({ worktree: 'pr-88', dirty: 3 }))).toBe('pr-88 has 3 uncommitted files')
-    expect(dirtyText(autopilotHold({ worktree: '', dir: '~/projects/example-repo', dirty: 1 }))).toBe(
-      '~/projects/example-repo has 1 uncommitted file',
-    )
     expect(skipLabel(autopilotMatch())).toBe('Skip this commit')
     expect(skipLabel(autopilotMatch({ item: itemRef({ kind: 'issue' }), fireKey: 'labeled:bug' }))).toBe(
       'Skip this time',
@@ -613,9 +607,6 @@ describe('activityLines', () => {
     const lines = activityLines(days, [leftAlone()], { routine: 0, result: 'all' })
 
     expect(lines.map((l) => l.kind)).toEqual(['leftAlone', 'match', 'group'])
-    expect(lineOf(lines, 12)?.kind).toBe('group')
-    expect(lineOf(lines, 14)?.kind).toBe('match')
-    expect(lineOf(lines, 99)).toBeUndefined()
   })
 
   it('narrows the lines by routine and by result', () => {

@@ -31,7 +31,7 @@ export function merges(action: ReviewAction): boolean {
 }
 
 // methodNames are each merge method's name, as GitHub says it.
-export const methodNames: Readonly<Record<Exclude<MergeMethod, ''>, string>> = {
+const methodNames: Readonly<Record<Exclude<MergeMethod, ''>, string>> = {
   SQUASH: 'Squash and merge',
   MERGE: 'Create a merge commit',
   REBASE: 'Rebase and merge',

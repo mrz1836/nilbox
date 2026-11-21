@@ -22,7 +22,7 @@ import { rowMatchClass, useSetting } from './match'
 import { ErrorText, Group, rowDescribedBy, SectionIntro } from './rows'
 
 // agentLabel and pluginLabel name the group's two rows, as "Find a setting" finds them.
-export const agentLabel = 'Describe it’s agent'
+const agentLabel = 'Describe it’s agent'
 export const pluginLabel = `Use ${brand.name} in your own Claude Code`
 
 // pluginHelp says what the plugin does, and how much less a session in the user's own

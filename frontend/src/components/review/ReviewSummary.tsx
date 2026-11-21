@@ -154,7 +154,7 @@ export function checksSummary(checks: readonly ReviewCheck[]): ChecksSummary {
 
 // countsSummary sums up the checks GitHub's rollup counted, as the inbox read them since the
 // sheet listed them.
-export function countsSummary(counts: ReviewCheckCounts): ChecksSummary {
+function countsSummary(counts: ReviewCheckCounts): ChecksSummary {
   return summaryOf(counts.passed + counts.failed + counts.pending + counts.skipped, counts.failed, counts.pending)
 }
 
@@ -362,7 +362,7 @@ function Ignored({ review, ignored = [], onIgnore }: IgnoreProps & { review: Rev
 // openChecks is how many checks the list shows open. A failing check always shows; the
 // checks running show beside them while every one of them fits, and the ones that passed
 // while they all do; any that don't fit fold away under their count.
-export const openChecks = 8
+const openChecks = 8
 
 // CheckGroup is a group of checks folded away under its count, as in "23 passed · 2
 // required", with the dot of their outcome.

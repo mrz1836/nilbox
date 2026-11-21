@@ -485,7 +485,7 @@ export function outcomeKind(run: Pick<ScriptRun, 'result'>): ReleaseResultKind |
 }
 
 // outcomeWords say how a release came out, in the words Recent lists it with.
-export const outcomeWords: Readonly<Record<ReleaseResultKind, string>> = {
+const outcomeWords: Readonly<Record<ReleaseResultKind, string>> = {
   released: 'on GitHub',
   notPushed: 'not pushed',
   failed: 'failed',
@@ -518,7 +518,7 @@ const followStates: readonly ReleaseFollowState[] = [
 // followWords say where a release on GitHub is as its workflow is followed, in the words
 // Recent lists it with. One no workflow ran for, or that stopped at its limits, is still
 // only on GitHub: nothing is assumed.
-export const followWords: Readonly<Record<ReleaseFollowState, string>> = {
+const followWords: Readonly<Record<ReleaseFollowState, string>> = {
   following: 'on GitHub, following its workflow',
   published: 'published',
   failed: 'release workflow failed',

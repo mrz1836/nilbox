@@ -433,10 +433,8 @@ export type DescribeAgentChoice = NonNullLists<describeit.AgentChoice>
 export type DescribeConversation = NonNullLists<describeit.Conversation>
 export type DescribeTurn = NonNullLists<describeit.Turn>
 export type DescribeTurnState = describeit.TurnState
-export const DescribeTurnState = describeit.TurnState
 export type DescribeMessage = NonNullLists<describeit.Message>
 export type DescribeAttachKind = describeit.AttachKind
-export const DescribeAttachKind = describeit.AttachKind
 export type DescribeAttachRef = NonNullLists<describeit.AttachRef>
 export type DescribeAttachment = NonNullLists<describeit.Attachment>
 export type DescribeCard = NonNullLists<describeit.Card>
@@ -1293,24 +1291,14 @@ export const {
 // turned clearing on or cleared one by hand. A "ghthreads:updated" event follows each pass
 // that changed what Snapshot or List shows.
 //
-// Preview says, from the database alone, what clearing would do now, as if it were on;
-// Clear and ClearItem clear threads by the user's own hand, at once and whether clearing is
-// on or off; Keep takes back queued clears, the toast's Undo; and MarkDone and MarkRead
-// mark threads done or read on GitHub at the user's click in the panel, whatever their
-// subject. Each returns the Snapshot.
+// Keep takes back queued clears, the toast's Undo, and MarkDone and MarkRead mark threads
+// done or read on GitHub at the user's click in the panel, whatever their subject. Each
+// returns the Snapshot.
 const githubThreads = narrow(ghthreads.Service)
 
 export const githubThreadsSnapshot: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.Snapshot
 export const githubThreadsList: () => CancellablePromise<GitHubThreadList> = githubThreads.List
 export const checkGitHubThreadsNow: () => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.CheckNow
-export const previewGitHubThreads: () => CancellablePromise<GitHubThreadsPreview> = githubThreads.Preview
-export const clearGitHubThreads: (threadIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> =
-  githubThreads.Clear
-export const clearGitHubItemThreads: (
-  owner: string,
-  name: string,
-  number: number,
-) => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.ClearItem
 export const keepGitHubThreads: (clearIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> = githubThreads.Keep
 export const markGitHubThreadsDone: (threadIDs: number[]) => CancellablePromise<GitHubThreadsSnapshot> =
   githubThreads.MarkDone

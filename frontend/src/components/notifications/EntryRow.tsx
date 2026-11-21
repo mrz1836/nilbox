@@ -53,7 +53,7 @@ export const rowActionClass =
   'flex size-7 items-center justify-center rounded-md text-muted transition hover:bg-surface hover:text-text focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:cursor-default'
 
 // rowActionsClass shows a row's actions only while the pointer or the focus is on it.
-export const rowActionsClass =
+const rowActionsClass =
   'absolute top-1.5 right-2 flex items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100'
 
 export interface EntryRowProps {

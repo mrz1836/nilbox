@@ -17,9 +17,6 @@ import { ChevronDownIcon, ChevronRightIcon, ExternalIcon } from '../icons'
 import { LineComment } from './LineComment'
 import { DiffLinesSkeleton } from './ReviewLoading'
 
-// largeDiffLines is how many changed lines make a file start collapsed.
-export const largeDiffLines = 400
-
 export interface DiffViewProps {
   review: Review
   draft: ReviewDraft
@@ -65,7 +62,7 @@ interface Editing {
 
 // whereText names a comment's lines, as in "line 12", "lines 10–12", or "old line 4" on the
 // version before the change.
-export function whereText(c: { line: number; startLine: number; side: DiffSide }): string {
+function whereText(c: { line: number; startLine: number; side: DiffSide }): string {
   const old = c.side === 'LEFT' ? 'old ' : ''
 
   return c.startLine > 0 ? `${old}lines ${String(c.startLine)}–${String(c.line)}` : `${old}line ${String(c.line)}`

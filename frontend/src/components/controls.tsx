@@ -44,7 +44,7 @@ export const captionClass = 'text-[0.6875rem] font-semibold tracking-wide text-m
 
 // switchClass draws a native checkbox as a switch; give it role="switch" so assistive
 // tech announces on and off.
-export const switchClass =
+const switchClass =
   'relative h-5 w-9 shrink-0 appearance-none rounded-full bg-border transition-colors checked:bg-accent before:absolute before:top-0.5 before:left-0.5 before:size-4 before:rounded-full before:bg-white before:shadow before:transition-transform checked:before:translate-x-4 disabled:opacity-60'
 
 export interface SegmentOption<T extends string> {

@@ -83,7 +83,6 @@ import type {
   GitHubSignIn,
   GitHubThread,
   GitHubThreadList,
-  GitHubThreadsPreview,
   GitHubThreadsSnapshot,
   GitHubThreadsStatus,
   HookActionResult,
@@ -136,7 +135,6 @@ import type {
   PromptBackup,
   PromptCheckResult,
   PromptVariable,
-  PreviewThread,
   QueuedClear,
   Rate,
   ReleaseCandidate,
@@ -1520,7 +1518,7 @@ export function integrationTools(overrides: Partial<IntegrationTools> = {}): Int
 
 // sensitiveCategories are three built-in categories of sensitive files, with a few of
 // their patterns each: the locked agent category first.
-export function sensitiveCategories(): SensitiveCategory[] {
+function sensitiveCategories(): SensitiveCategory[] {
   return [
     {
       id: 'agent',
@@ -2089,7 +2087,7 @@ export function linkedClone(overrides: Partial<LinkedClone> = {}): LinkedClone {
   }
 }
 
-export const unknownRate: Rate = { known: false, limit: 0, remaining: 0, used: 0, cost: 0, resetAt: '', takenAt: '' }
+const unknownRate: Rate = { known: false, limit: 0, remaining: 0, used: 0, cost: 0, resetAt: '', takenAt: '' }
 
 // rate is a GraphQL-sized budget reading, taken a minute before the tests' noon and
 // resetting 42 minutes after it.
@@ -2107,7 +2105,7 @@ export function rate(overrides: Partial<Rate> = {}): Rate {
 }
 
 // noPurposes is a budget's spend split by what each request was for, with nothing spent.
-export function noPurposes(): BudgetReading['purposes'] {
+function noPurposes(): BudgetReading['purposes'] {
   return { inbox: 0, watches: 0, follower: 0, autopilot: 0, other: 0 }
 }
 
@@ -2167,7 +2165,7 @@ export function writes(overrides: Partial<BudgetWrites> = {}): BudgetWrites {
 // statusProviders is the catalog of status pages the service status check reads, as Go
 // sends it in the settings: GitHub's, Claude's, and OpenAI's parts, with the defaults
 // ticked.
-export function statusProviders(): StatusProvider[] {
+function statusProviders(): StatusProvider[] {
   const part = (id: string, name: string, def = false, group = ''): StatusPart => ({ id, name, group, default: def })
 
   return [
@@ -2358,30 +2356,6 @@ export function settledClear(overrides: Partial<SettledClear> = {}): SettledClea
     reason: '',
     ...overrides,
   }
-}
-
-// previewThread is that notification as the cleanup sheet lists it: its pull request
-// merged, so it would clear.
-export function previewThread(overrides: Partial<PreviewThread> = {}): PreviewThread {
-  return {
-    id: 1001,
-    owner: 'acme-org',
-    name: 'example-repo',
-    kind: 'pr',
-    number: 7,
-    title: 'Add the widget cache',
-    reason: 'review_requested',
-    unread: true,
-    updatedAt: '2026-06-15T11:55:00Z',
-    trigger: 'merged',
-    ...overrides,
-  }
-}
-
-// threadsPreview is what clearing would do: by default nothing, with clearing off and
-// marking a notification done.
-export function threadsPreview(overrides: Partial<GitHubThreadsPreview> = {}): GitHubThreadsPreview {
-  return { reading: true, auto: false, action: 'done', count: 0, repos: [], held: [], ...overrides }
 }
 
 // githubThread is an unread notification asking for the user's review of pull request #7
@@ -4313,16 +4287,6 @@ export function scriptQuestion(overrides: Partial<ScriptQuestion> = {}): ScriptQ
   }
 }
 
-// questionError is the error a run is refused with until the user answers question, as
-// the desktop runtime delivers it: the full text for the console, and the cause the
-// window reads, with the backend's words and the question as its detail.
-export function questionError(
-  question: ScriptQuestion = scriptQuestion(),
-  message = 'Confirm “Test” before it runs.',
-): Error {
-  return new Error(`the command needs the user's trust: ${question.ref}`, { cause: { message, detail: question } })
-}
-
 // updateStatus is a release build of 0.2.0 in /Applications, up to date: its last check,
 // twelve minutes before the tests' noon, found nothing newer, and nothing failed.
 export function updateStatus(overrides: Partial<UpdateStatus> = {}): UpdateStatus {
@@ -4386,13 +4350,6 @@ export function runGoing(overrides: Partial<RunGoing> = {}): RunGoing {
     outlives: false,
     ...overrides,
   }
-}
-
-// runsGoingError is a restart refused while runs go in the app, as the desktop runtime
-// delivers it: the full text for the console, and the cause the window reads, with the
-// backend's words and the runs as its detail (Go's update.RunsGoingDetail).
-export function runsGoingError(runs: readonly RunGoing[] = [runGoing()], message = 'Restarting stops runs.'): Error {
-  return new Error('runs are going in the app', { cause: { message, detail: { runsGoing: runs } } })
 }
 
 // galleryTemplate is the flagship template, Fix Dependabot security failures, as the gallery

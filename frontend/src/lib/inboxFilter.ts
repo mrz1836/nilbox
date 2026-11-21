@@ -29,7 +29,7 @@ export const inboxSpec: QuerySpec = {
 }
 
 // inboxHint is the line under the filters the field offers: what words match.
-export const inboxHint = 'Matches titles, repos, #numbers, branches, authors, labels · -word excludes'
+const inboxHint = 'Matches titles, repos, #numbers, branches, authors, labels · -word excludes'
 
 // fixedValues are the values of the keys whose every value is known ahead, which a filter
 // names exactly. is:open matches every item, as the inbox holds only open ones.

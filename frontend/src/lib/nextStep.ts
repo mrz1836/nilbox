@@ -117,7 +117,7 @@ export interface NudgeState {
 }
 
 // noNudge is a card that offers no nudge and says nothing of one.
-export const noNudge: NudgeState = { due: false, words: '' }
+const noNudge: NudgeState = { due: false, words: '' }
 
 // StepInput is everything nextStep reads. session, sessionFresh, backFromSnooze, and nudge
 // depend on the time, which the caller reads: session is the card's session (cardSession),

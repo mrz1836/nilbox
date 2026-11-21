@@ -28,7 +28,7 @@ export function tokensText(n: number): string {
 
 // useWorking reads the agents' runs going, and again whenever Autopilot changes or a run's
 // stream moves on.
-export function useWorking(): { list: AutopilotWorkingList | undefined; reload: () => void } {
+function useWorking(): { list: AutopilotWorkingList | undefined; reload: () => void } {
   const query = useQuery(() => autopilotWorking(), [], { log: 'could not read the agents working' })
   const reload = () => {
     void query.refetch()

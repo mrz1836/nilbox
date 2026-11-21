@@ -10,8 +10,8 @@ export type Wording = (why: string) => string
 
 // openFailed and saveFailed are how the pages word a file dialog, and a save dialog, that
 // couldn't open.
-export const openFailed: Wording = (why) => `Couldn’t open the file dialog: ${why}`
-export const saveFailed: Wording = (why) => `Couldn’t open the save dialog: ${why}`
+const openFailed: Wording = (why) => `Couldn’t open the file dialog: ${why}`
+const saveFailed: Wording = (why) => `Couldn’t open the save dialog: ${why}`
 
 // picked opens a dialog, a throw as it opens failing as a rejection does.
 async function picked(dialog: () => PromiseLike<string>, word: Wording): Promise<Result<string>> {

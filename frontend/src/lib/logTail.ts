@@ -26,7 +26,7 @@ export const chunkBytes = 256 * 1024
 // While the window is pinned, only the lines above it go, until the log holds twice as
 // much; then the oldest go whatever shows, as a terminal's scrollback does. Show earlier
 // output reads what went again.
-export const keepChars = 4 * 1024 * 1024
+const keepChars = 4 * 1024 * 1024
 
 // Chunk is a part of the log as the backend sends it, with the log's size as it read it.
 export interface Chunk {

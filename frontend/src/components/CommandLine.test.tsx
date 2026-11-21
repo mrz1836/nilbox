@@ -2,8 +2,9 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { copiedMs } from '../lib/useCopy'
 import { platform } from '../test/platform'
-import { CommandLine, copiedMs } from './CommandLine'
+import { CommandLine } from './CommandLine'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 

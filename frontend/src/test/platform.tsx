@@ -72,7 +72,6 @@ import {
   prompt,
   promptBackup,
   prompts,
-  queuedClear,
   readiness,
   releaseCandidates,
   releaseOffer,
@@ -105,7 +104,6 @@ import {
   snoozeTemplate,
   statusWatch,
   sweepReport,
-  threadsPreview,
   updateReady,
   updateStatus,
   moveResult,
@@ -202,8 +200,6 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     routineMatchStored: () => Promise.resolve({ count: 0, pullRequests: 0, issues: 0, unknown: 0, incomplete: false }),
     // Describe it is ready, with no conversation, no card from outside, and the plugin not
     // installed, unless a test says so. A message starts a turn that runs.
-    DescribeTurnState: { TurnRunning: 'running', TurnDone: 'done', TurnStopped: 'stopped', TurnFailed: 'failed' },
-    DescribeAttachKind: { AttachRoutine: 'routine', AttachItem: 'item' },
     describeItStatus: () => Promise.resolve(describeStatus()),
     describeItAgent: () => Promise.resolve(describeAgentChoice()),
     setDescribeItAgent: (choice) => Promise.resolve(choice),
@@ -542,23 +538,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     githubThreadsSnapshot: () => Promise.resolve(githubThreads()),
     githubThreadsList: () => Promise.resolve(githubThreadList()),
     checkGitHubThreadsNow: () => Promise.resolve(githubThreads()),
-    previewGitHubThreads: () => Promise.resolve(threadsPreview()),
-    // A clear by hand is queued to go at once; Undo takes a queued one back, which leaves
-    // none queued.
-    clearGitHubThreads: (threadIDs) =>
-      Promise.resolve(
-        githubThreads({
-          queued: threadIDs.map((threadId, i) =>
-            queuedClear({ id: i + 1, threadId, trigger: 'by_hand', sendAfter: '2026-06-15T12:00:00Z' }),
-          ),
-        }),
-      ),
-    clearGitHubItemThreads: (owner, name, number) =>
-      Promise.resolve(
-        githubThreads({
-          queued: [queuedClear({ owner, name, number, trigger: 'by_hand', sendAfter: '2026-06-15T12:00:00Z' })],
-        }),
-      ),
+    // Undo takes a queued clear back, which leaves none queued.
     keepGitHubThreads: () => Promise.resolve(githubThreads()),
     markGitHubThreadsDone: () => Promise.resolve(githubThreads()),
     markGitHubThreadsRead: () => Promise.resolve(githubThreads()),
@@ -680,7 +660,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
 
 // createPlatform returns a fresh fake platform, with emit to send its window events and
 // listening to count who listens for one.
-export function createPlatform() {
+function createPlatform() {
   const listeners = new Map<WindowEvent, Set<Listener>>()
 
   const subscribe: Loose<Platform['on']> = (event, listener) => {

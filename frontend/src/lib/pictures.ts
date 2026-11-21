@@ -25,7 +25,7 @@ export const PicturesContext = createContext<Pictures>(none)
 
 // timelineLogins are the people a conversation shows a picture beside: who wrote each
 // comment and each review shown in full, but a bot, whose login GitHub has no picture for.
-export function timelineLogins(entries: readonly TimelineEntry[]): string[] {
+function timelineLogins(entries: readonly TimelineEntry[]): string[] {
   return entries
     .filter((e) => (e.kind === 'comment' || e.kind === 'reviewed') && e.actor !== '' && !e.actorIsBot && !e.minimized)
     .map((e) => e.actor)
@@ -89,7 +89,7 @@ export function usePicture(login: string): string {
 
 // cardBatch is the most authors one request for the cards' pictures asks for, so the first
 // pictures show while the rest still download.
-export const cardBatch = 25
+const cardBatch = 25
 
 // CardPicturesContext holds the pictures of the inbox's authors, keyed as cardPictureKey
 // says, which only CardAvatar reads. Only the inbox provides it: the Watching list's cards

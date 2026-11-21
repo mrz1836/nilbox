@@ -25,7 +25,7 @@ export const doneURL = 'https://github.com/notifications?query=is%3Adone'
 
 // refusedText is what the window says while GitHub refuses the token the notifications,
 // when the status carries no words of its own.
-export const refusedText = 'Your GitHub token can’t read notifications.'
+const refusedText = 'Your GitHub token can’t read notifications.'
 
 // ThreadItem is the pull request or issue a notification is about.
 export interface ThreadItem {
@@ -73,7 +73,7 @@ export function itemURL(item: ThreadItem): string {
 }
 
 // threadItemKey is an item's key among the inbox's (itemKey).
-export function threadItemKey(item: { owner: string; name: string; number: number }): string {
+function threadItemKey(item: { owner: string; name: string; number: number }): string {
   return itemKey(`${item.owner}/${item.name}`, item.number)
 }
 
@@ -449,7 +449,7 @@ export function settledText(clear: SettledClear): string {
 
 // clearItem is the item a queued or settled clear is about, or null when it names none a
 // link could hold.
-export function clearItem(clear: QueuedClear | SettledClear): ThreadItem | null {
+function clearItem(clear: QueuedClear | SettledClear): ThreadItem | null {
   return threadItem(clear)
 }
 

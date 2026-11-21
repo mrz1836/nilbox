@@ -17,7 +17,7 @@ export type { RowsKit } from './useSheetHost'
 // readItems reads the stored items among ids, as many at a time as the backend reads
 // (inChunks), so a routine that watches more never loses the rest, newest activity first.
 // Cancelling it cancels every read.
-export function readItems(ids: readonly number[]): Promise<InboxItem[]> & { cancel: () => void } {
+function readItems(ids: readonly number[]): Promise<InboxItem[]> & { cancel: () => void } {
   return andThen(all(inChunks(ids).map((chunk) => itemsByID(chunk))), (pages) =>
     pages.flat().sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
   )

@@ -17,8 +17,8 @@ import { LaunchOverrideFields } from './LaunchOverrideFields'
 import { TemplateEditor, type TemplateEditorHandle } from './TemplateEditor'
 
 // The limits the backend enforces, mirrored for counters.
-export const maxNameLength = 80
-export const maxNicknameLength = 20
+const maxNameLength = 80
+const maxNicknameLength = 20
 
 const appliesToOptions: readonly SegmentOption<PromptAppliesTo>[] = [
   { value: 'pr', label: appliesToLabels.pr },

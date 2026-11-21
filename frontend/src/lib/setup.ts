@@ -22,8 +22,8 @@ import { counted, formatCount } from './format'
 // setupValue (internal/desktop's SetupParam and SetupValue). The page reads it before its
 // first render, so its first frame is the setup's, never a flash of the inbox; the stored
 // state, read next, is what counts.
-export const setupParam = 'setup'
-export const setupValue = '1'
+const setupParam = 'setup'
+const setupValue = '1'
 
 // setupFromURL reports whether a page URL's query string says the setup shows.
 export function setupFromURL(search: string): boolean {
