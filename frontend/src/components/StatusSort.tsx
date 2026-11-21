@@ -2,16 +2,12 @@ import { useEffect, useId, useRef, useState } from 'react'
 
 import { moveStatus, statusKey, type Status } from '../lib/statusOrder'
 import { usePopover } from '../lib/usePopover'
-import { quietButtonClass, Segmented } from './controls'
+import { iconButtonClass, quietButtonClass, Segmented, smallIconButtonClass } from './controls'
 import { ChevronDownIcon, SortIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
 
 // Sort is how a list orders its items.
 type Sort = 'recent' | 'status'
-
-// moveClass is a status's move up and move down buttons.
-const moveClass =
-  'flex size-6 items-center justify-center rounded text-muted transition-colors hover:bg-background hover:text-text disabled:pointer-events-none disabled:opacity-disabled'
 
 export interface StatusSortProps {
   // title is the list's, which names the controls.
@@ -110,7 +106,7 @@ export function StatusSort({
           aria-expanded={open}
           aria-controls={open ? id : undefined}
           onClick={toggle}
-          className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text"
+          className={`${iconButtonClass} aria-expanded:bg-raised aria-expanded:text-text`}
         >
           <SortIcon className="size-4" />
         </button>
@@ -170,7 +166,7 @@ export function StatusSort({
                   onClick={() => {
                     move(name, -1)
                   }}
-                  className={moveClass}
+                  className={`${smallIconButtonClass} disabled:pointer-events-none disabled:opacity-disabled`}
                 >
                   <ChevronDownIcon className="size-3.5 rotate-180" />
                 </button>
@@ -183,7 +179,7 @@ export function StatusSort({
                   onClick={() => {
                     move(name, 1)
                   }}
-                  className={moveClass}
+                  className={`${smallIconButtonClass} disabled:pointer-events-none disabled:opacity-disabled`}
                 >
                   <ChevronDownIcon className="size-3.5" />
                 </button>

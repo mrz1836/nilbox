@@ -5,7 +5,7 @@ import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import { useNowAs } from '../lib/useNow'
 import { usePopover } from '../lib/usePopover'
 import { openExternal, type Settings } from '../platform'
-import { iconButtonClass, quietButtonClass, toolbarButtonClass } from './controls'
+import { iconButtonClass, quietButtonClass, smallIconButtonClass, toolbarButtonClass } from './controls'
 import { ExternalIcon, GitHubMarkIcon, HistoryIcon, RefreshIcon, SlidersIcon, XIcon } from './icons'
 import { Refused, TurnOnClearing } from './notifications/GitHubNotes'
 import { ThreadRow } from './notifications/ThreadRow'
@@ -147,12 +147,7 @@ export function GitHubThreadsMenu({
             className="flex items-start gap-2 border-b border-border py-2 pr-2 pl-4 text-xs text-danger"
           >
             <p className="min-w-0 flex-1">{markError}</p>
-            <button
-              type="button"
-              onClick={dismissMarkError}
-              aria-label="Dismiss"
-              className="flex size-5 shrink-0 items-center justify-center rounded text-muted hover:text-text"
-            >
+            <button type="button" onClick={dismissMarkError} aria-label="Dismiss" className={smallIconButtonClass}>
               <XIcon className="size-3.5" />
             </button>
           </div>
