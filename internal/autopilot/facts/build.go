@@ -333,15 +333,18 @@ func behind(d *DetailsRow) Value {
 
 // reviewDecision reads the review decision as the catalog spells it.
 func reviewDecision(d *DetailsRow) Value {
-	choice, ok := map[string]string{
-		"APPROVED": "approved", "CHANGES_REQUESTED": "changesRequested", "REVIEW_REQUIRED": "reviewRequired",
-		"": catalog.ReviewNone,
-	}[strings.ToUpper(d.ReviewDecision)]
-	if !ok {
+	switch strings.ToUpper(d.ReviewDecision) {
+	case "APPROVED":
+		return Text("approved")
+	case "CHANGES_REQUESTED":
+		return Text("changesRequested")
+	case "REVIEW_REQUIRED":
+		return Text("reviewRequired")
+	case "":
+		return Text(catalog.ReviewNone)
+	default:
 		return Text(strings.ToLower(d.ReviewDecision))
 	}
-
-	return Text(choice)
 }
 
 // checksState reads the head commit's overall result as the catalog spells it.
