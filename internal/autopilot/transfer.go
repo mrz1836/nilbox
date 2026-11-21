@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
@@ -604,7 +603,7 @@ func (c *refCollector) promptChoices(reply bool) []string {
 		}
 	}
 
-	sort.Strings(out)
+	slices.Sort(out)
 
 	return out
 }
