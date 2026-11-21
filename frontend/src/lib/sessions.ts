@@ -133,9 +133,9 @@ export const stateText: Readonly<Record<SessionState, string>> = {
 // card's other details. The rest, starting included, have none.
 export const stateTint: Readonly<Record<SessionState, string>> = {
   starting: '',
-  working: 'bg-info/12 ring-1 ring-info/25',
-  needs_approval: 'bg-warning/12 ring-1 ring-warning/30',
-  needs_input: 'bg-warning/12 ring-1 ring-warning/30',
+  working: 'bg-info/10 ring-1 ring-info/22',
+  needs_approval: 'bg-warning/10 ring-1 ring-warning/22',
+  needs_input: 'bg-warning/10 ring-1 ring-warning/22',
   idle: '',
   ended: '',
   failed: 'bg-danger/10',

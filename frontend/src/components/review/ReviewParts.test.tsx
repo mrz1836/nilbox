@@ -920,9 +920,9 @@ describe('DiffView', () => {
     const diff = screen.getByRole('table', { name: 'Diff of cache/cache.go' })
     const tint = (text: string) => within(diff).getByText(text, { exact: false }).closest('[role="row"] > div')
 
-    expect(tint('@@ -1,3 +1,4 @@')).toHaveClass('bg-accent/8', 'text-muted')
-    expect(tint('var size = 1')).toHaveClass('bg-danger/12')
-    expect(tint('var size = 2')).toHaveClass('bg-success/12')
+    expect(tint('@@ -1,3 +1,4 @@')).toHaveClass('bg-accent/10', 'text-muted')
+    expect(tint('var size = 1')).toHaveClass('bg-danger/10')
+    expect(tint('var size = 2')).toHaveClass('bg-success/10')
     expect([...(tint('package cache')?.classList ?? [])]).toEqual(['flex'])
   })
 })

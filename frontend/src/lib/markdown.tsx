@@ -60,7 +60,7 @@ const HEAD_CELL = `${CELL} bg-raised font-semibold`
 const DETAILS = 'rounded-md border border-border px-3 py-2'
 const SUMMARY = 'cursor-pointer font-medium'
 const KBD = 'rounded border border-border bg-raised px-1 font-mono text-small'
-const MARK = 'rounded-sm bg-warning/25 text-inherit'
+const MARK = 'rounded-sm bg-warning/22 text-inherit'
 const STRONG = 'font-semibold'
 
 type Level = 1 | 2 | 3 | 4 | 5 | 6

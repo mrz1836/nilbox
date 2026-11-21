@@ -227,10 +227,10 @@ function FoldedEntry({ item, onJump }: { item: Entry; onJump?: ((path: string) =
 // hunkTint is a diff line's tint, as the sheet's diff shows it.
 function hunkTint(line: string): string {
   if (line.startsWith('+')) {
-    return 'bg-success/12'
+    return 'bg-success/10'
   }
 
-  return line.startsWith('-') ? 'bg-danger/12' : ''
+  return line.startsWith('-') ? 'bg-danger/10' : ''
 }
 
 // whereOf names a line comment's place, as in "src/cache.go:12" or "src/cache.go:10–12".

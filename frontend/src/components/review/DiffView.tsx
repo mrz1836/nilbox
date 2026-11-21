@@ -42,10 +42,10 @@ export function fileAnchor(path: string): string {
 
 // rowClass is each kind of row's tint, from the theme's success and danger tokens.
 const rowClass: Readonly<Record<DiffRow['kind'], string>> = {
-  add: 'bg-success/12',
-  del: 'bg-danger/12',
+  add: 'bg-success/10',
+  del: 'bg-danger/10',
   context: '',
-  hunk: 'bg-accent/8 text-muted',
+  hunk: 'bg-accent/10 text-muted',
   note: 'text-muted italic',
 }
 

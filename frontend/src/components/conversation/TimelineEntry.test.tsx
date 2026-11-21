@@ -158,9 +158,9 @@ describe('TimelineEntry of a review', () => {
     const diff = within(comments).getByLabelText('The diff at cache/widget.go:10–12')
     expect(diff).toHaveTextContent('func get() {- return nil+ return cache[key]')
     const [context, removed, added] = [...diff.children]
-    expect(context).not.toHaveClass('bg-danger/12')
-    expect(removed).toHaveClass('bg-danger/12')
-    expect(added).toHaveClass('bg-success/12')
+    expect(context).not.toHaveClass('bg-danger/10')
+    expect(removed).toHaveClass('bg-danger/10')
+    expect(added).toHaveClass('bg-success/10')
     expect(within(comments).getByText('Outdated')).toBeInTheDocument()
 
     await userEvent.click(within(comments).getByRole('button', { name: 'cache/store.go:3' }))
