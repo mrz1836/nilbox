@@ -7,6 +7,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // before is what the steps before one hold, for checking its order.
@@ -260,7 +261,7 @@ func (v *validator) labels(field string, l LabelsAction) {
 	}
 
 	for _, a := range l.Add {
-		if slices.ContainsFunc(l.Remove, func(r string) bool { return strings.EqualFold(a, r) }) {
+		if textutil.ContainsFold(l.Remove, a) {
 			v.add(PartSteps, field+".remove", "%q is both added and removed", a)
 		}
 	}

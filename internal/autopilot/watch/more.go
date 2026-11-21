@@ -11,6 +11,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 var (
@@ -338,15 +339,7 @@ func sortedSet[T ~string](values []T, clean func(T) T) []T {
 // labelSet returns labels trimmed, without empty ones and repeats ignoring case (the
 // first spelling kept), sorted ignoring case; nil for none.
 func labelSet(labels []string) []string {
-	out := make([]string, 0, len(labels))
-
-	for _, l := range labels {
-		l = strings.TrimSpace(l)
-		if l != "" && !slices.ContainsFunc(out, func(o string) bool { return strings.EqualFold(o, l) }) {
-			out = append(out, l)
-		}
-	}
-
+	out := textutil.UniqueFold(labels, strings.TrimSpace)
 	if len(out) == 0 {
 		return nil
 	}

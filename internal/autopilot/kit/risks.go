@@ -873,8 +873,7 @@ func newLabels(before, after []string) []string {
 	var out []string
 
 	for _, l := range after {
-		known := func(o string) bool { return strings.EqualFold(o, l) }
-		if !slices.ContainsFunc(before, known) && !slices.ContainsFunc(out, known) {
+		if !textutil.ContainsFold(before, l) && !textutil.ContainsFold(out, l) {
 			out = append(out, l)
 		}
 	}

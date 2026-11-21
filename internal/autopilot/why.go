@@ -13,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/watch"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // Why didn't a routine run?: beside what a routine decides about an item now (Explain's
@@ -270,7 +271,7 @@ func labelsMiss(s watch.Search, f facts.Facts) string {
 	}
 
 	has := func(label string) bool {
-		return slices.ContainsFunc(v.List, func(l string) bool { return strings.EqualFold(l, label) })
+		return textutil.ContainsFold(v.List, label)
 	}
 
 	if len(s.Labels) > 0 && !slices.ContainsFunc(s.Labels, has) {

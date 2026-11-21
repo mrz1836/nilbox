@@ -172,7 +172,7 @@ func bundleNicknames(b Bundle) []string {
 		}
 
 		for _, ref := range promptRefs(sp) {
-			if ref.Nickname != "" && !slices.ContainsFunc(out, func(n string) bool { return strings.EqualFold(n, ref.Nickname) }) {
+			if ref.Nickname != "" && !textutil.ContainsFold(out, ref.Nickname) {
 				out = append(out, ref.Nickname)
 			}
 		}
@@ -590,7 +590,7 @@ func (c *refCollector) has(ref spec.PromptRef) bool {
 		return true
 	}
 
-	return ref.Nickname != "" && slices.ContainsFunc(c.arriving, func(n string) bool { return strings.EqualFold(n, ref.Nickname) })
+	return ref.Nickname != "" && textutil.ContainsFold(c.arriving, ref.Nickname)
 }
 
 // promptChoices are the library's prompts a missing prompt may map to: its replies for a

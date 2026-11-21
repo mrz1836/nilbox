@@ -3,16 +3,23 @@ package eval
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
+	"github.com/mrz1836/nilbox/internal/autopilot/facts"
+	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
-// TestContainsAnyContract pins containsAny, which the triggers ask whether a routine's
-// own run pushed the head commit, the item carries a label, and the item is in an inbox
-// list: whether the list holds the text as strings.EqualFold compares, nothing trimmed.
-// Go folds simply: the Kelvin sign is a k, and the capital sharp s is a sharp s, but the
-// dotted capital I is no i, and a sharp s is no "ss".
-func TestContainsAnyContract(t *testing.T) {
+// TestTriggersContainsFoldContract pins textutil.ContainsFold as the triggers ask it
+// whether a routine's own run pushed the head commit, the item carries a label, and the
+// item is in an inbox list: whether the list holds the text as strings.EqualFold
+// compares, nothing trimmed. Go folds simply: the Kelvin sign is a k, and the capital
+// sharp s is a sharp s, but the dotted capital I is no i, and a sharp s is no "ss". The
+// labeled trigger fires exactly when the list holds its label.
+func TestTriggersContainsFoldContract(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -50,7 +57,13 @@ func TestContainsAnyContract(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, tt.want, containsAny(tt.list, tt.s))
+			assert.Equal(t, tt.want, textutil.ContainsFold(tt.list, tt.s))
+
+			f := facts.Facts{Values: map[catalog.FieldID]facts.Value{
+				catalog.FieldLabels: {Status: facts.StatusKnown, List: tt.list},
+			}}
+			got := labeled(spec.Trigger{Label: tt.s}, f, History{}, time.Time{})
+			assert.Equal(t, tt.want, got.result == Yes, "the labeled trigger asks the same: %s", got.actual)
 		})
 	}
 }

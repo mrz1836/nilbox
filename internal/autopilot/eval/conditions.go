@@ -10,6 +10,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // listResult is what a list of conditions came to.
@@ -200,7 +201,7 @@ func compare(field catalog.Field, c spec.Clause, v facts.Value, now time.Time) (
 	case catalog.TypeBool:
 		return of((c.Op == catalog.OpIsYes) == v.Bool), true
 	case catalog.TypeChoice:
-		in := slices.ContainsFunc(c.Values, func(w string) bool { return strings.EqualFold(w, v.Text) })
+		in := textutil.ContainsFold(c.Values, v.Text)
 
 		return of(in == (c.Op == catalog.OpOneOf)), true
 	case catalog.TypeDuration:
@@ -368,7 +369,7 @@ func anyPair(list, values []string, match func(elem, value string) bool) bool {
 // holdsAll reports a list that holds every value, ignoring case.
 func holdsAll(list, values []string, _ matcher) bool {
 	for _, v := range values {
-		if !slices.ContainsFunc(list, func(e string) bool { return strings.EqualFold(e, v) }) {
+		if !textutil.ContainsFold(list, v) {
 			return false
 		}
 	}
