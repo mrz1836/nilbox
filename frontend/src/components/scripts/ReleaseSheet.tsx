@@ -26,6 +26,7 @@ import {
 import {
   buttonClass,
   dangerButtonClass,
+  ErrorText,
   fieldClass,
   iconButtonClass,
   inkLinkClass,
@@ -36,7 +37,6 @@ import {
 import { ErrorBanner } from '../ErrorBanner'
 import { ChevronRightIcon, ExternalIcon, InfoIcon, XIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
-import { ErrorText } from '../settings/rows'
 import { Sheet } from '../Sheet'
 import { Spinner } from '../Spinner'
 import { BumpChoice } from './BumpChoice'

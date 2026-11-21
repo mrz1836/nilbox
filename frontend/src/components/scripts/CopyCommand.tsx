@@ -2,9 +2,8 @@ import { useState } from 'react'
 
 import { useMutation } from '../../lib/useMutation'
 import { copyText } from '../../platform'
-import { quietButtonClass } from '../controls'
+import { ErrorText, quietButtonClass } from '../controls'
 import { CheckIcon, CopyIcon } from '../icons'
-import { ErrorText } from '../settings/rows'
 
 export interface CopyCommandProps {
   // command is the command shown, for the user to run themselves; the app never does.

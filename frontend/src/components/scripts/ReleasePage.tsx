@@ -30,12 +30,11 @@ import {
   type ScriptsSection,
   type Settings,
 } from '../../platform'
-import { buttonClass, captionClass, quietButtonClass, Segmented, type SegmentOption } from '../controls'
+import { buttonClass, captionClass, ErrorText, quietButtonClass, Segmented, type SegmentOption } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, RefreshIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 import { SearchBox } from '../SearchBox'
-import { ErrorText } from '../settings/rows'
 import { Spinner } from '../Spinner'
 import { GroupHeading } from './GroupHeading'
 import { CandidateRow, MutedRow, ReadinessSummary, releaseListClass } from './ReleaseRow'

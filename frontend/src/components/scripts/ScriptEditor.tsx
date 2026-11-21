@@ -22,6 +22,7 @@ import {
 } from '../../platform'
 import {
   buttonClass,
+  ErrorText,
   Field,
   fieldClass,
   modalClass,
@@ -86,11 +87,9 @@ function Chosen({ chosen, onChange }: ChosenProps) {
           Reading your clones…
         </p>
       )}
-      {names.error !== '' && (
-        <p role="alert" className="px-1 text-xs text-danger">
-          Couldn’t list your clones’ repositories: {names.error}
-        </p>
-      )}
+      <ErrorText error={names.error} className="px-1">
+        Couldn’t list your clones’ repositories:{' '}
+      </ErrorText>
       {names.data !== undefined && choices.length === 0 && (
         <p className="px-1 text-xs text-muted">
           {wanted === '' ? 'None of your clones is on GitHub.' : 'No repository matches.'}

@@ -5,8 +5,7 @@ import { useMutation } from '../../lib/useMutation'
 import { useQuery } from '../../lib/useQuery'
 import { getHookActionResult, replaceHook } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { linkClass } from '../controls'
-import { ErrorText } from '../settings/rows'
+import { ErrorText, linkClass } from '../controls'
 import { ToneIcon, toneWords } from './ToneIcon'
 
 export interface HookResultProps {

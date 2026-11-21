@@ -33,8 +33,7 @@ import {
   TagIcon,
   XIcon,
 } from '../icons'
-import { captionClass } from '../controls'
-import { ErrorText } from '../settings/rows'
+import { captionClass, ErrorText } from '../controls'
 import { HooksPage } from './HooksPage'
 import { ReleasePage } from './ReleasePage'
 import { ReleaseSheet, type ReleaseTarget } from './ReleaseSheet'

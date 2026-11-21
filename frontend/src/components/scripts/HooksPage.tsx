@@ -18,12 +18,11 @@ import {
   type ScriptsSection,
 } from '../../platform'
 import { CommandLine } from '../CommandLine'
-import { buttonClass, linkClass, quietButtonClass } from '../controls'
+import { buttonClass, ErrorText, linkClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, ChevronRightIcon, ExternalIcon, InfoIcon, RefreshIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 import { SearchBox } from '../SearchBox'
-import { ErrorText } from '../settings/rows'
 import { Spinner } from '../Spinner'
 import { GroupHeading } from './GroupHeading'
 import { HookRow } from './HookRow'

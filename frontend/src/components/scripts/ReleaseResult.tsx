@@ -17,10 +17,9 @@ import {
   type ScriptRun,
 } from '../../platform'
 import { Confetti, useConfetti } from '../Confetti'
-import { buttonClass, linkClass, primaryButtonClass } from '../controls'
+import { buttonClass, ErrorText, linkClass, primaryButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, CheckIcon, CircleCheckIcon, CopyIcon, ExternalIcon, InfoIcon, XIcon } from '../icons'
-import { ErrorText } from '../settings/rows'
 import { CopyCommand } from './CopyCommand'
 
 // burstSize is how much confetti a release on GitHub throws.

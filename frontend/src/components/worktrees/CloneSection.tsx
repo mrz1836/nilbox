@@ -3,6 +3,7 @@ import { useId, type ReactNode } from 'react'
 import { formatCount } from '../../lib/format'
 import { cloneSummary } from '../../lib/worktrees'
 import type { WorktreeRepo } from '../../platform'
+import { ErrorText } from '../controls'
 import { WorktreeIcon } from '../icons'
 import { GroupHeading } from '../scripts/GroupHeading'
 import { Spinner } from '../Spinner'
@@ -147,11 +148,7 @@ export function CloneSection({
             </button>
           ))}
       </GroupHeading>
-      {error !== '' && (
-        <p role="alert" className="col-span-full px-1 text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} className="col-span-full px-1" />
       {unfolded && shown > 0 && (
         <ul aria-label={`Worktrees of ${repo.name}`} className={rowListClass}>
           {children}

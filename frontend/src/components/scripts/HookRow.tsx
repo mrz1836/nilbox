@@ -29,11 +29,10 @@ import {
   type RunsIn,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, iconButtonClass, linkClass } from '../controls'
+import { buttonClass, ErrorText, iconButtonClass, linkClass } from '../controls'
 import { ChevronDownIcon, DotIcon, InfoIcon, MoreIcon } from '../icons'
 import { MenuButton, type MenuItem } from '../Menu'
 import { RelativeTime } from '../RelativeTime'
-import { ErrorText } from '../settings/rows'
 import { ToneIcon, toneWords } from './ToneIcon'
 
 // actionCalls start each action in a clone, and return its run's ID.
