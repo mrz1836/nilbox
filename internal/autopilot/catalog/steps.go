@@ -452,7 +452,8 @@ func MergeMethods() []MergeMethodInfo {
 		{
 			ID: MergeDefault, Label: "the repository's own method",
 			Help: "Merges with the method Settings → Reviewing's Merge method picks, as the review sheet does: by " +
-				"default, the one GitHub's merge button offers first in that repository.",
+				"default, the one GitHub's merge button offers first in that repository, and auto-merge's own " +
+				"on a pull request whose auto-merge is on.",
 		},
 		{ID: MergeCommit, Label: "merge commit", Help: "Adds every commit to the base branch, joined by a merge commit."},
 		{

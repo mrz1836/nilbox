@@ -159,7 +159,7 @@ func mergeableState(state *github.MergeState) error {
 // merge merges the pull request at the head, falling back to auto-merge when GitHub
 // refuses for requirements it waits on.
 func (a *action) merge(ctx context.Context, s *Service, tok github.Token) error {
-	a.step(s, strings.TrimSuffix(mergeLabel(a.method), "e")+"ing"+a.past())
+	a.step(s, mergingLabel(a.method)+a.past())
 
 	_, err := s.github.MergePull(ctx, tok, a.ref, github.MergeInput{SHA: a.head, Method: string(a.method)})
 

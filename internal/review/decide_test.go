@@ -194,7 +194,7 @@ func TestDecide(t *testing.T) {
 			name: "auto-merge already on", primary: ActionApprove, ready: ReadyAutoMerge,
 			facts: func() Facts {
 				f := facts(github.MergeStateBlocked)
-				f.AutoMergeOn, f.RequiredPending = true, 1
+				f.AutoMerge, f.RequiredPending = MethodSquash, 1
 
 				return f
 			},
@@ -410,9 +410,18 @@ func TestDecideLabelsSayWhatHappens(t *testing.T) {
 	assert.Equal(t, MethodMerge, p.Method)
 
 	o, _ = p.offer(ActionMerge)
-	assert.Equal(t, "Merge", o.Label)
+	assert.Equal(t, "Merge-commit", o.Label, "a merge commit says so, where squash is allowed too")
+
+	o, _ = p.offer(ActionApproveMerge)
+	assert.Equal(t, "Approve & merge-commit", o.Label)
 	assert.Equal(t, "Rebase-merge", mergeLabel(MethodRebase))
 	assert.Equal(t, "Merge", mergeLabel(""))
+
+	for method, want := range map[MergeMethod]string{
+		MethodSquash: "Squash-merging", MethodRebase: "Rebase-merging", MethodMerge: "Merging", MethodNone: "Merging",
+	} {
+		assert.Equal(t, want, mergingLabel(method), "the step of a merge with %q", method)
+	}
 }
 
 func TestReadinessSentences(t *testing.T) {
@@ -431,7 +440,7 @@ func TestReadinessSentences(t *testing.T) {
 	assert.Equal(t, "Behind main", readiness(facts(github.MergeStateBehind)).Sentence)
 
 	f = facts(github.MergeStateBlocked)
-	f.AutoMergeOn, f.RequiredPending = true, 1
+	f.AutoMerge, f.RequiredPending = MethodSquash, 1
 	assert.Equal(t, "Auto-merge is on · waiting for checks running", readiness(f).Sentence)
 
 	f = facts(github.MergeStateDirty)
@@ -457,19 +466,51 @@ func TestChooseMethod(t *testing.T) {
 
 	all := []MergeMethod{MethodMerge, MethodSquash, MethodRebase}
 
-	assert.Equal(t, MethodRebase, chooseMethod(all, PrefRebase, MethodSquash), "the user's choice")
-	assert.Equal(t, MethodSquash, chooseMethod(all, PrefRepo, MethodSquash), "the repository's first")
-	assert.Equal(t, MethodMerge, chooseMethod([]MergeMethod{MethodMerge}, PrefSquash, MethodSquash),
+	assert.Equal(t, MethodRebase, chooseMethod(all, PrefRebase, "", MethodSquash), "the user's choice")
+	assert.Equal(t, MethodSquash, chooseMethod(all, PrefRepo, "", MethodSquash), "the repository's first")
+	assert.Equal(t, MethodMerge, chooseMethod([]MergeMethod{MethodMerge}, PrefSquash, "", MethodSquash),
 		"a choice the repository doesn't allow falls back")
-	assert.Equal(t, MethodSquash, chooseMethod(all, PrefRepo, ""), "squash first when GitHub offers none")
-	assert.Equal(t, MethodRebase, chooseMethod([]MergeMethod{MethodRebase}, PrefRepo, ""))
-	assert.Empty(t, chooseMethod(nil, PrefRepo, MethodSquash))
+	assert.Equal(t, MethodSquash, chooseMethod(all, PrefRepo, "", ""), "squash first when GitHub offers none")
+	assert.Equal(t, MethodRebase, chooseMethod([]MergeMethod{MethodRebase}, PrefRepo, "", ""))
+	assert.Empty(t, chooseMethod(nil, PrefRepo, "", MethodSquash))
+	assert.Empty(t, chooseMethod(nil, PrefRepo, MethodMerge, MethodSquash))
+
+	assert.Equal(t, MethodMerge, chooseMethod(all, PrefRepo, MethodMerge, MethodSquash),
+		"auto-merge's method over the repository's first")
+	assert.Equal(t, MethodMerge, chooseMethod(all, PrefSquash, MethodMerge, MethodSquash),
+		"auto-merge's method over the user's choice")
+	assert.Equal(t, MethodRebase, chooseMethod([]MergeMethod{MethodSquash, MethodRebase}, PrefRebase, MethodMerge,
+		MethodSquash), "an auto-merge method the repository no longer allows falls back to the user's choice")
 
 	p := Decide(Facts{MergeState: github.MergeStateClean, CanWrite: true}, Prefs{Method: PrefRepo})
 	merge, _ := p.offer(ActionMerge)
 	assert.False(t, merge.Enabled)
 	assert.Equal(t, "The repository allows no merge method.", merge.Reason)
 	assert.Equal(t, []MergeMethod{}, p.Methods)
+}
+
+// TestDecideMergesAsAutoMergeWould checks that a pull request whose auto-merge is on starts
+// every merge on auto-merge's method, a merge past the rules included, whatever GitHub
+// offers the user first and whatever they chose in Settings, and names it.
+func TestDecideMergesAsAutoMergeWould(t *testing.T) {
+	t.Parallel()
+
+	f := facts(github.MergeStateBlocked)
+	f.Mine, f.ReviewRequired, f.CanBypass, f.AutoMerge = true, true, true, MethodMerge
+
+	for _, pref := range []MethodPref{PrefRepo, PrefSquash} {
+		p := Decide(f, Prefs{Method: pref, BypassOwn: true})
+		assert.Equal(t, MethodMerge, p.Method, "with %q", pref)
+		assert.Equal(t, ActionMergeBypass, p.Primary)
+
+		past, ok := p.offer(ActionMergeBypass)
+		require.True(t, ok)
+		assert.Equal(t, "Merge-commit past the rules", past.Label)
+	}
+
+	f.AutoMerge = ""
+	past, _ := Decide(f, Prefs{Method: PrefRepo}).offer(ActionMergeBypass)
+	assert.Equal(t, "Squash-merge past the rules", past.Label, "GitHub's first, with auto-merge off")
 }
 
 // FuzzDecide checks the rules every plan keeps, whatever the facts: nothing merges what
@@ -491,7 +532,7 @@ func FuzzDecide(f *testing.F) {
 	f.Fuzz(func(t *testing.T, bits uint32, state, failing, pending uint8) {
 		fa := Facts{
 			Mine: bits&1 != 0, Draft: bits&2 != 0, PendingReview: bits&4 != 0, MergeQueue: bits&8 != 0,
-			CanWrite: bits&16 != 0, CanUpdateBranch: bits&32 != 0, CanAutoMerge: bits&64 != 0, AutoMergeOn: bits&128 != 0,
+			CanWrite: bits&16 != 0, CanUpdateBranch: bits&32 != 0, CanAutoMerge: bits&64 != 0,
 			Dependabot: bits&256 != 0, ApprovedAtHead: bits&512 != 0, ReviewRequired: bits&1024 != 0,
 			ChangesRequested: bits&2048 != 0, Closed: bits&4096 != 0, CanBypass: bits&8192 != 0,
 			CanClose: bits&16384 != 0, ChangesRequestedSince: bits&32768 != 0, AskedAgain: bits&65536 != 0,
@@ -499,6 +540,10 @@ func FuzzDecide(f *testing.F) {
 			MergeState:      states[int(state)%len(states)],
 			RequiredFailing: int(failing % 3), Failing: int(failing % 5), RequiredPending: int(pending % 3),
 			Pending: int(pending % 5), Methods: []MergeMethod{MethodSquash},
+		}
+
+		if bits&128 != 0 {
+			fa.AutoMerge = MethodSquash
 		}
 
 		off := Decide(fa, Prefs{Method: PrefRepo})

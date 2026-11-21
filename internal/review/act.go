@@ -83,7 +83,7 @@ func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 		return Result{}, err
 	}
 
-	run.ref, run.nodeID, run.canAuto = pull.ref(), pull.NodeID, facts.CanAutoMerge && !facts.AutoMergeOn
+	run.ref, run.nodeID, run.canAuto = pull.ref(), pull.NodeID, facts.CanAutoMerge && facts.AutoMerge == ""
 	run.itemID = req.ItemID
 	run.step(s, "Checking your account")
 

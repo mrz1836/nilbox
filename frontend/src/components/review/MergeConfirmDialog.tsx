@@ -37,23 +37,27 @@ const methodNames: Readonly<Record<Exclude<MergeMethod, ''>, string>> = {
   REBASE: 'Rebase and merge',
 }
 
-// mergeVerb is a method as a verb, as in "squash-merge".
+// mergeVerb is a method as a verb, as in "squash-merge", as the sheet's labels say it: a
+// merge commit is "merge-commit", so a button never leaves the method to guess.
 export function mergeVerb(method: MergeMethod): string {
   switch (method) {
     case 'SQUASH':
       return 'squash-merge'
     case 'REBASE':
       return 'rebase-merge'
-    case '':
     case 'MERGE':
+      return 'merge-commit'
+    case '':
       return 'merge'
   }
 }
 
-// confirmText is the dialog's title and its button, for the action and method.
+// confirmText is the dialog's title and its button, for the action and method: a button
+// that merges now names the method picked, and follows a change of it.
 function confirmText(review: Review, offer: ReviewOffer, method: MergeMethod): { title: string; label: string } {
   const into = `#${String(review.number)} into ${review.baseRef}`
   const verb = mergeVerb(method)
+  const capitalVerb = verb.charAt(0).toUpperCase() + verb.slice(1)
 
   switch (offer.action) {
     case 'approve_merge':
@@ -63,9 +67,9 @@ function confirmText(review: Review, offer: ReviewOffer, method: MergeMethod): {
     case 'auto_merge':
       return { title: `Merge ${into} automatically once its requirements are met?`, label: 'Merge when ready' }
     case 'merge_bypass':
-      return { title: `Merge ${into} past the repository’s rules?`, label: 'Merge past the rules' }
+      return { title: `Merge ${into} past the repository’s rules?`, label: `${capitalVerb} past the rules` }
     default:
-      return { title: `Merge ${into}?`, label: verb.charAt(0).toUpperCase() + verb.slice(1) }
+      return { title: `Merge ${into}?`, label: capitalVerb }
   }
 }
 

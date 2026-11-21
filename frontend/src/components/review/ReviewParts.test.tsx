@@ -458,7 +458,8 @@ describe('MergeConfirmDialog', () => {
     }
 
     expect(mergeVerb('REBASE')).toBe('rebase-merge')
-    expect(mergeVerb('MERGE')).toBe('merge')
+    expect(mergeVerb('MERGE')).toBe('merge-commit')
+    expect(mergeVerb('')).toBe('merge')
   })
 
   it('confirms with the method chosen', async () => {
@@ -476,7 +477,7 @@ describe('MergeConfirmDialog', () => {
     expect(onConfirm).toHaveBeenCalledWith('SQUASH')
   })
 
-  it('names each rule a merge past them skips, and holds it until accepted', async () => {
+  it('names each rule a merge past them skips, names the method, and holds it until accepted', async () => {
     const onConfirm = vi.fn()
     renderAt(
       <MergeConfirmDialog
@@ -497,11 +498,14 @@ describe('MergeConfirmDialog', () => {
     expect(screen.getByRole('listitem')).toHaveTextContent('It needs an approval from someone else.')
     expect(dialog).toHaveTextContent(/Nothing else here ever does, and no agent can/)
 
-    const confirm = screen.getByRole('button', { name: 'Merge past the rules' })
+    expect(screen.getByRole('button', { name: 'Squash-merge past the rules' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('radio', { name: 'Create a merge commit' }))
+
+    const confirm = screen.getByRole('button', { name: 'Merge-commit past the rules' })
     expect(confirm).toBeDisabled()
     await userEvent.click(screen.getByRole('checkbox', { name: 'I’m merging past the rules' }))
     await userEvent.click(confirm)
-    expect(onConfirm).toHaveBeenCalledWith('SQUASH')
+    expect(onConfirm).toHaveBeenCalledWith('MERGE')
   })
 })
 

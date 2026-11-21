@@ -60,8 +60,8 @@ type Facts struct {
 	CanAutoMerge    bool
 	CanBypass       bool
 
-	// AutoMergeOn reports auto-merge already on.
-	AutoMergeOn bool
+	// AutoMerge is the merge method auto-merge is on with, or "" while it is off.
+	AutoMerge MergeMethod
 
 	// BehindBy is how many commits the base branch has that the head doesn't, as the sheet
 	// last read it; 0 when it couldn't tell, or before it read it.
@@ -155,7 +155,7 @@ func (p Plan) offer(action Action) (Offer, bool) {
 
 // Decide works out the plan for a pull request from its facts and the user's settings.
 func Decide(f Facts, prefs Prefs) Plan {
-	method := chooseMethod(f.Methods, prefs.Method, f.ViewerMethod)
+	method := chooseMethod(f.Methods, prefs.Method, f.AutoMerge, f.ViewerMethod)
 	d := decider{f: f, method: method}
 
 	p := Plan{Method: method, Methods: slices.Clone(f.Methods), Readiness: readiness(f)}
@@ -566,7 +566,7 @@ func (d decider) autoMergeBlock() string {
 	f := d.f
 
 	switch {
-	case f.AutoMergeOn:
+	case f.AutoMerge != "":
 		return "Auto-merge is already on."
 	case !f.CanAutoMerge:
 		return "Auto-merge isn't available for this pull request."
@@ -620,17 +620,35 @@ func (d decider) firstOf(reasons ...string) string {
 	return ""
 }
 
-// mergeLabel names a merge with method.
+// mergeLabel names a merge with method, as in "Squash-merge": a merge commit is a
+// "Merge-commit", so a label never leaves the method to guess where the repository allows
+// several.
 func mergeLabel(method MergeMethod) string {
 	switch method {
 	case MethodSquash:
 		return "Squash-merge"
 	case MethodRebase:
 		return "Rebase-merge"
-	case MethodMerge, MethodNone:
+	case MethodMerge:
+		return "Merge-commit"
+	case MethodNone:
 		return "Merge"
 	default:
 		return "Merge"
+	}
+}
+
+// mergingLabel names a merge with method while it runs, as in "Squash-merging".
+func mergingLabel(method MergeMethod) string {
+	switch method {
+	case MethodSquash:
+		return "Squash-merging"
+	case MethodRebase:
+		return "Rebase-merging"
+	case MethodMerge, MethodNone:
+		return "Merging"
+	default:
+		return "Merging"
 	}
 }
 
@@ -706,20 +724,14 @@ func primaryOrder(f Facts) []Action {
 	return append(order, ActionMerge, ActionAutoMerge, ActionApprove, ActionComment, ActionRequestChanges)
 }
 
-// chooseMethod picks the merge method: the user's choice where the repository allows it,
-// else the one GitHub offers the user first, else squash, merge, then rebase, whichever the
-// repository allows first. It is "" when the repository allows none.
-func chooseMethod(allowed []MergeMethod, pref MethodPref, viewer MergeMethod) MergeMethod {
-	if m := pref.method(); m != "" && slices.Contains(allowed, m) {
-		return m
-	}
-
-	if slices.Contains(allowed, viewer) {
-		return viewer
-	}
-
-	for _, m := range []MergeMethod{MethodSquash, MethodMerge, MethodRebase} {
-		if slices.Contains(allowed, m) {
+// chooseMethod picks the merge method: the one auto-merge is on with (auto), chosen for
+// this pull request, so a merge now, past the rules or not, merges as it would; else the
+// user's choice; else the one GitHub offers the user first; else squash, merge, then
+// rebase; each only where the repository allows it. It is "" when the repository allows
+// none.
+func chooseMethod(allowed []MergeMethod, pref MethodPref, auto, viewer MergeMethod) MergeMethod {
+	for _, m := range []MergeMethod{auto, pref.method(), viewer, MethodSquash, MethodMerge, MethodRebase} {
+		if m != "" && slices.Contains(allowed, m) {
 			return m
 		}
 	}
@@ -743,7 +755,7 @@ func readiness(f Facts) Readiness {
 		r.State, r.Sentence = ReadyConflicts, "Conflicts with "+base(f)
 	case f.MergeState == github.MergeStateBehind:
 		r.State, r.Sentence = ReadyBehind, "Behind "+base(f)
-	case f.AutoMergeOn:
+	case f.AutoMerge != "":
 		r.State, r.Sentence = ReadyAutoMerge, "Auto-merge is on"+waitingOn(needs)
 	case mergesClean(f):
 		r.State, r.Sentence = ReadyMerge, "Ready to merge"
@@ -862,7 +874,7 @@ func blockedSentence(f Facts, needs []string) string {
 	}
 
 	s := upperFirst(strings.Join(needs, " · "))
-	if f.CanAutoMerge && !f.AutoMergeOn && f.RequiredFailing == 0 {
+	if f.CanAutoMerge && f.AutoMerge == "" && f.RequiredFailing == 0 {
 		s += " · auto-merge available"
 	}
 

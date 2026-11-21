@@ -369,10 +369,10 @@ describe('ReviewSheet', () => {
     expect(confirm).toBeDisabled()
 
     await userEvent.click(within(dialog).getByRole('radio', { name: 'Create a merge commit' }))
-    expect(within(dialog).getByRole('button', { name: 'Approve & merge' })).toBeDisabled()
+    expect(within(dialog).getByRole('button', { name: 'Approve & merge-commit' })).toBeDisabled()
 
     await userEvent.click(within(dialog).getByRole('checkbox', { name: 'I’ve looked, merge anyway' }))
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Approve & merge' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Approve & merge-commit' }))
 
     await waitFor(() => {
       expect(onDone).toHaveBeenCalled()

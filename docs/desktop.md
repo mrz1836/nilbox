@@ -2829,8 +2829,12 @@ acme-org/api#212: …**. Otherwise the toast says **Closed acme-org/api#212 with
 
 **Merge method.** **Settings → Reviewing** chooses the method the confirmation starts on: **As
 each repository offers first** (the default, GitHub's own first choice for you there), **Squash
-and merge**, **Create a merge commit**, or **Rebase and merge**. A repository that doesn't allow
-the one you chose starts on the one it offers first. Beneath it, **Merge your own pull requests
+and merge**, **Create a merge commit**, or **Rebase and merge**. A pull request whose auto-merge
+is on starts on auto-merge's method instead, so merging it now, past the rules or not, merges as
+auto-merge would. A repository that doesn't allow the one you chose starts on the one it offers
+first. Every label names its method, **Squash-merge**, **Rebase-merge**, or **Merge-commit** (as
+in **Approve & merge-commit**), and the confirmation's button follows the method you pick there,
+as in **Merge-commit past the rules**. Beneath it, **Merge your own pull requests
 past the rules** (off by default) makes the button **Squash-merge past the rules** (or your
 method) on a pull request of yours that only an approval from someone else holds back, where
 GitHub lets you merge past the rules; see **Merge past the rules, only on purpose** below.
