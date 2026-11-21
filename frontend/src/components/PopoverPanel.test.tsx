@@ -31,7 +31,7 @@ describe('PopoverPanel', () => {
         id="budget"
         role="dialog"
         aria-label="API budget"
-        className="z-40 w-80 shadow-black/20"
+        className="shadow-black/20 z-40 w-80"
         style={{ width: '20rem' }}
       >
         Inside
