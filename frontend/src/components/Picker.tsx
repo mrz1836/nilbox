@@ -6,6 +6,7 @@ import {
   buttonClass,
   captionClass,
   fieldClass,
+  iconButtonClass,
   primaryButtonClass,
   quietButtonClass,
   sheetDialogClass,
@@ -288,7 +289,7 @@ export function PickerDialog({
             title="Close (Esc)"
             disabled={applying}
             onClick={onClose}
-            className={`${quietButtonClass} p-1`}
+            className={`${iconButtonClass} disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent`}
           >
             <XIcon className="size-4" />
           </button>

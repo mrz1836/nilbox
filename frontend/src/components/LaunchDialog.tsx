@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 
 import { useCloseWhenHidden, useModalDialog } from '../lib/useModalDialog'
 import type { InboxItem } from '../platform'
-import { quietButtonClass, sheetDialogClass } from './controls'
+import { iconButtonClass, sheetDialogClass } from './controls'
 import { IssueIcon, PullRequestIcon, XIcon } from './icons'
 
 export interface LaunchDialogProps {
@@ -90,13 +90,7 @@ export function LaunchDialog({ id, title, item, onClose, children }: LaunchDialo
               </span>
             </p>
           </div>
-          <button
-            type="button"
-            aria-label="Close"
-            title="Close (Esc)"
-            onClick={onClose}
-            className={`${quietButtonClass} p-1`}
-          >
+          <button type="button" aria-label="Close" title="Close (Esc)" onClick={onClose} className={iconButtonClass}>
             <XIcon className="size-4" />
           </button>
         </header>

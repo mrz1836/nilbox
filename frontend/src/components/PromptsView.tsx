@@ -32,7 +32,7 @@ import {
   type PromptVariable,
 } from '../platform'
 import { ConfirmDialog, type ConfirmDialogProps } from './ConfirmDialog'
-import { buttonClass, primaryButtonClass } from './controls'
+import { buttonClass, primaryButtonClass, toolbarButtonClass } from './controls'
 import {
   CopyIcon,
   DocumentIcon,
@@ -864,7 +864,7 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
                       label={`More actions for ${saved.nickname}`}
                       title="More actions"
                       items={menuItems(saved)}
-                      className="flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised"
+                      className={toolbarButtonClass}
                     >
                       <MoreIcon className="size-4" />
                     </MenuButton>

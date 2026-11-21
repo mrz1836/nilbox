@@ -29,7 +29,7 @@ import {
   type ResumeRequest,
 } from '../platform'
 import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
-import { quietButtonClass } from './controls'
+import { dangerIconButtonClass, quietButtonClass } from './controls'
 import { AlertIcon, CheckIcon, CopyIcon, EyeIcon, FolderIcon, PlayIcon, StopIcon, TerminalIcon, XIcon } from './icons'
 import { LaunchHoldDialog, TakeOverDialog } from './launchDialogs'
 import { RelativeTime } from './RelativeTime'
@@ -208,7 +208,7 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
             onClick={remove}
             aria-label="Remove this session"
             title="Remove this ended session from the list"
-            className="-my-0.5 flex size-5 shrink-0 items-center justify-center self-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger disabled:opacity-disabled"
+            className={`${dangerIconButtonClass} -my-0.5 self-center disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent`}
           >
             <XIcon className="size-3.5" />
           </button>
