@@ -15,7 +15,7 @@ import {
   type Settings,
   type ThreadSwitch,
 } from '../../platform'
-import { buttonClass, primaryButtonClass, Switch } from '../controls'
+import { buttonClass, ErrorText, primaryButtonClass, Switch } from '../controls'
 import { BellIcon, CircleCheckIcon } from '../icons'
 import { Group } from '../settings/rows'
 
@@ -121,11 +121,7 @@ export function NotificationsStep({ settings: stored, onSaved, banners }: Notifi
                 Sent. If no banner showed, check Focus and System Settings › Notifications.
               </p>
             )}
-            {tester.error !== '' && (
-              <p role="alert" className="mt-2 text-xs text-danger">
-                {tester.error}
-              </p>
-            )}
+            <ErrorText error={tester.error} className="mt-2" />
           </div>
           <button
             type="button"
@@ -190,11 +186,7 @@ export function NotificationsStep({ settings: stored, onSaved, banners }: Notifi
         <p className="text-xs text-muted">More choices wait in Settings → GitHub notifications.</p>
       </section>
 
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
     </div>
   )
 }

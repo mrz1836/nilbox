@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 
 import type { Result } from '../../lib/call'
 import type { Theme } from '../../lib/theme'
+import { ErrorText } from '../controls'
 import { DisplayIcon, MoonIcon, SunIcon } from '../icons'
 
 // tiles are the themes the picker offers, each with its icon and the turn-in it plays
@@ -67,11 +68,7 @@ export function ThemePicker({ theme, onThemeChange }: ThemePickerProps) {
           </label>
         ))}
       </div>
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          Couldn’t store the theme: {error}
-        </p>
-      )}
+      <ErrorText error={error}>Couldn’t store the theme: </ErrorText>
     </div>
   )
 }

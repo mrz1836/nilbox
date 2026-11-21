@@ -35,7 +35,15 @@ import {
 } from '../../platform'
 import { CommandLine } from '../CommandLine'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, fieldClass, Segmented, Select, type SegmentOption, type SelectOption } from '../controls'
+import {
+  buttonClass,
+  ErrorText,
+  fieldClass,
+  Segmented,
+  Select,
+  type SegmentOption,
+  type SelectOption,
+} from '../controls'
 import { AlertIcon, CheckIcon, RefreshIcon, XIcon } from '../icons'
 import { Spinner } from '../Spinner'
 import { DescribeItSettings } from './DescribeItSettings'
@@ -415,11 +423,7 @@ function ThisMac() {
         What your routines need here, and how each checked out. Check again runs every check now, and asks GitHub, which
         costs a point.
       </SectionIntro>
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
       {readiness === null ? (
         <p className="text-xs text-muted">Checking this Mac…</p>
       ) : readiness.checks.length === 0 ? (

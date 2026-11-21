@@ -202,11 +202,7 @@ function PluginRow() {
                     {installedText(p)}
                   </p>
                   {p.problem !== '' && <p className="text-xs text-warning">{p.problem}</p>}
-                  {failed?.profile === p.profile && (
-                    <p role="alert" className="text-xs text-danger">
-                      {failed.error}
-                    </p>
-                  )}
+                  {failed?.profile === p.profile && <ErrorText error={failed.error} />}
                 </div>
                 <button
                   type="button"

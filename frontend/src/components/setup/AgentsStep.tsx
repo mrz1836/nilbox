@@ -20,7 +20,7 @@ import {
   type TerminalID,
 } from '../../platform'
 import { CommandLine } from '../CommandLine'
-import { buttonClass, chipClass, fieldClass, Switch } from '../controls'
+import { buttonClass, chipClass, ErrorText, fieldClass, Switch } from '../controls'
 import { CircleCheckIcon, ExternalIcon, RefreshIcon, TerminalIcon } from '../icons'
 
 // switchedAgent says the default agent moved to one that is installed, or ''.
@@ -291,11 +291,7 @@ export function AgentsStep(props: AgentsStepProps) {
             }}
           />
         ))}
-        {looker.error !== '' && (
-          <p role="alert" className="text-xs text-danger">
-            Couldn’t look for profiles: {looker.error}
-          </p>
-        )}
+        <ErrorText error={looker.error}>Couldn’t look for profiles: </ErrorText>
       </section>
 
       <section aria-labelledby={`${id}-terminal`} className="flex flex-col gap-3">
@@ -337,11 +333,7 @@ export function AgentsStep(props: AgentsStepProps) {
           {note}
         </p>
       ))}
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
     </div>
   )
 }

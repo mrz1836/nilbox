@@ -21,7 +21,7 @@ import {
   type LocationState,
   type Settings,
 } from '../../platform'
-import { buttonClass, primaryButtonClass, quietButtonClass } from '../controls'
+import { buttonClass, ErrorText, primaryButtonClass, quietButtonClass } from '../controls'
 import { AlertIcon, ChevronRightIcon, CircleCheckIcon, FolderIcon, PlusIcon, SearchIcon } from '../icons'
 import { CloneLocations, rootMarker } from '../settings/CloneLocations'
 import { groupClass } from '../settings/rows'
@@ -364,11 +364,7 @@ export function ClonesStep({ settings: stored, onSaved, states }: ClonesStepProp
             {documents.note}
           </p>
         )}
-        {documentsLook.error !== '' && (
-          <p role="alert" className="text-xs text-danger">
-            {documentsLook.error}
-          </p>
-        )}
+        <ErrorText error={documentsLook.error} />
       </div>
 
       {note !== '' && (
@@ -376,11 +372,7 @@ export function ClonesStep({ settings: stored, onSaved, states }: ClonesStepProp
           {note}
         </p>
       )}
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
 
       <details className="group rounded-lg border border-border bg-surface/60 px-4 py-3">
         <summary className="cursor-pointer text-sm font-medium select-none">Clones somewhere else too?</summary>

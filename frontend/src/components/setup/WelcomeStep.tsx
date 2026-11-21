@@ -8,7 +8,7 @@ import { cameBack } from '../../lib/restored'
 import { welcomeText } from '../../lib/setup'
 import type { Theme } from '../../lib/theme'
 import { getSettings, type Info, type Settings } from '../../platform'
-import { buttonClass, primaryButtonClass, quietButtonClass } from '../controls'
+import { buttonClass, ErrorText, primaryButtonClass, quietButtonClass } from '../controls'
 import { ChevronRightIcon, ImportIcon } from '../icons'
 import { LogoMark } from '../Logo'
 import { ImportBackupDialog } from '../settings/ImportBackupDialog'
@@ -220,11 +220,7 @@ export function WelcomeStep({
           <button type="button" onClick={onSkip} className={`${quietButtonClass} mt-4`}>
             Skip setup
           </button>
-          {failure !== '' && (
-            <p role="alert" className="mt-3 text-xs text-danger">
-              {failure}
-            </p>
-          )}
+          <ErrorText error={failure} className="mt-3" />
         </>
       )}
 
