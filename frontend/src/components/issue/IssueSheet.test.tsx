@@ -364,7 +364,10 @@ describe('IssueSheet', () => {
     renderAt(<Harness />)
 
     const assignees = await screen.findByRole('region', { name: 'Assignees' })
-    expect(within(assignees).queryByRole('button', { name: 'Unassign octo-user' }), 'Unassign me does that').toBeNull()
+    expect(
+      within(assignees).queryByRole('button', { name: 'Unassign octo-user' }),
+      'Unassign me does that',
+    ).not.toBeInTheDocument()
 
     await userEvent.click(within(assignees).getByRole('button', { name: 'Unassign octo-other' }))
 
