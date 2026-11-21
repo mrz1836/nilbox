@@ -179,7 +179,8 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   const reveal = useMutation(() => showScriptRunLog(id))
   const actions = { stop, again, terminal: openTerminal, reveal }
   // last is the button pressed last: only its failure shows, so one that works clears
-  // what an earlier one said went wrong. Copy log says how its copy went in its own words.
+  // what an earlier one said went wrong. Copy log says how its copy went itself, in its
+  // words and to a screen reader.
   const [last, setLast] = useState<Action | null>(null)
   // stopping is set once Stop was asked for, until the run ends; confirming holds the
   // question Stop asks first while stopping now would leave something behind.
@@ -358,6 +359,10 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
           {copy === 'copied' ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
           {copy === 'idle' ? 'Copy log' : copyLabel[copy]}
         </button>
+        <span role="status" className="sr-only">
+          {copy === 'copied' && 'Copied to the clipboard'}
+          {copy === 'failed' && 'Couldn’t copy the log'}
+        </span>
         <button
           type="button"
           disabled={reveal.pending}

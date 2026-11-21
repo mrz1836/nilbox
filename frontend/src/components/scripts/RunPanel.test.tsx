@@ -44,11 +44,35 @@ function renderPanel(run: ScriptRun = ended(), terminal: TerminalID | null = 'it
   return { onSelect, onClose, unmount }
 }
 
+// runStatus is the header's status line: the panel's first status, ahead of the one that
+// says how copying the log went.
+function runStatus(): HTMLElement {
+  const [line] = screen.getAllByRole('status')
+
+  if (line === undefined) {
+    throw new Error('the panel shows no status line')
+  }
+
+  return line
+}
+
 // panel waits for the run to show, and returns its header's status line.
 async function shownRun(title = 'magex lint') {
   await screen.findByRole('heading', { name: title })
 
-  return screen.getByRole('status')
+  return runStatus()
+}
+
+// copyStatus is what the panel tells a screen reader about the last copy of the log: the
+// status beside the copy button, named as the button is named now.
+function copyStatus(button: string): HTMLElement {
+  const status = screen.getByRole('button', { name: button }).nextElementSibling
+
+  if (!(status instanceof HTMLElement) || status.getAttribute('role') !== 'status') {
+    throw new Error('the copy button has no status beside it')
+  }
+
+  return status
 }
 
 describe('RunPanel', () => {
@@ -152,7 +176,7 @@ describe('RunPanel', () => {
     send('scriptruns:updated')
 
     await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent('FailedIt exited with status 2.')
+      expect(runStatus()).toHaveTextContent('FailedIt exited with status 2.')
     })
     expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
 
@@ -238,7 +262,7 @@ describe('RunPanel', () => {
       platform.getScriptRun.mockResolvedValue(ended({ seen: true }))
       send('scriptruns:updated')
       await waitFor(() => {
-        expect(screen.getByRole('status')).toHaveTextContent('Done')
+        expect(runStatus()).toHaveTextContent('Done')
       })
 
       expect(platform.markScriptRunSeen).not.toHaveBeenCalled()
@@ -431,16 +455,21 @@ describe('RunPanel', () => {
       renderPanel()
 
       await shownRun()
+      expect(copyStatus('Copy log')).toBeEmptyDOMElement()
       await userEvent.click(screen.getByRole('button', { name: 'Copy log' }))
 
       expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument()
       expect(platform.copyText).toHaveBeenCalledExactlyOnceWith('lint passed\n')
+      // A screen reader hears it too, and the header's status line stays the run's.
+      expect(copyStatus('Copied')).toHaveTextContent(/^Copied to the clipboard$/)
+      expect(runStatus()).toHaveTextContent('Done')
 
       act(() => {
         vi.advanceTimersByTime(copiedMs)
       })
 
       expect(screen.getByRole('button', { name: 'Copy log' })).toBeInTheDocument()
+      expect(copyStatus('Copy log')).toBeEmptyDOMElement()
     })
 
     it('leaves magex’s JSON result out of a release’s log, and keeps it in the copy', async () => {
@@ -484,6 +513,7 @@ describe('RunPanel', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Copy log' }))
 
       expect(await screen.findByRole('button', { name: 'Copying…' })).toBeDisabled()
+      expect(copyStatus('Copying…')).toBeEmptyDOMElement()
 
       act(() => {
         copying.reject(refused)
@@ -491,7 +521,9 @@ describe('RunPanel', () => {
 
       expect(await screen.findByRole('button', { name: 'Copy failed' })).toBeEnabled()
       expect(error).toHaveBeenCalledExactlyOnceWith('could not copy the log', refused)
-      // The button says so itself: the panel's alert is for the other buttons.
+      // The button and its status say so themselves, to the eye and to a screen reader:
+      // the panel's alert is for the other buttons.
+      expect(copyStatus('Copy failed')).toHaveTextContent(/^Couldn’t copy the log$/)
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
