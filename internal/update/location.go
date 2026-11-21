@@ -11,14 +11,9 @@ import (
 // systemApplications is the Applications folder every user shares.
 const systemApplications = "/Applications"
 
-// Classify says where the bundle at bundle is: an Applications folder (the system's, or
-// the one in home), a path macOS translocated it to, a mounted volume such as a disk image,
-// or elsewhere, which "" (no bundle) is too.
-func Classify(bundle, home string) LocationKind {
-	return classify(bundle, home, systemApplications)
-}
-
-// classify is Classify with the system's Applications folder at applications.
+// classify says where the bundle at bundle is: an Applications folder (the system's, at
+// applications, or the one in home), a path macOS translocated it to, a mounted volume such
+// as a disk image, or elsewhere, which "" (no bundle) is too.
 func classify(bundle, home, applications string) LocationKind {
 	if bundle == "" {
 		return LocationElsewhere

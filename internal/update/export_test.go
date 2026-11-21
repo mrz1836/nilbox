@@ -38,6 +38,12 @@ func HelperRetryable(log []byte) bool {
 	return !payload
 }
 
+// Classify says where the bundle at bundle is, the system's Applications folder where it
+// always is.
+func Classify(bundle, home string) LocationKind {
+	return classify(bundle, home, systemApplications)
+}
+
 // Locate works out where the bundle is, with writable standing in for the system's answer.
 func Locate(bundle, home string, writable func(string) bool) Location {
 	return locate(bundle, home, systemApplications, "", writable)
