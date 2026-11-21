@@ -168,8 +168,3 @@ func newRoutine(name string, sp spec.Spec) kit.RoutineChange {
 func changeOf(id int64, name string, sp spec.Spec) kit.RoutineChange {
 	return kit.RoutineChange{ID: id, Base: checkedAt.Format(time.RFC3339Nano), Name: name, Spec: sp}
 }
-
-// someNumber returns a pointer to n.
-func someNumber[T any](n T) *T {
-	return &n
-}

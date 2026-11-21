@@ -275,7 +275,7 @@ func TestASettingsChangeIsCheckedAsSettingsChecksIt(t *testing.T) {
 			kit.SettingsChange{AgentsAtOnce: new(4)}, []string{"Agents at once is out of range: 4; choose 1 to 3."},
 		},
 		"a mode": {
-			kit.SettingsChange{DefaultMode: someNumber(autopilotprefs.Mode("always"))},
+			kit.SettingsChange{DefaultMode: new(autopilotprefs.Mode("always"))},
 			[]string{`Say "dryRun", "ask", or "auto" for defaultMode.`},
 		},
 		"a unit": {

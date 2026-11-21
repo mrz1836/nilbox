@@ -27,8 +27,6 @@ const (
 	older = "ffffffffffffffffffffffffffffffffffffffff"
 )
 
-func ptr[T any](v T) *T { return &v }
-
 // prRow is a Dependabot pull request with every part read.
 func prRow() facts.Row {
 	return facts.Row{
