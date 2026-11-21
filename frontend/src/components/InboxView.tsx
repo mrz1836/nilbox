@@ -67,7 +67,7 @@ import {
   type Settings,
   type Worktree,
 } from '../platform'
-import { iconButtonClass } from './controls'
+import { iconButtonClass, smallButtonClass } from './controls'
 import { ErrorBanner } from './ErrorBanner'
 import { HelpIcon, RefreshIcon } from './icons'
 import { InboxFilling } from './InboxFilling'
@@ -262,11 +262,7 @@ function NoMatches({ query, onClear }: { query: string; onClear: (() => void) | 
         </p>
       </div>
       {onClear !== undefined && (
-        <button
-          type="button"
-          onClick={onClear}
-          className="shrink-0 rounded-md border border-border bg-surface px-3 py-1 text-sm font-medium hover:bg-raised"
-        >
+        <button type="button" onClick={onClear} className={`${smallButtonClass} shrink-0`}>
           Clear filter
         </button>
       )}

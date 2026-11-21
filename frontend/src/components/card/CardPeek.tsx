@@ -24,7 +24,7 @@ import {
   type ProjectField,
 } from '../../platform'
 import { AutopilotRowsContext, useMarkedBy, useRoutineName } from '../autopilot/AutopilotChip'
-import { inkLinkClass } from '../controls'
+import { inkLinkClass, smallButtonClass } from '../controls'
 import { ArchiveIcon, AutopilotIcon, ClockIcon, DotIcon, ExternalIcon, PinIcon, RingIcon } from '../icons'
 import { FieldPill, LabelChip, ProgressBar, ProjectLink } from '../ItemSignals'
 import { RelativeTime } from '../RelativeTime'
@@ -33,10 +33,6 @@ import { openOnGitHub, type TriageActions } from '../TriageControls'
 import { PrimaryVerb } from './CardActions'
 import { LinkList, useCardLinks } from './CardLinks'
 import { mergeStepText, reviewStepText } from './StateTrack'
-
-// buttonClass is each button of the peek's action bar but its primary.
-const buttonClass =
-  'inline-flex h-7 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-text transition-colors hover:bg-raised'
 
 // Segment is one stretch of a bar, as wide as its share of the bar's total.
 interface Segment {
@@ -549,7 +545,7 @@ export function CardPeek({
           onError={setError}
         />
         {!opensIt.includes(step.primary) && (
-          <button type="button" onClick={open} className={buttonClass}>
+          <button type="button" onClick={open} className={smallButtonClass}>
             {isPR ? 'Review' : 'Read'}
           </button>
         )}
@@ -560,7 +556,7 @@ export function CardPeek({
             onClick={() => {
               onNudge(item)
             }}
-            className={buttonClass}
+            className={smallButtonClass}
           >
             Nudge
           </button>
@@ -575,7 +571,7 @@ export function CardPeek({
               onClick={() => {
                 triage.onSnooze(item, triage.snoozeDays)
               }}
-              className={buttonClass}
+              className={smallButtonClass}
             >
               <ClockIcon className="size-3.5 text-muted" />
               Snooze
@@ -586,7 +582,7 @@ export function CardPeek({
               onClick={() => {
                 triage.onDismiss(item)
               }}
-              className={buttonClass}
+              className={smallButtonClass}
             >
               <ArchiveIcon className="size-3.5 text-muted" />
               Dismiss
@@ -603,7 +599,7 @@ export function CardPeek({
                 triage.onPin(item)
               }
             }}
-            className={buttonClass}
+            className={smallButtonClass}
           >
             <PinIcon filled={isPinnedItself(item)} className="size-3.5 text-muted" />
             {isPinnedItself(item) ? 'Unpin' : 'Pin'}
@@ -615,7 +611,7 @@ export function CardPeek({
           onClick={() => {
             openOnGitHub(item, triage)
           }}
-          className={buttonClass}
+          className={smallButtonClass}
         >
           <ExternalIcon className="size-3.5 text-muted" />
           GitHub
@@ -630,7 +626,7 @@ export function CardPeek({
                 triage.onMarkUnread(item)
               }
             }}
-            className={buttonClass}
+            className={smallButtonClass}
           >
             {item.unread ? <RingIcon className="size-3.5 text-muted" /> : <DotIcon className="size-3.5 text-info" />}
             {item.unread ? 'Mark as read' : 'Mark as unread'}
