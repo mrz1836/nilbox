@@ -11,6 +11,7 @@ import { inboxLists, listTitles } from '../lib/triage'
 import { useClock, useNowAs } from '../lib/useNow'
 import type { Celebrations, NilMoment } from '../platform'
 import { Confetti, useConfetti, type Point } from './Confetti'
+import { iconButtonClass } from './controls'
 import { ChevronDownIcon, PlayIcon, TrophyIcon } from './icons'
 import { LogoMark } from './Logo'
 
@@ -342,7 +343,7 @@ export function InboxNil({
           onClick={onCollapse}
           aria-label="Collapse the party"
           title="Collapse"
-          className="absolute top-3 right-3 rounded-md p-1 text-muted transition-colors hover:bg-raised hover:text-text"
+          className={`${iconButtonClass} absolute top-3 right-3`}
         >
           <ChevronDownIcon className="size-4 rotate-180" />
         </button>

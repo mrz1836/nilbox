@@ -67,6 +67,7 @@ import {
   type Settings,
   type Worktree,
 } from '../platform'
+import { iconButtonClass } from './controls'
 import { ErrorBanner } from './ErrorBanner'
 import { HelpIcon, RefreshIcon } from './icons'
 import { InboxFilling } from './InboxFilling'
@@ -877,7 +878,7 @@ export function InboxView({
             aria-label="How to read a card"
             title="How to read a card"
             onClick={onShowCardGuide}
-            className="inline-flex size-6.5 shrink-0 items-center justify-center rounded-md border border-border text-muted transition-colors hover:bg-raised hover:text-text"
+            className={`${iconButtonClass} border border-border`}
           >
             <HelpIcon className="size-3.5" />
           </button>

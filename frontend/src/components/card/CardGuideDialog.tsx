@@ -1,7 +1,7 @@
 import { useId, useRef } from 'react'
 
 import { useModalDialog } from '../../lib/useModalDialog'
-import { quietButtonClass, sheetDialogClass } from '../controls'
+import { iconButtonClass, sheetDialogClass } from '../controls'
 import { XIcon } from '../icons'
 import { CardGuide } from './CardGuide'
 
@@ -39,7 +39,7 @@ export function CardGuideDialog({ onClose }: CardGuideDialogProps) {
           aria-label="Close"
           title="Close (Esc)"
           onClick={onClose}
-          className={`${quietButtonClass} p-1`}
+          className={iconButtonClass}
         >
           <XIcon className="size-4" />
         </button>
