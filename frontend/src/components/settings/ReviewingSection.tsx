@@ -18,7 +18,7 @@ import {
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { buttonClass, Segmented, type SegmentOption } from '../controls'
-import { ChoiceRow, ErrorText, Group, joinIds, Note, SectionIntro, SettingRow, SwitchRow } from './rows'
+import { ChoiceRow, ErrorText, Group, groupClass, joinIds, Note, SectionIntro, SettingRow, SwitchRow } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
 import { useListChange } from './useListChange'
@@ -257,12 +257,7 @@ export function ReviewingSection({ settings: stored, onSaved, onManageReplies }:
         <SectionIntro id={`${id}-merge`} title="Merge method">
           How the review sheet merges a pull request, whether or not it approves it first.
         </SectionIntro>
-        <div
-          role="radiogroup"
-          aria-labelledby={`${id}-merge`}
-          aria-describedby={`${id}-note`}
-          className="divide-y divide-border rounded-lg border border-border bg-surface"
-        >
+        <div role="radiogroup" aria-labelledby={`${id}-merge`} aria-describedby={`${id}-note`} className={groupClass}>
           {mergeChoices.map((choice) => {
             const controlId = `${id}-${choice.value}`
 

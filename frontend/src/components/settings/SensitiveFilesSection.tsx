@@ -16,7 +16,7 @@ import {
 import { Segmented, Switch } from '../controls'
 import { ChevronRightIcon } from '../icons'
 import { PathTester } from './PathTester'
-import { ChoiceRow, ErrorText, Group, joinIds, Note, SectionIntro } from './rows'
+import { ChoiceRow, ErrorText, Group, groupClass, joinIds, Note, SectionIntro } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
 import { useListChange } from './useListChange'
@@ -182,7 +182,7 @@ export function SensitiveFilesSection({ settings: stored, onSaved }: SectionProp
           A checked pull request’s card points out the files it changes in these categories: red for files that run or
           steer an agent, amber for files that change what the project trusts.
         </SectionIntro>
-        <ul aria-label="Categories" className="divide-y divide-border rounded-lg border border-border bg-surface">
+        <ul aria-label="Categories" className={groupClass}>
           {categories.map((category) => (
             <CategoryRow
               key={category.id}

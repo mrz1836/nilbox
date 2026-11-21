@@ -24,6 +24,7 @@ import {
 import { buttonClass, primaryButtonClass, quietButtonClass } from '../controls'
 import { AlertIcon, ChevronRightIcon, CircleCheckIcon, FolderIcon, PlusIcon, SearchIcon } from '../icons'
 import { CloneLocations, rootMarker } from '../settings/CloneLocations'
+import { groupClass } from '../settings/rows'
 import { Spinner } from '../Spinner'
 
 // countUpMs is how long the clone count takes to count up to the number found.
@@ -135,7 +136,7 @@ function Suggestions({ candidates, asRoot, busy, onUse, onAdd }: SuggestionsProp
       <p className="text-sm font-medium">
         {asRoot ? 'Found clones in these folders:' : 'Found clones in other folders too:'}
       </p>
-      <ul className="divide-y divide-border rounded-lg border border-border bg-surface">
+      <ul className={groupClass}>
         {candidates.map((c, i) => (
           <li
             key={c.path}
