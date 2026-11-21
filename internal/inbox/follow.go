@@ -384,10 +384,7 @@ func mergeUpdates(out, a *github.ItemUpdates) *github.ItemUpdates {
 // running is skipped; failures are logged, and a panicking round is recovered, so it keeps
 // going until its context is canceled.
 type ChecksFollower struct {
-	follow func(ctx context.Context) error
-	every  periodic.Every
-	wake   chan struct{}
-	logger *slog.Logger
+	job *periodic.Job
 }
 
 // NewChecksFollower returns a ChecksFollower over s, as often as every says, logging
@@ -404,20 +401,17 @@ func newChecksFollower(follow func(ctx context.Context) error, every periodic.Ev
 		every = func(context.Context) time.Duration { return FollowInterval }
 	}
 
-	return &ChecksFollower{follow: follow, every: every, wake: make(chan struct{}, 1), logger: logger}
+	return &ChecksFollower{job: periodic.NewJob(every, followJob, follow, logger)}
 }
 
 // Run follows now and then as often as every says until ctx is canceled, then waits for
 // a round in flight to return. Its first round finds nothing to read when a whole refresh
 // read every pull request a moment before.
 func (f *ChecksFollower) Run(ctx context.Context) {
-	periodic.RunEvery(ctx, f.every, f.wake, followJob, f.follow, f.logger)
+	f.job.Run(ctx)
 }
 
 // Wake has the follower read how often to follow again, as when the user changed it.
 func (f *ChecksFollower) Wake() {
-	select {
-	case f.wake <- struct{}{}:
-	default:
-	}
+	f.job.Wake()
 }
