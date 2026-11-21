@@ -68,12 +68,15 @@ export default defineConfig({
     // the theme tokens' light-dark() (src/generated/theme.css) becomes variables that the
     // root's color-scheme switches, as Safari 16.4 has no light-dark().
     cssMinify: 'lightningcss',
-    // The bundle loads from the app binary, not over a network. The inbox's chunk is all
-    // the window loads before its first paint; the other pages are chunks of their own,
-    // loaded on their first visit (App.tsx), and so are the review and issue sheets,
-    // loaded once the inbox has painted (InboxView.tsx). The limit is a tripwire for
-    // unexpected growth of any chunk, set above the inbox's, about 696 kB, and chunkLimit
-    // above makes it an error, so the frontend gate's build fails on a chunk over it.
+    // The bundle loads from the app binary, not over a network. Before its first paint the
+    // window loads the entry chunk, the inbox's, about 696 kB, and the 20 smaller chunks it
+    // preloads, which it shares with the pages: about 885 kB of JS in all, with 128 kB of
+    // CSS, which magex frontend:gate holds to a budget after this build
+    // (magefiles/firstpaint.go). The other pages are chunks of their own, loaded on their
+    // first visit (App.tsx), and so are the review and issue sheets, loaded once the inbox
+    // has painted (InboxView.tsx). The limit is a tripwire for unexpected growth of any
+    // chunk, set above the inbox's, and chunkLimit above makes it an error, so the frontend
+    // gate's build fails on a chunk over it.
     chunkSizeWarningLimit: 750,
     rolldownOptions: {
       checks: {

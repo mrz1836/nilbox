@@ -236,11 +236,21 @@ number.
 The whole bundle, the executable with its icon set, `Info.plist`, and code signature, is 24.2 MB
 (24,226,109 bytes).
 The binary is built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the
-built frontend, about 1.31 MB without source maps: the 670 KB script the first paint needs
-(219 KB gzipped); the Settings (155 KB), Scripts tab (143 KB), Prompts (63 KB), and Worktrees
-(58 KB) pages in scripts of their own, loaded the first time each opens, with three more
-shared by them (the dialogs, 87 KB; the run panel, 44 KB; the launch fields, 6 KB); and 80 KB
-of CSS. Measured once the GitHub notifications' clearing landed.
+built frontend. Measured once the GitHub notifications' clearing landed.
+
+The built frontend, as `vite build` wrote it on 2026-11-20, is about 2.34 MB without source
+maps. Before its first paint the window loads 885 KB of script (303 KB gzipped) and 128 KB of
+CSS (21 KB gzipped), 1.01 MB in all: the 696 KB entry script, which holds the inbox, and the 20
+smaller scripts it preloads, which it shares with the pages. Each page is a script of its own,
+loaded the first time it opens: Autopilot (314 KB), Settings (211 KB), the Scripts tab (151 KB),
+Worktrees (127 KB), Prompts (74 KB), the setup (64 KB), and Notifications (23 KB); the review
+and issue sheets (82 KB and 26 KB) load once the inbox has painted. `magex frontend:gate` measures the first paint after
+its build, prints it, and fails when its script or its CSS outgrows its budget
+(`magefiles/firstpaint.go`: 950 KB, 325 KB gzipped, for the script; 140 KB, 25 KB gzipped, for
+the CSS), as the build itself fails on any one script over 750 KB (`vite.config.ts`). Its
+gzipped sizes come from Go's compressor and run about 2% above those in Vite's report. Once the
+GitHub notifications' clearing landed, the frontend was about 1.31 MB, its entry script 670 KB
+(219 KB gzipped), with 80 KB of CSS.
 
 The build of 2026-11-11, with the integrations but before the issue sheet, the GitHub
 notifications, and the features that came with them (other repository locations, pinned or
