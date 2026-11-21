@@ -321,11 +321,18 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
           <FolderIcon className="size-3.5" />
           Show in Finder
         </button>
+        {/* The button says for a moment how the copy went, and a screen reader hears it. */}
         {session.agentSessionId !== '' && (
-          <button type="button" title={session.agentSessionId} onClick={copyID} className={quietButtonClass}>
-            {copy === 'copied' ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-            {copy === 'idle' ? 'Copy session ID' : copyLabel[copy]}
-          </button>
+          <>
+            <button type="button" title={session.agentSessionId} onClick={copyID} className={quietButtonClass}>
+              {copy === 'copied' ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+              {copy === 'idle' ? 'Copy session ID' : copyLabel[copy]}
+            </button>
+            <span role="status" className="sr-only">
+              {copy === 'copied' && 'Copied to the clipboard'}
+              {copy === 'failed' && 'Couldn’t copy the session ID'}
+            </span>
+          </>
         )}
       </div>
       {notice !== '' && (

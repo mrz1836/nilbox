@@ -375,11 +375,13 @@ describe('SessionTag', () => {
     await user.click(screen.getByRole('button', { name: /Claude session/ }))
     await user.click(screen.getByRole('button', { name: 'Resume' }))
 
-    expect(await screen.findByRole('status')).toHaveTextContent('started from the last fetched main')
+    expect(await screen.findByText('started from the last fetched main')).toHaveAttribute('role', 'status')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 
+    // A copy's press clears the notice, leaving only the copy's own word to hear.
     await user.click(screen.getByRole('button', { name: 'Copy session ID' }))
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText('started from the last fetched main')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Copied to the clipboard')
   })
 
   it('clears what went wrong once a later action works', async () => {
@@ -399,10 +401,11 @@ describe('SessionTag', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t find the session’s tab.')
 
-    // A failed copy says so on its own button, for a moment, with no alert of its own; its
-    // press clears what the last action said.
+    // A failed copy says so on its own button, for a moment, and a screen reader hears it,
+    // with no alert of its own; its press clears what the last action said.
     await user.click(screen.getByRole('button', { name: 'Copy session ID' }))
     expect(screen.getByRole('button', { name: 'Copy failed' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Couldn’t copy the session ID')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(logged).toHaveBeenCalledWith('could not copy the session ID', new Error('The clipboard refused it.'))
 
@@ -411,6 +414,7 @@ describe('SessionTag', () => {
     })
 
     expect(screen.getByRole('button', { name: 'Copy session ID' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
 
     await user.click(screen.getByRole('button', { name: 'Show in terminal' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t find the session’s tab.')
@@ -421,6 +425,7 @@ describe('SessionTag', () => {
 
     await user.click(screen.getByRole('button', { name: 'Copy session ID' }))
     expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Copied to the clipboard')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
@@ -542,7 +547,7 @@ describe('SessionTag for an agent working in the background', () => {
       alongside: '',
       confirmed: '',
     })
-    expect(await within(run).findByRole('status')).toHaveTextContent('Its conversation carries on in iTerm2.')
+    expect(await within(run).findByText('Its conversation carries on in iTerm2.')).toHaveAttribute('role', 'status')
   })
 
   it('says a run is gone from the history, and what its take over worked around', async () => {
@@ -564,7 +569,7 @@ describe('SessionTag for an agent working in the background', () => {
         name: 'Take over',
       }),
     )
-    expect(await within(run).findByRole('status')).toHaveTextContent('Its worktree was already there.')
+    expect(await within(run).findByText('Its worktree was already there.')).toHaveAttribute('role', 'status')
 
     await user.click(within(run).getByRole('button', { name: 'Take over' }))
     await user.click(
