@@ -5,7 +5,6 @@ import { confettiGlyphs } from '../lib/confetti'
 import { nilChip, type NilChip } from '../lib/milestones'
 import { prefersReducedMotion } from '../lib/motion'
 import { earnedBurst, nextQuip, openingQuip, replayBurst, replayLabel, type Flourish, type NilStats } from '../lib/nil'
-import { darkTokens } from '../lib/theme'
 import { formatWhen } from '../lib/time'
 import { inboxLists, listTitles } from '../lib/triage'
 import { useClock, useNowAs } from '../lib/useNow'
@@ -14,6 +13,7 @@ import { Confetti, useConfetti, type Point } from './Confetti'
 import { iconButtonClass } from './controls'
 import { ChevronDownIcon, PlayIcon, TrophyIcon } from './icons'
 import { LogoMark } from './Logo'
+import { lineStyle, Terminal } from './Terminal'
 
 export interface InboxNilProps {
   // stats are what was set aside to get there, from the inbox's triage.
@@ -59,11 +59,6 @@ const sparks = confettiGlyphs.slice(0, 10).map((glyph, i) => ({
     '--d': `${String(900 + i * 85)}ms`,
   } as CSSProperties,
 }))
-
-// lineStyle staggers a terminal line's entrance after the command is typed.
-function lineStyle(at: number): CSSProperties {
-  return { '--i': String(at) } as CSSProperties
-}
 
 interface RowProps {
   at: number
@@ -386,94 +381,76 @@ export function InboxNil({
           {quip}
         </p>
 
-        <figure
-          aria-label="Terminal"
-          className="nil-rise mt-9 w-full max-w-xl overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-body leading-6 text-text shadow-2xl shadow-black/40"
-          style={{ ...darkTokens, animationDelay: '320ms' }}
-        >
-          <div className="flex items-center gap-1.5 border-b border-border bg-raised px-3 py-2">
-            <span aria-hidden="true" className="size-2.5 rounded-full bg-danger" />
-            <span aria-hidden="true" className="size-2.5 rounded-full bg-warning" />
-            <span aria-hidden="true" className="size-2.5 rounded-full bg-success" />
-            <span className="flex-1 pr-10 text-center text-xs text-muted">~/inbox</span>
-          </div>
-          <div className="px-4 py-3">
-            <p>
-              <span className="text-success">$</span>{' '}
-              <span className="nil-type" style={{ '--n': String(command.length) } as CSSProperties}>
-                {command}
-              </span>
+        <Terminal label="Terminal" title="~/inbox" command={command} className="mt-9 max-w-xl" delay={320}>
+          {lists.map((label, i) => (
+            <Row key={label} at={i} label={label} count={0} note={<span className="text-success">✓ clear</span>} />
+          ))}
+          {stats.snoozed > 0 && (
+            <Row
+              at={snoozedAt}
+              label="snoozed"
+              count={stats.snoozed}
+              note={<span className="text-warning">{'// '}they’ll be back</span>}
+            />
+          )}
+          {stats.dismissed > 0 && (
+            <Row
+              at={dismissedAt}
+              label="dismissed"
+              count={stats.dismissed}
+              note={<span className="text-muted">{'// '}rest in peace</span>}
+            />
+          )}
+          {comeback !== '' && (
+            <p className="nil-line pl-4 text-muted" style={lineStyle(comebackAt)}>
+              {'// '}next one back {comeback}
             </p>
-            {lists.map((label, i) => (
-              <Row key={label} at={i} label={label} count={0} note={<span className="text-success">✓ clear</span>} />
-            ))}
-            {stats.snoozed > 0 && (
-              <Row
-                at={snoozedAt}
-                label="snoozed"
-                count={stats.snoozed}
-                note={<span className="text-warning">{'// '}they’ll be back</span>}
-              />
-            )}
-            {stats.dismissed > 0 && (
-              <Row
-                at={dismissedAt}
-                label="dismissed"
-                count={stats.dismissed}
-                note={<span className="text-muted">{'// '}rest in peace</span>}
-              />
-            )}
-            {comeback !== '' && (
-              <p className="nil-line pl-4 text-muted" style={lineStyle(comebackAt)}>
-                {'// '}next one back {comeback}
-              </p>
-            )}
-            {moment !== null && (
-              <Row
-                at={streakAt}
-                label="streak"
-                count={moment.streak}
-                note={
-                  <span className="text-success">
-                    {'// '}
-                    {streakNote(moment)}
-                  </span>
-                }
-              />
-            )}
-            {moment !== null && moment.best > moment.streak && (
-              <Row
-                at={bestAt}
-                label="best"
-                count={moment.best}
-                note={<span className="text-muted">{'// '}to beat</span>}
-              />
-            )}
-            {moment !== null && moment.count > 0 && (
-              <Row
-                at={countAt}
-                label="nil"
-                count={moment.count}
-                note={<span className="text-accent">{'// '}and counting</span>}
-              />
-            )}
-            <p className="nil-line mt-3 text-danger" style={lineStyle(panicAt)}>
-              panic: runtime error: nothing left to do
-            </p>
-            <p className="nil-line mt-3 text-muted" style={lineStyle(panicAt + 1)}>
-              goroutine 1 [vibing]:
-            </p>
-            <p className="nil-line text-muted" style={lineStyle(panicAt + 2)}>
-              main.(*Developer).TouchGrass(0xc0ffee)
-            </p>
-            <p className="nil-line pl-8 text-muted" style={lineStyle(panicAt + 3)}>
-              ~/outside/grass.go:42 +0x1337
-            </p>
-            <p className="nil-line mt-3" style={lineStyle(panicAt + 4)}>
-              <span className="text-success">exit status 0</span> <span aria-hidden="true" className="nil-cursor" />
-            </p>
-          </div>
-        </figure>
+          )}
+          {moment !== null && (
+            <Row
+              at={streakAt}
+              label="streak"
+              count={moment.streak}
+              note={
+                <span className="text-success">
+                  {'// '}
+                  {streakNote(moment)}
+                </span>
+              }
+            />
+          )}
+          {moment !== null && moment.best > moment.streak && (
+            <Row
+              at={bestAt}
+              label="best"
+              count={moment.best}
+              note={<span className="text-muted">{'// '}to beat</span>}
+            />
+          )}
+          {moment !== null && moment.count > 0 && (
+            <Row
+              at={countAt}
+              label="nil"
+              count={moment.count}
+              note={<span className="text-accent">{'// '}and counting</span>}
+            />
+          )}
+          <p className="nil-line mt-3 text-danger" style={lineStyle(panicAt)}>
+            panic: runtime error: nothing left to do
+          </p>
+          <p className="nil-line mt-3 text-muted" style={lineStyle(panicAt + 1)}>
+            goroutine 1 [vibing]:
+          </p>
+          <p className="nil-line text-muted" style={lineStyle(panicAt + 2)}>
+            main.(*Developer).TouchGrass(0xc0ffee)
+          </p>
+          <p className="nil-line pl-8 text-muted" style={lineStyle(panicAt + 3)}>
+            ~/outside/grass.go:42 +0x1337
+          </p>
+          <p className="nil-line mt-3" style={lineStyle(panicAt + 4)}>
+            <span className="text-success">exit status 0</span> <span aria-hidden="true" className="nil-cursor" />
+          </p>
+        </Terminal>
 
         <span className={`${nudgeClass} mt-9`}>
           <button
