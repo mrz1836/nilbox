@@ -238,19 +238,24 @@ The whole bundle, the executable with its icon set, `Info.plist`, and code signa
 The binary is built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the
 built frontend. Measured once the GitHub notifications' clearing landed.
 
-The built frontend, as `vite build` wrote it on 2026-11-20, is about 2.34 MB without source
-maps. Before its first paint the window loads 885 KB of script (303 KB gzipped) and 128 KB of
-CSS (21 KB gzipped), 1.01 MB in all: the 696 KB entry script, which holds the inbox, and the 20
-smaller scripts it preloads, which it shares with the pages. Each page is a script of its own,
-loaded the first time it opens: Autopilot (314 KB), Settings (211 KB), the Scripts tab (151 KB),
-Worktrees (127 KB), Prompts (74 KB), the setup (64 KB), and Notifications (23 KB); the review
-and issue sheets (82 KB and 26 KB) load once the inbox has painted. `magex frontend:gate` measures the first paint after
-its build, prints it, and fails when its script or its CSS outgrows its budget
-(`magefiles/firstpaint.go`: 950 KB, 325 KB gzipped, for the script; 140 KB, 25 KB gzipped, for
-the CSS), as the build itself fails on any one script over 750 KB (`vite.config.ts`). Its
-gzipped sizes come from Go's compressor and run about 2% above those in Vite's report. Once the
-GitHub notifications' clearing landed, the frontend was about 1.31 MB, its entry script 670 KB
-(219 KB gzipped), with 80 KB of CSS.
+The built frontend, as `vite build` wrote it on 2026-11-21, is about 2.33 MB without source
+maps. Before its first paint the window loads 884 KB of script (296 KB gzipped) and 127 KB of
+CSS (21 KB gzipped), 1.01 MB in all, in three scripts: the 496 KB entry, which holds the inbox;
+the 387 KB shared script it preloads, every module the first paint loads that a page or a
+sheet imports too (`codeSplitting` in `vite.config.ts`); and Rolldown's runtime. Each page is a
+script of its own, loaded the first time it opens: Autopilot (313 KB), Settings (211 KB), the
+Scripts tab (150 KB), Worktrees (127 KB), Prompts (74 KB), the setup (64 KB), and Notifications
+(23 KB); the review and issue sheets (82 KB and 25 KB) load once the inbox has painted.
+`magex frontend:gate` measures the first paint after its build, prints it, and fails when its
+script or its CSS outgrows its budget (`magefiles/firstpaint.go`: 950 KB, 325 KB gzipped, for
+the script; 140 KB, 25 KB gzipped, for the CSS), as the build itself fails on any one script
+over 750 KB (`vite.config.ts`). Its gzipped sizes come from Go's compressor and run about 2%
+above those in Vite's report. Before the shared script, Rolldown put those modules in common
+scripts by which scripts import them and merged into the entry each it could without a cycle,
+so one new import moved 37 KB into the entry at once (696 KB to 733 KB, 17 KB under the
+limit) while the first paint stayed the same size. Once the GitHub notifications' clearing
+landed, the frontend was about 1.31 MB, its entry script 670 KB (219 KB gzipped), with 80 KB
+of CSS.
 
 The build of 2026-11-11, with the integrations but before the issue sheet, the GitHub
 notifications, and the features that came with them (other repository locations, pinned or
