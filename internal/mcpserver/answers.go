@@ -220,19 +220,15 @@ func snapshotRefusal(err error) answer {
 // reason says what went wrong in err without the path it went wrong at: the agent reads
 // what failed, never where the app keeps the user's data.
 func reason(err error) string {
-	var (
-		pe *fs.PathError
-		le *os.LinkError
-	)
-
-	switch {
-	case errors.As(err, &pe):
+	if pe, ok := errors.AsType[*fs.PathError](err); ok {
 		return pe.Op + ": " + pe.Err.Error()
-	case errors.As(err, &le):
-		return le.Op + ": " + le.Err.Error()
-	default:
-		return strings.TrimSpace(err.Error())
 	}
+
+	if le, ok := errors.AsType[*os.LinkError](err); ok {
+		return le.Op + ": " + le.Err.Error()
+	}
+
+	return strings.TrimSpace(err.Error())
 }
 
 // orNull returns raw, or JSON's null for none.
