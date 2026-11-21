@@ -5,10 +5,10 @@ import { useId, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 // readers as is.
 
 export const fieldClass =
-  'rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-text placeholder:text-muted/70 disabled:opacity-60 aria-invalid:border-danger'
+  'rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-text placeholder:text-muted/70 disabled:opacity-disabled aria-invalid:border-danger'
 
 export const buttonClass =
-  'inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-50 disabled:hover:bg-surface'
+  'inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-surface'
 
 // tintedButtonClass is the shape shared by the tinted buttons below: a wash of the tone
 // with an edge of it, ink text, and a press that sinks a pixel. The text stays ink, not
@@ -34,7 +34,7 @@ export const heldButtonClass =
 export const dangerButtonClass = `${tintedButtonClass} border-danger/45 bg-danger/14 enabled:hover:border-danger/65 enabled:hover:bg-danger/22 [&>svg]:text-danger`
 
 export const quietButtonClass =
-  'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent'
+  'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent'
 
 export const chipClass = 'rounded-full border border-border px-2 py-0.5 text-xs whitespace-nowrap text-muted'
 
@@ -45,7 +45,7 @@ export const captionClass = 'text-caption font-semibold tracking-wide text-muted
 // switchClass draws a native checkbox as a switch; give it role="switch" so assistive
 // tech announces on and off.
 const switchClass =
-  'relative h-5 w-9 shrink-0 appearance-none rounded-full bg-border transition-colors checked:bg-accent before:absolute before:top-0.5 before:left-0.5 before:size-4 before:rounded-full before:bg-paper before:shadow before:transition-transform checked:before:translate-x-4 disabled:opacity-60'
+  'relative h-5 w-9 shrink-0 appearance-none rounded-full bg-border transition-colors checked:bg-accent before:absolute before:top-0.5 before:left-0.5 before:size-4 before:rounded-full before:bg-paper before:shadow before:transition-transform checked:before:translate-x-4 disabled:opacity-disabled'
 
 export interface SegmentOption<T extends string> {
   value: T
@@ -98,7 +98,7 @@ export function Segmented<T extends string>({
         <label
           key={o.value}
           title={o.title}
-          className={`relative flex items-center gap-1.5 rounded-[5px] ${pad} font-medium whitespace-nowrap text-muted transition-colors select-none hover:text-text has-checked:bg-raised has-checked:text-text has-checked:shadow-sm has-focus-visible:outline-2 has-focus-visible:outline-accent ${disabled || o.disabled === true ? 'opacity-60' : 'cursor-pointer'}`}
+          className={`relative flex items-center gap-1.5 rounded-[5px] ${pad} font-medium whitespace-nowrap text-muted transition-colors select-none hover:text-text has-checked:bg-raised has-checked:text-text has-checked:shadow-sm has-focus-visible:outline-2 has-focus-visible:outline-accent ${disabled || o.disabled === true ? 'opacity-disabled' : 'cursor-pointer'}`}
         >
           <input
             type="radio"

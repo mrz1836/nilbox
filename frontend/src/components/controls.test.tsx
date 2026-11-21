@@ -33,6 +33,8 @@ describe('Segmented', () => {
     )
 
     expect(screen.getByRole('radio', { name: 'A' })).toBeDisabled()
+    expect(screen.getByText('A')).toHaveClass('opacity-disabled')
+    expect(screen.getByText('A')).not.toHaveClass('cursor-pointer')
   })
 
   it('points at the text that describes it', () => {
@@ -202,7 +204,7 @@ describe('Switch', () => {
     const toggle = screen.getByRole('switch')
     expect(toggle).toBeDisabled()
     expect(toggle).toHaveAttribute('title', 'Always on')
-    expect(toggle).toHaveClass('mt-0.5')
+    expect(toggle).toHaveClass('mt-0.5', 'disabled:opacity-disabled')
   })
 })
 

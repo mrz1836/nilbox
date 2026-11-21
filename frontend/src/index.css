@@ -59,6 +59,10 @@
   /* Paper is white in both themes: the knob of a switch, the dot of a radio button, and
      the thumb of a slider. */
   --color-paper: #ffffff;
+
+  /* How far a disabled control fades, whatever kind it is (opacity-disabled, with the
+     disabled:, has-disabled:, or aria-disabled: variant). */
+  --opacity-disabled: 0.6;
 }
 
 /* A wash is a hue mixed into the surface, a fill that reads as the hue at a glance, such
@@ -320,7 +324,7 @@
 
   .checkbox:disabled,
   .radio:disabled {
-    opacity: 0.5;
+    opacity: var(--opacity-disabled);
   }
 
   /* The app draws its own slider for the same reason: a native one is in the accent color
@@ -365,7 +369,7 @@
   }
 
   .range:disabled {
-    opacity: 0.5;
+    opacity: var(--opacity-disabled);
   }
 
   /* A placeholder bar while a list loads: a soft highlight sweeps across it, and bars
