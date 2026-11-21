@@ -417,6 +417,13 @@ func TestChangeKinds(t *testing.T) {
 	assert.Equal(t, []string{"b", "a", "c"}, c.Areas, "the three most changed folders")
 }
 
+func TestAChangeOfNoFilesNamesNoAreas(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []string{}, changeOf(nil, false).Areas, "never nil, so the window gets []")
+	assert.Equal(t, []string{}, changeOf([]File{}, false).Areas)
+}
+
 func TestCacheStaysWithinItsCaps(t *testing.T) {
 	t.Parallel()
 
