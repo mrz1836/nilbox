@@ -228,7 +228,18 @@ Settings → About's **Report a bug** opens `.github/ISSUE_TEMPLATE/bug_report.y
 `environment` field: the versions, then the settings and integrations, which core words
 (`internal/core/bugreport.go`, `appinfo.StateReader`) with nothing personal in them, a name or
 path of the user's own told only as the default or the user's own, or counted; its test fails on
-any. The form is synced, so if a sync renames that field, the button stops filling
+any. The settings are worded one line per page of Settings, under the page's name and in the
+sidebar's order (`internal/core/bugreport_settings.go`), from Appearance to Labs, whose line,
+whether Autopilot (beta) is on, is always there. The settings kept outside the settings service
+are among them: the default prompts and replies (each a starter, the user's own, none, or a
+missing prompt), the profiles and the launch defaults (counted), and, in Autopilot's section,
+Describe it's agent. Autopilot's section shows while Autopilot is on or the user has a routine.
+`TestABugReportWordsEverySetting` changes each field of `settings.Settings` in turn and fails
+when the report doesn't change with it, so a new setting is worded there or listed in
+`bugReportLeavesOut` with the reason it stays out (a catalog, what the window remembers, a
+path, or a setting another section words); it fails on a key that names no field too. A full
+report's link stays under 8,000 characters (`TestABugReportStaysShortEnoughToOpen`). The form is
+synced, so if a sync renames that field, the button stops filling
 it in. The `internal/appinfo` tests read the form and fail when that happens. The account
 menu's **Report a bug** opens the same link, and its **Send feedback** opens GitHub's own blank
 issue (`template=BLANK_ISSUE`, `appinfo.FeedbackURL`) with a `[Feedback]` title, a few prompts,
@@ -3505,10 +3516,11 @@ the settings back, refuses what `Config.Check` refuses with a worded sentence, w
 the keys that change (`Writes`: a setting never touched keeps following its default), and
 emits the Go-only `event.AutopilotChanged`; a shorter history shortens the logs with it, and
 logs past the history are refused. Backups carry them as `Portable.Autopilot`, the switch
-(`enabled`) among them, the history and the logs checked together against this Mac's. While
-the user has a routine (not deleted), the bug report states them, the switch first (*Beta:
-off*), with the routines counted by mode, by switch, broken, and another account's, none
-named; with none, it says nothing of Autopilot.
+(`enabled`) among them, the history and the logs checked together against this Mac's. The bug
+report's Labs line always says whether Autopilot is on. While it is on, or the user has a
+routine (not deleted), the report states the settings, then Describe it's agent, with the
+routines counted by mode, by switch, broken, and another account's, none named; while it is
+off and the user has no routine, it says nothing more of Autopilot.
 
 **Autopilot (beta).** `autopilot.enabled` (`SetAutopilotEnabled`, Settings → Labs) is off on
 every install until the user turns it on, an install from before it included, since a key

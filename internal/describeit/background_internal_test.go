@@ -109,21 +109,26 @@ func TestStartPrunesWhatIsOlderThanThirtyDays(t *testing.T) {
 
 	r := newRig(t)
 
-	old := newRecord(uuid.NewString(), AgentChoice{}, Start{}, testNow.Add(-31*24*time.Hour))
-	require.NoError(t, r.svc.saveRecord(old))
-	r.writeProposal(old.ID, testNow.Add(-31*24*time.Hour), 0, pinProposal())
+	// The prune runs at the real time, since a folder of proposals is judged by when it
+	// last changed on disk, so the conversations are stamped from that time too: stamped
+	// from testNow, the recent one would read as older than 30 days a day after testNow.
+	now := time.Now()
 
-	recent := newRecord(uuid.NewString(), AgentChoice{}, Start{}, testNow.Add(-29*24*time.Hour))
+	old := newRecord(uuid.NewString(), AgentChoice{}, Start{}, now.Add(-31*24*time.Hour))
+	require.NoError(t, r.svc.saveRecord(old))
+	r.writeProposal(old.ID, now.Add(-31*24*time.Hour), 0, pinProposal())
+
+	recent := newRecord(uuid.NewString(), AgentChoice{}, Start{}, now.Add(-29*24*time.Hour))
 	require.NoError(t, r.svc.saveRecord(recent))
 
 	orphan, fresh := uuid.NewString(), uuid.NewString()
 	require.NoError(t, os.MkdirAll(r.path("proposals", orphan), 0o700))
 	require.NoError(t, os.MkdirAll(r.path("proposals", fresh), 0o700))
 
-	long := time.Now().Add(-40 * 24 * time.Hour)
+	long := now.Add(-40 * 24 * time.Hour)
 	require.NoError(t, os.Chtimes(r.path("proposals", orphan), long, long))
 
-	r.clock.Set(time.Now())
+	r.clock.Set(now)
 	r.svc.start(t.Context())
 
 	assert.NoDirExists(t, r.path("conversations", old.ID), "a conversation older than 30 days is gone")

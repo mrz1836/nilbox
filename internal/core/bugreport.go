@@ -5,34 +5,42 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"slices"
-	"strconv"
 	"strings"
 
-	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appinfo"
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
+	"github.com/mrz1836/nilbox/internal/describeit"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
+	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/profiles"
+	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/update"
 	"github.com/mrz1836/nilbox/internal/updateprefs"
 )
 
 // bugReportState words the app's state for a bug report (appinfo.StateReader): the
-// settings and the integrations, with nothing personal in them. A name or a path the
-// user chose (a profile, the clone root, a chosen copy of a tool, a pattern, a bot, a
-// branch) is told only as the default or the user's own, or counted, never written out;
-// no account, repository, or organization is read at all. A part that can't be read is
-// left out, and the report still opens.
+// settings, one line per page of Settings (bugreport_settings.go), the default prompts,
+// the profiles, and the launch defaults among them; Autopilot, while it is on or the user
+// has a routine; the app's updates; and the integrations. Nothing personal is in them: a
+// name or a path the user chose (a profile, the clone root, a chosen copy of a tool, a
+// pattern, a bot, a branch, a label, a workflow, a prompt, an org or a repository with
+// launch defaults) is told only as the default or the user's own, or counted, never
+// written out, and no account is read at all. Every service may be nil; a part that can't
+// be read is logged and left out, and the report still opens. Core wires the prompts, the
+// launch defaults, the profiles, and Describe it in once they are built.
 type bugReportState struct {
-	settings *settings.Service
-	tools    *integrations.Service
-	updates  *update.Engine
-	routines *autopilot.Service
-	logger   *slog.Logger
+	settings       *settings.Service
+	tools          *integrations.Service
+	updates        *update.Engine
+	routines       *autopilot.Service
+	prompts        *prompts.Service
+	launchDefaults *launchdefaults.Service
+	profiles       *profiles.Service
+	describe       *describeit.Service
+	logger         *slog.Logger
 }
 
 // BugReportState returns the settings, Autopilot, the app's updates, and the
@@ -48,7 +56,7 @@ func (b bugReportState) BugReportState(ctx context.Context) []appinfo.StateSecti
 		if err != nil {
 			b.logger.WarnContext(ctx, "a bug report leaves out the settings", "error", err)
 		} else {
-			out = append(out, settingsSection(s))
+			out = append(out, settingsSection(s, b.otherSettings(ctx)))
 			out = append(out, b.autopilotState(ctx, s.Autopilot)...)
 			prefs = s.Integrations
 		}
@@ -70,50 +78,154 @@ func (b bugReportState) BugReportState(ctx context.Context) []appinfo.StateSecti
 	return out
 }
 
-// autopilotState is Autopilot as the report words it: its settings, and its routines
-// counted by mode, by switch, and by whether they are broken or another account's, never
-// named. It says nothing while the user has no routine (not deleted), or the routines
-// can't be read, which is logged.
-func (b bugReportState) autopilotState(ctx context.Context, c autopilotprefs.Config) []appinfo.StateSection {
-	if b.routines == nil {
+// otherSettings reads the settings the settings service doesn't keep, every one of them a
+// local read: the default prompts and replies, the profiles, and the launch defaults. Each
+// that can't be read is logged and left out.
+func (b bugReportState) otherSettings(ctx context.Context) otherSettings {
+	other := otherSettings{profiles: b.profileParts(ctx), launchDefaults: b.launchDefaultsWords(ctx)}
+	other.replies, other.prompts = b.promptParts(ctx)
+
+	return other
+}
+
+// promptParts words the default replies and the default prompts, or nothing when the
+// prompt library can't be read.
+func (b bugReportState) promptParts(ctx context.Context) (replies, launches []string) {
+	if b.prompts == nil {
+		return nil, nil
+	}
+
+	list, err := b.prompts.List(ctx)
+	if err != nil {
+		b.logger.WarnContext(ctx, "a bug report leaves out the default prompts", "error", err)
+
+		return nil, nil
+	}
+
+	defaults, err := b.prompts.Defaults(ctx)
+	if err != nil {
+		b.logger.WarnContext(ctx, "a bug report leaves out the default prompts", "error", err)
+
+		return nil, nil
+	}
+
+	library := promptsByID(list)
+
+	return replyParts(defaults, library), launchPromptParts(defaults, library)
+}
+
+// profileParts counts the profiles, or says nothing when they can't be read.
+func (b bugReportState) profileParts(ctx context.Context) []string {
+	if b.profiles == nil {
 		return nil
+	}
+
+	list, err := b.profiles.List(ctx)
+	if err != nil {
+		b.logger.WarnContext(ctx, "a bug report leaves out the profiles", "error", err)
+
+		return nil
+	}
+
+	return profileParts(list)
+}
+
+// launchDefaultsWords counts the launch defaults, or says nothing when they can't be read.
+func (b bugReportState) launchDefaultsWords(ctx context.Context) string {
+	if b.launchDefaults == nil {
+		return ""
+	}
+
+	list, err := b.launchDefaults.List(ctx)
+	if err != nil {
+		b.logger.WarnContext(ctx, "a bug report leaves out the launch defaults", "error", err)
+
+		return ""
+	}
+
+	return launchDefaultsWords(list)
+}
+
+// autopilotState is Autopilot as the report words it: its settings, the agent Describe it
+// runs, and its routines, counted by mode, by switch, and by whether they are broken or
+// another account's, never named, with today's runs. It says nothing while Autopilot is
+// off and the user has no routine (not deleted). Routines that can't be read are logged
+// and left out, and Autopilot with them unless it is on.
+func (b bugReportState) autopilotState(ctx context.Context, c autopilotprefs.Config) []appinfo.StateSection {
+	list, listed := b.listRoutines(ctx)
+	if !c.Enabled && len(list) == 0 {
+		return nil
+	}
+
+	lines := append([]string{autopilotSettingsLine(c)}, b.describeAgentLines(ctx)...)
+
+	if listed {
+		lines = append(lines, b.routineLines(ctx, list)...)
+	}
+
+	return []appinfo.StateSection{{Title: "Autopilot", Lines: lines}}
+}
+
+// listRoutines lists the routines, and reports whether they could be read.
+func (b bugReportState) listRoutines(ctx context.Context) ([]autopilot.Routine, bool) {
+	if b.routines == nil {
+		return nil, false
 	}
 
 	list, err := b.routines.List(ctx)
 	if err != nil {
 		b.logger.WarnContext(ctx, "a bug report leaves out the routines", "error", err)
 
-		return nil
+		return nil, false
 	}
 
-	if len(list) == 0 {
-		return nil
-	}
-
-	lines := []string{autopilotSettingsLine(c), routinesLine(list)}
-
-	if today, todayErr := b.routines.RunsToday(ctx); todayErr == nil {
-		lines = append(lines, fmt.Sprintf("Runs today: %d in the background · %d in the terminal · %d GitHub actions",
-			today.Background, today.Terminal, today.Actions))
-	} else {
-		b.logger.WarnContext(ctx, "a bug report leaves out today's runs", "error", todayErr)
-	}
-
-	return []appinfo.StateSection{{Title: "Autopilot", Lines: lines}}
+	return list, true
 }
 
-// autopilotSettingsLine words Autopilot's settings: whether it is on and paused, the mode
-// new routines start in, and the limits.
+// describeAgentLines words the agent Describe it runs, or nothing when it can't be read.
+func (b bugReportState) describeAgentLines(ctx context.Context) []string {
+	if b.describe == nil {
+		return nil
+	}
+
+	choice, err := b.describe.Agent(ctx)
+	if err != nil {
+		b.logger.WarnContext(ctx, "a bug report leaves out Describe it's agent", "error", err)
+
+		return nil
+	}
+
+	return []string{describeAgentLine(choice)}
+}
+
+// routineLines counts the routines and today's runs, the runs left out when they can't
+// be read.
+func (b bugReportState) routineLines(ctx context.Context, list []autopilot.Routine) []string {
+	today, err := b.routines.RunsToday(ctx)
+	if err != nil {
+		b.logger.WarnContext(ctx, "a bug report leaves out today's runs", "error", err)
+
+		return []string{routinesLine(list)}
+	}
+
+	return []string{routinesLine(list), fmt.Sprintf(
+		"Runs today: %d in the background · %d in the terminal · %d GitHub actions",
+		today.Background, today.Terminal, today.Actions,
+	)}
+}
+
+// autopilotSettingsLine words Autopilot's settings: whether it is paused, the mode new
+// routines start in, and the limits. Whether it is on is the Labs line's.
 func autopilotSettingsLine(c autopilotprefs.Config) string {
 	daily := "off"
 	if !c.DailyCap.Off() {
 		daily = fmt.Sprintf("%d %s", c.DailyCap.Amount, c.DailyCap.Unit)
 	}
 
-	return fmt.Sprintf("Beta: %s · paused: %s · new routines: %s · agents at once: %d · runs a day: %d · "+
+	return fmt.Sprintf("Paused: %s · new routines: %s · agents at once: %d · runs a day: %d · "+
 		"actions a day: %d · daily cap: %s · keep awake: %s · hold on outage: %s · catch up after: %d h · "+
 		"history: %d days, logs: %d",
-		onOff(c.Enabled), onOff(c.Paused), c.DefaultMode.Label(), c.AgentsAtOnce, c.RunsPerDay, c.ActionsPerDay, daily, onOff(c.KeepAwake),
+		onOff(c.Paused), c.DefaultMode.Label(), c.AgentsAtOnce, c.RunsPerDay, c.ActionsPerDay, daily, onOff(c.KeepAwake),
 		onOff(c.HoldOnOutage), c.CatchUpHours, c.HistoryDays, c.LogDays)
 }
 
@@ -162,112 +274,6 @@ func (b bugReportState) updatesState(ctx context.Context) []appinfo.StateSection
 	}
 
 	return []appinfo.StateSection{updatesSection(status)}
-}
-
-// onOff words a switch.
-func onOff(on bool) string {
-	if on {
-		return "on"
-	}
-
-	return "off"
-}
-
-// ownOrDefault says whether the user changed a setting from its default, without saying
-// what to.
-func ownOrDefault(isDefault bool) string {
-	if isDefault {
-		return "the default"
-	}
-
-	return "the user's own"
-}
-
-// sameSet reports whether a and b hold the same strings, in any order.
-func sameSet(a, b []string) bool {
-	x, y := slices.Clone(a), slices.Clone(b)
-	slices.Sort(x)
-	slices.Sort(y)
-
-	return slices.Equal(x, y)
-}
-
-// profileWords says which profile an agent launches with by default: the agent's own, or
-// one of the user's, whose name, which may name an employer, is left out.
-func profileWords(chosen map[agent.ID]string) string {
-	ids := make([]string, 0, len(chosen))
-	for id := range chosen {
-		ids = append(ids, string(id))
-	}
-
-	slices.Sort(ids)
-
-	parts := make([]string, 0, len(ids))
-
-	for _, id := range ids {
-		name := chosen[agent.ID(id)]
-		if name == "" || name == profiles.DefaultName {
-			parts = append(parts, id+" default")
-		} else {
-			parts = append(parts, id+" the user's own")
-		}
-	}
-
-	if len(parts) == 0 {
-		return "the agents' defaults"
-	}
-
-	return strings.Join(parts, ", ")
-}
-
-// settingsSection words the settings for a bug report.
-func settingsSection(s settings.Settings) appinfo.StateSection {
-	banners := "none"
-
-	if len(s.BannersOff) > 0 {
-		off := make([]string, 0, len(s.BannersOff))
-		for _, k := range s.BannersOff {
-			off = append(off, string(k))
-		}
-
-		banners = strings.Join(off, ", ")
-	}
-
-	sensitiveOff := "none"
-	if len(s.SensitiveFiles.Off) > 0 {
-		sensitiveOff = strings.Join(s.SensitiveFiles.Off, ", ")
-	}
-
-	// The hidden labels are counted, never named: a label can be a private word.
-	hiddenLabels := "default"
-	if !sameSet(s.HiddenLabels, s.DefaultHiddenLabels) {
-		hiddenLabels = strconv.Itoa(len(s.HiddenLabels))
-	}
-
-	return appinfo.StateSection{Title: "Settings", Lines: []string{
-		fmt.Sprintf("Theme: %s · text size: %s · toasts: %d s · window: %d×%d", s.Theme, s.TextSize,
-			s.ToastSeconds, s.WindowSize.Width, s.WindowSize.Height),
-		fmt.Sprintf("Terminal: %s · menu bar: %s · banners off: %s", s.Terminal, onOff(s.MenuBar), banners),
-		fmt.Sprintf("Default agent: %s · profiles: %s", s.DefaultAgent, profileWords(s.DefaultProfiles)),
-		fmt.Sprintf("Codex effort: %s · Codex fast: %s", onOff(s.CodexEffort), onOff(s.CodexFast)),
-		fmt.Sprintf("Start in a worktree: %s · automatic cleanup: %s · follow sessions: %s",
-			onOff(s.WorktreeDefault), onOff(s.WorktreeAutoCleanup), onOff(s.FollowSessions)),
-		fmt.Sprintf("Clone root: %s · other locations: %d", ownOrDefault(s.CloneRoot == settings.DefaultCloneRoot),
-			len(s.CloneLocations)),
-		fmt.Sprintf("Snooze: %d days · wake on commits: %d, reviews: %s, comments: %d, ready for review: %s",
-			s.SnoozeDays, s.SnoozeWake.Commits, s.SnoozeWake.Reviews, s.SnoozeWake.Comments, onOff(s.SnoozeWake.Ready)),
-		fmt.Sprintf("Sensitive files: %s · categories off: %s · own patterns: %d", s.SensitiveFiles.Scope,
-			sensitiveOff, len(s.SensitiveFiles.Patterns)),
-		fmt.Sprintf("Branch rules: own %s, pull request %s, merged %s · protected branches: %s (%d)",
-			onOff(s.Branches.Own), onOff(s.Branches.PullRequest), onOff(s.Branches.Merged),
-			ownOrDefault(sameSet(s.Branches.Protected, s.DefaultProtectedBranches)), len(s.Branches.Protected)),
-		fmt.Sprintf("Trusted bots: %s (%d)", ownOrDefault(sameSet(s.TrustedBots, s.DefaultTrustedBots)),
-			len(s.TrustedBots)),
-		fmt.Sprintf("Merge method: %s · lists sorted by status: %d · lists showing one kind: %d · collapsed lists: %d",
-			s.MergeMethod, len(s.InboxOrder.StatusSorted), len(s.InboxOrder.Kinds), len(s.CollapsedSections)),
-		fmt.Sprintf("Repositories and orgs: %d pinned, %d muted · hidden labels: %s", len(s.RepoRules.Pinned),
-			len(s.RepoRules.Muted), hiddenLabels),
-	}}
 }
 
 // updateModeWords words what the app does when a new version is out, as Settings does.
