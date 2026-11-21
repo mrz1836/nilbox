@@ -69,13 +69,13 @@ export default defineConfig({
     // root's color-scheme switches, as Safari 16.4 has no light-dark().
     cssMinify: 'lightningcss',
     // The bundle loads from the app binary, not over a network. Before its first paint the
-    // window loads the entry chunk, the inbox's, about 696 kB, and the 20 smaller chunks it
-    // preloads, which it shares with the pages: about 885 kB of JS in all, with 128 kB of
-    // CSS, which magex frontend:gate holds to a budget after this build
+    // window loads the entry chunk, the inbox's, about 496 kB, and the shared chunk it
+    // preloads (codeSplitting below), about 387 kB: about 884 kB of JS in all, with 127 kB
+    // of CSS, which magex frontend:gate holds to a budget after this build
     // (magefiles/firstpaint.go). The other pages are chunks of their own, loaded on their
     // first visit (App.tsx), and so are the review and issue sheets, loaded once the inbox
     // has painted (InboxView.tsx). The limit is a tripwire for unexpected growth of any
-    // chunk, set above the inbox's, and chunkLimit above makes it an error, so the frontend
+    // chunk, set above the biggest, and chunkLimit above makes it an error, so the frontend
     // gate's build fails on a chunk over it.
     chunkSizeWarningLimit: 750,
     rolldownOptions: {
@@ -85,6 +85,18 @@ export default defineConfig({
         // bundling itself is quick. node_modules is already left out of it (the Babel
         // plugin's default), so the notice would show on every build and say nothing new.
         bundlerTimings: false,
+      },
+      output: {
+        // Every module the first paint loads ($initial) that a lazily loaded chunk imports
+        // too goes into one chunk, shared, which the entry preloads. Left to itself, Rolldown
+        // puts those modules in common chunks by which chunks import them, then merges into
+        // the entry each it can without a cycle between chunks, so one new import (lib/tone
+        // from the account menu, once) could fold several into the entry at once, 37 kB
+        // toward the chunk limit. Grouped, they still load before the first paint, a page
+        // that imports one finds it loaded, and an import moves only its own module.
+        codeSplitting: {
+          groups: [{ name: 'shared', tags: ['$initial'], minShareCount: 2 }],
+        },
       },
     },
   },
