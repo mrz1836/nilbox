@@ -51,9 +51,9 @@ func phases(told []event.InboxProgress) []event.InboxPhase {
 func lastOf(t *testing.T, told []event.InboxProgress, phase event.InboxPhase) event.InboxProgress {
 	t.Helper()
 
-	for _, t := range slices.Backward(told) {
-		if t.Phase == phase {
-			return t
+	for _, p := range slices.Backward(told) {
+		if p.Phase == phase {
+			return p
 		}
 	}
 
