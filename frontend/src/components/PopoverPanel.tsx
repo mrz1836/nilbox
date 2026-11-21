@@ -126,7 +126,7 @@ export function CountDot({ count, testId }: { count: number; testId: string }) {
     <span
       data-testid={testId}
       aria-hidden="true"
-      className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-surface tabular-nums"
+      className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-badge leading-4 font-semibold text-surface tabular-nums"
     >
       {badgeText(count)}
     </span>

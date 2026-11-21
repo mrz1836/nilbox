@@ -203,7 +203,7 @@ describe('CountDot', () => {
     const dot = screen.getByTestId('dot')
     expect(dot).toHaveTextContent('7')
     expect(dot).toHaveAttribute('aria-hidden', 'true')
-    expect(dot).toHaveClass('text-[0.625rem]', 'leading-4', 'font-semibold', 'text-surface')
+    expect(dot).toHaveClass('text-badge', 'leading-4', 'font-semibold', 'text-surface')
 
     rerender(<CountDot count={120} testId="dot" />)
 
