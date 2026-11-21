@@ -301,7 +301,7 @@ export function TemplateEditor({
           role="listbox"
           aria-label="Variables"
           style={{ top: popup.top, left: popup.left, width: `${String(popupWidth)}rem` }}
-          className={`${panelClass} absolute z-10 max-h-56 overflow-y-auto p-1 text-sm`}
+          className={`${panelClass} absolute layer-popover max-h-56 overflow-y-auto p-1 text-sm`}
         >
           {matches.map((name, i) => {
             const v = variables.find((x) => x.name === name)
