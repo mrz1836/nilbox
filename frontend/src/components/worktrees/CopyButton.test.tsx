@@ -25,7 +25,6 @@ describe('CopyButton', () => {
 
     expect(screen.getByRole('button', { name: 'Copy path' })).toBeInTheDocument()
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
-    vi.useRealTimers()
   })
 
   it('says a copy the clipboard refused, and logs it', async () => {

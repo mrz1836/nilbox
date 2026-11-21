@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { ScriptRun, ScriptRunStatus, TerminalID } from '../../platform'
@@ -11,10 +11,6 @@ import { listening, platform, send } from '../../test/platform'
 import { RunPanel } from './RunPanel'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
-
-afterEach(() => {
-  vi.useRealTimers()
-})
 
 // ago is the time ms milliseconds before the test clock's, as a run records it.
 function ago(ms: number): string {

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ScriptRunChunk } from '../../platform'
 import { deferred } from '../../test/async'
@@ -9,10 +9,6 @@ import { platform } from '../../test/platform'
 import { LogView, pollMs, retryMs } from './LogView'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
-
-afterEach(() => {
-  vi.useRealTimers()
-})
 
 // numbered is lines "line from" up to before "line to", each ended.
 function numbered(from: number, to: number): string {

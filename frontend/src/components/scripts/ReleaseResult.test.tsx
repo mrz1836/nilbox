@@ -9,6 +9,7 @@ import { nextTask } from '../../test/async'
 import { at } from '../../test/clock'
 import { releaseFollow, releaseResult, releaseRun } from '../../test/fixtures'
 import { platform } from '../../test/platform'
+import { reduceMotion } from '../../test/stubs'
 import { ReleaseResult } from './ReleaseResult'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -90,7 +91,7 @@ describe('ReleaseResult', () => {
   })
 
   it('throws no confetti when the system asks for less motion', async () => {
-    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(prefers-reduced-motion: reduce)' }))
+    reduceMotion()
     renderResult()
 
     await card()
@@ -98,7 +99,6 @@ describe('ReleaseResult', () => {
     await nextTask()
 
     expect(document.querySelector('[data-testid="confetti"]')).toBeNull()
-    vi.unstubAllGlobals()
   })
 
   it.each(['quiet', 'off'] as const)('throws no confetti with celebrations %s', async (mode) => {
