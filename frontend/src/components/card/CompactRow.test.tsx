@@ -312,7 +312,7 @@ describe('CompactRow', () => {
 
     const go = within(row).getByRole('button', { name: 'Review' })
     expect(go).toHaveAttribute('data-verb', 'review')
-    expect(go).toHaveClass('text-accent', 'card-lit:bg-accent', 'card-lit:text-white')
+    expect(go).toHaveClass('text-accent', 'card-lit:bg-accent', 'card-lit:text-surface')
     expect(go).not.toHaveClass('border')
     expect(go.querySelector('svg')).toBeNull()
 

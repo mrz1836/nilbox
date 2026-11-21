@@ -108,7 +108,7 @@ describe('CardActions', () => {
       'text-accent',
       'card-lit:border-transparent',
       'card-lit:bg-accent',
-      'card-lit:text-white',
+      'card-lit:text-surface',
     )
   })
 

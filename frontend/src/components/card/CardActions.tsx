@@ -26,15 +26,15 @@ const verbShape =
 
 // loud is a primary outlined in its edge's color, with its text in it, that fills with the
 // color while the card is lit (card-lit in index.css: the pointer on it, keyboard focus in
-// it, or a menu or panel it opened open): white text on it, or the surface's on the
-// success and warning colors, which are bright in the dark theme. Each is spelled out in
-// full so Tailwind finds it.
+// it, or a menu or panel it opened open), with the surface's color for its text: white in
+// the light theme, and the dark surface in the dark theme, whose colors are bright. Each is
+// spelled out in full so Tailwind finds it.
 const loud: Readonly<Record<Edge, string>> = {
   urgent: 'border-warning/45 text-warning card-lit:border-transparent card-lit:bg-warning card-lit:text-surface',
-  blocked: 'border-danger/45 text-danger card-lit:border-transparent card-lit:bg-danger card-lit:text-white',
-  yours: 'border-accent/45 text-accent card-lit:border-transparent card-lit:bg-accent card-lit:text-white',
+  blocked: 'border-danger/45 text-danger card-lit:border-transparent card-lit:bg-danger card-lit:text-surface',
+  yours: 'border-accent/45 text-accent card-lit:border-transparent card-lit:bg-accent card-lit:text-surface',
   ready: 'border-success/45 text-success card-lit:border-transparent card-lit:bg-success card-lit:text-surface',
-  agent: 'border-info/45 text-info card-lit:border-transparent card-lit:bg-info card-lit:text-white',
+  agent: 'border-info/45 text-info card-lit:border-transparent card-lit:bg-info card-lit:text-surface',
   waiting: 'border-border text-muted card-lit:bg-raised',
   none: 'border-border text-muted card-lit:bg-raised',
 }
@@ -56,15 +56,15 @@ const goShape =
   'inline-flex h-6.5 shrink-0 items-center rounded-md px-2.25 text-control font-semibold whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-60'
 
 // goTones are the go button's colors: its words in the edge's color, filled with it while
-// the card is lit (white text on it, or the surface's on the success and warning colors);
-// a quiet one, or one waiting on others, muted and filling with the raised color. Each is
-// spelled out in full so Tailwind finds it.
+// the card is lit, with the surface's color for its text, as a loud primary has; a quiet
+// one, or one waiting on others, muted and filling with the raised color. Each is spelled
+// out in full so Tailwind finds it.
 const goTones: Readonly<Record<Edge, string>> = {
   urgent: 'text-warning card-lit:bg-warning card-lit:text-surface',
-  blocked: 'text-danger card-lit:bg-danger card-lit:text-white',
-  yours: 'text-accent card-lit:bg-accent card-lit:text-white',
+  blocked: 'text-danger card-lit:bg-danger card-lit:text-surface',
+  yours: 'text-accent card-lit:bg-accent card-lit:text-surface',
   ready: 'text-success card-lit:bg-success card-lit:text-surface',
-  agent: 'text-info card-lit:bg-info card-lit:text-white',
+  agent: 'text-info card-lit:bg-info card-lit:text-surface',
   waiting: 'text-muted card-lit:bg-raised card-lit:text-text',
   none: 'text-muted card-lit:bg-raised card-lit:text-text',
 }
