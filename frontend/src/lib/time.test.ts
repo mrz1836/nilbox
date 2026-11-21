@@ -10,8 +10,10 @@ import {
   formatDateTime,
   formatDay,
   formatFull,
+  formatTimeOfDay,
   formatUntil,
   formatWhen,
+  unixISO,
 } from './time'
 
 // Tests run in UTC (vitest.config.ts); FIXED_NOW is a Monday.
@@ -153,5 +155,59 @@ describe('dayHeading', () => {
   it('follows the locale', () => {
     expect(dayHeading(FIXED_NOW, '2026-06-13T12:00:00Z', 'de-DE')).toBe('Samstag')
     expect(dayHeading(FIXED_NOW, '2025-12-30T12:00:00Z', 'de-DE')).toBe('30. Dez. 2025')
+  })
+})
+
+describe('formatTimeOfDay', () => {
+  it.each([
+    ['2026-06-18T11:30:00Z', '11:30 AM'],
+    ['2026-06-18T00:05:00Z', '12:05 AM'],
+    ['2026-06-18T12:00:00Z', '12:00 PM'],
+    ['2026-06-18T23:59:59Z', '11:59 PM'],
+  ])('names %s as %j', (iso, want) => {
+    expect(plain(formatTimeOfDay(iso, 'en-US'))).toBe(want)
+  })
+
+  it('follows the locale', () => {
+    expect(formatTimeOfDay('2026-06-18T23:59:00Z', 'de-DE')).toBe('23:59')
+  })
+
+  it('names nothing for a time it cannot read', () => {
+    expect(formatTimeOfDay('')).toBe('')
+    expect(formatTimeOfDay('not a time')).toBe('')
+  })
+
+  // localeTime is how the activity list named a line's time before it shared this one.
+  const localeTime = (iso: string, locale?: string) => {
+    const ms = Date.parse(iso)
+
+    return Number.isNaN(ms) ? '' : new Date(ms).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })
+  }
+
+  it.each([undefined, 'en-US', 'en-GB', 'de-DE', 'ja-JP'])('writes what toLocaleTimeString does, in %s', (locale) => {
+    const times = ['2026-06-18T11:30:00Z', '2026-06-18T00:05:00Z', '2026-06-18T23:59:59Z', '', 'not a time']
+
+    expect(times.map((iso) => formatTimeOfDay(iso, locale))).toEqual(times.map((iso) => localeTime(iso, locale)))
+  })
+})
+
+describe('unixISO', () => {
+  it('writes seconds since the epoch as an ISO timestamp', () => {
+    expect(unixISO(1781517600)).toBe('2026-06-15T10:00:00.000Z')
+    expect(unixISO(1.5)).toBe('1970-01-01T00:00:01.500Z')
+    expect(unixISO(-1)).toBe('1969-12-31T23:59:59.000Z')
+  })
+
+  it('writes 0 as the epoch itself', () => {
+    expect(unixISO(0)).toBe('1970-01-01T00:00:00.000Z')
+  })
+
+  it('reads back as the same time', () => {
+    expect(formatAgo(FIXED_NOW, unixISO(FIXED_NOW.getTime() / 1000 - 3 * 3600))).toBe('3h ago')
+  })
+
+  it('throws for a time Date can’t hold, as new Date does', () => {
+    expect(() => unixISO(Number.NaN)).toThrow(RangeError)
+    expect(() => unixISO(8.64e12 + 1)).toThrow(RangeError)
   })
 })
