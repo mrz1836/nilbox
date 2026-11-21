@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { Assigned } from '../lib/assignees'
 import type { AssigneeCandidates } from '../platform'
+import { deferred } from '../test/async'
 import { at } from '../test/clock'
 import { assigneeCandidates } from '../test/fixtures'
 import { platform } from '../test/platform'
@@ -106,8 +107,8 @@ describe('AssigneePicker', () => {
 
   it('learns who can be assigned as it opens, when a read is due, and only then', async () => {
     const learned = assigneeCandidates({ readAt: '2026-06-14T12:00:00Z', complete: true, total: 5 })
-    let finish: (got: AssigneeCandidates) => void = () => undefined
-    platform.learnIssueAssignees.mockImplementation(() => new Promise((resolve) => (finish = resolve)))
+    const learning = deferred<AssigneeCandidates>()
+    platform.learnIssueAssignees.mockImplementation(() => learning.promise)
 
     const { dialog, onLearned } = await open([], assigneeCandidates({ stale: true }))
 
@@ -115,7 +116,7 @@ describe('AssigneePicker', () => {
       'Learning who can be assigned in acme-org/example-repo…',
     )
 
-    finish(learned)
+    learning.resolve(learned)
 
     expect(
       await dialog.findByText('Everyone who can be assigned in acme-org/example-repo · read 1d ago'),

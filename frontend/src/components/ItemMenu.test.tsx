@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { CardPrefsContext, defaultCardPrefs } from '../lib/cardPrefs'
 import type { TriageTab } from '../lib/triage'
 import type { AutopilotRoutine, InboxItem, RepoRules } from '../platform'
+import { deferred } from '../test/async'
 import { at } from '../test/clock'
 import { autopilotMatch, details, explanation, item, routine, routineSpec } from '../test/fixtures'
 import { platform } from '../test/platform'
@@ -323,14 +324,10 @@ describe('ItemMenu', () => {
   })
 
   it('takes the user off an item assigned to them, holding the row while GitHub makes the change', async () => {
-    let done: () => void = () => undefined
+    const unassigning = deferred()
     const it = item({ assigned: true })
     const { edits, triage } = renderRow(it)
-    vi.mocked(edits.onUnassign).mockReturnValue(
-      new Promise((resolve) => {
-        done = resolve
-      }),
-    )
+    vi.mocked(edits.onUnassign).mockReturnValue(unassigning.promise)
 
     const menu = await openMenu()
     expect(menu.getByText('On GitHub')).toHaveAttribute('aria-hidden', 'true')
@@ -360,7 +357,7 @@ describe('ItemMenu', () => {
     await userEvent.keyboard('{Escape}')
 
     await act(async () => {
-      done()
+      unassigning.resolve()
       await Promise.resolve()
     })
 
@@ -447,10 +444,11 @@ describe('ItemMenu', () => {
     let done: () => void = () => undefined
     const it = item({ reviewRequest: 'you' })
     const { edits, triage } = renderRow(it)
-    const hold = () =>
-      new Promise<void>((resolve) => {
-        done = resolve
-      })
+    const hold = () => {
+      const d = deferred()
+      done = d.resolve
+      return d.promise
+    }
     vi.mocked(edits.onRemoveReview).mockImplementation(hold)
     vi.mocked(triage.onRefresh).mockImplementation(hold)
 
@@ -505,14 +503,10 @@ describe('ItemMenu', () => {
   })
 
   it('refreshes from the menu as the row’s button does, and shows it on the button', async () => {
-    let done: () => void = () => undefined
+    const refreshing = deferred()
     const it = item()
     const { triage } = renderRow(it)
-    vi.mocked(triage.onRefresh).mockReturnValue(
-      new Promise((resolve) => {
-        done = resolve
-      }),
-    )
+    vi.mocked(triage.onRefresh).mockReturnValue(refreshing.promise)
 
     await openMenu()
     await openSubmenu('Inbox actions')
@@ -526,7 +520,7 @@ describe('ItemMenu', () => {
     expect(screen.getByRole('button', { name: 'More actions' })).toHaveAttribute('title', 'Refreshing from GitHub…')
 
     await act(async () => {
-      done()
+      refreshing.resolve()
       await Promise.resolve()
     })
 

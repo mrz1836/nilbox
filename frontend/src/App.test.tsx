@@ -14,6 +14,7 @@ import type {
   PictureBot,
   CardDensity,
 } from './platform'
+import { deferred } from './test/async'
 import {
   afterMerge,
   appInfo,
@@ -840,12 +841,8 @@ describe('App', () => {
   })
 
   it('confirms a change made in the Worktrees view with a toast, offering View once another view is open', async () => {
-    let finish: (result: RemoveResult) => void = () => undefined
-    platform.removeWorktree.mockReturnValueOnce(
-      new Promise((resolve) => {
-        finish = resolve
-      }),
-    )
+    const removal = deferred<RemoveResult>()
+    platform.removeWorktree.mockReturnValueOnce(removal.promise)
     await renderApp()
     await userEvent.click(screen.getByRole('button', { name: 'Worktrees' }))
 
@@ -856,7 +853,7 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Inbox' }))
 
     act(() => {
-      finish(removeResult())
+      removal.resolve(removeResult())
     })
 
     const toast = await screen.findByRole('group', { name: 'Notification' })
@@ -1104,12 +1101,12 @@ describe('App’s card pictures', () => {
   function hold(): Held[] {
     const held: Held[] = []
 
-    platform.cardPictures.mockImplementation(
-      (people, bots) =>
-        new Promise((answer) => {
-          held.push({ people: people ?? [], bots: bots ?? [], answer })
-        }),
-    )
+    platform.cardPictures.mockImplementation((people, bots) => {
+      const request = deferred<Record<string, string>>()
+      held.push({ people: people ?? [], bots: bots ?? [], answer: request.resolve })
+
+      return request.promise
+    })
 
     return held
   }
@@ -1203,14 +1200,11 @@ describe('App’s card pictures', () => {
 
     platform.cardPictures.mockImplementation(() => {
       const cancel = vi.fn()
+      const request = deferred<Record<string, string>>()
       cancels.push(cancel)
+      answers.push(request.resolve)
 
-      return Object.assign(
-        new Promise<Record<string, string>>((answer) => {
-          answers.push(answer)
-        }),
-        { cancel },
-      )
+      return Object.assign(request.promise, { cancel })
     })
 
     return { answers, cancels }
@@ -1656,9 +1650,10 @@ describe('App’s GitHub notifications', () => {
     let answer: (value: Settings) => void = () => undefined
     platform.setGitHubNotificationSwitch.mockImplementation((name, on) => {
       if (name === 'auto') {
-        return new Promise<Settings>((resolve) => {
-          answer = resolve
-        })
+        const auto = deferred<Settings>()
+        answer = auto.resolve
+
+        return auto.promise
       }
 
       // The backend has stored the button's change first, so it holds it too.

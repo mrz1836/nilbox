@@ -17,6 +17,7 @@ import type {
   ProjectAccess,
   Settings,
 } from '../platform'
+import { deferred } from '../test/async'
 import {
   account,
   agents,
@@ -782,12 +783,8 @@ describe('SettingsView', () => {
   })
 
   it('shows a worktree default the backend refused, and switches it back', async () => {
-    let refuse: (err: Error) => void = () => undefined
-    platform.setWorktreeDefault.mockReturnValue(
-      new Promise((_, reject) => {
-        refuse = reject
-      }),
-    )
+    const saving = deferred<Settings>()
+    platform.setWorktreeDefault.mockReturnValue(saving.promise)
     renderSettings()
     await openSection('Launching')
 
@@ -797,7 +794,7 @@ describe('SettingsView', () => {
     // The switch moves before the backend answers.
     expect(toggle).not.toBeChecked()
 
-    refuse(new Error('database is locked'))
+    saving.reject(new Error('database is locked'))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
     await waitFor(() => {

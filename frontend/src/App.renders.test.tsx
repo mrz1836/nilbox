@@ -6,6 +6,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ItemRowProps } from './components/ItemRow'
 import { triageList } from './lib/triage'
 import type { AutopilotMatch, AutopilotState, CardDensity, InboxItem, InboxSnapshot, ListKey } from './platform'
+import { deferred, nextTask } from './test/async'
 import { FIXED_NOW, fromNow } from './test/clock'
 import {
   autopilotMatch,
@@ -136,11 +137,7 @@ function mountedRows(): number {
 // settle lets every answer, and every render it causes, finish.
 async function settle() {
   for (let i = 0; i < 5; i++) {
-    await act(async () => {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 0)
-      })
-    })
+    await nextTask()
   }
 }
 
@@ -228,12 +225,12 @@ describe.each(densities)('App rendering, %s cards', (density) => {
     const rows = shown('reviewRequested') + shown('yours')
     // The authors' pictures wait until the test lands them.
     let land: (pictures: Record<string, string>) => void = () => undefined
-    platform.cardPictures.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          land = resolve
-        }),
-    )
+    platform.cardPictures.mockImplementation(() => {
+      const request = deferred<Record<string, string>>()
+      land = request.resolve
+
+      return request.promise
+    })
 
     const mounted = await measure(async () => {
       await renderApp({ now: () => new Date(), wrapper: Profiled })

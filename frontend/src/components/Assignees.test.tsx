@@ -4,6 +4,7 @@ import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Assigned } from '../lib/assignees'
+import { deferred } from '../test/async'
 import { at } from '../test/clock'
 import { assigneeCandidates } from '../test/fixtures'
 import { platform } from '../test/platform'
@@ -72,8 +73,8 @@ describe('AssigneesSection', () => {
   })
 
   it('unassigns anyone but the user with ×, a line fading while it runs', async () => {
-    let finish: (why: string) => void = () => undefined
-    const edit = vi.fn(() => new Promise<string>((resolve) => (finish = resolve)))
+    const unassigning = deferred<string>()
+    const edit = vi.fn(() => unassigning.promise)
     section(assigned, editing(edit))
 
     expect(
@@ -88,7 +89,7 @@ describe('AssigneesSection', () => {
     expect(line).toHaveAttribute('aria-busy', 'true')
     expect(line).toHaveClass('opacity-50')
 
-    finish('')
+    unassigning.resolve('')
     await waitFor(() => {
       expect(line).not.toHaveAttribute('aria-busy')
     })

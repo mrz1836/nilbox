@@ -8,6 +8,7 @@ import { HiddenLabelsContext, labelMatcher } from '../lib/labels'
 import type { LaunchOptions } from '../lib/launch'
 import type { TriageTab } from '../lib/triage'
 import type { InboxItem, ItemDetails, RepoRules, Worktree } from '../platform'
+import { deferred } from '../test/async'
 import { at } from '../test/clock'
 import {
   agentSession,
@@ -1433,14 +1434,9 @@ describe('ItemRow triage', () => {
   })
 
   it('keeps the triage shown, and the state column faded, while the card works with GitHub', async () => {
-    let done: () => void = () => undefined
+    const refreshing = deferred()
     const triage = triageActions()
-    triage.onRefresh = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          done = resolve
-        }),
-    )
+    triage.onRefresh = vi.fn(() => refreshing.promise)
     const row = mountCard(asked(), { triage })
 
     await userEvent.click(screen.getByRole('button', { name: 'Refresh from GitHub' }))
@@ -1449,7 +1445,7 @@ describe('ItemRow triage', () => {
     expect(row.querySelector('[data-state-column]')).toHaveClass('opacity-0')
 
     await act(async () => {
-      done()
+      refreshing.resolve()
       await Promise.resolve()
     })
 
@@ -1457,14 +1453,9 @@ describe('ItemRow triage', () => {
   })
 
   it('fades the card under a note while an edit will likely take it out of the list', async () => {
-    let done: () => void = () => undefined
+    const unassigning = deferred()
     const edits = editActions()
-    edits.onUnassign = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          done = resolve
-        }),
-    )
+    edits.onUnassign = vi.fn(() => unassigning.promise)
     const row = mountCard(item({ assigned: true, details: details() }), { triage: triageActions(), edits })
 
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
@@ -1476,7 +1467,7 @@ describe('ItemRow triage', () => {
     expect(note.closest('[data-row-status]')).toHaveClass('z-30')
 
     await act(async () => {
-      done()
+      unassigning.resolve()
       await Promise.resolve()
     })
 

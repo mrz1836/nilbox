@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { LaunchPreview } from '../platform'
+import { deferred } from '../test/async'
 import { at } from '../test/clock'
 import {
   agentSession,
@@ -1014,19 +1015,15 @@ describe('LaunchControls', () => {
     await userEvent.click(menu.getByRole('button', { name: 'Preview' }))
     expect(await menu.findByText(/Review pull request #7/)).toBeInTheDocument()
 
-    let finish: (preview: LaunchPreview) => void = () => undefined
-    platform.previewLaunch.mockReturnValue(
-      new Promise((resolve) => {
-        finish = resolve
-      }),
-    )
+    const planning = deferred<LaunchPreview>()
+    platform.previewLaunch.mockReturnValue(planning.promise)
     await userEvent.click(menu.getByRole('radio', { name: 'work' }))
 
     expect(await menu.findByText('Planning the launch…')).toBeInTheDocument()
     expect(menu.queryByText(/Review pull request #7/)).not.toBeInTheDocument()
 
     await act(async () => {
-      finish(launchPreview({ prompt: 'Review it as work\n' }))
+      planning.resolve(launchPreview({ prompt: 'Review it as work\n' }))
       await Promise.resolve()
     })
 

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { FileCheck } from '../platform'
+import { deferred } from '../test/async'
 import { at } from '../test/clock'
 import { agentGroup, fileCheck, workflowsGroup } from '../test/fixtures'
 import { platform } from '../test/platform'
@@ -153,12 +154,8 @@ describe('SensitiveFiles', () => {
   })
 
   it('checks the files again on request', async () => {
-    let finish: (check: FileCheck) => void = () => undefined
-    platform.checkItemFiles.mockReturnValue(
-      new Promise<FileCheck>((resolve) => {
-        finish = resolve
-      }),
-    )
+    const check = deferred<FileCheck>()
+    platform.checkItemFiles.mockReturnValue(check.promise)
     renderChip(fileCheck({ status: 'failed', groups: [], error: 'GitHub answered 502' }))
 
     const panel = await openPanel(/^Couldn’t check the changed files/)
@@ -169,7 +166,7 @@ describe('SensitiveFiles', () => {
     expect(platform.checkItemFiles).toHaveBeenCalledWith(7)
     expect(panel.getByRole('button', { name: 'Checking…' })).toBeDisabled()
 
-    finish(fileCheck())
+    check.resolve(fileCheck())
     expect(await panel.findByRole('button', { name: 'Check now' })).toBeEnabled()
   })
 

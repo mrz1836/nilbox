@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { Prompt, PromptCheckRequest } from '../platform'
+import { deferred } from '../test/async'
 import {
   agents,
   checkResult,
@@ -257,12 +258,8 @@ describe('PromptsView', () => {
   })
 
   it('keeps edits typed while a save is in flight', async () => {
-    let finish: (p: Prompt) => void = () => undefined
-    platform.updatePrompt.mockReturnValue(
-      new Promise<Prompt>((resolve) => {
-        finish = resolve
-      }),
-    )
+    const saving = deferred<Prompt>()
+    platform.updatePrompt.mockReturnValue(saving.promise)
     render(<Harness />)
     await waitForCheck()
 
@@ -274,7 +271,7 @@ describe('PromptsView', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     await userEvent.type(title, 'B')
 
-    finish(prompt({ id: 3, name: 'Fix a pull request’s failing checks A', nickname: 'Fix checks' }))
+    saving.resolve(prompt({ id: 3, name: 'Fix a pull request’s failing checks A', nickname: 'Fix checks' }))
 
     expect(await screen.findByText('Unsaved changes')).toBeInTheDocument()
     expect(title).toHaveValue('Fix a pull request’s failing checks AB')

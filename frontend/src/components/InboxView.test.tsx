@@ -27,6 +27,7 @@ import type {
   ReviewResult,
   Settings,
 } from '../platform'
+import { deferred } from '../test/async'
 import { clockAt, FIXED_NOW, fixedNow, fromNow } from '../test/clock'
 import {
   afterMerge,
@@ -330,19 +331,15 @@ describe('InboxView', () => {
   })
 
   it('refreshes on click and shows the new snapshot', async () => {
-    let finish: (value: InboxSnapshot) => void = () => undefined
-    platform.refreshInbox.mockReturnValue(
-      new Promise((resolve) => {
-        finish = resolve
-      }),
-    )
+    const refresh = deferred<InboxSnapshot>()
+    platform.refreshInbox.mockReturnValue(refresh.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Refresh' }))
     expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled()
 
     await act(async () => {
-      finish(
+      refresh.resolve(
         snapshot({
           yours: list([item({ title: 'Fresh from GitHub' })]),
           lastRefreshedAt: FIXED_NOW.toISOString(),
@@ -398,15 +395,11 @@ describe('InboxView', () => {
 
   it('keeps a closed stored error closed while a refresh runs, and shows it again once it clears and returns', async () => {
     const message = 'read the item details: the GitHub API returned HTTP 502'
-    let finish: (value: InboxSnapshot) => void = () => undefined
+    const refresh = deferred<InboxSnapshot>()
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z', lastError: message }),
     )
-    platform.refreshInbox.mockReturnValue(
-      new Promise<InboxSnapshot>((resolve) => {
-        finish = resolve
-      }),
-    )
+    platform.refreshInbox.mockReturnValue(refresh.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await userEvent.click(within(await screen.findByRole('alert')).getByRole('button', { name: 'Close' }))
@@ -419,7 +412,7 @@ describe('InboxView', () => {
     // It succeeds, the error clears, and a later background refresh fails the same way.
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' }))
     act(() => {
-      finish(snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' }))
+      refresh.resolve(snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' }))
       emit('inbox:updated')
     })
     await waitFor(() => {
@@ -561,13 +554,9 @@ describe('InboxView collapsing', () => {
   })
 
   it('waits for the collapsed lists before showing any, so none flashes open', async () => {
-    let resolve: (sections: ListKey[]) => void = () => undefined
+    const collapsed = deferred<ListKey[]>()
     platform.getInboxSnapshot.mockResolvedValue(authored)
-    platform.getCollapsedSections.mockReturnValue(
-      new Promise<ListKey[]>((r) => {
-        resolve = r
-      }),
-    )
+    platform.getCollapsedSections.mockReturnValue(collapsed.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await waitFor(() => {
@@ -577,7 +566,7 @@ describe('InboxView collapsing', () => {
     expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
 
     act(() => {
-      resolve(['yours'])
+      collapsed.resolve(['yours'])
     })
 
     const list = await section('Yours')
@@ -986,14 +975,10 @@ describe('InboxView triage', () => {
   })
 
   it('shows a pin at once, and puts the item back with the reason when it is refused', async () => {
-    let refuse: (err: Error) => void = () => undefined
+    const pin = deferred<InboxSnapshot>()
     const other = item({ id: 4, number: 10, title: 'Tidy the docs', updatedAt: '2026-06-15T08:00:00Z' })
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh, other]) }))
-    platform.pinItem.mockReturnValue(
-      new Promise((_, reject) => {
-        refuse = reject
-      }),
-    )
+    platform.pinItem.mockReturnValue(pin.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
@@ -1005,7 +990,7 @@ describe('InboxView triage', () => {
     expect(titles()).toEqual(['Tidy the docs', 'Add the widget cache'])
 
     await act(async () => {
-      refuse(new Error('database is locked'))
+      pin.reject(new Error('database is locked'))
       await Promise.resolve()
     })
 
@@ -1020,14 +1005,10 @@ describe('InboxView triage', () => {
   })
 
   it('sets a dismissed item aside at once, before the backend answers', async () => {
-    let answer: (value: InboxSnapshot) => void = () => undefined
+    const dismissal = deferred<InboxSnapshot>()
     const dismissedNow = snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: FIXED_NOW.toISOString() }]) })
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
-    platform.dismissItem.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    platform.dismissItem.mockReturnValue(dismissal.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
@@ -1037,7 +1018,7 @@ describe('InboxView triage', () => {
     expect(review.queryByRole('button', { name: 'Add the widget cache' })).not.toBeInTheDocument()
 
     await act(async () => {
-      answer(dismissedNow)
+      dismissal.resolve(dismissedNow)
       await Promise.resolve()
     })
 
@@ -1124,13 +1105,9 @@ describe('InboxView triage', () => {
   })
 
   it('holds the row controls while a refresh runs, and says why it failed', async () => {
-    let fail: (err: Error) => void = () => undefined
+    const refresh = deferred<InboxSnapshot>()
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
-    platform.refreshItem.mockReturnValue(
-      new Promise((_, reject) => {
-        fail = reject
-      }),
-    )
+    platform.refreshItem.mockReturnValue(refresh.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
@@ -1147,7 +1124,7 @@ describe('InboxView triage', () => {
     expect(button.querySelector('svg')).toHaveClass('motion-safe:animate-spin')
 
     act(() => {
-      fail(new Error('the GitHub GraphQL API returned errors: timeout'))
+      refresh.reject(new Error('the GitHub GraphQL API returned errors: timeout'))
     })
 
     expect(await screen.findByRole('status')).toHaveTextContent(
@@ -1225,13 +1202,9 @@ describe('InboxView triage', () => {
   })
 
   it('never lets an older answer replace a newer one', async () => {
-    let finishDismiss: (value: InboxSnapshot) => void = () => undefined
+    const dismissal = deferred<InboxSnapshot>()
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
-    platform.dismissItem.mockReturnValue(
-      new Promise((resolve) => {
-        finishDismiss = resolve
-      }),
-    )
+    platform.dismissItem.mockReturnValue(dismissal.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
@@ -1248,7 +1221,7 @@ describe('InboxView triage', () => {
 
     // The dismissal's own, older answer arrives last and is not shown.
     await act(async () => {
-      finishDismiss(snapshot({ reviewRequested: list([fresh]) }))
+      dismissal.resolve(snapshot({ reviewRequested: list([fresh]) }))
       await Promise.resolve()
     })
 
@@ -2484,19 +2457,15 @@ describe('InboxView review sheet', () => {
     })
 
     it('adds nothing to a toast already gone when the answer comes', async () => {
-      let answer: (offer: AfterMerge) => void = () => undefined
+      const offer = deferred<AfterMerge>()
 
-      platform.offerReleaseAfterMerge.mockReturnValue(
-        new Promise((resolve) => {
-          answer = resolve
-        }),
-      )
+      platform.offerReleaseAfterMerge.mockReturnValue(offer.promise)
 
       const toast = within(await merge())
 
       await userEvent.click(toast.getByRole('button', { name: 'Close' }))
       await act(async () => {
-        answer(afterMerge())
+        offer.resolve(afterMerge())
         await Promise.resolve()
       })
 
