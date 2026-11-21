@@ -6,13 +6,12 @@ import {
   stageLabel,
   stateLabel,
   statusLabel,
-  toneFill,
   toneOf,
-  toneText,
   troubled,
   worst,
   type Tone,
 } from '../lib/serviceStatus'
+import { toneFill, toneText } from '../lib/tone'
 import type { ServiceStatusState } from '../lib/useServiceStatus'
 import { usePopover } from '../lib/usePopover'
 import { useNowAs } from '../lib/useNow'
