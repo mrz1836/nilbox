@@ -47,7 +47,7 @@ import {
 } from '../platform'
 import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
 import { ConfirmDialog } from './ConfirmDialog'
-import { linkClass } from './controls'
+import { linkClass, smallButtonClass } from './controls'
 import { AlertIcon, AutopilotIcon, ChevronDownIcon, LockIcon, SparkIcon, TerminalIcon } from './icons'
 import { LaunchDialog, LaunchHoldDialog, LaunchMenu, preloadDialogs, TakeOverDialog } from './launchDialogs'
 import { RelativeTime } from './RelativeTime'
@@ -970,7 +970,7 @@ export function LaunchControls({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={showOptions}
-        className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:opacity-disabled aria-expanded:bg-raised"
+        className={`${smallButtonClass} aria-expanded:bg-raised`}
       >
         <SparkIcon className="size-3.5 shrink-0 text-accent" />
         {agentName === '' ? 'Launch' : agentName}…

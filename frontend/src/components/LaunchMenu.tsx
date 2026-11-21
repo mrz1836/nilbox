@@ -3,7 +3,7 @@ import { useId } from 'react'
 import { agentOf, effortLabel, modelLabel, planToggleLabel, promptApplies, sourceLabel } from '../lib/launch'
 import { savableChoices, withAgent, type Choices, type SaveStatus } from '../lib/launchChoices'
 import type { AgentInfo, InboxItem, LaunchSetting, Profile, Prompt, Resolution, Situation } from '../platform'
-import { buttonClass, linkClass, primaryButtonClass, quietButtonClass } from './controls'
+import { buttonClass, linkClass, primaryButtonClass, quietButtonClass, smallButtonClass } from './controls'
 import { AlertIcon, StarIcon, TerminalIcon } from './icons'
 import { LaunchPreviewSection } from './LaunchPreviewSection'
 
@@ -48,8 +48,7 @@ const sectionTitle = 'px-2 pb-1 text-caption font-semibold tracking-wide text-mu
 // saveButtonClass is the footer's save buttons: small, but outlined, so they read as
 // buttons beside the dialog's own. Each may shrink, its name cut short, so a long
 // repository or owner never pushes the footer's buttons over.
-const saveButtonClass =
-  'inline-flex max-w-40 min-w-0 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent'
+const saveButtonClass = `${smallButtonClass} max-w-40 min-w-0`
 const overrideHelp = "Lifts the outside-contributor restriction; keeps the profile's plan and permission settings."
 
 // defaultLabel names a setting's default: its value and where it comes from.
