@@ -94,6 +94,25 @@ type backgroundAgents struct {
 
 var _ autopilot.Runner = (*backgroundAgents)(nil)
 
+// backgroundDeps are what the background agents are built over, before the launcher and
+// the runs, which core fills in once they are built.
+type backgroundDeps struct {
+	ledger   *sessions.Ledger
+	git      *gitread.Git
+	shellEnv func() ([]string, bool)
+	touch    launcher.SessionRecorder
+	changes  agentChangeNoter
+}
+
+// newBackgroundAgents builds the background agents over deps, with the home and the clock
+// the options give, and the app's own executable for a run's fence hook.
+func newBackgroundAgents(opts Options, deps backgroundDeps, logger *slog.Logger) *backgroundAgents {
+	return &backgroundAgents{
+		ledger: deps.ledger, git: deps.git, shellEnv: deps.shellEnv, home: opts.Home, logger: logger,
+		clock: opts.Clock, touch: deps.touch, program: ownExecutable(), changes: deps.changes,
+	}
+}
+
 // backgroundPlanner plans a background run and trusts its worktree: the launcher's
 // Backgrounds.
 type backgroundPlanner interface {
