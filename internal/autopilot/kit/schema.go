@@ -150,7 +150,6 @@ func (b *schemaBuilder) object(t reflect.Type) *schemaNode {
 	limits := schemaLimits()
 
 	for f := range t.Fields() {
-
 		key, optional, ok := jsonKeyOf(f)
 		if !ok {
 			continue

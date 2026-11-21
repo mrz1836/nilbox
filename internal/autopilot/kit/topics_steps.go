@@ -80,7 +80,6 @@ func stepSettingLines(kind catalog.StepKind) []string {
 	var out []string
 
 	for f := range t.Fields() {
-
 		key, optional, ok := jsonKeyOf(f)
 		if !ok {
 			continue

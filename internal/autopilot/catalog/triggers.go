@@ -1,8 +1,10 @@
 package catalog
 
-import "slices"
+import (
+	"slices"
 
-import "github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/item"
+)
 
 // Event is what makes a routine fire: a state Autopilot checks on each refresh, since
 // it polls rather than hears webhooks, with a fire key that makes it act once per
