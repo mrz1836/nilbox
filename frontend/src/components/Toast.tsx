@@ -203,7 +203,7 @@ export function Toast({ toast: offered, seconds, onClose }: ToastProps) {
               setFocusedId(null)
             }
           }}
-          className="pointer-events-auto flex max-w-2xl min-w-0 items-start gap-3 rounded-lg border border-border bg-raised py-2.5 pr-2 pl-4 text-sm shadow-xl shadow-black/30 motion-safe:animate-pop-in"
+          className="pointer-events-auto flex max-w-2xl min-w-0 items-start gap-3 rounded-lg border border-border bg-raised py-2.5 pr-2 pl-4 text-sm shadow-toast motion-safe:animate-pop-in"
         >
           {toast.tone === 'success' && <CircleCheckIcon className="mt-0.5 size-4 shrink-0 text-success" />}
           {toast.tone === 'warning' && <AlertIcon className="mt-0.5 size-4 shrink-0 text-warning" />}

@@ -405,7 +405,7 @@ export function MenuButton({
       <PopoverPanel
         state={popover}
         align={align}
-        className={`z-40 whitespace-normal shadow-black/20 ${panelClassName} ${header === undefined ? 'p-1.5' : ''}`}
+        className={`z-40 whitespace-normal ${panelClassName} ${header === undefined ? 'p-1.5' : ''}`}
       >
         {typeof header === 'function'
           ? header(() => {

@@ -74,7 +74,7 @@ export function NotificationsMenu({ notifications, onOpen, onSettings, onViewAll
         id={id}
         role="dialog"
         aria-labelledby={`${id}-title`}
-        className="z-40 flex max-h-[min(32rem,calc(100vh-5rem))] w-96 flex-col shadow-black/20 outline-none"
+        className="z-40 flex max-h-[min(32rem,calc(100vh-5rem))] w-96 flex-col outline-none"
       >
         <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
           <h2 id={`${id}-title`} className="text-sm font-semibold">

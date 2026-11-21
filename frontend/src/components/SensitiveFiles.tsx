@@ -174,10 +174,11 @@ export function SensitiveFilesPanel({ itemId, check, onSettings, popover, id }: 
     <PopoverPanel
       state={popover}
       align="left"
+      elevation="card"
       id={id}
       role="dialog"
       aria-label="Sensitive files"
-      className="z-20 flex max-h-[calc(100vh-8rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto p-3.5 text-left break-words whitespace-normal shadow-black/25"
+      className="z-20 flex max-h-[calc(100vh-8rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto p-3.5 text-left break-words whitespace-normal"
     >
       <div>
         <h3 className="text-sm font-semibold text-text">Sensitive files</h3>

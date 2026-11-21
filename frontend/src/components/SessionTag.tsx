@@ -63,10 +63,11 @@ export function SessionsButton({
       <PopoverPanel
         state={popover}
         align={align}
+        elevation="card"
         id={id}
         role="dialog"
         aria-label="Agent sessions"
-        className="z-20 flex max-h-[calc(100vh-8rem)] w-[28rem] flex-col overflow-y-auto p-3.5 text-left shadow-black/25"
+        className="z-20 flex max-h-[calc(100vh-8rem)] w-[28rem] flex-col overflow-y-auto p-3.5 text-left"
       >
         <SessionPanel sessions={sessions} agents={agents} />
       </PopoverPanel>

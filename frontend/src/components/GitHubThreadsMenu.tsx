@@ -115,7 +115,7 @@ export function GitHubThreadsMenu({
         id={id}
         role="dialog"
         aria-labelledby={`${id}-title`}
-        className="z-40 flex max-h-[min(32rem,calc(100vh-5rem))] w-96 flex-col shadow-black/20 outline-none"
+        className="z-40 flex max-h-[min(32rem,calc(100vh-5rem))] w-96 flex-col outline-none"
       >
         <div className="flex items-start gap-3 border-b border-border py-2.5 pr-2 pl-4">
           <div className="min-w-0 flex-1">
