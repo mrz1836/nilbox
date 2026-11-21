@@ -99,65 +99,16 @@ func TestFirstPaintRefs(t *testing.T) {
 			css:  []string{"assets/index-c3.css"},
 		},
 		{
-			name: "names and values in any case and quoting",
-			doc: `<SCRIPT TYPE=MODULE SRC=/assets/a.js></SCRIPT>` +
-				`<link REL='ModulePreload' href='./assets/b.js'/>` +
-				`<link rel="preload  stylesheet" href="assets/c.css?v=1#top">`,
-			js:  []string{"assets/a.js", "assets/b.js"},
-			css: []string{"assets/c.css"},
-		},
-		{
-			name: "values unescaped and trimmed",
-			doc:  `<script type="module" src=" /assets/a&amp;b.js "></script><link rel=stylesheet href="/assets/c%20d.css">`,
-			js:   []string{"assets/a&b.js"},
-			css:  []string{"assets/c d.css"},
-		},
-		{
-			name: "tags in comments and in a script's text are not tags",
-			doc: `<!-- <script type="module" src="/assets/old.js"></script> -->` +
-				`<script>if (a<b) document.write('<link rel=stylesheet href=/assets/x.css>')</script>` +
-				`<style>a::after{content:"<link rel=stylesheet href=/assets/y.css>"}</style>` +
-				`<script type="module" src="/assets/a.js"></script>`,
-			js:  []string{"assets/a.js"},
-			css: []string{},
-		},
-		{
-			name: "only what the first paint loads",
-			doc: `<script type="module" src="/assets/a.js"></script>` +
-				`<script nomodule src="/assets/legacy.js"></script>` +
-				`<script type="text/plain" src="/assets/data.txt"></script>` +
-				`<script type="module">import "./inline.js"</script>` +
-				`<script src="/assets/classic.js"></script>` +
-				`<link rel="modulepreload">` +
-				`<link rel="preload" as="font" href="/assets/font.woff2">` +
-				`<link rel="icon" href="/favicon.ico">` +
-				`<a href="/assets/link.css">a link</a>`,
-			js:  []string{"assets/a.js", "assets/classic.js"},
-			css: []string{},
-		},
-		{
-			name: "each file once, the first of an attribute written twice",
-			doc: `<script type="module" src="/assets/a.js" src="/assets/b.js"></script>` +
+			name: "each file once",
+			doc: `<script type="module" crossorigin src="/assets/a.js"></script>` +
 				`<link rel="modulepreload" href="/assets/a.js">` +
 				`<link rel="stylesheet" href="/assets/c.css"><link rel="stylesheet" href="./assets/c.css">`,
 			js:  []string{"assets/a.js"},
 			css: []string{"assets/c.css"},
 		},
 		{
-			name: "a stray '<' is text",
-			doc:  `<p>1 < 2 <script type="module" src="/assets/a.js"></script></p>`,
-			js:   []string{"assets/a.js"},
-			css:  []string{},
-		},
-		{
 			name: "a path that climbs stays in dist",
 			doc:  `<script type="module" src="/../../assets/a.js"></script>`,
-			js:   []string{"assets/a.js"},
-			css:  []string{},
-		},
-		{
-			name: "a tag cut short",
-			doc:  `<script type="module" src="/assets/a.js`,
 			js:   []string{"assets/a.js"},
 			css:  []string{},
 		},

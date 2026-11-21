@@ -7,11 +7,11 @@ import (
 	"compress/gzip"
 	"errors"
 	"fmt"
-	"html"
 	"io/fs"
 	"net/url"
 	"os"
 	"path"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -50,8 +50,15 @@ var (
 	errOverBudget = errors.New("the first paint is over its budget")
 )
 
-// htmlSpace is the whitespace HTML allows between a tag's name and its attributes.
-const htmlSpace = " \t\n\f\r"
+var (
+	// viteTag matches a script or link tag as Vite writes it into the built index.html,
+	// its name in the first group and its attributes in the second.
+	viteTag = regexp.MustCompile(`<(script|link)\b([^>]*)>`)
+
+	// viteAttr matches one attribute of such a tag as Vite writes it: a lowercase name and
+	// a double-quoted value, or a name alone (crossorigin).
+	viteAttr = regexp.MustCompile(`([a-z-]+)(?:="([^"]*)")?`)
+)
 
 // paintSize is a size in bytes, as written and gzipped.
 type paintSize struct {
@@ -295,13 +302,13 @@ type paintRefs struct {
 	css []string
 }
 
-// firstPaintRefs reads the files doc, the built index.html, has the window load before
-// its first paint. It fails on a file outside frontend/dist.
+// firstPaintRefs reads the files doc, the built index.html as Vite writes it, has the
+// window load before its first paint. It fails on a file outside frontend/dist.
 func firstPaintRefs(doc string) (paintRefs, error) {
 	refs := paintRefs{js: []string{}, css: []string{}}
 
-	for _, tag := range startTags(doc) {
-		css, ref := paintRef(tag)
+	for _, tag := range viteTag.FindAllStringSubmatch(doc, -1) {
+		css, ref := viteRef(tag[1], tag[2])
 		if ref == "" {
 			continue
 		}
@@ -324,35 +331,26 @@ func firstPaintRefs(doc string) (paintRefs, error) {
 	return refs, nil
 }
 
-// paintRef returns the URL of the file tag has the window load before its first paint, ""
-// for none, and whether that file is CSS rather than JS: a script's src, a module
-// preload's href, or a stylesheet's href.
-func paintRef(tag htmlTag) (css bool, ref string) {
+// viteRef returns the URL of the file a tag viteTag found, by its name and the text of
+// its attributes, has the window load before its first paint, "" for none, and whether
+// that file is CSS rather than JS: a script's src, a module preload's href, or a
+// stylesheet's href.
+func viteRef(name, attrText string) (css bool, ref string) {
+	attrs := map[string]string{}
+
+	for _, attr := range viteAttr.FindAllStringSubmatch(attrText, -1) {
+		attrs[attr[1]] = attr[2]
+	}
+
 	switch {
-	case tag.name == "script" && loadsScript(tag):
-		return false, strings.TrimSpace(tag.attrs["src"])
-	case tag.name == "link" && tag.relHas("modulepreload"):
-		return false, strings.TrimSpace(tag.attrs["href"])
-	case tag.name == "link" && tag.relHas("stylesheet"):
-		return true, strings.TrimSpace(tag.attrs["href"])
+	case name == "script":
+		return false, attrs["src"]
+	case attrs["rel"] == "modulepreload":
+		return false, attrs["href"]
+	case attrs["rel"] == "stylesheet":
+		return true, attrs["href"]
 	default:
 		return false, ""
-	}
-}
-
-// loadsScript reports whether the script tag runs a script from its src, as a module or
-// as a classic script: not a nomodule fallback, which an engine that runs modules skips,
-// nor a data block of another type.
-func loadsScript(tag htmlTag) bool {
-	if _, nomodule := tag.attrs["nomodule"]; nomodule {
-		return false
-	}
-
-	switch strings.ToLower(strings.TrimSpace(tag.attrs["type"])) {
-	case "", "module", "text/javascript", "application/javascript":
-		return true
-	default:
-		return false
 	}
 }
 
@@ -372,173 +370,6 @@ func distFile(ref string) (string, error) {
 	}
 
 	return name, nil
-}
-
-// htmlTag is a start tag of an HTML document: its name and its attributes, with names
-// lowercased and values unescaped, keeping the first of an attribute written twice, as a
-// browser does.
-type htmlTag struct {
-	name  string
-	attrs map[string]string
-}
-
-// relHas reports whether the tag's rel attribute holds token, a lowercase keyword, read as
-// a browser reads the list: split at whitespace, in any case.
-func (t htmlTag) relHas(token string) bool {
-	return slices.Contains(strings.Fields(strings.ToLower(t.attrs["rel"])), token)
-}
-
-// startTags returns the start tags of doc, an HTML document, in order. Comments, end tags,
-// and doctypes are skipped, and so is the text of an element whose content is not markup
-// (rawTextElement), so a tag written in a comment or in a script's text is not one.
-func startTags(doc string) []htmlTag {
-	var tags []htmlTag
-
-	for rest := doc; rest != ""; {
-		var (
-			tag htmlTag
-			ok  bool
-		)
-
-		tag, rest, ok = nextStartTag(rest)
-		if ok {
-			tags = append(tags, tag)
-		}
-	}
-
-	return tags
-}
-
-// nextStartTag reads doc up to the end of what its first '<' opens, and returns the start
-// tag it opens, if it opens one (ok), and the rest of doc after it: after the element's
-// text and up to its end tag, for an element whose content is not markup.
-func nextStartTag(doc string) (tag htmlTag, rest string, ok bool) {
-	i := strings.IndexByte(doc, '<')
-	if i < 0 {
-		return htmlTag{}, "", false
-	}
-
-	rest = doc[i+1:]
-
-	switch {
-	case strings.HasPrefix(rest, "!--"):
-		return htmlTag{}, after(rest[len("!--"):], "-->"), false
-	case rest != "" && isASCIILetter(rest[0]):
-		tag, rest = readStartTag(rest)
-		if rawTextElement(tag.name) {
-			rest = skipRawText(rest, tag.name)
-		}
-
-		return tag, rest, true
-	case strings.HasPrefix(rest, "/"), strings.HasPrefix(rest, "!"), strings.HasPrefix(rest, "?"):
-		return htmlTag{}, after(rest, ">"), false
-	default:
-		return htmlTag{}, rest, false // a '<' that opens nothing is text
-	}
-}
-
-// readStartTag reads a start tag from s, which begins with its name, and returns the tag
-// and the rest of s after it.
-func readStartTag(s string) (htmlTag, string) {
-	n := strings.IndexAny(s, htmlSpace+"/>")
-	if n < 0 {
-		n = len(s)
-	}
-
-	tag := htmlTag{name: strings.ToLower(s[:n]), attrs: map[string]string{}}
-	rest := s[n:]
-
-	for {
-		rest = strings.TrimLeft(rest, htmlSpace+"/")
-		if rest == "" {
-			return tag, ""
-		}
-
-		if rest[0] == '>' {
-			return tag, rest[1:]
-		}
-
-		var name, value string
-
-		name, value, rest = readAttr(rest)
-		if _, seen := tag.attrs[name]; !seen {
-			tag.attrs[name] = value
-		}
-	}
-}
-
-// readAttr reads one attribute from s, which begins with its name, and returns its name,
-// lowercased, its value, unescaped ("" when it has none), and the rest of s after it.
-func readAttr(s string) (name, value, rest string) {
-	// A name runs to whitespace, '/', '>', or '=', but may begin with '='.
-	n := 1 + strings.IndexAny(s[1:], htmlSpace+"/>=")
-	if n == 0 {
-		n = len(s)
-	}
-
-	name, rest = strings.ToLower(s[:n]), strings.TrimLeft(s[n:], htmlSpace)
-	if !strings.HasPrefix(rest, "=") {
-		return name, "", rest
-	}
-
-	value, rest = readAttrValue(strings.TrimLeft(rest[1:], htmlSpace))
-
-	return name, html.UnescapeString(value), rest
-}
-
-// readAttrValue reads an attribute's value from the start of s, quoted, up to its closing
-// quote, or unquoted, up to whitespace or the tag's end, and returns it and the rest of s
-// after it.
-func readAttrValue(s string) (value, rest string) {
-	if s != "" && (s[0] == '"' || s[0] == '\'') {
-		value, rest, _ = strings.Cut(s[1:], s[:1])
-
-		return value, rest
-	}
-
-	n := strings.IndexAny(s, htmlSpace+">")
-	if n < 0 {
-		n = len(s)
-	}
-
-	return s[:n], s[n:]
-}
-
-// rawTextElement reports whether the element name's content is text rather than markup,
-// up to its end tag, in a window that runs scripts.
-func rawTextElement(name string) bool {
-	return slices.Contains([]string{"script", "style", "title", "textarea", "xmp", "iframe", "noembed", "noframes", "noscript"}, name)
-}
-
-// skipRawText returns s from the end tag of the element name, whose text s begins with,
-// or "" when it has none.
-func skipRawText(s, name string) string {
-	for i := 0; ; i += len("</") {
-		j := strings.Index(s[i:], "</")
-		if j < 0 {
-			return ""
-		}
-
-		i += j
-		if end := s[i+len("</"):]; len(end) >= len(name) && strings.EqualFold(end[:len(name)], name) {
-			return s[i:]
-		}
-	}
-}
-
-// after returns s after the first sep in it, or "" when it holds none.
-func after(s, sep string) string {
-	_, rest, found := strings.Cut(s, sep)
-	if !found {
-		return ""
-	}
-
-	return rest
-}
-
-// isASCIILetter reports whether c is an ASCII letter, which a tag's name begins with.
-func isASCIILetter(c byte) bool {
-	return ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z')
 }
 
 // grouped writes n with a comma between each group of three digits: 884,598.
