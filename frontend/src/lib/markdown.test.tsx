@@ -595,7 +595,7 @@ describe('renderMarkdown links', () => {
       '[e](mailto:e@example.com "unclosed) [f](<mailto:f@example.com [i](mailto:i@example.com x) [j](<mailto:j@example.com\nx>)',
     )
 
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
     expect(root).toHaveTextContent(
       '[e](mailto:e@example.com "unclosed) [f](<mailto:f@example.com [i](mailto:i@example.com x)',
     )
@@ -612,7 +612,7 @@ describe('renderMarkdown links', () => {
     // scanned its budget, a later target is not looked for and shows as written.
     const { root } = show(`${'[a]('.repeat(1000)} [late](https://example.test/late)`)
 
-    expect(screen.queryByRole('button', { name: 'late' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'late' })).not.toBeInTheDocument()
     expect(root).toHaveTextContent('[late](')
   })
 
@@ -646,7 +646,7 @@ describe('renderMarkdown links', () => {
 
     show(`[${label}]\n\n[${label.slice(1)}]: https://example.com/long\n[short]: https://example.com/s`)
 
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 })
 
