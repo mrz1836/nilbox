@@ -1,10 +1,10 @@
-import { act, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { Setup } from './platform'
 import { appInfo, autopilotTarget, galleryTemplate, item, list, snapshot } from './test/fixtures'
-import { emit, platform, renderApp } from './test/platform'
+import { platform, renderApp, send } from './test/platform'
 
 vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platform))
 
@@ -95,15 +95,13 @@ describe('App with the first-run setup', () => {
     await userEvent.keyboard('{Meta>},{/Meta}')
     expect(screen.queryByRole('navigation', { name: 'Settings sections' })).not.toBeInTheDocument()
 
-    act(() => {
-      emit('inbox:reveal', {
-        itemId: 9,
-        url: 'https://github.com/acme-org/example-repo/pull/7',
-        runId: 0,
-        runStarted: '',
-        notificationId: 0,
-        autopilot: autopilotTarget(),
-      })
+    send('inbox:reveal', {
+      itemId: 9,
+      url: 'https://github.com/acme-org/example-repo/pull/7',
+      runId: 0,
+      runStarted: '',
+      notificationId: 0,
+      autopilot: autopilotTarget(),
     })
     expect(platform.openExternal).not.toHaveBeenCalled()
   })

@@ -180,9 +180,7 @@ describe('App', () => {
     expect(platform.listWorktrees).not.toHaveBeenCalled()
 
     platform.listSessions.mockResolvedValue(sessionsSnapshot([agentSession()]))
-    act(() => {
-      emit('sessions:updated')
-    })
+    send('sessions:updated')
 
     const terminal = await screen.findByRole('button', { name: 'Show terminal' })
     expect(terminal.closest('li')).toHaveAttribute('data-rule', 'session_needs_you')
@@ -289,9 +287,7 @@ describe('App', () => {
     await screen.findByRole('region', { name: 'Worktrees' })
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T11:58:00Z' }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     await vi.waitFor(() => {
       expect(platform.getInboxSnapshot).toHaveBeenCalledTimes(2)
     })
@@ -949,9 +945,7 @@ describe('App', () => {
     ])
     await renderApp()
 
-    act(() => {
-      emit('app:quitRequested')
-    })
+    send('app:quitRequested')
 
     const dialog = within(await screen.findByRole('dialog', { name: `Quit ${brand.name}?` }))
 
@@ -975,9 +969,7 @@ describe('App', () => {
     // reveal sends a request to show an item, as the shell does for a click in the menu
     // bar or on a notification.
     function reveal(itemId: number, url = '') {
-      act(() => {
-        emit('inbox:reveal', { itemId, url, runId: 0, runStarted: '', notificationId: 0, autopilot: autopilotTarget() })
-      })
+      send('inbox:reveal', { itemId, url, runId: 0, runStarted: '', notificationId: 0, autopilot: autopilotTarget() })
     }
 
     // row returns the inbox row of the item titled title in the Review requested list.
@@ -1742,15 +1734,13 @@ describe('App’s filter field', () => {
   }
 
   function reveal(itemId: number) {
-    act(() => {
-      emit('inbox:reveal', {
-        itemId,
-        url: '',
-        runId: 0,
-        runStarted: '',
-        notificationId: 0,
-        autopilot: autopilotTarget(),
-      })
+    send('inbox:reveal', {
+      itemId,
+      url: '',
+      runId: 0,
+      runStarted: '',
+      notificationId: 0,
+      autopilot: autopilotTarget(),
     })
   }
 
@@ -2011,9 +2001,7 @@ describe('the Scripts tab', () => {
     expect(views().queryByRole('button', { name: 'Scripts' })).not.toBeInTheDocument()
 
     platform.listIntegrations.mockResolvedValue(integrationTools())
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     const shown = within(await toast())
 
@@ -2028,16 +2016,12 @@ describe('the Scripts tab', () => {
 
     // Gone and back again, it isn't announced twice.
     platform.listIntegrations.mockResolvedValue(off())
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
     await waitFor(() => {
       expect(views().queryByRole('button', { name: 'Scripts' })).not.toBeInTheDocument()
     })
     platform.listIntegrations.mockResolvedValue(integrationTools())
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     expect(await views().findByRole('button', { name: 'Scripts' })).toBeInTheDocument()
     expect(screen.queryByText(/in the new Scripts tab/)).not.toBeInTheDocument()
@@ -2050,9 +2034,7 @@ describe('the Scripts tab', () => {
 
     await screen.findByRole('region', { name: 'Review requested' })
     platform.listIntegrations.mockResolvedValue(integrationTools())
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     expect(await views().findByRole('button', { name: 'Scripts' })).toBeInTheDocument()
     expect(screen.queryByText(/in the new Scripts tab/)).not.toBeInTheDocument()
@@ -2138,9 +2120,7 @@ describe('the Scripts tab', () => {
 
     await screen.findByRole('region', { name: 'Review requested' })
     platform.listIntegrations.mockResolvedValue(integrationTools({ tools: [integrationTool()] }))
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     const shown = within(await toast())
 
@@ -2164,9 +2144,7 @@ describe('the Scripts tab', () => {
     await screen.findByRole('navigation', { name: 'Scripts' })
 
     platform.listIntegrations.mockResolvedValue(off())
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     expect(await screen.findByRole('region', { name: 'Review requested' })).toBeVisible()
     expect(views().getByRole('button', { name: 'Inbox' })).toHaveAttribute('aria-pressed', 'true')
@@ -2283,15 +2261,13 @@ describe('the Scripts tab', () => {
     await renderApp()
 
     await views().findByRole('button', { name: 'Scripts' })
-    act(() => {
-      emit('inbox:reveal', {
-        itemId: 0,
-        url: '',
-        runId: 7,
-        runStarted: '2026-11-10T16:00:00Z',
-        notificationId: 0,
-        autopilot: autopilotTarget(),
-      })
+    send('inbox:reveal', {
+      itemId: 0,
+      url: '',
+      runId: 7,
+      runStarted: '2026-11-10T16:00:00Z',
+      notificationId: 0,
+      autopilot: autopilotTarget(),
     })
 
     expect(await screen.findByRole('heading', { name: 'Checks · all files', level: 2 })).toBeInTheDocument()
@@ -2346,15 +2322,13 @@ describe('the Scripts tab', () => {
 
     // The banner's click says so too.
     await userEvent.click(within(await toast()).getByRole('button', { name: 'Close' }))
-    act(() => {
-      emit('inbox:reveal', {
-        itemId: 0,
-        url: '',
-        runId: 7,
-        runStarted: '2026-11-10T16:00:00Z',
-        notificationId: 0,
-        autopilot: autopilotTarget(),
-      })
+    send('inbox:reveal', {
+      itemId: 0,
+      url: '',
+      runId: 7,
+      runStarted: '2026-11-10T16:00:00Z',
+      notificationId: 0,
+      autopilot: autopilotTarget(),
     })
 
     expect(within(await toast()).getByText('Turn on an integration in Settings to see your runs.')).toBeInTheDocument()
@@ -2539,9 +2513,7 @@ describe('the Notifications page', () => {
       notificationId: number
       autopilot?: AutopilotTarget
     }) {
-      act(() => {
-        emit('inbox:reveal', { itemId: 0, url: '', runId: 0, runStarted: '', autopilot: autopilotTarget(), ...change })
-      })
+      send('inbox:reveal', { itemId: 0, url: '', runId: 0, runStarted: '', autopilot: autopilotTarget(), ...change })
     }
 
     it('marks a clicked banner’s entry read, but only while the entry is the one it stood for', async () => {
@@ -2595,15 +2567,13 @@ describe('the Notifications page', () => {
       await renderApp()
       await screen.findByRole('button', { name: '1 unread notifications' })
 
-      act(() => {
-        emit('inbox:reveal', {
-          itemId: 1,
-          url: alert.url,
-          runId: 0,
-          runStarted: '',
-          notificationId: 7,
-          autopilot: alert.autopilot,
-        })
+      send('inbox:reveal', {
+        itemId: 1,
+        url: alert.url,
+        runId: 0,
+        runStarted: '',
+        notificationId: 7,
+        autopilot: alert.autopilot,
       })
 
       expect(platform.markNotificationsRead).toHaveBeenCalledExactlyOnceWith([7])
@@ -2871,15 +2841,13 @@ describe('Autopilot (beta)', () => {
     await renderApp()
     await screen.findByRole('region', { name: 'Review requested' })
 
-    act(() => {
-      emit('inbox:reveal', {
-        itemId: 0,
-        url: '',
-        runId: 0,
-        runStarted: '',
-        notificationId: 0,
-        autopilot: autopilotTarget({ activity: true }),
-      })
+    send('inbox:reveal', {
+      itemId: 0,
+      url: '',
+      runId: 0,
+      runStarted: '',
+      notificationId: 0,
+      autopilot: autopilotTarget({ activity: true }),
     })
 
     const said = await screen.findByRole('group', { name: 'Notification' })

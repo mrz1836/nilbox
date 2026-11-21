@@ -22,7 +22,7 @@ import {
   settings,
   snapshot,
 } from './test/fixtures'
-import { emit, platform, renderApp } from './test/platform'
+import { platform, renderApp, send } from './test/platform'
 
 // The render profile: a 300-item inbox, and how much of it renders again for its authors'
 // pictures landing, a minute tick, a background update that changes one item, a GitHub
@@ -271,9 +271,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
     // A background update that changes one item.
     answer(inbox((i) => (i.id === 50 ? { ...i, title: 'Item 50, renamed' } : i)))
     const update = await measure(async () => {
-      act(() => {
-        emit('inbox:updated')
-      })
+      send('inbox:updated')
       await screen.findByText('Item 50, renamed', {}, wait)
     })
 
@@ -283,9 +281,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
     // part in it.
     answerThreads(4)
     const threads = await measure(async () => {
-      act(() => {
-        emit('ghthreads:updated')
-      })
+      send('ghthreads:updated')
       await waitFor(() => {
         expect(screen.getByTestId('github-threads-count')).toHaveTextContent('4')
       }, wait)
@@ -300,9 +296,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
       Promise.resolve({ items: [notification({ id: 1, itemId: 1 }), notification({ id: 2, itemId: 2 })], unread: 2 }),
     )
     const notifications = await measure(async () => {
-      act(() => {
-        emit('notifications:updated')
-      })
+      send('notifications:updated')
       await waitFor(() => {
         expect(screen.getByTestId('notifications-unread')).toHaveTextContent('2')
       }, wait)
@@ -460,9 +454,7 @@ describe.each(densities)('App rendering, %s cards', (density) => {
       // Item 2's chip changes, but not where its routine stands; item 3's routine starts work.
       matches = [match(1, 'waiting'), match(2, 'closed'), match(3, 'running')]
       const update = await measure(async () => {
-        act(() => {
-          emit('autopilot:updated')
-        })
+        send('autopilot:updated')
         await waitFor(() => {
           expect(rule(3)).toBe('agent_working')
         }, wait)

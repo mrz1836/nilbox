@@ -1,11 +1,11 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { ScriptRun } from '../platform'
 import { scriptRun } from '../test/fixtures'
-import { emit, listening, platform } from '../test/platform'
+import { listening, platform, send } from '../test/platform'
 import { QuitDialog } from './QuitDialog'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -38,9 +38,7 @@ async function askToQuit(runs: ScriptRun[]) {
   platform.listScriptRuns.mockResolvedValue(runs)
   render(<QuitDialog />)
 
-  act(() => {
-    emit('app:quitRequested')
-  })
+  send('app:quitRequested')
 
   await waitFor(() => {
     expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '', withAgents: true })
@@ -223,9 +221,7 @@ describe('QuitDialog', () => {
 
     platform.listScriptRuns.mockRejectedValue(new Error('database is locked'))
     render(<QuitDialog />)
-    act(() => {
-      emit('app:quitRequested')
-    })
+    send('app:quitRequested')
 
     expect(
       (await dialog()).getByText(`Runs are going in ${brand.name}. Stopping them now ends them partway. Quit anyway?`),

@@ -51,7 +51,7 @@ import {
   settings,
   snapshot,
 } from '../test/fixtures'
-import { emit, listening, platform } from '../test/platform'
+import { emit, listening, platform, send } from '../test/platform'
 import { InboxView, type Reveal } from './InboxView'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -422,9 +422,7 @@ describe('InboxView', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z', lastError: message }),
     )
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     expect(await screen.findByRole('alert')).toHaveTextContent(message)
   })
 
@@ -459,9 +457,7 @@ describe('InboxView', () => {
     expect(listening('inbox:updated')).toBe(1)
     expect(listening('inbox:progress')).toBe(1)
 
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     expect(await screen.findByRole('button', { name: 'Updated in the background' })).toBeInTheDocument()
     expect(platform.getInboxSnapshot).toHaveBeenCalledTimes(2)
@@ -623,9 +619,7 @@ describe('InboxView triage', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ reviewRequested: list([fresh, { ...quiet, repoRule: '' }]) }),
     )
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     expect(await review.findByRole('tab', { name: 'Review requested 2' })).toBeInTheDocument()
     expect(review.getByRole('tab', { name: 'Muted' })).toBeInTheDocument()
   })
@@ -868,9 +862,7 @@ describe('InboxView triage', () => {
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([dismissed]) }))
     platform.restoreItem.mockResolvedValue(snapshot({ reviewRequested: list([{ ...dismissed, dismissedAt: '' }]) }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     await userEvent.click(await review.findByRole('tab', { name: 'Dismissed 1' }))
     await userEvent.click(review.getByRole('button', { name: 'Restore' }))
 
@@ -1214,9 +1206,7 @@ describe('InboxView triage', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ reviewRequested: list([{ ...fresh, title: 'Read later', dismissedAt: FIXED_NOW.toISOString() }]) }),
     )
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     expect(await review.findByRole('tab', { name: 'Dismissed 1' })).toBeInTheDocument()
 
     // The dismissal's own, older answer arrives last and is not shown.
@@ -1674,17 +1664,13 @@ describe('InboxView empty lists', () => {
     await userEvent.click(authored.getByRole('tab', { name: 'Dismissed 1' }))
     expect(authored.getByRole('button', { name: 'Rename the flag' })).toBeInTheDocument()
 
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     await waitFor(() => {
       expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
     })
 
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     const back = await section('Yours')
     expect(back.getByRole('tab', { name: 'Yours 1' })).toHaveAttribute('aria-selected', 'true')
@@ -2866,9 +2852,7 @@ describe('InboxView issue sheet', () => {
 
     // Its card leaves the inbox while the sheet stays open, as when someone closes it.
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([parent]) }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     await waitFor(() => {
       expect(within(sheet).queryByText('1 of 2 in Yours')).not.toBeInTheDocument()
     })
@@ -3066,9 +3050,7 @@ describe('InboxView triage in the sheets', () => {
 
     // Its snooze ends while the sheet is open, so it is back in the list, and the sheet keeps it.
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([parser, other]) }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     const snooze = await within(sheet).findByRole('button', { name: 'Snooze for 3 days' })
 
     await userEvent.click(snooze)
@@ -3124,9 +3106,7 @@ describe('InboxView while a refresh runs', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ lastRefreshedAt: refreshed, reviewRequested: list([item()]), refreshing: true }),
     )
-    act(() => {
-      emit('inbox:progress', { phase: 'search', done: 0, total: 0 })
-    })
+    send('inbox:progress', { phase: 'search', done: 0, total: 0 })
 
     const button = screen.getByRole('button', { name: 'Refreshing…' })
     expect(button).toBeDisabled()
@@ -3137,25 +3117,19 @@ describe('InboxView while a refresh runs', () => {
     // The lists stay as they were while it runs.
     expect(screen.getByRole('button', { name: 'Add the widget cache' })).toBeInTheDocument()
 
-    act(() => {
-      emit('inbox:progress', { phase: 'details', done: 3, total: 8 })
-    })
+    send('inbox:progress', { phase: 'details', done: 3, total: 8 })
 
     const status = screen.getByText('Reading 3 of 8 new items…').closest('[role="status"]')
     expect(status?.querySelector('[style]')).toHaveStyle({ width: '38%' })
 
-    act(() => {
-      emit('inbox:progress', { phase: 'files', done: 2, total: 5 })
-    })
+    send('inbox:progress', { phase: 'files', done: 2, total: 5 })
     expect(screen.getByText('Checking files: 2 of 5…')).toBeInTheDocument()
 
     // It ends: the update brings a snapshot that says so.
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ lastRefreshedAt: FIXED_NOW.toISOString(), reviewRequested: list([item()]) }),
     )
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     expect(await screen.findByRole('button', { name: 'Refresh' })).toBeEnabled()
     expect(screen.getByText('just now')).toBeInTheDocument()
@@ -3192,9 +3166,7 @@ describe('InboxView while a refresh runs', () => {
     platform.getInboxSnapshot.mockResolvedValue(
       snapshot({ lastRefreshedAt: FIXED_NOW.toISOString(), yours: list([item({ title: 'Fresh from GitHub' })]) }),
     )
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     expect(await screen.findByRole('button', { name: 'Fresh from GitHub' })).toBeInTheDocument()
     expect(screen.queryByTestId('inbox-skeleton')).not.toBeInTheDocument()
@@ -3208,9 +3180,7 @@ describe('InboxView while a refresh runs', () => {
     expect(await screen.findByTestId('inbox-skeleton')).toBeInTheDocument()
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastError: 'the network is down' }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('the network is down')
     expect(screen.getByText('Not refreshed yet')).toBeInTheDocument()
@@ -3230,16 +3200,12 @@ describe('InboxView while a refresh runs', () => {
     expect(party()).not.toBeInTheDocument()
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: FIXED_NOW.toISOString() }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     expect(await screen.findByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
 
     // A later refresh leaves the party where it is.
-    act(() => {
-      emit('inbox:progress', { phase: 'search', done: 0, total: 0 })
-    })
+    send('inbox:progress', { phase: 'search', done: 0, total: 0 })
     expect(party()).toBeInTheDocument()
   })
 })

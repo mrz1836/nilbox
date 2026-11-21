@@ -32,7 +32,7 @@ import {
   worktreeRepo,
   worktreesSnapshot,
 } from '../test/fixtures'
-import { emit, platform } from '../test/platform'
+import { platform, send } from '../test/platform'
 import { launchPlace } from './worktrees/layout'
 import { WorktreesView, type WorktreesViewProps } from './WorktreesView'
 
@@ -266,9 +266,7 @@ describe('WorktreesView head', () => {
     expect(screen.queryByRole('button', { name: 'More cleanups' })).not.toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Worktrees' }).querySelector('[aria-hidden="true"]')).not.toBeNull()
 
-    act(() => {
-      emit('worktrees:progress', { phase: 'listing', done: 3, total: 12 })
-    })
+    send('worktrees:progress', { phase: 'listing', done: 3, total: 12 })
     expect(within(meta()).getByRole('status')).toHaveTextContent('Listing worktrees · 3 of 12 clones')
 
     await settle(() => {
@@ -298,14 +296,10 @@ describe('WorktreesView head', () => {
     expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled()
     expect(chevron(pr7)).toBeInTheDocument()
 
-    act(() => {
-      emit('worktrees:progress', { phase: 'clones', done: 0, total: 0 })
-    })
+    send('worktrees:progress', { phase: 'clones', done: 0, total: 0 })
     expect(status).toHaveTextContent('Finding the clones under ~/projects…')
 
-    act(() => {
-      emit('worktrees:progress', { phase: 'checking', done: 1, total: 4 })
-    })
+    send('worktrees:progress', { phase: 'checking', done: 1, total: 4 })
     expect(status).toHaveTextContent('Checking each worktree · 1 of 4 worktrees')
     expect(status.querySelector('[style]')).toHaveStyle({ width: '25%' })
 
