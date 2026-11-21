@@ -32,9 +32,11 @@ func schemaOf(t *testing.T, db *sql.DB) schema {
 
 	var s schema
 
-	s.Entries = column(t, db, `SELECT type || ' ' || name || ' ON ' || tbl_name || ': ' || COALESCE(sql, '')
+	s.Entries = testutil.Column[string](t, db,
+		`SELECT type || ' ' || name || ' ON ' || tbl_name || ': ' || COALESCE(sql, '')
 FROM sqlite_master ORDER BY type, name`)
-	s.History = column(t, db, `SELECT version || ' ' || name || ' ' || checksum FROM schema_migrations ORDER BY version`)
+	s.History = testutil.Column[string](t, db,
+		`SELECT version || ' ' || name || ' ' || checksum FROM schema_migrations ORDER BY version`)
 
 	ctx := t.Context()
 	require.NoError(t, db.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&s.Journal))
@@ -43,28 +45,6 @@ FROM sqlite_master ORDER BY type, name`)
 	require.NoError(t, db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&s.User))
 
 	return s
-}
-
-// column returns the one text column query selects, row by row.
-func column(t *testing.T, db *sql.DB, query string) []string {
-	t.Helper()
-
-	rows, err := db.QueryContext(t.Context(), query)
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
-
-	var got []string
-
-	for rows.Next() {
-		var s string
-		require.NoError(t, rows.Scan(&s))
-		got = append(got, s)
-	}
-
-	require.NoError(t, rows.Err())
-
-	return got
 }
 
 func TestDBMatchesAFreshlyMigratedDatabase(t *testing.T) {

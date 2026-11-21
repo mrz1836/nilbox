@@ -25,22 +25,7 @@ const (
 func keptLogins(t *testing.T, r *rig) []string {
 	t.Helper()
 
-	rows, err := r.db.QueryContext(t.Context(), "SELECT login FROM avatars ORDER BY login")
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
-
-	var out []string
-
-	for rows.Next() {
-		var login string
-		require.NoError(t, rows.Scan(&login))
-		out = append(out, login)
-	}
-
-	require.NoError(t, rows.Err())
-
-	return out
+	return testutil.Column[string](t, r.db, "SELECT login FROM avatars ORDER BY login")
 }
 
 func TestPicturesForServesPeopleAndBotsTogether(t *testing.T) {

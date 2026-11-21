@@ -88,24 +88,9 @@ func storedStamps(t *testing.T, db *sql.DB) []stamp {
 	t.Helper()
 
 	// The cast keeps the driver from parsing the DATETIME column back into a time.Time.
-	rows, err := db.QueryContext(t.Context(), `SELECT key, CAST(updated_at AS TEXT), typeof(updated_at)
+	return testutil.Query(t, db, func(s *stamp) []any { return []any{&s.key, &s.text, &s.typ} },
+		`SELECT key, CAST(updated_at AS TEXT), typeof(updated_at)
 FROM prefs WHERE key LIKE 'example.%' ORDER BY updated_at, key`)
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
-
-	var got []stamp
-
-	for rows.Next() {
-		var s stamp
-		require.NoError(t, rows.Scan(&s.key, &s.text, &s.typ))
-
-		got = append(got, s)
-	}
-
-	require.NoError(t, rows.Err())
-
-	return got
 }
 
 // keysAndTexts splits stamps into their keys and their texts.

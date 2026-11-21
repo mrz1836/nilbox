@@ -20,6 +20,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/store/migrate"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 const (
@@ -96,24 +97,8 @@ func openPath(t *testing.T, path string) *sql.DB {
 func tables(t *testing.T, db *sql.DB) []string {
 	t.Helper()
 
-	rows, err := db.QueryContext(t.Context(),
+	return testutil.Column[string](t, db,
 		`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\_%' ESCAPE '\' ORDER BY name`)
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
-
-	var names []string
-
-	for rows.Next() {
-		var name string
-		require.NoError(t, rows.Scan(&name))
-
-		names = append(names, name)
-	}
-
-	require.NoError(t, rows.Err())
-
-	return names
 }
 
 // backups lists the backup files next to dbPath.
@@ -172,40 +157,32 @@ func TestMigrateFreshDatabase(t *testing.T) {
 	}, tables(t, db))
 
 	// Every shipped migration is recorded with its name and the checksum of its file.
-	rows, err := db.QueryContext(t.Context(), `SELECT version, name, checksum, applied_at FROM schema_migrations ORDER BY version`)
-	require.NoError(t, err)
+	type record struct {
+		name, checksum, appliedAt string
+		version                   int
+	}
 
-	defer func() { _ = rows.Close() }()
+	recorded := testutil.Query(t, db,
+		func(r *record) []any { return []any{&r.version, &r.name, &r.checksum, &r.appliedAt} },
+		`SELECT version, name, checksum, applied_at FROM schema_migrations ORDER BY version`)
+	require.LessOrEqual(t, len(recorded), len(files), "more migrations recorded than shipped")
 
-	var seen int
-
-	for rows.Next() {
-		var (
-			name, checksum, appliedAt string
-			version                   int
-		)
-
-		require.NoError(t, rows.Scan(&version, &name, &checksum, &appliedAt))
-		require.Less(t, seen, len(files), "more migrations recorded than shipped")
-
+	for seen, r := range recorded {
 		body, readErr := os.ReadFile(files[seen])
 		require.NoError(t, readErr)
 
 		sum := sha256.Sum256(body)
 		wantName := strings.TrimSuffix(filepath.Base(files[seen])[len("0001_"):], ".sql")
 
-		assert.Equal(t, first+seen, version)
-		assert.Equal(t, wantName, name)
-		assert.Equal(t, hex.EncodeToString(sum[:]), checksum)
+		assert.Equal(t, first+seen, r.version)
+		assert.Equal(t, wantName, r.name)
+		assert.Equal(t, hex.EncodeToString(sum[:]), r.checksum)
 
-		_, err = time.Parse(time.RFC3339, appliedAt)
+		_, err = time.Parse(time.RFC3339, r.appliedAt)
 		require.NoError(t, err)
-
-		seen++
 	}
 
-	require.NoError(t, rows.Err())
-	assert.Equal(t, len(files), seen)
+	assert.Len(t, recorded, len(files))
 
 	// A brand-new database has nothing to protect, so no backup is written.
 	assert.Empty(t, backups(t, path))

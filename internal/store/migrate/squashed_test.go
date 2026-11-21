@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/store/migrate"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // oldBuild is the migrations an older build shipped, and newBuild the base a squash made
@@ -58,23 +59,7 @@ func newOptions(t *testing.T) migrate.Options {
 func labels(t *testing.T, db *sql.DB) []string {
 	t.Helper()
 
-	rows, err := db.QueryContext(t.Context(), `SELECT label FROM alpha ORDER BY id`)
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
-
-	var got []string
-
-	for rows.Next() {
-		var label string
-		require.NoError(t, rows.Scan(&label))
-
-		got = append(got, label)
-	}
-
-	require.NoError(t, rows.Err())
-
-	return got
+	return testutil.Column[string](t, db, `SELECT label FROM alpha ORDER BY id`)
 }
 
 func TestMigrateCarriesASquashedHistoryOver(t *testing.T) {

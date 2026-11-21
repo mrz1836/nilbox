@@ -55,23 +55,7 @@ func closedStore(t *testing.T) *prefs.Store {
 func stored(t *testing.T, db *sql.DB) map[string]string {
 	t.Helper()
 
-	rows, err := db.QueryContext(t.Context(), "SELECT key, value FROM prefs")
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
-
-	out := map[string]string{}
-
-	for rows.Next() {
-		var key, value string
-		require.NoError(t, rows.Scan(&key, &value))
-
-		out[key] = value
-	}
-
-	require.NoError(t, rows.Err())
-
-	return out
+	return testutil.Map[string, string](t, db, "SELECT key, value FROM prefs")
 }
 
 // updatedAt returns the stored updated_at of key, as the text in the database.

@@ -10,6 +10,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // issueThread is issue number's thread, unread, updated at.
@@ -46,24 +47,10 @@ type storedMoment struct {
 func (r *rig) moments() []storedMoment {
 	r.t.Helper()
 
-	rows, err := r.db.QueryContext(r.t.Context(), `SELECT item_kind, number, trigger, at, created_at
+	return testutil.Query(r.t, r.db,
+		func(m *storedMoment) []any { return []any{&m.kind, &m.number, &m.trigger, &m.at, &m.heard} },
+		`SELECT item_kind, number, trigger, at, created_at
 		FROM gh_thread_moments ORDER BY number, trigger`)
-	require.NoError(r.t, err)
-
-	defer func() { require.NoError(r.t, rows.Close()) }()
-
-	var out []storedMoment
-
-	for rows.Next() {
-		var m storedMoment
-		require.NoError(r.t, rows.Scan(&m.kind, &m.number, &m.trigger, &m.at, &m.heard))
-
-		out = append(out, m)
-	}
-
-	require.NoError(r.t, rows.Err())
-
-	return out
 }
 
 // subject reads what the mirror holds of thread id's item state.
