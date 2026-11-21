@@ -1,7 +1,6 @@
 package autopilot
 
 import (
-	"context"
 	"strconv"
 	"testing"
 	"time"
@@ -87,7 +86,7 @@ func (r *statsRig) match(routine int, steps ...stepRun) int64 {
 func (r *statsRig) run(id int64, run weekRun) {
 	r.t.Helper()
 
-	ctx := context.Background()
+	ctx := r.t.Context()
 	started := r.now.Add(-run.ago)
 
 	runID, err := r.q.InsertRun(ctx, queries.InsertRunParams{
