@@ -31,6 +31,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/prefs"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // KeyLog is the preference the log is stored under, as JSON.
@@ -220,10 +221,7 @@ func (r *record) sane() {
 	}
 
 	r.Best = max(r.Best, r.Streak)
-
-	if r.Unlocked == nil {
-		r.Unlocked = []string{}
-	}
+	r.Unlocked = textutil.NonNil(r.Unlocked)
 }
 
 // isDay reports whether s is a calendar day as the log writes one.
