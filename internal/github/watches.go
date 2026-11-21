@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -217,9 +218,7 @@ func encodable(searches []WatchSearch) ([]WatchSearch, *watchAnswer) {
 
 // add merges one pack's answer: its searches' results, its request, and its cost.
 func (w *Watches) add(a *watchAnswer) {
-	for key, r := range a.results {
-		w.Results[key] = r
-	}
+	maps.Copy(w.Results, a.results)
 
 	if !a.sent {
 		return

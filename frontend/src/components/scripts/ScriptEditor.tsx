@@ -20,7 +20,16 @@ import {
   type UserScriptIcon,
   type UserScriptScope,
 } from '../../platform'
-import { buttonClass, Field, fieldClass, primaryButtonClass, Segmented, type SegmentOption } from '../controls'
+import {
+  buttonClass,
+  ErrorText,
+  Field,
+  fieldClass,
+  modalClass,
+  primaryButtonClass,
+  Segmented,
+  type SegmentOption,
+} from '../controls'
 import { BoxIcon, ChecklistIcon, FlaskIcon, PlayIcon, SlidersIcon } from '../icons'
 import { Spinner } from '../Spinner'
 
@@ -70,7 +79,7 @@ function Chosen({ chosen, onChange }: ChosenProps) {
         onChange={(e) => {
           setFilter(e.target.value)
         }}
-        className={`${fieldClass} py-1 text-[0.8125rem]`}
+        className={`${fieldClass} py-1 text-body`}
       />
       {names.data === undefined && names.error === '' && (
         <p role="status" className="flex items-center gap-2 px-1 text-xs text-muted">
@@ -78,11 +87,9 @@ function Chosen({ chosen, onChange }: ChosenProps) {
           Reading your clones…
         </p>
       )}
-      {names.error !== '' && (
-        <p role="alert" className="px-1 text-xs text-danger">
-          Couldn’t list your clones’ repositories: {names.error}
-        </p>
-      )}
+      <ErrorText error={names.error} className="px-1">
+        Couldn’t list your clones’ repositories:{' '}
+      </ErrorText>
       {names.data !== undefined && choices.length === 0 && (
         <p className="px-1 text-xs text-muted">
           {wanted === '' ? 'None of your clones is on GitHub.' : 'No repository matches.'}
@@ -158,8 +165,7 @@ export function ScriptEditor({ script, variables, onSaved, onCancel }: ScriptEdi
       aria-modal="true"
       aria-labelledby={`${id}-title`}
       onCancel={cancel}
-      // The backdrop's color is spelled out, as ConfirmDialog's is.
-      className="m-auto w-[calc(100%-2rem)] max-w-xl rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-[rgb(0_0_0/0.4)]"
+      className={`${modalClass} max-w-xl`}
     >
       <form
         onSubmit={(e) => {
@@ -200,7 +206,7 @@ export function ScriptEditor({ script, variables, onSaved, onCancel }: ScriptEdi
             onChange={(e) => {
               set({ command: e.target.value })
             }}
-            className={`${fieldClass} font-mono text-[0.8125rem]`}
+            className={`${fieldClass} font-mono text-body`}
           />
         </Field>
         <fieldset className="flex flex-col gap-1.5">

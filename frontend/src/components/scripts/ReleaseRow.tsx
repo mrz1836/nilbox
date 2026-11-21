@@ -42,7 +42,7 @@ export const releaseListClass =
 // or holds the focus, when it is drawn as a button, so a column of them stays calm and
 // each is still found where it always is.
 const rowButtonClass =
-  'inline-flex items-center rounded-md border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap text-muted transition-colors hover:bg-raised group-hover/row:border-border group-hover/row:bg-surface group-hover/row:text-text group-focus-within/row:border-border group-focus-within/row:bg-surface group-focus-within/row:text-text focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50'
+  'inline-flex items-center rounded-md border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap text-muted transition-colors hover:bg-raised group-hover/row:border-border group-hover/row:bg-surface group-hover/row:text-text group-focus-within/row:border-border group-focus-within/row:bg-surface group-focus-within/row:text-text focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-disabled'
 
 // rowClass is a row: a subgrid of the list's columns, every cell placed in it by its own
 // classes, and in a narrow list a grid of its own, five columns wide.
@@ -104,8 +104,8 @@ const checksIcons: Readonly<Record<CommitChecks, ReactNode>> = {
 // bumpChips word and color the bump a row's commits suggest: breaking for a major one,
 // feat for a minor one.
 const bumpChips: Readonly<Record<'major' | 'minor', { text: string; className: string }>> = {
-  major: { text: 'breaking', className: 'border-caution/40 bg-caution/10 text-caution' },
-  minor: { text: 'feat', className: 'border-info/40 bg-info/10 text-info' },
+  major: { text: 'breaking', className: 'border-caution/45 bg-caution/10 text-caution' },
+  minor: { text: 'feat', className: 'border-info/45 bg-info/10 text-info' },
 }
 
 // noWave is the repositories sharing a headline when the row is given none.
@@ -183,7 +183,7 @@ function CountCell({ candidate }: { candidate: ReleaseCandidate }) {
       {kind !== '' && (
         <span
           title={bumpHint(headlines)}
-          className={`rounded-full border px-1.5 text-[0.6875rem] leading-4 font-semibold ${bumpChips[kind].className}`}
+          className={`rounded-full border px-1.5 text-caption leading-4 font-semibold ${bumpChips[kind].className}`}
         >
           {bumpChips[kind].text}
         </span>
@@ -200,7 +200,7 @@ function WaveBadge({ wave }: { wave: readonly string[] }) {
   return (
     <span
       title={`${String(wave.length)} of the listed repositories have this as their newest commit: ${wave.join(', ')}`}
-      className="shrink-0 rounded-full border border-border bg-raised px-1.5 text-[0.6875rem] leading-4 font-semibold tabular-nums"
+      className="shrink-0 rounded-full border border-border bg-raised px-1.5 text-caption leading-4 font-semibold tabular-nums"
     >
       <span aria-hidden="true">{`×${n}`}</span>
       <span className="sr-only">{`, the newest commit of ${n} listed repositories`}</span>

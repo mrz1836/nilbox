@@ -3,6 +3,7 @@ package spec
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -251,13 +252,7 @@ func fits(kinds []item.Kind, applies func(item.Kind) bool) bool {
 		return true
 	}
 
-	for _, k := range kinds {
-		if applies(k) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(kinds, applies)
 }
 
 // kindWords names the kinds a watch holds: "issues", "pull requests".

@@ -7,15 +7,15 @@ import type { RunsIn, ScriptEntry, ScriptSection } from '../../platform'
 import { chipClass, fieldClass } from '../controls'
 import { AlertIcon, ChevronDownIcon, ChevronRightIcon, InfoIcon, TagIcon } from '../icons'
 import { MenuButton } from '../Menu'
+import { SearchBox } from '../SearchBox'
 import { GroupHeading } from './GroupHeading'
-import { RepoSearch } from './RepoSearch'
 import { argsFor, releaseWords, scriptMenu, ScriptRow, type ScriptMenuProps } from './ScriptRow'
 
 // List is one of the section's folded lists of targets.
 type List = 'custom' | 'builtins'
 
 // chipButtonClass draws a common target as a chip that can be pressed.
-const chipButtonClass = `${chipClass} inline-flex items-center gap-1 font-mono transition-colors hover:bg-raised hover:text-text disabled:opacity-50 disabled:hover:bg-transparent`
+const chipButtonClass = `${chipClass} inline-flex items-center gap-1 font-mono transition-colors hover:bg-raised hover:text-text disabled:opacity-disabled disabled:hover:bg-transparent`
 
 // Chip is one common target: a button that runs it at once; greyed, with why, when it
 // can't run; or, for one that bumps a version, a menu that says Release does it, opens
@@ -147,7 +147,7 @@ function MagexBody({ section, ...place }: Omit<MagexSectionProps, 'headingId' | 
               onChange={(e) => {
                 setArgsText(e.target.value)
               }}
-              className={`${fieldClass} font-mono text-[0.8125rem]`}
+              className={`${fieldClass} font-mono text-body`}
             />
             <p id={`${id}-args-help`} className="text-xs text-muted">
               key=value pairs, separated by spaces, for magex’s own targets.
@@ -155,7 +155,7 @@ function MagexBody({ section, ...place }: Omit<MagexSectionProps, 'headingId' | 
           </div>
           {/* The search lines up with the field, below the field's label. */}
           <div className="flex min-w-48 flex-1 flex-col pt-5">
-            <RepoSearch
+            <SearchBox
               value={search}
               onChange={setSearch}
               label="Search magex targets"

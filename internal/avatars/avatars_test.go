@@ -271,21 +271,7 @@ func TestPicturesPrunesWhatNoSheetShows(t *testing.T) {
 	_, err = r.svc.Pictures(t.Context(), []string{"octo-new"})
 	require.NoError(t, err)
 
-	var logins []string
-
-	rows, err := r.db.QueryContext(t.Context(), "SELECT login FROM avatars ORDER BY login")
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
-
-	for rows.Next() {
-		var login string
-		require.NoError(t, rows.Scan(&login))
-		logins = append(logins, login)
-	}
-
-	require.NoError(t, rows.Err())
-	assert.Equal(t, []string{"octo-new", "octo-shown"}, logins)
+	assert.Equal(t, []string{"octo-new", "octo-shown"}, keptLogins(t, r))
 }
 
 func TestPruneKeepsWithinTheCaps(t *testing.T) {

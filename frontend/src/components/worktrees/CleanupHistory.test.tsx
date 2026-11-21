@@ -3,21 +3,15 @@ import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { brand } from '../../generated/brand'
 import type { WorktreeCleanup } from '../../platform'
 import { FIXED_NOW } from '../../test/clock'
-import { linkedItem, worktreeCleanup } from '../../test/fixtures'
+import { linkedItem, managed, worktreeCleanup } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { CleanupHistory, type CleanupHistoryProps } from './CleanupHistory'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
 const head = 'fc1c3975011e66491785ace891c893e4fc716587'
-
-// managed is a worktree's path under the managed root.
-function managed(name: string): string {
-  return `~/projects/.${brand.slug}/worktrees/example-repo/${name}`
-}
 
 // issue is example-repo's issue #9, closed.
 const issue = linkedItem({

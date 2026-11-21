@@ -43,7 +43,7 @@ func TestTriggers(t *testing.T) {
 			history: eval.History{OwnHeads: []string{head}}, want: eval.No,
 		},
 		{
-			name: "new commits, a routine's own push let through", trigger: spec.Trigger{Event: catalog.EventNewCommits, OwnPushesToo: ptr(true)},
+			name: "new commits, a routine's own push let through", trigger: spec.Trigger{Event: catalog.EventNewCommits, OwnPushesToo: new(true)},
 			history: eval.History{OwnHeads: []string{head}}, want: eval.Yes, key: "new_commits:commit:" + head,
 		},
 		{
@@ -52,15 +52,15 @@ func TestTriggers(t *testing.T) {
 		},
 		{
 			name: "new commits while an agent works, its own pushes let through", history: eval.History{Working: true},
-			trigger: spec.Trigger{Event: catalog.EventNewCommits, OwnPushesToo: ptr(true)}, want: eval.Yes,
+			trigger: spec.Trigger{Event: catalog.EventNewCommits, OwnPushesToo: new(true)}, want: eval.Yes,
 			key: "new_commits:commit:" + head,
 		},
 		{
-			name: "new commits, not the first", trigger: spec.Trigger{Event: catalog.EventNewCommits, FirstToo: ptr(false)},
+			name: "new commits, not the first", trigger: spec.Trigger{Event: catalog.EventNewCommits, FirstToo: new(false)},
 			history: eval.History{FirstHead: head}, want: eval.No,
 		},
 		{
-			name: "new commits, after the first", trigger: spec.Trigger{Event: catalog.EventNewCommits, FirstToo: ptr(false)},
+			name: "new commits, after the first", trigger: spec.Trigger{Event: catalog.EventNewCommits, FirstToo: new(false)},
 			history: eval.History{FirstHead: "1111111"}, want: eval.Yes, key: "new_commits:commit:" + head,
 		},
 		{
@@ -74,15 +74,15 @@ func TestTriggers(t *testing.T) {
 			mutate: func(r *facts.Row) { r.Details.ChecksPending = 1 }, want: eval.No,
 		},
 		{
-			name: "checks fail, not waiting", trigger: spec.Trigger{Event: catalog.EventChecksFailed, WaitForChecks: ptr(false)},
+			name: "checks fail, not waiting", trigger: spec.Trigger{Event: catalog.EventChecksFailed, WaitForChecks: new(false)},
 			mutate: func(r *facts.Row) { r.Details.ChecksPending, r.Checks = 1, nil }, want: eval.Yes, key: "checks_failed:commit:" + head,
 		},
 		{
-			name: "checks fail, not settled yet", trigger: spec.Trigger{Event: catalog.EventChecksFailed, SettleMinutes: ptr(10)},
+			name: "checks fail, not settled yet", trigger: spec.Trigger{Event: catalog.EventChecksFailed, SettleMinutes: new(10)},
 			want: eval.No,
 		},
 		{
-			name: "checks fail, settled without waiting", trigger: spec.Trigger{Event: catalog.EventChecksFailed, SettleMinutes: ptr(0)},
+			name: "checks fail, settled without waiting", trigger: spec.Trigger{Event: catalog.EventChecksFailed, SettleMinutes: new(0)},
 			mutate: func(r *facts.Row) { r.Checks = nil }, want: eval.Yes, key: "checks_failed:commit:" + head,
 		},
 		{
@@ -179,12 +179,12 @@ func TestTriggers(t *testing.T) {
 		{name: "assigned, to someone else", trigger: spec.Trigger{Event: catalog.EventAssigned}, want: eval.No},
 
 		{
-			name: "new comments", trigger: spec.Trigger{Event: catalog.EventNewComments, Count: ptr(3)},
-			history: eval.History{CommentsSeen: ptr(1)}, want: eval.Yes, key: "new_comments:comments:4",
+			name: "new comments", trigger: spec.Trigger{Event: catalog.EventNewComments, Count: new(3)},
+			history: eval.History{CommentsSeen: new(1)}, want: eval.Yes, key: "new_comments:comments:4",
 		},
 		{
-			name: "new comments, too few", trigger: spec.Trigger{Event: catalog.EventNewComments, Count: ptr(4)},
-			history: eval.History{CommentsSeen: ptr(1)}, want: eval.No,
+			name: "new comments, too few", trigger: spec.Trigger{Event: catalog.EventNewComments, Count: new(4)},
+			history: eval.History{CommentsSeen: new(1)}, want: eval.No,
 		},
 		{
 			name: "new comments, not counted yet", trigger: spec.Trigger{Event: catalog.EventNewComments},

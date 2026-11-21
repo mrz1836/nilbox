@@ -16,6 +16,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/autopilot/kit"
 	"github.com/mrz1836/nilbox/internal/mcpserver"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // proposeAll proposes each of ps in one session where w says, and returns the answers.
@@ -194,12 +195,12 @@ func TestAProposalGoesOnlyIntoAFolderTheAppMade(t *testing.T) {
 			r := newRig(t)
 			tt.spoil(t, r)
 
-			before := treeOf(t, filepath.Dir(r.dir))
+			before := testutil.Tree(t, filepath.Dir(r.dir))
 
 			answer := proposeAll(t, r, tt.where, newRoutine("Tell me", checksFail(notify())))[0]
 			assert.True(t, answer.IsError)
 			assert.Contains(t, answer.text(t), tt.says)
-			assert.Equal(t, before, treeOf(t, filepath.Dir(r.dir)), "nothing made, nothing written")
+			assert.Equal(t, before, testutil.Tree(t, filepath.Dir(r.dir)), "nothing made, nothing written")
 		})
 	}
 }
@@ -222,21 +223,6 @@ func linkFolder(w kit.Where) func(t *testing.T, r rig) {
 		require.NoError(t, os.Remove(r.proposals(w)))
 		require.NoError(t, os.Symlink(elsewhere, r.proposals(w)))
 	}
-}
-
-// treeOf lists every path under root, a link's target's contents left out.
-func treeOf(t *testing.T, root string) []string {
-	t.Helper()
-
-	var out []string
-
-	require.NoError(t, filepath.WalkDir(root, func(path string, _ os.DirEntry, err error) error {
-		out = append(out, path)
-
-		return err
-	}))
-
-	return out
 }
 
 func TestAProposalThatCantBeWrittenSaysWhyWithoutAPath(t *testing.T) {

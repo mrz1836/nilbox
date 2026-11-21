@@ -544,20 +544,12 @@ func (o DetailOptions) batch() int {
 }
 
 // fetchDetailsBatch sends the details query for one batch of IDs. When GitHub refuses
-// the projects opts asks for, for want of a scope, it sends the batch again without them.
+// the projects opts asks for, for want of a scope, it sends the batch again without them,
+// still with the repository when opts asks for it.
 func (c *Client) fetchDetailsBatch(ctx context.Context, tok Token, ids []string, opts DetailOptions) (*Details, error) {
-	answer, err := c.sendDetails(ctx, tok, ids, opts)
-	if !opts.Projects || !refusedForScope(err) {
-		return answer, err
-	}
-
-	if answer, err = c.sendDetails(ctx, tok, ids, DetailOptions{}); err != nil {
-		return nil, err
-	}
-
-	answer.ProjectsRefused = true
-
-	return answer, nil
+	return resendWithoutProjects(opts, func(o DetailOptions) (*Details, error) {
+		return c.sendDetails(ctx, tok, ids, o)
+	}, func(answer *Details) { answer.ProjectsRefused = true })
 }
 
 // sendDetails sends the details query for one batch of IDs, with what opts adds. Errors
@@ -1050,8 +1042,8 @@ type graphQLHeadSuites struct {
 // suites returns the last commit's check suites, nulls included, or nil when there is no
 // commit.
 func (h graphQLHeadSuites) suites() []*graphQLSuite {
-	for i := len(h.Nodes) - 1; i >= 0; i-- {
-		if n := h.Nodes[i]; n != nil && n.Commit != nil {
+	for _, n := range slices.Backward(h.Nodes) {
+		if n != nil && n.Commit != nil {
 			return n.Commit.CheckSuites.Nodes
 		}
 	}

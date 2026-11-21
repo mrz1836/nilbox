@@ -57,21 +57,6 @@ func openSnapshot(t *testing.T, path string) *store.Snapshot {
 	return snap
 }
 
-// dirNames lists the names in dir.
-func dirNames(t *testing.T, dir string) []string {
-	t.Helper()
-
-	entries, err := os.ReadDir(dir)
-	require.NoError(t, err)
-
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-
-	return names
-}
-
 func TestSnapshotReadsTheColumnsItHas(t *testing.T) {
 	t.Parallel()
 
@@ -157,7 +142,7 @@ func TestSnapshotChangesNothingOnDisk(t *testing.T) {
 	require.NoError(t, snap.Close())
 
 	assert.True(t, sameBytes(t, before, path), "the file is read, never written")
-	assert.Equal(t, []string{filepath.Base(path)}, dirNames(t, dir), "no -wal or -shm file is left beside it")
+	assert.Equal(t, []string{filepath.Base(path)}, testutil.DirNames(t, dir), "no -wal or -shm file is left beside it")
 }
 
 func TestSnapshotReadsTheWritesStillInItsLog(t *testing.T) {
@@ -395,7 +380,7 @@ func TestOpenSnapshotLeavesNoCopyWhenItCantMakeOne(t *testing.T) {
 			_, err := store.OpenSnapshot(t.Context(), path)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "copy the backup to read it")
-			assert.Empty(t, dirNames(t, filepath.Join(dir, "tmp")), "no scratch copy is left")
+			assert.Empty(t, testutil.DirNames(t, filepath.Join(dir, "tmp")), "no scratch copy is left")
 		})
 	}
 }

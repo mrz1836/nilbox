@@ -2,7 +2,7 @@ import { useId, type ReactNode } from 'react'
 
 import { canSwitch, editable, modeHelp, modeLabels, modeOrder, type StatusLine } from '../../lib/autopilot'
 import type { AutopilotMode, AutopilotRoutine } from '../../platform'
-import { captionClass, primaryButtonClass, quietButtonClass, Segmented, Switch } from '../controls'
+import { captionClass, iconButtonClass, primaryButtonClass, quietButtonClass, Segmented, Switch } from '../controls'
 import { MoreIcon, RoutineIcon, SparkIcon } from '../icons'
 import { MenuButton } from '../Menu'
 import { describeTitle, graduateText, routineMenu, Status, type RoutineActions } from './RoutineList'
@@ -74,7 +74,7 @@ export function RoutinePane({
             label={`More for ${r.name}`}
             align="right"
             items={() => routineMenu(r, actions)}
-            className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-text"
+            className={iconButtonClass}
           >
             <MoreIcon className="size-4" />
           </MenuButton>
@@ -135,7 +135,7 @@ export function RoutinePane({
         )}
         {r.description !== '' && <p className="text-sm text-muted">{r.description}</p>}
         {r.problems.length > 0 && (
-          <ul aria-label="What is wrong with it" className="flex flex-col gap-1 rounded-md border border-danger/40 p-3">
+          <ul aria-label="What is wrong with it" className="flex flex-col gap-1 rounded-md border border-danger/45 p-3">
             {r.problems.map((p) => (
               <li key={`${p.part}:${p.field}`} className="text-xs text-danger">
                 {p.message}

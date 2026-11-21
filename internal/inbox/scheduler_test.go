@@ -64,9 +64,38 @@ func TestNewSchedulerDefaults(t *testing.T) {
 
 	s := NewScheduler(&countingRefresher{}, nil, nil)
 
-	assert.Equal(t, DefaultInterval, s.every(t.Context()))
+	assert.Equal(t, DefaultInterval, s.job.Interval(t.Context()))
 	assert.Equal(t, 5*time.Minute, DefaultInterval)
-	assert.Nil(t, s.logger, "periodic.RunEvery discards a nil logger's entries")
+
+	// periodic.RunEvery discards a nil logger's entries: the first refresh fails, and the
+	// scheduler goes on with no logger to tell.
+	synctest.Test(t, func(t *testing.T) {
+		r := &countingRefresher{}
+		s := NewScheduler(r, nil, nil)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
+
+		go func() {
+			defer close(done)
+
+			s.Run(ctx)
+		}()
+
+		time.Sleep(DefaultInterval + time.Second)
+		synctest.Wait()
+		cancel()
+		<-done
+
+		assert.Equal(t, int32(2), r.count.Load(), "a failure with no logger stops nothing")
+	})
+}
+
+func TestAZeroWorkerIgnoresAWake(t *testing.T) {
+	t.Parallel()
+
+	assert.NotPanics(t, (&Scheduler{}).Wake, "a scheduler never made ignores a wake")
+	assert.NotPanics(t, (&ChecksFollower{}).Wake, "so does a checks follower")
 }
 
 func TestSchedulerFollowsTheSettingAndWakesToAChange(t *testing.T) {

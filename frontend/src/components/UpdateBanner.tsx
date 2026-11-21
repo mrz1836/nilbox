@@ -4,7 +4,7 @@ import { brand } from '../generated/brand'
 import { locationNote, type Banner, type Offer } from '../lib/update'
 import type { UpdateControl } from '../lib/useUpdate'
 import { openExternal, type UpdateStatus } from '../platform'
-import { buttonClass, primaryButtonClass } from './controls'
+import { buttonClass, iconButtonClass, primaryButtonClass } from './controls'
 import { AlertIcon, ClockIcon, ExternalIcon, UpdateIcon, XIcon } from './icons'
 import { Spinner } from './Spinner'
 
@@ -12,10 +12,6 @@ import { Spinner } from './Spinner'
 // sized so the row lines up with the bordered buttons beside it.
 const linkButtonClass =
   'inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-raised hover:text-text [&>svg]:size-3.5'
-
-// closeClass is the banner's close button, as on the app's other notices.
-const closeClass =
-  'flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text'
 
 export interface UpdateBannerProps {
   update: UpdateControl
@@ -75,7 +71,7 @@ function Shell({
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={progress}
-          className="absolute inset-x-0 bottom-0 h-0.5 bg-accent/15"
+          className="absolute inset-x-0 bottom-0 h-0.5 bg-accent/14"
         >
           <div
             className="h-full bg-accent transition-[width] duration-300 ease-out motion-reduce:transition-none"
@@ -155,7 +151,7 @@ function OfferButtons({ offer, update }: { offer: Offer; update: UpdateControl }
 // Dismiss puts a failure away for this session.
 function Dismiss({ onDismiss }: { onDismiss: () => void }) {
   return (
-    <button type="button" aria-label="Dismiss" title="Dismiss" onClick={onDismiss} className={closeClass}>
+    <button type="button" aria-label="Dismiss" title="Dismiss" onClick={onDismiss} className={iconButtonClass}>
       <XIcon className="size-3.5" />
     </button>
   )

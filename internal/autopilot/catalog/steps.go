@@ -1,6 +1,10 @@
 package catalog
 
-import "github.com/mrz1836/nilbox/internal/item"
+import (
+	"slices"
+
+	"github.com/mrz1836/nilbox/internal/item"
+)
 
 // StepKind is one kind of step a routine's Then runs, as the spec spells its key.
 type StepKind string
@@ -57,14 +61,6 @@ const (
 	// clone, through Repo scripts' own run.
 	DispatchScripts Dispatcher = "scripts"
 )
-
-// Dispatchers returns every dispatcher.
-func Dispatchers() []Dispatcher {
-	return []Dispatcher{
-		DispatchTriage, DispatchNotices, DispatchGitHub, DispatchAgent, DispatchVerify, DispatchMerge, DispatchReview,
-		DispatchScripts,
-	}
-}
 
 // Outcome is how a step ended, which a later step's Only if names. A step whose Only if
 // doesn't hold is skipped, and the routine goes on.
@@ -148,13 +144,7 @@ type Step struct {
 
 // Applies reports whether the step can act on an item of kind.
 func (s Step) Applies(kind item.Kind) bool {
-	for _, k := range s.Kinds {
-		if k == kind {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(s.Kinds, kind)
 }
 
 // Steps returns every kind of step, in the builder's order.

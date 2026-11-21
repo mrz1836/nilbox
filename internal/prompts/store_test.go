@@ -34,22 +34,7 @@ BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`
 func promptPrefs(t *testing.T, db *sql.DB) map[string]string {
 	t.Helper()
 
-	rows, err := db.QueryContext(t.Context(), "SELECT key, value FROM prefs WHERE key LIKE 'prompts.%'")
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
-
-	out := map[string]string{}
-
-	for rows.Next() {
-		var key, value string
-		require.NoError(t, rows.Scan(&key, &value))
-		out[key] = value
-	}
-
-	require.NoError(t, rows.Err())
-
-	return out
+	return testutil.Map[string, string](t, db, "SELECT key, value FROM prefs WHERE key LIKE 'prompts.%'")
 }
 
 func TestSeedRecordsWhatItAddedAndTheDefaults(t *testing.T) {

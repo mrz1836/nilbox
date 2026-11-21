@@ -12,6 +12,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -64,9 +65,7 @@ type RunsGoingDetail struct {
 
 // newRunsGoing refuses a restart while runs go, naming them.
 func newRunsGoing(runs []Run) *RunsGoingError {
-	if runs == nil {
-		runs = []Run{}
-	}
+	runs = textutil.NonNil(runs)
 
 	return &RunsGoingError{Runs: runs, err: uierr.New(runsWords(runs), ErrRunsGoing)}
 }

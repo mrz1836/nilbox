@@ -15,7 +15,7 @@ import {
   type ItemKind,
 } from '../../../platform'
 import { PlannedLaunch } from '../../LaunchPreviewSection'
-import { buttonClass, captionClass, quietButtonClass } from '../../controls'
+import { buttonClass, captionClass, ErrorText, quietButtonClass } from '../../controls'
 import { ChevronDownIcon, ChevronRightIcon, RefreshIcon } from '../../icons'
 import { Spinner } from '../../Spinner'
 import { ResultMark, TraceList } from '../Trace'
@@ -104,9 +104,7 @@ function RunPreview({ draft, item }: RunPreviewProps) {
       {open && (
         <div id={`${id}-plan`} className="flex flex-col gap-2 rounded-md border border-border p-2.5">
           {plan.error !== '' ? (
-            <p role="alert" className="text-xs text-danger">
-              {plan.error}
-            </p>
+            <ErrorText error={plan.error} />
           ) : p === undefined || plan.pending ? (
             <p className="text-xs text-muted">Planning the run…</p>
           ) : (
@@ -220,11 +218,7 @@ export function TestPanel({
           {testedLabel(result)}
         </button>
       </div>
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
       {stale && !testing && (
         <p className="text-xs text-muted">
           What it watches, fires on, checks, or fires once per changed since this test: Test again to see what it
@@ -272,7 +266,7 @@ function TestRow({ item: it, mode, preview }: TestRowProps) {
     <li className="flex flex-col border-b border-border/60 py-1 last:border-b-0">
       <div className="flex items-center gap-2 text-sm">
         <ResultMark result={it.match} />
-        <span className="w-44 shrink-0 truncate font-mono text-[0.75rem] text-muted" title={name}>
+        <span className="w-44 shrink-0 truncate font-mono text-small text-muted" title={name}>
           {name}
         </span>
         <span className="min-w-0 flex-1 truncate" title={it.title}>
@@ -332,9 +326,7 @@ function ActionPreviews({ draft, itemId, name }: ActionPreviewsProps) {
         Building what it would send…
       </p>
     ) : (
-      <p role="alert" className="ml-6 py-1 text-xs text-danger">
-        {previews.error}
-      </p>
+      <ErrorText error={previews.error} className="ml-6 py-1" />
     )
   }
 
@@ -373,7 +365,7 @@ function PinnedRow({ pinned }: { pinned: Pinned }) {
     <li className="flex flex-col py-1">
       <div className="flex items-center gap-2 text-sm">
         <ResultMark result={pinned.match} />
-        <span className="w-44 shrink-0 truncate font-mono text-[0.75rem] text-muted" title={name}>
+        <span className="w-44 shrink-0 truncate font-mono text-small text-muted" title={name}>
           {name}
         </span>
         <span className="min-w-0 flex-1 truncate" title={pinned.item.title}>

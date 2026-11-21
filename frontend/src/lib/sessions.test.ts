@@ -15,6 +15,8 @@ import {
   sinceWhen,
   stateDot,
   stateLabel,
+  stateText,
+  stateTint,
   usageWords,
 } from './sessions'
 
@@ -87,6 +89,39 @@ describe('sessions', () => {
     expect(isLive('ended')).toBe(false)
     expect(needsYou('needs_approval')).toBe(true)
     expect(needsYou('working')).toBe(false)
+  })
+
+  it('gives every state its dot, its text color, and its tag’s tint', () => {
+    expect(stateDot).toEqual({
+      starting: 'bg-muted',
+      working: 'bg-info',
+      needs_approval: 'bg-warning',
+      needs_input: 'bg-warning',
+      idle: 'bg-success',
+      ended: 'bg-muted',
+      failed: 'bg-danger',
+      unknown: 'bg-muted',
+    })
+    expect(stateText).toEqual({
+      starting: 'text-muted',
+      working: 'text-info',
+      needs_approval: 'text-warning',
+      needs_input: 'text-warning',
+      idle: 'text-success',
+      ended: 'text-muted',
+      failed: 'text-danger',
+      unknown: 'text-muted',
+    })
+    expect(stateTint).toEqual({
+      starting: '',
+      working: 'bg-info/10 ring-1 ring-info/22',
+      needs_approval: 'bg-warning/10 ring-1 ring-warning/22',
+      needs_input: 'bg-warning/10 ring-1 ring-warning/22',
+      idle: '',
+      ended: '',
+      failed: 'bg-danger/10',
+      unknown: '',
+    })
   })
 
   it('counts a session’s state from when it came to it, or when it ended', () => {

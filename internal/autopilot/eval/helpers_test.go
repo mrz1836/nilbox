@@ -24,8 +24,6 @@ var now = time.Date(2026, time.November, 16, 12, 0, 0, 0, time.UTC) //nolint:goc
 // head is the pull requests' head commit.
 const head = "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567"
 
-func ptr[T any](v T) *T { return &v }
-
 // prRow is a Dependabot pull request whose two security checks failed and settled.
 func prRow() facts.Row {
 	return facts.Row{

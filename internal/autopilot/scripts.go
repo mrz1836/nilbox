@@ -8,6 +8,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/draft"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -80,7 +81,7 @@ func (s *Service) MyScripts(ctx context.Context) ([]MyScript, error) {
 		return []MyScript{}, uierr.New("Your scripts couldn't be read.", err)
 	}
 
-	return nonNil(got), nil
+	return textutil.NonNil(got), nil
 }
 
 // scriptsOf reads the user's scripts once a cycle, by ID, when some routine runs one:

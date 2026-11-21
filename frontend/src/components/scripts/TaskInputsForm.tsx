@@ -3,7 +3,7 @@ import { useId, useRef, useState, type SubmitEvent } from 'react'
 import { firstChoice } from '../../lib/repoScripts'
 import { useModalDialog } from '../../lib/useModalDialog'
 import type { ScriptEntry, ScriptInput } from '../../platform'
-import { buttonClass, fieldClass, primaryButtonClass } from '../controls'
+import { buttonClass, fieldClass, modalClass, primaryButtonClass } from '../controls'
 
 // radioLimit is the most choices a pickString shows as radio buttons; one with more is a
 // menu.
@@ -68,7 +68,7 @@ function InputField({ input, id, text, choice, onText, onChoice }: InputFieldPro
           onChange={(e) => {
             onText(e.target.value)
           }}
-          className={`${fieldClass} font-mono text-[0.8125rem]`}
+          className={`${fieldClass} font-mono text-body`}
         />
       </div>
     )
@@ -155,8 +155,7 @@ export function TaskInputsForm({ entry, onRun, onCancel }: TaskInputsFormProps) 
       aria-modal="true"
       aria-labelledby={`${id}-title`}
       onCancel={cancel}
-      // The backdrop's color is spelled out, as ConfirmDialog's is.
-      className="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-[rgb(0_0_0/0.4)]"
+      className={`${modalClass} max-w-md`}
     >
       <form onSubmit={submit} className="flex flex-col gap-4">
         <div>

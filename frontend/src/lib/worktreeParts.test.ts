@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { AgentID, Worktree } from '../platform'
+import type { Worktree } from '../platform'
 import { FIXED_NOW, isoAgo } from '../test/clock'
 import {
+  agentName,
   agentSession,
   copiedPR,
   copiedWorktree,
@@ -11,6 +12,7 @@ import {
   item,
   linkedItem,
   mainWorktree,
+  managed,
   partlyCopiedWorktree,
   recordedWorktree,
   sessionsSnapshot,
@@ -54,13 +56,6 @@ import {
 } from './worktreeParts'
 
 const now = FIXED_NOW
-
-const agentName = (id: AgentID) => (id === 'codex' ? 'Codex' : 'Claude')
-
-// managed is a worktree's path under the clone root's managed root.
-function managed(name: string, clone = 'example-repo'): string {
-  return `~/projects/.${brand.slug}/worktrees/${clone}/${name}`
-}
 
 // row is a worktree the app made for pull request #7, open and clean.
 function row(overrides: Partial<Worktree> = {}): Worktree {

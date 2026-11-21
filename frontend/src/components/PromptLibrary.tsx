@@ -5,8 +5,9 @@ import { routinePlaces, routinesUsing, usagePlaces } from '../lib/launch'
 import { replyGroups, replySlotBadges } from '../lib/replies'
 import type { Prompt, PromptAppliesTo, PromptPurpose } from '../platform'
 import { quietButtonClass, Segmented, type SegmentOption } from './controls'
-import { ChevronDownIcon, MoreIcon, PlusIcon, SearchIcon, StarIcon } from './icons'
+import { ChevronDownIcon, MoreIcon, PlusIcon, StarIcon } from './icons'
 import { MenuButton, type MenuItem } from './Menu'
+import { SearchBox } from './SearchBox'
 
 // Selection is the prompt open in the editor: a stored one by ID, or a new one.
 export type Selection = { kind: 'prompt'; id: number } | { kind: 'new' }
@@ -123,7 +124,7 @@ interface GroupHeadingProps {
 }
 
 // headingTextClass is a group heading's text: small capitals in the muted color.
-const headingTextClass = 'text-[0.6875rem] font-semibold tracking-wide text-muted uppercase'
+const headingTextClass = 'text-caption font-semibold tracking-wide text-muted uppercase'
 
 // GroupHeading is a group's title, underlined, with a badge of how many prompts it lists.
 // The whole heading is a toggle that folds the group away and opens it again, its chevron
@@ -235,23 +236,14 @@ export function PromptLibrary({
         <Segmented label="Kind of prompt" size="sm" value={mode} options={modeOptions} onChange={onModeChange} />
       </div>
       <div className="px-3 pb-2">
-        <label htmlFor={`${id}-search`} className="sr-only">
-          {replies ? 'Search replies' : 'Search prompts'}
-        </label>
-        <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 focus-within:border-accent/60">
-          <SearchIcon className="size-3.5 shrink-0 text-muted" />
-          <input
-            ref={searchRef}
-            id={`${id}-search`}
-            type="search"
-            value={query}
-            placeholder="Search"
-            onChange={(e) => {
-              setQuery(e.target.value)
-            }}
-            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted/70"
-          />
-        </div>
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          label={replies ? 'Search replies' : 'Search prompts'}
+          placeholder="Search"
+          inputRef={searchRef}
+          dense={false}
+        />
       </div>
       <nav aria-label={replies ? 'Review replies' : 'Prompts'} className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         {selection?.kind === 'new' && (
@@ -338,14 +330,14 @@ export function PromptLibrary({
                           </span>
                           <span className="block w-full max-w-full truncate text-xs text-muted">{p.name}</span>
                           {used.length > 0 && (
-                            <span className="block w-full max-w-full truncate text-[0.6875rem] text-muted">
+                            <span className="block w-full max-w-full truncate text-caption text-muted">
                               {used.join(' · ')}
                             </span>
                           )}
                           {/* A reply is for pull requests unless it says otherwise, as a comment
                             reply the issue sheet offers does. */}
                           {replies && p.appliesTo !== 'pr' && (
-                            <span className="text-[0.6875rem] text-muted">
+                            <span className="text-caption text-muted">
                               {p.appliesTo === 'issue' ? 'For issues' : 'For pull requests and issues'}
                             </span>
                           )}
@@ -354,7 +346,7 @@ export function PromptLibrary({
                               {badges.map((badge) => (
                                 <span
                                   key={badge}
-                                  className="rounded-full bg-accent/15 px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium text-text"
+                                  className="rounded-full bg-accent/14 px-1.5 text-caption leading-[1.125rem] font-medium text-text"
                                 >
                                   {badge}
                                 </span>

@@ -252,7 +252,7 @@ export function SettingsView({
                   {group.heading !== '' && (
                     <p
                       id={`${headingId}-${group.heading}`}
-                      className="mx-2.5 mb-1 border-b border-border pb-1.5 text-[0.6875rem] font-semibold tracking-wider text-text uppercase"
+                      className="mx-2.5 mb-1 border-b border-border pb-1.5 text-caption font-semibold tracking-wider text-text uppercase"
                     >
                       {group.heading}
                     </p>
@@ -276,7 +276,7 @@ export function SettingsView({
                             {' '}
                             <span
                               aria-hidden="true"
-                              className="rounded-full bg-accent/15 px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium text-text tabular-nums"
+                              className="rounded-full bg-accent/14 px-1.5 text-caption leading-[1.125rem] font-medium text-text tabular-nums"
                             >
                               {formatCount(count)}
                             </span>

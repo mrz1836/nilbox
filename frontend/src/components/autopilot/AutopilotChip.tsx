@@ -1,8 +1,9 @@
 import { createContext, use, useId, useState } from 'react'
 
-import { chipOf, effectState, effectVerb, inActivity, routineName, targetOf, type Chip } from '../../lib/autopilot'
+import { chipOf, effectState, effectVerb, inActivity, routineName, targetOf } from '../../lib/autopilot'
 import { terminalLabel } from '../../lib/terminals'
 import { formatAgo, formatFull } from '../../lib/time'
+import { toneText } from '../../lib/tone'
 import { useMutation } from '../../lib/useMutation'
 import { usePopover } from '../../lib/usePopover'
 import { useQuery } from '../../lib/useQuery'
@@ -14,7 +15,7 @@ import {
   type InboxItem,
   type TerminalID,
 } from '../../platform'
-import { quietButtonClass } from '../controls'
+import { ErrorText, quietButtonClass } from '../controls'
 import { AutopilotIcon } from '../icons'
 import { PopoverPanel } from '../PopoverPanel'
 import { RelativeTime } from '../RelativeTime'
@@ -67,15 +68,6 @@ export function useRoutineName(id: number): string {
   return routineName(rows?.names ?? new Map<number, string>(), id)
 }
 
-// chipTones color a chip by what it says: the accent for a change made, amber while it waits
-// for the user, red for one that gave up or failed.
-const chipTones: Readonly<Record<Chip['tone'], string>> = {
-  muted: 'text-muted',
-  accent: 'text-accent',
-  warning: 'text-warning',
-  danger: 'text-danger',
-}
-
 interface HistoryEntryProps {
   match: AutopilotMatch
   onShow: ((target: AutopilotTarget) => void) | undefined
@@ -92,7 +84,7 @@ function HistoryEntry({ match, onShow, onUndone }: HistoryEntryProps) {
   return (
     <li className="flex flex-col gap-1 border-b border-border py-2 last:border-b-0">
       <p className="flex min-w-0 items-baseline gap-2 text-xs">
-        <span className={`shrink-0 font-semibold ${chipTones[chip.tone]}`}>{chip.label}</span>
+        <span className={`shrink-0 font-semibold ${toneText[chip.tone]}`}>{chip.label}</span>
         <span className="min-w-0 truncate font-medium text-text" title={match.routine}>
           {match.routine}
         </span>
@@ -124,11 +116,7 @@ function HistoryEntry({ match, onShow, onUndone }: HistoryEntryProps) {
           )}
         </p>
       ))}
-      {undo.error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {undo.error}
-        </p>
-      )}
+      <ErrorText error={undo.error} />
       {onShow !== undefined && inActivity(match) && (
         <button
           type="button"
@@ -156,9 +144,7 @@ function ItemHistory({ itemId, onShow }: { itemId: number; onShow: AutopilotRows
         Reading its history…
       </p>
     ) : (
-      <p role="alert" className="text-xs text-danger">
-        {history.error}
-      </p>
+      <ErrorText error={history.error} />
     )
   }
 
@@ -223,7 +209,7 @@ export function AutopilotChip({ item, align = 'left' }: AutopilotChipProps) {
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={toggle}
-        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[0.6875rem] leading-4 font-medium transition-colors hover:bg-raised aria-expanded:ring-1 aria-expanded:ring-border ${chipTones[chip.tone]}`}
+        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-px text-caption leading-4 font-medium transition-colors hover:bg-raised aria-expanded:ring-1 aria-expanded:ring-border ${toneText[chip.tone]}`}
       >
         <AutopilotIcon className="size-3 shrink-0" />
         <span className="@max-3xl:hidden">{chip.label}</span>
@@ -231,10 +217,11 @@ export function AutopilotChip({ item, align = 'left' }: AutopilotChipProps) {
       <PopoverPanel
         state={popover}
         align={align}
+        elevation="card"
         id={id}
         role="dialog"
         aria-label="Autopilot history"
-        className="z-20 flex max-h-[calc(100vh-8rem)] w-[24rem] max-w-[calc(100vw-2rem)] flex-col gap-1 overflow-y-auto p-3 text-left break-words whitespace-normal shadow-black/25"
+        className="layer-popover flex max-h-[calc(100vh-8rem)] w-[24rem] max-w-[calc(100vw-2rem)] flex-col gap-1 overflow-y-auto p-3 text-left break-words whitespace-normal"
       >
         <p className="flex items-center gap-1.5 text-xs font-semibold text-text">
           <AutopilotIcon className="size-3.5 shrink-0 text-accent" />

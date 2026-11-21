@@ -106,12 +106,9 @@ func TestFailedClearStaysUntilItMoves(t *testing.T) {
 			assert.Empty(t, writes(r.mustPass()), "not queued afresh on its own")
 		}
 
-		assert.Len(t, r.ledger(), 1)
-
-		preview, err := r.svc.Preview(t.Context())
-		require.NoError(t, err)
-		require.Len(t, preview.Held, 1)
-		assert.Equal(t, SkipFailed, preview.Held[0].Reason)
+		ledger := r.ledger()
+		require.Len(t, ledger, 1)
+		assert.Equal(t, string(ClearFailed), ledger[0].state, "it waits, failed")
 
 		// It moves on GitHub: a bot's comment.
 		r.gh.commented(firstID, 900, "Bot", r.clock.Now())
@@ -126,8 +123,9 @@ func TestFailedClearStaysUntilItMoves(t *testing.T) {
 
 		r := failed(t)
 
-		_, err := r.svc.Clear(t.Context(), []int64{firstID})
+		n, err := r.svc.clearByHand(t.Context(), []int64{firstID})
 		require.NoError(t, err)
+		assert.Equal(t, 1, n)
 		assert.Equal(t, []int64{firstID}, idsOf(ofKind(r.send(), kindDone)), "the user may still clear it")
 	})
 }
@@ -218,10 +216,6 @@ func TestAHeldBacklogReadsNoStateAgain(t *testing.T) {
 		assert.Empty(t, stateRequests(got), "no state is read again only to count the backlog")
 		assert.Equal(t, FirstCap+5, r.snapshot().Backlog, "still held")
 	}
-
-	preview, err := r.svc.Preview(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, FirstCap+5, preview.Count, "the sheet still shows them")
 
 	// Other rules: the states are read again, once.
 	r.rules.change(func(rules *threadrules.Rules) { rules.BotActivity = false })

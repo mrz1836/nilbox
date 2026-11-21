@@ -335,15 +335,6 @@ export function Readiness(): $CancellablePromise<$models.Readiness> {
 }
 
 /**
- * Reorder puts the routines ids names first, in that order, and the others after them as
- * they were, and returns the list. An id named twice counts once; one that is gone or
- * deleted is refused, and nothing moves.
- */
-export function Reorder(ids: number[] | null): $CancellablePromise<$models.Routine[] | null> {
-    return $Call.ByID(998538810, ids);
-}
-
-/**
  * RoutineNames returns every routine's name by its ID, the deleted ones included, for the marks
  * and history the window shows of a routine that may have gone since. It reads the
  * database alone, and the list is never nil.

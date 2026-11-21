@@ -317,32 +317,27 @@ func registeredWorktrees(common string) (count int, known bool) {
 // Sweeper runs a Service's sweeps on a timer. It is kept apart from Service, every
 // exported method of which the window binds.
 type Sweeper struct {
-	svc   *Service
-	every periodic.Every
-	wake  chan struct{}
+	job *periodic.Job
 }
 
 // NewSweeper returns a Sweeper over svc that sweeps as often as every says, the user's
-// setting, or every DefaultSweepInterval when nil.
+// setting, or every DefaultSweepInterval when nil. It logs to svc's logger.
 func NewSweeper(svc *Service, every periodic.Every) Sweeper {
 	if every == nil {
 		every = func(context.Context) time.Duration { return DefaultSweepInterval }
 	}
 
-	return Sweeper{svc: svc, every: every, wake: make(chan struct{}, 1)}
+	return Sweeper{job: periodic.NewJob(every, sweepJob, svc.sweepOnce, svc.logger)}
 }
 
 // Run sweeps now and then as often as every says, from the end of each sweep, until ctx
 // is canceled, and returns once the sweep in flight has. A failed sweep is logged, and a
 // panicking one is recovered and logged; the next one still runs.
 func (sw Sweeper) Run(ctx context.Context) {
-	periodic.RunEvery(ctx, sw.every, sw.wake, sweepJob, sw.svc.sweepOnce, sw.svc.logger)
+	sw.job.Run(ctx)
 }
 
 // Wake has the sweeper read how often to sweep again, as when the user changed it.
 func (sw Sweeper) Wake() {
-	select {
-	case sw.wake <- struct{}{}:
-	default:
-	}
+	sw.job.Wake()
 }

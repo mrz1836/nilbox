@@ -13,10 +13,10 @@ import {
   type ThreadSwitch,
   type ThreadTrigger,
 } from '../../platform'
-import { quietButtonClass } from '../controls'
+import { ErrorText, quietButtonClass } from '../controls'
 import { RefreshIcon } from '../icons'
 import { rowMatchClass, useSetting } from './match'
-import { ErrorText, Group, joinIds, Note, SectionIntro, SwitchRow } from './rows'
+import { Group, joinIds, Note, SectionIntro, SwitchRow } from './rows'
 import type { SectionProps } from './types'
 
 // actions are what clearing a notification can do, the default first.

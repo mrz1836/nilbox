@@ -36,6 +36,7 @@ import {
   buttonClass,
   chipClass,
   describedBy,
+  ErrorText,
   Field,
   fieldClass,
   primaryButtonClass,
@@ -44,7 +45,7 @@ import {
 } from '../controls'
 import { PlusIcon } from '../icons'
 import { LaunchOverrideFields, type LaunchOverrides } from '../LaunchOverrideFields'
-import { ErrorText, SectionIntro } from './rows'
+import { groupClass, SectionIntro } from './rows'
 
 export interface LaunchDefaultsSectionProps {
   settings: Settings
@@ -219,10 +220,7 @@ export function LaunchDefaultsSection({
         </p>
       ) : (
         launchDefaults.length > 0 && (
-          <ul
-            aria-label="Launch defaults"
-            className="divide-y divide-border rounded-lg border border-border bg-surface"
-          >
+          <ul aria-label="Launch defaults" className={groupClass}>
             {launchDefaults.map((d) => {
               const isEditing = editing?.kind === 'existing' && editing.owner === d.owner && editing.name === d.name
 
@@ -477,7 +475,7 @@ function DefaultsEditor({
           })
         }
       }}
-      className="flex flex-col gap-4 rounded-lg border border-accent/40 bg-surface p-4 shadow-sm"
+      className="flex flex-col gap-4 rounded-lg border border-accent/45 bg-surface p-4 shadow-sm"
     >
       {editing.kind === 'new' ? (
         <Field
@@ -498,7 +496,7 @@ function DefaultsEditor({
             onChange={(e) => {
               setTargetDraft(e.target.value)
             }}
-            className={`${fieldClass} w-full font-mono text-[0.8125rem]`}
+            className={`${fieldClass} w-full font-mono text-body`}
           />
           <datalist id={`${id}-targets`}>
             {offered.map((t) => (

@@ -22,12 +22,12 @@ export function trustTitle(item: InboxItem): string {
 // tones are the chip's two tones: danger once a sensitive file is in a danger category,
 // else warning.
 const tones = {
-  danger: 'border-danger/45 bg-danger/10 text-danger hover:bg-danger/18',
-  warning: 'border-warning/45 bg-warning/10 text-warning hover:bg-warning/18',
+  danger: 'border-danger/45 bg-danger/10 text-danger hover:bg-danger/14',
+  warning: 'border-warning/45 bg-warning/10 text-warning hover:bg-warning/14',
 } as const
 
 const chipClass =
-  'inline-flex max-w-64 items-center gap-1 rounded-full border px-1.5 py-px text-[0.6875rem] leading-4 font-medium transition-colors aria-expanded:ring-1 aria-expanded:ring-border'
+  'inline-flex max-w-64 items-center gap-1 rounded-full border px-1.5 py-px text-caption leading-4 font-medium transition-colors aria-expanded:ring-1 aria-expanded:ring-border'
 
 // Risk is what a card says to be careful of: its words, its tooltip, its tone, and
 // whether an outside contributor's files were checked clean.

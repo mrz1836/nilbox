@@ -111,7 +111,7 @@ function MergedRow({ merged: m, tickable, checked, now, onChange }: MergedRowPro
         />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-center gap-2">
-            <code className={`min-w-0 truncate font-mono text-[0.8125rem] ${held ? 'text-muted' : 'text-text'}`}>
+            <code className={`min-w-0 truncate font-mono text-body ${held ? 'text-muted' : 'text-text'}`}>
               {m.branch.name}
             </code>
             {held && <Warning label="Can’t be deleted" />}
@@ -334,7 +334,7 @@ export function MergedBranchesDialog({ rules, now, onConfirm, onCancel }: Merged
               </span>
             </div>
             {unpushed.length > 0 && (
-              <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-md border border-warning/40 px-2.5 py-2 text-xs">
+              <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-md border border-warning/45 px-2.5 py-2 text-xs">
                 <input
                   type="checkbox"
                   checked={anyway}

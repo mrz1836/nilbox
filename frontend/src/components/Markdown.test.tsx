@@ -12,7 +12,7 @@ describe('Markdown', () => {
     const { container } = render(<Markdown text={'# Title\n\nSome **bold** text.'} />)
 
     const box = container.firstElementChild
-    expect(box).toHaveClass('markdown', 'space-y-2', 'text-[0.8125rem]', 'text-text')
+    expect(box).toHaveClass('markdown', 'space-y-2', 'text-body', 'text-text')
     expect(screen.getByRole('heading', { level: 1, name: 'Title' })).toBeInTheDocument()
     expect(box?.querySelector('strong')).toHaveTextContent('bold')
   })

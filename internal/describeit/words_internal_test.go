@@ -85,7 +85,7 @@ func TestSmallWordsReadAsASentence(t *testing.T) {
 	assert.Equal(t, "low or high", orSeries([]string{"low", "high"}))
 	assert.Equal(t, "low, medium, or high", orSeries([]string{"low", "medium", "high"}))
 
-	page := listedPage(runevent.Page{})
+	page := runevent.Page{}.Listed()
 	assert.NotNil(t, page.Events)
 	assert.NotNil(t, page.Progress.Todos)
 }

@@ -2,7 +2,16 @@ import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'rea
 import { createPortal } from 'react-dom'
 
 import { useCloseWhenHidden, useModalDialog } from '../lib/useModalDialog'
-import { buttonClass, captionClass, fieldClass, primaryButtonClass, quietButtonClass } from './controls'
+import {
+  buttonClass,
+  captionClass,
+  ErrorText,
+  fieldClass,
+  iconButtonClass,
+  primaryButtonClass,
+  quietButtonClass,
+  sheetDialogClass,
+} from './controls'
 import { XIcon } from './icons'
 
 // The sheets' pickers: a dialog of choices to check and uncheck, with a field that filters
@@ -265,8 +274,7 @@ export function PickerDialog({
       aria-modal="true"
       aria-labelledby={`${id}-title`}
       onCancel={cancel}
-      // The backdrop's color is spelled out, as ConfirmDialog's is, for older Safari.
-      className="m-auto max-h-[calc(100%-3rem)] w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-[rgb(0_0_0/0.4)] open:flex open:flex-col motion-safe:animate-pop-in"
+      className={`${sheetDialogClass} max-h-[calc(100%-3rem)] w-[calc(100%-2rem)] max-w-md overflow-hidden open:flex open:flex-col motion-safe:animate-pop-in`}
     >
       {/* The body takes focus itself, so a click on a checkbox or button, which the
           desktop's WebKit focuses no control for, leaves focus in the dialog. */}
@@ -282,7 +290,7 @@ export function PickerDialog({
             title="Close (Esc)"
             disabled={applying}
             onClick={onClose}
-            className={`${quietButtonClass} p-1`}
+            className={`${iconButtonClass} disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent`}
           >
             <XIcon className="size-4" />
           </button>
@@ -330,7 +338,7 @@ export function PickerDialog({
                           setActive({ query, at: row })
                         }
                       }}
-                      className={`grid ${c.aside === undefined || c.aside === '' ? 'grid-cols-[auto_minmax(0,1fr)]' : 'grid-cols-[auto_minmax(0,1fr)_auto]'} items-center gap-x-3 gap-y-0.5 rounded-md px-2 py-1.5 text-sm has-disabled:opacity-60 ${row === at ? 'bg-raised' : 'hover:bg-raised'}`}
+                      className={`grid ${c.aside === undefined || c.aside === '' ? 'grid-cols-[auto_minmax(0,1fr)]' : 'grid-cols-[auto_minmax(0,1fr)_auto]'} items-center gap-x-3 gap-y-0.5 rounded-md px-2 py-1.5 text-sm has-disabled:opacity-disabled ${row === at ? 'bg-raised' : 'hover:bg-raised'}`}
                     >
                       <input
                         type="checkbox"
@@ -366,11 +374,7 @@ export function PickerDialog({
             ))
           )}
         </div>
-        {error !== '' && (
-          <p role="alert" className="shrink-0 border-t border-border px-4 py-2 text-xs text-danger">
-            {error}
-          </p>
-        )}
+        <ErrorText error={error} className="shrink-0 border-t border-border px-4 py-2" />
         <footer className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-3">
           <p className="min-w-0 flex-1 text-xs text-muted">{choices.length === 0 ? '' : note}</p>
           <button type="button" disabled={applying} onClick={onClose} className={buttonClass}>

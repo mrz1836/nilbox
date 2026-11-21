@@ -6,6 +6,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/watch"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // Normalize returns s cleaned as it is stored: every text trimmed, every list that is a
@@ -279,15 +280,7 @@ func normalizeNotices(n *Notices) *Notices {
 // textSet returns values trimmed, without empty ones and repeats ignoring case (the
 // first spelling kept), sorted ignoring case; nil for none.
 func textSet(values []string) []string {
-	out := make([]string, 0, len(values))
-
-	for _, v := range values {
-		v = strings.TrimSpace(v)
-		if v != "" && !slices.ContainsFunc(out, func(o string) bool { return strings.EqualFold(o, v) }) {
-			out = append(out, v)
-		}
-	}
-
+	out := textutil.UniqueFold(values, strings.TrimSpace)
 	if len(out) == 0 {
 		return nil
 	}

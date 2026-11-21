@@ -76,7 +76,7 @@ export function ScriptStepBlock({ n, step, onChange }: ScriptStepBlockProps) {
 function ScriptLine({ script }: { script: AutopilotMyScript }) {
   return (
     <>
-      <code className="max-w-64 truncate font-mono text-[0.6875rem] text-text" title={script.command}>
+      <code className="max-w-64 truncate font-mono text-caption text-text" title={script.command}>
         {script.command}
       </code>
       <span>in the item’s clone, where it shows in {script.shows}</span>

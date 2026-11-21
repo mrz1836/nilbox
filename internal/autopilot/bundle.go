@@ -13,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 const (
@@ -112,9 +113,7 @@ func bundleOf(rows []queries.AutopilotRoutine, app string, now time.Time) Bundle
 
 // EncodeBundle writes b as indented JSON ending in a newline.
 func EncodeBundle(b Bundle) ([]byte, error) {
-	if b.Routines == nil {
-		b.Routines = []BundleRoutine{}
-	}
+	b.Routines = textutil.NonNil(b.Routines)
 
 	var buf bytes.Buffer
 
@@ -156,9 +155,7 @@ func DecodeBundle(data []byte) (Bundle, error) {
 		return Bundle{}, ErrNewerBundle
 	}
 
-	if b.Routines == nil {
-		b.Routines = []BundleRoutine{}
-	}
+	b.Routines = textutil.NonNil(b.Routines)
 
 	return b, nil
 }

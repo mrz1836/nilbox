@@ -42,7 +42,7 @@ export function ToolsStep({ settings, onSaved, integrations, signals }: ToolsSte
   return (
     <div className="flex flex-col gap-4">
       {reason !== '' && (
-        <p className="rounded-md border border-accent/40 bg-accent/5 px-3 py-2 text-sm text-text">{reason}</p>
+        <p className="rounded-md border border-accent/45 bg-accent/5 px-3 py-2 text-sm text-text">{reason}</p>
       )}
       {error !== '' && <ErrorBanner>Couldn’t list the tools: {error}</ErrorBanner>}
       {tools === null

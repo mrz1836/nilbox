@@ -2,6 +2,7 @@ package sim
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -147,9 +148,7 @@ func (o *Outside) Outside(context.Context) (autopilot.OutsideIndex, error) {
 	defer o.mu.Unlock()
 
 	rules := make(map[string]bool, len(o.rules))
-	for k, v := range o.rules {
-		rules[k] = v
-	}
+	maps.Copy(rules, o.rules)
 
 	return outsideIndex(rules), nil
 }

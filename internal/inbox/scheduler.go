@@ -27,10 +27,7 @@ type Refresher interface {
 // panicking refresh is recovered, so the scheduler keeps going until its context is
 // canceled.
 type Scheduler struct {
-	refresher Refresher
-	every     periodic.Every
-	wake      chan struct{}
-	logger    *slog.Logger
+	job *periodic.Job
 }
 
 // NewScheduler returns a scheduler that refreshes through r as often as every says,
@@ -41,26 +38,25 @@ func NewScheduler(r Refresher, every periodic.Every, logger *slog.Logger) *Sched
 		every = func(context.Context) time.Duration { return DefaultInterval }
 	}
 
-	return &Scheduler{refresher: r, every: every, wake: make(chan struct{}, 1), logger: logger}
+	return &Scheduler{job: periodic.NewJob(every, schedulerJob, refreshThrough(r), logger)}
 }
 
 // Run refreshes now and then as often as every says until ctx is canceled, then waits for
 // an in-flight refresh to return.
 func (s *Scheduler) Run(ctx context.Context) {
-	periodic.RunEvery(ctx, s.every, s.wake, schedulerJob, s.refresh, s.logger)
+	s.job.Run(ctx)
 }
 
 // Wake has the scheduler read how often to refresh again, as when the user changed it.
 func (s *Scheduler) Wake() {
-	select {
-	case s.wake <- struct{}{}:
-	default:
-	}
+	s.job.Wake()
 }
 
-// refresh runs one refresh.
-func (s *Scheduler) refresh(ctx context.Context) error {
-	_, err := s.refresher.Refresh(ctx)
+// refreshThrough returns one refresh through r, as the scheduler's job.
+func refreshThrough(r Refresher) func(ctx context.Context) error {
+	return func(ctx context.Context) error {
+		_, err := r.Refresh(ctx)
 
-	return err
+		return err
+	}
 }

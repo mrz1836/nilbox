@@ -29,8 +29,8 @@ type Snapshot struct {
 	// takes back.
 	Queued []QueuedClear `json:"queued"`
 
-	// Backlog is how many clears the last pass held back, more than clear on their own, for
-	// the user to review (Preview, then Clear); 0 when none waits.
+	// Backlog is how many clears the last pass held back, more than clear on their own; 0
+	// when none waits.
 	Backlog int `json:"backlog"`
 
 	// Recent are the latest MaxRecent clears that settled, the latest first.

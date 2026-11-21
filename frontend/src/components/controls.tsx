@@ -5,10 +5,10 @@ import { useId, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 // readers as is.
 
 export const fieldClass =
-  'rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-text placeholder:text-muted/70 disabled:opacity-60 aria-invalid:border-danger'
+  'rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm text-text placeholder:text-muted/70 disabled:opacity-disabled aria-invalid:border-danger'
 
 export const buttonClass =
-  'inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-50 disabled:hover:bg-surface'
+  'inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-surface'
 
 // tintedButtonClass is the shape shared by the tinted buttons below: a wash of the tone
 // with an edge of it, ink text, and a press that sinks a pixel. The text stays ink, not
@@ -17,10 +17,10 @@ export const buttonClass =
 // rather than fading, since a faded wash reads as mud on the dark theme. It sizes like
 // buttonClass and fieldClass, so the three line up in a row.
 const tintedButtonClass =
-  'inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium text-text shadow-xs shadow-black/15 inset-shadow-[0_1px_0_rgb(255_255_255/0.06)] transition enabled:active:translate-y-px disabled:cursor-default disabled:border-border disabled:bg-raised disabled:text-muted disabled:shadow-none disabled:inset-shadow-none disabled:[&>svg]:text-muted'
+  'inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium text-text shadow-control inset-shadow-control transition enabled:active:translate-y-px disabled:cursor-default disabled:border-border disabled:bg-raised disabled:text-muted disabled:shadow-none disabled:inset-shadow-none disabled:[&>svg]:text-muted'
 
 // primaryButtonClass marks a view's main action.
-export const primaryButtonClass = `${tintedButtonClass} border-accent/45 bg-accent/14 enabled:hover:border-accent/65 enabled:hover:bg-accent/22 [&>svg]:text-accent`
+export const primaryButtonClass = `${tintedButtonClass} border-accent/45 bg-accent/14 enabled:hover:border-accent/60 enabled:hover:bg-accent/22 [&>svg]:text-accent`
 
 // heldButtonClass is a control that still works beside a tinted button that is held back,
 // such as a split button's menu, so the two halves read as one: it looks like the tinted
@@ -31,21 +31,68 @@ export const heldButtonClass =
   'inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-raised px-3 py-1.5 text-sm font-medium text-muted transition enabled:active:translate-y-px hover:text-text [&>svg]:text-muted hover:[&>svg]:text-text'
 
 // dangerButtonClass confirms a destructive action.
-export const dangerButtonClass = `${tintedButtonClass} border-danger/45 bg-danger/14 enabled:hover:border-danger/65 enabled:hover:bg-danger/22 [&>svg]:text-danger`
+export const dangerButtonClass = `${tintedButtonClass} border-danger/45 bg-danger/14 enabled:hover:border-danger/60 enabled:hover:bg-danger/22 [&>svg]:text-danger`
 
 export const quietButtonClass =
-  'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent'
+  'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent'
 
 export const chipClass = 'rounded-full border border-border px-2 py-0.5 text-xs whitespace-nowrap text-muted'
 
 // captionClass sets a small uppercase caption over a group, such as a page's section
 // heading in the Scripts tab; add the padding that lines it up.
-export const captionClass = 'text-[0.6875rem] font-semibold tracking-wide text-muted uppercase'
+export const captionClass = 'text-caption font-semibold tracking-wide text-muted uppercase'
+
+// smallButtonClass is a bordered button for a dense bar, such as a peek's actions: shorter
+// and smaller than buttonClass.
+export const smallButtonClass =
+  'inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-surface'
+
+// ghostButtonClass is a borderless button as tall as smallButtonClass, in the muted color
+// that brightens on hover and while the menu it opens is open.
+export const ghostButtonClass =
+  'inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text'
+
+// The icon buttons: a square holding an icon alone, named by its aria-label. Each is
+// muted and brightens on hover. iconButtonClass is the usual size, smallIconButtonClass
+// the one for a dense row, and dangerIconButtonClass a remove button, which turns the
+// danger color on hover. toolbarButtonClass is a toolbar's, which stays lit while the
+// panel it opens is open and holds a CountDot over its corner; toolbarButtonShape is the
+// same button without its colors, for one whose color says something, such as the API
+// budget's level, which adds its own text color. A button that can be disabled adds
+// disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent itself.
+export const iconButtonClass =
+  'flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text'
+export const smallIconButtonClass =
+  'flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text'
+export const dangerIconButtonClass =
+  'flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger'
+export const toolbarButtonClass =
+  'relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text'
+export const toolbarButtonShape =
+  'flex size-8 items-center justify-center rounded-md transition-colors hover:bg-raised aria-expanded:bg-raised'
+
+// linkClass is a link or a link-like button in the accent color; inkLinkClass one in the
+// text's own color that takes the accent on hover, such as an item's title.
+export const linkClass = 'font-medium text-accent hover:underline'
+export const inkLinkClass = 'text-text hover:text-accent hover:underline'
+
+// modalClass is a modal dialog's card, dimming the page behind it; the caller adds its
+// width, such as max-w-md. sheetDialogClass is the larger, unpadded shell of a sheet or a
+// picker, which adds its own size, overflow, and layout.
+export const modalClass =
+  'm-auto w-[calc(100%-2rem)] rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-scrim'
+export const sheetDialogClass =
+  'm-auto rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-scrim'
+
+// toolbarClass is the bar across the top of the window: its height, its edge, room for
+// the window's buttons on its left, and dragging the window by it.
+export const toolbarClass =
+  'flex h-[52px] shrink-0 items-center gap-4 border-b border-border bg-surface pr-3 pl-[80px] select-none [--wails-draggable:drag]'
 
 // switchClass draws a native checkbox as a switch; give it role="switch" so assistive
 // tech announces on and off.
 const switchClass =
-  'relative h-5 w-9 shrink-0 appearance-none rounded-full bg-border transition-colors checked:bg-accent before:absolute before:top-0.5 before:left-0.5 before:size-4 before:rounded-full before:bg-white before:shadow before:transition-transform checked:before:translate-x-4 disabled:opacity-60'
+  'relative h-5 w-9 shrink-0 appearance-none rounded-full bg-border transition-colors checked:bg-accent before:absolute before:top-0.5 before:left-0.5 before:size-4 before:rounded-full before:bg-paper before:shadow before:transition-transform checked:before:translate-x-4 disabled:opacity-disabled'
 
 export interface SegmentOption<T extends string> {
   value: T
@@ -85,7 +132,7 @@ export function Segmented<T extends string>({
   describedBy,
 }: SegmentedProps<T>) {
   const name = useId()
-  const pad = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-[0.8125rem]'
+  const pad = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-body'
 
   return (
     <div
@@ -98,7 +145,7 @@ export function Segmented<T extends string>({
         <label
           key={o.value}
           title={o.title}
-          className={`relative flex items-center gap-1.5 rounded-[5px] ${pad} font-medium whitespace-nowrap text-muted transition-colors select-none hover:text-text has-checked:bg-raised has-checked:text-text has-checked:shadow-sm has-focus-visible:outline-2 has-focus-visible:outline-accent ${disabled || o.disabled === true ? 'opacity-60' : 'cursor-pointer'}`}
+          className={`relative flex items-center gap-1.5 rounded-[5px] ${pad} font-medium whitespace-nowrap text-muted transition-colors select-none hover:text-text has-checked:bg-raised has-checked:text-text has-checked:shadow-sm has-focus-visible:outline-2 has-focus-visible:outline-accent ${disabled || o.disabled === true ? 'opacity-disabled' : 'cursor-pointer'}`}
         >
           <input
             type="radio"
@@ -242,6 +289,31 @@ export function fromTriState(v: TriState): boolean | null {
   return v === 'on'
 }
 
+interface ErrorTextProps {
+  // id is what a control's aria-describedby points at, so the error is read with it.
+  id?: string | undefined
+  // error is why a change was refused; nothing shows while it is ''.
+  error: string
+  // className places the text, such as a margin.
+  className?: string
+  // children are fixed words the error follows, such as "Couldn't save: ", if any.
+  children?: ReactNode
+}
+
+// ErrorText is why a change was refused, announced as soon as it shows.
+export function ErrorText({ id, error, className = '', children }: ErrorTextProps) {
+  if (error === '') {
+    return null
+  }
+
+  return (
+    <p id={id} role="alert" className={`${className} text-xs text-danger`.trim()}>
+      {children}
+      {error}
+    </p>
+  )
+}
+
 export interface FieldProps {
   label: string
   // controlId is the id of the control the label names.
@@ -268,9 +340,7 @@ export function Field({ label, controlId, hint, error = '', aside, children }: F
       </div>
       {children}
       {error !== '' ? (
-        <p id={`${controlId}-error`} role="alert" className="text-xs text-danger">
-          {error}
-        </p>
+        <ErrorText id={`${controlId}-error`} error={error} />
       ) : (
         hint !== undefined && (
           <p id={`${controlId}-hint`} className="text-xs text-muted">

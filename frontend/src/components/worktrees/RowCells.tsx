@@ -2,7 +2,8 @@ import type { ReactNode } from 'react'
 
 import { brand } from '../../generated/brand'
 import { shortCommit } from '../../lib/git'
-import { capitalize, formatAge, formatAgo, formatFull } from '../../lib/time'
+import { capitalize, formatAge, formatAgo, formatFull, unixISO } from '../../lib/time'
+import { toneFill, toneText } from '../../lib/tone'
 import { useNow } from '../../lib/useNow'
 import type { RowWork } from '../../lib/useWorktrees'
 import {
@@ -19,6 +20,7 @@ import {
   type AgentLine,
   type ItemFacts,
   type KindIcon,
+  type Tone,
 } from '../../lib/worktreeParts'
 import { edgeTitle, laneOf, lanes, stateOf, workNotes, type StateGlyph, type WorkNote } from '../../lib/worktrees'
 import { openExternal, type AgentID, type AgentSession, type LinkedItem, type Worktree } from '../../platform'
@@ -48,8 +50,6 @@ import {
   itemCellClass,
   stateCellClass,
   tagClass,
-  toneBg,
-  toneText,
   workCellClass,
   workMarkClass,
 } from './layout'
@@ -84,20 +84,20 @@ export function Edge({ worktree }: { worktree: Worktree }) {
       aria-hidden="true"
       data-lane={lane}
       title={edgeTitle(worktree)}
-      className={`${edgeClass} ${toneBg[tone]} ${lane === 'running' ? 'motion-safe:animate-pulse' : ''}`}
+      className={`${edgeClass} ${toneFill[tone]} ${lane === 'running' ? 'motion-safe:animate-pulse' : ''}`}
     />
   )
 }
 
 // Glyph is the state's one mark.
-function Glyph({ glyph, tone }: { glyph: StateGlyph; tone: keyof typeof toneBg }) {
+function Glyph({ glyph, tone }: { glyph: StateGlyph; tone: Tone }) {
   const icon = 'size-3.5'
 
   switch (glyph) {
     case 'ping':
-      return <StatusDot color={toneBg[tone]} ping />
+      return <StatusDot color={toneFill[tone]} ping />
     case 'dot':
-      return <StatusDot color={toneBg[tone]} />
+      return <StatusDot color={toneFill[tone]} />
     case 'alert':
       return <AlertIcon className={icon} />
     case 'ghost':
@@ -225,7 +225,7 @@ function LinkedCell({ item, facts, copied }: LinkedCellProps) {
           title={`${checks.words}, as the inbox read them`}
           className="inline-flex shrink-0 cursor-help items-center px-1.5"
         >
-          <StatusDot color={toneBg[checks.tone]} ping={checks.pending} />
+          <StatusDot color={toneFill[checks.tone]} ping={checks.pending} />
           <span className="sr-only">{checks.words.toLowerCase()}</span>
         </span>
       )}
@@ -242,7 +242,7 @@ export function ItemCell({ worktree, facts }: ItemCellProps) {
 
   return (
     <span className={itemCellClass}>
-      <span title={worktree.displayPath} className="min-w-0 truncate font-mono text-[0.71875rem] text-muted">
+      <span title={worktree.displayPath} className="min-w-0 truncate font-mono text-meta text-muted">
         {folderOf(worktree)}
       </span>
       {worktree.legacy && (
@@ -358,10 +358,10 @@ function AgentWords({ line }: { line: AgentLine }) {
 
       return (
         <>
-          <StatusDot color={toneBg[tone]} ping={ping} />
+          <StatusDot color={toneFill[tone]} ping={ping} />
           <span className="min-w-0 truncate">
             <span className="font-medium text-text">{line.name}</span>
-            {line.version !== '' && <span className="font-mono text-[0.6875rem] @max-xl:hidden"> {line.version}</span>}
+            {line.version !== '' && <span className="font-mono text-caption @max-xl:hidden"> {line.version}</span>}
             {' · '}
             <span className={toneText[tone]}>
               {line.state === '' ? `pid ${String(line.pid)}` : stateWords[line.state]}
@@ -413,7 +413,7 @@ export function AgeCell({ worktree }: { worktree: Worktree }) {
     return null
   }
 
-  const iso = new Date(worktree.lastCommitUnix * 1000).toISOString()
+  const iso = unixISO(worktree.lastCommitUnix)
 
   return (
     <span title={`Last commit: ${formatFull(iso)}`} className={ageCellClass}>

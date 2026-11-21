@@ -161,7 +161,7 @@ func (e *Engine) runOnRoutine(ctx context.Context, id int64) (*pass, *routineRun
 // ran, or that already matched when the user chose only what changes from now on, opened
 // again.
 func (p *pass) runOn(ctx context.Context, r *routineRun, f facts.Facts) (int64, error) {
-	d := eval.Evaluate(r.spec, f, p.historyOf(r, f.Item.ID), p.now)
+	d := r.decide(f, p.historyOf(r, f.Item.ID), p.now)
 	if r.handsOff[f.Item.ID] || d.Match != eval.Yes {
 		return 0, nil
 	}

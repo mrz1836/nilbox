@@ -44,7 +44,7 @@ function TemplateCard({ template: t, onPick, withWhy }: TemplateCardProps) {
 
   return (
     <li
-      className={`relative ${withWhy ? 'row-span-3' : 'row-span-2'} grid min-w-0 grid-rows-subgrid gap-y-2.5 rounded-lg border border-border bg-surface p-4 transition-colors hover:border-accent/50 hover:bg-raised`}
+      className={`relative ${withWhy ? 'row-span-3' : 'row-span-2'} grid min-w-0 grid-rows-subgrid gap-y-2.5 rounded-lg border border-border bg-surface p-4 transition-colors hover:border-accent/45 hover:bg-raised`}
     >
       <button
         type="button"
@@ -65,13 +65,13 @@ function TemplateCard({ template: t, onPick, withWhy }: TemplateCardProps) {
         </span>
         <span
           id={`${id}-mode`}
-          className="shrink-0 rounded-full border border-border px-2 text-[0.6875rem] leading-[1.125rem] font-medium whitespace-nowrap text-muted"
+          className="shrink-0 rounded-full border border-border px-2 text-caption leading-[1.125rem] font-medium whitespace-nowrap text-muted"
         >
           {modeLabels[t.suggests]}
         </span>
       </div>
       <div className="flex min-w-0 flex-col gap-1.5">
-        <p id={`${id}-summary`} className="text-[0.8125rem] leading-relaxed text-muted">
+        <p id={`${id}-summary`} className="text-body leading-relaxed text-muted">
           {t.summary}
         </p>
         {t.needs.length > 0 && (

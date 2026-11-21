@@ -12,7 +12,7 @@ import {
 import { remToPx } from '../lib/rem'
 import { usePopover } from '../lib/usePopover'
 import { ChevronRightIcon } from './icons'
-import { PopoverPanel } from './PopoverPanel'
+import { panelClass, PopoverPanel } from './PopoverPanel'
 
 export interface MenuItem {
   label: string
@@ -69,7 +69,7 @@ export interface MenuButtonProps {
 const noItems: readonly MenuItem[] = []
 
 const itemClass =
-  'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm whitespace-nowrap hover:bg-raised focus:bg-raised focus-visible:outline-none disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent aria-expanded:bg-raised'
+  'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm whitespace-nowrap hover:bg-raised focus:bg-raised focus-visible:outline-none disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent aria-expanded:bg-raised'
 
 // submenuGap is the least room a submenu keeps from the window's edges before it opens
 // the other way, in rem, so it follows the text size.
@@ -180,7 +180,7 @@ function Submenu({ id, label, items, focusFirst, onChoose, onBack }: SubmenuProp
       aria-label={label}
       tabIndex={-1}
       onKeyDown={onKeyDown}
-      className={`absolute z-10 min-w-48 rounded-lg border border-border bg-surface p-1.5 whitespace-normal shadow-xl shadow-black/20 outline-none motion-safe:animate-pop-in ${x} ${y}`}
+      className={`${panelClass} absolute layer-popover min-w-48 p-1.5 whitespace-normal outline-none motion-safe:animate-pop-in ${x} ${y}`}
     >
       <MenuItems items={items} onChoose={onChoose} />
     </div>
@@ -225,7 +225,7 @@ function MenuItems({ items, onChoose }: MenuItemsProps) {
         {item.section !== undefined && (
           <p
             aria-hidden="true"
-            className="px-2.5 pt-1 pb-1 text-[0.6875rem] font-medium tracking-wide text-muted uppercase"
+            className="px-2.5 pt-1 pb-1 text-caption font-medium tracking-wide text-muted uppercase"
           >
             {item.section}
           </p>
@@ -405,7 +405,7 @@ export function MenuButton({
       <PopoverPanel
         state={popover}
         align={align}
-        className={`z-40 whitespace-normal shadow-black/20 ${panelClassName} ${header === undefined ? 'p-1.5' : ''}`}
+        className={`layer-popover whitespace-normal ${panelClassName} ${header === undefined ? 'p-1.5' : ''}`}
       >
         {typeof header === 'function'
           ? header(() => {

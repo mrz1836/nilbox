@@ -265,8 +265,8 @@ func readLevel(level map[reflect.Type]int, visited map[reflect.Type]bool) (
 
 		visited[st] = true
 
-		for i := range st.NumField() {
-			f, embeds, ok := fieldName(st.Field(i))
+		for field := range st.Fields() {
+			f, embeds, ok := fieldName(field)
 
 			switch {
 			case !ok:

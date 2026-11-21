@@ -115,7 +115,7 @@ function SettledRow({ clear }: { clear: SettledClear }) {
           <span className="flex items-baseline justify-between gap-3">
             <span className={`truncate text-xs font-medium ${failed ? 'text-danger' : 'text-muted'}`}>{outcome}</span>
             <span title={formatFull(clear.at)} className="shrink-0">
-              <RelativeTime iso={clear.at} show={formatAgo} className="text-[0.6875rem] text-muted tabular-nums" />
+              <RelativeTime iso={clear.at} show={formatAgo} className="text-caption text-muted tabular-nums" />
             </span>
           </span>
           <span className="mt-0.5 block truncate text-sm">{clear.title}</span>

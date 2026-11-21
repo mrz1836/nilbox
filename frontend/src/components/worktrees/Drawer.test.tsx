@@ -5,14 +5,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../../generated/brand'
 import type { DetailsRead } from '../../lib/useWorktreeDetails'
 import type { ItemFacts } from '../../lib/worktreeParts'
-import type { AgentID, AgentSession, Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
+import type { AgentSession, Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
 import { FIXED_NOW, isoAgo, renderAt } from '../../test/clock'
 import {
+  agentName,
   agentSession,
   copiedWorktree,
   copyComparison,
   item,
   linkedItem,
+  managed,
   ownBranch,
   partlyCopiedWorktree,
   recordedWorktree,
@@ -38,13 +40,7 @@ function unixAgo(s: number): number {
   return Math.floor(now.getTime() / 1000) - s
 }
 
-const agentName = (id: AgentID) => (id === 'codex' ? 'Codex' : 'Claude')
 const er = worktreeRepo()
-
-// managed is a worktree's path under the managed root.
-function managed(name: string): string {
-  return `~/projects/.${brand.slug}/worktrees/example-repo/${name}`
-}
 
 // row is example-repo's pr-7, the app's, for its pull request, open, clean, and at its head.
 function row(overrides: Partial<Worktree> = {}): Worktree {

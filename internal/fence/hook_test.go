@@ -15,6 +15,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/fence"
 	"github.com/mrz1836/nilbox/internal/sensitive"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 func mkdir(t *testing.T, dir string) {
@@ -177,7 +178,7 @@ func TestTheHookModeWritesNothingButItsRefusals(t *testing.T) {
 	t.Parallel()
 
 	r := newHookRun(t, fence.EditTestPush)
-	before := listTree(t, filepath.Dir(r.dir))
+	before := testutil.Tree(t, filepath.Dir(r.dir))
 
 	for _, c := range []struct {
 		tool  string
@@ -190,7 +191,7 @@ func TestTheHookModeWritesNothingButItsRefusals(t *testing.T) {
 		r.call(t, []string{fence.HookArg(r.dir)}, c.tool, c.input)
 	}
 
-	assert.Equal(t, before, listTree(t, filepath.Dir(r.dir)), "a call let through writes nothing")
+	assert.Equal(t, before, testutil.Tree(t, filepath.Dir(r.dir)), "a call let through writes nothing")
 
 	count, last := fence.ReadDenials(r.dir)
 	assert.Zero(t, count)
@@ -203,7 +204,7 @@ func TestTheHookModeWritesNothingButItsRefusals(t *testing.T) {
 		map[string]any{"command": "*** Begin Patch\n*** Update File: AGENTS.md\n@@\n+x\n*** End Patch"})
 	require.Equal(t, 2, code)
 
-	after := listTree(t, filepath.Dir(r.dir))
+	after := testutil.Tree(t, filepath.Dir(r.dir))
 	assert.Equal(t, sortedCopy(append(slices.Clone(before), filepath.Join(r.dir, fence.DenialsFile))), sortedCopy(after),
 		"a refusal writes only its line in the run's own log, which an agent's stream may never show")
 
@@ -225,7 +226,7 @@ func TestTheHookModeWritesNothingButItsRefusals(t *testing.T) {
 	assert.NoDirExists(t, missing, "a run's folder is never made by its hook")
 }
 
-// sortedCopy returns list sorted, as listTree's walk orders a folder's names.
+// sortedCopy returns list sorted, as testutil.Tree's walk orders a folder's names.
 func sortedCopy(list []string) []string {
 	out := slices.Clone(list)
 	slices.Sort(out)
@@ -260,21 +261,6 @@ func TestTheRefusalsLogIsBounded(t *testing.T) {
 	count, last = fence.ReadDenials(t.TempDir())
 	assert.Zero(t, count)
 	assert.NotNil(t, last)
-}
-
-// listTree lists every path under root.
-func listTree(t *testing.T, root string) []string {
-	t.Helper()
-
-	var out []string
-
-	require.NoError(t, filepath.WalkDir(root, func(path string, _ os.DirEntry, err error) error {
-		out = append(out, path)
-
-		return err
-	}))
-
-	return out
 }
 
 func TestCheckChangedFindsAgentFiles(t *testing.T) {

@@ -2,6 +2,8 @@ package inbox
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -318,6 +320,59 @@ func TestMergeQueueKeysARepositoryIgnoringCase(t *testing.T) {
 	assert.Equal(t, []string{"main", "release"}, got[0].bases)
 	assert.Equal(t, "Acme-Org/Example-Repo", got[0].repo.String(), "named as first noted")
 	assert.True(t, got[1].anyBase)
+}
+
+func TestMergeKeysOrderByAccountThenRepository(t *testing.T) {
+	t.Parallel()
+
+	key := func(account int64, name string) mergeKey {
+		return mergeKeyOf(account, repo.Name{Owner: acmeOrg, Repo: name})
+	}
+
+	// The accounts at either end lie far enough apart that one minus the other overflows.
+	for _, c := range []struct {
+		a, b mergeKey
+		want int
+	}{
+		{key(1, exampleRepo), key(2, exampleRepo), -1},
+		{key(2, exampleRepo), key(1, exampleRepo), 1},
+		{key(1, exampleRepo), key(1, "other-repo"), -1},
+		{key(1, "other-repo"), key(1, exampleRepo), 1},
+		{key(1, exampleRepo), key(1, exampleRepo), 0},
+		{key(math.MaxInt64, exampleRepo), key(-1, exampleRepo), 1},
+		{key(-1, exampleRepo), key(math.MaxInt64, exampleRepo), -1},
+		{key(math.MinInt64, exampleRepo), key(1, exampleRepo), -1},
+		{key(1, exampleRepo), key(math.MinInt64, exampleRepo), 1},
+		{key(math.MinInt64, exampleRepo), key(math.MaxInt64, exampleRepo), -1},
+		{key(math.MaxInt64, exampleRepo), key(math.MinInt64, exampleRepo), 1},
+	} {
+		assert.Equal(t, c.want, compareKeys(c.a, c.b), "%d/%s against %d/%s",
+			c.a.accountID, c.a.repo, c.b.accountID, c.b.repo)
+	}
+
+	// The follows due come out in key order. A comparator that subtracts orders these
+	// accounts 1, math.MaxInt64, math.MinInt64: wrong, but consistent over every pair, so
+	// every sort agrees on it whatever order the queue's map yields the keys in.
+	q := newMergeQueue()
+	at := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
+
+	for i, account := range []int64{math.MaxInt64, 1, math.MinInt64} {
+		q.add(fmt.Sprintf("N%d", i), account, repo.Name{Owner: acmeOrg, Repo: exampleRepo}, "main", at)
+	}
+
+	q.add("N9", 1, repo.Name{Owner: acmeOrg, Repo: "other-repo"}, "main", at)
+
+	due := q.due(at.Add(mergeSettle))
+
+	order := make([]string, 0, len(due))
+	for _, f := range due {
+		order = append(order, fmt.Sprintf("%d %s", f.key.accountID, f.repo.Repo))
+	}
+
+	assert.Equal(t, []string{
+		fmt.Sprintf("%d %s", int64(math.MinInt64), exampleRepo), "1 " + exampleRepo, "1 other-repo",
+		fmt.Sprintf("%d %s", int64(math.MaxInt64), exampleRepo),
+	}, order, "the follows run by account, then repository")
 }
 
 func TestMergeQueueKeepsAMergeNotedDuringItsRound(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -150,9 +151,7 @@ func (s *Service) PicturesFor(ctx context.Context, people []string, bots []Bot) 
 		}
 	}
 
-	for key, picture := range got {
-		have.pictures[key] = picture
-	}
+	maps.Copy(have.pictures, got)
 
 	return named(a.asked, have.pictures), nil
 }

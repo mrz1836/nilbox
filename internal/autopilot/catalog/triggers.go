@@ -1,6 +1,10 @@
 package catalog
 
-import "github.com/mrz1836/nilbox/internal/item"
+import (
+	"slices"
+
+	"github.com/mrz1836/nilbox/internal/item"
+)
 
 // Event is what makes a routine fire: a state Autopilot checks on each refresh, since
 // it polls rather than hears webhooks, with a fire key that makes it act once per
@@ -118,13 +122,7 @@ type Trigger struct {
 
 // Applies reports whether the trigger fires for an item of kind.
 func (t Trigger) Applies(kind item.Kind) bool {
-	for _, k := range t.Kinds {
-		if k == kind {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(t.Kinds, kind)
 }
 
 // Takes reports whether the trigger takes an option.

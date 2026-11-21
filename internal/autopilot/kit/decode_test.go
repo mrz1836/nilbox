@@ -42,7 +42,7 @@ func TestAProposalIsReadAsItEncodesAndReadsBack(t *testing.T) {
 	assert.Equal(t, autopilotprefs.ModeAuto, p.Routines[0].Mode)
 	assert.Nil(t, p.Routines[0].Spec.Requires, "an empty list encoding leaves out is read as none")
 	assert.Nil(t, p.Routines[0].Spec.Steps[0].Agent.Fence.Allow)
-	assert.Equal(t, someNumber(4.5), p.Routines[0].Spec.Steps[0].Agent.Fence.Budget.USD)
+	assert.Equal(t, new(4.5), p.Routines[0].Spec.Steps[0].Agent.Fence.Budget.USD)
 	assert.Equal(t, &autopilotprefs.DailyCap{Amount: 5, Unit: autopilotprefs.UnitUSD}, p.Settings.DailyCap)
 	assert.Equal(t, []string{"renovate[bot]"}, p.Rules.Trust)
 	assert.Nil(t, p.Rules.Mute)
@@ -78,7 +78,7 @@ func TestCheckRefusesEnabledAndPaused(t *testing.T) {
 	require.ErrorContains(t, err, `a key isn't one the format has, spelled exactly: "Enabled"`)
 
 	for _, field := range []string{"enabled", "paused"} {
-		data, err := json.Marshal(kit.SettingsChange{AgentsAtOnce: someNumber(1)})
+		data, err := json.Marshal(kit.SettingsChange{AgentsAtOnce: new(1)})
 		require.NoError(t, err)
 		assert.NotContains(t, string(data), field, "the settings change has no field for it")
 	}

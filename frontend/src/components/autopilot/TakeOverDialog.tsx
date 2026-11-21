@@ -4,6 +4,7 @@ import { brand } from '../../generated/brand'
 import { useMutation } from '../../lib/useMutation'
 import { takeOverRun, type LaunchHold, type LaunchResult, type TakeOverRequest } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
+import { ErrorText } from '../controls'
 import { LaunchHoldDialog } from '../LaunchHoldDialog'
 
 export interface TakeOverDialogProps {
@@ -123,11 +124,7 @@ export function TakeOverDialog({
             </span>
           </span>
         </label>
-        {taker.error !== '' && (
-          <p role="alert" className="text-xs text-danger">
-            {taker.error}
-          </p>
-        )}
+        <ErrorText error={taker.error} />
       </div>
     </ConfirmDialog>
   )

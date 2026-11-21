@@ -372,6 +372,22 @@ func (r *rig) profileOwn(model, effort string) {
 	r.agents.start.Model, r.agents.start.Effort = model, effort
 }
 
+// turnDone returns what closes once the turn running now has ended, closed already when
+// none runs.
+func (s *Service) turnDone() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.live == nil {
+		done := make(chan struct{})
+		close(done)
+
+		return done
+	}
+
+	return s.live.done
+}
+
 // waitTurn waits for the turn running now to end, failing the test after a long while.
 func (r *rig) waitTurn() {
 	r.t.Helper()

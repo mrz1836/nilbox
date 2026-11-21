@@ -18,7 +18,7 @@ type FilterBy = (key: string, value: string) => void
 
 // chipClass is a label chip's shape; a chip that filters is a button of the same shape.
 const chipClass =
-  'inline-flex max-w-40 shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[0.6875rem] text-text'
+  'inline-flex max-w-40 shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-caption text-text'
 
 // LabelChip is one label with its GitHub color: a button that filters the inbox by it,
 // when the card offers that, or else a plain chip.
@@ -59,7 +59,7 @@ export function LabelChip({ label, onFilterBy }: { label: Label; onFilterBy?: Fi
 export function FieldPill({ field, wide = false }: { field: ProjectField; wide?: boolean }) {
   return (
     <span
-      className={`inline-flex ${wide ? 'max-w-full' : 'max-w-24'} shrink-0 items-center rounded-full border px-1.5 text-[0.6875rem] leading-4 font-medium text-text ${field.color === '' ? 'border-border' : ''}`}
+      className={`inline-flex ${wide ? 'max-w-full' : 'max-w-24'} shrink-0 items-center rounded-full border px-1.5 text-caption leading-4 font-medium text-text ${field.color === '' ? 'border-border' : ''}`}
       style={field.color === '' ? undefined : { borderColor: field.color + fieldEdge }}
     >
       <span className="truncate">{field.value}</span>
@@ -72,7 +72,7 @@ export function FieldPill({ field, wide = false }: { field: ProjectField; wide?:
 export function StatusPill({ project }: { project: Project }) {
   return (
     <span
-      className={`inline-flex max-w-36 shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-[0.6875rem] font-medium text-text ${project.statusColor === '' ? 'bg-raised' : ''}`}
+      className={`inline-flex max-w-36 shrink-0 items-center gap-1 rounded-full px-1.5 py-px text-caption font-medium text-text ${project.statusColor === '' ? 'bg-raised' : ''}`}
       style={project.statusColor === '' ? undefined : { backgroundColor: project.statusColor + statusTint }}
     >
       <span

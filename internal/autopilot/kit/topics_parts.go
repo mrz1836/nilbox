@@ -88,8 +88,8 @@ func searchKeyWords() []string {
 func keyWords(t reflect.Type, words map[string]string) []string {
 	out := make([]string, 0, t.NumField())
 
-	for i := range t.NumField() {
-		key, _, ok := jsonKeyOf(t.Field(i))
+	for field := range t.Fields() {
+		key, _, ok := jsonKeyOf(field)
 		if ok && words[key] != "" {
 			out = append(out, tick(key)+": "+words[key])
 		}
@@ -233,9 +233,9 @@ func optionLine(o catalog.OptionInfo) string {
 func triggerOptionKind(o catalog.Option) reflect.Kind {
 	t := reflect.TypeFor[spec.Trigger]()
 
-	for i := range t.NumField() {
-		if key, _, ok := jsonKeyOf(t.Field(i)); ok && key == string(o) {
-			return elemOf(t.Field(i).Type).Kind()
+	for field := range t.Fields() {
+		if key, _, ok := jsonKeyOf(field); ok && key == string(o) {
+			return elemOf(field.Type).Kind()
 		}
 	}
 

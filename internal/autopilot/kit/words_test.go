@@ -248,8 +248,8 @@ func wordsStructs(root reflect.Type) []reflect.Type {
 	out := []reflect.Type{root}
 
 	for i := 0; i < len(out); i++ {
-		for j := range out[i].NumField() {
-			if inner, _ := wordsElem(out[i].Field(j).Type); inner.Kind() == reflect.Struct && !slices.Contains(out, inner) {
+		for field := range out[i].Fields() {
+			if inner, _ := wordsElem(field.Type); inner.Kind() == reflect.Struct && !slices.Contains(out, inner) {
 				out = append(out, inner)
 			}
 		}

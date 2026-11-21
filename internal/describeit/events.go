@@ -27,10 +27,10 @@ func (s *Service) Events(_ context.Context, id string, turn int, after int64) (r
 		s.mu.Unlock()
 
 		if parser == nil {
-			return emptyPage(), nil
+			return runevent.EmptyPage(), nil
 		}
 
-		return listedPage(parser.Page(after)), nil
+		return parser.Page(after).Listed(), nil
 	}
 
 	known := s.knownTurnLocked(id, turn)
@@ -38,14 +38,14 @@ func (s *Service) Events(_ context.Context, id string, turn int, after int64) (r
 	s.mu.Unlock()
 
 	if !known {
-		return emptyPage(), uierr.New("That turn isn't one of Describe it's any more.",
+		return runevent.EmptyPage(), uierr.New("That turn isn't one of Describe it's any more.",
 			fmt.Errorf("%w: turn %d of %q", errNoConversation, turn, id))
 	}
 
 	p := stream.Claude(s.workDir())
 	readAll(p, s.turnLog(id, turn))
 
-	page := listedPage(p.Page(after))
+	page := p.Page(after).Listed()
 	page.Done = true
 
 	return page, nil
@@ -65,22 +65,4 @@ func (s *Service) knownTurnLocked(id string, n int) bool {
 	r, err := s.readRecord(id)
 
 	return err == nil && r.turn(n) != nil
-}
-
-// emptyPage is a page with nothing on it, every list there.
-func emptyPage() runevent.Page {
-	return runevent.Page{Events: []runevent.Event{}, Progress: runevent.Progress{Todos: []runevent.Todo{}}}
-}
-
-// listedPage returns page with its lists never nil, as the window gets them.
-func listedPage(page runevent.Page) runevent.Page {
-	if page.Events == nil {
-		page.Events = []runevent.Event{}
-	}
-
-	if page.Progress.Todos == nil {
-		page.Progress.Todos = []runevent.Todo{}
-	}
-
-	return page
 }

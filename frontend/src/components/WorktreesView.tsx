@@ -7,6 +7,7 @@ import { filterWorktrees } from '../lib/worktreeFilter'
 import { factsOf, itemFacts, liveSessions } from '../lib/worktreeParts'
 import { attentionSort } from '../lib/worktrees'
 import type { AgentID, BranchRules, InboxItem, LinkedItem, SessionsSnapshot } from '../platform'
+import { linkClass } from './controls'
 import { ErrorBanner } from './ErrorBanner'
 import type { LaunchPlace } from './LaunchControls'
 import { BranchResults } from './worktrees/BranchResults'
@@ -180,12 +181,12 @@ export function WorktreesView({
         {snapshot === null
           ? loadError === '' && <Skeleton />
           : repos.length === 0 && (
-              <p className="px-2 text-[0.84375rem] text-muted">
+              <p className="px-2 text-body-lg text-muted">
                 No clone {whereClones(snapshot.roots)} has linked worktrees.
               </p>
             )}
         {repos.length > 0 && filter?.matches === 0 && (
-          <p className="px-2 text-[0.84375rem] text-muted">
+          <p className="px-2 text-body-lg text-muted">
             No worktree matches “{query.trim()}”.
             {onQuery !== undefined && (
               <>
@@ -195,7 +196,7 @@ export function WorktreesView({
                   onClick={() => {
                     onQuery('')
                   }}
-                  className="text-accent hover:underline"
+                  className={linkClass}
                 >
                   Clear the filter
                 </button>

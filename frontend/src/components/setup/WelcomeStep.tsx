@@ -8,7 +8,7 @@ import { cameBack } from '../../lib/restored'
 import { welcomeText } from '../../lib/setup'
 import type { Theme } from '../../lib/theme'
 import { getSettings, type Info, type Settings } from '../../platform'
-import { buttonClass, primaryButtonClass, quietButtonClass } from '../controls'
+import { buttonClass, ErrorText, primaryButtonClass, quietButtonClass } from '../controls'
 import { ChevronRightIcon, ImportIcon } from '../icons'
 import { LogoMark } from '../Logo'
 import { ImportBackupDialog } from '../settings/ImportBackupDialog'
@@ -174,7 +174,7 @@ export function WelcomeStep({
       <Greeting variant={variant} info={info} />
 
       {restored ? (
-        <div className="nil-rise mt-8 flex w-full max-w-md flex-col items-center gap-4 rounded-lg border border-success/50 bg-success/10 px-5 py-4">
+        <div className="nil-rise mt-8 flex w-full max-w-md flex-col items-center gap-4 rounded-lg border border-success/45 bg-success/10 px-5 py-4">
           <p role="status" className="text-sm font-medium">
             Your setup is back: review the steps, or finish now.
           </p>
@@ -220,11 +220,7 @@ export function WelcomeStep({
           <button type="button" onClick={onSkip} className={`${quietButtonClass} mt-4`}>
             Skip setup
           </button>
-          {failure !== '' && (
-            <p role="alert" className="mt-3 text-xs text-danger">
-              {failure}
-            </p>
-          )}
+          <ErrorText error={failure} className="mt-3" />
         </>
       )}
 

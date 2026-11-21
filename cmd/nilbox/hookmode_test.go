@@ -17,6 +17,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/fence"
 	"github.com/mrz1836/nilbox/internal/mcpserver"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // TestMain runs this test binary, which holds the build's own main, as an agent runs the
@@ -28,21 +29,6 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(m.Run())
-}
-
-// listFiles lists every path under root.
-func listFiles(t *testing.T, root string) []string {
-	t.Helper()
-
-	var out []string
-
-	require.NoError(t, filepath.WalkDir(root, func(path string, _ os.DirEntry, err error) error {
-		out = append(out, path)
-
-		return err
-	}))
-
-	return out
 }
 
 // clientEnv is the environment the tests start the executable in, as an agent's client
@@ -80,8 +66,7 @@ func hookCall(t *testing.T, exe, home, runDir, tool string, input map[string]any
 
 	err = cmd.Run()
 
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 		return exit.ExitCode(), stdout.String(), stderr.String()
 	}
 
@@ -111,7 +96,7 @@ func TestTheHookModeDecidesAndOpensNothing(t *testing.T) {
 	require.NoError(t, fence.WriteRun(runDir, f))
 	require.NoError(t, os.WriteFile(f.Policy.Canary.Proof, nil, 0o600))
 
-	before := listFiles(t, root)
+	before := testutil.Tree(t, root)
 
 	tests := []struct {
 		name  string
@@ -139,15 +124,15 @@ func TestTheHookModeDecidesAndOpensNothing(t *testing.T) {
 	assert.Equal(t, 2, code, "a run with no policy refuses every call")
 	assert.Contains(t, stderr, "fence refused")
 
-	assert.Equal(t, []string{home}, listFiles(t, home), "the hook mode creates nothing in home: no data, no logs")
+	assert.Equal(t, []string{home}, testutil.Tree(t, home), "the hook mode creates nothing in home: no data, no logs")
 
 	denials := filepath.Join(runDir, fence.DenialsFile)
-	assert.Equal(t, sortedFiles(append(slices.Clone(before), denials)), sortedFiles(listFiles(t, root)),
+	assert.Equal(t, sortedFiles(append(slices.Clone(before), denials)), sortedFiles(testutil.Tree(t, root)),
 		"nor in the run's folder or the worktree, but its own log of the calls it refused")
 
 	count, _ := fence.ReadDenials(runDir)
 	assert.Equal(t, 2, count, "the forced push and the agent file")
-	assert.False(t, slices.ContainsFunc(listFiles(t, root), func(p string) bool { return strings.HasSuffix(p, ".log") }))
+	assert.False(t, slices.ContainsFunc(testutil.Tree(t, root), func(p string) bool { return strings.HasSuffix(p, ".log") }))
 }
 
 // sortedFiles returns paths sorted, as a walk orders a folder's names.

@@ -122,7 +122,7 @@ func TestTheRunViewReadsABackgroundRunsTimelineAndChangesFromItsRunner(t *testin
 	page, err = r.svc.RunEvents(t.Context(), runID, 0)
 	require.ErrorIs(t, err, errBroken)
 	assert.Equal(t, "This run's events couldn't be read.", uierr.Message(err))
-	assert.Equal(t, emptyPage(), page)
+	assert.Equal(t, runevent.EmptyPage(), page)
 
 	_, err = r.svc.RunEventsBefore(t.Context(), runID, 9)
 	assert.Equal(t, "This run's earlier events couldn't be read.", uierr.Message(err))
@@ -145,7 +145,7 @@ func TestARunNoRunnerHereFollowsHasAnEmptyTimeline(t *testing.T) {
 	// panel, and a script's its run in Scripts → Runs.
 	page, err := r.svc.RunEvents(t.Context(), terminal, 0)
 	require.NoError(t, err)
-	assert.Equal(t, emptyPage(), page, "still going")
+	assert.Equal(t, runevent.EmptyPage(), page, "still going")
 
 	page, err = r.svc.RunEventsBefore(t.Context(), script, 0)
 	require.NoError(t, err)

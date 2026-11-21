@@ -6,7 +6,7 @@ import { useQuery } from '../../lib/useQuery'
 import { agentVersions, type AgentInfo, type Profile } from '../../platform'
 import { chipClass } from '../controls'
 import { headingMatchClass, useSetting } from './match'
-import { Group, Note } from './rows'
+import { Group, groupClass, Note } from './rows'
 
 // permissionLabel names a profile's permission mode for people, in its agent's words. A
 // mode the agent does not list shows as stored.
@@ -106,10 +106,7 @@ function AgentProfiles({ agent, version, profiles }: AgentProfilesProps) {
           </p>
         </Group>
       ) : (
-        <ul
-          aria-label={`${agent.name} profiles`}
-          className="divide-y divide-border rounded-lg border border-border bg-surface"
-        >
+        <ul aria-label={`${agent.name} profiles`} className={groupClass}>
           {profiles.map((profile) => (
             <li key={profile.name} className="flex items-center justify-between gap-6 px-4 py-3">
               <div className="min-w-0">

@@ -180,20 +180,7 @@ VALUES (?, 1, 5, 'dismiss', ?)`, e.match, e.at)
 		Reversed: Reversal{RoutineID: 1, ItemID: 5, Action: catalog.StepDismiss},
 	}})
 
-	var reversed []int
-
-	rows, err := r.db.QueryContext(t.Context(), `SELECT match_id FROM autopilot_effects WHERE reversed_at IS NOT NULL`)
-	require.NoError(t, err)
-
-	defer func() { require.NoError(t, rows.Close()) }()
-
-	for rows.Next() {
-		var id int
-		require.NoError(t, rows.Scan(&id))
-		reversed = append(reversed, id)
-	}
-
-	require.NoError(t, rows.Err())
+	reversed := testutil.Column[int](t, r.db, `SELECT match_id FROM autopilot_effects WHERE reversed_at IS NOT NULL`)
 	assert.Equal(t, []int{1}, reversed, "the step applied after the user's restore keeps its Undo")
 }
 

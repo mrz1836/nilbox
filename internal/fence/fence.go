@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/textutil"
@@ -38,6 +39,10 @@ const (
 
 	// maxCommandRunes caps a routine's extra command.
 	maxCommandRunes = 200
+
+	// maxBranchBytes caps the branch a push names, as gitread caps the branch names it
+	// hands git.
+	maxBranchBytes = 255
 )
 
 var (
@@ -352,11 +357,42 @@ func PlainName(s string) bool {
 }
 
 // PlainBranch reports a branch name a push can name as it is: a plain name that is a
-// branch git would take, so HEAD:refs/heads/<branch> names that branch and no other ref.
+// branch git would take (gitBranch), so HEAD:refs/heads/<branch> names that branch and no
+// other ref.
 func PlainBranch(s string) bool {
-	return PlainName(s) && !strings.ContainsAny(s, ":") && !strings.Contains(s, "..") &&
-		!strings.Contains(s, "@{") && !strings.Contains(s, "//") && !strings.HasPrefix(s, "/") &&
-		!strings.HasSuffix(s, "/") && !strings.HasSuffix(s, ".") && !strings.HasSuffix(s, ".lock")
+	return PlainName(s) && gitBranch(s)
+}
+
+// gitBranch reports a branch name git takes, by the rules gitread holds every branch name
+// it hands git to (gitread.ValidBranch, which fence, a leaf, keeps its own copy of): not
+// "@" alone, no leading "-", no "..", "@{", whitespace, control characters, or any of
+// ~^:?*[\, no component that is empty, starts with ".", or ends in ".lock" or ".", and at
+// most maxBranchBytes bytes.
+func gitBranch(name string) bool {
+	if name == "" || name == "@" || len(name) > maxBranchBytes || strings.HasPrefix(name, "-") {
+		return false
+	}
+
+	if strings.Contains(name, "..") || strings.Contains(name, "@{") {
+		return false
+	}
+
+	if strings.ContainsAny(name, "~^:?*[\\") || strings.ContainsFunc(name, branchUnsafeRune) {
+		return false
+	}
+
+	return !slices.ContainsFunc(strings.Split(name, "/"), badBranchPart)
+}
+
+// branchUnsafeRune reports a rune a branch name may not hold: whitespace or a control
+// character.
+func branchUnsafeRune(r rune) bool {
+	return unicode.IsSpace(r) || unicode.IsControl(r)
+}
+
+// badBranchPart reports a part of a branch name between slashes that git refuses.
+func badBranchPart(part string) bool {
+	return part == "" || strings.HasPrefix(part, ".") || strings.HasSuffix(part, ".lock") || strings.HasSuffix(part, ".")
 }
 
 // checkTools keeps the repository's tools that are plain program names, refusing one the

@@ -110,7 +110,7 @@ export function Tabs<T extends string>({
             {count !== '' && (
               <span
                 data-filtered={filtered || undefined}
-                className={`rounded-full px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium tabular-nums ${filtered ? 'text-text outline-1 -outline-offset-1 outline-accent/60 outline-dashed' : selected ? 'bg-accent/15 text-text' : 'bg-raised text-muted'}`}
+                className={`rounded-full px-1.5 text-caption leading-[1.125rem] font-medium tabular-nums ${filtered ? 'text-text outline-1 -outline-offset-1 outline-accent/60 outline-dashed' : selected ? 'bg-accent/14 text-text' : 'bg-raised text-muted'}`}
               >
                 {count}
               </span>

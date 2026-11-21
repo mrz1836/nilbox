@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 import { renderMarkdown } from '../lib/markdown'
 import { openExternal } from '../platform'
 
-const BASE = 'markdown min-w-0 space-y-2 text-[0.8125rem] leading-relaxed break-words text-text'
+const BASE = 'markdown min-w-0 space-y-2 text-body leading-relaxed break-words text-text'
 
 export interface MarkdownProps {
   // text is the markdown, as GitHub holds it.

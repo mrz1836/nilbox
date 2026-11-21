@@ -355,23 +355,7 @@ func TestRefreshTriageAndSettingsWritesShareOnePool(t *testing.T) {
 	assert.Equal(t, "2026-01-10T12:00:00Z", snap.LastRefreshedAt)
 	assert.Empty(t, snap.LastError)
 
-	readings := map[string]int{}
-
-	rows, err := pool.QueryContext(ctx, "SELECT resource, COUNT(*) FROM rate_snapshots GROUP BY resource")
-	require.NoError(t, err)
-
-	for rows.Next() {
-		var (
-			resource string
-			n        int
-		)
-
-		require.NoError(t, rows.Scan(&resource, &n))
-		readings[resource] = n
-	}
-
-	require.NoError(t, rows.Err())
-	require.NoError(t, rows.Close())
+	readings := testutil.Map[string, int](t, pool, "SELECT resource, COUNT(*) FROM rate_snapshots GROUP BY resource")
 
 	// An item's own refresh stores nothing when a whole refresh that started after it
 	// stored the item first, so how many of their GraphQL readings were stored depends on

@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 
 import { logFailure } from '../lib/call'
-import { stateLabel, toneFill, toneOf, toneText, troubled, watched, worst } from '../lib/serviceStatus'
+import { stateLabel, toneOf, troubled, watched, worst } from '../lib/serviceStatus'
+import { toneFill, toneText } from '../lib/tone'
 import {
   bugReportURL,
   feedbackURL,

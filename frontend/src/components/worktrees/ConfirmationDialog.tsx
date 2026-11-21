@@ -93,7 +93,7 @@ function folderText(kind: Exclude<Single['kind'], 'force'>, fresh: Worktree): st
 const listBoxClass = 'mt-2 rounded-lg border border-border/70 bg-background px-2.5 py-1.5'
 
 const listHeadingClass =
-  'mb-1 flex flex-wrap items-center gap-x-1.5 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase'
+  'mb-1 flex flex-wrap items-center gap-x-1.5 text-caption font-semibold tracking-wide text-muted uppercase'
 
 const countClass = 'tracking-normal text-text tabular-nums'
 

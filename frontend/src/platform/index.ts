@@ -1086,7 +1086,6 @@ export const {
   SetGitHubNotificationSwitch: setGitHubNotificationSwitch,
   SetGitHubNotificationTrigger: setGitHubNotificationTrigger,
   SetGitHubNotificationAction: setGitHubNotificationAction,
-  SetGitHubCleanupCardDismissed: setGitHubCleanupCardDismissed,
   SetUpdateMode: setUpdateMode,
   SetAutopilotEnabled: setAutopilotEnabled,
   SetAutopilotPaused: setAutopilotPaused,

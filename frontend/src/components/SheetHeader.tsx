@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 
 import type { SheetBack, SheetStep } from '../lib/sheet'
 import { openExternal } from '../platform'
-import { quietButtonClass } from './controls'
+import { iconButtonClass, quietButtonClass } from './controls'
 import { ChevronLeftIcon, ChevronRightIcon, ExternalIcon, RefreshIcon, XIcon } from './icons'
 import { Spinner } from './Spinner'
 
@@ -33,8 +33,9 @@ export interface SheetHeaderProps {
   onClose: () => void
 }
 
-// iconButtonClass is the header's square icon buttons.
-const iconButtonClass = `${quietButtonClass} p-1`
+// offButtonClass is the header's icon button that turns off while it has nowhere to go: a
+// step at either end of the list, or Open on GitHub before the item has a page.
+const offButtonClass = `${iconButtonClass} disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent`
 
 // SheetHeader is the top of a sheet over the inbox: the item's title and what the sheet
 // says of it, where it sits in its list, and its buttons: the sheet's own, the way back to
@@ -97,7 +98,7 @@ export function SheetHeader({
           data-step="prev"
           disabled={prev === null}
           onClick={() => prev?.onStep()}
-          className={iconButtonClass}
+          className={offButtonClass}
         >
           <ChevronLeftIcon className="size-4" />
         </button>
@@ -108,7 +109,7 @@ export function SheetHeader({
           data-step="next"
           disabled={next === null}
           onClick={() => next?.onStep()}
-          className={iconButtonClass}
+          className={offButtonClass}
         >
           <ChevronRightIcon className="size-4" />
         </button>
@@ -124,7 +125,7 @@ export function SheetHeader({
               onRefresh()
             }
           }}
-          className={`${iconButtonClass} aria-disabled:cursor-default aria-disabled:opacity-60`}
+          className={`${iconButtonClass} aria-disabled:cursor-default aria-disabled:opacity-disabled`}
         >
           <RefreshIcon className={`size-4 ${checking ? 'motion-safe:animate-spin' : ''}`} />
         </button>
@@ -136,7 +137,7 @@ export function SheetHeader({
           onClick={() => {
             openExternal(url)
           }}
-          className={iconButtonClass}
+          className={offButtonClass}
         >
           <ExternalIcon className="size-4" />
         </button>

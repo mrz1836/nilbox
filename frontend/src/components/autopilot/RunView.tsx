@@ -43,10 +43,9 @@ import {
   type AutopilotRunView,
   type TerminalID,
 } from '../../platform'
-import { quietButtonClass } from '../controls'
+import { ErrorText, iconButtonClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AutopilotIcon, DocumentIcon, ExternalIcon, FolderIcon, StopIcon, TerminalIcon, XIcon } from '../icons'
-import { ErrorText } from '../settings/rows'
 import { Spinner } from '../Spinner'
 import { TakeOverDialog } from './TakeOverDialog'
 
@@ -287,7 +286,7 @@ export function RunView({ runId, terminal, agents, onOpenItem, onToast, onClose 
       aria-label="Close the run"
       title="Close"
       onClick={onClose}
-      className="-mt-1 -mr-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text"
+      className={`${iconButtonClass} -mt-1 -mr-1`}
     >
       <XIcon className="size-3.5" />
     </button>

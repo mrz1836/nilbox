@@ -6,12 +6,12 @@ import { logFailure } from '../../lib/call'
 import { counted } from '../../lib/format'
 import { isBumpResult } from '../../lib/release'
 import { formatDuration, isLive, readLog, runDuration, runPlace } from '../../lib/scriptRuns'
+import { copyLabel, useCopy } from '../../lib/useCopy'
 import { useMutation } from '../../lib/useMutation'
 import { useNow } from '../../lib/useNow'
 import { useOn } from '../../lib/useOn'
 import { useQuery } from '../../lib/useQuery'
 import {
-  copyText,
   getScriptRun,
   markScriptRunSeen,
   openScriptRunInTerminal,
@@ -24,10 +24,9 @@ import {
 } from '../../platform'
 import { terminalLabel } from '../../lib/terminals'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { quietButtonClass } from '../controls'
+import { ErrorText, iconButtonClass, linkClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, CheckIcon, CopyIcon, DocumentIcon, RefreshIcon, StopIcon, TerminalIcon, XIcon } from '../icons'
-import { ErrorText } from '../settings/rows'
 import { ChecksResult } from './ChecksResult'
 import { HookResult } from './HookResult'
 import { LogView } from './LogView'
@@ -102,7 +101,7 @@ function RunResult({ exitCode, result }: { exitCode: number | null; result: Scri
               onClick={() => {
                 setOpen(!open)
               }}
-              className="font-medium text-accent hover:underline"
+              className={linkClass}
             >
               {open ? 'Hide' : 'Show'}
             </button>
@@ -176,22 +175,20 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   const stop = useMutation(() => stopScriptRun(id))
   const again = useMutation(() => runScriptAgain(id))
   const openTerminal = useMutation(() => openScriptRunInTerminal(id))
-  const copy = useMutation(async () => {
-    await copyText(await readLog(id))
-  })
+  const { copy, onCopy } = useCopy('log')
   const reveal = useMutation(() => showScriptRunLog(id))
-  const actions = { stop, again, terminal: openTerminal, copy, reveal }
+  const actions = { stop, again, terminal: openTerminal, reveal }
   // last is the button pressed last: only its failure shows, so one that works clears
-  // what an earlier one said went wrong.
+  // what an earlier one said went wrong. Copy log says how its copy went itself, in its
+  // words and to a screen reader.
   const [last, setLast] = useState<Action | null>(null)
   // stopping is set once Stop was asked for, until the run ends; confirming holds the
   // question Stop asks first while stopping now would leave something behind.
   const [stopping, setStopping] = useState(false)
   const [confirming, setConfirming] = useState('')
-  const [copied, setCopied] = useState(false)
   const run = query.data
   const unseen = run !== undefined && !run.seen && !isLive(run.status)
-  const error = last === null ? '' : actions[last].error
+  const error = last === null || last === 'copy' ? '' : actions[last].error
 
   // The run is read again as it changes status or ends, and as its own progress moves:
   // a step reached, or Stop turned on or off.
@@ -217,7 +214,6 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   // press starts an action: it becomes the one whose outcome shows.
   const press = (action: Action) => {
     setLast(action)
-    setCopied(false)
   }
 
   const stopRun = async () => {
@@ -246,9 +242,9 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
     }
   }
 
-  const copyLog = async () => {
+  const copyLog = () => {
     press('copy')
-    setCopied((await copy.run()).ok)
+    onCopy(() => readLog(id))
   }
 
   const close = onClose !== undefined && (
@@ -257,7 +253,7 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
       aria-label="Close the run"
       title="Close"
       onClick={onClose}
-      className="-mt-1 -mr-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text"
+      className={`${iconButtonClass} -mt-1 -mr-1`}
     >
       <XIcon className="size-3.5" />
     </button>
@@ -359,17 +355,14 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
           <TerminalIcon className="size-3.5" />
           Open in terminal
         </button>
-        <button
-          type="button"
-          disabled={copy.pending}
-          onClick={() => {
-            void copyLog()
-          }}
-          className={quietButtonClass}
-        >
-          {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-          {copied ? 'Copied' : copy.pending ? 'Copying…' : 'Copy log'}
+        <button type="button" disabled={copy === 'copying'} onClick={copyLog} className={quietButtonClass}>
+          {copy === 'copied' ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+          {copy === 'idle' ? 'Copy log' : copyLabel[copy]}
         </button>
+        <span role="status" className="sr-only">
+          {copy === 'copied' && 'Copied to the clipboard'}
+          {copy === 'failed' && 'Couldn’t copy the log'}
+        </span>
         <button
           type="button"
           disabled={reveal.pending}

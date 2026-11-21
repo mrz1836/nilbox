@@ -45,21 +45,6 @@ func projects(t *testing.T, path string) map[string]map[string]any {
 	return out
 }
 
-// dirNames lists the names in dir.
-func dirNames(t *testing.T, dir string) []string {
-	t.Helper()
-
-	entries, err := os.ReadDir(dir)
-	require.NoError(t, err)
-
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-
-	return names
-}
-
 func TestConfigFile(t *testing.T) {
 	t.Parallel()
 
@@ -126,7 +111,7 @@ func TestGrantTrustsTheCloneAndKeepsEverythingElse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, os.FileMode(0o400), info.Mode().Perm(), "the file keeps its mode")
 
-	assert.ElementsMatch(t, []string{".claude.json", "projects"}, dirNames(t, home),
+	assert.ElementsMatch(t, []string{".claude.json", "projects"}, testutil.DirNames(t, home),
 		"the lock and the temporary file are gone")
 }
 
@@ -245,7 +230,7 @@ func TestGrantWritesThroughASymlinkedConfigFile(t *testing.T) {
 
 	assert.Contains(t, projects(t, target), clone, "the file it points at is updated")
 	assert.JSONEq(t, `3`, string(readJSON(t, target)["numStartups"]))
-	assert.Equal(t, []string{"claude.json"}, dirNames(t, dotfiles), "no temporary file is left beside it")
+	assert.Equal(t, []string{"claude.json"}, testutil.DirNames(t, dotfiles), "no temporary file is left beside it")
 }
 
 func TestGrantRefusesAConfigItCannotRead(t *testing.T) {
@@ -291,7 +276,7 @@ func TestGrantRefusesAConfigItCannotRead(t *testing.T) {
 			data, err := os.ReadFile(file) //nolint:gosec // a test file under a temp dir
 			require.NoError(t, err)
 			assert.Equal(t, content, data, "a config that cannot be read is left alone")
-			assert.ElementsMatch(t, []string{".claude.json", "example-repo"}, dirNames(t, home))
+			assert.ElementsMatch(t, []string{".claude.json", "example-repo"}, testutil.DirNames(t, home))
 		})
 	}
 }

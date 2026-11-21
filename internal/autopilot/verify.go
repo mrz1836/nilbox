@@ -66,11 +66,6 @@ const (
 	VerdictOvertaken Verdict = "overtaken"
 )
 
-// Verdicts returns every verdict.
-func Verdicts() []Verdict {
-	return []Verdict{VerdictFixed, VerdictFailing, VerdictUnknown, VerdictNoPush, VerdictRejected, VerdictOvertaken}
-}
-
 // Timing of verify's own reads.
 const (
 	// verifyReadAfter is how old the item's details may be before verify reads it again

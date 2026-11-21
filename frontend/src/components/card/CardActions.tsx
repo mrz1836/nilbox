@@ -6,6 +6,7 @@ import type { Edge, Step, Verb } from '../../lib/nextStep'
 import type { TriageTab } from '../../lib/triage'
 import { focusSession, openExternal, type AgentInfo, type AgentSession, type InboxItem } from '../../platform'
 import { AutopilotRowsContext, useWatch } from '../autopilot/AutopilotChip'
+import { ErrorText } from '../controls'
 import { HandIcon, MergeIcon } from '../icons'
 import { SessionsButton } from '../SessionTag'
 import { bringBack, type TriageActions } from '../TriageControls'
@@ -22,19 +23,19 @@ export const compactOutcomeClass = 'relative z-10 col-[3/-1] mb-2'
 
 // verbShape is every primary button's shape.
 const verbShape =
-  'inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg border px-2.75 text-[0.8125rem] font-semibold whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-60'
+  'inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg border px-2.75 text-body font-semibold whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-disabled'
 
 // loud is a primary outlined in its edge's color, with its text in it, that fills with the
 // color while the card is lit (card-lit in index.css: the pointer on it, keyboard focus in
-// it, or a menu or panel it opened open): white text on it, or the surface's on the
-// success and warning colors, which are bright in the dark theme. Each is spelled out in
-// full so Tailwind finds it.
+// it, or a menu or panel it opened open), with the surface's color for its text: white in
+// the light theme, and the dark surface in the dark theme, whose colors are bright. Each is
+// spelled out in full so Tailwind finds it.
 const loud: Readonly<Record<Edge, string>> = {
   urgent: 'border-warning/45 text-warning card-lit:border-transparent card-lit:bg-warning card-lit:text-surface',
-  blocked: 'border-danger/45 text-danger card-lit:border-transparent card-lit:bg-danger card-lit:text-white',
-  yours: 'border-accent/45 text-accent card-lit:border-transparent card-lit:bg-accent card-lit:text-white',
+  blocked: 'border-danger/45 text-danger card-lit:border-transparent card-lit:bg-danger card-lit:text-surface',
+  yours: 'border-accent/45 text-accent card-lit:border-transparent card-lit:bg-accent card-lit:text-surface',
   ready: 'border-success/45 text-success card-lit:border-transparent card-lit:bg-success card-lit:text-surface',
-  agent: 'border-info/45 text-info card-lit:border-transparent card-lit:bg-info card-lit:text-white',
+  agent: 'border-info/45 text-info card-lit:border-transparent card-lit:bg-info card-lit:text-surface',
   waiting: 'border-border text-muted card-lit:bg-raised',
   none: 'border-border text-muted card-lit:bg-raised',
 }
@@ -47,24 +48,24 @@ const quiet = 'border-border text-text card-lit:bg-raised'
 // waits on the user, and What happened for one that failed.
 const pills = {
   warning: 'border-warning/45 bg-warning/14 text-warning hover:bg-warning/22',
-  danger: 'border-danger/30 bg-danger/10 text-danger hover:bg-danger/18',
+  danger: 'border-danger/22 bg-danger/10 text-danger hover:bg-danger/14',
 } as const
 
 // goShape is a compact card's go button: the primary's words alone, no outline and no
 // icon.
 const goShape =
-  'inline-flex h-6.5 shrink-0 items-center rounded-md px-2.25 text-[0.78125rem] font-semibold whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-60'
+  'inline-flex h-6.5 shrink-0 items-center rounded-md px-2.25 text-control font-semibold whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-disabled'
 
 // goTones are the go button's colors: its words in the edge's color, filled with it while
-// the card is lit (white text on it, or the surface's on the success and warning colors);
-// a quiet one, or one waiting on others, muted and filling with the raised color. Each is
-// spelled out in full so Tailwind finds it.
+// the card is lit, with the surface's color for its text, as a loud primary has; a quiet
+// one, or one waiting on others, muted and filling with the raised color. Each is spelled
+// out in full so Tailwind finds it.
 const goTones: Readonly<Record<Edge, string>> = {
   urgent: 'text-warning card-lit:bg-warning card-lit:text-surface',
-  blocked: 'text-danger card-lit:bg-danger card-lit:text-white',
-  yours: 'text-accent card-lit:bg-accent card-lit:text-white',
+  blocked: 'text-danger card-lit:bg-danger card-lit:text-surface',
+  yours: 'text-accent card-lit:bg-accent card-lit:text-surface',
   ready: 'text-success card-lit:bg-success card-lit:text-surface',
-  agent: 'text-info card-lit:bg-info card-lit:text-white',
+  agent: 'text-info card-lit:bg-info card-lit:text-surface',
   waiting: 'text-muted card-lit:bg-raised card-lit:text-text',
   none: 'text-muted card-lit:bg-raised card-lit:text-text',
 }
@@ -406,11 +407,7 @@ export function CardActions({
           </div>
         </div>
       )}
-      {error !== '' && (
-        <p role="alert" className={`${compact ? compactOutcomeClass : cardOutcomeClass} text-xs text-danger`}>
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} className={compact ? compactOutcomeClass : cardOutcomeClass} />
     </>
   )
 }

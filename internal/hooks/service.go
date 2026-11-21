@@ -24,6 +24,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/logging"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -536,7 +537,7 @@ func (s *Service) toolNote(ctx context.Context, tool ToolFacts) ToolNote {
 
 	if s.memory != nil {
 		v, ok, err := s.memory.Get(ctx, checksRanKey)
-		ran = err == nil && ok && v == "true"
+		ran = err == nil && ok && prefval.Bool(v, false)
 	}
 
 	return ToolNote{Show: true, Open: !ran}

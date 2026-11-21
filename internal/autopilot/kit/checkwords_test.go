@@ -36,7 +36,7 @@ func TestTheWordsOfACheckAreWhatTheAgentReads(t *testing.T) {
 			changeOf(404, "Gone", checksFailSpec(notifyStep())),
 			{Name: "", Spec: spec.Spec{Version: 2}},
 		},
-		Settings: &kit.SettingsChange{AgentsAtOnce: someNumber(3), HistoryDays: someNumber(5)},
+		Settings: &kit.SettingsChange{AgentsAtOnce: new(3), HistoryDays: new(5)},
 		Rules:    &kit.RulesChange{Trust: []string{renovateLogin, "no such bot"}, Mute: []string{"acme-org/legacy"}},
 	})
 	checkGolden(t, "checked/problems.golden", problems.Words())
@@ -90,7 +90,7 @@ func TestTheWordsOfACheckSayAPartThatChangesNothing(t *testing.T) {
 	words := kit.Check(t.Context(), checkSnapshot(), kit.Proposal{
 		Summary:  "Nothing new.",
 		Prompts:  []kit.NewPrompt{agentPrompt("", "Look.")},
-		Settings: &kit.SettingsChange{AgentsAtOnce: someNumber(2)},
+		Settings: &kit.SettingsChange{AgentsAtOnce: new(2)},
 		Rules:    &kit.RulesChange{Trust: []string{dependabotLogin}},
 	}).Words()
 

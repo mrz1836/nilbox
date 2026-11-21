@@ -3,7 +3,7 @@ import { useId, useState } from 'react'
 import { brand } from '../generated/brand'
 import { grantProjectsCommand } from '../lib/projects'
 import { CommandLine } from './CommandLine'
-import { buttonClass } from './controls'
+import { buttonClass, iconButtonClass } from './controls'
 import { CircleCheckIcon, ProjectIcon, XIcon } from './icons'
 
 export interface ProjectsTipProps {
@@ -17,10 +17,6 @@ export interface ProjectsTipProps {
   // onClose puts the tip away. While it offers, that is for good.
   onClose: () => void
 }
-
-// closeClass is the tip's close button, as on the app's other notices.
-const closeClass =
-  'flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text'
 
 // ProjectsTip offers, above the inbox lists, to show the GitHub project each issue is in
 // and its status there, which needs the GitHub CLI's token to have the read:project scope.
@@ -47,7 +43,7 @@ export function ProjectsTip({ on, refreshing, onCheck, onClose }: ProjectsTipPro
           </span>{' '}
           <span className="text-muted">Issue cards now show each project an issue is in, with its status there.</span>
         </p>
-        <button type="button" aria-label="Close" title="Close" onClick={onClose} className={closeClass}>
+        <button type="button" aria-label="Close" title="Close" onClick={onClose} className={iconButtonClass}>
           <XIcon className="size-3.5" />
         </button>
       </section>
@@ -95,7 +91,7 @@ export function ProjectsTip({ on, refreshing, onCheck, onClose }: ProjectsTipPro
         aria-label="Don’t show this again"
         title="Don’t show this again. Settings → Account keeps the command."
         onClick={onClose}
-        className={closeClass}
+        className={iconButtonClass}
       >
         <XIcon className="size-3.5" />
       </button>

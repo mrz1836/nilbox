@@ -15,8 +15,7 @@ import (
 // Each setter of a GitHub notification rule (a switch, a trigger, the action) emits an
 // event.ThreadRulesChanged once the rule is stored, so what reads and clears the
 // notifications applies it at once: clearing turned off stops at once, and turned on, or
-// changed, clears what it now finds finished. The cleanup card's flag is the window's alone,
-// and tells nothing.
+// changed, clears what it now finds finished.
 
 // SetGitHubNotificationSwitch turns one of the GitHub notification rules' switches on or
 // off (see threadrules.Switches), and returns the settings with it.
@@ -94,13 +93,6 @@ func checkTriggersOff(triggers []threadrules.Trigger) (map[string]string, error)
 	}
 
 	return map[string]string{threadrules.KeyTriggersOff: threadrules.EncodeTriggersOff(off)}, nil
-}
-
-// SetGitHubCleanupCardDismissed stores whether the card that first offers to clean up the
-// user's GitHub notifications is put away ("Not now"), and returns the settings with it.
-// Only the window reads it, so nothing else hears of it.
-func (s *Service) SetGitHubCleanupCardDismissed(ctx context.Context, dismissed bool) (Settings, error) {
-	return s.save(ctx, setting(threadrules.KeyCleanupCardDismissed, prefval.EncodeBool(dismissed)))
 }
 
 // saveThreadRules saves a change to the GitHub notification rules with write, and emits an

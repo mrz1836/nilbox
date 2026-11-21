@@ -52,21 +52,6 @@ func plantPrograms(t *testing.T, repo, ran string, worktrees ...string) {
 	}
 }
 
-// ranAny returns the files the planted programs wrote in ran.
-func ranAny(t *testing.T, ran string) []string {
-	t.Helper()
-
-	entries, err := os.ReadDir(ran)
-	require.NoError(t, err)
-
-	names := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		names = append(names, entry.Name())
-	}
-
-	return names
-}
-
 // TestTheSweepRunsNoProgramTheClonesOwnConfigNames sweeps a clone whose own config names a
 // clean filter for every file and hooks for the events a status, a removal, and a
 // branch's deletion fire, with every worktree's files' stat data changed, as the timer's
@@ -87,7 +72,7 @@ func TestTheSweepRunsNoProgramTheClonesOwnConfigNames(t *testing.T) {
 
 	report := svc.Sweep(t.Context())
 	assert.Empty(t, report.Cleaned, "nothing is removed from a clone whose status can't be read")
-	assert.Empty(t, ranAny(t, ran), "the sweep ran none of the clone's programs")
+	assert.Empty(t, testutil.DirNames(t, ran), "the sweep ran none of the clone's programs")
 
 	snap, err := svc.List(t.Context())
 	require.NoError(t, err)
@@ -112,15 +97,15 @@ func TestTheSweepRunsNoProgramTheClonesOwnConfigNames(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, uierr.Message(err), "This clone's own git config sets filter.evil.clean,")
 	assert.DirExists(t, f.open, "a removal is refused too")
-	assert.Empty(t, ranAny(t, ran))
+	assert.Empty(t, testutil.DirNames(t, ran))
 
 	unguarded := e.linked(linkDeps{gh: f.gh, launches: f.launches})
 	_, err = unguarded.List(t.Context())
 	require.NoError(t, err)
-	assert.Contains(t, ranAny(t, ran), "clean", "the clone is set up so that a status runs its filter")
+	assert.Contains(t, testutil.DirNames(t, ran), "clean", "the clone is set up so that a status runs its filter")
 
 	testutil.RunGit(t, f.open, "status", "--porcelain")
-	assert.Contains(t, ranAny(t, ran), "post-index-change", "and so that a plain status runs its hook")
+	assert.Contains(t, testutil.DirNames(t, ran), "post-index-change", "and so that a plain status runs its hook")
 }
 
 // TestTheSweepReadsAPlainClonesStatusWithItsOwnLFSOff sweeps a clone whose own config holds

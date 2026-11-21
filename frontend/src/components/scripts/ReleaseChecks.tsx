@@ -8,9 +8,8 @@ import {
   type ReleaseCheckState,
   type ReleaseFix,
 } from '../../platform'
-import { quietButtonClass } from '../controls'
+import { ErrorText, quietButtonClass } from '../controls'
 import { AlertIcon, CheckIcon, ExternalIcon, InfoIcon, XIcon } from '../icons'
-import { ErrorText } from '../settings/rows'
 import { CopyCommand } from './CopyCommand'
 
 // checkIcons mark each state beside its words, so none is told by color alone: ✓ and ℹ

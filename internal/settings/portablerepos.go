@@ -11,6 +11,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/reporules"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -246,12 +247,10 @@ func listRepoRules(out *PortablePlan, before, rules reporules.Rules) {
 
 // ruleOf returns the rule rules give target itself, ignoring case.
 func ruleOf(rules reporules.Rules, target string) reporules.Rule {
-	same := func(t string) bool { return strings.EqualFold(t, target) }
-
 	switch {
-	case slices.ContainsFunc(rules.Pinned, same):
+	case textutil.ContainsFold(rules.Pinned, target):
 		return reporules.RulePinned
-	case slices.ContainsFunc(rules.Muted, same):
+	case textutil.ContainsFold(rules.Muted, target):
 		return reporules.RuleMuted
 	default:
 		return reporules.RuleNone

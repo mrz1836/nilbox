@@ -5,23 +5,8 @@
 import type { Checks, Reviews } from '../platform'
 import { counted, formatCount } from './format'
 
+// Tone is the color a signal shows in, one of lib/tone's, whose maps color it.
 export type Tone = 'success' | 'warning' | 'danger' | 'muted'
-
-// toneText is each tone's text color, spelled out in full so Tailwind finds it.
-export const toneText: Readonly<Record<Tone, string>> = {
-  success: 'text-success',
-  warning: 'text-warning',
-  danger: 'text-danger',
-  muted: 'text-muted',
-}
-
-// toneDot is each tone's dot color, spelled out in full so Tailwind finds it.
-export const toneDot: Readonly<Record<Tone, string>> = {
-  success: 'bg-success',
-  warning: 'bg-warning',
-  danger: 'bg-danger',
-  muted: 'bg-muted',
-}
 
 export interface Signal<K extends string> {
   // kind picks the icon.

@@ -5,7 +5,7 @@ import { askAgainText, refusal } from '../../lib/githubThreads'
 import { useNowAs } from '../../lib/useNow'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import { setGitHubNotificationSwitch, type GitHubThreadsStatus, type Settings } from '../../platform'
-import { quietButtonClass } from '../controls'
+import { ErrorText, quietButtonClass } from '../controls'
 
 // noteClass is where a note sits in the toolbar's panel: a band across it. The page passes
 // its own.
@@ -64,11 +64,9 @@ export function TurnOnClearing({ settings: stored, onSaved, onTurnedOn, classNam
         {brand.name} can clear a notification on GitHub once the work behind it is done, such as a pull request merged
         or your review submitted.
       </p>
-      {error !== '' && (
-        <p role="alert" className="mt-1 text-xs text-danger">
-          Could not turn on automatic clearing: {error}
-        </p>
-      )}
+      <ErrorText error={error} className="mt-1">
+        Could not turn on automatic clearing:{' '}
+      </ErrorText>
       <button
         type="button"
         disabled={pending}

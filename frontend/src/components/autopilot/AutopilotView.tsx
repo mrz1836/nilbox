@@ -259,7 +259,7 @@ function NotReadyBanner({ count, onSettings }: { count: number; onSettings: () =
   return (
     <div
       role="status"
-      className="flex items-center gap-3 rounded-md border border-danger/50 bg-danger/10 px-3 py-2 text-sm"
+      className="flex items-center gap-3 rounded-md border border-danger/45 bg-danger/10 px-3 py-2 text-sm"
     >
       <AlertIcon className="size-4 shrink-0 text-danger" />
       <span className="min-w-0 flex-1">{notReadyBanner(count)}</span>
@@ -319,7 +319,7 @@ function CountBadge({ count, words }: { count: number; words: string }) {
       {' '}
       <span
         aria-hidden="true"
-        className="rounded-full bg-accent/15 px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium text-text tabular-nums"
+        className="rounded-full bg-accent/14 px-1.5 text-caption leading-[1.125rem] font-medium text-text tabular-nums"
       >
         {formatCount(count)}
       </span>
@@ -415,7 +415,7 @@ function AskBox({ status, error, checking, onCheck, onSend, onOpen }: AskBoxProp
                   setText(example)
                   box.current?.focus()
                 }}
-                className="rounded-full border border-border px-2.5 py-0.5 text-left text-xs text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
+                className="rounded-full border border-border px-2.5 py-0.5 text-left text-xs text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent"
               >
                 {example}
               </button>

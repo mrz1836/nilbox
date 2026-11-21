@@ -20,7 +20,7 @@ numbers with the `magex measure:*` targets.
 | API budget with five routine searches | < 2% in all | 1.20–1.68% | Met: 4 to 7 points a refresh, by how many items the searches watch (see [Routine searches](#routine-searches)) |
 | The searches' cost to the inbox's store | No regression beyond the noise | 2.90 s → 2.98 s, 2.82 s → 2.65 s | Met: the searches go out once the inbox is stored, so nothing shares GitHub's time with the inbox query; sent beside it, a busy org's five had added 0.3 s to the median (see below) |
 | The watch pass, after the inbox's store | < 1 s of the app's own work, steady | 26 ms | Met: 26 ms of the app's own work for 300 watched items; GitHub's time for the searches and the changed items' details, 3.3–7.1 s after the store, is waited on by nothing |
-| Autopilot's evaluation, 20 routines over 500 items | < 20 ms | 14 ms | Met: 13.6–13.8 ms on a machine running other branches' builds and tests (22 ms under heavier load, 12 ms when the routines core landed): every routine decided on every item, the regex and path patterns included (see [The engine's cycle](#the-engines-cycle)) |
+| Autopilot's evaluation, 20 routines over 500 items | < 20 ms | 10 ms | Met: 10.2 ms against 15.9 ms before each routine was prepared once a cycle, run in turn on a machine running other branches' builds and tests (13.6–13.8 ms on a lighter load before, 12 ms when the routines core landed): every routine decided on every item, the regex and path patterns included (see [The engine's cycle](#the-engines-cycle)) |
 | Autopilot's steady cycle, 20 routines over 500 items | < 20 ms | 18 ms | Met: 17.5–18.3 ms on that loaded machine, 40.1–41.8 ms before the engine kept the ledger's keys (3,500 matches, 10,000 baselines) in memory; nearly all of what is left is the evaluation |
 
 Measured on an Apple Silicon Mac (M1 Max, 32 GB memory) running macOS 15.8, over its regular
@@ -236,11 +236,30 @@ number.
 The whole bundle, the executable with its icon set, `Info.plist`, and code signature, is 24.2 MB
 (24,226,109 bytes).
 The binary is built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the
-built frontend, about 1.31 MB without source maps: the 670 KB script the first paint needs
-(219 KB gzipped); the Settings (155 KB), Scripts tab (143 KB), Prompts (63 KB), and Worktrees
-(58 KB) pages in scripts of their own, loaded the first time each opens, with three more
-shared by them (the dialogs, 87 KB; the run panel, 44 KB; the launch fields, 6 KB); and 80 KB
-of CSS. Measured once the GitHub notifications' clearing landed.
+built frontend. Measured once the GitHub notifications' clearing landed.
+
+The built frontend, as `vite build` wrote it on 2026-11-21, is about 2.31 MB without source
+maps (2,311,405 bytes). Before its first paint the window loads 844,221 bytes of script
+(282,501 gzipped) and 118,238 bytes of CSS (20,185 gzipped), 962,459 bytes in all (302,686
+gzipped), as the frontend gate prints them, in three scripts: the 467 KB entry, which holds
+the inbox; the 377 KB shared script it preloads, most of the modules the first paint loads
+that a page or a sheet imports too (`codeSplitting` in `vite.config.ts`; Rolldown keeps the
+rest in the entry); and Rolldown's runtime. Each page is a script of its own, loaded the first
+time it opens: Autopilot (311 KB), Settings (210 KB), the Scripts tab (148 KB), Worktrees
+(126 KB), Prompts (72 KB), the setup (62 KB), and Notifications (23 KB). The review and
+issue sheets (82 KB and 25 KB), the inbox-nil party (15 KB, with the confetti, 4 KB, and the
+terminal, 2 KB, as scripts of their own), and the settings' search index (19 KB) load once the
+inbox has painted.
+`magex frontend:gate` measures the first paint after its build, prints it, and fails when its
+script or its CSS outgrows its budget (`magefiles/firstpaint.go`: 950 KB, 325 KB gzipped, for
+the script; 140 KB, 25 KB gzipped, for the CSS), as the build itself fails on any one script
+over 750 KB (`vite.config.ts`). Its gzipped sizes come from Go's compressor and run about 2%
+above those in Vite's report. Before the shared script, Rolldown put those modules in common
+scripts by which scripts import them and merged into the entry each it could without a cycle,
+so one new import moved 37 KB into the entry at once (696 KB to 733 KB, 17 KB under the
+limit) while the first paint stayed the same size. Once the GitHub notifications' clearing
+landed, the frontend was about 1.31 MB, its entry script 670 KB (219 KB gzipped), with 80 KB
+of CSS.
 
 The build of 2026-11-11, with the integrations but before the issue sheet, the GitHub
 notifications, and the features that came with them (other repository locations, pinned or
@@ -486,16 +505,27 @@ real database (`testutil.DB`): `BenchmarkEngineCycle` times the steady cycle,
 memory from the database (`BenchmarkLedgerKeysBuild`) and the one read a steady cycle makes of
 them (`BenchmarkLedgerKeysCheck`). The evaluation alone, with two routines whose regex and path
 patterns run on every item beside the gallery's, is `BenchmarkEvaluateACycle` in
-`internal/autopilot/eval`. Measured on the M1 Max (2026-11-17) while other branches built and
-tested on it (a load average of about 30), the steady cycle before and after the change run one
-after the other, so the numbers are high rather than low.
+`internal/autopilot/eval`, which prepares each routine once and decides it on every item, as a
+cycle does. Measured on the M1 Max (2026-11-17) while other branches built and tested on it (a
+load average of about 30), the steady cycle before and after the change run one after the
+other, so the numbers are high rather than low. The routines prepared once a cycle were
+measured on 2026-11-21 under a heavier load still (a load average of 30 to 160): the commits
+before and after built as test binaries and run in turn, ten runs each with `-benchmem`, once
+on every core and once with `-cpu 1`, and compared with `benchstat`.
 
-**Results.** The evaluation takes 14 ms (13.6 to 13.8 ms over three runs; 22 ms under the
-heavier load of the first measurement, 12 ms when the routines core landed, on a quiet
-machine). A steady cycle takes 18 ms (17.5 to 18.3 ms over three runs), under the 20 ms target;
-it took 40 ms (40.1 to 41.8 ms on the same machine just before) while it read every match and
-baseline each routine had recorded, which a profile showed spending their time in SQLite's page
-reads. Now a profile finds the evaluation is nearly all of a steady cycle. The first cycle
+**Results.** The evaluation takes 10 ms (10.2 ms, the median of ten runs, against 15.9 ms just
+before each routine was prepared once a cycle, run in turn with it: 36% less; 39% less with
+`-cpu 1`, 46.1 against 75.6 ms on one core of that loaded machine), and allocates half as much,
+82,300 allocations and 4.5 MiB a cycle instead of 165,500 and 8.9 MiB. Before that change it took
+14 ms (13.6 to 13.8 ms over three runs; 22 ms under the heavier load of the first measurement,
+12 ms when the routines core landed, on a quiet machine). A steady cycle takes 18 ms (17.5 to
+18.3 ms over three runs), under the 20 ms target; it took 40 ms (40.1 to 41.8 ms on the same
+machine just before) while it read every match and baseline each routine had recorded, which a
+profile showed spending their time in SQLite's page reads. Then a profile found the evaluation
+nearly all of a steady cycle. With each routine prepared once a cycle, a steady cycle allocates
+46% less, 81,100 allocations and 10.6 MiB instead of 151,300 and 14.2 MiB; how long it takes
+varied too widely under that load to compare (25 against 32 ms, p = 0.06 on every core, 0.19
+with `-cpu 1`), so its 18 ms stands until a quiet machine measures it again. The first cycle
 takes 1.2 s (1.16 to 1.18 s, unchanged), writing its 13,500 rows one at a time; it runs once,
 after the routines are switched on.
 
@@ -515,10 +545,18 @@ records too, and its resets of the tries, a few rows each, are still read every 
 simulator compares the keys with the database after every cycle, command, tick, and worker's
 result of every scenario, and fails on any difference.
 
-**What next.** The evaluation is now the cycle: every decision phrases each condition it checks
-for its trace (`spec.Phrase`, about a fifth of the evaluation in a profile), though a steady
-cycle keeps no trace and words only the match it closes, so phrasing a trace only when it is
-kept or shown would take most of that out.
+**Each routine prepared once a cycle.** Every decision used to work out again what depends on
+the routine alone: the cost order of each list of conditions and the keys that sort it, each
+condition's path in the spec, its phrase for the trace (`spec.Phrase`, about a fifth of the
+evaluation in a profile), and the trigger's catalog entry and words. `eval.Prepare` now works
+them out once into a plan, which decides every item (`eval.Evaluate` prepares one for a single
+decision). The engine prepares a routine's plan the first time it decides it in a cycle and
+keeps it on the routine's run, which each cycle builds afresh from the stored routine, so no
+plan outlives a change to it and none is shared between cycles. Phrasing a trace only when it
+is kept or shown, the next step this page named before, was set aside: every trace still holds
+its words, phrased once per routine now, and the decisions' golden files
+(`internal/autopilot/eval/testdata`), decided through one plan per routine, are unchanged byte
+for byte.
 
 <br>
 

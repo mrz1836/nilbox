@@ -15,7 +15,7 @@ import type {
   Profile,
   Prompt,
 } from '../../../platform'
-import { fieldClass, quietButtonClass, Segmented, Select } from '../../controls'
+import { dangerIconButtonClass, fieldClass, quietButtonClass, Segmented, Select } from '../../controls'
 import { ChevronDownIcon, ChevronRightIcon, ExternalIcon, PlusIcon, TrashIcon } from '../../icons'
 import { LaunchOverrideFields } from '../../LaunchOverrideFields'
 import { Notes, NumberField, Reset, type BuilderKit } from './parts'
@@ -580,7 +580,7 @@ function Fallbacks({ agentKit, step, onChange }: RowsProps) {
             onClick={() => {
               set(rows.filter((_, j) => j !== i))
             }}
-            className="rounded-md p-1 text-muted hover:bg-raised hover:text-danger"
+            className={dangerIconButtonClass}
           >
             <TrashIcon className="size-3.5" />
           </button>
@@ -714,7 +714,7 @@ function LaunchRows({ kit, agentKit, step, onChange }: RowsProps & { kit: Builde
               onClick={() => {
                 set(rows.filter((_, j) => j !== i))
               }}
-              className="rounded-md p-1 text-muted hover:bg-raised hover:text-danger"
+              className={dangerIconButtonClass}
             >
               <TrashIcon className="size-3.5" />
             </button>

@@ -37,8 +37,8 @@ export function GitHubReading({ icon, heading, coming }: GitHubReadingProps) {
       className="flex items-start gap-3 rounded-md border border-border bg-raised/50 p-3"
     >
       <span aria-hidden="true" className="relative mt-0.5 flex size-8 shrink-0 items-center justify-center">
-        <span className="absolute inset-0 rounded-full bg-accent/25 motion-safe:animate-ping" />
-        <span className="relative flex size-8 items-center justify-center rounded-full bg-accent/15">{icon}</span>
+        <span className="absolute inset-0 rounded-full bg-accent/22 motion-safe:animate-ping" />
+        <span className="relative flex size-8 items-center justify-center rounded-full bg-accent/14">{icon}</span>
       </span>
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-baseline gap-x-2 text-sm font-medium">

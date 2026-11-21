@@ -2,16 +2,19 @@ import { useEffect, useId, useRef, useState } from 'react'
 
 import { moveStatus, statusKey, type Status } from '../lib/statusOrder'
 import { usePopover } from '../lib/usePopover'
-import { quietButtonClass, Segmented } from './controls'
+import { iconButtonClass, quietButtonClass, Segmented } from './controls'
 import { ChevronDownIcon, SortIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
 
 // Sort is how a list orders its items.
 type Sort = 'recent' | 'status'
 
-// moveClass is a status's move up and move down buttons.
+// moveClass is a status's move up and move down buttons: the small icon button's shape,
+// but lit with the page's background on hover, since the row they sit in turns raised
+// under the pointer and the shared raised hover would vanish on it. An arrow that can't
+// move takes no pointer and fades as a disabled control does.
 const moveClass =
-  'flex size-6 items-center justify-center rounded text-muted transition-colors hover:bg-background hover:text-text disabled:pointer-events-none disabled:opacity-30'
+  'flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-background hover:text-text disabled:pointer-events-none disabled:opacity-disabled'
 
 export interface StatusSortProps {
   // title is the list's, which names the controls.
@@ -110,7 +113,7 @@ export function StatusSort({
           aria-expanded={open}
           aria-controls={open ? id : undefined}
           onClick={toggle}
-          className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text"
+          className={`${iconButtonClass} aria-expanded:bg-raised aria-expanded:text-text`}
         >
           <SortIcon className="size-4" />
         </button>
@@ -121,7 +124,7 @@ export function StatusSort({
         id={id}
         role="dialog"
         aria-labelledby={`${id}-title`}
-        className="z-30 w-72 shadow-black/20 outline-none"
+        className="layer-popover w-72 outline-none"
       >
         <div className="flex items-center justify-between gap-2 px-3 pt-3">
           <h3 id={`${id}-title`} className="text-sm font-semibold">

@@ -115,6 +115,19 @@ func TestFenceGoldens(t *testing.T) {
 	}
 }
 
+func TestASandboxWithNothingListedWritesEmptyLists(t *testing.T) {
+	t.Parallel()
+
+	s := claudeFenceSettings(&Fence{Preset: fence.EditTest}, fence.Fence{Sandbox: &fence.Sandbox{}}, testProgram, testRunDir)
+	require.NotNil(t, s.Sandbox)
+
+	data, err := json.Marshal(s.Sandbox)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"filesystem":{"allowWrite":[],"denyWrite":[],"denyRead":[]}`,
+		"the settings write [] for no paths, never null")
+	assert.Contains(t, string(data), `"network":{"allowedDomains":[],`, "and [] for no hosts")
+}
+
 func TestAProfilesAccessNeverLoosensAFixedPreset(t *testing.T) {
 	t.Parallel()
 

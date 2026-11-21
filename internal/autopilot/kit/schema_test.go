@@ -95,8 +95,8 @@ func TestTheSchemaEnumeratesEveryClosedSet(t *testing.T) {
 	for _, typ := range wordsStructs(reflect.TypeFor[kit.Proposal]()) {
 		props, _ := wordsDef(t, schema, typ)["properties"].(map[string]any)
 
-		for i := range typ.NumField() {
-			if wordsCheckEnum(t, typ, typ.Field(i), props) {
+		for field := range typ.Fields() {
+			if wordsCheckEnum(t, typ, field, props) {
 				enums++
 			}
 		}

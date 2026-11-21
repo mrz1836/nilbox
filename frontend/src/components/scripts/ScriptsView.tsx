@@ -33,8 +33,7 @@ import {
   TagIcon,
   XIcon,
 } from '../icons'
-import { captionClass } from '../controls'
-import { ErrorText } from '../settings/rows'
+import { captionClass, ErrorText } from '../controls'
 import { HooksPage } from './HooksPage'
 import { ReleasePage } from './ReleasePage'
 import { ReleaseSheet, type ReleaseTarget } from './ReleaseSheet'
@@ -332,7 +331,7 @@ export default function ScriptsView({
                   {' '}
                   <span
                     aria-hidden="true"
-                    className="rounded-full bg-accent/15 px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium text-text tabular-nums"
+                    className="rounded-full bg-accent/14 px-1.5 text-caption leading-[1.125rem] font-medium text-text tabular-nums"
                   >
                     {formatCount(entry.count)}
                   </span>

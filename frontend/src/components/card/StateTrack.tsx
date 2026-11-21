@@ -14,11 +14,11 @@ export type Look = 'ok' | 'bad' | 'rereview' | 'held' | 'running' | 'waiting' | 
 // looks are each look's circle, spelled out in full so Tailwind finds them. A tint is mixed
 // over the surface so the line joining the steps never shows through it.
 const looks: Readonly<Record<Look, string>> = {
-  ok: 'border-success text-success bg-[color-mix(in_oklab,var(--color-success)_16%,var(--color-surface))]',
-  bad: 'border-danger text-danger bg-[color-mix(in_oklab,var(--color-danger)_16%,var(--color-surface))]',
-  rereview: 'border-accent text-accent bg-[color-mix(in_oklab,var(--color-accent)_16%,var(--color-surface))]',
-  held: 'border-warning text-warning bg-[color-mix(in_oklab,var(--color-warning)_14%,var(--color-surface))]',
-  running: 'border-warning/30 bg-surface text-warning',
+  ok: 'border-success text-success wash-success',
+  bad: 'border-danger text-danger wash-danger',
+  rereview: 'border-accent text-accent wash-accent',
+  held: 'border-warning text-warning wash-warning',
+  running: 'border-warning/22 bg-surface text-warning',
   waiting: 'border-dashed border-muted/75 bg-surface text-muted/75',
   none: 'border-dotted border-muted/45 bg-surface text-muted/45',
   auto: 'border-dashed border-success bg-surface text-success',

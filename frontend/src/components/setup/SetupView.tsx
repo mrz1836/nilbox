@@ -39,7 +39,7 @@ import {
   type SetupStep,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, primaryButtonClass, quietButtonClass } from '../controls'
+import { buttonClass, primaryButtonClass, quietButtonClass, toolbarClass } from '../controls'
 import { ChevronLeftIcon, ChevronRightIcon } from '../icons'
 import { Logo } from '../Logo'
 import { AgentsStep } from './AgentsStep'
@@ -241,11 +241,11 @@ export default function SetupView(props: SetupViewProps) {
       onKeyDown={onKeyDown}
       className="fixed inset-0 z-[55] flex flex-col bg-background text-text"
     >
-      <div className="flex h-[52px] shrink-0 items-center gap-4 border-b border-border bg-surface pr-3 pl-[80px] select-none [--wails-draggable:drag]">
+      <div className={toolbarClass}>
         <span className="flex shrink-0">
           <Logo />
         </span>
-        <p className="min-w-0 truncate text-[0.8125rem] font-medium text-muted" data-testid="setup-progress">
+        <p className="min-w-0 truncate text-body font-medium text-muted" data-testid="setup-progress">
           {progressText(step, toolsShown)}
         </p>
         <button
@@ -292,7 +292,7 @@ export default function SetupView(props: SetupViewProps) {
           <div className={`mx-auto flex max-w-2xl flex-col px-8 ${hero ? 'py-12' : 'py-10'}`}>
             {!hero && (
               <>
-                <p className="text-[0.6875rem] font-semibold tracking-[0.14em] text-accent uppercase">
+                <p className="text-caption font-semibold tracking-[0.14em] text-accent uppercase">
                   {eyebrowText(step, toolsShown)}
                 </p>
                 <h2

@@ -4,7 +4,7 @@ import { brand } from '../../generated/brand'
 import { useMutation } from '../../lib/useMutation'
 import { resetApp } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { fieldClass } from '../controls'
+import { ErrorText, fieldClass } from '../controls'
 
 // confirmWord is what the user types to confirm the reset (internal/setup's ResetWord).
 const confirmWord = 'reset'
@@ -106,11 +106,7 @@ export function ResetDialog({ onCancel }: ResetDialogProps) {
               : `Saved a backup to ${savedTo}. Restarting…`}
           </p>
         )}
-        {resetter.error !== '' && (
-          <p id={`${id}-error`} role="alert" className="text-xs text-danger">
-            {resetter.error}
-          </p>
-        )}
+        <ErrorText id={`${id}-error`} error={resetter.error} />
       </div>
     </ConfirmDialog>
   )

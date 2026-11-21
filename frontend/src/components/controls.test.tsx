@@ -2,7 +2,127 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { describedBy, Field, fromTriState, Segmented, Select, Switch, triState, type SelectOption } from './controls'
+import {
+  dangerIconButtonClass,
+  describedBy,
+  ErrorText,
+  Field,
+  fromTriState,
+  ghostButtonClass,
+  iconButtonClass,
+  inkLinkClass,
+  linkClass,
+  modalClass,
+  Segmented,
+  Select,
+  sheetDialogClass,
+  smallButtonClass,
+  smallIconButtonClass,
+  Switch,
+  toolbarButtonClass,
+  toolbarButtonShape,
+  toolbarClass,
+  triState,
+  type SelectOption,
+} from './controls'
+
+describe('the shared classes', () => {
+  it.each([
+    [
+      'smallButtonClass',
+      smallButtonClass,
+      'inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-surface',
+    ],
+    [
+      'ghostButtonClass',
+      ghostButtonClass,
+      'inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text',
+    ],
+    [
+      'iconButtonClass',
+      iconButtonClass,
+      'flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text',
+    ],
+    [
+      'smallIconButtonClass',
+      smallIconButtonClass,
+      'flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text',
+    ],
+    [
+      'dangerIconButtonClass',
+      dangerIconButtonClass,
+      'flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger',
+    ],
+    [
+      'toolbarButtonClass',
+      toolbarButtonClass,
+      'relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text',
+    ],
+    [
+      'toolbarButtonShape',
+      toolbarButtonShape,
+      'flex size-8 items-center justify-center rounded-md transition-colors hover:bg-raised aria-expanded:bg-raised',
+    ],
+    ['linkClass', linkClass, 'font-medium text-accent hover:underline'],
+    ['inkLinkClass', inkLinkClass, 'text-text hover:text-accent hover:underline'],
+    [
+      'modalClass',
+      modalClass,
+      'm-auto w-[calc(100%-2rem)] rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-scrim',
+    ],
+    [
+      'sheetDialogClass',
+      sheetDialogClass,
+      'm-auto rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-scrim',
+    ],
+    [
+      'toolbarClass',
+      toolbarClass,
+      'flex h-[52px] shrink-0 items-center gap-4 border-b border-border bg-surface pr-3 pl-[80px] select-none [--wails-draggable:drag]',
+    ],
+  ])('pins %s to its class string', (_, given, want) => {
+    expect(given).toBe(want)
+  })
+
+  it('sizes and colors the icon buttons from one shape', () => {
+    const diff = (a: string, b: string) => {
+      const [as, bs] = [a.split(' '), b.split(' ')]
+
+      return [...as.filter((c) => !bs.includes(c)), ...bs.filter((c) => !as.includes(c))].sort()
+    }
+
+    expect(diff(iconButtonClass, smallIconButtonClass)).toEqual(['size-6', 'size-7'])
+    expect(diff(iconButtonClass, dangerIconButtonClass)).toEqual(['hover:text-danger', 'hover:text-text'])
+  })
+
+  it('shapes a toolbar button whose color says something as every toolbar button, without the colors', () => {
+    const shape = toolbarButtonShape.split(' ')
+    const toolbar = toolbarButtonClass.split(' ')
+
+    expect(shape.every((c) => toolbar.includes(c))).toBe(true)
+    expect(toolbar.filter((c) => !shape.includes(c))).toEqual([
+      'relative',
+      'text-muted',
+      'hover:text-text',
+      'aria-expanded:text-text',
+    ])
+  })
+
+  it('fades a small button while it is disabled, and leaves the fade to an icon button’s caller', () => {
+    render(
+      <>
+        <button type="button" disabled className={smallButtonClass}>
+          Copy
+        </button>
+        <button type="button" aria-label="Close" className={iconButtonClass} />
+      </>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Copy' })).toHaveClass('disabled:opacity-disabled')
+    expect(screen.getByRole('button', { name: 'Close' }).className).not.toContain('opacity')
+  })
+})
 
 describe('Segmented', () => {
   it('is a group of radios, one checked', async () => {
@@ -33,6 +153,8 @@ describe('Segmented', () => {
     )
 
     expect(screen.getByRole('radio', { name: 'A' })).toBeDisabled()
+    expect(screen.getByText('A')).toHaveClass('opacity-disabled')
+    expect(screen.getByText('A')).not.toHaveClass('cursor-pointer')
   })
 
   it('points at the text that describes it', () => {
@@ -202,7 +324,7 @@ describe('Switch', () => {
     const toggle = screen.getByRole('switch')
     expect(toggle).toBeDisabled()
     expect(toggle).toHaveAttribute('title', 'Always on')
-    expect(toggle).toHaveClass('mt-0.5')
+    expect(toggle).toHaveClass('mt-0.5', 'disabled:opacity-disabled')
   })
 })
 
@@ -214,6 +336,47 @@ describe('tri-state settings', () => {
     expect(fromTriState('inherit')).toBeNull()
     expect(fromTriState('on')).toBe(true)
     expect(fromTriState('off')).toBe(false)
+  })
+})
+
+describe('ErrorText', () => {
+  it('shows nothing while there is no error, prefix or not', () => {
+    const { container } = render(
+      <ErrorText id="save-error" error="" className="mt-1">
+        Couldn’t save:{' '}
+      </ErrorText>,
+    )
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('announces the error after its prefix, under the id a control points at', () => {
+    render(
+      <>
+        <input aria-label="Name" aria-describedby="save-error" />
+        <ErrorText id="save-error" error="the disk is full." className="mt-1">
+          Couldn’t save:{' '}
+        </ErrorText>
+      </>,
+    )
+
+    const alert = screen.getByRole('alert')
+    expect(alert.tagName).toBe('P')
+    expect(alert).toHaveTextContent('Couldn’t save: the disk is full.')
+    expect(alert).toHaveAttribute('id', 'save-error')
+    expect(alert).toHaveAttribute('class', 'mt-1 text-xs text-danger')
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveAccessibleDescription(
+      'Couldn’t save: the disk is full.',
+    )
+  })
+
+  it('needs no id, placement, or prefix', () => {
+    render(<ErrorText error="Too long." />)
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(/^Too long\.$/)
+    expect(alert).not.toHaveAttribute('id')
+    expect(alert).toHaveAttribute('class', 'text-xs text-danger')
   })
 })
 
@@ -235,6 +398,8 @@ describe('Field', () => {
     )
 
     expect(screen.getByRole('alert')).toHaveTextContent('Too long.')
+    expect(screen.getByRole('alert')).toHaveAttribute('id', 'nick-error')
+    expect(screen.getByRole('alert')).toHaveAttribute('class', 'text-xs text-danger')
     expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveAccessibleDescription('Too long.')
     expect(screen.queryByText('Shown on the button.')).not.toBeInTheDocument()
   })

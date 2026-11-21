@@ -4,6 +4,8 @@ import (
 	"path"
 	"slices"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // maxAreas caps the folders a change names.
@@ -141,9 +143,5 @@ func areasOf(files []File) []string {
 		order = order[:maxAreas]
 	}
 
-	if order == nil {
-		return []string{}
-	}
-
-	return order
+	return textutil.NonNil(order)
 }

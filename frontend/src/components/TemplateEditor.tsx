@@ -4,6 +4,7 @@ import { caretPosition } from '../lib/caret'
 import { completionAt, highlight, matchVariables, offsetOf, type Completion, type TokenKind } from '../lib/template'
 import { remToPx } from '../lib/rem'
 import type { Diagnostic, PromptVariable } from '../platform'
+import { panelClass } from './PopoverPanel'
 
 // TemplateEditorHandle lets the page around the editor insert text and point at a spot.
 export interface TemplateEditorHandle {
@@ -51,7 +52,7 @@ const underlineClass = {
 
 // The text area and the colored copy behind it share every metric.
 const surfaceClass =
-  'absolute inset-0 m-0 overflow-y-scroll px-3.5 py-3 font-mono text-[0.8125rem] leading-6 break-words whitespace-pre-wrap'
+  'absolute inset-0 m-0 overflow-y-scroll px-3.5 py-3 font-mono text-body leading-6 break-words whitespace-pre-wrap'
 
 // popupWidth is the variables popup's width, in rem, so it follows the text size.
 const popupWidth = 18
@@ -292,7 +293,7 @@ export function TemplateEditor({
           setCompletion(null)
         }}
         onScroll={syncScroll}
-        className={`${surfaceClass} resize-none bg-transparent text-transparent caret-text outline-none selection:bg-accent/25 placeholder:text-muted/70`}
+        className={`${surfaceClass} resize-none bg-transparent text-transparent caret-text outline-none selection:bg-accent/22 placeholder:text-muted/70`}
       />
       {open && (
         <div
@@ -300,7 +301,7 @@ export function TemplateEditor({
           role="listbox"
           aria-label="Variables"
           style={{ top: popup.top, left: popup.left, width: `${String(popupWidth)}rem` }}
-          className="absolute z-10 max-h-56 overflow-y-auto rounded-lg border border-border bg-surface p-1 text-sm shadow-xl shadow-black/20"
+          className={`${panelClass} absolute layer-popover max-h-56 overflow-y-auto p-1 text-sm`}
         >
           {matches.map((name, i) => {
             const v = variables.find((x) => x.name === name)
@@ -322,7 +323,7 @@ export function TemplateEditor({
                 }}
                 className="flex cursor-pointer items-baseline gap-2 rounded-md px-2 py-1 aria-selected:bg-raised"
               >
-                <span className="font-mono text-[0.75rem] text-info">.{name}</span>
+                <span className="font-mono text-small text-info">.{name}</span>
                 <span className="truncate text-xs text-muted">{v?.description}</span>
               </div>
             )

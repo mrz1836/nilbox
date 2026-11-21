@@ -45,10 +45,6 @@ const (
 	// KeyBotActivity holds whether a bot's activity after the item was finished still
 	// counts as seen: "true" or "false", on when unset.
 	KeyBotActivity = "threadrules.botActivity"
-
-	// KeyCleanupCardDismissed holds whether the user put away the card that first offers
-	// to clean up their notifications: "true" or "false", off when unset.
-	KeyCleanupCardDismissed = "threadrules.cleanupCardDismissed"
 )
 
 // Grace is how long after the moment an item was finished a thread may still have been
@@ -152,8 +148,8 @@ const (
 	// themselves, or removed themselves as a reviewer.
 	TriggerUnassigned Trigger = "unassigned"
 
-	// TriggerByHand is the user clearing a notification themselves, from an item's menu
-	// or the cleanup sheet. It has no switch and no guard but the thread's own.
+	// TriggerByHand is the user clearing a notification themselves, as Autopilot's Mark
+	// the GitHub notification done does. It has no switch and no guard but the thread's own.
 	TriggerByHand Trigger = "by_hand"
 )
 
@@ -386,10 +382,6 @@ type Rules struct {
 	// BotActivity is whether a bot's activity after the item was finished still counts
 	// as seen, so it doesn't hold the notification back. On by default.
 	BotActivity bool `json:"botActivity"`
-
-	// CleanupCardDismissed is whether the user put away the card that first offers to
-	// clean up their notifications ("Not now").
-	CleanupCardDismissed bool `json:"cleanupCardDismissed"`
 }
 
 // Defaults returns the rules of a fresh database.
@@ -399,13 +391,13 @@ func Defaults() Rules {
 
 // Keys returns every preference the rules are stored under.
 func Keys() []string {
-	keys := make([]string, 0, len(switchKeys)+3)
+	keys := make([]string, 0, len(switchKeys)+2)
 
 	for i := range switchKeys {
 		keys = append(keys, switchKeys[i].key)
 	}
 
-	return append(keys, KeyAction, KeyTriggersOff, KeyCleanupCardDismissed)
+	return append(keys, KeyAction, KeyTriggersOff)
 }
 
 // Decode reads the rules from stored preferences, each written as the settings store
@@ -415,13 +407,12 @@ func Keys() []string {
 // is not one of Triggers is dropped.
 func Decode(stored map[string]string) Rules {
 	return Rules{
-		Read:                 prefval.Bool(stored[KeyRead], true),
-		Auto:                 prefval.Bool(stored[KeyAuto], false),
-		Action:               DecodeAction(stored[KeyAction]),
-		TriggersOff:          DecodeTriggersOff(stored[KeyTriggersOff]),
-		Watching:             prefval.Bool(stored[KeyWatching], true),
-		BotActivity:          prefval.Bool(stored[KeyBotActivity], true),
-		CleanupCardDismissed: prefval.Bool(stored[KeyCleanupCardDismissed], false),
+		Read:        prefval.Bool(stored[KeyRead], true),
+		Auto:        prefval.Bool(stored[KeyAuto], false),
+		Action:      DecodeAction(stored[KeyAction]),
+		TriggersOff: DecodeTriggersOff(stored[KeyTriggersOff]),
+		Watching:    prefval.Bool(stored[KeyWatching], true),
+		BotActivity: prefval.Bool(stored[KeyBotActivity], true),
 	}
 }
 

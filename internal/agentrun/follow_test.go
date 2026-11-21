@@ -379,6 +379,22 @@ func TestDiffNeedsGitAndPassesOnWhatItCouldntRead(t *testing.T) {
 	require.ErrorIs(t, err, errGitRead)
 }
 
+func TestADiffWithNoUntrackedFilesListsNone(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.runner.git = &worktreeGit{head: strings.Repeat("b", 40)}
+
+	plan := r.plan(testutil.FakeRun{Stdout: string(fixture(t, "success-structured.jsonl"))})
+	plan.HeadBefore = strings.Repeat("a", 40)
+	r.start(plan)
+	r.end(plan.RunID)
+
+	diff, err := r.runner.Diff(t.Context(), plan.RunID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{}, diff.Untracked, "never nil, so the window gets []")
+}
+
 // listerFunc is a process table from a function.
 type listerFunc func() ([]procs.Process, error)
 

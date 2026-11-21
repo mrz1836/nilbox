@@ -26,13 +26,21 @@ import {
   type ToolState,
 } from '../../platform'
 import { CommandLine } from '../CommandLine'
-import { buttonClass, fieldClass, primaryButtonClass, quietButtonClass, Switch } from '../controls'
+import {
+  buttonClass,
+  ErrorText,
+  fieldClass,
+  linkClass,
+  primaryButtonClass,
+  quietButtonClass,
+  Switch,
+} from '../controls'
 import { AlertIcon, CheckIcon, ChevronRightIcon, ExternalIcon, XIcon } from '../icons'
 import { RunPanel } from '../scripts/RunPanel'
 import { Spinner } from '../Spinner'
 import { InstallDialog, type InstallKind } from './InstallDialog'
 import { cardMatchClass, headingMatchClass, useSetting } from './match'
-import { ErrorText, joinIds } from './rows'
+import { joinIds } from './rows'
 import { TrashCopy } from './TrashCopy'
 
 // sourceLabels names where a copy of a tool came from.
@@ -180,7 +188,7 @@ function LinkButton({ url, children }: { url: string; children: string }) {
       onClick={() => {
         openExternal(url)
       }}
-      className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
+      className={`${linkClass} inline-flex items-center gap-1`}
     >
       {children}
       <ExternalIcon className="size-3" />
@@ -339,7 +347,7 @@ function Details({ tool, id, busy, save, reinstall, trash }: DetailsProps) {
               setDraft(e.target.value)
               setError('')
             }}
-            className={`${fieldClass} min-w-0 flex-1 font-mono text-[0.8125rem]`}
+            className={`${fieldClass} min-w-0 flex-1 font-mono text-body`}
           />
           <button
             type="button"
@@ -584,7 +592,7 @@ export function IntegrationCard({ tool, checking, onSaved, reload, onTools, term
                     onClick={() => {
                       setFollowed(showable)
                     }}
-                    className="shrink-0 font-medium text-accent hover:underline"
+                    className={`${linkClass} shrink-0`}
                   >
                     Show the run
                   </button>

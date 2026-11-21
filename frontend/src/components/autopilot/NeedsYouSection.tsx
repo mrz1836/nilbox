@@ -31,7 +31,7 @@ import {
   type CloneTarget,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, captionClass, primaryButtonClass, quietButtonClass } from '../controls'
+import { buttonClass, captionClass, ErrorText, primaryButtonClass, quietButtonClass } from '../controls'
 import { HoldDetails, holdTitle } from '../HoldDetails'
 import { AlertIcon, ClockIcon, RefreshIcon } from '../icons'
 import { Spinner } from '../Spinner'
@@ -222,7 +222,7 @@ function Card({ match: m, highlighted, agentFor, actions, onOpen, onToast, onCha
       className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 data-highlighted:border-accent/60 data-highlighted:bg-accent/10"
     >
       <div className="flex min-w-0 items-baseline gap-2">
-        <span className="shrink-0 font-mono text-[0.75rem] text-muted">{name}</span>
+        <span className="shrink-0 font-mono text-small text-muted">{name}</span>
         <span className="min-w-0 flex-1 truncate text-sm font-medium" title={m.item.title}>
           {m.item.title}
         </span>
@@ -239,7 +239,7 @@ function Card({ match: m, highlighted, agentFor, actions, onOpen, onToast, onCha
       <FollowUpDetails match={m} />
 
       {held !== null && (m.blockedBy === 'hold' || m.blockedBy === 'dirty_worktree') && (
-        <div className="flex flex-col gap-1.5 rounded-md border border-warning/40 bg-warning/5 px-3 py-2 text-xs text-muted">
+        <div className="flex flex-col gap-1.5 rounded-md border border-warning/45 bg-warning/5 px-3 py-2 text-xs text-muted">
           <p className="font-medium text-text">{holdTitle(held)}</p>
           <HoldDetails hold={held} agentName={agentFor(m)} go="run it" />
         </div>
@@ -451,11 +451,7 @@ export function NeedsYouSection({
 
   return (
     <div ref={listRef} className="flex flex-col gap-4">
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          Couldn’t read what waits for you: {error}
-        </p>
-      )}
+      <ErrorText error={error}>Couldn’t read what waits for you: </ErrorText>
       {(groups.waiting.length > 0 || groups.backlogs.length > 0 || groups.blocked.length > 0) && (
         <section aria-label="Needs you" className="flex flex-col gap-3">
           <h3 className="text-sm font-semibold">Needs you</h3>
@@ -559,12 +555,9 @@ export function NeedsYouSection({
                   />
                 ))}
               </ul>
-              {readiness.error !== '' && (
-                <p role="alert" className="flex items-center gap-1.5 text-xs text-danger">
-                  <AlertIcon className="size-3.5 shrink-0" />
-                  {readiness.error}
-                </p>
-              )}
+              <ErrorText error={readiness.error} className="flex items-center gap-1.5">
+                <AlertIcon className="size-3.5 shrink-0" />
+              </ErrorText>
             </div>
           )}
         </section>
@@ -584,7 +577,7 @@ export function NeedsYouSection({
                 className="flex min-w-0 items-center gap-3 rounded-md px-3 py-1 text-sm data-highlighted:bg-accent/10"
               >
                 <ClockIcon className="size-3.5 shrink-0 text-muted" />
-                <span className="shrink-0 font-mono text-[0.75rem] text-muted">{itemText(m.item)}</span>
+                <span className="shrink-0 font-mono text-small text-muted">{itemText(m.item)}</span>
                 <span className="min-w-0 flex-1 truncate text-xs text-muted" title={m.item.title}>
                   {m.words}
                 </span>
@@ -614,11 +607,7 @@ export function NeedsYouSection({
             <code className="font-mono text-text">{`gh repo clone ${cloning.target.repo} ${cloning.target.dir}`}</code>,
             then {cloning.match.routine} runs on {itemText(cloning.match.item)} once it can.
           </p>
-          {clone.error !== '' && (
-            <p role="alert" className="mt-2 text-xs text-danger">
-              {clone.error}
-            </p>
-          )}
+          <ErrorText error={clone.error} className="mt-2" />
         </ConfirmDialog>
       )}
     </div>

@@ -22,11 +22,11 @@ import {
   chevronCellClass,
   cleanUpButtonClass,
   dimClass,
-  iconButtonClass,
   launchPlace,
   metaClass,
   noteClass,
   rowClass,
+  toolButtonClass,
   toolsCellClass,
   verbButtonClass,
   verbCellClass,
@@ -276,7 +276,7 @@ export function WorktreeLine({
                   aria-label={`Open ${name} in Terminal`}
                   disabled={opener.pending}
                   onClick={onTerminal}
-                  className={iconButtonClass}
+                  className={toolButtonClass}
                 >
                   <TerminalIcon className="size-3.5" />
                 </button>
@@ -303,7 +303,7 @@ export function WorktreeLine({
                     onPrune,
                   })
                 }
-                className={iconButtonClass}
+                className={toolButtonClass}
                 panelClassName="min-w-56 max-w-80"
               >
                 <MoreIcon className="size-3.5" />
@@ -322,7 +322,7 @@ export function WorktreeLine({
             aria-label={`${open ? 'Fold' : 'Unfold'} ${rowName}`}
             onClick={onToggle}
             onKeyDown={onKeyDown}
-            className={iconButtonClass}
+            className={toolButtonClass}
           >
             <ChevronRightIcon className={`size-3.5 motion-safe:transition-transform ${open ? 'rotate-90' : ''}`} />
           </button>

@@ -92,7 +92,7 @@ func nicknameProblem(nickname string, taken []string) string {
 		return fmt.Sprintf("Keep the nickname to %d characters so it fits the launch button.", spec.MaxNicknameRunes)
 	case strings.ContainsFunc(nickname, notInALine):
 		return "Keep the nickname to one line of plain text."
-	case slices.ContainsFunc(taken, func(t string) bool { return strings.EqualFold(t, nickname) }):
+	case textutil.ContainsFold(taken, nickname):
 		return fmt.Sprintf("Another prompt is already called %q: give this one a nickname of its own.", nickname)
 	default:
 		return ""

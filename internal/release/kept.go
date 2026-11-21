@@ -8,6 +8,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // keptKey is the pref the last list is kept under between starts, with the repository locations it
@@ -85,10 +86,7 @@ func decodeKept(raw string) (list Candidates, root string, ok bool, err error) {
 	for _, k := range kept.Repos {
 		c := k.Candidate
 		c.dir, c.origin, c.headAt = k.Folder, repo.Name{Owner: k.Owner, Repo: k.Name}, k.Newest
-
-		if c.Commits == nil {
-			c.Commits = []Commit{}
-		}
+		c.Commits = textutil.NonNil(c.Commits)
 
 		if c.Clone != nil && c.Clone.LocalOnly == nil {
 			c.Clone.LocalOnly = []string{}

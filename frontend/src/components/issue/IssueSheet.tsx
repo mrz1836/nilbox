@@ -6,9 +6,9 @@ import { changedSince, closeNote, issueHeldBack, keepsDraft, selectedIssueAction
 import type { IssueDraft, IssueDrafts } from '../../lib/issueDrafts'
 import { pictureLogins, PicturesContext, usePictures } from '../../lib/pictures'
 import { placeIn, stepTo, useActionProgress, useEnded, useSheetKeys, type SheetCommonProps } from '../../lib/sheet'
-import { toneDot, toneText } from '../../lib/signals'
 import { quoteInto } from '../../lib/timeline'
 import { formatAgo } from '../../lib/time'
+import { toneFill, toneText } from '../../lib/tone'
 import { useIssue } from '../../lib/useIssue'
 import { useMutation } from '../../lib/useMutation'
 import {
@@ -78,7 +78,7 @@ function StandingLine({ standing }: { standing: IssueStanding }) {
 
   return (
     <p className={`flex min-w-0 items-center gap-2 text-sm font-medium ${toneText[tone]}`}>
-      <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${toneDot[tone]}`} />
+      <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${toneFill[tone]}`} />
       <span className="min-w-0">{standing.sentence}</span>
       {standing.at !== '' && (
         <span className="shrink-0 font-normal text-muted">

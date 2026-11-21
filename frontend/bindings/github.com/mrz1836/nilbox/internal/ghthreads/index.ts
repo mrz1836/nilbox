@@ -13,10 +13,6 @@ export {
 } from "./models.js";
 
 export type {
-    Preview,
-    PreviewHeld,
-    PreviewRepo,
-    PreviewThread,
     QueuedClear,
     SettledClear,
     Snapshot,

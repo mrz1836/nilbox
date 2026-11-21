@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react'
 
-import { Switch } from '../controls'
+import { ErrorText, Switch } from '../controls'
 import { headingMatchClass, rowMatchClass, useSetting } from './match'
 
 // The building blocks every settings section lays itself out with: cards of rows, the
-// heading over a part of a section, the note under one, and the text of a refusal.
+// heading over a part of a section, and the note under one. The text of a refusal is
+// ErrorText, a control the whole window shares (controls.tsx).
 
 // joinIds joins the ids a control points aria-describedby at, leaving out those not shown
 // (false), or returns undefined when none are left.
@@ -20,31 +21,13 @@ export function rowDescribedBy(controlId: string, error: string, ...more: (strin
   return joinIds(`${controlId}-help`, error !== '' && `${controlId}-error`, ...more)
 }
 
-interface ErrorTextProps {
-  // id is what a control's aria-describedby points at, so the error is read with it.
-  id?: string | undefined
-  // error is why a change was refused; nothing shows while it is ''.
-  error: string
-  // className places the text, such as a margin.
-  className?: string
-}
-
-// ErrorText is why a change was refused, announced as soon as it shows.
-export function ErrorText({ id, error, className = '' }: ErrorTextProps) {
-  if (error === '') {
-    return null
-  }
-
-  return (
-    <p id={id} role="alert" className={`${className} text-xs text-danger`.trim()}>
-      {error}
-    </p>
-  )
-}
+// groupClass is a card of rows with a rule between each, for a section that draws its
+// own card rather than a Group, such as a list it lays out itself.
+export const groupClass = 'divide-y divide-border rounded-lg border border-border bg-surface'
 
 // Group is a card of setting rows.
 export function Group({ children }: { children: ReactNode }) {
-  return <div className="divide-y divide-border rounded-lg border border-border bg-surface">{children}</div>
+  return <div className={groupClass}>{children}</div>
 }
 
 // Note is the small print under a part of a section.

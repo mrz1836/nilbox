@@ -4,6 +4,7 @@ import { levelText, summarize, summaryText } from '../lib/budget'
 import { useNow } from '../lib/useNow'
 import { usePopover } from '../lib/usePopover'
 import type { BudgetGauge } from '../platform'
+import { toolbarButtonShape } from './controls'
 import { GaugeIcon } from './GaugeIcon'
 import { PopoverPanel, ToolbarPopoverButton } from './PopoverPanel'
 import { RateGauge } from './RateGauge'
@@ -58,7 +59,7 @@ export function BudgetMenu({ gauge, onCheck }: BudgetMenuProps) {
         popover={popover}
         id={id}
         label={label}
-        className={`flex size-8 items-center justify-center rounded-md transition-colors hover:bg-raised aria-expanded:bg-raised ${levelText[summary.level]}`}
+        className={`${toolbarButtonShape} ${levelText[summary.level]}`}
       >
         <GaugeIcon percent={summary.percent} known={summary.level !== 'unknown'} />
       </ToolbarPopoverButton>
@@ -68,7 +69,7 @@ export function BudgetMenu({ gauge, onCheck }: BudgetMenuProps) {
         id={id}
         role="dialog"
         aria-labelledby={`${id}-title`}
-        className="z-40 w-80 shadow-black/20 outline-none"
+        className="layer-popover w-80 outline-none"
       >
         <RateGauge gauge={gauge} now={now} titleId={`${id}-title`} />
       </PopoverPanel>

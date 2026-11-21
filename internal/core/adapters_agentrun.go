@@ -22,6 +22,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -68,6 +69,9 @@ type backgroundAgents struct {
 	home     string
 	logger   *slog.Logger
 
+	// clock stamps the agent each run records in its worktree; nil is the real clock.
+	clock clock.Clock
+
 	// program is the app's own executable, which a run's fence hook runs in its hook mode,
 	// and changes notes what a run's commits changed on its item (*inbox.Store), so a run
 	// that wrote agent files holds the next launch there; either may be empty.
@@ -89,6 +93,25 @@ type backgroundAgents struct {
 }
 
 var _ autopilot.Runner = (*backgroundAgents)(nil)
+
+// backgroundDeps are what the background agents are built over, before the launcher and
+// the runs, which core fills in once they are built.
+type backgroundDeps struct {
+	ledger   *sessions.Ledger
+	git      *gitread.Git
+	shellEnv func() ([]string, bool)
+	touch    launcher.SessionRecorder
+	changes  agentChangeNoter
+}
+
+// newBackgroundAgents builds the background agents over deps, with the home and the clock
+// the options give, and the app's own executable for a run's fence hook.
+func newBackgroundAgents(opts Options, deps backgroundDeps, logger *slog.Logger) *backgroundAgents {
+	return &backgroundAgents{
+		ledger: deps.ledger, git: deps.git, shellEnv: deps.shellEnv, home: opts.Home, logger: logger,
+		clock: opts.Clock, touch: deps.touch, program: ownExecutable(), changes: deps.changes,
+	}
+}
 
 // backgroundPlanner plans a background run and trusts its worktree: the launcher's
 // Backgrounds.
@@ -393,7 +416,7 @@ func (b *backgroundAgents) start(ctx context.Context, job autopilot.Job, step sp
 
 	if b.touch != nil {
 		worktree := item.WorktreeName(job.Item.Kind, job.Item.Number)
-		if err = b.touch.Touch(ctx, bp.Clone.Dir, worktree, bp.Plan.Agent, time.Now()); err != nil {
+		if err = b.touch.Touch(ctx, bp.Clone.Dir, worktree, bp.Plan.Agent, clock.Or(b.clock).Now()); err != nil {
 			b.logger.DebugContext(ctx, "could not record the agent in its worktree", "error", err)
 		}
 	}

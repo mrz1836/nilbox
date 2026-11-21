@@ -29,15 +29,14 @@ func bugReportLeavesOut() map[string]string {
 		"DefaultWindowSize":   "the size a fresh database opens the window at, the same in every build",
 
 		// What the window remembers of how it was last left, which no bug turns on.
-		"ReviewTab":            "the review sheet's tab chosen last",
-		"NotificationsTab":     "the Notifications page's tab chosen last",
-		"ProjectsTipDismissed": "whether the inbox's tip about projects was put away",
-		"GitHubNotifications.CleanupCardDismissed": "whether the card offering to clean up notifications was put away",
-		"Integrations.Announced":                   "whether the Scripts tab was announced once",
-		"Integrations.LastPage":                    "the Scripts tab's page shown last",
-		"Integrations.Sections":                    "the Scripts tab's sections opened or folded",
-		"Integrations.ShowRuns":                    "whether Repo scripts shows a run beside its scripts at once",
-		"Integrations.ReleaseSort":                 "the order the Release page was last sorted in",
+		"ReviewTab":                "the review sheet's tab chosen last",
+		"NotificationsTab":         "the Notifications page's tab chosen last",
+		"ProjectsTipDismissed":     "whether the inbox's tip about projects was put away",
+		"Integrations.Announced":   "whether the Scripts tab was announced once",
+		"Integrations.LastPage":    "the Scripts tab's page shown last",
+		"Integrations.Sections":    "the Scripts tab's sections opened or folded",
+		"Integrations.ShowRuns":    "whether Repo scripts shows a run beside its scripts at once",
+		"Integrations.ReleaseSort": "the order the Release page was last sorted in",
 
 		// Private: a path of the user's own.
 		"Integrations.Paths":    "each tool's chosen copy, a path, which the tools' lines tell as \"a copy the user chose\"",

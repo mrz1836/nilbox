@@ -1,12 +1,14 @@
 import { useId, type ReactNode } from 'react'
 
 import { formatCount } from '../../lib/format'
+import { toneFill, toneText } from '../../lib/tone'
 import { cloneSummary } from '../../lib/worktrees'
 import type { WorktreeRepo } from '../../platform'
+import { ErrorText } from '../controls'
 import { WorktreeIcon } from '../icons'
 import { GroupHeading } from '../scripts/GroupHeading'
 import { Spinner } from '../Spinner'
-import { cloneSectionClass, rowListClass, toneBg, toneText, verbButtonClass } from './layout'
+import { cloneSectionClass, rowListClass, verbButtonClass } from './layout'
 
 // pruneTitle says what Prune does, and what it never touches.
 const pruneTitle =
@@ -41,10 +43,7 @@ function CloneNote({ repo, shown, filtered }: CloneNoteProps) {
 
   return (
     <span className="flex min-w-0 items-center gap-2 text-xs whitespace-nowrap">
-      <span
-        title={repo.displayPath}
-        className="min-w-8 shrink truncate font-mono text-[0.71875rem] @max-[44rem]:hidden"
-      >
+      <span title={repo.displayPath} className="min-w-8 shrink truncate font-mono text-meta @max-[44rem]:hidden">
         {repo.displayPath}
       </span>{' '}
       {note !== null && (
@@ -68,7 +67,7 @@ function CloneNote({ repo, shown, filtered }: CloneNoteProps) {
         ) : (
           lanes.map((lane) => (
             <span key={lane.lane} className="inline-flex shrink-0 items-center gap-1.25">
-              <span aria-hidden="true" className={`size-1.5 rounded-full ${toneBg[lane.tone]}`} />
+              <span aria-hidden="true" className={`size-1.5 rounded-full ${toneFill[lane.tone]}`} />
               {`${formatCount(lane.n)} ${lane.words} `}
             </span>
           ))
@@ -150,11 +149,7 @@ export function CloneSection({
             </button>
           ))}
       </GroupHeading>
-      {error !== '' && (
-        <p role="alert" className="col-span-full px-1 text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} className="col-span-full px-1" />
       {unfolded && shown > 0 && (
         <ul aria-label={`Worktrees of ${repo.name}`} className={rowListClass}>
           {children}

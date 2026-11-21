@@ -32,7 +32,7 @@ func frontKeys(t *testing.T, text string) ([]string, string) {
 
 	var keys []string
 
-	for _, line := range strings.Split(front, "\n") {
+	for line := range strings.SplitSeq(front, "\n") {
 		if key, _, found := strings.Cut(line, ":"); found && !strings.HasPrefix(line, " ") {
 			keys = append(keys, key)
 		}

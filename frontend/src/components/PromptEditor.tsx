@@ -11,7 +11,7 @@ import type {
   PromptReplyAction,
   PromptVariable,
 } from '../platform'
-import { chipClass, describedBy, Field, fieldClass, Segmented, type SegmentOption } from './controls'
+import { chipClass, describedBy, ErrorText, Field, fieldClass, Segmented, type SegmentOption } from './controls'
 import { AlertIcon, ChevronRightIcon, CircleCheckIcon, EyeIcon, PencilIcon, StarIcon } from './icons'
 import { LaunchOverrideFields } from './LaunchOverrideFields'
 import { TemplateEditor, type TemplateEditorHandle } from './TemplateEditor'
@@ -69,7 +69,7 @@ function Counter({ value, limit }: { value: string; limit: number }) {
   const n = Array.from(value).length
 
   return (
-    <span aria-hidden="true" className={`text-[0.6875rem] tabular-nums ${n > limit ? 'text-danger' : 'text-muted'}`}>
+    <span aria-hidden="true" className={`text-caption tabular-nums ${n > limit ? 'text-danger' : 'text-muted'}`}>
       {n}/{limit}
     </span>
   )
@@ -154,11 +154,7 @@ export function PromptEditor({
           />
           {actions !== undefined && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
         </div>
-        {(fieldErrors.name ?? '') !== '' && (
-          <p id={`${id}-name-error`} role="alert" className="text-xs text-danger">
-            {fieldErrors.name}
-          </p>
-        )}
+        <ErrorText id={`${id}-name-error`} error={fieldErrors.name ?? ''} />
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pt-4 pb-4">
@@ -196,11 +192,7 @@ export function PromptEditor({
                   set(replyAction === 'comment' ? { replyAction } : { replyAction, appliesTo: 'pr' })
                 }}
               />
-              {(fieldErrors.replyAction ?? '') !== '' && (
-                <p role="alert" className="max-w-sm text-xs text-danger">
-                  {fieldErrors.replyAction}
-                </p>
-              )}
+              <ErrorText error={fieldErrors.replyAction ?? ''} className="max-w-sm" />
             </div>
           )}
           {/* A comment reply can be for issues too; an approval and a request for changes
@@ -216,25 +208,21 @@ export function PromptEditor({
                   set({ appliesTo })
                 }}
               />
-              {(fieldErrors.appliesTo ?? '') !== '' && (
-                <p role="alert" className="max-w-sm text-xs text-danger">
-                  {fieldErrors.appliesTo}
-                </p>
-              )}
+              <ErrorText error={fieldErrors.appliesTo ?? ''} className="max-w-sm" />
             </div>
           )}
           {saved !== null && (
             <div className="flex flex-col gap-1">
               <span className="text-xs font-medium text-muted">Used as a default</span>
               {reply ? (
-                <p className="flex items-center gap-1.5 py-1 text-[0.8125rem] text-text">
+                <p className="flex items-center gap-1.5 py-1 text-body text-text">
                   {saved.usage.replies.length > 0 && <StarIcon className="size-3.5 text-accent" />}
                   {replyUsageSummary(saved.usage.replies)}
                 </p>
               ) : (
                 <p
                   title={usagePlaces(saved.usage).join('\n') || undefined}
-                  className="flex items-center gap-1.5 py-1 text-[0.8125rem] text-text"
+                  className="flex items-center gap-1.5 py-1 text-body text-text"
                 >
                   {(saved.usage.defaults.length > 0 || saved.usage.slots.length > 0) && (
                     <StarIcon className="size-3.5 text-accent" />
@@ -243,7 +231,7 @@ export function PromptEditor({
                 </p>
               )}
               {saved.usage.routines.length > 0 && (
-                <p title={routinePlaces(saved.usage).join('\n')} className="text-[0.8125rem] text-text">
+                <p title={routinePlaces(saved.usage).join('\n')} className="text-body text-text">
                   {routinesUsing(saved.usage)}
                 </p>
               )}
@@ -261,7 +249,7 @@ export function PromptEditor({
               options={viewOptions}
               onChange={onViewChange}
             />
-            <span className="ml-auto text-[0.6875rem] text-muted">
+            <span className="ml-auto text-caption text-muted">
               {view === 'edit' ? (
                 <>
                   Type <code className="font-mono">{'{{'}</code> for variables

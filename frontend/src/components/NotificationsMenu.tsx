@@ -5,7 +5,7 @@ import { quickViewMax } from '../lib/notifications'
 import type { NotificationsState } from '../lib/useNotifications'
 import { usePopover } from '../lib/usePopover'
 import type { AppNotification } from '../platform'
-import { quietButtonClass } from './controls'
+import { ErrorText, quietButtonClass, toolbarButtonClass } from './controls'
 import { BellIcon, CheckIcon, HistoryIcon, SlidersIcon } from './icons'
 import { EntryRow } from './notifications/EntryRow'
 import { CountDot, PopoverPanel, ToolbarPopoverButton } from './PopoverPanel'
@@ -59,12 +59,7 @@ export function NotificationsMenu({ notifications, onOpen, onSettings, onViewAll
 
   return (
     <div className="relative">
-      <ToolbarPopoverButton
-        popover={popover}
-        id={id}
-        label={label}
-        className="relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text"
-      >
+      <ToolbarPopoverButton popover={popover} id={id} label={label} className={toolbarButtonClass}>
         <BellIcon className="size-[1.125rem]" />
         <CountDot count={log.unread} testId="notifications-unread" />
       </ToolbarPopoverButton>
@@ -74,7 +69,7 @@ export function NotificationsMenu({ notifications, onOpen, onSettings, onViewAll
         id={id}
         role="dialog"
         aria-labelledby={`${id}-title`}
-        className="z-40 flex max-h-[min(32rem,calc(100vh-5rem))] w-96 flex-col shadow-black/20 outline-none"
+        className="layer-popover flex max-h-[min(32rem,calc(100vh-5rem))] w-96 flex-col outline-none"
       >
         <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
           <h2 id={`${id}-title`} className="text-sm font-semibold">
@@ -87,11 +82,7 @@ export function NotificationsMenu({ notifications, onOpen, onSettings, onViewAll
             </button>
           )}
         </div>
-        {failure !== '' && (
-          <p role="alert" className="border-b border-border px-4 py-2 text-xs text-danger">
-            {failure}
-          </p>
-        )}
+        <ErrorText error={failure} className="border-b border-border px-4 py-2" />
         {log.items.length === 0 ? (
           <div className="px-4 py-6 text-center">
             <p className="text-sm font-medium">No notifications yet</p>

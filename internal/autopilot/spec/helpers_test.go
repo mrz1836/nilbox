@@ -92,8 +92,3 @@ func golden(t *testing.T, path, header, got string) {
 	require.NoError(t, err)
 	require.Equal(t, string(want), text)
 }
-
-// ptr returns a pointer to v.
-func ptr[T any](v T) *T {
-	return &v
-}

@@ -11,6 +11,7 @@ import {
 import { counted, formatCount } from '../lib/format'
 import { insertSuggestion, segments, type QuerySpec, type Suggester, type Suggestion } from '../lib/query'
 import { SearchIcon, XIcon } from './icons'
+import { panelClass } from './PopoverPanel'
 
 export interface SearchFieldProps {
   value: string
@@ -157,7 +158,7 @@ export function SearchField({ value, onChange, placeholder, spec, matches, sugge
   return (
     <div className="relative w-64 min-w-36 shrink">
       <div
-        className={`@container flex items-center gap-2 rounded-md border px-2.5 py-1 transition-colors ${matches === null ? 'border-border bg-background focus-within:border-accent/60' : 'border-accent/70 bg-accent/5'}`}
+        className={`@container flex items-center gap-2 rounded-md border px-2.5 py-1 transition-colors ${matches === null ? 'border-border bg-background focus-within:border-accent/60' : 'border-accent/60 bg-accent/5'}`}
       >
         <SearchIcon className="size-3.5 shrink-0 text-muted" />
         <div className="relative flex min-w-0 flex-1">
@@ -208,7 +209,7 @@ export function SearchField({ value, onChange, placeholder, spec, matches, sugge
             onSelect={sync}
             onClick={sync}
             onScroll={sync}
-            className={`relative min-w-0 flex-1 bg-transparent text-sm outline-none select-text selection:bg-accent/25 placeholder:text-muted/70 ${tinted ? 'text-transparent caret-text' : 'text-text'}`}
+            className={`relative min-w-0 flex-1 bg-transparent text-sm outline-none select-text selection:bg-accent/22 placeholder:text-muted/70 ${tinted ? 'text-transparent caret-text' : 'text-text'}`}
           />
         </div>
         {matches !== null && (
@@ -241,7 +242,7 @@ export function SearchField({ value, onChange, placeholder, spec, matches, sugge
         </span>
       </div>
       {open && (
-        <div className="absolute top-full right-0 z-40 mt-1 w-80 rounded-lg border border-border bg-surface p-1 text-sm shadow-xl shadow-black/20">
+        <div className={`${panelClass} absolute top-full right-0 layer-popover mt-1 w-80 p-1 text-sm`}>
           <div id={listId} role="listbox" aria-label={suggestions.label} className="max-h-72 overflow-y-auto">
             {options.map((option, i) => (
               <div
@@ -262,7 +263,7 @@ export function SearchField({ value, onChange, placeholder, spec, matches, sugge
               >
                 <span className="min-w-0 truncate">{option.label}</span>
                 {option.detail !== '' && (
-                  <span className="shrink-0 font-mono text-[0.75rem] text-muted">{option.detail}</span>
+                  <span className="shrink-0 font-mono text-small text-muted">{option.detail}</span>
                 )}
                 <span className="ml-auto shrink-0 pl-2 text-xs text-muted tabular-nums">{option.count}</span>
               </div>

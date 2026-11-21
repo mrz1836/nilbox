@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -203,9 +204,7 @@ func (c *Client) fetchChecks(ctx context.Context, tok Token, ids []string) (*Che
 			continue
 		}
 
-		for id, h := range a.Items {
-			out.Items[id] = h
-		}
+		maps.Copy(out.Items, a.Items)
 
 		cost := out.RateLimit.Cost + a.RateLimit.Cost
 		if out.Requests == 0 || a.RateLimit.Later(out.RateLimit) {

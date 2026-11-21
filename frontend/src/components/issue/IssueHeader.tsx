@@ -33,7 +33,7 @@ export interface IssueHeaderProps {
 }
 
 // tagClass is the header's small tags.
-const tagClass = 'rounded-full border border-border px-1.5 py-px text-[0.6875rem]'
+const tagClass = 'rounded-full border border-border px-1.5 py-px text-caption'
 
 // IssueHeader is the issue sheet's top (SheetHeader): the issue's state, as its icon's
 // color, its title and where it is, who opened it and when, and whether the conversation is

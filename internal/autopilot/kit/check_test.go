@@ -290,7 +290,7 @@ func TestEveryListOfACheckIsThere(t *testing.T) {
 		Summary:  "Everything.",
 		Prompts:  []kit.NewPrompt{{}},
 		Routines: []kit.RoutineChange{{}},
-		Settings: &kit.SettingsChange{AgentsAtOnce: someNumber(1)},
+		Settings: &kit.SettingsChange{AgentsAtOnce: new(1)},
 		Rules:    &kit.RulesChange{Trust: []string{renovateLogin}},
 	})
 
@@ -314,7 +314,7 @@ func TestProblemsCountsEveryPartsProblems(t *testing.T) {
 		Summary:  "Problems.",
 		Prompts:  []kit.NewPrompt{{Name: "P", Nickname: "Triage", Purpose: kit.PurposeAgent, AppliesTo: kit.AppliesToPR, Body: "x"}},
 		Routines: []kit.RoutineChange{{Spec: checksFailSpec(notifyStep())}},
-		Settings: &kit.SettingsChange{AgentsAtOnce: someNumber(9)},
+		Settings: &kit.SettingsChange{AgentsAtOnce: new(9)},
 		Rules:    &kit.RulesChange{Trust: []string{"not a bot"}},
 	})
 

@@ -433,9 +433,7 @@ func (s *Service) Replies(ctx context.Context, action ReplyAction) (ReplyList, e
 		return ReplyList{}, err
 	}
 
-	if list.Replies == nil {
-		list.Replies = []Reply{}
-	}
+	list.Replies = textutil.NonNil(list.Replies)
 
 	return list, nil
 }

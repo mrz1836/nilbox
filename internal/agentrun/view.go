@@ -13,6 +13,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/agentrun/runevent"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 var (
@@ -217,8 +218,8 @@ func endingOf(rec scriptrun.Run, progress runevent.Progress) (*runevent.Ending, 
 	out := outcomeIn(rec.Result.Outcome)
 
 	e := &runevent.Ending{
-		Summary: out.Summary, NoReport: out.NoReport, Commit: out.Commit, Changed: nonNilStrings(out.Changed),
-		Todos: nonNilTodos(out.Todos), Models: []string{}, Refused: out.Refused,
+		Summary: out.Summary, NoReport: out.NoReport, Commit: out.Commit, Changed: textutil.NonNil(out.Changed),
+		Todos: textutil.NonNil(out.Todos), Models: []string{}, Refused: out.Refused,
 	}
 
 	if e.Summary == "" {
@@ -226,7 +227,7 @@ func endingOf(rec scriptrun.Run, progress runevent.Progress) (*runevent.Ending, 
 	}
 
 	if res := out.Result; res != nil {
-		e.Message, e.Turns, e.DurationMS, e.Models = res.Message, res.Turns, res.DurationMS, nonNilStrings(res.Models)
+		e.Message, e.Turns, e.DurationMS, e.Models = res.Message, res.Turns, res.DurationMS, textutil.NonNil(res.Models)
 	}
 
 	if rep := out.Report; rep != nil {
@@ -281,7 +282,7 @@ func (r *Runner) Diff(ctx context.Context, runID int64) (runevent.Diff, error) {
 		return runevent.Diff{}, err
 	}
 
-	return runevent.Diff{From: in.HeadBefore, Patch: got.Patch, Cut: got.Cut, Untracked: nonNilStrings(got.Untracked)}, nil
+	return runevent.Diff{From: in.HeadBefore, Patch: got.Patch, Cut: got.Cut, Untracked: textutil.NonNil(got.Untracked)}, nil
 }
 
 // Wait returns once the ledger's run's end is told, or its start failed, or at once for a
@@ -340,22 +341,4 @@ func (r *Runner) TakenOf(ctx context.Context, id int64) (Taken, bool) {
 	in := intentIn(rec.Result.Intent)
 
 	return Taken{RunID: in.RunID, Preset: in.Fence.Preset, Folder: in.Folder}, in.RunID > 0
-}
-
-// nonNilStrings returns list, or an empty list for nil.
-func nonNilStrings(list []string) []string {
-	if list == nil {
-		return []string{}
-	}
-
-	return list
-}
-
-// nonNilTodos returns list, or an empty list for nil.
-func nonNilTodos(list []runevent.Todo) []runevent.Todo {
-	if list == nil {
-		return []runevent.Todo{}
-	}
-
-	return list
 }

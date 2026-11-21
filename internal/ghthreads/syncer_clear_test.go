@@ -304,13 +304,13 @@ func TestSyncerKeepsAClickMadeAsARunEnds(t *testing.T) {
 		// the window.
 		sink.block.Store(true)
 
-		_, err := svc.Clear(t.Context(), []int64{firstID})
+		_, err := svc.clearByHand(t.Context(), []int64{firstID})
 		require.NoError(t, err)
 
 		<-sink.entered
 
 		// Then the other, while that run is still ending.
-		_, err = svc.Clear(t.Context(), []int64{firstID + 1})
+		_, err = svc.clearByHand(t.Context(), []int64{firstID + 1})
 		require.NoError(t, err)
 
 		begun := time.Now()

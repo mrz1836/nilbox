@@ -4,6 +4,7 @@ import { commitsSinceAnchor, rewritePush, sinceIndex, verdictWords } from '../..
 import { counted } from '../../lib/format'
 import { formatAgo } from '../../lib/time'
 import { openExternal, type Review, type ReviewCommit, type YourReview } from '../../platform'
+import { linkClass } from '../controls'
 import { Divider } from '../Divider'
 import { ExternalIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
@@ -16,7 +17,7 @@ export interface CommitListProps {
 }
 
 // tagClass is a small rounded tag beside a commit, as the conversation's are.
-const tagClass = 'shrink-0 rounded-full border px-1.5 py-px text-[0.6875rem]'
+const tagClass = 'shrink-0 rounded-full border px-1.5 py-px text-caption'
 
 // CommitList is the pull request's newest commits, oldest first, each opening on GitHub: the
 // commit the user's standing review was left on says so, and a divider marks the commits
@@ -49,7 +50,7 @@ export function CommitList({ review, onShowPush }: CommitListProps) {
           onClick={() => {
             openExternal(`${review.url}/commits`)
           }}
-          className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+          className={`${linkClass} inline-flex items-center gap-1 text-xs`}
         >
           {counted(earlierCommits, 'earlier commit', 'earlier commits')} on GitHub
           <ExternalIcon className="size-3" />

@@ -8,8 +8,8 @@
 // clips (no overflow on the grid, a section, or a list): the clone headings stick in the
 // page's scroll, and a menu's panel hangs out of its row.
 
+import { smallIconButtonClass } from '../controls'
 import type { LaunchPlace } from '../LaunchControls'
-import type { Tone } from '../../lib/worktreeParts'
 
 // worktreeGridClass is the page's list of clones: the container its rows' layout follows,
 // and the grid of its nine columns: the state, the branch, the item, the work, the agent,
@@ -43,7 +43,7 @@ export const stateCellClass = 'col-start-1 row-start-1 flex w-3.5 min-w-0 justif
 
 // branchCellClass holds the branch: its prefix gives way first, so the name stays readable.
 export const branchCellClass =
-  'col-start-2 row-start-1 flex min-w-0 items-center overflow-hidden text-[0.84375rem] whitespace-nowrap'
+  'col-start-2 row-start-1 flex min-w-0 items-center overflow-hidden text-body-lg whitespace-nowrap'
 
 // metaClass holds the item, the work, the agent, and the age: no box of its own while they
 // sit in the row's columns, and in a narrow grid the second line they share.
@@ -51,7 +51,7 @@ export const metaClass =
   'contents @max-xl:col-[2/-1] @max-xl:row-start-2 @max-xl:flex @max-xl:min-w-0 @max-xl:items-center @max-xl:gap-2.25 @max-xl:pr-1.5'
 
 export const itemCellClass =
-  'col-start-3 row-start-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-[0.78125rem] whitespace-nowrap @max-4xl:col-[2/4] @max-4xl:row-start-2 @max-xl:flex-auto'
+  'col-start-3 row-start-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-control whitespace-nowrap @max-4xl:col-[2/4] @max-4xl:row-start-2 @max-xl:flex-auto'
 
 export const workCellClass =
   'col-start-4 row-start-1 flex min-w-0 items-center gap-2.25 text-xs whitespace-nowrap tabular-nums @max-4xl:col-[4/9] @max-4xl:row-start-2 @max-4xl:justify-end @max-4xl:pr-1.5 @max-xl:shrink-0 @max-xl:pr-0'
@@ -84,30 +84,30 @@ export const noteClass = 'col-[2/-1] flex flex-col gap-0.5 pb-1.25 text-xs'
 // row, from the branch to the row's end (LaunchControls' row variant).
 export const launchPlace: LaunchPlace = { boxClass: verbCellClass, outcomeClass: 'col-[2/-1] pb-1' }
 
-// iconButtonClass is a quiet icon button: ›_, ⋯, and the chevron.
-export const iconButtonClass =
-  'inline-grid size-6 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-50 aria-expanded:bg-raised aria-expanded:text-text'
+// toolButtonClass is a row's small icon button, ›_, ⋯, or the chevron, or a cleaned-up
+// line's: lit while the menu or the drawer it opens is open.
+export const toolButtonClass = `${smallIconButtonClass} disabled:opacity-disabled aria-expanded:bg-raised aria-expanded:text-text`
 
 // buttonClass is a bordered button: the row's verb, and the drawer's Remove… and Force
 // remove…; cleanUpClass is Clean up's, in green.
 const buttonShape =
-  'inline-flex h-6 items-center gap-1.25 rounded-md border px-2.25 text-xs font-semibold whitespace-nowrap transition-colors disabled:opacity-55'
+  'inline-flex h-6 items-center gap-1.25 rounded-md border px-2.25 text-xs font-semibold whitespace-nowrap transition-colors disabled:opacity-disabled'
 
 export const verbButtonClass = `${buttonShape} border-border bg-surface text-text hover:bg-raised disabled:hover:bg-surface`
 
-export const cleanUpButtonClass = `${buttonShape} border-success/50 bg-success/8 text-success hover:bg-success/15 disabled:hover:bg-success/8`
+export const cleanUpButtonClass = `${buttonShape} border-success/45 bg-success/10 text-success hover:bg-success/14 disabled:hover:bg-success/10`
 
 export const dangerVerbButtonClass = `${buttonShape} border-border bg-surface text-danger hover:bg-raised disabled:hover:bg-surface`
 
 // tagClass is a small tag beside an item or a folder: draft, or Claude Code.
 export const tagClass =
-  'shrink-0 cursor-help rounded-full border border-border bg-raised px-1.5 text-[0.65625rem] leading-[0.9375rem] font-semibold text-muted'
+  'shrink-0 cursor-help rounded-full border border-border bg-raised px-1.5 text-marker leading-[0.9375rem] font-semibold text-muted'
 
 // drawerClass is a row's drawer, under it, from the branch's column to the row's end, on a
 // raised background; in a narrow grid, across the row under the state's column. It is the
 // container its columns follow.
 export const drawerClass =
-  '@container col-[2/-1] mt-0.5 mr-0.5 mb-2.5 overflow-hidden rounded-lg border border-border bg-raised/40 shadow-md shadow-black/10 @max-xl:col-span-full @max-xl:ml-5.5'
+  '@container col-[2/-1] mt-0.5 mr-0.5 mb-2.5 overflow-hidden rounded-lg border border-border bg-raised/40 shadow-drawer @max-xl:col-span-full @max-xl:ml-5.5'
 
 // drawerColumnsClass sets the drawer's three columns side by side, and under 48rem one
 // above another.
@@ -118,7 +118,7 @@ export const drawerColumnClass =
 
 // columnHeadingClass is a drawer column's heading, in capitals.
 export const columnHeadingClass =
-  'mb-1.5 flex min-h-5 items-center gap-1.5 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase'
+  'mb-1.5 flex min-h-5 items-center gap-1.5 text-caption font-semibold tracking-wide text-muted uppercase'
 
 // columnNoneClass says a column has nothing to list.
 export const columnNoneClass = 'flex items-center gap-1.5 text-xs text-muted'
@@ -139,7 +139,7 @@ export const historyListClass =
   '@container grid grid-cols-[auto_fit-content(16rem)_minmax(0,1fr)_auto_fit-content(14rem)_auto_auto_auto] gap-x-3'
 
 export const historyRowClass =
-  'group/cleanup col-span-full grid min-h-7 grid-cols-subgrid items-center rounded-md py-0.5 pr-1 pl-2 text-[0.78125rem] hover:bg-raised/60 focus-within:bg-raised/60 @max-4xl:py-1'
+  'group/cleanup col-span-full grid min-h-7 grid-cols-subgrid items-center rounded-md py-0.5 pr-1 pl-2 text-control hover:bg-raised/60 focus-within:bg-raised/60 @max-4xl:py-1'
 
 // historyCell is what every cell of a cleaned-up line shares: one line, cut short.
 const historyCell = 'row-start-1 min-w-0 truncate'
@@ -154,7 +154,7 @@ export const historyHowClass = `${historyCell} col-start-4 text-xs text-muted @m
 
 export const historyBranchClass = `${historyCell} col-start-5 text-xs text-muted @max-4xl:col-[5/7] @max-4xl:row-start-2 @max-xl:hidden`
 
-export const historyCommitClass = `${historyCell} col-start-6 cursor-help font-mono text-[0.71875rem] text-muted @max-4xl:col-[7/-1] @max-4xl:row-start-2 @max-4xl:justify-self-end @max-4xl:pr-1.5`
+export const historyCommitClass = `${historyCell} col-start-6 cursor-help font-mono text-meta text-muted @max-4xl:col-[7/-1] @max-4xl:row-start-2 @max-4xl:justify-self-end @max-4xl:pr-1.5`
 
 export const historyAgeClass = `${historyCell} col-start-7 text-right text-xs text-muted tabular-nums`
 
@@ -162,23 +162,3 @@ export const historyAgeClass = `${historyCell} col-start-7 text-right text-xs te
 // is pointed at or holds the focus.
 export const historyActionsClass =
   'col-start-8 row-start-1 flex items-center gap-0.5 justify-self-end opacity-0 transition-opacity group-focus-within/cleanup:opacity-100 group-hover/cleanup:opacity-100'
-
-// toneText and toneBg color a part of the page by its tone, spelled out in full so
-// Tailwind finds them.
-export const toneText: Readonly<Record<Tone, string>> = {
-  info: 'text-info',
-  warning: 'text-warning',
-  caution: 'text-caution',
-  success: 'text-success',
-  danger: 'text-danger',
-  muted: 'text-muted',
-}
-
-export const toneBg: Readonly<Record<Tone, string>> = {
-  info: 'bg-info',
-  warning: 'bg-warning',
-  caution: 'bg-caution',
-  success: 'bg-success',
-  danger: 'bg-danger',
-  muted: 'bg-muted',
-}

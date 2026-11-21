@@ -3,6 +3,7 @@ package kit
 import (
 	"bytes"
 	"encoding/json"
+	"maps"
 	"reflect"
 	"strconv"
 
@@ -148,9 +149,7 @@ func (b *schemaBuilder) object(t reflect.Type) *schemaNode {
 
 	limits := schemaLimits()
 
-	for i := range t.NumField() {
-		f := t.Field(i)
-
+	for f := range t.Fields() {
 		key, optional, ok := jsonKeyOf(f)
 		if !ok {
 			continue
@@ -254,9 +253,7 @@ func schemaLimits() map[schemaAt]schemaNode {
 	limits := map[schemaAt]schemaNode{}
 
 	for _, group := range []map[schemaAt]schemaNode{specLimits(), stepLimits(), proposalLimits()} {
-		for at, l := range group {
-			limits[at] = l
-		}
+		maps.Copy(limits, group)
 	}
 
 	return limits

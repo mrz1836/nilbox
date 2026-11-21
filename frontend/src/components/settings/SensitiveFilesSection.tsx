@@ -13,10 +13,10 @@ import {
   type SensitiveCategory,
   type SensitiveScope,
 } from '../../platform'
-import { Segmented, Switch } from '../controls'
+import { ErrorText, Segmented, Switch } from '../controls'
 import { ChevronRightIcon } from '../icons'
 import { PathTester } from './PathTester'
-import { ChoiceRow, ErrorText, Group, joinIds, Note, SectionIntro } from './rows'
+import { ChoiceRow, Group, groupClass, joinIds, Note, SectionIntro } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
 import { useListChange } from './useListChange'
@@ -61,7 +61,7 @@ function CategoryRow({ category, on, busy, onChange, describedBy }: CategoryRowP
           <label htmlFor={id} className="text-sm font-medium">
             {category.label}
           </label>
-          {category.locked && <span className="text-[0.6875rem] text-muted">Always on</span>}
+          {category.locked && <span className="text-caption text-muted">Always on</span>}
         </div>
         <p id={`${id}-help`} className="mt-0.5 text-xs leading-relaxed text-muted">
           {category.description}
@@ -74,7 +74,7 @@ function CategoryRow({ category, on, busy, onChange, describedBy }: CategoryRowP
           </summary>
           <ul aria-label={`${category.label} patterns`} className="mt-1.5 flex flex-wrap gap-1">
             {patterns.map((p) => (
-              <li key={p} className="rounded border border-border px-1.5 py-px font-mono text-[0.6875rem] text-text">
+              <li key={p} className="rounded border border-border px-1.5 py-px font-mono text-caption text-text">
                 {p}
               </li>
             ))}
@@ -182,7 +182,7 @@ export function SensitiveFilesSection({ settings: stored, onSaved }: SectionProp
           A checked pull request’s card points out the files it changes in these categories: red for files that run or
           steer an agent, amber for files that change what the project trusts.
         </SectionIntro>
-        <ul aria-label="Categories" className="divide-y divide-border rounded-lg border border-border bg-surface">
+        <ul aria-label="Categories" className={groupClass}>
           {categories.map((category) => (
             <CategoryRow
               key={category.id}

@@ -15,8 +15,9 @@ import {
   type Settings,
   type ThreadSwitch,
 } from '../../platform'
-import { buttonClass, primaryButtonClass, Switch } from '../controls'
+import { buttonClass, ErrorText, primaryButtonClass, Switch } from '../controls'
 import { BellIcon, CircleCheckIcon } from '../icons'
+import { Group } from '../settings/rows'
 
 interface ToggleProps {
   label: string
@@ -120,11 +121,7 @@ export function NotificationsStep({ settings: stored, onSaved, banners }: Notifi
                 Sent. If no banner showed, check Focus and System Settings › Notifications.
               </p>
             )}
-            {tester.error !== '' && (
-              <p role="alert" className="mt-2 text-xs text-danger">
-                {tester.error}
-              </p>
-            )}
+            <ErrorText error={tester.error} className="mt-2" />
           </div>
           <button
             type="button"
@@ -138,7 +135,7 @@ export function NotificationsStep({ settings: stored, onSaved, banners }: Notifi
           </button>
         </div>
 
-        <div className="divide-y divide-border rounded-lg border border-border bg-surface">
+        <Group>
           {sessionToggles.map(({ kind, label, help }) => (
             <Toggle
               key={kind}
@@ -162,12 +159,12 @@ export function NotificationsStep({ settings: stored, onSaved, banners }: Notifi
               void save({ menuBar }, () => setMenuBar(menuBar))
             }}
           />
-        </div>
+        </Group>
       </section>
 
       <section aria-label="GitHub notifications" className="flex flex-col gap-3">
         <h3 className="text-sm font-semibold">GitHub notifications</h3>
-        <div className="divide-y divide-border rounded-lg border border-border bg-surface">
+        <Group>
           <Toggle
             label="Mirror my GitHub notifications"
             help="Read them here, beside your inbox, as GitHub lists them."
@@ -185,15 +182,11 @@ export function NotificationsStep({ settings: stored, onSaved, banners }: Notifi
               switchThreads('auto', on)
             }}
           />
-        </div>
+        </Group>
         <p className="text-xs text-muted">More choices wait in Settings → GitHub notifications.</p>
       </section>
 
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
     </div>
   )
 }

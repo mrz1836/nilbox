@@ -31,21 +31,6 @@ func putIn(t *testing.T, cache *update.Cache, version string, private ed25519.Pr
 	return entry
 }
 
-// folders lists the folders in dir.
-func folders(t *testing.T, dir string) []string {
-	t.Helper()
-
-	listed, err := os.ReadDir(dir)
-	require.NoError(t, err)
-
-	out := make([]string, 0, len(listed))
-	for _, item := range listed {
-		out = append(out, item.Name())
-	}
-
-	return out
-}
-
 func TestPutKeepsTheZipAndItsManifestTogether(t *testing.T) {
 	t.Parallel()
 
@@ -71,7 +56,7 @@ func TestPutKeepsTheZipAndItsManifestTogether(t *testing.T) {
 	assert.Equal(t, filepath.Join(dir, next, m.File), entry.Zip)
 	assert.Equal(t, m, entry.Manifest)
 	assert.Equal(t, []int64{4, int64(len(zipOf(next)))}, seen, "progress counts what has arrived")
-	assert.ElementsMatch(t, []string{m.File, update.ManifestName}, folders(t, filepath.Join(dir, next)),
+	assert.ElementsMatch(t, []string{m.File, update.ManifestName}, testutil.DirNames(t, filepath.Join(dir, next)),
 		"no temporary file is left")
 
 	info, err := os.Stat(entry.Zip)
@@ -108,7 +93,7 @@ func TestPutLeavesNothingOfAFailedDownload(t *testing.T) {
 
 		_, err := update.NewCache(dir, public).Put(m, fetch, nil)
 		require.Error(t, err, name)
-		assert.Empty(t, folders(t, dir), "nothing of the version is left: %s", name)
+		assert.Empty(t, testutil.DirNames(t, dir), "nothing of the version is left: %s", name)
 	}
 }
 
@@ -141,7 +126,7 @@ func TestLoadChecksEveryUpdateKeptAgain(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Equal(t, good, entry, "the newest that checks out")
-	assert.ElementsMatch(t, []string{later, "notes"}, folders(t, dir), "the rest is dropped")
+	assert.ElementsMatch(t, []string{later, "notes"}, testutil.DirNames(t, dir), "the rest is dropped")
 }
 
 func TestLoadOfAnEmptyOrMissingCacheFindsNothing(t *testing.T) {
@@ -168,10 +153,10 @@ func TestPruneKeepsOneVersionOrNone(t *testing.T) {
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "notes"), 0o700))
 
 	require.NoError(t, cache.Prune(later))
-	assert.ElementsMatch(t, []string{later, "notes"}, folders(t, dir))
+	assert.ElementsMatch(t, []string{later, "notes"}, testutil.DirNames(t, dir))
 
 	require.NoError(t, cache.Prune(""))
-	assert.Equal(t, []string{"notes"}, folders(t, dir))
+	assert.Equal(t, []string{"notes"}, testutil.DirNames(t, dir))
 
 	require.NoError(t, update.NewCache(filepath.Join(dir, "missing"), public).Prune(""), "a missing cache holds nothing")
 }
@@ -203,7 +188,7 @@ func TestLoadKeepsTheNewestByVersionNotByName(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Equal(t, newest, entry)
-	assert.Equal(t, []string{"0.10.0"}, folders(t, dir), "the older is dropped")
+	assert.Equal(t, []string{"0.10.0"}, testutil.DirNames(t, dir), "the older is dropped")
 }
 
 func TestLoadDropsAnUpdateWhoseManifestCantBeRead(t *testing.T) {
@@ -219,7 +204,7 @@ func TestLoadDropsAnUpdateWhoseManifestCantBeRead(t *testing.T) {
 	_, ok, err := cache.Load(running)
 	require.NoError(t, err)
 	assert.False(t, ok)
-	assert.Empty(t, folders(t, dir))
+	assert.Empty(t, testutil.DirNames(t, dir))
 }
 
 func TestACacheThatIsntAFolderCantBeLoadedOrPruned(t *testing.T) {
@@ -257,7 +242,7 @@ func TestPutLeavesNothingWhenSomethingTakesTheZipsOrManifestsPlace(t *testing.T)
 			return err
 		}, nil)
 		require.Error(t, err, name)
-		assert.Empty(t, folders(t, dir), "nothing of the version is left: %s", name)
+		assert.Empty(t, testutil.DirNames(t, dir), "nothing of the version is left: %s", name)
 	}
 }
 
@@ -287,5 +272,5 @@ func TestPutSaysWhatItCouldntSaveInAFolderItCantWrite(t *testing.T) {
 
 	_, err = update.NewCache(kept, public).Put(m, fetch, nil)
 	require.ErrorContains(t, err, "remove "+next+" from the updates kept", "the copy kept before can't be cleared")
-	assert.Equal(t, []string{next}, folders(t, kept))
+	assert.Equal(t, []string{next}, testutil.DirNames(t, kept))
 }

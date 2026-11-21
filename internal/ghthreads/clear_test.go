@@ -166,21 +166,18 @@ func TestFirstPassAfterRuleChangeCapsAt25(t *testing.T) {
 	assert.Equal(t, 30, r.snapshot().Backlog, "they wait for review")
 	assert.Empty(t, r.state().RulesSeen, "the first pass is still to come")
 
-	preview, err := r.svc.Preview(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, 30, preview.Count, "the sheet shows them")
-
 	r.clock.Advance(5 * time.Minute)
 	assert.Empty(t, writes(r.mustPass()), "and they keep waiting")
 
-	// The user clears ten from the sheet: the rest are now few enough.
+	// The user clears ten by hand: the rest are now few enough.
 	ids := make([]int64, 0, 10)
 	for _, th := range threads[:10] {
 		ids = append(ids, th.id)
 	}
 
-	_, err = r.svc.Clear(t.Context(), ids)
+	n, err := r.svc.clearByHand(t.Context(), ids)
 	require.NoError(t, err)
+	assert.Equal(t, 10, n)
 	assert.Len(t, writes(r.send()), 10, "by hand, no cap")
 
 	r.clock.Advance(5 * time.Minute)
@@ -217,7 +214,7 @@ func TestLaterPassCapsAt150(t *testing.T) {
 	assert.Empty(t, writes(r.mustPass()), "151 is more than a pass clears by itself")
 	assert.Equal(t, Cap+1, r.snapshot().Backlog)
 
-	_, err := r.svc.Clear(t.Context(), []int64{threads[0].id})
+	_, err := r.svc.clearByHand(t.Context(), []int64{threads[0].id})
 	require.NoError(t, err)
 	assert.Len(t, writes(r.send()), 1)
 
@@ -419,6 +416,64 @@ func TestAPassTheDatabaseFailsSaysWhatFailed(t *testing.T) {
 	}
 }
 
+func TestDecidingThatCantReadWhatItDecidesSaysWhatFailed(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a nudged run, the mirror gone", func(t *testing.T) {
+		t.Parallel()
+
+		// A dismissal in the app while the mirror is fresh: the run it nudges lists nothing
+		// and goes straight to deciding, whose first read of the threads fails.
+		r := clearingRig(t, prThread(firstID, 1, start))
+		NewSettler(r.svc).Settle(t.Context(), []Outcome{outcome(OutcomeDismissed, item.KindPR, 1, start)})
+		testutil.Exec(t, r.db, `DROP TABLE gh_threads`)
+
+		req, ok := r.svc.takeNudge()
+		require.True(t, ok, "a nudge waits")
+		require.ErrorContains(t, r.svc.runPass(t.Context(), req), "read the GitHub notifications to clear")
+		assertNoRequests(t, r.gh.requests(), "nothing is listed or sent")
+		assert.Empty(t, r.ledger(), "nothing is queued")
+	})
+
+	t.Run("the threads read again, the mirror gone", func(t *testing.T) {
+		t.Parallel()
+
+		r := clearingRig(t, prThread(firstID, 1, start))
+		in, err := loadInputs(t.Context(), r.svc.q, viewerLogin)
+		require.NoError(t, err)
+		require.Len(t, in.threads, 1)
+
+		testutil.Exec(t, r.db, `DROP TABLE gh_threads`)
+
+		require.ErrorContains(t, in.reloadThreads(t.Context(), r.svc.q, viewerLogin), "read the GitHub notifications to clear")
+		assert.Len(t, in.threads, 1, "the threads read first are kept")
+	})
+
+	// The run read the passes' state and the ledger's marks, but the queue reads both again
+	// inside its transaction, and each is gone by then.
+	for name, tt := range map[string]struct{ sql, words string }{
+		"queueing, the state gone":  {sql: `DROP TABLE prefs`, words: "read the state of the GitHub notifications"},
+		"queueing, the ledger gone": {sql: `DROP TABLE gh_thread_clears`, words: "read the cleared GitHub notifications"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := clearingRig(t, prThread(firstID, 1, start))
+			in, err := loadInputs(t.Context(), r.svc.q, viewerLogin)
+			require.NoError(t, err)
+
+			rules, err := r.rules.ThreadRules(t.Context())
+			require.NoError(t, err)
+
+			testutil.Exec(t, r.db, tt.sql)
+
+			run := &clearRun{rules: rules, account: viewerLogin, now: r.clock.Now()}
+			require.ErrorContains(t, r.svc.queue(t.Context(), run, &in, true), tt.words)
+			assertNoRequests(t, r.gh.requests(), "nothing is sent")
+		})
+	}
+}
+
 func TestTurningClearingOffThatCantSkipTheQueueSaysSo(t *testing.T) {
 	t.Parallel()
 
@@ -484,11 +539,7 @@ func TestAfterMomentPersonSticksUntilRead(t *testing.T) {
 	got = r.mustPass()
 	assert.Empty(t, ofKind(got, "comment"), "a person's activity sticks: not asked again")
 	assert.Empty(t, writes(got))
-
-	preview, err := r.svc.Preview(t.Context())
-	require.NoError(t, err)
-	require.Len(t, preview.Held, 1)
-	assert.Equal(t, SkipNewActivity, preview.Held[0].Reason)
+	assert.Empty(t, r.ledger(), "held, not queued")
 
 	// The user reads it on GitHub.
 	r.gh.read(firstID)
@@ -555,12 +606,10 @@ func TestReadModeMarksReadAndSkipsAlreadyRead(t *testing.T) {
 	assert.Equal(t, 2, snap.Status.Count)
 	assert.Zero(t, snap.Status.Unread, "read now")
 
-	preview, err := r.svc.Preview(t.Context())
+	n, err := r.svc.clearByHand(t.Context(), []int64{firstID, firstID + 1})
 	require.NoError(t, err)
-	assert.Zero(t, preview.Count)
-	require.Len(t, preview.Held, 1)
-	assert.Equal(t, SkipAlreadyRead, preview.Held[0].Reason)
-	assert.Equal(t, 2, preview.Held[0].Count, "both are read now")
+	assert.Zero(t, n, "both are read now: left alone, even by hand")
+	assert.Len(t, r.ledger(), 1)
 }
 
 func TestPruneOldMomentsAndClears(t *testing.T) {
@@ -653,7 +702,7 @@ func TestTriggersEndToEnd(t *testing.T) {
 				t.Helper()
 
 				r.rules.change(func(rules *threadrules.Rules) { rules.Auto = false })
-				_, err := r.svc.Clear(t.Context(), []int64{firstID})
+				_, err := r.svc.clearByHand(t.Context(), []int64{firstID})
 				require.NoError(t, err)
 
 				return r.send()

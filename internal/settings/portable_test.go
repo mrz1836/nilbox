@@ -166,7 +166,6 @@ func TestPortableSettingsRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "windowSize", "the window's memory stays out")
 	assert.NotContains(t, string(data), "collapsed")
-	assert.NotContains(t, string(data), "cleanupCardDismissed")
 	assert.NotContains(t, string(data), "reviewTab")
 	assert.NotContains(t, string(data), "notificationsTab")
 	assert.NotContains(t, string(data), "conversationOrder")

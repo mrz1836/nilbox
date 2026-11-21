@@ -20,7 +20,7 @@ import {
   historyListClass,
   historyRowClass,
   historyWhereClass,
-  iconButtonClass,
+  toolButtonClass,
 } from './layout'
 
 // historyPreview is how many cleanups the history shows before "Show more".
@@ -110,7 +110,7 @@ function CleanupLine({ cleanup, now }: { cleanup: WorktreeCleanup; now: Date }) 
             ariaLabel={`Copy the command that restores ${cleanup.worktree}`}
             title={`Copy restore command: ${command}.${refetch}`}
             icon={<ResetIcon className="size-3.5" />}
-            className={iconButtonClass}
+            className={toolButtonClass}
           />
         )}
         {item !== null && (
@@ -121,7 +121,7 @@ function CleanupLine({ cleanup, now }: { cleanup: WorktreeCleanup; now: Date }) 
             onClick={() => {
               openExternal(item.url)
             }}
-            className={iconButtonClass}
+            className={toolButtonClass}
           >
             <ExternalIcon className="size-3.5" />
           </button>

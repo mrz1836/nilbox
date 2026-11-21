@@ -12,11 +12,11 @@ import {
   sensitiveCount,
   type FilesChip,
 } from '../lib/sensitive'
-import { toneText } from '../lib/signals'
+import { toneText } from '../lib/tone'
 import { useMutation } from '../lib/useMutation'
 import { usePopover, type Popover } from '../lib/usePopover'
 import { checkItemFiles, openExternal, type FileCheck, type SensitiveFile, type SensitiveGroup } from '../platform'
-import { quietButtonClass } from './controls'
+import { ErrorText, inkLinkClass, quietButtonClass } from './controls'
 import { ExternalIcon, RefreshIcon, ShieldAlertIcon, ShieldCheckIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
 import { RelativeTime } from './RelativeTime'
@@ -31,8 +31,8 @@ export interface SensitiveFilesProps {
 
 // chipClass is each tone's chip: a tinted pill for a finding, a bare word otherwise.
 const chipClass: Readonly<Record<FilesChip['tone'], string>> = {
-  danger: 'rounded-full border border-danger/45 bg-danger/10 px-1.5 text-danger hover:bg-danger/18',
-  warning: 'rounded-full border border-warning/45 bg-warning/10 px-1.5 text-warning hover:bg-warning/18',
+  danger: 'rounded-full border border-danger/45 bg-danger/10 px-1.5 text-danger hover:bg-danger/14',
+  warning: 'rounded-full border border-warning/45 bg-warning/10 px-1.5 text-warning hover:bg-warning/14',
   success: 'rounded-full px-1 text-success hover:bg-raised',
   muted: 'rounded-full px-1 text-muted hover:bg-raised hover:text-text',
 }
@@ -59,7 +59,7 @@ function FileChange({ file }: { file: SensitiveFile }) {
   return (
     <span
       title={changeText(file)}
-      className={`ml-auto flex max-w-1/2 shrink-0 items-baseline gap-1 text-[0.6875rem] ${toneText[changeTone(file.change)]}`}
+      className={`ml-auto flex max-w-1/2 shrink-0 items-baseline gap-1 text-caption ${toneText[changeTone(file.change)]}`}
     >
       <span className="shrink-0 whitespace-nowrap">{words}</span>
       {from !== '' && (
@@ -87,7 +87,7 @@ function FileRow({ file }: { file: SensitiveFile }) {
           onClick={() => {
             openExternal(file.url)
           }}
-          className="group/file inline-flex min-w-0 items-baseline gap-1 text-left font-mono text-xs text-text hover:text-accent hover:underline"
+          className={`${inkLinkClass} group/file inline-flex min-w-0 items-baseline gap-1 text-left font-mono text-xs`}
         >
           <PathText path={file.path} />
           <ExternalIcon className="size-3 shrink-0 self-center text-muted group-hover/file:text-accent" />
@@ -110,7 +110,7 @@ export function SensitiveFilesGroup({ group }: { group: SensitiveGroup }) {
         {group.label}
         <span className="font-normal text-muted">{formatCount(files.length)}</span>
       </h4>
-      <p className="text-[0.6875rem] leading-snug text-muted">{group.description}</p>
+      <p className="text-caption leading-snug text-muted">{group.description}</p>
       <ul className="mt-0.5 flex flex-col">
         {files.map((file) => (
           <FileRow key={file.path} file={file} />
@@ -174,15 +174,16 @@ export function SensitiveFilesPanel({ itemId, check, onSettings, popover, id }: 
     <PopoverPanel
       state={popover}
       align="left"
+      elevation="card"
       id={id}
       role="dialog"
       aria-label="Sensitive files"
-      className="z-20 flex max-h-[calc(100vh-8rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto p-3.5 text-left break-words whitespace-normal shadow-black/25"
+      className="layer-popover flex max-h-[calc(100vh-8rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto p-3.5 text-left break-words whitespace-normal"
     >
       <div>
         <h3 className="text-sm font-semibold text-text">Sensitive files</h3>
         {check.head !== '' && (
-          <p className="mt-0.5 text-[0.6875rem] text-muted">
+          <p className="mt-0.5 text-caption text-muted">
             At commit <span className="font-mono">{shortCommit(check.head)}</span>
             {check.checkedAt !== '' && (
               <>
@@ -206,7 +207,7 @@ export function SensitiveFilesPanel({ itemId, check, onSettings, popover, id }: 
         </p>
       )}
       {agent && (
-        <p className="rounded-md border border-danger/30 bg-danger/8 px-2.5 py-2 text-xs leading-relaxed text-text">
+        <p className="rounded-md border border-danger/22 bg-danger/10 px-2.5 py-2 text-xs leading-relaxed text-text">
           Opening a session on it asks first: hooks in agent settings run commands on your Mac as soon as a session
           starts, even in plan or read-only mode.
         </p>
@@ -217,18 +218,14 @@ export function SensitiveFilesPanel({ itemId, check, onSettings, popover, id }: 
           {checking ? 'Checking…' : 'Check now'}
         </button>
         {onSettings === undefined ? (
-          <span className="text-[0.6875rem] text-muted">Settings → Sensitive files</span>
+          <span className="text-caption text-muted">Settings → Sensitive files</span>
         ) : (
           <button type="button" onClick={onSettings} className={quietButtonClass}>
             What counts as sensitive
           </button>
         )}
       </div>
-      {error !== '' && (
-        <p role="alert" className="-mt-1.5 text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} className="-mt-1.5" />
     </PopoverPanel>
   )
 }
@@ -263,7 +260,7 @@ export function SensitiveFiles({ itemId, check, onSettings }: SensitiveFilesProp
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={toggle}
-        className={`inline-flex max-w-64 items-center gap-1 py-px text-[0.6875rem] leading-4 font-medium transition-colors aria-expanded:ring-1 aria-expanded:ring-border ${chipClass[chip.tone]}`}
+        className={`inline-flex max-w-64 items-center gap-1 py-px text-caption leading-4 font-medium transition-colors aria-expanded:ring-1 aria-expanded:ring-border ${chipClass[chip.tone]}`}
       >
         {icon}
         {chip.short !== '' && <span className="truncate">{chip.short}</span>}

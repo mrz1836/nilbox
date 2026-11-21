@@ -142,8 +142,7 @@ type PortableStatus struct {
 }
 
 // PortableThreadRules are the rules for the user's GitHub notifications in portable form,
-// each left as it is when a backup lacks it. The cleanup card's flag is the window's
-// memory, and stays out.
+// each left as it is when a backup lacks it.
 type PortableThreadRules struct {
 	Read        *bool                  `json:"read,omitempty"`
 	Auto        *bool                  `json:"auto,omitempty"`

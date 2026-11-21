@@ -27,8 +27,6 @@ const (
 	older = "ffffffffffffffffffffffffffffffffffffffff"
 )
 
-func ptr[T any](v T) *T { return &v }
-
 // prRow is a Dependabot pull request with every part read.
 func prRow() facts.Row {
 	return facts.Row{
@@ -39,7 +37,7 @@ func prRow() facts.Row {
 		HeadRef: "dependabot/go_modules/golang.org/x/net-0.31.0", CreatedAt: created, UpdatedAt: updated,
 		InReviewRequested: true,
 		Repository: facts.RepoRow{
-			Read: true, Visibility: "PUBLIC", Permission: "ADMIN", Language: ptr("Go"), HasClone: ptr(true),
+			Read: true, Visibility: "PUBLIC", Permission: "ADMIN", Language: new("Go"), HasClone: new(true),
 			AllowUpdateBranch: true,
 		},
 		Details: &facts.DetailsRow{
@@ -48,9 +46,9 @@ func prRow() facts.Row {
 			Commits: 1, Comments: 4, Labels: []string{"dependencies", "go"}, ReviewUsers: []string{"octo-user"},
 		},
 		Checks: &facts.ChecksRow{Head: head, Complete: true, Checks: []facts.CheckRow{
-			{Name: "Analyze (go)", Workflow: "CodeQL", Outcome: facts.CheckFailed, Required: ptr(true), CompletedAt: now.Add(-10 * time.Minute)},
+			{Name: "Analyze (go)", Workflow: "CodeQL", Outcome: facts.CheckFailed, Required: new(true), CompletedAt: now.Add(-10 * time.Minute)},
 			{Name: "🔒 Security Scans", Workflow: "🔒 Security Scans", Outcome: facts.CheckFailed, CompletedAt: now.Add(-6 * time.Minute)},
-			{Name: "test", Workflow: "CI", Outcome: facts.CheckPassed, Required: ptr(true), CompletedAt: now.Add(-20 * time.Minute)},
+			{Name: "test", Workflow: "CI", Outcome: facts.CheckPassed, Required: new(true), CompletedAt: now.Add(-20 * time.Minute)},
 		}},
 		Files: &facts.FilesRow{Head: head, Complete: true, Files: []sensitive.File{{Path: "go.mod"}, {Path: "go.sum"}}},
 	}
@@ -240,7 +238,7 @@ func TestBuildChecks(t *testing.T) {
 			name: "a name run twice, once failing and once skipped, fails once",
 			checks: facts.ChecksRow{Head: head, Complete: true, Checks: []facts.CheckRow{
 				{Name: "lint", Workflow: "CI", Outcome: facts.CheckSkipped, CompletedAt: finished.Add(-time.Hour)},
-				{Name: "lint", Workflow: "CI", Outcome: facts.CheckFailed, Required: ptr(false), CompletedAt: finished},
+				{Name: "lint", Workflow: "CI", Outcome: facts.CheckFailed, Required: new(false), CompletedAt: finished},
 			}},
 			failed: facts.List([]string{"CI / lint"}, false), names: facts.List([]string{"CI / lint"}, false),
 			required: facts.Bool(false), done: facts.StatusKnown,
@@ -249,7 +247,7 @@ func TestBuildChecks(t *testing.T) {
 			name: "an app's run and a status have no workflow",
 			checks: facts.ChecksRow{Head: head, Complete: true, Checks: []facts.CheckRow{
 				{Name: "CodeQL", Outcome: facts.CheckFailed, CompletedAt: finished},
-				{Name: "ci/circleci: build", Outcome: facts.CheckPassed, Required: ptr(true), CompletedAt: finished},
+				{Name: "ci/circleci: build", Outcome: facts.CheckPassed, Required: new(true), CompletedAt: finished},
 			}},
 			failed: facts.List([]string{"CodeQL"}, false), names: facts.List([]string{"CodeQL", "ci/circleci: build"}, false),
 			required: facts.Unknown("whether a failed check is required isn't known", facts.NeedNothing),
@@ -275,7 +273,7 @@ func TestBuildChecks(t *testing.T) {
 		{
 			name: "only some checks read, the rest still running",
 			checks: facts.ChecksRow{Head: head, Checks: []facts.CheckRow{
-				{Name: "test", Workflow: "CI", Outcome: facts.CheckFailed, Required: ptr(false), CompletedAt: finished},
+				{Name: "test", Workflow: "CI", Outcome: facts.CheckFailed, Required: new(false), CompletedAt: finished},
 			}},
 			rollup: "PENDING",
 			failed: facts.List([]string{"CI / test"}, true), names: facts.List([]string{"CI / test"}, true),
@@ -285,7 +283,7 @@ func TestBuildChecks(t *testing.T) {
 		{
 			name: "only some checks read, the rollup saying the rest finished",
 			checks: facts.ChecksRow{Head: head, Checks: []facts.CheckRow{
-				{Name: "test", Workflow: "CI", Outcome: facts.CheckFailed, Required: ptr(false), CompletedAt: finished},
+				{Name: "test", Workflow: "CI", Outcome: facts.CheckFailed, Required: new(false), CompletedAt: finished},
 				{Name: "deploy", Workflow: "CD", Outcome: facts.CheckSkipped},
 			}},
 			rollup: "FAILURE",
@@ -517,14 +515,14 @@ func TestBuildTriageAtTheMoment(t *testing.T) {
 	t.Parallel()
 
 	row := prRow()
-	row.SnoozedUntil = ptr(now.Add(time.Hour))
-	row.PinnedAt = ptr(created)
+	row.SnoozedUntil = new(now.Add(time.Hour))
+	row.PinnedAt = new(created)
 
 	f := facts.Build(row, env())
 	assert.Equal(t, facts.Bool(true), f.Value(catalog.FieldSnoozed))
 	assert.Equal(t, facts.Bool(true), f.Value(catalog.FieldPinned))
 
-	row.SnoozedUntil = ptr(now.Add(-time.Hour))
+	row.SnoozedUntil = new(now.Add(-time.Hour))
 	assert.Equal(t, facts.Bool(false), facts.Build(row, env()).Value(catalog.FieldSnoozed), "a snooze that ended")
 }
 
@@ -548,4 +546,19 @@ func TestValueOfAnUnfilledField(t *testing.T) {
 
 	v := facts.Build(prRow(), env()).Value(catalog.FieldTries)
 	assert.Equal(t, facts.StatusUnknown, v.Status, "the history is the ledger's, not the row's")
+}
+
+func TestAKnownListIsNeverNil(t *testing.T) {
+	t.Parallel()
+
+	none := facts.List(nil, true)
+	assert.Equal(t, facts.StatusKnown, none.Status)
+	assert.Equal(t, []string{}, none.List, "none is an empty list, so a trace carries [], never null")
+	assert.True(t, none.Partial)
+
+	values := []string{"bug"}
+	some := facts.List(values, false)
+	assert.Equal(t, values, some.List)
+	assert.Same(t, &values[0], &some.List[0], "a list that holds something is kept, not copied")
+	assert.False(t, some.Partial)
 }

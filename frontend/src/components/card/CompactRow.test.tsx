@@ -263,13 +263,13 @@ describe('CompactRow', () => {
       return classes
     }
 
-    expect(story(asked())).toMatch(/\btext-accent\b.*\bbg-accent\/11\b/)
-    expect(story(asked(), { sessions: [agentSession()] })).toMatch(/\btext-warning\b.*\bbg-warning\/13\b/)
+    expect(story(asked())).toMatch(/\btext-accent\b.*\bbg-accent\/10\b/)
+    expect(story(asked(), { sessions: [agentSession()] })).toMatch(/\btext-warning\b.*\bbg-warning\/14\b/)
     expect(story(item({ authored: true, details: details({ mergeable: 'CONFLICTING' }) }))).toMatch(
-      /\btext-danger\b.*\bbg-danger\/11\b/,
+      /\btext-danger\b.*\bbg-danger\/10\b/,
     )
-    expect(story(item({ authored: true, details: details() }))).toMatch(/\btext-success\b.*\bbg-success\/11\b/)
-    expect(story(asked(), { sessions: [agentSession({ state: 'working' })] })).toMatch(/\btext-info\b.*\bbg-info\/12\b/)
+    expect(story(item({ authored: true, details: details() }))).toMatch(/\btext-success\b.*\bbg-success\/10\b/)
+    expect(story(asked(), { sessions: [agentSession({ state: 'working' })] })).toMatch(/\btext-info\b.*\bbg-info\/10\b/)
     expect(story(item())).toMatch(/\btext-muted\b/)
     expect(story(item())).not.toMatch(/\bbg-/)
   })
@@ -312,7 +312,7 @@ describe('CompactRow', () => {
 
     const go = within(row).getByRole('button', { name: 'Review' })
     expect(go).toHaveAttribute('data-verb', 'review')
-    expect(go).toHaveClass('text-accent', 'card-lit:bg-accent', 'card-lit:text-white')
+    expect(go).toHaveClass('text-accent', 'card-lit:bg-accent', 'card-lit:text-surface')
     expect(go).not.toHaveClass('border')
     expect(go.querySelector('svg')).toBeNull()
 

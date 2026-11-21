@@ -60,7 +60,7 @@ export function IssueState({ item }: { item: InboxItem }) {
   }
 
   return (
-    <div className="flex flex-col items-end gap-1.25 text-[0.6875rem]">
+    <div className="flex flex-col items-end gap-1.25 text-caption">
       {status && <StatusPill project={project} />}
       {(field !== undefined || subIssues !== null) && (
         <div className="flex items-center gap-1.75">

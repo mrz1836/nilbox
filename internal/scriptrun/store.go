@@ -10,6 +10,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/scriptrun/internal/queries"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // runStore reads and writes script_runs.
@@ -299,13 +300,7 @@ func recordOf(row queries.ScriptRun) Record {
 
 // withLists returns r with its lists empty rather than nil.
 func withLists(r Result) Result {
-	if r.Warnings == nil {
-		r.Warnings = []string{}
-	}
-
-	if r.Unrecognized == nil {
-		r.Unrecognized = []string{}
-	}
+	r.Warnings, r.Unrecognized = textutil.NonNil(r.Warnings), textutil.NonNil(r.Unrecognized)
 
 	return r
 }

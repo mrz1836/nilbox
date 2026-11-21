@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,6 +26,24 @@ func frontendRig(t *testing.T, a answer) *rig {
 	g.tool("pnpm", a)
 
 	return g
+}
+
+// buildsDist is a fake pnpm's answer whose build writes a frontend/dist into g's checkout,
+// an index.html that loads one 10-byte script, as vite build does, and that does nothing
+// else on any other call.
+func buildsDist(g *rig) answer {
+	return func(args []string) testutil.FakeRun {
+		if !slices.Equal(args, []string{"run", "build"}) {
+			return testutil.FakeRun{}
+		}
+
+		mkdir(g.t, g.path(frontendDist+"/assets"))
+
+		return testutil.FakeRun{Files: []testutil.FakeFile{
+			{Path: g.path(frontendDist + "/index.html"), Content: `<script type="module" src="/assets/index.js"></script>`},
+			{Path: g.path(frontendDist + "/assets/index.js"), Content: "export {}\n"},
+		}}
+	}
 }
 
 // failsAt is a fake pnpm's answer that fails when its argument at index i is arg, and
@@ -311,12 +331,43 @@ func TestFrontendGate(t *testing.T) {
 		"run build",
 	}
 
-	t.Run("installs, then runs every check in order", func(t *testing.T) {
+	t.Run("installs, runs every check in order, then checks the first paint the build wrote", func(t *testing.T) {
+		t.Parallel()
+
+		g := frontendRig(t, exits(0))
+		g.tool("pnpm", buildsDist(g))
+
+		require.NoError(t, g.runner().gateFrontend())
+
+		assert.Equal(t, allSteps, g.linesOf("pnpm"))
+		assert.Contains(t, g.out.String(), "First paint JS: 10 bytes (")
+		assert.Contains(t, g.out.String(), "; budget "+grouped(firstPaintJSBytes)+" ("+grouped(firstPaintJSGzipped)+" gzipped)\n",
+			"the gate holds the first paint to its budgets")
+		assert.Contains(t, g.out.String(), "✅ the first paint is within its budgets")
+	})
+
+	t.Run("fails when the first paint is over its budget", func(t *testing.T) {
+		t.Parallel()
+
+		g := frontendRig(t, exits(0))
+		writeDist(t, g.dir, map[string]string{
+			"index.html":      `<script type="module" src="/assets/index.js"></script>`,
+			"assets/index.js": strings.Repeat("a", firstPaintJSBytes+1),
+		})
+
+		err := g.runner().gateFrontend()
+
+		require.ErrorIs(t, err, errOverBudget)
+		assert.Contains(t, err.Error(), "JS is "+grouped(firstPaintJSBytes+1)+" bytes, over its "+grouped(firstPaintJSBytes))
+		assert.Equal(t, allSteps, g.linesOf("pnpm"))
+	})
+
+	t.Run("fails when the build leaves no index.html", func(t *testing.T) {
 		t.Parallel()
 
 		g := frontendRig(t, exits(0))
 
-		require.NoError(t, g.runner().gateFrontend())
+		require.ErrorIs(t, g.runner().gateFrontend(), errNoFrontendBuild)
 
 		assert.Equal(t, allSteps, g.linesOf("pnpm"))
 	})
@@ -331,6 +382,7 @@ func TestFrontendGate(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "pnpm [run lint]")
 		assert.Equal(t, allSteps[:3], g.linesOf("pnpm"))
+		assert.NotContains(t, g.out.String(), "First paint", "the first paint is checked only after the build")
 	})
 
 	t.Run("stops when the install fails", func(t *testing.T) {

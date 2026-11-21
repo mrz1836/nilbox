@@ -24,6 +24,7 @@ import {
   type ProjectField,
 } from '../../platform'
 import { AutopilotRowsContext, useMarkedBy, useRoutineName } from '../autopilot/AutopilotChip'
+import { ErrorText, inkLinkClass, smallButtonClass } from '../controls'
 import { ArchiveIcon, AutopilotIcon, ClockIcon, DotIcon, ExternalIcon, PinIcon, RingIcon } from '../icons'
 import { FieldPill, LabelChip, ProgressBar, ProjectLink } from '../ItemSignals'
 import { RelativeTime } from '../RelativeTime'
@@ -32,10 +33,6 @@ import { openOnGitHub, type TriageActions } from '../TriageControls'
 import { PrimaryVerb } from './CardActions'
 import { LinkList, useCardLinks } from './CardLinks'
 import { mergeStepText, reviewStepText } from './StateTrack'
-
-// buttonClass is each button of the peek's action bar but its primary.
-const buttonClass =
-  'inline-flex h-7 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-text transition-colors hover:bg-raised'
 
 // Segment is one stretch of a bar, as wide as its share of the bar's total.
 interface Segment {
@@ -68,7 +65,7 @@ function SegmentBar({ segments }: { segments: readonly Segment[] }) {
 function Fact({ term, children }: { term: ReactNode; children: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <dt className="text-[0.71875rem] text-muted">{term}</dt>
+      <dt className="text-meta text-muted">{term}</dt>
       <dd className="min-w-0 text-text">{children}</dd>
     </div>
   )
@@ -79,7 +76,7 @@ function Fact({ term, children }: { term: ReactNode; children: ReactNode }) {
 function Area({ heading, children }: { heading: string; children: ReactNode }) {
   return (
     <section aria-label={heading} className="min-w-0">
-      <h3 className="mb-2 text-[0.6875rem] font-semibold tracking-wider text-muted uppercase">{heading}</h3>
+      <h3 className="mb-2 text-caption font-semibold tracking-wider text-muted uppercase">{heading}</h3>
       <dl className="flex flex-col gap-3">{children}</dl>
     </section>
   )
@@ -208,7 +205,7 @@ function MilestoneFact({ milestone }: { milestone: ItemMilestone }) {
         onClick={() => {
           openExternal(url)
         }}
-        className="max-w-full truncate text-left text-text hover:text-accent hover:underline"
+        className={`${inkLinkClass} max-w-full truncate text-left`}
       >
         {title}
       </button>
@@ -280,7 +277,7 @@ function Planning({ item, d }: { item: InboxItem; d: ItemDetails }) {
             onClick={() => {
               openExternal(parent.url)
             }}
-            className="max-w-full truncate text-left text-text hover:text-accent hover:underline"
+            className={`${inkLinkClass} max-w-full truncate text-left`}
           >
             {refText(parent, item.repo)}
           </button>
@@ -529,7 +526,7 @@ export function CardPeek({
     <section
       id={id}
       aria-label="Details"
-      className="relative z-10 col-span-full row-start-2 mt-3 grid grid-cols-3 gap-5.5 border-t border-dashed border-border bg-linear-to-b from-accent/4 to-transparent pt-4 pl-15.25 text-xs @max-4xl:grid-cols-2 @max-4xl:pl-4 @max-xl:grid-cols-1"
+      className="relative z-10 col-span-full row-start-2 mt-3 grid grid-cols-3 gap-5.5 border-t border-dashed border-border bg-linear-to-b from-accent/5 to-transparent pt-4 pl-15.25 text-xs @max-4xl:grid-cols-2 @max-4xl:pl-4 @max-xl:grid-cols-1"
     >
       {d !== null && (isPR ? <StandsPR d={d} /> : <StandsIssue d={d} />)}
       {d !== null && (isPR ? <Change item={item} d={d} /> : <Planning item={item} d={d} />)}
@@ -548,7 +545,7 @@ export function CardPeek({
           onError={setError}
         />
         {!opensIt.includes(step.primary) && (
-          <button type="button" onClick={open} className={buttonClass}>
+          <button type="button" onClick={open} className={smallButtonClass}>
             {isPR ? 'Review' : 'Read'}
           </button>
         )}
@@ -559,7 +556,7 @@ export function CardPeek({
             onClick={() => {
               onNudge(item)
             }}
-            className={buttonClass}
+            className={smallButtonClass}
           >
             Nudge
           </button>
@@ -574,7 +571,7 @@ export function CardPeek({
               onClick={() => {
                 triage.onSnooze(item, triage.snoozeDays)
               }}
-              className={buttonClass}
+              className={smallButtonClass}
             >
               <ClockIcon className="size-3.5 text-muted" />
               Snooze
@@ -585,7 +582,7 @@ export function CardPeek({
               onClick={() => {
                 triage.onDismiss(item)
               }}
-              className={buttonClass}
+              className={smallButtonClass}
             >
               <ArchiveIcon className="size-3.5 text-muted" />
               Dismiss
@@ -602,7 +599,7 @@ export function CardPeek({
                 triage.onPin(item)
               }
             }}
-            className={buttonClass}
+            className={smallButtonClass}
           >
             <PinIcon filled={isPinnedItself(item)} className="size-3.5 text-muted" />
             {isPinnedItself(item) ? 'Unpin' : 'Pin'}
@@ -614,7 +611,7 @@ export function CardPeek({
           onClick={() => {
             openOnGitHub(item, triage)
           }}
-          className={buttonClass}
+          className={smallButtonClass}
         >
           <ExternalIcon className="size-3.5 text-muted" />
           GitHub
@@ -629,18 +626,14 @@ export function CardPeek({
                 triage.onMarkUnread(item)
               }
             }}
-            className={buttonClass}
+            className={smallButtonClass}
           >
             {item.unread ? <RingIcon className="size-3.5 text-muted" /> : <DotIcon className="size-3.5 text-info" />}
             {item.unread ? 'Mark as read' : 'Mark as unread'}
           </button>
         )}
       </div>
-      {error !== '' && (
-        <p role="alert" className="col-span-full -mt-3 text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} className="col-span-full -mt-3" />
     </section>
   )
 }

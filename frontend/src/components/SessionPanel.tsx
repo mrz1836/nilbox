@@ -12,11 +12,11 @@ import {
   usageWords,
 } from '../lib/sessions'
 import { formatAgo, formatFull } from '../lib/time'
+import { copyLabel, useCopy } from '../lib/useCopy'
 import { useMutation } from '../lib/useMutation'
 import { useQuery } from '../lib/useQuery'
 import {
   autopilotRunBySession,
-  copyText,
   focusSession,
   forgetSession,
   resumeSession,
@@ -29,7 +29,7 @@ import {
   type ResumeRequest,
 } from '../platform'
 import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
-import { quietButtonClass } from './controls'
+import { dangerIconButtonClass, ErrorText, quietButtonClass } from './controls'
 import { AlertIcon, CheckIcon, CopyIcon, EyeIcon, FolderIcon, PlayIcon, StopIcon, TerminalIcon, XIcon } from './icons'
 import { LaunchHoldDialog, TakeOverDialog } from './launchDialogs'
 import { RelativeTime } from './RelativeTime'
@@ -68,8 +68,9 @@ function StateLine({ session }: { session: AgentSession }) {
   )
 }
 
-// Action is one of a session's buttons.
-type Action = 'focus' | 'resume' | 'folder' | 'copy' | 'forget' | 'stop'
+// Action is one of a session's buttons whose outcome shows below them; a copy says how it
+// went on its own button.
+type Action = 'focus' | 'resume' | 'folder' | 'forget' | 'stop'
 
 // stopRun stops the agent's background run a session is, by its session: the run Stop
 // of the Autopilot tab stops.
@@ -103,10 +104,10 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
   const focus = useMutation((id: string) => focusSession(id))
   const resume = useMutation((request: ResumeRequest) => resumeSession(request))
   const folder = useMutation((id: string) => showSessionFolder(id))
-  const copy = useMutation(() => copyText(session.agentSessionId))
   const forget = useMutation((id: string) => forgetSession(id))
   const stop = useMutation((id: string) => stopRun(id))
-  const actions = { focus, resume, folder, copy, forget, stop }
+  const actions = { focus, resume, folder, forget, stop }
+  const { copy, onCopy } = useCopy('session ID')
   const terminal = terminalName(session)
   const watch = useWatch()
   const takeOverIn = useTakeOverTerminal()
@@ -127,10 +128,8 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
     log: 'Could not read a session’s token counts',
   })
   const tokens = usageWords(usage.data)
-  // copied is whether the ID was just copied; it clears on the next copy.
-  const [copied, setCopied] = useState(false)
-  // last is the button pressed last. Only its outcome shows, so one that works clears
-  // what an earlier one said went wrong.
+  // last is the button pressed last, or null for none or a copy. Only its outcome shows,
+  // so one that works clears what an earlier one said went wrong, as a copy does.
   const [last, setLast] = useState<Action | null>(null)
   // notice is what the latest resume worked around, as a launch reports it, or ''.
   const [notice, setNotice] = useState('')
@@ -141,9 +140,9 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
   const presses = useRef(0)
   const error = last === null ? '' : actions[last].error
 
-  // press starts an action: it becomes the one whose outcome shows. It returns the
-  // press's number.
-  const press = (action: Action) => {
+  // press starts an action: it becomes the one whose outcome shows, or, for null, none
+  // does. It returns the press's number.
+  const press = (action: Action | null) => {
     presses.current += 1
     setLast(action)
     setNotice('')
@@ -180,10 +179,11 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
     void folder.run(session.id)
   }
 
-  const copyID = async () => {
-    press('copy')
-    setCopied(false)
-    setCopied((await copy.run()).ok)
+  // copyID copies the agent's session ID. Its button says how that went, for a moment, so
+  // the press clears what the last action said.
+  const copyID = () => {
+    press(null)
+    onCopy(session.agentSessionId)
   }
 
   // remove forgets the session once it ended; the list reads again when the app says the
@@ -197,8 +197,8 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
     <li className="flex flex-col gap-1.5 border-b border-border py-2.5 first:pt-0 last:border-b-0 last:pb-0">
       <div className="flex min-w-0 items-baseline gap-2">
         <span className="text-xs font-semibold text-text">{agentName(agents, session.agent)}</span>
-        <span className="min-w-0 truncate text-[0.6875rem] text-muted">{sessionWhat(session)}</span>
-        <span className="ml-auto shrink-0 text-[0.6875rem] text-muted" title={formatFull(session.launchedAt)}>
+        <span className="min-w-0 truncate text-caption text-muted">{sessionWhat(session)}</span>
+        <span className="ml-auto shrink-0 text-caption text-muted" title={formatFull(session.launchedAt)}>
           started <RelativeTime iso={session.launchedAt} show={formatAgo} />
         </span>
         {!isLive(session.state) && (
@@ -208,17 +208,17 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
             onClick={remove}
             aria-label="Remove this session"
             title="Remove this ended session from the list"
-            className="-my-0.5 flex size-5 shrink-0 items-center justify-center self-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
+            className={`${dangerIconButtonClass} -my-0.5 self-center disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent`}
           >
             <XIcon className="size-3.5" />
           </button>
         )}
       </div>
       <StateLine session={session} />
-      {setup !== '' && <p className="truncate text-[0.6875rem] text-muted">{setup}</p>}
+      {setup !== '' && <p className="truncate text-caption text-muted">{setup}</p>}
       {onGitHub !== '' && (
         <p
-          className="truncate text-[0.6875rem] text-muted"
+          className="truncate text-caption text-muted"
           title="What came of it on GitHub while this session ran. It doesn’t say who did it."
         >
           On GitHub: <span className={githubEventTone(session)}>{onGitHub}</span> ·{' '}
@@ -226,11 +226,11 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
         </p>
       )}
       {tokens !== null && (
-        <p className="truncate text-[0.6875rem] text-muted" title={tokens.title}>
+        <p className="truncate text-caption text-muted" title={tokens.title}>
           {tokens.text}
         </p>
       )}
-      <p className="truncate font-mono text-[0.6875rem] text-muted" title={session.dir}>
+      <p className="truncate font-mono text-caption text-muted" title={session.dir}>
         {session.dir}
       </p>
       {session.notice !== '' && (
@@ -321,18 +321,18 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
           <FolderIcon className="size-3.5" />
           Show in Finder
         </button>
+        {/* The button says for a moment how the copy went, and a screen reader hears it. */}
         {session.agentSessionId !== '' && (
-          <button
-            type="button"
-            title={session.agentSessionId}
-            onClick={() => {
-              void copyID()
-            }}
-            className={quietButtonClass}
-          >
-            {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-            {copied ? 'Copied' : 'Copy session ID'}
-          </button>
+          <>
+            <button type="button" title={session.agentSessionId} onClick={copyID} className={quietButtonClass}>
+              {copy === 'copied' ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+              {copy === 'idle' ? 'Copy session ID' : copyLabel[copy]}
+            </button>
+            <span role="status" className="sr-only">
+              {copy === 'copied' && 'Copied to the clipboard'}
+              {copy === 'failed' && 'Couldn’t copy the session ID'}
+            </span>
+          </>
         )}
       </div>
       {notice !== '' && (
@@ -340,11 +340,7 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
           {notice}
         </p>
       )}
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
       {/* The take-over and hold dialogs load on their own, as a launch's do (launchDialogs),
           each under its own boundary, with nothing in its place in the entry until it shows. */}
       {takingOver && (

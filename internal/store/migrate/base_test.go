@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/store/migrate"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // freeze names the newest migration of a history to freeze before a squash retires it.
@@ -229,23 +230,7 @@ func recordHistory(t *testing.T, db *sql.DB, history []migrate.Applied) {
 func recordedVersions(t *testing.T, db *sql.DB) []int {
 	t.Helper()
 
-	rows, err := db.QueryContext(t.Context(), `SELECT version FROM schema_migrations ORDER BY version`)
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
-
-	var versions []int
-
-	for rows.Next() {
-		var v int
-		require.NoError(t, rows.Scan(&v))
-
-		versions = append(versions, v)
-	}
-
-	require.NoError(t, rows.Err())
-
-	return versions
+	return testutil.Column[int](t, db, `SELECT version FROM schema_migrations ORDER BY version`)
 }
 
 // versionsOf lists the versions of migrations.
@@ -268,21 +253,19 @@ func versionsOf(migrations []migrate.Migration) []int {
 func schemaOf(t *testing.T, db *sql.DB) string {
 	t.Helper()
 
-	rows, err := db.QueryContext(t.Context(), `SELECT type, sql FROM sqlite_master
+	// entry is one schema entry: its kind and its SQL.
+	type entry struct{ kind, stmt string }
+
+	entries := testutil.Query(t, db, func(e *entry) []any { return []any{&e.kind, &e.stmt} },
+		`SELECT type, sql FROM sqlite_master
 		WHERE sql IS NOT NULL AND name <> 'schema_migrations' AND name NOT LIKE 'sqlite\_%' ESCAPE '\'
 		ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 WHEN 'trigger' THEN 2 ELSE 3 END, name`)
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
 
 	var b strings.Builder
 
-	for rows.Next() {
-		var kind, stmt string
-		require.NoError(t, rows.Scan(&kind, &stmt))
-
-		toks := sqlTokens(stmt)
-		if kind != "table" {
+	for _, e := range entries {
+		toks := sqlTokens(e.stmt)
+		if e.kind != "table" {
 			b.WriteString(joinTokens(toks) + "\n")
 
 			continue
@@ -290,8 +273,6 @@ func schemaOf(t *testing.T, db *sql.DB) string {
 
 		writeTable(&b, toks)
 	}
-
-	require.NoError(t, rows.Err())
 
 	return b.String()
 }

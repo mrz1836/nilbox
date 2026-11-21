@@ -189,7 +189,7 @@ func TestChecksFollowerFollowsEveryIntervalUntilCanceled(t *testing.T) {
 	})
 
 	assert.Equal(t, 45*time.Second, FollowInterval)
-	assert.Equal(t, FollowInterval, NewChecksFollower(newHarness(t).svc, nil, nil).every(t.Context()))
+	assert.Equal(t, FollowInterval, NewChecksFollower(newHarness(t).svc, nil, nil).job.Interval(t.Context()))
 }
 
 func TestChecksFollowerOffFollowsNothingUntilOn(t *testing.T) {

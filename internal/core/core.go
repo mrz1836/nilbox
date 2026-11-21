@@ -638,10 +638,9 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// The routines' agents run in the background through the launcher's own background
 	// plan; their runs count as in use wherever a session would, since the process list
 	// leaves the app's own children out. The runner is filled in once the runs are built.
-	background := &backgroundAgents{
-		ledger: follow.ledger, git: shellGit, shellEnv: shellEnv.Env, home: opts.Home,
-		logger: logger, touch: workLog, program: ownExecutable(), changes: inboxStore,
-	}
+	background := newBackgroundAgents(opts, backgroundDeps{
+		ledger: follow.ledger, git: shellGit, shellEnv: shellEnv.Env, touch: workLog, changes: inboxStore,
+	}, logger)
 
 	// A worktree's Open in Terminal goes through the terminal the runs open in, which is
 	// built once the launcher is, below.

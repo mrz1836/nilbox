@@ -158,10 +158,7 @@ func Decide(f Facts, prefs Prefs) Plan {
 	method := chooseMethod(f.Methods, prefs.Method, f.AutoMerge, f.ViewerMethod)
 	d := decider{f: f, method: method}
 
-	p := Plan{Method: method, Methods: slices.Clone(f.Methods), Readiness: readiness(f)}
-	if p.Methods == nil {
-		p.Methods = []MergeMethod{}
-	}
+	p := Plan{Method: method, Methods: textutil.NonNil(slices.Clone(f.Methods)), Readiness: readiness(f)}
 
 	if f.Closed {
 		return p

@@ -10,8 +10,8 @@ import {
 } from '../../lib/triage'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import { setSnoozeDays, setSnoozeWake, type SnoozeRules } from '../../platform'
-import { Segmented } from '../controls'
-import { ChoiceRow, ErrorText, Group, joinIds, Note, SectionIntro } from './rows'
+import { ErrorText, Segmented } from '../controls'
+import { ChoiceRow, Group, joinIds, Note, SectionIntro } from './rows'
 import type { SectionProps } from './types'
 
 // thresholdOption is one choice of a wake rule's count: 0 is never, 1 any.

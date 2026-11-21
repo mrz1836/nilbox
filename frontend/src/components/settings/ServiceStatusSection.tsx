@@ -19,11 +19,11 @@ import {
   type StatusProvider,
   type StatusProviderID,
 } from '../../platform'
-import { Switch } from '../controls'
+import { ErrorText, Switch } from '../controls'
 import { ExternalIcon } from '../icons'
 import { cardMatchClass, headingMatchClass, useSetting } from './match'
 import { everyWords, refreshDefaults } from './RefreshingSection'
-import { ErrorText, Group, joinIds, Note, rowDescribedBy, SectionIntro, SettingRow } from './rows'
+import { Group, joinIds, Note, rowDescribedBy, SectionIntro, SettingRow } from './rows'
 import type { SectionProps } from './types'
 
 // dotFill colors a provider's live state: green while what it watches works, amber or red
@@ -120,7 +120,7 @@ function ProviderCard({ provider, on, picked, live, checkOff, error, errorOn, on
     <section
       {...marks}
       aria-labelledby={`${id}-name`}
-      className={`rounded-lg border border-border bg-surface transition-opacity ${checkOff ? 'opacity-60' : ''} ${cardMatchClass}`}
+      className={`rounded-lg border border-border bg-surface transition-opacity ${checkOff ? 'opacity-disabled' : ''} ${cardMatchClass}`}
     >
       <div className="flex items-start justify-between gap-6 px-4 pt-3.5">
         <div className="min-w-0">
@@ -151,7 +151,7 @@ function ProviderCard({ provider, on, picked, live, checkOff, error, errorOn, on
             className="flex flex-col gap-1.5"
           >
             {group !== '' && (
-              <p aria-hidden="true" className="text-[0.6875rem] font-medium tracking-wide text-muted uppercase">
+              <p aria-hidden="true" className="text-caption font-medium tracking-wide text-muted uppercase">
                 {group}
               </p>
             )}

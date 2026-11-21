@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 
 import { counted } from '../../lib/format'
 import { formatAgo } from '../../lib/time'
+import { toneText } from '../../lib/tone'
 import { useNow } from '../../lib/useNow'
 import { asReadNow, readable, type DetailsRead } from '../../lib/useWorktreeDetails'
 import {
@@ -26,7 +27,7 @@ import {
   type WorktreeLinkKind,
   type WorktreeRepo,
 } from '../../platform'
-import { quietButtonClass } from '../controls'
+import { linkClass, quietButtonClass } from '../controls'
 import { AlertIcon, CopyIcon, FolderIcon, LockIcon, ScissorsIcon, TerminalIcon, TrashIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 import { Changes, NotOnGitHub, waiting } from './ChangeLists'
@@ -40,7 +41,6 @@ import {
   drawerColumnsClass,
   drawerFooterClass,
   skeletonClass,
-  toneText,
   verbButtonClass,
 } from './layout'
 import type { WorktreeRowActions } from './menus'
@@ -81,7 +81,7 @@ function ItemLine({ item, facts }: { item: LinkedItem; facts: ItemFacts | undefi
         onClick={() => {
           openExternal(item.url)
         }}
-        className="text-accent hover:underline"
+        className={linkClass}
       >
         {itemRef(item)}
       </button>{' '}
@@ -169,7 +169,7 @@ function LockLine({ worktree, claude }: { worktree: Worktree; claude: string }) 
       {lock !== null && (
         <>
           {' '}
-          <code className="font-mono text-[0.71875rem]">{lock.session}</code>
+          <code className="font-mono text-meta">{lock.session}</code>
         </>
       )}{' '}
       <span className={muted}>
@@ -213,7 +213,7 @@ function RemovalLine({ worktree }: { worktree: Worktree }) {
       ) : (
         <LockIcon className="inline size-3 align-[-0.125rem]" />
       )}{' '}
-      <code className="font-mono text-[0.71875rem]">{b.name}</code>{' '}
+      <code className="font-mono text-meta">{b.name}</code>{' '}
       {b.deletable ? <span className={muted}>can go with it</span> : `stays: ${b.reason}`}
     </span>
   ))
@@ -301,7 +301,7 @@ function About({ worktree, read, session, facts, agentName }: AboutProps) {
       term: 'Path',
       value: (
         <>
-          <span className="font-mono text-[0.6875rem] [overflow-wrap:anywhere]">{worktree.displayPath}</span>{' '}
+          <span className="font-mono text-caption [overflow-wrap:anywhere]">{worktree.displayPath}</span>{' '}
           <CopyButton
             text={worktree.path}
             what="worktree path"

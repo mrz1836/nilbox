@@ -12,7 +12,7 @@ import { useNowAs } from '../lib/useNow'
 import { useQuery } from '../lib/useQuery'
 import { fillReply, openExternal, reviewReplies, type InboxItem, type Nudged } from '../platform'
 import { ConfirmDialog } from './ConfirmDialog'
-import { fieldClass, quietButtonClass } from './controls'
+import { ErrorText, fieldClass, quietButtonClass } from './controls'
 import { ChevronDownIcon } from './icons'
 import { MenuButton } from './Menu'
 import type { ToastMessage } from './Toast'
@@ -140,16 +140,8 @@ export function NudgeDialog({ item, snoozeDays, snoozeFirst, onPost, onCancel, o
             }}
             className={`${fieldClass} block w-full font-mono text-xs text-text`}
           />
-          {picking.error !== '' && (
-            <p role="alert" className="text-xs text-danger">
-              Couldn’t fill in the reply: {picking.error}
-            </p>
-          )}
-          {error !== '' && (
-            <p role="alert" className="text-xs text-danger">
-              {error}
-            </p>
-          )}
+          <ErrorText error={picking.error}>Couldn’t fill in the reply: </ErrorText>
+          <ErrorText error={error} />
         </div>
         <label className="flex items-start gap-2 text-xs">
           <input

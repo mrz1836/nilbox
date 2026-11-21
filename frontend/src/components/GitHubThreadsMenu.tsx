@@ -5,7 +5,7 @@ import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import { useNowAs } from '../lib/useNow'
 import { usePopover } from '../lib/usePopover'
 import { openExternal, type Settings } from '../platform'
-import { quietButtonClass } from './controls'
+import { ErrorText, iconButtonClass, quietButtonClass, smallIconButtonClass, toolbarButtonClass } from './controls'
 import { ExternalIcon, GitHubMarkIcon, HistoryIcon, RefreshIcon, SlidersIcon, XIcon } from './icons'
 import { Refused, TurnOnClearing } from './notifications/GitHubNotes'
 import { ThreadRow } from './notifications/ThreadRow'
@@ -91,13 +91,7 @@ export function GitHubThreadsMenu({
 
   return (
     <div className="relative">
-      <ToolbarPopoverButton
-        popover={popover}
-        id={id}
-        label={label}
-        onClick={onToggle}
-        className="relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text"
-      >
+      <ToolbarPopoverButton popover={popover} id={id} label={label} onClick={onToggle} className={toolbarButtonClass}>
         <GitHubMarkIcon className="size-[1.125rem]" />
         {refused ? (
           <span
@@ -115,7 +109,7 @@ export function GitHubThreadsMenu({
         id={id}
         role="dialog"
         aria-labelledby={`${id}-title`}
-        className="z-40 flex max-h-[min(32rem,calc(100vh-5rem))] w-96 flex-col shadow-black/20 outline-none"
+        className="layer-popover flex max-h-[min(32rem,calc(100vh-5rem))] w-96 flex-col outline-none"
       >
         <div className="flex items-start gap-3 border-b border-border py-2.5 pr-2 pl-4">
           <div className="min-w-0 flex-1">
@@ -130,7 +124,7 @@ export function GitHubThreadsMenu({
             onClick={check}
             aria-label={checking ? 'Checking GitHub' : 'Check GitHub now'}
             title={checking ? 'Checking GitHub…' : 'Check GitHub now'}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:hover:bg-transparent"
+            className={`${iconButtonClass} disabled:cursor-default disabled:hover:bg-transparent`}
           >
             <RefreshIcon className={`size-4 ${checking ? 'text-accent motion-safe:animate-spin' : ''}`} />
           </button>
@@ -142,23 +136,16 @@ export function GitHubThreadsMenu({
             <p className="border-b border-border px-4 py-2.5 text-xs text-warning">{status.lastError}</p>
           )
         )}
-        {checkError !== '' && (
-          <p role="alert" className="border-b border-border px-4 py-2 text-xs text-danger">
-            Could not check GitHub: {checkError}
-          </p>
-        )}
+        <ErrorText error={checkError} className="border-b border-border px-4 py-2">
+          Could not check GitHub:{' '}
+        </ErrorText>
         {markError !== '' && (
           <div
             role="alert"
             className="flex items-start gap-2 border-b border-border py-2 pr-2 pl-4 text-xs text-danger"
           >
             <p className="min-w-0 flex-1">{markError}</p>
-            <button
-              type="button"
-              onClick={dismissMarkError}
-              aria-label="Dismiss"
-              className="flex size-5 shrink-0 items-center justify-center rounded text-muted hover:text-text"
-            >
+            <button type="button" onClick={dismissMarkError} aria-label="Dismiss" className={smallIconButtonClass}>
               <XIcon className="size-3.5" />
             </button>
           </div>

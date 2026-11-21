@@ -1,9 +1,9 @@
 import { memo, type ReactNode } from 'react'
 
 import { counted } from '../../lib/format'
-import { toneText, type Tone } from '../../lib/signals'
 import type { LabelRow, TimelineRow } from '../../lib/timeline'
 import { formatAgo, formatFull } from '../../lib/time'
+import { toneText, type Tone } from '../../lib/tone'
 import {
   openExternal,
   type IssueStateReason,
@@ -12,7 +12,7 @@ import {
   type TimelineReviewState,
 } from '../../platform'
 import { PersonAvatar } from '../Avatar'
-import { quietButtonClass } from '../controls'
+import { iconButtonClass, linkClass, quietButtonClass } from '../controls'
 import { ExternalIcon } from '../icons'
 import { ItemLink } from '../ItemLink'
 import { LabelChip } from '../ItemSignals'
@@ -33,7 +33,7 @@ export interface TimelineEntryProps {
 }
 
 // tagClass is a comment's small tags.
-const tagClass = 'rounded-full border border-border px-1.5 py-px text-[0.6875rem]'
+const tagClass = 'rounded-full border border-border px-1.5 py-px text-caption'
 
 // someone names an actor GitHub no longer names, as for a deleted account.
 function someone(actor: string): string {
@@ -60,7 +60,7 @@ export function Trimmed({ url }: { url: string }) {
           onClick={() => {
             openExternal(url)
           }}
-          className="text-accent hover:underline"
+          className={linkClass}
         >
           Read it all on GitHub
         </button>
@@ -85,7 +85,7 @@ function OpenOnGitHub({ url, what }: { url: string; what: string }) {
       onClick={() => {
         openExternal(url)
       }}
-      className={`${quietButtonClass} p-1`}
+      className={iconButtonClass}
     >
       <ExternalIcon className="size-3" />
     </button>
@@ -227,10 +227,10 @@ function FoldedEntry({ item, onJump }: { item: Entry; onJump?: ((path: string) =
 // hunkTint is a diff line's tint, as the sheet's diff shows it.
 function hunkTint(line: string): string {
   if (line.startsWith('+')) {
-    return 'bg-success/12'
+    return 'bg-success/10'
   }
 
-  return line.startsWith('-') ? 'bg-danger/12' : ''
+  return line.startsWith('-') ? 'bg-danger/10' : ''
 }
 
 // whereOf names a line comment's place, as in "src/cache.go:12" or "src/cache.go:10–12".
@@ -281,7 +281,7 @@ function LineCommentEntry({
       {comment.hunk.length > 0 && (
         <div
           aria-label={`The diff at ${where}`}
-          className="overflow-x-auto border-b border-border font-mono text-[0.75rem] leading-5"
+          className="overflow-x-auto border-b border-border font-mono text-small leading-5"
         >
           {comment.hunk.map((line, i) => (
             <div key={i} className={`min-w-max px-2 whitespace-pre ${hunkTint(line)}`}>
@@ -328,7 +328,7 @@ function LineComments({ item, onJump }: { item: Entry; onJump?: ((path: string) 
               onClick={() => {
                 openExternal(item.url)
               }}
-              className="text-accent hover:underline"
+              className={linkClass}
             >
               on GitHub
             </button>

@@ -765,25 +765,14 @@ type ledgerRow struct {
 func (r *rig) ledger() []ledgerRow {
 	r.t.Helper()
 
-	rows, err := r.db.QueryContext(r.t.Context(), `SELECT id, thread_id, trigger, action, state, send_after,
-		queued_at, attempts, error, skip_reason FROM gh_thread_clears ORDER BY id`)
-	require.NoError(r.t, err)
-
-	defer func() { require.NoError(r.t, rows.Close()) }()
-
-	var out []ledgerRow
-
-	for rows.Next() {
-		var l ledgerRow
-		require.NoError(r.t, rows.Scan(&l.id, &l.thread, &l.trigger, &l.action, &l.state, &l.sendAfter, &l.queuedAt,
-			&l.attempts, &l.err, &l.reason))
-
-		out = append(out, l)
+	fields := func(l *ledgerRow) []any {
+		return []any{
+			&l.id, &l.thread, &l.trigger, &l.action, &l.state, &l.sendAfter, &l.queuedAt, &l.attempts, &l.err, &l.reason,
+		}
 	}
 
-	require.NoError(r.t, rows.Err())
-
-	return out
+	return testutil.Query(r.t, r.db, fields, `SELECT id, thread_id, trigger, action, state, send_after,
+		queued_at, attempts, error, skip_reason FROM gh_thread_clears ORDER BY id`)
 }
 
 // writes returns the writes to threads among got: those marked done or read.

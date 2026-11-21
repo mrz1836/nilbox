@@ -50,6 +50,7 @@ function lines(c: Awaited<ReturnType<typeof card>>): string[] {
 
 describe('ReleaseResult', () => {
   it('says a release is on GitHub, with its links and its tag to copy, and throws confetti', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const { onDone, onTryAgain } = renderResult()
 
     expect(screen.getByRole('status')).toHaveTextContent('Reading how the release came out…')
@@ -79,9 +80,12 @@ describe('ReleaseResult', () => {
     expect(platform.copyText).toHaveBeenCalledExactlyOnceWith('v1.4.3')
     expect(await c.findByRole('button', { name: 'Copied' })).toBeInTheDocument()
 
-    platform.copyText.mockRejectedValue(new Error('The clipboard refused it.'))
+    const refused = new Error('The clipboard refused it.')
+    platform.copyText.mockRejectedValue(refused)
     await userEvent.click(c.getByRole('button', { name: 'Copied' }))
-    expect(await c.findByRole('alert')).toHaveTextContent('The clipboard refused it.')
+    expect(await c.findByRole('button', { name: 'Copy failed' })).toBeInTheDocument()
+    expect(error).toHaveBeenCalledExactlyOnceWith('could not copy the tag', refused)
+    expect(c.queryByRole('alert')).not.toBeInTheDocument()
 
     expect(c.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
     await userEvent.click(c.getByRole('button', { name: 'Done' }))
@@ -157,6 +161,26 @@ describe('ReleaseResult', () => {
     await userEvent.click(c.getByRole('button', { name: 'Open in terminal' }))
     expect(platform.openScriptRunInTerminal).toHaveBeenCalledExactlyOnceWith(7)
     expect(onTryAgain).not.toHaveBeenCalled()
+  })
+
+  it('says how copying a command went, which a screen reader hears too', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    renderResult({ kind: 'notPushed', tagUrl: '', workflowUrl: '', commands: ['git push origin v1.4.3'] })
+
+    const c = await card()
+    const button = c.getByRole('button', { name: 'Copy git push origin v1.4.3' })
+
+    await userEvent.click(button)
+    expect(await c.findByText('Copied to the clipboard')).toHaveAttribute('role', 'status')
+    expect(button).toHaveTextContent('Copied')
+
+    const refused = new Error('The clipboard refused it.')
+    platform.copyText.mockRejectedValueOnce(refused)
+    await userEvent.click(button)
+
+    expect(await c.findByText('Couldn’t copy git push origin v1.4.3')).toHaveAttribute('role', 'status')
+    expect(button).toHaveTextContent('Copy failed')
+    expect(error).toHaveBeenCalledExactlyOnceWith('could not copy the command', refused)
   })
 
   it('names a failure in words, quotes magex, says where the clone is, and offers to try again', async () => {

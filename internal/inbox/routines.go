@@ -1,10 +1,11 @@
 package inbox
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -434,12 +435,8 @@ func (t *tally) top(n int) []string {
 		keys = append(keys, k)
 	}
 
-	sort.Slice(keys, func(i, j int) bool {
-		if t.counts[keys[i]] != t.counts[keys[j]] {
-			return t.counts[keys[i]] > t.counts[keys[j]]
-		}
-
-		return keys[i] < keys[j]
+	slices.SortFunc(keys, func(a, b string) int {
+		return cmp.Or(cmp.Compare(t.counts[b], t.counts[a]), strings.Compare(a, b))
 	})
 
 	out := make([]string, 0, min(n, len(keys)))

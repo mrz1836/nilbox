@@ -272,23 +272,13 @@ func (m marks) eligible(r *decideRow) bool {
 		return false
 	}
 
-	_, stuck := m.stuckAt(r)
-
-	return !stuck
+	return !m.stuckAt(r)
 }
 
-// stuckAt reports why r waits until it moves before a clear of it is queued on its own: the
-// user kept it at its update or a later one (SkipKept), or a clear of it failed there
-// (SkipFailed).
-func (m marks) stuckAt(r *decideRow) (SkipReason, bool) {
-	switch {
-	case settledAt(m.kept, r):
-		return SkipKept, true
-	case settledAt(m.failed, r):
-		return SkipFailed, true
-	default:
-		return SkipNone, false
-	}
+// stuckAt reports whether r waits until it moves before a clear of it is queued on its own:
+// the user kept it at its update or a later one, or a clear of it failed there.
+func (m marks) stuckAt(r *decideRow) bool {
+	return settledAt(m.kept, r) || settledAt(m.failed, r)
 }
 
 // settledAt reports whether byThread holds r's thread at its update or a later one.

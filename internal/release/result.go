@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/mrz1836/nilbox/internal/scriptrun"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -76,9 +77,7 @@ func decodeResult(recorded any) (Result, error) {
 		return Result{}, fmt.Errorf("%w: %q", errNoKind, res.Kind)
 	}
 
-	if res.Commands == nil {
-		res.Commands = []string{}
-	}
+	res.Commands = textutil.NonNil(res.Commands)
 
 	return res, nil
 }

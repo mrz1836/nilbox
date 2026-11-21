@@ -3,9 +3,8 @@ import { useState } from 'react'
 import { attempt, start, type Result } from '../../lib/call'
 import { revealToolCopy, type IntegrationID, type ToolCopy } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { quietButtonClass } from '../controls'
+import { ErrorText, quietButtonClass } from '../controls'
 import { TrashIcon } from '../icons'
-import { ErrorText } from './rows'
 
 export interface TrashCopyProps {
   // toolId and copy are the tool and the copy of it to move.

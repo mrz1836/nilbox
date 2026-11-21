@@ -52,7 +52,7 @@ describe('renderMarkdown blocks', () => {
     )
 
     expect(tags(root)).toEqual(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h1', 'h1', 'p'])
-    expect(screen.getByRole('heading', { level: 1, name: 'One' })).toHaveClass('font-semibold', 'text-[0.9375rem]')
+    expect(screen.getByRole('heading', { level: 1, name: 'One' })).toHaveClass('font-semibold', 'text-heading')
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent(/^Two$/)
     expect(screen.getByRole('heading', { level: 4 })).toHaveTextContent(/^C#$/)
     expect(screen.getByRole('heading', { level: 6 })).toHaveClass('text-muted')

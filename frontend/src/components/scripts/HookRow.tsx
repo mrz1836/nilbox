@@ -29,11 +29,10 @@ import {
   type RunsIn,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass } from '../controls'
+import { buttonClass, ErrorText, iconButtonClass, linkClass } from '../controls'
 import { ChevronDownIcon, DotIcon, InfoIcon, MoreIcon } from '../icons'
 import { MenuButton, type MenuItem } from '../Menu'
 import { RelativeTime } from '../RelativeTime'
-import { ErrorText } from '../settings/rows'
 import { ToneIcon, toneWords } from './ToneIcon'
 
 // actionCalls start each action in a clone, and return its run's ID.
@@ -235,7 +234,7 @@ export function HookRow({ repo, version, watch, runsIn, onOpenRun }: HookRowProp
                   onClick={() => {
                     onOpenRun(watch)
                   }}
-                  className="font-medium text-accent hover:underline"
+                  className={linkClass}
                 >
                   Watch
                 </button>
@@ -266,11 +265,7 @@ export function HookRow({ repo, version, watch, runsIn, onOpenRun }: HookRowProp
           </MenuButton>
         )}
         {repo.group === 'off' && <span className="text-xs text-muted">Turned on and off in .github/env/</span>}
-        <MenuButton
-          label={`More for ${repo.name}`}
-          items={moreItems}
-          className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text"
-        >
+        <MenuButton label={`More for ${repo.name}`} items={moreItems} className={iconButtonClass}>
           <MoreIcon className="size-4" />
         </MenuButton>
       </div>

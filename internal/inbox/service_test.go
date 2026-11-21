@@ -542,26 +542,14 @@ type storedItem struct {
 func (h *harness) storedItems(t *testing.T) []storedItem {
 	t.Helper()
 
-	rows, err := h.pool.QueryContext(t.Context(), `SELECT id, number, kind, author_login, author_type,
+	return testutil.Query(t, h.pool, func(it *storedItem) []any {
+		return []any{
+			&it.ID, &it.Number, &it.Kind, &it.AuthorLogin, &it.AuthorType, &it.AuthorAssociation, &it.HeadRef,
+			&it.IsCrossRepository, &it.ReasonReviewRequested, &it.ReasonAuthored, &it.ReasonAssigned,
+		}
+	}, `SELECT id, number, kind, author_login, author_type,
     author_association, head_ref, is_cross_repository, reason_review_requested, reason_authored, reason_assigned
 FROM items ORDER BY number`)
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
-
-	var items []storedItem
-
-	for rows.Next() {
-		var it storedItem
-		require.NoError(t, rows.Scan(&it.ID, &it.Number, &it.Kind, &it.AuthorLogin, &it.AuthorType,
-			&it.AuthorAssociation, &it.HeadRef, &it.IsCrossRepository, &it.ReasonReviewRequested, &it.ReasonAuthored,
-			&it.ReasonAssigned))
-		items = append(items, it)
-	}
-
-	require.NoError(t, rows.Err())
-
-	return items
 }
 
 // storedItemNumbered returns the one stored item with a number.
@@ -1007,27 +995,15 @@ func TestRefreshWritesRateSnapshot(t *testing.T) {
 	h.clock.Advance(DefaultInterval)
 	snap := h.refresh(t)
 
-	rows, err := h.pool.QueryContext(t.Context(),
-		"SELECT resource, limit_total, remaining, cost FROM rate_snapshots WHERE taken_at = ? ORDER BY resource",
-		h.clock.Now())
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
-
 	type reading struct {
 		resource                    string
 		limitTotal, remaining, cost int
 	}
 
-	var readings []reading
-
-	for rows.Next() {
-		var r reading
-		require.NoError(t, rows.Scan(&r.resource, &r.limitTotal, &r.remaining, &r.cost))
-		readings = append(readings, r)
-	}
-
-	require.NoError(t, rows.Err())
+	readings := testutil.Query(t, h.pool, func(r *reading) []any {
+		return []any{&r.resource, &r.limitTotal, &r.remaining, &r.cost}
+	}, "SELECT resource, limit_total, remaining, cost FROM rate_snapshots WHERE taken_at = ? ORDER BY resource",
+		h.clock.Now())
 	require.Len(t, readings, 3, "one row per resource per refresh")
 
 	assert.Equal(t, resourceCore, readings[0].resource)

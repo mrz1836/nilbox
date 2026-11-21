@@ -14,7 +14,7 @@ import { pinnedTarget } from '../TriageControls'
 // set-aside card.
 
 // tagClass is a status tag: weight and color mark it, with no pill around it.
-export const tagClass = 'shrink-0 text-[0.6875rem] leading-4 font-medium'
+export const tagClass = 'shrink-0 text-caption leading-4 font-medium'
 
 export interface FilterTextProps {
   // filterKey and value are the filter the text adds, as in repo and its name; name
@@ -164,7 +164,7 @@ export function PinGlyph({ item, rules }: { item: InboxItem; rules: RepoRules | 
 export function UnreadDot() {
   return (
     <span data-unread title="New since you last opened it" className="relative z-10 inline-flex shrink-0">
-      <span aria-hidden="true" className="block size-1.75 rounded-full bg-info ring-3 ring-info/20" />
+      <span aria-hidden="true" className="block size-1.75 rounded-full bg-info ring-3 ring-info/22" />
       <span className="sr-only">Unread</span>
     </span>
   )

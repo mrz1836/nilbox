@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"maps"
 	"sync"
 	"testing"
 
@@ -97,9 +98,7 @@ func (f *fakeLedger) ScriptRunsGoing(context.Context) (map[int64]int64, error) {
 	defer f.mu.Unlock()
 
 	out := map[int64]int64{}
-	for k, v := range f.runs {
-		out[k] = v
-	}
+	maps.Copy(out, f.runs)
 
 	return out, nil
 }

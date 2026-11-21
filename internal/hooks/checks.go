@@ -10,6 +10,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/integrations"
 	"github.com/mrz1836/nilbox/internal/paths"
+	"github.com/mrz1836/nilbox/internal/prefs/prefval"
 	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
@@ -331,7 +332,7 @@ func (s *Service) checksRecorded(ctx context.Context) {
 		return
 	}
 
-	if err := s.memory.Set(ctx, checksRanKey, "true"); err != nil {
+	if err := s.memory.Set(ctx, checksRanKey, prefval.EncodeBool(true)); err != nil {
 		s.logger.WarnContext(ctx, "couldn't note that a checks run ended", "error", err)
 	}
 }

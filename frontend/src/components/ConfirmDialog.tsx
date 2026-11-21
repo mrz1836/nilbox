@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
 
 import { useModalDialog } from '../lib/useModalDialog'
-import { buttonClass, dangerButtonClass, primaryButtonClass } from './controls'
+import { buttonClass, dangerButtonClass, modalClass, primaryButtonClass } from './controls'
 import { Spinner } from './Spinner'
 
 export interface ConfirmDialogProps {
@@ -98,9 +98,7 @@ export function ConfirmDialog({
       aria-labelledby={`${id}-title`}
       aria-describedby={`${id}-body`}
       onCancel={cancel}
-      // The backdrop's color is spelled out: before Safari 17.4, ::backdrop sees none of the
-      // page's custom properties, so a theme color would leave it clear.
-      className={`m-auto w-[calc(100%-2rem)] ${sizeClass[size]} rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-[rgb(0_0_0/0.4)]`}
+      className={`${modalClass} ${sizeClass[size]}`}
     >
       <h2 id={`${id}-title`} className="text-base font-semibold">
         {title}

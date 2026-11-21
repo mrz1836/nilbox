@@ -25,6 +25,7 @@ import { IssueState } from './card/IssueState'
 import { RiskChip, trustTitle } from './card/RiskChip'
 import { SizeGlyph } from './card/SizeGlyph'
 import { StateTrack } from './card/StateTrack'
+import { ghostButtonClass, inkLinkClass } from './controls'
 import { Highlight } from './Highlight'
 import { ChevronDownIcon, ExternalIcon, WorktreeIcon } from './icons'
 import { ItemMenu, type EditActions } from './ItemMenu'
@@ -32,7 +33,7 @@ import { LabelChip } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
 import { RelativeTime } from './RelativeTime'
 import { Spinner } from './Spinner'
-import { ghostClass, hoverClass, mutedTarget, openOnGitHub, TriageControls, type TriageActions } from './TriageControls'
+import { hoverClass, mutedTarget, openOnGitHub, TriageControls, type TriageActions } from './TriageControls'
 
 export interface ItemRowProps {
   item: InboxItem
@@ -135,7 +136,7 @@ function WorktreeChip({ wt }: { wt: Worktree }) {
   return (
     <span
       title={wt.displayPath}
-      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[0.6875rem] leading-4 font-medium text-muted"
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-caption leading-4 font-medium text-muted"
     >
       <WorktreeIcon className="size-3 shrink-0" />
       <span className="@max-3xl:sr-only">{words}</span>
@@ -167,7 +168,7 @@ export function CardChips({ chips }: { chips: readonly CardChip[] }) {
         <Fragment key={chip.key}>{chip.node}</Fragment>
       ))}
       {rest.length > 0 && (
-        <span title={names} className="shrink-0 text-[0.6875rem] font-medium">
+        <span title={names} className="shrink-0 text-caption font-medium">
           +{rest.length}
           <span className="sr-only"> more: {names}</span>
         </span>
@@ -225,7 +226,7 @@ function CardLabels({
         </span>
       ))}
       {rest.length > 0 ? (
-        <span data-label-count title={names} className="shrink-0 text-[0.6875rem] text-muted tabular-nums">
+        <span data-label-count title={names} className="shrink-0 text-caption text-muted tabular-nums">
           +{rest.length}
           <span className="sr-only"> more: {names}</span>
         </span>
@@ -233,7 +234,7 @@ function CardLabels({
         <span
           data-label-count
           aria-hidden="true"
-          className="invisible absolute w-max text-[0.6875rem] tabular-nums before:content-['+1']"
+          className="invisible absolute w-max text-caption tabular-nums before:content-['+1']"
         />
       )}
     </span>
@@ -521,7 +522,7 @@ export const ItemRow = memo(function ItemRow({
                 openOnGitHub(item, triage)
               }
             }}
-            className="relative z-10 min-w-[8ch] truncate text-left text-sm font-semibold text-text hover:text-accent hover:underline"
+            className={`${inkLinkClass} relative z-10 min-w-[8ch] truncate text-left text-sm font-semibold`}
           >
             <Highlight text={item.title} marks={marks} />
           </button>
@@ -588,7 +589,7 @@ export const ItemRow = memo(function ItemRow({
           line would reach the card's edge), is only what it is placed in. */}
       <div
         data-triage
-        className={`${hoverClass(work)} absolute inset-y-0 right-0 z-20 col-[4/5] row-[1/2] w-max rounded-lg bg-[color-mix(in_oklab,var(--color-raised)_40%,var(--color-surface))] p-0.5 @max-xl:col-[3/4]`}
+        className={`${hoverClass(work)} absolute inset-y-0 right-0 z-20 col-[4/5] row-[1/2] w-max rounded-lg wash-raised p-0.5 @max-xl:col-[3/4]`}
       >
         <button
           type="button"
@@ -597,7 +598,7 @@ export const ItemRow = memo(function ItemRow({
           aria-expanded={peeking}
           aria-controls={peeking ? peekId : undefined}
           onClick={togglePeek}
-          className={ghostClass}
+          className={ghostButtonClass}
         >
           <ChevronDownIcon className={`size-3.5 transition-transform ${peeking ? 'rotate-180' : ''}`} />
         </button>
@@ -613,7 +614,7 @@ export const ItemRow = memo(function ItemRow({
         <div data-row-status className="absolute inset-0 z-30 flex items-center justify-center">
           <p
             role="status"
-            className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text shadow-lg shadow-black/20 motion-safe:animate-pop-in"
+            className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text shadow-float motion-safe:animate-pop-in"
           >
             <Spinner className="size-3.5" />
             {workWords[work]}

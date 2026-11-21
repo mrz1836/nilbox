@@ -176,22 +176,21 @@ func checkTriggerClear(t *testing.T, r threadrules.Rules, th threadrules.Thread,
 // once and in the order of Triggers, and which read back unchanged once stored again as
 // the settings store each key.
 func FuzzDecode(f *testing.F) {
-	for _, seed := range [][7]string{
-		{"", "", "", "", "", "", ""},
-		{storedOff, storedOn, "read", `["unassigned","merged"]`, storedOff, "0", storedOn},
-		{"yes", "on", "archive", `{"merged":true}`, " true", "maybe", "2"},
-		{"T", "F", "READ", `["by_hand","by_hand","later",""]`, "1", "f", "FALSE"},
-		{"null", "null", "null", "null", "null", "null", "null"},
-		{storedOn, storedOn, "done", `["merged",7]`, storedOn, storedOn, storedOn},
+	for _, seed := range [][6]string{
+		{"", "", "", "", "", ""},
+		{storedOff, storedOn, "read", `["unassigned","merged"]`, storedOff, "0"},
+		{"yes", "on", "archive", `{"merged":true}`, " true", "maybe"},
+		{"T", "F", "READ", `["by_hand","by_hand","later",""]`, "1", "f"},
+		{"null", "null", "null", "null", "null", "null"},
+		{storedOn, storedOn, "done", `["merged",7]`, storedOn, storedOn},
 	} {
-		f.Add(seed[0], seed[1], seed[2], seed[3], seed[4], seed[5], seed[6])
+		f.Add(seed[0], seed[1], seed[2], seed[3], seed[4], seed[5])
 	}
 
-	f.Fuzz(func(t *testing.T, read, auto, action, off, watching, bots, card string) {
+	f.Fuzz(func(t *testing.T, read, auto, action, off, watching, bots string) {
 		rules := threadrules.Decode(map[string]string{
 			threadrules.KeyRead: read, threadrules.KeyAuto: auto, threadrules.KeyAction: action,
 			threadrules.KeyTriggersOff: off, threadrules.KeyWatching: watching, threadrules.KeyBotActivity: bots,
-			threadrules.KeyCleanupCardDismissed: card,
 		})
 
 		assert.True(t, rules.Action.Valid(), "action %q", rules.Action)

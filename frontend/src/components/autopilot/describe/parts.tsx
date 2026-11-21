@@ -19,7 +19,7 @@ import type {
   KitRisk,
   Settings,
 } from '../../../platform'
-import { buttonClass, primaryButtonClass, quietButtonClass } from '../../controls'
+import { buttonClass, ErrorText, primaryButtonClass, quietButtonClass } from '../../controls'
 import { AlertIcon, CheckIcon } from '../../icons'
 
 // CardKit is what every card reads from Describe it beside its own proposal.
@@ -216,11 +216,7 @@ export function RowActions({ label, blocked, busy, onApply, onDiscard, children,
           Discard
         </button>
       </div>
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
     </div>
   )
 }
@@ -245,7 +241,7 @@ export function RowTitle({
       <h4 id={id} className="text-sm font-semibold text-text">
         {title}
       </h4>
-      <span className="rounded-full border border-border px-2 py-0.5 text-[0.6875rem] whitespace-nowrap text-muted">
+      <span className="rounded-full border border-border px-2 py-0.5 text-caption whitespace-nowrap text-muted">
         {kind}
       </span>
       {children}

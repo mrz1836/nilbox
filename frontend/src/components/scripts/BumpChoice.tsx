@@ -42,7 +42,7 @@ export function BumpChoice({ bumps, value, onChange, disabled = false, onUpdate 
         return (
           <div
             key={offer.bump}
-            className={`flex flex-col rounded-lg border transition-colors ${chosen ? 'border-accent/60 bg-accent/8' : 'border-border bg-surface'} ${choosable && !chosen ? 'hover:bg-raised' : ''} ${offer.offered ? '' : 'opacity-75'}`}
+            className={`flex flex-col rounded-lg border transition-colors ${chosen ? 'border-accent/60 bg-accent/10' : 'border-border bg-surface'} ${choosable && !chosen ? 'hover:bg-raised' : ''} ${offer.offered ? '' : 'opacity-75'}`}
           >
             <label
               className={`flex flex-1 flex-col gap-1 px-3 py-2.5 select-none ${choosable ? 'cursor-pointer' : ''}`}

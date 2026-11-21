@@ -681,7 +681,8 @@ func (a *items) WatchNow(ctx context.Context) error {
 	return a.sim.Routines.WatchNow(ctx)
 }
 
-// watchSource gives the inbox the routines' searches, as core's adapter does.
+// watchSource gives the inbox the routines' searches, as core's adapter does: false while
+// the snapshot is still another account's after a rebuild.
 type watchSource struct {
 	searches *autopilot.Searches
 }
@@ -690,10 +691,13 @@ func (w *watchSource) HoldsWatches() bool {
 	return w.searches.HoldsWatches()
 }
 
-func (w *watchSource) Watches(login string) []inbox.Watch {
+func (w *watchSource) Watches(ctx context.Context, login string) ([]inbox.Watch, bool) {
 	set := w.searches.Current()
 	if !strings.EqualFold(set.Login, login) {
-		set = w.searches.Rebuild(context.Background())
+		set = w.searches.Rebuild(ctx)
+		if !strings.EqualFold(set.Login, login) {
+			return nil, false
+		}
 	}
 
 	out := make([]inbox.Watch, 0, len(set.Searches))
@@ -701,7 +705,7 @@ func (w *watchSource) Watches(login string) []inbox.Watch {
 		out = append(out, inbox.Watch{Key: sr.Key, Query: sr.Query, Follow: sr.Follow})
 	}
 
-	return out
+	return out, true
 }
 
 // fanOut tells the engine what the inbox stored and saw, and names the items its ledger

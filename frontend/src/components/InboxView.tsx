@@ -67,10 +67,11 @@ import {
   type Settings,
   type Worktree,
 } from '../platform'
+import { iconButtonClass, smallButtonClass } from './controls'
 import { ErrorBanner } from './ErrorBanner'
 import { HelpIcon, RefreshIcon } from './icons'
 import { InboxFilling } from './InboxFilling'
-import { InboxNil } from './InboxNil'
+import type { InboxNil } from './InboxNil'
 import { LinksContext, type Links } from './ItemLink'
 import { ListSection, type Reveal } from './ListSection'
 import { ProgressStatus } from './ProgressStatus'
@@ -97,6 +98,32 @@ function preloadSheets() {
   for (const load of [loadReviewSheet, loadIssueSheet]) {
     load().catch(() => undefined)
   }
+}
+
+// The party at nil loads on its own too: it shows only once every list is empty, so its
+// code, and the confetti's, stay out of the inbox's first paint. The inbox starts loading
+// it once it has painted, long before a refresh can find every list empty, so the party
+// shows as soon as the milestones answer. A load that fails is left to the party's own
+// load as it shows, which tries again.
+//
+// loadedParty is the party once a load of its code has landed.
+let loadedParty: typeof InboxNil | null = null
+
+const loadParty = () =>
+  import('./InboxNil').then((m) => {
+    loadedParty = m.InboxNil
+
+    return m
+  })
+const LazyInboxNil = lazy(() => loadParty().then((m) => ({ default: m.InboxNil })))
+
+// partyCode is what a party at nil renders: the party loaded, once a load has landed, and
+// only before that the lazy one. React reads a lazy component's code on its first render
+// alone, and even code already loaded answers that read a moment later, so a lazy party
+// shows its empty fallback first, and itself only 300 ms after, as React holds back what
+// replaces a fallback: the session's first party would, its code long loaded.
+function partyCode(): typeof InboxNil | typeof LazyInboxNil {
+  return loadedParty ?? LazyInboxNil
 }
 
 export interface InboxViewProps {
@@ -261,11 +288,7 @@ function NoMatches({ query, onClear }: { query: string; onClear: (() => void) | 
         </p>
       </div>
       {onClear !== undefined && (
-        <button
-          type="button"
-          onClick={onClear}
-          className="shrink-0 rounded-md border border-border bg-surface px-3 py-1 text-sm font-medium hover:bg-raised"
-        >
+        <button type="button" onClick={onClear} className={`${smallButtonClass} shrink-0`}>
           Clear filter
         </button>
       )}
@@ -402,8 +425,14 @@ export function InboxView({
   const live = party && showing
   const [wasLive, setWasLive] = useState(false)
   // reached is what the latest party was worth, once the milestones answer, by its number,
-  // with the flourish it plays; its moment is null when they could not answer.
-  const [reached, setReached] = useState<{ n: number; moment: NilMoment | null; flourish: Flourish } | null>(null)
+  // with the flourish it plays and the code it renders; its moment is null when they could
+  // not answer.
+  const [reached, setReached] = useState<{
+    n: number
+    moment: NilMoment | null
+    flourish: Flourish
+    Party: ReturnType<typeof partyCode>
+  } | null>(null)
   // lastFlourish is the flourish the last party that played one played, so the next plays
   // another. It outlives the visits, as the page stays mounted.
   const lastFlourish = useRef<Flourish | null>(null)
@@ -450,7 +479,8 @@ export function InboxView({
 
   // Each party reports to the milestones once, and shows once they answer: a local write,
   // a few milliseconds. Its flourish is picked then, never the last one played, and only a
-  // party that plays one moves lastFlourish on.
+  // party that plays one moves lastFlourish on. Its code is picked then too (partyCode), and
+  // kept while it shows.
   const settle = useEffectEvent((n: number, moment: NilMoment | null) => {
     const flourish = nextFlourish(
       lastFlourish.current,
@@ -462,7 +492,7 @@ export function InboxView({
       lastFlourish.current = flourish
     }
 
-    setReached({ n, moment, flourish })
+    setReached({ n, moment, flourish, Party: partyCode() })
   })
   const report = useEffectEvent((n: number, earned: boolean, cleared: number) => {
     reachedNil({ earned, cleared, loud: mode === 'milestones' }).then(
@@ -541,6 +571,10 @@ export function InboxView({
       preloadSheets()
     }
   }, [sheets])
+
+  useEffect(() => {
+    loadParty().catch(() => undefined)
+  }, [])
   // shown is the snapshot the lists show, for the menu's review to find an item's list in
   // when it is chosen, without a new action for every snapshot.
   const shown = useRef(snapshot)
@@ -853,7 +887,7 @@ export function InboxView({
           type="button"
           disabled={refreshing}
           onClick={refresh}
-          className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 font-medium hover:bg-raised disabled:opacity-60"
+          className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 font-medium hover:bg-raised disabled:opacity-disabled"
         >
           <RefreshIcon className={`size-3.5 ${refreshing ? 'motion-safe:animate-spin' : ''}`} />
           {refreshing ? 'Refreshing…' : 'Refresh'}
@@ -877,7 +911,7 @@ export function InboxView({
             aria-label="How to read a card"
             title="How to read a card"
             onClick={onShowCardGuide}
-            className="inline-flex size-6.5 shrink-0 items-center justify-center rounded-md border border-border text-muted transition-colors hover:bg-raised hover:text-text"
+            className={`${iconButtonClass} border border-border`}
           >
             <HelpIcon className="size-3.5" />
           </button>
@@ -920,25 +954,27 @@ export function InboxView({
       )}
       {filter !== null && filter.matches === 0 && <NoMatches query={filter.query} onClear={onClearFilter} />}
       {party && thrown !== null && reached?.n === thrown.n && (
-        <InboxNil
-          key={thrown.n}
-          stats={triaged}
-          earned={thrown.earned}
-          moment={reached.moment}
-          flourish={reached.flourish}
-          mode={mode}
-          compact={compact}
-          onOpen={() => {
-            setFold('open')
-          }}
-          onCollapse={
-            setAside
-              ? () => {
-                  setFold('folded')
-                }
-              : undefined
-          }
-        />
+        <Suspense fallback={null}>
+          <reached.Party
+            key={thrown.n}
+            stats={triaged}
+            earned={thrown.earned}
+            moment={reached.moment}
+            flourish={reached.flourish}
+            mode={mode}
+            compact={compact}
+            onOpen={() => {
+              setFold('open')
+            }}
+            onCollapse={
+              setAside
+                ? () => {
+                    setFold('folded')
+                  }
+                : undefined
+            }
+          />
+        </Suspense>
       )}
       {filling ? (
         <InboxFilling />

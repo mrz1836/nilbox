@@ -258,7 +258,7 @@ func TestAutoOffSkipsQueued(t *testing.T) {
 
 	// The user clears the other by hand, and turns clearing off before anything is sent.
 	r.svc.sendBy(start.Add(time.Hour)) // no send run yet
-	_, err := r.svc.Clear(t.Context(), []int64{firstID + 1})
+	_, err := r.svc.clearByHand(t.Context(), []int64{firstID + 1})
 	require.NoError(t, err)
 	require.Len(t, r.snapshot().Queued, 2)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -163,9 +164,7 @@ func (bp *BackupPart) ApplyBackup(ctx context.Context, tx *sql.Tx, plan BackupPl
 		return backup.Count{}, err
 	}
 
-	for nickname, id := range ids {
-		links[nickname] = id
-	}
+	maps.Copy(links, ids)
 
 	return count, nil
 }

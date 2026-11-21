@@ -1,6 +1,7 @@
 import { costWords, tokenWords, weekCounts } from '../../lib/routineWeek'
 import { useQuery } from '../../lib/useQuery'
 import { routineStats } from '../../platform'
+import { ErrorText } from '../controls'
 
 export interface WeekStatsProps {
   // routineID is the routine, and version changes whenever what it did may have, so its
@@ -17,11 +18,7 @@ export function WeekStats({ routineID, version }: WeekStatsProps) {
   const s = week.data
 
   if (week.error !== '') {
-    return (
-      <p role="alert" className="text-xs text-danger">
-        {week.error}
-      </p>
-    )
+    return <ErrorText error={week.error} />
   }
 
   if (s === undefined) {

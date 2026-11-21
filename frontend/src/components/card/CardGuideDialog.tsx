@@ -1,7 +1,7 @@
 import { useId, useRef } from 'react'
 
 import { useModalDialog } from '../../lib/useModalDialog'
-import { quietButtonClass } from '../controls'
+import { iconButtonClass, sheetDialogClass } from '../controls'
 import { XIcon } from '../icons'
 import { CardGuide } from './CardGuide'
 
@@ -27,8 +27,7 @@ export function CardGuideDialog({ onClose }: CardGuideDialogProps) {
       aria-modal="true"
       aria-labelledby={`${id}-title`}
       onCancel={cancel}
-      // The backdrop's color is spelled out, as ConfirmDialog's is, for older Safari.
-      className="m-auto max-h-[calc(100%-3rem)] w-[calc(100%-2rem)] max-w-5xl overflow-y-auto rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-[rgb(0_0_0/0.4)] motion-safe:animate-pop-in"
+      className={`${sheetDialogClass} max-h-[calc(100%-3rem)] w-[calc(100%-2rem)] max-w-5xl overflow-y-auto motion-safe:animate-pop-in`}
     >
       <header className="flex items-center gap-3 border-b border-border py-3 pr-2.5 pl-5">
         <h2 id={`${id}-title`} className="min-w-0 flex-1 text-base font-semibold">
@@ -40,7 +39,7 @@ export function CardGuideDialog({ onClose }: CardGuideDialogProps) {
           aria-label="Close"
           title="Close (Esc)"
           onClick={onClose}
-          className={`${quietButtonClass} p-1`}
+          className={iconButtonClass}
         >
           <XIcon className="size-4" />
         </button>

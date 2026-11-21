@@ -23,11 +23,20 @@ import {
   type RunsIn,
   type TerminalID,
 } from '../../platform'
-import { buttonClass, dangerButtonClass, fieldClass, primaryButtonClass, Segmented } from '../controls'
+import {
+  buttonClass,
+  dangerButtonClass,
+  ErrorText,
+  fieldClass,
+  iconButtonClass,
+  inkLinkClass,
+  linkClass,
+  primaryButtonClass,
+  Segmented,
+} from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { ChevronRightIcon, ExternalIcon, InfoIcon, XIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
-import { ErrorText } from '../settings/rows'
 import { Sheet } from '../Sheet'
 import { Spinner } from '../Spinner'
 import { BumpChoice } from './BumpChoice'
@@ -98,7 +107,7 @@ function WhatsInIt({ candidate }: { candidate: ReleaseCandidate }) {
               onClick={() => {
                 openExternal(`https://github.com/${repo}/commit/${commit.oid}`)
               }}
-              className="min-w-0 truncate text-left text-text hover:text-accent hover:underline"
+              className={`${inkLinkClass} min-w-0 truncate text-left`}
             >
               {commit.headline}
             </button>
@@ -113,7 +122,7 @@ function WhatsInIt({ candidate }: { candidate: ReleaseCandidate }) {
             onClick={() => {
               openExternal(`https://github.com/${repo}/compare/${version}...${candidate.defaultBranch}`)
             }}
-            className="inline-flex items-center gap-1 self-start text-xs font-medium text-accent hover:underline"
+            className={`${linkClass} inline-flex items-center gap-1 self-start text-xs`}
           >
             {counted(hidden, 'more commit', 'more commits')} on GitHub
             <ExternalIcon className="size-3" />
@@ -125,7 +134,7 @@ function WhatsInIt({ candidate }: { candidate: ReleaseCandidate }) {
             onClick={() => {
               setAll(true)
             }}
-            className="inline-flex items-center gap-1 self-start text-xs font-medium text-accent hover:underline"
+            className={`${linkClass} inline-flex items-center gap-1 self-start text-xs`}
           >
             {counted(hidden, 'more commit', 'more commits')}
             <ChevronRightIcon className="size-3" />
@@ -313,7 +322,7 @@ export function ReleaseSheet({
           aria-label="Close the release sheet"
           title="Close"
           onClick={onClose}
-          className="-mr-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text"
+          className={`${iconButtonClass} -mr-1`}
         >
           <XIcon className="size-3.5" />
         </button>

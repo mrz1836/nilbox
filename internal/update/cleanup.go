@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/brand"
+	"github.com/mrz1836/nilbox/internal/paths"
 )
 
 // stagingPrefix starts the folders the desktop runtime's updater stages an update in,
@@ -208,7 +208,7 @@ func namesBundle(path, bundle string) bool {
 		return false
 	}
 
-	head, err := readHead(path, 4096)
+	head, err := paths.ReadHead(path, 4096)
 	if err != nil {
 		return false
 	}
@@ -236,26 +236,6 @@ func sameBundle(a, b string) bool {
 	infoB, errB := os.Stat(b)
 
 	return errA == nil && errB == nil && os.SameFile(infoA, infoB)
-}
-
-// readHead reads the first n bytes of the regular file at path, or fewer when it is
-// shorter.
-func readHead(path string, n int) ([]byte, error) {
-	f, err := os.Open(path) //nolint:gosec // a helper log in the temporary folder, by its exact name
-	if err != nil {
-		return nil, fmt.Errorf("read a helper log: %w", err)
-	}
-
-	defer func() { _ = f.Close() }()
-
-	head := make([]byte, n)
-
-	read, err := io.ReadFull(f, head)
-	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("read a helper log: %w", err)
-	}
-
-	return head[:read], nil
 }
 
 // removeIfExists removes path and what it holds; a missing one is no error.

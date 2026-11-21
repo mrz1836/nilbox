@@ -7,7 +7,7 @@ import type { Query } from '../../lib/useQuery'
 import { openExternal, type GitHubSignIn } from '../../platform'
 import { PersonAvatar } from '../Avatar'
 import { CommandLine } from '../CommandLine'
-import { buttonClass, chipClass } from '../controls'
+import { buttonClass, chipClass, linkClass } from '../controls'
 import { AlertIcon, CircleCheckIcon, ExternalIcon, ProjectIcon, RefreshIcon } from '../icons'
 import { Spinner } from '../Spinner'
 
@@ -23,7 +23,7 @@ export interface GitHubStepProps {
 // what to do with it.
 function Problem({ title, children, command }: { title: string; children: ReactNode; command: string }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-warning/50 bg-warning/5 px-4 py-4">
+    <div className="flex flex-col gap-3 rounded-lg border border-warning/45 bg-warning/5 px-4 py-4">
       <p className="flex items-center gap-2 text-sm font-semibold">
         <AlertIcon className="size-4 shrink-0 text-warning" />
         {title}
@@ -41,7 +41,7 @@ function SignedIn({ github }: { github: GitHubSignIn }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-4 rounded-lg border border-success/50 bg-success/5 px-4 py-4">
+      <div className="flex items-center gap-4 rounded-lg border border-success/45 bg-success/5 px-4 py-4">
         <PicturesContext value={pictures}>
           <PersonAvatar login={github.login} size="lg" />
         </PicturesContext>
@@ -109,7 +109,7 @@ function State({ github }: { github: GitHubSignIn }) {
               onClick={() => {
                 openExternal(cliPage)
               }}
-              className="inline-flex items-center gap-0.5 font-medium text-accent hover:underline"
+              className={`${linkClass} inline-flex items-center gap-0.5`}
             >
               cli.github.com
               <ExternalIcon className="size-3" />

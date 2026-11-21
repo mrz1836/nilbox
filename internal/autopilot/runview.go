@@ -7,6 +7,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/agentrun/runevent"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -82,15 +83,15 @@ func (s *Service) RunEventsBefore(ctx context.Context, runID, before int64) (run
 
 	e := s.engine
 	if e == nil || e.views == nil {
-		return emptyPage(), uierr.New("This run's events aren't kept here.", ErrNoViews)
+		return runevent.EmptyPage(), uierr.New("This run's events aren't kept here.", ErrNoViews)
 	}
 
 	page, err := e.views.EventsBefore(ctx, runID, before)
 	if err != nil {
-		return emptyPage(), uierr.New("This run's earlier events couldn't be read.", err)
+		return runevent.EmptyPage(), uierr.New("This run's earlier events couldn't be read.", err)
 	}
 
-	return nonNilPage(page), nil
+	return page.Listed(), nil
 }
 
 // RunDiff returns the ledger's run runID's worktree's changes since the head it started
@@ -109,9 +110,7 @@ func (s *Service) RunDiff(ctx context.Context, runID int64) (runevent.Diff, erro
 		return empty, uierr.New("This run's changes couldn't be read. Its worktree may be gone.", err)
 	}
 
-	if diff.Untracked == nil {
-		diff.Untracked = []string{}
-	}
+	diff.Untracked = textutil.NonNil(diff.Untracked)
 
 	return diff, nil
 }
@@ -130,7 +129,7 @@ func (s *Service) followedElsewhere(ctx context.Context, runID int64) (runevent.
 		return runevent.Page{}, false
 	}
 
-	page := emptyPage()
+	page := runevent.EmptyPage()
 	page.Done = row.Status == runEnded
 
 	return page, true
@@ -146,36 +145,4 @@ func canTakeOver(r Run) bool {
 	h, err := agent.HeadlessOf(agent.ID(r.Agent))
 
 	return err == nil && h.Resume
-}
-
-// emptyPage is a page with nothing on it.
-func emptyPage() runevent.Page {
-	return runevent.Page{Events: []runevent.Event{}, Progress: runevent.Progress{Todos: []runevent.Todo{}}}
-}
-
-// nonNilPage returns page with its lists never nil, as the window gets them.
-func nonNilPage(page runevent.Page) runevent.Page {
-	if page.Events == nil {
-		page.Events = []runevent.Event{}
-	}
-
-	if page.Progress.Todos == nil {
-		page.Progress.Todos = []runevent.Todo{}
-	}
-
-	if e := page.Ending; e != nil {
-		if e.Todos == nil {
-			e.Todos = []runevent.Todo{}
-		}
-
-		if e.Changed == nil {
-			e.Changed = []string{}
-		}
-
-		if e.Models == nil {
-			e.Models = []string{}
-		}
-	}
-
-	return page
 }

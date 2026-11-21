@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/bump"
@@ -219,13 +220,7 @@ type Field struct {
 
 // Applies reports whether the field applies to an item of kind.
 func (f Field) Applies(kind item.Kind) bool {
-	for _, k := range f.Kinds {
-		if k == kind {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(f.Kinds, kind)
 }
 
 // Choice returns the field's choice whose value is v, ignoring case.

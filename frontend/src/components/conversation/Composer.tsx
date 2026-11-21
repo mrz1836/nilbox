@@ -4,7 +4,7 @@ import type { LaunchOptions } from '../../lib/launch'
 import { runningSession } from '../../lib/sessions'
 import type { PickReply } from '../../lib/usePickReply'
 import type { AgentSession, InboxItem, ItemResolution } from '../../platform'
-import { fieldClass, quietButtonClass } from '../controls'
+import { ErrorText, fieldClass, quietButtonClass } from '../controls'
 import { ChevronDownIcon } from '../icons'
 import { LaunchControls } from '../LaunchControls'
 import { MenuButton, type MenuItem } from '../Menu'
@@ -88,17 +88,9 @@ export function Composer({
         }}
         className={`${fieldClass} block w-full font-mono text-xs`}
       />
-      {picking.error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          Couldn’t fill in the reply: {picking.error}
-        </p>
-      )}
+      <ErrorText error={picking.error}>Couldn’t fill in the reply: </ErrorText>
       {lineComments}
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
       <div className="flex flex-wrap items-center gap-2">
         {actions}
         {launch !== null && item !== undefined && (

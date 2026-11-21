@@ -13,7 +13,7 @@ import {
   stepKindOf,
 } from '../../../lib/routineBuilder'
 import type { AutopilotOutcome, AutopilotProblem, AutopilotSpec, AutopilotStep, ItemKind } from '../../../platform'
-import { fieldClass, quietButtonClass, Select, type SelectOption } from '../../controls'
+import { dangerIconButtonClass, fieldClass, quietButtonClass, Select, type SelectOption } from '../../controls'
 import { PlusIcon, TrashIcon } from '../../icons'
 import { MenuButton, type MenuItem } from '../../Menu'
 import { AgentStepBlock, type AgentKit } from './AgentStepBlock'
@@ -156,7 +156,7 @@ function StepRow({ kit, agentKit, steps, index, kinds, step, onChange, onMove, o
             onClick={() => {
               onMove(index - 1)
             }}
-            className="rounded-md px-1.5 py-0.5 text-sm text-muted hover:bg-raised hover:text-text disabled:opacity-40"
+            className="rounded-md px-1.5 py-0.5 text-sm text-muted hover:bg-raised hover:text-text disabled:opacity-disabled"
           >
             ↑
           </button>
@@ -168,7 +168,7 @@ function StepRow({ kit, agentKit, steps, index, kinds, step, onChange, onMove, o
             onClick={() => {
               onMove(index + 1)
             }}
-            className="rounded-md px-1.5 py-0.5 text-sm text-muted hover:bg-raised hover:text-text disabled:opacity-40"
+            className="rounded-md px-1.5 py-0.5 text-sm text-muted hover:bg-raised hover:text-text disabled:opacity-disabled"
           >
             ↓
           </button>
@@ -177,7 +177,7 @@ function StepRow({ kit, agentKit, steps, index, kinds, step, onChange, onMove, o
             aria-label={`Remove step ${n}`}
             title="Remove"
             onClick={onRemove}
-            className="rounded-md p-1 text-muted hover:bg-raised hover:text-danger"
+            className={dangerIconButtonClass}
           >
             <TrashIcon className="size-3.5" />
           </button>

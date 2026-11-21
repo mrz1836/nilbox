@@ -27,7 +27,7 @@ export function Highlight({ text, marks }: HighlightProps) {
     }
 
     parts.push(
-      <mark key={from} className="rounded-sm bg-warning/25 text-inherit">
+      <mark key={from} className="rounded-sm bg-warning/22 text-inherit">
         {text.slice(from, to)}
       </mark>,
     )

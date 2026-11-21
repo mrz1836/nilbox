@@ -144,6 +144,16 @@ func (r *copyRig) copies() map[string]int {
 	return gitCalls(r.run, callUnpushed, callCandidates, callSides)
 }
 
+// has reports a result kept for the worktree at path, whatever its key.
+func (c *copyCache) has(path string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	_, ok := c.entries[path]
+
+	return ok
+}
+
 func TestListSeesCommitsCherryPickedOntoAPushedBranch(t *testing.T) {
 	t.Parallel()
 

@@ -217,7 +217,7 @@ function SectionRow({ label, preview, mode, chosen, onToggle }: SectionRowProps)
     <div
       role="group"
       aria-labelledby={`${id}-name`}
-      className={`rounded-md border border-border px-3 py-2 ${open ? '' : 'opacity-60'}`.trim()}
+      className={`rounded-md border border-border px-3 py-2 ${open ? '' : 'opacity-disabled'}`.trim()}
     >
       <label
         className={`grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 ${open ? 'cursor-pointer' : ''}`.trim()}

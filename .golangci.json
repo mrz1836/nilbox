@@ -29,11 +29,6 @@
             },
             "gofumpt": {
                 "extra-rules": false
-            },
-            "goimports": {
-                "local-prefixes": [
-                    "github.com/mrz1836/nilbox"
-                ]
             }
         }
     },
@@ -84,6 +79,7 @@
             "makezero",
             "mirror",
             "misspell",
+            "modernize",
             "musttag",
             "nakedret",
             "nestif",
@@ -118,18 +114,11 @@
             "dogsled": {
                 "max-blank-identifiers": 2
             },
-            "dupl": {
-                "threshold": 100
-            },
             "exhaustive": {
                 "default-signifies-exhaustive": false
             },
             "funcorder": {
                 "constructor-after-struct": true
-            },
-            "funlen": {
-                "lines": 60,
-                "statements": 40
             },
             "gocognit": {
                 "min-complexity": 10
@@ -165,10 +154,6 @@
                         ]
                     }
                 }
-            },
-            "lll": {
-                "line-length": 120,
-                "tab-width": 1
             },
             "misspell": {
                 "locale": "US"
@@ -220,12 +205,6 @@
                 "os-mkdir-temp": true,
                 "os-setenv": true,
                 "os-temp-dir": true
-            },
-            "wsl": {
-                "allow-assign-and-call": true,
-                "allow-cuddle-declarations": true,
-                "allow-multiline-assign": true,
-                "strict-append": true
             }
         }
     },
@@ -252,7 +231,6 @@
         "rules": [
             {
                 "linters": [
-                    "dupl",
                     "misspell",
                     "makezero"
                 ],

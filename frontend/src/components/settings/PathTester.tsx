@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 
+import { toneText } from '../../lib/tone'
 import { useDebouncedQuery } from '../../lib/useQuery'
 import { matchSensitivePath, type SensitiveLevel, type SensitivePathMatch, type Settings } from '../../platform'
 import { fieldClass } from '../controls'
@@ -8,10 +9,11 @@ import { SectionIntro } from './rows'
 // tryDelay is how long the path tester waits after a keystroke before asking.
 const tryDelay = 200
 
-// levelText colors a match by its category's level.
+// levelText colors a match by its category's level: the level's tone, or the text's own
+// color for a category with no level.
 const levelText: Readonly<Record<SensitiveLevel, string>> = {
-  danger: 'text-danger',
-  warning: 'text-warning',
+  danger: toneText.danger,
+  warning: toneText.warning,
   '': 'text-text',
 }
 
@@ -55,7 +57,7 @@ export function PathTester({ settings }: { settings: Settings }) {
         onChange={(e) => {
           setPath(e.target.value)
         }}
-        className={`${fieldClass} w-full font-mono text-[0.8125rem]`}
+        className={`${fieldClass} w-full font-mono text-body`}
       />
       <p id={`${id}-result`} role="status" className="min-h-4 text-xs">
         {trimmed !== '' && shown !== null && <TryResult result={shown} />}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"slices"
 	"time"
 	"unicode/utf8"
 )
@@ -25,8 +26,8 @@ type retention struct {
 func dropOld(recs []Record, cutoff time.Time) []int64 {
 	var out []int64
 
-	for i := len(recs) - 1; i >= 0; i-- {
-		if rec := recs[i]; !rec.Status.Live() && !rec.FinishedAt.IsZero() && rec.FinishedAt.Before(cutoff) {
+	for _, rec := range slices.Backward(recs) {
+		if !rec.Status.Live() && !rec.FinishedAt.IsZero() && rec.FinishedAt.Before(cutoff) {
 			out = append(out, rec.ID)
 		}
 	}

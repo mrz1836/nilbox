@@ -14,13 +14,13 @@ import {
   type Info,
   type Settings,
 } from '../../platform'
-import { buttonClass, dangerButtonClass } from '../controls'
+import { buttonClass, dangerButtonClass, ErrorText } from '../controls'
 import { ExternalIcon, ResetIcon } from '../icons'
 import { Logo } from '../Logo'
 import { InspectorCard } from './InspectorCard'
 import { cardMatchClass, useSetting } from './match'
 import { ResetDialog } from './ResetDialog'
-import { ErrorText, Group, Note, SectionIntro } from './rows'
+import { Group, Note, SectionIntro } from './rows'
 import { UpdatesCard } from './UpdatesCard'
 
 // aboutRows is what the About page lists: the release version and build number, the
@@ -61,10 +61,7 @@ function Rows({ rows }: { rows: readonly (readonly [string, string, string?])[] 
       {rows.map(([term, value, title]) => (
         <dl key={term} className="flex items-center justify-between gap-6 px-4 py-3 text-sm">
           <dt className="font-medium">{term}</dt>
-          <dd
-            title={title === '' ? undefined : title}
-            className="text-right font-mono text-[0.8125rem] break-all text-muted"
-          >
+          <dd title={title === '' ? undefined : title} className="text-right font-mono text-body break-all text-muted">
             {value}
           </dd>
         </dl>

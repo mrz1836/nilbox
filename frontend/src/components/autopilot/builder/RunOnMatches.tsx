@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useMutation } from '../../../lib/useMutation'
 import { runOnMatches, type AutopilotDraft, type AutopilotMode, type AutopilotTestResult } from '../../../platform'
 import { ConfirmDialog } from '../../ConfirmDialog'
-import { buttonClass } from '../../controls'
+import { buttonClass, ErrorText } from '../../controls'
 
 export interface RunOnMatchesProps {
   // result is the last test, whose items the routine would run on now are offered.
@@ -89,7 +89,7 @@ export function RunOnMatches({ result, draft, saved, stale, mode }: RunOnMatches
           <ul aria-label="What it runs on" className="mt-2 flex max-h-64 flex-col gap-0.5 overflow-y-auto">
             {items.slice(0, maxListed).map((it) => (
               <li key={it.id} className="flex min-w-0 items-baseline gap-2 text-sm">
-                <span className="shrink-0 font-mono text-[0.75rem] text-muted">
+                <span className="shrink-0 font-mono text-small text-muted">
                   {it.repo} #{String(it.number)}
                 </span>
                 <span className="min-w-0 truncate" title={it.title}>
@@ -99,11 +99,7 @@ export function RunOnMatches({ result, draft, saved, stale, mode }: RunOnMatches
             ))}
             {n > maxListed && <li className="text-xs text-muted">and {String(n - maxListed)} more</li>}
           </ul>
-          {run.error !== '' && (
-            <p role="alert" className="mt-2 text-xs text-danger">
-              {run.error}
-            </p>
-          )}
+          <ErrorText error={run.error} className="mt-2" />
         </ConfirmDialog>
       )}
     </div>

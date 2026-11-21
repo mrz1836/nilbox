@@ -811,10 +811,6 @@ func TestSettersReturnTheStoredSettings(t *testing.T) {
 			func() (Settings, error) { return svc.SetGitHubNotificationAction(ctx, threadrules.ActionRead) },
 			func(s Settings) any { return s.GitHubNotifications.Action }, threadrules.ActionRead,
 		},
-		{
-			"github cleanup card", func() (Settings, error) { return svc.SetGitHubCleanupCardDismissed(ctx, true) },
-			func(s Settings) any { return s.GitHubNotifications.CleanupCardDismissed }, true,
-		},
 	} {
 		got, err := tc.set()
 		require.NoError(t, err, tc.name)

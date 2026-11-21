@@ -4,7 +4,9 @@ import { FIXED_NOW } from '../test/clock'
 import { budgetGauge, reading, unreadBudget, writes } from '../test/fixtures'
 import {
   autopilotShareOf,
+  levelFill,
   levelFor,
+  levelText,
   newestRead,
   paceOf,
   readBudget,
@@ -14,6 +16,25 @@ import {
   writesHeld,
   type BudgetLevel,
 } from './budget'
+
+describe('levelText and levelFill', () => {
+  it('color each level’s text and fill', () => {
+    expect(levelText).toEqual({
+      unknown: 'text-muted',
+      healthy: 'text-success',
+      moderate: 'text-warning',
+      low: 'text-caution',
+      critical: 'text-danger',
+    })
+    expect(levelFill).toEqual({
+      unknown: 'bg-muted',
+      healthy: 'bg-success',
+      moderate: 'bg-warning',
+      low: 'bg-caution',
+      critical: 'bg-danger',
+    })
+  })
+})
 
 describe('levelFor', () => {
   it.each<[number, BudgetLevel]>([

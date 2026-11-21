@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -188,16 +189,7 @@ func (s *Service) Watching(ctx context.Context, id int64) ([]int64, error) {
 		return []int64{}, uierr.New("The routine's items couldn't be read.", err)
 	}
 
-	return nonNil(ids), nil
-}
-
-// nonNil returns ids, or an empty list for nil.
-func nonNil[T any](list []T) []T {
-	if list == nil {
-		return []T{}
-	}
-
-	return list
+	return textutil.NonNil(ids), nil
 }
 
 // TestResult is a draft tried on its items now: what each search found, and what the
@@ -562,9 +554,7 @@ func (s *Service) testSearches(ctx context.Context, queries []watch.Query, out *
 
 		s.tests.keep(read, now)
 
-		for q, r := range read {
-			results[q] = r
-		}
+		maps.Copy(results, read)
 	}
 
 	out.Cached = len(queries) > 0 && len(missing) == 0
@@ -766,7 +756,7 @@ func (s *Service) decide(ctx context.Context, sp spec.Spec, ids []int64, now tim
 
 		out = append(out, TestItem{
 			ID: f.Item.ID, Kind: f.Item.Kind, Repo: f.Item.Repo, Number: f.Item.Number, Title: f.Item.Title,
-			URL: f.Item.URL, Match: d.Match, FireKey: d.FireKey, Needs: nonNil(d.Needs), Trace: nonNil(d.Trace),
+			URL: f.Item.URL, Match: d.Match, FireKey: d.FireKey, Needs: textutil.NonNil(d.Needs), Trace: textutil.NonNil(d.Trace),
 			Listed: lists.Known() && len(lists.List) > 0,
 		})
 

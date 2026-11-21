@@ -35,7 +35,7 @@ export function Block({ title, hint, children }: BlockProps) {
         <h3 id={id} className={captionClass}>
           {title}
         </h3>
-        {hint !== undefined && <p className="text-[0.6875rem] text-muted">{hint}</p>}
+        {hint !== undefined && <p className="text-caption text-muted">{hint}</p>}
       </div>
       <div className="flex min-w-0 flex-col gap-2">{children}</div>
     </section>

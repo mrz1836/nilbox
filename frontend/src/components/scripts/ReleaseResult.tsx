@@ -5,10 +5,10 @@ import { throwsBursts, useCelebrations } from '../../lib/celebrations'
 import { prefersReducedMotion } from '../../lib/motion'
 import { shortCommit } from '../../lib/git'
 import { followLine, followState, intentOf, resultHeading, type FollowLine } from '../../lib/release'
+import { copyLabel, useCopy } from '../../lib/useCopy'
 import { useMutation } from '../../lib/useMutation'
 import { useQuery } from '../../lib/useQuery'
 import {
-  copyText,
   getReleaseResult,
   openExternal,
   openScriptRunInTerminal,
@@ -17,10 +17,9 @@ import {
   type ScriptRun,
 } from '../../platform'
 import { Confetti, useConfetti } from '../Confetti'
-import { buttonClass, primaryButtonClass } from '../controls'
+import { buttonClass, ErrorText, linkClass, primaryButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, CheckIcon, CircleCheckIcon, CopyIcon, ExternalIcon, InfoIcon, XIcon } from '../icons'
-import { ErrorText } from '../settings/rows'
 import { CopyCommand } from './CopyCommand'
 
 // burstSize is how much confetti a release on GitHub throws.
@@ -141,7 +140,7 @@ function WorkflowLine({ line }: { line: FollowLine }) {
               onClick={() => {
                 openExternal(line.url)
               }}
-              className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
+              className={`${linkClass} inline-flex items-center gap-1`}
             >
               View
               <ExternalIcon className="size-3" />
@@ -182,9 +181,8 @@ export function ReleaseResult({ run, repo, onTryAgain, onDone }: ReleaseResultPr
   const query = useQuery(() => getReleaseResult(run.id), [run.id, following])
   const result = query.data
   const intent = intentOf(run)
-  const copy = useMutation((tag: string) => copyText(tag))
+  const { copy, onCopy } = useCopy('tag')
   const terminal = useMutation(() => openScriptRunInTerminal(run.id))
-  const [copied, setCopied] = useState(false)
   const heading = useRef<HTMLHeadingElement>(null)
   const { bursts, fire, land } = useConfetti()
   const [layer, setLayer] = useState<Element | null>(null)
@@ -242,11 +240,6 @@ export function ReleaseResult({ run, repo, onTryAgain, onDone }: ReleaseResultPr
   const Icon = released ? CircleCheckIcon : result.kind === 'failed' ? XIcon : AlertIcon
   const iconTone = released ? 'text-success' : result.kind === 'failed' ? 'text-danger' : 'text-warning'
 
-  const copyTag = async () => {
-    setCopied(false)
-    setCopied((await copy.run(tag)).ok)
-  }
-
   return (
     <section
       role="status"
@@ -296,7 +289,7 @@ export function ReleaseResult({ run, repo, onTryAgain, onDone }: ReleaseResultPr
           <p className="text-xs text-muted">{brand.name} runs neither. Open your terminal in the clone to run one.</p>
         </div>
       )}
-      <ErrorText error={copy.error || terminal.error} />
+      <ErrorText error={terminal.error} />
       <div className="flex flex-wrap items-center gap-2">
         {result.tagUrl !== '' && (
           <button
@@ -325,14 +318,13 @@ export function ReleaseResult({ run, repo, onTryAgain, onDone }: ReleaseResultPr
         {released && (
           <button
             type="button"
-            disabled={copy.pending}
             onClick={() => {
-              void copyTag()
+              onCopy(tag)
             }}
             className={buttonClass}
           >
-            {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-            {copied ? 'Copied' : `Copy ${tag}`}
+            {copy === 'copied' ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+            {copy === 'idle' ? `Copy ${tag}` : copyLabel[copy]}
           </button>
         )}
         {result.commands.length > 0 && (

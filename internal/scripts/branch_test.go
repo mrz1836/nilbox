@@ -91,7 +91,7 @@ func buildGitRigRepos(b *testutil.GitBuild, shape gitRigShape) gitRigCommits {
 		b.Git(".", "clone", "-q", url, "plain")
 	}
 
-	for _, name := range strings.Fields(shape.pushed) {
+	for name := range strings.FieldsSeq(shape.pushed) {
 		c.last = b.Commit("other", name, name+"\n")
 		b.Git("other", "push", "-q", "origin", "HEAD:main")
 	}

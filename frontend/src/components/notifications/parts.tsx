@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 
+import { smallButtonClass } from '../controls'
+
 // The small parts both tabs of the Notifications page share: the toolbar under the tabs,
 // a note where a list would be, and what a filter that matches nothing says.
 
@@ -35,11 +37,7 @@ export function NoMatches({ onClear }: { onClear: () => void }) {
           The filter looks at what this list shows: titles, repositories, numbers, and what happened.
         </p>
       </div>
-      <button
-        type="button"
-        onClick={onClear}
-        className="shrink-0 rounded-md border border-border bg-surface px-3 py-1 text-sm font-medium hover:bg-raised"
-      >
+      <button type="button" onClick={onClear} className={`${smallButtonClass} shrink-0`}>
         Clear the filter
       </button>
     </div>

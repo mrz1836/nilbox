@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import type { Summary } from '../../lib/worktreeSummary'
+import { smallIconButtonClass } from '../controls'
 import { AlertIcon, CheckIcon, XIcon } from '../icons'
 
 export interface ResultCardProps {
@@ -23,7 +24,7 @@ export function ResultCard({ summary, onDismiss, children }: ResultCardProps) {
     <section
       role="status"
       aria-label={summary.title}
-      className={`flex min-w-0 flex-col rounded-lg border bg-surface py-1 pr-1.5 pl-3 text-[0.8125rem] motion-safe:animate-pop-in ${done ? 'border-border' : 'border-warning/40'}`}
+      className={`flex min-w-0 flex-col rounded-lg border bg-surface py-1 pr-1.5 pl-3 text-body motion-safe:animate-pop-in ${done ? 'border-border' : 'border-warning/45'}`}
     >
       <div className="flex min-w-0 items-center gap-2">
         {done ? (
@@ -34,16 +35,10 @@ export function ResultCard({ summary, onDismiss, children }: ResultCardProps) {
         <span title={summary.title} className="min-w-0 truncate font-semibold text-text">
           {summary.title}
         </span>
-        <span title={summary.detail} className="min-w-0 flex-1 truncate text-[0.78125rem] text-muted">
+        <span title={summary.detail} className="min-w-0 flex-1 truncate text-control text-muted">
           {summary.detail}
         </span>
-        <button
-          type="button"
-          aria-label="Dismiss"
-          title="Dismiss"
-          onClick={onDismiss}
-          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text"
-        >
+        <button type="button" aria-label="Dismiss" title="Dismiss" onClick={onDismiss} className={smallIconButtonClass}>
           <XIcon className="size-3.5" />
         </button>
       </div>

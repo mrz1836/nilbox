@@ -913,6 +913,18 @@ describe('DiffView', () => {
     )
     expect(screen.getByText('Not read from GitHub yet.')).toBeInTheDocument()
   })
+
+  it('tints the hunk’s header, the lines added, and the lines removed, and leaves the rest plain', () => {
+    renderAt(<DiffView review={review()} draft={emptyDraft} onDraft={vi.fn()} loading={new Set()} onLoad={vi.fn()} />)
+
+    const diff = screen.getByRole('table', { name: 'Diff of cache/cache.go' })
+    const tint = (text: string) => within(diff).getByText(text, { exact: false }).closest('[role="row"] > div')
+
+    expect(tint('@@ -1,3 +1,4 @@')).toHaveClass('bg-accent/10', 'text-muted')
+    expect(tint('var size = 1')).toHaveClass('bg-danger/10')
+    expect(tint('var size = 2')).toHaveClass('bg-success/10')
+    expect([...(tint('package cache')?.classList ?? [])]).toEqual(['flex'])
+  })
 })
 
 describe('ReviewComposer', () => {

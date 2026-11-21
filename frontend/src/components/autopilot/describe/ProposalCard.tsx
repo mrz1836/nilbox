@@ -16,7 +16,7 @@ import {
   type Settled,
 } from '../../../lib/describeit'
 import { listRoutines, type AutopilotMode, type AutopilotRoutine, type DescribeCard } from '../../../platform'
-import { buttonClass, captionClass, primaryButtonClass } from '../../controls'
+import { buttonClass, captionClass, ErrorText, primaryButtonClass } from '../../controls'
 import { useRoutineChange } from '../useRoutineChange'
 import type { CardKit } from './parts'
 import { PromptChange } from './PromptChange'
@@ -234,11 +234,7 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
           )}
         </footer>
       )}
-      {stopped !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {stopped}
-        </p>
-      )}
+      <ErrorText error={stopped} />
       {changes.dialog}
     </article>
   )

@@ -12,7 +12,7 @@ import { worktreeOf } from '../lib/itemWorktrees'
 import { sessionsOf } from '../lib/sessions'
 import type { AgentSession, InboxItem, ItemResolution, ListKind, Worktree } from '../platform'
 import { AutopilotRowsContext } from './autopilot/AutopilotChip'
-import { quietButtonClass, Segmented } from './controls'
+import { iconButtonClass, inkLinkClass, quietButtonClass, Segmented } from './controls'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon, MuteIcon } from './icons'
 import type { EditActions } from './ItemMenu'
 import { ItemRow } from './ItemRow'
@@ -330,7 +330,7 @@ export function ListSection({
             onClick={() => {
               onCollapse(!collapsed)
             }}
-            className="mr-1 rounded-md p-1 text-muted transition-colors hover:bg-raised hover:text-text"
+            className={`${iconButtonClass} mr-1`}
           >
             <ChevronDownIcon className={`size-4 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
           </button>
@@ -348,7 +348,7 @@ export function ListSection({
                   onClick={() => {
                     select(t)
                   }}
-                  className="font-medium text-text hover:text-accent hover:underline"
+                  className={`${inkLinkClass} font-medium`}
                 >
                   {formatCount(matched[t].length)} in {tabNames[t]}
                 </button>

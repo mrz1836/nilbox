@@ -16,11 +16,11 @@ import {
   type UpdateMode,
   type UpdateStatus,
 } from '../../platform'
-import { buttonClass, chipClass, fieldClass, primaryButtonClass } from '../controls'
+import { buttonClass, chipClass, ErrorText, fieldClass, primaryButtonClass } from '../controls'
 import { AlertIcon, ExternalIcon, FolderIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 import { rowMatchClass, useSetting } from './match'
-import { ErrorText, Group, joinIds, rowDescribedBy, SettingRow } from './rows'
+import { Group, joinIds, rowDescribedBy, SettingRow } from './rows'
 
 // modes are the choices of what to do when a new version is out, in the order Settings
 // offers them.

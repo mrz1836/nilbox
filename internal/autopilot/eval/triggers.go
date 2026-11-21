@@ -28,31 +28,6 @@ func unknownOf(v facts.Value) fired {
 	return fired{result: Unknown, actual: v.Why, need: v.Need}
 }
 
-// evalTrigger decides whether the trigger holds for the item, and the occurrence's fire
-// key. A click's run holds whatever the trigger, once per click.
-func evalTrigger(t spec.Trigger, f facts.Facts, h History, now time.Time) (Result, string, Trace) {
-	info, ok := catalog.TriggerByEvent(t.Event)
-	tr := Trace{Path: "trigger", Condition: info.Label + ": " + info.Help}
-
-	var out fired
-
-	switch fn, known := triggerTests[t.Event]; {
-	case h.Manual != "":
-		out = yes("manual:"+h.Manual, "you ran it")
-	case !ok || !known:
-		tr.Condition = string(t.Event)
-		out = fired{result: Unknown, actual: "it isn't a trigger this build reads"}
-	case !info.Applies(f.Item.Kind):
-		out = no("it's an issue, and " + info.Label + " fires only for pull requests")
-	default:
-		out = fn(t, f, h, now)
-	}
-
-	tr.Result, tr.Actual, tr.Need = out.result, out.actual, out.need
-
-	return out.result, out.key, tr
-}
-
 // triggerTest decides one trigger.
 type triggerTest func(spec.Trigger, facts.Facts, History, time.Time) fired
 
@@ -133,7 +108,7 @@ func newCommits(t spec.Trigger, f facts.Facts, h History, _ time.Time) fired {
 	oid := f.Head.Text
 
 	switch {
-	case !t.OwnPushes() && containsAny(h.OwnHeads, oid):
+	case !t.OwnPushes() && textutil.ContainsFold(h.OwnHeads, oid):
 		return no("a routine's own run pushed " + short(oid))
 	case !t.OwnPushes() && h.Working:
 		return fired{result: Unknown, actual: "a routine's agent is working on it, so whether it pushed " + short(oid) +
@@ -143,17 +118,6 @@ func newCommits(t spec.Trigger, f facts.Facts, h History, _ time.Time) fired {
 	}
 
 	return yes(commitKey(catalog.EventNewCommits, oid), "its head is "+short(oid))
-}
-
-// containsAny reports whether list holds s, ignoring case.
-func containsAny(list []string, s string) bool {
-	for _, e := range list {
-		if strings.EqualFold(e, s) {
-			return true
-		}
-	}
-
-	return false
 }
 
 func checksFailed(t spec.Trigger, f facts.Facts, _ History, now time.Time) fired {
@@ -289,7 +253,7 @@ func labeled(t spec.Trigger, f facts.Facts, _ History, _ time.Time) fired {
 		return out
 	}
 
-	if !containsAny(labels.List, t.Label) {
+	if !textutil.ContainsFold(labels.List, t.Label) {
 		return no("it isn't labeled " + t.Label)
 	}
 
@@ -322,7 +286,7 @@ func listed(e catalog.Event, list catalog.ListSource, arrived facts.Value, f fac
 		phrase = info.Phrase
 	}
 
-	if !containsAny(lists.List, string(list)) {
+	if !textutil.ContainsFold(lists.List, string(list)) {
 		return no("it isn't " + phrase)
 	}
 

@@ -5,9 +5,9 @@ import { ownRule, parseTarget, ruleRows, targetKey, withRepoRule, type RuleRow }
 import { useQuery } from '../../lib/useQuery'
 import type { SettingsSave } from '../../lib/useSettingsSave'
 import { listLaunchTargets, setRepoRule, type LaunchTarget, type RepoRule, type Settings } from '../../platform'
-import { buttonClass, fieldClass, Segmented, type SegmentOption } from '../controls'
+import { buttonClass, dangerIconButtonClass, ErrorText, fieldClass, Segmented, type SegmentOption } from '../controls'
 import { MuteIcon, PinIcon, XIcon } from '../icons'
-import { ErrorText, Group, joinIds, Note, SectionIntro } from './rows'
+import { Group, joinIds, Note, SectionIntro } from './rows'
 
 export interface RepoRulesProps {
   // settings are the settings as shown, with every change still being saved applied, and
@@ -135,7 +135,7 @@ export function RepoRules({ settings, save }: RepoRulesProps) {
                 setDraft(e.target.value)
                 setError('')
               }}
-              className={`${fieldClass} w-full font-mono text-[0.8125rem]`}
+              className={`${fieldClass} w-full font-mono text-body`}
             />
             <datalist id={`${id}-targets`}>
               {offered.map((t) => (
@@ -181,7 +181,7 @@ function RuleRowItem({ row, nested, busy, onChange, onRemove }: RuleRowItemProps
 
   return (
     <li className={`flex items-center gap-3 py-2.5 pr-4 ${nested ? 'bg-background/40 pl-8' : 'pl-4'}`}>
-      <span className="min-w-0 truncate font-mono text-[0.8125rem]">{row.target}</span>
+      <span className="min-w-0 truncate font-mono text-body">{row.target}</span>
       <span className="shrink-0 text-xs text-muted">{repository ? 'Repository' : 'All repositories'}</span>
       <span className="ml-auto">
         <Segmented
@@ -199,7 +199,7 @@ function RuleRowItem({ row, nested, busy, onChange, onRemove }: RuleRowItemProps
         aria-label={`Remove the rule for ${row.target}`}
         title={`Remove the rule for ${row.target}`}
         onClick={onRemove}
-        className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
+        className={`${dangerIconButtonClass} disabled:opacity-disabled`}
       >
         <XIcon className="size-3.5" />
       </button>

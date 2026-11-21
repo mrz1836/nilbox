@@ -320,6 +320,24 @@ func TestAKeptListThatCantBeReadIsLeft(t *testing.T) {
 	}
 }
 
+func TestAKeptListReadsWithNoNullCommits(t *testing.T) {
+	t.Parallel()
+
+	raw := `{"version":2,"root":"~/projects","repos":[` +
+		`{"repo":"acme-org/web","commits":null},` +
+		`{"repo":"acme-org/sdk"},` +
+		`{"repo":"acme-org/api","commits":[{"oid":"s1"}]}]}`
+
+	list, root, ok, err := decodeKept(raw)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, "~/projects", root)
+	require.Len(t, list.Repos, 3)
+	assert.Equal(t, []Commit{}, list.Repos[0].Commits, "a null list reads as an empty one")
+	assert.Equal(t, []Commit{}, list.Repos[1].Commits, "so does a missing one")
+	assert.Equal(t, []Commit{{OID: "s1"}}, list.Repos[2].Commits, "a kept list reads as it was kept")
+}
+
 func TestAListThatCantBeKeptIsStillShown(t *testing.T) {
 	t.Parallel()
 

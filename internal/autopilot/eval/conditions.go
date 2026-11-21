@@ -1,7 +1,6 @@
 package eval
 
 import (
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/facts"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // listResult is what a list of conditions came to.
@@ -19,53 +19,6 @@ type listResult struct {
 
 	// needs are what an unknown result needs.
 	needs []facts.Need
-}
-
-// evalList decides a list of conditions, cheapest first, stopping at the first decisive
-// one: a no for "all", a yes for "any". A list with no conditions is yes.
-func evalList(c spec.Conditions, path string, f facts.Facts, h History, now time.Time) listResult {
-	out := listResult{result: Yes}
-	if len(c.Of) == 0 {
-		return out
-	}
-
-	combine, decisive := All, No
-	if c.Match == spec.MatchAny {
-		combine, decisive = Any, Yes
-	}
-
-	results := make([]Result, 0, len(c.Of))
-
-	for _, i := range byCost(c.Of) {
-		r := evalClause(c.Of[i], fmt.Sprintf("%s.of[%d]", path, i), f, h, now)
-
-		out.traces = append(out.traces, r.traces...)
-		results = append(results, r.result)
-		out.needs = append(out.needs, r.needs...)
-
-		if r.result == decisive {
-			break
-		}
-	}
-
-	out.result = combine(results...)
-	if out.result != Unknown {
-		out.needs = nil
-	}
-
-	return out
-}
-
-// evalClause decides one condition, or one group.
-func evalClause(c spec.Clause, path string, f facts.Facts, h History, now time.Time) listResult {
-	if c.Group != nil {
-		return evalList(*c.Group, path+".group", f, h, now)
-	}
-
-	r, tr := Condition(c, f, h, now)
-	tr.Path = path
-
-	return listResult{result: r, traces: []Trace{tr}, needs: []facts.Need{tr.Need}}
 }
 
 // byCost returns the indexes of clauses in the order they run: cheapest first, then by
@@ -128,7 +81,13 @@ func key(c spec.Clause) string {
 // known yet, whatever the operator, and no for a field that doesn't apply to the item.
 // The trace it returns has no path; Evaluate gives it one.
 func Condition(c spec.Clause, f facts.Facts, h History, now time.Time) (Result, Trace) {
-	tr := Trace{Condition: spec.Phrase(c)}
+	return condition(c, spec.Phrase(c), f, h, now)
+}
+
+// condition decides one condition, which phrase says as the routine's sentence does
+// (spec.Phrase), as Condition does.
+func condition(c spec.Clause, phrase string, f facts.Facts, h History, now time.Time) (Result, Trace) {
+	tr := Trace{Condition: phrase}
 
 	field, ok := catalog.FieldByID(c.Field)
 	if !ok {
@@ -200,7 +159,7 @@ func compare(field catalog.Field, c spec.Clause, v facts.Value, now time.Time) (
 	case catalog.TypeBool:
 		return of((c.Op == catalog.OpIsYes) == v.Bool), true
 	case catalog.TypeChoice:
-		in := slices.ContainsFunc(c.Values, func(w string) bool { return strings.EqualFold(w, v.Text) })
+		in := textutil.ContainsFold(c.Values, v.Text)
 
 		return of(in == (c.Op == catalog.OpOneOf)), true
 	case catalog.TypeDuration:
@@ -368,7 +327,7 @@ func anyPair(list, values []string, match func(elem, value string) bool) bool {
 // holdsAll reports a list that holds every value, ignoring case.
 func holdsAll(list, values []string, _ matcher) bool {
 	for _, v := range values {
-		if !slices.ContainsFunc(list, func(e string) bool { return strings.EqualFold(e, v) }) {
+		if !textutil.ContainsFold(list, v) {
 			return false
 		}
 	}

@@ -17,9 +17,9 @@ import {
   type DescribePluginState,
   type Profile,
 } from '../../platform'
-import { buttonClass } from '../controls'
+import { buttonClass, ErrorText } from '../controls'
 import { rowMatchClass, useSetting } from './match'
-import { ErrorText, Group, rowDescribedBy, SectionIntro } from './rows'
+import { Group, rowDescribedBy, SectionIntro } from './rows'
 
 // agentLabel and pluginLabel name the group's two rows, as "Find a setting" finds them.
 const agentLabel = 'Describe it’s agent'
@@ -100,7 +100,7 @@ function AgentRow({ defaultProfile, agents, profiles }: AgentRowProps) {
           onChange={(e) => {
             change(key, e.target.value)
           }}
-          className="min-w-0 rounded-md border border-border bg-surface px-2 py-1 text-sm disabled:opacity-60"
+          className="min-w-0 rounded-md border border-border bg-surface px-2 py-1 text-sm disabled:opacity-disabled"
         >
           <option value="">Inherit · {inherited}</option>
           {withValue(choices, value).map((c) => (
@@ -202,11 +202,7 @@ function PluginRow() {
                     {installedText(p)}
                   </p>
                   {p.problem !== '' && <p className="text-xs text-warning">{p.problem}</p>}
-                  {failed?.profile === p.profile && (
-                    <p role="alert" className="text-xs text-danger">
-                      {failed.error}
-                    </p>
-                  )}
+                  {failed?.profile === p.profile && <ErrorText error={failed.error} />}
                 </div>
                 <button
                   type="button"

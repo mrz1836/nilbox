@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -123,10 +124,10 @@ func TestTheRunViewPagesALongLogBack(t *testing.T) {
 
 	seen := map[[2]int64]bool{}
 
-	for i := len(pages) - 1; i >= 0; i-- {
-		assert.LessOrEqual(t, len(pages[i].Events), 2*pageLines, "each page is a page's worth")
+	for _, page := range slices.Backward(pages) {
+		assert.LessOrEqual(t, len(page.Events), 2*pageLines, "each page is a page's worth")
 
-		for _, e := range pages[i].Events {
+		for _, e := range page.Events {
 			key := [2]int64{e.Offset, int64(e.Part)}
 			require.False(t, seen[key], "no event shows twice")
 			seen[key] = true

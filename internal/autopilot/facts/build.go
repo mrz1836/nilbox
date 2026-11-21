@@ -1,7 +1,6 @@
 package facts
 
 import (
-	"slices"
 	"strings"
 	"time"
 
@@ -190,16 +189,7 @@ func (b *builder) trust() Value {
 
 // labels returns the labels, each one line, without repeats ignoring case.
 func labels(names []string) []string {
-	out := make([]string, 0, len(names))
-
-	for _, n := range names {
-		n = line(n, maxNameRunes)
-		if n != "" && !slices.ContainsFunc(out, func(o string) bool { return strings.EqualFold(o, n) }) {
-			out = append(out, n)
-		}
-	}
-
-	return out
+	return textutil.UniqueFold(names, func(n string) string { return line(n, maxNameRunes) })
 }
 
 // detailsOr sets a field from the details, or unknown until they are read.
@@ -297,7 +287,7 @@ func detailFields(viewer string, inReviewList bool) map[catalog.FieldID]func(*De
 		catalog.FieldChangesRequested: func(d *DetailsRow) Value { return Number(d.ChangesRequested) },
 		catalog.FieldAutoMerge:        func(d *DetailsRow) Value { return Bool(d.AutoMerge) },
 		catalog.FieldAsksMe: func(d *DetailsRow) Value {
-			asked := slices.ContainsFunc(d.ReviewUsers, func(u string) bool { return strings.EqualFold(u, viewer) })
+			asked := textutil.ContainsFold(d.ReviewUsers, viewer)
 
 			return Bool(inReviewList || (viewer != "" && asked))
 		},
@@ -343,15 +333,18 @@ func behind(d *DetailsRow) Value {
 
 // reviewDecision reads the review decision as the catalog spells it.
 func reviewDecision(d *DetailsRow) Value {
-	choice, ok := map[string]string{
-		"APPROVED": "approved", "CHANGES_REQUESTED": "changesRequested", "REVIEW_REQUIRED": "reviewRequired",
-		"": catalog.ReviewNone,
-	}[strings.ToUpper(d.ReviewDecision)]
-	if !ok {
+	switch strings.ToUpper(d.ReviewDecision) {
+	case "APPROVED":
+		return Text("approved")
+	case "CHANGES_REQUESTED":
+		return Text("changesRequested")
+	case "REVIEW_REQUIRED":
+		return Text("reviewRequired")
+	case "":
+		return Text(catalog.ReviewNone)
+	default:
 		return Text(strings.ToLower(d.ReviewDecision))
 	}
-
-	return Text(choice)
 }
 
 // checksState reads the head commit's overall result as the catalog spells it.

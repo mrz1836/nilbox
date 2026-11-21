@@ -173,6 +173,21 @@ export function formatClock(iso: string, locale?: string): string {
     : dateFormat(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(ms)
 }
 
+// formatTimeOfDay names a time of day to the minute, as a list grouped by day lines its
+// entries up: "11:30 AM". locale is for tests; the app uses the system's.
+export function formatTimeOfDay(iso: string, locale?: string): string {
+  const ms = parseTime(iso)
+
+  return ms === undefined ? '' : dateFormat(locale, { hour: 'numeric', minute: '2-digit' }).format(ms)
+}
+
+// unixISO writes a time git counts in seconds since the Unix epoch, such as a commit's, as
+// the ISO 8601 timestamp the functions above read. 0 is the epoch itself, so a caller whose
+// 0 means "not known" checks for it first. A time Date can't hold throws a RangeError.
+export function unixISO(seconds: number): string {
+  return new Date(seconds * 1000).toISOString()
+}
+
 // formatDateTime names a time with its date, for a list of things made at different
 // times: "Nov 8, 2026, 11:51 AM". locale is for tests; the app uses the system's.
 export function formatDateTime(iso: string, locale?: string): string {

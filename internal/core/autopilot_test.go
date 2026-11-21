@@ -234,15 +234,90 @@ func TestTheInboxReadsTheRoutinesSearchesForTheAccountSignedIn(t *testing.T) {
 	require.NoError(t, err)
 
 	source := &autopilotWatches{searches: autopilot.NewSearches(c.Autopilot)}
-	assert.Empty(t, source.Watches(""), "no one is signed in, so your account names no one")
+	none, ok := source.Watches(ctx, "")
+	assert.True(t, ok)
+	assert.Empty(t, none, "no one is signed in, so your account names no one")
 
 	require.NoError(t, prefsstore.New(c.DB, nil).Set(ctx, "inbox.viewer", "octo-user"))
 
-	got := source.Watches("octo-user")
+	got, ok := source.Watches(ctx, "octo-user")
+	assert.True(t, ok)
 	require.Len(t, got, 1, "the account signed in changed, so the searches are built again")
 	assert.Contains(t, got[0].Query, "user:octo-user")
 	assert.True(t, got[0].Follow, "Checks fail reads the checks")
 	assert.NotNil(t, c.WatchPasses, "the desktop shell runs the watch passes")
+}
+
+func TestTheRoutinesSearchesAreBuiltAgainUnderTheRefreshsContext(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, testOptions(t, ".claude"))
+	ctx := t.Context()
+
+	_, err := c.Settings.SetAutopilotEnabled(ctx, true)
+	require.NoError(t, err)
+
+	saved, err := c.Autopilot.Save(ctx, autopilot.Draft{Name: "Dependabot", Spec: myDependabotSpec()})
+	require.NoError(t, err)
+
+	_, err = c.Autopilot.SetEnabled(ctx, saved.ID, true, autopilot.CurrentRun)
+	require.NoError(t, err)
+
+	// The snapshot was built while no one was signed in; now octo-user is.
+	require.NoError(t, prefsstore.New(c.DB, nil).Set(ctx, "inbox.viewer", "octo-user"))
+
+	searches := autopilot.NewSearches(c.Autopilot)
+	source := &autopilotWatches{searches: searches}
+
+	ended, cancel := context.WithCancel(ctx)
+	cancel()
+
+	none, ok := source.Watches(ended, "octo-user")
+	assert.False(t, ok, "a refresh whose ctx has ended builds nothing, so it can't answer for octo-user")
+	assert.Empty(t, none)
+	assert.Empty(t, searches.Current().Login, "so the snapshot stays the one built for no one")
+
+	got, ok := source.Watches(ctx, "octo-user")
+	assert.True(t, ok)
+	require.Len(t, got, 1, "the refresh's live ctx builds the searches again")
+	assert.Equal(t, "octo-user", searches.Current().Login)
+}
+
+func TestAWatchPassIsSkippedRatherThanHandedAnotherAccountsSearches(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, testOptions(t, ".claude"))
+	ctx := t.Context()
+	viewer := prefsstore.New(c.DB, nil)
+
+	_, err := c.Settings.SetAutopilotEnabled(ctx, true)
+	require.NoError(t, err)
+
+	saved, err := c.Autopilot.Save(ctx, autopilot.Draft{Name: "Dependabot", Spec: myDependabotSpec()})
+	require.NoError(t, err)
+
+	_, err = c.Autopilot.SetEnabled(ctx, saved.ID, true, autopilot.CurrentRun)
+	require.NoError(t, err)
+
+	searches := autopilot.NewSearches(c.Autopilot)
+	source := &autopilotWatches{searches: searches}
+
+	require.NoError(t, viewer.Set(ctx, "inbox.viewer", "octo-user"))
+
+	built, ok := source.Watches(ctx, "octo-user")
+	require.True(t, ok)
+	require.Len(t, built, 1, "the searches are built for octo-user")
+
+	// Another account signs in, and the refresh that asks ends before they are built again.
+	require.NoError(t, viewer.Set(ctx, "inbox.viewer", "other-user"))
+
+	ended, cancel := context.WithCancel(ctx)
+	cancel()
+
+	got, ok := source.Watches(ended, "other-user")
+	assert.Empty(t, got, "the pass is handed none of octo-user's searches")
+	assert.False(t, ok, "nor none at all, which would drop every search's rows: it is skipped")
+	assert.Equal(t, "octo-user", searches.Current().Login, "though the snapshot is still octo-user's")
 }
 
 // myDependabotSpec is a routine that tells the user when a pull request Dependabot opened
@@ -292,7 +367,10 @@ func TestAutopilotIsOffAndInertOnAFreshInstall(t *testing.T) {
 	assert.False(t, c.AutopilotEngine.Enabled(), "the engine doesn't run")
 	assert.True(t, lockFree(t, opts.Paths.AutopilotLock), "and holds no lock")
 	assert.False(t, source.HoldsWatches(), "so the inbox sends no routine search")
-	assert.Empty(t, source.Watches("octo-user"), "and is handed none")
+
+	none, ok := source.Watches(ctx, "octo-user")
+	assert.True(t, ok)
+	assert.Empty(t, none, "and is handed none")
 
 	// The menu bar shows no Autopilot group, and the window's close quits as before.
 	shell, err := c.ShellAutopilot.State(ctx)

@@ -47,6 +47,7 @@ import {
 } from '../platform'
 import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
 import { ConfirmDialog } from './ConfirmDialog'
+import { ErrorText, linkClass, smallButtonClass } from './controls'
 import { AlertIcon, AutopilotIcon, ChevronDownIcon, LockIcon, SparkIcon, TerminalIcon } from './icons'
 import { LaunchDialog, LaunchHoldDialog, LaunchMenu, preloadDialogs, TakeOverDialog } from './launchDialogs'
 import { RelativeTime } from './RelativeTime'
@@ -520,7 +521,7 @@ export function LaunchControls({
                   close()
                   onManagePrompts()
                 }}
-                className="self-start text-sm font-medium text-accent hover:underline"
+                className={`${linkClass} self-start text-sm`}
               >
                 Open the Prompts page
               </button>
@@ -585,7 +586,7 @@ export function LaunchControls({
       aria-expanded={open}
       aria-controls={open ? id : undefined}
       onClick={showOptions}
-      className={`inline-flex shrink-0 items-center gap-1 px-1.75 text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 aria-expanded:bg-raised ${joined ? `rounded-r-lg ${joinedPart}` : 'h-7.5 rounded-lg border border-border'}`}
+      className={`inline-flex shrink-0 items-center gap-1 px-1.75 text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-disabled aria-expanded:bg-raised ${joined ? `rounded-r-lg ${joinedPart}` : 'h-7.5 rounded-lg border border-border'}`}
     >
       {changed && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />}
       {problem !== '' && <AlertIcon className="size-3 shrink-0 text-warning" />}
@@ -597,7 +598,7 @@ export function LaunchControls({
   // words short when the action column is short, then the ▾, always last, so the ▾ sits at
   // the slot's right edge whatever the session's state.
   const split = (parts: ReactNode) => (
-    <div className="inline-flex h-7.5 max-w-full min-w-0 items-stretch text-[0.8125rem]">
+    <div className="inline-flex h-7.5 max-w-full min-w-0 items-stretch text-body">
       {parts}
       {cardOptions(true)}
     </div>
@@ -632,7 +633,7 @@ export function LaunchControls({
           aria-expanded={open}
           aria-controls={open ? id : undefined}
           title={firstTitle}
-          className={`inline-flex min-w-0 items-center gap-1.5 rounded-l-lg border border-border pr-1.75 pl-2.25 font-semibold text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent ${partRing}`}
+          className={`inline-flex min-w-0 items-center gap-1.5 rounded-l-lg border border-border pr-1.75 pl-2.25 font-semibold text-text transition-colors hover:bg-raised disabled:opacity-disabled disabled:hover:bg-transparent ${partRing}`}
         >
           <SparkIcon className="size-3.5 shrink-0 text-accent" />
           <span className="min-w-0 truncate @max-3xl:sr-only">
@@ -661,7 +662,7 @@ export function LaunchControls({
     // A pill, the split's first part, narrows within the slot, its mark held and its words
     // cut short, so nothing of it ever runs past its border.
     const pill = `inline-flex min-w-0 items-center gap-1.75 rounded-l-lg px-2.5 font-semibold ${partRing}`
-    const done = `${pill} border border-success/30 bg-success/11 text-success transition-colors hover:bg-success/18`
+    const done = `${pill} border border-success/22 bg-success/10 text-success transition-colors hover:bg-success/14`
     // words are a pill's words, then how long the session has been as it is, after a dot
     // when dotted, as one line that truncates at its end, so the age is cut before the
     // words are; a list narrower than 48rem leaves the age out (and CardActions the words,
@@ -681,7 +682,7 @@ export function LaunchControls({
       </span>
     )
     // iconPart is a part between the pill and the ▾: an icon button, as wide as it is tall.
-    const iconPart = `inline-flex w-7.5 shrink-0 items-center justify-center text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 disabled:hover:bg-transparent ${joinedPart}`
+    const iconPart = `inline-flex w-7.5 shrink-0 items-center justify-center text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-disabled disabled:hover:bg-transparent ${joinedPart}`
 
     switch (session.state) {
       case 'starting':
@@ -803,11 +804,7 @@ export function LaunchControls({
           <span>{state.result.notice}</span>
         </p>
       )}
-      {state.kind === 'failed' && (
-        <p role="alert" className={`${outcomeClass} text-xs text-danger`}>
-          {state.message}
-        </p>
-      )}
+      {state.kind === 'failed' && <ErrorText error={state.message} className={outcomeClass} />}
       {state.kind === 'cloning' && (
         <p role="status" className={`${outcomeClass} truncate text-xs text-muted`}>
           {`Cloning ${state.target.repo} into ${state.target.dir}…`}
@@ -826,7 +823,7 @@ export function LaunchControls({
               onClick={() => {
                 setConfirmingClone(true)
               }}
-              className="font-medium text-accent hover:underline"
+              className={linkClass}
             >
               {`Clone into ${state.target.dir}`}
             </button>
@@ -837,7 +834,7 @@ export function LaunchControls({
               onClick={() => {
                 void linkThenLaunch(state.target, state.request, state.target.elsewhere)
               }}
-              className="font-medium text-accent hover:underline"
+              className={linkClass}
             >
               {`Use ${state.target.elsewhere}`}
             </button>
@@ -847,7 +844,7 @@ export function LaunchControls({
             onClick={() => {
               void linkThenLaunch(state.target, state.request)
             }}
-            className="font-medium text-accent hover:underline"
+            className={linkClass}
           >
             It’s cloned elsewhere…
           </button>
@@ -969,7 +966,7 @@ export function LaunchControls({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={showOptions}
-        className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 aria-expanded:bg-raised"
+        className={`${smallButtonClass} aria-expanded:bg-raised`}
       >
         <SparkIcon className="size-3.5 shrink-0 text-accent" />
         {agentName === '' ? 'Launch' : agentName}…
@@ -1001,7 +998,7 @@ export function LaunchControls({
             aria-expanded={open}
             aria-controls={open ? id : undefined}
             title={firstTitle}
-            className="inline-flex h-6 items-center gap-1.25 rounded-md border border-border bg-surface px-2.25 text-xs font-semibold whitespace-nowrap text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-surface aria-expanded:bg-raised"
+            className="inline-flex h-6 items-center gap-1.25 rounded-md border border-border bg-surface px-2.25 text-xs font-semibold whitespace-nowrap text-text transition-colors hover:bg-raised disabled:opacity-disabled disabled:hover:bg-surface aria-expanded:bg-raised"
           >
             {changed && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />}
             {problem !== '' && <AlertIcon className="size-3 shrink-0 text-warning" />}
@@ -1017,7 +1014,7 @@ export function LaunchControls({
   return (
     <>
       <div className={boxClass}>
-        <div className="inline-flex items-stretch rounded-md border border-border bg-surface text-[0.8125rem]">
+        <div className="inline-flex items-stretch rounded-md border border-border bg-surface text-body">
           {running === null ? (
             <button
               type="button"
@@ -1027,7 +1024,7 @@ export function LaunchControls({
               aria-expanded={open}
               aria-controls={open ? id : undefined}
               title={firstTitle}
-              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-disabled disabled:hover:bg-transparent"
             >
               <TerminalIcon className="size-3.5 text-accent" />
               {opening}
@@ -1040,7 +1037,7 @@ export function LaunchControls({
                 watch?.(running.id)
               }}
               title={`${agentLabel(agents, running.agent)} ${stateLabel(running.state)} in the background, for Autopilot: watch it, stop it, or take it over from its run.`}
-              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-disabled disabled:hover:bg-transparent"
             >
               <AutopilotIcon className="size-3.5 text-accent" />
               {state.kind === 'launching' ? 'Opening…' : 'Watch'}
@@ -1057,7 +1054,7 @@ export function LaunchControls({
                   ? `${agentLabel(agents, running.agent)} ${stateLabel(running.state)}: show its terminal tab. To start another session, use the launch options.`
                   : `${agentLabel(agents, running.agent)} is starting; its terminal tab can be shown once it has started.`
               }
-              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-disabled disabled:hover:bg-transparent"
             >
               <TerminalIcon className="size-3.5 text-accent" />
               {state.kind === 'launching' ? 'Opening…' : 'Show in terminal'}
@@ -1116,7 +1113,7 @@ function AddLocation({ className, linked, onAdd, onCancel }: AddLocationProps) {
         onClick={() => {
           onAdd(parent.path)
         }}
-        className="font-medium text-accent hover:underline"
+        className={linkClass}
       >
         {`Add ${parent.path}`}
       </button>
@@ -1125,7 +1122,7 @@ function AddLocation({ className, linked, onAdd, onCancel }: AddLocationProps) {
         onClick={() => {
           onAdd(linked.dir)
         }}
-        className="font-medium text-accent hover:underline"
+        className={linkClass}
       >
         Add only this clone
       </button>

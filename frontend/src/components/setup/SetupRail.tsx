@@ -38,7 +38,7 @@ function Badge({ step, status }: { step: SetupStep; status: StepStatus }) {
 
   if (status === 'done') {
     return (
-      <span className="flex size-7 items-center justify-center rounded-full bg-success/15 text-success motion-safe:animate-pop-in">
+      <span className="flex size-7 items-center justify-center rounded-full bg-success/14 text-success motion-safe:animate-pop-in">
         <CheckIcon className="size-3.5" />
       </span>
     )
@@ -46,7 +46,7 @@ function Badge({ step, status }: { step: SetupStep; status: StepStatus }) {
 
   if (status === 'attention') {
     return (
-      <span className="relative flex size-7 items-center justify-center rounded-full bg-warning/15 text-warning">
+      <span className="relative flex size-7 items-center justify-center rounded-full bg-warning/14 text-warning">
         <AlertIcon className="size-3.5" />
       </span>
     )
@@ -82,7 +82,7 @@ export function SetupRail({ steps, current, reached, attention, onGo }: SetupRai
               <Badge step={step} status={status} />
               <span className="min-w-0 flex-1 truncate">{label}</span>
               {status === 'suggested' && (
-                <span className="shrink-0 rounded-full border border-accent/40 px-1.5 text-[0.625rem] font-semibold tracking-wide text-accent uppercase">
+                <span className="shrink-0 rounded-full border border-accent/45 px-1.5 text-badge font-semibold tracking-wide text-accent uppercase">
                   Suggested
                 </span>
               )}

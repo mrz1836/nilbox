@@ -3,7 +3,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { counted } from '../../lib/format'
 import { itemText, sheetLine, verdictChips, type ActivityLine } from '../../lib/autopilot'
 import { agentRunOf } from '../../lib/runView'
-import { formatFull } from '../../lib/time'
+import { formatFull, formatTimeOfDay } from '../../lib/time'
 import { useMutation } from '../../lib/useMutation'
 import {
   letRoutineActAgain,
@@ -15,13 +15,6 @@ import {
 import { quietButtonClass } from '../controls'
 import { DayGroups } from '../notifications/DayGroups'
 import { ArchiveIcon, AutopilotIcon, BellIcon, ClockIcon, PinIcon, ResetIcon, RingIcon, XIcon } from '../icons'
-
-// clockTime is a line's time of day: "11:30 AM".
-function clockTime(iso: string): string {
-  const ms = Date.parse(iso)
-
-  return Number.isNaN(ms) ? '' : new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-}
 
 // LineIcon marks what a line says: the step a grouped line stands for, a Dry run's record,
 // a notice, what gave up or failed, and what a routine leaves alone.
@@ -136,7 +129,7 @@ interface LineProps extends Pick<ActivityListProps, 'onOpen' | 'onShowRun' | 'on
 // time.
 function ActivityLineRow({ line, highlighted, routineColumn, onOpen, onShowRun, onToast, onChanged }: LineProps) {
   const act = useMutation((run: () => Promise<string>) => run())
-  const time = clockTime(line.at)
+  const time = formatTimeOfDay(line.at)
   const run = (what: () => Promise<string>) => {
     void act.run(what).then((result) => {
       if (result.ok) {

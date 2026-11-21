@@ -16,6 +16,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/store"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // The ledger records what each routine did with each item it matched, in
@@ -67,14 +68,6 @@ const (
 	// StateBaseline already matched when the user chose "only what changes from now on".
 	StateBaseline State = "baseline"
 )
-
-// States returns every state, the open ones first.
-func States() []State {
-	return []State{
-		StateWaiting, StateBlocked, StateQueued, StateRunning, StateVerifying,
-		StateDone, StateSkipped, StateDismissed, StateClosed, StateBaseline,
-	}
-}
 
 // Open reports an open state: one the engine still acts on.
 func (s State) Open() bool {
@@ -371,7 +364,7 @@ func readMatch(row queries.AutopilotMatch) (*match, error) {
 		return nil, fmt.Errorf("read the trace of match %d: %w", row.ID, err)
 	}
 
-	m.steps, m.trace = nonNil(steps), nonNil(trace)
+	m.steps, m.trace = textutil.NonNil(steps), textutil.NonNil(trace)
 
 	return m, nil
 }
@@ -459,12 +452,12 @@ func (l *ledger) insert(ctx context.Context, m *match) (bool, error) {
 
 // encodeMatch encodes a match's steps and trace.
 func encodeMatch(m *match) (string, string, error) {
-	steps, err := store.EncodeJSON(nonNil(m.steps))
+	steps, err := store.EncodeJSON(textutil.NonNil(m.steps))
 	if err != nil {
 		return "", "", err
 	}
 
-	trace, err := store.EncodeJSON(nonNil(m.trace))
+	trace, err := store.EncodeJSON(textutil.NonNil(m.trace))
 	if err != nil {
 		return "", "", err
 	}

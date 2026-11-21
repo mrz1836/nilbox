@@ -1,8 +1,8 @@
 import { useId, type ReactNode } from 'react'
 
-import { buttonClass, fieldClass } from '../controls'
+import { buttonClass, dangerIconButtonClass, ErrorText, fieldClass } from '../controls'
 import { XIcon } from '../icons'
-import { ErrorText, Group, joinIds } from './rows'
+import { Group, joinIds } from './rows'
 
 export interface StringListEditorProps {
   // label names the list for assistive tech.
@@ -68,7 +68,7 @@ export function StringListEditor({
         <ul aria-label={label} className="divide-y divide-border">
           {items.map((item) => (
             <li key={item} className="flex items-center gap-3 px-4 py-2.5">
-              <span className="min-w-0 truncate font-mono text-[0.8125rem]">{item}</span>
+              <span className="min-w-0 truncate font-mono text-body">{item}</span>
               {extra?.(item)}
               <button
                 type="button"
@@ -78,7 +78,7 @@ export function StringListEditor({
                 onClick={() => {
                   onRemove(item)
                 }}
-                className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
+                className={`${dangerIconButtonClass} ml-auto disabled:opacity-disabled`}
               >
                 <XIcon className="size-3.5" />
               </button>
@@ -108,7 +108,7 @@ export function StringListEditor({
             onChange={(e) => {
               onDraftChange(e.target.value)
             }}
-            className={`${fieldClass} w-full font-mono text-[0.8125rem]`}
+            className={`${fieldClass} w-full font-mono text-body`}
           />
           <ErrorText id={`${id}-error`} error={error} />
         </div>

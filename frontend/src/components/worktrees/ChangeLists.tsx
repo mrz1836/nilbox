@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 import { formatCount } from '../../lib/format'
 import { shortCommit } from '../../lib/git'
-import { formatAge, formatAgo, formatFull } from '../../lib/time'
+import { formatAge, formatAgo, formatFull, unixISO } from '../../lib/time'
 import { asReadNow, changesOf, notOnGitHub, readable, type DetailsRead } from '../../lib/useWorktreeDetails'
 import {
   copiedOf,
@@ -55,7 +55,7 @@ export function FileLine({ file }: { file: WorktreeFile }) {
     <li className="flex min-h-4.75 min-w-0 items-center gap-1.5 whitespace-nowrap">
       <span
         title={status.title}
-        className={`w-2.75 shrink-0 cursor-help text-center font-mono text-[0.6875rem] font-semibold ${letterTones[status.letter] ?? 'text-muted'}`}
+        className={`w-2.75 shrink-0 cursor-help text-center font-mono text-caption font-semibold ${letterTones[status.letter] ?? 'text-muted'}`}
       >
         {status.letter}
       </span>
@@ -63,7 +63,7 @@ export function FileLine({ file }: { file: WorktreeFile }) {
         title={status.staged ? 'Staged' : undefined}
         className={`size-1.25 shrink-0 rounded-full ${status.staged ? 'bg-success' : 'bg-transparent'}`}
       />
-      <span title={file.path} className="min-w-0 truncate font-mono text-[0.71875rem]">
+      <span title={file.path} className="min-w-0 truncate font-mono text-meta">
         <span className="text-muted">{status.dir}</span>
         {status.name}
       </span>
@@ -222,10 +222,10 @@ function CopyMark({ commit }: { commit: WorktreeCommit }) {
           ? `An identical copy of it is on GitHub: ${commit.copyOid}`
           : `Only an edited copy of it is on GitHub, ${commit.copyOid}: the same author, time, and subject, with another change`
       }
-      className={`shrink-0 cursor-help text-[0.71875rem] ${identical ? 'text-muted' : 'text-caution'}`}
+      className={`shrink-0 cursor-help text-meta ${identical ? 'text-muted' : 'text-caution'}`}
     >
       {identical ? '= copied as ' : '≈ edited copy '}
-      <code className="font-mono text-[0.6875rem]">{shortCommit(commit.copyOid)}</code>
+      <code className="font-mono text-caption">{shortCommit(commit.copyOid)}</code>
     </span>
   )
 }
@@ -234,18 +234,18 @@ function CopyMark({ commit }: { commit: WorktreeCommit }) {
 // pushed branch its worktree's commits were compared with, if it has one (CopyMark), and its
 // age. Force remove's confirmation lists the commits it keeps, or loses, with it.
 export function CommitLine({ commit }: { commit: WorktreeCommit }) {
-  const at = new Date(commit.unix * 1000).toISOString()
+  const at = unixISO(commit.unix)
 
   return (
     <li className="flex min-h-4.75 min-w-0 items-baseline gap-2 whitespace-nowrap">
-      <span title={commit.oid} className="shrink-0 font-mono text-[0.6875rem] text-muted">
+      <span title={commit.oid} className="shrink-0 font-mono text-caption text-muted">
         {shortCommit(commit.oid)}
       </span>
       <span title={commit.subject} className="min-w-0 flex-1 truncate">
         {commit.subject}
       </span>
       <CopyMark commit={commit} />
-      <span title={formatFull(at)} className="shrink-0 text-[0.71875rem] text-muted tabular-nums">
+      <span title={formatFull(at)} className="shrink-0 text-meta text-muted tabular-nums">
         <RelativeTime iso={at} show={formatAge} />
       </span>
     </li>
@@ -361,7 +361,7 @@ function Base({ worktree, read }: ColumnProps) {
 
   return (
     <>
-      <code className="font-mono text-[0.71875rem]">{base}</code>
+      <code className="font-mono text-meta">{base}</code>
       {behind >= 0 && (
         <span className="text-muted">{` · ${behind === 0 ? 'up to date' : `${formatCount(behind)} behind`}`}</span>
       )}
@@ -373,7 +373,7 @@ function Base({ worktree, read }: ColumnProps) {
 // last commit's age, and its base.
 function BranchLines({ worktree, read }: ColumnProps) {
   const detached = worktree.detached || worktree.branch === ''
-  const last = worktree.lastCommitUnix > 0 ? new Date(worktree.lastCommitUnix * 1000).toISOString() : ''
+  const last = worktree.lastCommitUnix > 0 ? unixISO(worktree.lastCommitUnix) : ''
   const line = 'flex min-w-0 items-baseline gap-2 whitespace-nowrap'
   const key = 'w-14 shrink-0 text-muted'
 
@@ -385,7 +385,7 @@ function BranchLines({ worktree, read }: ColumnProps) {
           {detached ? (
             <span className="text-muted">none: detached</span>
           ) : (
-            <code className="font-mono text-[0.71875rem]">{worktree.branch}</code>
+            <code className="font-mono text-meta">{worktree.branch}</code>
           )}
         </span>
         {!detached && (
@@ -400,7 +400,7 @@ function BranchLines({ worktree, read }: ColumnProps) {
       <div className={line}>
         <span className={key}>Head</span>
         <span className="min-w-0 truncate">
-          <code title={worktree.head} className="font-mono text-[0.71875rem]">
+          <code title={worktree.head} className="font-mono text-meta">
             {shortCommit(worktree.head)}
           </code>
           {last !== '' && (
@@ -440,13 +440,13 @@ function CopiedCommits({ worktree, read, copied }: ColumnProps & { copied: Copie
       <p className="mb-1 text-xs text-muted">
         {copied.recorded ? (
           <>
-            <code className="font-mono text-[0.71875rem]">{copied.ref}</code>
+            <code className="font-mono text-meta">{copied.ref}</code>
             {` ${copied.gone ? 'is gone' : 'no longer holds them all'}, but the app recorded each one’s identical copy there, and ${prOfCopies(copied)} has them.`}
           </>
         ) : (
           <>
             {'Each has an identical copy on '}
-            <code className="font-mono text-[0.71875rem]">{copied.ref}</code>, under another commit ID.
+            <code className="font-mono text-meta">{copied.ref}</code>, under another commit ID.
           </>
         )}
       </p>

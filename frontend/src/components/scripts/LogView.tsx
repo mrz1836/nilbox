@@ -17,8 +17,7 @@ import {
 } from '../../lib/logTail'
 import { remToPx } from '../../lib/rem'
 import { scriptRunOutput, type ScriptRunChunk } from '../../platform'
-import { quietButtonClass } from '../controls'
-import { ErrorText } from '../settings/rows'
+import { ErrorText, quietButtonClass } from '../controls'
 
 // pollMs is how long the view waits, once it has read all of a live run's log, before it
 // reads again for new output.
