@@ -14,6 +14,33 @@ const rawHtmlProperties = ['innerHTML', 'outerHTML', 'insertAdjacentHTML']
 
 const rawHtmlMessage = 'Render through React; never write raw HTML into the DOM.'
 
+const rawHtmlSyntax = {
+  selector: `MemberExpression[computed=true][property.value=/^(${rawHtmlProperties.join('|')})$/]`,
+  message: rawHtmlMessage,
+}
+
+// The app draws its own checkboxes and radio buttons (the checkbox and radio classes in
+// index.css): macOS draws a native one grey whenever it counts the window inactive. So an
+// <input> of either type names its class in a string or template its className holds,
+// unless it is hidden (sr-only, its label drawing the control) or meets exempt, a further
+// :not() (a checkbox that is a switch draws its own track and knob).
+function controlClassSyntax(type, exempt = '') {
+  const drawn = `/(^|\\s)(${type}|sr-only)(\\s|$)/`
+
+  return {
+    selector:
+      `JSXOpeningElement[name.name='input']:has(JSXAttribute[name.name='type'] Literal[value='${type}'])` +
+      `:not(:has(JSXAttribute[name.name='className'] :matches(Literal[value=${drawn}], TemplateElement[value.raw=${drawn}])))` +
+      exempt,
+    message: `Give a ${type} input the ${type} class (index.css), so the app draws it, not the system; see CLAUDE.md.`,
+  }
+}
+
+const controlClassSyntaxes = [
+  controlClassSyntax('checkbox', `:not(:has(JSXAttribute[name.name='role'] Literal[value='switch']))`),
+  controlClassSyntax('radio'),
+]
+
 // The React Compiler memoizes the build, so no component holds a hand-written useMemo or
 // useCallback.
 const noMemoHooks = {
@@ -68,13 +95,18 @@ export default defineConfig([
         { object: 'document', property: 'write', message: rawHtmlMessage },
         { object: 'document', property: 'writeln', message: rawHtmlMessage },
       ],
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: `MemberExpression[computed=true][property.value=/^(${rawHtmlProperties.join('|')})$/]`,
-          message: rawHtmlMessage,
-        },
-      ],
+      'no-restricted-syntax': ['error', rawHtmlSyntax],
+    },
+  },
+
+  // What the window draws: every checkbox and radio button in it carries its class. A
+  // test's own markup never shows in the app. The rule's list replaces the one above, so
+  // it repeats the raw HTML ban.
+  {
+    files: ['src/**/*.tsx'],
+    ignores: ['src/**/*.test.tsx', 'src/test/**'],
+    rules: {
+      'no-restricted-syntax': ['error', rawHtmlSyntax, ...controlClassSyntaxes],
     },
   },
 
