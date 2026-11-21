@@ -5,18 +5,13 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { ScriptRun, TerminalID } from '../../platform'
-import { fromNow, renderAt } from '../../test/clock'
+import { isoAgo, renderAt } from '../../test/clock'
 import { scriptRun } from '../../test/fixtures'
 import { useScriptRuns } from '../../lib/useScriptRuns'
 import { platform, send } from '../../test/platform'
 import { RunsPage } from './RunsPage'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
-
-// ago is the time minutes before the test clock's, as a run records it.
-function ago(minutes: number, seconds = 0): string {
-  return fromNow(-(minutes * 60_000 + seconds * 1000)).toISOString()
-}
 
 // release is a release that is going in the terminal, started two minutes ago.
 const release = scriptRun({
@@ -29,14 +24,14 @@ const release = scriptRun({
   status: 'running',
   exitCode: null,
   summary: '',
-  startedAt: ago(2),
+  startedAt: isoAgo({ m: 2 }),
   finishedAt: '',
   canStop: false,
   canRunAgain: false,
 })
 
 // lint is a magex lint run that took 38 seconds, an hour ago.
-const lint = scriptRun({ id: 1, startedAt: ago(60, 38), finishedAt: ago(60) })
+const lint = scriptRun({ id: 1, startedAt: isoAgo({ m: 60, s: 38 }), finishedAt: isoAgo({ m: 60 }) })
 
 // Listed is the page as the tab shows it: fed every run the tab lists.
 function Listed({ terminal }: { terminal: TerminalID | null }) {

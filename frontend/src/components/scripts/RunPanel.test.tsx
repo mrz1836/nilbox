@@ -5,21 +5,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../../generated/brand'
 import type { ScriptRun, ScriptRunStatus, TerminalID } from '../../platform'
 import { deferred } from '../../test/async'
-import { FIXED_NOW, fromNow, renderAt } from '../../test/clock'
+import { FIXED_NOW, isoAgo, renderAt } from '../../test/clock'
 import { checksRun, hookActionResult, hooksRun, scriptRun, scriptRunChunk } from '../../test/fixtures'
 import { listening, platform, send } from '../../test/platform'
 import { RunPanel } from './RunPanel'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
-// ago is the time ms milliseconds before the test clock's, as a run records it.
-function ago(ms: number): string {
-  return fromNow(-ms).toISOString()
-}
-
 // ended is a run that ran for 38 seconds, ending a minute ago, with changes made.
 function ended(change: Partial<ScriptRun> = {}): ScriptRun {
-  return scriptRun({ startedAt: ago(98_000), finishedAt: ago(60_000), ...change })
+  return scriptRun({ startedAt: isoAgo({ ms: 98_000 }), finishedAt: isoAgo({ ms: 60_000 }), ...change })
 }
 
 // running is a run going in the app for five seconds so far.
@@ -28,7 +23,7 @@ function running(change: Partial<ScriptRun> = {}): ScriptRun {
     status: 'running',
     summary: '',
     exitCode: null,
-    startedAt: ago(5_000),
+    startedAt: isoAgo({ ms: 5_000 }),
     finishedAt: '',
     canStop: true,
     seen: false,
@@ -580,7 +575,7 @@ describe('RunPanel', () => {
   })
   describe('the result of a hooks action or a checks run', () => {
     it('shows what a hooks action did, read from the hook files, once it ended', async () => {
-      renderPanel(hooksRun({ startedAt: ago(98_000), finishedAt: ago(60_000) }))
+      renderPanel(hooksRun({ startedAt: isoAgo({ ms: 98_000 }), finishedAt: isoAgo({ ms: 60_000 }) }))
 
       await shownRun('Install the hook')
 
@@ -595,7 +590,7 @@ describe('RunPanel', () => {
       // React warns when siblings share a key, which is what showed the result twice.
       const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
-      renderPanel(hooksRun({ startedAt: ago(98_000), finishedAt: ago(60_000) }))
+      renderPanel(hooksRun({ startedAt: isoAgo({ ms: 98_000 }), finishedAt: isoAgo({ ms: 60_000 }) }))
 
       await screen.findByRole('heading', { name: /Installed the pre-commit hook in acme-org\/api\./ })
 

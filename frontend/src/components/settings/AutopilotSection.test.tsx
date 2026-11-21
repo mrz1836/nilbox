@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../../generated/brand'
 import type { AutopilotConfig, AutopilotEngine, Settings } from '../../platform'
 import { deferred } from '../../test/async'
-import { renderAt } from '../../test/clock'
+import { FIXED_NOW, renderAt } from '../../test/clock'
 import {
   agents,
   autopilotEngine,
@@ -432,7 +432,7 @@ describe('clearedText', () => {
 })
 
 describe('lastCheckedText', () => {
-  const now = new Date('2026-06-15T12:00:00Z')
+  const now = FIXED_NOW
 
   it('says what the last cycle did, and when', () => {
     expect(lastCheckedText(now, autopilotEngine())).toBe('Last checked today, 11:59 AM · 34 ms · 7 matches · 1 start')
