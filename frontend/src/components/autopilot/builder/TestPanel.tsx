@@ -272,7 +272,7 @@ function TestRow({ item: it, mode, preview }: TestRowProps) {
     <li className="flex flex-col border-b border-border/60 py-1 last:border-b-0">
       <div className="flex items-center gap-2 text-sm">
         <ResultMark result={it.match} />
-        <span className="w-44 shrink-0 truncate font-mono text-[0.75rem] text-muted" title={name}>
+        <span className="w-44 shrink-0 truncate font-mono text-small text-muted" title={name}>
           {name}
         </span>
         <span className="min-w-0 flex-1 truncate" title={it.title}>
@@ -373,7 +373,7 @@ function PinnedRow({ pinned }: { pinned: Pinned }) {
     <li className="flex flex-col py-1">
       <div className="flex items-center gap-2 text-sm">
         <ResultMark result={pinned.match} />
-        <span className="w-44 shrink-0 truncate font-mono text-[0.75rem] text-muted" title={name}>
+        <span className="w-44 shrink-0 truncate font-mono text-small text-muted" title={name}>
           {name}
         </span>
         <span className="min-w-0 flex-1 truncate" title={pinned.item.title}>

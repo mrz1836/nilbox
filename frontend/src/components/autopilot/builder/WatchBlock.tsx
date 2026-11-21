@@ -433,7 +433,7 @@ function SearchSource({
             onChange={(e) => {
               patch({ more: e.target.value })
             }}
-            className={`${fieldClass} py-1 font-mono text-[0.8125rem]`}
+            className={`${fieldClass} py-1 font-mono text-body`}
           />
         </div>
       )}

@@ -245,7 +245,7 @@ export function RowTitle({
       <h4 id={id} className="text-sm font-semibold text-text">
         {title}
       </h4>
-      <span className="rounded-full border border-border px-2 py-0.5 text-[0.6875rem] whitespace-nowrap text-muted">
+      <span className="rounded-full border border-border px-2 py-0.5 text-caption whitespace-nowrap text-muted">
         {kind}
       </span>
       {children}

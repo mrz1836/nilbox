@@ -222,7 +222,7 @@ function Card({ match: m, highlighted, agentFor, actions, onOpen, onToast, onCha
       className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 data-highlighted:border-accent/60 data-highlighted:bg-accent/10"
     >
       <div className="flex min-w-0 items-baseline gap-2">
-        <span className="shrink-0 font-mono text-[0.75rem] text-muted">{name}</span>
+        <span className="shrink-0 font-mono text-small text-muted">{name}</span>
         <span className="min-w-0 flex-1 truncate text-sm font-medium" title={m.item.title}>
           {m.item.title}
         </span>
@@ -584,7 +584,7 @@ export function NeedsYouSection({
                 className="flex min-w-0 items-center gap-3 rounded-md px-3 py-1 text-sm data-highlighted:bg-accent/10"
               >
                 <ClockIcon className="size-3.5 shrink-0 text-muted" />
-                <span className="shrink-0 font-mono text-[0.75rem] text-muted">{itemText(m.item)}</span>
+                <span className="shrink-0 font-mono text-small text-muted">{itemText(m.item)}</span>
                 <span className="min-w-0 flex-1 truncate text-xs text-muted" title={m.item.title}>
                   {m.words}
                 </span>

@@ -89,7 +89,7 @@ export function RunOnMatches({ result, draft, saved, stale, mode }: RunOnMatches
           <ul aria-label="What it runs on" className="mt-2 flex max-h-64 flex-col gap-0.5 overflow-y-auto">
             {items.slice(0, maxListed).map((it) => (
               <li key={it.id} className="flex min-w-0 items-baseline gap-2 text-sm">
-                <span className="shrink-0 font-mono text-[0.75rem] text-muted">
+                <span className="shrink-0 font-mono text-small text-muted">
                   {it.repo} #{String(it.number)}
                 </span>
                 <span className="min-w-0 truncate" title={it.title}>

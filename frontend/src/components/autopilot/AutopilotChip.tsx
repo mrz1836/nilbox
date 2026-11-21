@@ -223,7 +223,7 @@ export function AutopilotChip({ item, align = 'left' }: AutopilotChipProps) {
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={toggle}
-        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[0.6875rem] leading-4 font-medium transition-colors hover:bg-raised aria-expanded:ring-1 aria-expanded:ring-border ${chipTones[chip.tone]}`}
+        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-px text-caption leading-4 font-medium transition-colors hover:bg-raised aria-expanded:ring-1 aria-expanded:ring-border ${chipTones[chip.tone]}`}
       >
         <AutopilotIcon className="size-3 shrink-0" />
         <span className="@max-3xl:hidden">{chip.label}</span>

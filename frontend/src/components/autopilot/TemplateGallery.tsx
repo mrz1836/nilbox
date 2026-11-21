@@ -65,13 +65,13 @@ function TemplateCard({ template: t, onPick, withWhy }: TemplateCardProps) {
         </span>
         <span
           id={`${id}-mode`}
-          className="shrink-0 rounded-full border border-border px-2 text-[0.6875rem] leading-[1.125rem] font-medium whitespace-nowrap text-muted"
+          className="shrink-0 rounded-full border border-border px-2 text-caption leading-[1.125rem] font-medium whitespace-nowrap text-muted"
         >
           {modeLabels[t.suggests]}
         </span>
       </div>
       <div className="flex min-w-0 flex-col gap-1.5">
-        <p id={`${id}-summary`} className="text-[0.8125rem] leading-relaxed text-muted">
+        <p id={`${id}-summary`} className="text-body leading-relaxed text-muted">
           {t.summary}
         </p>
         {t.needs.length > 0 && (
