@@ -24,8 +24,8 @@ import {
   prompts,
 } from '../../test/fixtures'
 import { platform } from '../../test/platform'
+import { editActionsOf, triageActionsOf } from '../../test/query'
 import { ItemRow, type ItemRowProps } from '../ItemRow'
-import type { TriageActions } from '../TriageControls'
 import { compactOutcomeClass } from './CardActions'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -38,24 +38,6 @@ const launch: LaunchOptions = {
   onDefaultsSaved: () => Promise.resolve(),
   onManagePrompts: () => undefined,
   onSettingsSaved: () => undefined,
-}
-
-function triageActions(): TriageActions {
-  return {
-    snoozeDays: 3,
-    onDismiss: vi.fn(),
-    onSnooze: vi.fn(),
-    onRestore: vi.fn(),
-    onPin: vi.fn(),
-    onUnpin: vi.fn(),
-    onRefresh: vi.fn(() => Promise.resolve()),
-    onChangeDefault: vi.fn(),
-    repoRules: { pinned: [], muted: [] },
-    onRepoRule: vi.fn(),
-    onRepoRuleSettings: vi.fn(),
-    onMarkRead: vi.fn(),
-    onMarkUnread: vi.fn(),
-  }
 }
 
 // compact renders ui with the cards compact, on a clock that stands at noon.
@@ -358,8 +340,8 @@ describe('CompactRow', () => {
   it('keeps the agent’s slot mounted in the hover row, so a held launch still asks', async () => {
     const hold = launchHold()
     platform.launch.mockResolvedValueOnce(launchResult({ hold }))
-    const edits = { onCopyLink: vi.fn(), onUnassign: vi.fn(), onRemoveReview: vi.fn() }
-    const row = mountCompact(asked(), { triage: triageActions(), edits })
+    const edits = editActionsOf({ onUnassign: vi.fn(), onRemoveReview: vi.fn() })
+    const row = mountCompact(asked(), { triage: triageActionsOf(), edits })
 
     const hover = row.querySelector('[data-hover-row]') as HTMLElement
     expect(hover).toHaveClass('opacity-0', 'card-lit:opacity-100')
@@ -447,7 +429,12 @@ describe('CompactRow', () => {
         pinnedAt: '2026-06-15T11:00:00Z',
         unread: true,
       }),
-      { triage: triageActions(), onOpen: vi.fn(), onFilterBy: vi.fn(), sessions: [agentSession({ state: 'working' })] },
+      {
+        triage: triageActionsOf(),
+        onOpen: vi.fn(),
+        onFilterBy: vi.fn(),
+        sessions: [agentSession({ state: 'working' })],
+      },
     )
     expect(within(row).getByTitle('New since you last opened it')).toBeInTheDocument()
     const [stretched] = within(row).getAllByRole('button', { name: 'Show details' })
@@ -480,7 +467,7 @@ describe('CompactRow', () => {
   })
 
   it('puts the pin after the title, its number, and its label dots, and the unread dot last', () => {
-    const row = mountCompact(asked({ pinnedAt: '2026-06-15T11:00:00Z', unread: true }), { triage: triageActions() })
+    const row = mountCompact(asked({ pinnedAt: '2026-06-15T11:00:00Z', unread: true }), { triage: triageActionsOf() })
 
     const title = within(row).getByRole('button', { name: 'Add the widget cache' }).parentElement as HTMLElement
     const parts = [...title.children].map((el) =>
@@ -563,7 +550,7 @@ describe('CompactRow', () => {
   it('filters by its repository, and opens its title in its sheet or, with ⌘, on GitHub', async () => {
     const onFilterBy = vi.fn()
     const onOpen = vi.fn()
-    const triage = triageActions()
+    const triage = triageActionsOf()
     const it = asked()
     mountCompact(it, { onFilterBy, onOpen, tab: 'inbox', triage })
 
@@ -603,7 +590,7 @@ describe('CompactRow', () => {
   it('says when a snoozed item comes back, in the story’s place', () => {
     mountCompact(item({ snoozedUntil: '2026-06-18T09:00:00Z', details: details() }), {
       tab: 'snoozed',
-      triage: triageActions(),
+      triage: triageActionsOf(),
     })
 
     expect(screen.getByTitle(/^Snoozed until/)).toHaveTextContent(/^Back /)
@@ -618,7 +605,7 @@ describe('CompactRow', () => {
         snoozedUntil: '2026-06-16T18:45:00Z',
         details: details({ viewerVerdict: 'changes', mergeable: 'CONFLICTING' }),
       }),
-      { tab: 'snoozed', triage: triageActions() },
+      { tab: 'snoozed', triage: triageActionsOf() },
     )
 
     const chip = row.querySelector('[data-story-chip]')
@@ -630,12 +617,8 @@ describe('CompactRow', () => {
 
   it('fades the card under a note while an edit will likely take it out of the list', async () => {
     const finish = deferred()
-    const edits = {
-      onCopyLink: vi.fn(),
-      onUnassign: vi.fn(() => finish.promise),
-      onRemoveReview: vi.fn(() => Promise.resolve()),
-    }
-    const row = mountCompact(item({ assigned: true, details: details() }), { triage: triageActions(), edits })
+    const edits = editActionsOf({ onUnassign: vi.fn(() => finish.promise) })
+    const row = mountCompact(item({ assigned: true, details: details() }), { triage: triageActionsOf(), edits })
 
     await userEvent.click(within(row).getByRole('button', { name: 'More actions' }))
     await userEvent.click(screen.getByRole('menuitem', { name: 'Unassign me' }))
