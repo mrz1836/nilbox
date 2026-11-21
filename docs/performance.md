@@ -288,7 +288,7 @@ The spike that settled the universal build (2026-11-15, from `master` at `1904d3
 | Disk image, ULMO (LZMA) | 8,294,545 | 16,910,661 |
 
 ULMO makes the universal disk image 30% smaller than UDZO, so a release's disk image uses it; it
-needs macOS 10.15, which the app's minimum, macOS 13, covers. The spike also ran the Intel slice
+needs macOS 10.15, which the app's minimum, macOS 13.3, covers. The spike also ran the Intel slice
 under Rosetta (`--measure-startup`): its first paint took 1,646 ms on the first launch, while
 Rosetta translated it, and 726 ms after, against 580 ms and then 506 ms for the arm64 slice.
 

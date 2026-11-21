@@ -166,8 +166,8 @@ hooks and scripts too. Your triage state stays on your machine and never touches
 
 ## 🚀 Installation
 
-Nilbox is a native app for macOS 13 or newer, on Apple silicon and Intel. Linux and Windows are on
-the [roadmap](#support--roadmap).
+Nilbox is a native app for macOS 13.3 or newer, on Apple silicon and Intel. Linux and Windows are
+on the [roadmap](#support--roadmap).
 
 ### Install
 
@@ -242,7 +242,7 @@ when no release is newer yet, it says so and gives the command to build from sou
 
 To build Nilbox yourself, you need:
 
-- **macOS 13+** with the Xcode Command Line Tools (`xcode-select --install`)
+- **macOS 13.3+** with the Xcode Command Line Tools (`xcode-select --install`)
 - **[Go](https://go.dev/dl/) 1.26+**, **Node 26**, and **pnpm** at the pinned version (`npm install -g pnpm@12.19.0`)
 - **[MAGE-X](https://github.com/mrz1836/mage-x)**: `go install github.com/mrz1836/mage-x/cmd/magex@latest`
 - The **GitHub CLI** and a coding agent, as above
@@ -1241,7 +1241,7 @@ More in [The window](docs/desktop.md#the-window).
 
 | Feature                              | Status        | Description                                                         |
 |--------------------------------------|---------------|---------------------------------------------------------------------|
-| ✅ macOS 13+                          | **Supported** | Native desktop app with a menu bar icon and notification banners    |
+| ✅ macOS 13.3+                        | **Supported** | Native desktop app with a menu bar icon and notification banners    |
 | ✅ Claude Code                        | **Supported** | Your own profiles, models, effort, and flags                        |
 | ✅ OpenAI Codex                       | **Supported** | The same, with a switch on each launch and defaults per repo or org |
 | ✅ iTerm2 and Terminal.app            | **Supported** | iTerm2 by default                                                   |

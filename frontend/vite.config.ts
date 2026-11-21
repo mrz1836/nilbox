@@ -61,11 +61,12 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
     // The oldest supported macOS (LSMinimumSystemVersion in build/darwin/Info.plist) is
-    // 13, whose WebKit is Safari 16, so the bundle targets that engine.
-    target: 'safari16',
+    // 13.3, whose WebKit is Safari 16.4, so the bundle targets that engine: the window's CSS
+    // needs color-mix() (Safari 16.2) and @property (Safari 16.4).
+    target: 'safari16.4',
     // Lightning CSS minifies the CSS for that target and rewrites what the engine lacks:
     // the theme tokens' light-dark() (src/generated/theme.css) becomes variables that the
-    // root's color-scheme switches, as Safari 16 has no light-dark().
+    // root's color-scheme switches, as Safari 16.4 has no light-dark().
     cssMinify: 'lightningcss',
     // The bundle loads from the app binary, not over a network. The inbox's chunk is all
     // the window loads before its first paint; the other pages are chunks of their own,
