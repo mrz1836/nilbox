@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { issueComment, review, reviewCommit, yourReview } from '../../test/fixtures'
 import { platform } from '../../test/platform'
@@ -27,10 +27,6 @@ function rows() {
     el.getAttribute('role') === 'separator' ? `— ${el.getAttribute('aria-label') ?? ''}` : el.textContent,
   )
 }
-
-afterEach(() => {
-  vi.restoreAllMocks()
-})
 
 describe('CommitList', () => {
   it('lists the commits oldest first, marking the reviewed one and those since', () => {

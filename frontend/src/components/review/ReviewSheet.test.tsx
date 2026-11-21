@@ -1,7 +1,7 @@
 import { act, fireEvent, render as renderPlain, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Activity, useState, type ReactElement } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { Result } from '../../lib/call'
 import type { LaunchOptions } from '../../lib/launch'
@@ -127,10 +127,6 @@ async function choose(label: string) {
 }
 
 describe('ReviewSheet', () => {
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
   it('shows the pull request', async () => {
     platform.refreshReview.mockResolvedValue(
       review({
@@ -1459,10 +1455,6 @@ const queued = () =>
   })
 
 describe('ReviewSheet with workflow runs held for approval', () => {
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
   it('names them, approves them from its bar, and stays open, reading again until their checks start', async () => {
     // Fake time runs along with real time, so the queries' own waits still pass.
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })

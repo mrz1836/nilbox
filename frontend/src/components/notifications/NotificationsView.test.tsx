@@ -691,33 +691,29 @@ describe('NotificationsView', () => {
     it('moves the countdown on every second while a clear waits', async () => {
       vi.useFakeTimers()
 
-      try {
-        let now = new Date('2026-06-15T12:00:00Z')
-        const { clockAt, withClock } = await import('../../test/clock')
-        const clock = clockAt(() => now)
+      let now = new Date('2026-06-15T12:00:00Z')
+      const { clockAt, withClock } = await import('../../test/clock')
+      const clock = clockAt(() => now)
 
-        render(<Page tab="github" lists={cleared} threads={mirror([], githubThreads({ queued: [queuedClear()] }))} />, {
-          wrapper: withClock(clock),
-        })
+      render(<Page tab="github" lists={cleared} threads={mirror([], githubThreads({ queued: [queuedClear()] }))} />, {
+        wrapper: withClock(clock),
+      })
 
-        expect(screen.getByText('in 15s')).toBeInTheDocument()
+      expect(screen.getByText('in 15s')).toBeInTheDocument()
 
-        now = new Date('2026-06-15T12:00:05Z')
-        act(() => {
-          vi.advanceTimersByTime(1000)
-        })
+      now = new Date('2026-06-15T12:00:05Z')
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
 
-        expect(screen.getByText('in 10s')).toBeInTheDocument()
+      expect(screen.getByText('in 10s')).toBeInTheDocument()
 
-        now = new Date('2026-06-15T12:00:20Z')
-        act(() => {
-          vi.advanceTimersByTime(1000)
-        })
+      now = new Date('2026-06-15T12:00:20Z')
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
 
-        expect(screen.getByText('any moment')).toBeInTheDocument()
-      } finally {
-        vi.useRealTimers()
-      }
+      expect(screen.getByText('any moment')).toBeInTheDocument()
     })
 
     it('says how each recent clear settled, hiding the skips decided again, and opens one on GitHub', async () => {

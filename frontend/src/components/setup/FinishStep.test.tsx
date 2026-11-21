@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { CelebrationsContext } from '../../lib/celebrations'
 import { earnedBurst } from '../../lib/nil'
@@ -22,13 +22,10 @@ import {
   terminalChoices,
 } from '../../test/fixtures'
 import { platform } from '../../test/platform'
+import { reduceMotion } from '../../test/stubs'
 import { FinishStep, type FinishStepProps } from './FinishStep'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
-
-afterEach(() => {
-  vi.unstubAllGlobals()
-})
 
 // showFinish shows Finish over a setup that went well, as change adjusts its props.
 function showFinish(change: Partial<FinishStepProps> = {}, celebrations: Celebrations = 'milestones') {
@@ -157,7 +154,7 @@ describe('FinishStep', () => {
   })
 
   it('throws nothing with reduced motion', () => {
-    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(prefers-reduced-motion: reduce)' }))
+    reduceMotion()
     showFinish()
 
     expect(screen.queryAllByTestId('confetti')).toHaveLength(0)

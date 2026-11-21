@@ -1,19 +1,16 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { LocationState, Settings } from '../../platform'
 import { locationPreview, locationState, settings } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { queryOf } from '../../test/query'
+import { reduceMotion } from '../../test/stubs'
 import { ClonesStep } from './ClonesStep'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
-
-afterEach(() => {
-  vi.unstubAllGlobals()
-})
 
 // Stateful holds the settings as the window does, starting from initial and taking each one
 // a setter returns.
@@ -29,14 +26,9 @@ async function lookInDocuments() {
   await userEvent.click(screen.getByRole('button', { name: 'Look in ~/Documents/GitHub' }))
 }
 
-// noMotion asks for less motion, so the clone count shows at once.
-function noMotion() {
-  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(prefers-reduced-motion: reduce)' }))
-}
-
 describe('ClonesStep', () => {
   it('counts the clones directly inside the clone root', async () => {
-    noMotion()
+    reduceMotion()
     render(<Stateful states={[locationState({ clones: 42 })]} />)
 
     expect(screen.getByTestId('clone-count')).toHaveTextContent('42')
@@ -48,7 +40,7 @@ describe('ClonesStep', () => {
   })
 
   it('offers the other folders with clones beside a clone root that has some', async () => {
-    noMotion()
+    reduceMotion()
     platform.suggestCloneRoots.mockResolvedValue([{ path: '~/go/src/github.com/acme-org', clones: 3 }])
     render(<Stateful states={[locationState({ clones: 42 })]} />)
 
@@ -142,7 +134,7 @@ describe('ClonesStep', () => {
   })
 
   it('suggests folders for an empty clone root, but never offers to make it again', async () => {
-    noMotion()
+    reduceMotion()
     platform.suggestCloneRoots.mockResolvedValue([])
     render(<Stateful states={[locationState({ clones: 0 })]} />)
 
@@ -154,7 +146,7 @@ describe('ClonesStep', () => {
   })
 
   it('uses another folder chosen in the system’s dialog', async () => {
-    noMotion()
+    reduceMotion()
     platform.chooseFolder.mockResolvedValue('/Volumes/work/repos')
     render(<Stateful states={[locationState()]} />)
 
@@ -164,7 +156,7 @@ describe('ClonesStep', () => {
   })
 
   it('changes nothing when the dialog is cancelled', async () => {
-    noMotion()
+    reduceMotion()
     render(<Stateful states={[locationState()]} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Choose another folder…' }))
@@ -173,7 +165,7 @@ describe('ClonesStep', () => {
   })
 
   it('says why a change was refused', async () => {
-    noMotion()
+    reduceMotion()
     platform.chooseFolder.mockResolvedValue('/nowhere')
     platform.setCloneRoot.mockRejectedValue(new Error('/nowhere doesn’t exist.'))
     render(<Stateful states={[locationState()]} />)
@@ -184,7 +176,7 @@ describe('ClonesStep', () => {
   })
 
   it('looks in GitHub Desktop’s folder only when asked, since macOS asks first', async () => {
-    noMotion()
+    reduceMotion()
     platform.previewCloneLocation.mockResolvedValue(locationPreview({ path: '~/Documents/GitHub', clones: 12 }))
     render(<Stateful states={[locationState({ clones: 42 })]} />)
 
@@ -237,7 +229,7 @@ describe('ClonesStep', () => {
       '~/Documents/GitHub is listed already.',
     ],
   ])('says when GitHub Desktop’s folder has nothing to add', async (preview, said) => {
-    noMotion()
+    reduceMotion()
     platform.previewCloneLocation.mockResolvedValue(preview)
     render(<Stateful states={[locationState()]} />)
 
@@ -248,7 +240,7 @@ describe('ClonesStep', () => {
   })
 
   it('says why it couldn’t look in GitHub Desktop’s folder, and lets the user try again', async () => {
-    noMotion()
+    reduceMotion()
     platform.previewCloneLocation.mockRejectedValueOnce(
       new Error('macOS doesn’t let it read ~/Documents/GitHub. Allow it in System Settings.'),
     )
@@ -265,7 +257,7 @@ describe('ClonesStep', () => {
   })
 
   it('never offers to look in GitHub Desktop’s folder once the locations hold it', () => {
-    noMotion()
+    reduceMotion()
     render(
       <Stateful
         states={[locationState({ path: '~/Documents/GitHub' })]}
@@ -277,7 +269,7 @@ describe('ClonesStep', () => {
   })
 
   it('folds the other repository locations away', async () => {
-    noMotion()
+    reduceMotion()
     render(<Stateful states={[locationState()]} />)
 
     await userEvent.click(screen.getByText('Clones somewhere else too?'))
