@@ -17,7 +17,7 @@ export const buttonClass =
 // rather than fading, since a faded wash reads as mud on the dark theme. It sizes like
 // buttonClass and fieldClass, so the three line up in a row.
 const tintedButtonClass =
-  'inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium text-text shadow-xs shadow-black/15 inset-shadow-[0_1px_0_rgb(255_255_255/0.06)] transition enabled:active:translate-y-px disabled:cursor-default disabled:border-border disabled:bg-raised disabled:text-muted disabled:shadow-none disabled:inset-shadow-none disabled:[&>svg]:text-muted'
+  'inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium text-text shadow-control inset-shadow-control transition enabled:active:translate-y-px disabled:cursor-default disabled:border-border disabled:bg-raised disabled:text-muted disabled:shadow-none disabled:inset-shadow-none disabled:[&>svg]:text-muted'
 
 // primaryButtonClass marks a view's main action.
 export const primaryButtonClass = `${tintedButtonClass} border-accent/45 bg-accent/14 enabled:hover:border-accent/65 enabled:hover:bg-accent/22 [&>svg]:text-accent`
@@ -45,7 +45,7 @@ export const captionClass = 'text-caption font-semibold tracking-wide text-muted
 // switchClass draws a native checkbox as a switch; give it role="switch" so assistive
 // tech announces on and off.
 const switchClass =
-  'relative h-5 w-9 shrink-0 appearance-none rounded-full bg-border transition-colors checked:bg-accent before:absolute before:top-0.5 before:left-0.5 before:size-4 before:rounded-full before:bg-white before:shadow before:transition-transform checked:before:translate-x-4 disabled:opacity-60'
+  'relative h-5 w-9 shrink-0 appearance-none rounded-full bg-border transition-colors checked:bg-accent before:absolute before:top-0.5 before:left-0.5 before:size-4 before:rounded-full before:bg-paper before:shadow before:transition-transform checked:before:translate-x-4 disabled:opacity-60'
 
 export interface SegmentOption<T extends string> {
   value: T
