@@ -1,6 +1,7 @@
 package inbox
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -197,11 +198,7 @@ func (q *mergeQueue) due(now time.Time) []mergeFollow {
 
 // compareKeys orders merge keys by account, then repository.
 func compareKeys(a, b mergeKey) int {
-	if a.accountID != b.accountID {
-		return int(min(max(a.accountID-b.accountID, -1), 1))
-	}
-
-	return strings.Compare(a.repo, b.repo)
+	return cmp.Or(cmp.Compare(a.accountID, b.accountID), strings.Compare(a.repo, b.repo))
 }
 
 // done records that a round of the follow f ended at now: another round is due mergeRetry
