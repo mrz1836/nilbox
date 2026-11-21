@@ -41,6 +41,10 @@ type githubSteps struct {
 	// changes reads what agent runs changed on an item, which no Merge it follows into
 	// workflow, agent, or tooling files; nil reads nothing.
 	changes agentChanges
+
+	// autopilot reads Autopilot's settings, for its switch for merging past the rules right
+	// before a merge that may (adapters_pastreview.go); nil reads it as off.
+	autopilot autopilotSettings
 }
 
 // ErrNotACommentReply is a GitHub step's reply that isn't a comment's: one written for an

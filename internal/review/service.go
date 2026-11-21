@@ -206,6 +206,7 @@ type GitHub interface {
 	FetchPullReview(ctx context.Context, tok github.Token, id, compareHead string) (*github.PullReview, error)
 	FetchPullDiff(ctx context.Context, tok github.Token, ref item.Ref, head string) (*github.PullDiff, error)
 	FetchMergeState(ctx context.Context, tok github.Token, id string) (*github.MergeState, error)
+	FetchOwnMergeState(ctx context.Context, tok github.Token, id string) (*github.MergeState, error)
 	FetchTimeline(ctx context.Context, tok github.Token, kind item.Kind, id, before string) (*github.TimelinePage, error)
 	SubmitReview(ctx context.Context, tok github.Token, ref item.Ref, in github.ReviewInput) (*github.SubmittedReview, error)
 	MergePull(ctx context.Context, tok github.Token, ref item.Ref, in github.MergeInput) (*github.Merged, error)
@@ -841,8 +842,10 @@ func build(pull StoredPull, c *cached, matcher *sensitive.Matcher, prefs Prefs) 
 	r.Assignees, r.MoreAssignees = shownAssignees(c, pull.Viewer)
 	r.CanEditAssignees = canEditAssignees(pull, c)
 
-	plan := Decide(factsOf(pull, c, r), prefs)
+	facts := factsOf(pull, c, r)
+	plan := Decide(facts, prefs)
 	r.Offers, r.Primary, r.Readiness = textutil.NonNil(plan.Offers), plan.Primary, plan.Readiness
+	r.OwnAwaitsApproval = ownAwaitsApproval(facts, plan.Offers)
 	r.MergeMethods, r.DefaultMethod = plan.Methods, plan.Method
 
 	return r

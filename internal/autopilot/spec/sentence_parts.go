@@ -360,8 +360,14 @@ func mergePhrase(m MergeStep) string {
 	}[m.Method]
 
 	merge := "merge it" + method + " when GitHub allows"
-	if m.How == catalog.MergeAutoIfItWasOn {
+
+	switch {
+	case m.How == catalog.MergeAutoIfItWasOn:
 		return "turn auto-merge back on if it was on, else " + merge
+	case m.AllowBypass && m.AllowSensitive:
+		return merge + ", or past the rules when only an approval from someone else is missing, sensitive files included"
+	case m.AllowBypass:
+		return merge + ", or past the rules when only an approval from someone else is missing"
 	}
 
 	return merge

@@ -892,6 +892,12 @@ Draft 2020-12, generated from this build's format: every key, every closed set o
             "squash",
             "rebase"
           ]
+        },
+        "allowBypass": {
+          "type": "boolean"
+        },
+        "allowSensitive": {
+          "type": "boolean"
         }
       },
       "required": [

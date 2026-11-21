@@ -58,6 +58,14 @@ export interface Config {
      */
     "historyDays": number;
     "logDays": number;
+
+    /**
+     * MergePastRules is Let routines merge your own pull requests past the rules: on, a
+     * routine whose Merge it allows it, and that the user accepted so, may merge their own
+     * signed pull request that lacks only an approval from someone else. Off by default, and
+     * never in a backup.
+     */
+    "mergePastRules": boolean;
 }
 
 /**

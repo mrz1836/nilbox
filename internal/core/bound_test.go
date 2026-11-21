@@ -732,6 +732,9 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetAutopilotHoldOnOutage": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
 			return s.SetAutopilotHoldOnOutage(ctx, false)
 		}),
+		"settings.Service.SetAutopilotMergePastRules": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
+			return s.SetAutopilotMergePastRules(ctx, true)
+		}),
 		"settings.Service.SetAutopilotCatchUpHours": setting(func(ctx context.Context, s *settings.Service) (settings.Settings, error) {
 			return s.SetAutopilotCatchUpHours(ctx, 12)
 		}),

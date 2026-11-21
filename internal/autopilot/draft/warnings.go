@@ -1,6 +1,7 @@
 package draft
 
 import (
+	"context"
 	"fmt"
 	"slices"
 
@@ -70,6 +71,32 @@ func autopilotWarnings(sp spec.Spec) []spec.Problem {
 				Part: spec.PartSteps, Field: fmt.Sprintf("[%d].agent.fence.tools", i),
 				Message: "On Autopilot with the profile's own permissions, the agent may do whatever a click's launch " +
 					"may, with nobody there to answer.",
+			})
+		}
+	}
+
+	return out
+}
+
+// PastRulesOff is the warning of a Merge it that allows going past the rules while the
+// user's switch for it is off.
+const PastRulesOff = "Let routines merge your own pull requests past the rules is off in Autopilot's settings: " +
+	"until you turn it on, this step merges only what GitHub allows."
+
+// pastRulesWarnings warns of each Merge it that allows going past the rules while s says the
+// user's switch for it is off, or can't tell: until it is on, the step merges only what
+// GitHub allows. The switch is read only for a spec with such a step.
+func pastRulesWarnings(ctx context.Context, sp spec.Spec, s Setup) []spec.Problem {
+	out := []spec.Problem{}
+
+	if !sp.PastRules() || s.PastRules(ctx) {
+		return out
+	}
+
+	for i, st := range sp.Steps {
+		if st.Merge != nil && (st.Merge.AllowBypass || st.Merge.AllowSensitive) {
+			out = append(out, spec.Problem{
+				Part: spec.PartSteps, Field: fmt.Sprintf("[%d].merge.allowBypass", i), Message: PastRulesOff,
 			})
 		}
 	}

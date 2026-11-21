@@ -63,6 +63,8 @@ func TestCheckRefusesEnabledAndPaused(t *testing.T) {
 			"proposal never names it: leave it out",
 		"paused": "the proposal can't be read: settings.paused: Pause is the user's alone, so a proposal never " +
 			"names it: leave it out",
+		"mergePastRules": "the proposal can't be read: settings.mergePastRules: Let routines merge your own pull " +
+			"requests past the rules is the user's alone, so a proposal never names it: leave it out",
 	} {
 		for _, value := range []string{"true", "false"} {
 			data := fmt.Sprintf(`{"summary": "Turn it %s.", "settings": {"agentsAtOnce": 1, %q: %s}}`, key, key, value)
@@ -77,7 +79,7 @@ func TestCheckRefusesEnabledAndPaused(t *testing.T) {
 	require.ErrorIs(t, err, kit.ErrUnreadableProposal, "a key spelled otherwise is refused all the same")
 	require.ErrorContains(t, err, `a key isn't one the format has, spelled exactly: "Enabled"`)
 
-	for _, field := range []string{"enabled", "paused"} {
+	for _, field := range []string{"enabled", "paused", "mergePastRules", "astRules"} {
 		data, err := json.Marshal(kit.SettingsChange{AgentsAtOnce: new(1)})
 		require.NoError(t, err)
 		assert.NotContains(t, string(data), field, "the settings change has no field for it")

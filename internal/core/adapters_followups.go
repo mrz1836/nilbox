@@ -19,9 +19,12 @@ import (
 // (githubSteps): each read through the sheet right before it (ReadAgain, the fresh read),
 // decided again on that read by the sheet's own Decide, pinned to the head the engine names
 // (the commit the checks passed on, the commit the agent read), and sent through Act, under
-// the inbox's Actor and the write gate. A merge is only ever merge_now or auto_merge, a
+// the inbox's Actor and the write gate. A merge here is only ever merge_now or auto_merge, a
 // review only comment, request_changes, or approve: never merge_bypass, approve_merge,
-// approve_auto_merge, a close, or approving workflow runs, which a guard test holds to.
+// approve_auto_merge, a close, or approving workflow runs, which a guard test holds to. The
+// one merge past the rules, of the user's own pull request that lacks only an approval, a
+// routine they allowed sends from adapters_pastreview.go alone, which another guard test
+// holds to.
 
 // mergeActionOf is the review sheet's action a Merge it sends: auto-merge turned back on,
 // or a merge now.
@@ -66,7 +69,9 @@ func mergeMethodOf(m catalog.MergeMethod) review.MergeMethod {
 // Merge merges the pull request, or turns its auto-merge back on, through the review sheet:
 // decided on the sheet's read just made, only at req.Head, never where an agent's commits
 // changed workflow, agent, or tooling files, and only as the sheet offers it now, so GitHub
-// itself says it would merge; one it holds for an approving review waits for the user.
+// itself says it would merge; one it holds for an approving review waits for the user, but
+// the user's own that lacks only an approval from someone else, which a routine they
+// allowed merges past the rules (pastReview), or else closes, saying why.
 func (g githubSteps) Merge(ctx context.Context, req autopilot.MergeSend) (autopilot.GitHubSent, error) {
 	ctx = github.WithPurpose(ctx, github.PurposeAutopilot)
 
@@ -77,6 +82,10 @@ func (g githubSteps) Merge(ctx context.Context, req autopilot.MergeSend) (autopi
 
 	if words, held, heldErr := g.agentChangedAt(ctx, req.Item.ID, req.Head); heldErr != nil || held {
 		return notOffered(words), heldErr
+	}
+
+	if sent, handled, pastErr := g.pastReview(ctx, rev, req); handled {
+		return sent, pastErr
 	}
 
 	action, sent, decided := mergeDecision(rev, req)

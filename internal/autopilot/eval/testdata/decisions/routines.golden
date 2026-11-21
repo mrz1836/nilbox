@@ -1331,6 +1331,136 @@ trace:
     actual: an issue
     need: ""
 
+== template merge-my-sync-prs · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 2 checks failed
+    need: ""
+
+== template merge-my-sync-prs · pr failing · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 2 checks failed
+    need: ""
+
+== template merge-my-sync-prs · pr unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: the title starts with "[Sync] Update project files"
+    result: no
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== template merge-my-sync-prs · pr unread · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: the title starts with "[Sync] Update project files"
+    result: no
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== template merge-my-sync-prs · pr green · fresh
+match: no
+fireKey: checks_passed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: yes
+    actual: every check passed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: the title starts with "[Sync] Update project files"
+    result: no
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+
+== template merge-my-sync-prs · pr green · seen
+match: no
+fireKey: checks_passed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: yes
+    actual: every check passed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: the title starts with "[Sync] Update project files"
+    result: no
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+
+== template merge-my-sync-prs · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 1 check failed
+    need: ""
+
+== template merge-my-sync-prs · pr partial · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 1 check failed
+    need: ""
+
+== template merge-my-sync-prs · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: it's an issue, and Checks pass fires only for pull requests
+    need: ""
+
+== template merge-my-sync-prs · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: it's an issue, and Checks pass fires only for pull requests
+    need: ""
+
 == template pre-review-what-asks-for-me · pr failing · fresh
 match: yes
 fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567

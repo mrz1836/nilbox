@@ -131,7 +131,8 @@ export function MergeConfirmDialog({ review, offer, onConfirm, onCancel, comment
       />
       {past && (
         <p className="mt-3">
-          GitHub lets you merge past them, as it lets a repository admin. Nothing else here ever does, and no agent can.
+          GitHub lets you merge past them, as it lets a repository admin. Only a routine you allowed does, on your own
+          signed pull request that lacks only an approval; no agent can.
         </p>
       )}
     </ConfirmDialog>

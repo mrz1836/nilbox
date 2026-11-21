@@ -218,6 +218,8 @@ describe('matchSettings', () => {
     ['parallel', 'Agents at once'],
     ['dollars', 'Daily cap'],
     ['tokens', 'Daily cap'],
+    ['bypass', 'Let routines merge your own pull requests past the rules'],
+    ['past the rules', 'Merging'],
     ['caffeinate', 'Keep the Mac awake while agents work'],
     ['outage', 'Hold agent starts while their provider reports an outage'],
     ['catch up', 'Ask before catching up after'],

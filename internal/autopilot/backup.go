@@ -303,9 +303,11 @@ func (im *routineImport) place(ctx context.Context, k keptRoutine) error {
 		account = im.viewer
 	}
 
+	// A routine a backup rewrites is no longer the one its user accepted as merging past the
+	// rules: that acceptance is never a backup's to carry.
 	_, err := im.q.UpdateRoutine(ctx, queries.UpdateRoutineParams{
 		AccountLogin: account, Name: row.Name, NameKey: draft.NameKey(row.Name), Description: k.desc, Mode: string(k.mode),
-		Spec: k.spec.data, SpecVersion: k.spec.version, UpdatedAt: im.clock.Now(), ID: row.ID,
+		Spec: k.spec.data, SpecVersion: k.spec.version, PastRulesHash: "", UpdatedAt: im.clock.Now(), ID: row.ID,
 	})
 	if err != nil {
 		return fmt.Errorf("save the routine %q: %w", row.Name, err)

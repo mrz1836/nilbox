@@ -114,6 +114,8 @@ WaitStep {
 MergeStep {
   how: "autoMergeIfItWasOn" | "whenMergeable"
   method?: "merge" | "squash" | "rebase"
+  allowBypass?: boolean
+  allowSensitive?: boolean
 }
 ReviewStep {
   as: "comment" | "verdict"

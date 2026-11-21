@@ -97,6 +97,8 @@ spec.WaitStep
 spec.MergeStep
   how: catalog.MergeHow
   method: catalog.MergeMethod
+  allowBypass: bool
+  allowSensitive: bool
 spec.ReviewStep
   as: catalog.ReviewAs
   allowApprove: bool

@@ -404,7 +404,7 @@ func (d decider) warnings(now bool) []string {
 	}
 
 	if len(d.f.Sensitive) > 0 {
-		out = append(out, "It changes sensitive files: "+strings.Join(d.f.Sensitive, ", ")+".")
+		out = append(out, SensitiveWarning(d.f.Sensitive))
 	}
 
 	return out
@@ -534,7 +534,7 @@ func skipped(f Facts) []string {
 	case f.ChangesRequested:
 		out = append(out, "Changes were requested, and the request stands.")
 	case f.ReviewRequired && f.Mine:
-		out = append(out, "It needs an approval from someone else.")
+		out = append(out, OwnApprovalSkipped)
 	case f.ReviewRequired:
 		out = append(out, "It needs an approval.")
 	}

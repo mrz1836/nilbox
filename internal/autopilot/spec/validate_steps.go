@@ -18,6 +18,10 @@ type before struct {
 	// wait reports a Wait for the checks before, and waitOnPush that the latest one runs
 	// only if the agent pushed, so the checks it follows are on the agent's own commit.
 	wait, waitOnPush bool
+
+	// changesBranch reports a step before that may change the pull request's branch: a
+	// rebase, an update of the branch, or one of the user's scripts.
+	changesBranch bool
 }
 
 // steps checks each step, and their order.
@@ -58,9 +62,14 @@ func (b before) then(kind catalog.StepKind, st Step) before {
 		b.agent = st.Agent
 	case catalog.StepWaitForChecks:
 		b.wait, b.waitOnPush = true, st.OnlyIf == catalog.OutcomePushed
+	case catalog.StepScript:
+		b.changesBranch = true
+	case catalog.StepGitHub:
+		b.changesBranch = b.changesBranch || slices.ContainsFunc(st.GitHub, func(a GitHubAction) bool {
+			return a.Rebase != nil || a.UpdateBranch != nil
+		})
 	case catalog.StepNotify, catalog.StepPin, catalog.StepSnooze, catalog.StepDismiss, catalog.StepRestore,
-		catalog.StepMarkDone, catalog.StepGitHub, catalog.StepMerge, catalog.StepPostReview, catalog.StepTellMe,
-		catalog.StepScript:
+		catalog.StepMarkDone, catalog.StepMerge, catalog.StepPostReview, catalog.StepTellMe:
 	}
 
 	return b
@@ -167,10 +176,20 @@ func (v *validator) waitOrder(field string, st Step, prior before) {
 	}
 }
 
-// mergeOrder holds Merge it to after a Wait for the checks on the agent's own push, and
-// to when they passed: a pass on a commit the agent never made, such as a flaky check run
-// again, is no reason to merge.
+// mergeOrder holds Merge it to one of two places. After an agent step, it follows a Wait
+// for the checks on the agent's own push, and runs when they passed: a pass on a commit the
+// agent never made, such as a flaky check run again, is no reason to merge. With no agent
+// step and no wait, it merges the commit the routine's checks passed on (agentlessMerge).
+// Only there may it go past the rules (pastRules).
 func (v *validator) mergeOrder(field string, st Step, prior before) {
+	v.pastRules(field+".merge", *st.Merge)
+
+	if v.agentless {
+		v.agentlessMerge(field, st, prior)
+
+		return
+	}
+
 	switch {
 	case !prior.wait:
 		v.add(PartSteps, field, "Merge it follows a Wait for the checks")
@@ -181,6 +200,51 @@ func (v *validator) mergeOrder(field string, st Step, prior before) {
 
 	if st.OnlyIf != catalog.OutcomePassedChecks {
 		v.add(PartSteps, field+".onlyIf", `Merge it runs only if the checks passed: set "onlyIf" to "passed"`)
+	}
+}
+
+// agentlessMerge holds a Merge it with no agent step to a routine that fires when the
+// checks pass, once per head commit, as its trigger's own once-per is, with no Only if, and
+// with nothing before it that may change the branch: the commit it merges is the one whose
+// checks passed.
+func (v *validator) agentlessMerge(field string, st Step, prior before) {
+	switch {
+	case v.event != catalog.EventChecksPassed:
+		v.add(PartSteps, field, "Merge it follows a Wait for the checks on an agent's push, or, with no agent step, "+
+			"comes in a routine that fires when the checks pass")
+	case v.oncePer != "" && v.oncePer != catalog.OncePerHeadCommit:
+		v.add(PartLimits, "oncePer", "a routine that merges with no agent step acts once per head commit: leave out "+
+			`"oncePer", or set it to "headCommit"`)
+	}
+
+	if st.OnlyIf != "" {
+		v.add(PartSteps, field+".onlyIf", `Merge it with no agent step merges what the checks passed on: leave out "onlyIf"`)
+	}
+
+	if prior.changesBranch {
+		v.add(PartSteps, field, "Merge it with no agent step merges the commit whose checks passed, so no rebase, "+
+			"update of the branch, or script may come before it")
+	}
+}
+
+// pastRules holds Merge it past the rules to a Merge it with no agent step (agentlessMerge),
+// merging when GitHub allows, never by auto-merge; and sensitive files to one that goes
+// past the rules at all.
+func (v *validator) pastRules(field string, m MergeStep) {
+	if !m.AllowBypass && !m.AllowSensitive {
+		return
+	}
+
+	switch {
+	case !v.agentless:
+		v.add(PartSteps, field+".allowBypass", "only Merge it with no agent step, in a routine that fires when the "+
+			"checks pass, can merge past the rules")
+	case m.How != catalog.MergeWhenMergeable:
+		v.add(PartSteps, field+".how", `a merge past the rules merges when GitHub allows: set "how" to "whenMergeable"`)
+	}
+
+	if m.AllowSensitive && !m.AllowBypass {
+		v.add(PartSteps, field+".allowSensitive", `sensitive files go past the rules only with "allowBypass"`)
 	}
 }
 

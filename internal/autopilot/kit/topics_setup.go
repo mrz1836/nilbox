@@ -35,6 +35,12 @@ func settingTable() []settingWords {
 		{key: "enabled", label: "Autopilot (beta) in Labs", usersAlone: true, words: "shows and runs Autopilot"},
 		{key: "paused", label: "Pause Autopilot", usersAlone: true, words: "while on, no routine starts anything new"},
 		{
+			key: "mergePastRules", label: "Let routines merge your own pull requests past the rules", usersAlone: true,
+			words: "`true` or `false`, default `false`: while on, a `" + string(catalog.StepMerge) + "` whose " +
+				"`allowBypass` the user ticked as they added it may merge their own signed pull request that lacks only " +
+				"an approval from someone else; never in a backup, and only the user turns it on, in Settings",
+		},
+		{
 			key: "defaultMode", label: "New routines start in",
 			words: enumWords[autopilotprefs.Mode]() + ", default `" + string(d.DefaultMode) + "`: the mode a " +
 				"routine the user makes starts in; a routine keeps its own once made",
@@ -113,7 +119,7 @@ func settingsTopic(_ Vocabulary) string {
 	}
 
 	p.list(mine...)
-	p.para("These two are the user's alone, and a proposal has no place for them:")
+	p.para("These are the user's alone, and a proposal has no place for them:")
 	p.list(theirs...)
 
 	return p.String()

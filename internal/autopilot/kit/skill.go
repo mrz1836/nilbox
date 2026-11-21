@@ -65,9 +65,9 @@ func SkillText(w Where) string {
 	skillReuse(&p, w)
 
 	p.heading(2, "The user's alone")
-	p.para("Never propose a routine's switch or its mode, Autopilot's own switch, or Pause: a proposal has no " +
-		"place for them, and only the user changes them, in the Autopilot tab and in Settings. Never say a " +
-		"change is made: you propose, and the user applies.")
+	p.para("Never propose a routine's switch or its mode, Autopilot's own switch, Pause, or Let routines merge your " +
+		"own pull requests past the rules: a proposal has no place for them, and only the user changes them, in the " +
+		"Autopilot tab and in Settings. Never say a change is made: you propose, and the user applies.")
 
 	skillNames(&p, w)
 	skillMessages(&p, w)
@@ -166,7 +166,12 @@ func skillSafe(p *page) {
 			"it is only a hint shown beside that. Suggest "+tickModes(autopilotprefs.ModeDryRun, autopilotprefs.ModeAsk)+
 			" for anything that sends GitHub something or runs a coding agent, and "+
 			tickModes(autopilotprefs.ModeAuto)+" only for what changes nothing but the user's own inbox and "+
-			"notifications.",
+			"notifications, or when the user asks for a routine to run with no click of theirs.",
+		"A "+tick(string(catalog.StepMerge))+" goes past the rules (`allowBypass`, and `allowSensitive` for "+
+			"workflow, agent, or tooling files) only when the user asks to merge their own pull requests past the "+
+			"rules, or without a reviewer: propose it then, and never otherwise. Say that they confirm it as they add "+
+			"the routine, and that the switch in Autopilot's settings, Let routines merge your own pull requests past "+
+			"the rules, is theirs to turn on; until both, it merges only what GitHub allows.",
 		"Give an agent step the narrowest tools preset that does the job: the presets go from "+
 			tick(string(presets[0].ID))+" ("+presets[0].Label+") to "+tick(string(presets[len(presets)-1].ID))+
 			" ("+presets[len(presets)-1].Label+"), and topic `agent` says what each lets an agent do.",

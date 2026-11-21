@@ -20,6 +20,7 @@ import {
   setAutopilotHoldOnOutage,
   setAutopilotKeepAwake,
   setAutopilotLogDays,
+  setAutopilotMergePastRules,
   setAutopilotPaused,
   setAutopilotRunsPerDay,
   stopAllAutopilotRuns,
@@ -560,9 +561,10 @@ export interface AutopilotSectionProps extends SectionProps {
 
 // AutopilotSection holds Autopilot's settings, each saved as soon as it is set: Pause
 // Autopilot and the mode new routines start in; the limits every routine keeps to, across
-// them all; what holds a coding agent back; how long the history and the run logs are
-// kept, and Clear history; the Claude Code Describe it runs, and the plugin for the user's
-// own; what the routines need on this Mac; and when the engine last checked the routines.
+// them all; whether a routine may merge the user's own pull requests past the rules; what
+// holds a coding agent back; how long the history and the run logs are kept, and Clear
+// history; the Claude Code Describe it runs, and the plugin for the user's own; what the
+// routines need on this Mac; and when the engine last checked the routines.
 export function AutopilotSection({ settings: stored, onSaved, agents, profiles, engine }: AutopilotSectionProps) {
   const id = useId()
   const { settings, save, error } = useSettingsSave(stored, onSaved)
@@ -674,6 +676,24 @@ export function AutopilotSection({ settings: stored, onSaved, agents, profiles, 
             error={errorFor('dailyCap')}
             onChange={(dailyCap) => {
               change('dailyCap', dailyCap, () => setAutopilotDailyCap(dailyCap))
+            }}
+          />
+        </Group>
+      </div>
+      <div className="flex flex-col gap-3">
+        <SectionIntro title="Merging">
+          A routine’s Merge it merges only what GitHub allows, unless you let it go past the rules here and on the
+          routine itself.
+        </SectionIntro>
+        <Group>
+          <SwitchRow
+            label="Let routines merge your own pull requests past the rules"
+            controlId={`${id}-past-rules`}
+            description="A routine whose Merge it allows it, and that you confirmed as you saved it, may merge your own pull request whose every commit you signed when an approval from someone else is all it lacks. Turning this off stops every such merge at once. A backup never carries it."
+            checked={config.mergePastRules}
+            error={errorFor('mergePastRules')}
+            onChange={(on) => {
+              change('mergePastRules', on, () => setAutopilotMergePastRules(on))
             }}
           />
         </Group>

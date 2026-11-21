@@ -38,6 +38,7 @@ func (p *pass) gate(r *routineRun, m *match, sr *stepRun, info catalog.Step) ver
 
 	for _, check := range []func() verdict{
 		func() verdict { return p.mergeRules(id, sr) },
+		func() verdict { return p.recheck(r, m, sr) },
 		func() verdict { return p.scriptAsks(sr) },
 		func() verdict { return p.askFirst(r, m, sr) },
 		func() verdict { return p.held(r, m) },
@@ -115,15 +116,16 @@ func (p *pass) pace() verdict {
 }
 
 // askFirst holds a start for the user's OK: a routine that asks first, and an Autopilot
-// routine's start after a long gap.
+// routine's start after a long gap. A run the user started by hand asks no OK to start, but
+// an Ask first routine still asks before it merges or posts what an agent wrote.
 func (p *pass) askFirst(r *routineRun, m *match, sr *stepRun) verdict {
 	switch {
-	case m.Manual:
-		return verdict{}
 	case r.mode == autopilotprefs.ModeAsk && followsRun(sr.Step) && !sr.OK:
 		// Merging, and posting what an agent wrote, are decided on what the run came to:
 		// an Ask first routine asks again, showing it, whatever its OK to start.
 		return wait(BlockAsk, followWords(sr.Step))
+	case m.Manual:
+		return verdict{}
 	case m.Approved:
 		return verdict{}
 	case r.mode == autopilotprefs.ModeAsk:

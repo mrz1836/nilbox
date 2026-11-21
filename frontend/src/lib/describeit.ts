@@ -53,6 +53,7 @@ import {
 import { modeLabels } from './autopilot'
 import { all, attempt, type Result } from './call'
 import { counted, joinList, refText } from './format'
+import { pastRulesAccepted, pastTicks, type PastTicks } from './routineBuilder'
 
 // The app's own tools, as Claude Code names them: in a turn in the app, its tool server's
 // name joined to each tool's; in the user's own Claude Code, the plugin's server's, which
@@ -482,8 +483,9 @@ export function promptInput(p: KitNewPrompt): PromptInput {
 export type CardDraft = AutopilotDraft & { mode: AutopilotMode }
 
 // newRoutineDraft is a new routine as a card adds it: the name and spec checked as a save
-// stores them, the description and template the agent wrote, and the mode chosen.
-export function newRoutineDraft(p: RoutinePart, mode: AutopilotMode): CardDraft {
+// stores them, the description and template the agent wrote, the mode chosen, and, when
+// accepted says the user confirmed it on its row, that its Merge it may go past the rules.
+export function newRoutineDraft(p: RoutinePart, mode: AutopilotMode, accepted = false): CardDraft {
   return {
     id: 0,
     name: p.checked.name,
@@ -491,13 +493,19 @@ export function newRoutineDraft(p: RoutinePart, mode: AutopilotMode): CardDraft 
     mode,
     spec: p.checked.spec,
     templateKey: p.change?.template ?? '',
+    ...(accepted ? { acceptPastRules: true } : {}),
   }
 }
 
 // changeDraft is a change to the routine r as a card saves it: r's own mode (a change never
 // touches a routine's mode or switch), the name and spec checked as a save stores them,
-// and the description the agent wrote, or r's own when it wrote none.
-export function changeDraft(r: Pick<AutopilotRoutine, 'id' | 'mode' | 'description'>, p: RoutinePart): CardDraft {
+// the description the agent wrote, or r's own when it wrote none, and, when accepted says
+// the user confirmed it on its row, that its Merge it may go past the rules.
+export function changeDraft(
+  r: Pick<AutopilotRoutine, 'id' | 'mode' | 'description'>,
+  p: RoutinePart,
+  accepted = false,
+): CardDraft {
   const description = p.change?.description ?? ''
 
   return {
@@ -506,7 +514,21 @@ export function changeDraft(r: Pick<AutopilotRoutine, 'id' | 'mode' | 'descripti
     description: description === '' ? r.description : description,
     mode: r.mode,
     spec: p.checked.spec,
+    ...(accepted ? { acceptPastRules: true } : {}),
   }
+}
+
+// pastRulesConfirmed reports a routine's part whose Merge it may go past the rules
+// (pastRules, as kit checked it), each of whose ticks the user confirmed on its row
+// (ticked): the card saves it with their confirmation.
+export function pastRulesConfirmed(p: RoutinePart, ticked: PastTicks): boolean {
+  return p.checked.pastRules && pastRulesAccepted(pastTicks(p.checked.spec), ticked)
+}
+
+// awaitsConfirming reports a routine's part whose Merge it may go past the rules that the
+// user hasn't confirmed on its row yet: its button, and Apply all, wait for them to.
+export function awaitsConfirming(p: CardPart, ticked: PastTicks): boolean {
+  return p.part === 'routine' && p.checked.pastRules && !pastRulesConfirmed(p, ticked)
 }
 
 // listsOnly reports a spec that watches the inbox's lists alone, whose matches the stored
@@ -674,9 +696,13 @@ export function settlePart(card: DescribeCard, p: CardPart, s: Settled): Promise
 export interface ApplyKit {
   // modeOf is the mode a new routine starts in, as its row chose it.
   modeOf: (p: RoutinePart) => AutopilotMode
-  // saveChange saves a change to one of the user's routines, asking first when it can act
-  // on what the routine matches now; an error of '' is the question closed unanswered.
-  saveChange: (p: RoutinePart) => Promise<Result<AutopilotRoutine>>
+  // accepted reports a routine whose Merge it the user confirmed, on its row, may go past
+  // the rules (pastRulesConfirmed), which is saved with their confirmation.
+  accepted: (p: RoutinePart) => boolean
+  // saveChange saves a change to one of the user's routines, with the user's confirmation
+  // that it may go past the rules when accepted says so, asking first when it can act on
+  // what the routine matches now; an error of '' is the question closed unanswered.
+  saveChange: (p: RoutinePart, accepted: boolean) => Promise<Result<AutopilotRoutine>>
   // onSettled hears each part as it is applied and recorded.
   onSettled: (p: CardPart, s: Settled) => void
   // onSettingsSaved hears the settings as a settings or rules change applied left them.
@@ -706,7 +732,10 @@ async function applyPart(p: CardPart, kit: ApplyKit): Promise<Result<Settled>> {
       return made.ok ? settled('added') : made
     }
     case 'routine': {
-      const saved = isEdit(p) ? await kit.saveChange(p) : await attempt(saveRoutine(newRoutineDraft(p, kit.modeOf(p))))
+      const accepted = kit.accepted(p)
+      const saved = isEdit(p)
+        ? await kit.saveChange(p, accepted)
+        : await attempt(saveRoutine(newRoutineDraft(p, kit.modeOf(p), accepted)))
 
       return saved.ok ? settled(isEdit(p) ? 'saved' : 'added', saved.data.id) : saved
     }

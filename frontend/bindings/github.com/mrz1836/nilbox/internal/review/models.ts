@@ -937,6 +937,13 @@ export interface Review {
     "primary": Action;
 
     /**
+     * OwnAwaitsApproval reports the user's own pull request that the rules hold back only
+     * for an approval from someone else, which GitHub offers to merge past the rules now: the
+     * one a routine the user allowed may merge past them.
+     */
+    "ownAwaitsApproval": boolean;
+
+    /**
      * MergeMethods are the methods the repository allows, and DefaultMethod the one a
      * merge uses unless the user picks another.
      */

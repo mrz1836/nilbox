@@ -2,6 +2,7 @@ import { useId } from 'react'
 
 import {
   addable,
+  agentless,
   moved,
   newStep,
   omit,
@@ -12,7 +13,14 @@ import {
   settingRange,
   stepKindOf,
 } from '../../../lib/routineBuilder'
-import type { AutopilotOutcome, AutopilotProblem, AutopilotSpec, AutopilotStep, ItemKind } from '../../../platform'
+import type {
+  AutopilotMergeStep,
+  AutopilotOutcome,
+  AutopilotProblem,
+  AutopilotSpec,
+  AutopilotStep,
+  ItemKind,
+} from '../../../platform'
 import { dangerIconButtonClass, fieldClass, quietButtonClass, Select, type SelectOption } from '../../controls'
 import { PlusIcon, TrashIcon } from '../../icons'
 import { MenuButton, type MenuItem } from '../../Menu'
@@ -43,7 +51,7 @@ export function ThenBlock({ kit, agentKit, spec, kinds, onChange }: ThenBlockPro
     hint: c.offered ? undefined : 'Dry run for now',
     title: c.help,
     onSelect: () => {
-      onChange([...steps, newStep(c.kind, steps, kit.catalog.places)])
+      onChange([...steps, newStep(c.kind, steps, kit.catalog.places, spec.trigger.event)])
     },
   }))
 
@@ -111,16 +119,24 @@ function StepRow({ kit, agentKit, steps, index, kinds, step, onChange, onMove, o
   // problem with it shows where it is.
   const only: AutopilotOutcome[] = onlyIfChoices(kit.catalog, steps, index).map((o) => o.id)
   const shownOnly = onlyIf !== '' && !only.includes(onlyIf) ? [...only, onlyIf] : only
-  // Every kind of step but a merge may run always, whatever came before.
-  const always: SelectOption<''>[] = kind === 'merge' ? [] : [{ value: '', label: 'always' }]
-  // The agent step's block, and the GitHub step's, show what is wrong inside them.
+  // Every kind of step but a merge after an agent step may run always, whatever came
+  // before: a merge with no agent step merges what the routine's checks passed on.
+  const always: SelectOption<''>[] = kind === 'merge' && !agentless(steps) ? [] : [{ value: '', label: 'always' }]
+  // The agent step's block, and the GitHub step's, show what is wrong inside them, and
+  // Merge it's ticks the warning that the switch for going past the rules is off.
   const inside = [`${path}.agent`, `${path}.github`]
+  const pastAt = `${path}.merge.allowBypass`
   const own = (list: readonly AutopilotProblem[]) =>
     problemsAt(list, 'steps', path).filter(
       (p) => !inside.some((at) => p.field === at || p.field.startsWith(`${at}.`) || p.field.startsWith(`${at}[`)),
     )
+  const merge = step.merge ?? null
+  // Merge it's ticks show for one with no agent step, and for any that sets one, so a tick
+  // that no longer fits can be cleared where its problem shows.
+  const ticks = merge !== null && (agentless(steps) || merge.allowBypass === true || merge.allowSensitive === true)
   const problems = own(kit.problems)
-  const warnings = own(kit.warnings)
+  const warnings = own(kit.warnings).filter((w) => !ticks || w.field !== pastAt)
+  const pastWarnings = ticks ? kit.warnings.filter((w) => w.part === 'steps' && w.field === pastAt) : []
 
   return (
     <li className="flex flex-col gap-1.5">
@@ -211,10 +227,127 @@ function StepRow({ kit, agentKit, steps, index, kinds, step, onChange, onMove, o
           />
         </div>
       )}
+      {merge !== null && ticks && (
+        <div className="pl-6">
+          <MergePastRules
+            kit={kit}
+            id={id}
+            merge={merge}
+            warnings={pastWarnings}
+            onChange={(next) => {
+              onChange({ ...step, merge: next })
+            }}
+          />
+        </div>
+      )}
       <div className="pl-6">
         <Notes problems={problems} warnings={warnings} />
       </div>
     </li>
+  )
+}
+
+interface MergePastRulesProps {
+  kit: BuilderKit
+  id: string
+  merge: AutopilotMergeStep
+  // warnings are the backend's at the ticks: that the switch for them is off.
+  warnings: readonly AutopilotProblem[]
+  onChange: (merge: AutopilotMergeStep) => void
+}
+
+// MergePastRules are the ticks of a Merge it with no agent step that let it go past the
+// rules, each with what it lets the routine do, in the danger tone: when an approval from
+// someone else is all the user's own pull request lacks, which merges when GitHub allows,
+// never by auto-merge, and, only with that one, even when it changes workflow, agent, or
+// tooling files. While one is ticked, it says that the switch for them in Autopilot's
+// settings is off, with the way there, and whether Save asks the user to confirm them, the
+// routine as saved merging only what GitHub allows until they do.
+function MergePastRules({ kit, id, merge, warnings, onChange }: MergePastRulesProps) {
+  const bypass = merge.allowBypass === true
+  const sensitive = merge.allowSensitive === true
+  const past = kit.pastRules
+  const confirmLine = (() => {
+    if (past === undefined || (!bypass && !sensitive)) {
+      return null
+    }
+
+    if (past.saved === 'needsTick') {
+      return {
+        tone: 'text-warning',
+        text: 'You haven’t confirmed it may merge past the rules as it is now, so it merges only what GitHub allows: Save asks you to.',
+      }
+    }
+
+    return past.confirm
+      ? { tone: 'text-muted', text: 'Save asks you to confirm that it may merge past the rules.' }
+      : { tone: 'text-muted', text: 'You confirmed it may merge past the rules as it is now.' }
+  })()
+
+  return (
+    <div className="flex flex-col gap-1.5 text-xs">
+      <div className="flex flex-col gap-0.5">
+        <label htmlFor={`${id}-bypass`} className="inline-flex items-center gap-1.5">
+          <input
+            id={`${id}-bypass`}
+            type="checkbox"
+            className="checkbox"
+            checked={bypass}
+            aria-describedby={`${id}-bypass-help`}
+            onChange={(e) => {
+              // Going past the rules merges when GitHub allows; without it, sensitive files
+              // never go past them either.
+              onChange(
+                e.target.checked
+                  ? { ...merge, how: 'whenMergeable', allowBypass: true }
+                  : omit(omit(merge, 'allowBypass'), 'allowSensitive'),
+              )
+            }}
+          />
+          Merge past the rules when an approval is all it lacks
+        </label>
+        <p id={`${id}-bypass-help`} className="pl-5 text-danger">
+          On your own pull request whose every commit you signed, once its checks passed, GitHub lets you merge past the
+          branch’s rules, as it lets a repository admin: this does it for you. It merges when GitHub allows, never by
+          auto-merge.
+        </p>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <label
+          htmlFor={`${id}-sensitive`}
+          className={`inline-flex items-center gap-1.5 ${bypass ? '' : 'opacity-disabled'}`}
+        >
+          <input
+            id={`${id}-sensitive`}
+            type="checkbox"
+            className="checkbox"
+            checked={sensitive}
+            disabled={!bypass && !sensitive}
+            aria-describedby={`${id}-sensitive-help`}
+            onChange={(e) => {
+              onChange(e.target.checked ? { ...merge, allowSensitive: true } : omit(merge, 'allowSensitive'))
+            }}
+          />
+          Also when it changes workflow, agent, or tooling files
+        </label>
+        <p id={`${id}-sensitive-help`} className={`pl-5 ${bypass ? 'text-danger' : 'text-muted'}`}>
+          {bypass
+            ? 'Workflows, agents’ instructions, and tooling run with your access: with this, a change to them merges with no review from anyone else too.'
+            : 'Only with the tick above.'}
+        </p>
+      </div>
+      {warnings.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <Notes problems={[]} warnings={warnings} />
+          {past?.onSettings !== undefined && (
+            <button type="button" onClick={past.onSettings} className={quietButtonClass}>
+              Open Autopilot settings
+            </button>
+          )}
+        </div>
+      )}
+      {confirmLine !== null && <p className={confirmLine.tone}>{confirmLine.text}</p>}
+    </div>
   )
 }
 
@@ -317,6 +450,8 @@ function StepSettings({ kit, step, onChange, id, n }: StepSettingsProps) {
 
   if (step.merge !== undefined && step.merge !== null) {
     const merge = step.merge
+    // A merge past the rules merges when GitHub allows, never by auto-merge.
+    const past = merge.allowBypass === true || merge.allowSensitive === true
 
     return (
       <>
@@ -326,6 +461,7 @@ function StepSettings({ kit, step, onChange, id, n }: StepSettingsProps) {
         <select
           id={`${id}-how`}
           value={merge.how}
+          title={past ? 'A merge past the rules merges when GitHub allows, never by auto-merge.' : undefined}
           onChange={(e) => {
             onChange({
               ...step,
@@ -334,7 +470,9 @@ function StepSettings({ kit, step, onChange, id, n }: StepSettingsProps) {
           }}
           className={`${fieldClass} py-0.5 text-xs`}
         >
-          <option value="autoMergeIfItWasOn">auto-merge if it was on, else when GitHub allows</option>
+          <option value="autoMergeIfItWasOn" disabled={past}>
+            auto-merge if it was on, else when GitHub allows
+          </option>
           <option value="whenMergeable">when GitHub allows</option>
         </select>
         <label htmlFor={`${id}-method`} className="sr-only">

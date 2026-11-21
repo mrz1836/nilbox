@@ -185,6 +185,7 @@ const (
 	callReview  = "review"
 	callDiff    = "diff"
 	callState   = "state"
+	callOwn     = "own"
 	callSubmit  = "submit"
 	callMerge   = "merge"
 	callAuto    = "auto"
@@ -217,6 +218,10 @@ type fakeGitHub struct {
 	stateErr error
 	// stateOK is how many merge-state reads succeed before stateErr fails the rest.
 	stateOK int
+
+	// own is what each own merge-state read adds to the merge state it answers with, nil
+	// for none (ownRead counts those reads).
+	own *github.OwnMerge
 
 	submitErr error
 	// submitted runs once GitHub took a review, before the fake answers.
@@ -420,6 +425,28 @@ func (g *fakeGitHub) FetchMergeState(ctx context.Context, _ github.Token, _ stri
 	}
 
 	return s, nil
+}
+
+// FetchOwnMergeState answers as FetchMergeState does, with own beside it, a copy.
+func (g *fakeGitHub) FetchOwnMergeState(ctx context.Context, tok github.Token, id string) (*github.MergeState, error) {
+	state, err := g.FetchMergeState(ctx, tok, id)
+	if err != nil || !state.Found {
+		return state, err
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.count(callOwn)
+
+	out := *state
+
+	if g.own != nil {
+		own := *g.own
+		out.Own = &own
+	}
+
+	return &out, nil
 }
 
 func (g *fakeGitHub) SubmitReview(

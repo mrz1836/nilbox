@@ -13,6 +13,7 @@ import {
   item,
   kitOutcome,
   kitRoutine,
+  pastRulesSpec,
   prompt,
   routine,
   routineSpec,
@@ -20,6 +21,7 @@ import {
   settings,
 } from '../test/fixtures'
 import { platform } from '../test/platform'
+import { noTicks } from './routineBuilder'
 import {
   addsFirstWords,
   agentWords,
@@ -29,6 +31,7 @@ import {
   applyRules,
   applySettings,
   appTool,
+  awaitsConfirming,
   cardParts,
   cardPlaces,
   changeDraft,
@@ -46,6 +49,7 @@ import {
   partKey,
   partLabel,
   partProblems,
+  pastRulesConfirmed,
   promptInput,
   promptKindWords,
   promptsRun,
@@ -444,6 +448,30 @@ describe('what a card applies', () => {
     ).toBe('New words.')
   })
 
+  it('saves a routine that may go past the rules with the confirmation its row collected, and only then', () => {
+    const card = fullCard()
+    const past = (index: number): RoutinePart => {
+      const p = routinePart(card, index)
+
+      return { ...p, checked: { ...p.checked, spec: pastRulesSpec(), pastRules: true } }
+    }
+
+    expect(newRoutineDraft(routinePart(card, 0), 'ask')).not.toHaveProperty('acceptPastRules')
+    expect(newRoutineDraft(past(0), 'ask', true)).toMatchObject({ id: 0, acceptPastRules: true })
+    expect(changeDraft(routine({ id: 3 }), past(1))).not.toHaveProperty('acceptPastRules')
+    expect(changeDraft(routine({ id: 3 }), past(1), true)).toMatchObject({ id: 3, acceptPastRules: true })
+
+    // Each tick the spec sets is confirmed before it counts; a routine that sets none never
+    // waits, and is never sent as confirmed.
+    expect(pastRulesConfirmed(past(0), { bypass: true, sensitive: false })).toBe(false)
+    expect(pastRulesConfirmed(past(0), { bypass: true, sensitive: true })).toBe(true)
+    expect(pastRulesConfirmed(routinePart(card, 0), noTicks)).toBe(false)
+    expect(awaitsConfirming(past(0), { bypass: true, sensitive: false })).toBe(true)
+    expect(awaitsConfirming(past(0), { bypass: true, sensitive: true })).toBe(false)
+    expect(awaitsConfirming(routinePart(card, 0), noTicks)).toBe(false)
+    expect(awaitsConfirming(part(card, 'prompt:0'), noTicks)).toBe(false)
+  })
+
   it('tells a routine that watches the inbox’s lists alone', () => {
     expect(listsOnly(routineSpec())).toBe(true)
     expect(listsOnly({ ...routineSpec(), watch: { sources: [] } })).toBe(false)
@@ -624,12 +652,13 @@ describe('what a card applies', () => {
 })
 
 describe('applyAll', () => {
-  // kitOf is Apply all's kit, nothing settled, a new routine in Ask first, and a change
-  // saved as routine 3.
+  // kitOf is Apply all's kit, nothing settled, a new routine in Ask first, none confirmed
+  // to go past the rules, and a change saved as routine 3.
   function kitOf(overrides: Partial<ApplyAllKit> = {}): ApplyAllKit {
     return {
       settled: () => false,
       modeOf: () => 'ask',
+      accepted: () => false,
       saveChange: () => Promise.resolve({ ok: true, data: routine({ id: 3 }) }),
       onSettled: vi.fn(),
       onSettingsSaved: vi.fn(),
@@ -705,6 +734,22 @@ describe('applyAll', () => {
     ])
     // As the last setter of each left them.
     expect(vi.mocked(kit.onSettingsSaved).mock.calls).toEqual([[capped], [trusted]])
+  })
+
+  it('saves the routines the user confirmed may go past the rules with that confirmation, and no others', async () => {
+    const card = fullCard()
+    const saveChange = vi.fn(() => Promise.resolve({ ok: true as const, data: routine({ id: 3 }) }))
+    const kit = kitOf({ saveChange, accepted: (p) => p.index === 1, settled: (p) => p.part !== 'routine' })
+
+    expect(await applyAll(card, kit)).toEqual({ ok: true })
+    expect(platform.saveRoutine.mock.lastCall?.[0]).not.toHaveProperty('acceptPastRules')
+    expect(saveChange).toHaveBeenCalledWith(expect.objectContaining({ index: 1 }), true)
+
+    platform.saveRoutine.mockClear()
+    expect(
+      await applyAll(card, kitOf({ accepted: (p) => p.index === 0, settled: (p) => p.part !== 'routine' })),
+    ).toEqual({ ok: true })
+    expect(platform.saveRoutine.mock.lastCall?.[0]).toMatchObject({ id: 0, acceptPastRules: true })
   })
 
   it('leaves the parts already dealt with alone', async () => {
@@ -862,6 +907,7 @@ describe('the prompts a routine runs that its card adds', () => {
     const run = promptsRun(routinePart(card, 0), cardParts(card))
     const kit: ApplyKit = {
       modeOf: () => 'ask',
+      accepted: () => false,
       saveChange: () => Promise.resolve({ ok: true, data: routine() }),
       onSettled: vi.fn(),
       onSettingsSaved: vi.fn(),

@@ -339,13 +339,38 @@ func allowRisks(was, now *spec.Fence) []Risk {
 		"lines.", quotedSeries(added))}
 }
 
-// mergeRisks returns the risk of a routine that merges now and didn't.
+// mergeRisks returns the risks of a routine that merges now and didn't, and of each tick
+// that lets it merge past the rules now and didn't.
 func mergeRisks(was, now spec.Spec) []Risk {
-	m := mergeOf(now)
-	if m == nil || mergeOf(was) != nil {
+	m, before := mergeOf(now), mergeOf(was)
+	if m == nil {
 		return nil
 	}
 
+	var out []Risk
+
+	if before == nil {
+		out = append(out, newMergeRisk(*m, now.Agentless()))
+	}
+
+	if m.AllowBypass && (before == nil || !before.AllowBypass) {
+		out = append(out, cardWarning("It merges your own pull request past the rules when an approval from someone "+
+			"else is all it lacks and you signed every commit, with no click, once you confirm it as you add it and "+
+			"turn on Let routines merge your own pull requests past the rules in Autopilot's settings."))
+	}
+
+	if m.AllowSensitive && (before == nil || !before.AllowSensitive) {
+		out = append(out, cardWarning("It merges so even when the pull request changes workflow, agent, or tooling "+
+			"files, which a person reviews otherwise."))
+	}
+
+	return out
+}
+
+// newMergeRisk is the risk of a routine that merges now, with m, and didn't: once its
+// checks pass (agentless) or once its agent's push's do, inside GitHub's own rules unless m
+// may go past them.
+func newMergeRisk(m spec.MergeStep, agentless bool) Risk {
 	method := string(m.Method)
 
 	for _, info := range catalog.MergeMethods() {
@@ -354,8 +379,17 @@ func mergeRisks(was, now spec.Spec) []Risk {
 		}
 	}
 
-	return []Risk{cardWarning("It merges the pull request on GitHub (%s) once the checks on its agent's push pass, inside "+
-		"GitHub's own rules.", method)}
+	passed := "once the checks on its agent's push pass"
+	if agentless {
+		passed = "once its checks pass"
+	}
+
+	within := ", inside GitHub's own rules"
+	if m.AllowBypass {
+		within = ""
+	}
+
+	return cardWarning("It merges the pull request on GitHub (%s) %s%s.", method, passed, within)
 }
 
 // reviewRisks returns the risk of a routine that posts its agent's review further now

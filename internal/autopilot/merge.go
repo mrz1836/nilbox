@@ -13,15 +13,20 @@ import (
 // Merge it and Post the agent's review are the two steps that follow a run, D7's and D8's,
 // each opt in and held in Go, whatever the routine says:
 //
-//   - Merge it comes only after a Wait for the checks that passed on the agent's own push
-//     (the spec holds the order), and is pinned to that commit: a push since merges
-//     nothing. It turns GitHub's auto-merge back on when it was on as the routine matched
-//     (Match.AutoMergeAtMatch) and the step says so, and otherwise merges with the step's
-//     method, only once the review sheet's fresh read says GitHub would merge now. A pull
-//     request GitHub holds for an approving review waits for the user under Needs your OK
-//     (review_required), never approved by a routine; one an agent's commits changed
-//     workflow, agent, or tooling files in, or an outside contributor's, is never merged.
-//     There is no merge past the rules: the step can't name one.
+//   - Merge it comes after a Wait for the checks that passed on the agent's own push, and is
+//     pinned to that commit: a push since merges nothing. Or, in a routine with no agent step
+//     that fires when the checks pass, it merges the commit they passed on (agentlessHead),
+//     never on a click's run, and only once the cycle still decides the routine matches it on
+//     that commit, right before it starts (recheck). It turns GitHub's auto-merge back on when
+//     it was on as the routine matched (Match.AutoMergeAtMatch) and the step says so, and
+//     otherwise merges with the step's method, only once the review sheet's fresh read says
+//     GitHub would merge now. A pull request GitHub holds for an approving review waits for
+//     the user under Needs your OK (review_required), never approved by a routine; one an
+//     agent's commits changed workflow, agent, or tooling files in, or an outside
+//     contributor's, is never merged. The one merge past the rules is the user's own signed
+//     pull request that lacks only an approval from someone else, by a routine with no agent
+//     step whose step allows it, that the user accepted so, while their switch for it is on
+//     (pastrules.go): nothing else merges past them, and no step can name another.
 //   - Post the agent's review comes only after a Read only agent step, and is pinned to the
 //     commit the agent read: a push since posts nothing. It posts the review the agent's
 //     report held, as a comment, or as its verdict: a request for changes, or an approval
@@ -50,6 +55,13 @@ type MergeSend struct {
 
 	// Accept is the warnings the user accepted, as GitHubSent.Words worded them.
 	Accept string
+
+	// PastReview lets it go past the rules where an approval from someone else is all the
+	// user's own pull request lacks, and Sensitive when it changes sensitive files too
+	// (pastReview); PastReviewWhy says why a step that allows it may not, "" otherwise.
+	PastReview    bool
+	Sensitive     bool
+	PastReviewWhy string
 }
 
 // mergeDispatcher runs Merge it (catalog.DispatchMerge).
@@ -71,6 +83,7 @@ func (d mergeDispatcher) Dispatch(ctx context.Context, job Job) (Result, error) 
 
 	got, err := d.actions.Merge(ctx, MergeSend{
 		Item: job.Item, Head: job.Head, AutoMerge: job.AutoMerge, Method: st.Method, Accept: job.Accept,
+		PastReview: job.PastReview, Sensitive: job.Sensitive, PastReviewWhy: job.PastReviewWhy,
 	})
 	if err != nil {
 		return Result{}, err
@@ -87,7 +100,11 @@ func followsRun(st spec.Step) bool {
 
 // followWords says what a step that follows a run waits for the user's OK to do.
 func followWords(st spec.Step) string {
-	if st.Merge != nil {
+	switch {
+	case st.Merge != nil && st.Merge.AllowBypass:
+		return "Its checks passed: waiting for your OK to merge it, past the rules if an approval from someone " +
+			"else is all it lacks."
+	case st.Merge != nil:
 		return "Its checks passed: waiting for your OK to merge it."
 	}
 
@@ -95,7 +112,8 @@ func followWords(st spec.Step) string {
 }
 
 // mergeHead returns the commit m's checks last passed on, from its latest Wait for the
-// checks before step, "" for none.
+// checks before step, or, with none, the commit an agentless Merge it merges
+// (agentlessHead); "" for neither.
 func mergeHead(m *match, step int) string {
 	for i := min(step, len(m.steps)) - 1; i >= 0; i-- {
 		if sr := m.steps[i]; sr.Step.WaitForChecks != nil {
@@ -103,7 +121,7 @@ func mergeHead(m *match, step int) string {
 		}
 	}
 
-	return ""
+	return agentlessHead(m)
 }
 
 // autoMergeBack reports whether a Merge it turns auto-merge back on: the step says to when
@@ -119,15 +137,24 @@ func outsideContributor(f facts.Facts) bool {
 	return t.Known() && t.Text == string(trust.ClassOutside)
 }
 
-// mergeWords says what Merge it does: "Merges it (squash).", or turns auto-merge back on.
-func mergeWords(auto bool, method catalog.MergeMethod) string {
+// mergeWords says what Merge it, st, does: "Merges it (squash).", past the rules where an
+// approval from someone else is all it lacks when st allows it, or turns auto-merge back on.
+func mergeWords(auto bool, st spec.MergeStep) string {
 	if auto {
 		return "Turns auto-merge back on, as it was."
 	}
 
-	if method == catalog.MergeDefault {
-		return "Merges it."
+	merges := "Merges it"
+	if st.Method != catalog.MergeDefault {
+		merges += " (" + strings.ToLower(string(st.Method)) + ")"
 	}
 
-	return "Merges it (" + strings.ToLower(string(method)) + ")."
+	switch {
+	case st.AllowBypass && st.AllowSensitive:
+		return merges + ", past the rules when only an approval from someone else is missing, sensitive files included."
+	case st.AllowBypass:
+		return merges + ", past the rules when only an approval from someone else is missing."
+	}
+
+	return merges + "."
 }

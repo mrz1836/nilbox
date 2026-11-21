@@ -46,8 +46,9 @@ func guideRoutine(p *page) {
 			string(spec.MatchAny)+"` of a list of comparisons of fields, with groups one level deep (topics "+
 			"`conditions` and `fields`).",
 		"`steps`: what it does, in order: tell the user, tidy their inbox, send GitHub one of the app's own "+
-			"writes, run a coding agent, wait for the checks on what the agent pushed, merge, post the agent's "+
-			"review (topics `steps`, `agent`, and `github`).",
+			"writes, run a coding agent, wait for the checks on what the agent pushed, merge (after the agent's "+
+			"checks pass, or with no agent when the trigger is `"+string(catalog.EventChecksPassed)+"`), post the "+
+			"agent's review (topics `steps`, `agent`, and `github`).",
 		"`limits`: how often and how much: once per what, tries per item, runs a day, active hours, and a "+
 			"daily budget (topic `limits`).",
 	)

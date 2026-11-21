@@ -256,7 +256,7 @@ export const Match = {
 } as const;
 
 /**
- * MergeStep is Merge it, inside GitHub's own rules.
+ * MergeStep is Merge it, inside GitHub's own rules but for one case the user allows.
  */
 export interface MergeStep {
     "how": catalog$0.MergeHow;
@@ -265,6 +265,17 @@ export interface MergeStep {
      * Method is the merge method; "" is the repository's own.
      */
     "method"?: catalog$0.MergeMethod;
+
+    /**
+     * AllowBypass lets a Merge it with no agent step, in a routine that fires when the
+     * checks pass, merge past the rules when an approval from someone else is all it lacks,
+     * on the user's own pull request whose every commit they signed; AllowSensitive lets it
+     * do so when the pull request changes workflow, agent, or tooling files too. Neither goes
+     * without the user's switch in Autopilot's settings, nor before they accepted the
+     * routine so.
+     */
+    "allowBypass"?: boolean;
+    "allowSensitive"?: boolean;
 }
 
 /**

@@ -12,6 +12,7 @@ export {
     Blocker,
     Current,
     NeedKind,
+    PastRules,
     ProblemKind,
     ReadyLevel,
     Reason,

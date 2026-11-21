@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { matchingWords, modeLabel } from '../../lib/autopilot'
 import { attempt } from '../../lib/call'
 import { counted } from '../../lib/format'
-import { watchChanged } from '../../lib/routineBuilder'
+import { pastRulesToConfirm, watchChanged } from '../../lib/routineBuilder'
 import {
   routineMatching,
   saveRoutine,
@@ -16,6 +16,7 @@ import {
   type AutopilotRoutine,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
+import { usePastRulesConfirm } from './PastRules'
 
 // RoutineChange is a change the user asked for from a routine's switch, its menu, its
 // mode, or its builder: switching it on or off, another mode, or saving the builder's
@@ -98,30 +99,33 @@ export interface RoutineChanges {
     then?: (routine: AutopilotRoutine) => void,
     fail?: (text: string) => void,
   ) => void
-  // busy is the routine a change is under way for, 0 for none, and asking reports the
+  // busy is the routine a change is under way for, 0 for none, and asking reports a
   // question open, while a change waits for its answer.
   busy: number
   asking: boolean
-  // dialog is the question, while it is asked.
+  // dialog is the question, while one is asked.
   dialog: ReactNode
 }
 
 // useRoutineChange switches routines on and off, changes their modes, and saves the
-// builder's drafts over them. Switching one on, taking one that is on out of Dry run, or
-// saving a change to what one that is on watches, fires on, checks, or fires once per
-// first counts what it matches now (Matching, which reads its searches unless a test just
-// did); when that is any, or any it can't tell yet, or the count may be short, it asks "3
-// pull requests match right now": Run on them too, or Only what changes from now on, and
-// the change and the answer go together. Escape asks nothing more and changes nothing.
-// onDone hears the routine as changed, and onError why a change couldn't be made, in the
-// backend's words (as "Autopilot is running in another copy..."), unless the request says
-// where.
+// builder's drafts over them. A save of a draft whose Merge it may go past the rules first
+// asks the user to confirm each thing it may do, unless it is the very spec they confirmed
+// before (a name-only edit), and saves it with their confirmation. Switching one on, taking
+// one that is on out of Dry run, or saving a change to what one that is on watches, fires
+// on, checks, or fires once per first counts what it matches now (Matching, which reads its
+// searches unless a test just did); when that is any, or any it can't tell yet, or the
+// count may be short, it asks "3 pull requests match right now": Run on them too, or Only
+// what changes from now on, and the change and the answer go together. Escape asks nothing
+// more and changes nothing. onDone hears the routine as changed, and onError why a change
+// couldn't be made, in the backend's words (as "Autopilot is running in another copy..."),
+// unless the request says where.
 export function useRoutineChange(
   onDone: (routine: AutopilotRoutine) => void,
   onError: (text: string) => void,
 ): RoutineChanges {
   const [question, setQuestion] = useState<Question | null>(null)
   const [busy, setBusy] = useState(0)
+  const past = usePastRulesConfirm()
 
   const call = (routine: AutopilotRoutine, change: RoutineChange, current: AutopilotCurrent) => {
     switch (change.kind) {
@@ -164,6 +168,18 @@ export function useRoutineChange(
     then?: (routine: AutopilotRoutine) => void,
     fail?: (text: string) => void,
   ) => {
+    if (
+      change.kind === 'save' &&
+      change.draft.acceptPastRules !== true &&
+      pastRulesToConfirm(change.draft.spec, routine)
+    ) {
+      past.ask(change.draft, (draft) => {
+        request(routine, { kind: 'save', draft }, then, fail)
+      })
+
+      return
+    }
+
     if (!asks(routine, change)) {
       void apply(routine, change, 'run', then, fail)
 
@@ -192,7 +208,7 @@ export function useRoutineChange(
     })
   }
 
-  const dialog =
+  const matching =
     question === null ? null : (
       <ConfirmDialog
         title={matchingWords(question.matching)}
@@ -214,5 +230,15 @@ export function useRoutineChange(
       </ConfirmDialog>
     )
 
-  return { request, busy, asking: question !== null, dialog }
+  return {
+    request,
+    busy,
+    asking: question !== null || past.asking,
+    dialog: (
+      <>
+        {past.dialog}
+        {matching}
+      </>
+    ),
+  }
 }

@@ -69,6 +69,11 @@ func commitKey(e catalog.Event, oid string) string {
 	return string(e) + ":commit:" + strings.ToLower(oid)
 }
 
+// CommitKey is the fire key a trigger that fires once per head commit gives the occurrence
+// on oid, as a Checks pass match records it: a click's run never has it (its key is the
+// click's own).
+func CommitKey(e catalog.Event, oid string) string { return commitKey(e, oid) }
+
 func dayKey(e catalog.Event, now time.Time) string {
 	return string(e) + ":day:" + now.Format(time.DateOnly)
 }

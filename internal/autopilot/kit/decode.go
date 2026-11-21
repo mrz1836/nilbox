@@ -233,7 +233,7 @@ func switchKey(data []byte) string {
 		return ""
 	}
 
-	for _, key := range []string{"enabled", "paused"} {
+	for _, key := range []string{"enabled", "paused", "mergePastRules"} {
 		if _, ok := probe.Settings[key]; ok {
 			return key
 		}
@@ -242,11 +242,16 @@ func switchKey(data []byte) string {
 	return ""
 }
 
-// switchWords says why a proposal never names key, Autopilot's switch or Pause.
+// switchWords says why a proposal never names key, Autopilot's switch, Pause, or the switch
+// that lets routines merge the user's own pull requests past the rules.
 func switchWords(key string) string {
 	what := "Autopilot's switch"
-	if key == "paused" {
+
+	switch key {
+	case "paused":
 		what = "Pause"
+	case "mergePastRules":
+		what = "Let routines merge your own pull requests past the rules"
 	}
 
 	return what + " is the user's alone, so a proposal never names it: leave it out"

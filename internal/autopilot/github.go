@@ -55,8 +55,10 @@ type GitHubActions interface {
 
 	// Merge merges a pull request, or turns its auto-merge back on, through the review
 	// sheet, only as its Decide, on the read right before, offers it and only at req.Head:
-	// never past the rules, never one an agent's commits changed workflow, agent, or tooling
-	// files in, and one GitHub holds for an approving review waits (GitHubNeedsReview).
+	// never past the rules but on the user's own pull request that lacks only an approval,
+	// as req.PastReview allows (pastrules.go), never one an agent's commits changed
+	// workflow, agent, or tooling files in, and one GitHub holds for an approving review
+	// waits (GitHubNeedsReview).
 	Merge(ctx context.Context, req MergeSend) (GitHubSent, error)
 
 	// PostReview posts a review of a pull request through the review sheet, at req.Head,
@@ -110,6 +112,11 @@ const (
 	// GitHubNeedsReview is a merge GitHub holds for an approving review, which only a
 	// person gives: nothing was sent, and it waits for the user.
 	GitHubNeedsReview GitHubOutcome = "needs_review"
+
+	// GitHubNotYet is a merge past the rules GitHub isn't ready for yet, as while it still
+	// works out the merge state or the checks still report: nothing was sent, and it is
+	// tried again on a later cycle, never asking the user.
+	GitHubNotYet GitHubOutcome = "not_yet"
 )
 
 // GitHubSent is how a GitHub action went.
@@ -187,6 +194,8 @@ func resultOf(got GitHubSent) (Result, error) {
 			WaitWords: cmp.Or(got.Words, "GitHub wants an approving review before it merges this: approve it, "+
 				"then let the merge go."),
 		}, nil
+	case GitHubNotYet:
+		return Result{Wait: BlockSettling, WaitWords: cmp.Or(got.Words, "GitHub isn't ready to merge it yet.")}, nil
 	}
 
 	return Result{}, fmt.Errorf("%w: %q", errNoAction, got.Outcome)

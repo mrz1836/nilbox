@@ -412,6 +412,7 @@ export type AutopilotGlance = NonNullLists<autopilot.Glance>
 export type AutopilotRoutine = Omit<NonNullLists<autopilot.Routine>, 'brokenReason'> & {
   brokenReason: autopilotspec.Reason | ''
 }
+export type AutopilotPastRules = autopilot.PastRules
 export type AutopilotFigures = NonNullLists<autopilot.RoutineFigures>
 export type AutopilotRoutineName = NonNullLists<autopilot.RoutineName>
 export type AutopilotDraft = NonNullLists<autopilot.Draft>
@@ -527,6 +528,7 @@ export type AutopilotConditions = NonNullLists<autopilotspec.Conditions>
 export type AutopilotClause = NonNullLists<autopilotspec.Clause>
 export type AutopilotStep = NonNullLists<autopilotspec.Step>
 export type AutopilotAgentStep = NonNullLists<autopilotspec.AgentStep>
+export type AutopilotMergeStep = NonNullLists<autopilotspec.MergeStep>
 export type AutopilotGitHubAction = NonNullLists<autopilotspec.GitHubAction>
 export type AutopilotGitHubActionKind = autopilotcatalog.GitHubActionKind
 export type AutopilotLabelsAction = NonNullLists<autopilotspec.LabelsAction>
@@ -1099,6 +1101,7 @@ export const {
   SetAutopilotCatchUpHours: setAutopilotCatchUpHours,
   SetAutopilotHistoryDays: setAutopilotHistoryDays,
   SetAutopilotLogDays: setAutopilotLogDays,
+  SetAutopilotMergePastRules: setAutopilotMergePastRules,
 } = narrow(settings.Service)
 
 // The tools the app finds, installs, and runs for the user. List never waits for a

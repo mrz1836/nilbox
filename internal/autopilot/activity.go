@@ -589,7 +589,7 @@ func matchView(m *match, routine string) Match {
 		step := stepView(&m.steps[i])
 		if st := m.steps[i].Step.Merge; st != nil {
 			step.AutoMerge = autoMergeBack(m, st.How)
-			step.Merge = mergeWords(step.AutoMerge, st.Method)
+			step.Merge = mergeWords(step.AutoMerge, *st)
 		}
 
 		v.Steps = append(v.Steps, step)

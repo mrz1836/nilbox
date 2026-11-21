@@ -243,20 +243,30 @@ func checkDraft(d Draft) (saved, error) {
 		return saved{}, err
 	}
 
-	return saved{name: name, desc: desc, template: template, mode: d.Mode, data: string(data), spec: sp}, nil
+	return saved{
+		name: name, desc: desc, template: template, mode: d.Mode, data: string(data), spec: sp, accept: d.AcceptPastRules,
+	}, nil
 }
 
-// saved is a routine Save checked, as it stores it.
+// saved is a routine Save checked, as it stores it, and whether the user accepted its
+// Merge it going past the rules (accept).
 type saved struct {
 	name, desc, template string
 	mode                 autopilotprefs.Mode
 	data                 string
 	spec                 spec.Spec
 	viewer               string
+	accept               bool
 }
 
-// insertNew stores sv as a new routine at the end of the list, off, and returns its ID.
+// insertNew stores sv as a new routine at the end of the list, off, and returns its ID: one
+// that merges past the rules only once the user accepted it so.
 func (s *Service) insertNew(ctx context.Context, q *queries.Queries, sv saved) (int64, error) {
+	hash, err := pastRulesToWrite(sv.spec, sv.data, "", sv.accept)
+	if err != nil {
+		return 0, err
+	}
+
 	rows, err := q.ListRoutines(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("read the routines: %w", err)
@@ -273,12 +283,20 @@ func (s *Service) insertNew(ctx context.Context, q *queries.Queries, sv saved) (
 		return 0, fmt.Errorf("save the routine: %w", err)
 	}
 
+	if hash != "" {
+		if _, err = q.SetRoutinePastRules(ctx, queries.SetRoutinePastRulesParams{PastRulesHash: hash, ID: id}); err != nil {
+			return 0, fmt.Errorf("save the routine: %w", err)
+		}
+	}
+
 	return id, nil
 }
 
 // update stores sv in place of the routine id, which keeps its switch, its place, and its
 // template, and its mode when sv names none. A routine of no account becomes the account
-// signed in's, since the user edited it; a routine a newer build wrote is refused.
+// signed in's, since the user edited it; a routine a newer build wrote is refused. One that
+// merges past the rules is stored so only as the user accepted it now, or as the very spec
+// text they accepted before; any other loses its acceptance.
 func (s *Service) update(ctx context.Context, q *queries.Queries, id int64, sv saved) error {
 	row, err := s.store.get(ctx, q, id)
 	if err != nil {
@@ -287,6 +305,11 @@ func (s *Service) update(ctx context.Context, q *queries.Queries, id int64, sv s
 
 	if b := load(row.Spec).broken; b != nil && b.Reason == spec.ReasonNewer {
 		return uierr.New(brokenWords(b), fmt.Errorf("%w: %w", ErrBroken, b))
+	}
+
+	hash, err := pastRulesToWrite(sv.spec, sv.data, row.PastRulesHash, sv.accept)
+	if err != nil {
+		return err
 	}
 
 	mode := sv.mode
@@ -302,7 +325,7 @@ func (s *Service) update(ctx context.Context, q *queries.Queries, id int64, sv s
 	n, err := q.UpdateRoutine(ctx, queries.UpdateRoutineParams{
 		AccountLogin: account, Name: sv.name, NameKey: draft.NameKey(sv.name), Description: sv.desc, Enabled: row.Enabled,
 		Mode: string(s.offers.ModeFor(mode, sv.spec)), Spec: sv.data, SpecVersion: int64(sv.spec.Version),
-		EnabledAt: row.EnabledAt, UpdatedAt: s.clock.Now(), ID: id,
+		EnabledAt: row.EnabledAt, PastRulesHash: hash, UpdatedAt: s.clock.Now(), ID: id,
 	})
 
 	switch {
@@ -355,8 +378,11 @@ func (s *Service) Duplicate(ctx context.Context, id int64) (Routine, error) {
 			return nil, goneError(id)
 		}
 
+		// A copy is never accepted as one that merges past the rules: the user accepts it on
+		// its own once they save it.
 		row := rows[i]
 		row.Name, row.Enabled, row.EnabledAt, row.LastError = copyName(row.Name, rows), false, nil, ""
+		row.PastRulesHash = ""
 
 		if viewer != "" {
 			row.AccountLogin = viewer

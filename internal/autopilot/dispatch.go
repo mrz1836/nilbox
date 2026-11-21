@@ -106,6 +106,13 @@ type Job struct {
 	// and Review is the review a Post the agent's review posts (postreview.go).
 	AutoMerge bool
 	Review    *ReviewPost
+
+	// PastReview lets a Merge it go past the rules where an approval from someone else is
+	// all the user's own pull request lacks, Sensitive when it changes sensitive files too,
+	// and PastReviewWhy says why a step that allows it may not (pastrules.go).
+	PastReview    bool
+	Sensitive     bool
+	PastReviewWhy string
 }
 
 // RunRequest is the agent step of a job, as its runner launches it, and Preview plans it.

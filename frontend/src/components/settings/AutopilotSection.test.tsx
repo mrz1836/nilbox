@@ -161,6 +161,24 @@ describe('AutopilotSection', () => {
     expect(platform.setAutopilotKeepAwake).toHaveBeenCalledExactlyOnceWith(true)
   })
 
+  it('lets routines merge your own pull requests past the rules only once switched on, off by default', async () => {
+    const { onSaved } = renderSection()
+    const past = screen.getByRole('switch', { name: 'Let routines merge your own pull requests past the rules' })
+
+    expect(past).not.toBeChecked()
+    expect(past).toHaveAccessibleDescription(
+      /A routine whose Merge it allows it, and that you confirmed as you saved it, may merge your own pull request whose every commit you signed when an approval from someone else is all it lacks\. Turning this off stops every such merge at once\. A backup never carries it\./,
+    )
+
+    await userEvent.click(past)
+
+    await waitFor(() => {
+      expect(platform.setAutopilotMergePastRules).toHaveBeenCalledExactlyOnceWith(true)
+    })
+    expect(onSaved).toHaveBeenCalledWith(withAutopilot({ mergePastRules: true }))
+    expect(past).toBeChecked()
+  })
+
   it('lowers the run logs with the history, and offers none longer than it', async () => {
     const { onSaved } = renderSection()
 

@@ -15,6 +15,7 @@ import {
   kitNewPrompt,
   kitOutcome,
   kitRoutine,
+  pastRulesSpec,
   readyCheck,
   routine,
   routineReady,
@@ -753,6 +754,131 @@ describe('ProposalCard', () => {
     await user.click(review.getByRole('button', { name: 'Discard' }))
     expect(await review.findByText('Discarded')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Apply all' })).toBeEnabled()
+  })
+
+  it('collects on a new routine’s row each thing it may do past the rules, and adds it so only once each is ticked', async () => {
+    const user = userEvent.setup()
+
+    show(
+      describeCard({
+        proposal: {
+          summary: 'Merges your sync pull requests.',
+          routines: [{ name: 'Merge my sync PRs', spec: pastRulesSpec() }],
+        },
+        checked: kitChecked({
+          routines: [kitCheckedRoutine({ name: 'Merge my sync PRs', spec: pastRulesSpec(), pastRules: true })],
+        }),
+      }),
+    )
+
+    const row = within(screen.getByRole('group', { name: 'Merge my sync PRs' }))
+    const add = row.getByRole('button', { name: 'Add' })
+
+    expect(row.getByText('Once it’s on, this routine may:')).toBeInTheDocument()
+    expect(row.getByText('Add waits until you tick each.')).toBeInTheDocument()
+    expect(add).toBeDisabled()
+    await user.click(row.getByRole('checkbox', { name: /^Merge your own pull request past the rules/ }))
+    expect(add, 'every tick is confirmed').toBeDisabled()
+    await user.click(row.getByRole('checkbox', { name: /^Do so even when it changes workflow/ }))
+    expect(add).toBeEnabled()
+    expect(row.queryByText('Add waits until you tick each.')).not.toBeInTheDocument()
+
+    await user.click(add)
+
+    expect(await row.findByText('Added, switched off')).toBeInTheDocument()
+    expect(platform.saveRoutine).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 0, name: 'Merge my sync PRs', acceptPastRules: true }),
+    )
+  })
+
+  it('saves a change that may go past the rules with the confirmation its row collected, asking nothing more', async () => {
+    const user = userEvent.setup()
+
+    platform.listRoutines.mockResolvedValue([routine({ id: 3, enabled: true })])
+    show(changeCard({ spec: pastRulesSpec(), pastRules: true }))
+
+    const row = within(screen.getByRole('group', { name: 'Snooze passing bot PRs' }))
+    const save = row.getByRole('button', { name: 'Save changes' })
+
+    expect(row.getByText('Save changes waits until you tick each.')).toBeInTheDocument()
+    expect(save).toBeDisabled()
+    await user.click(row.getByRole('checkbox', { name: /^Merge your own/ }))
+    await user.click(row.getByRole('checkbox', { name: /^Do so even/ }))
+    await user.click(save)
+
+    expect(await row.findByText('Changes saved')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.saveRoutine).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 3, spec: pastRulesSpec(), acceptPastRules: true, current: 'run' }),
+    )
+  })
+
+  it('holds Apply all until a routine that may go past the rules is confirmed on its row', async () => {
+    const user = userEvent.setup()
+
+    show(
+      describeCard({
+        proposal: {
+          summary: 'A prompt, and a routine that merges your sync pull requests.',
+          prompts: [kitNewPrompt()],
+          routines: [{ name: 'Merge my sync PRs', spec: pastRulesSpec() }],
+        },
+        checked: kitChecked({
+          prompts: [kitCheckedPrompt()],
+          routines: [kitCheckedRoutine({ name: 'Merge my sync PRs', spec: pastRulesSpec(), pastRules: true })],
+        }),
+      }),
+    )
+
+    const applyAll = screen.getByRole('button', { name: 'Apply all' })
+    const row = within(screen.getByRole('group', { name: 'Merge my sync PRs' }))
+
+    expect(applyAll).toBeDisabled()
+    expect(
+      screen.getByText('Apply all waits until you confirm, on its row, what the routine may do past the rules.'),
+    ).toBeInTheDocument()
+    await user.click(row.getByRole('checkbox', { name: /^Merge your own/ }))
+    await user.click(row.getByRole('checkbox', { name: /^Do so even/ }))
+    expect(applyAll).toBeEnabled()
+
+    await user.click(applyAll)
+
+    expect(await row.findByText('Added, switched off')).toBeInTheDocument()
+    expect(platform.saveRoutine.mock.lastCall?.[0]).toMatchObject({ name: 'Merge my sync PRs', acceptPastRules: true })
+  })
+
+  it('says how many routines Apply all waits on, and asks for nothing of one whose spec sets no tick', () => {
+    const past = (index: number, name: string) =>
+      kitCheckedRoutine({ index, name, spec: pastRulesSpec(), pastRules: true })
+
+    show(
+      describeCard({
+        proposal: {
+          summary: 'Three routines.',
+          routines: [
+            { name: 'Merge my sync PRs', spec: pastRulesSpec() },
+            { name: 'Merge my docs PRs', spec: pastRulesSpec() },
+            { name: 'Merge nothing past the rules', spec: routineSpec() },
+          ],
+        },
+        checked: kitChecked({
+          routines: [
+            past(0, 'Merge my sync PRs'),
+            past(1, 'Merge my docs PRs'),
+            kitCheckedRoutine({ index: 2, name: 'Merge nothing past the rules', pastRules: true }),
+          ],
+        }),
+      }),
+    )
+
+    expect(
+      screen.getByText('Apply all waits until you confirm, on their rows, what 2 routines may do past the rules.'),
+    ).toBeInTheDocument()
+
+    const plain = within(screen.getByRole('group', { name: 'Merge nothing past the rules' }))
+
+    expect(plain.queryByText('Once it’s on, this routine may:')).not.toBeInTheDocument()
+    expect(plain.getByRole('button', { name: 'Add' })).toBeEnabled()
   })
 
   it('says how many parts keep Apply all off', () => {

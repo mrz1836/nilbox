@@ -49,10 +49,11 @@ export interface DraftReview {
   // readiness is what this Mac has for it, undefined until it is read.
   readiness: AutopilotRoutineReady | undefined
   test: DraftTesting
-  // saving reports a save under way; save stores the draft as it is now, resolving with
-  // the routine saved or why it couldn't be.
+  // saving reports a save under way; save stores the draft as it is now, with the user's
+  // confirmation that its Merge it may go past the rules when accepted says so, resolving
+  // with the routine saved or why it couldn't be.
   saving: boolean
-  save: () => Promise<Result<AutopilotRoutine>>
+  save: (accepted?: boolean) => Promise<Result<AutopilotRoutine>>
 }
 
 // Tested is a test's result, with the keys of the draft it tried (testedKeys).
@@ -94,7 +95,7 @@ export function useDraftReview(draft: AutopilotDraft, describeDelay = 300, also 
       },
     },
     saving: saver.pending,
-    save: () => saver.run(draft),
+    save: (accepted = false) => saver.run(accepted ? { ...draft, acceptPastRules: true } : draft),
   }
 }
 

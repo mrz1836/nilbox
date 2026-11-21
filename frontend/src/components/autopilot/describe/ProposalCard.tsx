@@ -5,11 +5,13 @@ import {
   applyAll,
   appliedWords,
   applyParts,
+  awaitsConfirming,
   cardParts,
   changeDraft,
   changedId,
   partKey,
   partProblems,
+  pastRulesConfirmed,
   promptName,
   promptsRun,
   recorded,
@@ -19,6 +21,7 @@ import {
   type RoutinePart,
   type Settled,
 } from '../../../lib/describeit'
+import { noTicks, type PastTicks } from '../../../lib/routineBuilder'
 import { listRoutines, type AutopilotMode, type AutopilotRoutine, type DescribeCard } from '../../../platform'
 import { buttonClass, captionClass, ErrorText, primaryButtonClass } from '../../controls'
 import { useRoutineChange } from '../useRoutineChange'
@@ -51,7 +54,8 @@ function noop(): void {
 // first the prompts it runs that the card adds and no one dealt with yet); and, for a card
 // of several parts, Apply all, which applies those left in order and stops at the first
 // that fails, saying which and why. A part with problems can't be applied, and the card
-// says so.
+// says so; a routine whose Merge it may go past the rules waits, its row and Apply all
+// alike, until the user confirms on its row each thing it may do.
 export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps) {
   const id = useId()
   const parts = cardParts(card)
@@ -63,6 +67,9 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
   // adding reports a routine's row adding the card's prompts it runs, before the routine:
   // the card's other rows wait, so none of those prompts is added twice.
   const [adding, setAdding] = useState(false)
+  // ticked are the ticks the user confirmed on each routine's row, by its index, for one
+  // whose Merge it may go past the rules.
+  const [ticked, setTicked] = useState<ReadonlyMap<number, PastTicks>>(new Map())
   const changes = useRoutineChange(noop, noop)
   // waiting is the question a change waits on, resolving with how it went; asked, whether
   // the question was open the last time the card rendered.
@@ -83,8 +90,11 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
 
   const outcomeOf = (p: CardPart) => local.get(partKey(p)) ?? recorded(card, p)
   const modeOf = (p: RoutinePart) => modes.get(p.index) ?? kit.defaultMode
+  const tickedOf = (p: CardPart) => (p.part === 'routine' ? (ticked.get(p.index) ?? noTicks) : noTicks)
+  const accepted = (p: RoutinePart) => pastRulesConfirmed(p, tickedOf(p))
   const left = parts.filter((p) => outcomeOf(p) === undefined)
   const blocked = left.filter((p) => partProblems(p).length > 0)
+  const unconfirmed = left.filter((p) => awaitsConfirming(p, tickedOf(p)))
   const held = applying || discarding || adding
 
   const record = (p: CardPart, s: Settled) => {
@@ -105,10 +115,11 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
     return done
   }
 
-  // saveChange saves a change to one of the user's routines, as it is now: the question
-  // about what it matches now is asked when it is on and the change reaches what it
-  // watches, fires on, checks, or fires once per.
-  const saveChange = async (p: RoutinePart): Promise<Result<AutopilotRoutine>> => {
+  // saveChange saves a change to one of the user's routines, as it is now, with the user's
+  // confirmation that it may go past the rules when accepted says so: the question about
+  // what it matches now is asked when it is on and the change reaches what it watches,
+  // fires on, checks, or fires once per.
+  const saveChange = async (p: RoutinePart, accepted: boolean): Promise<Result<AutopilotRoutine>> => {
     const listed = await attempt(listRoutines())
 
     if (!listed.ok) {
@@ -128,7 +139,7 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
       waiting.current = resolve
       changes.request(
         routine,
-        { kind: 'save', draft: changeDraft(routine, p) },
+        { kind: 'save', draft: changeDraft(routine, p, accepted) },
         (saved) => {
           waiting.current = null
           resolve({ ok: true, data: saved })
@@ -141,7 +152,7 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
     })
   }
 
-  const applyKit = { modeOf, saveChange, onSettled: record, onSettingsSaved: kit.onSettingsSaved }
+  const applyKit = { modeOf, accepted, saveChange, onSettled: record, onSettingsSaved: kit.onSettingsSaved }
 
   const applyEvery = async () => {
     setApplying(true)
@@ -198,6 +209,10 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
             saving={changes.busy !== 0 && changes.busy === changedId(p)}
             waitsOn={first.map((q) => promptName(q.checked.prompt))}
             addFirst={() => addFirst(first)}
+            ticked={tickedOf(p)}
+            onTick={(next) => {
+              setTicked((was) => new Map(was).set(p.index, next))
+            }}
           />
         )
       }
@@ -226,7 +241,7 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
           {parts.length > 1 && (
             <button
               type="button"
-              disabled={held || blocked.length > 0}
+              disabled={held || blocked.length > 0 || unconfirmed.length > 0}
               onClick={() => {
                 void applyEvery()
               }}
@@ -253,6 +268,13 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
               {blocked.length === 1
                 ? 'One part has problems, so Apply all is off: apply the others one by one, or discard it.'
                 : `${String(blocked.length)} parts have problems, so Apply all is off: apply the others one by one, or discard those.`}
+            </p>
+          )}
+          {parts.length > 1 && blocked.length === 0 && unconfirmed.length > 0 && (
+            <p className="min-w-0 flex-1 text-xs text-muted">
+              {unconfirmed.length === 1
+                ? 'Apply all waits until you confirm, on its row, what the routine may do past the rules.'
+                : `Apply all waits until you confirm, on their rows, what ${String(unconfirmed.length)} routines may do past the rules.`}
             </p>
           )}
         </footer>

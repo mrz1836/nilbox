@@ -870,7 +870,8 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		profiles: routineAgents, scripts: repoScripts,
 		github: githubSteps{
 			review: reviewSheet, issues: issueSheet, threads: ghThreads, prompts: promptStore, changes: inboxStore,
-			replies: replyFiller{store: promptStore, source: previews},
+			replies:   replyFiller{store: promptStore, source: previews},
+			autopilot: autopilotPrefs{prefs: prefsstore.New(pool, opts.Clock)},
 		},
 	}, logger)
 	watchSource.searches = autopilot.NewSearches(routines)

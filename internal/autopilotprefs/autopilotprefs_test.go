@@ -45,6 +45,23 @@ func TestAutopilotIsOffUntilTurnedOn(t *testing.T) {
 	assert.NotEqual(t, autopilotprefs.KeyPaused, autopilotprefs.KeyEnabled)
 }
 
+func TestMergingPastTheRulesIsOffUntilTurnedOn(t *testing.T) {
+	t.Parallel()
+
+	assert.False(t, autopilotprefs.Defaults().MergePastRules)
+	assert.False(t, autopilotprefs.Decode(map[string]string{autopilotprefs.KeyEnabled: "true"}).MergePastRules)
+
+	for stored, want := range map[string]bool{"true": true, "false": false, "": false, "yes": false} {
+		got := autopilotprefs.Decode(map[string]string{autopilotprefs.KeyMergePastRules: stored})
+		assert.Equal(t, want, got.MergePastRules, "%q", stored)
+	}
+
+	on := autopilotprefs.Defaults()
+	on.MergePastRules = true
+	assert.Equal(t, map[string]string{autopilotprefs.KeyMergePastRules: "true"}, autopilotprefs.Writes(nil, on),
+		"turning it on writes its key alone")
+}
+
 func TestModes(t *testing.T) {
 	t.Parallel()
 
@@ -65,7 +82,7 @@ func TestEncodeReadsBackAsItself(t *testing.T) {
 	c := autopilotprefs.Config{
 		Enabled: true, Paused: true, DefaultMode: autopilotprefs.ModeDryRun, AgentsAtOnce: 3, RunsPerDay: 200, ActionsPerDay: 1,
 		DailyCap: autopilotprefs.DailyCap{Amount: 2_000_000, Unit: autopilotprefs.UnitTokens}, KeepAwake: true,
-		CatchUpHours: 168, HistoryDays: 7, LogDays: 7,
+		CatchUpHours: 168, HistoryDays: 7, LogDays: 7, MergePastRules: true,
 	}
 	require.NoError(t, c.Check())
 

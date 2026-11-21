@@ -78,9 +78,21 @@ func (a *action) guardedMerge(ctx context.Context, s *Service, tok github.Token)
 	case mergeStepRefuse:
 		return a.notMerged(uierr.New(stateReason(state.Status),
 			fmt.Errorf("%w: %s", github.ErrNotMergeable, state.Status)))
+	case mergeStepRoutineRefused:
+		return a.notMerged(a.routineRefusal())
 	default:
 		return fmt.Errorf("%w: merge step %d", ErrNotOffered, a.decideMerge(state))
 	}
+}
+
+// routineRefusal is the error of a routine's merge past the rules its guard refused, worded
+// as the guard worded why: for now while it is notYet's, else for good.
+func (a *action) routineRefusal() error {
+	if a.refusedNotYet {
+		return uierr.New(a.refused, fmt.Errorf("%w: %s", ErrPastRulesNotYet, a.refused))
+	}
+
+	return uierr.New(a.refused, fmt.Errorf("%w: %s", ErrPastRulesRefused, a.refused))
 }
 
 // mergeStep is what a guarded merge does once it read the merge state.
@@ -91,21 +103,38 @@ const (
 	mergeStepPushed
 	mergeStepMerge
 	mergeStepAuto
+
+	// mergeStepRoutineRefused is a routine's merge past the rules that its guard refused,
+	// for now or for good (action.refused says why, and refusedNotYet which).
+	mergeStepRoutineRefused
 )
 
 // decideMerge says what a guarded merge does in state: refuse a head that moved, merge
 // what GitHub would merge now (UNSTABLE only when the user accepted it), merge past the
-// rules what they hold back, when that is what the user chose and GitHub still lets them,
-// turn on auto-merge for what is blocked once approved, where GitHub allows it, and else
-// refuse.
+// rules a routine's merge that its every check lets past (pastRules), merge past the rules
+// what they hold back, when that is what the user chose and GitHub still lets them, turn on
+// auto-merge for what is blocked once approved, where GitHub allows it, and else refuse.
 func (a *action) decideMerge(state *github.MergeState) mergeStep {
-	held := state.Status == github.MergeStateBlocked || state.Status == github.MergeStateBehind
-
 	switch {
 	case !strings.EqualFold(state.Head, a.head):
 		return mergeStepPushed
 	case a.mergesNow(state):
 		return mergeStepMerge
+	case a.routine != nil:
+		return a.routineStep(state)
+	default:
+		return a.heldStep(state)
+	}
+}
+
+// heldStep is what the user's own merge does in state, which GitHub would not merge as it
+// is: merge past the rules what they hold back, when that is what the user chose and GitHub
+// still lets them, turn on auto-merge for what is blocked once approved, where GitHub allows
+// it, and else refuse.
+func (a *action) heldStep(state *github.MergeState) mergeStep {
+	held := state.Status == github.MergeStateBlocked || state.Status == github.MergeStateBehind
+
+	switch {
 	case a.kind == ActionMergeBypass && held && state.CanBypass:
 		return mergeStepMerge
 	case state.Status == github.MergeStateBlocked && a.canAuto && a.approved():
@@ -115,13 +144,29 @@ func (a *action) decideMerge(state *github.MergeState) mergeStep {
 	}
 }
 
+// routineStep is what a routine's merge past the rules does in state, which GitHub would
+// not merge as it is: merge past the rules once every check holds, and else refuse, for now
+// or for good, recording why.
+func (a *action) routineStep(state *github.MergeState) mergeStep {
+	why, notYet := a.pastRules(state)
+	a.refused, a.refusedNotYet = why, notYet
+
+	if why == "" {
+		return mergeStepMerge
+	}
+
+	return mergeStepRoutineRefused
+}
+
 // guard reads the merge state, up to guardReads times guardWait apart while GitHub still
-// works it out.
+// works it out: for a routine's merge past the rules, with all FetchOwnMergeState reads.
 func (a *action) guard(ctx context.Context, s *Service, tok github.Token) (*github.MergeState, error) {
 	a.step(s, "Checking that GitHub can merge it")
 
-	for read := 1; ; read++ {
-		state, err := s.github.FetchMergeState(ctx, tok, a.nodeID)
+	read := a.stateReader(s)
+
+	for n := 1; ; n++ {
+		state, err := read(ctx, tok, a.nodeID)
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +175,7 @@ func (a *action) guard(ctx context.Context, s *Service, tok github.Token) (*gith
 			return nil, err
 		}
 
-		if state.Status != github.MergeStateUnknown || read >= guardReads {
+		if state.Status != github.MergeStateUnknown || n >= guardReads {
 			return state, nil
 		}
 
@@ -140,6 +185,16 @@ func (a *action) guard(ctx context.Context, s *Service, tok github.Token) (*gith
 			return nil, err
 		}
 	}
+}
+
+// stateReader is the read of the merge state a guard makes: for a routine's merge past the
+// rules, FetchOwnMergeState's, with all it checks; for any other, FetchMergeState's.
+func (a *action) stateReader(s *Service) func(ctx context.Context, tok github.Token, id string) (*github.MergeState, error) {
+	if a.routine != nil {
+		return s.github.FetchOwnMergeState
+	}
+
+	return s.github.FetchMergeState
 }
 
 // mergeableState refuses a pull request no merge can take: one no longer open, a draft,

@@ -137,8 +137,15 @@ func (f *PromptFollower) rename(ctx context.Context, q *queries.Queries, row que
 		return false, err
 	}
 
+	// The user's acceptance of the routine as one that merges past the rules follows the
+	// rename, which changes no step but a prompt's nickname, only while it stood.
+	hash := ""
+	if accepted(row) {
+		hash = pastRulesHash(string(data))
+	}
+
 	n, err := q.SetRoutineSpec(ctx, queries.SetRoutineSpecParams{
-		Spec: string(data), UpdatedAt: f.s.clock.Now(), ID: row.ID, Was: row.Spec,
+		Spec: string(data), PastRulesHash: hash, UpdatedAt: f.s.clock.Now(), ID: row.ID, Was: row.Spec,
 	})
 
 	return n > 0, err
