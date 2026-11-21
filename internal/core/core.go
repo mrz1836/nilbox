@@ -889,6 +889,9 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		scripts: repoScripts, history: scriptRuns, waker: engine,
 	})
 	routinePromptUses := routinePrompts{follower: autopilot.NewPromptFollower(routines), logger: logger}
+	// A bug report words the settings the services below keep too, so they are wired in
+	// once they are built.
+	report := &bugReportState{settings: prefs, tools: tools, updates: updateEngine, routines: routines, logger: logger}
 
 	c := &Core{
 		DB:         pool,
@@ -920,9 +923,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 			Finder:    search,
 			Runner:    versionRunner,
 			Home:      opts.Home,
-			State: bugReportState{
-				settings: prefs, tools: tools, updates: updateEngine, routines: routines, logger: logger,
-			},
+			State:     report,
 		}),
 		Budget:                budgetSvc,
 		Sessions:              follow.service,
@@ -997,6 +998,8 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		agents: agents, ready: readiness, routines: routines,
 		autopilot: autopilotPrefs{prefs: prefsstore.New(pool, opts.Clock)}, updates: updateEngine, waker: describe,
 	}, logger)
+	report.prompts, report.launchDefaults, report.profiles, report.describe = c.Prompts, c.LaunchDefaults,
+		c.Profiles, c.DescribeIt
 
 	return c
 }
