@@ -416,6 +416,64 @@ func TestAPassTheDatabaseFailsSaysWhatFailed(t *testing.T) {
 	}
 }
 
+func TestDecidingThatCantReadWhatItDecidesSaysWhatFailed(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a nudged run, the mirror gone", func(t *testing.T) {
+		t.Parallel()
+
+		// A dismissal in the app while the mirror is fresh: the run it nudges lists nothing
+		// and goes straight to deciding, whose first read of the threads fails.
+		r := clearingRig(t, prThread(firstID, 1, start))
+		NewSettler(r.svc).Settle(t.Context(), []Outcome{outcome(OutcomeDismissed, item.KindPR, 1, start)})
+		testutil.Exec(t, r.db, `DROP TABLE gh_threads`)
+
+		req, ok := r.svc.takeNudge()
+		require.True(t, ok, "a nudge waits")
+		require.ErrorContains(t, r.svc.runPass(t.Context(), req), "read the GitHub notifications to clear")
+		assertNoRequests(t, r.gh.requests(), "nothing is listed or sent")
+		assert.Empty(t, r.ledger(), "nothing is queued")
+	})
+
+	t.Run("the threads read again, the mirror gone", func(t *testing.T) {
+		t.Parallel()
+
+		r := clearingRig(t, prThread(firstID, 1, start))
+		in, err := loadInputs(t.Context(), r.svc.q, viewerLogin)
+		require.NoError(t, err)
+		require.Len(t, in.threads, 1)
+
+		testutil.Exec(t, r.db, `DROP TABLE gh_threads`)
+
+		require.ErrorContains(t, in.reloadThreads(t.Context(), r.svc.q, viewerLogin), "read the GitHub notifications to clear")
+		assert.Len(t, in.threads, 1, "the threads read first are kept")
+	})
+
+	// The run read the passes' state and the ledger's marks, but the queue reads both again
+	// inside its transaction, and each is gone by then.
+	for name, tt := range map[string]struct{ sql, words string }{
+		"queueing, the state gone":  {sql: `DROP TABLE prefs`, words: "read the state of the GitHub notifications"},
+		"queueing, the ledger gone": {sql: `DROP TABLE gh_thread_clears`, words: "read the cleared GitHub notifications"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := clearingRig(t, prThread(firstID, 1, start))
+			in, err := loadInputs(t.Context(), r.svc.q, viewerLogin)
+			require.NoError(t, err)
+
+			rules, err := r.rules.ThreadRules(t.Context())
+			require.NoError(t, err)
+
+			testutil.Exec(t, r.db, tt.sql)
+
+			run := &clearRun{rules: rules, account: viewerLogin, now: r.clock.Now()}
+			require.ErrorContains(t, r.svc.queue(t.Context(), run, &in, true), tt.words)
+			assertNoRequests(t, r.gh.requests(), "nothing is sent")
+		})
+	}
+}
+
 func TestTurningClearingOffThatCantSkipTheQueueSaysSo(t *testing.T) {
 	t.Parallel()
 
