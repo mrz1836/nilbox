@@ -5743,9 +5743,10 @@ apart from the platform module, so the fake leaves it in place. A settings secti
 changes through `useListChange` (`components/settings/useListChange.ts`), one at a time with
 its controls held, a refusal keeping the draft it was made with. The toolbar's popover buttons
 are `ToolbarPopoverButton`, their counts `CountDot` (`PopoverPanel.tsx`). Both sheets take
-`SheetCommonProps` (`lib/sheet.ts`), which a host builds once, and hear a move from one item to
-another through `useSheetVisits`, which marks the item left and the one opened read once per
-opening; `ReviewComposer` and `IssueComposer` both render `components/conversation/Composer.tsx`.
+`SheetCommonProps` (`lib/sheet.ts`), which a host builds once; a host (`InboxView`, and
+Autopilot's `useSheetHost`) hears its sheet move from one item to another through
+`useSheetVisits`, which marks the item left and the one opened read once per opening;
+`ReviewComposer` and `IssueComposer` both render `components/conversation/Composer.tsx`.
 
 **The launch dialogs.** `components/launchDialogs.tsx` defines each dialog a launch opens once,
 for every control that opens it: the launch options (`LaunchDialog`, its `LaunchMenu`, and the
