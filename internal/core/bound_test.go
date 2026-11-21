@@ -648,22 +648,13 @@ func boundCalls(t *testing.T) map[string]boundCall {
 
 			return got, err
 		},
-		// The calls run in the order of their names: Clear queues the notification, by
-		// hand, and Keep takes it back, so the lists of both the queue and the ledger have
-		// an element.
-		"ghthreads.Service.Clear": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			got, err := c.GHThreads.Clear(ctx, []int64{20000000001})
-			require.Len(t, got.Queued, 1, "queued by hand, with no Syncer to send it")
-
-			return got, err
-		},
-		"ghthreads.Service.ClearItem": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			got, err := c.GHThreads.ClearItem(ctx, boundOwner, boundRepo, 7)
-			require.Len(t, got.Queued, 1, "the one queued, sent at once")
-
-			return got, err
-		},
+		// Keep first queues the notification by hand, so the lists of both the queue and the
+		// ledger have an element.
 		"ghthreads.Service.Keep": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			n, err := c.GHThreads.ClearItemThreads(ctx, boundOwner, boundRepo, 7)
+			require.NoError(t, err)
+			require.Equal(t, 1, n, "queued by hand, with no Syncer to send it")
+
 			queued, err := c.GHThreads.Snapshot(ctx)
 			require.NoError(t, err)
 			require.Len(t, queued.Queued, 1)
@@ -692,10 +683,6 @@ func boundCalls(t *testing.T) map[string]boundCall {
 			require.Len(t, got.Unread, 1, "nothing marked")
 
 			return got, err
-		},
-		"ghthreads.Service.Preview": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			// No moment finished the pull request: nothing would clear.
-			return c.GHThreads.Preview(ctx)
 		},
 		"notify.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Notifications.List(ctx)

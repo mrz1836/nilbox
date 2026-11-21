@@ -152,8 +152,8 @@ const (
 	// themselves, or removed themselves as a reviewer.
 	TriggerUnassigned Trigger = "unassigned"
 
-	// TriggerByHand is the user clearing a notification themselves, from an item's menu
-	// or the cleanup sheet. It has no switch and no guard but the thread's own.
+	// TriggerByHand is the user clearing a notification themselves, as Autopilot's Mark
+	// the GitHub notification done does. It has no switch and no guard but the thread's own.
 	TriggerByHand Trigger = "by_hand"
 )
 

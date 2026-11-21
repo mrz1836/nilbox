@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/clock"
-	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/threadrules"
@@ -56,13 +55,10 @@ func TestKeptThreadStaysUntilItMoves(t *testing.T) {
 
 	r.clock.Advance(5 * time.Minute)
 	assert.Empty(t, writes(r.mustPass()), "the Undo sticks")
-	assert.Len(t, r.ledger(), 1, "not queued again")
 
-	preview, err := r.svc.Preview(t.Context())
-	require.NoError(t, err)
-	assert.Zero(t, preview.Count)
-	require.Len(t, preview.Held, 1)
-	assert.Equal(t, SkipKept, preview.Held[0].Reason)
+	ledger := r.ledger()
+	require.Len(t, ledger, 1, "not queued again")
+	assert.Equal(t, string(ClearKept), ledger[0].state, "it waits, kept")
 
 	// It moves on GitHub: a bot's comment, after the dismissal.
 	r.gh.commented(firstID, 900, "Bot", start.Add(8*time.Minute))
@@ -78,8 +74,11 @@ func TestClearByHandWorksWithAutoOff(t *testing.T) {
 	r.gh.set([]fakeThread{prThread(firstID, 1, start)})
 	r.mustPass()
 
-	snap, err := r.svc.Clear(t.Context(), []int64{firstID, firstID})
+	n, err := r.svc.clearByHand(t.Context(), []int64{firstID, firstID})
 	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+
+	snap := r.snapshot()
 	require.Len(t, snap.Queued, 1, "once, whoever asks twice")
 	assert.Equal(t, threadrules.TriggerByHand, snap.Queued[0].Trigger)
 	assert.Equal(t, clock.Format(start), snap.Queued[0].SendAfter, "no hold")
@@ -96,13 +95,14 @@ func TestClearByHandWorksWithAutoOff(t *testing.T) {
 	r.mustPass()
 	r.rules.off.Store(true)
 
-	snap, err = r.svc.Clear(t.Context(), []int64{firstID + 1})
+	n, err = r.svc.clearByHand(t.Context(), []int64{firstID + 1})
 	require.NoError(t, err)
-	assert.Empty(t, snap.Queued)
+	assert.Zero(t, n)
+	assert.Empty(t, r.snapshot().Queued)
 	assert.Len(t, r.ledger(), 1)
 }
 
-func TestClearItemClearsOnlyThatItem(t *testing.T) {
+func TestClearItemThreadsClearsOnlyThatItem(t *testing.T) {
 	t.Parallel()
 
 	second := prThread(firstID+1, 1, start.Add(-time.Minute))
@@ -112,18 +112,20 @@ func TestClearItemClearsOnlyThatItem(t *testing.T) {
 	r.gh.set([]fakeThread{prThread(firstID, 1, start), second, prThread(firstID+2, 2, start.Add(-2*time.Minute))})
 	r.mustPass()
 
-	snap, err := r.svc.ClearItem(t.Context(), "Acme-Org", "Example-Repo", 1)
+	n, err := r.svc.ClearItemThreads(t.Context(), "Acme-Org", "Example-Repo", 1)
 	require.NoError(t, err)
-	assert.Len(t, snap.Queued, 2, "both of its threads")
+	assert.Equal(t, 2, n, "both of its threads")
+	assert.Len(t, r.snapshot().Queued, 2)
 
 	assert.ElementsMatch(t, []int64{firstID, firstID + 1}, idsOf(ofKind(r.send(), kindDone)))
 
 	_, ok := r.row(viewerLogin, firstID+2)
 	assert.True(t, ok, "the other item's thread is left alone")
 
-	snap, err = r.svc.ClearItem(t.Context(), owner, exampleRepo, 404)
+	n, err = r.svc.ClearItemThreads(t.Context(), owner, exampleRepo, 404)
 	require.NoError(t, err)
-	assert.Empty(t, snap.Queued, "an item with no thread clears nothing")
+	assert.Zero(t, n)
+	assert.Empty(t, r.snapshot().Queued, "an item with no thread clears nothing")
 }
 
 func TestClearItemThreadsSaysHowManyItQueued(t *testing.T) {
@@ -153,8 +155,11 @@ func TestClearNeverTouchesNonItemThreads(t *testing.T) {
 	}, prThread(firstID+2, 3, start)))
 	r.mustPass()
 
-	snap, err := r.svc.Clear(t.Context(), []int64{firstID, firstID + 1, firstID + 2})
+	n, err := r.svc.clearByHand(t.Context(), []int64{firstID, firstID + 1, firstID + 2})
 	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+
+	snap := r.snapshot()
 	require.Len(t, snap.Queued, 1, "only the pull request's")
 	assert.Equal(t, firstID+2, snap.Queued[0].ThreadID)
 
@@ -162,92 +167,20 @@ func TestClearNeverTouchesNonItemThreads(t *testing.T) {
 	assert.Equal(t, 2, r.snapshot().Status.Count, "a check suite and a release are only counted")
 }
 
-func TestPreviewCountsWithAutoOff(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t)
-
-	other := prThread(firstID+3, 7, start.Add(-time.Hour))
-	other.repo = owner + "/other-repo"
-
-	busy := prThread(firstID+4, 8, start.Add(10*time.Minute)) // a person commented after the merge
-	threads := append(r.gh.mergedThreads(3), other, busy, prThread(firstID+5, 9, start))
-
-	r.gh.configure(func(f *fakeGitHub) {
-		f.states[owner+"/other-repo#7"] = github.StateMerged
-		f.states[exampleRef("8")] = github.StateMerged
-		f.states[exampleRef("9")] = github.StateOpen
-	})
-	r.gh.set(threads)
-	r.clock.Advance(11 * time.Minute)
-
-	assert.Empty(t, writes(r.mustPass()), "clearing is off: nothing is sent")
-	assert.Empty(t, r.ledger(), "nor queued")
-
-	preview, err := r.svc.Preview(t.Context())
-	require.NoError(t, err)
-	assert.True(t, preview.Reading)
-	assert.False(t, preview.Auto)
-	assert.Equal(t, threadrules.ActionDone, preview.Action)
-	assert.Equal(t, 4, preview.Count, "decided as if clearing were on")
-
-	require.Len(t, preview.Repos, 2, "by repository")
-	assert.Equal(t, exampleRepo, preview.Repos[0].Name)
-	assert.Len(t, preview.Repos[0].Threads, 3)
-	assert.Equal(t, "other-repo", preview.Repos[1].Name)
-	assert.Equal(t, PreviewThread{
-		ID: firstID + 3, Owner: owner, Name: "other-repo", Kind: item.KindPR, Number: 7, Title: "Retry the sync worker 7",
-		Reason: "review_requested", Unread: true, UpdatedAt: clock.Format(start.Add(-time.Hour)), Trigger: threadrules.TriggerMerged,
-	}, preview.Repos[1].Threads[0])
-
-	require.Len(t, preview.Held, 1, "the open one has no moment; the busy one is held")
-	assert.Equal(t, SkipNewActivity, preview.Held[0].Reason)
-	assert.Equal(t, 1, preview.Held[0].Count)
-	assert.Equal(t, firstID+4, preview.Held[0].Threads[0].ID)
-
-	r.rules.off.Store(true)
-
-	preview, err = r.svc.Preview(t.Context())
-	require.NoError(t, err)
-	assert.False(t, preview.Reading)
-	assert.Zero(t, preview.Count)
-	assert.NotNil(t, preview.Repos)
-	assert.NotNil(t, preview.Held)
-}
-
-func TestPreviewLeavesOutAThreadWhoseClearIsQueued(t *testing.T) {
-	t.Parallel()
-
-	r := heldClear(t)
-
-	preview, err := r.svc.Preview(t.Context())
-	require.NoError(t, err)
-	assert.Zero(t, preview.Count, "its clear is on its way already")
-	assert.Empty(t, preview.Held)
-
-	snap := r.snapshot()
-	require.Len(t, snap.Queued, 1, "the snapshot's queue shows it instead")
-	assert.Equal(t, firstID, snap.Queued[0].ThreadID)
-}
-
-func TestTheSheetsActionsSayWhatFailed(t *testing.T) {
+func TestTheClearsByHandSayWhatFailed(t *testing.T) {
 	t.Parallel()
 
 	const refuseUpdate = `CREATE TRIGGER refused BEFORE UPDATE ON gh_thread_clears
 		BEGIN SELECT RAISE(ABORT, 'refused by the test'); END`
 
-	// preview, clearThread, clearItem, and keep are the sheet's actions, each on the rig's one
-	// thread or its queued clear.
-	preview := func(r *rig) error {
-		_, err := r.svc.Preview(r.t.Context())
-		return err
-	}
+	// clearThread, clearItem, and keep clear by hand and take a clear back, each on the rig's
+	// one thread or its queued clear.
 	clearThread := func(r *rig) error {
-		_, err := r.svc.Clear(r.t.Context(), []int64{firstID})
+		_, err := r.svc.clearByHand(r.t.Context(), []int64{firstID})
 		return err
 	}
 	clearItem := func(r *rig) error {
-		_, err := r.svc.ClearItem(r.t.Context(), owner, exampleRepo, 1)
+		_, err := r.svc.ClearItemThreads(r.t.Context(), owner, exampleRepo, 1)
 		return err
 	}
 	keep := func(r *rig) error {
@@ -261,7 +194,6 @@ func TestTheSheetsActionsSayWhatFailed(t *testing.T) {
 		call  func(r *rig) error
 		words string
 	}{
-		{name: "preview, the mirror gone", sql: `DROP TABLE gh_threads`, call: preview, words: "read the GitHub notifications to clear"},
 		{name: "clear, the mirror gone", sql: `DROP TABLE gh_threads`, call: clearThread, words: "read a GitHub notification to clear"},
 		{name: "clear an item, the mirror gone", sql: `DROP TABLE gh_threads`, call: clearItem, words: "read the GitHub notifications to clear"},
 		{name: "clear, refused", sql: refuseUpdate, call: clearThread, words: "queue a GitHub notification's clear"},
@@ -288,8 +220,8 @@ func TestTheSheetsActionsSayWhatFailed(t *testing.T) {
 		r := heldClear(t)
 		r.rules.fail(errRulesUnread)
 
-		require.ErrorIs(t, preview(r), errRulesUnread)
 		require.ErrorIs(t, clearThread(r), errRulesUnread)
+		require.ErrorIs(t, clearItem(r), errRulesUnread)
 		queuedOnly(t, r, "the clear is left as it was")
 	})
 

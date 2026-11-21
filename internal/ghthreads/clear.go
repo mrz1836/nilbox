@@ -32,7 +32,7 @@ import (
 // can still undo it; one GitHub's state chose goes at once. The first pass after clearing
 // turns on, or after the rules change, queues at most FirstCap by itself, and any later
 // pass at most Cap: a pass over its cap queues none, and records how many it held back
-// (the Backlog), for the user to review in the cleanup sheet (Preview, then Clear).
+// (the Backlog).
 //
 // The queue is sent one clear at a time through the GitHub client's chore lane, each
 // checked again just before it goes (sendOne): clearing still on, reading still on,

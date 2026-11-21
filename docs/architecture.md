@@ -1299,12 +1299,10 @@ attempt; any other failure is tried again a minute on, three times at most, then
 thread marked done leaves the mirror, and one marked read stays, read. Clearing turned off
 (settings' Go-only `event.ThreadRulesChanged`, which core's relay turns into the `Syncer`'s
 `RulesChanged`) skips every queued clear but the user's own at once, and reading turned off
-skips them all and sends nothing. The bound `Preview` lists, from the database alone and as
-if clearing were on, what would clear, by repository, and what is held back, by reason;
-`Clear` and `ClearItem` clear threads by hand (no hold, with clearing on or off, never a
-thread that isn't a pull request's or an issue's), and `ClearItemThreads` is `ClearItem` saying
-how many it queued, which Autopilot's Mark the GitHub notification done runs; `Keep` takes
-queued clears back; and
+skips them all and sends nothing. `ClearItemThreads` clears an item's threads by hand (no
+hold, with clearing on or off, never a thread that isn't a pull request's or an issue's) and
+says how many it queued, which Autopilot's Mark the GitHub notification done runs; `Keep`
+takes queued clears back; and
 `MarkDone` and `MarkRead` (`mark.go`) are the panel's Done and its opening of a line on
 GitHub: any thread the mirror lists for the account, whatever its subject and whatever the
 rules' action, sent at once through the chore lane (waiting out its pace up to

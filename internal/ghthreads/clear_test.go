@@ -166,21 +166,18 @@ func TestFirstPassAfterRuleChangeCapsAt25(t *testing.T) {
 	assert.Equal(t, 30, r.snapshot().Backlog, "they wait for review")
 	assert.Empty(t, r.state().RulesSeen, "the first pass is still to come")
 
-	preview, err := r.svc.Preview(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, 30, preview.Count, "the sheet shows them")
-
 	r.clock.Advance(5 * time.Minute)
 	assert.Empty(t, writes(r.mustPass()), "and they keep waiting")
 
-	// The user clears ten from the sheet: the rest are now few enough.
+	// The user clears ten by hand: the rest are now few enough.
 	ids := make([]int64, 0, 10)
 	for _, th := range threads[:10] {
 		ids = append(ids, th.id)
 	}
 
-	_, err = r.svc.Clear(t.Context(), ids)
+	n, err := r.svc.clearByHand(t.Context(), ids)
 	require.NoError(t, err)
+	assert.Equal(t, 10, n)
 	assert.Len(t, writes(r.send()), 10, "by hand, no cap")
 
 	r.clock.Advance(5 * time.Minute)
@@ -217,7 +214,7 @@ func TestLaterPassCapsAt150(t *testing.T) {
 	assert.Empty(t, writes(r.mustPass()), "151 is more than a pass clears by itself")
 	assert.Equal(t, Cap+1, r.snapshot().Backlog)
 
-	_, err := r.svc.Clear(t.Context(), []int64{threads[0].id})
+	_, err := r.svc.clearByHand(t.Context(), []int64{threads[0].id})
 	require.NoError(t, err)
 	assert.Len(t, writes(r.send()), 1)
 
@@ -484,11 +481,7 @@ func TestAfterMomentPersonSticksUntilRead(t *testing.T) {
 	got = r.mustPass()
 	assert.Empty(t, ofKind(got, "comment"), "a person's activity sticks: not asked again")
 	assert.Empty(t, writes(got))
-
-	preview, err := r.svc.Preview(t.Context())
-	require.NoError(t, err)
-	require.Len(t, preview.Held, 1)
-	assert.Equal(t, SkipNewActivity, preview.Held[0].Reason)
+	assert.Empty(t, r.ledger(), "held, not queued")
 
 	// The user reads it on GitHub.
 	r.gh.read(firstID)
@@ -555,12 +548,10 @@ func TestReadModeMarksReadAndSkipsAlreadyRead(t *testing.T) {
 	assert.Equal(t, 2, snap.Status.Count)
 	assert.Zero(t, snap.Status.Unread, "read now")
 
-	preview, err := r.svc.Preview(t.Context())
+	n, err := r.svc.clearByHand(t.Context(), []int64{firstID, firstID + 1})
 	require.NoError(t, err)
-	assert.Zero(t, preview.Count)
-	require.Len(t, preview.Held, 1)
-	assert.Equal(t, SkipAlreadyRead, preview.Held[0].Reason)
-	assert.Equal(t, 2, preview.Held[0].Count, "both are read now")
+	assert.Zero(t, n, "both are read now: left alone, even by hand")
+	assert.Len(t, r.ledger(), 1)
 }
 
 func TestPruneOldMomentsAndClears(t *testing.T) {
@@ -653,7 +644,7 @@ func TestTriggersEndToEnd(t *testing.T) {
 				t.Helper()
 
 				r.rules.change(func(rules *threadrules.Rules) { rules.Auto = false })
-				_, err := r.svc.Clear(t.Context(), []int64{firstID})
+				_, err := r.svc.clearByHand(t.Context(), []int64{firstID})
 				require.NoError(t, err)
 
 				return r.send()
