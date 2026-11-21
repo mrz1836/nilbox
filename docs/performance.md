@@ -238,17 +238,18 @@ The whole bundle, the executable with its icon set, `Info.plist`, and code signa
 The binary is built with `-tags desktop,production -trimpath -ldflags "-s -w"` and embeds the
 built frontend. Measured once the GitHub notifications' clearing landed.
 
-The built frontend, as `vite build` wrote it on 2026-11-21, is about 2.33 MB without source
-maps. Before its first paint the window loads 845 KB of script (283 KB gzipped) and 118 KB of
-CSS (20 KB gzipped), 963 KB in all, in three scripts: the 467 KB entry, which holds the inbox;
-the 378 KB shared script it preloads, most of the modules the first paint loads that a page or
-a sheet imports too (`codeSplitting` in `vite.config.ts`; Rolldown keeps the rest in the
-entry); and Rolldown's runtime. Each page is a script of its own, loaded the first time it
-opens: Autopilot (313 KB), Settings (211 KB), the Scripts tab (150 KB), Worktrees (127 KB),
-Prompts (74 KB), the setup (64 KB), and Notifications (23 KB). The review and issue sheets
-(82 KB and 25 KB), the inbox-nil party (15 KB, with the confetti, 4 KB, and the terminal,
-2 KB, as scripts of their own), and the settings' search index (19 KB) load once the inbox has
-painted.
+The built frontend, as `vite build` wrote it on 2026-11-21, is about 2.31 MB without source
+maps (2,311,405 bytes). Before its first paint the window loads 844,221 bytes of script
+(282,501 gzipped) and 118,238 bytes of CSS (20,185 gzipped), 962,459 bytes in all (302,686
+gzipped), as the frontend gate prints them, in three scripts: the 467 KB entry, which holds
+the inbox; the 377 KB shared script it preloads, most of the modules the first paint loads
+that a page or a sheet imports too (`codeSplitting` in `vite.config.ts`; Rolldown keeps the
+rest in the entry); and Rolldown's runtime. Each page is a script of its own, loaded the first
+time it opens: Autopilot (311 KB), Settings (210 KB), the Scripts tab (148 KB), Worktrees
+(126 KB), Prompts (72 KB), the setup (62 KB), and Notifications (23 KB). The review and
+issue sheets (82 KB and 25 KB), the inbox-nil party (15 KB, with the confetti, 4 KB, and the
+terminal, 2 KB, as scripts of their own), and the settings' search index (19 KB) load once the
+inbox has painted.
 `magex frontend:gate` measures the first paint after its build, prints it, and fails when its
 script or its CSS outgrows its budget (`magefiles/firstpaint.go`: 950 KB, 325 KB gzipped, for
 the script; 140 KB, 25 KB gzipped, for the CSS), as the build itself fails on any one script

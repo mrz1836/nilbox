@@ -5732,11 +5732,11 @@ the toolbar's height and its inset beside the window controls, and hairlines sta
 Another, `TestFrontendStylesComeFromTokens`, fails on a style written around the tokens: a
 Tailwind palette utility or variable, a color written into a class, a style, or a stylesheet
 outside a token's own declaration, an arbitrary text size or backdrop, and a disabled fade
-other than `opacity-disabled`. It lets four lines through, each with its reason: the
-checkbox's data-URL check and dash, the slider thumb's shadow, the inbox-nil grid's masks, and
-the card guide's sample label colors. ESLint fails on a checkbox or radio input in the window
-without its class (`controlClassSyntax` in `eslint.config.js`), unless it is hidden
-(`sr-only`) or a switch.
+other than `opacity-disabled`. It has four exceptions, each with its reason and each matching
+only the whole line it is for, eight lines in all: the checkbox's data-URL check and dash, the
+slider thumb's shadow, the inbox-nil grid's masks, and the card guide's sample label colors.
+ESLint fails on a checkbox or radio input in the window without its class
+(`controlClassSyntax` in `eslint.config.js`), unless it is hidden (`sr-only`) or a switch.
 
 **The build and its checks.** The root `tsconfig.json` only references three projects.
 `tsconfig.app.json` checks `src/` and `bindings/` against the browser (lib ES2023 and DOM, the
@@ -5754,7 +5754,7 @@ The gate (`magex frontend:gate`) runs the format check, lint, the typecheck, the
 coverage, the render check, and the production build, which `chunkLimit` in `vite.config.ts`
 fails on a JS chunk over `chunkSizeWarningLimit` (750 kB, above the biggest chunk, the entry,
 which holds the inbox, about 467 kB), where Vite only warns; then it checks the first paint
-against its budgets (`magefiles/firstpaint.go`: the entry, the shared chunk of about 378 kB it
+against its budgets (`magefiles/firstpaint.go`: the entry, the shared chunk of about 377 kB it
 preloads, which holds most of what the first paint and the pages share, and Rolldown's
 runtime, held to 950,000 bytes of script, 325,000 gzipped, and the CSS to 140,000, 25,000
 gzipped). The bundle targets Safari 16.4, the WebKit of the oldest supported macOS, 13.3.

@@ -70,7 +70,7 @@ export default defineConfig({
     cssMinify: 'lightningcss',
     // The bundle loads from the app binary, not over a network. Before its first paint the
     // window loads the entry chunk, the inbox's, about 467 kB, and the shared chunk it
-    // preloads (codeSplitting below), about 378 kB: about 845 kB of JS in all, with 118 kB
+    // preloads (codeSplitting below), about 377 kB: about 844 kB of JS in all, with 118 kB
     // of CSS, which magex frontend:gate holds to a budget after this build
     // (magefiles/firstpaint.go). The other pages are chunks of their own, loaded on their
     // first visit (App.tsx), and so are the review and issue sheets, the inbox-nil party,
@@ -96,8 +96,7 @@ export default defineConfig({
         // merges into the entry each it can without a cycle between chunks, so one new
         // import (lib/tone from the account menu, once) could fold several into the entry
         // at once, 37 kB toward the chunk limit. Grouped, they still load before the first
-        // paint and a page that imports one finds it loaded; moving the sensitive files'
-        // panel onto lib/tone, which once folded about 36 kB in, left the entry as it was.
+        // paint and a page that imports one finds it loaded.
         codeSplitting: {
           groups: [{ name: 'shared', tags: ['$initial'], minShareCount: 2 }],
         },
