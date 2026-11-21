@@ -2,7 +2,14 @@ import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'rea
 import { createPortal } from 'react-dom'
 
 import { useCloseWhenHidden, useModalDialog } from '../lib/useModalDialog'
-import { buttonClass, captionClass, fieldClass, primaryButtonClass, quietButtonClass } from './controls'
+import {
+  buttonClass,
+  captionClass,
+  fieldClass,
+  primaryButtonClass,
+  quietButtonClass,
+  sheetDialogClass,
+} from './controls'
 import { XIcon } from './icons'
 
 // The sheets' pickers: a dialog of choices to check and uncheck, with a field that filters
@@ -265,8 +272,7 @@ export function PickerDialog({
       aria-modal="true"
       aria-labelledby={`${id}-title`}
       onCancel={cancel}
-      // The backdrop's color is spelled out, as ConfirmDialog's is, for older Safari.
-      className="m-auto max-h-[calc(100%-3rem)] w-[calc(100%-2rem)] max-w-md overflow-hidden rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-[rgb(0_0_0/0.4)] open:flex open:flex-col motion-safe:animate-pop-in"
+      className={`${sheetDialogClass} max-h-[calc(100%-3rem)] w-[calc(100%-2rem)] max-w-md overflow-hidden open:flex open:flex-col motion-safe:animate-pop-in`}
     >
       {/* The body takes focus itself, so a click on a checkbox or button, which the
           desktop's WebKit focuses no control for, leaves focus in the dialog. */}

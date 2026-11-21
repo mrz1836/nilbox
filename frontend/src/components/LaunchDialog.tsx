@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 
 import { useCloseWhenHidden, useModalDialog } from '../lib/useModalDialog'
 import type { InboxItem } from '../platform'
-import { quietButtonClass } from './controls'
+import { quietButtonClass, sheetDialogClass } from './controls'
 import { IssueIcon, PullRequestIcon, XIcon } from './icons'
 
 export interface LaunchDialogProps {
@@ -66,8 +66,7 @@ export function LaunchDialog({ id, title, item, onClose, children }: LaunchDialo
       aria-label="Launch options"
       aria-describedby={`${id}-item`}
       onCancel={cancel}
-      // The backdrop's color is spelled out, as ConfirmDialog's is, for older Safari.
-      className="m-auto max-h-[calc(100%-3rem)] w-[calc(100%-2rem)] max-w-[34rem] overflow-hidden rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-[rgb(0_0_0/0.4)] open:flex open:flex-col motion-safe:animate-pop-in"
+      className={`${sheetDialogClass} max-h-[calc(100%-3rem)] w-[calc(100%-2rem)] max-w-[34rem] overflow-hidden open:flex open:flex-col motion-safe:animate-pop-in`}
     >
       {/* The body takes focus itself, so a click on a radio, checkbox, or button, which the
           desktop's WebKit focuses no control for, leaves focus in the dialog. */}
