@@ -225,7 +225,7 @@ function MenuItems({ items, onChoose }: MenuItemsProps) {
         {item.section !== undefined && (
           <p
             aria-hidden="true"
-            className="px-2.5 pt-1 pb-1 text-[0.6875rem] font-medium tracking-wide text-muted uppercase"
+            className="px-2.5 pt-1 pb-1 text-caption font-medium tracking-wide text-muted uppercase"
           >
             {item.section}
           </p>

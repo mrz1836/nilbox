@@ -117,7 +117,7 @@ export function SessionTag({ sessions, agents, markWorktree = true, align = 'lef
       align={align}
       label={`${name} session: ${label}${inWorktree ? ', in its worktree' : ''}. Show the item's sessions`}
       title={inWorktree ? `${what}\nIn its worktree: ${shown.dir}` : what}
-      className={`inline-flex max-w-72 items-center gap-1.5 rounded-full px-2 py-px text-[0.6875rem] leading-4 font-medium transition-colors hover:bg-raised aria-expanded:ring-1 aria-expanded:ring-border ${stateText[shown.state]} ${stateTint[shown.state]}`}
+      className={`inline-flex max-w-72 items-center gap-1.5 rounded-full px-2 py-px text-caption leading-4 font-medium transition-colors hover:bg-raised aria-expanded:ring-1 aria-expanded:ring-border ${stateText[shown.state]} ${stateTint[shown.state]}`}
     >
       <SessionDot state={shown.state} />
       <span className="truncate">

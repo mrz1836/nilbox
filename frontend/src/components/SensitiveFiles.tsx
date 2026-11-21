@@ -59,7 +59,7 @@ function FileChange({ file }: { file: SensitiveFile }) {
   return (
     <span
       title={changeText(file)}
-      className={`ml-auto flex max-w-1/2 shrink-0 items-baseline gap-1 text-[0.6875rem] ${toneText[changeTone(file.change)]}`}
+      className={`ml-auto flex max-w-1/2 shrink-0 items-baseline gap-1 text-caption ${toneText[changeTone(file.change)]}`}
     >
       <span className="shrink-0 whitespace-nowrap">{words}</span>
       {from !== '' && (
@@ -110,7 +110,7 @@ export function SensitiveFilesGroup({ group }: { group: SensitiveGroup }) {
         {group.label}
         <span className="font-normal text-muted">{formatCount(files.length)}</span>
       </h4>
-      <p className="text-[0.6875rem] leading-snug text-muted">{group.description}</p>
+      <p className="text-caption leading-snug text-muted">{group.description}</p>
       <ul className="mt-0.5 flex flex-col">
         {files.map((file) => (
           <FileRow key={file.path} file={file} />
@@ -182,7 +182,7 @@ export function SensitiveFilesPanel({ itemId, check, onSettings, popover, id }: 
       <div>
         <h3 className="text-sm font-semibold text-text">Sensitive files</h3>
         {check.head !== '' && (
-          <p className="mt-0.5 text-[0.6875rem] text-muted">
+          <p className="mt-0.5 text-caption text-muted">
             At commit <span className="font-mono">{shortCommit(check.head)}</span>
             {check.checkedAt !== '' && (
               <>
@@ -217,7 +217,7 @@ export function SensitiveFilesPanel({ itemId, check, onSettings, popover, id }: 
           {checking ? 'Checking…' : 'Check now'}
         </button>
         {onSettings === undefined ? (
-          <span className="text-[0.6875rem] text-muted">Settings → Sensitive files</span>
+          <span className="text-caption text-muted">Settings → Sensitive files</span>
         ) : (
           <button type="button" onClick={onSettings} className={quietButtonClass}>
             What counts as sensitive
@@ -263,7 +263,7 @@ export function SensitiveFiles({ itemId, check, onSettings }: SensitiveFilesProp
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={toggle}
-        className={`inline-flex max-w-64 items-center gap-1 py-px text-[0.6875rem] leading-4 font-medium transition-colors aria-expanded:ring-1 aria-expanded:ring-border ${chipClass[chip.tone]}`}
+        className={`inline-flex max-w-64 items-center gap-1 py-px text-caption leading-4 font-medium transition-colors aria-expanded:ring-1 aria-expanded:ring-border ${chipClass[chip.tone]}`}
       >
         {icon}
         {chip.short !== '' && <span className="truncate">{chip.short}</span>}

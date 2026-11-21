@@ -123,7 +123,7 @@ export function ThreadRow({
               <RelativeTime
                 iso={group.updatedAt}
                 show={formatAgo}
-                className={`text-[0.6875rem] text-muted tabular-nums ${busy ? 'invisible' : 'group-focus-within:invisible group-hover:invisible'}`}
+                className={`text-caption text-muted tabular-nums ${busy ? 'invisible' : 'group-focus-within:invisible group-hover:invisible'}`}
               />
             </span>
           </span>
@@ -131,7 +131,7 @@ export function ThreadRow({
             <span className={`truncate text-sm ${weight}`}>{group.title}</span>
             {state !== '' && (
               <span
-                className={`shrink-0 rounded-full border px-1.5 text-[0.6875rem] leading-4 font-medium ${stateTones[group.state] ?? ''}`}
+                className={`shrink-0 rounded-full border px-1.5 text-caption leading-4 font-medium ${stateTones[group.state] ?? ''}`}
               >
                 {state}
               </span>

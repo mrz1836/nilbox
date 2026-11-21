@@ -5,7 +5,7 @@ export function BetaBadge({ className = '' }: { className?: string }) {
   return (
     <span
       title="Beta: still being built"
-      className={`inline-flex shrink-0 items-center rounded-full border border-accent/40 bg-accent/10 px-1.5 text-[0.625rem] leading-4 font-semibold tracking-wide text-accent uppercase ${className}`.trim()}
+      className={`inline-flex shrink-0 items-center rounded-full border border-accent/40 bg-accent/10 px-1.5 text-badge leading-4 font-semibold tracking-wide text-accent uppercase ${className}`.trim()}
     >
       Beta
     </span>

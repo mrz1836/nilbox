@@ -262,7 +262,7 @@ export function SearchField({ value, onChange, placeholder, spec, matches, sugge
               >
                 <span className="min-w-0 truncate">{option.label}</span>
                 {option.detail !== '' && (
-                  <span className="shrink-0 font-mono text-[0.75rem] text-muted">{option.detail}</span>
+                  <span className="shrink-0 font-mono text-small text-muted">{option.detail}</span>
                 )}
                 <span className="ml-auto shrink-0 pl-2 text-xs text-muted tabular-nums">{option.count}</span>
               </div>

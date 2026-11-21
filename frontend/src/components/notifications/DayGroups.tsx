@@ -51,7 +51,7 @@ export function DayGroups<T>({ items, when, render }: DayGroupsProps<T>) {
         <section key={`${String(i)}-${group.heading}`} aria-labelledby={`${id}-${String(i)}`}>
           <h3
             id={`${id}-${String(i)}`}
-            className="sticky top-0 z-10 bg-background/95 px-3 pt-3 pb-1 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase backdrop-blur-sm"
+            className="sticky top-0 z-10 bg-background/95 px-3 pt-3 pb-1 text-caption font-semibold tracking-wide text-muted uppercase backdrop-blur-sm"
           >
             {group.heading}
           </h3>

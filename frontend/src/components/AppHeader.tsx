@@ -226,7 +226,7 @@ export function AppHeader(props: AppHeaderProps) {
       {sandbox && (
         <span
           title="This window runs on fresh test data, not yours: magex app:run goes back to your own."
-          className="-ml-2 shrink-0 rounded-full border border-warning/60 bg-warning/10 px-2 py-px text-[0.6875rem] font-semibold whitespace-nowrap text-warning"
+          className="-ml-2 shrink-0 rounded-full border border-warning/60 bg-warning/10 px-2 py-px text-caption font-semibold whitespace-nowrap text-warning"
         >
           Test data
         </span>
@@ -275,7 +275,7 @@ export function AppHeader(props: AppHeaderProps) {
                 {badged && (
                   <span
                     data-testid={`${id}-count`}
-                    className="flex items-center gap-1 rounded-full bg-raised px-1.5 text-[0.6875rem] leading-[1.125rem] font-medium tabular-nums transition-colors group-hover:bg-border group-aria-pressed:bg-accent/15 group-aria-pressed:text-text"
+                    className="flex items-center gap-1 rounded-full bg-raised px-1.5 text-caption leading-[1.125rem] font-medium tabular-nums transition-colors group-hover:bg-border group-aria-pressed:bg-accent/15 group-aria-pressed:text-text"
                   >
                     {failed && (
                       <span

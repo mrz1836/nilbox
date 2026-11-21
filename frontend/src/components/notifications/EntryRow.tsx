@@ -108,7 +108,7 @@ export function EntryRow({ entry, onOpen, onDone, onUnread, compact = false }: E
               <RelativeTime
                 iso={entry.createdAt}
                 show={formatAgo}
-                className="text-[0.6875rem] text-muted tabular-nums group-focus-within:invisible group-hover:invisible"
+                className="text-caption text-muted tabular-nums group-focus-within:invisible group-hover:invisible"
               />
             </span>
           </span>
