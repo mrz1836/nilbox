@@ -12,7 +12,7 @@ import {
   type TimelineReviewState,
 } from '../../platform'
 import { PersonAvatar } from '../Avatar'
-import { iconButtonClass, quietButtonClass } from '../controls'
+import { iconButtonClass, linkClass, quietButtonClass } from '../controls'
 import { ExternalIcon } from '../icons'
 import { ItemLink } from '../ItemLink'
 import { LabelChip } from '../ItemSignals'
@@ -60,7 +60,7 @@ export function Trimmed({ url }: { url: string }) {
           onClick={() => {
             openExternal(url)
           }}
-          className="text-accent hover:underline"
+          className={linkClass}
         >
           Read it all on GitHub
         </button>
@@ -328,7 +328,7 @@ function LineComments({ item, onJump }: { item: Entry; onJump?: ((path: string) 
               onClick={() => {
                 openExternal(item.url)
               }}
-              className="text-accent hover:underline"
+              className={linkClass}
             >
               on GitHub
             </button>

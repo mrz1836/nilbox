@@ -6,7 +6,7 @@ import { useNowAs } from '../../lib/useNow'
 import { openExternal, type Issue, type IssueFix, type IssueLinked, type IssuePerson } from '../../platform'
 import { AssigneesSection, type AssigneesEditing } from '../Assignees'
 import { PersonAvatar } from '../Avatar'
-import { captionClass } from '../controls'
+import { captionClass, inkLinkClass } from '../controls'
 import { ItemLink } from '../ItemLink'
 import { LabelChip, ProgressBar, ProjectLink } from '../ItemSignals'
 import { LabelPicker, type OnEdit } from './IssuePickers'
@@ -172,7 +172,7 @@ function Milestone({ issue }: { issue: Issue }) {
         onClick={() => {
           openExternal(m.url)
         }}
-        className="text-left text-sm text-text hover:text-accent hover:underline"
+        className={`${inkLinkClass} text-left text-sm`}
       >
         {m.title}
       </button>

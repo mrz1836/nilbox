@@ -21,7 +21,7 @@ import type {
 import { openExternal } from '../../platform'
 import { AssigneesSection, type AssigneesEditing } from '../Assignees'
 import { PersonAvatar } from '../Avatar'
-import { chipClass, quietButtonClass } from '../controls'
+import { chipClass, inkLinkClass, quietButtonClass } from '../controls'
 import { ExternalIcon, RereviewIcon, XIcon } from '../icons'
 import { ItemLink } from '../ItemLink'
 import { RowAction, SuggestionChips } from '../PeopleParts'
@@ -211,7 +211,7 @@ function CheckList({ checks, label }: { checks: readonly ReviewCheck[]; label: s
               onClick={() => {
                 openExternal(c.url)
               }}
-              className="truncate text-left hover:text-accent hover:underline"
+              className={`${inkLinkClass} truncate text-left`}
             >
               {c.name}
             </button>
