@@ -1,11 +1,10 @@
-import { useEffect, useEffectEvent, useId, useRef, type CSSProperties, type RefObject } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, type RefObject } from 'react'
 
 import { brand } from '../../generated/brand'
 import { throwsBursts, useCelebrations } from '../../lib/celebrations'
 import { prefersReducedMotion } from '../../lib/motion'
 import { earnedBurst } from '../../lib/nil'
 import { finishLog, finishMarks, goDuration, inboxPreview, logName, type SetupInbox } from '../../lib/setup'
-import { darkTokens } from '../../lib/theme'
 import { useQuery } from '../../lib/useQuery'
 import { listTemplates } from '../../platform'
 import type {
@@ -24,6 +23,7 @@ import { Confetti, useConfetti } from '../Confetti'
 import { buttonClass, captionClass, primaryButtonClass } from '../controls'
 import { ChevronRightIcon, InboxIcon, TrophyIcon } from '../icons'
 import { Spinner } from '../Spinner'
+import { lineStyle, Terminal } from '../Terminal'
 
 // command is what the log runs.
 const command = `${brand.slug} setup`
@@ -33,11 +33,6 @@ const markClass: Readonly<Record<'ok' | 'warn' | 'skip', string>> = {
   ok: 'text-success',
   warn: 'text-warning',
   skip: 'text-muted',
-}
-
-// lineStyle staggers a log line's entrance after the command is typed.
-function lineStyle(at: number): CSSProperties {
-  return { '--i': String(at) } as CSSProperties
 }
 
 export interface FinishStepProps {
@@ -204,51 +199,33 @@ export function FinishStep({
         You’re all set
       </h2>
 
-      <figure
-        aria-label="Setup log"
-        className="nil-rise mt-8 w-full overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-[0.8125rem] leading-6 text-text shadow-2xl shadow-black/40"
-        style={{ ...darkTokens, animationDelay: '200ms' }}
-      >
-        <div className="flex items-center gap-1.5 border-b border-border bg-raised px-3 py-2">
-          <span aria-hidden="true" className="size-2.5 rounded-full bg-danger" />
-          <span aria-hidden="true" className="size-2.5 rounded-full bg-warning" />
-          <span aria-hidden="true" className="size-2.5 rounded-full bg-success" />
-          <span className="flex-1 pr-10 text-center text-xs text-muted">~/{brand.slug}</span>
-        </div>
-        <div className="px-4 py-3">
-          <p>
-            <span className="text-success">$</span>{' '}
-            <span className="nil-type" style={{ '--n': String(command.length) } as CSSProperties}>
-              {command}
-            </span>
+      <Terminal label="Setup log" title={`~/${brand.slug}`} command={command} className="mt-8" delay={200}>
+        {lines.map((line, i) => (
+          <p key={line.name} className="nil-line flex items-baseline gap-3" style={lineStyle(i)}>
+            <span className={`w-3 shrink-0 ${markClass[line.mark]}`}>{finishMarks[line.mark]}</span>
+            <span className="shrink-0 whitespace-pre text-muted">{logName(line.name)}</span>
+            <span className="min-w-0 flex-1 truncate">{line.text}</span>
+            {line.mark === 'warn' && (
+              <button
+                type="button"
+                aria-label={`Fix ${line.name}`}
+                onClick={() => {
+                  onFix(line.step)
+                }}
+                className="shrink-0 rounded px-1.5 text-xs font-medium text-warning hover:bg-warning/15"
+              >
+                Fix
+              </button>
+            )}
           </p>
-          {lines.map((line, i) => (
-            <p key={line.name} className="nil-line flex items-baseline gap-3" style={lineStyle(i)}>
-              <span className={`w-3 shrink-0 ${markClass[line.mark]}`}>{finishMarks[line.mark]}</span>
-              <span className="shrink-0 whitespace-pre text-muted">{logName(line.name)}</span>
-              <span className="min-w-0 flex-1 truncate">{line.text}</span>
-              {line.mark === 'warn' && (
-                <button
-                  type="button"
-                  aria-label={`Fix ${line.name}`}
-                  onClick={() => {
-                    onFix(line.step)
-                  }}
-                  className="shrink-0 rounded px-1.5 text-xs font-medium text-warning hover:bg-warning/15"
-                >
-                  Fix
-                </button>
-              )}
-            </p>
-          ))}
-          <p className="nil-line mt-2" style={lineStyle(lines.length + 1)}>
-            <span className={warnings === 0 ? 'text-success' : 'text-warning'}>ok</span>
-            <span className="whitespace-pre">{`   ${brand.slug}/setup   ${goDuration(elapsed)}`}</span>
-            {warnings > 0 && <span className="text-warning">{`   (${String(warnings)} to fix)`}</span>}{' '}
-            <span aria-hidden="true" className="nil-cursor" />
-          </p>
-        </div>
-      </figure>
+        ))}
+        <p className="nil-line mt-2" style={lineStyle(lines.length + 1)}>
+          <span className={warnings === 0 ? 'text-success' : 'text-warning'}>ok</span>
+          <span className="whitespace-pre">{`   ${brand.slug}/setup   ${goDuration(elapsed)}`}</span>
+          {warnings > 0 && <span className="text-warning">{`   (${String(warnings)} to fix)`}</span>}{' '}
+          <span aria-hidden="true" className="nil-cursor" />
+        </p>
+      </Terminal>
 
       <div className="nil-rise mt-6 flex w-full flex-col items-center gap-4" style={{ animationDelay: '300ms' }}>
         <InboxPreview inbox={inbox} connected={github?.state === 'ready'} />
