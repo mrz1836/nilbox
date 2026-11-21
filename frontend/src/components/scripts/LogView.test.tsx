@@ -140,6 +140,25 @@ describe('LogView', () => {
     expect(await screen.findByText('No output.')).toBeInTheDocument()
   })
 
+  it('cancels a live run’s read under way as it goes, and takes no answer after', async () => {
+    const cancelled = vi.fn()
+    const read = deferred<ScriptRunChunk>()
+
+    platform.scriptRunOutput.mockReturnValue(Object.assign(read.promise, { cancel: cancelled }))
+    const { unmount } = render(<LogView runId={7} live />)
+
+    unmount()
+    expect(cancelled).toHaveBeenCalledOnce()
+
+    // A read that answers anyway is let go: nothing more is read.
+    await act(async () => {
+      read.resolve(chunk('late\n', 0, { done: false }))
+      await read.promise
+    })
+
+    expect(platform.scriptRunOutput).toHaveBeenCalledOnce()
+  })
+
   describe('the tail window', () => {
     it('shows the newest 2,000 lines, and the ones above them on Show earlier output', async () => {
       platform.scriptRunOutput.mockResolvedValue(chunk(numbered(0, 2_500), 0))
@@ -286,26 +305,6 @@ describe('LogView', () => {
       await settle()
       unmount()
       await settle(pollMs * 10)
-
-      expect(platform.scriptRunOutput).toHaveBeenCalledOnce()
-    })
-
-    it('cancels a read under way as it goes, and takes no answer after', async () => {
-      vi.useRealTimers()
-      const cancelled = vi.fn()
-      const read = deferred<ScriptRunChunk>()
-
-      platform.scriptRunOutput.mockReturnValue(Object.assign(read.promise, { cancel: cancelled }))
-      const { unmount } = render(<LogView runId={7} live />)
-
-      unmount()
-      expect(cancelled).toHaveBeenCalledOnce()
-
-      // A read that answers anyway is let go: nothing more is read.
-      await act(async () => {
-        read.resolve(chunk('late\n', 0, { done: false }))
-        await read.promise
-      })
 
       expect(platform.scriptRunOutput).toHaveBeenCalledOnce()
     })

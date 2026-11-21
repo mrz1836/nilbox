@@ -172,6 +172,7 @@ describe('the Autopilot tab', () => {
   })
 
   it('explains Autopilot in its two sentences while there is no routine, then offers templates and the ways to start', async () => {
+    // No routine, as the fake answers by default, which cancels the describe's beforeEach.
     platform.listRoutines.mockImplementation(() => Promise.resolve([]))
     platform.listTemplates.mockResolvedValue([
       snoozeTemplate(),
@@ -1108,6 +1109,7 @@ describe('the builder in the tab', () => {
   })
 
   it('starts a routine from scratch on the empty tab, in the mode new routines start in, and makes it off', async () => {
+    // No routine, as the fake answers by default, which cancels the describe's beforeEach.
     platform.listRoutines.mockImplementation(() => Promise.resolve([]))
     const user = userEvent.setup()
     renderTab()

@@ -71,6 +71,7 @@ describe('useSetup', () => {
 
   it('remembers each step', () => {
     opensAt('?setup=1')
+    // The stored state never arrives, so the first frame stays as the URL says.
     platform.getSetup.mockReturnValue(deferred<Setup>().promise)
 
     const { result } = renderHook(() => useSetup())
@@ -85,6 +86,7 @@ describe('useSetup', () => {
 
   it('finishes at once, storing it and leaving the URL without the parameter', () => {
     opensAt('?setup=1&textSize=large')
+    // The stored state never arrives, so the first frame stays as the URL says.
     platform.getSetup.mockReturnValue(deferred<Setup>().promise)
 
     const { result } = renderHook(() => useSetup())
@@ -101,6 +103,7 @@ describe('useSetup', () => {
   it('logs a finish or a step it could not store, keeping what shows', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const full = new Error('setup: write prefs: disk full', { cause: { message: 'The disk is full.' } })
+    // The stored state never arrives, so the first frame stays as the URL says.
     platform.getSetup.mockReturnValue(deferred<Setup>().promise)
     platform.finishSetup.mockRejectedValue(full)
     platform.setSetupStep.mockRejectedValue(full)

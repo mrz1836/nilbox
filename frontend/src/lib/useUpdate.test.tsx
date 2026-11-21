@@ -85,6 +85,7 @@ describe('useRestartToUpdate', () => {
   })
 
   it('restarts at once when nothing would be lost', async () => {
+    // The restart never answers, as one that goes through quits, so the step stays restarting.
     platform.restartToUpdateNow.mockReturnValue(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
@@ -103,6 +104,7 @@ describe('useRestartToUpdate', () => {
 
   it('shows the banner Later hid again before it restarts, so how the restart ends shows', async () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady({ bannerHidden: true }))
+    // The restart never answers, as one that goes through quits, so the step stays restarting.
     platform.restartToUpdateNow.mockReturnValue(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
@@ -167,6 +169,7 @@ describe('useRestartToUpdate', () => {
 
       return Promise.reject(failure('There’s no update ready to install yet.'))
     })
+    // The second restart never answers, as one that goes through quits, so it stays restarting.
     platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
     platform.downloadUpdate.mockResolvedValue(got(notify({ latest: '0.3.1' })))
     const { result } = flow(() => 1)
@@ -231,6 +234,7 @@ describe('useRestartToUpdate', () => {
   })
 
   it('does nothing for a second start while one is under way', async () => {
+    // The restart never answers, as one that goes through quits, so the step stays restarting.
     platform.restartToUpdateNow.mockReturnValue(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
@@ -421,6 +425,7 @@ describe('useRestartToUpdate', () => {
   it('asks first while runs go, naming them, and restarts confirmed once Go names no other', async () => {
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
+    // The confirmed restart never answers, as one that goes through quits, so it stays restarting.
     platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
@@ -446,6 +451,7 @@ describe('useRestartToUpdate', () => {
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing(), pull]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing(), pull]))
+    // The confirmed restart never answers, as one that goes through quits, so it stays restarting.
     platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
@@ -476,6 +482,7 @@ describe('useRestartToUpdate', () => {
 
   it('restarts unconfirmed when the runs it named ended while it asked', async () => {
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
+    // The second restart never answers, as one that goes through quits, so it stays restarting.
     platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
@@ -500,6 +507,7 @@ describe('useRestartToUpdate', () => {
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([]))
+    // The last restart never answers, as one that goes through quits, so it stays restarting.
     platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
@@ -633,6 +641,7 @@ describe('useRestartToUpdate', () => {
     platform.listScriptRuns.mockRejectedValue(failure('The runs are busy.'))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
+    // The confirmed restart never answers, as one that goes through quits, so it stays restarting.
     platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
     const { result, rerender } = flow(() => 1)
 
@@ -1028,6 +1037,7 @@ describe('useUpdateControl', () => {
     const download = deferred<DownloadAnswer>()
     platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', mode: 'notify' }))
     platform.downloadUpdate.mockReturnValue(download.promise)
+    // The restart never answers, as one that goes through quits, so it stays under way.
     platform.restartToUpdateNow.mockReturnValue(deferred<RestartAnswer>().promise)
     const { result } = control()
 

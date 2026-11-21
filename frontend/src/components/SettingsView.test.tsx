@@ -76,6 +76,8 @@ function renderSettings({
 }: Options = {}) {
   const onClose = vi.fn()
   const onLaunchChanged = vi.fn(() => Promise.resolve())
+  // The library is built once, so every render hands the page the same list, as App does.
+  const library = prompts()
 
   // The page keeps the settings each save returns, as App does, so a second change starts
   // from the first; it renders on the window's own clock.
@@ -85,7 +87,7 @@ function renderSettings({
         {...(section === undefined ? {} : { initialSection: section })}
         agents={coding}
         profiles={profiles}
-        prompts={prompts()}
+        prompts={library}
         defaultPrompts={appPrompts}
         launchDefaults={defaults}
         account={who}

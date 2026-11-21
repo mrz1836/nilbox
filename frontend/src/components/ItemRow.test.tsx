@@ -1385,12 +1385,14 @@ describe('ItemRow triage', () => {
 
   it('keeps the triage shown, and the state column faded, while the card works with GitHub', async () => {
     const refreshing = deferred()
+    const onRefresh = vi.fn(() => refreshing.promise)
     const triage = triageActionsOf()
-    triage.onRefresh = vi.fn(() => refreshing.promise)
+    triage.onRefresh = onRefresh
     const row = mountCard(asked(), { triage })
 
     await userEvent.click(screen.getByRole('button', { name: 'Refresh from GitHub' }))
 
+    expect(onRefresh).toHaveBeenCalledOnce()
     expect(row.querySelector('[data-triage]')).toHaveClass('opacity-100')
     expect(row.querySelector('[data-state-column]')).toHaveClass('opacity-0')
 
@@ -1404,13 +1406,15 @@ describe('ItemRow triage', () => {
 
   it('fades the card under a note while an edit will likely take it out of the list', async () => {
     const unassigning = deferred()
+    const onUnassign = vi.fn(() => unassigning.promise)
     const edits = editActionsOf()
-    edits.onUnassign = vi.fn(() => unassigning.promise)
+    edits.onUnassign = onUnassign
     const row = mountCard(item({ assigned: true, details: details() }), { triage: triageActionsOf(), edits })
 
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }))
     await userEvent.click(screen.getByRole('menuitem', { name: 'Unassign me' }))
 
+    expect(onUnassign).toHaveBeenCalledOnce()
     expect(row).toHaveAttribute('aria-busy', 'true')
     const note = within(row).getByRole('status')
     expect(note).toHaveTextContent('Unassigning you on GitHub…')

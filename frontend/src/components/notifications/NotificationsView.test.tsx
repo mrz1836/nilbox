@@ -9,7 +9,7 @@ import type { GitHubThreadsState } from '../../lib/useGitHubThreads'
 import type { NotificationsState } from '../../lib/useNotifications'
 import type { AppNotification, GitHubThread, GitHubThreadsSnapshot, NotificationsTab, Settings } from '../../platform'
 import { deferred } from '../../test/async'
-import { FIXED_NOW, renderAt } from '../../test/clock'
+import { clockAt, FIXED_NOW, renderAt, withClock } from '../../test/clock'
 import {
   autopilotAlert,
   githubThread,
@@ -688,11 +688,10 @@ describe('NotificationsView', () => {
       expect(screen.getByRole('button', { name: 'Undo: Add the widget cache' })).toHaveTextContent('Undo')
     })
 
-    it('moves the countdown on every second while a clear waits', async () => {
+    it('moves the countdown on every second while a clear waits', () => {
       vi.useFakeTimers()
 
       let now = FIXED_NOW
-      const { clockAt, withClock } = await import('../../test/clock')
       const clock = clockAt(() => now)
 
       render(<Page tab="github" lists={cleared} threads={mirror([], githubThreads({ queued: [queuedClear()] }))} />, {
