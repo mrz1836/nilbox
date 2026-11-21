@@ -151,10 +151,11 @@ wherever the page renders it.
 
 `internal/brand/` holds product identity, design tokens, and the logo mark. The palette tests
 enforce WCAG AA contrast for every text color in both themes. `internal/brandgen/` generates
-the frontend theme tokens, `build/darwin/Info.plist`, and the icon artwork (the app icon
-`build/appicon.svg` and the menu bar icon `build/trayicon.svg`) from it (`magex
-brand:generate`); `magex brand:icons` renders the artwork into the committed icons (macOS,
-needs `rsvg-convert`). A build from source (`magex app:build`, so `app:run` and the targets
+the frontend theme tokens (`frontend/src/generated/theme.css`, whose `@theme` block resets
+Tailwind's own palette before it declares them), `build/darwin/Info.plist`, and the icon
+artwork (the app icon `build/appicon.svg` and the menu bar icon `build/trayicon.svg`) from it
+(`magex brand:generate`); `magex brand:icons` renders the artwork into the committed icons
+(macOS, needs `rsvg-convert`). A build from source (`magex app:build`, so `app:run` and the targets
 that open its bundle) is "Nilbox Dev", `bin/Nilbox Dev.app` with `brand.DevName` and
 `brand.DevBundleID`, which `devStamps` (`magefiles/bundle.go`) stamps over the bundle's copy
 of the generated `Info.plist` alone, so macOS (Spotlight, notifications, privacy prompts, Open
@@ -210,8 +211,9 @@ other open pull requests on the branch merged into, read again as the checks fol
 its own, and again while GitHub answers `UNKNOWN`, three rounds each at most, and nothing
 while no merge happened), the
 Release page's checks follower (`release.ChecksFollower`, below), the sweeper (these four
-as often as Settings → Refreshing says, through `periodic.RunEvery`, which core wakes on the Go-only
-`event.IntervalsChanged` the settings setter emits, so a change applies at once), the GitHub
+as often as Settings → Refreshing says, each through its own `periodic.Job`, which runs
+`periodic.RunEvery` and which core wakes on the Go-only `event.IntervalsChanged` the settings
+setter emits, so a change applies at once), the GitHub
 notifications' `ghthreads.Syncer` (woken the same way), the budget's `Saver`, the sessions watcher, the Release page's
 refresher, and the Hooks page's scans as tracked work, starts the deferred work
 (`core.Deferred`: the login-shell read first; the tool finder, the runs, the release
@@ -3331,8 +3333,13 @@ Every text is made one line and capped (`textutil.OneLine`).
 **`eval`** decides. `Evaluate(spec, facts, history, now)` returns a `Decision`: `Match`
 (yes, no, or unknown), the `FireKey` while the trigger holds, the `Trace` (the trigger's
 step, then each condition that ran, with what it compared and the actual value), and the
-`Needs` of an unknown decision. Conditions are three-valued: one on a value not known yet is
-unknown whatever its operator, its negation too; one on a field that doesn't apply is no;
+`Needs` of an unknown decision. `Prepare(spec)` works out once what deciding the spec takes
+from the spec alone (the order each list of conditions runs in, each condition's path and
+phrase, the trigger's words), and its `Plan.Evaluate` decides an item byte for byte as
+`Evaluate` does, traces included; `Evaluate` prepares the spec for its one decision, and a
+caller deciding a routine on many items, as the engine's cycle does, prepares it once.
+Conditions are three-valued: one on a value not known yet is unknown whatever its operator,
+its negation too; one on a field that doesn't apply is no;
 a partial list's find is sure and its miss unknown; an "all" operator over an empty list
 is no, never vacuously yes (a pull request that changes no file doesn't have every changed
 path under docs/). A regex or a path pattern is compiled once, in a cache every evaluation
@@ -3669,7 +3676,8 @@ worker's result; what comes during a cycle folds into one more. A cycle (`cycle.
 SQLite and evaluates, milliseconds: the enabled routines of the account signed in (one that
 won't load is a problem, and skipped), the items each watches, their facts, the open matches'
 items' states, the runs on them, and the day's counts; then it decides each routine on each
-item (`eval.Evaluate` with the ledger's `History`: tries since the last reset, the last
+item (with the `eval.Plan` it prepares once per routine each cycle, `routineRun.decide`, and
+the ledger's `History`: tries since the last reset, the last
 outcome, the head it first saw, the comments it last counted, and the commits routines' runs
 pushed), records each new match, closes what moved on, and moves each open match through its
 steps (`advance.go`). Everything slow runs on a worker that hands its result back to the loop
@@ -3968,8 +3976,8 @@ What the user sees is in `docs/desktop.md`'s
 and [This Mac](desktop.md#this-mac).
 
 **The start path.** Every agent start goes through the engine's one path, never another: the
-gate (`advance.go`), in Go, cheapest first, then on a worker what holds it back on this Mac, then
-the fresh read, then the runner:
+gate (`advance_gates.go`), in Go, cheapest first, then on a worker what holds it back on this
+Mac, then the fresh read, then the runner:
 
 1. `gate`: the user's OK, a sign-out, Pause, the active hours, the tries and the day's counts, a
    free slot and the daily cap, the item's own rules (`itemRules`: an outside contributor's item
@@ -4396,7 +4404,8 @@ rewrites the inbox's card from the same answer), `Send` (one action, as its shee
 `MarkDone`, and `Preview`. Core's `githubSteps` (`internal/core/adapters_githubsteps.go`)
 adapts the review sheet (`ReadAgain`, `Refresh`, `Act`, and `EditLabels`, its label edit of a
 pull request at the issues endpoint), the issue sheet (`ReadAgain`, `Refresh`, `Act`, `Edit`),
-the mirror of the GitHub notifications (`ClearItemThreads`, what the card's menu clears), and
+the mirror of the GitHub notifications (`ClearItemThreads`, which Mark the GitHub notification
+done runs to clear the item's threads), and
 the reply filler the sheets share, each call marked `github.PurposeAutopilot`. A pull request's
 actions are exactly `reviewActionOf`'s (`rebase_bot`, `update_branch`, `comment`), and
 `TestTheGitHubStepReachesNoForbiddenAction` parses the adapter and fails on any other sheet
@@ -5695,14 +5704,37 @@ the Notifications page's filters, and no `AutopilotRowsContext`, so no chip or m
 tab's label and the section's heading carry a `BetaBadge`. Full design:
 [docs/architecture.md](docs/architecture.md#the-autopilot-tab).
 Theme colors come from the `--color-*` tokens `internal/brandgen` writes to
-`frontend/src/generated/theme.css`. Checkboxes and radio buttons take the `checkbox` and
-`radio` classes (`frontend/src/index.css`), which draw them in the app's own style: macOS
-draws a native one grey whenever it counts the window as inactive. Text is sized in rem,
-never px (`text-[0.6875rem]`, not `text-[11px]`): the text size setting scales the root's
-font size, which only rem follows, and the shell passes the stored size in the page's URL
-(`internal/desktop.PageURL`) so the first frame is already at it. A repoguard test fails
-on px text. Only chrome lined up with the native window, such as the toolbar's height and
-its inset beside the window controls, and hairlines stay in px.
+`frontend/src/generated/theme.css`, whose `@theme` block first resets Tailwind's own palette
+(`--color-*: initial`), so a utility of Tailwind's, such as `text-white` or `bg-red-500`,
+builds to nothing. What the components share besides is declared once in `index.css`'s
+`@theme inline`, each as a literal, so a utility carries its value itself: the type scale
+(`text-micro` to `text-heading`, eleven sizes in rem, none of which sets a line height), the
+shadows (`shadow-menu`, `shadow-card`, `shadow-float`, `shadow-toast`, `shadow-terminal`,
+`shadow-control`, `shadow-drawer`, and `inset-shadow-control`), the dim behind a modal dialog
+(`backdrop:bg-scrim`, a literal since, before Safari 17.4, `::backdrop` sees none of the
+page's custom properties), `paper` (white in both themes: a switch's knob, a radio button's
+dot, a slider's thumb), and `opacity-disabled`, the one fade of a disabled control (0.6);
+beside them, as `@utility` rules, the washes (`wash-success`, `wash-danger`, `wash-accent`,
+`wash-warning`, and the neutral `wash-raised`, a color mixed into the surface) and
+`layer-popover` (z-40, over the toolbar's z-30 and under a toast's z-50), the layer every
+popover and menu panel opens on. A hue's tints take their alpha from one ladder (/5, /10, /14,
+/22, /45, /60). `lib/tone.ts` gives a state's tone its text and fill classes (`toneText`,
+`toneFill`), and a tint stays in the map of the domain that draws it. Checkboxes and radio
+buttons take the `checkbox` and `radio` classes (`frontend/src/index.css`), which draw them in
+the app's own style: macOS draws a native one grey whenever it counts the window as inactive.
+Text is sized in rem, never px (`text-caption`, from the type scale, not `text-[11px]`): the
+text size setting scales the root's font size, which only rem follows, and the shell passes
+the stored size in the page's URL (`internal/desktop.PageURL`) so the first frame is already
+at it. A repoguard test fails on px text. Only chrome lined up with the native window, such as
+the toolbar's height and its inset beside the window controls, and hairlines stay in px.
+Another, `TestFrontendStylesComeFromTokens`, fails on a style written around the tokens: a
+Tailwind palette utility or variable, a color written into a class, a style, or a stylesheet
+outside a token's own declaration, an arbitrary text size or backdrop, and a disabled fade
+other than `opacity-disabled`. It lets four lines through, each with its reason: the
+checkbox's data-URL check and dash, the slider thumb's shadow, the inbox-nil grid's masks, and
+the card guide's sample label colors. ESLint fails on a checkbox or radio input in the window
+without its class (`controlClassSyntax` in `eslint.config.js`), unless it is hidden
+(`sr-only`) or a switch.
 
 **The build and its checks.** The root `tsconfig.json` only references three projects.
 `tsconfig.app.json` checks `src/` and `bindings/` against the browser (lib ES2023 and DOM, the
@@ -5717,10 +5749,13 @@ project to fall back on. `pnpm build` runs that typecheck before `vite build`, s
 `magex frontend:build`, `app:build`, and a release check all three projects too. ESLint bans
 importing `useMemo` and `useCallback` anywhere in `src/` (`noMemoHooks` in `eslint.config.js`).
 The gate (`magex frontend:gate`) runs the format check, lint, the typecheck, the tests with
-coverage, the render check, and last the production build, which `chunkLimit` in
-`vite.config.ts` fails on a JS chunk over `chunkSizeWarningLimit` (750 kB, above the inbox's
-chunk, about 696 kB), where Vite only warns. The bundle targets Safari 16.4, the WebKit of the
-oldest supported macOS, 13.3.
+coverage, the render check, and the production build, which `chunkLimit` in `vite.config.ts`
+fails on a JS chunk over `chunkSizeWarningLimit` (750 kB, above the biggest chunk, the entry,
+which holds the inbox, about 467 kB), where Vite only warns; then it checks the first paint
+against its budgets (`magefiles/firstpaint.go`: the entry, the shared chunk of about 378 kB it
+preloads, which holds most of what the first paint and the pages share, and Rolldown's
+runtime, held to 950,000 bytes of script, 325,000 gzipped, and the CSS to 140,000, 25,000
+gzipped). The bundle targets Safari 16.4, the WebKit of the oldest supported macOS, 13.3.
 
 **Shared hooks and helpers.** Each of these is the one way the pages do it, never a copy.
 `useOn` (`lib/useOn.ts`) hears a window event while the component is mounted (or `enabled`)
@@ -5743,6 +5778,19 @@ are `ToolbarPopoverButton`, their counts `CountDot` (`PopoverPanel.tsx`). Both s
 Autopilot's `useSheetHost`) hears its sheet move from one item to another through
 `useSheetVisits`, which marks the item left and the one opened read once per opening;
 `ReviewComposer` and `IssueComposer` both render `components/conversation/Composer.tsx`.
+The shared classes are written out once, so Tailwind finds each whole:
+`components/controls.tsx` holds the buttons (`buttonClass`, `primaryButtonClass`,
+`quietButtonClass`, `smallButtonClass`, `ghostButtonClass`, and the rest), the icon buttons
+(`iconButtonClass`, `smallIconButtonClass`, `dangerIconButtonClass`, and the toolbar's
+`toolbarButtonClass` and `toolbarButtonShape`), the links (`linkClass`, and `inkLinkClass` for
+a link in the text's color), the dialog shells (`modalClass`, `sheetDialogClass`), the
+toolbar's bar (`toolbarClass`), and `ErrorText`, a refusal's words under its control;
+`PopoverPanel.tsx` holds `panelClass`, a listbox's or menu's panel, and `PopoverPanel` floats
+on a menu's shadow or a card chip's (`elevation`); and `settings/rows.tsx` holds `groupClass`,
+a settings card. `SearchBox` is the one plain search
+field a page or a panel draws, over its repositories or whatever it lists, and `Terminal` the
+terminal window, in the dark palette in either theme, that the inbox-nil party and the setup's
+Finish log show.
 
 **The launch dialogs.** `components/launchDialogs.tsx` defines each dialog a launch opens once,
 for every control that opens it: the launch options (`LaunchDialog`, its `LaunchMenu`, and the
@@ -5867,8 +5915,9 @@ form, the prompt library's usage words, and the import dialog read. The triage
 column's grid area, both lines named, over the end of the body once a narrow list drops the
 column. A stretched toggle, the button right after the title (`absolute inset-0 z-0`,
 `tabIndex` -1), opens `card/CardPeek` on a click of empty space; every control and every
-titled element sits above it (`relative z-10`, and `z-20` while one of their panels is open),
-which keeps `jsx-a11y` strict without a disable comment. The second line clips at the card's
+titled element sits above it (`relative z-10`, and `z-20` while one of their panels is open,
+since the panel's own `layer-popover` orders it only within its control), which keeps
+`jsx-a11y` strict without a disable comment. The second line clips at the card's
 edge, except while a chip's panel is open (its chips then `z-30`, over the triage) or
 keyboard focus is in it, so the risk chip's and the ⚡ chip's panels show whole. The peek
 reads only what the card has, so it costs no request.

@@ -54,7 +54,7 @@ magex format:fix
 magex lint
 magex test:race
 go-pre-commit run --all-files
-magex frontend:gate   # format, lint, typecheck, tests, compiled render check, build; CI runs it too
+magex frontend:gate   # format, lint, typecheck, tests, compiled render check, build, first paint; CI runs it too
 magex db:check        # the generated queries are current and every query prepares; CI runs it too
 ```
 
@@ -209,8 +209,9 @@ build when broken.
 - **The window.** `frontend/` reaches Go only through the generated bindings in
   `frontend/bindings/`, funneled through `frontend/src/platform/`, and its tests stand in for Go
   only with the shared fake in `frontend/src/test/platform.tsx`. The React Compiler memoizes
-  the build, so components hold no hand-written `useMemo` or `useCallback`. Colors come from
-  the `--color-*` tokens; checkboxes and radio buttons take the `checkbox` and `radio` classes;
+  the build, so components hold no hand-written `useMemo` or `useCallback`. Colors, text sizes,
+  and shadows come from the theme's tokens (`--color-*`, `index.css`'s `@theme`), which a
+  repoguard test enforces; checkboxes and radio buttons take the `checkbox` and `radio` classes;
   text is sized in rem, never px (a repoguard test fails on px text).
 - **magefiles.** `magefiles/` holds the custom `magex` targets: `brand:*`, `frontend:*`,
   `app:*`, `db:*`, `measure:*`, `inspect:*`, and `autopilot:*`. Its tests build with the `mage` tag and run in parallel.

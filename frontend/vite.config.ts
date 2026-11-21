@@ -69,14 +69,15 @@ export default defineConfig({
     // root's color-scheme switches, as Safari 16.4 has no light-dark().
     cssMinify: 'lightningcss',
     // The bundle loads from the app binary, not over a network. Before its first paint the
-    // window loads the entry chunk, the inbox's, about 496 kB, and the shared chunk it
-    // preloads (codeSplitting below), about 387 kB: about 884 kB of JS in all, with 127 kB
+    // window loads the entry chunk, the inbox's, about 467 kB, and the shared chunk it
+    // preloads (codeSplitting below), about 378 kB: about 845 kB of JS in all, with 118 kB
     // of CSS, which magex frontend:gate holds to a budget after this build
     // (magefiles/firstpaint.go). The other pages are chunks of their own, loaded on their
-    // first visit (App.tsx), and so are the review and issue sheets, loaded once the inbox
-    // has painted (InboxView.tsx). The limit is a tripwire for unexpected growth of any
-    // chunk, set above the biggest, and chunkLimit above makes it an error, so the frontend
-    // gate's build fails on a chunk over it.
+    // first visit (App.tsx), and so are the review and issue sheets, the inbox-nil party,
+    // and the settings' search index, loaded once the inbox has painted (InboxView.tsx,
+    // App.tsx). The limit is a tripwire for unexpected growth of any chunk, set above the
+    // biggest, and chunkLimit above makes it an error, so the frontend gate's build fails
+    // on a chunk over it.
     chunkSizeWarningLimit: 750,
     rolldownOptions: {
       checks: {
@@ -87,13 +88,16 @@ export default defineConfig({
         bundlerTimings: false,
       },
       output: {
-        // Every module the first paint loads ($initial) that a lazily loaded chunk imports
-        // too goes into one chunk, shared, which the entry preloads. Left to itself, Rolldown
-        // puts those modules in common chunks by which chunks import them, then merges into
-        // the entry each it can without a cycle between chunks, so one new import (lib/tone
-        // from the account menu, once) could fold several into the entry at once, 37 kB
-        // toward the chunk limit. Grouped, they still load before the first paint, a page
-        // that imports one finds it loaded, and an import moves only its own module.
+        // Most of the modules the first paint loads ($initial) that a lazily loaded chunk
+        // imports too go into one chunk, shared, which the entry preloads: React, the
+        // platform module, the shared controls, the card's parts. Rolldown still keeps some
+        // of them in the entry itself, and a page imports those from it. Left to itself,
+        // Rolldown puts such modules in common chunks by which chunks import them, then
+        // merges into the entry each it can without a cycle between chunks, so one new
+        // import (lib/tone from the account menu, once) could fold several into the entry
+        // at once, 37 kB toward the chunk limit. Grouped, they still load before the first
+        // paint and a page that imports one finds it loaded; moving the sensitive files'
+        // panel onto lib/tone, which once folded about 36 kB in, left the entry as it was.
         codeSplitting: {
           groups: [{ name: 'shared', tags: ['$initial'], minShareCount: 2 }],
         },
