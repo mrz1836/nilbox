@@ -24,6 +24,8 @@ A routine's `steps` run in order, one to 10 of them. Each step is an object hold
 - `merge` (Merge it): Once the checks passed, turns auto-merge back on if it was on, else merges when GitHub allows. Pull requests only.
   - `how`, needed: `autoMergeIfItWasOn` (auto-merge if it was on, else when GitHub allows) or `whenMergeable` (when GitHub allows).
   - `method`: `merge` (merge commit), `squash`, or `rebase`; left out, the repository's own method.
+  - `allowBypass`: `true` lets a `merge` with no agent step, in a routine whose trigger is `checks_passed`, merge the user's own pull request past the rules when an approval from someone else is all it lacks, every commit signed by them, with `how` `whenMergeable` alone; it merges so only once the user ticks it as they add the routine and turns on the switch in Autopilot's settings, both theirs alone; propose it only when they ask to merge past the rules or without a reviewer; left out, `false`, and it merges only what GitHub allows.
+  - `allowSensitive`: `true`, with `allowBypass`, lets it do so when the pull request changes workflow, agent, or tooling files too; propose it only when the user asks for those files to merge so too; left out, `false`.
 - `postReview` (Post the agent's review): Posts what a read-only agent step wrote, as a comment or as its verdict. Pull requests only.
   - `as`, needed: `comment` (as a comment) or `verdict` (as its verdict).
   - `allowApprove`: `true` lets a verdict approve, with `as` `verdict` alone; left out, `false`, and an approval posts as a comment.
@@ -55,7 +57,8 @@ A routine's `steps` run in order, one to 10 of them. Each step is an object hold
 - Each step holds exactly one kind of step.
 - One `agent` step at most: two agents on one item take two routines.
 - `waitForChecks` only after an `agent` step in the background (`where` `background`) whose tools preset may push (`editTestPush` or `profile`), and never with `onlyIf` `notPushed`.
-- `merge` only after a `waitForChecks` whose `onlyIf` is `pushed`, so the checks it follows are on the agent's own commit, and only with its own `onlyIf` `passed`.
+- `merge` only after a `waitForChecks` whose `onlyIf` is `pushed`, so the checks it follows are on the agent's own commit, and only with its own `onlyIf` `passed`; or, in a routine with no `agent` step and no `waitForChecks`, whose trigger is `checks_passed` and whose `limits.oncePer` is left out or `headCommit`, with no `onlyIf`, and with no `rebase` or `updateBranch` action and no `script` step before it: it merges the commit the checks passed on.
+- `allowBypass` and `allowSensitive` only on a `merge` with no `agent` step, as above, with `how` `whenMergeable`; `allowSensitive` only with `allowBypass`.
 - `postReview` only after an `agent` step in the background whose tools preset is `readOnly`, and `allowApprove` only with `as` `verdict`.
 - After an `agent` step in the terminal (`where` `terminal`), only `notify` or `tellMe`: the app can't see a terminal run end.
 - `onlyIf` is never on the first step. `passed` and `stillFails` need a `waitForChecks` before it; `pushed` and `notPushed` need an `agent` step before it that may push; `approve` and `requestChanges` need an `agent` step before it in the background whose preset is `readOnly`.

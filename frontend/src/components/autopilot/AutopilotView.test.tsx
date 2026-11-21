@@ -25,6 +25,7 @@ import {
   claudeMissing,
   cloneTarget,
   describeCard,
+  described,
   describeConversation,
   describeStatus,
   describeTurn,
@@ -33,11 +34,13 @@ import {
   githubStep,
   issue,
   item,
+  itemDraft,
   itemRef,
   kitChecked,
   kitCheckedRoutine,
   kitOutcome,
   leftAlone,
+  pastRulesSpec,
   profile,
   prompts,
   readiness,
@@ -1278,6 +1281,142 @@ describe('the builder in the tab', () => {
       spec: { trigger: { event: 'appears' } },
     })
     expect(await screen.findByText('Saved “Snooze passing bot PRs”.')).toBeInTheDocument()
+  })
+
+  it('asks to confirm a new routine that merges past the rules, makes nothing on Cancel, and makes it once each is', async () => {
+    const user = userEvent.setup()
+    platform.routineFromItem.mockResolvedValue(
+      itemDraft({ draft: { id: 0, name: 'Merge my sync PRs', mode: 'ask', spec: pastRulesSpec() } }),
+    )
+    renderTab({ request: { seq: 1, target: activityTarget, fromItem: 7 } })
+
+    const create = await screen.findByRole('button', { name: 'Create routine' })
+    const title = 'Let “Merge my sync PRs” merge past the rules?'
+
+    await waitFor(() => {
+      expect(create).toBeEnabled()
+    })
+    await user.click(create)
+
+    const ask = await screen.findByRole('dialog', { name: title })
+    const confirm = within(ask).getByRole('button', { name: 'Create routine' })
+
+    expect(ask).toHaveTextContent('Once it’s on, this routine may:')
+    expect(ask).toHaveTextContent(/Only on your own pull request whose every commit you signed/)
+    expect(confirm).toBeDisabled()
+    await user.click(within(ask).getByRole('checkbox', { name: /^Merge your own pull request past the rules/ }))
+    expect(confirm, 'every tick is confirmed').toBeDisabled()
+    await user.click(within(ask).getByRole('checkbox', { name: /^Do so even when it changes workflow/ }))
+    expect(confirm).toBeEnabled()
+    await user.click(within(ask).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(platform.saveRoutine).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Create routine' }))
+
+    const again = await screen.findByRole('dialog', { name: title })
+
+    expect(within(again).getByRole('checkbox', { name: /^Merge your own/ }), 'asked afresh').not.toBeChecked()
+    await user.click(within(again).getByRole('checkbox', { name: /^Merge your own/ }))
+    await user.click(within(again).getByRole('checkbox', { name: /^Do so even/ }))
+    await user.click(within(again).getByRole('button', { name: 'Create routine' }))
+
+    await waitFor(() => {
+      expect(platform.saveRoutine).toHaveBeenCalledOnce()
+    })
+    expect(platform.saveRoutine.mock.lastCall?.[0]).toMatchObject({
+      id: 0,
+      name: 'Merge my sync PRs',
+      acceptPastRules: true,
+    })
+    expect(await screen.findByText(/Made “Merge my sync PRs”, switched off/)).toBeInTheDocument()
+  })
+
+  it('saves a name-only edit of a routine confirmed to merge past the rules at once, and asks again once its spec changes', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue([
+      routine({ name: 'Merge my sync PRs', spec: pastRulesSpec(), pastRules: 'allowed' }),
+    ])
+    renderTab()
+
+    await user.click((await routineList()).getByRole('button', { name: /^Merge my sync PRs/ }))
+    await user.type(await screen.findByRole('textbox', { name: 'Name' }), ' now')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(platform.saveRoutine).toHaveBeenCalledOnce()
+    })
+    expect(platform.saveRoutine.mock.lastCall?.[0]).not.toHaveProperty('acceptPastRules')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Step 1: merge method' }), 'squash')
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const ask = await screen.findByRole('dialog', { name: /merge past the rules\?$/ })
+
+    expect(platform.saveRoutine).toHaveBeenCalledOnce()
+    await user.click(within(ask).getByRole('checkbox', { name: /^Merge your own/ }))
+    await user.click(within(ask).getByRole('checkbox', { name: /^Do so even/ }))
+    await user.click(within(ask).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(platform.saveRoutine).toHaveBeenCalledTimes(2)
+    })
+    expect(platform.saveRoutine.mock.lastCall?.[0]).toMatchObject({
+      id: 3,
+      acceptPastRules: true,
+      spec: { steps: [{ merge: { method: 'squash', allowBypass: true } }] },
+    })
+  })
+
+  it('confirms a routine waiting for it with Save, unchanged, and opens Autopilot’s settings while its switch is off', async () => {
+    const user = userEvent.setup()
+    platform.listRoutines.mockResolvedValue([
+      routine({ name: 'Merge my sync PRs', spec: pastRulesSpec(), pastRules: 'needsTick' }),
+    ])
+    platform.describeRoutine.mockResolvedValue(
+      described({
+        warnings: [
+          {
+            part: 'steps',
+            field: '[0].merge.allowBypass',
+            message:
+              "Let routines merge your own pull requests past the rules is off in Autopilot's settings: until you turn it on, this step merges only what GitHub allows.",
+          },
+        ],
+      }),
+    )
+    renderTab()
+
+    await user.click((await routineList()).getByRole('button', { name: /^Merge my sync PRs/ }))
+    await user.click(await screen.findByRole('button', { name: 'Open Autopilot settings' }))
+    expect(onSettings).toHaveBeenCalledOnce()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    })
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const ask = await screen.findByRole('dialog', { name: 'Let “Merge my sync PRs” merge past the rules?' })
+
+    await user.click(within(ask).getByRole('checkbox', { name: /^Merge your own/ }))
+    await user.click(within(ask).getByRole('checkbox', { name: /^Do so even/ }))
+    await user.click(within(ask).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(platform.saveRoutine).toHaveBeenCalledOnce()
+    })
+    expect(platform.saveRoutine.mock.lastCall?.[0]).toMatchObject({
+      id: 3,
+      acceptPastRules: true,
+      spec: pastRulesSpec(),
+    })
   })
 
   it('saves at once when nothing matches now, or when what it watches didn’t change', async () => {

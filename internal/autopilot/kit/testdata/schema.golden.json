@@ -887,6 +887,12 @@
             "squash",
             "rebase"
           ]
+        },
+        "allowBypass": {
+          "type": "boolean"
+        },
+        "allowSensitive": {
+          "type": "boolean"
         }
       },
       "required": [

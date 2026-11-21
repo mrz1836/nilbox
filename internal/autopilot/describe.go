@@ -133,3 +133,27 @@ func (r serviceSetup) Scripts(ctx context.Context) ([]draft.Script, bool) {
 func (r serviceSetup) StarterNames(ctx context.Context) spec.PromptNames {
 	return r.s.view(ctx).names
 }
+
+// PastRules reads the user's switch for merging past the rules: off when it can't be read
+// (logged).
+func (r serviceSetup) PastRules(ctx context.Context) bool {
+	return r.s.pastRulesOn(ctx)
+}
+
+// pastRulesOn reads Let routines merge your own pull requests past the rules: off without
+// settings, or when they can't be read (logged).
+func (s *Service) pastRulesOn(ctx context.Context) bool {
+	if s.prefs == nil {
+		return false
+	}
+
+	c, err := s.prefs.Autopilot(ctx)
+	if err != nil {
+		s.logger.WarnContext(ctx, "could not read whether routines may merge past the rules; taking it as off",
+			"error", err)
+
+		return false
+	}
+
+	return c.MergePastRules
+}

@@ -18,7 +18,18 @@ type setup struct {
 	noScripts bool
 	names     map[string]string
 
+	// pastRules is the user's switch for merging past the rules, and pastRulesReads counts
+	// its reads.
+	pastRules      bool
+	pastRulesReads int
+
 	libraryReads, scriptReads int
+}
+
+func (s *setup) PastRules(context.Context) bool {
+	s.pastRulesReads++
+
+	return s.pastRules
 }
 
 func (s *setup) Library(context.Context) ([]draft.Prompt, bool) {

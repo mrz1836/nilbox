@@ -95,6 +95,15 @@ func (s *Service) SetAutopilotLogDays(ctx context.Context, days int) (Settings, 
 	return s.saveAutopilot(ctx, func(c *autopilotprefs.Config) { c.LogDays = days })
 }
 
+// SetAutopilotMergePastRules turns Let routines merge your own pull requests past the rules
+// on or off, and returns the settings with it. On, a routine whose Merge it allows it, and
+// that the user accepted so, may merge their own signed pull request that lacks only an
+// approval from someone else; off, none does, whatever its step allows. A backup never
+// carries it.
+func (s *Service) SetAutopilotMergePastRules(ctx context.Context, on bool) (Settings, error) {
+	return s.saveAutopilot(ctx, func(c *autopilotprefs.Config) { c.MergePastRules = on })
+}
+
 // saveAutopilot changes Autopilot's settings with change, inside the transaction that
 // reads the settings back: it reads them, refuses what their check refuses, worded for the
 // window, writes only the keys that change, and emits an event.AutopilotChanged once it is

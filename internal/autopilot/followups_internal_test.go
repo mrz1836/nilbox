@@ -133,9 +133,13 @@ func TestMergeItIsPinnedToTheVerifiedCommitAndBringsAutoMergeBackOnlyWhenItWasOn
 	m.AutoMergeAtMatch = new(false)
 	assert.False(t, autoMergeBack(m, catalog.MergeAutoIfItWasOn))
 
-	assert.Equal(t, "Merges it (squash).", mergeWords(false, catalog.MergeSquash))
-	assert.Equal(t, "Merges it.", mergeWords(false, catalog.MergeDefault))
-	assert.Equal(t, "Turns auto-merge back on, as it was.", mergeWords(true, catalog.MergeSquash))
+	assert.Equal(t, "Merges it (squash).", mergeWords(false, spec.MergeStep{Method: catalog.MergeSquash}))
+	assert.Equal(t, "Merges it.", mergeWords(false, spec.MergeStep{}))
+	assert.Equal(t, "Turns auto-merge back on, as it was.", mergeWords(true, spec.MergeStep{Method: catalog.MergeSquash}))
+	assert.Equal(t, "Merges it (squash), past the rules when only an approval from someone else is missing.",
+		mergeWords(false, spec.MergeStep{Method: catalog.MergeSquash, AllowBypass: true}))
+	assert.Equal(t, "Merges it, past the rules when only an approval from someone else is missing, sensitive files "+
+		"included.", mergeWords(false, spec.MergeStep{AllowBypass: true, AllowSensitive: true}))
 }
 
 func TestMergeItNeverMergesAnOutsideContributorsPullRequest(t *testing.T) {

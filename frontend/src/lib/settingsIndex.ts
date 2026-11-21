@@ -124,7 +124,7 @@ export const sectionInfo: Readonly<Record<SettingsSection, { label: string; desc
   autopilot: {
     label: 'Autopilot',
     description:
-      'Pause Autopilot, the mode new routines start in, the limits every routine keeps to, how long its history is kept, and the Claude Code that Describe it runs.',
+      'Pause Autopilot, the mode new routines start in, the limits every routine keeps to, whether routines merge your own pull requests past the rules, how long its history is kept, and the Claude Code that Describe it runs.',
   },
   launching: {
     label: 'Launching',
@@ -385,9 +385,9 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
       keywords: ['reply', 'LGTM', 'approval', 'request changes', 'comment', 'templates', 'review text'],
     },
   ],
-  // The switch and the default mode, the limits, what holds an agent back, the history,
-  // the Claude Code Describe it runs and the plugin for the user's own, what this Mac has,
-  // and the engine's heartbeat.
+  // The switch and the default mode, the limits, merging past the rules, what holds an
+  // agent back, the history, the Claude Code Describe it runs and the plugin for the user's
+  // own, what this Mac has, and the engine's heartbeat.
   autopilot: [
     { label: 'Pause Autopilot', keywords: ['pause', 'stop', 'resume', 'hold', 'routines', 'nothing new starts'] },
     {
@@ -399,6 +399,22 @@ export const settingsIndex: Readonly<Record<SettingsSection, readonly SettingEnt
     { label: 'Agent runs a day', keywords: ['daily runs', 'coding agents', 'cap', 'limit'] },
     { label: 'GitHub actions a day', keywords: ['rebase', 'update branch', 'labels', 'writes', 'cap', 'limit'] },
     { label: 'Daily cap', keywords: ['budget', 'spend', 'cost', 'dollars', 'usd', 'tokens', 'money', 'limit'] },
+    { label: 'Merging', keywords: ['merge it', 'past the rules', 'bypass', 'admin merge', 'routines'] },
+    {
+      label: 'Let routines merge your own pull requests past the rules',
+      keywords: [
+        'bypass',
+        'admin',
+        'branch protection',
+        'rulesets',
+        'required review',
+        'approval',
+        'merge it',
+        'my own',
+        'self-merge',
+        'signed',
+      ],
+    },
     { label: 'While it runs', keywords: ['agents', 'sleep', 'outage', 'catch up'] },
     {
       label: 'Keep the Mac awake while agents work',

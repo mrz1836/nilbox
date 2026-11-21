@@ -229,16 +229,20 @@ export function placeOf(a: AutopilotAgentStep): 'background' | 'terminal' {
   return a.where === 'terminal' ? 'terminal' : 'background'
 }
 
-// Prior is what the steps before one hold, for what may follow them.
+// Prior is what the steps before one hold, for what may follow them: the agent step, a
+// Wait for the checks and whether the latest one follows the agent's push, and whether one
+// may change the pull request's branch (a script, or a GitHub step that rebases or updates
+// it).
 interface Prior {
   agent: AutopilotAgentStep | undefined
   wait: boolean
   waitOnPush: boolean
+  changesBranch: boolean
 }
 
 // priorOf is what the steps before the one at index hold.
 function priorOf(steps: readonly AutopilotStep[], index: number): Prior {
-  const prior: Prior = { agent: undefined, wait: false, waitOnPush: false }
+  const prior: Prior = { agent: undefined, wait: false, waitOnPush: false, changesBranch: false }
 
   for (const st of steps.slice(0, index)) {
     if (st.agent !== undefined && st.agent !== null) {
@@ -246,10 +250,74 @@ function priorOf(steps: readonly AutopilotStep[], index: number): Prior {
     } else if (st.waitForChecks !== undefined && st.waitForChecks !== null) {
       prior.wait = true
       prior.waitOnPush = st.onlyIf === 'pushed'
+    } else if (st.script !== undefined && st.script !== null) {
+      prior.changesBranch = true
+    } else if ((st.github ?? []).some((a) => (a.rebase ?? null) !== null || (a.updateBranch ?? null) !== null)) {
+      prior.changesBranch = true
     }
   }
 
   return prior
+}
+
+// agentless reports steps with no agent step and no Wait for the checks, whose Merge it
+// merges the commit the routine's checks passed on (spec.Agentless).
+export function agentless(steps: readonly AutopilotStep[]): boolean {
+  return !steps.some((st) => (st.agent ?? null) !== null || (st.waitForChecks ?? null) !== null)
+}
+
+// mergesAgentless reports a routine whose Merge it may come with no agent step: its steps
+// are agentless, and it fires when the checks pass.
+function mergesAgentless(steps: readonly AutopilotStep[], event: AutopilotEvent | undefined): boolean {
+  return event === 'checks_passed' && agentless(steps)
+}
+
+// PastTicks are a spec's ticks that let its Merge it go past the rules: when an approval
+// from someone else is all the user's own pull request lacks (bypass), and even when it
+// changes workflow, agent, or tooling files (sensitive).
+export interface PastTicks {
+  bypass: boolean
+  sensitive: boolean
+}
+
+// noTicks are no ticks at all, as a confirmation starts.
+export const noTicks: PastTicks = { bypass: false, sensitive: false }
+
+// pastTicks are the ticks spec's Merge it steps set, together.
+export function pastTicks(spec: Pick<AutopilotSpec, 'steps'>): PastTicks {
+  const merges = spec.steps.flatMap((st) => (st.merge === undefined || st.merge === null ? [] : [st.merge]))
+
+  return {
+    bypass: merges.some((m) => m.allowBypass === true),
+    sensitive: merges.some((m) => m.allowSensitive === true),
+  }
+}
+
+// goesPastRules reports a spec whose Merge it may go past the rules (spec.PastRules): one
+// the user confirms as such when they save it.
+export function goesPastRules(spec: Pick<AutopilotSpec, 'steps'>): boolean {
+  const ticks = pastTicks(spec)
+
+  return ticks.bypass || ticks.sensitive
+}
+
+// pastRulesToConfirm reports a draft whose save asks the user to confirm that its Merge it
+// may go past the rules: one whose spec goes past them, unless it is the very spec of the
+// routine as saved (saved, undefined for a new one), which they accepted so, as a name-only
+// edit leaves it.
+export function pastRulesToConfirm(
+  spec: AutopilotSpec,
+  saved: Pick<AutopilotRoutine, 'pastRules' | 'spec'> | undefined,
+): boolean {
+  return (
+    goesPastRules(spec) &&
+    !(saved !== undefined && saved.pastRules === 'allowed' && canonical(saved.spec) === canonical(spec))
+  )
+}
+
+// pastRulesAccepted reports every tick of ticks confirmed in accepted.
+export function pastRulesAccepted(ticks: PastTicks, accepted: PastTicks): boolean {
+  return (!ticks.bypass || accepted.bypass) && (!ticks.sensitive || accepted.sensitive)
 }
 
 // mayPush and readOnly report an agent step in the background whose tools let it push, and
@@ -337,8 +405,10 @@ const maxSteps = 10
 // addable are the kinds of step that fit at the end of spec's steps, in the catalog's
 // order: one that acts on the items it watches, an agent step only while there is none,
 // Wait for the checks only after an agent step that may push, Merge it only after a wait
-// on its push, Post the agent's review only after a read-only agent step, and only a
-// notice after one in the terminal. A GitHub step waits for the catalog to list an action.
+// on its push or, with no agent step and no wait, in a routine that fires when the checks
+// pass with no step before it that may change the branch, Post the agent's review only
+// after a read-only agent step, and only a notice after one in the terminal. A GitHub step
+// waits for the catalog to list an action.
 export function addable(catalog: AutopilotCatalog, spec: AutopilotSpec): AddChoice[] {
   if (spec.steps.length >= maxSteps) {
     return []
@@ -362,7 +432,10 @@ export function addable(catalog: AutopilotCatalog, spec: AutopilotSpec): AddChoi
         case 'waitForChecks':
           return mayPush(catalog, prior.agent)
         case 'merge':
-          return prior.wait && prior.waitOnPush
+          return (
+            (prior.wait && prior.waitOnPush) ||
+            (mergesAgentless(spec.steps, spec.trigger.event) && !prior.changesBranch)
+          )
         case 'postReview':
           return readOnly(catalog, prior.agent)
         default:
@@ -391,12 +464,14 @@ export function sendsToGitHub(spec: Pick<AutopilotSpec, 'steps'>): boolean {
 
 // newStep is a step of kind as + Add a step adds it, at the end of steps: each setting left
 // to its default, an agent step where this build runs agents (places, the catalog's), Wait
-// for the checks only if the agent pushed, Merge it only if they passed, and Tell me saying
-// how the steps before it ended once there are some to say.
+// for the checks only if the agent pushed, Merge it only if they passed, or always in a
+// routine with no agent step that fires when the checks pass (event, its trigger's), and
+// Tell me saying how the steps before it ended once there are some to say.
 export function newStep(
   kind: AutopilotStepKind,
   steps: readonly AutopilotStep[],
   places: readonly Pick<AutopilotPlace, 'id' | 'offered'>[] = [],
+  event?: AutopilotEvent,
 ): AutopilotStep {
   switch (kind) {
     case 'snooze':
@@ -409,7 +484,9 @@ export function newStep(
     case 'waitForChecks':
       return { waitForChecks: {}, onlyIf: 'pushed' }
     case 'merge':
-      return { merge: { how: 'autoMergeIfItWasOn' }, onlyIf: 'passed' }
+      return mergesAgentless(steps, event)
+        ? { merge: { how: 'autoMergeIfItWasOn' } }
+        : { merge: { how: 'autoMergeIfItWasOn' }, onlyIf: 'passed' }
     case 'postReview':
       return { postReview: { as: 'comment' } }
     case 'tellMe':
@@ -428,7 +505,8 @@ export function newStep(
 
 // onlyIfChoices are the outcomes a step at index may run only if: those of a step before
 // it that can end so. Wait for the checks follows the agent's push, and Merge it runs only
-// if the checks passed.
+// if the checks passed, or, with no agent step and no wait, always, merging what the
+// routine's checks passed on.
 export function onlyIfChoices(
   catalog: AutopilotCatalog,
   steps: readonly AutopilotStep[],
@@ -447,7 +525,7 @@ export function onlyIfChoices(
     }
 
     if (kind === 'merge') {
-      return o.id === 'passed'
+      return o.id === 'passed' && !agentless(steps)
     }
 
     if (o.from === 'waitForChecks') {

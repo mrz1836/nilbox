@@ -8,6 +8,8 @@ import {
   canonical,
   costLine,
   dryRunWhy,
+  goesPastRules,
+  pastRulesToConfirm,
   sameDraft,
   sendsToGitHub,
   testedKeys,
@@ -23,6 +25,7 @@ import {
   type AutopilotClause,
   type AutopilotDraft,
   type AutopilotMode,
+  type AutopilotPastRules,
   type AutopilotStepKind,
   type AutopilotSuggestions,
   type AutopilotTestResult,
@@ -66,6 +69,13 @@ export interface RoutineBuilderProps {
   // add, and pinned that item, which Test shows at the top.
   suggested?: readonly AutopilotClause[]
   pinned?: Pinned | undefined
+  // pastRules is how the routine as saved stands on merging past the rules, '' for a new
+  // one; pastRulesOn is Let routines merge your own pull requests past the rules, as
+  // Settings has it, undefined until it is read; and onSettings opens Settings → Autopilot,
+  // where it is.
+  pastRules?: AutopilotPastRules
+  pastRulesOn?: boolean | undefined
+  onSettings?: (() => void) | undefined
 }
 
 // clauseWords say a suggested condition: "the labels has any of bug".
@@ -82,7 +92,8 @@ function clauseWords(catalog: AutopilotCatalog, c: AutopilotClause): string {
 // is edited; WATCH, WHEN, IF, THEN, and LIMITS, each edited in place, with what is wrong
 // where it is; and Test below, which tries the draft on its items now, only when asked,
 // since its searches cost points. Save (⌘S) stores it once nothing is wrong; warnings never
-// keep it from being saved.
+// keep it from being saved. A saved routine whose Merge it may go past the rules, which the
+// user hasn't confirmed as it is now, can be saved unchanged, to confirm it.
 export function RoutineBuilder({
   draft,
   baseline,
@@ -102,10 +113,15 @@ export function RoutineBuilder({
   describeDelay = 300,
   suggested = [],
   pinned,
+  pastRules = '',
+  pastRulesOn,
+  onSettings,
 }: RoutineBuilderProps) {
   const id = useId()
   const spec = draft.spec
-  const key = canonical({ spec, mode: draft.mode ?? mode })
+  // The draft is read again as the switch for merging past the rules changes, since its
+  // warnings say whether it is on.
+  const key = canonical({ spec, mode: draft.mode ?? mode, pastRulesOn })
   const described = useDebouncedQuery(
     () => describeRoutine({ ...draft, mode: draft.mode ?? mode }).then((d) => ({ key, d })),
     [key],
@@ -152,10 +168,18 @@ export function RoutineBuilder({
     viewer,
     problems,
     warnings: [...warnings, ...testWarnings],
+    pastRules: {
+      saved: pastRules,
+      confirm: pastRulesToConfirm(spec, isNew ? undefined : { pastRules, spec: baseline.spec }),
+      onSettings,
+    },
   }
   const dirty = !sameDraft(draft, baseline)
   const named = draft.name.trim() !== ''
-  const canSave = (dirty || isNew) && named && ready && !saving
+  // unconfirmed reports a saved routine whose Merge it may go past the rules that the user
+  // hasn't confirmed as it is now: Save, which asks them to, needs no change first.
+  const unconfirmed = !isNew && pastRules === 'needsTick' && goesPastRules(spec)
+  const canSave = (dirty || isNew || unconfirmed) && named && ready && !saving
   const held = current?.dryRunOnly ?? heldKinds
   const describeError =
     !described.pending && described.error !== '' ? `Couldn’t read the routine: ${described.error}` : ''
@@ -195,6 +219,10 @@ export function RoutineBuilder({
 
     if (dirty && problems.length > 0) {
       return { tone: 'muted' as const, text: `Fix ${counted(problems.length, 'problem', 'problems')} to save.` }
+    }
+
+    if (!dirty && unconfirmed) {
+      return { tone: 'muted' as const, text: 'Save to confirm it may merge past the rules.' }
     }
 
     return { tone: 'muted' as const, text: dirty ? 'Unsaved changes' : '' }

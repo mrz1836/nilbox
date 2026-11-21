@@ -1,19 +1,30 @@
 import { useId, type ReactNode } from 'react'
 
-import type { AutopilotCatalog, AutopilotProblem, AutopilotSuggestions } from '../../../platform'
+import type { AutopilotCatalog, AutopilotPastRules, AutopilotProblem, AutopilotSuggestions } from '../../../platform'
 import { captionClass, fieldClass, quietButtonClass } from '../../controls'
 import { AlertIcon } from '../../icons'
 
 // BuilderKit is what every block of the builder reads beside its part of the draft: the
 // catalog it renders from, what the stored items suggest its pickers, the account signed
-// in (whose name is your account), and the problems and warnings the backend found, each
-// where it is.
+// in (whose name is your account), the problems and warnings the backend found, each
+// where it is, and how the draft stands on merging past the rules.
 export interface BuilderKit {
   catalog: AutopilotCatalog
   suggestions: AutopilotSuggestions
   viewer: string
   problems: readonly AutopilotProblem[]
   warnings: readonly AutopilotProblem[]
+  pastRules?: PastRulesKit | undefined
+}
+
+// PastRulesKit is how a draft stands on merging past the rules, which Merge it's ticks say
+// beside them: how the routine as saved stands ('' for a new one), whether Save asks the
+// user to confirm the ticks (pastRulesToConfirm), and how to open Settings → Autopilot,
+// where the switch for them is.
+export interface PastRulesKit {
+  saved: AutopilotPastRules
+  confirm: boolean
+  onSettings: (() => void) | undefined
 }
 
 export interface BlockProps {

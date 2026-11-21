@@ -361,6 +361,20 @@ export function routineSpec(): AutopilotRoutine['spec'] {
   }
 }
 
+// pastRulesSpec is a routine's spec that merges your own pull requests past the rules: when
+// checks pass on the pull requests you opened, merge it when GitHub allows, or past the
+// rules when an approval from someone else is all it lacks, sensitive files included.
+export function pastRulesSpec(): AutopilotRoutine['spec'] {
+  return {
+    version: 1,
+    watch: { sources: [{ lists: ['authored'] }] },
+    trigger: { event: 'checks_passed' },
+    conditions: { match: 'all', of: [] },
+    steps: [{ merge: { how: 'whenMergeable', allowBypass: true, allowSensitive: true } }],
+    limits: {},
+  }
+}
+
 // autopilotCatalog is the catalog the bound Catalog returns, as a Go test writes it from
 // the catalog itself (autopilotCatalog.json), so the builder's tests render what the app
 // does: the agent step, among others, listed but not offered yet.
@@ -636,6 +650,7 @@ export function routine(overrides: Partial<AutopilotRoutine> = {}): AutopilotRou
     problems: [],
     dryRunOnly: [],
     lastError: '',
+    pastRules: '',
     figures: routineFigures(),
     createdAt: '2026-06-14T09:00:00Z',
     updatedAt: '2026-06-15T08:00:00Z',
@@ -1339,6 +1354,7 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
       catchUpHours: 24,
       historyDays: 90,
       logDays: 30,
+      mergePastRules: false,
     },
     ...overrides,
   }
@@ -3000,6 +3016,7 @@ export function review(overrides: Partial<Review> = {}): Review {
       closeOffer(),
     ],
     primary: 'approve_merge',
+    ownAwaitsApproval: false,
     mergeMethods: ['MERGE', 'SQUASH'],
     defaultMethod: 'SQUASH',
     autoMerge: '',
@@ -4585,6 +4602,7 @@ export function kitCheckedRoutine(overrides: Partial<KitCheckedRoutine> = {}): K
     gone: false,
     stale: false,
     risks: [],
+    pastRules: false,
     ...overrides,
   }
 }

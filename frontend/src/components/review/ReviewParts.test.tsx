@@ -496,7 +496,9 @@ describe('MergeConfirmDialog', () => {
     const dialog = screen.getByRole('dialog', { name: 'Merge #7 into main past the repository’s rules?' })
     expect(dialog).toHaveTextContent('GitHub would hold this merge back:')
     expect(screen.getByRole('listitem')).toHaveTextContent('It needs an approval from someone else.')
-    expect(dialog).toHaveTextContent(/Nothing else here ever does, and no agent can/)
+    expect(dialog).toHaveTextContent(
+      /Only a routine you allowed does, on your own signed pull request that lacks only an approval; no agent can/,
+    )
 
     expect(screen.getByRole('button', { name: 'Squash-merge past the rules' })).toBeDisabled()
     await userEvent.click(screen.getByRole('radio', { name: 'Create a merge commit' }))

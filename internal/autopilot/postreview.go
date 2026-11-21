@@ -226,14 +226,16 @@ func (p *pass) agentReviewOf(ctx context.Context, m *match, step int) (*AgentRev
 }
 
 // followUp fills in job for a step that follows a run, as the cycle starts it, and returns
-// the commit it is pinned to: for Merge it, the commit its checks passed on, and whether it
-// turns auto-merge back on; for Post the agent's review, the commit the agent read and the
-// review it posts, as the step and the guards on approving decide. It reports false for
-// any other step.
-func (p *pass) followUp(ctx context.Context, m *match, sr *stepRun, job *Job) (string, bool) {
+// the commit it is pinned to: for Merge it, the commit its checks passed on, whether it
+// turns auto-merge back on, and whether r, its routine, lets it past the rules where an
+// approval is all it lacks (pastReview); for Post the agent's review, the commit the agent
+// read and the review it posts, as the step and the guards on approving decide. It reports
+// false for any other step.
+func (p *pass) followUp(ctx context.Context, r *routineRun, m *match, sr *stepRun, job *Job) (string, bool) {
 	switch {
 	case sr.Step.Merge != nil:
 		job.Head, job.AutoMerge = mergeHead(m, int(m.Step)), autoMergeBack(m, sr.Step.Merge.How)
+		job.PastReview, job.Sensitive, job.PastReviewWhy = p.pastReview(r, m, sr)
 
 		return job.Head, true
 	case sr.Step.PostReview != nil:

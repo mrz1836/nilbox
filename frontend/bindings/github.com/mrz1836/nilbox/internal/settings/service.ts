@@ -278,6 +278,17 @@ export function SetAutopilotLogDays(days: number): $CancellablePromise<$models.S
 }
 
 /**
+ * SetAutopilotMergePastRules turns Let routines merge your own pull requests past the rules
+ * on or off, and returns the settings with it. On, a routine whose Merge it allows it, and
+ * that the user accepted so, may merge their own signed pull request that lacks only an
+ * approval from someone else; off, none does, whatever its step allows. A backup never
+ * carries it.
+ */
+export function SetAutopilotMergePastRules(on: boolean): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(627351815, on);
+}
+
+/**
  * SetAutopilotPaused turns Pause Autopilot on or off, and returns the settings with it.
  * Paused, no routine starts anything new; agents already running carry on.
  */

@@ -118,18 +118,23 @@ const pullCommitsMaxText = "100"
 
 // mergeStateQuery reads, by node ID, what a merge must check first, as of now: the merge
 // state, the head commit, whether the pull request is open, a draft, or merges through a
-// queue, and whether the viewer may merge it past the rules. It costs one point.
-const mergeStateQuery = `query MergeState($id: ID!) {
+// queue, and whether the viewer may merge it past the rules. It costs one point. With $own
+// set, it also reads what a routine's merge of the viewer's own pull request past the rules
+// checks first (OwnMergeFields, ownmerge.go) and who the viewer is; without, it asks for
+// none of it, so every other merge reads what it always did.
+const mergeStateQuery = `query MergeState($id: ID!, $own: Boolean!) {
   node(id: $id) {
     __typename
     ... on PullRequest {
       mergeStateStatus headRefOid isDraft isMergeQueueEnabled prState: state viewerCanMergeAsAdmin
       autoMergeRequest { mergeMethod enabledAt enabledBy { login } }
+      ...OwnMergeFields @include(if: $own)
     }
   }
+  viewer @include(if: $own) { login }
   rateLimit { cost remaining resetAt limit used }
 }
-`
+` + ownMergeFieldsFragment
 
 // A pull request's merge state, as GitHub's mergeStateStatus reports it.
 const (
@@ -411,6 +416,9 @@ type MergeState struct {
 
 	// CanBypass says whether GitHub lets the viewer merge past the branch's rules.
 	CanBypass bool
+
+	// Own is what FetchOwnMergeState read beyond the rest, nil from FetchMergeState.
+	Own *OwnMerge
 }
 
 // FetchPullReview reads what the review sheet shows about the pull request with node ID
@@ -428,7 +436,22 @@ func (c *Client) FetchPullReview(ctx context.Context, tok Token, id, compareHead
 // with one GraphQL request of one point. A merge reads it first, so it never merges what
 // branch protection would block: GitHub's REST merge lets an admin through.
 func (c *Client) FetchMergeState(ctx context.Context, tok Token, id string) (*MergeState, error) {
-	state, err := c.fetchMergeState(ctx, tok, id)
+	state, err := c.fetchMergeState(ctx, tok, id, false)
+
+	return state, Redact(err, tok)
+}
+
+// FetchOwnMergeState reads the merge state of the pull request with node ID id as
+// FetchMergeState does, and with it, in the same request, what a routine checks before it
+// merges the viewer's own pull request past the rules (MergeState.Own): who the viewer is,
+// whether they opened it, its review decision, the head commit's checks, its newest
+// commits' signatures, its review threads, and the base branch's rules and protection. It
+// is still one point (measured in November 2026 on a pull request with 39 checks, one
+// signed commit, and a ruleset of five rules). Any GraphQL error but the pull request's
+// being gone fails it, so a part GitHub couldn't read is never taken for one with nothing
+// in it.
+func (c *Client) FetchOwnMergeState(ctx context.Context, tok Token, id string) (*MergeState, error) {
+	state, err := c.fetchMergeState(ctx, tok, id, true)
 
 	return state, Redact(err, tok)
 }
@@ -486,27 +509,48 @@ func (c *Client) sendPullReview(ctx context.Context, tok Token, id, compareHead 
 	return review, nil
 }
 
-// fetchMergeState sends the merge state query and decodes the answer.
-func (c *Client) fetchMergeState(ctx context.Context, tok Token, id string) (*MergeState, error) {
+// fetchMergeState sends the merge state query, with the own pull request's fields when own
+// is set, and decodes the answer.
+func (c *Client) fetchMergeState(ctx context.Context, tok Token, id string, own bool) (*MergeState, error) {
 	if id == "" {
 		return nil, fmt.Errorf("%w: no node ID", ErrInvalidItemRef)
 	}
 
-	req := graphQLRequest{Query: mergeStateQuery, Variables: map[string]any{"id": id}}
+	req := graphQLRequest{Query: mergeStateQuery, Variables: map[string]any{"id": id, "own": own}}
 
-	resp, _, err := postGraphQL[itemData](ctx, c, tok, "merge state", req, unlessData)
+	fatal := unlessData
+	if own {
+		fatal = unlessNotFound
+	}
+
+	resp, _, err := postGraphQL[mergeStateData](ctx, c, tok, "merge state", req, fatal)
 	if err != nil {
 		return nil, err
 	}
 
-	if gone, goneErr := goneNode(resp); gone || goneErr != nil {
-		if goneErr != nil {
-			return nil, goneErr
-		}
+	gone, err := mergeStateGone(resp)
 
+	switch {
+	case err != nil:
+		return nil, err
+	case gone:
 		return &MergeState{}, nil
 	}
 
+	state, err := decodeMergeState(resp.Data.Node)
+	if err != nil || !own {
+		return state, err
+	}
+
+	if state.Own, err = decodeOwnMerge(resp.Data.Node, resp.Data.Viewer); err != nil {
+		return nil, err
+	}
+
+	return state, nil
+}
+
+// decodeMergeState reads the merge state from the pull request node raw.
+func decodeMergeState(raw json.RawMessage) (*MergeState, error) {
 	var node struct {
 		TypeName            string            `json:"__typename"`
 		MergeStateStatus    string            `json:"mergeStateStatus"`
@@ -518,7 +562,7 @@ func (c *Client) fetchMergeState(ctx context.Context, tok Token, id string) (*Me
 		AutoMergeRequest    *graphQLAutoMerge `json:"autoMergeRequest"`
 	}
 
-	if err = json.Unmarshal(resp.Data.Node, &node); err != nil {
+	if err := json.Unmarshal(raw, &node); err != nil {
 		return nil, fmt.Errorf("%w: decode the merge state: %w", ErrMalformedResponse, err)
 	}
 

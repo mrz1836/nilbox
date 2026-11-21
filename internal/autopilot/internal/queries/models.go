@@ -73,6 +73,7 @@ type AutopilotRoutine struct {
 	UpdatedAt          time.Time
 	DeletedAt          *time.Time
 	GraduateDeclinedAt *time.Time
+	PastRulesHash      string
 }
 
 type AutopilotRun struct {

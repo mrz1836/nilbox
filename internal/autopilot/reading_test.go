@@ -87,6 +87,7 @@ type sliceSetup struct {
 	scripts   []drafts.Script
 	scriptsOK bool
 	names     map[string]string
+	pastRules bool
 }
 
 func (s sliceSetup) Library(context.Context) ([]autopilot.LibraryPrompt, bool) {
@@ -99,6 +100,10 @@ func (s sliceSetup) Scripts(context.Context) ([]drafts.Script, bool) {
 
 func (s sliceSetup) StarterNames(context.Context) spec.PromptNames {
 	return func(p spec.PromptRef) string { return s.names[p.Starter] }
+}
+
+func (s sliceSetup) PastRules(context.Context) bool {
+	return s.pastRules
 }
 
 // setupOf returns a Setup of slices holding what c's library, scripts, and the tests'

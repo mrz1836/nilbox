@@ -1,7 +1,7 @@
 -- name: ListRoutines :many
 -- ListRoutines returns every routine not deleted, in the user's order.
 SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at
+       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at, past_rules_hash
 FROM autopilot_routines
 WHERE deleted_at IS NULL
 ORDER BY sort_order, id;
@@ -9,7 +9,7 @@ ORDER BY sort_order, id;
 -- name: GetRoutine :one
 -- GetRoutine returns one routine, or sql.ErrNoRows when it is gone or deleted.
 SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at
+       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at, past_rules_hash
 FROM autopilot_routines
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
@@ -39,7 +39,8 @@ RETURNING id;
 
 -- name: UpdateRoutine :execrows
 -- UpdateRoutine saves a routine's definition as edited, leaving its place in the order,
--- its template, and its last error.
+-- its template, and its last error, with the hash of the spec its user accepted as one that
+-- may merge past the rules, '' for none.
 UPDATE autopilot_routines SET
     account_login = sqlc.arg(account_login),
     name = sqlc.arg(name),
@@ -51,16 +52,25 @@ UPDATE autopilot_routines SET
     spec_version = sqlc.arg(spec_version),
     enabled_at = sqlc.narg(enabled_at),
     broken_reason = sqlc.arg(broken_reason),
+    past_rules_hash = sqlc.arg(past_rules_hash),
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
 -- name: SetRoutineSpec :execrows
 -- SetRoutineSpec replaces a routine's spec alone, as when a prompt it names by nickname is
--- renamed, while its spec is still the one read (was).
+-- renamed, while its spec is still the one read (was), with the hash of the spec its user
+-- accepted as one that may merge past the rules, '' for none.
 UPDATE autopilot_routines SET
     spec = sqlc.arg(spec),
+    past_rules_hash = sqlc.arg(past_rules_hash),
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id) AND spec = sqlc.arg(was) AND deleted_at IS NULL;
+
+-- name: SetRoutinePastRules :execrows
+-- SetRoutinePastRules records the hash of the spec a new routine's user accepted as one
+-- that may merge past the rules, '' for none.
+UPDATE autopilot_routines SET past_rules_hash = sqlc.arg(past_rules_hash)
+WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
 -- name: SetRoutineEnabled :execrows
 -- SetRoutineEnabled switches a routine on, with when, or off, with no time.

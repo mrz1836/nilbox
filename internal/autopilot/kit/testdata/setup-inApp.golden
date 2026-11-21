@@ -45,6 +45,7 @@ An agent step's `agent` and `profile`, or a fallback's, name one of these.
 
 - `enabled`, Autopilot (beta) in Labs: `true`, the user's alone
 - `paused`, Pause Autopilot: `false`, the user's alone
+- `mergePastRules`, Let routines merge your own pull requests past the rules: `false`, the user's alone
 - `defaultMode`, New routines start in: `ask` (Ask first)
 - `agentsAtOnce`, Agents at once: `2`
 - `runsPerDay`, Agent runs a day: `20`

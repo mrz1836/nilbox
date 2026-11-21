@@ -138,6 +138,15 @@ func stepSettingWords(id string, t reflect.Type) string {
 			"the routine's notices decide",
 		"postReview.allowApprove": "`true` lets a verdict approve, with `as` `" + string(catalog.ReviewAsVerdict) +
 			"` alone; left out, `false`, and an approval posts as a comment",
+		"merge.allowBypass": "`true` lets a `" + string(catalog.StepMerge) + "` with no agent step, in a routine " +
+			"whose trigger is `" + string(catalog.EventChecksPassed) + "`, merge the user's own pull request past the " +
+			"rules when an approval from someone else is all it lacks, every commit signed by them, with `how` `" +
+			string(catalog.MergeWhenMergeable) + "` alone; it merges so only once the user ticks it as they add the " +
+			"routine and turns on the switch in Autopilot's settings, both theirs alone; propose it only when they ask " +
+			"to merge past the rules or without a reviewer; left out, `false`, and it merges only what GitHub allows",
+		"merge.allowSensitive": "`true`, with `allowBypass`, lets it do so when the pull request changes " +
+			"workflow, agent, or tooling files too; propose it only when the user asks for those files to merge so " +
+			"too; left out, `false`",
 		"script.id":   "the script's id, exactly as `" + ToolMySetup + "` lists it",
 		"script.name": "the script's name, exactly as `" + ToolMySetup + "` lists it",
 	}[id]
@@ -213,7 +222,14 @@ func orderRules() []string {
 			string(catalog.OutcomeNotPushed) + "`.",
 		tick(string(catalog.StepMerge)) + " only after a " + wait + " whose `onlyIf` is `" +
 			string(catalog.OutcomePushed) + "`, so the checks it follows are on the agent's own commit, and only " +
-			"with its own `onlyIf` `" + string(catalog.OutcomePassedChecks) + "`.",
+			"with its own `onlyIf` `" + string(catalog.OutcomePassedChecks) + "`; or, in a routine with no " + agent +
+			" step and no " + wait + ", whose trigger is `" + string(catalog.EventChecksPassed) + "` and whose " +
+			"`limits.oncePer` is left out or `" + string(catalog.OncePerHeadCommit) + "`, with no `onlyIf`, and " +
+			"with no `" + string(catalog.GitHubRebase) + "` or `" + string(catalog.GitHubUpdateBranch) + "` action and no `" +
+			string(catalog.StepScript) + "` step before it: it merges the commit the checks passed on.",
+		"`allowBypass` and `allowSensitive` only on a " + tick(string(catalog.StepMerge)) + " with no " + agent +
+			" step, as above, with `how` `" + string(catalog.MergeWhenMergeable) + "`; `allowSensitive` only with " +
+			"`allowBypass`.",
 		tick(string(catalog.StepPostReview)) + " only after an " + agent + " step in the background whose tools " +
 			"preset is " + tickedOr(readOnly) + ", and `allowApprove` only with `as` `" +
 			string(catalog.ReviewAsVerdict) + "`.",
@@ -477,7 +493,12 @@ func githubTopic(v Vocabulary) string {
 		"`actionsPerDay`. A GitHub action never merges, approves, requests changes, closes, or approves " +
 		"workflow runs: merging and posting a review are the steps `" + string(catalog.StepMerge) + "` and `" +
 		string(catalog.StepPostReview) + "`, and marking the item's GitHub notifications done is the step `" +
-		string(catalog.StepMarkDone) + "`.")
+		string(catalog.StepMarkDone) + "`. A `" + string(catalog.StepMerge) + "` may follow a GitHub step with " +
+		"no agent step, in a routine whose trigger is `" + string(catalog.EventChecksPassed) + "`, so a routine " +
+		"can reply, then merge what the checks passed on: never after a `" + string(catalog.GitHubRebase) + "` or " +
+		"`" + string(catalog.GitHubUpdateBranch) + "`, which change the branch. Nothing approves a pull request but " +
+		"`" + string(catalog.StepPostReview) + "`; the user's own pull request, which GitHub never lets them " +
+		"approve, merges past the rules only as `allowBypass` allows (topic `steps`).")
 
 	return p.String()
 }

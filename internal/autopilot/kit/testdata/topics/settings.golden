@@ -13,7 +13,8 @@ Settings → Autopilot holds limits over every routine together. A proposal's `s
 - `historyDays`, History kept: a whole number, 7 to 365 days, default 90: lowering it deletes the older history, and lowers the run logs with it.
 - `logDays`, Run logs kept: a whole number, 1 to 90 days, default 30: never more than `historyDays`.
 
-These two are the user's alone, and a proposal has no place for them:
+These are the user's alone, and a proposal has no place for them:
 
 - `enabled`, Autopilot (beta) in Labs: shows and runs Autopilot.
 - `paused`, Pause Autopilot: while on, no routine starts anything new.
+- `mergePastRules`, Let routines merge your own pull requests past the rules: `true` or `false`, default `false`: while on, a `merge` whose `allowBypass` the user ticked as they added it may merge their own signed pull request that lacks only an approval from someone else; never in a backup, and only the user turns it on, in Settings.

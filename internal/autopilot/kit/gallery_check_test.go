@@ -122,3 +122,24 @@ func TestEveryGalleryTemplateChecksClean(t *testing.T) {
 		})
 	}
 }
+
+// TestNoGalleryTemplateMergesPastTheRules is the guard: a template never offers to merge
+// past the rules, which only the user asks for, routine by routine.
+func TestNoGalleryTemplateMergesPastTheRules(t *testing.T) {
+	t.Parallel()
+
+	templates := autopilot.Gallery()
+	require.NotEmpty(t, templates)
+
+	for _, g := range templates {
+		data, err := json.Marshal(g.Spec)
+		require.NoError(t, err)
+
+		var sp spec.Spec
+		require.NoError(t, json.Unmarshal(data, &sp))
+
+		assert.False(t, sp.PastRules(), "%s merges past the rules", g.Key)
+		assert.NotContains(t, string(data), "allowBypass", g.Key)
+		assert.NotContains(t, string(data), "allowSensitive", g.Key)
+	}
+}

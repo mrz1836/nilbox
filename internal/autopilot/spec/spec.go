@@ -32,6 +32,8 @@
 package spec
 
 import (
+	"slices"
+
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/watch"
 )
@@ -339,12 +341,35 @@ type WaitStep struct {
 	GiveUpHours *int `json:"giveUpHours,omitempty"`
 }
 
-// MergeStep is Merge it, inside GitHub's own rules.
+// MergeStep is Merge it, inside GitHub's own rules but for one case the user allows.
 type MergeStep struct {
 	How catalog.MergeHow `json:"how"`
 
 	// Method is the merge method; "" is the repository's own.
 	Method catalog.MergeMethod `json:"method,omitempty"`
+
+	// AllowBypass lets a Merge it with no agent step, in a routine that fires when the
+	// checks pass, merge past the rules when an approval from someone else is all it lacks,
+	// on the user's own pull request whose every commit they signed; AllowSensitive lets it
+	// do so when the pull request changes workflow, agent, or tooling files too. Neither goes
+	// without the user's switch in Autopilot's settings, nor before they accepted the
+	// routine so.
+	AllowBypass    bool `json:"allowBypass,omitempty"`
+	AllowSensitive bool `json:"allowSensitive,omitempty"`
+}
+
+// Agentless reports a spec with no agent step and no Wait for the checks, whose Merge it
+// merges the commit its trigger's checks passed on.
+func (s Spec) Agentless() bool {
+	return !slices.ContainsFunc(s.Steps, func(st Step) bool { return st.Agent != nil || st.WaitForChecks != nil })
+}
+
+// PastRules reports a spec whose Merge it allows going past the rules (AllowBypass or
+// AllowSensitive): one the user must accept as such before it is saved.
+func (s Spec) PastRules() bool {
+	return slices.ContainsFunc(s.Steps, func(st Step) bool {
+		return st.Merge != nil && (st.Merge.AllowBypass || st.Merge.AllowSensitive)
+	})
 }
 
 // ReviewStep is Post the agent's review.

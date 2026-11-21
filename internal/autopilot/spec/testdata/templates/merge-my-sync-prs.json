@@ -1,0 +1,58 @@
+{
+    "version": 1,
+    "watch": {
+        "sources": [
+            {
+                "lists": [
+                    "authored"
+                ]
+            }
+        ]
+    },
+    "trigger": {
+        "event": "checks_passed"
+    },
+    "conditions": {
+        "match": "all",
+        "of": [
+            {
+                "field": "item.title",
+                "op": "startsWith",
+                "value": "[Sync] Update project files"
+            },
+            {
+                "field": "item.labels",
+                "op": "hasAny",
+                "values": [
+                    "automerge"
+                ]
+            },
+            {
+                "field": "pr.draft",
+                "op": "isNo"
+            }
+        ]
+    },
+    "steps": [
+        {
+            "github": [
+                {
+                    "reply": {
+                        "prompt": {
+                            "nickname": "Sync OK"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "merge": {
+                "how": "whenMergeable",
+                "method": "squash",
+                "allowBypass": true,
+                "allowSensitive": true
+            }
+        }
+    ],
+    "limits": {}
+}

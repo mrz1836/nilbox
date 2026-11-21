@@ -1,0 +1,3 @@
+warning: It merges the pull request on GitHub (squash) once its checks pass.
+warning: It merges your own pull request past the rules when an approval from someone else is all it lacks and you signed every commit, with no click, once you confirm it as you add it and turn on Let routines merge your own pull requests past the rules in Autopilot's settings.
+warning: It merges so even when the pull request changes workflow, agent, or tooling files, which a person reviews otherwise.

@@ -49,7 +49,7 @@ func (q *Queries) DeleteRoutine(ctx context.Context, arg DeleteRoutineParams) (i
 
 const getRoutine = `-- name: GetRoutine :one
 SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at
+       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at, past_rules_hash
 FROM autopilot_routines
 WHERE id = ?1 AND deleted_at IS NULL
 `
@@ -77,6 +77,7 @@ func (q *Queries) GetRoutine(ctx context.Context, id int64) (AutopilotRoutine, e
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.GraduateDeclinedAt,
+		&i.PastRulesHash,
 	)
 	return i, err
 }
@@ -135,7 +136,7 @@ func (q *Queries) InsertRoutine(ctx context.Context, arg InsertRoutineParams) (i
 
 const listRoutines = `-- name: ListRoutines :many
 SELECT id, account_login, name, name_key, description, enabled, mode, spec, spec_version, template_key, sort_order,
-       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at
+       enabled_at, last_error, broken_reason, created_at, updated_at, deleted_at, graduate_declined_at, past_rules_hash
 FROM autopilot_routines
 WHERE deleted_at IS NULL
 ORDER BY sort_order, id
@@ -170,6 +171,7 @@ func (q *Queries) ListRoutines(ctx context.Context) ([]AutopilotRoutine, error) 
 			&i.UpdatedAt,
 			&i.DeletedAt,
 			&i.GraduateDeclinedAt,
+			&i.PastRulesHash,
 		); err != nil {
 			return nil, err
 		}
@@ -292,25 +294,49 @@ func (q *Queries) SetRoutineOrder(ctx context.Context, arg SetRoutineOrderParams
 	return err
 }
 
+const setRoutinePastRules = `-- name: SetRoutinePastRules :execrows
+UPDATE autopilot_routines SET past_rules_hash = ?1
+WHERE id = ?2 AND deleted_at IS NULL
+`
+
+type SetRoutinePastRulesParams struct {
+	PastRulesHash string
+	ID            int64
+}
+
+// SetRoutinePastRules records the hash of the spec a new routine's user accepted as one
+// that may merge past the rules, ” for none.
+func (q *Queries) SetRoutinePastRules(ctx context.Context, arg SetRoutinePastRulesParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setRoutinePastRules, arg.PastRulesHash, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const setRoutineSpec = `-- name: SetRoutineSpec :execrows
 UPDATE autopilot_routines SET
     spec = ?1,
-    updated_at = ?2
-WHERE id = ?3 AND spec = ?4 AND deleted_at IS NULL
+    past_rules_hash = ?2,
+    updated_at = ?3
+WHERE id = ?4 AND spec = ?5 AND deleted_at IS NULL
 `
 
 type SetRoutineSpecParams struct {
-	Spec      string
-	UpdatedAt time.Time
-	ID        int64
-	Was       string
+	Spec          string
+	PastRulesHash string
+	UpdatedAt     time.Time
+	ID            int64
+	Was           string
 }
 
 // SetRoutineSpec replaces a routine's spec alone, as when a prompt it names by nickname is
-// renamed, while its spec is still the one read (was).
+// renamed, while its spec is still the one read (was), with the hash of the spec its user
+// accepted as one that may merge past the rules, ” for none.
 func (q *Queries) SetRoutineSpec(ctx context.Context, arg SetRoutineSpecParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, setRoutineSpec,
 		arg.Spec,
+		arg.PastRulesHash,
 		arg.UpdatedAt,
 		arg.ID,
 		arg.Was,
@@ -333,27 +359,30 @@ UPDATE autopilot_routines SET
     spec_version = ?8,
     enabled_at = ?9,
     broken_reason = ?10,
-    updated_at = ?11
-WHERE id = ?12 AND deleted_at IS NULL
+    past_rules_hash = ?11,
+    updated_at = ?12
+WHERE id = ?13 AND deleted_at IS NULL
 `
 
 type UpdateRoutineParams struct {
-	AccountLogin string
-	Name         string
-	NameKey      string
-	Description  string
-	Enabled      bool
-	Mode         string
-	Spec         string
-	SpecVersion  int64
-	EnabledAt    *time.Time
-	BrokenReason string
-	UpdatedAt    time.Time
-	ID           int64
+	AccountLogin  string
+	Name          string
+	NameKey       string
+	Description   string
+	Enabled       bool
+	Mode          string
+	Spec          string
+	SpecVersion   int64
+	EnabledAt     *time.Time
+	BrokenReason  string
+	PastRulesHash string
+	UpdatedAt     time.Time
+	ID            int64
 }
 
 // UpdateRoutine saves a routine's definition as edited, leaving its place in the order,
-// its template, and its last error.
+// its template, and its last error, with the hash of the spec its user accepted as one that
+// may merge past the rules, ” for none.
 func (q *Queries) UpdateRoutine(ctx context.Context, arg UpdateRoutineParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, updateRoutine,
 		arg.AccountLogin,
@@ -366,6 +395,7 @@ func (q *Queries) UpdateRoutine(ctx context.Context, arg UpdateRoutineParams) (i
 		arg.SpecVersion,
 		arg.EnabledAt,
 		arg.BrokenReason,
+		arg.PastRulesHash,
 		arg.UpdatedAt,
 		arg.ID,
 	)

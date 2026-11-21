@@ -2,6 +2,7 @@ package settings
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -97,6 +98,10 @@ func TestAutopilotSettersStoreEachSettingAndTellOnce(t *testing.T) {
 			"logs", func() (Settings, error) { return svc.SetAutopilotLogDays(ctx, 90) },
 			func(c *autopilotprefs.Config) { c.LogDays = 90 },
 		},
+		{
+			"past the rules", func() (Settings, error) { return svc.SetAutopilotMergePastRules(ctx, true) },
+			func(c *autopilotprefs.Config) { c.MergePastRules = true },
+		},
 	} {
 		before, err := svc.Get(ctx)
 		require.NoError(t, err)
@@ -113,7 +118,7 @@ func TestAutopilotSettersStoreEachSettingAndTellOnce(t *testing.T) {
 		assert.Equal(t, want, again.Autopilot, "%s: it is stored", c.name)
 	}
 
-	assert.Len(t, events.All(), 12, "each setter tells once")
+	assert.Len(t, events.All(), 13, "each setter tells once")
 
 	for _, e := range events.All() {
 		assert.Equal(t, event.AutopilotChanged{}, e)
@@ -285,6 +290,60 @@ func TestPortableAutopilotRoundTrip(t *testing.T) {
 	got, err := dst.Get(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, want.Autopilot, got.Autopilot, "every Autopilot setting comes back")
+}
+
+func TestABackupNeverCarriesMergingPastTheRules(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	src, _, _ := newTestService(t)
+	_, err := src.SetAutopilotMergePastRules(ctx, true)
+	require.NoError(t, err)
+
+	p, err := NewBackupPart(src).Portable(ctx)
+	require.NoError(t, err)
+
+	raw, err := json.Marshal(p)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "astRules", "an export never holds the switch")
+
+	t.Run("an import leaves it off", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		dst, dstDB, _ := newTestService(t)
+		part := NewBackupPart(dst)
+
+		plan, err := part.PlanPortable(ctx, Portable{Autopilot: p.Autopilot})
+		require.NoError(t, err)
+		applyPlan(t, part, dstDB, plan)
+
+		got, err := dst.Get(ctx)
+		require.NoError(t, err)
+		assert.False(t, got.Autopilot.MergePastRules)
+	})
+
+	t.Run("an import leaves it on", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		dst, dstDB, _ := newTestService(t)
+		_, err := dst.SetAutopilotMergePastRules(ctx, true)
+		require.NoError(t, err)
+
+		part := NewBackupPart(dst)
+
+		plan, err := part.PlanPortable(ctx, Portable{Autopilot: p.Autopilot})
+		require.NoError(t, err)
+		applyPlan(t, part, dstDB, plan)
+
+		got, err := dst.Get(ctx)
+		require.NoError(t, err)
+		assert.True(t, got.Autopilot.MergePastRules)
+	})
 }
 
 func TestPlanPortableAutopilotLeavesOutWhatItRefuses(t *testing.T) {

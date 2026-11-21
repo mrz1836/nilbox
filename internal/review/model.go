@@ -388,6 +388,11 @@ type Review struct {
 	Offers  []Offer `json:"offers"`
 	Primary Action  `json:"primary"`
 
+	// OwnAwaitsApproval reports the user's own pull request that the rules hold back only
+	// for an approval from someone else, which GitHub offers to merge past the rules now: the
+	// one a routine the user allowed may merge past them.
+	OwnAwaitsApproval bool `json:"ownAwaitsApproval"`
+
 	// MergeMethods are the methods the repository allows, and DefaultMethod the one a
 	// merge uses unless the user picks another.
 	MergeMethods  []MergeMethod `json:"mergeMethods"`
@@ -638,6 +643,11 @@ type ActRequest struct {
 
 	// Accept reports that the user accepted the action's warnings.
 	Accept bool `json:"accept"`
+
+	// Routine is a routine's merge past the rules (pastrules.go), nil for anyone else's
+	// action. Only Autopilot's Merge it sets it, through core: it is never in the JSON, so
+	// the window can't.
+	Routine *RoutineMerge `json:"-"`
 }
 
 // Result is what an action came to. A partial success, such as an approval GitHub took

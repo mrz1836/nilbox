@@ -672,7 +672,9 @@ More in [Reading an issue](docs/desktop.md#reading-an-issue).
   says it can, so an admin's token never merges past branch protection on its own. **Merge past
   the rules** does, only from the menu (or from the button on your own pull request that waits
   only on someone else's approval, once you turn that on in Settings → Reviewing), after you
-  accept each rule it skips.
+  accept each rule it skips. The one other is an Autopilot routine you confirmed, on your own
+  pull request whose every commit you signed and that lacks only an approval, while **Let
+  routines merge your own pull requests past the rules** is on in Settings → Autopilot.
 - **Your text goes with it:** **Merge**, **Merge when ready**, and **Merge past the rules** post
   your text and line comments as a comment first, at the commit you saw, and only once the merge
   can go ahead. If GitHub then won't merge, the toast says the comment is posted and why, and the

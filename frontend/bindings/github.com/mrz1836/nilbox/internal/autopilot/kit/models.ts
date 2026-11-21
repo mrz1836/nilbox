@@ -93,6 +93,13 @@ export interface CheckedRoutine {
     "gone": boolean;
     "stale": boolean;
     "risks": Risk[] | null;
+
+    /**
+     * PastRules reports a routine whose Merge it may go past the rules (allowBypass,
+     * allowSensitive): the card adds or saves it only once the user ticks that they accept
+     * it so, as the builder's Save does.
+     */
+    "pastRules": boolean;
 }
 
 /**

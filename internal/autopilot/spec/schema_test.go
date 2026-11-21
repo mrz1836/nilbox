@@ -15,7 +15,9 @@ import (
 )
 
 // forbidden are the words no part of the format, nor any value it can hold, may be:
-// Autopilot never closes anything, approves workflow runs, or merges past GitHub's rules.
+// Autopilot never closes anything or approves workflow runs, and never merges past
+// GitHub's rules but as Merge it's allowBypass alone lets it (TestOnlyMergeItNamesABypass),
+// so no action of the review sheet's is ever a value a spec holds.
 func forbidden() []string {
 	return []string{
 		"merge_bypass", "approve_merge", "approve_auto_merge", "close", "close_completed", "close_not_planned",
@@ -241,4 +243,39 @@ func TestFormatHasNoForbiddenWords(t *testing.T) {
 			assert.NotContains(t, squash(name), squash(word), "%q is in the format", name)
 		}
 	}
+}
+
+// TestOnlyMergeItNamesABypass is the guard on the one way past GitHub's rules the format
+// has: no key but Merge it's allowBypass and allowSensitive, and no value of any closed
+// set, names a bypass, the rules, or sensitive files, so no other step can be made to go
+// past them.
+func TestOnlyMergeItNamesABypass(t *testing.T) {
+	t.Parallel()
+
+	assert.ElementsMatch(t, []string{"spec.MergeStep.allowBypass", "spec.MergeStep.allowSensitive"}, bypassKeys(),
+		"only Merge it's ticks name a bypass")
+
+	for _, values := range enums() {
+		for _, v := range values {
+			name, _, _ := strings.Cut(v, " (")
+			assert.NotContains(t, squash(name), "bypass", "%q is in the format", name)
+		}
+	}
+}
+
+// bypassKeys are the format's keys, as "<type>.<key>", that name a bypass, the rules,
+// sensitive files, or an admin.
+func bypassKeys() []string {
+	out := []string{}
+
+	for _, typ := range formatTypes() {
+		for f := range typ.Fields() {
+			if names := squash(jsonName(f)); slices.ContainsFunc([]string{"bypass", "pastrules", "sensitive", "admin"},
+				func(word string) bool { return strings.Contains(names, word) }) {
+				out = append(out, typ.String()+"."+jsonName(f))
+			}
+		}
+	}
+
+	return out
 }

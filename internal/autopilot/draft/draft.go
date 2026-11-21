@@ -39,6 +39,11 @@ type Setup interface {
 	// StarterNames names the starter prompts in the sentence, as the library names them;
 	// nil writes a starter's key as words.
 	StarterNames(ctx context.Context) spec.PromptNames
+
+	// PastRules reports Let routines merge your own pull requests past the rules switched
+	// on in Autopilot's settings; false when it is off or can't be read, which warns of a
+	// Merge it that allows it.
+	PastRules(ctx context.Context) bool
 }
 
 // Prompt is one of the library's prompts as a routine names it: by the starter it came
@@ -104,9 +109,10 @@ type Reading struct {
 // it is edited: its spec as Save stores it (Load), the problems Save would refuse it for
 // (the spec's own, else Problems'), the steps this build runs only in Dry run (o's), its
 // warnings, and, only while it has no problem, its sentence. It saves nothing and never
-// asks GitHub: beyond the draft it reads s's library, its scripts for a script step, and,
-// for the sentence, its starter prompts' names. A spec that can't be read at all, as one
-// past the size a spec may be, is an error.
+// asks GitHub: beyond the draft it reads s's library, its scripts for a script step, for a
+// Merge it past the rules whether the user's switch allows it, and, for the sentence, its
+// starter prompts' names. A spec that can't be read at all, as one past the size a spec
+// may be, is an error.
 func Read(ctx context.Context, sp spec.Spec, mode autopilotprefs.Mode, s Setup, o *Offers) (Reading, error) {
 	out := Reading{Problems: []spec.Problem{}, Warnings: []spec.Problem{}, DryRunOnly: []catalog.StepKind{}}
 
@@ -122,7 +128,7 @@ func Read(ctx context.Context, sp spec.Spec, mode autopilotprefs.Mode, s Setup, 
 	out.Spec = loaded
 	out.Problems = append(out.Problems, problems...)
 	out.DryRunOnly = o.NotOffered(loaded)
-	out.Warnings = warnings(loaded, mode, len(out.DryRunOnly) > 0)
+	out.Warnings = append(warnings(loaded, mode, len(out.DryRunOnly) > 0), pastRulesWarnings(ctx, loaded, s)...)
 
 	if len(out.Problems) == 0 {
 		out.Sentence = spec.Sentence(loaded, s.StarterNames(ctx))

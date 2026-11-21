@@ -27,7 +27,15 @@ import {
 import { attempt } from '../../lib/call'
 import { formatCount } from '../../lib/format'
 import { agentName } from '../../lib/launch'
-import { dryRunWhy, NEW_ROUTINE, newRoutineName, routineDraft, sameDraft, scratchDraft } from '../../lib/routineBuilder'
+import {
+  dryRunWhy,
+  NEW_ROUTINE,
+  newRoutineName,
+  pastRulesToConfirm,
+  routineDraft,
+  sameDraft,
+  scratchDraft,
+} from '../../lib/routineBuilder'
 import { useNeedsYou, useReadiness, type SharedAutopilot } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
 import { useMutation } from '../../lib/useMutation'
@@ -81,6 +89,7 @@ import {
 import { defaultToastSeconds, Toast, type ToastMessage } from '../Toast'
 import { ActivityList } from './ActivityList'
 import { NeedsYouSection } from './NeedsYouSection'
+import { usePastRulesConfirm } from './PastRules'
 import type { AgentKit } from './builder/AgentStepBlock'
 import { RoutineBuilder } from './builder/RoutineBuilder'
 import type { Pinned } from './builder/TestPanel'
@@ -597,6 +606,9 @@ export default function AutopilotView({
       say(text, 'error')
     },
   )
+  // pastRules asks before a new routine whose Merge it may go past the rules is made, as
+  // changes does before one is saved over a routine.
+  const pastRules = usePastRulesConfirm()
 
   // transfer is Export and Import, whose dialogs show over the tab.
   const transfer = useRoutineTransfer(say, () => {
@@ -861,12 +873,13 @@ export default function AutopilotView({
 
   // saveEditing saves the draft: a new routine, off, in the mode it was given, or the
   // routine shown, asking first, as its switch does, when it is on and what it watches,
-  // fires on, checks, or fires once per changed. The builder then holds the routine as
-  // saved, and edits typed while it saved are kept. Either one's failure shows in the
-  // builder's footer. Nothing is saved again while a save, a change, or the question it
-  // asked is under way.
+  // fires on, checks, or fires once per changed. Either one whose Merge it may go past the
+  // rules asks the user to confirm it first, unless it is the very routine they confirmed.
+  // The builder then holds the routine as saved, and edits typed while it saved are kept.
+  // Either one's failure shows in the builder's footer. Nothing is saved again while a
+  // save, a change, or the question it asked is under way.
   const saveEditing = () => {
-    if (editing === null || saving || changes.busy !== 0 || changes.asking) {
+    if (editing === null || saving || changes.busy !== 0 || changes.asking || pastRules.asking) {
       return
     }
 
@@ -901,12 +914,20 @@ export default function AutopilotView({
       return
     }
 
-    void saver.run(draft).then((result) => {
-      if (result.ok) {
-        reload()
-        done(result.data)
-      }
-    })
+    const make = (d: AutopilotDraft) => {
+      void saver.run(d).then((result) => {
+        if (result.ok) {
+          reload()
+          done(result.data)
+        }
+      })
+    }
+
+    if (pastRulesToConfirm(draft.spec, undefined)) {
+      pastRules.ask(draft, make)
+    } else {
+      make(draft)
+    }
   }
 
   // discardEditing puts the draft back as it was saved, or leaves a new one.
@@ -958,6 +979,9 @@ export default function AutopilotView({
         onDiscard={discardEditing}
         {...(r === null && editing.suggested !== undefined ? { suggested: editing.suggested } : {})}
         pinned={r === null ? editing.pinned : undefined}
+        pastRules={r?.pastRules ?? ''}
+        pastRulesOn={settings?.autopilot.mergePastRules}
+        onSettings={onSettings}
       />
     )
   }
@@ -1615,6 +1639,7 @@ export default function AutopilotView({
         </div>
       )}
       {changes.dialog}
+      {pastRules.dialog}
       {transfer.node}
       {loneHost.node}
       {leaving !== null && editing !== null && (

@@ -7,6 +7,7 @@ import { brand } from '../../../generated/brand'
 import type {
   AutopilotCatalog,
   AutopilotDraft,
+  AutopilotPastRules,
   AutopilotSetting,
   AutopilotSpec,
   AutopilotStepKind,
@@ -17,6 +18,7 @@ import {
   autopilotCatalog,
   codexGitHubTasksWhy,
   described,
+  pastRulesSpec,
   profile,
   prompts,
   routineSuggestions,
@@ -63,6 +65,9 @@ interface HarnessProps {
   saveError?: string
   name?: string
   catalog?: AutopilotCatalog
+  pastRules?: AutopilotPastRules
+  pastRulesOn?: boolean
+  onSettings?: () => void
 }
 
 // Harness holds the draft as the tab does, the builder's delays at nothing.
@@ -74,6 +79,9 @@ function Harness({
   saveError = '',
   name = 'Fix security',
   catalog = autopilotCatalog(),
+  pastRules = '',
+  pastRulesOn,
+  onSettings,
 }: HarnessProps) {
   const [start] = useState<AutopilotDraft>(() => ({ id: isNew ? 0 : 9, name, description: '', spec }))
   const [draft, setDraft] = useState<AutopilotDraft>(isNew ? { ...start, mode: 'ask' } : start)
@@ -110,6 +118,9 @@ function Harness({
       onSave={onSave}
       onDiscard={onDiscard}
       describeDelay={0}
+      pastRules={pastRules}
+      pastRulesOn={pastRulesOn}
+      onSettings={onSettings}
     />
   )
 }
@@ -686,6 +697,145 @@ describe('the routine builder', { timeout: 15_000 }, () => {
     renderBuilder({ spec: { ...flagship(), steps: [{ onlyIf: 'pushed' }] } })
 
     expect(block('Then').getByText('A step this version doesn’t know')).toBeInTheDocument()
+  })
+})
+
+describe('Merge it past the rules', { timeout: 15_000 }, () => {
+  // checksPass is the flagship firing when the checks pass, with no agent step: a pin, then
+  // steps.
+  function checksPass(...steps: AutopilotSpec['steps']): AutopilotSpec {
+    return { ...flagship(), trigger: { event: 'checks_passed' }, steps: [{ pin: {} }, ...steps] }
+  }
+
+  // switchOff is the backend's warning of a Merge it that goes past the rules while the
+  // switch for it is off.
+  const switchOff =
+    "Let routines merge your own pull requests past the rules is off in Autopilot's settings: until you turn it on, this step merges only what GitHub allows."
+
+  it('adds Merge it with no agent step to a routine that fires when the checks pass, and ticks what it may do', async () => {
+    const user = userEvent.setup()
+    renderBuilder({ spec: checksPass() })
+
+    const then = block('Then')
+
+    await user.click(then.getByRole('button', { name: 'Add a step' }))
+    await user.click(screen.getByRole('menuitem', { name: /Merge it/ }))
+    expect(spec().steps[1]).toEqual({ merge: { how: 'autoMergeIfItWasOn' } })
+    expect(then.queryByRole('combobox', { name: 'Step 2 runs' }), 'it merges what the checks passed on').toBeNull()
+
+    const bypass = then.getByRole('checkbox', { name: 'Merge past the rules when an approval is all it lacks' })
+    const sensitive = then.getByRole('checkbox', { name: 'Also when it changes workflow, agent, or tooling files' })
+
+    expect(bypass).toHaveAccessibleDescription(/On your own pull request whose every commit you signed/)
+    expect(sensitive).toBeDisabled()
+
+    // Going past the rules merges when GitHub allows, never by auto-merge.
+    await user.click(bypass)
+    expect(spec().steps[1]).toEqual({ merge: { how: 'whenMergeable', allowBypass: true } })
+    expect(
+      within(then.getByRole('combobox', { name: 'Step 2: how it merges' })).getByRole('option', {
+        name: 'auto-merge if it was on, else when GitHub allows',
+      }),
+    ).toBeDisabled()
+    expect(then.getByText('Save asks you to confirm that it may merge past the rules.')).toBeInTheDocument()
+
+    await user.click(sensitive)
+    expect(spec().steps[1]).toEqual({ merge: { how: 'whenMergeable', allowBypass: true, allowSensitive: true } })
+    expect(sensitive).toHaveAccessibleDescription(/a change to them merges with no review from anyone else too/)
+
+    // Without the first tick, sensitive files never go past the rules either.
+    await user.click(bypass)
+    expect(spec().steps[1]).toEqual({ merge: { how: 'whenMergeable' } })
+    expect(sensitive).not.toBeChecked()
+    expect(then.queryByText(/Save asks you to confirm/)).toBeNull()
+  })
+
+  it('offers no ticks on a Merge it after an agent step, but shows one an agent step came before, to clear', () => {
+    renderBuilder({
+      spec: {
+        ...flagship(),
+        steps: [
+          { agent: { agent: 'inherit', prompt: { itemDefault: true } } },
+          { waitForChecks: {}, onlyIf: 'pushed' },
+          { merge: { how: 'whenMergeable' }, onlyIf: 'passed' },
+        ],
+      },
+    })
+
+    expect(block('Then').queryByRole('checkbox', { name: /Merge past the rules/ })).toBeNull()
+  })
+
+  it('shows a tick that no longer fits, so it can be cleared where its problem shows', () => {
+    renderBuilder({
+      spec: {
+        ...flagship(),
+        steps: [
+          { agent: { agent: 'inherit', prompt: { itemDefault: true } } },
+          { waitForChecks: {}, onlyIf: 'pushed' },
+          { merge: { how: 'whenMergeable', allowBypass: true }, onlyIf: 'passed' },
+        ],
+      },
+    })
+
+    expect(block('Then').getByRole('checkbox', { name: /Merge past the rules/ })).toBeChecked()
+  })
+
+  it('says the switch for it is off once, with the way to Autopilot’s settings, and reads it again as it changes', async () => {
+    const user = userEvent.setup()
+    const openSettings = vi.fn()
+    platform.describeRoutine.mockResolvedValue(
+      described({ warnings: [{ part: 'steps', field: '[0].merge.allowBypass', message: switchOff }] }),
+    )
+    const view = renderBuilder({ spec: pastRulesSpec(), pastRulesOn: false, onSettings: openSettings })
+
+    const then = block('Then')
+
+    expect(await then.findByText(switchOff)).toBeInTheDocument()
+    expect(then.getAllByText(switchOff)).toHaveLength(1)
+    await user.click(then.getByRole('button', { name: 'Open Autopilot settings' }))
+    expect(openSettings).toHaveBeenCalledOnce()
+
+    const reads = platform.describeRoutine.mock.calls.length
+
+    platform.describeRoutine.mockResolvedValue(described())
+    view.rerender(<Harness spec={pastRulesSpec()} pastRulesOn onSettings={openSettings} />)
+    await waitFor(() => {
+      expect(then.queryByText(switchOff)).toBeNull()
+    })
+    expect(platform.describeRoutine.mock.calls.length).toBeGreaterThan(reads)
+  })
+
+  it('lets a routine saved unconfirmed be saved as it is, to confirm it', async () => {
+    const user = userEvent.setup()
+    renderBuilder({ spec: pastRulesSpec(), pastRules: 'needsTick' })
+
+    expect(
+      block('Then').getByText(
+        'You haven’t confirmed it may merge past the rules as it is now, so it merges only what GitHub allows: Save asks you to.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Save to confirm it may merge past the rules.')).toHaveRole('status')
+
+    const save = screen.getByRole('button', { name: 'Save' })
+
+    await waitFor(() => {
+      expect(save).toBeEnabled()
+    })
+    await user.click(save)
+    expect(onSave).toHaveBeenCalledOnce()
+  })
+
+  it('says a routine is confirmed as it is, and that Save asks again once its spec changes', async () => {
+    const user = userEvent.setup()
+    renderBuilder({ spec: pastRulesSpec(), pastRules: 'allowed' })
+
+    const then = block('Then')
+
+    expect(then.getByText('You confirmed it may merge past the rules as it is now.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+
+    await user.selectOptions(then.getByRole('combobox', { name: 'Step 1: merge method' }), 'squash')
+    expect(then.getByText('Save asks you to confirm that it may merge past the rules.')).toBeInTheDocument()
   })
 })
 

@@ -94,6 +94,11 @@ type CheckedRoutine struct {
 	Stale  bool     `json:"stale"`
 
 	Risks []Risk `json:"risks"`
+
+	// PastRules reports a routine whose Merge it may go past the rules (allowBypass,
+	// allowSensitive): the card adds or saves it only once the user ticks that they accept
+	// it so, as the builder's Save does.
+	PastRules bool `json:"pastRules"`
 }
 
 // SettingKey is one of Autopilot's settings a proposal may change, by the key the proposal's

@@ -78,7 +78,7 @@ func (s *Service) Act(ctx context.Context, req ActRequest) (Result, error) {
 	facts := factsOf(pull, c, build(pull, c, sensitive.NewMatcher(cfg), prefs))
 	plan := Decide(facts, prefs)
 
-	run, err := s.prepare(ctx, req, plan, c)
+	run, err := s.prepare(ctx, req, facts, plan, c)
 	if err != nil {
 		return Result{}, err
 	}
@@ -168,11 +168,17 @@ func (s *Service) loadAct(ctx context.Context, req ActRequest) (StoredPull, *cac
 }
 
 // prepare checks a request against the plan and the cache before anything is sent: the
-// action is offered and enabled, its warnings are accepted, its method is allowed, its
-// review has the text it needs (and the comment a merge posts first is offered), and its
-// line comments sit on the diff.
-func (s *Service) prepare(ctx context.Context, req ActRequest, plan Plan, c *cached) (*action, error) {
+// action is offered and enabled, its warnings are accepted, a routine's is one a routine
+// may send (checkRoutine), its method is allowed, its review has the text it needs (and the
+// comment a merge posts first is offered), and its line comments sit on the diff. A
+// routine's merge never takes failing checks for accepted: its Accept is the approval it
+// goes past.
+func (s *Service) prepare(ctx context.Context, req ActRequest, facts Facts, plan Plan, c *cached) (*action, error) {
 	if err := checkOffer(req, plan); err != nil {
+		return nil, err
+	}
+
+	if err := checkRoutine(req, facts, plan); err != nil {
 		return nil, err
 	}
 
@@ -196,7 +202,7 @@ func (s *Service) prepare(ctx context.Context, req ActRequest, plan Plan, c *cac
 
 	a := &action{
 		kind: req.Action, reviewAs: reviewAs, commentFirst: offer.CommentsFirst, head: c.head, body: req.Body,
-		comments: req.Comments, method: method, unstable: req.Accept,
+		comments: req.Comments, method: method, unstable: req.Accept && req.Routine == nil, routine: req.Routine,
 	}
 
 	if req.Action == ActionApproveRuns {
@@ -353,6 +359,13 @@ type action struct {
 
 	// bypassing reports a merge going past the branch's rules, as the user chose.
 	bypassing bool
+
+	// routine is a routine's merge past the rules, nil for the user's own action, refused
+	// why its guard last refused it (pastRules), and refusedNotYet that it may pass on its
+	// own.
+	routine       *RoutineMerge
+	refused       string
+	refusedNotYet bool
 
 	// runs are the held workflow runs an approval names, approvedRuns the IDs of those
 	// GitHub approved so far, and onGitHub those it refused to approve for what they are,

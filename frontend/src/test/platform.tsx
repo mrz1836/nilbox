@@ -12,6 +12,7 @@ import type { ComponentType, ReactNode } from 'react'
 import { vi, type Mock } from 'vitest'
 
 import { withRepoRule } from '../lib/repoRules'
+import { goesPastRules } from '../lib/routineBuilder'
 import type * as real from '../platform'
 import { clockAt, FIXED_NOW, withClock } from './clock'
 import {
@@ -142,6 +143,11 @@ type EventArgs<E extends WindowEvent> = [keyof EventData<E>] extends [never]
 // Listener is a subscription the fake keeps, whatever its event's data.
 type Listener = (data: unknown) => void
 
+// pastRulesUnaccepted is the backend's refusal of a routine that may merge past the rules,
+// saved without the user's confirmation.
+export const pastRulesUnaccepted =
+  'Confirm that this routine may merge your own pull requests past the rules, then save it.'
+
 // stored answers a settings setter: the fixture's settings with the one change made, as
 // every setter returns the settings as stored after its change.
 function stored(change: Partial<real.Settings> = {}): Promise<real.Settings> {
@@ -251,8 +257,20 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     autopilotRunsToday: () => Promise.resolve({ background: 0, terminal: 0, actions: 0 }),
     stopAutopilotRun: done,
     stopAllAutopilotRuns: done,
-    saveRoutine: (d) =>
-      Promise.resolve(routine({ id: d.id === undefined || d.id === 0 ? 11 : d.id, name: d.name, spec: d.spec })),
+    // A new routine whose Merge it may go past the rules saves only with the user's
+    // confirmation, as the backend's Save does; any that goes past them saves accepted.
+    saveRoutine: (d) => {
+      const made = d.id === undefined || d.id === 0
+      const past = goesPastRules(d.spec)
+
+      if (past && made && d.acceptPastRules !== true) {
+        return Promise.reject(new Error(pastRulesUnaccepted))
+      }
+
+      return Promise.resolve(
+        routine({ id: made ? 11 : (d.id ?? 11), name: d.name, spec: d.spec, pastRules: past ? 'allowed' : '' }),
+      )
+    },
     previewRoutineRun: () => Promise.resolve(runPreview()),
     // Nothing waits for the user, and this Mac is ready, unless a test says otherwise.
     autopilotNeedsYou: () => Promise.resolve([]),
@@ -636,6 +654,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setAutopilotHistoryDays: (historyDays) =>
       stored(autopilotSettings({ historyDays, logDays: Math.min(historyDays, settings().autopilot.logDays) })),
     setAutopilotLogDays: (logDays) => stored(autopilotSettings({ logDays })),
+    setAutopilotMergePastRules: (mergePastRules) => stored(autopilotSettings({ mergePastRules })),
     // A move goes ahead: the app would quit, and the copy open from Applications.
     moveToApplications: () => Promise.resolve(moveResult()),
     openInApplications: () => Promise.resolve(moveResult({ outcome: 'opening' })),

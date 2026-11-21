@@ -80,7 +80,7 @@ func (p *pass) start(ctx context.Context, r *routineRun, m *match, sr *stepRun, 
 		params.Agent, params.Preset = sr.Step.Agent.AgentID(), string(sr.Step.Agent.Tools())
 	}
 
-	p.pin(ctx, m, sr, &job, &params)
+	p.pin(ctx, r, m, sr, &job, &params)
 
 	sr.Status = stepRunning
 	if sr.Started == nil {
@@ -121,7 +121,7 @@ func (p *pass) start(ctx context.Context, r *routineRun, m *match, sr *stepRun, 
 // GitHub step's actions is a run of its own, pinned to the head the read right before it
 // found, which this cycle decided the match on; Merge it and Post the agent's review to the
 // commit their run's checks passed on, or the agent read (followUp).
-func (p *pass) pin(ctx context.Context, m *match, sr *stepRun, job *Job, params *queries.InsertRunParams) {
+func (p *pass) pin(ctx context.Context, r *routineRun, m *match, sr *stepRun, job *Job, params *queries.InsertRunParams) {
 	if sr.Action < len(sr.Step.GitHub) && len(sr.Step.GitHub) > 0 {
 		params.GithubAction = string(sr.Step.GitHub[sr.Action].Kind())
 		job.Head = p.headNow(m)
@@ -130,7 +130,7 @@ func (p *pass) pin(ctx context.Context, m *match, sr *stepRun, job *Job, params 
 		return
 	}
 
-	if head, ok := p.followUp(ctx, m, sr, job); ok {
+	if head, ok := p.followUp(ctx, r, m, sr, job); ok {
 		params.HeadBefore = head
 	}
 }

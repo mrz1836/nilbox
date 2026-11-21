@@ -111,7 +111,13 @@ func (e *ValidationError) Unwrap() error {
 //   - Wait for the checks only after an agent step that may push, and never only if it
 //     didn't push;
 //   - Merge it only after a Wait for the checks that runs only if the agent pushed, so
-//     the pass it follows is on the agent's own commit, and only if the checks passed;
+//     the pass it follows is on the agent's own commit, and only if the checks passed; or,
+//     in a routine with no agent step and no wait, one that fires when the checks pass, once
+//     per head commit, with no Only if and nothing before it that changes the branch (a
+//     rebase, an update, or a script), so the commit it merges is the one whose checks
+//     passed;
+//   - Merge it past the rules (allowBypass, allowSensitive) only in that second place, and
+//     only merging when GitHub allows, never by auto-merge;
 //   - Post the agent's review only after a read-only agent step;
 //   - Allow approving only when the review is posted as its verdict;
 //   - only a notice after an agent step in the terminal, whose end the app can't see;
@@ -124,7 +130,7 @@ func Validate(s Spec) error {
 	}
 
 	kinds := v.watch(s.Watch, s.Trigger.Event)
-	v.kinds = kinds
+	v.kinds, v.event, v.oncePer, v.agentless = kinds, s.Trigger.Event, s.Limits.OncePer, s.Agentless()
 	v.trigger(s.Trigger, kinds)
 	v.conditions(s.Conditions, kinds)
 	v.steps(s.Steps, kinds)
@@ -145,6 +151,12 @@ type validator struct {
 
 	// kinds are the kinds of item the watch holds.
 	kinds []item.Kind
+
+	// event is the trigger's, oncePer the routine's own once-per, and agentless reports a
+	// spec with no agent step and no Wait for the checks, which an agentless Merge it needs.
+	event     catalog.Event
+	oncePer   catalog.OncePer
+	agentless bool
 }
 
 // add records a problem.

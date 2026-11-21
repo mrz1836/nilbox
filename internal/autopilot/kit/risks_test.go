@@ -50,6 +50,14 @@ func healThenMerge(then spec.Step) spec.Spec {
 		then)
 }
 
+// passedMerge is a routine with no agent that, when the checks pass, merges as m says.
+func passedMerge(m spec.MergeStep) spec.Spec {
+	sp := checksFailSpec(spec.Step{Merge: &m})
+	sp.Trigger = spec.Trigger{Event: catalog.EventChecksPassed}
+
+	return sp
+}
+
 // reviewSpec is a routine whose read-only agent reviews a member's pull request, then
 // posts its review as review says.
 func reviewSpec(review *spec.ReviewStep) spec.Spec {
@@ -153,6 +161,22 @@ func TestRiskLinesArePinned(t *testing.T) {
 			return routineRisksOf(t, newRoutine("Heal", healThenMerge(spec.Step{
 				Merge: &spec.MergeStep{How: catalog.MergeAutoIfItWasOn}, OnlyIf: catalog.OutcomePassedChecks,
 			})))
+		},
+		"merge-it-past-the-rules": func(t *testing.T) []kit.Risk {
+			return routineRisksOf(t, newRoutine("Sync", passedMerge(spec.MergeStep{
+				How: catalog.MergeWhenMergeable, Method: catalog.MergeSquash, AllowBypass: true,
+			})))
+		},
+		"merge-it-past-the-rules-sensitive-files-included": func(t *testing.T) []kit.Risk {
+			return routineRisksOf(t, newRoutine("Sync", passedMerge(spec.MergeStep{
+				How: catalog.MergeWhenMergeable, Method: catalog.MergeSquash, AllowBypass: true, AllowSensitive: true,
+			})))
+		},
+		"merge-it-past-the-rules-added-to-a-merge": func(t *testing.T) []kit.Risk {
+			before := passedMerge(spec.MergeStep{How: catalog.MergeWhenMergeable, Method: catalog.MergeSquash})
+			after := passedMerge(spec.MergeStep{How: catalog.MergeWhenMergeable, Method: catalog.MergeSquash, AllowBypass: true})
+
+			return kit.RoutineRisks(&kit.Routine{Spec: before}, after, nil, nil)
 		},
 		"post-review-as-a-comment": func(t *testing.T) []kit.Risk {
 			return routineRisksOf(t, newRoutine("Review", reviewSpec(&spec.ReviewStep{As: catalog.ReviewAsComment})))

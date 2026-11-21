@@ -347,6 +347,111 @@ func TestValidateHoldsTheStepsToTheirOrder(t *testing.T) {
 	}
 }
 
+// TestValidateHoldsAMergeWithNoAgentToTheChecksPassing checks Merge it with no agent step:
+// only in a routine that fires when the checks pass, once per head commit, with no Only if
+// and nothing before it that changes the branch; and that only it may go past the rules,
+// merging when GitHub allows, sensitive files only with the rules.
+func TestValidateHoldsAMergeWithNoAgentToTheChecksPassing(t *testing.T) {
+	t.Parallel()
+
+	reply := spec.Step{GitHub: []spec.GitHubAction{{Reply: &spec.ReplyAction{Prompt: spec.PromptRef{Nickname: "Sync OK"}}}}}
+	merge := func(m spec.MergeStep) spec.Step { return spec.Step{Merge: &m} }
+	plain := merge(spec.MergeStep{How: catalog.MergeWhenMergeable, Method: catalog.MergeSquash})
+	past := merge(spec.MergeStep{How: catalog.MergeWhenMergeable, Method: catalog.MergeSquash, AllowBypass: true})
+	rebase := spec.Step{GitHub: []spec.GitHubAction{{Rebase: &spec.Empty{}}}}
+	push := agentStep(catalog.PresetEditTestPush)
+	wait := spec.Step{WaitForChecks: &spec.WaitStep{}, OnlyIf: catalog.OutcomePushed}
+
+	tests := []struct {
+		name    string
+		event   catalog.Event
+		oncePer catalog.OncePer
+		steps   []spec.Step
+		want    []string
+	}{
+		{name: "a reply, then a merge", steps: []spec.Step{reply, plain}},
+		{name: "a merge alone", steps: []spec.Step{plain}},
+		{name: "a merge past the rules", steps: []spec.Step{reply, past}},
+		{
+			name: "a merge past the rules, sensitive files included",
+			steps: []spec.Step{reply, merge(spec.MergeStep{
+				How: catalog.MergeWhenMergeable, AllowBypass: true, AllowSensitive: true,
+			})},
+		},
+		{name: "once per head commit", oncePer: catalog.OncePerHeadCommit, steps: []spec.Step{reply, past}},
+		{name: "a change of the branch after it", steps: []spec.Step{past, rebase}},
+		{name: "on another trigger", event: catalog.EventChecksFailed, steps: []spec.Step{reply, plain}, want: []string{"steps[1]"}},
+		{name: "once a day", oncePer: catalog.OncePerDay, steps: []spec.Step{reply, plain}, want: []string{"limits.oncePer"}},
+		{name: "once per item", oncePer: catalog.OncePerItem, steps: []spec.Step{past}, want: []string{"limits.oncePer"}},
+		{
+			name: "an only if", steps: []spec.Step{reply, {Merge: plain.Merge, OnlyIf: catalog.OutcomePassedChecks}},
+			want: []string{"steps[1].onlyIf", "steps[1].onlyIf"},
+		},
+		{name: "a rebase before it", steps: []spec.Step{rebase, past}, want: []string{"steps[1]"}},
+		{
+			name:  "an update of the branch before it",
+			steps: []spec.Step{{GitHub: []spec.GitHubAction{{Reply: reply.GitHub[0].Reply}, {UpdateBranch: &spec.Empty{}}}}, plain},
+			want:  []string{"steps[1]"},
+		},
+		{name: "a script before it", steps: []spec.Step{{Script: &spec.ScriptStep{ID: 4, Name: "sync"}}, plain}, want: []string{"steps[1]"}},
+		{
+			name:  "sensitive files without the rules",
+			steps: []spec.Step{merge(spec.MergeStep{How: catalog.MergeWhenMergeable, AllowSensitive: true})},
+			want:  []string{"steps[0].merge.allowSensitive"},
+		},
+		{
+			name:  "past the rules by auto-merge",
+			steps: []spec.Step{merge(spec.MergeStep{How: catalog.MergeAutoIfItWasOn, AllowBypass: true})},
+			want:  []string{"steps[0].merge.how"},
+		},
+		{
+			name:  "past the rules after an agent's push",
+			steps: []spec.Step{push, wait, {Merge: past.Merge, OnlyIf: catalog.OutcomePassedChecks}},
+			want:  []string{"steps[2].merge.allowBypass"},
+		},
+		{
+			name:  "an agent's merge in a routine that fires when the checks pass",
+			steps: []spec.Step{push, wait, {Merge: plain.Merge, OnlyIf: catalog.OutcomePassedChecks}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := withSteps(t, tt.steps...)
+			s.Trigger = spec.Trigger{Event: catalog.EventChecksPassed}
+			s.Limits.OncePer = tt.oncePer
+
+			if tt.event != "" {
+				s.Trigger.Event = tt.event
+			}
+
+			assert.Equal(t, tt.want, problemPaths(t, s))
+		})
+	}
+}
+
+func TestASpecSaysWhetherItMergesPastTheRules(t *testing.T) {
+	t.Parallel()
+
+	reply := spec.Step{GitHub: []spec.GitHubAction{{Reply: &spec.ReplyAction{Prompt: spec.PromptRef{Nickname: "Sync OK"}}}}}
+
+	plain := spec.Spec{Steps: []spec.Step{reply, {Merge: &spec.MergeStep{How: catalog.MergeWhenMergeable}}}}
+	assert.True(t, plain.Agentless())
+	assert.False(t, plain.PastRules())
+
+	past := spec.Spec{Steps: []spec.Step{reply, {Merge: &spec.MergeStep{How: catalog.MergeWhenMergeable, AllowBypass: true}}}}
+	assert.True(t, past.PastRules())
+
+	sensitive := spec.Spec{Steps: []spec.Step{{Merge: &spec.MergeStep{AllowSensitive: true}}}}
+	assert.True(t, sensitive.PastRules())
+
+	agent := spec.Spec{Steps: []spec.Step{agentStep(catalog.PresetEditTestPush)}}
+	assert.False(t, agent.Agentless())
+	assert.False(t, spec.Spec{Steps: []spec.Step{{WaitForChecks: &spec.WaitStep{}}}}.Agentless())
+}
+
 func TestValidateGitHubSteps(t *testing.T) {
 	t.Parallel()
 

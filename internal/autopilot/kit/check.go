@@ -151,6 +151,8 @@ func (c *proposalChecker) routine(ctx context.Context, i int, rc RoutineChange) 
 		out.Risks = append(out.Risks, RoutineRisks(out.Before, out.Spec, c.adds, c.setup.starterNames())...)
 	}
 
+	out.PastRules = out.Spec.PastRules()
+
 	return out
 }
 
@@ -323,6 +325,9 @@ type checkSetup struct {
 	// names are the starter prompts' nicknames by key: the user's copy's, else the
 	// starter's own.
 	names map[string]string
+
+	// pastRules is the user's switch for merging past the rules, as the snapshot read it.
+	pastRules bool
 }
 
 // newCheckSetup returns what snap's routines, and a proposal adding the prompts adds, are
@@ -334,6 +339,8 @@ func newCheckSetup(snap Snapshot, adds []NewPrompt) checkSetup {
 		library: make([]draft.Prompt, 0, len(snap.Setup.Prompts)+len(adds)),
 		scripts: make([]draft.Script, 0, len(snap.Setup.Scripts)),
 		names:   make(map[string]string, len(snap.Vocabulary.Starters)),
+
+		pastRules: snap.Setup.Settings.MergePastRules,
 	}
 
 	for _, p := range snap.Setup.Prompts {
@@ -376,6 +383,11 @@ func (s checkSetup) Scripts(context.Context) ([]draft.Script, bool) {
 // StarterNames names a starter prompt by its nickname.
 func (s checkSetup) StarterNames(context.Context) spec.PromptNames {
 	return s.starterNames()
+}
+
+// PastRules reports the user's switch for merging past the rules, as the snapshot read it.
+func (s checkSetup) PastRules(context.Context) bool {
+	return s.pastRules
 }
 
 // starterNames names a starter prompt by its nickname, "" for a prompt named otherwise.

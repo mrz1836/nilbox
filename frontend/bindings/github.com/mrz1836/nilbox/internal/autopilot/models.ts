@@ -442,6 +442,13 @@ export interface Draft {
      * them too.
      */
     "current"?: Current;
+
+    /**
+     * AcceptPastRules is the user's confirmation that the routine's Merge it may go past
+     * the rules, as its step allows: a spec that allows it is saved only with it, or as the
+     * very spec text they accepted before (pastrules.go).
+     */
+    "acceptPastRules"?: boolean;
 }
 
 /**
@@ -1106,6 +1113,34 @@ export const NeedKind = {
 } as const;
 
 /**
+ * PastRules is how a routine stands on merging past the rules, as the window shows it.
+ */
+export type PastRules = "" | "allowed" | "needsTick";
+
+/**
+ * The values of PastRules, by the names of their Go constants.
+ */
+export const PastRules = {
+    /**
+     * How a routine stands on merging past the rules.
+     *
+     * PastRulesNone is a routine whose Merge it never goes past the rules.
+     */
+    PastRulesNone: "",
+
+    /**
+     * PastRulesAllowed is one the user accepted as it is now.
+     */
+    PastRulesAllowed: "allowed",
+
+    /**
+     * PastRulesNeedsTick is one whose step allows it, which the user hasn't accepted as it
+     * is now: it merges only what GitHub allows until they save it again, accepting it.
+     */
+    PastRulesNeedsTick: "needsTick",
+} as const;
+
+/**
  * Problem is something wrong with a routine that the user is told once, when it starts:
  * a search GitHub fails, or a routine that won't load.
  */
@@ -1422,6 +1457,12 @@ export interface Routine {
      * LastError is the last error it met, in the window's words, "" for none.
      */
     "lastError": string;
+
+    /**
+     * PastRules is how it stands on merging past the rules: never, accepted as it is, or
+     * waiting for the user to accept it as it is now (pastrules.go).
+     */
+    "pastRules": PastRules;
 
     /**
      * Figures are what its ledger says of it, for its line in the list: filled in by List

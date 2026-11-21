@@ -76,6 +76,10 @@ type Routine struct {
 	// LastError is the last error it met, in the window's words, "" for none.
 	LastError string `json:"lastError"`
 
+	// PastRules is how it stands on merging past the rules: never, accepted as it is, or
+	// waiting for the user to accept it as it is now (pastrules.go).
+	PastRules PastRules `json:"pastRules"`
+
 	// Figures are what its ledger says of it, for its line in the list: filled in by List
 	// alone, zero elsewhere.
 	Figures RoutineFigures `json:"figures"`
@@ -133,6 +137,11 @@ type Draft struct {
 	// of, when it is on and its Watch, When, If, or Once per changed; left out, it runs on
 	// them too.
 	Current Current `json:"current,omitempty"`
+
+	// AcceptPastRules is the user's confirmation that the routine's Merge it may go past
+	// the rules, as its step allows: a spec that allows it is saved only with it, or as the
+	// very spec text they accepted before (pastrules.go).
+	AcceptPastRules bool `json:"acceptPastRules,omitempty"`
 }
 
 // loaded is a stored spec as a load read it.
@@ -195,6 +204,7 @@ func routineOf(row queries.AutopilotRoutine, v view) Routine {
 
 	out.Sentence = spec.Sentence(l.spec, v.names)
 	out.DryRunOnly = v.offers.NotOffered(l.spec)
+	out.PastRules = pastRulesOf(row, l.spec)
 
 	return out
 }

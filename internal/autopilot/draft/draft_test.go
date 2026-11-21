@@ -238,6 +238,41 @@ func TestReadWarnsOfWhatMayDoLessThanMeant(t *testing.T) {
 	assert.Equal(t, "steps[0].agent.fence.budget", budget.Warnings[0].Path(), "a budget its agent can't keep")
 }
 
+func TestReadWarnsOfAMergePastTheRulesWhileTheSwitchIsOff(t *testing.T) {
+	t.Parallel()
+
+	sync := notifySpec()
+	sync.Trigger = spec.Trigger{Event: catalog.EventChecksPassed}
+	sync.Steps = []spec.Step{
+		{Notify: &spec.NotifyStep{}},
+		{Merge: &spec.MergeStep{How: catalog.MergeWhenMergeable, Method: catalog.MergeSquash, AllowBypass: true}},
+	}
+
+	off := &setup{}
+
+	got, err := draft.Read(t.Context(), sync, autopilotprefs.ModeAuto, off, nil)
+	require.NoError(t, err)
+	require.Empty(t, got.Problems)
+	require.Len(t, got.Warnings, 1)
+	assert.Equal(t, "steps[1].merge.allowBypass", got.Warnings[0].Path())
+	assert.Equal(t, draft.PastRulesOff, got.Warnings[0].Message)
+	assert.NotEmpty(t, got.Sentence, "the warning keeps nothing from being saved")
+
+	on := &setup{pastRules: true}
+
+	got, err = draft.Read(t.Context(), sync, autopilotprefs.ModeAuto, on, nil)
+	require.NoError(t, err)
+	assert.Empty(t, got.Warnings, "the switch is on")
+
+	plain := notifySpec()
+	asks := &setup{}
+
+	got, err = draft.Read(t.Context(), plain, autopilotprefs.ModeAuto, asks, nil)
+	require.NoError(t, err)
+	assert.Empty(t, got.Warnings)
+	assert.Zero(t, asks.pastRulesReads, "the switch is read only for a merge past the rules")
+}
+
 func TestOnlySearchesAreAWatchOfSearchesAlone(t *testing.T) {
 	t.Parallel()
 

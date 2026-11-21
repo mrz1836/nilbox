@@ -49,21 +49,23 @@ export interface DraftReview {
   // readiness is what this Mac has for it, undefined until it is read.
   readiness: AutopilotRoutineReady | undefined
   test: DraftTesting
-  // saving reports a save under way; save stores the draft as it is now, resolving with
-  // the routine saved or why it couldn't be.
+  // saving reports a save under way; save stores the draft as it is now, with the user's
+  // confirmation that its Merge it may go past the rules when accepted says so, resolving
+  // with the routine saved or why it couldn't be.
   saving: boolean
-  save: () => Promise<Result<AutopilotRoutine>>
+  save: (accepted?: boolean) => Promise<Result<AutopilotRoutine>>
 }
 
 // Tested is a test's result, with the keys of the draft it tried (testedKeys).
 type Tested = ReturnType<typeof testedKeys> & { result: AutopilotTestResult }
 
 // useDraftReview reviews draft as it changes: Describe reads it once it has rested for
-// describeDelay milliseconds, asking GitHub nothing; this Mac's readiness is read again as
-// its spec changes, never asking GitHub; Test reads its searches only when asked; and save
-// stores it as it is.
-export function useDraftReview(draft: AutopilotDraft, describeDelay = 300): DraftReview {
-  const key = canonical(draft)
+// describeDelay milliseconds, asking GitHub nothing, and again when also changes (what
+// else the reading leans on, such as the prompts a card adds before its routine); this
+// Mac's readiness is read again as its spec changes, never asking GitHub; Test reads its
+// searches only when asked; and save stores it as it is.
+export function useDraftReview(draft: AutopilotDraft, describeDelay = 300, also = ''): DraftReview {
+  const key = `${also}\n${canonical(draft)}`
   const described = useDebouncedQuery(() => describeRoutine(draft).then((d) => ({ key, d })), [key], describeDelay)
   const ready = useQuery(() => draftReadiness(draft), [canonical(draft.spec)], {
     log: 'could not check what this Mac has for the routine',
@@ -93,7 +95,7 @@ export function useDraftReview(draft: AutopilotDraft, describeDelay = 300): Draf
       },
     },
     saving: saver.pending,
-    save: () => saver.run(draft),
+    save: (accepted = false) => saver.run(accepted ? { ...draft, acceptPastRules: true } : draft),
   }
 }
 

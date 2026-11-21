@@ -107,7 +107,7 @@ func (c *ghCalls) writes() []string {
 
 	for _, call := range c.asked() {
 		if !strings.HasPrefix(call, "read ") && !strings.HasPrefix(call, "diff ") && !strings.HasPrefix(call, "state ") &&
-			!strings.HasPrefix(call, "timeline ") {
+			!strings.HasPrefix(call, "own ") && !strings.HasPrefix(call, "timeline ") {
 			out = append(out, call)
 		}
 	}
@@ -140,6 +140,10 @@ type ghPullHub struct {
 	reads   map[string]*github.PullReview
 	readErr error
 	states  map[string]*github.MergeState
+
+	// owns are what an own merge-state read adds to each pull request's merge state, by
+	// node ID; none for a pull request not named.
+	owns map[string]*github.OwnMerge
 
 	// writeErr fails every write; reviews are the reviews GitHub took.
 	writeErr error
@@ -179,6 +183,27 @@ func (g *ghPullHub) FetchMergeState(ctx context.Context, _ github.Token, id stri
 	}
 
 	return &github.MergeState{Found: true, Status: github.MergeStateClean, Head: ghHeadA, State: github.StateOpen}, nil
+}
+
+// FetchOwnMergeState answers as FetchMergeState does, with what owns holds for the pull
+// request beside it.
+func (g *ghPullHub) FetchOwnMergeState(ctx context.Context, _ github.Token, id string) (*github.MergeState, error) {
+	g.heard(ctx, "own "+id)
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	out := github.MergeState{Found: true, Status: github.MergeStateClean, Head: ghHeadA, State: github.StateOpen}
+	if s, ok := g.states[id]; ok {
+		out = *s
+	}
+
+	if own, ok := g.owns[id]; ok {
+		copied := *own
+		out.Own = &copied
+	}
+
+	return &out, nil
 }
 
 func (g *ghPullHub) SubmitReview(

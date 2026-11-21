@@ -62,6 +62,11 @@ const (
 	// KeyLogDays is how many days the agent runs' logs are kept, never more than the
 	// history.
 	KeyLogDays = "autopilot.logDays"
+
+	// KeyMergePastRules is Let routines merge your own pull requests past the rules: off,
+	// the default, no routine's Merge it goes past a branch's rules, whatever its step
+	// allows. It is never carried by a backup, nor set by Describe it.
+	KeyMergePastRules = "autopilot.mergePastRules"
 )
 
 var (
@@ -256,6 +261,12 @@ type Config struct {
 	// longer than the history.
 	HistoryDays int `json:"historyDays"`
 	LogDays     int `json:"logDays"`
+
+	// MergePastRules is Let routines merge your own pull requests past the rules: on, a
+	// routine whose Merge it allows it, and that the user accepted so, may merge their own
+	// signed pull request that lacks only an approval from someone else. Off by default, and
+	// never in a backup.
+	MergePastRules bool `json:"mergePastRules"`
 }
 
 // Defaults returns the settings of a fresh database.
@@ -277,7 +288,7 @@ func Defaults() Config {
 func Keys() []string {
 	return []string{
 		KeyEnabled, KeyPaused, KeyDefaultMode, KeyAgentsAtOnce, KeyRunsPerDay, KeyActionsPerDay, KeyDailyCap, KeyDailyCapUnit,
-		KeyKeepAwake, KeyHoldOnOutage, KeyCatchUpHours, KeyHistoryDays, KeyLogDays,
+		KeyKeepAwake, KeyHoldOnOutage, KeyCatchUpHours, KeyHistoryDays, KeyLogDays, KeyMergePastRules,
 	}
 }
 
@@ -300,6 +311,8 @@ func Decode(stored map[string]string) Config {
 		CatchUpHours:  number(stored[KeyCatchUpHours], bounds{MinCatchUpHours, MaxCatchUpHours}, d.CatchUpHours),
 		HistoryDays:   number(stored[KeyHistoryDays], bounds{MinHistoryDays, MaxHistoryDays}, d.HistoryDays),
 		LogDays:       number(stored[KeyLogDays], bounds{MinLogDays, MaxLogDays}, d.LogDays),
+
+		MergePastRules: prefval.Bool(stored[KeyMergePastRules], false),
 	}
 
 	if m := Mode(stored[KeyDefaultMode]); m.Valid() {
@@ -386,6 +399,8 @@ func (c Config) Encode() map[string]string {
 		KeyCatchUpHours:  strconv.Itoa(c.CatchUpHours),
 		KeyHistoryDays:   strconv.Itoa(c.HistoryDays),
 		KeyLogDays:       strconv.Itoa(c.LogDays),
+
+		KeyMergePastRules: prefval.EncodeBool(c.MergePastRules),
 	}
 }
 

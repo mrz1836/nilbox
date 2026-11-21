@@ -2,24 +2,30 @@ import { describe, expect, it } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { AutopilotProblem, AutopilotSpec, AutopilotStep } from '../platform'
-import { autopilotCatalog, routine, routineTest } from '../test/fixtures'
+import { autopilotCatalog, pastRulesSpec, routine, routineTest } from '../test/fixtures'
 import {
   actsOn,
   addable,
+  agentless,
   authorLabel,
   authorValue,
   canonical,
   costLine,
   dryRunWhy,
   fieldsFor,
+  goesPastRules,
   lengthParts,
   moved,
   newRoutineName,
   newStep,
+  noTicks,
   omit,
   onlyIfChoices,
   opsFor,
   outcomeLabel,
+  pastRulesAccepted,
+  pastRulesToConfirm,
+  pastTicks,
   placeLabel,
   placeValue,
   problemsAt,
@@ -162,6 +168,25 @@ describe('the steps', () => {
     expect(offered).toMatchObject({ label: 'Run a coding agent', offered: true })
   })
 
+  it('offers Merge it with no agent step only when the checks pass, and nothing before it may change the branch', () => {
+    const kinds = (spec: AutopilotSpec) => addable(catalog, spec).map((c) => c.kind)
+    const passed = (...steps: AutopilotStep[]): AutopilotSpec => ({
+      ...withSteps(...steps),
+      trigger: { event: 'checks_passed' },
+    })
+
+    expect(kinds(passed())).toContain('merge')
+    expect(kinds(passed({ pin: {} }, { github: [{ reply: { prompt: { nickname: 'Sync OK' } } }] }))).toContain('merge')
+    expect(kinds(withSteps()), 'it fires when the checks fail').not.toContain('merge')
+    expect(kinds(passed({ script: { id: 1, name: 'Lint' } }))).not.toContain('merge')
+    expect(kinds(passed({ github: [{ rebase: {} }] }))).not.toContain('merge')
+    expect(kinds(passed({ github: [{ updateBranch: {} }] }))).not.toContain('merge')
+    expect(kinds(passed(agentStep())), 'an agent step needs its wait').not.toContain('merge')
+    expect(kinds(passed(agentStep(), { waitForChecks: {}, onlyIf: 'pushed' }))).toContain('merge')
+    expect(agentless(passed({ pin: {} }).steps)).toBe(true)
+    expect(agentless(passed({ waitForChecks: {} }).steps)).toBe(false)
+  })
+
   it('offers a GitHub step once the catalog lists an action to send', () => {
     const withActions = {
       ...catalog,
@@ -200,6 +225,13 @@ describe('the steps', () => {
     })
     expect(newStep('waitForChecks', [])).toEqual({ waitForChecks: {}, onlyIf: 'pushed' })
     expect(newStep('merge', [])).toEqual({ merge: { how: 'autoMergeIfItWasOn' }, onlyIf: 'passed' })
+    // With no agent step, in a routine that fires when the checks pass, it merges what they
+    // passed on, always.
+    expect(newStep('merge', [{ pin: {} }], [], 'checks_passed')).toEqual({ merge: { how: 'autoMergeIfItWasOn' } })
+    expect(newStep('merge', [agentStep(), { waitForChecks: {}, onlyIf: 'pushed' }], [], 'checks_passed')).toEqual({
+      merge: { how: 'autoMergeIfItWasOn' },
+      onlyIf: 'passed',
+    })
     expect(newStep('postReview', [])).toEqual({ postReview: { as: 'comment' } })
     expect(newStep('tellMe', [])).toEqual({ tellMe: { when: 'reached' } })
     expect(newStep('tellMe', [agentStep()])).toEqual({ tellMe: { when: 'verdict' } })
@@ -226,6 +258,30 @@ describe('the steps', () => {
       'notPushed',
     ])
     expect(ids([agentStep()], 3)).toEqual(['pushed', 'notPushed'])
+    expect(ids([{ pin: {} }, { merge: { how: 'whenMergeable' } }], 1), 'a merge with no agent step').toEqual([])
+  })
+
+  it('reads the ticks that let Merge it go past the rules, and when a save asks to confirm them', () => {
+    const past = pastRulesSpec()
+    const bypassOnly = withSteps({ merge: { how: 'whenMergeable', allowBypass: true } })
+
+    expect(pastTicks(past)).toEqual({ bypass: true, sensitive: true })
+    expect(pastTicks(bypassOnly)).toEqual({ bypass: true, sensitive: false })
+    expect(pastTicks(withSteps({ merge: { how: 'whenMergeable' } }))).toEqual(noTicks)
+    expect(goesPastRules(past)).toBe(true)
+    expect(goesPastRules(withSteps({ pin: {} }))).toBe(false)
+
+    // A new routine always asks; a saved one only when it isn't the very spec confirmed.
+    expect(pastRulesToConfirm(past, undefined)).toBe(true)
+    expect(pastRulesToConfirm(past, { pastRules: 'allowed', spec: pastRulesSpec() })).toBe(false)
+    expect(pastRulesToConfirm(past, { pastRules: 'allowed', spec: bypassOnly })).toBe(true)
+    expect(pastRulesToConfirm(past, { pastRules: 'needsTick', spec: pastRulesSpec() })).toBe(true)
+    expect(pastRulesToConfirm(withSteps({ pin: {} }), undefined)).toBe(false)
+
+    expect(pastRulesAccepted(pastTicks(past), { bypass: true, sensitive: false })).toBe(false)
+    expect(pastRulesAccepted(pastTicks(past), { bypass: true, sensitive: true })).toBe(true)
+    expect(pastRulesAccepted(pastTicks(bypassOnly), { bypass: true, sensitive: false })).toBe(true)
+    expect(pastRulesAccepted(noTicks, noTicks)).toBe(true)
   })
 
   it('moves one, and leaves the list as it was for one that isn’t there', () => {
