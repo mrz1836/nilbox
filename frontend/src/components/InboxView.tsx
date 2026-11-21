@@ -853,7 +853,7 @@ export function InboxView({
           type="button"
           disabled={refreshing}
           onClick={refresh}
-          className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 font-medium hover:bg-raised disabled:opacity-60"
+          className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1 font-medium hover:bg-raised disabled:opacity-disabled"
         >
           <RefreshIcon className={`size-3.5 ${refreshing ? 'motion-safe:animate-spin' : ''}`} />
           {refreshing ? 'Refreshing…' : 'Refresh'}

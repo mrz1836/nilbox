@@ -22,7 +22,7 @@ export const compactOutcomeClass = 'relative z-10 col-[3/-1] mb-2'
 
 // verbShape is every primary button's shape.
 const verbShape =
-  'inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg border px-2.75 text-body font-semibold whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-60'
+  'inline-flex h-7.5 shrink-0 items-center gap-1.5 rounded-lg border px-2.75 text-body font-semibold whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-disabled'
 
 // loud is a primary outlined in its edge's color, with its text in it, that fills with the
 // color while the card is lit (card-lit in index.css: the pointer on it, keyboard focus in
@@ -53,7 +53,7 @@ const pills = {
 // goShape is a compact card's go button: the primary's words alone, no outline and no
 // icon.
 const goShape =
-  'inline-flex h-6.5 shrink-0 items-center rounded-md px-2.25 text-control font-semibold whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-60'
+  'inline-flex h-6.5 shrink-0 items-center rounded-md px-2.25 text-control font-semibold whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-disabled'
 
 // goTones are the go button's colors: its words in the edge's color, filled with it while
 // the card is lit, with the surface's color for its text, as a loud primary has; a quiet

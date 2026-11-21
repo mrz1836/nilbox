@@ -102,7 +102,7 @@ export function SuggestionChips({
             onClick={() => {
               onPick(c.login)
             }}
-            className={`${chipClass} inline-flex items-center gap-1.5 text-text enabled:hover:border-accent/60 enabled:hover:text-accent disabled:opacity-60`}
+            className={`${chipClass} inline-flex items-center gap-1.5 text-text enabled:hover:border-accent/60 enabled:hover:text-accent disabled:opacity-disabled`}
           >
             <PersonAvatar login={c.login} />
             {c.text}
