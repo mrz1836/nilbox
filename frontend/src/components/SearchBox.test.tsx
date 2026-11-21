@@ -8,11 +8,12 @@ import { SearchBox } from './SearchBox'
 
 const noop = () => undefined
 
-// The searches below are each one as its page draws it before it moves onto SearchBox,
-// copied as written, to check that SearchBox draws the same field for the props that page
-// passes.
+// The searches below are pinned copies of each page's own search as it was written before
+// the page moved onto SearchBox, kept to check that SearchBox draws the same field for the
+// props that page passes.
 
-// Scripts' RepoSearch, on the Hooks and Release pages, and labelled for magex's targets.
+// The Scripts tab's repository search, on the Hooks and Release pages, and labelled for
+// magex's targets.
 function RepoSearchToday({
   label = 'Search repositories',
   placeholder = 'Search repositories…',
