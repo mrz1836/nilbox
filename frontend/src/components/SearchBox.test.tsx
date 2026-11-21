@@ -14,7 +14,7 @@ const noop = () => undefined
 
 // The Scripts tab's repository search, on the Hooks and Release pages, and labelled for
 // magex's targets.
-function RepoSearchToday({
+function RepoSearchBefore({
   label = 'Search repositories',
   placeholder = 'Search repositories…',
 }: {
@@ -44,7 +44,7 @@ function RepoSearchToday({
 }
 
 // The prompt library's search, which ⌘F focuses through its ref.
-function PromptLibraryToday({ replies }: { replies: boolean }) {
+function PromptLibraryBefore({ replies }: { replies: boolean }) {
   const id = useId()
 
   return (
@@ -68,7 +68,7 @@ function PromptLibraryToday({ replies }: { replies: boolean }) {
 }
 
 // The variables panel's search.
-function VariablesPanelToday() {
+function VariablesPanelBefore() {
   const searchId = useId()
 
   return (
@@ -92,7 +92,7 @@ function VariablesPanelToday() {
 }
 
 // The Runs page's search, which grows to fill its row beside the filter.
-function RunsPageToday() {
+function RunsPageBefore() {
   const id = useId()
 
   return (
@@ -126,22 +126,22 @@ function shapeOf(ui: ReactElement): string {
 }
 
 describe('SearchBox', () => {
-  it.each<{ page: string; today: ReactElement; shared: ReactElement }>([
+  it.each<{ page: string; before: ReactElement; shared: ReactElement }>([
     {
       page: 'the Hooks and Release pages',
-      today: <RepoSearchToday />,
+      before: <RepoSearchBefore />,
       shared: <SearchBox value="hooks" onChange={noop} />,
     },
     {
       page: 'magex’s targets',
-      today: <RepoSearchToday label="Search magex targets" placeholder="Search magex targets…" />,
+      before: <RepoSearchBefore label="Search magex targets" placeholder="Search magex targets…" />,
       shared: (
         <SearchBox value="hooks" onChange={noop} label="Search magex targets" placeholder="Search magex targets…" />
       ),
     },
     {
       page: 'the prompt library',
-      today: <PromptLibraryToday replies={false} />,
+      before: <PromptLibraryBefore replies={false} />,
       shared: (
         <SearchBox
           value="hooks"
@@ -155,12 +155,12 @@ describe('SearchBox', () => {
     },
     {
       page: 'the prompt library’s replies',
-      today: <PromptLibraryToday replies />,
+      before: <PromptLibraryBefore replies />,
       shared: <SearchBox value="hooks" onChange={noop} label="Search replies" placeholder="Search" dense={false} />,
     },
     {
       page: 'the variables panel',
-      today: <VariablesPanelToday />,
+      before: <VariablesPanelBefore />,
       shared: (
         <SearchBox
           value="hooks"
@@ -173,11 +173,11 @@ describe('SearchBox', () => {
     },
     {
       page: 'the Runs page',
-      today: <RunsPageToday />,
+      before: <RunsPageBefore />,
       shared: <SearchBox value="hooks" onChange={noop} className="min-w-40 flex-1" />,
     },
-  ])('draws the search of $page as it is drawn today', ({ today, shared }) => {
-    expect(shapeOf(shared)).toBe(shapeOf(today))
+  ])('draws the search of $page as the page drew it before', ({ before, shared }) => {
+    expect(shapeOf(shared)).toBe(shapeOf(before))
   })
 
   it('is a search field named by its label, a search of the page’s repositories by default', () => {
