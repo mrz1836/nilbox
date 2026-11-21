@@ -533,7 +533,6 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     setGitHubNotificationSwitch: (name, on) => stored(threadRules({ [name]: on })),
     setGitHubNotificationTrigger: (trigger, on) => stored(threadRules({ triggersOff: on ? [] : [trigger] })),
     setGitHubNotificationAction: (action) => stored(threadRules({ action })),
-    setGitHubCleanupCardDismissed: (cleanupCardDismissed) => stored(threadRules({ cleanupCardDismissed })),
 
     githubThreadsSnapshot: () => Promise.resolve(githubThreads()),
     githubThreadsList: () => Promise.resolve(githubThreadList()),

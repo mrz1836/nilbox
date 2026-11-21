@@ -22,7 +22,7 @@ func TestGitHubNotificationsStartAtTheDefaults(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, threadrules.Rules{
 		Read: true, Auto: false, Action: threadrules.ActionDone, TriggersOff: []threadrules.Trigger{},
-		Watching: true, BotActivity: true, CleanupCardDismissed: false,
+		Watching: true, BotActivity: true,
 	}, got.GitHubNotifications, "the notifications are read, and nothing is cleared until the user says so")
 }
 
@@ -34,7 +34,7 @@ func TestUnreadableGitHubNotificationRulesReadAsTheDefaults(t *testing.T) {
 	for key, value := range map[string]string{
 		threadrules.KeyRead: "nope", threadrules.KeyAuto: "yes", threadrules.KeyAction: "archive",
 		threadrules.KeyTriggersOff: `["by_hand","later"`, threadrules.KeyWatching: "",
-		threadrules.KeyBotActivity: "sometimes", threadrules.KeyCleanupCardDismissed: "2",
+		threadrules.KeyBotActivity: "sometimes",
 	} {
 		setPref(t, db, key, value)
 	}
@@ -111,18 +111,6 @@ func TestGitHubNotificationSettersEmitRulesChanged(t *testing.T) {
 		})
 	}
 
-	t.Run("cleanup card", func(t *testing.T) {
-		t.Parallel()
-
-		events := &testutil.Events{}
-		svc := serviceOver(t, testutil.DB(t), t.TempDir(), WithEvents(events))
-
-		got, err := svc.SetGitHubCleanupCardDismissed(t.Context(), true)
-		require.NoError(t, err)
-		assert.True(t, got.GitHubNotifications.CleanupCardDismissed, "stored")
-		assert.Zero(t, events.Count(), "the window's own flag changes no rule: nothing is told")
-	})
-
 	for name, set := range map[string]func(context.Context, *Service) error{
 		"unknown switch": func(ctx context.Context, s *Service) error {
 			return testutil.ErrOf(s.SetGitHubNotificationSwitch(ctx, "sometimes", true))
@@ -158,7 +146,7 @@ func TestSetGitHubNotificationSwitchRefusesAnUnknownOne(t *testing.T) {
 
 	svc, _, _ := newTestService(t)
 
-	for _, name := range []threadrules.Switch{"", "action", "cleanupCardDismissed", "Auto"} {
+	for _, name := range []threadrules.Switch{"", "action", "Auto"} {
 		got, err := svc.SetGitHubNotificationSwitch(t.Context(), name, true)
 		require.ErrorIs(t, err, threadrules.ErrUnknownSwitch, name)
 		assert.Equal(t, "That isn't a setting of GitHub notifications.", uierr.Message(err))
@@ -286,27 +274,6 @@ func TestSetGitHubNotificationAction(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, threadrules.ActionDone, got.GitHubNotifications.Action)
 	assert.Equal(t, got, mustGet(t, svc))
-}
-
-func TestSetGitHubCleanupCardDismissed(t *testing.T) {
-	t.Parallel()
-
-	svc, _, _ := newTestService(t)
-	ctx := t.Context()
-
-	got, err := svc.SetGitHubCleanupCardDismissed(ctx, true)
-	require.NoError(t, err)
-	assert.True(t, got.GitHubNotifications.CleanupCardDismissed)
-
-	stored, ok, err := svc.prefs.Get(ctx, threadrules.KeyCleanupCardDismissed)
-	require.NoError(t, err)
-	assert.True(t, ok)
-	assert.Equal(t, "true", stored)
-	assert.Equal(t, got, mustGet(t, svc), "it returns the settings as stored")
-
-	got, err = svc.SetGitHubCleanupCardDismissed(ctx, false)
-	require.NoError(t, err)
-	assert.False(t, got.GitHubNotifications.CleanupCardDismissed)
 }
 
 // mustGet reads the settings back.

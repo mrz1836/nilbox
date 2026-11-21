@@ -258,9 +258,6 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetGitHubNotificationAction": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetGitHubNotificationAction(ctx, threadrules.ActionRead)
 		},
-		"settings.Service.SetGitHubCleanupCardDismissed": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Settings.SetGitHubCleanupCardDismissed(ctx, true)
-		},
 		"settings.Service.SetSectionCollapsed": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetSectionCollapsed(ctx, settings.ListYours, false)
 		},

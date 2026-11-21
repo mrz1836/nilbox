@@ -793,7 +793,7 @@ func TestSwitches(t *testing.T) {
 		assert.Equal(t, key, s.Key(), s)
 	}
 
-	for _, unknown := range []threadrules.Switch{"", "action", "cleanupCardDismissed", "Read"} {
+	for _, unknown := range []threadrules.Switch{"", "action", "Read"} {
 		assert.False(t, unknown.Valid(), unknown)
 		assert.Empty(t, unknown.Key(), unknown)
 	}
@@ -804,7 +804,7 @@ func TestKeys(t *testing.T) {
 
 	assert.Equal(t, []string{
 		"threadrules.read", "threadrules.auto", "threadrules.watching", "threadrules.botActivity",
-		"threadrules.action", "threadrules.triggersOff", "threadrules.cleanupCardDismissed",
+		"threadrules.action", "threadrules.triggersOff",
 	}, threadrules.Keys())
 }
 
@@ -813,7 +813,7 @@ func TestDefaults(t *testing.T) {
 
 	want := threadrules.Rules{
 		Read: true, Auto: false, Action: threadrules.ActionDone, TriggersOff: []threadrules.Trigger{},
-		Watching: true, BotActivity: true, CleanupCardDismissed: false,
+		Watching: true, BotActivity: true,
 	}
 
 	assert.Equal(t, want, threadrules.Defaults())
@@ -828,13 +828,12 @@ func TestDecodeFallsBackOnBadValues(t *testing.T) {
 	t.Parallel()
 
 	got := threadrules.Decode(map[string]string{
-		threadrules.KeyRead:                 "yes",
-		threadrules.KeyAuto:                 "on",
-		threadrules.KeyAction:               "archive",
-		threadrules.KeyTriggersOff:          `{"merged":true}`,
-		threadrules.KeyWatching:             "",
-		threadrules.KeyBotActivity:          "maybe",
-		threadrules.KeyCleanupCardDismissed: "2",
+		threadrules.KeyRead:        "yes",
+		threadrules.KeyAuto:        "on",
+		threadrules.KeyAction:      "archive",
+		threadrules.KeyTriggersOff: `{"merged":true}`,
+		threadrules.KeyWatching:    "",
+		threadrules.KeyBotActivity: "maybe",
 	})
 
 	assert.Equal(t, threadrules.Defaults(), got)
@@ -844,19 +843,18 @@ func TestDecodeReadsTheStoredRules(t *testing.T) {
 	t.Parallel()
 
 	got := threadrules.Decode(map[string]string{
-		threadrules.KeyRead:                 storedOff,
-		threadrules.KeyAuto:                 storedOn,
-		threadrules.KeyAction:               "read",
-		threadrules.KeyTriggersOff:          `["unassigned","merged"]`,
-		threadrules.KeyWatching:             storedOff,
-		threadrules.KeyBotActivity:          "0",
-		threadrules.KeyCleanupCardDismissed: storedOn,
+		threadrules.KeyRead:        storedOff,
+		threadrules.KeyAuto:        storedOn,
+		threadrules.KeyAction:      "read",
+		threadrules.KeyTriggersOff: `["unassigned","merged"]`,
+		threadrules.KeyWatching:    storedOff,
+		threadrules.KeyBotActivity: "0",
 	})
 
 	assert.Equal(t, threadrules.Rules{
 		Read: false, Auto: true, Action: threadrules.ActionRead,
 		TriggersOff: []threadrules.Trigger{threadrules.TriggerMerged, threadrules.TriggerUnassigned},
-		Watching:    false, BotActivity: false, CleanupCardDismissed: true,
+		Watching:    false, BotActivity: false,
 	}, got, "the triggers in the order of Triggers")
 }
 
@@ -902,13 +900,12 @@ func storedAs(t *testing.T, r threadrules.Rules) map[string]string {
 	require.NoError(t, err)
 
 	return map[string]string{
-		threadrules.KeyRead:                 prefval.EncodeBool(r.Read),
-		threadrules.KeyAuto:                 prefval.EncodeBool(r.Auto),
-		threadrules.KeyAction:               action,
-		threadrules.KeyTriggersOff:          threadrules.EncodeTriggersOff(r.TriggersOff),
-		threadrules.KeyWatching:             prefval.EncodeBool(r.Watching),
-		threadrules.KeyBotActivity:          prefval.EncodeBool(r.BotActivity),
-		threadrules.KeyCleanupCardDismissed: prefval.EncodeBool(r.CleanupCardDismissed),
+		threadrules.KeyRead:        prefval.EncodeBool(r.Read),
+		threadrules.KeyAuto:        prefval.EncodeBool(r.Auto),
+		threadrules.KeyAction:      action,
+		threadrules.KeyTriggersOff: threadrules.EncodeTriggersOff(r.TriggersOff),
+		threadrules.KeyWatching:    prefval.EncodeBool(r.Watching),
+		threadrules.KeyBotActivity: prefval.EncodeBool(r.BotActivity),
 	}
 }
 
@@ -919,7 +916,7 @@ func TestTheStoredRulesReadBackAsThemselves(t *testing.T) {
 		"defaults": threadrules.Defaults(),
 		"everything changed": {
 			Read: false, Auto: true, Action: threadrules.ActionRead, TriggersOff: threadrules.Triggers(),
-			Watching: false, BotActivity: false, CleanupCardDismissed: true,
+			Watching: false, BotActivity: false,
 		},
 		"some triggers off": with(autoRules(), func(r *threadrules.Rules) {
 			r.TriggersOff = []threadrules.Trigger{threadrules.TriggerIssueClosed, threadrules.TriggerDismissed}
@@ -933,7 +930,6 @@ func TestTheStoredRulesReadBackAsThemselves(t *testing.T) {
 	assert.Equal(t, map[string]string{
 		threadrules.KeyRead: storedOn, threadrules.KeyAuto: storedOff, threadrules.KeyAction: "done",
 		threadrules.KeyTriggersOff: "[]", threadrules.KeyWatching: storedOn, threadrules.KeyBotActivity: storedOn,
-		threadrules.KeyCleanupCardDismissed: storedOff,
 	}, storedAs(t, threadrules.Defaults()))
 }
 
