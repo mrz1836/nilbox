@@ -356,7 +356,9 @@ describe('ConfirmationDialog for Force remove', () => {
 
     // The rest of the files read means the details landed.
     await vi.waitFor(() => {
-      expect(within(dialog.getByRole('region', { name: 'Files it discards' })).queryByRole('status')).toBeNull()
+      expect(
+        within(dialog.getByRole('region', { name: 'Files it discards' })).queryByRole('status'),
+      ).not.toBeInTheDocument()
     })
     expect(dialog.queryByRole('region', { name: 'Commits not on GitHub' })).not.toBeInTheDocument()
     expect(dialog.queryByText(/not on GitHub/)).not.toBeInTheDocument()
@@ -382,7 +384,9 @@ describe('ConfirmationDialog for Force remove', () => {
     const dialog = single('force', copied)
 
     await vi.waitFor(() => {
-      expect(within(dialog.getByRole('region', { name: 'Files it discards' })).queryByRole('status')).toBeNull()
+      expect(
+        within(dialog.getByRole('region', { name: 'Files it discards' })).queryByRole('status'),
+      ).not.toBeInTheDocument()
     })
     expect(dialog.getByText(/^Removing it would discard 14 uncommitted files/)).toBeInTheDocument()
     expect(dialog.queryByRole('region', { name: 'Commits not on GitHub' })).not.toBeInTheDocument()
