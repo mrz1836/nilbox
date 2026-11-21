@@ -66,7 +66,7 @@ export function HookResult({ runId, onSelect }: HookResultProps) {
                 onClick={() => {
                   setAsking(true)
                 }}
-                className="font-medium text-accent hover:underline disabled:opacity-50"
+                className="font-medium text-accent hover:underline disabled:opacity-disabled"
               >
                 Replace…
               </button>

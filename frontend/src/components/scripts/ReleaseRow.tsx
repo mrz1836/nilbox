@@ -42,7 +42,7 @@ export const releaseListClass =
 // or holds the focus, when it is drawn as a button, so a column of them stays calm and
 // each is still found where it always is.
 const rowButtonClass =
-  'inline-flex items-center rounded-md border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap text-muted transition-colors hover:bg-raised group-hover/row:border-border group-hover/row:bg-surface group-hover/row:text-text group-focus-within/row:border-border group-focus-within/row:bg-surface group-focus-within/row:text-text focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50'
+  'inline-flex items-center rounded-md border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap text-muted transition-colors hover:bg-raised group-hover/row:border-border group-hover/row:bg-surface group-hover/row:text-text group-focus-within/row:border-border group-focus-within/row:bg-surface group-focus-within/row:text-text focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-disabled'
 
 // rowClass is a row: a subgrid of the list's columns, every cell placed in it by its own
 // classes, and in a narrow list a grid of its own, five columns wide.

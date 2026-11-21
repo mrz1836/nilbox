@@ -86,12 +86,12 @@ export const launchPlace: LaunchPlace = { boxClass: verbCellClass, outcomeClass:
 
 // iconButtonClass is a quiet icon button: ›_, ⋯, and the chevron.
 export const iconButtonClass =
-  'inline-grid size-6 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-50 aria-expanded:bg-raised aria-expanded:text-text'
+  'inline-grid size-6 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-disabled aria-expanded:bg-raised aria-expanded:text-text'
 
 // buttonClass is a bordered button: the row's verb, and the drawer's Remove… and Force
 // remove…; cleanUpClass is Clean up's, in green.
 const buttonShape =
-  'inline-flex h-6 items-center gap-1.25 rounded-md border px-2.25 text-xs font-semibold whitespace-nowrap transition-colors disabled:opacity-55'
+  'inline-flex h-6 items-center gap-1.25 rounded-md border px-2.25 text-xs font-semibold whitespace-nowrap transition-colors disabled:opacity-disabled'
 
 export const verbButtonClass = `${buttonShape} border-border bg-surface text-text hover:bg-raised disabled:hover:bg-surface`
 

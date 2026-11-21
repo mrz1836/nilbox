@@ -15,7 +15,7 @@ import { argsFor, releaseWords, scriptMenu, ScriptRow, type ScriptMenuProps } fr
 type List = 'custom' | 'builtins'
 
 // chipButtonClass draws a common target as a chip that can be pressed.
-const chipButtonClass = `${chipClass} inline-flex items-center gap-1 font-mono transition-colors hover:bg-raised hover:text-text disabled:opacity-50 disabled:hover:bg-transparent`
+const chipButtonClass = `${chipClass} inline-flex items-center gap-1 font-mono transition-colors hover:bg-raised hover:text-text disabled:opacity-disabled disabled:hover:bg-transparent`
 
 // Chip is one common target: a button that runs it at once; greyed, with why, when it
 // can't run; or, for one that bumps a version, a menu that says Release does it, opens
