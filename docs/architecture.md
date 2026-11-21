@@ -5708,6 +5708,62 @@ font size, which only rem follows, and the shell passes the stored size in the p
 on px text. Only chrome lined up with the native window, such as the toolbar's height and
 its inset beside the window controls, and hairlines stay in px.
 
+**The build and its checks.** The root `tsconfig.json` only references two projects:
+`tsconfig.app.json` checks `src/` and `bindings/` against the browser (lib ES2023 and DOM, the
+`vite/client` types), and `tsconfig.node.json` checks `vite.config.ts` and the two Vitest
+configs against Node (its types, no DOM), both with the same strict flags and `noEmit`.
+`pnpm typecheck` checks each with `tsc -p`, so nothing writes build info, and typescript-eslint's
+`projectService` opens every linted file in the project that includes it, with no default
+project to fall back on; a test that needs Node's own modules names their types itself
+(`test/devtoolsAgent.test.ts`). ESLint bans importing `useMemo` and `useCallback` anywhere in
+`src/` (`noMemoHooks` in `eslint.config.js`). The gate (`magex frontend:gate`) runs the format
+check, lint, the typecheck, the tests with coverage, the render check, and last the production
+build, which `chunkLimit` in `vite.config.ts` fails on a JS chunk over `chunkSizeWarningLimit`
+(750 kB, above the inbox's chunk, about 696 kB), where Vite only warns. The bundle targets
+Safari 16.4, the WebKit of the oldest supported macOS, 13.3.
+
+**Shared hooks and helpers.** Each of these is the one way the pages do it, never a copy.
+`useOn` (`lib/useOn.ts`) hears a window event while the component is mounted (or `enabled`)
+and `useKeyDown` (`lib/keys.ts`) every key that bubbles up to the document or the window, each
+calling the latest handler rendered, so a new one never subscribes again. `lib/dialogs.ts`
+opens the system's file dialogs (`pickFileToOpen`, `pickFileToSave`): the path, '' on a cancel,
+or the failure worded for the page. `logFailure` (`lib/call.ts`) runs a call whose failure the
+user asked nothing about and writes it to the console; `terminalLabel` (`lib/terminals.ts`)
+names a terminal app, or a fallback for one this build doesn't know; `Select<T>`
+(`components/controls.tsx`) is the native select of a closed set of strings, handing
+`onChange` one of its own options' values; and `unlisted` (`lib/unlisted.ts`) answers, from a
+switch's default, a value Go may send that its union leaves out, so a constant Go adds fails
+the typecheck until it has a case. `platform/cause.ts` (`causeOf`) is the one decoder of the
+cause the runtime gives a bound method's error, the backend's words and its detail; it sits
+apart from the platform module, so the fake leaves it in place. A settings section's list
+changes through `useListChange` (`components/settings/useListChange.ts`), one at a time with
+its controls held, a refusal keeping the draft it was made with. The toolbar's popover buttons
+are `ToolbarPopoverButton`, their counts `CountDot` (`PopoverPanel.tsx`). Both sheets take
+`SheetCommonProps` (`lib/sheet.ts`), which a host builds once, and hear a move from one item to
+another through `useSheetVisits`, which marks the item left and the one opened read once per
+opening; `ReviewComposer` and `IssueComposer` both render `components/conversation/Composer.tsx`.
+
+**The launch dialogs.** `components/launchDialogs.tsx` defines each dialog a launch opens once,
+for every control that opens it: the launch options (`LaunchDialog`, its `LaunchMenu`, and the
+preview), the launch hold dialog, and Take over. Each is a chunk of its own, so the inbox's
+first paint waits for none, and `LaunchControls`' first mount starts loading them all
+(`preloadDialogs`). Each loader keeps the component it brought in, and each dialog chooses, once
+as it mounts, that component when its code is in, else the `React.lazy` one: a lazy
+component suspends on its first render even with its code loaded, which would show its
+boundary's fallback and close a dialog already open. So a dialog drawn after its code came
+never suspends, and a mounted one never changes component. `LaunchDialog`'s load waits for its
+menu's.
+
+**The tests' shared parts.** Beside the platform fake (whose `send` emits a window event inside
+`act`), `src/test/` holds `async.ts` (`deferred`, a promise the test settles itself, and
+`nextTask`), `stubs.ts` (`reduceMotion`, `followResizes`), `settings.tsx` (`renderSaving`, which
+keeps the settings each save returns, as App does), and `clock.tsx` (`FIXED_NOW`, `isoAgo`, and
+`renderAt`, a render on a clock standing still). Every test starts clean: `vitest.config.ts`'
+`mockReset`, `restoreMocks`, and `unstubGlobals` put the fake's answers, the spies, and stubbed
+globals back, and `test/setup.ts` unmounts and puts the real timers back after each test. So a
+test stubs a global or turns fake timers on only in itself or a `beforeEach`, undoes neither,
+and never undoes its describe's setup.
+
 **Pickers and reviewers.** `components/Picker.tsx` is the one picker both sheets edit with: an
 Edit button that opens a modal of rows to check and uncheck, filtered by its field, which
 sends only what differs from the item (`changes`, by `Wanted`, what to have rather than what to
