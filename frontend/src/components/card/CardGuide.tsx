@@ -270,7 +270,7 @@ function Sample({ markers }: { markers: boolean }) {
               data-marker={guide.part}
               hidden={spot === null}
               style={spot === null ? undefined : { left: spot.left, top: spot.top }}
-              className={`pointer-events-none absolute z-10 grid size-4.5 place-items-center rounded-full bg-accent text-marker leading-none font-bold text-background ring-3 ring-accent/25 ${spotClass[guide.side]}`}
+              className={`pointer-events-none absolute z-10 grid size-4.5 place-items-center rounded-full bg-accent text-marker leading-none font-bold text-background ring-3 ring-accent/22 ${spotClass[guide.side]}`}
             >
               {i + 1}
             </span>
@@ -406,7 +406,7 @@ function Key() {
           A person
         </li>
         <li className={keyRowClass}>
-          <span aria-hidden="true" className="grid size-5 shrink-0 place-items-center rounded-md bg-info/18 text-info">
+          <span aria-hidden="true" className="grid size-5 shrink-0 place-items-center rounded-md bg-info/14 text-info">
             <BotIcon className="size-3" />
           </span>
           A bot
@@ -414,7 +414,7 @@ function Key() {
         {unread && (
           <li className={keyRowClass}>
             <span aria-hidden="true" className="grid size-5 shrink-0 place-items-center">
-              <span className="block size-1.75 rounded-full bg-info ring-3 ring-info/20" />
+              <span className="block size-1.75 rounded-full bg-info ring-3 ring-info/22" />
             </span>
             New since you last opened it
           </li>

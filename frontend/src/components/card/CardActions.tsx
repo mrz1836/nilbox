@@ -47,7 +47,7 @@ const quiet = 'border-border text-text card-lit:bg-raised'
 // waits on the user, and What happened for one that failed.
 const pills = {
   warning: 'border-warning/45 bg-warning/14 text-warning hover:bg-warning/22',
-  danger: 'border-danger/30 bg-danger/10 text-danger hover:bg-danger/18',
+  danger: 'border-danger/22 bg-danger/10 text-danger hover:bg-danger/14',
 } as const
 
 // goShape is a compact card's go button: the primary's words alone, no outline and no

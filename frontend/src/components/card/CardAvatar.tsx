@@ -12,7 +12,7 @@ const faces: readonly string[] = [
   'bg-success/22 text-success',
   'bg-warning/22 text-warning',
   'bg-info/22 text-info',
-  'bg-danger/18 text-danger',
+  'bg-danger/14 text-danger',
   'bg-muted/25 text-text',
 ]
 
@@ -91,7 +91,7 @@ export function CardAvatar({ item }: { item: InboxItem }) {
           <span
             aria-hidden="true"
             data-avatar="bot"
-            className={`grid size-7 place-items-center rounded-lg bg-info/18 text-info ${ring}`}
+            className={`grid size-7 place-items-center rounded-lg bg-info/14 text-info ${ring}`}
           >
             <BotIcon className="size-4" />
           </span>

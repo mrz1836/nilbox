@@ -22,8 +22,8 @@ export function trustTitle(item: InboxItem): string {
 // tones are the chip's two tones: danger once a sensitive file is in a danger category,
 // else warning.
 const tones = {
-  danger: 'border-danger/45 bg-danger/10 text-danger hover:bg-danger/18',
-  warning: 'border-warning/45 bg-warning/10 text-warning hover:bg-warning/18',
+  danger: 'border-danger/45 bg-danger/10 text-danger hover:bg-danger/14',
+  warning: 'border-warning/45 bg-warning/10 text-warning hover:bg-warning/14',
 } as const
 
 const chipClass =

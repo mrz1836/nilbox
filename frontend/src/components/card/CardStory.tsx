@@ -29,11 +29,11 @@ const edgeDot: Readonly<Record<Edge, string>> = {
 // edgeTint is each edge's tint behind a compact card's story chip, spelled out in full so
 // Tailwind finds them; a card that waits on others has none.
 const edgeTint: Readonly<Record<Edge, string>> = {
-  urgent: 'bg-warning/13',
-  blocked: 'bg-danger/11',
-  yours: 'bg-accent/11',
-  ready: 'bg-success/11',
-  agent: 'bg-info/12',
+  urgent: 'bg-warning/14',
+  blocked: 'bg-danger/10',
+  yours: 'bg-accent/10',
+  ready: 'bg-success/10',
+  agent: 'bg-info/10',
   waiting: '',
   none: '',
 }

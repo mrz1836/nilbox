@@ -100,7 +100,7 @@ describe('CardStory', () => {
 
     const chip = container.firstElementChild
     expect(chip).toHaveAttribute('data-story-chip')
-    expect(chip).toHaveClass('text-accent', 'bg-accent/11', 'max-w-60', 'h-5')
+    expect(chip).toHaveClass('text-accent', 'bg-accent/10', 'max-w-60', 'h-5')
     expect(chip).toHaveTextContent('Re-review · 1 new commit')
     expect(screen.getByText('· 1 new commit')).toHaveClass('text-muted')
     expect(screen.getByText('· 1 new commit').parentElement).toHaveClass('truncate')

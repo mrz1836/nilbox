@@ -111,7 +111,7 @@ function Chip({ chip, full, stamp }: ChipProps) {
     <p
       data-testid="nil-chip"
       title={chip.titles.join(', ')}
-      className={`${shape} border-warning/40 bg-warning/10 text-warning`}
+      className={`${shape} border-warning/45 bg-warning/10 text-warning`}
     >
       <TrophyIcon className={full ? 'size-3.5' : 'size-3'} />
       Achievement unlocked · {chip.title}
@@ -296,7 +296,7 @@ export function InboxNil({
                 ref={button}
                 type="button"
                 onClick={replay}
-                className="nil-rise nil-replay group inline-flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 font-mono text-xs font-medium text-text transition hover:border-accent hover:bg-accent/15 active:scale-[0.97]"
+                className="nil-rise nil-replay group inline-flex items-center gap-2 rounded-lg border border-accent/45 bg-accent/10 px-3 py-1.5 font-mono text-xs font-medium text-text transition hover:border-accent hover:bg-accent/14 active:scale-[0.97]"
                 style={{ animationDelay: '120ms' }}
               >
                 <PlayIcon className="size-3 text-accent transition-transform group-hover:translate-x-0.5" />
@@ -479,7 +479,7 @@ export function InboxNil({
             ref={button}
             type="button"
             onClick={replay}
-            className="nil-rise nil-replay group inline-flex items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-4 py-2 font-mono text-sm font-medium text-text transition hover:border-accent hover:bg-accent/15 active:scale-[0.97]"
+            className="nil-rise nil-replay group inline-flex items-center gap-2 rounded-lg border border-accent/45 bg-accent/10 px-4 py-2 font-mono text-sm font-medium text-text transition hover:border-accent hover:bg-accent/14 active:scale-[0.97]"
             style={{ animationDelay: '420ms' }}
           >
             <PlayIcon className="size-3.5 text-accent transition-transform group-hover:translate-x-0.5" />

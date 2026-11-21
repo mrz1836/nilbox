@@ -18,7 +18,7 @@ const looks: Readonly<Record<Look, string>> = {
   bad: 'border-danger text-danger wash-danger',
   rereview: 'border-accent text-accent wash-accent',
   held: 'border-warning text-warning wash-warning',
-  running: 'border-warning/30 bg-surface text-warning',
+  running: 'border-warning/22 bg-surface text-warning',
   waiting: 'border-dashed border-muted/75 bg-surface text-muted/75',
   none: 'border-dotted border-muted/45 bg-surface text-muted/45',
   auto: 'border-dashed border-success bg-surface text-success',

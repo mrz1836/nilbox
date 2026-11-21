@@ -164,7 +164,7 @@ export function PinGlyph({ item, rules }: { item: InboxItem; rules: RepoRules | 
 export function UnreadDot() {
   return (
     <span data-unread title="New since you last opened it" className="relative z-10 inline-flex shrink-0">
-      <span aria-hidden="true" className="block size-1.75 rounded-full bg-info ring-3 ring-info/20" />
+      <span aria-hidden="true" className="block size-1.75 rounded-full bg-info ring-3 ring-info/22" />
       <span className="sr-only">Unread</span>
     </span>
   )

@@ -529,7 +529,7 @@ export function CardPeek({
     <section
       id={id}
       aria-label="Details"
-      className="relative z-10 col-span-full row-start-2 mt-3 grid grid-cols-3 gap-5.5 border-t border-dashed border-border bg-linear-to-b from-accent/4 to-transparent pt-4 pl-15.25 text-xs @max-4xl:grid-cols-2 @max-4xl:pl-4 @max-xl:grid-cols-1"
+      className="relative z-10 col-span-full row-start-2 mt-3 grid grid-cols-3 gap-5.5 border-t border-dashed border-border bg-linear-to-b from-accent/5 to-transparent pt-4 pl-15.25 text-xs @max-4xl:grid-cols-2 @max-4xl:pl-4 @max-xl:grid-cols-1"
     >
       {d !== null && (isPR ? <StandsPR d={d} /> : <StandsIssue d={d} />)}
       {d !== null && (isPR ? <Change item={item} d={d} /> : <Planning item={item} d={d} />)}
