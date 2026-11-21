@@ -2,6 +2,7 @@ import { use } from 'react'
 
 import { cardLinks, CardLinksContext, linkName, linkWords, type CardLink } from '../../lib/cardLinks'
 import { openExternal, type InboxItem } from '../../platform'
+import { inkLinkClass } from '../controls'
 import { ExternalIcon, IssueIcon, MergeIcon, PullRequestIcon } from '../icons'
 
 // useCardLinks reads the links of an item's card (cardLinks) from the inbox around it, and
@@ -114,7 +115,7 @@ export function LinkList({
               onClick={() => {
                 open(link)
               }}
-              className="flex max-w-full min-w-0 items-center gap-1 rounded-sm text-left text-text hover:text-accent hover:underline"
+              className={`${inkLinkClass} flex max-w-full min-w-0 items-center gap-1 rounded-sm text-left`}
             >
               <LinkMark link={link} />
               <span className="shrink-0 font-medium">{linkName(link, item.repo)}</span>{' '}

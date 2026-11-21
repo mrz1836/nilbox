@@ -12,7 +12,7 @@ import { worktreeOf } from '../lib/itemWorktrees'
 import { sessionsOf } from '../lib/sessions'
 import type { AgentSession, InboxItem, ItemResolution, ListKind, Worktree } from '../platform'
 import { AutopilotRowsContext } from './autopilot/AutopilotChip'
-import { iconButtonClass, quietButtonClass, Segmented } from './controls'
+import { iconButtonClass, inkLinkClass, quietButtonClass, Segmented } from './controls'
 import { ArchiveIcon, ChevronDownIcon, ClockIcon, MuteIcon } from './icons'
 import type { EditActions } from './ItemMenu'
 import { ItemRow } from './ItemRow'
@@ -348,7 +348,7 @@ export function ListSection({
                   onClick={() => {
                     select(t)
                   }}
-                  className="font-medium text-text hover:text-accent hover:underline"
+                  className={`${inkLinkClass} font-medium`}
                 >
                   {formatCount(matched[t].length)} in {tabNames[t]}
                 </button>

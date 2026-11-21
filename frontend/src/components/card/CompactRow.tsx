@@ -6,6 +6,7 @@ import { leaving, workWords, type RowWork, type StartWork } from '../../lib/rowW
 import { formatAge } from '../../lib/time'
 import { isPinned, type TriageTab } from '../../lib/triage'
 import type { AgentInfo, AgentSession, InboxItem, Label } from '../../platform'
+import { inkLinkClass } from '../controls'
 import { Highlight } from '../Highlight'
 import { ChevronDownIcon } from '../icons'
 import { ItemMenu, type EditActions } from '../ItemMenu'
@@ -223,7 +224,7 @@ export function CompactRow({
               openOnGitHub(item, triage)
             }
           }}
-          className="relative z-10 min-w-[6ch] truncate text-left text-body font-medium text-text hover:text-accent hover:underline"
+          className={`${inkLinkClass} relative z-10 min-w-[6ch] truncate text-left text-body font-medium`}
         >
           <Highlight text={item.title} marks={marks} />
         </button>

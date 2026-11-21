@@ -24,6 +24,7 @@ import {
   type ProjectField,
 } from '../../platform'
 import { AutopilotRowsContext, useMarkedBy, useRoutineName } from '../autopilot/AutopilotChip'
+import { inkLinkClass } from '../controls'
 import { ArchiveIcon, AutopilotIcon, ClockIcon, DotIcon, ExternalIcon, PinIcon, RingIcon } from '../icons'
 import { FieldPill, LabelChip, ProgressBar, ProjectLink } from '../ItemSignals'
 import { RelativeTime } from '../RelativeTime'
@@ -208,7 +209,7 @@ function MilestoneFact({ milestone }: { milestone: ItemMilestone }) {
         onClick={() => {
           openExternal(url)
         }}
-        className="max-w-full truncate text-left text-text hover:text-accent hover:underline"
+        className={`${inkLinkClass} max-w-full truncate text-left`}
       >
         {title}
       </button>
@@ -280,7 +281,7 @@ function Planning({ item, d }: { item: InboxItem; d: ItemDetails }) {
             onClick={() => {
               openExternal(parent.url)
             }}
-            className="max-w-full truncate text-left text-text hover:text-accent hover:underline"
+            className={`${inkLinkClass} max-w-full truncate text-left`}
           >
             {refText(parent, item.repo)}
           </button>

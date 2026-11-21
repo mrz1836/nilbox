@@ -2,6 +2,7 @@ import { createContext, use } from 'react'
 
 import { refText } from '../lib/format'
 import { openExternal } from '../platform'
+import { inkLinkClass } from './controls'
 import { ExternalIcon } from './icons'
 
 // Linked is a pull request or an issue a sheet links to: its repository as "owner/name", its
@@ -52,7 +53,7 @@ export function ItemLink({ linked, from, titled = false }: ItemLinkProps) {
           openExternal(linked.url)
         }
       }}
-      className="inline-flex min-w-0 items-center gap-1 rounded-sm text-left text-text hover:text-accent hover:underline"
+      className={`${inkLinkClass} inline-flex min-w-0 items-center gap-1 rounded-sm text-left`}
     >
       <span className="shrink-0 font-medium">{name}</span>
       {/* A space keeps the name and the title apart when read aloud; the flex layout drops it. */}

@@ -25,6 +25,7 @@ import { IssueState } from './card/IssueState'
 import { RiskChip, trustTitle } from './card/RiskChip'
 import { SizeGlyph } from './card/SizeGlyph'
 import { StateTrack } from './card/StateTrack'
+import { inkLinkClass } from './controls'
 import { Highlight } from './Highlight'
 import { ChevronDownIcon, ExternalIcon, WorktreeIcon } from './icons'
 import { ItemMenu, type EditActions } from './ItemMenu'
@@ -521,7 +522,7 @@ export const ItemRow = memo(function ItemRow({
                 openOnGitHub(item, triage)
               }
             }}
-            className="relative z-10 min-w-[8ch] truncate text-left text-sm font-semibold text-text hover:text-accent hover:underline"
+            className={`${inkLinkClass} relative z-10 min-w-[8ch] truncate text-left text-sm font-semibold`}
           >
             <Highlight text={item.title} marks={marks} />
           </button>
