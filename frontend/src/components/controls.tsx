@@ -20,7 +20,7 @@ const tintedButtonClass =
   'inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium text-text shadow-control inset-shadow-control transition enabled:active:translate-y-px disabled:cursor-default disabled:border-border disabled:bg-raised disabled:text-muted disabled:shadow-none disabled:inset-shadow-none disabled:[&>svg]:text-muted'
 
 // primaryButtonClass marks a view's main action.
-export const primaryButtonClass = `${tintedButtonClass} border-accent/45 bg-accent/14 enabled:hover:border-accent/65 enabled:hover:bg-accent/22 [&>svg]:text-accent`
+export const primaryButtonClass = `${tintedButtonClass} border-accent/45 bg-accent/14 enabled:hover:border-accent/60 enabled:hover:bg-accent/22 [&>svg]:text-accent`
 
 // heldButtonClass is a control that still works beside a tinted button that is held back,
 // such as a split button's menu, so the two halves read as one: it looks like the tinted
@@ -31,7 +31,7 @@ export const heldButtonClass =
   'inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-raised px-3 py-1.5 text-sm font-medium text-muted transition enabled:active:translate-y-px hover:text-text [&>svg]:text-muted hover:[&>svg]:text-text'
 
 // dangerButtonClass confirms a destructive action.
-export const dangerButtonClass = `${tintedButtonClass} border-danger/45 bg-danger/14 enabled:hover:border-danger/65 enabled:hover:bg-danger/22 [&>svg]:text-danger`
+export const dangerButtonClass = `${tintedButtonClass} border-danger/45 bg-danger/14 enabled:hover:border-danger/60 enabled:hover:bg-danger/22 [&>svg]:text-danger`
 
 export const quietButtonClass =
   'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent'
