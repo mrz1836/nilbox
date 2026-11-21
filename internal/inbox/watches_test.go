@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/github"
 	"github.com/mrz1836/nilbox/internal/inbox/internal/queries"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // The routine searches the watch tests send.
@@ -210,23 +211,9 @@ type watchRow struct {
 func (h *watchHarness) watchRows(t *testing.T) []watchRow {
 	t.Helper()
 
-	rows, err := h.pool.QueryContext(t.Context(), `SELECT w.watch_key, i.number, w.stale, w.follow
+	return testutil.Query(t, h.pool, func(r *watchRow) []any { return []any{&r.key, &r.number, &r.stale, &r.follow} },
+		`SELECT w.watch_key, i.number, w.stale, w.follow
 FROM item_watches w JOIN items i ON i.id = w.item_id ORDER BY w.watch_key, i.number`)
-	require.NoError(t, err)
-
-	defer func() { _ = rows.Close() }()
-
-	var out []watchRow
-
-	for rows.Next() {
-		var r watchRow
-		require.NoError(t, rows.Scan(&r.key, &r.number, &r.stale, &r.follow))
-		out = append(out, r)
-	}
-
-	require.NoError(t, rows.Err())
-
-	return out
 }
 
 // watchedDetails is a watched pull request's details as GitHub reads them by ID: at head,
