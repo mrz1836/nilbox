@@ -2655,7 +2655,7 @@
     {
       "id": "",
       "label": "the repository's own method",
-      "help": "Merges with the method Settings → Reviewing's Merge method picks, as the review sheet does: by default, the one GitHub's merge button offers first in that repository."
+      "help": "Merges with the method Settings → Reviewing's Merge method picks, as the review sheet does: by default, the one GitHub's merge button offers first in that repository, and auto-merge's own on a pull request whose auto-merge is on."
     },
     {
       "id": "merge",

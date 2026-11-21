@@ -983,7 +983,7 @@ func factsOf(pull StoredPull, c *cached, r Review) Facts {
 		Dependabot:     r.IsBot && strings.HasPrefix(strings.ToLower(pull.AuthorLogin), "dependabot"),
 		ReviewRequired: pull.ReviewDecision == "REVIEW_REQUIRED", ChangesRequested: pull.ReviewDecision == "CHANGES_REQUESTED",
 		Base: r.BaseRef, Methods: methodsOf(pull), ViewerMethod: MergeMethod(pull.ViewerMergeMethod),
-		AutoMergeOn: r.AutoMerge != "", Closed: r.State != github.StateOpen, Sensitive: []string{},
+		AutoMerge: r.AutoMerge, Closed: r.State != github.StateOpen, Sensitive: []string{},
 		AskedAgain:            github.ReviewRequests{Users: pull.ReviewUsers}.Asks(pull.Viewer),
 		ChangesRequestedSince: r.YourReview.changesRequestedSince(),
 	}

@@ -322,7 +322,8 @@ export function ReviewingSection({ settings: stored, onSaved, onManageReplies }:
         </div>
         <ErrorText id={`${id}-error`} error={error} />
         <Note id={`${id}-note`}>
-          A repository that doesn’t allow the method you choose merges the way it offers first.
+          A pull request with auto-merge on merges the way its auto-merge does, and a repository that doesn’t allow the
+          method you choose merges the way it offers first.
         </Note>
         <Group>
           <SwitchRow
