@@ -117,6 +117,10 @@ func TestTheTargetsWorkInTheWorkingDirectory(t *testing.T) {
 
 	t.Run("frontend:gate runs the checkout's frontend checks", func(t *testing.T) {
 		dir := frontendCheckout(t, writesRanHere())
+		writeDist(t, dir, map[string]string{
+			"index.html":      `<script type="module" src="/assets/index.js"></script>`,
+			"assets/index.js": "export {}\n",
+		})
 
 		require.NoError(t, Frontend{}.Gate())
 

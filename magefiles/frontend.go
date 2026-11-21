@@ -59,9 +59,10 @@ func (r runner) buildFrontend() error {
 }
 
 // Gate runs the frontend gate, the one entry point for every frontend check: the
-// frozen-lockfile install, then each of frontendGateScripts in order. Any failure stops
-// the gate. The frontend CI workflow runs this same target, so local runs and CI cannot
-// drift apart.
+// frozen-lockfile install, then each of frontendGateScripts in order, then the check of
+// what the build's window loads before its first paint against its budgets
+// (firstpaint.go), which prints the numbers. Any failure stops the gate. The frontend CI
+// workflow runs this same target, so local runs and CI cannot drift apart.
 //
 //	magex frontend:gate
 func (Frontend) Gate() error {
@@ -80,13 +81,14 @@ func (r runner) gateFrontend() error {
 		}
 	}
 
-	return nil
+	return r.checkFirstPaint(firstPaintBudgets())
 }
 
 // frontendGateScripts are the frontend/package.json scripts the gate runs, in order: the
 // format check, lint, typecheck, the tests with coverage, the render profile through the
 // React Compiler, and the production build, which fails on a chunk over its size limit
-// (vite.config.ts). The build writes frontend/dist, as frontend:build does.
+// (vite.config.ts). The build writes frontend/dist, as frontend:build does, and the gate
+// checks its first paint last.
 func frontendGateScripts() []string {
 	return []string{"format:check", "lint", "typecheck", "test:coverage", "test:renders", "build"}
 }
