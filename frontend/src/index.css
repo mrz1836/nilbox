@@ -1,9 +1,5 @@
 @import 'tailwindcss';
 @import './generated/theme.css';
-/* A hue's tints (bg, border, ring, outline, from, via, to, and divide on accent, info,
-   success, warning, caution, and danger) take their alpha from one ladder: /5, /10, /14,
-   /22, /45, and /60. A new tint takes the nearest step, the lower one on a tie, and none
-   goes past /60. The neutral tokens' alphas (such as bg-raised/40) are not on it. */
 @import './nil.css';
 
 /* Tailwind finds class names by scanning the project's files. Tests, their fixtures, and the
@@ -64,6 +60,11 @@
      disabled:, has-disabled:, or aria-disabled: variant). */
   --opacity-disabled: 0.6;
 }
+
+/* A hue's tints (bg, border, ring, outline, from, via, to, and divide on accent, info,
+   success, warning, caution, and danger) take their alpha from one ladder: /5, /10, /14,
+   /22, /45, and /60. A new tint takes the nearest step, the lower one on a tie, and none
+   goes past /60. The neutral tokens' alphas (such as bg-raised/40) are not on it. */
 
 /* A wash is a hue mixed into the surface, a fill that reads as the hue at a glance, such
    as a card's state track. The raised wash is the neutral one. */
