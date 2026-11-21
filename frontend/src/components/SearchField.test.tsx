@@ -286,7 +286,7 @@ describe('SearchField', () => {
     expect(screen.getByRole('status')).toHaveTextContent(said)
     // The words show while the field is wide enough, the number alone when it is narrow.
     expect(screen.getByText(said, { selector: 'span[class*="@[13rem]:inline"]' })).toBeInTheDocument()
-    expect(container.querySelector('.border-accent\\/70')).not.toBeNull()
+    expect(container.querySelector('.border-accent\\/60')).not.toBeNull()
   })
 
   it('tints the keys the page understands, behind the field', () => {

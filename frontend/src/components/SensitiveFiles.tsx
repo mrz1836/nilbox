@@ -31,8 +31,8 @@ export interface SensitiveFilesProps {
 
 // chipClass is each tone's chip: a tinted pill for a finding, a bare word otherwise.
 const chipClass: Readonly<Record<FilesChip['tone'], string>> = {
-  danger: 'rounded-full border border-danger/45 bg-danger/10 px-1.5 text-danger hover:bg-danger/18',
-  warning: 'rounded-full border border-warning/45 bg-warning/10 px-1.5 text-warning hover:bg-warning/18',
+  danger: 'rounded-full border border-danger/45 bg-danger/10 px-1.5 text-danger hover:bg-danger/14',
+  warning: 'rounded-full border border-warning/45 bg-warning/10 px-1.5 text-warning hover:bg-warning/14',
   success: 'rounded-full px-1 text-success hover:bg-raised',
   muted: 'rounded-full px-1 text-muted hover:bg-raised hover:text-text',
 }
@@ -207,7 +207,7 @@ export function SensitiveFilesPanel({ itemId, check, onSettings, popover, id }: 
         </p>
       )}
       {agent && (
-        <p className="rounded-md border border-danger/30 bg-danger/8 px-2.5 py-2 text-xs leading-relaxed text-text">
+        <p className="rounded-md border border-danger/22 bg-danger/10 px-2.5 py-2 text-xs leading-relaxed text-text">
           Opening a session on it asks first: hooks in agent settings run commands on your Mac as soon as a session
           starts, even in plan or read-only mode.
         </p>

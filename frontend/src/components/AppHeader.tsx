@@ -275,7 +275,7 @@ export function AppHeader(props: AppHeaderProps) {
                 {badged && (
                   <span
                     data-testid={`${id}-count`}
-                    className="flex items-center gap-1 rounded-full bg-raised px-1.5 text-caption leading-[1.125rem] font-medium tabular-nums transition-colors group-hover:bg-border group-aria-pressed:bg-accent/15 group-aria-pressed:text-text"
+                    className="flex items-center gap-1 rounded-full bg-raised px-1.5 text-caption leading-[1.125rem] font-medium tabular-nums transition-colors group-hover:bg-border group-aria-pressed:bg-accent/14 group-aria-pressed:text-text"
                   >
                     {failed && (
                       <span

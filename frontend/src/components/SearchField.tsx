@@ -158,7 +158,7 @@ export function SearchField({ value, onChange, placeholder, spec, matches, sugge
   return (
     <div className="relative w-64 min-w-36 shrink">
       <div
-        className={`@container flex items-center gap-2 rounded-md border px-2.5 py-1 transition-colors ${matches === null ? 'border-border bg-background focus-within:border-accent/60' : 'border-accent/70 bg-accent/5'}`}
+        className={`@container flex items-center gap-2 rounded-md border px-2.5 py-1 transition-colors ${matches === null ? 'border-border bg-background focus-within:border-accent/60' : 'border-accent/60 bg-accent/5'}`}
       >
         <SearchIcon className="size-3.5 shrink-0 text-muted" />
         <div className="relative flex min-w-0 flex-1">
@@ -209,7 +209,7 @@ export function SearchField({ value, onChange, placeholder, spec, matches, sugge
             onSelect={sync}
             onClick={sync}
             onScroll={sync}
-            className={`relative min-w-0 flex-1 bg-transparent text-sm outline-none select-text selection:bg-accent/25 placeholder:text-muted/70 ${tinted ? 'text-transparent caret-text' : 'text-text'}`}
+            className={`relative min-w-0 flex-1 bg-transparent text-sm outline-none select-text selection:bg-accent/22 placeholder:text-muted/70 ${tinted ? 'text-transparent caret-text' : 'text-text'}`}
           />
         </div>
         {matches !== null && (

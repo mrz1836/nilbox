@@ -75,7 +75,7 @@ function Shell({
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={progress}
-          className="absolute inset-x-0 bottom-0 h-0.5 bg-accent/15"
+          className="absolute inset-x-0 bottom-0 h-0.5 bg-accent/14"
         >
           <div
             className="h-full bg-accent transition-[width] duration-300 ease-out motion-reduce:transition-none"
