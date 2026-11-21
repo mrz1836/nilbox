@@ -1,30 +1,23 @@
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
-import type { Query } from '../../lib/useQuery'
 import type { BannerStatus, Settings } from '../../platform'
 import { settings } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { queryOf } from '../../test/query'
+import { renderSaving } from '../../test/settings'
 import { NotificationsStep } from './NotificationsStep'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
-// Stateful holds the settings as the window does, taking each one a setter returns.
-function Stateful({ stored, banners }: { stored: Settings; banners: Query<BannerStatus> }) {
-  const [shown, setShown] = useState(stored)
-
-  return <NotificationsStep settings={shown} onSaved={setShown} banners={banners} />
-}
-
-// renderStep shows the step with the banners as status says, over stored settings.
+// renderStep shows the step with the banners as status says, over stored settings, taking
+// each one a setter returns as the window does.
 function renderStep(status: BannerStatus | undefined, stored: Settings = settings()) {
   const banners = queryOf(status)
 
-  render(<Stateful stored={stored} banners={banners} />)
+  renderSaving((props) => <NotificationsStep {...props} banners={banners} />, stored, { now: null })
 
   return { banners }
 }
