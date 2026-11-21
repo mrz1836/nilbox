@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { useIssueDrafts } from '../../lib/issueDrafts'
 import type { LaunchOptions } from '../../lib/launch'
 import type { InboxItem, IssueResult } from '../../platform'
-import { deferred } from '../../test/async'
+import { deferred, nextTask } from '../../test/async'
 import { renderAt } from '../../test/clock'
 import {
   agentSession,
@@ -353,6 +353,9 @@ describe('IssueSheet', () => {
     const refused = await labels('p1')
 
     expect(await refused.findByRole('alert')).toHaveTextContent('Take yourself off the issue with Unassign me.')
+    // A read would start in the effects of the render that shows the alert, so they run
+    // before the check that none did.
+    await nextTask()
     expect(platform.readIssueAgain).not.toHaveBeenCalled()
   })
 
