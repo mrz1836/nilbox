@@ -2,7 +2,114 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { describedBy, Field, fromTriState, Segmented, Select, Switch, triState, type SelectOption } from './controls'
+import {
+  dangerIconButtonClass,
+  describedBy,
+  Field,
+  fromTriState,
+  ghostButtonClass,
+  iconButtonClass,
+  inkLinkClass,
+  linkClass,
+  modalClass,
+  Segmented,
+  Select,
+  sheetDialogClass,
+  smallButtonClass,
+  smallIconButtonClass,
+  Switch,
+  toolbarButtonClass,
+  toolbarClass,
+  triState,
+  type SelectOption,
+} from './controls'
+
+describe('the shared classes', () => {
+  it.each([
+    [
+      'smallButtonClass',
+      smallButtonClass,
+      'inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-surface',
+    ],
+    [
+      'ghostButtonClass',
+      ghostButtonClass,
+      'inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text',
+    ],
+    [
+      'iconButtonClass',
+      iconButtonClass,
+      'flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text',
+    ],
+    [
+      'smallIconButtonClass',
+      smallIconButtonClass,
+      'flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text',
+    ],
+    [
+      'dangerIconButtonClass',
+      dangerIconButtonClass,
+      'flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger',
+    ],
+    [
+      'toolbarButtonClass',
+      toolbarButtonClass,
+      'relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text',
+    ],
+    ['linkClass', linkClass, 'font-medium text-accent hover:underline'],
+    ['inkLinkClass', inkLinkClass, 'text-text hover:text-accent hover:underline'],
+    [
+      'modalClass',
+      modalClass,
+      'm-auto w-[calc(100%-2rem)] rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-scrim',
+    ],
+    [
+      'sheetDialogClass',
+      sheetDialogClass,
+      'm-auto rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-scrim',
+    ],
+    [
+      'toolbarClass',
+      toolbarClass,
+      'flex h-[52px] shrink-0 items-center gap-4 border-b border-border bg-surface pr-3 pl-[80px] select-none [--wails-draggable:drag]',
+    ],
+  ])('%s draws the same classes wherever it is used', (_, given, want) => {
+    render(<div className={given}>Shared</div>)
+
+    expect(screen.getByText('Shared')).toHaveAttribute('class', want)
+  })
+
+  it('sizes and colors the icon buttons from one shape', () => {
+    const diff = (a: string, b: string) => {
+      const [as, bs] = [a.split(' '), b.split(' ')]
+
+      return [...as.filter((c) => !bs.includes(c)), ...bs.filter((c) => !as.includes(c))].sort()
+    }
+
+    expect(diff(iconButtonClass, smallIconButtonClass)).toEqual(['size-6', 'size-7'])
+    expect(diff(iconButtonClass, dangerIconButtonClass)).toEqual(['hover:text-danger', 'hover:text-text'])
+  })
+
+  it('fades a small button while it is disabled, and leaves the fade to an icon button’s caller', () => {
+    render(
+      <>
+        <button type="button" disabled className={smallButtonClass}>
+          Copy
+        </button>
+        <button type="button" aria-label="Close" className={iconButtonClass} />
+      </>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Copy' })).toHaveClass('disabled:opacity-disabled')
+    expect(screen.getByRole('button', { name: 'Close' }).className).not.toContain('opacity')
+  })
+
+  it('dims the page behind both dialog shells', () => {
+    expect(modalClass.split(' ')).toContain('backdrop:bg-scrim')
+    expect(sheetDialogClass.split(' ')).toContain('backdrop:bg-scrim')
+  })
+})
 
 describe('Segmented', () => {
   it('is a group of radios, one checked', async () => {

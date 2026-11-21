@@ -42,6 +42,50 @@ export const chipClass = 'rounded-full border border-border px-2 py-0.5 text-xs 
 // heading in the Scripts tab; add the padding that lines it up.
 export const captionClass = 'text-caption font-semibold tracking-wide text-muted uppercase'
 
+// smallButtonClass is a bordered button for a dense bar, such as a peek's actions: shorter
+// and smaller than buttonClass.
+export const smallButtonClass =
+  'inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-surface'
+
+// ghostButtonClass is a borderless button as tall as smallButtonClass, in the muted color
+// that brightens on hover and while the menu it opens is open.
+export const ghostButtonClass =
+  'inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text'
+
+// The icon buttons: a square holding an icon alone, named by its aria-label. Each is
+// muted and brightens on hover. iconButtonClass is the usual size, smallIconButtonClass
+// the one for a dense row, and dangerIconButtonClass a remove button, which turns the
+// danger color on hover. toolbarButtonClass is a toolbar's, which stays lit while the
+// panel it opens is open and holds a CountDot over its corner. A button that can be
+// disabled adds disabled:cursor-default disabled:opacity-disabled
+// disabled:hover:bg-transparent itself.
+export const iconButtonClass =
+  'flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text'
+export const smallIconButtonClass =
+  'flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text'
+export const dangerIconButtonClass =
+  'flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger'
+export const toolbarButtonClass =
+  'relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text'
+
+// linkClass is a link or a link-like button in the accent color; inkLinkClass one in the
+// text's own color that takes the accent on hover, such as an item's title.
+export const linkClass = 'font-medium text-accent hover:underline'
+export const inkLinkClass = 'text-text hover:text-accent hover:underline'
+
+// modalClass is a modal dialog's card, dimming the page behind it; the caller adds its
+// width, such as max-w-md. sheetDialogClass is the larger, unpadded shell of a sheet or a
+// picker, which adds its own size, overflow, and layout.
+export const modalClass =
+  'm-auto w-[calc(100%-2rem)] rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-scrim'
+export const sheetDialogClass =
+  'm-auto rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-scrim'
+
+// toolbarClass is the bar across the top of the window: its height, its edge, room for
+// the window's buttons on its left, and dragging the window by it.
+export const toolbarClass =
+  'flex h-[52px] shrink-0 items-center gap-4 border-b border-border bg-surface pr-3 pl-[80px] select-none [--wails-draggable:drag]'
+
 // switchClass draws a native checkbox as a switch; give it role="switch" so assistive
 // tech announces on and off.
 const switchClass =
