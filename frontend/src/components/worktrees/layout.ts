@@ -107,7 +107,7 @@ export const tagClass =
 // raised background; in a narrow grid, across the row under the state's column. It is the
 // container its columns follow.
 export const drawerClass =
-  '@container col-[2/-1] mt-0.5 mr-0.5 mb-2.5 overflow-hidden rounded-lg border border-border bg-raised/40 shadow-md shadow-black/10 @max-xl:col-span-full @max-xl:ml-5.5'
+  '@container col-[2/-1] mt-0.5 mr-0.5 mb-2.5 overflow-hidden rounded-lg border border-border bg-raised/40 shadow-drawer @max-xl:col-span-full @max-xl:ml-5.5'
 
 // drawerColumnsClass sets the drawer's three columns side by side, and under 48rem one
 // above another.
