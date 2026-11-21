@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import type { Summary } from '../../lib/worktreeSummary'
+import { smallIconButtonClass } from '../controls'
 import { AlertIcon, CheckIcon, XIcon } from '../icons'
 
 export interface ResultCardProps {
@@ -37,13 +38,7 @@ export function ResultCard({ summary, onDismiss, children }: ResultCardProps) {
         <span title={summary.detail} className="min-w-0 flex-1 truncate text-control text-muted">
           {summary.detail}
         </span>
-        <button
-          type="button"
-          aria-label="Dismiss"
-          title="Dismiss"
-          onClick={onDismiss}
-          className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text"
-        >
+        <button type="button" aria-label="Dismiss" title="Dismiss" onClick={onDismiss} className={smallIconButtonClass}>
           <XIcon className="size-3.5" />
         </button>
       </div>

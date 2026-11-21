@@ -23,7 +23,7 @@ import {
   type RunsIn,
   type TerminalID,
 } from '../../platform'
-import { buttonClass, dangerButtonClass, fieldClass, primaryButtonClass, Segmented } from '../controls'
+import { buttonClass, dangerButtonClass, fieldClass, iconButtonClass, primaryButtonClass, Segmented } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { ChevronRightIcon, ExternalIcon, InfoIcon, XIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
@@ -313,7 +313,7 @@ export function ReleaseSheet({
           aria-label="Close the release sheet"
           title="Close"
           onClick={onClose}
-          className="-mr-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text"
+          className={`${iconButtonClass} -mr-1`}
         >
           <XIcon className="size-3.5" />
         </button>

@@ -24,7 +24,7 @@ import {
 } from '../../platform'
 import { terminalLabel } from '../../lib/terminals'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { quietButtonClass } from '../controls'
+import { iconButtonClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, CheckIcon, CopyIcon, DocumentIcon, RefreshIcon, StopIcon, TerminalIcon, XIcon } from '../icons'
 import { ErrorText } from '../settings/rows'
@@ -257,7 +257,7 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
       aria-label="Close the run"
       title="Close"
       onClick={onClose}
-      className="-mt-1 -mr-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text"
+      className={`${iconButtonClass} -mt-1 -mr-1`}
     >
       <XIcon className="size-3.5" />
     </button>
