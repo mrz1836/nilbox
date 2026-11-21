@@ -16,7 +16,7 @@ import { toneText } from '../lib/signals'
 import { useMutation } from '../lib/useMutation'
 import { usePopover, type Popover } from '../lib/usePopover'
 import { checkItemFiles, openExternal, type FileCheck, type SensitiveFile, type SensitiveGroup } from '../platform'
-import { quietButtonClass } from './controls'
+import { inkLinkClass, quietButtonClass } from './controls'
 import { ExternalIcon, RefreshIcon, ShieldAlertIcon, ShieldCheckIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
 import { RelativeTime } from './RelativeTime'
@@ -87,7 +87,7 @@ function FileRow({ file }: { file: SensitiveFile }) {
           onClick={() => {
             openExternal(file.url)
           }}
-          className="group/file inline-flex min-w-0 items-baseline gap-1 text-left font-mono text-xs text-text hover:text-accent hover:underline"
+          className={`${inkLinkClass} group/file inline-flex min-w-0 items-baseline gap-1 text-left font-mono text-xs`}
         >
           <PathText path={file.path} />
           <ExternalIcon className="size-3 shrink-0 self-center text-muted group-hover/file:text-accent" />
