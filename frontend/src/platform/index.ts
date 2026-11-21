@@ -131,15 +131,11 @@ export type GitHubThread = Omit<NonNullLists<ghthreads.Thread>, 'kind'> & { kind
 export type GitHubThreadList = Omit<NonNullLists<ghthreads.ThreadList>, 'threads'> & { threads: GitHubThread[] }
 export type GitHubThreadState = threadrules.State
 // Clearing them: the clears waiting to be sent (each of which Undo keeps), those that
-// settled, and how each stands; and what clearing would do now, for the cleanup sheet.
+// settled, and how each stands.
 export type QueuedClear = NonNullLists<ghthreads.QueuedClear>
 export type SettledClear = NonNullLists<ghthreads.SettledClear>
 export type ClearState = ghthreads.ClearState
 export type ClearSkipReason = ghthreads.SkipReason
-export type GitHubThreadsPreview = NonNullLists<ghthreads.Preview>
-export type PreviewRepo = NonNullLists<ghthreads.PreviewRepo>
-export type PreviewHeld = NonNullLists<ghthreads.PreviewHeld>
-export type PreviewThread = NonNullLists<ghthreads.PreviewThread>
 // The user's rules for their GitHub notifications, from the settings, and the names their
 // setters take.
 export type ThreadRules = NonNullLists<threadrules.Rules>
@@ -1288,8 +1284,8 @@ export const {
 // alone and never asks GitHub, and List every thread it mirrors, read and unread, for the
 // Notifications page; CheckNow runs a pass now, once any pass under way has ended, and
 // returns the Snapshot after it. A pass also sends the clears that are due, once the user
-// turned clearing on or cleared one by hand. A "ghthreads:updated" event follows each pass
-// that changed what Snapshot or List shows.
+// turned clearing on. A "ghthreads:updated" event follows each pass that changed what
+// Snapshot or List shows.
 //
 // Keep takes back queued clears, the toast's Undo, and MarkDone and MarkRead mark threads
 // done or read on GitHub at the user's click in the panel, whatever their subject. Each
