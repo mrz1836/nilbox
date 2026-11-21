@@ -321,16 +321,6 @@ func (c *copyCache) lookup(path string, key copyKey) (copyResult, bool) {
 	return e.result, ok && e.key == key
 }
 
-// has reports a result kept for the worktree at path, whatever its key.
-func (c *copyCache) has(path string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	_, ok := c.entries[path]
-
-	return ok
-}
-
 // keep keeps the result worked out for the worktree at path, of clone, from key.
 func (c *copyCache) keep(clone, path string, key copyKey, result copyResult) {
 	c.mu.Lock()
