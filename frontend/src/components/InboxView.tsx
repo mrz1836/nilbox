@@ -71,7 +71,6 @@ import { iconButtonClass, smallButtonClass } from './controls'
 import { ErrorBanner } from './ErrorBanner'
 import { HelpIcon, RefreshIcon } from './icons'
 import { InboxFilling } from './InboxFilling'
-import { InboxNil } from './InboxNil'
 import { LinksContext, type Links } from './ItemLink'
 import { ListSection, type Reveal } from './ListSection'
 import { ProgressStatus } from './ProgressStatus'
@@ -99,6 +98,14 @@ function preloadSheets() {
     load().catch(() => undefined)
   }
 }
+
+// The party at nil loads on its own too: it shows only once every list is empty, so its
+// code, and the confetti's, stay out of the inbox's first paint. The inbox starts loading
+// it once it has painted, long before a refresh can find every list empty, so the party
+// shows as soon as the milestones answer. A load that fails is left to the party's own
+// load as it shows, which tries again.
+const loadParty = () => import('./InboxNil')
+const InboxNil = lazy(() => loadParty().then((m) => ({ default: m.InboxNil })))
 
 export interface InboxViewProps {
   // inbox is the window's shared inbox state (useInbox).
@@ -538,6 +545,10 @@ export function InboxView({
       preloadSheets()
     }
   }, [sheets])
+
+  useEffect(() => {
+    loadParty().catch(() => undefined)
+  }, [])
   // shown is the snapshot the lists show, for the menu's review to find an item's list in
   // when it is chosen, without a new action for every snapshot.
   const shown = useRef(snapshot)
@@ -917,25 +928,27 @@ export function InboxView({
       )}
       {filter !== null && filter.matches === 0 && <NoMatches query={filter.query} onClear={onClearFilter} />}
       {party && thrown !== null && reached?.n === thrown.n && (
-        <InboxNil
-          key={thrown.n}
-          stats={triaged}
-          earned={thrown.earned}
-          moment={reached.moment}
-          flourish={reached.flourish}
-          mode={mode}
-          compact={compact}
-          onOpen={() => {
-            setFold('open')
-          }}
-          onCollapse={
-            setAside
-              ? () => {
-                  setFold('folded')
-                }
-              : undefined
-          }
-        />
+        <Suspense fallback={null}>
+          <InboxNil
+            key={thrown.n}
+            stats={triaged}
+            earned={thrown.earned}
+            moment={reached.moment}
+            flourish={reached.flourish}
+            mode={mode}
+            compact={compact}
+            onOpen={() => {
+              setFold('open')
+            }}
+            onCollapse={
+              setAside
+                ? () => {
+                    setFold('folded')
+                  }
+                : undefined
+            }
+          />
+        </Suspense>
       )}
       {filling ? (
         <InboxFilling />
