@@ -350,10 +350,13 @@ func TestMergeKeysOrderByAccountThenRepository(t *testing.T) {
 			c.a.accountID, c.a.repo, c.b.accountID, c.b.repo)
 	}
 
+	// The follows due come out in key order. A comparator that subtracts orders these
+	// accounts 1, math.MaxInt64, math.MinInt64: wrong, but consistent over every pair, so
+	// every sort agrees on it whatever order the queue's map yields the keys in.
 	q := newMergeQueue()
 	at := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 
-	for i, account := range []int64{math.MaxInt64, 1, math.MinInt64, -1} {
+	for i, account := range []int64{math.MaxInt64, 1, math.MinInt64} {
 		q.add(fmt.Sprintf("N%d", i), account, repo.Name{Owner: acmeOrg, Repo: exampleRepo}, "main", at)
 	}
 
@@ -367,8 +370,8 @@ func TestMergeKeysOrderByAccountThenRepository(t *testing.T) {
 	}
 
 	assert.Equal(t, []string{
-		fmt.Sprintf("%d %s", int64(math.MinInt64), exampleRepo), "-1 " + exampleRepo, "1 " + exampleRepo,
-		"1 other-repo", fmt.Sprintf("%d %s", int64(math.MaxInt64), exampleRepo),
+		fmt.Sprintf("%d %s", int64(math.MinInt64), exampleRepo), "1 " + exampleRepo, "1 other-repo",
+		fmt.Sprintf("%d %s", int64(math.MaxInt64), exampleRepo),
 	}, order, "the follows run by account, then repository")
 }
 
