@@ -8,9 +8,10 @@ import { domShape } from '../test/dom'
 import { themeColors } from '../test/theme'
 import { lineStyle, Terminal } from './Terminal'
 
-// The terminals below are each one as its page draws it before it moves onto Terminal,
-// copied as written, to check that Terminal draws the same window for the props that page
-// passes.
+// The terminals below are each one as its page drew it before it moved onto Terminal,
+// copied as written but for the text size and the shadow, which now take their names from
+// the type scale and the elevation tokens (the same values), to check that Terminal draws
+// the same window for the props that page passes.
 
 // lineStyleToday is the line stagger both pages define for themselves.
 function lineStyleToday(at: number): CSSProperties {
@@ -24,7 +25,7 @@ function InboxNilToday({ children }: { children: ReactNode }) {
   return (
     <figure
       aria-label="Terminal"
-      className="nil-rise mt-9 w-full max-w-xl overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-[0.8125rem] leading-6 text-text shadow-2xl shadow-black/40"
+      className="nil-rise mt-9 w-full max-w-xl overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-body leading-6 text-text shadow-terminal"
       style={{ ...darkTokens, animationDelay: '320ms' }}
     >
       <div className="flex items-center gap-1.5 border-b border-border bg-raised px-3 py-2">
@@ -53,7 +54,7 @@ function FinishStepToday({ children }: { children: ReactNode }) {
   return (
     <figure
       aria-label="Setup log"
-      className="nil-rise mt-8 w-full overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-[0.8125rem] leading-6 text-text shadow-2xl shadow-black/40"
+      className="nil-rise mt-8 w-full overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-body leading-6 text-text shadow-terminal"
       style={{ ...darkTokens, animationDelay: '200ms' }}
     >
       <div className="flex items-center gap-1.5 border-b border-border bg-raised px-3 py-2">

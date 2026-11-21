@@ -25,7 +25,7 @@ export function Terminal({ label, title, command, className = '', delay, childre
   return (
     <figure
       aria-label={label}
-      className={`${className} nil-rise w-full overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-[0.8125rem] leading-6 text-text shadow-2xl shadow-black/40`.trim()}
+      className={`${className} nil-rise w-full overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-body leading-6 text-text shadow-terminal`.trim()}
       style={{ ...darkTokens, animationDelay: `${String(delay)}ms` }}
     >
       <div className="flex items-center gap-1.5 border-b border-border bg-raised px-3 py-2">
