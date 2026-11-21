@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
+import { copiedMs } from '../../lib/useCopy'
 import type { ScriptRun, ScriptRunStatus, TerminalID } from '../../platform'
 import { deferred } from '../../test/async'
 import { FIXED_NOW, isoAgo, renderAt } from '../../test/clock'
@@ -424,18 +425,21 @@ describe('RunPanel', () => {
       })
     })
 
-    it('copies the whole log as plain text', async () => {
+    it('copies the whole log as plain text, and says so for a moment', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
       platform.scriptRunOutput.mockResolvedValue(scriptRunChunk({ text: '\x1b[32mlint passed\x1b[0m\n' }))
       renderPanel()
 
       await shownRun()
       await userEvent.click(screen.getByRole('button', { name: 'Copy log' }))
 
-      expect(platform.copyText).toHaveBeenCalledExactlyOnceWith('lint passed\n')
       expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument()
+      expect(platform.copyText).toHaveBeenCalledExactlyOnceWith('lint passed\n')
 
-      // Another button clears it.
-      await userEvent.click(screen.getByRole('button', { name: 'Show the log file' }))
+      act(() => {
+        vi.advanceTimersByTime(copiedMs)
+      })
+
       expect(screen.getByRole('button', { name: 'Copy log' })).toBeInTheDocument()
     })
 
@@ -468,8 +472,10 @@ describe('RunPanel', () => {
       expect(await within(screen.getByRole('region', { name: 'Output' })).findByText(line)).toBeInTheDocument()
     })
 
-    it('says it is copying until it has, and why it couldn’t', async () => {
+    it('says it is copying until it has, and that it couldn’t, logging why', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
       const copying = deferred()
+      const refused = new Error('The clipboard refused it.')
 
       platform.copyText.mockReturnValue(copying.promise)
       renderPanel()
@@ -480,11 +486,27 @@ describe('RunPanel', () => {
       expect(await screen.findByRole('button', { name: 'Copying…' })).toBeDisabled()
 
       act(() => {
-        copying.reject(new Error('The clipboard refused it.'))
+        copying.reject(refused)
       })
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('The clipboard refused it.')
-      expect(screen.getByRole('button', { name: 'Copy log' })).toBeEnabled()
+      expect(await screen.findByRole('button', { name: 'Copy failed' })).toBeEnabled()
+      expect(error).toHaveBeenCalledExactlyOnceWith('could not copy the log', refused)
+      // The button says so itself: the panel's alert is for the other buttons.
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('clears what an earlier button said went wrong once it copies', async () => {
+      platform.showScriptRunLog.mockRejectedValue(new Error('The log file is gone.'))
+      renderPanel()
+
+      await shownRun()
+      await userEvent.click(screen.getByRole('button', { name: 'Show the log file' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('The log file is gone.')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Copy log' }))
+
+      expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
   })
 

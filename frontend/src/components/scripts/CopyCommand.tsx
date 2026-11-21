@@ -1,8 +1,5 @@
-import { useState } from 'react'
-
-import { useMutation } from '../../lib/useMutation'
-import { copyText } from '../../platform'
-import { ErrorText, quietButtonClass } from '../controls'
+import { copyLabel, useCopy } from '../../lib/useCopy'
+import { quietButtonClass } from '../controls'
 import { CheckIcon, CopyIcon } from '../icons'
 
 export interface CopyCommandProps {
@@ -12,16 +9,11 @@ export interface CopyCommandProps {
   label?: string
 }
 
-// CopyCommand shows a command to run in the terminal, with a button that copies it. It
-// says so once copied, and why when the clipboard refused it.
+// CopyCommand shows a command to run in the terminal, with a button that copies it. The
+// button says for a moment how the copy went, and a screen reader hears so, since the
+// button's name is the command's.
 export function CopyCommand({ command, label = '' }: CopyCommandProps) {
-  const copy = useMutation(() => copyText(command))
-  const [copied, setCopied] = useState(false)
-
-  const copyIt = async () => {
-    setCopied(false)
-    setCopied((await copy.run()).ok)
-  }
+  const { copy, onCopy } = useCopy('command')
 
   return (
     <div className="flex flex-col gap-1">
@@ -31,17 +23,19 @@ export function CopyCommand({ command, label = '' }: CopyCommandProps) {
         <button
           type="button"
           aria-label={`Copy ${command}`}
-          disabled={copy.pending}
           onClick={() => {
-            void copyIt()
+            onCopy(command)
           }}
           className={quietButtonClass}
         >
-          {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-          {copied ? 'Copied' : 'Copy'}
+          {copy === 'copied' ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+          {copyLabel[copy]}
         </button>
       </p>
-      <ErrorText error={copy.error} />
+      <span role="status" className="sr-only">
+        {copy === 'copied' && 'Copied to the clipboard'}
+        {copy === 'failed' && `Couldn’t copy ${command}`}
+      </span>
     </div>
   )
 }

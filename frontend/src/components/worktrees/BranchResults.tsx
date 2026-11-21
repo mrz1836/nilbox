@@ -1,9 +1,7 @@
-import { useState } from 'react'
-
-import { logFailure } from '../../lib/call'
 import { shellQuoted, shortCommit } from '../../lib/git'
+import { copyLabel, useCopy } from '../../lib/useCopy'
 import { branchSummary } from '../../lib/worktreeSummary'
-import { copyText, type BranchResult } from '../../platform'
+import type { BranchResult } from '../../platform'
 import { quietButtonClass } from '../controls'
 import { ChevronRightIcon, CopyIcon } from '../icons'
 import { ResultCard } from './ResultCard'
@@ -17,22 +15,21 @@ function restoreCommands(results: readonly BranchResult[]): string {
     .join('\n')
 }
 
-// CopyRestore copies the commands that bring the deleted branches back.
+// CopyRestore copies the commands that bring the deleted branches back, and says for a
+// moment how the copy went.
 function CopyRestore({ results }: { results: readonly BranchResult[] }) {
-  const [copied, setCopied] = useState(false)
+  const { copy, onCopy } = useCopy('restore commands')
 
   return (
     <button
       type="button"
       onClick={() => {
-        logFailure(copyText(restoreCommands(results)), 'could not copy the restore commands', () => {
-          setCopied(true)
-        })
+        onCopy(restoreCommands(results))
       }}
       className={quietButtonClass}
     >
       <CopyIcon className="size-3.5" />
-      {copied ? 'Copied' : 'Copy restore commands'}
+      {copy === 'idle' ? 'Copy restore commands' : copyLabel[copy]}
     </button>
   )
 }

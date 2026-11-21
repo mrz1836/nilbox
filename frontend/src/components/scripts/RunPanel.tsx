@@ -6,12 +6,12 @@ import { logFailure } from '../../lib/call'
 import { counted } from '../../lib/format'
 import { isBumpResult } from '../../lib/release'
 import { formatDuration, isLive, readLog, runDuration, runPlace } from '../../lib/scriptRuns'
+import { copyLabel, useCopy } from '../../lib/useCopy'
 import { useMutation } from '../../lib/useMutation'
 import { useNow } from '../../lib/useNow'
 import { useOn } from '../../lib/useOn'
 import { useQuery } from '../../lib/useQuery'
 import {
-  copyText,
   getScriptRun,
   markScriptRunSeen,
   openScriptRunInTerminal,
@@ -175,22 +175,19 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   const stop = useMutation(() => stopScriptRun(id))
   const again = useMutation(() => runScriptAgain(id))
   const openTerminal = useMutation(() => openScriptRunInTerminal(id))
-  const copy = useMutation(async () => {
-    await copyText(await readLog(id))
-  })
+  const { copy, onCopy } = useCopy('log')
   const reveal = useMutation(() => showScriptRunLog(id))
-  const actions = { stop, again, terminal: openTerminal, copy, reveal }
+  const actions = { stop, again, terminal: openTerminal, reveal }
   // last is the button pressed last: only its failure shows, so one that works clears
-  // what an earlier one said went wrong.
+  // what an earlier one said went wrong. Copy log says how its copy went in its own words.
   const [last, setLast] = useState<Action | null>(null)
   // stopping is set once Stop was asked for, until the run ends; confirming holds the
   // question Stop asks first while stopping now would leave something behind.
   const [stopping, setStopping] = useState(false)
   const [confirming, setConfirming] = useState('')
-  const [copied, setCopied] = useState(false)
   const run = query.data
   const unseen = run !== undefined && !run.seen && !isLive(run.status)
-  const error = last === null ? '' : actions[last].error
+  const error = last === null || last === 'copy' ? '' : actions[last].error
 
   // The run is read again as it changes status or ends, and as its own progress moves:
   // a step reached, or Stop turned on or off.
@@ -216,7 +213,6 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
   // press starts an action: it becomes the one whose outcome shows.
   const press = (action: Action) => {
     setLast(action)
-    setCopied(false)
   }
 
   const stopRun = async () => {
@@ -245,9 +241,9 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
     }
   }
 
-  const copyLog = async () => {
+  const copyLog = () => {
     press('copy')
-    setCopied((await copy.run()).ok)
+    onCopy(() => readLog(id))
   }
 
   const close = onClose !== undefined && (
@@ -358,16 +354,9 @@ export function RunPanel({ id, terminal, onSelect, onClose }: RunPanelProps) {
           <TerminalIcon className="size-3.5" />
           Open in terminal
         </button>
-        <button
-          type="button"
-          disabled={copy.pending}
-          onClick={() => {
-            void copyLog()
-          }}
-          className={quietButtonClass}
-        >
-          {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-          {copied ? 'Copied' : copy.pending ? 'Copying…' : 'Copy log'}
+        <button type="button" disabled={copy === 'copying'} onClick={copyLog} className={quietButtonClass}>
+          {copy === 'copied' ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+          {copy === 'idle' ? 'Copy log' : copyLabel[copy]}
         </button>
         <button
           type="button"

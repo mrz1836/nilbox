@@ -1591,11 +1591,10 @@ describe('WorktreesView merged branches', () => {
 
     platform.copyText.mockRejectedValueOnce(new Error('clipboard refused'))
     await userEvent.click(within(results).getByRole('button', { name: 'Copy restore commands' }))
-    await vi.waitFor(() => {
-      expect(error).toHaveBeenCalledWith('could not copy the restore commands', expect.any(Error))
-    })
+    expect(await within(results).findByRole('button', { name: 'Copy failed' })).toBeInTheDocument()
+    expect(error).toHaveBeenCalledWith('could not copy the restore commands', expect.any(Error))
 
-    await userEvent.click(within(results).getByRole('button', { name: 'Copy restore commands' }))
+    await userEvent.click(within(results).getByRole('button', { name: 'Copy failed' }))
 
     expect(platform.copyText).toHaveBeenLastCalledWith(
       `git -C ${repoPath} branch feature-x fc1c3975011e66491785ace891c893e4fc716587\n` +
