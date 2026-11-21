@@ -1,10 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { CardPicturesContext, type Pictures } from '../../lib/pictures'
 import type { InboxItem } from '../../platform'
 import { avatarDataURL, item } from '../../test/fixtures'
 import { CardAvatar, faceOf, initialsOf, KindMark } from './CardAvatar'
+
+vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
 function renderAvatar(overrides: Partial<InboxItem> = {}, pictures?: Pictures) {
   const avatar = <CardAvatar item={item(overrides)} />

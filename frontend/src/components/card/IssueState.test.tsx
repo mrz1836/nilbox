@@ -1,9 +1,11 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { ItemDetails } from '../../platform'
 import { details, item, project } from '../../test/fixtures'
 import { IssueGrade, IssueState, IssueTrack } from './IssueState'
+
+vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
 function renderState(d: Partial<ItemDetails> | null) {
   return render(<IssueState item={item({ kind: 'issue', details: d === null ? null : details(d) })} />)
