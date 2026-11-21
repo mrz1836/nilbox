@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -119,26 +119,11 @@ func sendLabels(ctx context.Context, gh GitHub, tok github.Token, t Target, add,
 // namesApart is add and remove without the names, ignoring case, that both hold: the
 // labels, people, or teams an edit both adds and takes off, which it sends not at all.
 func namesApart(add, remove []string) ([]string, []string) {
-	in := func(list []string) func(string) bool {
-		return func(name string) bool {
-			return slices.ContainsFunc(list, func(n string) bool { return strings.EqualFold(n, name) })
-		}
-	}
-
-	return slices.DeleteFunc(slices.Clone(add), in(remove)), slices.DeleteFunc(slices.Clone(remove), in(add))
+	return textutil.ApartFold(add, remove), textutil.ApartFold(remove, add)
 }
 
 // namesOnce is list trimmed, without the empty names, and with each name once, ignoring
 // case: the labels, logins, or team slugs an edit names.
 func namesOnce(list []string) []string {
-	out := []string{}
-
-	for _, n := range list {
-		n = strings.TrimSpace(n)
-		if n != "" && !slices.ContainsFunc(out, func(o string) bool { return strings.EqualFold(o, n) }) {
-			out = append(out, n)
-		}
-	}
-
-	return out
+	return textutil.UniqueFold(list, strings.TrimSpace)
 }
