@@ -585,7 +585,7 @@ export function LaunchControls({
       aria-expanded={open}
       aria-controls={open ? id : undefined}
       onClick={showOptions}
-      className={`inline-flex shrink-0 items-center gap-1 px-1.75 text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 aria-expanded:bg-raised ${joined ? `rounded-r-lg ${joinedPart}` : 'h-7.5 rounded-lg border border-border'}`}
+      className={`inline-flex shrink-0 items-center gap-1 px-1.75 text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-disabled aria-expanded:bg-raised ${joined ? `rounded-r-lg ${joinedPart}` : 'h-7.5 rounded-lg border border-border'}`}
     >
       {changed && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />}
       {problem !== '' && <AlertIcon className="size-3 shrink-0 text-warning" />}
@@ -632,7 +632,7 @@ export function LaunchControls({
           aria-expanded={open}
           aria-controls={open ? id : undefined}
           title={firstTitle}
-          className={`inline-flex min-w-0 items-center gap-1.5 rounded-l-lg border border-border pr-1.75 pl-2.25 font-semibold text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent ${partRing}`}
+          className={`inline-flex min-w-0 items-center gap-1.5 rounded-l-lg border border-border pr-1.75 pl-2.25 font-semibold text-text transition-colors hover:bg-raised disabled:opacity-disabled disabled:hover:bg-transparent ${partRing}`}
         >
           <SparkIcon className="size-3.5 shrink-0 text-accent" />
           <span className="min-w-0 truncate @max-3xl:sr-only">
@@ -681,7 +681,7 @@ export function LaunchControls({
       </span>
     )
     // iconPart is a part between the pill and the ▾: an icon button, as wide as it is tall.
-    const iconPart = `inline-flex w-7.5 shrink-0 items-center justify-center text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-60 disabled:hover:bg-transparent ${joinedPart}`
+    const iconPart = `inline-flex w-7.5 shrink-0 items-center justify-center text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-disabled disabled:hover:bg-transparent ${joinedPart}`
 
     switch (session.state) {
       case 'starting':
@@ -969,7 +969,7 @@ export function LaunchControls({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={showOptions}
-        className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 aria-expanded:bg-raised"
+        className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:opacity-disabled aria-expanded:bg-raised"
       >
         <SparkIcon className="size-3.5 shrink-0 text-accent" />
         {agentName === '' ? 'Launch' : agentName}…
@@ -1001,7 +1001,7 @@ export function LaunchControls({
             aria-expanded={open}
             aria-controls={open ? id : undefined}
             title={firstTitle}
-            className="inline-flex h-6 items-center gap-1.25 rounded-md border border-border bg-surface px-2.25 text-xs font-semibold whitespace-nowrap text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-surface aria-expanded:bg-raised"
+            className="inline-flex h-6 items-center gap-1.25 rounded-md border border-border bg-surface px-2.25 text-xs font-semibold whitespace-nowrap text-text transition-colors hover:bg-raised disabled:opacity-disabled disabled:hover:bg-surface aria-expanded:bg-raised"
           >
             {changed && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />}
             {problem !== '' && <AlertIcon className="size-3 shrink-0 text-warning" />}
@@ -1027,7 +1027,7 @@ export function LaunchControls({
               aria-expanded={open}
               aria-controls={open ? id : undefined}
               title={firstTitle}
-              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-disabled disabled:hover:bg-transparent"
             >
               <TerminalIcon className="size-3.5 text-accent" />
               {opening}
@@ -1040,7 +1040,7 @@ export function LaunchControls({
                 watch?.(running.id)
               }}
               title={`${agentLabel(agents, running.agent)} ${stateLabel(running.state)} in the background, for Autopilot: watch it, stop it, or take it over from its run.`}
-              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-disabled disabled:hover:bg-transparent"
             >
               <AutopilotIcon className="size-3.5 text-accent" />
               {state.kind === 'launching' ? 'Opening…' : 'Watch'}
@@ -1057,7 +1057,7 @@ export function LaunchControls({
                   ? `${agentLabel(agents, running.agent)} ${stateLabel(running.state)}: show its terminal tab. To start another session, use the launch options.`
                   : `${agentLabel(agents, running.agent)} is starting; its terminal tab can be shown once it has started.`
               }
-              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-60 disabled:hover:bg-transparent"
+              className="inline-flex items-center gap-1.5 rounded-l-md px-2.5 py-1 font-medium text-text transition-colors hover:bg-raised disabled:opacity-disabled disabled:hover:bg-transparent"
             >
               <TerminalIcon className="size-3.5 text-accent" />
               {state.kind === 'launching' ? 'Opening…' : 'Show in terminal'}

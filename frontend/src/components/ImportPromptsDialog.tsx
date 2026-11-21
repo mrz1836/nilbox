@@ -360,7 +360,7 @@ function DefaultList({ offers, offerable, declined, onToggle }: DefaultListProps
             <li key={offer.slot}>
               <label
                 title={open ? undefined : 'Its prompt isn’t chosen.'}
-                className={`flex items-start gap-2.5 rounded-md border border-border px-3 py-2 text-sm text-text ${open ? 'cursor-pointer' : 'opacity-60'}`}
+                className={`flex items-start gap-2.5 rounded-md border border-border px-3 py-2 text-sm text-text ${open ? 'cursor-pointer' : 'opacity-disabled'}`}
               >
                 <input
                   type="checkbox"
@@ -418,7 +418,7 @@ function BackupList({ id, backups, pending, error, choice, onPick }: BackupListP
               <li key={b.path}>
                 <label
                   title={`${formatFull(b.at)}\n${b.path}`}
-                  className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 rounded-md border border-border px-3 py-2 has-checked:border-accent/60 has-checked:bg-accent/10 has-disabled:cursor-default has-disabled:opacity-60"
+                  className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 rounded-md border border-border px-3 py-2 has-checked:border-accent/60 has-checked:bg-accent/10 has-disabled:cursor-default has-disabled:opacity-disabled"
                 >
                   <input
                     type="radio"
@@ -494,7 +494,7 @@ function EntryList({ agents, entries, pending, error, unchosen, onToggle }: Entr
             // The prompts in a file have no IDs; the list never reorders.
             <li key={i}>
               <label
-                className={`flex items-start gap-2.5 rounded-md border border-border px-3 py-2 ${skip ? 'opacity-60' : 'cursor-pointer'}`}
+                className={`flex items-start gap-2.5 rounded-md border border-border px-3 py-2 ${skip ? 'opacity-disabled' : 'cursor-pointer'}`}
               >
                 <input
                   type="checkbox"

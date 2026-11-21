@@ -124,7 +124,7 @@ export function SheetHeader({
               onRefresh()
             }
           }}
-          className={`${iconButtonClass} aria-disabled:cursor-default aria-disabled:opacity-60`}
+          className={`${iconButtonClass} aria-disabled:cursor-default aria-disabled:opacity-disabled`}
         >
           <RefreshIcon className={`size-4 ${checking ? 'motion-safe:animate-spin' : ''}`} />
         </button>

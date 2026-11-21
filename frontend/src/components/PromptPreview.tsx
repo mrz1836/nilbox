@@ -103,7 +103,9 @@ export function PromptPreview({
               In a worktree
             </label>
             {forPRs && (
-              <label className={`flex items-center gap-1.5 text-muted ${inWorktree ? 'cursor-pointer' : 'opacity-50'}`}>
+              <label
+                className={`flex items-center gap-1.5 text-muted ${inWorktree ? 'cursor-pointer' : 'opacity-disabled'}`}
+              >
                 <input
                   type="checkbox"
                   checked={inWorktree && atPrHead}

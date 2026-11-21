@@ -49,7 +49,7 @@ const sectionTitle = 'px-2 pb-1 text-caption font-semibold tracking-wide text-mu
 // buttons beside the dialog's own. Each may shrink, its name cut short, so a long
 // repository or owner never pushes the footer's buttons over.
 const saveButtonClass =
-  'inline-flex max-w-40 min-w-0 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent'
+  'inline-flex max-w-40 min-w-0 items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs font-medium text-text transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent'
 const overrideHelp = "Lifts the outside-contributor restriction; keeps the profile's plan and permission settings."
 
 // defaultLabel names a setting's default: its value and where it comes from.
@@ -135,7 +135,7 @@ export function LaunchMenu({
                         ? sourceLabel(resolved.agentInheritedSource)
                         : a.path
                   }
-                  className="flex-1 cursor-pointer rounded-md border border-border px-2.5 py-1 text-center text-body text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent has-disabled:cursor-not-allowed has-disabled:opacity-50"
+                  className="flex-1 cursor-pointer rounded-md border border-border px-2.5 py-1 text-center text-body text-muted transition-colors select-none hover:text-text has-checked:border-accent has-checked:bg-accent/10 has-checked:text-text has-focus-visible:outline-2 has-focus-visible:outline-accent has-disabled:cursor-not-allowed has-disabled:opacity-disabled"
                 >
                   <input
                     type="radio"
@@ -258,7 +258,10 @@ export function LaunchMenu({
                 </option>
               ))}
             </select>
-            <label htmlFor={`${id}-effort`} className={`text-xs text-muted ${resolved.effortOff ? 'opacity-60' : ''}`}>
+            <label
+              htmlFor={`${id}-effort`}
+              className={`text-xs text-muted ${resolved.effortOff ? 'opacity-disabled' : ''}`}
+            >
               Effort
             </label>
             {resolved.effortOff ? (
@@ -267,7 +270,7 @@ export function LaunchMenu({
                 value=""
                 disabled
                 aria-describedby={`${id}-effort-help`}
-                className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-body disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full truncate rounded-md border border-border bg-surface px-2 py-1 text-body disabled:cursor-not-allowed disabled:opacity-disabled"
               >
                 <option value="">{agent.name}’s own</option>
               </select>
@@ -437,7 +440,7 @@ export function LaunchMenu({
                   disabled={saving}
                   onClick={onUndo}
                   title="Put back the defaults this save replaced"
-                  className="font-medium text-accent hover:underline disabled:opacity-50"
+                  className="font-medium text-accent hover:underline disabled:opacity-disabled"
                 >
                   Undo
                 </button>

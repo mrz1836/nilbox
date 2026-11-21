@@ -208,7 +208,7 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
             onClick={remove}
             aria-label="Remove this session"
             title="Remove this ended session from the list"
-            className="-my-0.5 flex size-5 shrink-0 items-center justify-center self-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger disabled:opacity-50"
+            className="-my-0.5 flex size-5 shrink-0 items-center justify-center self-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger disabled:opacity-disabled"
           >
             <XIcon className="size-3.5" />
           </button>

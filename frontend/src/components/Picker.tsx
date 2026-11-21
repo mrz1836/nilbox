@@ -336,7 +336,7 @@ export function PickerDialog({
                           setActive({ query, at: row })
                         }
                       }}
-                      className={`grid ${c.aside === undefined || c.aside === '' ? 'grid-cols-[auto_minmax(0,1fr)]' : 'grid-cols-[auto_minmax(0,1fr)_auto]'} items-center gap-x-3 gap-y-0.5 rounded-md px-2 py-1.5 text-sm has-disabled:opacity-60 ${row === at ? 'bg-raised' : 'hover:bg-raised'}`}
+                      className={`grid ${c.aside === undefined || c.aside === '' ? 'grid-cols-[auto_minmax(0,1fr)]' : 'grid-cols-[auto_minmax(0,1fr)_auto]'} items-center gap-x-3 gap-y-0.5 rounded-md px-2 py-1.5 text-sm has-disabled:opacity-disabled ${row === at ? 'bg-raised' : 'hover:bg-raised'}`}
                     >
                       <input
                         type="checkbox"
