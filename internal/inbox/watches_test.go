@@ -29,18 +29,24 @@ const (
 var errWatchDown = errors.New("watch request failed")
 
 // fakeWatches is a WatchSource that serves the searches set last, and says this copy reads
-// them unless off is set, as with Autopilot off.
+// them unless off is set, as with Autopilot off. While unanswered is set it can't answer
+// for the account, as a snapshot still another account's after a rebuild can't.
 type fakeWatches struct {
-	mu      sync.Mutex
-	watches []Watch
-	off     atomic.Bool
+	mu         sync.Mutex
+	watches    []Watch
+	off        atomic.Bool
+	unanswered atomic.Bool
 }
 
-func (f *fakeWatches) Watches(context.Context, string) []Watch {
+func (f *fakeWatches) Watches(context.Context, string) ([]Watch, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	return slices.Clone(f.watches)
+	if f.unanswered.Load() {
+		return nil, false
+	}
+
+	return slices.Clone(f.watches), true
 }
 
 func (f *fakeWatches) HoldsWatches() bool {
@@ -535,6 +541,70 @@ func TestTheRowsOfASearchNoRoutineHasAreDeleted(t *testing.T) {
 		defer h.client.mu.Unlock()
 
 		assert.Len(t, h.client.watchCalls, calls, "no search, no request")
+	})
+}
+
+func TestNoPassIsSentWhileTheSourceCantAnswerForTheAccount(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := newWatchHarness(t)
+		defer h.stop()
+
+		h.startWatching(t)
+		h.refresh(t)
+		synctest.Wait()
+
+		calls := func() int {
+			h.client.mu.Lock()
+			defer h.client.mu.Unlock()
+
+			return len(h.client.watchCalls)
+		}
+
+		state := func() string {
+			raw, _, err := h.svc.prefs.Get(t.Context(), prefWatches)
+			require.NoError(t, err)
+
+			return raw
+		}
+
+		rows, answered, sent := h.watchRows(t), state(), calls()
+		require.Len(t, rows, 2)
+
+		first, ok := h.svc.lastWatchPass()
+		require.True(t, ok)
+
+		// The routines' searches are still another account's, and can't be built for this
+		// one now: the refresh hands over no pass.
+		h.source.unanswered.Store(true)
+		h.next()
+		h.refresh(t)
+		synctest.Wait()
+
+		assert.Equal(t, sent, calls(), "no search is sent")
+		assert.Equal(t, rows, h.watchRows(t), "every search keeps its rows")
+		assert.Equal(t, answered, state(), "and what its last answer was, so none is read again as new")
+
+		last, _ := h.svc.lastWatchPass()
+		assert.Equal(t, first.At, last.At, "no pass ran")
+
+		// Once it answers for the account again, the passes go on: the worker wasn't left busy.
+		h.source.unanswered.Store(false)
+		h.next()
+		h.refresh(t)
+		synctest.Wait()
+
+		assert.Equal(t, sent+1, calls(), "the searches go out again")
+
+		// A source that answers with no search still has a pass drop every search's rows.
+		h.source.set()
+		h.next()
+		h.refresh(t)
+		synctest.Wait()
+
+		assert.Empty(t, h.watchRows(t), "no routine has a search now")
+		assert.Equal(t, sent+1, calls(), "and the pass that drops them sends nothing")
 	})
 }
 

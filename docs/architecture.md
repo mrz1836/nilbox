@@ -795,21 +795,23 @@ failure, so the update's snapshot says it ended and no progress follows it.
 searches of the enabled routines of the account signed in, each key once (none while Autopilot
 (beta) is off, when no copy holds the watches either: `WatchHolder`), from the snapshot
 Autopilot's service keeps (core's `autopilotWatches`, which builds it again first when the
-account changed). `runRefresh` hands the watch pass's worker (`WatchPasses`, a desktop worker
-the shell starts before the scheduler) a job as the refresh starts, and the pass waits, on the
-worker's goroutine and outside the refresh's `errgroup`, until the refresh has stored the
-inbox and told the window (the job's release); only then do its requests go out, so they
-never share GitHub's time with the inbox query (beside it, the heavier searches cost the
-inbox's store about 0.3 s, measured in November 2026), and a search that fails, or a request
-that does, never fails the refresh: the refresh stores and returns on the inbox's own
-requests, and never waits for the pass. One pass runs at a time: a refresh that finds one
-running hands over no job (the scheduler never skips a tick; `periodic.RunEvery` waits after
-each refresh). No job is handed over before an account is known, nor, once the searches' rows
-are gone, while no routine has a search. While the GraphQL budget the inbox query just left is
-under a quarter of its size (and won't refill first), the pass sends no request and only
-records `PausedLowBudget`, keeping every row. A pass that fails is logged, and one that
-panics is recovered; either way its `WatchPass` is kept and `AwaitPass` told (`endPass`, in a
-`defer`).
+account changed, and can't answer for the account while that leaves another account's: the
+refresh's ctx ended, a read failed, or the account changed again). `runRefresh` hands the
+watch pass's worker (`WatchPasses`, a desktop worker the shell starts before the scheduler) a
+job as the refresh starts, and the pass waits, on the worker's goroutine and outside the
+refresh's `errgroup`, until the refresh has stored the inbox and told the window (the job's
+release); only then do its requests go out, so they never share GitHub's time with the inbox
+query (beside it, the heavier searches cost the inbox's store about 0.3 s, measured in
+November 2026), and a search that fails, or a request that does, never fails the refresh: the
+refresh stores and returns on the inbox's own requests, and never waits for the pass. One pass
+runs at a time: a refresh that finds one running hands over no job (the scheduler never skips
+a tick; `periodic.RunEvery` waits after each refresh). No job is handed over before an account
+is known, nor while the source can't answer for it, so every search keeps its rows and last
+answer rather than being read again as new, nor, once the searches' rows are gone, while no
+routine has a search. While the GraphQL budget the inbox query just left is under a quarter of
+its size (and won't refill first), the pass sends no request and only records
+`PausedLowBudget`, keeping every row. A pass that fails is logged, and one that panics is
+recovered; either way its `WatchPass` is kept and `AwaitPass` told (`endPass`, in a `defer`).
 
 **The request.** `github.FetchWatches` packs the searches into requests by how many results
 each returned last time (`inbox.watches` keeps each search's last count; a new one counts as a

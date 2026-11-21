@@ -111,20 +111,22 @@ func (w *autopilotWatches) HoldsWatches() bool {
 	return w.searches == nil || w.searches.HoldsWatches()
 }
 
-// Watches returns the routines' searches for the account login, built again under ctx
-// first when the snapshot is another account's. A rebuild that still leaves another
-// account's snapshot (ctx ended, a read failed, or the account changed again) hands
-// back none, never that account's searches.
-func (w *autopilotWatches) Watches(ctx context.Context, login string) []inbox.Watch {
+// Watches returns the routines' searches for the account login, and true: built again
+// under ctx first when the snapshot is another account's, and none before Autopilot's
+// service is built. A rebuild that still leaves another account's snapshot (ctx ended, a
+// read failed, or the account changed again) can't answer for login: it hands back none
+// of that account's searches, and false, so the inbox skips the pass rather than drop
+// every search's rows and last answer.
+func (w *autopilotWatches) Watches(ctx context.Context, login string) ([]inbox.Watch, bool) {
 	if w.searches == nil {
-		return nil
+		return nil, true
 	}
 
 	set := w.searches.Current()
 	if !strings.EqualFold(set.Login, login) {
 		set = w.searches.Rebuild(ctx)
 		if !strings.EqualFold(set.Login, login) {
-			return nil
+			return nil, false
 		}
 	}
 
@@ -133,7 +135,7 @@ func (w *autopilotWatches) Watches(ctx context.Context, login string) []inbox.Wa
 		out = append(out, inbox.Watch{Key: s.Key, Query: s.Query, Follow: s.Follow})
 	}
 
-	return out
+	return out, true
 }
 
 // autopilotItems reads the inbox for Autopilot's builder (autopilot.Items).

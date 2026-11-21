@@ -88,9 +88,12 @@ type Watch struct {
 // WatchSource gives the routines' searches for the account with login, deduplicated by
 // key. It must answer at once, from what it keeps: a whole refresh asks as it starts,
 // with its own ctx, which a source that must build its searches again first builds them
-// under.
+// under. ok is false when it can't answer for login now (its searches are still another
+// account's), and the refresh then sends no pass, so every search keeps its rows and its
+// last answer. One that answers with no search returns true, and a pass then drops every
+// search's rows.
 type WatchSource interface {
-	Watches(ctx context.Context, login string) []Watch
+	Watches(ctx context.Context, login string) (watches []Watch, ok bool)
 }
 
 // ItemKeeper names the stored items something outside the inbox refers to, which the
@@ -203,8 +206,8 @@ type watchPasses struct {
 
 // startWatchPass hands the worker this refresh's watch request, which goes out once the
 // refresh has stored the inbox, and returns the job the refresh releases then; nil when
-// there is nothing to send: no source, no account, a pass still running, or no search and
-// no rows to drop.
+// there is nothing to send: no source, no account, a source that can't answer for it now,
+// a pass still running, or no search and no rows to drop.
 func (s *Service) startWatchPass(ctx context.Context) *watchJob {
 	if s.watchSource == nil || !holdsWatches(s.watchSource) {
 		return nil
@@ -215,7 +218,10 @@ func (s *Service) startWatchPass(ctx context.Context) *watchJob {
 		return nil
 	}
 
-	searches := s.watchSource.Watches(ctx, login)
+	searches, ok := s.watchSource.Watches(ctx, login)
+	if !ok {
+		return nil
+	}
 
 	s.passes.mu.Lock()
 	idle := len(searches) == 0 && s.passes.cleaned
