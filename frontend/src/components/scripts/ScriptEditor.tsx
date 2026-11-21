@@ -20,7 +20,15 @@ import {
   type UserScriptIcon,
   type UserScriptScope,
 } from '../../platform'
-import { buttonClass, Field, fieldClass, primaryButtonClass, Segmented, type SegmentOption } from '../controls'
+import {
+  buttonClass,
+  Field,
+  fieldClass,
+  modalClass,
+  primaryButtonClass,
+  Segmented,
+  type SegmentOption,
+} from '../controls'
 import { BoxIcon, ChecklistIcon, FlaskIcon, PlayIcon, SlidersIcon } from '../icons'
 import { Spinner } from '../Spinner'
 
@@ -158,8 +166,7 @@ export function ScriptEditor({ script, variables, onSaved, onCancel }: ScriptEdi
       aria-modal="true"
       aria-labelledby={`${id}-title`}
       onCancel={cancel}
-      // The backdrop's color is spelled out, as ConfirmDialog's is.
-      className="m-auto w-[calc(100%-2rem)] max-w-xl rounded-lg border border-border bg-surface p-4 text-text shadow-lg backdrop:bg-[rgb(0_0_0/0.4)]"
+      className={`${modalClass} max-w-xl`}
     >
       <form
         onSubmit={(e) => {
