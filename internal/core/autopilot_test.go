@@ -277,6 +277,38 @@ func TestTheRoutinesSearchesAreBuiltAgainUnderTheRefreshsContext(t *testing.T) {
 	assert.Equal(t, "octo-user", searches.Current().Login)
 }
 
+func TestAWatchPassIsHandedNoOtherAccountsSearches(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, testOptions(t, ".claude"))
+	ctx := t.Context()
+	viewer := prefsstore.New(c.DB, nil)
+
+	_, err := c.Settings.SetAutopilotEnabled(ctx, true)
+	require.NoError(t, err)
+
+	saved, err := c.Autopilot.Save(ctx, autopilot.Draft{Name: "Dependabot", Spec: myDependabotSpec()})
+	require.NoError(t, err)
+
+	_, err = c.Autopilot.SetEnabled(ctx, saved.ID, true, autopilot.CurrentRun)
+	require.NoError(t, err)
+
+	searches := autopilot.NewSearches(c.Autopilot)
+	source := &autopilotWatches{searches: searches}
+
+	require.NoError(t, viewer.Set(ctx, "inbox.viewer", "octo-user"))
+	require.Len(t, source.Watches(ctx, "octo-user"), 1, "the searches are built for octo-user")
+
+	// Another account signs in, and the refresh that asks ends before they are built again.
+	require.NoError(t, viewer.Set(ctx, "inbox.viewer", "other-user"))
+
+	ended, cancel := context.WithCancel(ctx)
+	cancel()
+
+	assert.Empty(t, source.Watches(ended, "other-user"), "the pass is handed none of octo-user's searches")
+	assert.Equal(t, "octo-user", searches.Current().Login, "though the snapshot is still octo-user's")
+}
+
 // myDependabotSpec is a routine that tells the user when a pull request Dependabot opened
 // on one of their repositories fails its checks: a search of the account signed in.
 func myDependabotSpec() spec.Spec {

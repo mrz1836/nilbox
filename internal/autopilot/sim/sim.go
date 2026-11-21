@@ -694,6 +694,9 @@ func (w *watchSource) Watches(ctx context.Context, login string) []inbox.Watch {
 	set := w.searches.Current()
 	if !strings.EqualFold(set.Login, login) {
 		set = w.searches.Rebuild(ctx)
+		if !strings.EqualFold(set.Login, login) {
+			return nil
+		}
 	}
 
 	out := make([]inbox.Watch, 0, len(set.Searches))
