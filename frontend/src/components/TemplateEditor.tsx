@@ -4,6 +4,7 @@ import { caretPosition } from '../lib/caret'
 import { completionAt, highlight, matchVariables, offsetOf, type Completion, type TokenKind } from '../lib/template'
 import { remToPx } from '../lib/rem'
 import type { Diagnostic, PromptVariable } from '../platform'
+import { panelClass } from './PopoverPanel'
 
 // TemplateEditorHandle lets the page around the editor insert text and point at a spot.
 export interface TemplateEditorHandle {
@@ -300,7 +301,7 @@ export function TemplateEditor({
           role="listbox"
           aria-label="Variables"
           style={{ top: popup.top, left: popup.left, width: `${String(popupWidth)}rem` }}
-          className="absolute z-10 max-h-56 overflow-y-auto rounded-lg border border-border bg-surface p-1 text-sm shadow-xl shadow-black/20"
+          className={`${panelClass} absolute z-10 max-h-56 overflow-y-auto p-1 text-sm`}
         >
           {matches.map((name, i) => {
             const v = variables.find((x) => x.name === name)
