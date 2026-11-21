@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+
+	"github.com/mrz1836/nilbox/internal/toolsigns"
 )
 
 // Signals counts the user's clones that hold each sign the Tools step looks for, so it
@@ -30,8 +32,15 @@ type Signals struct {
 // The paths, inside a clone, of each sign Signals counts.
 func goModuleMarkers() []string { return []string{"go.mod"} }
 
+// mageXMarkers are mage-x's signs, the list Deps reads too (toolsigns.MageX), as paths
+// here.
 func mageXMarkers() []string {
-	return []string{filepath.Join(".github", "env", "10-mage-x.env"), ".mage.yaml", "magefiles"}
+	signs := toolsigns.MageX()
+	for i, sign := range signs {
+		signs[i] = filepath.FromSlash(sign)
+	}
+
+	return signs
 }
 
 func goPreCommitMarkers() []string {

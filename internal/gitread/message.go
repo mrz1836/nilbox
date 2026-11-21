@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -99,13 +100,16 @@ func listed(names []string) (list, verb, them string) {
 // gitSaid is what git said in a failure, without the command and the exit status, or the
 // command when git said nothing worth showing, read from the *commandError in err's
 // chain, however a caller wraps it; or that origin didn't answer an ls-remote within
-// RemoteTimeout, or that git ran out of time otherwise; or else textSaid.
+// RemoteTimeout, that git ran out of time otherwise, or that it printed more than a read
+// holds; or else textSaid.
 func gitSaid(err error) string {
 	switch {
 	case errors.Is(err, ErrRemoteTimeout):
 		return "origin didn't answer within " + RemoteTimeout.String()
 	case errors.Is(err, context.DeadlineExceeded):
 		return "git didn't finish in time"
+	case errors.Is(err, execpath.ErrOutputLimit):
+		return "git printed more than can be read here"
 	}
 
 	if failed, ok := errors.AsType[*commandError](err); ok {

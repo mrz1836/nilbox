@@ -14,12 +14,13 @@ import (
 // promptProblems returns the problems of the prompts sp's steps name: one the library
 // doesn't have, a reply named where an agent's prompt goes or the other way about, a
 // GitHub step's reply that isn't a comment's (an approving one, LGTM, or a request for
-// changes), and one that doesn't apply to every kind of item the routine acts on. Without
-// a library, or one that can't be read, it finds none here; the engine checks a step's
-// prompt, and a GitHub step's replies, again right before each start (StepPromptProblems),
-// so a prompt deleted, changed, or renamed beyond what the routine follows after the save,
-// as after the routine is switched on, duplicated, restored, or imported, keeps the run or
-// the action from starting and says why.
+// changes), and one that doesn't apply to every kind of item the routine acts on, as one
+// for repositories applies to none. Without a library, or one that can't be read, it finds
+// none here; the engine checks a step's prompt, and a GitHub step's replies, again right
+// before each start (StepPromptProblems), so a prompt deleted, changed, or renamed beyond
+// what the routine follows after the save, as after the routine is switched on,
+// duplicated, restored, or imported, keeps the run or the action from starting and says
+// why.
 func promptProblems(ctx context.Context, sp spec.Spec, s Setup) []spec.Problem {
 	library, ok := s.Library(ctx)
 	if !ok {
@@ -108,8 +109,15 @@ func commentProblem(p Prompt, reply bool) string {
 }
 
 // kindsProblem says what is wrong with p for a routine that acts on kinds, or "": a prompt
-// for pull requests on a routine of issues alone, or one for one kind on a routine of both.
+// written for no kind of item at all, as one for repositories is, whatever the routine acts
+// on; a prompt for pull requests on a routine of issues alone; or one for one kind on a
+// routine of both.
 func kindsProblem(p Prompt, kinds []item.Kind) string {
+	if len(p.Kinds) == 0 {
+		return fmt.Sprintf("%q isn't written for pull requests or issues, and a routine runs its prompts on those "+
+			"alone: pick another prompt", p.Nickname)
+	}
+
 	for _, k := range kinds {
 		switch {
 		case slices.Contains(p.Kinds, k):

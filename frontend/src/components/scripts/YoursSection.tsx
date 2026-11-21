@@ -35,8 +35,10 @@ export interface YoursSectionProps {
   // setting is where runs go, as set, and terminalName the terminal they go to there.
   setting: RunsIn
   terminalName: string
-  // onOpenRelease opens the Release page, or is null while it isn't on.
+  // onOpenRelease opens the Release page, and onOpenDeps the Deps page, each null while
+  // its page isn't on.
   onOpenRelease: (() => void) | null
+  onOpenDeps: (() => void) | null
   // onEdit opens the editor on a script; onChange makes a change to the scripts, after
   // which the page reads them again.
   onEdit: (script: UserScript) => void
@@ -59,6 +61,7 @@ export function YoursSection({
   setting,
   terminalName,
   onOpenRelease,
+  onOpenDeps,
   onEdit,
   onChange,
 }: YoursSectionProps) {
@@ -99,6 +102,7 @@ export function YoursSection({
                 otherName={placeName(other, terminalName)}
                 onRun={onRun}
                 onOpenRelease={onOpenRelease}
+                onOpenDeps={onOpenDeps}
                 more={[
                   {
                     label: 'Edit…',

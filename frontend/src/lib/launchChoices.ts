@@ -9,6 +9,7 @@ import type {
   LaunchRequest,
   LaunchSource,
   LaunchTarget,
+  RepoLaunchRequest,
   Resolution,
   Situation,
 } from '../platform'
@@ -88,6 +89,26 @@ export function launchRequest(
     fast: c.fast,
     fullAccessOverride: untrusted && c.override,
     confirmed: '',
+    alongside: '',
+  }
+}
+
+// repoLaunchRequest turns the choices into a launch request for a repository rather than
+// an item, as the Deps page's Upgrade makes one: repo ("owner/name"), its clone dir, with ~,
+// and promptId, the prompt for repositories to fill in, which the request always names, as
+// there is no default one. A repository's launch always makes a worktree of its own and is
+// trusted, so the worktree choice and the override have no place in it.
+export function repoLaunchRequest(repo: string, dir: string, promptId: number, c: Choices): RepoLaunchRequest {
+  return {
+    repo,
+    dir,
+    promptId,
+    agent: c.agent,
+    profile: c.profile,
+    model: c.model,
+    effort: c.effort,
+    planMode: c.planMode,
+    fast: c.fast,
     alongside: '',
   }
 }

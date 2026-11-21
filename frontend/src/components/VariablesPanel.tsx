@@ -1,18 +1,36 @@
 import { useState } from 'react'
 
-import type { PromptVariable } from '../platform'
+import type { PromptAppliesTo, PromptVariable } from '../platform'
 import { SearchBox } from './SearchBox'
 
 export interface VariablesPanelProps {
   variables: readonly PromptVariable[]
   // values holds each variable's value for the preview item, or null before a check.
   values: Readonly<Record<string, string | undefined>> | null
-  // valuesFor names the preview item the values come from, as in "#141".
+  // valuesFor names what the values come from, as in "#141" or "the sample repository".
   valuesFor: string
-  // forIssuesOnly dims the variables that are always empty for issues.
-  forIssuesOnly: boolean
+  // appliesTo is what the prompt is for, which dims the variables always empty there.
+  appliesTo: PromptAppliesTo
   onInsertVariable: (name: string) => void
   onInsertText: (text: string) => void
+}
+
+// alwaysEmpty reports a variable a prompt for appliesTo never sees set: one only a pull
+// request fills in, in a prompt for issues, and one only an item fills in, in a prompt for
+// repositories, whose launch has no item.
+function alwaysEmpty(v: PromptVariable, appliesTo: PromptAppliesTo): boolean {
+  return (appliesTo === 'issue' && v.prOnly) || (appliesTo === 'repo' && v.itemOnly)
+}
+
+// badgeOf is a variable's badge: PR only for one only a pull request fills in, and, in a
+// prompt for repositories, Item only for the rest of those only an item fills in, which
+// it shows only there, since an item's launch fills in every one; '' for none.
+function badgeOf(v: PromptVariable, appliesTo: PromptAppliesTo): string {
+  if (v.prOnly) {
+    return 'PR only'
+  }
+
+  return appliesTo === 'repo' && v.itemOnly ? 'Item only' : ''
 }
 
 // The syntax a prompt can use, each with a snippet to insert.
@@ -51,12 +69,13 @@ const groupOrder = ['Item', 'Repository', 'Pull request', 'Session', 'Autopilot'
 
 // VariablesPanel is the prompt editor's cheat sheet: every variable by group, with its
 // type, what it holds, and its value for the item being previewed, then the template
-// syntax. Clicking a variable or a snippet inserts it at the editor's caret.
+// syntax. Clicking a variable or a snippet inserts it at the editor's caret. A variable
+// always empty for what the prompt is for is dimmed, and its badge says why.
 export function VariablesPanel({
   variables,
   values,
   valuesFor,
-  forIssuesOnly,
+  appliesTo,
   onInsertVariable,
   onInsertText,
 }: VariablesPanelProps) {
@@ -90,7 +109,8 @@ export function VariablesPanel({
             <ul>
               {vars.map((v) => {
                 const value = values?.[v.name]
-                const dimmed = forIssuesOnly && v.prOnly
+                const dimmed = alwaysEmpty(v, appliesTo)
+                const badge = badgeOf(v, appliesTo)
 
                 return (
                   <li key={v.name}>
@@ -105,9 +125,9 @@ export function VariablesPanel({
                       <span className="flex w-full items-center gap-2">
                         <code className="rounded-sm bg-info/10 px-1 font-mono text-small text-info">{`{{.${v.name}}}`}</code>
                         <span className="text-caption text-muted">{v.type}</span>
-                        {v.prOnly && (
+                        {badge !== '' && (
                           <span className="ml-auto rounded-full border border-border px-1.5 text-badge leading-4 text-muted">
-                            PR only
+                            {badge}
                           </span>
                         )}
                       </span>

@@ -28,6 +28,7 @@ interface PageProps {
   runsIn?: RunsIn
   terminal?: TerminalID | null
   release?: boolean
+  deps?: boolean
   // showRuns opens a run beside the scripts as it starts; the tests of the run panel turn
   // it on, as the user can in Settings.
   showRuns?: boolean
@@ -36,11 +37,12 @@ interface PageProps {
 
 // renderPage renders the page as the tab shows it, remembering the clone chosen, the run
 // followed, the sections opened or folded, and whether runs show beside the scripts, with
-// Release on unless release is false.
+// Release on unless release is false, and Deps unless deps is.
 function renderPage({
   runsIn = 'app',
   terminal = 'iterm2',
   release = true,
+  deps = true,
   showRuns: showAtFirst = true,
   sections: storedAtFirst = {},
 }: PageProps = {}) {
@@ -48,6 +50,7 @@ function renderPage({
     onDir: vi.fn<(dir: string) => void>(),
     onFollow: vi.fn<(id: number | null) => void>(),
     onOpenRelease: vi.fn<() => void>(),
+    onOpenDeps: vi.fn<() => void>(),
     onOpenSettings: vi.fn<(section: SettingsSection) => void>(),
     onSection: vi.fn<OnSection>(),
     onShowRuns: vi.fn<(on: boolean) => void>(),
@@ -74,6 +77,7 @@ function renderPage({
         terminal={terminal}
         where="under ~/projects"
         onOpenRelease={release ? handlers.onOpenRelease : null}
+        onOpenDeps={deps ? handlers.onOpenDeps : null}
         onOpenSettings={handlers.onOpenSettings}
         sections={storedAtFirst}
         onSection={handlers.onSection}
@@ -529,6 +533,101 @@ describe('RepoScriptsPage', () => {
     expect(bump.queryByRole('button', { name: 'Open Release' })).not.toBeInTheDocument()
   })
 
+  describe('a command that upgrades the dependencies in the clone', () => {
+    // upgrade is t3.json's script that upgrades the Go modules in the clone, on whatever
+    // branch it is on, which Deps does in a fresh worktree instead.
+    const upgrade = scriptEntry({
+      ref: 't3:Upgrade deps',
+      name: 'Upgrade deps',
+      command: 'go get -u ./... && go mod tidy',
+      icon: 'play',
+      deps: true,
+      sha256: 'c0ffee03',
+    })
+
+    it('points to Deps, and runs it anyway from its menu', async () => {
+      withPage({ sections: [scriptSection({ entries: [upgrade] })] })
+      const { onOpenDeps } = renderPage()
+
+      const up = await row('From t3.json', 'Upgrade deps')
+
+      expect(up.getByText(/^Deps upgrades in a fresh worktree and opens a pull request/)).toBeInTheDocument()
+      expect(up.queryByRole('button', { name: 'Run Upgrade deps' })).not.toBeInTheDocument()
+
+      await userEvent.click(up.getByRole('button', { name: 'Open Deps' }))
+      expect(onOpenDeps).toHaveBeenCalledOnce()
+
+      await userEvent.click(up.getByRole('button', { name: 'More for Upgrade deps' }))
+      expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual([
+        'Run it anyway',
+        'Run it anyway in iTerm2',
+      ])
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Run it anyway' }))
+
+      expect(platform.runScript).toHaveBeenLastCalledWith({
+        dir: '~/projects/sdk',
+        ref: 't3:Upgrade deps',
+        inputs: {},
+        args: [],
+        runsIn: '',
+        confirmed: '',
+        remember: false,
+        anyway: true,
+      })
+
+      await userEvent.click(up.getByRole('button', { name: 'More for Upgrade deps' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Run it anyway in iTerm2' }))
+      expect(platform.runScript).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ref: 't3:Upgrade deps', runsIn: 'terminal', anyway: true }),
+      )
+    })
+
+    it('points to Deps without a way there while Deps is off', async () => {
+      withPage({ sections: [scriptSection({ entries: [upgrade] })] })
+      renderPage({ deps: false })
+
+      const up = await row('From t3.json', 'Upgrade deps')
+
+      expect(up.getByText('Deps upgrades in a fresh worktree and opens a pull request')).toBeInTheDocument()
+      expect(up.queryByRole('button', { name: 'Open Deps' })).not.toBeInTheDocument()
+      expect(up.queryByRole('button', { name: 'Run Upgrade deps' })).not.toBeInTheDocument()
+    })
+
+    it('points one that bumps a version too to both pages, Release first', async () => {
+      withPage({
+        sections: [
+          scriptSection({
+            entries: [
+              scriptEntry({
+                ref: 't3:Ship',
+                name: 'Ship',
+                command: 'magex deps:update && magex version:bump push',
+                icon: 'play',
+                release: true,
+                deps: true,
+              }),
+            ],
+          }),
+        ],
+      })
+      const { onOpenRelease, onOpenDeps } = renderPage()
+
+      const ship = await row('From t3.json', 'Ship')
+
+      expect(ship.getAllByRole('button', { name: /^Open / }).map((b) => b.textContent)).toEqual([
+        'Open Release',
+        'Open Deps',
+      ])
+      expect(ship.getByText(/^Release does this, with checks/)).toBeInTheDocument()
+      expect(ship.getByText(/^Deps upgrades in a fresh worktree/)).toBeInTheDocument()
+      expect(ship.queryByRole('button', { name: 'Run Ship' })).not.toBeInTheDocument()
+
+      await userEvent.click(ship.getByRole('button', { name: 'Open Deps' }))
+      expect(onOpenDeps).toHaveBeenCalledOnce()
+      expect(onOpenRelease).not.toHaveBeenCalled()
+    })
+  })
+
   describe('magex', () => {
     it('runs a common target from its chip, with the arguments given, and says what magex targets run', async () => {
       renderPage()
@@ -628,6 +727,58 @@ describe('RepoScriptsPage', () => {
       expect(platform.runScript).toHaveBeenLastCalledWith(
         expect.objectContaining({ ref: 'magex:version:bump', runsIn: 'terminal', anyway: true }),
       )
+    })
+
+    it('points a chip that upgrades the dependencies to Deps, and runs it anyway from its menu', async () => {
+      // magex offers no upgrade as a common target any more, but a chip that would upgrade
+      // points to Deps all the same, as its row does.
+      withPage({
+        sections: [
+          scriptSection({
+            source: 'magex',
+            title: 'magex',
+            common: ['magex:lint', 'magex:deps:update'],
+            entries: [
+              magexTarget('lint', 'Run the linters'),
+              magexTarget('deps:update', 'Update the dependencies', { deps: true }),
+            ],
+          }),
+        ],
+      })
+      const { onOpenDeps } = renderPage()
+
+      const chips = await list('Common magex targets')
+      const up = chips.getByRole('button', {
+        name: 'magex deps:update: Deps upgrades in a fresh worktree and opens a pull request',
+      })
+
+      expect(up).toHaveAttribute(
+        'title',
+        'Deps upgrades in a fresh worktree and opens a pull request. Open Deps, or run it anyway.',
+      )
+      expect(chips.queryByRole('button', { name: 'Run magex deps:update' })).not.toBeInTheDocument()
+
+      await userEvent.click(up)
+      const menu = within(screen.getByRole('menu'))
+      expect(menu.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+        'Open Deps',
+        'Run it anyway',
+        'Run it anyway in iTerm2',
+      ])
+      await userEvent.click(menu.getByRole('menuitem', { name: 'Open Deps' }))
+      expect(onOpenDeps).toHaveBeenCalledOnce()
+      expect(platform.runScript).not.toHaveBeenCalled()
+
+      await userEvent.click(up)
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Run it anyway in iTerm2' }))
+      expect(platform.runScript).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ref: 'magex:deps:update', runsIn: 'terminal', anyway: true }),
+      )
+
+      await userEvent.click(screen.getByRole('button', { name: /^All magex commands/ }))
+      expect(
+        (await row('All magex commands', 'deps:update')).getByText(/^Deps upgrades in a fresh worktree/),
+      ).toBeInTheDocument()
     })
 
     it('greys a chip it can’t run, saying why', async () => {

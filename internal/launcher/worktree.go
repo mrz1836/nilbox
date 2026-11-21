@@ -57,6 +57,11 @@ type WorktreeRequest struct {
 	// Head is the pull request's head commit whose files the launch checked, or "". A
 	// worktree made for the pull request must start there; the maker refuses otherwise.
 	Head string
+
+	// Task asks, for a repository's launch, for a new worktree of its own in place of an
+	// item's: its base name, as deps-20261121, which the maker takes, or the first free
+	// name past it, every time. Kind, Number, Base, and Head are zero then.
+	Task string
 }
 
 // Worktree is an item's worktree, as a WorktreeMaker found or made it, or would.
@@ -80,6 +85,12 @@ type Worktree struct {
 
 	// Notice says what was worked around, or is "".
 	Notice string
+
+	// Task is the name a repository's launch's worktree was made under, or would be, as
+	// deps-20261121-2, and DefaultBranch the default branch it starts from, as made, or as
+	// far as a plan knows it ("" when it doesn't); both "" for an item's.
+	Task          string
+	DefaultBranch string
 }
 
 // WorktreeMaker finds and makes the worktrees launches start in. The app adapts the
@@ -91,6 +102,15 @@ type WorktreeMaker interface {
 
 	// EnsureWorktree finds the item's worktree, or makes it, and records it.
 	EnsureWorktree(ctx context.Context, req WorktreeRequest) (Worktree, error)
+}
+
+// WorktreeDiscarder removes a task's new worktree a repository's launch made but couldn't
+// start its session in, with its own branch, refused while a session works there or it
+// holds uncommitted changes. A WorktreeMaker that offers it lets a launch that fails after
+// making its worktree leave none behind, since a task's worktree is made new each time and
+// its retry would make another.
+type WorktreeDiscarder interface {
+	DiscardWorktree(ctx context.Context, req WorktreeRequest, wt Worktree) error
 }
 
 // SessionRecorder records each session started in an item's worktree. *worklog.Store
@@ -110,7 +130,8 @@ type Truster interface {
 
 // WorktreePlan is the worktree a planned launch starts in, as the preview shows it.
 type WorktreePlan struct {
-	// Name is the worktree's name, pr-<n> or issue-<n>.
+	// Name is the worktree's name, pr-<n> or issue-<n>, or a repository's launch's, as
+	// deps-20261121.
 	Name string `json:"name"`
 
 	// Path is its directory, with ~ for home.

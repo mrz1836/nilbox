@@ -62,7 +62,42 @@ export interface Config {
      * it: newest until they choose another.
      */
     "releaseSort": ReleaseSort;
+
+    /**
+     * DepsSort is the order the Deps page lists each group of clones in, as the user last
+     * chose it: oldest until they choose another.
+     */
+    "depsSort": DepsSort;
 }
+
+/**
+ * DepsSort is an order the Deps page lists each group of clones in.
+ */
+export type DepsSort = "oldest" | "name" | "modules";
+
+/**
+ * The values of DepsSort, by the names of their Go constants.
+ */
+export const DepsSort = {
+    /**
+     * The Deps page's orders.
+     *
+     * DepsSortOldest lists the clone whose dependencies changed longest ago first. It is the
+     * default.
+     */
+    DepsSortOldest: "oldest",
+
+    /**
+     * DepsSortName lists by name, ignoring case.
+     */
+    DepsSortName: "name",
+
+    /**
+     * DepsSortModules lists the clone with the most modules, its go.mod and package.json
+     * files, first.
+     */
+    DepsSortModules: "modules",
+} as const;
 
 /**
  * ID names an integration: a tool the app finds and runs, or the scripts.
@@ -154,7 +189,7 @@ export interface ScriptSources {
 /**
  * ScriptsPage is one of the Scripts tab's pages, which the tab reopens on.
  */
-export type ScriptsPage = "" | "release" | "hooks" | "scripts" | "runs";
+export type ScriptsPage = "" | "release" | "hooks" | "scripts" | "deps" | "runs";
 
 /**
  * The values of ScriptsPage, by the names of their Go constants.
@@ -183,6 +218,11 @@ export const ScriptsPage = {
     PageScripts: "scripts",
 
     /**
+     * PageDeps is Deps.
+     */
+    PageDeps: "deps",
+
+    /**
      * PageRuns is Runs.
      */
     PageRuns: "runs",
@@ -191,7 +231,7 @@ export const ScriptsPage = {
 /**
  * ScriptsSection is one of the sections the Scripts tab's pages open and fold.
  */
-export type ScriptsSection = "release.unreleased" | "release.upToDate" | "release.noReleases" | "release.cantRelease" | "release.muted" | "hooks.attention" | "hooks.ready" | "hooks.off" | "hooks.notSetUp" | "scripts.yours" | "scripts.t3" | "scripts.tasks" | "scripts.magex";
+export type ScriptsSection = "release.unreleased" | "release.upToDate" | "release.noReleases" | "release.cantRelease" | "release.muted" | "hooks.attention" | "hooks.ready" | "hooks.off" | "hooks.notSetUp" | "scripts.yours" | "scripts.t3" | "scripts.tasks" | "scripts.magex" | "deps.stale" | "deps.aging" | "deps.fresh";
 
 /**
  * The values of ScriptsSection, by the names of their Go constants.
@@ -263,6 +303,21 @@ export const ScriptsSection = {
      * SectionScriptsMagex is Repo scripts' magex targets.
      */
     SectionScriptsMagex: "scripts.magex",
+
+    /**
+     * SectionDepsStale is Deps' clones whose dependencies haven't changed in a long while.
+     */
+    SectionDepsStale: "deps.stale",
+
+    /**
+     * SectionDepsAging is Deps' clones whose dependencies changed a while ago.
+     */
+    SectionDepsAging: "deps.aging",
+
+    /**
+     * SectionDepsFresh is Deps' clones whose dependencies changed lately.
+     */
+    SectionDepsFresh: "deps.fresh",
 } as const;
 
 /**

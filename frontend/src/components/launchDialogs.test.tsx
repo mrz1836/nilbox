@@ -3,7 +3,7 @@ import { Suspense, type ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { noChoices } from '../lib/launchChoices'
-import { agents, item, itemResolution, launchHold, profile, prompts, resolution } from '../test/fixtures'
+import { agents, item, itemResolution, launchHold, launchPreview, profile, prompts, resolution } from '../test/fixtures'
 import type { LaunchControlsProps } from './LaunchControls'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -60,7 +60,7 @@ async function parts() {
 
   const menu = (
     <LaunchMenu
-      item={item()}
+      subject={{ kind: 'pr', trusted: true, key: '[1,"",false]', preview: () => Promise.resolve(launchPreview()) }}
       resolved={resolution()}
       choices={noChoices}
       onChoices={vi.fn()}

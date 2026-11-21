@@ -37,6 +37,7 @@ import * as launchdefaults from '../../bindings/github.com/mrz1836/nilbox/intern
 import * as launcher from '../../bindings/github.com/mrz1836/nilbox/internal/launcher'
 import type * as terminal from '../../bindings/github.com/mrz1836/nilbox/internal/launcher/terminal'
 import type * as localrepos from '../../bindings/github.com/mrz1836/nilbox/internal/localrepos'
+import * as manifests from '../../bindings/github.com/mrz1836/nilbox/internal/manifests'
 import * as milestones from '../../bindings/github.com/mrz1836/nilbox/internal/milestones'
 import * as notify from '../../bindings/github.com/mrz1836/nilbox/internal/notify'
 import type * as notifyprefs from '../../bindings/github.com/mrz1836/nilbox/internal/notifyprefs'
@@ -236,6 +237,7 @@ export type ScriptRunProgress = NonNullLists<scriptrun.Progress>
 export type ScriptSources = NonNullLists<integrationprefs.ScriptSources>
 export type ScriptsPage = integrationprefs.ScriptsPage
 export type ReleaseSort = integrationprefs.ReleaseSort
+export type DepsSort = integrationprefs.DepsSort
 export type ScriptsSection = integrationprefs.ScriptsSection
 
 // UserScript is one of the user's own scripts, as saved: its scope, which clones it shows
@@ -344,6 +346,19 @@ export type HookChecksResult = Omit<NonNullLists<hooks.ChecksResult>, 'check'> &
 export type HookInstallLine = Omit<NonNullLists<hooks.InstallLine>, 'action'> & { action: hooks.Action | '' }
 export type HookInstallAllResult = Omit<NonNullLists<hooks.InstallAllResult>, 'lines'> & { lines: HookInstallLine[] }
 
+// The Deps page: every clone whose origin is on GitHub, muted ones left out, with its
+// go.mod and package.json files and when each one's dependencies last changed, read from
+// the clone's own git at origin's default branch as last fetched (or HEAD, which the clone
+// says); every time is RFC 3339, '' when unknown. ManifestsProgress is how far a read of
+// the clones has got, as the "manifests:progress" event says while it runs.
+export type ManifestsPage = NonNullLists<manifests.Page>
+export type ManifestsClone = NonNullLists<manifests.Clone>
+export type ManifestsModule = NonNullLists<manifests.Module>
+export type ManifestKind = manifests.Kind
+export type ManifestTool = manifests.Tool
+export type ManifestsProgress = Events.CustomEvents['manifests:progress']
+export type ManifestsPhase = ManifestsProgress['phase']
+
 export type ItemKind = item.Kind
 
 export type LaunchDefaults = NonNullLists<launchdefaults.Defaults>
@@ -363,6 +378,15 @@ export type LaunchResult = NonNullLists<launcher.LaunchResult>
 export type ResumeRequest = launcher.ResumeRequest
 export type LaunchPreview = NonNullLists<launcher.Preview>
 export type Resolution = NonNullLists<launcher.Resolution>
+// A repository's launch, as the Deps page's Upgrade starts one: no item, so its
+// resolution's kind is '' (which the generated type, a union of the item kinds alone,
+// leaves out), with what the sheet says of the repository first (its notice, '' for
+// nothing).
+export type RepoLaunchRequest = launcher.RepoLaunchRequest
+export type RepoResolution = Omit<NonNullLists<launcher.RepoResolution>, 'kind'> & { kind: item.Kind | '' }
+export type RepoLaunchPreview = Omit<LaunchPreview, 'resolution'> & {
+  resolution: Omit<Resolution, 'kind'> & { kind: item.Kind | '' }
+}
 export type LaunchSetting = NonNullLists<launcher.Setting>
 export type LaunchSource = launcher.Source
 // Situation is the situation of a pull request a launch is for, as an inbox card names it,
@@ -761,10 +785,13 @@ export type SensitivePathMatch = NonNullLists<sensitive.PathMatch>
 export type SensitiveLevel = sensitive.Level
 export type SensitiveScope = sensitive.Scope
 
-export type AgentSession = NonNullLists<sessions.Session>
+// AgentSession is a session the app follows. One a repository's launch started, as Deps'
+// Upgrade does, has no item: its kind is '' (which the generated type, a union of the item
+// kinds alone, leaves out), its number and item ID 0.
+export type AgentSession = Omit<NonNullLists<sessions.Session>, 'kind'> & { kind: item.Kind | '' }
 export type SessionWords = NonNullLists<sessions.Words>
 export type SessionUsage = NonNullLists<sessions.Usage>
-export type SessionsSnapshot = NonNullLists<sessions.Snapshot>
+export type SessionsSnapshot = Omit<NonNullLists<sessions.Snapshot>, 'sessions'> & { sessions: AgentSession[] }
 export type SessionState = sessions.State
 export type SessionWorktreeAction = sessions.WorktreeAction
 
@@ -918,12 +945,27 @@ export const {
   TakeOver: takeOverRun,
 } = narrow(launcher.Service)
 
+// A repository's launch, as the Deps page's Upgrade starts one: its settings and what the
+// sheet says of the repository first, its preview, and the launch itself, which makes a
+// new deps-YYYYMMDD worktree from the default branch. Each checks the repository, what the
+// inbox last stored of it, its clone, and the prompt for repositories again.
+const launcherService = narrow(launcher.Service)
+export const resolveRepoLaunch: (req: RepoLaunchRequest) => CancellablePromise<RepoResolution> =
+  launcherService.ResolveRepo
+export const previewRepoLaunch: (req: RepoLaunchRequest) => CancellablePromise<RepoLaunchPreview> =
+  launcherService.PreviewRepo
+export const { LaunchRepo: launchRepo } = launcherService
+
 // TakeOverRequest asks to take an agent's background run over: stop it while it works, and
 // resume its conversation in the terminal, under its fence unless profile widens it.
 export type TakeOverRequest = launcher.TakeOverRequest
 
+const sessionsService = narrow(sessions.Service)
+
+// listSessions reads the sessions the app follows, a repository's own (kind '') among them.
+export const listSessions: () => CancellablePromise<SessionsSnapshot> = sessionsService.List
+
 export const {
-  List: listSessions,
   Focus: focusSession,
   LastWords: sessionLastWords,
   // Usage reads how many tokens a session used from the agent's own files on this Mac:
@@ -931,7 +973,7 @@ export const {
   Usage: sessionUsage,
   ShowFolder: showSessionFolder,
   Forget: forgetSession,
-} = narrow(sessions.Service)
+} = sessionsService
 
 export const {
   Open: openReview,
@@ -1081,6 +1123,7 @@ export const {
   SetScriptsSectionOpen: setScriptsSectionOpen,
   SetShowRuns: setShowRuns,
   SetReleaseSort: setReleaseSort,
+  SetDepsSort: setDepsSort,
   SetRefreshInterval: setRefreshInterval,
   SetWatchPushes: setWatchPushes,
   SetStatusProvider: setStatusProvider,
@@ -1189,6 +1232,18 @@ export const runChecks = hooksService.RunChecks as (req: HookChecksRequest) => C
 export const installAllHooks: (dirs: string[] | null) => CancellablePromise<HookInstallAllResult> =
   hooksService.InstallAll
 export const getChecksResult: (runID: number) => CancellablePromise<HookChecksResult> = hooksService.ChecksResult
+
+// Deps: the clones the Deps page lists (the last read, kept five minutes unless refresh is
+// set, while the locations and the pinned and muted repositories stay as they were;
+// "manifests:progress" events say how far a read has got, and an unchanged clone costs one
+// rev-parse). OpenTerminal opens the terminal chosen for launches in a clone and runs
+// nothing there; Reveal shows one of a clone's go.mod, package.json, or lockfile files in
+// Finder. Nothing here asks GitHub or a package registry.
+export const {
+  List: listManifests,
+  OpenTerminal: openManifestsTerminal,
+  Reveal: revealManifest,
+} = narrow(manifests.Service)
 
 // Repo scripts: the clones the page's picker lists, the ones a script ran in most recently
 // first; one clone's scripts, the user's own whose scope includes it, then its t3.json,

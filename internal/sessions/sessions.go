@@ -2,7 +2,9 @@
 // was launched on, while they run in the user's own terminal.
 //
 // Every launch is recorded in a ledger, the agent_sessions table this package owns, under
-// an ID the app mints before the launch. A Watcher then reconciles what each agent
+// an ID the app mints before the launch: one on a pull request or an issue with its item,
+// and a repository's launch, such as an upgrade of its dependencies, with none, in the
+// worktree it made (Record.IsRepo). A Watcher then reconciles what each agent
 // reports through its own supported interface into the ledger, as a controller does: an
 // Observer per agent (the observe/claude and observe/codex packages) turns the agent's
 // own shapes into one State, and the Watcher stores each change, tells the window, and
@@ -18,6 +20,8 @@ package sessions
 
 import (
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/item"
@@ -180,7 +184,9 @@ type Session struct {
 	Terminal string `json:"terminal"`
 
 	// ItemID is the item's local ID, Repo is "owner/name", and Kind, Number, Title, and
-	// URL are the item.
+	// URL are the item. A session a repository's launch started has no item (IsRepo):
+	// ItemID 0, Kind "", and Number 0, its Title the prompt's name and its URL the
+	// repository's page.
 	ItemID int64     `json:"itemId"`
 	Repo   string    `json:"repo"`
 	Kind   item.Kind `json:"kind"`
@@ -231,6 +237,43 @@ type Session struct {
 	GitHubEvent       GitHubEvent `json:"githubEvent"`
 	GitHubEventCommit string      `json:"githubEventCommit"`
 	GitHubEventAt     string      `json:"githubEventAt"`
+}
+
+// IsRepo reports a session a repository's launch started, which has no item: no kind, and
+// number 0.
+func (s Session) IsRepo() bool {
+	return s.Kind == "" && s.Number == 0
+}
+
+// Label names what the session works on, as the menu bar and the banners show it: the
+// repository's name and the item's number, as in "example-repo #7", or, for a session a
+// repository's launch started, the repository's name and the session's title, its prompt's
+// name, as in "example-repo · Upgrade dependencies".
+func (s Session) Label() string {
+	name := s.Repo
+	if i := strings.LastIndexByte(name, '/'); i >= 0 {
+		name = name[i+1:]
+	}
+
+	return s.labelOf(name)
+}
+
+// FullLabel is Label with the repository's whole name, as in "acme-org/example-repo #7".
+func (s Session) FullLabel() string {
+	return s.labelOf(s.Repo)
+}
+
+// labelOf is Label with the repository named name.
+func (s Session) labelOf(name string) string {
+	if !s.IsRepo() {
+		return name + " #" + strconv.Itoa(s.Number)
+	}
+
+	if title := strings.Join(strings.Fields(s.Title), " "); title != "" {
+		return name + " · " + title
+	}
+
+	return name
 }
 
 // Snapshot is the sessions the window shows: every one still running, and the others

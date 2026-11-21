@@ -259,15 +259,17 @@ type yoursForm struct {
 
 // yoursScript works out u as the page lists it and a run runs it: [$SHELL, -c, command] in
 // the clone, exactly as written, in the user's login shell whatever it is, needing no
-// trust; greyed when its name or command holds a character that hides what it runs, and
-// pointed to Release when it would bump a version.
+// trust; greyed when its name or command holds a character that hides what it runs,
+// pointed to Release when it would bump a version, and to Deps when it would upgrade the
+// dependencies.
 func yoursScript(u UserScript) script {
 	mine := u
 	mine.Repos = append([]string{}, u.Repos...)
 	sc := script{
 		entry: Entry{
 			Ref: yoursRef(u.ID), Source: SourceYours, Name: u.Name, Command: u.Command, Icon: string(u.Icon),
-			Runnable: true, Release: bumps([]string{u.Command}, nil), Inputs: []Input{}, Mine: &mine,
+			Runnable: true, Release: bumps([]string{u.Command}, nil), Deps: upgrades([]string{u.Command}, nil),
+			Inputs: []Input{}, Mine: &mine,
 		},
 		name: strconv.FormatInt(u.ID, 10), place: u.RunsIn, asksFirst: u.Confirm,
 		look:  hashOf(yoursForm{ID: u.ID, Name: u.Name, Command: u.Command, RunsIn: u.RunsIn, Confirm: u.Confirm}),

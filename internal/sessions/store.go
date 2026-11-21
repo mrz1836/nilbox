@@ -69,7 +69,10 @@ type Record struct {
 	// Terminal is the terminal it runs in.
 	Terminal string
 
-	// ItemID, Owner, Name, Kind, Number, Title, and URL are the item.
+	// ItemID, Owner, Name, Kind, Number, Title, and URL are the item. A session a
+	// repository's launch started has none (IsRepo): ItemID 0, Kind "", and Number 0, its
+	// Title the prompt's name, its URL the repository's page, and its Worktree the one its
+	// launch made.
 	ItemID int64
 	Owner  string
 	Name   string
@@ -125,7 +128,14 @@ func (r Record) Repo() string {
 	return repo.Name{Owner: r.Owner, Repo: r.Name}.String()
 }
 
-// Session is the record as the window shows it, with home shown as ~.
+// IsRepo reports a session a repository's launch started, which has no item: no kind, and
+// number 0.
+func (r Record) IsRepo() bool {
+	return r.Kind == "" && r.Number == 0
+}
+
+// Session is the record as the window shows it, with home shown as ~. A repository's
+// launch's session never offers to be resumed: the launcher resumes a session on its item.
 func (r Record) Session(home string) Session {
 	return Session{
 		ID: r.ID, AgentSessionID: r.AgentSessionID, ResumedFrom: r.ResumedFrom, Agent: r.Agent, Profile: r.Profile,
@@ -134,15 +144,26 @@ func (r Record) Session(home string) Session {
 		WorktreeAction: r.WorktreeAction, Permission: r.Permission, Notice: r.Notice, State: r.State, Detail: r.Detail,
 		StateAt: stamp(r.StateAt), LastMessage: r.LastMessage, LaunchedAt: stamp(r.LaunchedAt),
 		EndedAt: stamp(r.EndedAt), CanFocus: r.State.Live() && r.PID > 0 && r.RunID == 0,
-		CanResume: !r.State.Live() && r.AgentSessionID != "", RunID: r.RunID,
+		CanResume: !r.State.Live() && r.AgentSessionID != "" && !r.IsRepo(), RunID: r.RunID,
 		GitHubEvent: r.GitHubEvent, GitHubEventCommit: r.GitHubEventCommit, GitHubEventAt: stamp(r.GitHubEventAt),
 	}
 }
 
 // valid reports whether a record holds what storing it needs.
 func (r Record) valid() bool {
-	return r.ID != "" && agent.Known(r.Agent) && r.Owner != "" && r.Name != "" && r.Kind.Valid() && r.Number > 0 &&
+	return r.ID != "" && agent.Known(r.Agent) && r.Owner != "" && r.Name != "" && r.validSubject() &&
 		filepath.IsAbs(r.Dir) && !r.LaunchedAt.IsZero()
+}
+
+// validSubject reports a record of an item, a kind and a positive number, or of a
+// repository's launch (IsRepo), with no item and the worktree its launch made, as the
+// table's checks hold them.
+func (r Record) validSubject() bool {
+	if r.Kind == "" {
+		return r.Number == 0 && r.ItemID == 0 && r.Worktree != ""
+	}
+
+	return r.Kind.Valid() && r.Number > 0
 }
 
 // stamp is t as RFC 3339, or "" for the zero time.

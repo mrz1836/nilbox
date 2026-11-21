@@ -10,8 +10,9 @@
 //     files.*, notify.*, branches.*, repos.*: the pinned and muted repositories and orgs,
 //     integrations.*, scripts.*: the scripts.magexTargets and scripts.repoFiles switches of
 //     Repo scripts' sources, scripts.lastPage and scripts.lastRepo, where the Scripts tab
-//     and Repo scripts reopen, and scripts.releaseSort, the order the Release page lists
-//     each group in, threadrules.*: whether the user's GitHub notifications
+//     and Repo scripts reopen, scripts.releaseSort, the order the Release page lists
+//     each group in, and scripts.depsSort, the order the Deps page lists each group of
+//     clones in, threadrules.*: whether the user's GitHub notifications
 //     are read, and whether, how, and when they are cleared, status.*: which status
 //     pages the service status check reads, and which of each one's parts it watches,
 //     update.mode, which updateprefs declares: what the app does when a new version is out,

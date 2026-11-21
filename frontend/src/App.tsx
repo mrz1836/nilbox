@@ -105,6 +105,7 @@ import {
   setScriptsSectionOpen,
   setShowRuns,
   setReleaseSort,
+  setDepsSort,
   type AfterMerge,
   type AgentID,
   type AppNotification,
@@ -1044,9 +1045,9 @@ export function App() {
   }
 
   // remember stores a change to the window's memory: that the Scripts tab was announced, the
-  // page or clone it reopens on, the Release page's order, the review sheet's tab, the
-  // Notifications page's tab, or the conversations' order. What shows has changed already;
-  // a store that fails only means the next start doesn't remember it.
+  // page or clone it reopens on, the Release or Deps page's order, the review sheet's tab,
+  // the Notifications page's tab, or the conversations' order. What shows has changed
+  // already; a store that fails only means the next start doesn't remember it.
   const remember = (store: Promise<Settings>, what: string) => {
     logFailure(store, `could not remember ${what}:`, saveSettings)
   }
@@ -1479,6 +1480,11 @@ export function App() {
                                 onReleaseSort={(sort) => {
                                   remember(setReleaseSort(sort), 'the Release page’s order')
                                 }}
+                                depsSort={config.settings?.integrations.depsSort ?? 'oldest'}
+                                onDepsSort={(sort) => {
+                                  remember(setDepsSort(sort), 'the Deps page’s order')
+                                }}
+                                onOpenPrompts={openPrompts}
                               />
                             </div>
                           </Suspense>

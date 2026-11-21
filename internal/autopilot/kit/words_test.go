@@ -61,8 +61,17 @@ func wordsGolden(t *testing.T, path, got string) {
 		"and review the diff")
 }
 
+// routineStarters are the starter prompts a routine can run, as the app hands kit them:
+// every starter but those for repositories, which launch on no pull request or issue.
+func routineStarters() []prompts.Starter {
+	return slices.DeleteFunc(prompts.Starters(), func(s prompts.Starter) bool {
+		return s.AppliesTo == prompts.AppliesToRepo
+	})
+}
+
 // wordsVocabulary is the vocabulary this build ships, converted as the app converts it:
-// the gallery's templates, the starter prompts, and the variables a prompt can name.
+// the gallery's templates, the starter prompts a routine can run, and the variables a
+// prompt can name.
 func wordsVocabulary() kit.Vocabulary {
 	v := kit.Vocabulary{Templates: []kit.Template{}, Starters: []kit.Starter{}, Variables: []kit.Variable{}}
 
@@ -82,7 +91,7 @@ func wordsVocabulary() kit.Vocabulary {
 		v.Templates = append(v.Templates, t)
 	}
 
-	for _, s := range prompts.Starters() {
+	for _, s := range routineStarters() {
 		purpose := kit.Purpose(s.Purpose)
 		if purpose == "" {
 			purpose = kit.PurposeAgent

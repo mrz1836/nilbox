@@ -198,8 +198,7 @@ func (pl *planner) holding(p BundlePrompt) (Prompt, bool) {
 
 // replaceable returns the index of the stored starter p would be saved over: the
 // library's copy of p's starter, still as it was added, not yet saved over by this
-// import, and only when p applies to every kind of item that copy is a default for, and
-// can be every default reply it is.
+// import, and only when p can take that copy's place (takesPlace).
 func (pl *planner) replaceable(p BundlePrompt) (int, bool) {
 	if p.StarterKey == "" {
 		return 0, false
@@ -210,16 +209,24 @@ func (pl *planner) replaceable(p BundlePrompt) (int, bool) {
 			continue
 		}
 
-		usage := pl.usage[q.ID]
-		covers := !slices.ContainsFunc(usage.Kinds, func(k item.Kind) bool { return !p.AppliesTo.Covers(k) })
-		fits := !slices.ContainsFunc(usage.Replies, func(s ReplySlot) bool { return !s.takes(p.Purpose, p.Action, p.AppliesTo) })
-
-		if covers && fits {
+		if takesPlace(p, q, pl.usage[q.ID]) {
 			return i, true
 		}
 	}
 
 	return 0, false
+}
+
+// takesPlace reports whether p can be saved over the stored prompt q, used as usage says:
+// p applies to every kind of item q is a default for and can be every default reply q is,
+// and it makes q no prompt for repositories while a routine runs q, as the editor refuses
+// that switch.
+func takesPlace(p BundlePrompt, q Prompt, usage Usage) bool {
+	covers := !slices.ContainsFunc(usage.Kinds, func(k item.Kind) bool { return !p.AppliesTo.Covers(k) })
+	fits := !slices.ContainsFunc(usage.Replies, func(s ReplySlot) bool { return !s.takes(p.Purpose, p.Action, p.AppliesTo) })
+	switches := p.AppliesTo == AppliesToRepo && q.AppliesTo != AppliesToRepo && len(usage.Routines) > 0
+
+	return covers && fits && !switches
 }
 
 // hasStarter reports whether the library holds a prompt from the starter key.
@@ -293,7 +300,7 @@ func cleanImport(in BundlePrompt) (BundlePrompt, []string) {
 	p.Purpose, p.Action = PurposeAgent, ""
 
 	switch p.AppliesTo {
-	case AppliesToPR, AppliesToIssue, AppliesToAny:
+	case AppliesToPR, AppliesToIssue, AppliesToAny, AppliesToRepo:
 	default:
 		p.AppliesTo = AppliesToAny
 
@@ -320,7 +327,8 @@ func cleanImport(in BundlePrompt) (BundlePrompt, []string) {
 // cleanReply returns a reply read from a file or a backup as this build would store it:
 // with no launch settings, for one of the reviews, a comment when the file names none this
 // build knows, and for pull requests unless it is a comment reply that says it is for
-// issues or both.
+// issues or both. A reply is never for repositories: one a file says is applies to pull
+// requests, as one that names nothing this build knows does.
 func cleanReply(p BundlePrompt) (BundlePrompt, []string) {
 	var notes []string
 
@@ -333,9 +341,12 @@ func cleanReply(p BundlePrompt) (BundlePrompt, []string) {
 	}
 
 	// A reply that names nothing this build knows applies to pull requests, as every reply
-	// did before comment replies could be for issues.
+	// did before comment replies could be for issues, and so does one that says it is for
+	// repositories, which no reply is.
 	switch p.AppliesTo {
 	case AppliesToPR, AppliesToIssue, AppliesToAny:
+	case AppliesToRepo:
+		p.AppliesTo = AppliesToPR
 	default:
 		p.AppliesTo = AppliesToPR
 	}

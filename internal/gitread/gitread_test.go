@@ -25,6 +25,19 @@ const repoDir = "/srv/projects/example-repo"
 // originURL is the URL the fake git gives origin, unless a reply says otherwise.
 const originURL = "https://github.com/acme-org/example-repo.git"
 
+// treeListing is a commit's tree as `ls-tree -r -z -l` lists it, sizes padded as git pads
+// them, with a submodule, a link, a path holding a tab, and entries of shapes git never
+// lists.
+const treeListing = "100644 blob " + otherSHA + "     123\tgo.mod\x00" +
+	"160000 commit " + headSHA + "       -\tthird_party/lib\x00" +
+	"120000 blob " + otherSHA + "      10\tweb/my app/package.json\x00" +
+	"100644 blob not-an-id       5\tbad\x00" +
+	"100644 blob " + otherSHA + "      -5\tnegative\x00" +
+	"100644 blob " + otherSHA + "\tno-size\x00" +
+	"100644 blob " + otherSHA + "       1\t\x00" +
+	"no tab here\x00" +
+	"100755 blob " + sha256ID + "       2\ttab\tin/package.json\x00"
+
 var errKilled = errors.New("fake: signal: killed")
 
 // exitError is a fake process exit with a status, which execpath.ExitCode reads.
@@ -378,6 +391,35 @@ func TestRunRefusesCommandsOutsideTheAllowlist(t *testing.T) {
 		{"-c", "core.hooksPath=/srv/hooks", "status", "--porcelain", "-z"},
 		{"--exec-path=/srv/bin", "status", "--porcelain", "-z"},
 		{"--git-dir=/srv/other/.git", "status", "--porcelain", "-z"},
+		{revParse, "--git-path", "FETCH_HEAD/../config"},
+		{revParse, "--is-shallow-repository", "--git-dir"},
+		{revParse, "--verify", "--quiet", "refs/remotes/origin/main^{tree}"},
+		{revParse, "--verify", "refs/remotes/origin/main^{commit}"},
+		{lsTreeCmd, "-r", "-z", "-l", "--full-tree", "HEAD"},
+		{lsTreeCmd, "-r", "-z", "-l", "--full-tree", headSHA, "--", "secret"},
+		{lsTreeCmd, "-r", "-l", "--full-tree", headSHA},
+		{lsTreeCmd, "-r", "-z", "-l", "--full-tree", "--format=%(objectname)", headSHA},
+		append(lastChangeWords(), headSHA, "--", goMod),
+		append(lastChangeWords(), headSHA, "--", ":(glob)**/go.mod"),
+		append(lastChangeWords(), headSHA, "--", ":(literal)go.mod", ":(literal)go.sum"),
+		append(lastChangeWords(), headSHA, "--", ":(literal)go.sum"),
+		append(lastChangeWords(), "HEAD", "--", ":(literal)go.mod"),
+		append(lastChangeWords(), "--output=/srv/out", headSHA, "--", ":(literal)go.mod"),
+		append(lastChangeWords(), headSHA, "--", ":(literal)go.sum", ":(literal)go.mod", ":(literal)package.json"),
+		{logCmd, "-1", "-p", "--format=%ct%x01%s", headSHA, "--", ":(literal)go.mod"},
+		{
+			logCmd, "-1", "--no-merges", "--no-mailmap", "--no-ext-diff", "--no-textconv", "--format=%ct%x01%s", headSHA, "--",
+			":(literal)go.mod",
+		},
+		{
+			logCmd, "-1", "--no-merges", "--show-signature", "--no-mailmap", "--no-ext-diff", "--no-textconv",
+			"--format=%ct%x01%s%G?", headSHA, "--", ":(literal)go.mod",
+		},
+		{catFileCmd, "-p", headSHA},
+		{catFileCmd, "--textconv", headSHA + ":go.mod"},
+		{catFileCmd, "--filters", headSHA + ":go.mod"},
+		{catFileCmd, blobType, "HEAD:go.mod"},
+		{catFileCmd, "--batch"},
 	}
 
 	for _, args := range refused {
@@ -426,6 +468,29 @@ func TestHelpersRefuseBadNamesBeforeRunning(t *testing.T) {
 			return err
 		},
 		"CurrentBranch in a relative folder": func() error { _, err := g.CurrentBranch(ctx, "clone"); return err },
+		"TrackingCommit":                     func() error { _, err := g.TrackingCommit(ctx, repoDir, "a..b"); return err },
+		"Tree":                               func() error { _, err := g.Tree(ctx, repoDir, "HEAD", nil); return err },
+		"Blob":                               func() error { _, err := g.Blob(ctx, repoDir, "HEAD:go.mod"); return err },
+		"LastChange outside the tree": func() error {
+			_, err := g.LastChange(ctx, repoDir, headSHA, "../go.mod", "")
+
+			return err
+		},
+		"LastChange of no manifest": func() error {
+			_, err := g.LastChange(ctx, repoDir, headSHA, goSum, "")
+
+			return err
+		},
+		"LastChange of a manifest as the lockfile": func() error {
+			_, err := g.LastChange(ctx, repoDir, headSHA, goMod, "package.json")
+
+			return err
+		},
+		"LastChange from a name": func() error {
+			_, err := g.LastChange(ctx, repoDir, mainBranch, goMod, goSum)
+
+			return err
+		},
 	} {
 		require.ErrorIs(t, run(), ErrGitCommandNotAllowed, name)
 	}
@@ -698,6 +763,91 @@ func TestHelpersReadGitsAnswers(t *testing.T) {
 			run:  func(g *Git) (any, error) { return g.HookPaths(ctx, repoDir) },
 			want: HookPaths{Toplevel: repoDir, Hooks: "/srv/shared hooks", CommonDir: filepath.Join(repoDir, ".git")},
 		},
+		{
+			name:    "the commit a branch on origin names",
+			replies: map[string]reply{words(verifyArgs("refs/remotes/origin/main^{commit}")): {out: otherSHA + "\n"}},
+			run:     func(g *Git) (any, error) { return g.TrackingCommit(ctx, repoDir, mainBranch) },
+			want:    otherSHA,
+		},
+		{
+			name:    "no such branch on origin, or no commit",
+			replies: map[string]reply{words(verifyArgs("refs/remotes/origin/main^{commit}")): {code: 1}},
+			run:     func(g *Git) (any, error) { return g.TrackingCommit(ctx, repoDir, mainBranch) },
+			want:    "",
+		},
+		{
+			name:    "a shallow clone",
+			replies: map[string]reply{words(shallowArgs()): {out: "true\n"}},
+			run:     func(g *Git) (any, error) { return g.Shallow(ctx, repoDir) },
+			want:    true,
+		},
+		{
+			name:    "a whole clone",
+			replies: map[string]reply{words(shallowArgs()): {out: "false\n"}},
+			run:     func(g *Git) (any, error) { return g.Shallow(ctx, repoDir) },
+			want:    false,
+		},
+		{
+			name:    "a commit's tree, odd entries skipped",
+			replies: map[string]reply{words(treeArgs(headSHA)): {out: treeListing}},
+			run:     func(g *Git) (any, error) { return g.Tree(ctx, repoDir, headSHA, nil) },
+			want: []TreeEntry{
+				{Path: goMod, Mode: "100644", Type: blobType, Object: otherSHA, Size: 123},
+				{Path: "third_party/lib", Mode: "160000", Type: "commit", Object: headSHA, Size: -1},
+				{Path: "web/my app/package.json", Mode: "120000", Type: blobType, Object: otherSHA, Size: 10},
+				{Path: "tab\tin/package.json", Mode: "100755", Type: blobType, Object: sha256ID, Size: 2},
+			},
+		},
+		{
+			name:    "the files of a commit's tree that keep takes",
+			replies: map[string]reply{words(treeArgs(headSHA)): {out: treeListing}},
+			run: func(g *Git) (any, error) {
+				return g.Tree(ctx, repoDir, headSHA, func(path string) bool { return path == goMod })
+			},
+			want: []TreeEntry{{Path: goMod, Mode: "100644", Type: blobType, Object: otherSHA, Size: 123}},
+		},
+		{
+			name:    "an empty tree",
+			replies: map[string]reply{words(treeArgs(headSHA)): {}},
+			run:     func(g *Git) (any, error) { return g.Tree(ctx, repoDir, headSHA, nil) },
+			want:    []TreeEntry{},
+		},
+		{
+			name: "the newest commit to change a manifest",
+			replies: map[string]reply{
+				words(lastChangeArgs(headSHA, goMod, "")): {out: "1767323045\x01bump the go module\n"},
+			},
+			run:  func(g *Git) (any, error) { return g.LastChange(ctx, repoDir, headSHA, goMod, "") },
+			want: Commit{At: time.Unix(1767323045, 0).UTC(), Subject: "bump the go module"},
+		},
+		{
+			name: "the newest commit to change a manifest or its lockfile",
+			replies: map[string]reply{
+				words(lastChangeArgs(headSHA, "web/package.json", "web/pnpm-lock.yaml")): {out: "1767323000\x01a\x01b\n"},
+			},
+			run: func(g *Git) (any, error) {
+				return g.LastChange(ctx, repoDir, headSHA, "web/package.json", "web/pnpm-lock.yaml")
+			},
+			want: Commit{At: time.Unix(1767323000, 0).UTC(), Subject: "a\x01b"},
+		},
+		{
+			name:    "no commit changed a manifest",
+			replies: map[string]reply{words(lastChangeArgs(headSHA, goMod, goSum)): {}},
+			run:     func(g *Git) (any, error) { return g.LastChange(ctx, repoDir, headSHA, goMod, goSum) },
+			want:    Commit{},
+		},
+		{
+			name:    "a blob's contents",
+			replies: map[string]reply{words(blobArgs(otherSHA)): {out: "module example.com/m\n"}},
+			run:     func(g *Git) (any, error) { return g.Blob(ctx, repoDir, otherSHA) },
+			want:    []byte("module example.com/m\n"),
+		},
+		{
+			name:    "where FETCH_HEAD is",
+			replies: map[string]reply{words(gitPathArgs(fetchHeadName)): {out: ".git/FETCH_HEAD\n"}},
+			run:     func(g *Git) (any, error) { return g.FetchHead(ctx, repoDir) },
+			want:    filepath.Join(repoDir, ".git", "FETCH_HEAD"),
+		},
 	}
 
 	for _, tt := range tests {
@@ -814,6 +964,91 @@ func TestHelpersReportGitsFailures(t *testing.T) {
 
 	_, err = g.Changes(ctx, repoDir)
 	require.ErrorContains(t, err, "git status: fake git knows no such command")
+}
+
+func TestNewReadsReportGitsFailures(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	g := fakeGit(plainEnv(), &recorder{replies: map[string]reply{
+		words(shallowArgs()):                                   {out: "maybe\n"},
+		words(lastChangeArgs(headSHA, goMod, "")):              {out: "yesterday\x01bump\n"},
+		words(lastChangeArgs(headSHA, goMod, goSum)):           {out: "1767323045 bump\n"},
+		words(verifyArgs("refs/remotes/origin/main^{commit}")): {out: "not-an-oid\n"},
+		words(treeArgs(headSHA)):                               {code: 128},
+		words(blobArgs(otherSHA)):                              {code: 128},
+	}})
+
+	_, err := g.Shallow(ctx, repoDir)
+	require.ErrorIs(t, err, errOutput)
+
+	_, err = g.LastChange(ctx, repoDir, headSHA, goMod, "")
+	require.ErrorIs(t, err, errOutput, "a time git never prints")
+
+	_, err = g.LastChange(ctx, repoDir, headSHA, goMod, goSum)
+	require.ErrorIs(t, err, errOutput, "a line without the split")
+
+	_, err = g.TrackingCommit(ctx, repoDir, mainBranch)
+	require.ErrorIs(t, err, errOutput)
+
+	_, err = g.Tree(ctx, repoDir, headSHA, nil)
+	require.ErrorContains(t, err, "git ls-tree: fake refusal")
+
+	_, err = g.Blob(ctx, repoDir, otherSHA)
+	require.ErrorContains(t, err, "git cat-file: fake refusal")
+
+	_, err = g.FetchHead(ctx, repoDir)
+	require.Error(t, err, "git can't say where the file would be")
+}
+
+func TestReadsPastTheirCapFail(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	rec := &recorder{replies: map[string]reply{
+		words(blobArgs(otherSHA)):                 {out: strings.Repeat("a", maxBlob+1)},
+		words(blobArgs(headSHA)):                  {out: strings.Repeat("a", maxBlob)},
+		words(lastChangeArgs(headSHA, goMod, "")): {out: "1\x01" + strings.Repeat("s", maxLastChange)},
+	}}
+	g := fakeGit(plainEnv(), rec)
+
+	got, err := g.Blob(ctx, repoDir, otherSHA)
+	require.ErrorIs(t, err, execpath.ErrOutputLimit, "a runner that can't stop git is held to the cap once it returns")
+	assert.Nil(t, got, "none of it is returned")
+	assert.Equal(t, "git printed more than can be read here", Message(err))
+
+	got, err = g.Blob(ctx, repoDir, headSHA)
+	require.NoError(t, err)
+	assert.Len(t, got, maxBlob, "up to the cap is read")
+
+	_, err = g.LastChange(ctx, repoDir, headSHA, goMod, "")
+	require.ErrorIs(t, err, execpath.ErrOutputLimit)
+}
+
+func TestOnlyTheReadsARepositorySizesAreCapped(t *testing.T) {
+	t.Parallel()
+
+	caps := map[string]int{lsTreeCmd: maxTreeListing, logCmd: maxLastChange, catFileCmd: maxBlob}
+
+	for _, c := range allowlist() {
+		args := fill(t, c, -1, "")
+		assert.Equal(t, caps[args[0]], outputLimit(args), "%s", c.name)
+	}
+
+	assert.Zero(t, outputLimit(nil))
+	assert.Greater(t, maxBlob, 1<<20, "a manifest of a mebibyte is read whole")
+}
+
+func TestCappedHoldsTheRunnerToTheLimit(t *testing.T) {
+	t.Parallel()
+
+	own, ok := capped(execpath.Exec{Env: []string{"LANG=C"}}, 7).(execpath.Exec)
+	require.True(t, ok, "gitread's own runner stops git itself")
+	assert.Equal(t, execpath.Exec{Env: []string{"LANG=C"}, Limit: 7}, own)
+
+	rec := &recorder{}
+	assert.Equal(t, rec.runner(nil), capped(rec.runner(nil), 0), "no limit leaves a runner as it is")
+	assert.Equal(t, limitedRunner{runner: rec.runner(nil), limit: 7}, capped(rec.runner(nil), 7))
 }
 
 func TestInProgress(t *testing.T) {
@@ -964,6 +1199,13 @@ func TestEveryAllowlistEntryIsUsed(t *testing.T) {
 	_, _ = g.Signing(ctx, repoDir)
 	_, _ = g.HooksDir(ctx, repoDir)
 	_, _ = g.HookPaths(ctx, repoDir)
+	_, _ = g.TrackingCommit(ctx, repoDir, mainBranch)
+	_, _ = g.Shallow(ctx, repoDir)
+	_, _ = g.FetchHead(ctx, repoDir)
+	_, _ = g.Tree(ctx, repoDir, headSHA, nil)
+	_, _ = g.LastChange(ctx, repoDir, headSHA, goMod, "")
+	_, _ = g.LastChange(ctx, repoDir, headSHA, "web/package.json", "pnpm-lock.yaml")
+	_, _ = g.Blob(ctx, repoDir, otherSHA)
 	listed, stderr, err := g.listConfig(ctx, repoDir, plainEnv())
 	require.NoError(t, err)
 	assert.Empty(t, listed)

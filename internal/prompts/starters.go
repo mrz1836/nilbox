@@ -282,9 +282,10 @@ type Starter struct {
 	ExtraArgs map[agent.ID][]string
 }
 
-// Starters returns every starter prompt, in the order they are added.
+// Starters returns every starter prompt, in the order they are added: the launcher's and
+// the sheets', Autopilot's, then the ones for repositories.
 func Starters() []Starter {
-	return append(builtStarters(), routineStarters()...)
+	return slices.Concat(builtStarters(), routineStarters(), repoStarters())
 }
 
 // builtStarters returns the starters the launcher and the sheets ship, before

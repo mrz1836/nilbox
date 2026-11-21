@@ -8,12 +8,14 @@ import {
   hasChoices,
   launchRequest,
   noChoices,
+  repoLaunchRequest,
   withAgent,
   savableChoices,
   saveStatus,
   shadowedChoices,
   targetHint,
   withChoices,
+  type Choices,
 } from './launchChoices'
 
 describe('choices', () => {
@@ -45,6 +47,34 @@ describe('choices', () => {
       alongside: '',
     })
     expect(launchRequest(7, c, false).fullAccessOverride).toBe(false)
+  })
+
+  it('turns the choices into a launch request for a repository, which always names its prompt', () => {
+    const c: Choices = {
+      agent: 'codex',
+      promptId: 22,
+      profile: 'work',
+      model: 'gpt-6-luna',
+      effort: 'high',
+      planMode: true,
+      worktree: false,
+      fast: true,
+      override: true,
+    }
+
+    // A repository's launch always makes a worktree and is trusted, so neither choice goes in.
+    expect(repoLaunchRequest('acme-org/api-server', '~/projects/api-server', 21, c)).toEqual({
+      repo: 'acme-org/api-server',
+      dir: '~/projects/api-server',
+      promptId: 21,
+      agent: 'codex',
+      profile: 'work',
+      model: 'gpt-6-luna',
+      effort: 'high',
+      planMode: true,
+      fast: true,
+      alongside: '',
+    })
   })
 
   it('names the pull request’s situation the launch is for', () => {

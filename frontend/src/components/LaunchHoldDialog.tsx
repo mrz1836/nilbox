@@ -15,7 +15,8 @@ export interface LaunchHoldDialogProps {
   // them.
   agents?: readonly AgentInfo[]
   // item is the item the launch is for, so a running session started on another item,
-  // as two can share a clone, is named.
+  // as two can share a clone, is named; number 0 for a repository's launch, which has no
+  // item.
   item?: { repo: string; number: number } | undefined
   onConfirm: () => void
   onCancel: () => void
@@ -83,7 +84,9 @@ function BackgroundBody({
 }
 
 // RunningBody lists the sessions already running where the launch would start, with a
-// button to go to the first one's terminal instead.
+// button to go to the first one's terminal instead. A session started on another item is
+// named by it, or by its repository alone when a repository's launch started it, with no
+// item to number.
 function RunningBody({
   hold,
   agents,
@@ -107,7 +110,7 @@ function RunningBody({
             {item !== undefined && (r.repo !== item.repo || r.number !== item.number) && (
               <span className="text-muted">
                 {' on '}
-                {r.repo}#{r.number}
+                {r.number === 0 ? r.repo : `${r.repo}#${String(r.number)}`}
               </span>
             )}
             {r.since !== '' && (

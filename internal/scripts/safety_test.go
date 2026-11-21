@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
+	"github.com/mrz1836/nilbox/internal/scriptrun"
 	"github.com/mrz1836/nilbox/internal/testutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
@@ -151,6 +152,62 @@ func TestAMagexAliasThatBumpsIsCaughtAsItRuns(t *testing.T) {
 
 	_, err := r.svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: e.Ref, Confirmed: e.SHA256})
 	require.ErrorIs(t, err, ErrRelease, "bump is version:bump to magex")
+}
+
+func TestAnUpgradeIsCaughtAsItRuns(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	pnpm := r.fake("pnpm", testutil.FakeRun{Stdout: "pnpm ran\n"})
+	dir := r.clone("sdk", "acme-org/sdk", map[string]string{tasksFile: `{
+		"inputs": [
+			{"id": "target", "type": "pickString", "options": ["test", "deps:update"], "default": "test"},
+			{"id": "verb", "type": "pickString", "options": ["install", "up"], "default": "install"}],
+		"tasks": [
+			{"label": "magex", "type": "shell", "command": "magex ${input:target}"},
+			{"label": "pnpm", "type": "process", "command": "` + pnpm + `", "args": ["${input:verb}"]}]}`})
+
+	for _, tt := range []struct{ label, input, value string }{
+		{label: "magex", input: "target", value: "deps:update"},
+		{label: "pnpm", input: "verb", value: "up"},
+	} {
+		e := r.entry(dir, "tasks:"+tt.label)
+		require.False(t, e.Deps, "the page can't tell")
+
+		req := RunRequest{
+			Dir: r.shown(dir), Ref: e.Ref, Confirmed: e.SHA256, Remember: true,
+			Inputs: map[string]string{tt.input: tt.value},
+		}
+
+		_, err := r.svc.Run(t.Context(), req)
+		require.ErrorIs(t, err, ErrDeps, "%s: the input made it one, the program's arguments read as one line", tt.label)
+		assert.Equal(t, TrustAsk, r.entry(dir, e.Ref).Trust, "refused before it was trusted")
+
+		req.Anyway = true
+		id, err := r.svc.Run(t.Context(), req)
+		require.NoError(t, err)
+		assert.Equal(t, scriptrun.StatusSucceeded, r.ended(id).Status)
+
+		req.Anyway, req.Inputs = false, nil
+		id, err = r.svc.Run(t.Context(), req)
+		require.NoError(t, err, "%s: its default upgrades nothing", tt.label)
+		r.ended(id)
+	}
+}
+
+func TestAMagexAliasThatUpgradesIsCaughtAsItRuns(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.help.answer(`{"commands": [{"name": "test"}, {"name": "deps:update", "aliases": ["du"]}]}`, nil)
+	dir := r.clone("sdk", "acme-org/sdk", map[string]string{t3File: t3With("magex du")})
+
+	e := r.entry(dir, "t3:Test")
+	require.False(t, e.Deps)
+
+	_, err := r.svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: e.Ref, Confirmed: e.SHA256})
+	require.ErrorIs(t, err, ErrDeps, "du is deps:update to magex")
+	assert.Zero(t, r.recorded())
 }
 
 func TestTheQuestionShowsWhatWillRun(t *testing.T) {

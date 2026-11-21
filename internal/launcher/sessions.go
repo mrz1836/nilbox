@@ -82,7 +82,8 @@ type StartedSession struct {
 	Terminal string
 
 	// ItemID is the item's local ID; Owner, Name, Kind, Number, Title, and URL are the
-	// item.
+	// item. A repository's launch's session has no item: ItemID 0, Kind "", and Number 0,
+	// its Title the prompt's name and its URL the repository's page.
 	ItemID int64
 	Owner  string
 	Name   string
@@ -92,7 +93,8 @@ type StartedSession struct {
 	URL    string
 
 	// Dir is the directory the session runs in: the item's worktree, named Worktree, in
-	// the clone at ClonePath, or the clone itself, when Worktree is "".
+	// the clone at ClonePath, or the clone itself, when Worktree is "". A repository's
+	// launch's is always the worktree it made, as deps-20261121.
 	Dir       string
 	ClonePath string
 	Worktree  string
@@ -119,8 +121,11 @@ type ResumableSession struct {
 	Agent   agent.ID
 	Profile string
 
-	// ItemID is the item the session was started on.
+	// ItemID is the item the session was started on, or 0 for a repository's launch's, and
+	// Repo reports a session a repository's launch started, by its record's kind and
+	// number, which has no item to plan its resumption on.
 	ItemID int64
+	Repo   bool
 
 	// Dir is the directory it ran in, and Worktree the item's worktree there, or "" when
 	// it ran in the clone.
@@ -267,7 +272,8 @@ type sessionRef struct {
 // still be there. It is held back as a launch is, for a session running in the folder and
 // for the pull request's files as last checked, until req confirms each. It returns
 // ErrSessionRunning for a session whose conversation still runs, ErrNotLinked for one the
-// agent never named, and ErrNoFence for a run's whose fence is no longer kept.
+// agent never named, ErrNoItem for one a repository's launch started, and ErrNoFence for a
+// run's whose fence is no longer kept.
 func (s *Service) Resume(ctx context.Context, req ResumeRequest) (LaunchResult, error) {
 	prev, fenced, err := s.resumeOf(ctx, req)
 	if err != nil {
@@ -316,6 +322,12 @@ func (s *Service) resumeOf(ctx context.Context, req ResumeRequest) (ResumableSes
 
 	if err = resumable(prev); err != nil {
 		return ResumableSession{}, nil, err
+	}
+
+	// A repository's launch's session has no item to plan its resumption on.
+	if prev.Repo {
+		return ResumableSession{}, nil, uierr.New("This session was started for a repository rather than for a pull "+
+			"request or an issue, so it can't be resumed from here. Copy the session's ID to resume it yourself.", ErrNoItem)
 	}
 
 	fenced, err := resumeFence(prev, req.Access)

@@ -1,7 +1,6 @@
 import { useId } from 'react'
 
 import { actionLabels } from '../../../lib/autopilot'
-import { promptApplies } from '../../../lib/launch'
 import { moved, problemsAt, problemsExactly } from '../../../lib/routineBuilder'
 import type {
   AutopilotGitHubAction,
@@ -14,7 +13,7 @@ import type {
 import { dangerIconButtonClass, fieldClass, quietButtonClass } from '../../controls'
 import { PlusIcon, TrashIcon } from '../../icons'
 import { MenuButton, type MenuItem } from '../../Menu'
-import { Notes, type BuilderKit } from './parts'
+import { fitsKinds, Notes, type BuilderKit } from './parts'
 import { TokenField } from './TokenField'
 
 export interface GitHubStepBlockProps {
@@ -82,7 +81,7 @@ function newAction(kind: AutopilotGitHubActionKind, replies: readonly Prompt[]):
 export function GitHubStepBlock({ kit, prompts, path, kinds, actions, onChange }: GitHubStepBlockProps) {
   const id = useId()
   const field = `${path}.github`
-  const replies = prompts.filter((p) => isCommentReply(p) && kinds.every((k) => promptApplies(p, k)))
+  const replies = prompts.filter((p) => isCommentReply(p) && fitsKinds(p, kinds))
   const have = actions.map(actionKindOf)
   const items: MenuItem[] = kit.catalog.githubActions
     .filter((a) => a.offered && !have.includes(a.kind) && kinds.every((k) => a.kinds.includes(k)))

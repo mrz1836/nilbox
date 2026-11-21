@@ -62,3 +62,11 @@ ORDER BY r.owner COLLATE NOCASE, r.name COLLATE NOCASE;
 -- GetRepoDefaultBranch returns the default branch a refresh last stored for the repository
 -- named owner and name, which match ignoring case.
 SELECT default_branch FROM repos WHERE owner = ? AND name = ?;
+
+-- name: GetRepoFacts :one
+-- GetRepoFacts returns what a refresh last stored about the repository named owner and
+-- name, which match ignoring case, that says whether a branch can be pushed to it and a
+-- pull request opened there: its default branch, the viewer's permission, whether GitHub
+-- has it archived, disabled, or locked, and why, and whether it is a fork, and of what.
+SELECT default_branch, viewer_permission, is_archived, is_disabled, is_locked, lock_reason, is_fork, parent
+FROM repos WHERE owner = ? AND name = ?;

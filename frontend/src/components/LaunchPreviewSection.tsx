@@ -1,27 +1,39 @@
 import { useId, useState } from 'react'
 
-import { launchRequest, type Choices } from '../lib/launchChoices'
+import type { Choices } from '../lib/launchChoices'
 import { terminalLabel } from '../lib/terminals'
 import { useDebouncedQuery } from '../lib/useQuery'
 import { counted } from '../lib/format'
-import { previewLaunch, type InboxItem, type LaunchPreview, type Situation, type WorktreePlan } from '../platform'
+import type { ItemKind, WorktreePlan } from '../platform'
 import { ErrorText } from './controls'
 import { ChevronRightIcon } from './icons'
 
+// LaunchSubject is what a launch is for, as the launch options and their preview need it:
+// an inbox item, by its kind, or a repository, whose launch has no item, as the Deps page's
+// Upgrade starts one, by kind ''; whether its author is trusted, as a repository always is,
+// since an outside contributor's item starts in plan mode until the override lifts it; and
+// how its launch is planned without starting it. preview plans the launch the choices make,
+// and key names everything else that plan is made with, such as the item and its situation,
+// or the repository and its clone, so the preview plans again when any of it changes.
+export interface LaunchSubject {
+  kind: ItemKind | ''
+  trusted: boolean
+  key: string
+  preview: (choices: Choices) => PromiseLike<Plan>
+}
+
 export interface LaunchPreviewSectionProps {
-  item: InboxItem
-  // choices are the launch menu's choices, which the preview plans with.
+  // subject is what the launch is for, which plans it.
+  subject: Pick<LaunchSubject, 'key' | 'preview'>
+  // choices are the launch options' choices, which the preview plans with.
   choices: Choices
-  // untrusted marks an outside contributor's item, whose override the choices may set.
-  untrusted: boolean
-  // situation is the pull request's situation the launch is for; '' (the default) for none.
-  situation?: Situation
+  // label is the button's words: Preview, unless the launch names it otherwise.
+  label?: string
 }
 
 // PreviewState is what the preview shows: the plan still on its way, the plan, or why
 // there is none.
-type PreviewState =
-  { kind: 'loading' } | { kind: 'ready'; preview: LaunchPreview } | { kind: 'failed'; message: string }
+type PreviewState = { kind: 'loading' } | { kind: 'ready'; preview: Plan } | { kind: 'failed'; message: string }
 
 // PlannedWorktree is what a plan does to the item's worktree, as the launch menu's Preview
 // and a routine's both have it.
@@ -83,18 +95,16 @@ export function PlannedLaunch({ plan }: { plan: Plan }) {
 
 // LaunchPreviewSection is the launch menu's Preview: on request, it shows exactly what the
 // launch would run, which is the filled-in prompt, the worktree it makes or resumes, where
-// it starts, and the command. It reloads as the choices change.
-export function LaunchPreviewSection({ item, choices, untrusted, situation = '' }: LaunchPreviewSectionProps) {
+// it starts, and the command. It reloads as the choices, or the subject, change.
+export function LaunchPreviewSection({ subject, choices, label = 'Preview' }: LaunchPreviewSectionProps) {
   const id = useId()
   const [open, setOpen] = useState(false)
   // The plan is asked for again, once the choices rest, while the preview is open. While
   // they rest, the preview shows how the last ask went; once asked, it says it is planning.
-  const planned = useDebouncedQuery(
-    () => previewLaunch(launchRequest(item.id, choices, untrusted, situation)),
-    [item.id, choices, untrusted, situation],
-    120,
-    { enabled: open },
-  )
+  // The choices count by what they hold, so choices made again alike ask nothing.
+  const planned = useDebouncedQuery(() => subject.preview(choices), [subject.key, JSON.stringify(choices)], 120, {
+    enabled: open,
+  })
   const state: PreviewState =
     planned.pending && !planned.waiting
       ? { kind: 'loading' }
@@ -116,7 +126,7 @@ export function LaunchPreviewSection({ item, choices, untrusted, situation = '' 
         className="flex w-full items-center gap-1.5 px-3.5 py-2 text-left text-body text-muted transition-colors hover:text-text"
       >
         <ChevronRightIcon className={`size-3.5 transition-transform ${open ? 'rotate-90' : ''}`} />
-        Preview
+        {label}
       </button>
       {open && (
         <div id={`${id}-preview`} className="flex flex-col gap-2 px-3.5 pb-3">

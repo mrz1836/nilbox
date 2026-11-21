@@ -441,16 +441,23 @@ func FuzzParse(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, body string) {
-		tmpl, diags := Parse(body, AppliesToAny)
+		// A prompt for items, filled in for a pull request, and one for repositories, filled
+		// in for a repository.
+		for _, c := range []struct {
+			appliesTo AppliesTo
+			data      Data
+		}{{AppliesToAny, Sample(item.KindPR)}, {AppliesToRepo, SampleRepo()}} {
+			tmpl, diags := Parse(body, c.appliesTo)
 
-		for _, d := range diags {
-			assert.NotEmpty(t, d.Message)
-			assert.GreaterOrEqual(t, d.Line, 0)
-			assert.GreaterOrEqual(t, d.Length, 0)
-		}
+			for _, d := range diags {
+				assert.NotEmpty(t, d.Message)
+				assert.GreaterOrEqual(t, d.Line, 0)
+				assert.GreaterOrEqual(t, d.Length, 0)
+			}
 
-		if tmpl != nil {
-			_, _ = tmpl.Render(Sample(item.KindPR))
+			if tmpl != nil {
+				_, _ = tmpl.Render(c.data)
+			}
 		}
 	})
 }

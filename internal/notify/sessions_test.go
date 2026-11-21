@@ -39,6 +39,20 @@ func TestSessionBanner(t *testing.T) {
 	assert.Equal(t, "Fix the widget", got.Body, "the item's title when the agent said nothing")
 }
 
+func TestARepositorysSessionBanner(t *testing.T) {
+	t.Parallel()
+
+	s := sessions.Session{
+		ID: "r1", Agent: agent.Claude, Repo: "acme-org/example-repo", Title: "Upgrade dependencies",
+		URL: "https://github.com/acme-org/example-repo", State: sessions.StateIdle,
+	}
+
+	assert.Equal(t, Banner{
+		ID: brand.Slug + "-session-r1", Title: "Claude finished its turn", Subtitle: "example-repo · Upgrade dependencies",
+		Body: "Upgrade dependencies", Thread: string(KindSessionFinished), URL: "https://github.com/acme-org/example-repo",
+	}, SessionBanner(KindSessionFinished, s), "no item, so a click opens the repository's page")
+}
+
 func TestSessionBannersStartOff(t *testing.T) {
 	t.Parallel()
 

@@ -27,6 +27,8 @@ func FuzzDecodeBundle(f *testing.F) {
 		header + `3, "defaults": {"pr": "Review", "replies": {}}, "prompts": [null, {"planMode": true, "worktree": null}]}`,
 		header + `3, "prompts": [{"extraArgs": "not arguments"}]}`,
 		header + `3, "app": "v0.4.0", "exportedAt": "2026-11-08T17:00:00Z", "unknown": [1, 2], "FORMAT": "x"}`,
+		header + `4, "prompts": [{"appliesTo": "repo", "worktree": true}, {"appliesTo": "repo", "purpose": "reply"}]}`,
+		header + `5, "prompts": []}`,
 	} {
 		f.Add([]byte(seed))
 	}

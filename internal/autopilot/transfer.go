@@ -593,12 +593,14 @@ func (c *refCollector) has(ref spec.PromptRef) bool {
 }
 
 // promptChoices are the library's prompts a missing prompt may map to: its replies for a
-// reply, its agent prompts otherwise, by nickname.
+// reply, its agent prompts otherwise, by nickname; never one written for no kind of item,
+// as a prompt for repositories is, since a routine runs its prompts on pull requests and
+// issues alone, and the draft's check refuses it (kindsProblem).
 func (c *refCollector) promptChoices(reply bool) []string {
 	var out []string
 
 	for _, p := range c.library {
-		if p.Reply == reply {
+		if p.Reply == reply && len(p.Kinds) > 0 {
 			out = append(out, p.Nickname)
 		}
 	}

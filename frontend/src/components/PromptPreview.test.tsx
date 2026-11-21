@@ -17,7 +17,7 @@ function props(overrides: Partial<PromptPreviewProps> = {}): PromptPreviewProps 
     onInWorktreeChange: vi.fn(),
     atPrHead: false,
     onAtPrHeadChange: vi.fn(),
-    forPRs: true,
+    kind: 'pr',
     result: checkResult(),
     hasErrors: false,
     ...overrides,
@@ -55,9 +55,22 @@ describe('PromptPreview', () => {
 
     expect(screen.getByRole('checkbox', { name: "At the PR's head" })).toBeDisabled()
 
-    rerender(<PromptPreview {...props({ forPRs: false })} />)
+    rerender(<PromptPreview {...props({ kind: 'issue' })} />)
     expect(screen.queryByRole('checkbox', { name: "At the PR's head" })).not.toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'A sample issue' })).toBeInTheDocument()
+  })
+
+  it('fills a prompt for repositories in for the sample repository, in a worktree or not', async () => {
+    const onInWorktreeChange = vi.fn()
+    render(<PromptPreview {...props({ items: [], itemId: 0, kind: 'repo', onInWorktreeChange })} />)
+
+    const preview = screen.getByRole('combobox', { name: 'Preview with' })
+    expect(preview).toHaveValue('0')
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['A sample repository'])
+    expect(screen.queryByRole('checkbox', { name: "At the PR's head" })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'In a worktree' }))
+    expect(onInWorktreeChange).toHaveBeenCalledWith(false)
   })
 
   it('shows the outside contributor notice and a sample note', () => {

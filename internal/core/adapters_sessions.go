@@ -77,8 +77,9 @@ func (l sessionLedger) Resumable(ctx context.Context, id string) (launcher.Resum
 	}
 
 	return launcher.ResumableSession{
-		ID: r.ID, AgentSessionID: r.AgentSessionID, Agent: r.Agent, Profile: r.Profile, ItemID: r.ItemID, Dir: r.Dir,
-		Worktree: r.Worktree, Live: r.State.Live(), Carried: carried, RunID: r.RunID, Fence: l.runs.fenceOf(ctx, r.RunID),
+		ID: r.ID, AgentSessionID: r.AgentSessionID, Agent: r.Agent, Profile: r.Profile, ItemID: r.ItemID,
+		Repo: r.IsRepo(), Dir: r.Dir, Worktree: r.Worktree, Live: r.State.Live(), Carried: carried, RunID: r.RunID,
+		Fence: l.runs.fenceOf(ctx, r.RunID),
 	}, nil
 }
 

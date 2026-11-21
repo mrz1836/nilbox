@@ -2,18 +2,23 @@ import { useRef, useState, type ReactNode } from 'react'
 
 import { counted, formatCount } from '../../lib/format'
 import { attentionCount } from '../../lib/hooks'
+import { staleCount } from '../../lib/manifests'
 import { unreleasedCount, type ReleaseRequest } from '../../lib/release'
 import { isLive, type RunRequest } from '../../lib/scriptRuns'
 import { scriptsOn, toolOf, usable } from '../../lib/scriptsTab'
 import type { SettingsSection } from '../../lib/settingsIndex'
 import { useHooks } from '../../lib/useHooks'
 import type { IntegrationsState } from '../../lib/useIntegrations'
+import { useManifests } from '../../lib/useManifests'
+import { useNowAs } from '../../lib/useNow'
 import { useReleaseCandidates } from '../../lib/useReleaseCandidates'
 import type { ScriptRunsState } from '../../lib/useScriptRuns'
 import type { OnSection, StoredSections } from '../../lib/useSections'
 import type {
+  DepsSort,
   IntegrationSwitch,
   IntegrationTool,
+  ManifestsClone,
   ReleaseSort,
   RepoRules,
   RunsIn,
@@ -24,6 +29,7 @@ import type {
 import {
   AlertIcon,
   AnchorIcon,
+  BoxIcon,
   CheckIcon,
   ChevronRightIcon,
   ClockIcon,
@@ -34,6 +40,8 @@ import {
   XIcon,
 } from '../icons'
 import { captionClass, ErrorText } from '../controls'
+import { DepsPage } from './DepsPage'
+import { DepsUpgradeSheet } from './DepsUpgradeSheet'
 import { HooksPage } from './HooksPage'
 import { ReleasePage } from './ReleasePage'
 import { ReleaseSheet, type ReleaseTarget } from './ReleaseSheet'
@@ -103,6 +111,13 @@ interface OpenSheet {
   key: number
 }
 
+// OpenUpgrade is the upgrade sheet open over the tab: the clone it upgrades, as Deps
+// listed it, and the click that opened it, so each opens it afresh.
+interface OpenUpgrade {
+  clone: ManifestsClone
+  key: number
+}
+
 export interface ScriptsViewProps {
   // terminal is the terminal chosen for launches, which a run in the terminal runs in, or
   // null until the settings have loaded; runsIn is where runs go, as set.
@@ -147,16 +162,23 @@ export interface ScriptsViewProps {
   // remember it, and onReleaseSort stores another.
   releaseSort?: ReleaseSort
   onReleaseSort?: (sort: ReleaseSort) => void
+  // depsSort is the order Deps' groups list their clones in, as the settings remember it,
+  // and onDepsSort stores another.
+  depsSort?: DepsSort
+  onDepsSort?: (sort: DepsSort) => void
+  // onOpenPrompts opens the Prompts tab, from the upgrade sheet, where the upgrade's
+  // prompts are edited.
+  onOpenPrompts?: () => void
 }
 
 // ScriptsView is the Scripts tab: a rail of its pages, each with what it counts, and at
 // its foot the status of each tool and a way to manage them in Settings; beside it, the
 // page chosen. Release shows while mage-x is on, Hooks while go-pre-commit is, and Repo
-// scripts while Scripts is, beside Runs. The tab opens on the page used last, and Repo
-// scripts on the clone chosen last, kept across starts in the settings (a page that's off
-// now opens the first page that's on). A run Release or Hooks starts opens in Runs; one
-// Repo scripts starts shows beside its scripts, which stay as they were. It is a default
-// export, for the window to load it lazily.
+// scripts and Deps while Scripts is, beside Runs. The tab opens on the page used last, and
+// Repo scripts on the clone chosen last, kept across starts in the settings (a page that's
+// off now opens the first page that's on). A run Release or Hooks starts opens in Runs;
+// one Repo scripts starts shows beside its scripts, which stay as they were. Deps' Upgrade
+// opens its sheet over the tab. It is a default export, for the window to load it lazily.
 export default function ScriptsView({
   terminal,
   runsIn,
@@ -179,6 +201,9 @@ export default function ScriptsView({
   onSettingsSaved,
   releaseSort = 'newest',
   onReleaseSort = () => undefined,
+  depsSort = 'oldest',
+  onDepsSort = () => undefined,
+  onOpenPrompts = () => undefined,
 }: ScriptsViewProps) {
   const { tools, error } = integrations
   const mageX = toolOf(tools, 'mage-x')
@@ -186,6 +211,8 @@ export default function ScriptsView({
   const releaseOn = mageX?.on === true
   const hooksOn = goPreCommit?.on === true
   const repoScriptsOn = scriptsOn(tools, scriptsSwitch)
+  // Deps reads the clones' own git, and no tool, so it shows whenever Repo scripts does.
+  const depsOn = repoScriptsOn
   // page is the page picked while the window is open, or null before one is, when the one
   // remembered from a past start opens; the settings may load after the tab does.
   const [page, setPage] = useState<ScriptsPage | null>(null)
@@ -195,7 +222,8 @@ export default function ScriptsView({
     wanted === null ||
     (wanted === 'release' && !releaseOn) ||
     (wanted === 'hooks' && !hooksOn) ||
-    (wanted === 'scripts' && !repoScriptsOn)
+    (wanted === 'scripts' && !repoScriptsOn) ||
+    (wanted === 'deps' && !depsOn)
       ? first
       : wanted
   // pick shows a page the user chose and remembers it for the next start.
@@ -205,6 +233,10 @@ export default function ScriptsView({
   }
   const candidates = useReleaseCandidates(usable(mageX))
   const hooks = useHooks(usable(goPreCommit), runs.runs)
+  const manifests = useManifests(depsOn)
+  // stale counts the clones in Deps' Stale group as the clock stands, for the rail; the
+  // tab renders again for the clock only when the count changes.
+  const stale = useNowAs((now) => staleCount(now, manifests.page?.clones))
   const [selectedRun, setSelectedRun] = useState<number | null>(null)
   // repoDir is the clone Repo scripts showed last, or null before one is picked while the
   // window is open, when the one remembered from a past start shows; repoRun is the run it
@@ -221,6 +253,7 @@ export default function ScriptsView({
   }
   const [repoRun, setRepoRun] = useState<number | null>(null)
   const [sheet, setSheet] = useState<OpenSheet | null>(null)
+  const [upgrade, setUpgrade] = useState<OpenUpgrade | null>(null)
   // handled and handledRun are the last release and run requests opened, so each opens
   // once; opens numbers the sheets the page's rows open, below every request's number, so
   // each opens afresh.
@@ -228,15 +261,18 @@ export default function ScriptsView({
   const [handledRun, setHandledRun] = useState(0)
   const opens = useRef(0)
 
+  // A request opens its sheet in place of an upgrade's, so only one sheet is ever open.
   if (request !== null && request.seq !== handled) {
     setHandled(request.seq)
     setPage('release')
+    setUpgrade(null)
     setSheet({ target: { repo: request.repo, dir: request.dir, branch: request.branch }, key: request.seq })
   }
 
-  // openRun shows a run in the Runs page's panel.
+  // openRun shows a run in the Runs page's panel, closing a sheet.
   const openRun = (id: number) => {
     setSheet(null)
+    setUpgrade(null)
     setSelectedRun(id)
     setPage('runs')
   }
@@ -280,6 +316,17 @@ export default function ScriptsView({
             icon: <PlayIcon className="size-4" />,
             count: 0,
             counts: null,
+          },
+        ]
+      : []),
+    ...(depsOn
+      ? [
+          {
+            id: 'deps' as const,
+            label: 'Deps',
+            icon: <BoxIcon className="size-4" />,
+            count: stale,
+            counts: (n: number) => counted(n, 'clone with stale dependencies', 'clones with stale dependencies'),
           },
         ]
       : []),
@@ -411,11 +458,29 @@ export default function ScriptsView({
                   }
                 : null
             }
+            // Deps shows whenever Repo scripts does, so it is always there to open.
+            onOpenDeps={() => {
+              pick('deps')
+            }}
             onOpenSettings={onOpenSettings}
             sections={sections}
             onSection={onSection}
             showRuns={showRuns}
             onShowRuns={onShowRuns}
+          />
+        ) : shown === 'deps' ? (
+          <DepsPage
+            manifests={manifests}
+            where={where}
+            onUpgrade={(clone) => {
+              opens.current -= 1
+              setUpgrade({ clone, key: opens.current })
+            }}
+            onOpenSettings={onOpenSettings}
+            sections={sections}
+            onSection={onSection}
+            depsSort={depsSort}
+            onDepsSort={onDepsSort}
           />
         ) : (
           <RunsPage {...runs} terminal={terminal} selected={selectedRun} onSelect={setSelectedRun} />
@@ -432,6 +497,16 @@ export default function ScriptsView({
           onWatch={openRun}
           onClose={() => {
             setSheet(null)
+          }}
+        />
+      )}
+      {upgrade !== null && (
+        <DepsUpgradeSheet
+          key={upgrade.key}
+          clone={upgrade.clone}
+          onOpenPrompts={onOpenPrompts}
+          onClose={() => {
+            setUpgrade(null)
           }}
         />
       )}

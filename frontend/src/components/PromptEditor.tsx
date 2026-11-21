@@ -20,10 +20,19 @@ import { TemplateEditor, type TemplateEditorHandle } from './TemplateEditor'
 const maxNameLength = 80
 const maxNicknameLength = 20
 
-const appliesToOptions: readonly SegmentOption<PromptAppliesTo>[] = [
+// replyAppliesToOptions are what a comment reply can be for: the text of a comment on an
+// item, never a repository's.
+const replyAppliesToOptions: readonly SegmentOption<PromptAppliesTo>[] = [
   { value: 'pr', label: appliesToLabels.pr },
   { value: 'issue', label: appliesToLabels.issue },
   { value: 'any', label: appliesToLabels.any, title: 'Pull requests and issues' },
+]
+
+// agentAppliesToOptions are what an agent prompt can be for: an item's launch, or a
+// repository's, as Upgrade… on the Deps page starts one.
+const agentAppliesToOptions: readonly SegmentOption<PromptAppliesTo>[] = [
+  ...replyAppliesToOptions,
+  { value: 'repo', label: appliesToLabels.repo, title: 'A repository’s own launch, such as Upgrade… on the Deps page' },
 ]
 
 const actionOptions: readonly SegmentOption<PromptReplyAction>[] = replyGroups.map(({ action }) => ({
@@ -89,8 +98,10 @@ function whereText(d: Diagnostic): string {
 // for, its text in the template editor with the problems found in it, and the launch
 // settings it sets. Edit | Preview swaps the text for the prompt filled in, in the same
 // frame; the editor stays mounted meanwhile, so its undo history, caret, and scroll are
-// where they were on the way back. A review reply has the review it is for in place of
-// what it applies to, and no launch settings, since it never launches anything.
+// where they were on the way back. An agent prompt can be for repositories rather than
+// items, as the Deps page's upgrades are, whose launch always makes a new worktree. A
+// review reply has the review it is for in place of what it applies to, never
+// repositories, and no launch settings, since it never launches anything.
 export function PromptEditor({
   agents,
   draft,
@@ -203,7 +214,7 @@ export function PromptEditor({
               <Segmented
                 label={reply ? 'What the reply is for' : 'What the prompt is for'}
                 value={draft.appliesTo}
-                options={appliesToOptions}
+                options={reply ? replyAppliesToOptions : agentAppliesToOptions}
                 onChange={(appliesTo) => {
                   set({ appliesTo })
                 }}
@@ -338,6 +349,8 @@ export function PromptEditor({
                 <p className="col-span-2 text-xs leading-relaxed text-muted">
                   Used whenever this prompt is chosen, over the org and repo defaults. The profile (the account) always
                   comes from the defaults or the launch menu.
+                  {draft.appliesTo === 'repo' &&
+                    ' A launch for a repository always starts in a new worktree of its own.'}
                 </p>
                 <LaunchOverrideFields
                   id={id}

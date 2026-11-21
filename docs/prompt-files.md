@@ -17,7 +17,7 @@ setting a prompt has, and you can edit one by hand.
 ```json
 {
   "format": "nilbox.prompts",
-  "version": 3,
+  "version": 4,
   "exportedAt": "2026-11-08T17:00:00Z",
   "app": "v0.4.0",
   "defaults": {
@@ -56,7 +56,7 @@ setting a prompt has, and you can edit one by hand.
 | Field | Meaning |
 |---|---|
 | `format` | Always `nilbox.prompts`. A file with any other value is refused. |
-| `version` | The format's version, `3`. Version `1` and `2` files still import (see [Older versions](#older-versions)). |
+| `version` | The format's version, `4`. Version `1`, `2`, and `3` files still import (see [Older versions](#older-versions)). |
 | `exportedAt` | When the file was written, as RFC 3339 in UTC. |
 | `app` | The version of the app that wrote it. Informational only. |
 | `defaults` | The app's default prompt for pull requests (`pr`) and issues (`issue`), each by nickname among the file's prompts, or `""`; its prompt for a pull request whose checks fail (`checksFailing`), that conflicts with its base (`conflicts`), that a reviewer asked to change (`changesRequested`), and that you're asked to review again (`rereview`), each by nickname and left out when none of the file's prompts is it (an older file has none); and `replies`, the default [review replies](desktop.md#review-replies) by slot (`approve`, `approve_bots`, `request_changes`, `comment`, and `nudge`, the comment a card's **Nudge** posts to the author of a pull request you requested changes on), each by nickname; an older file has no `nudge`. A slot whose default is none of the file's prompts is left out, as is `replies` when none is. |
@@ -70,7 +70,7 @@ Each prompt:
 |---|---|
 | `name` | Its title, up to 80 characters on one line. |
 | `nickname` | The short label the launch button shows, up to 20 characters. Nicknames are unique in a library, ignoring case. |
-| `appliesTo` | `pr`, `issue`, or `any`. A reply's is `pr`, but a comment reply's, which may be for issues too. |
+| `appliesTo` | `pr`, `issue`, or `any`, or `repo` for an agent prompt for repositories, which a launch fills in for a clone rather than for an item, as an [upgrade on Deps](desktop.md#deps) does, and which applies to no kind of item. A reply's is `pr`, but a comment reply's, which may be for issues too; a reply is never `repo`. |
 | `body` | The prompt's text: a Go [text/template](https://pkg.go.dev/text/template) using the variables in [Prompts](desktop.md#prompts). |
 | `purpose` | `agent` for a prompt a launch fills in, or `reply` for a [review reply](desktop.md#review-replies), the text a sheet fills in: a review's in the review sheet, or a comment's in the issue sheet. A reply has no launch settings. |
 | `action` | A reply's review: `approve`, `request_changes`, or `comment`; `""` for an agent prompt. |
@@ -78,7 +78,7 @@ Each prompt:
 | `effort` | The effort level it launches with, shared by every agent, or `""` to inherit it. An agent that lacks the level, such as Claude Code for Codex's `ultra`, launches with its own default. |
 | `planMode`, `worktree` | `true` or `false` to turn plan mode or the worktree on or off, or `null` to inherit. |
 | `extraArgs` | Extra arguments for each coding agent, keyed by agent (`claude` or `codex`), one per list item, added after the profile's and the launch defaults'. Each agent only ever gets its own. |
-| `starterKey` | The starter it came from (`review-pr`, `work-on-issue`, `quick-look`, `fix-checks`, `fix-dependency-security`, `re-review`, and the replies `reply-lgtm`, `reply-update-ok`, `reply-needs-changes`, `reply-question`, `reply-nudge`), or `""` for a prompt someone wrote. |
+| `starterKey` | The starter it came from (`review-pr`, `work-on-issue`, `quick-look`, `fix-checks`, `fix-dependency-security`, `re-review`; the replies `reply-lgtm`, `reply-update-ok`, `reply-needs-changes`, `reply-question`, `reply-nudge`; and the prompts for repositories, `deps-minor` and `deps-major`), or `""` for a prompt someone wrote. |
 | `createdAt`, `updatedAt` | When it was added and last saved, as RFC 3339, or `""`. Informational only. |
 
 <br>
@@ -104,9 +104,9 @@ Each prompt:
   (with `--dangerously-skip-permissions`, `--sandbox`, or a Codex `-c sandbox_mode=...`, say).
   Text with problems is kept, to be fixed in the editor before it launches. A reply whose `action`
   this version doesn't know becomes a reply for comments, and its launch settings are dropped. A
-  reply other than a comment reply, or one whose `appliesTo` is missing or unknown, applies to
-  pull requests; a version of the app from before comment replies for issues reads every reply
-  so, which leaves it for pull requests alone rather than misreading it.
+  reply other than a comment reply, or one whose `appliesTo` is missing, unknown, or `repo`,
+  applies to pull requests; a version of the app from before comment replies for issues reads
+  every reply so, which leaves it for pull requests alone rather than misreading it.
   Each change is shown before you import.
 - **The file's defaults are offered, never taken unasked.** An import lists each of the file's
   `defaults` that would change your library's (the default prompt for pull requests or for
@@ -129,6 +129,11 @@ listed under **Restore from a backup…** instead.
 
 ## Older versions
 
+**Version 3** had no prompts for repositories: no prompt in it has `appliesTo` `repo`. It still
+imports as it is. An app that reads version 3 refuses a version 4 file, since it reads an
+`appliesTo` it doesn't know as `any`, and would import a prompt for repositories as one a launch
+on any pull request or issue could use.
+
 **Version 2** had no review replies: every prompt in it is an agent prompt, and it has no
 `purpose`, `action`, or `defaults.replies`. It still imports, as agent prompts. An app that reads
 version 2 refuses a version 3 file, since it would import replies as prompts a launch could use.
@@ -144,5 +149,5 @@ extra arguments, both Claude Code's:
 ```
 
 A version 1 file still imports: its `model` becomes `models.claude`, and its `extraArgs` list
-becomes `extraArgs.claude`. The app always writes version 3, and a backup of the database from
+becomes `extraArgs.claude`. The app always writes version 4, and a backup of the database from
 before either change reads the same way.

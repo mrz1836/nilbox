@@ -49,7 +49,7 @@ import { ImportPromptsDialog, type ImportStart } from './ImportPromptsDialog'
 import { MenuButton, type MenuItem } from './Menu'
 import { PromptEditor, type PromptView } from './PromptEditor'
 import { firstShown, groupKey, PromptLibrary, type Selection } from './PromptLibrary'
-import { PromptPreview } from './PromptPreview'
+import { PromptPreview, type PreviewKind } from './PromptPreview'
 import type { TemplateEditorHandle } from './TemplateEditor'
 import { VariablesPanel } from './VariablesPanel'
 
@@ -772,17 +772,18 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
 
   const asking = pending === null ? null : question(pending)
 
-  const previewFor = (() => {
-    const item = items.find((i) => i.id === previewItem)
-
-    return item === undefined ? 'the sample' : `#${String(item.number)}`
-  })()
-
-  const forPRs = (() => {
-    const item = items.find((i) => i.id === previewItem)
-
-    return item === undefined ? draft.appliesTo !== 'issue' : item.kind === 'pr'
-  })()
+  // A prompt for repositories applies to no item, so it previews with the sample repository
+  // alone; any other, with the item chosen, else a sample of the kind it is for.
+  const forRepos = draft.appliesTo === 'repo'
+  const shownItem = items.find((i) => i.id === previewItem)
+  const previewFor = forRepos
+    ? 'the sample repository'
+    : shownItem === undefined
+      ? 'the sample'
+      : `#${String(shownItem.number)}`
+  const previewKind: PreviewKind = forRepos
+    ? 'repo'
+    : (shownItem?.kind ?? (draft.appliesTo === 'issue' ? 'issue' : 'pr'))
 
   return (
     <div className="flex h-full min-h-0">
@@ -880,7 +881,7 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
                   onInWorktreeChange={setInWorktree}
                   atPrHead={atPrHead}
                   onAtPrHeadChange={setAtPrHead}
-                  forPRs={forPRs}
+                  kind={previewKind}
                   result={check}
                   hasErrors={diagnostics.some((d) => d.severity === 'error')}
                   reply={replyMode}
@@ -947,7 +948,7 @@ export function PromptsView({ agents, prompts, replies, defaults, variables, ite
             variables={variables}
             values={check?.values ?? null}
             valuesFor={previewFor}
-            forIssuesOnly={draft.appliesTo === 'issue'}
+            appliesTo={draft.appliesTo}
             onInsertVariable={(name) => {
               showEditor()
               editorRef.current?.insertVariable(name)

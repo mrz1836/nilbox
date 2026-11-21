@@ -208,6 +208,17 @@ func (s *Service) SetReleaseSort(ctx context.Context, sort integrationprefs.Rele
 	return s.save(ctx, setting(integrationprefs.KeyReleaseSort, stored))
 }
 
+// SetDepsSort stores the order the Deps page lists each group of clones in, and returns
+// the settings with it. An order that isn't one of the page's is refused.
+func (s *Service) SetDepsSort(ctx context.Context, sort integrationprefs.DepsSort) (Settings, error) {
+	stored, err := integrationprefs.EncodeDepsSort(sort)
+	if err != nil {
+		return Settings{}, fmt.Errorf("%w: %q", err, sort)
+	}
+
+	return s.save(ctx, setting(integrationprefs.KeyDepsSort, stored))
+}
+
 // toolPath expands a ~ in path and checks that it names an executable file, worded for
 // the user when it doesn't.
 func (s *Service) toolPath(path string) (string, error) {

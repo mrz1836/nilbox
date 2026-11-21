@@ -37,6 +37,7 @@ func bugReportLeavesOut() map[string]string {
 		"Integrations.Sections":    "the Scripts tab's sections opened or folded",
 		"Integrations.ShowRuns":    "whether Repo scripts shows a run beside its scripts at once",
 		"Integrations.ReleaseSort": "the order the Release page was last sorted in",
+		"Integrations.DepsSort":    "the order the Deps page was last sorted in",
 
 		// Private: a path of the user's own.
 		"Integrations.Paths":    "each tool's chosen copy, a path, which the tools' lines tell as \"a copy the user chose\"",

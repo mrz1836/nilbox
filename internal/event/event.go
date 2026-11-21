@@ -90,6 +90,9 @@ const (
 	// NameWorktreesProgress is WorktreesProgress's name.
 	NameWorktreesProgress = "worktrees:progress"
 
+	// NameManifestsProgress is ManifestsProgress's name.
+	NameManifestsProgress = "manifests:progress"
+
 	// NameIntervalsChanged is IntervalsChanged's name.
 	NameIntervalsChanged = "settings:intervalsChanged"
 
@@ -200,6 +203,7 @@ func WindowEvents() []WindowEvent {
 		ReleasesProgress{},
 		HooksUpdated{},
 		WorktreesProgress{},
+		ManifestsProgress{},
 		GHThreadsUpdated{},
 		ServiceStatusUpdated{},
 		UpdatesUpdated{},
@@ -750,6 +754,34 @@ type WorktreesProgress struct {
 func (WorktreesProgress) Name() string { return NameWorktreesProgress }
 
 func (WorktreesProgress) window() {}
+
+// ManifestsPhase is how far a read of the Deps page's clones has got.
+type ManifestsPhase string
+
+// The phases of a read of the Deps page's clones, in order.
+const (
+	// ManifestsFindingClones is the repository locations being searched for clones. It
+	// counts nothing.
+	ManifestsFindingClones ManifestsPhase = "clones"
+
+	// ManifestsReadingClones is each clone's go.mod and package.json files being read, at
+	// the commit its row shows, counted.
+	ManifestsReadingClones ManifestsPhase = "reading"
+)
+
+// ManifestsProgress says how far a read of the Deps page's clones has got, while it runs:
+// its phase, and how many of the phase's clones are done. Finding the clones counts
+// nothing. It comes a few times a second at most, and the page's own answer follows it.
+type ManifestsProgress struct {
+	Phase ManifestsPhase `json:"phase"`
+	Done  int            `json:"done"`
+	Total int            `json:"total"`
+}
+
+// Name returns NameManifestsProgress.
+func (ManifestsProgress) Name() string { return NameManifestsProgress }
+
+func (ManifestsProgress) window() {}
 
 // GHThreadsUpdated says what the window shows of the user's GitHub notifications changed:
 // a pass read them, or checked their items' states, and found something new; reading them

@@ -226,7 +226,7 @@ func TestServicesListsBoundServices(t *testing.T) {
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Avatars, c.Integrations, c.ScriptRuns, c.Release,
 		c.Hooks, c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup, c.Updates, c.Autopilot, c.Milestones,
-		c.DescribeIt,
+		c.DescribeIt, c.Manifests,
 	}, services)
 
 	for _, s := range services {

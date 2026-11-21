@@ -3,6 +3,7 @@
 
 export {
     InboxPhase,
+    ManifestsPhase,
     ReleasesPhase,
     WorktreesPhase
 } from "./models.js";
@@ -19,6 +20,7 @@ export type {
     InboxProgress,
     InboxUpdated,
     IssueProgress,
+    ManifestsProgress,
     NotificationsUpdated,
     QuitRequested,
     ReleasesProgress,

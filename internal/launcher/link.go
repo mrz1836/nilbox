@@ -79,27 +79,39 @@ func (s *Service) checkLinked(ctx context.Context, dir string, name repo.Name) (
 		return "", uierr.New("Choose the clone's folder.", fmt.Errorf("%w: %w", ErrNotTheClone, err))
 	}
 
-	shown := paths.Tilde(expanded, s.home)
-
 	if err = localrepos.CheckAddable(expanded, s.home); err != nil {
 		return "", err
 	}
 
-	local, err := localrepos.Inspect(ctx, expanded, s.git)
-
-	switch {
-	case errors.Is(err, localrepos.ErrNotARepo):
-		return "", uierr.New(fmt.Sprintf("%s isn't a clone of %s.", shown, name), fmt.Errorf("%w: %w", ErrNotTheClone, err))
-	case err != nil:
+	if _, err = s.cloneOf(ctx, expanded, name); err != nil {
 		return "", err
 	}
 
-	if _, ok := local.RemoteFor(name); !ok {
-		return "", uierr.New(fmt.Sprintf("%s isn't a clone of %s; %s", shown, name, remotesWords(local, name)),
-			fmt.Errorf("%w: %s", ErrNotTheClone, expanded))
+	return expanded, nil
+}
+
+// cloneOf reads the folder dir, absolute, as a clone of name, and returns it with its
+// remote for name, or says in words the window shows why it isn't one: it isn't a clone,
+// or no remote of its points at name.
+func (s *Service) cloneOf(ctx context.Context, dir string, name repo.Name) (Clone, error) {
+	shown := paths.Tilde(dir, s.home)
+
+	local, err := localrepos.Inspect(ctx, dir, s.git)
+
+	switch {
+	case errors.Is(err, localrepos.ErrNotARepo):
+		return Clone{}, uierr.New(fmt.Sprintf("%s isn't a clone of %s.", shown, name), fmt.Errorf("%w: %w", ErrNotTheClone, err))
+	case err != nil:
+		return Clone{}, err
 	}
 
-	return expanded, nil
+	remote, ok := local.RemoteFor(name)
+	if !ok {
+		return Clone{}, uierr.New(fmt.Sprintf("%s isn't a clone of %s; %s", shown, name, remotesWords(local, name)),
+			fmt.Errorf("%w: %s", ErrNotTheClone, dir))
+	}
+
+	return Clone{Dir: local.Path, Remote: remote}, nil
 }
 
 // remotesWords says what a clone that isn't name's points at, ending a sentence: "its

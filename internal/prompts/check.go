@@ -290,21 +290,43 @@ func (c *checker) execError(err error, hint string) {
 	c.addAt(SeverityError, start+col, 0, textutil.Sentence(m[3]))
 }
 
-// trySamples fills the prompt in with sample data for every kind it applies to, each in
+// trySamples fills the prompt in with sample data for everything it applies to, each in
 // every session it can start in, and once more with the yes/no values flipped and the
 // optional text empty, so errors in conditional text show up too.
 func (c *checker) trySamples(t *Template) {
-	for _, kind := range item.Kinds() {
-		if !c.appliesTo.Covers(kind) {
-			continue
-		}
-
-		for _, data := range sampleVariants(kind) {
+	for _, set := range samplesFor(c.appliesTo) {
+		for _, data := range set.variants {
 			if _, err := t.Execute(data); err != nil {
-				c.execError(err, "for "+kind.Plural())
+				c.execError(err, "for "+set.plural)
 			}
 		}
 	}
+}
+
+// sampleSet is the sample data for one thing a prompt can launch on, and its name in the
+// plural, as an error names it.
+type sampleSet struct {
+	plural   string
+	variants []Data
+}
+
+// samplesFor returns the sample data for each thing a prompt that applies to appliesTo
+// launches on: the sample repository alone for a prompt for repositories, and otherwise
+// each kind of item it covers.
+func samplesFor(appliesTo AppliesTo) []sampleSet {
+	if appliesTo == AppliesToRepo {
+		return []sampleSet{{plural: "repositories", variants: sampleRepoVariants()}}
+	}
+
+	var out []sampleSet
+
+	for _, kind := range item.Kinds() {
+		if appliesTo.Covers(kind) {
+			out = append(out, sampleSet{plural: kind.Plural(), variants: sampleVariants(kind)})
+		}
+	}
+
+	return out
 }
 
 // sampleVariants returns the sample data for kind in each session it can start in, both
@@ -332,6 +354,22 @@ func sampleVariants(kind item.Kind) []Data {
 		if kind == item.KindPR {
 			out = append(out, base.WithSession(true, true))
 		}
+	}
+
+	return out
+}
+
+// sampleRepoVariants returns the sample repository in the clone and in its own worktree,
+// both as is and with its optional text empty: no default branch known, and no remote, as
+// in a preview. A repository's launch has no item, so no item's value is ever set.
+func sampleRepoVariants() []Data {
+	bare := SampleRepo()
+	bare.DefaultBranch, bare.Remote = "", ""
+
+	out := make([]Data, 0, 4)
+
+	for _, base := range []Data{SampleRepo(), bare} {
+		out = append(out, base.WithWorktree(""), base.WithWorktree(sampleRepoWorktree))
 	}
 
 	return out

@@ -10,7 +10,7 @@ function props(overrides: Partial<VariablesPanelProps> = {}): VariablesPanelProp
     variables: variables(),
     values: { Title: 'Add the widget cache', Number: '7', URL: '' },
     valuesFor: '#7',
-    forIssuesOnly: false,
+    appliesTo: 'pr',
     onInsertVariable: vi.fn(),
     onInsertText: vi.fn(),
     ...overrides,
@@ -43,6 +43,7 @@ describe('VariablesPanel', () => {
               type: 'text',
               description: 'The routine that started the run, or empty for a click',
               prOnly: false,
+              itemOnly: true,
             },
             {
               name: 'Unattended',
@@ -50,6 +51,7 @@ describe('VariablesPanel', () => {
               type: 'yes/no',
               description: 'Autopilot started the run, with no one watching',
               prOnly: false,
+              itemOnly: true,
             },
           ],
         })}
@@ -97,12 +99,58 @@ describe('VariablesPanel', () => {
   })
 
   it('dims pull request variables for an issue prompt, and waits for values', () => {
-    render(<VariablesPanel {...props({ forIssuesOnly: true, values: null })} />)
+    render(<VariablesPanel {...props({ appliesTo: 'issue', values: null })} />)
 
     const pr = within(screen.getByRole('region', { name: 'Pull request' }))
     const item = within(screen.getByRole('region', { name: 'Item' }))
 
     expect(pr.getByRole('button', { name: /\{\{\.Branch\}\}/ })).toHaveClass('opacity-60')
+    expect(item.getByRole('button', { name: /\{\{\.Title\}\}/ })).not.toHaveClass('opacity-60')
     expect(item.getByRole('button', { name: /\{\{\.Title\}\}/ })).not.toHaveTextContent('Add the widget cache')
+  })
+
+  it('marks no variable as an item’s alone for a prompt an item launches', () => {
+    render(<VariablesPanel {...props({ appliesTo: 'any' })} />)
+
+    expect(screen.queryByText('Item only')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button').filter((b) => b.classList.contains('opacity-60'))).toEqual([])
+  })
+
+  it('dims and marks the variables only an item fills in for a prompt for repositories', () => {
+    render(
+      <VariablesPanel
+        {...props({
+          appliesTo: 'repo',
+          values: { Title: '', Number: '0', URL: '', Repo: 'acme-org/example-repo', InWorktree: 'false' },
+          valuesFor: 'the sample repository',
+        })}
+      />,
+    )
+
+    const item = within(screen.getByRole('region', { name: 'Item' }))
+    const title = item.getByRole('button', { name: /\{\{\.Title\}\}/ })
+    expect(title).toHaveClass('opacity-60')
+    expect(title).toHaveTextContent('Item only')
+    expect(item.getAllByText('Item only')).toHaveLength(4)
+
+    // A pull request's own say so, as they do for every prompt.
+    const branch = within(screen.getByRole('region', { name: 'Pull request' })).getByRole('button', {
+      name: /\{\{\.Branch\}\}/,
+    })
+    expect(branch).toHaveClass('opacity-60')
+    expect(branch).toHaveTextContent('PR only')
+    expect(branch).not.toHaveTextContent('Item only')
+
+    // What a repository's launch fills in stays as it is.
+    const repo = within(screen.getByRole('region', { name: 'Repository' })).getByRole('button', {
+      name: /\{\{\.Repo\}\}/,
+    })
+    expect(repo).not.toHaveClass('opacity-60')
+    expect(repo).toHaveTextContent('acme-org/example-repo')
+    expect(repo).not.toHaveTextContent(/only/)
+    expect(
+      within(screen.getByRole('region', { name: 'Session' })).getByRole('button', { name: /\{\{\.InWorktree\}\}/ }),
+    ).not.toHaveClass('opacity-60')
+    expect(screen.getByText(/Values are for the sample repository\./)).toBeInTheDocument()
   })
 })

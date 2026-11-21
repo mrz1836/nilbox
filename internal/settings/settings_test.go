@@ -122,6 +122,7 @@ func TestPrefDefaults(t *testing.T) {
 			ScriptSources:   integrationprefs.ScriptSources{MagexTargets: true, RepoFiles: true},
 			Sections:        map[integrationprefs.ScriptsSection]bool{},
 			ReleaseSort:     integrationprefs.ReleaseSortNewest,
+			DepsSort:        integrationprefs.DepsSortOldest,
 		},
 		GitHubNotifications: threadrules.Rules{
 			Read: true, Action: threadrules.ActionDone, TriggersOff: []threadrules.Trigger{}, Watching: true,
@@ -327,6 +328,7 @@ func TestSettersPersist(t *testing.T) {
 			ScriptSources:   integrationprefs.ScriptSources{MagexTargets: false, RepoFiles: true},
 			Sections:        map[integrationprefs.ScriptsSection]bool{},
 			ReleaseSort:     integrationprefs.ReleaseSortNewest,
+			DepsSort:        integrationprefs.DepsSortOldest,
 		},
 		GitHubNotifications: threadrules.Rules{
 			Read: true, Auto: true, Action: threadrules.ActionRead,

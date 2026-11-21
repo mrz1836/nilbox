@@ -8,6 +8,7 @@ import type { SettingsSection } from '../../lib/settingsIndex'
 import { useIntegrations } from '../../lib/useIntegrations'
 import { useScriptRuns } from '../../lib/useScriptRuns'
 import type {
+  DepsSort,
   HookInstallAllResult,
   IntegrationSwitch,
   IntegrationTool,
@@ -16,7 +17,7 @@ import type {
   TerminalID,
 } from '../../platform'
 import { deferred } from '../../test/async'
-import { renderAt } from '../../test/clock'
+import { fromNow, renderAt } from '../../test/clock'
 import {
   goPreCommitTool,
   hookInstallAll,
@@ -25,13 +26,18 @@ import {
   hooksRun,
   integrationTool,
   integrationTools,
+  manifestsClone,
+  manifestsPage,
   releaseCandidate,
   releaseCandidates,
   releaseCheck,
   releaseOffer,
   releaseRun,
+  repoScripts,
   scriptClone,
+  scriptEntry,
   scriptRun,
+  scriptSection,
 } from '../../test/fixtures'
 import { platform, send } from '../../test/platform'
 import ScriptsView, { type ScriptsPage } from './ScriptsView'
@@ -51,6 +57,9 @@ interface TabProps {
   showRuns?: boolean
   releaseSort?: ReleaseSort
   onReleaseSort?: (sort: ReleaseSort) => void
+  depsSort?: DepsSort
+  onDepsSort?: (sort: DepsSort) => void
+  onOpenPrompts?: () => void
 }
 
 // Tab is the tab as the window shows it: fed the tools and the runs the window lists.
@@ -67,6 +76,7 @@ function Tab({
   showRuns = false,
   releaseSort = 'newest',
   onReleaseSort = () => undefined,
+  ...deps
 }: TabProps) {
   return (
     <ScriptsView
@@ -86,6 +96,7 @@ function Tab({
       showRuns={showRuns}
       releaseSort={releaseSort}
       onReleaseSort={onReleaseSort}
+      {...deps}
     />
   )
 }
@@ -133,7 +144,7 @@ function request(seq: number): ReleaseRequest {
 }
 
 describe('ScriptsView', () => {
-  it('opens on Release while mage-x is on, with Hooks, Repo scripts, and Runs after it, and keeps the page used last', async () => {
+  it('opens on Release while mage-x is on, with Hooks, Repo scripts, Deps, and Runs after it, and keeps the page used last', async () => {
     renderView()
 
     const release = await rail().findByRole('button', { name: /^Release/ })
@@ -148,6 +159,7 @@ describe('ScriptsView', () => {
       expect.stringMatching(/^Release/),
       expect.stringMatching(/^Hooks/),
       'Repo scripts',
+      expect.stringMatching(/^Deps/),
       'Runs',
       'Manage in Settings',
     ])
@@ -750,6 +762,175 @@ describe('ScriptsView', () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Change the repository locations' }))
 
       expect(onOpenSettings).toHaveBeenCalledExactlyOnceWith('repositories')
+    })
+  })
+
+  describe('Deps', () => {
+    // upgradeSheet is the open upgrade sheet.
+    function upgradeSheet() {
+      return screen.findByRole('dialog', { name: /^Upgrade dependencies/ })
+    }
+
+    it('counts the clones with stale dependencies beside Deps, reading the clones once', async () => {
+      renderView()
+
+      const deps = await rail().findByRole('button', { name: 'Deps (1 clone with stale dependencies)' })
+
+      expect(deps).toHaveAttribute('title', '1 clone with stale dependencies')
+      expect(platform.listManifests).toHaveBeenCalledExactlyOnceWith(false)
+
+      await userEvent.click(deps)
+
+      expect(await screen.findByRole('heading', { name: 'Deps', level: 2 })).toBeInTheDocument()
+      expect(deps).toHaveAttribute('aria-current', 'page')
+      expect(await screen.findByRole('list', { name: 'Stale' })).toBeInTheDocument()
+      expect(platform.listManifests).toHaveBeenCalledOnce()
+    })
+
+    it('counts nothing beside Deps while no clone is stale', async () => {
+      platform.listManifests.mockResolvedValue(
+        manifestsPage({ clones: [manifestsClone({ oldest: fromNow(-2 * 24 * 3_600_000).toISOString() })] }),
+      )
+      renderView({ lastPage: 'deps' })
+
+      expect(await screen.findByRole('heading', { name: /^Fresh · 1/ })).toBeInTheDocument()
+      expect(rail().getByRole('button', { name: 'Deps' })).not.toHaveAttribute('title')
+    })
+
+    it('shows only while Scripts is on, reading nothing while it’s off', async () => {
+      const { view, onOpenSettings } = renderView({ scriptsSwitch: 'off', lastPage: 'deps' })
+
+      expect(await screen.findByRole('heading', { name: 'Release', level: 2 })).toBeInTheDocument()
+      expect(rail().queryByRole('button', { name: /^Deps/ })).not.toBeInTheDocument()
+      expect(platform.listManifests).not.toHaveBeenCalled()
+
+      view.rerender(<Tab onOpenSettings={onOpenSettings} scriptsSwitch="on" lastPage="deps" />)
+
+      expect(await screen.findByRole('heading', { name: 'Deps', level: 2 })).toBeInTheDocument()
+      expect(rail().getByRole('button', { name: /^Deps/ })).toHaveAttribute('aria-current', 'page')
+      expect(platform.listManifests).toHaveBeenCalledWith(false)
+
+      magexOff()
+      view.rerender(<Tab onOpenSettings={onOpenSettings} scriptsSwitch="auto" lastPage="deps" />)
+      send('tools:updated')
+
+      expect(await screen.findByRole('heading', { name: 'Runs', level: 2 })).toBeInTheDocument()
+      expect(rail().queryByRole('button', { name: /^Deps/ })).not.toBeInTheDocument()
+    })
+
+    it('opens on Deps when a past start remembered it, and remembers it when picked', async () => {
+      const onPage = vi.fn<(page: ScriptsPage) => void>()
+      const { view, onOpenSettings } = renderView({ lastPage: 'deps', onPage })
+
+      expect(await screen.findByRole('heading', { name: 'Deps', level: 2 })).toBeInTheDocument()
+      expect(onPage).not.toHaveBeenCalled()
+
+      await userEvent.click(rail().getByRole('button', { name: /^Runs/ }))
+      await userEvent.click(rail().getByRole('button', { name: /^Deps/ }))
+
+      expect(onPage.mock.calls).toEqual([['runs'], ['deps']])
+      view.rerender(<Tab onOpenSettings={onOpenSettings} lastPage="runs" onPage={onPage} />)
+      expect(rail().getByRole('button', { name: /^Deps/ })).toHaveAttribute('aria-current', 'page')
+    })
+
+    it('lists Deps in the order the settings remember, and stores another', async () => {
+      const onDepsSort = vi.fn<(sort: DepsSort) => void>()
+      renderView({ lastPage: 'deps', depsSort: 'modules', onDepsSort })
+
+      const sorts = within(await screen.findByRole('radiogroup', { name: 'Sort the clones' }))
+
+      expect(sorts.getByRole('radio', { name: 'Modules' })).toBeChecked()
+
+      await userEvent.click(sorts.getByRole('radio', { name: 'A–Z' }))
+      expect(onDepsSort).toHaveBeenCalledExactlyOnceWith('name')
+    })
+
+    it('keeps each Deps group open or folded, and the order, with nowhere to store them', async () => {
+      renderView({ lastPage: 'deps' })
+
+      const sorts = within(await screen.findByRole('radiogroup', { name: 'Sort the clones' }))
+
+      expect(sorts.getByRole('radio', { name: 'Oldest' })).toBeChecked()
+      await userEvent.click(sorts.getByRole('radio', { name: 'A–Z' }))
+      expect(sorts.getByRole('radio', { name: 'A–Z' })).toBeChecked()
+
+      await userEvent.click(screen.getByRole('button', { name: /^Stale/ }))
+      expect(screen.queryByRole('list', { name: 'Stale' })).not.toBeInTheDocument()
+    })
+
+    it('opens a clone’s upgrade sheet from its row, afresh each time, and closes it', async () => {
+      renderView({ lastPage: 'deps' })
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Upgrade acme-org/api-server’s dependencies…' }))
+      expect(await upgradeSheet()).toBeInTheDocument()
+
+      await userEvent.keyboard('{Escape}')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Unfold acme-org/api-server' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Upgrade dependencies…' }))
+      expect(await upgradeSheet()).toBeInTheDocument()
+    })
+
+    it('closes the upgrade sheet for the run a notification asks for, or the release a merge does', async () => {
+      const failed = scriptRun({ id: 7, title: 'Checks · all files', kind: 'checks', status: 'failed' })
+
+      platform.listScriptRuns.mockResolvedValue([failed])
+      platform.getScriptRun.mockResolvedValue(failed)
+      const { view, onOpenSettings } = renderView({ lastPage: 'deps' })
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Upgrade acme-org/api-server’s dependencies…' }))
+      await upgradeSheet()
+
+      view.rerender(<Tab lastPage="deps" runRequest={{ id: 7, seq: 1 }} onOpenSettings={onOpenSettings} />)
+
+      expect(await screen.findByRole('heading', { name: 'Checks · all files', level: 2 })).toBeInTheDocument()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+      await userEvent.click(rail().getByRole('button', { name: /^Deps/ }))
+      await userEvent.click(await screen.findByRole('button', { name: 'Upgrade acme-org/api-server’s dependencies…' }))
+      await upgradeSheet()
+
+      view.rerender(
+        <Tab lastPage="deps" runRequest={{ id: 7, seq: 1 }} request={request(2)} onOpenSettings={onOpenSettings} />,
+      )
+
+      expect(await screen.findByRole('dialog', { name: 'Release acme-org/sdk' })).toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: /^Upgrade dependencies/ })).not.toBeInTheDocument()
+    })
+
+    it('opens Deps from a command that upgrades the dependencies, while Deps is on', async () => {
+      platform.listRepoScripts.mockImplementation((dir) =>
+        Promise.resolve(
+          repoScripts({
+            dir,
+            sections: [
+              scriptSection({
+                entries: [
+                  scriptEntry({
+                    ref: 't3:Deps: update',
+                    name: 'Deps: update',
+                    command: 'magex deps:update',
+                    deps: true,
+                    sha256: 'c0ffee03',
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ),
+      )
+      renderView()
+
+      await userEvent.click(await rail().findByRole('button', { name: 'Repo scripts' }))
+      const row = within(await screen.findByRole('list', { name: 'From t3.json' }))
+        .getByText('Deps: update')
+        .closest('li')
+
+      await userEvent.click(within(row as HTMLElement).getByRole('button', { name: 'Open Deps' }))
+
+      expect(await screen.findByRole('heading', { name: 'Deps', level: 2 })).toBeInTheDocument()
+      expect(rail().getByRole('button', { name: /^Deps/ })).toHaveAttribute('aria-current', 'page')
     })
   })
 })

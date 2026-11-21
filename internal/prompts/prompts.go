@@ -1,14 +1,16 @@
 // Package prompts is the prompt library: the prompts a launch can fill in for a pull
 // request or issue, with the launch settings each one sets, and the defaults for each
-// kind of item; and, beside them in the same table, the review replies the review sheet
-// fills in as the text of a review (see Purpose).
+// kind of item; the prompts for repositories, which a launch fills in for a clone rather
+// than for an item (AppliesToRepo); and, beside them in the same table, the review replies
+// the review sheet fills in as the text of a review (see Purpose).
 //
 // A prompt is a Go text/template over Data. Parse checks one the way a launch runs it,
 // and explains each problem with its line and column. The app adds the starter prompts
 // once each (see Seed), and from then on every prompt is the user's to change or delete,
 // except while it is a default somewhere: Delete refuses a prompt that is in use, and
-// Update refuses to stop it applying to a kind it is a default for. A starter the user
-// never changed takes a later build's text (Starter.Earlier).
+// Update refuses to stop it applying to a kind it is a default for, or to make one a
+// routine runs a prompt for repositories. A starter the user never changed takes a later
+// build's text (Starter.Earlier).
 //
 // A Store reads and writes the library; the launcher and the launch defaults read it
 // through interfaces of their own. The Service the window binds to checks prompts before
@@ -178,7 +180,8 @@ type Prompt struct {
 	// Nickname is the short label the launch menu shows.
 	Nickname string `json:"nickname"`
 
-	// AppliesTo is AppliesToPR, AppliesToIssue, or AppliesToAny.
+	// AppliesTo is AppliesToPR, AppliesToIssue, or AppliesToAny, or AppliesToRepo for an
+	// agent prompt a repository's launch fills in.
 	AppliesTo AppliesTo `json:"appliesTo"`
 
 	// Body is the Go text/template.
@@ -423,6 +426,12 @@ func (d DefaultPrompts) situations(id int64) []DefaultSlot {
 // IsReply reports a review reply.
 func (p Prompt) IsReply() bool {
 	return p.Purpose == PurposeReply
+}
+
+// IsRepo reports a prompt for repositories: an agent prompt that applies to repositories,
+// which only a repository's launch fills in, never one on a pull request or an issue.
+func (p Prompt) IsRepo() bool {
+	return !p.IsReply() && p.AppliesTo == AppliesToRepo
 }
 
 // Template parses the prompt's text, as a reply's in reply mode, failing when it has

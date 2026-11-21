@@ -44,6 +44,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launcher/terminal"
 	"github.com/mrz1836/nilbox/internal/localrepos"
 	"github.com/mrz1836/nilbox/internal/logging"
+	"github.com/mrz1836/nilbox/internal/manifests"
 	"github.com/mrz1836/nilbox/internal/milestones"
 	"github.com/mrz1836/nilbox/internal/notify"
 	"github.com/mrz1836/nilbox/internal/paths"
@@ -175,6 +176,7 @@ type Core struct {
 	Release        *release.Service
 	Hooks          *hooks.Service
 	Scripts        *scripts.Service
+	Manifests      *manifests.Service
 	GHThreads      *ghthreads.Service
 	Backup         *backup.Service
 	ServiceStatus  *svcstatus.Service
@@ -332,6 +334,11 @@ type Core struct {
 	// a worker, waits for them before it closes the database. It is not bound.
 	HooksScans hooks.Scans
 
+	// ManifestsScans holds the Deps page's reads of the clones, which run apart from the
+	// window's calls, to the app's lifetime, as HooksScans does the Hooks page's. It is not
+	// bound.
+	ManifestsScans manifests.Scans
+
 	// tokens holds the GitHub token the inbox and the worktree service borrow, until
 	// Close forgets it.
 	tokens *github.TokenSource
@@ -416,7 +423,7 @@ func (c *Core) Services() []any {
 		c.Settings, c.Profiles, c.Prompts, c.LaunchDefaults, c.Inbox, c.Launcher, c.Worktrees, c.Notifications,
 		c.AppInfo, c.Budget, c.Sessions, c.Review, c.Issues, c.Avatars, c.Integrations, c.ScriptRuns, c.Release,
 		c.Hooks, c.Scripts, c.GHThreads, c.Backup, c.ServiceStatus, c.Setup, c.Updates, c.Autopilot, c.Milestones,
-		c.DescribeIt,
+		c.DescribeIt, c.Manifests,
 	}
 }
 
@@ -698,6 +705,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Reader:     locations,
 		RunFolders: background,
 		TakeOvers:  background,
+		RepoFacts:  repoFacts{store: inboxStore},
 		Logger:     logger,
 	})
 	background.launch, background.maker = launcher.NewBackgrounds(launch), worktreeMaker{maker: worktrees.NewMaker(sweeps)}
@@ -788,6 +796,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	}
 	hookPage := newHooks(pool, opts, logger, deps)
 	repoScripts := newScripts(pool, opts, logger, deps, inboxStore)
+	depsPage := newManifests(pool, opts, logger, deps, inboxStore)
 
 	// What reads the inbox, the running checks, the Release page's running checks, and the
 	// worktrees again on its own does so as often as the settings say, and works its next
@@ -959,6 +968,8 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 		Hooks:                 hookPage,
 		HooksScans:            hooks.NewScans(hookPage),
 		Scripts:               repoScripts,
+		Manifests:             depsPage,
+		ManifestsScans:        manifests.NewScans(depsPage),
 		Updates:               update.NewService(updateEngine),
 		Autopilot:             routines,
 		AutopilotEngine:       engine.engine,
@@ -1112,6 +1123,21 @@ func newScripts(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, 
 	deps.runs.RegisterVerifier(scriptrun.KindPull, scripts.NewVerifier(svc))
 
 	return svc
+}
+
+// newManifests builds the Deps page's service over the same clones and read-only git as
+// the Hooks page's: the pinned and muted repositories Release reads, the default branches
+// the inbox stored, the terminal the runs open in for a row's Open in terminal, and Finder
+// for a manifest's Reveal in Finder. It reads every clone from its own git objects alone,
+// so it needs no runner, lock, or shell environment beyond git's.
+func newManifests(pool *sql.DB, opts Options, logger *slog.Logger, deps hookDeps, branches manifests.DefaultBranches,
+) *manifests.Service {
+	return manifests.NewService(manifests.Config{
+		Clones: hooksClones{settings: deps.settings, home: opts.Home, git: deps.runner, reader: deps.locations},
+		Git:    deps.git, Rules: releaseRules{prefs: prefsstore.New(pool, opts.Clock)}, Branches: branches,
+		Terminal: &worktreeTerminal{opener: deps.terminal}, Reveal: revealer(deps.runner), Home: opts.Home,
+		Clock: opts.Clock, Events: opts.Events, Logger: logger,
+	})
 }
 
 // following is what follows the agent sessions: the ledger launches record them in, the

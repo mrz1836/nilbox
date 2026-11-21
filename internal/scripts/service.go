@@ -519,53 +519,39 @@ func (s *Service) branch(ctx context.Context, c clone) (branch, from string) {
 	return branch, branch
 }
 
-// isDefault reports whether branch is the clone's repository's default branch: the one
-// knownDefault knows, or else main or master.
+// isDefault reports whether branch is the clone's repository's default branch, by the
+// rule Repo scripts shares with Deps (gitread.DefaultBranch): the one the app stored, or
+// else the one the clone's refs/remotes/origin/HEAD names, or else main or master.
 func (s *Service) isDefault(ctx context.Context, c clone, branch string) bool {
-	if def := s.knownDefault(ctx, c); def != "" {
-		return branch == def
-	}
+	is := func(name string) bool { return name == branch }
 
-	return mainBranch(branch)
+	return branch != "" && s.knownDefault(ctx, c, is) == branch
 }
 
 // defaultBranch is the clone's repository's default branch as isDefault reckons it: the
-// one knownDefault knows, or else the branch the clone is on when that is main or master,
-// or "" when the app can't tell.
+// one the app stored, or else the one the clone's refs/remotes/origin/HEAD names, or else
+// the branch the clone is on when that is main or master; "" when the app can't tell.
 func (s *Service) defaultBranch(ctx context.Context, c clone) string {
-	if def := s.knownDefault(ctx, c); def != "" {
-		return def
+	current := ""
+
+	if s.git != nil {
+		if branch, err := s.git.CurrentBranch(ctx, c.dir); err == nil {
+			current = branch
+		}
 	}
 
-	if s.git == nil {
-		return ""
-	}
-
-	if branch, err := s.git.CurrentBranch(ctx, c.dir); err == nil && mainBranch(branch) {
-		return branch
-	}
-
-	return ""
+	return s.knownDefault(ctx, c, func(name string) bool { return name == current })
 }
 
-// knownDefault is the clone's repository's default branch as the app knows it without
-// asking anyone: the one it stored, or else the one the clone's refs/remotes/origin/HEAD
-// names; "" when it knows neither.
-func (s *Service) knownDefault(ctx context.Context, c clone) string {
-	if def := s.storedDefault(ctx, c); def != "" {
-		return def
+// knownDefault is the clone's repository's default branch as gitread.DefaultBranch works
+// it out without asking anyone, guess accepting the main or master the clone stands for.
+func (s *Service) knownDefault(ctx context.Context, c clone, guess func(branch string) bool) string {
+	var git gitread.OriginHeadReader
+	if s.git != nil {
+		git = s.git
 	}
 
-	if s.git == nil {
-		return ""
-	}
-
-	head, err := s.git.OriginHead(ctx, c.dir)
-	if err != nil {
-		return ""
-	}
-
-	return head
+	return gitread.DefaultBranch(ctx, git, c.dir, s.storedDefault(ctx, c), guess)
 }
 
 // storedDefault is the default branch the app stored for the clone's repository, or "".
@@ -580,11 +566,6 @@ func (s *Service) storedDefault(ctx context.Context, c clone) string {
 	}
 
 	return def
-}
-
-// mainBranch reports a branch named as a default branch most often is: main or master.
-func mainBranch(branch string) bool {
-	return branch == "main" || branch == "master"
 }
 
 // sourceOff says, for a source the settings turn off, so; "" when it is on.

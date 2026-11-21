@@ -173,7 +173,8 @@ artwork the icons were rendered from. `build/darwin/` holds the bundle's generat
 `internal/core/` assembles the app and builds every service the window binds: settings,
 profiles, prompts, launch defaults, inbox, review, issues, the profile pictures, launcher,
 worktrees, notifications, app info, the API budget, sessions, integrations, script runs,
-release, hooks, repository scripts, the mirror of the user's GitHub notifications, the
+release, hooks, repository scripts, the Deps page ([internal/manifests](#internalmanifests)),
+the mirror of the user's GitHub notifications, the
 backup of the user's setup, the service status check, the first-run setup, the app's updates,
 Autopilot's routines, and [Describe it](#internaldescribeit).
 Some building blocks are built once and handed to every service that needs them, so what they
@@ -215,7 +216,8 @@ as often as Settings → Refreshing says, each through its own `periodic.Job`, w
 `periodic.RunEvery` and which core wakes on the Go-only `event.IntervalsChanged` the settings
 setter emits, so a change applies at once), the GitHub
 notifications' `ghthreads.Syncer` (woken the same way), the budget's `Saver`, the sessions watcher, the Release page's
-refresher, and the Hooks page's scans as tracked work, starts the deferred work
+refresher, and the Hooks and Deps pages' scans (`hooks.Scans`, `manifests.Scans`) as tracked
+work, starts the deferred work
 (`core.Deferred`: the login-shell read first; the tool finder, the runs, the release
 `Follower`, the service status `Checker`, and the [push watch](#internalpushwatch), woken by
 `event.IntervalsChanged` too, beside it) once after the first paint, never on the cold
@@ -385,6 +387,27 @@ its own and refuses it as a newer build's, offering the backup taken before the 
 too). A later squash drops the histories it can't carry over (their `through` is gone), so a
 database two squashes old is set aside.
 
+**Rebuilding a table.** SQLite can't change a CHECK, so a migration that widens one makes the
+table again inside its own transaction: a new table with the wider checks, its columns in their
+order (so the generated code doesn't change) and every other constraint and default as before,
+every row copied as it is under explicit column lists, the old table dropped and the new one
+renamed, and its indexes made again. `0112_repo_sessions` does that to `agent_sessions`, which
+no table references and no trigger or view names, for the sessions a repository's launch
+starts (no item: kind `''`, number 0, item 0, and the worktree it made, never `''`;
+[internal/sessions](#internalsessions)). A table another references takes one step more, which
+`0111_repo_prompts` takes for `prompts`, whose `applies_to` may now be `'repo'` (with `CHECK
+(applies_to <> 'repo' OR purpose = 'agent')`): foreign keys stay on, and `launch_defaults`
+names prompts in six `ON DELETE RESTRICT` columns, which refuse the old table's drop at once,
+deferred or not. So the launch defaults that name a prompt set their six columns aside in an
+explicitly typed scratch table (`launch_defaults_prompt_ids`) and clear them; the new table
+takes every prompt under its own id, the old one is dropped and the new one renamed (a foreign
+key names its table by name, so the six name the new one once it is called `prompts`); each
+column takes its value back through a correlated subquery; and the scratch table goes. Each
+migration's test fills the table first (for `0111`, every one of the six references) and checks
+that every row and column comes through as it was, that the new checks hold, and, for `0111`,
+that `pragma_foreign_key_check` finds nothing and a prompt a launch default names still can't be
+deleted.
+
 **Self-heal.** `store.Open` backs the database up before applying pending migrations. A file
 that is not a database or is damaged, a schema the migrations did not create, or a history this
 build disagrees with is renamed, with its `-wal` and `-shm` files, to
@@ -478,6 +501,47 @@ included, also leaves the app as a backup (`internal/backup`, its format in
 Autopilot sections are exactly these three copies' formats; keep the backup's in step with
 them.
 
+**Prompts for repositories.** A prompt may apply to repositories (`prompts.AppliesToRepo`,
+`applies_to = 'repo'`, which the window calls Repositories; migration `0111_repo_prompts`,
+above): an agent prompt alone, never a reply (the table's check, the editor's
+`checkReplyAppliesTo`, and an import, which reads a reply's `repo` as `pr`), which a
+repository's launch fills in for a clone rather than for an item, as the Deps page's Upgrade
+does ([internal/launcher](#internallauncher)). It covers no kind of item (`AppliesTo.Covers`),
+so no launch on a pull request or an issue fills one in, nor can one be a kind's or a
+situation's default (`checkAppliesTo`), and `Prompt.IsRepo` tells one. Its text is checked
+with the sample repository (`SampleRepo`: acme-org/example-repo, `main`, and `origin`, and
+again with no default branch or remote, each in the clone and in a worktree named
+`deps-20260115`), and previewed with it, an item the editor picked set aside with a note
+(`repoPreviewData`); a launch fills it in from `RepoData` (the repository's names, its default
+branch, and the clone's remote) and `WithWorktree` (the worktree the launch made, by the name
+it was made under), never `WithSession`, which names an item's worktree. Every variable but the
+repository's and the session's (`.Repo`, `.Owner`, `.RepoName`, `.DefaultBranch`, `.Remote`,
+`.RemoteIsPlain`, `.InWorktree`, `.Worktree`, `.Profile`, and `.Me`, `repoVariables`) is
+`Variable.ItemOnly`, always empty there, and the checker warns where a prompt for repositories
+names one, as it warns of a pull request's variable in a prompt for issues. A prompt a routine
+runs can't be made one (`checkRepoSwitch`, at the applies-to field; an import never saves one
+over a starter's copy a routine runs either, `takesPlace`), since a routine runs its prompts on
+pull requests and issues; one already for repositories stays free to change. Two starters are
+for repositories (`starters_repo.go`, added after the others): **Upgrade dependencies**
+(`deps-minor`, nicknamed Upgrade deps), which keeps each dependency within its major version
+and lists the newer majors it left alone in the pull request, and **Upgrade dependencies, majors
+too** (`deps-major`, Upgrade majors too), which keeps only the majors whose checks pass after a
+reasonable fix. Each starts in a worktree, out of plan mode, and has the agent learn the
+repository's rules, upgrade its Go modules (`magex deps:update all-modules stable-only`, with
+`allow-major` for majors, where magex is set up, else `go get -u ./...` and `go mod tidy`) and
+its JavaScript packages (with the lockfile's manager, never another), run the repository's own
+checks, commit, push with `git push -u <remote> HEAD`, and open the pull request with `gh pr
+create --repo <repo>` against the default branch; the remote is named only under the
+`.RemoteIsPlain` guard (origin when none is known), and `--base <default>` only when
+`shellquote` leaves the default branch as it is (`defaultBranchOK`), each through `shellquote`,
+so a remote that isn't plain gets no push, and the session commits and stops. Prompts for
+repositories raised `BundleVersion` to 4: an older build reads an `appliesTo` it doesn't know
+as `any`, so it would import a prompt for repositories as one for both kinds of item, and a
+file of an earlier version holds none. Describe it leaves the prompts for repositories and
+their starters out of its snapshot (core's `itemPrompts` and `itemStarters`), as no routine
+runs one, and the draft's check treats a prompt written for no kind of item as a problem,
+whatever the routine acts on (`kindsProblem`).
+
 ## Shared building blocks
 
 Services share their building blocks rather than keep copies: `internal/repo` and
@@ -510,7 +574,10 @@ a worktree some session is in, reads a process's start time (`StartedAt`), which
 process from a stranger that reused its PID, and probes a PID as running, gone, or unknown
 (`Probe`, which never signals one `ValidPID` refuses and calls it unknown, so an agent's
 worktree lock naming one is kept); `internal/execpath` finds and runs external
-programs (`Finder`, `Runner`; `Search.Path` searches the login shell's PATH), and starts a
+programs (`Finder`, `Runner`; `Search.Path` searches the login shell's PATH), holds a program's
+standard output to `Exec.Limit` bytes when that is set (one that prints more is stopped, and
+`Run` fails with `ErrOutputLimit`, returning none of it, so output a repository controls, as
+gitread's tree, log, and blob reads, can't grow the app's memory without bound), and starts a
 long-lived one in its own process group (`Start`, `Proc`), writing straight into a file the
 app tails and stopping the whole group with a signal ladder; nothing else starts a process
 (`TestOnlyExecpathStartsProcesses`, with named exceptions), and nothing runs `go install` or
@@ -520,7 +587,8 @@ environment, after the first paint, and never logs a variable's name or value; a
 `internal/progress`, and `internal/textutil` hold the clock (and `clock.Sleep`, the shared
 wait that ends with its context), the interval runner, one call per key at a time, `~`
 paths, a long read's progress told to the window a few times a second (the Release page's
-list, the window's worktrees listing, `event.WorktreesProgress`, and every whole refresh of
+list, the window's worktrees listing, `event.WorktreesProgress`, the Deps page's read of the
+clones, `event.ManifestsProgress`, and every whole refresh of
 the inbox, `event.InboxProgress`, beside `inbox.Snapshot.Refreshing`), and text helpers,
 among them the app's one POSIX shell quoting: `textutil.ShellQuote`, which always quotes,
 for every word of a script the app writes, of the ssh command it hands git, and for the
@@ -528,6 +596,12 @@ program of Repo scripts' chain line unless it is a path from `/`, and
 `textutil.ShellWord`, which leaves a word plain only when every POSIX shell reads it as
 itself (ASCII letters, digits, and `=-_./:,+@%`, not starting with `=`), for the commands
 the window shows or copies and the chain line's folders and arguments.
+`internal/toolsigns` names the files that show a clone is set up for a tool, each a path from
+the clone's top with slashes, a folder counting whatever it holds: `MageX`, mage-x's
+(`.github/env/10-mage-x.env`, `.mage.yaml`, or a `magefiles` folder). It is a leaf that imports
+nothing of the app's, so the setup's Tools step, which counts the clones that hold them, and
+Deps, which finds them in the tree of the commit it reads, share the list without either
+importing the other.
 A file a repository or an agent controls (a clone's `go.mod`, `t3.json`, `tasks.json`,
 magefiles, go-pre-commit config and hooks, the signing files, the `.git` file and
 `commondir` the sweep's count of worktrees follows, an agent's transcript) is read
@@ -1166,6 +1240,14 @@ before the split, and a purpose this build doesn't know, counting as the rest), 
 add up to `Spent`. The budget menu's one line for Autopilot is `watches` and `autopilot`
 together, shown only while they are above zero; the follower's rounds, which read the watched
 pull requests a routine follows in the listed ones' requests, stay `follower`.
+
+**What a repository's launch reads.** `Store.RepoFacts` (the query `GetRepoFacts`, beside
+`GetRepoDefaultBranch`) reads what the last refresh stored about a repository, matched ignoring
+case, from the database alone: its default branch, the viewer's permission, whether GitHub has
+it archived, disabled, or locked, and why, and whether it is a fork, and of what (`RepoFacts`,
+with `Found` false for one the inbox never saw). Core converts it field for field into the
+launcher's `StoredRepo` (`repoFacts` in `adapters_launch.go`), which a repository's launch
+checks ([internal/launcher](#internallauncher)), so the launcher never imports the inbox.
 
 ## internal/reporules
 
@@ -1937,7 +2019,8 @@ run that wrote an agent file holds the next launch on its item at that head as
 script, which only changes into the folder and runs the agent, and opens it in the user's
 terminal app, one driver per terminal and OS. `terminal.WriteScript` writes every script the
 app opens in a terminal into the launch folder, a session's and a followed run's alike (named
-`pr-`, `issue-`, or `run-<number>`, pruned after seven days by those prefixes alone); a
+`pr-`, `issue-`, or `run-<number>`, or a repository's launch's `repo-<YYYYMMDD>`, pruned after
+seven days by those prefixes alone); a
 followed run's script runs its command under `script(1)`, recording its output, its shell's
 PID, and its exit status in the run's files. `launcher.CommandOpener`, which core hands the
 runs and never binds, opens only such a script, in the terminal chosen in Settings.
@@ -1965,6 +2048,49 @@ agent button. `promptData` fills `.ReviewedCommit` from the inbox's `viewer_revi
 only when it is a commit's hex ID (`prompts.CommitID`). `internal/workspacetrust`
 marks the launch folder trusted in each agent's own config (Claude's `.claude.json`, Codex's
 `config.toml`, appended to and never rewritten).
+
+**A repository's launch** (`repo.go`) starts a session on a repository rather than on an inbox
+item, as the Deps page's Upgrade does. The bound `ResolveRepo`, `PreviewRepo`, and `LaunchRepo`
+take a `RepoLaunchRequest` (the repository, its clone's folder as the window names it, the ID
+of a prompt for repositories, and the launch menu's choices, but never a worktree's name, which
+the launcher works out from the user's day, `Config.Location`, the machine's time zone unless
+set) and return the shapes an item's launch does, so the window's launch controls serve both:
+`RepoResolution` is a `Resolution` (item 0, no kind, trusted, the worktree always on, and the
+prompt the launch's own, inheriting none) with a `Notice`, and `PreviewRepo` a `Preview`, its
+worktree and prompt the ones it would make and fill in now. Each of the three checks the
+repository, its clone, and the prompt afresh (`ResolveRepo` leaves the agent's program, the
+terminal, and the worktree to the other two). The repository, by what the inbox last stored of
+it (its `RepoFacts`, core's `repoFacts` over the inbox's `Store.RepoFacts`, so the launcher
+stays off the inbox): one GitHub says is archived, disabled, or locked (with its lock reason in
+words), or where the user's access is read or triage alone, is refused (`ErrRepoClosed`,
+`ErrNoPushAccess`), while what isn't known (a repository the inbox never saw, or a permission
+GitHub didn't give) lets the launch go ahead, saying so in the `Notice`, which also says a
+fork's pull request opens on the fork itself. The clone: one the repository locations hold
+(`ErrNotInLocations`), the clone's own folder rather than a linked worktree
+(`localrepos.CheckAddable`), with a remote that points at the repository (`cloneOf`, which the
+check of a linked clone shares). The prompt: only a prompt for
+repositories, by its ID (`repoPrompt`: none, one that is gone, or one for items is
+`ErrNoRepoPrompt`, worded). It is planned as an item's launch is, the launch defaults keyed by
+the repository, and differs where a repository has no item: it is trusted, as the user's own
+repository is, so no outside contributor's limit applies; no file is checked, so only a session
+running in the folder it would start in holds it back, which `Alongside` confirms; it always
+starts in a new worktree of its own (`WorktreeRequest.Task`, `deps-<YYYYMMDD>`, which the maker
+takes or passes for the first free name past it; see [internal/worktrees](#internalworktrees)),
+and its prompt is filled in again once the worktree is made (`fillRepo`: `prompts.RepoData`
+with the default branch the worktree starts from and the clone's remote, then `WithWorktree`,
+no item's field), since a launch made meanwhile may have taken the name planned; its files are
+named `repo-<YYYYMMDD>` (`Plan.Task`; `checkSubject` holds a plan and its files to an item's
+kind and positive number, or to a task with neither); its worktree has no record to `Touch`;
+and its session is recorded with kind `''` and number 0, the prompt's name as its title, the
+repository's page as its URL, and the worktree made, and is named `<nickname> · <name>` in the
+agent (`repoSessionName`). A launch that fails once its worktree is made, as when the terminal
+can't open its script, has the maker remove that worktree again with its own branch, where the
+maker can (`WorktreeDiscarder`, core's over `worktrees.Maker.Discard`, the Worktrees tab's Remove,
+refused while a session works there or it holds changes; a refusal is logged, and the launch's
+own error is what comes back), since a retry makes another. `Resume` refuses such a session
+(`ErrNoItem`, by its record's kind and number, `ResumableSession.Repo`), which has no item to
+plan its resumption on. The launcher itself runs only the clone's read-only remote lookup; the
+worktree maker fetches the default branch and makes the worktree.
 
 ## internal/sessions
 
@@ -2022,6 +2148,22 @@ Revealer. The bound `Forget` deletes an ended session's record on the user's cli
 panel's ×), refusing one still running (`ErrLive`; failed and unknown count as running) and
 counting one already gone as done, and emits `event.SessionsUpdated`; the prune is
 otherwise the only thing that deletes a session.
+
+**A repository's sessions.** A repository's launch (the Deps page's Upgrade) records its
+session with no item: kind `''`, number 0, item 0, and the worktree its launch made, never
+`''`, its title the prompt's name and its URL the repository's page, which the table's wider
+checks take (`0112_repo_sessions`: `(kind = '') = (number = 0)`, and `kind <> '' OR (item_id = 0
+AND worktree <> '')`). `Record.valid` takes either an item's record (a kind and a positive
+number) or such a one (`validSubject`), so the launch's record is stored rather than dropped
+with a log line. `Record.IsRepo` and `Session.IsRepo` tell one. It is followed as any session
+is, found running in its worktree for a later launch's hold, but offers no resume (`CanResume`
+false: the launcher resumes a session on its item), hands the inbox's rereads nothing whatever
+its agent did on GitHub, gets no `GitHubEvent` (`NoteGitHub` passes it over), and is pruned
+with its repository's own, its newest `KeepPerItem` kept apart from its items'. `Session.Label`
+and `FullLabel` name what a session works on, as the menu bar's waiting rows and the session
+banners show it: "example-repo #7" (or "acme-org/example-repo #7"), or, for a repository's,
+the repository and the prompt's name, "example-repo · Upgrade dependencies", whose banner opens
+the repository's page.
 
 ## internal/localrepos
 
@@ -2250,6 +2392,38 @@ branch with its removal (`BranchPullRequest` stays `name`'s); and the sweep remo
 when the app or Claude Code made it (`Managed`) and, as always, its HEAD is the merged pull
 request's head.
 
+**A task's worktree** (`task.go`). A repository's launch asks for a worktree for a task on the
+repository itself rather than an item's (`EnsureRequest.Task`: its base name, `deps-<YYYYMMDD>`,
+with no kind, number, base, or head, `checkSubject`). It is made new every time, as an issue's
+is, from the repository's default branch as just fetched, through the default branch's fetch
+and `git worktree add --no-track -b worktree-<name>`, so no new argv (`Ensured.Task` is the
+name taken, and `DefaultBranch` the branch it starts from, or, for `Plan`, which asks no
+remote, the request's or the one the clone last learned from its remote's HEAD), and it is
+never resumed, adopted, attached, or recorded: one reused could build on commits a merged pull
+request already took, and a record names an item, so it would link the worktree by name and
+keep its branch from relating it to its pull request.
+Its name is the first free one of the base, then `<base>-2` up to `<base>-99` (`freeTaskName`;
+past those, `ErrNoTaskName`, worded): a name is taken while anything is at its managed path, or
+may be, as when the path can't be looked at; while git has a worktree at that path or on its
+branch, its folder there or gone; while the clone has that local branch; and while it has a
+remote-tracking branch of that name on any remote, so one left from an earlier task, pushed and
+since merged, never relates the new worktree to the old pull request. `Plan` says the name it
+would take now, asking no remote, and `Ensure` takes the first free one as it makes the
+worktree. Calls for a task never share a run (no `calls` grouping, which would hand two quick
+launches one worktree): the clone's lock runs them one after the other, so a second the same day
+takes the next name. It is made only from the clone's own folder, the main worktree git lists
+first (`ErrNotMainWorktree`), so it sits beside the clone's other managed worktrees, where a
+listing and the sweep find it as the app's (`Managed`, `OwnBranch`). One its launch made but
+couldn't start a session in is taken away again by `Maker.Discard`, as `Remove` takes one away
+(refused while a session works there or it holds changes, its branch deleted only while nothing
+on it would be lost), so the next launch takes its name back. Once its session pushes the
+branch under its own name (`git push -u <remote> HEAD`) and opens a pull request, a listing
+links it by that branch (`branch`, above), and the sweep removes it once that pull request
+merges with its HEAD as the head, as for any worktree the app made and a pushed branch links.
+The limit: a fetch of the user's own that prunes the remote-tracking branch, as after GitHub
+deletes the merged branch, before a listing sees the merge leaves the worktree linked to
+nothing, and it is then removed by hand.
+
 **Copies of a worktree's commits** (`copies.go`). A coding agent's sub-session works in a
 worktree of its own, on a branch no one pushes, and the session that started it copies its
 commits (a cherry-pick or a rebase) onto its own branch and pushes that. A copy keeps the
@@ -2426,13 +2600,15 @@ in once the terminal is built, before any work starts, which opens the folder as
 
 ## internal/gitread
 
-`internal/gitread/` is the read-only git that release, hooks, and Repo scripts share: an exact-argv allowlist
-plus validating predicates (a branch, a tag, a commit, a `v*` pattern, an absolute clean folder)
-that refuses anything else with `ErrGitCommandNotAllowed` before git runs, and typed helpers over
+`internal/gitread/` is the read-only git that release, hooks, Repo scripts, and Deps share: an
+exact-argv allowlist plus validating predicates (a branch, a tag, a commit, a `v*` pattern, an
+absolute clean folder) that refuses anything else with `ErrGitCommandNotAllowed` before git
+runs, and typed helpers over
 it (the current branch, origin's default branch as the clone last learned it from its own
 `refs/remotes/origin/HEAD`, an operation in progress, uncommitted changes, each dirty file with what
 the index holds for it, unpushed commits, the commits between two, tags here and on origin, signing,
-the hooks folder: `OriginHead`, `HookPaths`, `IndexLocked`, ...).
+the hooks folder, a commit's tree, the newest commit to change a manifest, a blob: `OriginHead`,
+`HookPaths`, `IndexLocked`, `Tree`, `LastChange`, ...).
 Every command runs as `git -C <dir> -c core.fsmonitor=false -c submodule.recurse=false` with
 `GIT_OPTIONAL_LOCKS=0`, `GIT_TERMINAL_PROMPT=0`, `GIT_NO_LAZY_FETCH=1`, and an empty
 `GIT_ALLOW_PROTOCOL` (no read reaches a transport, so a partial clone's missing object is never
@@ -2558,6 +2734,41 @@ ls-remote has `RemoteTimeout`, whose end is `ErrRemoteTimeout`, which `Message` 
 origin not answering in time. `ValidBranch` is the branch rule a command's argument must
 pass.
 
+For Deps it reads a commit's contents from the clone's objects alone, never its worktree:
+`TrackingCommit` (`rev-parse --verify --quiet refs/remotes/origin/<branch>^{commit}`, origin's
+branch as the clone last learned it, peeled, so the answer is always a commit's ID, or '' when
+the clone has no such ref); `Tree` (`ls-tree -r -z -l --full-tree <commit>`: every file of the
+commit's tree, each subfolder's included, with its mode, its object's type and ID, and a blob's
+size, as `TreeEntry`, kept as the caller's `keep` says; `TreeEntry.Regular` is a blob that isn't
+a link, a blob the clone doesn't hold, which git lists with the size `BAD` as a partial clone's
+unfetched blobs are, is kept `Missing`, and an entry of a shape it doesn't know is skipped);
+`LastChange` (`log -1 --no-merges
+--no-show-signature --no-mailmap --no-ext-diff --no-textconv --format=%ct%x01%s <commit> --
+:(literal)<lockfile> :(literal)<manifest>`, the lockfile left out when there is none: the newest
+commit to change either, its committer time read as UTC and its subject, as `Commit`, or none,
+and in a shallow clone never older than its shallow commits); `Blob` (`cat-file blob <oid>`,
+through no filter); `Shallow` (`rev-parse --is-shallow-repository`); and `FetchHead`, where git
+keeps the `FETCH_HEAD` every fetch writes (`rev-parse --git-path FETCH_HEAD`, now among
+`gitPathNames`), whether or not it is there. None of them runs a program the clone names: no
+signature is checked, and no external diff or textconv runs. A manifest's and a lockfile's
+paths have slots of their own (`slotLiteralManifest`, `slotLiteralLockfile`), validated by
+`ValidManifestPath` and `ValidLockfilePath`, which Deps holds what it reads to (`treePath`: a
+`go.mod` or `package.json`, or a `go.sum`, `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`,
+`bun.lock`, or `bun.lockb`, relative and clean, no part empty, `.` or `..`, or starting with `-`
+or `:`, valid UTF-8 with no control character or backslash, at most 1,024 bytes), and each is
+passed to git only after `:(literal)`, so no wildcard or other magic is read in it; the lockfile
+comes first in the two-path form, so that form without its last word is no other entry. A
+tree's listing, a log, and a blob's contents are the repository's to make as large as it likes,
+so each is capped (`outputLimit`: 64 MiB, 64 KiB, and a mebibyte and 64 KiB): gitread's own
+runner, an `execpath.Exec` given that `Limit`, stops git once it prints more, holding none of
+the output, and any other runner, as a test's, is held to it once it returns (`limitedRunner`);
+either way the read fails with `execpath.ErrOutputLimit`, which `Message` words as git printing
+more than can be read here. `DefaultBranch` is the rule Repo scripts and Deps share for a
+repository's default branch, asking no one: the one the app stored, else the one the clone's
+`refs/remotes/origin/HEAD` names (`OriginHead`), else the first of `main` and `master` the
+caller's guess accepts (Repo scripts': the one the clone is on; Deps': the one the clone has of
+origin's), else ''.
+
 ## internal/integrations
 
 `internal/integrations/` finds the tools the app drives, mage-x's magex and go-pre-commit,
@@ -2579,12 +2790,16 @@ link or a Homebrew copy, and fails with `ErrAutomationDenied` while the user has
 app control Finder; `Reveal` shows such a copy in Finder (`open -R`). It writes the
 `tools.*` preferences and only reads `integrations.*`, which settings writes through the leaf `internal/integrationprefs`
 (the switches, automatic, on, or off, and the chosen copies; the leaf also declares the
-window's memory of the Scripts tab, `integrations.announced`, `scripts.lastPage`,
-`scripts.lastRepo`, `scripts.sections` (the Release, Hooks, and Repo scripts sections the user
-opened or folded), and `scripts.releaseSort` (`KeyReleaseSort`, the order the Release page
-lists each group in, a `ReleaseSort`: `newest`, the default, `name`, or `commits`;
-`DecodeReleaseSort` reads any other value as newest, and `EncodeReleaseSort` refuses one),
-none of which a backup holds (`settings.Portable` leaves them out), and `scripts.showRuns`,
+window's memory of the Scripts tab, `integrations.announced`, `scripts.lastPage` (a
+`ScriptsPage`, Deps' `PageDeps`, `deps`, among them), `scripts.lastRepo`, `scripts.sections`
+(the Release, Hooks, Repo scripts, and Deps sections the user opened or folded, Deps' being
+`deps.stale`, `deps.aging`, and `deps.fresh`), `scripts.releaseSort` (`KeyReleaseSort`, the
+order the Release page lists each group in, a `ReleaseSort`: `newest`, the default, `name`, or
+`commits`; `DecodeReleaseSort` reads any other value as newest, and `EncodeReleaseSort` refuses
+one), and `scripts.depsSort` (`KeyDepsSort`, the order the Deps page lists each group of clones
+in, a `DepsSort`: `oldest`, the default, `name`, or `modules`; `DecodeDepsSort` reads any other
+value as oldest, and `EncodeDepsSort` refuses one, as `settings.SetDepsSort`, which stores it,
+does), none of which a backup holds (`settings.Portable` leaves them out), and `scripts.showRuns`,
 whether a run Repo scripts starts opens beside it, off by default, which settings stores for
 the window alone), so settings never imports integrations. One rule says which folders are
 go install's (`goFolders`), for a copy's
@@ -2892,7 +3107,22 @@ their aliases: Settings → Integrations updates magex), and the custom targets 
 that differs (`Option.Shown`). A command that tags a version (`version:bump`,
 `version:tag`, `git:tag`, `git:tagupdate`, `git:tagremove`, or a magex alias of one) points
 to Release (`Anyway` runs it), checked again on the command as it will run; goreleaser's
-`release:*` targets are plain built-ins. A command from the repository's files asks before
+`release:*` targets are plain built-ins. A command that upgrades the repository's
+dependencies in the clone itself, on whatever branch it is on, leaving the change uncommitted,
+points to Deps the same way (`Entry.Deps`, `ErrDeps`, whose words offer Deps or running it
+anyway), since Deps does it in a fresh worktree, with a pull request: magex's `deps:update` or
+`mod:update`, by name or a magex alias of one; `go get` with `-u` or `-u=patch`; a package
+manager's own upgrade command, after any of its flags (npm's or pnpm's `update`, `up`, or
+`upgrade`, Yarn's `upgrade`, `up`, or `upgrade-interactive`, and Bun's `update`, never its
+`upgrade`, which upgrades Bun itself); and `ncu` or `npm-check-updates`, at any version, with
+`-u`, `--upgrade`, `-i`, or `--interactive` (`guard.go`, each program by its name alone,
+quoted, or at the end of a path; a script run by name, as `pnpm run update`, is the
+repository's own). `deps:tidy`, which only tidies, stays a plain built-in, and
+`deps:update` left the page's chips (`commonTargets`). `RunRequest.Anyway` runs either kind,
+and a run's intent keeps it, so Run again runs a command run anyway the same way and refuses
+one recorded without it. Both checks read a command's words as it runs joined into one line
+(`bumps`, `upgrades`), inputs and aliases resolved, so a program and its arguments read as the
+same command written in a shell would. A command from the repository's files asks before
 its first run and whenever it changes (D13): its trust is the SHA-256 of the canonical
 JSON of its effective form, `${workspaceFolder}` and `${env:…}` as written, a custom magex
 target's holding every file under `magefiles/` by its bytes (only those: not `go.mod` or the
@@ -2900,13 +3130,13 @@ packages it imports, the known limit), recorded in `script_trust` under the clon
 with the display text trusted; magex's built-ins need none. `Run` hands `scriptrun` a
 `KindScript` run whose `Before`, under the clone's lock, reads the source again from its
 bytes, refuses a command whose hash isn't the one worked out as the run was asked for,
-works the command out, refuses a version bump, then one that isn't the one the user
-confirmed (or, with no confirmation, the one they trusted), and only then remembers a
-confirmation they asked to keep, so what runs is what they saw. A refusal that asks is a
-`QuestionError` whose `Question` holds the command with the chosen inputs filled in;
-`desktop.MarshalError` sends any error's `Detail` to the window beside its message. A
-repository's shell command (a `t3.json` script or a shell task, which assume POSIX quoting,
-and which the app quotes for one) runs as `[$SHELL, -c, command]` when the login shell is
+works the command out, refuses a version bump or a dependency upgrade not run anyway, then one
+that isn't the one the user confirmed (or, with no confirmation, the one they trusted), and
+only then remembers a confirmation they asked to keep, so what runs is what they saw. A
+refusal that asks is a `QuestionError` whose `Question` holds the command with the chosen
+inputs filled in; `desktop.MarshalError` sends any error's `Detail` to the window beside its
+message. A repository's shell command (a `t3.json` script or a shell task, which assume POSIX
+quoting, and which the app quotes for one) runs as `[$SHELL, -c, command]` when the login shell is
 of the POSIX family (sh, bash, zsh, dash, ksh, mksh), else under `/bin/sh` (a task's
 `options.shell` as written, with `-c` after its arguments as VS Code adds it), a process as
 its argv, a magex target as `[magex, target, key=value…]`
@@ -2930,16 +3160,17 @@ and Add defaults), reading origins four at a time and keeping each until the clo
 once the window cancels the call. `List` shows the ones whose scope includes the clone:
 every clone, one with a `go.mod` at its root, or its origin among the chosen
 repositories, in any case. They need no trust (D13), keep the hidden character guard,
-point a version bump to Release, and run exactly as written, no `${…}` filled in, as
-`[$SHELL, -c, command]` in the user's login shell whatever its family (fish and tcsh
-included, since the line is theirs and the app quotes none of it; `/bin/sh` only for a
-login shell that isn't an absolute path), in the clone, with the run env plus
-`Variables()`, which the page also carries (`Page.Variables`) for the editor:
+point a version bump to Release and a dependency upgrade to Deps, and run exactly as
+written, no `${…}` filled in, as `[$SHELL, -c, command]` in the user's login shell whatever
+its family (fish and tcsh included, since the line is theirs and the app quotes none of it;
+`/bin/sh` only for a login shell that isn't an absolute path), in the clone, with the run env
+plus `Variables()`, which the page also carries (`Page.Variables`) for the editor:
 `<SLUG>_REPO`, `<SLUG>_REPO_DIR`, and `<SLUG>_DEFAULT_BRANCH`, named from `brand.Slug`,
 set alone in the terminal. The default branch, and so the page's *From branch* note,
 is the one the app stored, else the one the clone's `refs/remotes/origin/HEAD` names
 (gitread's `OriginHead`, which never asks origin), else `main` or `master` when the clone
-is on one, else ''. Their own place beats the setting, and a request's place beats both.
+is on one, else '' (`gitread.DefaultBranch`, the rule Deps shares, its guess here the branch
+the clone is on). Their own place beats the setting, and a request's place beats both.
 A run's `Before` compares the SHA-256 of what the saved script runs (its name, command,
 place, and Ask before running) with the one worked out as the run was asked for, and
 refuses one saved again in between ("changed as it was starting"). Run again works the
@@ -3006,11 +3237,121 @@ reaches the user's own scripts: `Mine` lists them, each with its look (the hash 
 `Before` compares, of its name, command, place, and Ask before running) and where it shows,
 in words; `Run` works out the very spec `Run` does for one of them in a clone, with the place
 always the app, whatever the script says, refuses it when its look isn't the one the routine
-checked (`ErrChanged`), and sets its `Finish` (which keeps how the run ended, the user's Stop,
+checked (`ErrChanged`), never runs one anyway (a version bump or a dependency upgrade is
+refused, `ErrRelease` or `ErrDeps`, checked on the command as it runs, aliases resolved), and
+sets its `Finish` (which keeps how the run ended, the user's Stop,
 its time limit, or the quit) and its `Recorded`, which tells the routine the outcome once it is
 recorded (`RoutineEnd`). Ask before running, which the window asks of the user for `Run`, is
 Autopilot's to ask before it calls this one (**Schedules, the digest, the script step, and a
 routine's week**, under `internal/autopilot`).
+
+## internal/manifests
+
+`internal/manifests/` is the Deps page's service. `List` reads every clone in the repository
+locations whose `origin` is on GitHub (core's `hooksClones`, the Hooks page's: the roots, the
+clones in them, and each one's origin through `localrepos.Inspect`) and whose repository the
+user didn't mute, itself or its org (its `RuleSource`, core's `releaseRules`, the rules Release
+reads; rules that can't be read are logged, and the last ones read stand), and lists each with
+its Go modules' `go.mod` and its JavaScript packages' `package.json` files and how long ago
+their dependencies last changed, stalest first, those whose age isn't known last, a pinned one
+marked (`Clone.Pinned`) for the window to put first. The muted clones, those whose origin isn't
+on GitHub or can't be read, and those read that hold no manifest are counted (`Page.Muted`,
+`WithoutGitHub`, `WithoutModules`), never listed; a clone that couldn't be read is listed with
+why (`Clone.Error`). Everything is read from the clone's own git objects at one commit, never
+its worktree or a package registry, through gitread's allowlist
+([internal/gitread](#internalgitread)), so reading a clone runs no program it names and reaches
+no network, and nothing is stored: what it reads is kept in memory alone.
+
+**The commit read.** A clone is read at origin's default branch as it last fetched it (gitread's
+`TrackingCommit` of `refs/remotes/origin/<default>`; `Clone.Tip` says `origin/<default>`, and
+`Commit` names the commit), so a clone that is behind, or on another branch, still shows what is
+on GitHub, at the commit an upgrade starts from. The default branch is worked out by the rule
+Repo scripts shares (`gitread.DefaultBranch`): the one the app stored (its `DefaultBranches`,
+which core fills with the inbox's store), else the one the clone's `refs/remotes/origin/HEAD`
+names, else the first of origin's `main` and `master` the clone has, that guess's own read kept
+so it reads once. A clone with no such ref (one that never fetched the branch, say) or no
+default branch known is read at HEAD, which its row says (`AtHead`, and `AtHeadWhy` in words).
+
+**A clone's read.** One `git ls-tree -r -z -l --full-tree <commit>` (gitread's `Tree`) lists
+every file with its object and size, and the picker (`tree.go`) keeps magex's signs
+(`toolsigns.MageX`) and, outside every `vendor`, `node_modules`, and `testdata` folder at any
+depth, each `go.mod`, `package.json`, `go.sum`, JavaScript lockfile, `go.work`, and
+`pnpm-workspace.yaml`. Only a regular file counts (`TreeEntry.Regular`: never a link or a
+submodule), and a manifest or lockfile whose path gitread won't pass to git
+(`ValidManifestPath`, `ValidLockfilePath`) is left out. The manifests are read the shallowest
+first, at most 200 (`maxModules`; a clone with more is `Truncated`). A Go module's lockfile is the
+`go.sum` beside its `go.mod`; a package's is the nearest of `pnpm-lock.yaml`,
+`package-lock.json`, `yarn.lock`, `bun.lock`, and `bun.lockb`, in its folder or one above, up to
+the tree's top, the one its own manager writes first in each folder when its `packageManager`
+field names one. The modules are read four at a time (`moduleParallel`), so a monorepo's
+hundred histories fit the clone's time. A module's age (`ChangedAt`, with its commit's subject,
+one line of at most 200 runes) is the newest commit, merges left out, to change its manifest or
+its lockfile, one `git log -1` each (gitread's `LastChange`). Its manifest, read with `git
+cat-file blob` (`Blob`) only when the clone holds it and the tree gives it at most a mebibyte
+(`maxManifest`), gives a Go module's module path, `go`
+directive, toolchain, and how many modules it requires directly and as `// indirect`, and a
+package's name, package manager (its `packageManager` field's, else its lockfile's writer),
+workspace patterns, and how many dependencies, dev, peer, and optional dependencies it names:
+counts, never the names. `go.mod` is parsed by hand, line by line by go.mod's grammar, the
+single-line and block forms alike (`gomod.go`: golang.org/x/mod is no dependency of the app's,
+and a directive it doesn't read is skipped, its block too, so a newer Go's `go.mod` still reads),
+and `package.json` with `encoding/json` (`packagejson.go`: a byte order mark read past, each
+field kept raw, so one of a type npm doesn't use reads as unset, and at most 100 workspace
+patterns); every word kept is one line of plain text, capped, and both parsers are fuzzed
+(`FuzzParseGoMod`, `FuzzParsePackageJSON`). What can't be read is said in the module's `Problem`
+(a manifest too large to read, one a partial clone never fetched, whose history is still read
+but whose contents no read here fetches, a `package.json` that isn't a JSON object, a `go.mod`
+that names no module, a log or a blob git refused, or one the clone's time ran out before). The
+clone's tools (`Tools`: magex by its signs, and pnpm,
+npm, Yarn, and Bun by the managers its packages use, pnpm's workspace file counting for pnpm)
+and its workspace files (`Workspaces`, its `go.work` and `pnpm-workspace.yaml`) come from the
+same tree. A shallow clone (`Shallow`, gitread's `Shallow`) has dates that stop at its shallow
+commits, and when the clone last fetched (`FetchedAt`) is the modification time of its
+`FETCH_HEAD` (gitread's `FetchHead` says where git keeps it, which `os.Lstat` looks at, never
+into).
+
+**What is kept.** What a clone's read found is kept in memory (`keptClone`) by its folder
+resolved (`paths.Resolved`) and the commit read, with where its `FETCH_HEAD` is and its time, so
+reading the clone again at the same commit runs no git beyond what found the commit: one
+rev-parse when the app stored the default branch, and one more, origin's HEAD, when it didn't.
+Whether it is shallow is read again only once it fetched since. A read in which a git read
+failed in a way the next may not is not kept, but one git cut off for printing more than its cap
+(`execpath.ErrOutputLimit`) is, since it would again at that commit; a clone no longer read
+keeps nothing. The page itself is served as it is for `FreshFor` (five minutes) while the
+repository locations and the pinned and muted repositories are as it was read under; `List`
+with refresh set reads every clone again, as does any call once the page is older or either
+changed.
+
+**A read of the clones.** One runs per set of locations at a time (a `flight.Group`; a caller
+that comes meanwhile gets its answer), apart from the window's call that started it, within
+`ScanTimeout` (five minutes): a caller whose context ends stops waiting, and the read goes on and
+is kept for the next. It reads four clones at a time (`scanParallel`), each within a minute
+(`cloneTimeout`), its origin's read included, so one on a disk that stopped answering doesn't
+hold up the rest; a clone whose time runs out keeps the modules it read, says of each other one
+that it wasn't read, and is read again whole by the next scan, its read not kept. It tells the
+window how far it has got (`event.ManifestsProgress`,
+`manifests:progress`, through `internal/progress`, at most four times a second: finding the
+clones, then reading them, counted). A read that fails keeps the last page, with why
+(`Page.Error`), unless there is none to keep or the locations changed; one cut short keeps
+nothing. `Scans`, a desktop worker (core's `ManifestsScans`), holds every `List` call and every
+read to the app's lifetime: the quit ends every one under way and refuses later ones, and the
+worker returns once they have, so the shell never leaves one reading behind it.
+
+**The terminal and Finder.** A row's **Open in terminal** (`OpenTerminal(dir)`) opens the
+terminal chosen for launches in a clone the repository locations hold (`localrepos.ByFolder`,
+the clone named by its folder with `~`), through its `FolderOpener` (core's
+`worktreeTerminal`), running nothing there, or fails with `ErrNoTerminal` without one. A
+module's **Reveal in Finder** (`Reveal(dir, path)`) shows a clone's manifest or lockfile in
+Finder through its `Revealer` (core's `open -R`; off macOS there is none, and it fails with
+`ErrNoFinder`): the path must pass `ValidManifestPath` or `ValidLockfilePath`, checked before
+anything is read, and the file must be in the clone's checkout now and inside the clone once
+its links are resolved; Finder only shows it, so nothing reads or runs it, and a named pipe
+there is shown, never opened. A row's Upgrade is a repository's launch
+([internal/launcher](#internallauncher)). The repoguard boundary test keeps the package off the
+store, the GitHub client, settings, the inbox, core, scriptrun, the launcher, the worktrees,
+release, hooks, scripts, setup, integrations, the desktop shell, and notify: it reads the clones
+through gitread and its own interfaces, which core adapts, starts no run, and asks nothing of
+GitHub or a registry.
 
 ## internal/update
 
@@ -3453,14 +3794,16 @@ nil list, and words every refusal with `uierr`.
   step naming a prompt the library doesn't have (by its starter's key, or its nickname, ignoring
   case), a review reply where an agent's prompt goes or the other way about, or a prompt that
   doesn't apply to every kind of item the routine acts on (its watch's kinds that its trigger
-  fires for), each at the step's prompt field (`Library`, core's `promptLibrary` over the
+  fires for), as a prompt for repositories applies to none, each at the step's prompt field
+  (`Library`, core's `promptLibrary` over the
   prompt library); with no library, or one that can't be read (logged), it refuses none.
   `SetEnabled`, `Duplicate`, a restore, and an import don't check them again; the engine does,
   right before each start (`promptHold`, the same `draft.StepPromptProblems`), so a prompt deleted,
   made a reply, or narrowed to the other kind after the save keeps the run from starting
   (`blocked: not_ready`, *Its prompt can't run: ...*). A prompt a routine names can't be deleted
   (the prompt library's `RoutineSource`, core's `routinePrompts` over `PromptFollower.Uses`),
-  and renaming one rewrites its nickname in every routine that names it by that nickname
+  nor made a prompt for repositories (the editor's `checkRepoSwitch`), and renaming one
+  rewrites its nickname in every routine that names it by that nickname
   (`PromptFollower.Renamed`, told by `prompts.Config.Renamed`, in one transaction, each spec
   compared-and-set on the one read); a starter's key follows its prompt on its own.
 - A step's **Where** must be a place this build runs an agent in (`catalog.Places`,
@@ -5128,7 +5471,8 @@ build runs through `Offers` (nil is the catalog's own, `CatalogOffers`; a test h
   `Problems`' (an agent step set to run where this build runs none, `Offers.placeProblems`; a
   background agent step whose own agent can't keep its tools preset; a prompt the library
   doesn't have, a reply where an agent's prompt goes or the other way about, or one that
-  doesn't fit the kinds the routine acts on, `StepPromptProblems`, which the engine runs again
+  doesn't fit the kinds the routine acts on, as one written for no kind of item, a prompt for
+  repositories, fits none (`kindsProblem`), `StepPromptProblems`, which the engine runs again
   before each start; a script the user no longer has under the name it was picked by), the
   steps it runs only in Dry run (`Offers.NotOffered`), its warnings, and, only while it has no
   problem, its sentence. A spec past the size a spec may be is an error, worded.
@@ -5505,11 +5849,13 @@ describe/
   bindings the builder, Prompts, and Settings use ([the Autopilot tab](#the-autopilot-tab)), so
   nothing here writes the setup.
 - **The snapshot.** Core's `describeSetup` builds it (`kit.NewSnapshot`) from Autopilot's `List`,
-  `MyScripts`, and `Suggest`, the prompt library (no text), the profiles, the settings
+  `MyScripts`, and `Suggest`, the prompt library (no text, and none of the prompts for
+  repositories, which no routine runs: `itemPrompts`), the profiles, the settings
   (Autopilot's, the trusted bots, the repository rules, the ignored workflows),
   `inbox.Store.KnownRepositories` (the stored repositories that aren't archived, most items
-  first, at most 200), and the vocabulary (`autopilot.Gallery`, `prompts.Starters`,
-  `prompts.Variables`); a part that can't be read fails it whole. The service keeps the live
+  first, at most 200), and the vocabulary (`autopilot.Gallery`, `prompts.Starters` but those for
+  repositories, `itemStarters`, and `prompts.Variables`); a part that can't be read fails it
+  whole. The service keeps the live
   snapshot 2 seconds, forgets it on any change, and falls back on the last one read when the
   setup can't be read. It writes `context.json` before every turn, as the worker readies the
   folder, and after each burst of changes while Autopilot is on: core's `describeOnChanges`
@@ -5731,8 +6077,9 @@ into one of six `GitHubState`s with the command that fixes it, never an error bu
 the window gave up on; `Terminals` says which terminals are installed
 (`terminal.Registry.Installed`, over `/Applications` and `~/Applications`; Terminal always
 is); `Signals` counts the clones, every repository location's through the shared
-`localrepos.Reader`, that hold each sign the Tools step looks for (a `go.mod`, mage-x's and
-go-pre-commit's config, go-fortress's workflow), fixed paths with `os.Lstat` alone. `Reset`,
+`localrepos.Reader`, that hold each sign the Tools step looks for (a `go.mod`, mage-x's signs,
+`toolsigns.MageX`, the list Deps reads too, go-pre-commit's config, go-fortress's workflow),
+fixed paths with `os.Lstat` alone. `Reset`,
 once the user typed `ResetWord`, refuses while runs go in the app (its `Runs`), saves a
 backup first through its `Saver`, refusing the reset when that fails, writes the request
 (`appdata.RequestReset`, `<data>/reset-request.json`), and emits the Go-only
@@ -6177,9 +6524,69 @@ commits' headlines, as `bumpHint` words the sheet's hint. `ReleasePage` holds th
 user picks in local state over the stored one (`picked ?? releaseSort`), so the groups
 reorder at once while App stores it with `settings.SetReleaseSort` (`scripts.releaseSort`)
 and takes the settings it returns. `components/scripts/GroupHeading`, which Release, Hooks,
-and Repo scripts share, is sticky at the top of the page's scroll container, over the page's
+Repo scripts, and Deps share, is sticky at the top of the page's scroll container, over the page's
 background, so a group's heading stays in view while its rows scroll under it, and its
 `note` may be a node, given the rest of the heading's width, as the readiness summary is.
+
+**The Deps page.** `components/scripts/DepsPage.tsx` shows the manifests service's page the way
+the Release page shows its own. Its head counts the clones and modules and says when they were
+read, or, in that place, how far a read has got (`readStep`, from `manifests:progress`), so no
+row moves; then Read again, the clones left out (`leftOutText`), and, while a failed read keeps
+the last page, how old that is. Above the groups sit a search over `owner/name` that opens every
+group (`matchClones`), a chip for each kind of module that keeps only the clones with one
+(`moduleKinds`, Go and JS, each counting the clones the search leaves), and the sort (Oldest,
+A–Z, or Modules, the pinned repositories first in each, `sortClones`), held in local state over
+the stored one while App stores it with `settings.SetDepsSort` (`scripts.depsSort`). The pure
+half is `lib/manifests.ts`, which groups, sorts, and words what the service read and decides
+nothing else. A clone's group is its stalest module's age as the clock stands (`ageGroup`, a
+month being 30 days, as `lib/time` counts one: Stale over three months, Aging from one, Fresh
+under one), and a clone whose age isn't known (`oldest` '', as when its read failed) goes in
+Stale, last in Oldest, with a muted edge, since nothing vouches for it and a folded Fresh would
+hide it; the page renders again for the clock only once a clone changes group (`groupsAt`
+through `useNowAs`). Each group sits under the shared `GroupHeading`, Stale alone starting open
+(`depsGroups`; the folds are kept in `scripts.sections` as `deps.stale`, `deps.aging`, and
+`deps.fresh`), Stale shown even when empty, and its note is the legend of its rows' edges
+(`DepsLegend` over `legendOf`: caution, warning, and success, and a muted "age unknown").
+`DepsRow.tsx` draws a clone on one line of its group's grid (`depsListClass`, nine columns, each
+row a subgrid of them, following the list's width, `@container`, as a Release row does): the
+edge (`staleTone`), the repository, its modules and tools, its stalest manifest or its error,
+its notes, the age, Upgrade…, quiet until the row is hovered or holds the focus, and the
+chevron, which, like a
+click on the row's empty space, unfolds `DepsDrawer.tsx`. The notes are the upgrade an agent
+works on there (`upgradeSessions`, the sessions of number 0 and kind '' in `useSessions`'
+`byItem`, the one shown picked as a card's is, `cardSession`), then `cloneNotes` (age unknown,
+read at HEAD, shallow, not all read). The drawer lists the modules a line each, each with its
+own Reveal in Finder, so Finder shows the file its line names, then the workspace files, with
+Open in Terminal and Upgrade dependencies… at its foot; it reads nothing more. `ScriptsView`
+reads the page through `lib/useManifests.ts` (`listManifests`, with refresh for Read again,
+following `manifests:progress`) each time the tab shows while Scripts is on, whichever page is
+open, for the rail's count of the clones in Stale (`staleCount`), and keeps one sheet open at a
+time: a release request or a run it opens
+closes the upgrade sheet. **Upgrade…** opens `DepsUpgradeSheet.tsx`, which reads the prompt
+library, the agents, and the profiles; offers the prompts for repositories (`promptApplies` with
+kind '', which offers nothing else): the two starters, `deps-minor` as Minor and patch, chosen,
+and `deps-major` as Majors too, while the library keeps them, and the user's others under
+Another prompt, each with an Edit that closes the sheet for the Prompts tab; resolves and plans
+the launch with `ResolveRepo` and `PreviewRepo` (`repoLaunchRequest`) as the prompt, agent, or
+profile changes, the plan naming the worktree and its base in the sheet's sentence and showing a
+refusal, such as every name for today's worktree being taken, before Start, which waits while
+either fails; shows the launch options' own settings (`LaunchFields`, from `LaunchMenu.tsx`,
+the worktree's sentence in place of its choice) and their preview (`LaunchPreviewSection`);
+starts with `LaunchRepo`, a hold opening the launch hold dialog, whose Start another starts
+beside the session (a session with no item named by its repository alone, never `#0`); and
+closes once the upgrade starts, unless its launch worked something around, which it stays open
+to say. The launch options take a `LaunchSubject` rather than an item: an item by its kind, or a
+repository by kind '', its trust, and how its launch is planned (`preview`, and `key`, what
+else the plan is made with), so a repository's launch reuses them, and for a repository they
+offer only its prompts, show the worktree always on, and offer no situation, override, or save
+as a default. Elsewhere, a prompt for repositories stays out of every item's list
+(`promptApplies` with an item's kind), and the routine builder's agent and GitHub steps offer
+only prompts written for items (`fitsKinds` in `builder/parts.tsx`), even before the routine
+acts on any kind. The Prompts tab offers Repositories among what an agent prompt is for, never a
+reply's (`PromptEditor`), lists such prompts under a group of their own (`PromptLibrary`),
+previews them with the sample repository alone (`PromptPreview`'s `PreviewKind` `repo`), and
+dims every variable a repository's launch leaves empty, marked Item only, or PR only for a pull
+request's (`VariablesPanel`, by `PromptVariable.itemOnly`).
 
 **The Worktrees page.** `components/WorktreesView.tsx` is `worktrees/PageHead` over a body that
 scrolls on its own (`overflow-y-auto`, as `ReleasePage`'s does), so the clone headings stick in

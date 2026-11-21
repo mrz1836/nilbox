@@ -256,6 +256,8 @@ func TestAnImportMapsEveryLaunchSettingAndReplyItsRoutinesName(t *testing.T) {
 		library: fakeLibrary{prompts: []autopilot.LibraryPrompt{
 			{Nickname: "My fix", Kinds: []item.Kind{item.KindPR}},
 			{Nickname: "Ack", Reply: true, ReplyFor: autopilot.ReplyForComment, Kinds: []item.Kind{item.KindPR}},
+			// A prompt for repositories, written for no kind of item, which no routine runs.
+			{Nickname: "Upgrade deps"},
 		}},
 	})
 	path := writeBundle(t, nil, bundled(t, "Fix everything", launching()), bundled(t, "Fall back", fallingBack()))

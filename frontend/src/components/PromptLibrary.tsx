@@ -50,10 +50,13 @@ function appliesGroup(appliesTo: PromptAppliesTo, title: string): Group {
   return { key: appliesTo, title, holds: (p) => p.appliesTo === appliesTo }
 }
 
+// promptGroups are the agent prompts' groups: one for each kind of item, both, and then
+// repositories, whose prompts the Deps page's upgrades launch rather than an item's.
 const promptGroups: readonly Group[] = [
   appliesGroup('pr', 'Pull requests'),
   appliesGroup('issue', 'Issues'),
   appliesGroup('any', 'Both'),
+  appliesGroup('repo', 'Repositories'),
 ]
 
 const replyListGroups: readonly Group[] = replyGroups.map(({ action, title }) => ({
@@ -176,11 +179,12 @@ function GroupHeading({ title, count, noun, nouns, open, onToggle, listId, searc
 }
 
 // PromptLibrary is the Prompts page's sidebar: the agent prompts, grouped by what they are
-// for, or the review replies, grouped by the review each is for, with a switch between the
-// two. Either is searchable by title or nickname, with a button for a new one and a menu
-// of what can be done with the whole library. Each group's heading counts its prompts and
-// folds the group away (GroupHeading). A prompt that is a default somewhere says so, and
-// the open one is marked, with a dot while it has unsaved changes.
+// for (pull requests, issues, both, or repositories), or the review replies, grouped by
+// the review each is for, with a switch between the two. Either is searchable by title or
+// nickname, with a button for a new one and a menu of what can be done with the whole
+// library. Each group's heading counts its prompts and folds the group away
+// (GroupHeading). A prompt that is a default somewhere says so, and the open one is
+// marked, with a dot while it has unsaved changes.
 export function PromptLibrary({
   mode,
   onModeChange,

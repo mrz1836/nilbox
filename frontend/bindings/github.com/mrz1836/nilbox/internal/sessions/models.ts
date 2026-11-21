@@ -82,7 +82,9 @@ export interface Session {
 
     /**
      * ItemID is the item's local ID, Repo is "owner/name", and Kind, Number, Title, and
-     * URL are the item.
+     * URL are the item. A session a repository's launch started has no item (IsRepo):
+     * ItemID 0, Kind "", and Number 0, its Title the prompt's name and its URL the
+     * repository's page.
      */
     "itemId": number;
     "repo": string;

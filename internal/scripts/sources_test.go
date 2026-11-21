@@ -83,8 +83,12 @@ func TestReadT3ListsThisRepository(t *testing.T) {
 
 	for _, name := range []string{"Version: bump patch", "Version: bump minor"} {
 		assert.True(t, all[name].entry.Release, "%s points to Release", name)
+		assert.False(t, all[name].entry.Deps, name)
 	}
 
+	assert.True(t, all["Deps: update all"].entry.Deps, "it points to Deps")
+	assert.False(t, all["Deps: update all"].entry.Release)
+	assert.False(t, all["Deps: tidy"].entry.Deps, "tidying upgrades nothing")
 	assert.False(t, all["Test"].entry.Release)
 	assert.NotEqual(t, all["Test"].hash, all["Test (race)"].hash)
 }
@@ -169,6 +173,13 @@ func TestReadTasksListsThisRepository(t *testing.T) {
 
 	major := all["magex: version:bump:major"]
 	assert.Equal(t, []string{"majorConfirm", "targetBranch"}, inputIDs(major.entry.Inputs))
+
+	for _, label := range []string{"magex: deps:update", "magex: deps:update:all-modules"} {
+		assert.True(t, all[label].entry.Deps, "%s points to Deps", label)
+	}
+
+	assert.False(t, all["magex: deps:tidy"].entry.Deps)
+	assert.False(t, bump.entry.Deps)
 
 	assert.Equal(t,
 		"magex format:fix && magex lint:fast && magex test:short && echo 'Running quick-check workflow...'",
@@ -289,6 +300,29 @@ func labels(sc script) []string {
 	}
 
 	return out
+}
+
+func TestATaskThatUpgradesPointsToDepsThroughItsChain(t *testing.T) {
+	t.Parallel()
+
+	got, _, err := readTasks(folder(t, map[string]string{tasksFile: `{"tasks": [
+		{"label": "upgrade", "type": "shell", "command": "magex deps:update"},
+		{"label": "go", "type": "process", "command": "go", "args": ["get", "-u=patch", "./..."]},
+		{"label": "js", "type": "shell", "command": "pnpm", "args": ["-r", "up", "--latest"]},
+		{"label": "lint", "type": "shell", "command": "magex lint"},
+		{"label": "tidy", "type": "shell", "command": "magex deps:tidy"},
+		{"label": "all", "dependsOn": ["upgrade", "lint"], "dependsOrder": "sequence"},
+		{"label": "checks", "dependsOn": ["tidy", "lint"], "dependsOrder": "sequence"}]}`}))
+	require.NoError(t, err)
+
+	all := byName(got)
+	for _, label := range []string{"upgrade", "go", "js", "all"} {
+		assert.True(t, all[label].entry.Deps, "%s points to Deps", label)
+	}
+
+	for _, label := range []string{"lint", "tidy", "checks"} {
+		assert.False(t, all[label].entry.Deps, label)
+	}
 }
 
 func TestTasksAreBounded(t *testing.T) {

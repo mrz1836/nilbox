@@ -944,7 +944,7 @@ More in [Agents in the background](docs/desktop.md#agents-in-the-background) and
 
 ### <code>Your clones</code>
 
-The **Scripts** tab, with Release, Hooks, Repo scripts, and Runs, appears while mage-x or
+The **Scripts** tab, with Release, Hooks, Repo scripts, Deps, and Runs, appears while mage-x or
 go-pre-commit is on in **Settings → Integrations**, or while you turn Scripts on there.
 
 <details>
@@ -1060,6 +1060,26 @@ More in [Hooks](docs/desktop.md#hooks).
 </details>
 
 <details>
+<summary><strong>Deps</strong>: how old every clone's dependencies are, and an agent that upgrades them</summary>
+<br/>
+
+- **Every clone, stalest first:** the clones in your repository locations (muted ones left out),
+  grouped into **Stale**, **Aging**, and **Fresh** by how long ago their dependencies last
+  changed. Each unfolds to its `go.mod` and `package.json` files, with the Go version or package
+  manager, how many dependencies each names, and the last commit that changed it or its lockfile.
+- **Read from your clones alone:** the ages come from each clone's own git, at origin's default
+  branch as last fetched, never from a package registry, so the page asks nothing of anyone.
+- **Upgrade… in one click:** Claude Code or Codex starts in a fresh worktree off the default
+  branch with a built-in prompt (minor and patch, or majors too). It upgrades the Go and
+  JavaScript dependencies, runs the repository's own checks, and opens a pull request that follows
+  the repository's conventions. Your clone isn't touched, and once the pull request merges, the
+  worktree is cleaned up like any other.
+
+More in [Deps](docs/desktop.md#deps).
+
+</details>
+
+<details>
 <summary><strong>Repo scripts</strong>: tasks, magex targets, and your own commands, one click each</summary>
 <br/>
 
@@ -1075,8 +1095,9 @@ More in [Hooks](docs/desktop.md#hooks).
   repository's own magex target runs for the first time, Nilbox shows exactly what will run and
   where, and asks again whenever it changes, showing what you ran before. What runs is what you
   saw: a command that changed after you confirmed it is refused.
-- **Version bumps point to Release,** which does them with its checks; **Run it anyway** stays in
-  the menu.
+- **Version bumps point to Release,** which does them with its checks, and **dependency upgrades
+  to Deps,** which makes them in a fresh worktree and opens a pull request; **Run it anyway** stays
+  in the menu.
 - **Up to date before you run:** beside the branch, the page says whether origin has newer commits
   on it, asking about that branch alone (an origin not on GitHub only when you click **Check**),
   and **Pull** fast-forwards it (`git pull --ff-only`, never a merge or a rebase). A clone whose

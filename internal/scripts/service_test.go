@@ -70,8 +70,8 @@ func TestListThisRepository(t *testing.T) {
 	assert.Contains(t, magex.Note, "run the repository's own code and its .github/env settings")
 	assert.Equal(t, []string{
 		"magex:format:fix", "magex:lint", "magex:lint:fix", "magex:test", "magex:test:race", "magex:build",
-		"magex:deps:tidy", "magex:deps:update",
-	}, magex.Common)
+		"magex:deps:tidy",
+	}, magex.Common, "never deps:update, which Deps runs")
 
 	assert.Equal(t, []string{"magex:deploy", "magex:pipeline:ci", "magex:pipeline:nightly", "magex:wait"},
 		refs(magex.Entries[:4]), "the repository's own targets first")

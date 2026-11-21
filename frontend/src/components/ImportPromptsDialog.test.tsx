@@ -109,6 +109,29 @@ describe('ImportPromptsDialog', () => {
     expect(onImported).toHaveBeenCalledWith({ added: 1, replaced: 1, skipped: 0, defaults: 0, first: 4 })
   })
 
+  it('says a prompt is for repositories', async () => {
+    platform.previewPromptImport.mockResolvedValue(
+      importPreview({
+        entries: [
+          importEntry({
+            prompt: bundlePrompt({
+              nickname: 'Upgrade deps',
+              name: 'Upgrade dependencies',
+              appliesTo: 'repo',
+              planMode: false,
+              worktree: true,
+            }),
+            nickname: 'Upgrade deps',
+          }),
+        ],
+      }),
+    )
+    renderDialog(file)
+
+    const list = within(await screen.findByRole('list', { name: 'Prompts' }))
+    expect(list.getByRole('listitem')).toHaveTextContent('For repositories · no plan mode · in a worktree')
+  })
+
   it('has nothing to import when the library holds everything', async () => {
     platform.previewPromptImport.mockResolvedValue(importPreview({ entries: [importEntry({ outcome: 'skip' })] }))
     renderDialog(file)

@@ -119,7 +119,8 @@ func (e *endings) of(out scriptrun.Outcome) RoutineEnd {
 
 // Run runs the script req names in its clone, in the app, and returns the run's ID: the
 // run Run works out, whatever the script says of where it runs, with its end told to
-// req.Ended. The script must show in the clone, as on the page.
+// req.Ended. The script must show in the clone, as on the page, and never runs anyway: one
+// that would bump a version or upgrade the dependencies is refused (ErrRelease, ErrDeps).
 func (r Routines) Run(ctx context.Context, req RoutineRun) (int64, error) {
 	s := r.s
 	if s.runs == nil {

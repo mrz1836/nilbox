@@ -202,6 +202,7 @@ func (r *tasksFileReader) script(def *taskDef) script {
 	}
 
 	sc.entry.Release = bumps([]string{sc.entry.Command}, nil)
+	sc.entry.Deps = upgrades([]string{sc.entry.Command}, nil)
 
 	if len(def.deps) > 1 && !def.sequence {
 		sc.entry.Note = "Runs its dependencies one after another, where VS Code runs them side by side."

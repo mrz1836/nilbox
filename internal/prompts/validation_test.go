@@ -28,7 +28,7 @@ func TestValidationErrorListsEveryProblemInOrder(t *testing.T) {
 	assert.Equal(t, []agent.FieldError{
 		{Field: FieldName, Message: "Give the prompt a title."},
 		{Field: FieldNickname, Message: "Give the prompt a nickname for the launch menu."},
-		{Field: FieldAppliesTo, Message: "Choose what the prompt is for: pull requests, issues, or both."},
+		{Field: FieldAppliesTo, Message: "Choose what the prompt is for: pull requests, issues, both, or repositories."},
 		{Field: "models.claude", Message: `A model is one word, such as "opus" or "sonnet", that doesn't start with "-".`},
 		{Field: FieldEffort, Message: "Choose an effort level from the list."},
 		{Field: "extraFlags.claude", Message: "--model is set by the Model setting."},
@@ -36,7 +36,7 @@ func TestValidationErrorListsEveryProblemInOrder(t *testing.T) {
 	}, verr.Fields)
 	assert.Equal(t, "the prompt can't be saved: Give the prompt a title. "+
 		"Give the prompt a nickname for the launch menu. "+
-		"Choose what the prompt is for: pull requests, issues, or both. "+
+		"Choose what the prompt is for: pull requests, issues, both, or repositories. "+
 		`A model is one word, such as "opus" or "sonnet", that doesn't start with "-". `+
 		"Choose an effort level from the list. "+
 		"--model is set by the Model setting. "+

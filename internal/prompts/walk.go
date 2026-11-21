@@ -177,7 +177,8 @@ func (c *checker) checkOperand(arg parse.Node, dotIsData bool) {
 
 // checkField checks a variable reference: it must name one of Data's fields, with
 // nothing after it, and outside a {{with}} unless written $.Name. A pull-request-only
-// variable in an issue-only prompt is a warning, since it is always empty there.
+// variable in an issue-only prompt is a warning, since it is always empty there, as is
+// an item-only variable in a prompt for repositories.
 func (c *checker) checkField(at span, ident []string, dotIsData bool) {
 	name := ident[0]
 
@@ -193,6 +194,11 @@ func (c *checker) checkField(at span, ident []string, dotIsData bool) {
 	case c.appliesTo == AppliesToIssue && c.known[name].PROnly:
 		c.addAt(SeverityWarning, at.start, at.length, fmt.Sprintf(
 			".%s is always empty here: it's only set for pull requests, and this prompt is for issues.", name,
+		))
+	case c.appliesTo == AppliesToRepo && c.known[name].ItemOnly:
+		c.addAt(SeverityWarning, at.start, at.length, fmt.Sprintf(
+			".%s is always empty here: it's only set for pull requests and issues, and this prompt is for "+
+				"repositories.", name,
 		))
 	case c.reply && sessionOnly(name):
 		c.addAt(SeverityWarning, at.start, at.length, fmt.Sprintf(

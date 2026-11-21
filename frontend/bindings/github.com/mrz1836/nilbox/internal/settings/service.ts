@@ -424,6 +424,14 @@ export function SetDefaultProfile(id: agent$0.ID, name: string): $CancellablePro
 }
 
 /**
+ * SetDepsSort stores the order the Deps page lists each group of clones in, and returns
+ * the settings with it. An order that isn't one of the page's is refused.
+ */
+export function SetDepsSort(sort: integrationprefs$0.DepsSort): $CancellablePromise<$models.Settings> {
+    return $Call.ByID(1699413131, sort);
+}
+
+/**
  * SetFollowSessions stores whether the app follows the agent sessions it launches, and
  * returns the settings with it. While it is off, no agent is asked about its sessions,
  * and the window shows none; launches are still recorded. Once it is stored, an

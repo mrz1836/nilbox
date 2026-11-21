@@ -69,6 +69,11 @@ export const InboxUpdated = "inbox:updated";
 export const IssueProgress = "issue:progress";
 
 /**
+ * Name of the custom event "manifests:progress".
+ */
+export const ManifestsProgress = "manifests:progress";
+
+/**
  * Name of the custom event "notifications:updated".
  */
 export const NotificationsUpdated = "notifications:updated";

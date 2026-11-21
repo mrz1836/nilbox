@@ -145,6 +145,7 @@ func customize(t *testing.T, svc *Service, db *sql.DB, home string) string {
 		func() (Settings, error) { return svc.SetNotificationsTab(ctx, NotificationsTabGitHub) },
 		func() (Settings, error) { return svc.SetConversationOrder(ctx, ConversationNewest) },
 		func() (Settings, error) { return svc.SetReleaseSort(ctx, integrationprefs.ReleaseSortName) },
+		func() (Settings, error) { return svc.SetDepsSort(ctx, integrationprefs.DepsSortName) },
 	} {
 		_, err := set()
 		require.NoError(t, err)
@@ -170,6 +171,7 @@ func TestPortableSettingsRoundTrip(t *testing.T) {
 	assert.NotContains(t, string(data), "notificationsTab")
 	assert.NotContains(t, string(data), "conversationOrder")
 	assert.NotContains(t, string(data), "releaseSort")
+	assert.NotContains(t, string(data), "depsSort")
 
 	var read Portable
 	require.NoError(t, json.Unmarshal(data, &read))
@@ -203,6 +205,7 @@ func TestPortableSettingsRoundTrip(t *testing.T) {
 	assert.Equal(t, DefaultNotificationsTab, got.NotificationsTab)
 	assert.Equal(t, DefaultConversationOrder, got.ConversationOrder)
 	assert.Equal(t, integrationprefs.ReleaseSortNewest, got.Integrations.ReleaseSort)
+	assert.Equal(t, integrationprefs.DepsSortOldest, got.Integrations.DepsSort)
 
 	again, err := part.PlanPortable(t.Context(), read)
 	require.NoError(t, err)

@@ -11,6 +11,8 @@ import { act, render } from '@testing-library/react'
 import type { ComponentType, ReactNode } from 'react'
 import { vi, type Mock } from 'vitest'
 
+import { brand } from '../generated/brand'
+
 import { withRepoRule } from '../lib/repoRules'
 import { goesPastRules } from '../lib/routineBuilder'
 import type * as real from '../platform'
@@ -69,6 +71,7 @@ import {
   linkedClone,
   locationPreview,
   locationState,
+  manifestsPage,
   profile,
   prompt,
   promptBackup,
@@ -79,6 +82,8 @@ import {
   releaseResult,
   removeResult,
   replyList,
+  repoLaunchPreview,
+  repoResolution,
   repoScripts,
   resolution,
   review,
@@ -372,6 +377,18 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     linkClone: () => Promise.resolve(linkedClone()),
     resumeSession: () => Promise.resolve(launchResult({ worktreeAction: 'resume' })),
     takeOverRun: () => Promise.resolve(launchResult({ worktreeAction: 'resume' })),
+    resolveRepoLaunch: () => Promise.resolve(repoResolution()),
+    previewRepoLaunch: () => Promise.resolve(repoLaunchPreview()),
+    launchRepo: () =>
+      Promise.resolve(
+        launchResult({
+          clonePath: '~/projects/api-server',
+          dir: `~/projects/.${brand.slug}/worktrees/api-server/deps-20260615`,
+          worktree: 'deps-20260615',
+          worktreeAction: 'create',
+          prompt: 'Upgrade deps',
+        }),
+      ),
 
     listSessions: () => Promise.resolve(sessionsSnapshot()),
     focusSession: done,
@@ -532,6 +549,7 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
       stored({ integrations: integrationsConfig({ sections: { [section]: open } }) }),
     setShowRuns: (showRuns) => stored({ integrations: integrationsConfig({ showRuns }) }),
     setReleaseSort: (releaseSort) => stored({ integrations: integrationsConfig({ releaseSort }) }),
+    setDepsSort: (depsSort) => stored({ integrations: integrationsConfig({ depsSort }) }),
     setRefreshInterval: (kind, seconds) => stored({ refresh: { ...settings().refresh, [kind]: seconds } }),
     setWatchPushes: (watchPushes) => stored({ watchPushes }),
     setStatusProvider: (id, on) =>
@@ -611,6 +629,10 @@ function answers(subscribe: Loose<Platform['on']>): { [K in keyof Platform]: Loo
     getChecksResult: () => Promise.resolve(hookChecksResult()),
     openHooksTerminal: done,
     showHooksConfig: done,
+
+    listManifests: () => Promise.resolve(manifestsPage()),
+    openManifestsTerminal: done,
+    revealManifest: done,
 
     listWorktrees: () => Promise.resolve(worktreesSnapshot()),
     worktreeDetails: () => Promise.resolve(worktreeDetails()),

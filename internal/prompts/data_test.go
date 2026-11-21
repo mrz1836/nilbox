@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
 )
 
 // TestVariablesMatchData keeps the cheat sheet and Data in step: every field has exactly
@@ -128,6 +129,87 @@ func TestAppliesToCovers(t *testing.T) {
 	assert.False(t, AppliesToPR.Covers(item.KindIssue))
 	assert.False(t, AppliesToIssue.Covers(item.KindPR))
 	assert.False(t, AppliesTo("").Covers(item.KindPR))
+
+	for _, kind := range item.Kinds() {
+		assert.False(t, AppliesToRepo.Covers(kind), "a prompt for repositories launches on no %s", kind.Noun())
+	}
+}
+
+func TestIsRepoReportsAnAgentPromptForRepositories(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, Prompt{AppliesTo: AppliesToRepo, Purpose: PurposeAgent}.IsRepo())
+	assert.True(t, Prompt{AppliesTo: AppliesToRepo}.IsRepo(), "no purpose is an agent prompt's")
+	assert.False(t, Prompt{AppliesTo: AppliesToRepo, Purpose: PurposeReply}.IsRepo(), "a reply is never one")
+	assert.False(t, Prompt{AppliesTo: AppliesToAny, Purpose: PurposeAgent}.IsRepo())
+}
+
+// TestOnlyTheRepositorysVariablesAreFilledForARepository keeps the item-only marker in
+// step with what a repository's launch fills in: exactly the repository's and the
+// session's variables are not item-only, every pull-request-only one is, and the sample
+// repository holds a value for none of the item-only ones.
+func TestOnlyTheRepositorysVariablesAreFilledForARepository(t *testing.T) {
+	t.Parallel()
+
+	vars := Variables()
+	names := make([]string, 0, len(vars))
+
+	for _, v := range vars {
+		names = append(names, v.Name)
+		assert.Equal(t, !slices.Contains(repoVariables(), v.Name), v.ItemOnly, v.Name)
+
+		if v.PROnly {
+			assert.True(t, v.ItemOnly, "%s is only a pull request's, so only an item's", v.Name)
+		}
+	}
+
+	for _, name := range repoVariables() {
+		assert.Contains(t, names, name, "%s is a variable", name)
+	}
+
+	sample, empty := SampleRepo().WithWorktree(sampleRepoWorktree).Values(), Data{}.Values()
+
+	for _, v := range vars {
+		if v.ItemOnly {
+			assert.Equal(t, empty[v.Name], sample[v.Name], "the sample repository has no %s", v.Name)
+		}
+	}
+}
+
+func TestRepoDataIsTheRepositoryAlone(t *testing.T) {
+	t.Parallel()
+
+	d := RepoData(repo.Name{Owner: "acme-org", Repo: "example-repo"}, "main", "upstream")
+	assert.Equal(t, Data{
+		Repo: "acme-org/example-repo", Owner: "acme-org", RepoName: "example-repo", DefaultBranch: "main",
+		Remote: "upstream",
+	}, d)
+
+	sample := SampleRepo()
+	assert.Equal(t, "acme-org/example-repo", sample.Repo)
+	assert.Equal(t, "origin", sample.Remote)
+	assert.Equal(t, "octo-user", sample.Me)
+	assert.False(t, sample.InWorktree, "the sample session starts in the clone")
+	assert.Equal(t, "true", sample.Values()["RemoteIsPlain"], "the sample remote is plain")
+}
+
+func TestWithWorktreeNamesTheLaunchsOwnWorktree(t *testing.T) {
+	t.Parallel()
+
+	head := Sample(item.KindPR).WithSession(true, true)
+	require.True(t, head.WorktreeOnPRHead)
+
+	got := head.WithWorktree("deps-20261121")
+	assert.True(t, got.InWorktree)
+	assert.Equal(t, "deps-20261121", got.Worktree, "the launch's own name, not an item's")
+	assert.False(t, got.WorktreeOnPRHead, "a worktree a launch names starts at no pull request's head")
+
+	clone := got.WithWorktree("")
+	assert.False(t, clone.InWorktree)
+	assert.Empty(t, clone.Worktree)
+
+	assert.Equal(t, "issue-0", SampleRepo().WithSession(true, false).Worktree,
+		"WithSession names an item's worktree, which a repository has none of")
 }
 
 func TestWithUpdateFillsInABotsDependencyUpdate(t *testing.T) {

@@ -5,11 +5,11 @@ import { argsOf, magexTargets, matchTargets } from '../../lib/repoScripts'
 import type { ScriptAsk } from '../../lib/useScriptRun'
 import type { RunsIn, ScriptEntry, ScriptSection } from '../../platform'
 import { chipClass, fieldClass } from '../controls'
-import { AlertIcon, ChevronDownIcon, ChevronRightIcon, InfoIcon, TagIcon } from '../icons'
+import { AlertIcon, ChevronDownIcon, ChevronRightIcon, InfoIcon } from '../icons'
 import { MenuButton } from '../Menu'
 import { SearchBox } from '../SearchBox'
 import { GroupHeading } from './GroupHeading'
-import { argsFor, releaseWords, scriptMenu, ScriptRow, type ScriptMenuProps } from './ScriptRow'
+import { argsFor, PageIcon, pointersOf, scriptMenu, ScriptRow, type ScriptMenuProps } from './ScriptRow'
 
 // List is one of the section's folded lists of targets.
 type List = 'custom' | 'builtins'
@@ -18,21 +18,23 @@ type List = 'custom' | 'builtins'
 const chipButtonClass = `${chipClass} inline-flex items-center gap-1 font-mono transition-colors hover:bg-raised hover:text-text disabled:opacity-disabled disabled:hover:bg-transparent`
 
 // Chip is one common target: a button that runs it at once; greyed, with why, when it
-// can't run; or, for one that bumps a version, a menu that says Release does it, opens
-// Release, and runs it anyway, as its row's menu does.
+// can't run; or, for one that bumps a version or upgrades the dependencies, a menu that
+// says Release or Deps does it, opens that page, and runs it anyway, as its row's menu
+// does.
 function Chip(props: ScriptMenuProps) {
   const { entry, args, pending, onRun } = props
+  const [pointer] = pointersOf(props)
 
-  if (entry.runnable && entry.release) {
+  if (entry.runnable && pointer !== undefined) {
     return (
       <MenuButton
-        label={`magex ${entry.name}: ${releaseWords}`}
-        title={`${releaseWords}. Open Release, or run it anyway.`}
-        heading={releaseWords}
+        label={`magex ${entry.name}: ${pointer.words}`}
+        title={`${pointer.words}. Open ${pointer.page}, or run it anyway.`}
+        heading={pointer.words}
         items={() => scriptMenu(props, true)}
         className={chipButtonClass}
       >
-        <TagIcon className="size-3 text-accent" />
+        <PageIcon page={pointer.page} className="size-3 text-accent" />
         {entry.name}
       </MenuButton>
     )
@@ -66,7 +68,9 @@ export interface MagexSectionProps {
   otherName: string
   pending: boolean
   onRun: (ask: ScriptAsk) => void
+  // onOpenRelease opens Release and onOpenDeps Deps, each null while its page isn't on.
   onOpenRelease: (() => void) | null
+  onOpenDeps: (() => void) | null
 }
 
 // MagexSection is magex's targets in the clone: the common ones as chips, each running

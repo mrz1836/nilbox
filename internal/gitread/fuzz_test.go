@@ -1,8 +1,10 @@
 package gitread
 
 import (
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -195,5 +197,99 @@ func FuzzParseRemoteRefs(f *testing.F) {
 			Heads: map[string]string{branch: fuzzOID},
 			Tags:  map[string]RemoteTag{tag: {Object: fuzzOID, Commit: commit}},
 		}, parseRemoteRefs([]byte(listed)))
+	})
+}
+
+// FuzzParseTree checks that any `git ls-tree -r -z -l` output parses into entries that
+// each hold a path, an object ID, and a size or -1, no more than its fields, that a keep
+// that takes nothing keeps nothing, and that an entry written the way git writes it, from
+// any path and size, parses back to that entry.
+func FuzzParseTree(f *testing.F) {
+	for _, seed := range []struct {
+		out  string
+		path string
+		size int64
+	}{
+		{"", goMod, 0},
+		{"100644 blob " + fuzzOID + "     123\tgo.mod\x00160000 commit " + fuzzOID + "       -\tsub\x00", "a b/go.mod", 7},
+		{"100644 blob " + fuzzOID + " 1\ttab\there\x00\x00\t\x00x y z\tw\x00", "tab\there", 1 << 40},
+		{"100644 blob " + fuzzOID + "      -1\tneg\x00100644 blob " + strings.Repeat("a", 64) + " 9\tsha256", "-x", 9},
+		{"100644 blob " + fuzzOID + "     BAD\tgo.mod\x00100644 blob " + fuzzOID + " bad\tx", goMod, 3},
+	} {
+		f.Add([]byte(seed.out), seed.path, seed.size)
+	}
+
+	f.Fuzz(func(t *testing.T, out []byte, path string, size int64) {
+		entries := parseTree(out, nil)
+		require.NotNil(t, entries)
+		assert.LessOrEqual(t, len(entries), strings.Count(string(out), "\x00")+1)
+
+		for _, e := range entries {
+			assert.NotEmpty(t, e.Path)
+			assert.NotContains(t, e.Path, "\x00")
+			assert.Regexp(t, objectIDPattern, e.Object)
+			assert.GreaterOrEqual(t, e.Size, int64(-1))
+		}
+
+		assert.Empty(t, parseTree(out, func(string) bool { return false }))
+
+		if path == "" || strings.Contains(path, "\x00") || size < 0 {
+			return
+		}
+
+		listed := "100644 blob " + fuzzOID + " " + strconv.FormatInt(size, 10) + "\t" + path + "\x00"
+		assert.Equal(t, []TreeEntry{{Path: path, Mode: "100644", Type: blobType, Object: fuzzOID, Size: size}},
+			parseTree([]byte(listed), func(p string) bool { return p == path }))
+	})
+}
+
+// TestParseTreeKeepsABlobAPartialCloneLacks reads the size `git ls-tree -l` lists for a blob
+// it can't read, BAD, as one a partial clone never fetched: the entry is kept, Missing, with
+// no size, so a manifest the clone lacks still counts, rather than vanishing from the page.
+func TestParseTreeKeepsABlobAPartialCloneLacks(t *testing.T) {
+	t.Parallel()
+
+	listed := "100644 blob " + fuzzOID + "     BAD\tgo.mod\x00100644 blob " + fuzzOID + "      12\tgo.sum\x00"
+
+	assert.Equal(t, []TreeEntry{
+		{Path: goMod, Mode: "100644", Type: blobType, Object: fuzzOID, Size: -1, Missing: true},
+		{Path: "go.sum", Mode: "100644", Type: blobType, Object: fuzzOID, Size: 12},
+	}, parseTree([]byte(listed), nil))
+}
+
+// FuzzParseLastChange checks that any log output either fails as unexpected output or
+// parses into a commit whose time is in UTC, and that a commit written the way the log
+// writes it, from any time and any one-line subject, parses back to that commit.
+func FuzzParseLastChange(f *testing.F) {
+	for _, seed := range []struct {
+		out     string
+		secs    int64
+		subject string
+	}{
+		{"", 0, ""},
+		{"1767323045\x01bump the go module\n", 1767323045, "bump the go module"},
+		{"-1\x01\x01\x01\n", -1, "\x01"},
+		{"12 no split\n", 1 << 40, "a\x00b"},
+		{"\n\n", -1 << 40, "é"},
+	} {
+		f.Add([]byte(seed.out), seed.secs, seed.subject)
+	}
+
+	f.Fuzz(func(t *testing.T, out []byte, secs int64, subject string) {
+		got, err := parseLastChange(out)
+		if err != nil {
+			require.ErrorIs(t, err, errOutput)
+			assert.Zero(t, got)
+		} else {
+			assert.Equal(t, time.UTC, got.At.Location())
+		}
+
+		if strings.Contains(subject, "\n") {
+			return
+		}
+
+		got, err = parseLastChange([]byte(strconv.FormatInt(secs, 10) + "\x01" + subject + "\n"))
+		require.NoError(t, err)
+		assert.Equal(t, Commit{At: time.Unix(secs, 0).UTC(), Subject: subject}, got)
 	})
 }

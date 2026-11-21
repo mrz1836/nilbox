@@ -1,8 +1,11 @@
-import { render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { noChoices, type Choices } from '../lib/launchChoices'
 import type { WorktreePlan } from '../platform'
-import { PlannedLaunch, worktreeLine, type Plan } from './LaunchPreviewSection'
+import { launchPreview, repoLaunchPreview } from '../test/fixtures'
+import { LaunchPreviewSection, PlannedLaunch, worktreeLine, type Plan } from './LaunchPreviewSection'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
@@ -68,5 +71,67 @@ describe('PlannedLaunch', () => {
 
     rerender(<PlannedLaunch plan={planned('')} />)
     expect(screen.queryByText(/opens in/)).not.toBeInTheDocument()
+  })
+})
+
+describe('LaunchPreviewSection', () => {
+  // planner plans a launch through the subject's own preview, its prompt naming the
+  // profile it was planned with.
+  function planner() {
+    return vi.fn((c: Choices) =>
+      Promise.resolve(launchPreview({ prompt: `Planned as ${c.profile === '' ? 'default' : c.profile}\n` })),
+    )
+  }
+
+  // planned lets the preview's wait for the choices to rest run out, and its plan land.
+  async function planned() {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120)
+    })
+  }
+
+  it('plans a repository’s launch on request through its subject, its button named as the launch names it', async () => {
+    const preview = vi.fn(() => Promise.resolve(repoLaunchPreview()))
+    const choices = { ...noChoices, promptId: 21 }
+    render(
+      <LaunchPreviewSection
+        subject={{ key: '["acme-org/api-server","~/projects/api-server"]', preview }}
+        choices={choices}
+        label="Preview the launch"
+      />,
+    )
+
+    expect(preview).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Preview the launch' }))
+
+    expect(await screen.findByText(/Upgrade the Go and JavaScript dependencies/)).toBeInTheDocument()
+    expect(screen.getByText(/^Creates .*deps-20260615 from origin\/master$/)).toBeInTheDocument()
+    expect(preview).toHaveBeenCalledExactlyOnceWith(choices)
+  })
+
+  it('plans again for other choices or another subject, never for the same choices made again', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const preview = planner()
+    const section = (key: string, choices: Choices) => (
+      <LaunchPreviewSection subject={{ key, preview }} choices={choices} />
+    )
+    const { rerender } = render(section('pr-7', noChoices))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }))
+    await planned()
+    expect(screen.getByText('Planned as default')).toBeInTheDocument()
+
+    rerender(section('pr-7', { ...noChoices }))
+    await planned()
+    expect(preview).toHaveBeenCalledOnce()
+
+    rerender(section('pr-7', { ...noChoices, profile: 'work' }))
+    await planned()
+    expect(screen.getByText('Planned as work')).toBeInTheDocument()
+
+    rerender(section('pr-8', { ...noChoices, profile: 'work' }))
+    await planned()
+    expect(preview).toHaveBeenCalledTimes(3)
   })
 })

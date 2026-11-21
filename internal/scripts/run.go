@@ -50,7 +50,8 @@ type RunRequest struct {
 	Confirmed string `json:"confirmed"`
 	Remember  bool   `json:"remember"`
 
-	// Anyway runs a command that bumps a version, which the page points to Release for.
+	// Anyway runs a command the page points elsewhere: one that bumps a version, which
+	// Release does, or one that upgrades the dependencies in the clone, which Deps does.
 	Anyway bool `json:"anyway"`
 }
 
@@ -252,9 +253,10 @@ func (s *Service) repoVars(ctx context.Context, c clone) []string {
 // before is a script run's Before: under the clone's lock, it reads the script's source
 // again, from its bytes, and refuses it when its hash isn't the one worked out as the run
 // was asked for, or, for one of the user's own scripts, when it was saved again since with
-// another name, command, place, or Ask before running. It works the command out, refuses one that would tag a version unless
-// asked to run it anyway, then one the user hasn't confirmed or trusted as it is now, and
-// only then remembers a confirmation the user asked to keep, and returns the command.
+// another name, command, place, or Ask before running. It works the command out, refuses
+// one that would tag a version or upgrade the dependencies unless asked to run it anyway,
+// then one the user hasn't confirmed or trusted as it is now, and only then remembers a
+// confirmation the user asked to keep, and returns the command.
 func (s *Service) before(ctx context.Context, p pending) ([]string, error) {
 	tool := s.tool(ctx)
 
@@ -300,8 +302,9 @@ func (s *Service) before(ctx context.Context, p pending) ([]string, error) {
 }
 
 // command works out the argv sc runs as p asks, with tool the copy of magex in use, and
-// refuses one that would tag a version unless p asked to run it anyway: what it runs,
-// inputs and aliases resolved, is checked, not only what the page showed.
+// refuses one that would tag a version or upgrade the dependencies unless p asked to run it
+// anyway: what it runs, inputs and aliases resolved, is checked, not only what the page
+// showed.
 func (s *Service) command(ctx context.Context, p pending, sc script, tool ToolFacts) ([]string, error) {
 	parts := slices.Clone(sc.parts)
 	if p.src == SourceMagex {
@@ -313,26 +316,36 @@ func (s *Service) command(ctx context.Context, p pending, sc script, tool ToolFa
 		return nil, err
 	}
 
-	if !p.in.Anyway && bumps(argv, s.taggingAliases(ctx, tool)) {
+	if p.in.Anyway {
+		return argv, nil
+	}
+
+	tags, deps := s.aliases(ctx, tool)
+
+	switch {
+	case bumps(argv, tags):
 		return nil, releaseError(sc)
+	case upgrades(argv, deps):
+		return nil, depsError(sc)
 	}
 
 	return argv, nil
 }
 
-// taggingAliases are the other names the copy tool gives the targets that tag a version,
-// from its built-ins as listed: none while magex can't run or couldn't list them.
-func (s *Service) taggingAliases(ctx context.Context, tool ToolFacts) []string {
+// aliases are the other names the copy tool gives the targets that tag a version, and
+// those it gives the targets that upgrade the dependencies, from its built-ins as listed:
+// none while magex can't run or couldn't list them.
+func (s *Service) aliases(ctx context.Context, tool ToolFacts) (tags, deps []string) {
 	if !tool.Usable() {
-		return nil
+		return nil, nil
 	}
 
 	b, err := s.builtinsOf(ctx, tool)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 
-	return b.taggingAliases()
+	return b.taggingAliases(), b.upgradeAliases()
 }
 
 // trusts checks that the user trusts sc as it is now: the hash they confirmed, or else the
@@ -399,29 +412,51 @@ func releaseError(sc script) error {
 		fmt.Errorf("%w: %s", ErrRelease, sc.entry.Ref))
 }
 
+// depsError refuses a command that would upgrade the dependencies in the clone itself: Deps
+// does that, in a fresh worktree, with a pull request.
+func depsError(sc script) error {
+	return uierr.New("Deps does this in a fresh worktree, with a pull request. Open Deps, or run it anyway.",
+		fmt.Errorf("%w: %s", ErrDeps, sc.entry.Ref))
+}
+
 // check returns why sc can't run as intent asks, or the values of its inputs: greyed, a
-// version bump not asked to run anyway, arguments it doesn't take or that aren't words, or
-// a value its input doesn't allow.
+// version bump or a dependency upgrade not asked to run anyway, arguments it doesn't take
+// or that aren't words, or a value its input doesn't allow.
 func check(sc script, in Intent) (map[string]string, error) {
 	switch {
 	case !sc.entry.Runnable:
 		return nil, uierr.New(sc.entry.Why, fmt.Errorf("%w: %s", ErrCantRun, sc.entry.Ref))
 	case sc.entry.Release && !in.Anyway:
 		return nil, releaseError(sc)
-	case len(in.Args) > 0 && !sc.entry.Args:
-		return nil, uierr.New("Only magex's own targets take arguments.", ErrInvalidRequest)
-	case len(in.Args) > maxArgs:
-		return nil, uierr.New(fmt.Sprintf("A run takes up to %d arguments.", maxArgs), ErrInvalidRequest)
+	case sc.entry.Deps && !in.Anyway:
+		return nil, depsError(sc)
 	}
 
-	for _, a := range in.Args {
+	if err := checkArgs(sc, in.Args); err != nil {
+		return nil, err
+	}
+
+	return inputValues(sc, in.Inputs)
+}
+
+// checkArgs returns why sc can't run with args, a magex target's key=value arguments: it
+// takes none, they are too many, or one isn't a word magex takes.
+func checkArgs(sc script, args []string) error {
+	switch {
+	case len(args) > 0 && !sc.entry.Args:
+		return uierr.New("Only magex's own targets take arguments.", ErrInvalidRequest)
+	case len(args) > maxArgs:
+		return uierr.New(fmt.Sprintf("A run takes up to %d arguments.", maxArgs), ErrInvalidRequest)
+	}
+
+	for _, a := range args {
 		if len(a) > maxArgBytes || !argWord.MatchString(a) {
-			return nil, uierr.New(fmt.Sprintf("%q isn't an argument magex takes: write key=value, such as bump=minor.", a),
+			return uierr.New(fmt.Sprintf("%q isn't an argument magex takes: write key=value, such as bump=minor.", a),
 				ErrInvalidRequest)
 		}
 	}
 
-	return inputValues(sc, in.Inputs)
+	return nil
 }
 
 // inputValues returns the value of each of sc's inputs: the one given, or its default. A
