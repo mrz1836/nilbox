@@ -180,7 +180,8 @@ func themeCSS(tokens []token) []byte {
 	b.WriteString("/* " + Header + " */\n")
 	b.WriteString("/* Theme tokens from internal/brand: each color is light-dark(light, dark). Light is the\n")
 	b.WriteString("   default, dark follows the system, and data-theme on the root pins either. Tailwind's\n")
-	b.WriteString("   own palette is reset first, so only these colors make utilities. */\n\n")
+	b.WriteString("   own palette is reset first, so only these colors, and the fixed colors index.css\n")
+	b.WriteString("   adds, make utilities. */\n\n")
 
 	// static keeps every token in the built CSS: code outside Tailwind's view, such as
 	// inline styles, reads them too.
