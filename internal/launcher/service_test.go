@@ -1,6 +1,7 @@
 package launcher
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -198,6 +200,10 @@ type fakeMaker struct {
 
 	// dirty is how many files an existing worktree has uncommitted.
 	dirty int
+
+	// raced has another launch take a task's first free name just before Ensure makes its
+	// worktree, as one made between a launch's plan and its Ensure would.
+	raced bool
 }
 
 // worktreeOf is where the fake makes a request's worktree.
@@ -228,6 +234,13 @@ func (m *fakeMaker) EnsureWorktree(_ context.Context, req WorktreeRequest) (Work
 	}
 
 	m.ensured = append(m.ensured, req)
+
+	if m.raced && req.Task != "" {
+		if err := os.MkdirAll(m.answer(req).Path, 0o700); err != nil {
+			return Worktree{}, err
+		}
+	}
+
 	wt := m.answer(req)
 
 	if err := os.MkdirAll(wt.Path, 0o700); err != nil {
@@ -239,6 +252,10 @@ func (m *fakeMaker) EnsureWorktree(_ context.Context, req WorktreeRequest) (Work
 
 // answer is what the fake finds or would make for req.
 func (m *fakeMaker) answer(req WorktreeRequest) Worktree {
+	if req.Task != "" {
+		return m.taskAnswer(req)
+	}
+
 	path := worktreeOf(req)
 	wt := Worktree{Path: path, Branch: "worktree-" + filepath.Base(path), Action: WorktreeCreate, Dirty: 0, Notice: m.notice}
 
@@ -251,6 +268,27 @@ func (m *fakeMaker) answer(req WorktreeRequest) Worktree {
 	}
 
 	return wt
+}
+
+// taskAnswer is what the fake would make for a task: a new worktree beside the clone, from
+// the default branch the request names or else main, under the first of its base,
+// <base>-2, <base>-3, and on, with no folder yet.
+func (m *fakeMaker) taskAnswer(req WorktreeRequest) Worktree {
+	root := filepath.Dir(worktreeOf(WorktreeRequest{Clone: req.Clone, Kind: item.KindPR, Number: 1}))
+	name := req.Task
+
+	for n := 2; ; n++ {
+		if _, err := os.Stat(filepath.Join(root, name)); err != nil {
+			break
+		}
+
+		name = req.Task + "-" + strconv.Itoa(n)
+	}
+
+	return Worktree{
+		Path: filepath.Join(root, name), Branch: "worktree-" + name, Action: WorktreeCreate, Base: req.Remote + "/main",
+		Notice: m.notice, Task: name, DefaultBranch: cmp.Or(req.DefaultBranch, "main"),
+	}
 }
 
 // ensures returns a copy of the requests EnsureWorktree was asked.
@@ -473,6 +511,7 @@ func newLaunchHarness(t *testing.T) *launchHarness {
 		Paths:     h.paths,
 		Home:      h.home,
 		Clock:     testutil.NewClock(fixedNow()),
+		Location:  time.UTC,
 		Worktrees: h.maker,
 		Sessions:  h.sessions,
 		Ledger:    h.ledger,

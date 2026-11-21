@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -74,9 +75,26 @@ var (
 	// ErrHeadMoved is returned when a pull request's head fetched for its new worktree is
 	// not the commit whose files the launch checked.
 	ErrHeadMoved = errors.New("the pull request's head moved after its files were checked")
+
+	// ErrNoTaskName is returned when every name a task's worktree could take today is taken.
+	ErrNoTaskName = errors.New("every name for the task's worktree is taken")
+
+	// ErrNotMainWorktree is returned for a task asked of a folder that is a clone's linked
+	// worktree rather than the clone itself, beside which no managed worktree is listed.
+	ErrNotMainWorktree = errors.New("not the clone's own folder")
 )
 
-// EnsureRequest asks for an item's worktree in a clone.
+// taskBase is what a task's base name looks like: deps-<YYYYMMDD>, the day it was asked
+// for. Ensure names the task's worktree after it, or after the first free one of
+// deps-<YYYYMMDD>-2, -3, and on (freeTaskName). item.ParseWorktreeName reads none of these
+// as an item's.
+var taskBase = regexp.MustCompile(`^deps-[0-9]{8}$`)
+
+// maxTaskNames is how many names a task's worktree may try in one day: its base, then
+// <base>-2 up to <base>-<maxTaskNames>.
+const maxTaskNames = 99
+
+// EnsureRequest asks for an item's worktree in a clone, or a task's (Task).
 type EnsureRequest struct {
 	// Clone is the clone's absolute directory.
 	Clone string
@@ -106,6 +124,16 @@ type EnsureRequest struct {
 	// it checked none. A pull request's worktree made now must start there (see
 	// verifyHead).
 	Head string
+
+	// Task asks, in place of an item's worktree, for a new worktree for a task on the
+	// repository itself, such as an upgrade of its dependencies: its base name, as in
+	// deps-20261121 (taskBase). A task request has no Kind, Number, Base, or Head. Its
+	// worktree is made every time, from the repository's default branch, under the first
+	// free name of the base, <base>-2, <base>-3, and on (freeTaskName), and never resumed,
+	// adopted, attached, or recorded: one reused could build on commits a merged pull
+	// request already took. Pushed under its own branch's name, it is related to its pull
+	// request by that branch (branchlink.go).
+	Task string
 }
 
 // Ensured is an item's worktree, as Ensure found or made it, or Plan says it would.
@@ -133,6 +161,15 @@ type Ensured struct {
 	// Notice says what Ensure could not do as asked but worked around, such as starting
 	// from the last fetched default branch when the fetch failed, or "".
 	Notice string
+
+	// Task is the name a task's worktree was made under, or would be: its base or the
+	// first free name past it, as deps-20261121-2; "" for an item's.
+	Task string
+
+	// DefaultBranch is the default branch a task's worktree starts from: as Ensure fetched
+	// it, or, for Plan, which asks no remote, the request's or the one the clone last
+	// learned from its remote's HEAD, "" when it knows neither; "" for an item's.
+	DefaultBranch string
 }
 
 // Maker finds and makes the worktrees launches start in: one per item per clone, shared
@@ -151,7 +188,9 @@ func NewMaker(svc *Service) *Maker {
 	return &Maker{s: svc}
 }
 
-// Plan says what Ensure would do for req, changing nothing and asking no remote.
+// Plan says what Ensure would do for req, changing nothing and asking no remote. For a
+// task, that is the name its worktree would take now: Ensure takes the first free one as
+// it makes the worktree, which may be a later one by then.
 func (m *Maker) Plan(ctx context.Context, req EnsureRequest) (Ensured, error) {
 	if err := req.check(); err != nil {
 		return Ensured{}, err
@@ -188,31 +227,46 @@ func (m *Maker) Plan(ctx context.Context, req EnsureRequest) (Ensured, error) {
 // once more; it never deletes anything. The worktree is recorded with its item. Calls for
 // one item share one run, and one clone's git work runs one call at a time. While a run (a
 // release, checks, a script) is using the clone, Ensure fails at once, naming it.
+//
+// A task's worktree (EnsureRequest.Task) skips the first three steps, and is made as an
+// issue's is, from the default branch, under a name no other worktree, local branch, or
+// remote-tracking branch has (freeTaskName), and recorded nowhere. Calls for one task
+// never share a run, since each makes a worktree of its own: the clone's lock runs them one
+// after the other, so a second the same day takes the next name.
 func (m *Maker) Ensure(ctx context.Context, req EnsureRequest) (Ensured, error) {
 	if err := req.check(); err != nil {
 		return Ensured{}, err
 	}
 
-	key := paths.Resolved(req.Clone) + "\x00" + item.WorktreeName(req.Kind, req.Number)
+	if req.Task != "" {
+		return m.locked(ctx, req)
+	}
+
+	key := paths.Resolved(req.Clone) + "\x00" + req.name()
 
 	return m.calls.Do(ctx, key, func(ctx context.Context) (Ensured, error) {
-		ctx, cancel := context.WithTimeout(ctx, ensureTimeout)
-		defer cancel()
-
-		// A sweep or a removal never runs while a worktree is being made or resumed, and
-		// one clone's git work runs one call at a time. act comes first, as everywhere.
-		m.s.act.RLock()
-		defer m.s.act.RUnlock()
-
-		unlock, err := m.s.holdClone(ctx, req.Clone)
-		if err != nil {
-			return Ensured{}, err
-		}
-
-		defer unlock()
-
-		return m.ensure(ctx, req)
+		return m.locked(ctx, req)
 	})
+}
+
+// locked does Ensure's work within ensureTimeout, holding act shared and the clone's lock:
+// a sweep or a removal never runs while a worktree is being made or resumed, and one
+// clone's git work runs one call at a time. act comes first, as everywhere.
+func (m *Maker) locked(ctx context.Context, req EnsureRequest) (Ensured, error) {
+	ctx, cancel := context.WithTimeout(ctx, ensureTimeout)
+	defer cancel()
+
+	m.s.act.RLock()
+	defer m.s.act.RUnlock()
+
+	unlock, err := m.s.holdClone(ctx, req.Clone)
+	if err != nil {
+		return Ensured{}, err
+	}
+
+	defer unlock()
+
+	return m.ensure(ctx, req)
 }
 
 // ensure does Ensure's work under the clone's lock.
@@ -292,17 +346,39 @@ func (f found) fetched() string {
 
 // check reports an EnsureRequest that cannot name a worktree.
 func (req EnsureRequest) check() error {
-	switch {
-	case !filepath.IsAbs(req.Clone):
+	if !filepath.IsAbs(req.Clone) {
 		return fmt.Errorf("%w: the clone %q is not an absolute path", ErrInvalidRequest, req.Clone)
-	case !req.Kind.Valid() || req.Number <= 0:
-		return fmt.Errorf("%w: no %s #%d", ErrInvalidRequest, req.Kind, req.Number)
+	}
+
+	if err := req.checkSubject(); err != nil {
+		return err
+	}
+
+	switch {
 	case req.Owner == "" || req.Name == "":
 		return fmt.Errorf("%w: no repository", ErrInvalidRequest)
 	case req.remote() != "" && !gitread.ValidRemoteName(req.remote()):
 		return fmt.Errorf("%w: the remote %q", ErrInvalidRequest, req.Remote)
 	case !req.validHead():
 		return fmt.Errorf("%w: the head %q", ErrInvalidRequest, req.Head)
+	default:
+		return nil
+	}
+}
+
+// checkSubject reports a request that names neither an item nor a task: an item needs its
+// kind and a positive number, and a task its base name (taskBase) and nothing of an
+// item's, a pull request's base and head included.
+func (req EnsureRequest) checkSubject() error {
+	switch {
+	case req.Task == "" && (!req.Kind.Valid() || req.Number <= 0):
+		return fmt.Errorf("%w: no %s #%d", ErrInvalidRequest, req.Kind, req.Number)
+	case req.Task == "":
+		return nil
+	case !taskBase.MatchString(req.Task):
+		return fmt.Errorf("%w: the task %q", ErrInvalidRequest, req.Task)
+	case req.Kind != "" || req.Number != 0 || req.Base != "" || req.Head != "":
+		return fmt.Errorf("%w: the task %q names an item too", ErrInvalidRequest, req.Task)
 	default:
 		return nil
 	}
@@ -322,14 +398,24 @@ func (req EnsureRequest) remote() string {
 	return req.Remote
 }
 
-// name returns the item's worktree name, pr-<n> or issue-<n>.
+// name returns the item's worktree name, pr-<n> or issue-<n>, or a task's base name, which
+// its worktree takes unless another has it (freeTaskName).
 func (req EnsureRequest) name() string {
+	if req.Task != "" {
+		return req.Task
+	}
+
 	return item.WorktreeName(req.Kind, req.Number)
 }
 
 // record returns the item's worktree record in the clone, or nil. Without it a worktree is
-// still found by its branch, so a failure is only logged.
+// still found by its branch, so a failure is only logged. A task's worktree is never
+// recorded, so none names one.
 func (m *Maker) record(ctx context.Context, req EnsureRequest) *worklog.Record {
+	if req.Task != "" {
+		return nil
+	}
+
 	for _, r := range m.s.records(ctx) {
 		if r.Worktree == req.name() && paths.Same(r.ClonePath, req.Clone) {
 			return &r
@@ -349,6 +435,11 @@ type found struct {
 	dirty  int
 	notice string
 
+	// task is the name a task's worktree takes, and defaultBranch the default branch it
+	// starts from, as far as it is known; both "" for an item's.
+	task          string
+	defaultBranch string
+
 	// prune reports entries whose directories are gone that hold the item's path or
 	// branch, which git must forget before the worktree can be added.
 	prune bool
@@ -358,14 +449,20 @@ type found struct {
 func (f found) ensured() Ensured {
 	return Ensured{
 		Path: f.path, Branch: f.branch, Action: f.action, Base: f.base, Head: f.head, Dirty: f.dirty, Notice: f.notice,
+		Task: f.task, DefaultBranch: f.defaultBranch,
 	}
 }
 
-// find works out Ensure's first three steps, changing nothing.
+// find works out Ensure's first three steps, changing nothing, or for a task, the new
+// worktree it makes (findTask).
 func (m *Maker) find(ctx context.Context, g git, req EnsureRequest, rec *worklog.Record) (found, error) {
 	entries, stderr, err := g.list(ctx, req.Clone)
 	if err != nil {
 		return found{}, fmt.Errorf("list the worktrees of %s: %w", m.s.display(req.Clone), gitError(err, stderr))
+	}
+
+	if req.Task != "" {
+		return m.findTask(ctx, g, req, entries)
 	}
 
 	target := ManagedPath(req.Clone, req.name())
@@ -521,6 +618,10 @@ func (m *Maker) addArgs(ctx context.Context, g git, req EnsureRequest, f *found)
 
 		f.base = strings.TrimPrefix(base, remotesRef)
 		f.notice = notice
+
+		if req.Task != "" {
+			f.defaultBranch = strings.TrimPrefix(base, remotesRef+req.remote()+"/")
+		}
 
 		return worktreeNewBranchArgs(f.path, f.branch, base), nil
 	}
@@ -736,9 +837,11 @@ func refCommit(ctx context.Context, g git, clone, ref string) (string, error) {
 
 // recordWorktree records the item's worktree, and fetched, the commit it was just made at
 // from GitHub, or "" (see found.fetched). A worktree no record names still resumes, found
-// by its branch, so this fails only when the database does.
+// by its branch, so this fails only when the database does. A task's worktree is recorded
+// nowhere: a record names an item, and one that did would link the worktree by name,
+// keeping its branch from relating it to its pull request once pushed.
 func (s *Service) recordWorktree(ctx context.Context, req EnsureRequest, path, branch, fetched string) error {
-	if s.launches == nil {
+	if s.launches == nil || req.Task != "" {
 		return nil
 	}
 

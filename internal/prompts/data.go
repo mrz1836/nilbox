@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/bump"
 	"github.com/mrz1836/nilbox/internal/item"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
@@ -39,6 +41,10 @@ const (
 	// sampleReviewedCommit the made-up commit the user's last review of it was on.
 	sampleHeadCommit     = "4f2a9c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39"
 	sampleReviewedCommit = "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d"
+
+	// sampleRepoWorktree is the worktree a sample repository's launch starts in, named as an
+	// upgrade of its dependencies names its own.
+	sampleRepoWorktree = "deps-20260115"
 )
 
 // commitPattern is a commit's ID as a prompt may hold it: 7 to 64 lower-case hex digits,
@@ -56,7 +62,8 @@ func CommitID(s string) string {
 	return ""
 }
 
-// AppliesTo is which kinds of item a prompt can launch.
+// AppliesTo is which kinds of item a prompt can launch, or, for AppliesToRepo, that it
+// launches for a repository rather than for an item.
 type AppliesTo string
 
 // What a prompt applies to.
@@ -64,6 +71,11 @@ const (
 	AppliesToPR              = AppliesTo(item.KindPR)
 	AppliesToIssue           = AppliesTo(item.KindIssue)
 	AppliesToAny   AppliesTo = "any"
+
+	// AppliesToRepo is a prompt a repository's launch fills in, such as an upgrade of its
+	// dependencies: an agent prompt alone, which covers no kind of item (Covers), so no
+	// launch on a pull request or an issue can run it. The window calls it Repositories.
+	AppliesToRepo AppliesTo = "repo"
 )
 
 // Variable types, as the cheat sheet names them.
@@ -85,7 +97,9 @@ const (
 // Data is what a prompt's variables are filled from: {{.Title}} reads Title. It holds
 // the item's address and short facts about it, never its body or comments: the session
 // reads those itself with gh, so their text stays information rather than instructions.
-// Every text field is sanitized before it is used (see Data.sanitized).
+// A repository's launch has no item, so it fills in the repository's fields and the
+// session's alone (see RepoData and Variable.ItemOnly). Every text field is sanitized
+// before it is used (see Data.sanitized).
 type Data struct {
 	// Kind is "pull request" or "issue".
 	Kind string
@@ -204,7 +218,8 @@ type Data struct {
 	// request's head, so it needs no checkout.
 	WorktreeOnPRHead bool
 
-	// Worktree is the session's worktree name, such as "pr-7", or "".
+	// Worktree is the session's worktree name, such as "pr-7", or a repository's launch's
+	// own, such as "deps-20260115", or "".
 	Worktree string
 
 	// Profile is the name of the profile the session runs with.
@@ -251,10 +266,36 @@ type Variable struct {
 
 	// PROnly reports that the value is empty (or zero, or false) for issues.
 	PROnly bool `json:"prOnly"`
+
+	// ItemOnly reports that the value describes an item, or a routine's run on one, so it is
+	// empty (or zero, or false) for a repository's launch, which has neither. Every PROnly
+	// variable is one.
+	ItemOnly bool `json:"itemOnly"`
 }
 
-// Variables returns every variable a prompt can use, in cheat sheet order.
+// repoVariables names the variables a repository's launch fills in: the repository's, and
+// its session's. Every other variable is ItemOnly.
+func repoVariables() []string {
+	return []string{
+		"Repo", "Owner", "RepoName", "DefaultBranch", "Remote", "RemoteIsPlain", "InWorktree", "Worktree", "Profile", "Me",
+	}
+}
+
+// Variables returns every variable a prompt can use, in cheat sheet order, each marked
+// ItemOnly unless a repository's launch fills it in (repoVariables).
 func Variables() []Variable {
+	vars := cheatSheet()
+
+	for i := range vars {
+		vars[i].ItemOnly = !slices.Contains(repoVariables(), vars[i].Name)
+	}
+
+	return vars
+}
+
+// cheatSheet returns every variable a prompt can use, in cheat sheet order, before
+// Variables marks the ones only an item fills in.
+func cheatSheet() []Variable {
 	return []Variable{
 		{Name: "Kind", Group: groupItem, Type: typeText, Description: `"pull request" or "issue"`},
 		{Name: "IsPR", Group: groupItem, Type: typeYesNo, Description: "The item is a pull request"},
@@ -375,9 +416,29 @@ func Sample(kind item.Kind) Data {
 	return d
 }
 
-// WithSession sets the session facts: whether it starts in a worktree and, for a pull
-// request, whether that worktree starts at the pull request's head. The worktree name
-// follows the launcher's (see item.WorktreeName).
+// SampleRepo returns made-up data for a repository, used to check a prompt for
+// repositories and to preview it: the repository's fields and the session's alone, with no
+// item. The session starts in the clone.
+func SampleRepo() Data {
+	d := RepoData(repo.Name{Owner: "acme-org", Repo: "example-repo"}, "main", "origin")
+	d.Profile, d.Me = "default", "octo-user"
+
+	return d
+}
+
+// RepoData returns the data a launch for the repository name fills a prompt with: its
+// names, its default branch, and the clone's remote for it, and no item. The caller sets
+// the profile, the signed-in login, and the session (WithWorktree).
+func RepoData(name repo.Name, defaultBranch, remote string) Data {
+	return Data{
+		Repo: name.String(), Owner: name.Owner, RepoName: name.Repo, DefaultBranch: defaultBranch, Remote: remote,
+	}
+}
+
+// WithSession sets the session facts of a launch on an item: whether it starts in a
+// worktree and, for a pull request, whether that worktree starts at the pull request's
+// head. The worktree name follows the launcher's (see item.WorktreeName). A repository's
+// launch, which has no item to name a worktree for, uses WithWorktree.
 func (d Data) WithSession(inWorktree, atPRHead bool) Data {
 	d.InWorktree = inWorktree
 	d.WorktreeOnPRHead = inWorktree && atPRHead && d.IsPR
@@ -386,6 +447,15 @@ func (d Data) WithSession(inWorktree, atPRHead bool) Data {
 	if inWorktree {
 		d.Worktree = item.WorktreeName(d.kind(), d.Number)
 	}
+
+	return d
+}
+
+// WithWorktree sets the session facts of a launch that names its own worktree, as a
+// repository's launch does: it starts in the worktree name, or in the clone when name is
+// "". No such worktree starts at a pull request's head.
+func (d Data) WithWorktree(name string) Data {
+	d.InWorktree, d.WorktreeOnPRHead, d.Worktree = name != "", false, name
 
 	return d
 }
@@ -481,7 +551,8 @@ func plainName(s string) bool {
 	return textutil.ShellSafe(s) && !strings.HasPrefix(s, "-")
 }
 
-// Covers reports whether a prompt that applies to a can launch an item of kind.
+// Covers reports whether a prompt that applies to a can launch an item of kind. A prompt for
+// repositories covers none.
 func (a AppliesTo) Covers(kind item.Kind) bool {
 	return a == AppliesToAny || a == AppliesTo(kind)
 }

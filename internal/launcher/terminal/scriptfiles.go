@@ -35,16 +35,18 @@ const (
 )
 
 // ErrInvalidScriptPrefix is returned for a script name prefix other than pr-<number>,
-// issue-<number>, or run-<number>, which pruning would never remove.
+// issue-<number>, run-<number>, or repo-<number>, which pruning would never remove.
 var ErrInvalidScriptPrefix = errors.New("invalid script name prefix")
 
-// scriptPrefix is what a script name's prefix must look like.
-var scriptPrefix = regexp.MustCompile(`^(?:pr|issue|run)-[0-9]+$`)
+// scriptPrefix is what a script name's prefix must look like: an item's launch's, pr- or
+// issue- and its number; a followed run's, run- and its ID; or a repository's launch's,
+// repo- and its task's date.
+var scriptPrefix = regexp.MustCompile(`^(?:pr|issue|run|repo)-[0-9]+$`)
 
 // scriptFileName matches the names of the files a ScriptWriter writes, capturing the
 // timestamp and the suffix from the first dot on, which is a script's extension or
 // PromptSuffix. Pruning only ever touches files that match, with a known suffix.
-var scriptFileName = regexp.MustCompile(`^(?:pr|issue|run)-[0-9]+-([0-9]{8}T[0-9]{6}Z)-[0-9a-f]{8}(\..*)$`)
+var scriptFileName = regexp.MustCompile(`^(?:pr|issue|run|repo)-[0-9]+-([0-9]{8}T[0-9]{6}Z)-[0-9a-f]{8}(\..*)$`)
 
 // ScriptFiles are the files written for one script.
 type ScriptFiles struct {
@@ -79,7 +81,7 @@ func WriteScript(dir, prefix string, s Script, now time.Time, random io.Reader, 
 // Write writes s as a new script in dir, which is created (readable only by the user) if
 // needed, and returns its path. The script is named <prefix>-<UTC stamp>-<8 random hex
 // digits> with the renderer's extension, has mode 0700, and never replaces a file. prefix
-// is pr-<number>, issue-<number>, or run-<number>; anything else is
+// is pr-<number>, issue-<number>, run-<number>, or repo-<number>; anything else is
 // ErrInvalidScriptPrefix, and nothing is written.
 //
 // Afterwards it prunes the scripts in dir, and the prompt files beside them, older than

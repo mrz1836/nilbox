@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/agent"
 	"github.com/mrz1836/nilbox/internal/appdata"
@@ -187,6 +188,16 @@ type Config struct {
 	// working.
 	TakeOvers TakeOvers
 
+	// RepoFacts reads what the inbox last stored about a repository, which a repository's
+	// launch checks: whether GitHub takes a push there from the user. Optional: without
+	// it, as for a repository the inbox never saw, the launch goes ahead, saying the app
+	// can't tell.
+	RepoFacts RepoFacts
+
+	// Location is where the user is, whose date names a repository's launch's worktree,
+	// deps-<YYYYMMDD>. It defaults to the machine's time zone.
+	Location *time.Location
+
 	// Logger receives what a launch cannot report as its error: a session record or a
 	// clone path that could not be stored, and old launch files that could not be
 	// pruned. Without it they are not logged.
@@ -355,7 +366,8 @@ type Preview struct {
 	Terminal terminal.ID `json:"terminal"`
 }
 
-// Service launches coding-agent sessions on inbox items.
+// Service launches coding-agent sessions on inbox items, and on repositories themselves
+// (LaunchRepo).
 type Service struct {
 	items     ItemStore
 	settings  SettingsReader
@@ -378,6 +390,8 @@ type Service struct {
 	reader    *localrepos.Reader
 	runs      RunFolders
 	takeOvers TakeOvers
+	repoFacts RepoFacts
+	zone      *time.Location
 	logger    *slog.Logger
 
 	// cloneMu runs one Clone at a time.
@@ -388,6 +402,10 @@ type Service struct {
 func NewService(cfg Config) *Service {
 	if cfg.NewID == nil {
 		cfg.NewID = newSessionID
+	}
+
+	if cfg.Location == nil {
+		cfg.Location = time.Local //nolint:gosmopolitan // a task's date is the user's own day
 	}
 
 	return &Service{
@@ -412,6 +430,8 @@ func NewService(cfg Config) *Service {
 		reader:    cfg.Reader,
 		runs:      cfg.RunFolders,
 		takeOvers: cfg.TakeOvers,
+		repoFacts: cfg.RepoFacts,
+		zone:      cfg.Location,
 		logger:    logging.Or(cfg.Logger),
 	}
 }
@@ -593,15 +613,28 @@ type planned struct {
 	// running holds a launch back for the sessions running where it would start, or is
 	// nil. A plan held back for them is not finished: it has no file check or prompt.
 	running *Hold
+
+	// task is a repository's launch's task, the base of its worktree's name, as
+	// deps-20261121, and "" for an item's launch. row then holds the repository alone: no
+	// item, a kind, or a number, its URL the repository's, and its title the prompt's name.
+	task string
+
+	// tmpl is a repository's launch's prompt, which is filled in again for the worktree
+	// made, whose name may not be the one planned; nil for an item's launch.
+	tmpl *prompts.Template
 }
 
-// worktreeName is the item's worktree name, or "" when the session starts in the clone.
+// worktreeName is the item's worktree name, or a repository's launch's, as planned or as
+// made, or "" when the session starts in the clone.
 func (p planned) worktreeName() string {
-	if p.worktree == nil {
+	switch {
+	case p.worktree == nil:
 		return ""
+	case p.task != "":
+		return p.worktree.Task
+	default:
+		return item.WorktreeName(p.row.Kind, p.row.Number)
 	}
-
-	return item.WorktreeName(p.row.Kind, p.row.Number)
 }
 
 // atHead reports a session that starts in a pull request's worktree, which holds its
@@ -639,11 +672,13 @@ func (p planned) onPRHead() bool {
 }
 
 // worktreeRequest asks for the item's worktree in the launch's clone, made at the head
-// the launch checked when it checked one.
+// the launch checked when it checked one, or, for a repository's launch, for its task's new
+// worktree, which has no item, base, or head.
 func (p planned) worktreeRequest() WorktreeRequest {
 	return WorktreeRequest{
 		Clone: p.clone.Dir, Remote: p.clone.Remote, Owner: p.row.Owner, Name: p.row.Name, Kind: p.row.Kind,
 		Number: p.row.Number, DefaultBranch: p.row.DefaultBranch, Base: p.row.BaseRef, Head: p.checkedHead(),
+		Task: p.task,
 	}
 }
 
@@ -739,14 +774,23 @@ func (s *Service) place(ctx context.Context, w world, row launchItemRow, res Res
 		return planned{}, err
 	}
 
-	if req.BinaryPath, err = s.finder.Find(res.Agent.Command); err != nil {
-		return planned{}, uierr.New(fmt.Sprintf("%s isn't installed (%s wasn't found).", res.Agent.Name,
-			res.Agent.Command), fmt.Errorf("find %s: %w", res.Agent.Command, err))
+	return s.placeIn(ctx, p, req)
+}
+
+// placeIn finishes placing p, whose terminal driver and clone are worked out: the agent
+// binary, the worktree when the launch uses one, which is only planned here, and the plan
+// for req, which needs only its directory and binary filled in.
+func (s *Service) placeIn(ctx context.Context, p planned, req Request) (planned, error) {
+	var err error
+
+	if req.BinaryPath, err = s.finder.Find(p.res.Agent.Command); err != nil {
+		return planned{}, uierr.New(fmt.Sprintf("%s isn't installed (%s wasn't found).", p.res.Agent.Name,
+			p.res.Agent.Command), fmt.Errorf("find %s: %w", p.res.Agent.Command, err))
 	}
 
 	req.Dir = p.clone.Dir
 
-	if res.Worktree.Value {
+	if p.res.Worktree.Value {
 		if s.worktrees == nil {
 			return planned{}, ErrNoWorktrees
 		}
@@ -852,9 +896,10 @@ func (s *Service) fileCheck(ctx context.Context, itemID int64, kind fileCheckKin
 
 // recordSession records the session started in the item's worktree, with its agent. The
 // launch has started by then, and a missing record only means the Worktrees view shows
-// an older session, so a failure is logged rather than returned.
+// an older session, so a failure is logged rather than returned. A repository's launch's
+// worktree has no record to touch, as the maker keeps none of it.
 func (s *Service) recordSession(ctx context.Context, p planned) {
-	if s.sessions == nil || p.worktree == nil {
+	if s.sessions == nil || p.worktree == nil || p.task != "" {
 		return
 	}
 

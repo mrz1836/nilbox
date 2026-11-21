@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/agent"
@@ -70,9 +69,11 @@ func (d *SessionBanners) show(ctx context.Context, kind notifyprefs.Kind, s sess
 	}
 }
 
-// SessionBanner is the banner for a session of kind: who and what as its title, its item
-// as the subtitle, and what the agent last said, or the item's title, as its body. A
-// click on it shows the item. Posting it again for the same session replaces it.
+// SessionBanner is the banner for a session of kind: who and what as its title, what it
+// works on as the subtitle (sessions.Session.Label), and what the agent last said, or the
+// session's title, as its body. A click on it shows the item, or, for a repository's
+// launch's session, which has none, opens the repository's page. Posting it again for the
+// same session replaces it.
 func SessionBanner(kind notifyprefs.Kind, s sessions.Session) Banner {
 	name := string(s.Agent)
 	if a, err := agent.Lookup(s.Agent); err == nil {
@@ -86,15 +87,10 @@ func SessionBanner(kind notifyprefs.Kind, s sessions.Session) Banner {
 
 	body := cmp.Or(strings.TrimSpace(s.LastMessage), s.Title)
 
-	repoName := s.Repo
-	if i := strings.LastIndexByte(repoName, '/'); i >= 0 {
-		repoName = repoName[i+1:]
-	}
-
 	return Banner{
 		ID:       brand.Slug + "-session-" + s.ID,
 		Title:    title,
-		Subtitle: repoName + " #" + strconv.Itoa(s.Number),
+		Subtitle: s.Label(),
 		Body:     textutil.Truncate(strings.Join(strings.Fields(body), " "), maxTitleRunes),
 		Thread:   string(kind),
 		ItemID:   s.ItemID,

@@ -1,8 +1,10 @@
-// Package gitread runs the read-only git commands the release, hooks, and Repo scripts
-// services ask of a clone, and reads their answers: the current branch, uncommitted
+// Package gitread runs the read-only git commands the release, hooks, Repo scripts, and
+// Deps services ask of a clone, and reads their answers: the current branch, uncommitted
 // changes, what git is in the middle of, branches and tags here and on origin, the
-// commits between two, the signing settings, and where the hooks live. Message words
-// their failures for the user.
+// commits between two, the signing settings, where the hooks live, and a commit's tree,
+// the newest commit to change a manifest, and a blob's contents. Message words their
+// failures for the user, and DefaultBranch is the rule Repo scripts and Deps share for a
+// repository's default branch.
 //
 // Every command is checked against an exact allowlist before it runs, and anything else
 // is refused with ErrGitCommandNotAllowed: no command here changes a clone's files, index,
@@ -12,6 +14,10 @@
 // index lock a release might need, and GIT_TERMINAL_PROMPT=0, so git never waits for an
 // answer no one can give. core.hooksPath is left alone: the hooks scan needs the folder
 // it names, and none of these commands runs a hook.
+//
+// A tree's listing, a log, and a blob's contents are the repository's to make as large as
+// it likes, so git is stopped, and the read fails with execpath.ErrOutputLimit, once one
+// prints more than its cap.
 //
 // git is the one on the PATH of the environment Config.Env returns, the login shell's in
 // the app, so the checks use the same git, and the same credential helpers, as the tools
@@ -146,12 +152,49 @@ func (g *Git) remote(parent context.Context, dir string, args []string) (stdout,
 }
 
 // exec runs git in dir with env and args, which have passed the allowlist, and the extra
-// settings, which gitread builds itself. slices.Concat sizes the argv and checks that
-// size for overflow, so no sum of lengths is worked out here.
+// settings, which gitread builds itself, held to what args may print (outputLimit).
+// slices.Concat sizes the argv and checks that size for overflow, so no sum of lengths is
+// worked out here.
 func (g *Git) exec(ctx context.Context, dir string, env, extra, args []string) (stdout, stderr []byte, err error) {
 	argv := slices.Concat([]string{"-C", dir}, hardening(), extra, args)
 
-	return g.runner(env).Run(ctx, gitBin, argv...)
+	return capped(g.runner(env), outputLimit(args)).Run(ctx, gitBin, argv...)
+}
+
+// capped returns runner held to limit bytes of standard output, or runner itself for no
+// limit (0). gitread's own runner, an execpath.Exec, stops git once it prints more,
+// holding none of what is past the limit; any other, as a test's, is held to it once it
+// returns. Either way the run fails with execpath.ErrOutputLimit.
+func capped(runner execpath.Runner, limit int) execpath.Runner {
+	if limit <= 0 {
+		return runner
+	}
+
+	if own, ok := runner.(execpath.Exec); ok {
+		own.Limit = limit
+
+		return own
+	}
+
+	return limitedRunner{runner: runner, limit: limit}
+}
+
+// limitedRunner is a Runner that can't stop its program early, held to limit bytes of
+// standard output once its program returns.
+type limitedRunner struct {
+	runner execpath.Runner
+	limit  int
+}
+
+// Run runs name with args, and fails with execpath.ErrOutputLimit, returning none of its
+// standard output, when it printed more than the limit.
+func (r limitedRunner) Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
+	stdout, stderr, err = r.runner.Run(ctx, name, args...)
+	if len(stdout) > r.limit {
+		return nil, stderr, fmt.Errorf("run %s: %w", name, execpath.ErrOutputLimit)
+	}
+
+	return stdout, stderr, err
 }
 
 // status runs a status, or a diff against the worktree, with every filter driver the

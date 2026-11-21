@@ -32,6 +32,10 @@ const runWaitDelay = 2 * time.Second
 // well-known directories.
 var ErrNotFound = errors.New("executable not found")
 
+// ErrOutputLimit is returned by Exec.Run for a program that printed more than its Limit
+// allows; the program is stopped, and none of its output is returned.
+var ErrOutputLimit = errors.New("the program printed more than the limit")
+
 // Finder resolves a program name to the absolute path of an executable. Search is the
 // app's.
 type Finder interface {
@@ -152,6 +156,12 @@ type Exec struct {
 	// it in this process's folder.
 	Dir string
 
+	// Limit, when above zero, is the most of a program's standard output Run holds, in
+	// bytes: a program that prints more is stopped, and Run fails with ErrOutputLimit, so
+	// a program whose output a repository controls, as git's listing of a tree, can't
+	// grow the app's memory without bound. Zero holds it all.
+	Limit int
+
 	// waitDelay, when set, takes runWaitDelay's place, so a test of a descendant holding
 	// a program's output need not wait as long.
 	waitDelay time.Duration
@@ -162,7 +172,8 @@ type Exec struct {
 // callers can read its exit code (see ExitCode). A program that exits but leaves a
 // descendant holding its output is waited for runWaitDelay more, then its output so far
 // is returned and its exit status counts: such a descendant can't hang Run past the
-// program.
+// program. A program that prints more than Limit is stopped, and Run fails with
+// ErrOutputLimit, returning none of its standard output.
 func (r Exec) Run(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error) {
 	path := name
 	if !filepath.IsAbs(path) {
@@ -171,20 +182,53 @@ func (r Exec) Run(ctx context.Context, name string, args ...string) (stdout, std
 		}
 	}
 
-	var outBuf, errBuf bytes.Buffer
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+
+	out := &limitedBuffer{limit: r.Limit, stop: stop}
+
+	var errBuf bytes.Buffer
 
 	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // argv only, no shell
 	cmd.Env = r.Env
 	cmd.Dir = r.Dir
-	cmd.Stdout = &outBuf
+	cmd.Stdout = out
 	cmd.Stderr = &errBuf
 	cmd.WaitDelay = r.descendantWait()
 
-	if err = cmd.Run(); err != nil && !errors.Is(err, exec.ErrWaitDelay) {
-		return outBuf.Bytes(), errBuf.Bytes(), fmt.Errorf("run %s: %w", filepath.Base(path), err)
+	err = cmd.Run()
+
+	switch {
+	case out.over:
+		return nil, errBuf.Bytes(), fmt.Errorf("run %s: %w", filepath.Base(path), ErrOutputLimit)
+	case err != nil && !errors.Is(err, exec.ErrWaitDelay):
+		return out.buf.Bytes(), errBuf.Bytes(), fmt.Errorf("run %s: %w", filepath.Base(path), err)
 	}
 
-	return outBuf.Bytes(), errBuf.Bytes(), nil
+	return out.buf.Bytes(), errBuf.Bytes(), nil
+}
+
+// limitedBuffer holds what a program prints to its standard output, up to limit bytes
+// when limit is above zero. A write past it holds nothing more, marks the buffer over,
+// stops the program, and fails, so os/exec stops copying and closes its end of the pipe.
+// os/exec copies into it from one goroutine, which Run's Wait waits for before reading it.
+type limitedBuffer struct {
+	buf   bytes.Buffer
+	limit int
+	stop  context.CancelFunc
+	over  bool
+}
+
+// Write holds p, or fails with ErrOutputLimit once the buffer would hold more than limit.
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	if b.over || (b.limit > 0 && b.buf.Len()+len(p) > b.limit) {
+		b.over = true
+		b.stop()
+
+		return 0, ErrOutputLimit
+	}
+
+	return b.buf.Write(p)
 }
 
 // descendantWait returns how long Run waits, once its program has exited, for a

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -170,7 +171,7 @@ func TestDecodeBundleRefusesWhatItCannotRead(t *testing.T) {
 		"a list":            {data: `[{"name":"x"}]`, want: ErrNotBundle},
 		"another format":    {data: `{"format":"other.prompts","version":1,"prompts":[]}`, want: ErrNotBundle},
 		"no version":        {data: `{"format":"` + BundleFormat + `","prompts":[]}`, want: ErrNotBundle},
-		"a newer version":   {data: `{"format":"` + BundleFormat + `","version":4,"prompts":[]}`, want: ErrNewerBundle},
+		"a newer version":   {data: `{"format":"` + BundleFormat + `","version":` + strconv.Itoa(BundleVersion+1) + `,"prompts":[]}`, want: ErrNewerBundle},
 		"bad extra args":    {data: `{"format":"` + BundleFormat + `","version":2,"prompts":[{"extraArgs":"--x"}]}`, want: ErrNotBundle},
 		"too many prompts":  {data: `{"format":"` + BundleFormat + `","version":1,"prompts":[` + strings.Join(many, ",") + `]}`, want: ErrBundleTooLarge},
 		"too large to read": {data: strings.Repeat(" ", maxBundleBytes+1), want: ErrBundleTooLarge},
@@ -204,7 +205,8 @@ func TestExportWritesTheWholeLibrary(t *testing.T) {
 
 	n, err := s.Export(t.Context(), path, nil)
 	require.NoError(t, err)
-	assert.Equal(t, ExportResult{Prompts: 10, Replies: 6}, n, "the starters are ten agent prompts and six replies")
+	assert.Equal(t, ExportResult{Prompts: 12, Replies: 6}, n,
+		"the starters are twelve agent prompts, two of them for repositories, and six replies")
 
 	got, err := readBundleFile(path)
 	require.NoError(t, err)
@@ -221,7 +223,7 @@ func TestExportWritesTheWholeLibrary(t *testing.T) {
 		StarterReviewPR, StarterWorkOnIssue, StarterQuickLook, StarterFixChecks,
 		StarterReplyLGTM, StarterReplyUpdateOK, StarterReplyNeedsChanges, StarterReplyQuestion,
 		StarterFixDependencySecurity, StarterRereview, StarterHealDependabot, StarterAddressReview, StarterResolveConflicts,
-		StarterRerunFailedJobs, StarterReplyNeedsRepro, StarterReplyNudge,
+		StarterRerunFailedJobs, StarterReplyNeedsRepro, StarterReplyNudge, StarterDepsMinor, StarterDepsMajor,
 	}, got.StartersAdded)
 	assert.Equal(t, []string{"checks_failing", "conflicts", "changes_requested", "rereview"}, got.SlotsSeeded,
 		"the situations' slots the library filled travel with it")
@@ -742,7 +744,8 @@ func TestRestoreBringsBackTheLibraryFromTheDatabaseSetAside(t *testing.T) {
 	assert.ElementsMatch(t, []string{
 		"Address review", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro", "Nudge",
 		"Question", "Quick look", "Re-review",
-		"Re-run failed jobs", "Resolve conflicts", "Review", "Security", "Update OK", "Work on it",
+		"Re-run failed jobs", "Resolve conflicts", "Review", "Security", "Update OK", "Upgrade deps", "Upgrade majors too",
+		"Work on it",
 	}, nicknames(t, s), "the deleted starter stays deleted")
 	assert.Equal(t, byNickname(t, s, "Security").ID, restored.IDs["Security"], "each nickname finds its restored prompt")
 

@@ -583,6 +583,41 @@ func TestAUserScriptThatBumpsAVersionPointsToRelease(t *testing.T) {
 	require.ErrorIs(t, err, ErrRelease, "an alias of a tagging target, caught on the command as it runs")
 }
 
+func TestAUserScriptThatUpgradesPointsToDeps(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	dir := r.clone("sdk", "acme-org/sdk", nil)
+	u := named("Upgrade")
+	u.Command = "pnpm up --latest && pnpm install"
+	u = r.save(u)
+
+	e := r.list(dir).Sections[0].Entries[0]
+	assert.True(t, e.Deps, "a command running pnpm up")
+	assert.False(t, e.Release)
+
+	_, err := r.svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: e.Ref})
+	require.ErrorIs(t, err, ErrDeps)
+	assert.Equal(t, depsWords, uierr.Message(err))
+
+	id, err := r.svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: e.Ref, Anyway: true})
+	require.NoError(t, err, "run it anyway")
+	assert.Equal(t, []string{r.shell, "-c", u.Command}, r.ended(id).Argv)
+
+	test := r.save(named(testName))
+
+	id, err = r.svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: yoursRef(test.ID)})
+	require.NoError(t, err)
+	r.ended(id)
+
+	test.Command = "go get -u ./... && go mod tidy"
+	r.save(test)
+
+	_, err = r.runs.RunAgain(t.Context(), id)
+	require.ErrorIs(t, err, ErrDeps, "Run again works the saved script out afresh, and it now upgrades")
+	assert.Equal(t, 2, r.recorded())
+}
+
 func TestUserScriptsThatCantRun(t *testing.T) {
 	t.Parallel()
 

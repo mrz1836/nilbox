@@ -95,7 +95,8 @@ func (h How) Takes(s Section) bool {
 }
 
 // PromptKind is what a prompt the import will bring is: an agent prompt or a review reply,
-// and what kinds of item it applies to, as "pr", "issue", or "any".
+// and what kinds of item it applies to, as "pr", "issue", or "any", or "repo" for an agent
+// prompt for repositories, which applies to none.
 type PromptKind struct {
 	Reply     bool
 	AppliesTo string

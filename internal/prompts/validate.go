@@ -63,7 +63,7 @@ func (in Input) normalized() Input {
 func validate(ctx context.Context, st *Store, id int64, in Input, usage Usage) (agent.Checked, []agent.FieldError) {
 	checked, fields := validateFields(ctx, st, id, in, usage)
 
-	if t, _ := parseFor(in.Purpose, in.Body, appliesToOrAny(in.AppliesTo)); t == nil {
+	if t, _ := parseFor(in.Purpose, in.Body, appliesToOrAny(in.Purpose, in.AppliesTo)); t == nil {
 		fields = append(fields, agent.FieldError{Field: FieldBody, Message: "Fix the problems in the prompt's text."})
 	}
 
@@ -100,7 +100,7 @@ func validateFields(ctx context.Context, st *Store, id int64, in Input, usage Us
 		return agent.Checked{Models: map[agent.ID]string{}, Args: map[agent.ID][]string{}}, fields
 	}
 
-	add(FieldAppliesTo, checkAppliesTo(in.AppliesTo, usage))
+	add(FieldAppliesTo, cmp.Or(checkAppliesTo(in.AppliesTo, usage), checkRepoSwitch(ctx, st, id, in.AppliesTo, usage)))
 
 	checked, overrides := agent.CheckSettings(agent.Settings{
 		Models: in.Models, Effort: in.Effort, ExtraFlags: in.ExtraFlags,
@@ -151,13 +151,13 @@ func checkNickname(ctx context.Context, st *Store, id int64, nickname string) st
 	return ""
 }
 
-// checkAppliesTo checks what a prompt applies to: one of the three choices, covering
-// every kind it is a default for.
+// checkAppliesTo checks what an agent prompt applies to: one of the four choices, covering
+// every kind it is a default for, which a prompt for repositories covers none of.
 func checkAppliesTo(appliesTo AppliesTo, usage Usage) string {
 	switch appliesTo {
-	case AppliesToPR, AppliesToIssue, AppliesToAny:
+	case AppliesToPR, AppliesToIssue, AppliesToAny, AppliesToRepo:
 	default:
-		return "Choose what the prompt is for: pull requests, issues, or both."
+		return "Choose what the prompt is for: pull requests, issues, both, or repositories."
 	}
 
 	for _, kind := range usage.Kinds {
@@ -168,6 +168,26 @@ func checkAppliesTo(appliesTo AppliesTo, usage Usage) string {
 	}
 
 	return ""
+}
+
+// checkRepoSwitch refuses to make the prompt with id (0 for a new one) a prompt for
+// repositories while a routine runs it, as usage says: a routine runs its prompts on pull
+// requests and issues, which a prompt for repositories never launches on. One already for
+// repositories stays free to change, since nothing switches; a routine that names it was
+// refused before the change, and is refused again before each start.
+func checkRepoSwitch(ctx context.Context, st *Store, id int64, appliesTo AppliesTo, usage Usage) string {
+	if appliesTo != AppliesToRepo || len(usage.Routines) == 0 {
+		return ""
+	}
+
+	if id != 0 {
+		if stored, err := st.Lookup(ctx, id); err == nil && stored.AppliesTo == AppliesToRepo {
+			return ""
+		}
+	}
+
+	return fmt.Sprintf("It's %s, and a routine runs its prompts on pull requests and issues, so it can't be for "+
+		"repositories.", describeUsage(Usage{Routines: usage.Routines}))
 }
 
 // checkReplyAction checks the review a reply is written for: one of the three, and the
@@ -186,13 +206,19 @@ func checkReplyAction(action ReplyAction, usage Usage) string {
 	return ""
 }
 
-// checkReplyAppliesTo checks what a reply applies to: one of the three choices, and pull
-// requests while it is a default reply, which only the review sheet starts from.
+// checkReplyAppliesTo checks what a reply applies to: one of the three choices, never
+// repositories, which only an agent prompt is for, and pull requests while it is a default
+// reply, which only the review sheet starts from.
 func checkReplyAppliesTo(appliesTo AppliesTo, usage Usage) string {
+	const choose = "Choose what the reply is for: pull requests, issues, or both."
+
 	switch appliesTo {
 	case AppliesToPR, AppliesToIssue, AppliesToAny:
+	case AppliesToRepo:
+		// A reply is the text of a review or a comment on an item, never a repository's.
+		return choose
 	default:
-		return "Choose what the reply is for: pull requests, issues, or both."
+		return choose
 	}
 
 	if len(usage.Replies) > 0 && !appliesTo.Covers(item.KindPR) {
@@ -202,14 +228,18 @@ func checkReplyAppliesTo(appliesTo AppliesTo, usage Usage) string {
 	return ""
 }
 
-// appliesToOrAny returns appliesTo when it is valid, else "any", so a prompt's text can
-// be checked while its kind is still being chosen.
-func appliesToOrAny(appliesTo AppliesTo) AppliesTo {
-	if appliesTo == AppliesToPR || appliesTo == AppliesToIssue {
+// appliesToOrAny returns appliesTo when a prompt with purpose may apply to it, else "any",
+// so a prompt's text can be checked while its kind is still being chosen: an agent prompt
+// for repositories is checked as one, with a repository's samples, and a reply never is.
+func appliesToOrAny(purpose Purpose, appliesTo AppliesTo) AppliesTo {
+	switch {
+	case appliesTo == AppliesToPR || appliesTo == AppliesToIssue:
 		return appliesTo
+	case appliesTo == AppliesToRepo && purpose != PurposeReply:
+		return appliesTo
+	default:
+		return AppliesToAny
 	}
-
-	return AppliesToAny
 }
 
 // fromInput returns a validated Input with its checked models and extra arguments as a

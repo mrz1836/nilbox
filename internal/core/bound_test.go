@@ -481,6 +481,9 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"settings.Service.SetReleaseSort": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetReleaseSort(ctx, integrationprefs.ReleaseSortName)
 		},
+		"settings.Service.SetDepsSort": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			return c.Settings.SetDepsSort(ctx, integrationprefs.DepsSortName)
+		},
 		"settings.Service.SetRefreshInterval": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Settings.SetRefreshInterval(ctx, settings.RefreshChecks, 30)
 		},
@@ -534,6 +537,12 @@ func boundCalls(t *testing.T) map[string]boundCall {
 		"hooks.Service.Repos": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			got, err := c.Hooks.Repos(ctx, false)
 			require.Len(t, got.Repos, 1, "the clone with a config, which the fake git can't read")
+
+			return got, err
+		},
+		"manifests.Service.List": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
+			got, err := c.Manifests.List(ctx, false)
+			require.Empty(t, got.Clones, "the fake git reads no origin, so no clone is on GitHub")
 
 			return got, err
 		},
@@ -1012,6 +1021,9 @@ func unreachedBound() map[string]string {
 		"launcher.Service.Preview":          "needs a clone; its resolution is built as Resolve's",
 		"launcher.Service.LinkClone":        "needs a clone's remotes; its location is built as settings' PreviewCloneLocation's",
 		"launcher.Service.Launch":           "opens a terminal",
+		"launcher.Service.ResolveRepo":      "needs a clone's remotes; its resolution is built as Resolve's",
+		"launcher.Service.PreviewRepo":      "needs a clone's remotes; its preview is built as Preview's",
+		"launcher.Service.LaunchRepo":       "opens a terminal; its result is Launch's",
 		"launcher.Service.Resume":           "opens a terminal",
 		"launcher.Service.TakeOver":         "stops a background run and opens a terminal; its result is Resume's",
 		"worktrees.Service.Remove":          "needs a worktree to remove; its result starts its lists empty, as RemoveAllClean's",

@@ -57,6 +57,7 @@ func TestWindowEventsGoOnToThePage(t *testing.T) {
 		event.ReleasesProgress{},
 		event.HooksUpdated{},
 		event.WorktreesProgress{},
+		event.ManifestsProgress{},
 		event.GHThreadsUpdated{},
 		event.ServiceStatusUpdated{},
 		event.UpdatesUpdated{},

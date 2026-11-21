@@ -129,6 +129,9 @@ import type {
   LaunchPreview,
   LaunchResult,
   LinkedItem,
+  ManifestsClone,
+  ManifestsModule,
+  ManifestsPage,
   MergedBranch,
   Profile,
   Project,
@@ -145,6 +148,8 @@ import type {
   ReleaseOffer,
   ReleaseResult,
   RemoveResult,
+  RepoLaunchPreview,
+  RepoResolution,
   RepoScripts,
   Resolution,
   SituationChoice,
@@ -1376,6 +1381,7 @@ export function integrationsConfig(overrides: Partial<IntegrationsConfig> = {}):
     sections: {},
     showRuns: false,
     releaseSort: 'newest',
+    depsSort: 'oldest',
     ...overrides,
   }
 }
@@ -1913,20 +1919,40 @@ export function prompts(): Prompt[] {
   ]
 }
 
+// variables are a few of the variables a prompt can name, each marked prOnly when only a
+// pull request fills it in, and itemOnly when a repository's launch, which has no item,
+// leaves it empty.
 export function variables(): PromptVariable[] {
+  const item = { group: 'Item', prOnly: false, itemOnly: true }
+
   return [
-    { name: 'Kind', group: 'Item', type: 'text', description: '"pull request" or "issue"', prOnly: false },
-    { name: 'Number', group: 'Item', type: 'number', description: 'The pull request or issue number', prOnly: false },
-    { name: 'Title', group: 'Item', type: 'text', description: 'The title, cut to 200 characters', prOnly: false },
-    { name: 'URL', group: 'Item', type: 'text', description: 'The web address on GitHub', prOnly: false },
-    { name: 'Repo', group: 'Repository', type: 'text', description: 'The repository, as owner/name', prOnly: false },
-    { name: 'Branch', group: 'Pull request', type: 'text', description: 'The head branch', prOnly: true },
+    { ...item, name: 'Kind', type: 'text', description: '"pull request" or "issue"' },
+    { ...item, name: 'Number', type: 'number', description: 'The pull request or issue number' },
+    { ...item, name: 'Title', type: 'text', description: 'The title, cut to 200 characters' },
+    { ...item, name: 'URL', type: 'text', description: 'The web address on GitHub' },
+    {
+      name: 'Repo',
+      group: 'Repository',
+      type: 'text',
+      description: 'The repository, as owner/name',
+      prOnly: false,
+      itemOnly: false,
+    },
+    {
+      name: 'Branch',
+      group: 'Pull request',
+      type: 'text',
+      description: 'The head branch',
+      prOnly: true,
+      itemOnly: true,
+    },
     {
       name: 'InWorktree',
       group: 'Session',
       type: 'yes/no',
       description: 'The session starts in its own worktree',
       prOnly: false,
+      itemOnly: false,
     },
   ]
 }
@@ -1992,6 +2018,52 @@ export function situationChoices(
     situation,
     prompt: { ...resolution().prompt, ...prompts[situation] },
   }))
+}
+
+// repoResolution is a repository's launch settings as the Deps page's Upgrade resolves
+// them for acme-org/api-server: no item, trusted, the Upgrade dependencies starter picked,
+// and its own worktree always, with nothing to say of the repository first.
+export function repoResolution(overrides: Partial<RepoResolution> = {}): RepoResolution {
+  return {
+    ...resolution(),
+    itemId: 0,
+    kind: '',
+    repo: 'acme-org/api-server',
+    prompt: {
+      id: 21,
+      nickname: 'Upgrade deps',
+      name: 'Upgrade dependencies',
+      source: 'launch',
+      inheritedId: 0,
+      inheritedSource: '',
+    },
+    situations: [],
+    notice: '',
+    ...overrides,
+  }
+}
+
+// repoLaunchPreview is the preview of the Deps page's Upgrade for acme-org/api-server: a
+// new worktree, deps-20260615, made from origin/master.
+export function repoLaunchPreview(overrides: Partial<RepoLaunchPreview> = {}): RepoLaunchPreview {
+  const dir = `~/projects/.${brand.slug}/worktrees/api-server/deps-20260615`
+
+  return {
+    ...launchPreview(),
+    resolution: repoResolution(),
+    dir,
+    worktree: {
+      name: 'deps-20260615',
+      path: dir,
+      branch: 'worktree-deps-20260615',
+      action: 'create',
+      base: 'origin/master',
+      dirty: -1,
+    },
+    command: "claude <prompt> --model opus '--name=Upgrade deps · api-server'",
+    prompt: 'Upgrade the Go and JavaScript dependencies of acme-org/api-server …\n',
+    ...overrides,
+  }
 }
 
 export function itemResolution(overrides: Partial<ItemResolution> = {}): ItemResolution {
@@ -3791,6 +3863,89 @@ export function hookRepo(overrides: Partial<HookRepo> = {}): HookRepo {
 // noChecks is a row's last checks when none has run.
 const noChecks = { id: 0, status: 'succeeded', summary: '', finishedAt: '' } as const
 
+// manifestsModule is acme-org/api-server's go.mod at its top: a Go module whose
+// dependencies last changed fourteen months before FIXED_NOW, with its go.sum.
+export function manifestsModule(overrides: Partial<ManifestsModule> = {}): ManifestsModule {
+  return {
+    kind: 'go',
+    path: 'go.mod',
+    lockfile: 'go.sum',
+    changedAt: '2025-04-15T12:00:00Z',
+    subject: 'chore(deps): bump the go modules (#41)',
+    goModule: 'github.com/acme-org/api-server',
+    goVersion: '1.22',
+    toolchain: '',
+    direct: 4,
+    indirect: 9,
+    name: '',
+    packageManager: '',
+    workspaces: [],
+    deps: 0,
+    devDeps: 0,
+    peerDeps: 0,
+    optionalDeps: 0,
+    problem: '',
+    ...overrides,
+  }
+}
+
+// manifestsClone is acme-org/api-server's clone, read at origin/master as it last fetched
+// it three days before FIXED_NOW: its go.mod and its web console's package.json, set up for
+// magex and pnpm.
+export function manifestsClone(overrides: Partial<ManifestsClone> = {}): ManifestsClone {
+  return {
+    repo: 'acme-org/api-server',
+    dir: '~/projects/api-server',
+    pinned: false,
+    modules: [
+      manifestsModule(),
+      manifestsModule({
+        kind: 'js',
+        path: 'web/package.json',
+        lockfile: 'pnpm-lock.yaml',
+        changedAt: '2026-02-15T12:00:00Z',
+        subject: 'chore(web): refresh the lockfile (#52)',
+        goModule: '',
+        goVersion: '',
+        direct: 0,
+        indirect: 0,
+        name: 'web-console',
+        packageManager: 'pnpm',
+        deps: 48,
+        devDeps: 12,
+      }),
+    ],
+    oldest: '2025-04-15T12:00:00Z',
+    tools: ['magex', 'pnpm'],
+    workspaces: [],
+    tip: 'origin/master',
+    commit: '4f2a9c1e8b7d6a5f4e3d2c1b0a9f8e7d6c5b4a39',
+    atHead: false,
+    atHeadWhy: '',
+    defaultBranch: 'master',
+    fetchedAt: '2026-06-12T12:00:00Z',
+    shallow: false,
+    truncated: false,
+    error: '',
+    ...overrides,
+  }
+}
+
+// manifestsPage is the Deps page as the clones were read a minute before FIXED_NOW: one
+// stale clone, acme-org/api-server, with one muted clone and one not on GitHub left out.
+export function manifestsPage(overrides: Partial<ManifestsPage> = {}): ManifestsPage {
+  return {
+    clones: [manifestsClone()],
+    muted: 1,
+    withoutGitHub: 1,
+    withoutModules: 0,
+    modules: 2,
+    checkedAt: '2026-06-15T11:59:00Z',
+    error: '',
+    ...overrides,
+  }
+}
+
 // hooksList is the Hooks page as the clones were scanned a minute before FIXED_NOW: one
 // clone with no hook, one outdated, one with husky's, one in a hooks folder six clones
 // share, acme-org/web ready, one turned off, and two clones without a config.
@@ -4059,6 +4214,7 @@ export function scriptEntry(overrides: Partial<ScriptEntry> = {}): ScriptEntry {
     runnable: true,
     why: '',
     release: false,
+    deps: false,
     background: false,
     note: '',
     trust: 'ask',

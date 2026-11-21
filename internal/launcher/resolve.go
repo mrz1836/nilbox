@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/trust"
+	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
 // Source is where a resolved launch setting came from.
@@ -51,6 +52,10 @@ var (
 
 	// ErrNoProfile is returned when no profile of the agent is stored to launch with.
 	ErrNoProfile = errors.New("no profile was found")
+
+	// ErrNoRepoPrompt is returned for a repository's launch that names no prompt for
+	// repositories: none, one that is gone, or one for pull requests and issues.
+	ErrNoRepoPrompt = errors.New("a repository's launch needs a prompt for repositories")
 )
 
 // noProfile says the agent has no profile, and how to make one.
@@ -225,12 +230,17 @@ func (w world) profileNames(id agent.ID) []string {
 	return names
 }
 
-// subject is what resolution needs to know about an item.
+// subject is what resolution needs to know about an item, or about a repository a launch
+// is for rather than an item (repository): it has no id or kind then, and is trusted.
 type subject struct {
 	id      int64
 	kind    item.Kind
 	repo    repo.Name
 	trusted bool
+
+	// repository reports a repository's launch, whose prompt is the one asked for, a prompt
+	// for repositories, and which always starts in a worktree of its own.
+	repository bool
 }
 
 // resolver resolves one item's launch settings against a world.
@@ -255,7 +265,8 @@ type resolver struct {
 // is gone, a prompt for the other kind of item, or an effort level the agent lacks) is
 // skipped with a warning; a request naming an agent, profile, prompt, or situation that
 // does not exist is an error. A pull request's situation picks its prompt (see
-// inheritedPrompt); an issue's is ignored.
+// inheritedPrompt); an issue's is ignored. A repository's launch (subject.repository) takes
+// only the prompt for repositories it names (repoPrompt), and always starts in a worktree.
 func resolve(w world, it subject, req LaunchRequest) (Resolution, profiles.Profile, prompts.Prompt, error) {
 	if err := req.Situation.check(); err != nil {
 		return Resolution{}, profiles.Profile{}, prompts.Prompt{}, err
@@ -295,6 +306,11 @@ func resolve(w world, it subject, req LaunchRequest) (Resolution, profiles.Profi
 		profile.PlanMode, SourceProfile)
 	res.Worktree = r.toggle(req.Worktree, prompt.Worktree, func(d *launchdefaults.Defaults) *bool { return d.Worktree },
 		w.settings.WorktreeDefault, SourceApp)
+
+	if it.repository {
+		// A repository's launch always makes a worktree of its own, whatever the settings say.
+		res.Worktree = Toggle{Value: true, Source: SourceApp, Inherited: true, InheritedSource: SourceApp}
+	}
 
 	if res.ExtraArgs, err = r.extraArgs(profile, prompt); err != nil {
 		return Resolution{}, profiles.Profile{}, prompts.Prompt{}, err
@@ -514,8 +530,13 @@ func (r *resolver) inheritedProfile() (profiles.Profile, Source, error) {
 	return p, SourceApp, nil
 }
 
-// prompt resolves the prompt: the request's, else the one inheritedPrompt resolves.
+// prompt resolves the prompt: the request's, else the one inheritedPrompt resolves; for a
+// repository's launch, the request's alone (repoPrompt).
 func (r *resolver) prompt(requested int64, res *Resolution) (prompts.Prompt, error) {
+	if r.item.repository {
+		return r.repoPrompt(requested, res)
+	}
+
 	inherited, source, err := r.inheritedPrompt()
 	if err != nil {
 		return prompts.Prompt{}, err
@@ -541,6 +562,32 @@ func (r *resolver) prompt(requested int64, res *Resolution) (prompts.Prompt, err
 	}
 
 	res.Prompt.ID, res.Prompt.Nickname, res.Prompt.Name, res.Prompt.Source = p.ID, p.Nickname, p.Name, SourceLaunch
+
+	return p, nil
+}
+
+// pickRepoPrompt asks for a prompt a repository's launch can fill in.
+const pickRepoPrompt = "Pick a prompt for repositories to launch with."
+
+// repoPrompt resolves a repository's launch's prompt: the one the request names, which must
+// be a prompt for repositories (prompts.Prompt.IsRepo). There is no default prompt for
+// repositories, so nothing is inherited: Prompt.InheritedID is 0, and every pick in the
+// launch menu is the launch's own.
+func (r *resolver) repoPrompt(requested int64, res *Resolution) (prompts.Prompt, error) {
+	p, ok := r.w.prompts[requested]
+
+	switch {
+	case requested == 0:
+		return prompts.Prompt{}, uierr.New(pickRepoPrompt, ErrNoRepoPrompt)
+	case !ok:
+		return prompts.Prompt{}, uierr.New("That prompt is gone. "+pickRepoPrompt,
+			fmt.Errorf("%w: %w (id %d)", ErrNoRepoPrompt, prompts.ErrPromptNotFound, requested))
+	case !p.IsRepo():
+		return prompts.Prompt{}, uierr.New(fmt.Sprintf("“%s” isn't a prompt for repositories. %s", p.Nickname, pickRepoPrompt),
+			fmt.Errorf("%w: %w: %q", ErrNoRepoPrompt, prompts.ErrWrongKind, p.Nickname))
+	}
+
+	res.Prompt = PromptChoice{ID: p.ID, Nickname: p.Nickname, Name: p.Name, Source: SourceLaunch, InheritedSource: SourceNone}
 
 	return p, nil
 }

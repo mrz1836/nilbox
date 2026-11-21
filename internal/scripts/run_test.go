@@ -277,6 +277,69 @@ func TestTheReleasePointer(t *testing.T) {
 	assert.Equal(t, []string{r.tools.magex().Path, "version:bump", "bump=minor", "push"}, r.ended(id).Argv)
 }
 
+// depsWords is what a run of an upgrade without Anyway says.
+const depsWords = "Deps does this in a fresh worktree, with a pull request. Open Deps, or run it anyway."
+
+func TestTheDepsPointer(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	dir := r.thisRepo()
+
+	e := r.entry(dir, "t3:Deps: update all")
+	require.True(t, e.Deps)
+	assert.False(t, e.Release)
+
+	_, err := r.svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: e.Ref, Confirmed: e.SHA256, Remember: true})
+	require.ErrorIs(t, err, ErrDeps)
+	assert.Equal(t, depsWords, uierr.Message(err))
+	assert.Equal(t, TrustAsk, r.entry(dir, e.Ref).Trust, "refused before it was trusted")
+
+	builtin := r.entry(dir, "magex:deps:update")
+	require.True(t, builtin.Deps)
+	require.True(t, builtin.Runnable)
+
+	_, err = r.svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: builtin.Ref, Args: []string{"all-modules"}})
+	require.ErrorIs(t, err, ErrDeps)
+	assert.Zero(t, r.recorded(), "nothing ran in the clone")
+
+	id, err := r.svc.Run(t.Context(), RunRequest{
+		Dir: r.shown(dir), Ref: builtin.Ref, Anyway: true, Args: []string{"all-modules"},
+	})
+	require.NoError(t, err, "run it anyway")
+	assert.Equal(t, []string{r.tools.magex().Path, "deps:update", "all-modules"}, r.ended(id).Argv)
+
+	again, err := r.runs.RunAgain(t.Context(), id)
+	require.NoError(t, err, "Run again runs it as it ran: anyway")
+	assert.Equal(t, []string{r.tools.magex().Path, "deps:update", "all-modules"}, r.ended(again).Argv)
+
+	for _, ref := range []string{"magex:deps:tidy", "magex:test"} {
+		require.False(t, r.entry(dir, ref).Deps, ref)
+
+		id, err = r.svc.Run(t.Context(), RunRequest{Dir: r.shown(dir), Ref: ref})
+		require.NoError(t, err, "%s is untouched", ref)
+		assert.Equal(t, scriptrun.StatusSucceeded, r.ended(id).Status)
+	}
+
+	assert.False(t, r.entry(dir, "t3:Deps: tidy").Deps, "tidying stays in Repo scripts")
+}
+
+func TestRunAgainOfAnUpgradeNotRunAnyway(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	dir := r.thisRepo()
+
+	// A run recorded before upgrades pointed to Deps, without Anyway.
+	_, err := NewRerunner(r.svc).Rerun(t.Context(), scriptrun.Record{
+		Kind: scriptrun.KindScript, Dir: dir, RunsIn: integrationprefs.RunsInApp,
+		Result: scriptrun.Result{Intent: Intent{Ref: "magex:deps:update", Inputs: map[string]string{}, Args: []string{}}},
+	})
+	require.ErrorIs(t, err, ErrDeps)
+	assert.Equal(t, depsWords, uierr.Message(err))
+	assert.Zero(t, r.recorded())
+}
+
 func TestGreyedScriptsDontRun(t *testing.T) {
 	t.Parallel()
 

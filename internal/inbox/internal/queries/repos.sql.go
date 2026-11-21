@@ -28,6 +28,47 @@ func (q *Queries) GetRepoDefaultBranch(ctx context.Context, arg GetRepoDefaultBr
 	return default_branch, err
 }
 
+const getRepoFacts = `-- name: GetRepoFacts :one
+SELECT default_branch, viewer_permission, is_archived, is_disabled, is_locked, lock_reason, is_fork, parent
+FROM repos WHERE owner = ? AND name = ?
+`
+
+type GetRepoFactsParams struct {
+	Owner string
+	Name  string
+}
+
+type GetRepoFactsRow struct {
+	DefaultBranch    string
+	ViewerPermission string
+	IsArchived       bool
+	IsDisabled       bool
+	IsLocked         bool
+	LockReason       string
+	IsFork           bool
+	Parent           string
+}
+
+// GetRepoFacts returns what a refresh last stored about the repository named owner and
+// name, which match ignoring case, that says whether a branch can be pushed to it and a
+// pull request opened there: its default branch, the viewer's permission, whether GitHub
+// has it archived, disabled, or locked, and why, and whether it is a fork, and of what.
+func (q *Queries) GetRepoFacts(ctx context.Context, arg GetRepoFactsParams) (GetRepoFactsRow, error) {
+	row := q.db.QueryRowContext(ctx, getRepoFacts, arg.Owner, arg.Name)
+	var i GetRepoFactsRow
+	err := row.Scan(
+		&i.DefaultBranch,
+		&i.ViewerPermission,
+		&i.IsArchived,
+		&i.IsDisabled,
+		&i.IsLocked,
+		&i.LockReason,
+		&i.IsFork,
+		&i.Parent,
+	)
+	return i, err
+}
+
 const listRepoCounts = `-- name: ListRepoCounts :many
 SELECT r.owner, r.name, COUNT(i.id) AS items
 FROM repos r

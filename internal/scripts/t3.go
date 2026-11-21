@@ -57,7 +57,8 @@ func readT3(dir string) (out []script, found bool, err error) {
 		sc := script{
 			entry: Entry{
 				Ref: ref(SourceT3, name), Source: SourceT3, Name: name, Command: s.Command, Icon: s.Icon,
-				Runnable: true, Release: bumps([]string{s.Command}, nil), Inputs: []Input{},
+				Runnable: true, Release: bumps([]string{s.Command}, nil), Deps: upgrades([]string{s.Command}, nil),
+				Inputs: []Input{},
 			},
 			name: name, hash: hashOf(t3Form{Source: SourceT3, Name: name, Command: s.Command}),
 			parts: []part{p}, inputs: map[string]Input{},

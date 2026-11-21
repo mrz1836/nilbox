@@ -20,7 +20,8 @@ type CheckRequest struct {
 	// Input is the prompt as it stands in the editor.
 	Input Input `json:"input"`
 
-	// ItemID is the inbox item to preview with, or 0 for a sample item.
+	// ItemID is the inbox item to preview with, or 0 for a sample item. A prompt for
+	// repositories previews with a sample repository either way.
 	ItemID int64 `json:"itemId"`
 
 	// InWorktree and AtPRHead set the preview session: whether it starts in a worktree
@@ -80,10 +81,12 @@ func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, err
 		usage = u
 	}
 
-	_, fields := validateFields(ctx, s.store, req.ID, in, usage)
-	tmpl, diags := parseFor(in.Purpose, in.Body, appliesToOrAny(in.AppliesTo))
+	appliesTo := appliesToOrAny(in.Purpose, in.AppliesTo)
 
-	data, note := s.previewData(ctx, req, appliesToOrAny(in.AppliesTo))
+	_, fields := validateFields(ctx, s.store, req.ID, in, usage)
+	tmpl, diags := parseFor(in.Purpose, in.Body, appliesTo)
+
+	data, note := s.previewData(ctx, req, appliesTo)
 	result := CheckResult{
 		Fields: textutil.NonNil(fields), Diagnostics: textutil.NonNil(diags), Values: data.Values(),
 		PreviewNote: note, Sample: note != "" || req.ItemID == 0,
@@ -115,8 +118,13 @@ func (s *Service) Check(ctx context.Context, req CheckRequest) (CheckResult, err
 }
 
 // previewData returns the data to preview with and, when it had to fall back to sample
-// data for an item that was asked for, why.
+// data for an item that was asked for, why. A prompt for repositories previews with the
+// sample repository.
 func (s *Service) previewData(ctx context.Context, req CheckRequest, appliesTo AppliesTo) (Data, string) {
+	if appliesTo == AppliesToRepo {
+		return repoPreviewData(req)
+	}
+
 	sample := Sample(item.KindPR)
 	if appliesTo == AppliesToIssue {
 		sample = Sample(item.KindIssue)
@@ -138,6 +146,24 @@ func (s *Service) previewData(ctx context.Context, req CheckRequest, appliesTo A
 	}
 
 	return data.WithSession(req.InWorktree, req.AtPRHead), ""
+}
+
+// repoPreviewData returns the sample repository a prompt for repositories previews with,
+// in the worktree a repository's launch names when the preview session starts in one, and
+// why an item that was asked for isn't used: no item is a repository.
+func repoPreviewData(req CheckRequest) (Data, string) {
+	worktree := ""
+	if req.InWorktree {
+		worktree = sampleRepoWorktree
+	}
+
+	data := SampleRepo().WithWorktree(worktree)
+
+	if req.ItemID != 0 {
+		return data, "This prompt is for repositories, so the preview uses a sample."
+	}
+
+	return data, ""
 }
 
 // previewMessage explains why a prompt could not be filled in for the preview.

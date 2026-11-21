@@ -297,3 +297,31 @@ func TestTheReleaseSortIsKept(t *testing.T) {
 	assert.Equal(t, integrationprefs.ReleaseSortName, reread.Integrations.ReleaseSort, "a refused order stored nothing")
 	assert.Zero(t, events.Count(), "only the window reads it")
 }
+
+func TestTheDepsSortIsKept(t *testing.T) {
+	t.Parallel()
+
+	events := &testutil.Events{}
+	svc := serviceOver(t, testutil.DB(t), t.TempDir(), WithEvents(events))
+
+	fresh, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.DepsSortOldest, fresh.Integrations.DepsSort, "the stalest first until changed")
+
+	got, err := svc.SetDepsSort(t.Context(), integrationprefs.DepsSortModules)
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.DepsSortModules, got.Integrations.DepsSort)
+	assert.Equal(t, integrationprefs.ReleaseSortNewest, got.Integrations.ReleaseSort, "the Release page's own is apart")
+
+	_, err = svc.SetDepsSort(t.Context(), "newest")
+	require.ErrorIs(t, err, integrationprefs.ErrInvalidDepsSort)
+
+	reread, err := svc.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.DepsSortModules, reread.Integrations.DepsSort, "a refused order stored nothing")
+
+	got, err = svc.SetDepsSort(t.Context(), integrationprefs.DepsSortOldest)
+	require.NoError(t, err)
+	assert.Equal(t, integrationprefs.DepsSortOldest, got.Integrations.DepsSort, "the default is chosen like any other")
+	assert.Zero(t, events.Count(), "only the window reads it")
+}

@@ -90,3 +90,46 @@ func TestDefaultBranch(t *testing.T) {
 	_, err = s.DefaultBranch(t.Context(), repo.Name{Owner: "acme-org", Repo: "sdk"})
 	require.ErrorContains(t, err, "read the default branch of acme-org/sdk")
 }
+
+func TestRepoFacts(t *testing.T) {
+	t.Parallel()
+
+	db := testutil.DB(t)
+
+	it := githubItem("sdk", 1, "OWNER", true, false)
+	it.RepoOwner = acmeOrg
+	it.Repo = github.Repository{
+		DefaultBranch: "trunk", ViewerPermission: "WRITE", IsArchived: true, IsDisabled: true, IsLocked: true,
+		LockReason: "MIGRATING", IsFork: true, Parent: "upstream-org/sdk",
+	}
+
+	plain := githubItem("web", 2, "OWNER", true, false)
+	plain.RepoOwner = acmeOrg
+
+	_, err := StoreFixture(t.Context(), db, Fixture{Viewer: octoUser, Items: []FixtureItem{
+		{Item: it, Assigned: true}, {Item: plain, Assigned: true},
+	}})
+	require.NoError(t, err)
+
+	s := NewStore(db, nil)
+
+	got, err := s.RepoFacts(t.Context(), repo.Name{Owner: "Acme-Org", Repo: "SDK"})
+	require.NoError(t, err)
+	assert.Equal(t, RepoFacts{
+		Found: true, DefaultBranch: "trunk", ViewerPermission: "WRITE", Archived: true, Disabled: true, Locked: true,
+		LockReason: "MIGRATING", Fork: true, Parent: "upstream-org/sdk",
+	}, got, "what the refresh stored, the name matched ignoring case")
+
+	got, err = s.RepoFacts(t.Context(), repo.Name{Owner: acmeOrg, Repo: "web"})
+	require.NoError(t, err)
+	assert.Equal(t, RepoFacts{Found: true}, got, "a repository seen with nothing to say of it is found all the same")
+
+	got, err = s.RepoFacts(t.Context(), repo.Name{Owner: acmeOrg, Repo: "unseen"})
+	require.NoError(t, err)
+	assert.Equal(t, RepoFacts{}, got, "a repository the inbox has never seen is not found")
+
+	require.NoError(t, db.Close())
+
+	_, err = s.RepoFacts(t.Context(), repo.Name{Owner: acmeOrg, Repo: "sdk"})
+	require.ErrorContains(t, err, "read what is stored about acme-org/sdk")
+}

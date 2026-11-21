@@ -74,16 +74,17 @@ type Template struct {
 	reply bool
 }
 
-// Parse checks the text of a prompt that applies to appliesTo ("pr", "issue", or "any")
-// and parses it as a Go text/template. It returns the template, which is nil when any
-// diagnostic is an error, and every problem found.
+// Parse checks the text of a prompt that applies to appliesTo ("pr", "issue", "any", or
+// "repo") and parses it as a Go text/template. It returns the template, which is nil when
+// any diagnostic is an error, and every problem found.
 //
 // Beyond Go's own parsing, it rejects what a prompt cannot use: variables Data does not
 // have, {{range}}, {{define}}, {{block}}, and {{template}}, and the call, index, slice,
 // html, js, and urlquery functions. That leaves nothing that loops, so filling in a
-// prompt always finishes. It then fills the prompt in with sample data for every kind
-// and session it applies to, so errors that only show when a prompt runs are caught, and
-// a prompt that is empty or starts with "-" once filled in is an error too.
+// prompt always finishes. It then fills the prompt in with sample data for every kind of
+// item it applies to, or for a sample repository, in every session it can start in, so
+// errors that only show when a prompt runs are caught, and a prompt that is empty or
+// starts with "-" once filled in is an error too.
 func Parse(body string, appliesTo AppliesTo) (*Template, []Diagnostic) {
 	c := newChecker(body, appliesTo)
 

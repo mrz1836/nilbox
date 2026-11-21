@@ -23,6 +23,8 @@ export type {
     LinkedClone,
     Preview,
     PromptChoice,
+    RepoLaunchRequest,
+    RepoResolution,
     Resolution,
     ResumeRequest,
     RunningSession,

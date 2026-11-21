@@ -9,6 +9,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/inbox"
 	"github.com/mrz1836/nilbox/internal/launcher"
+	"github.com/mrz1836/nilbox/internal/repo"
 	"github.com/mrz1836/nilbox/internal/sensitive"
 	"github.com/mrz1836/nilbox/internal/settings"
 	"github.com/mrz1836/nilbox/internal/workspacetrust"
@@ -79,7 +80,7 @@ func (m worktreeMaker) EnsureWorktree(ctx context.Context, req launcher.Worktree
 func ensureRequest(req launcher.WorktreeRequest) worktrees.EnsureRequest {
 	return worktrees.EnsureRequest{
 		Clone: req.Clone, Remote: req.Remote, Owner: req.Owner, Name: req.Name, Kind: req.Kind, Number: req.Number,
-		DefaultBranch: req.DefaultBranch, Base: req.Base, Head: req.Head,
+		DefaultBranch: req.DefaultBranch, Base: req.Base, Head: req.Head, Task: req.Task,
 	}
 }
 
@@ -87,8 +88,23 @@ func ensureRequest(req launcher.WorktreeRequest) worktrees.EnsureRequest {
 func launcherWorktree(e worktrees.Ensured) launcher.Worktree {
 	return launcher.Worktree{
 		Path: e.Path, Branch: e.Branch, Action: launcher.WorktreeAction(e.Action), Base: e.Base, Head: e.Head,
-		Dirty: e.Dirty, Notice: e.Notice,
+		Dirty: e.Dirty, Notice: e.Notice, Task: e.Task, DefaultBranch: e.DefaultBranch,
 	}
+}
+
+// repoFacts hands the launcher what the inbox last stored about a repository, which a
+// repository's launch checks. It implements launcher.RepoFacts.
+type repoFacts struct {
+	store *inbox.Store
+}
+
+// RepoFacts returns what the last refresh stored about the repository name.
+func (r repoFacts) RepoFacts(ctx context.Context, name repo.Name) (launcher.StoredRepo, error) {
+	facts, err := r.store.RepoFacts(ctx, name)
+
+	// The two types have the same fields, so a conversion copies every one, and a field
+	// added to one but not the other stops the build here.
+	return launcher.StoredRepo(facts), err
 }
 
 // trusters returns each agent's Truster, which marks the folder a session starts in

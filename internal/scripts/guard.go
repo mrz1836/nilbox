@@ -67,9 +67,69 @@ func tagging(name string) bool {
 	return slices.Contains(taggingTargets(), strings.ToLower(name))
 }
 
-// taggingWord matches a tagging target named anywhere in a command line, as its own word.
-var taggingWord = regexp.MustCompile(`(?i)(^|[^a-z0-9:_.-])(` + strings.Join(quoteMeta(taggingTargets()), "|") +
-	`)($|[^a-z0-9:_.-])`)
+// upgradeTargets are magex's targets that upgrade a repository's dependencies in the clone
+// itself, on whatever branch it is on, and leave the change uncommitted: Deps does that, in
+// a fresh worktree, with a pull request. deps:tidy only tidies, and stays.
+func upgradeTargets() []string {
+	return []string{"deps:update", "mod:update"}
+}
+
+// upgrading reports one of upgradeTargets, in any case, as magex reads them.
+func upgrading(name string) bool {
+	return slices.Contains(upgradeTargets(), strings.ToLower(name))
+}
+
+// taggingWord and upgradeWord match a tagging target and an upgrade target named anywhere
+// in a command line, as its own word.
+var (
+	taggingWord = regexp.MustCompile(targetPattern(taggingTargets()))
+	upgradeWord = regexp.MustCompile(targetPattern(upgradeTargets()))
+)
+
+// targetPattern matches one of targets named anywhere in a command line, as its own word,
+// in any case.
+func targetPattern(targets []string) string {
+	return `(?i)(^|[^a-z0-9:_.-])(` + strings.Join(quoteMeta(targets), "|") + `)($|[^a-z0-9:_.-])`
+}
+
+// The package managers' commands that upgrade a repository's dependencies in the clone
+// itself, as a command line names them: each program by its name, alone, quoted, or at
+// the end of a path.
+var (
+	// goGetUpdate matches go get with -u, or -u=patch, among its arguments.
+	goGetUpdate = regexp.MustCompile(`(?i)(^|[^a-z0-9_.-])go['"]?\s+['"]?get['"]?` + oneCommandWords +
+		`\s+['"]?-u(=true|=patch)?['"]?($|[\s;&|)])`)
+
+	// ncuUpgrade matches npm-check-updates, by either of its names and at any version, with
+	// -u among its arguments, or -i, which asks about each dependency before writing it,
+	// either short or long: it writes the newest versions into package.json.
+	ncuUpgrade = regexp.MustCompile(`(?i)(^|[^a-z0-9_.-])(ncu|npm-check-updates)(@[^\s'"]*)?['"]?` +
+		oneCommandWords + `\s+['"]?(-u|--upgrade|-i|--interactive)['"]?($|[\s;&|)])`)
+
+	// managerUpdate matches a package manager's own command that upgrades the dependencies,
+	// after any of its flags, such as pnpm -r up: npm's and pnpm's update (up, upgrade),
+	// yarn's upgrade (up, upgrade-interactive), and bun's update, never bun's upgrade, which
+	// upgrades bun itself. A script run by name, as pnpm run update runs one, is the
+	// repository's own.
+	managerUpdate = regexp.MustCompile(`(?i)(^|[^a-z0-9_.-])(` +
+		`(npm|pnpm)` + managerFlags + `\s+['"]?(update|upgrade|up)|` +
+		`yarn` + managerFlags + `\s+['"]?(upgrade-interactive|upgrade|up)|` +
+		`bun` + managerFlags + `\s+['"]?update` +
+		`)['"]?($|[^a-z0-9:_.-])`)
+)
+
+// The parts of the package managers' patterns: any words of one command, up to a ;, &, |,
+// or parenthesis, and a program's flags after it, each a word that starts with a dash.
+const (
+	oneCommandWords = `(\s+[^\s;&|()]+)*`
+	managerFlags    = `['"]?(\s+['"]?-[^\s'"]*['"]?)*`
+)
+
+// upgradeCommands are the package managers' commands that upgrade a repository's
+// dependencies in the clone itself.
+func upgradeCommands() []*regexp.Regexp {
+	return []*regexp.Regexp{goGetUpdate, ncuUpgrade, managerUpdate}
+}
 
 // quoteMeta quotes each word for a regular expression.
 func quoteMeta(words []string) []string {
@@ -83,9 +143,27 @@ func quoteMeta(words []string) []string {
 
 // bumps reports whether a command, by the words it runs, would tag a version: a tagging
 // target named in any word, or, after magex, one of aliases, the other names magex gives
-// them.
+// them. The words are read joined into one line, so a program and its arguments read as
+// the same command written in a shell would.
 func bumps(words, aliases []string) bool {
-	if slices.ContainsFunc(words, taggingWord.MatchString) {
+	return namesTarget(strings.Join(words, " "), taggingWord, aliases)
+}
+
+// upgrades reports whether a command, by the words it runs, would upgrade the repository's
+// dependencies in the clone itself: an upgrade target named in any word, or, after magex,
+// one of aliases, the other names magex gives them, or one of upgradeCommands. The words
+// are read as one line, as bumps reads them.
+func upgrades(words, aliases []string) bool {
+	line := strings.Join(words, " ")
+
+	return namesTarget(line, upgradeWord, aliases) ||
+		slices.ContainsFunc(upgradeCommands(), func(re *regexp.Regexp) bool { return re.MatchString(line) })
+}
+
+// namesTarget reports whether line, a command's words, names a target word matches, or,
+// after magex, one of aliases.
+func namesTarget(line string, word *regexp.Regexp, aliases []string) bool {
+	if word.MatchString(line) {
 		return true
 	}
 
@@ -96,15 +174,25 @@ func bumps(words, aliases []string) bool {
 	alias := regexp.MustCompile(`(?i)(^|[^a-z0-9_.-])magex['"]?\s+['"]?(` + strings.Join(quoteMeta(aliases), "|") +
 		`)($|[^a-z0-9:_.-])`)
 
-	return slices.ContainsFunc(words, alias.MatchString)
+	return alias.MatchString(line)
 }
 
 // taggingAliases are the aliases b gives the tagging targets.
 func (b *builtins) taggingAliases() []string {
+	return b.aliasesOf(tagging)
+}
+
+// upgradeAliases are the aliases b gives the upgrade targets.
+func (b *builtins) upgradeAliases() []string {
+	return b.aliasesOf(upgrading)
+}
+
+// aliasesOf are the aliases b gives the targets named reports.
+func (b *builtins) aliasesOf(named func(string) bool) []string {
 	var out []string
 
 	for _, c := range b.list {
-		if tagging(c.Name) {
+		if named(c.Name) {
 			out = append(out, c.Aliases...)
 		}
 	}
@@ -112,8 +200,8 @@ func (b *builtins) taggingAliases() []string {
 	return out
 }
 
-// guardBuiltin greys one of magex's own updaters, and points one that tags a version to
-// Release, by its name or any alias.
+// guardBuiltin greys one of magex's own updaters, points one that tags a version to
+// Release, and points one that upgrades the dependencies to Deps, by its name or any alias.
 func guardBuiltin(sc *script, c builtin) {
 	names := append([]string{c.Name}, c.Aliases...)
 
@@ -122,6 +210,8 @@ func guardBuiltin(sc *script, c builtin) {
 		sc.entry.Runnable, sc.entry.Why = false, selfUpdaterWhy
 	case slices.ContainsFunc(names, tagging):
 		sc.entry.Release = true
+	case slices.ContainsFunc(names, upgrading):
+		sc.entry.Deps = true
 	}
 }
 

@@ -43,6 +43,7 @@ describe('VariablesPanel', () => {
               type: 'text',
               description: 'The routine that started the run, or empty for a click',
               prOnly: false,
+              itemOnly: true,
             },
             {
               name: 'Unattended',
@@ -50,6 +51,7 @@ describe('VariablesPanel', () => {
               type: 'yes/no',
               description: 'Autopilot started the run, with no one watching',
               prOnly: false,
+              itemOnly: true,
             },
           ],
         })}

@@ -35,9 +35,9 @@ func gallerySnapshot() kit.Snapshot {
 		})
 	}
 
-	library := make([]kit.Prompt, 0, len(prompts.Starters()))
+	library := make([]kit.Prompt, 0, len(routineStarters()))
 
-	for _, st := range prompts.Starters() {
+	for _, st := range routineStarters() {
 		purpose := kit.Purpose(st.Purpose)
 		if purpose == "" {
 			purpose = kit.PurposeAgent

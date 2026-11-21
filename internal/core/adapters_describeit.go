@@ -467,9 +467,10 @@ func (d describeSetup) Snapshot(ctx context.Context) (kit.Snapshot, error) {
 	return kit.NewSnapshot(setup, names, describeVocabulary(), clock.Or(d.clock).Now()), nil
 }
 
-// setup reads the user's routines, prompts, scripts, and agent profiles (each agent's, as
-// an agent step or a fallback may name any), Autopilot's settings, and the rules: the
-// trusted bots, the pinned and muted repositories and orgs, and the ignored workflows.
+// setup reads the user's routines, prompts (but those for repositories, which no routine
+// runs), scripts, and agent profiles (each agent's, as an agent step or a fallback may
+// name any), Autopilot's settings, and the rules: the trusted bots, the pinned and muted
+// repositories and orgs, and the ignored workflows.
 func (d describeSetup) setup(ctx context.Context) (kit.Setup, error) {
 	routines, err := d.routines.List(ctx)
 	if err != nil {
@@ -497,7 +498,7 @@ func (d describeSetup) setup(ctx context.Context) (kit.Setup, error) {
 	}
 
 	return kit.Setup{
-		Routines: converted(routines, kitRoutine), Prompts: converted(library, kitPrompt),
+		Routines: converted(routines, kitRoutine), Prompts: converted(itemPrompts(library), kitPrompt),
 		Scripts: converted(scripts, kitScript), Profiles: converted(stored, kitProfile), Settings: s.Autopilot,
 		Rules: kit.Rules{
 			TrustedBots: s.TrustedBots, Pinned: s.RepoRules.Pinned, Muted: s.RepoRules.Muted,
@@ -527,13 +528,28 @@ func (d describeSetup) inboxNames(ctx context.Context) (kit.InboxNames, error) {
 }
 
 // describeVocabulary is the part of this build's vocabulary that packages above kit hold:
-// the template gallery, the starter prompts (their names alone), and the variables a
-// prompt's text can name.
+// the template gallery, the starter prompts a routine can run (their names alone), and the
+// variables a prompt's text can name.
 func describeVocabulary() kit.Vocabulary {
 	return kit.Vocabulary{
-		Templates: converted(autopilot.Gallery(), kitTemplate), Starters: converted(prompts.Starters(), kitStarter),
+		Templates: converted(autopilot.Gallery(), kitTemplate), Starters: converted(itemStarters(), kitStarter),
 		Variables: converted(prompts.Variables(), kitVariable),
 	}
+}
+
+// itemPrompts returns the library's prompts but those for repositories, in order: a routine
+// runs its prompts on pull requests and issues, which a prompt for repositories never
+// launches on, so Describe it never offers one.
+func itemPrompts(library []prompts.Prompt) []prompts.Prompt {
+	return slices.DeleteFunc(slices.Clone(library), prompts.Prompt.IsRepo)
+}
+
+// itemStarters returns the starter prompts but those for repositories, in order, as
+// itemPrompts leaves the library's out.
+func itemStarters() []prompts.Starter {
+	return slices.DeleteFunc(prompts.Starters(), func(st prompts.Starter) bool {
+		return st.AppliesTo == prompts.AppliesToRepo
+	})
 }
 
 // converted returns each of list as convert makes it, in order; never nil.

@@ -112,6 +112,42 @@ func TestARoutineRefusesAScriptSavedOtherwiseSinceItsCheck(t *testing.T) {
 	assert.Zero(t, r.recorded(), "nothing ran")
 }
 
+func TestARoutineRefusesAScriptThePagePointsElsewhere(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	r.help.answer(`{"commands": [{"name": "test"}, {"name": "deps:update", "aliases": ["du"]}]}`, nil)
+	dir := r.clone("sdk", "acme-org/sdk", nil)
+
+	for _, tt := range []struct {
+		command string
+		want    error
+	}{
+		{command: "magex version:bump bump=patch push", want: ErrRelease},
+		{command: "magex deps:update all-modules", want: ErrDeps},
+		{command: "go get -u ./... && go mod tidy", want: ErrDeps},
+		{command: "magex du", want: ErrDeps}, // an alias, caught on the command as it runs
+	} {
+		u := named("Routine")
+		u.Command = tt.command
+		u = r.save(u)
+
+		_, err := NewRoutines(r.svc).Run(t.Context(), RoutineRun{ID: u.ID, Dir: r.shown(dir)})
+		require.ErrorIs(t, err, tt.want, "%s: a routine never runs it anyway", tt.command)
+		require.NoError(t, r.svc.Delete(t.Context(), u.ID))
+	}
+
+	assert.Zero(t, r.recorded(), "nothing ran")
+
+	tidy := named("Tidy")
+	tidy.Command = "magex deps:tidy"
+	tidy = r.save(tidy)
+
+	id, err := NewRoutines(r.svc).Run(t.Context(), RoutineRun{ID: tidy.ID, Dir: r.shown(dir)})
+	require.NoError(t, err, "tidying runs")
+	assert.Equal(t, scriptrun.StatusSucceeded, r.ended(id).Status)
+}
+
 func TestARoutineRunsOnlyWhereTheScriptShows(t *testing.T) {
 	t.Parallel()
 

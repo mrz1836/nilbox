@@ -9,12 +9,18 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mrz1836/nilbox/internal/execpath"
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // errOutput is returned when git answers in a shape gitread doesn't read.
 var errOutput = errors.New("unexpected git output")
+
+// maxEcho is the most of an answer in a shape gitread doesn't read that its error echoes,
+// in runes: a log's or a blob's could be long.
+const maxEcho = 80
 
 // Operation is what git is in the middle of in a worktree, if anything.
 type Operation string
@@ -139,6 +145,35 @@ type HookPaths struct {
 
 	// CommonDir is the git folder the clone's worktrees share, as in <clone>/.git.
 	CommonDir string
+}
+
+// TreeEntry is one file in a commit's tree, as `git ls-tree -r -l` lists it.
+type TreeEntry struct {
+	// Path is the file, from the tree's top, with slashes.
+	Path string
+
+	// Mode is git's mode for it, as in 100644, 100755, 120000 (a symbolic link), or
+	// 160000 (a submodule), and Type its object's type as git names it: blob, or, for a
+	// submodule, the type of the object a submodule's entry points at.
+	Mode string
+	Type string
+
+	// Object is its object's ID, and Size a blob's size in bytes, or -1 for a submodule,
+	// which git gives no size.
+	Object string
+	Size   int64
+}
+
+// Regular reports a file whose contents are its own: a blob that isn't a symbolic link.
+func (e TreeEntry) Regular() bool {
+	return e.Type == "blob" && (e.Mode == "100644" || e.Mode == "100755")
+}
+
+// Commit is a commit as LastChange reads it: when it was committed, and its subject, the
+// first line of its message.
+type Commit struct {
+	At      time.Time
+	Subject string
 }
 
 // CurrentBranch returns the branch checked out in the worktree at dir, as in "main", or
@@ -272,6 +307,14 @@ func (g *Git) LocalBranch(ctx context.Context, dir, branch string) (string, erro
 // learned it (refs/remotes/origin/<branch>), or "" when the clone has no such ref.
 func (g *Git) TrackingBranch(ctx context.Context, dir, branch string) (string, error) {
 	return g.resolve(ctx, dir, trackingPrefix+branch)
+}
+
+// TrackingCommit returns the commit origin's branch pointed at when the clone last learned
+// it, peeled (refs/remotes/origin/<branch>^{commit}), so the answer is always a commit's
+// ID, or "" when the clone has no such ref or it names no commit. gitread knows only the
+// remote origin: a clone whose remote has another name has no such ref.
+func (g *Git) TrackingCommit(ctx context.Context, dir, branch string) (string, error) {
+	return g.resolve(ctx, dir, trackingPrefix+branch+commitSuffix)
 }
 
 // LocalTagCommit returns the commit the clone's version tag points at, peeled through an
@@ -557,6 +600,76 @@ func (g *Git) HookPaths(ctx context.Context, dir string) (HookPaths, error) {
 	return HookPaths{
 		Toplevel: absolute(dir, lines[0]), Hooks: absolute(dir, lines[1]), CommonDir: absolute(dir, firstLine(common)),
 	}, nil
+}
+
+// Tree returns the files in the commit's tree, every subfolder's included, whose paths
+// keep accepts (every one for a nil keep), in git's order, each with its object and a
+// blob's size: `ls-tree -r -z -l --full-tree`, which reads the commit's trees and its
+// objects' sizes, never a file's contents, nor the worktree. git is stopped, and the read
+// fails with execpath.ErrOutputLimit, holding none of the listing, once it prints more
+// than maxTreeListing bytes, as a tree of millions of files would. It fails when the
+// clone lacks the commit (see HasCommit), or a blob in it, as a partial clone may.
+func (g *Git) Tree(ctx context.Context, dir, commit string, keep func(path string) bool) ([]TreeEntry, error) {
+	out, err := g.read(ctx, dir, treeArgs(commit))
+	if err != nil {
+		return nil, err
+	}
+
+	return parseTree(out, keep), nil
+}
+
+// LastChange returns the newest commit, from the commit from back, merges left out, that
+// changed the manifest at path manifest or, when lockfile isn't "", the lockfile at that
+// path: when it was committed, and its subject; the zero Commit when none did. A shallow
+// clone's history stops at its shallow commits, which the log takes as the first, so the
+// answer is never older than they are. The manifest's path must be one ValidManifestPath
+// takes, and the lockfile's one ValidLockfilePath does; each is passed with :(literal),
+// so git reads no wildcard or other magic in it. The log runs no program the clone
+// names: no signature is checked, and no external diff or textconv runs. git is stopped,
+// and the read fails with execpath.ErrOutputLimit, once it prints more than
+// maxLastChange bytes. It fails when the clone lacks the commit.
+func (g *Git) LastChange(ctx context.Context, dir, from, manifest, lockfile string) (Commit, error) {
+	out, err := g.read(ctx, dir, lastChangeArgs(from, manifest, lockfile))
+	if err != nil {
+		return Commit{}, err
+	}
+
+	return parseLastChange(out)
+}
+
+// Blob returns the contents of the blob oid in the clone at dir (`cat-file blob`), a file
+// a tree names, such as a manifest: read from the clone's objects, never its worktree,
+// through no filter. git is stopped, and the read fails with execpath.ErrOutputLimit,
+// holding none of it, once it prints more than maxBlob bytes, a mebibyte and a bit.
+func (g *Git) Blob(ctx context.Context, dir, oid string) ([]byte, error) {
+	return g.read(ctx, dir, blobArgs(oid))
+}
+
+// Shallow reports whether the clone at dir is shallow (`rev-parse
+// --is-shallow-repository`): its history stops at the commits it was cut at, so a log
+// reaches nothing older.
+func (g *Git) Shallow(ctx context.Context, dir string) (bool, error) {
+	out, err := g.read(ctx, dir, shallowArgs())
+	if err != nil {
+		return false, err
+	}
+
+	switch firstLine(out) {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%w: whether the clone is shallow as %q", errOutput, textutil.Clip(string(out), maxEcho))
+	}
+}
+
+// FetchHead returns where the clone at dir keeps FETCH_HEAD, whether or not it is there:
+// every fetch writes it, so its modification time is when the clone last fetched, and a
+// clone that never fetched has none. It asks git where the file would be, which differs
+// in a linked worktree.
+func (g *Git) FetchHead(ctx context.Context, dir string) (string, error) {
+	return g.gitPath(ctx, dir, fetchHeadName)
 }
 
 // gitPath returns where git keeps name for the worktree at dir.

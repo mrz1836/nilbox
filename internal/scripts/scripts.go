@@ -201,6 +201,11 @@ type Entry struct {
 	// checks, and the page points there; running it anyway takes RunRequest.Anyway.
 	Release bool `json:"release"`
 
+	// Deps reports a command that upgrades the repository's dependencies in the clone
+	// itself, on whatever branch it is on: Deps does that in a fresh worktree, with a pull
+	// request, and the page points there; running it anyway takes RunRequest.Anyway.
+	Deps bool `json:"deps"`
+
 	// Background reports a task that runs until stopped, and Note what the page says of
 	// how it runs, as for dependencies VS Code runs side by side.
 	Background bool   `json:"background"`
@@ -280,6 +285,9 @@ var (
 
 	// ErrRelease is returned for a version bump run without Anyway: Release does that.
 	ErrRelease = errors.New("version bumps belong to Release")
+
+	// ErrDeps is returned for a dependency upgrade run without Anyway: Deps does that.
+	ErrDeps = errors.New("dependency upgrades belong to Deps")
 
 	// ErrNeedsTrust is returned for a repository command the user hasn't confirmed as it
 	// is now.

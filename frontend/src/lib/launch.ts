@@ -157,6 +157,7 @@ export const appliesToLabels: Readonly<Record<PromptAppliesTo, string>> = {
   pr: 'Pull requests',
   issue: 'Issues',
   any: 'Both',
+  repo: 'Repositories',
 }
 
 // isAgentPrompt reports a prompt a launch can use: every prompt but a review reply, which

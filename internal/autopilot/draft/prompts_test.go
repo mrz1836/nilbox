@@ -86,6 +86,18 @@ func TestAStepsPromptsAreCheckedAgainstTheLibrary(t *testing.T) {
 		assert.Empty(t, draft.StepPromptProblems(library(), step, item.Kinds(), "[0]"), name)
 	}
 
+	// A prompt written for no kind of item, as one for repositories is, runs on none, whatever
+	// the routine acts on: none of its kinds, either kind, or none at all.
+	withRepoPrompt := append(library(), draft.Prompt{Starter: "deps-minor", Nickname: "Upgrade deps"})
+
+	for _, kinds := range [][]item.Kind{prs, item.Kinds(), nil} {
+		problems := draft.StepPromptProblems(withRepoPrompt, agentStep(spec.PromptRef{Starter: "deps-minor"}), kinds, "[0]")
+		assert.Equal(t, []spec.Problem{{
+			Part: spec.PartSteps, Field: "[0].agent.prompt", Message: `"Upgrade deps" isn't written for pull requests or ` +
+				"issues, and a routine runs its prompts on those alone: pick another prompt",
+		}}, problems, "acting on %v", kinds)
+	}
+
 	labelsThenReply := spec.Step{GitHub: []spec.GitHubAction{
 		{Labels: &spec.LabelsAction{Add: []string{"needs-repro"}}},
 		{Reply: &spec.ReplyAction{Prompt: spec.PromptRef{Nickname: "Gone"}}},

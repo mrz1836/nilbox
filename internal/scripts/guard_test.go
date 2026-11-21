@@ -158,15 +158,33 @@ func TestBuiltinGuards(t *testing.T) {
 		assert.True(t, scripts[name].entry.Runnable, name)
 	}
 
+	for _, name := range []string{"deps:update", "mod:update"} {
+		assert.True(t, scripts[name].entry.Deps, "%s upgrades the dependencies in the clone", name)
+		assert.False(t, scripts[name].entry.Release, name)
+		assert.True(t, scripts[name].entry.Runnable, "%s can run anyway", name)
+	}
+
+	for _, name := range []string{"deps:tidy", "deps:outdated", "deps:download", "mod:tidy", "tools:update", "test"} {
+		assert.False(t, scripts[name].entry.Deps, name)
+		assert.True(t, scripts[name].entry.Runnable, name)
+	}
+
+	for _, name := range taggingTargets() {
+		assert.False(t, scripts[name].entry.Deps, "%s points to Release alone", name)
+	}
+
 	b, err := parseBuiltins([]byte(`{"commands": [
 		{"name": "fresh", "aliases": ["upgrade"]}, {"name": "cut", "aliases": ["version:bump"]},
-		{"name": "version:tag", "aliases": ["vt"]}]}`))
+		{"name": "version:tag", "aliases": ["vt"]}, {"name": "refresh", "aliases": ["deps:update"]},
+		{"name": "mod:update", "aliases": ["mu", "modup"]}]}`))
 	require.NoError(t, err)
 
 	byAlias := byName(magexScripts(b, magefiles{}))
 	assert.Equal(t, selfUpdaterWhy, byAlias["fresh"].entry.Why, "by its alias")
 	assert.True(t, byAlias["cut"].entry.Release, "by its alias")
+	assert.True(t, byAlias["refresh"].entry.Deps, "by its alias")
 	assert.Equal(t, []string{"vt"}, b.taggingAliases())
+	assert.Equal(t, []string{"mu", "modup"}, b.upgradeAliases())
 }
 
 func TestBumps(t *testing.T) {
@@ -189,8 +207,91 @@ func TestBumps(t *testing.T) {
 	aliases := []string{"vt"}
 	assert.True(t, bumps([]string{zshPath, "-c", "magex vt"}, aliases), "an alias after magex")
 	assert.True(t, bumps([]string{"/bin/sh", "-c", "cd -- /x && '/opt/bin/magex' 'vt'"}, aliases))
+	assert.True(t, bumps([]string{"/opt/bin/magex", "vt"}, aliases), "a program and its arguments, as a process runs")
 	assert.False(t, bumps([]string{"npm run vt"}, aliases), "a word that is an alias only for magex")
 	assert.False(t, bumps([]string{strings.Repeat("magex ", 3) + "vtx"}, aliases))
+	assert.False(t, bumps([]string{"magex deps:update"}, aliases), "an upgrade is Deps' alone")
+}
+
+func TestUpgrades(t *testing.T) {
+	t.Parallel()
+
+	for words, want := range map[string]bool{
+		// magex's upgrade targets, named anywhere as a tagging target is.
+		"magex deps:update":                     true,
+		"magex deps:update all-modules verbose": true,
+		"/opt/bin/magex Deps:Update":            true,
+		"magex mod:update":                      true,
+		"pnpm run deps:update":                  true,
+		"magex deps:tidy":                       false,
+		"magex deps:outdated":                   false,
+		"magex deps:updates":                    false,
+		"echo the deps:updated list":            false,
+
+		// go get -u.
+		"go get -u ./...":                    true,
+		"go get -u=patch ./...":              true,
+		"go get -t -u ./... && go mod tidy":  true,
+		"GOFLAGS=-mod=mod go get -u all":     true,
+		"/usr/local/go/bin/go get -u ./...":  true,
+		"cd -- /x && 'go' get '-u' ./...":    true,
+		"go get ./...":                       false,
+		"go get -u=false ./...":              false,
+		"go get example.com/mod@v1.2.3":      false,
+		"go get ./... && echo -u":            false,
+		"go mod tidy && go test -count=1 -u": false,
+		"cargo update":                       false,
+
+		// The package managers' own update commands, after their flags.
+		"npm update":                         true,
+		"npm up":                             true,
+		"npm upgrade --save":                 true,
+		"pnpm update":                        true,
+		"pnpm up --latest":                   true,
+		"pnpm -r up":                         true,
+		"pnpm --recursive upgrade --latest":  true,
+		"corepack pnpm update":               true,
+		"cd -- /x && '/opt/bin/pnpm' up":     true,
+		"/bin/bash -l -c 'pnpm up'":          true,
+		"yarn upgrade":                       true,
+		"yarn up":                            true,
+		"yarn upgrade-interactive --latest":  true,
+		"bun update":                         true,
+		"npm install && npm test":            false,
+		"pnpm install":                       false,
+		"pnpm dev":                           false,
+		"npm run update":                     false,
+		"pnpm run up":                        false,
+		"yarn run upgrade":                   false,
+		"bun upgrade":                        false,
+		"pnpm up-to-date":                    false,
+		"echo pnpm is up to date && magex x": false,
+
+		// npm-check-updates, which writes the newest versions into package.json.
+		"ncu -u":                                 true,
+		"ncu --upgrade && pnpm install":          true,
+		"npx npm-check-updates -u":               true,
+		"npx npm-check-updates@latest --upgrade": true,
+		"pnpm dlx ncu --target minor -u":         true,
+		"ncu -i":                                 true,
+		"ncu":                                    false,
+		"npx npm-check-updates --target minor":   false,
+		"ncu && echo -u":                         false,
+	} {
+		assert.Equal(t, want, upgrades([]string{words}, nil), words)
+	}
+
+	assert.True(t, upgrades([]string{"/opt/homebrew/bin/pnpm", "up"}, nil), "a program and its arguments")
+	assert.True(t, upgrades([]string{"/usr/local/go/bin/go", "get", "-u", "./..."}, nil))
+	assert.True(t, upgrades([]string{"/usr/bin/env", "CI=1", "/opt/homebrew/bin/pnpm", "update"}, nil))
+	assert.False(t, upgrades([]string{"/usr/bin/env", "CI=1", "/opt/homebrew/bin/pnpm", "install"}, nil))
+
+	aliases := []string{"du"}
+	assert.True(t, upgrades([]string{zshPath, "-c", "magex du"}, aliases), "an alias after magex")
+	assert.True(t, upgrades([]string{"/opt/bin/magex", "du"}, aliases), "a program and its arguments")
+	assert.False(t, upgrades([]string{"npm run du"}, aliases), "a word that is an alias only for magex")
+	assert.False(t, upgrades([]string{"magex dux"}, aliases))
+	assert.False(t, upgrades([]string{"magex version:bump"}, aliases), "a version bump is Release's alone")
 }
 
 func TestOptionShown(t *testing.T) {

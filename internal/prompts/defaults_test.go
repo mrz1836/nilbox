@@ -61,7 +61,7 @@ func TestExportHoldsEveryKindOfPromptAndEveryDefault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "all.json")
 	n, err := s.Export(ctx, path, nil)
 	require.NoError(t, err)
-	assert.Equal(t, ExportResult{Prompts: 10, Replies: 7}, n)
+	assert.Equal(t, ExportResult{Prompts: 12, Replies: 7}, n)
 
 	b, err := readBundleFile(path)
 	require.NoError(t, err)
@@ -77,8 +77,9 @@ func TestExportHoldsEveryKindOfPromptAndEveryDefault(t *testing.T) {
 		"Question": "reply comment pr", "Looking": "reply comment issue", "Fix dep security": "agent  pr",
 		"Heal Dependabot PR": "agent  pr", "Address review": "agent  pr", "Resolve conflicts": "agent  pr",
 		"Re-run failed jobs": "agent  pr", "Needs repro": "reply comment issue", "Re-review": "agent  pr",
-		"Nudge": "reply comment pr",
-	}, kinds, "every purpose, review, and kind of item is written, a comment reply for issues too")
+		"Nudge": "reply comment pr", "Upgrade deps": "agent  repo", "Upgrade majors too": "agent  repo",
+	}, kinds, "every purpose, review, and kind of item is written, a comment reply for issues and a prompt for "+
+		"repositories too")
 
 	for _, slot := range DefaultSlots() {
 		assert.NotEmpty(t, b.Defaults.For(slot), "the default for %s is written", slot)

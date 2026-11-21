@@ -1,11 +1,17 @@
 package gitread
 
 import (
+	"bytes"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // worktree is one of a clone's worktrees: its folder, and the branch it has checked out,
@@ -196,6 +202,77 @@ func versionTagNames(tags map[string]RemoteTag) []string {
 	}
 
 	return names
+}
+
+// treeFields are the fields before the path of each entry `git ls-tree -l` lists: its
+// mode, its object's type and ID, and a blob's size, or "-" for a submodule.
+const treeFields = 4
+
+// parseTree reads `git ls-tree -r -z -l`: one NUL-ended entry per file, "<mode> <type>
+// <object> <size>\t<path>", the size padded with spaces. It keeps the entries whose path
+// keep accepts (every one for a nil keep), and skips an entry of a shape it doesn't
+// know. The list is never nil.
+func parseTree(out []byte, keep func(path string) bool) []TreeEntry {
+	entries := []TreeEntry{}
+
+	for field := range bytes.SplitSeq(out, []byte{0}) {
+		meta, path, ok := bytes.Cut(field, []byte{'\t'})
+		if !ok || len(path) == 0 {
+			continue
+		}
+
+		name := string(path)
+		if keep != nil && !keep(name) {
+			continue
+		}
+
+		if e, read := treeEntry(string(meta), name); read {
+			entries = append(entries, e)
+		}
+	}
+
+	return entries
+}
+
+// treeEntry reads the fields before an entry's path, and reports whether they are in the
+// shape git lists them.
+func treeEntry(meta, path string) (TreeEntry, bool) {
+	fields := strings.Fields(meta)
+	if len(fields) != treeFields || !objectIDPattern.MatchString(fields[2]) {
+		return TreeEntry{}, false
+	}
+
+	size := int64(-1)
+
+	if fields[3] != "-" {
+		n, err := strconv.ParseInt(fields[3], 10, 64)
+		if err != nil || n < 0 {
+			return TreeEntry{}, false
+		}
+
+		size = n
+	}
+
+	return TreeEntry{Path: path, Mode: fields[0], Type: fields[1], Object: fields[2], Size: size}, true
+}
+
+// parseLastChange reads a log's "<committer time>\x01<subject>" line, the time in seconds
+// since the epoch: the newest commit to change the paths asked about, or the zero Commit
+// when the log printed nothing, as no commit changed them. The time is read as UTC.
+func parseLastChange(out []byte) (Commit, error) {
+	line := strings.TrimSuffix(string(out), "\n")
+	if line == "" {
+		return Commit{}, nil
+	}
+
+	stamp, subject, found := strings.Cut(line, "\x01")
+
+	secs, err := strconv.ParseInt(stamp, 10, 64)
+	if !found || err != nil {
+		return Commit{}, fmt.Errorf("%w: a commit's time and subject as %q", errOutput, textutil.Clip(line, maxEcho))
+	}
+
+	return Commit{At: time.Unix(secs, 0).UTC(), Subject: subject}, nil
 }
 
 // firstLine returns out up to its first newline, spaces kept: a path may hold them.

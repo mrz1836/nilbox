@@ -89,7 +89,8 @@ func TestWriteScriptRejectsPrefixes(t *testing.T) {
 
 	for _, prefix := range []string{
 		"", "run", "run-", "run-x", "run-1-2", "run-1 ", "RUN-1", "../run-1", "run-1/..", "a/run-1",
-		"shell-1", "release-1", "prs-1", "pr-", "issue-#1",
+		"shell-1", "release-1", "prs-1", "pr-", "issue-#1", "repo-", "repo-deps-20261121", "repo-20261121-2",
+		"repos-1",
 	} {
 		dir := filepath.Join(t.TempDir(), "launch")
 
@@ -123,7 +124,7 @@ func TestWriteScriptFailures(t *testing.T) {
 
 // TestPruningTouchesOnlyItsOwnFiles fills a folder with old files of every kind, and
 // checks that a write prunes exactly the old scripts and prompt files named by its own
-// prefixes, pr, issue, and run, and leaves everything else.
+// prefixes, pr, issue, run, and repo, and leaves everything else.
 func TestPruningTouchesOnlyItsOwnFiles(t *testing.T) {
 	t.Parallel()
 
@@ -137,12 +138,15 @@ func TestPruningTouchesOnlyItsOwnFiles(t *testing.T) {
 		touch(t, dir, "issue-9-20251201T000000Z-ffffffff.prompt.md"),
 		touch(t, dir, "run-42-20250101T000000Z-01234567.command"),
 		touch(t, dir, "run-0-20250101T000000Z-89abcdef.command"),
+		touch(t, dir, "repo-20260306-20260306T150925Z-0a0b0c0d.command"),
+		touch(t, dir, "repo-20260306-20260306T150925Z-0a0b0c0d.prompt.md"),
 	}
 
 	kept := []string{
 		// Exactly seven days old, and newer.
 		touch(t, dir, "pr-4-20260307T150926Z-01234567.command"),
 		touch(t, dir, "run-5-20260310T120000Z-89abcdef.command"),
+		touch(t, dir, "repo-20260314-20260314T120000Z-89abcdef.prompt.md"),
 		// Other prefixes, however old they look.
 		touch(t, dir, "release-1-20250101T000000Z-00000000.command"),
 		touch(t, dir, "runs-1-20250101T000000Z-00000000.command"),
@@ -151,6 +155,9 @@ func TestPruningTouchesOnlyItsOwnFiles(t *testing.T) {
 		touch(t, dir, "PR-1-20250101T000000Z-00000000.command"),
 		touch(t, dir, ".run-1-20250101T000000Z-00000000.command"),
 		touch(t, dir, "run-20250101T000000Z-00000000.command"),
+		touch(t, dir, "repos-1-20250101T000000Z-00000000.command"),
+		touch(t, dir, "repo-deps-20250101T000000Z-00000000.command"),
+		touch(t, dir, "repo-20250101T000000Z-00000000.command"),
 		// Its own prefixes with another suffix, or a malformed name.
 		touch(t, dir, "run-1-20250101T000000Z-00000000.log"),
 		touch(t, dir, "run-1-20250101T000000Z-00000000.pid"),
@@ -221,6 +228,11 @@ func TestCheckScriptFile(t *testing.T) {
 	launch, err := ScriptWriter{Random: fixedRandom()}.WriteWithPrompt(dir, "pr-7", Script{Dir: "/work"}, "p", writeNow())
 	require.NoError(t, err)
 	require.NoError(t, CheckScriptFile(dir, launch.Script))
+
+	repoLaunch, err := ScriptWriter{Random: fixedRandom()}.WriteWithPrompt(dir, "repo-20260314", Script{Dir: "/work"}, "p",
+		writeNow())
+	require.NoError(t, err)
+	require.NoError(t, CheckScriptFile(dir, repoLaunch.Script), "a repository's launch script is one the app wrote")
 
 	elsewhere := touch(t, other, filepath.Base(script))
 	link := filepath.Join(dir, "run-3-20260314T150926Z-00000000.command")

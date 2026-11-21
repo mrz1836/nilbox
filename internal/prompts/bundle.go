@@ -24,8 +24,11 @@ const (
 	// reads. A change that an older build would misread raises it; adding a field does not.
 	// Version 2 keeps a model and extra arguments per agent; a version 1 file's are
 	// Claude's. Version 3 adds review replies, which an older build would import as agent
-	// prompts; a version 1 or 2 file holds agent prompts only.
-	BundleVersion = 3
+	// prompts; a version 1 or 2 file holds agent prompts only. Version 4 adds prompts for
+	// repositories (appliesTo "repo"), which an older build would import as prompts for
+	// both kinds of item, since it reads an appliesTo it doesn't know as "any"; a file of an
+	// earlier version holds none.
+	BundleVersion = 4
 
 	// maxBundleBytes caps the size of a prompt file Import reads.
 	maxBundleBytes = 8 << 20
@@ -56,7 +59,7 @@ var (
 //
 //	{
 //	  "format": "<slug>.prompts",
-//	  "version": 3,
+//	  "version": 4,
 //	  "exportedAt": "2026-11-08T17:00:00Z",
 //	  "app": "v0.4.0",
 //	  "defaults": {"pr": "Review", "issue": "Work on it", "replies": {"approve": "LGTM"}},

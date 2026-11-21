@@ -467,6 +467,127 @@ export interface PromptChoice {
 }
 
 /**
+ * RepoLaunchRequest asks to start a session on a repository rather than on an inbox item.
+ * Repo, Dir, and PromptID are required; every other choice is optional, and a zero or nil
+ * one keeps what the repository's launch settings resolve to, as a LaunchRequest's does.
+ * The launch works out its worktree's name itself, from the user's day.
+ */
+export interface RepoLaunchRequest {
+    /**
+     * Repo is the repository, "owner/name".
+     */
+    "repo": string;
+
+    /**
+     * Dir is its clone, which the worktree is made beside, as the window names it, with ~
+     * for home: a clone the repository locations hold, its own folder rather than a linked
+     * worktree, with a remote for Repo.
+     */
+    "dir": string;
+
+    /**
+     * PromptID is the prompt for repositories to fill in. There is no default one.
+     */
+    "promptId": number;
+
+    /**
+     * Agent, Profile, Model, Effort, PlanMode, and Fast are as a LaunchRequest's.
+     */
+    "agent": agent$0.ID;
+    "profile": string;
+    "model": string | null;
+    "effort": string | null;
+    "planMode": boolean | null;
+    "fast": boolean | null;
+
+    /**
+     * Alongside is the Key of a HoldRunning hold the user confirmed, as a LaunchRequest's.
+     */
+    "alongside": string;
+}
+
+/**
+ * RepoResolution is what a repository's launch resolves to: its settings, each with where
+ * it came from, as an item's Resolution has them (ItemID 0, Kind "", Trusted, the worktree
+ * always on, and the prompt the launch's own, inheriting none), and what the launch sheet
+ * says of the repository first. Every field is a plain value.
+ */
+export interface RepoResolution {
+    /**
+     * ItemID and Kind identify the item.
+     */
+    "itemId": number;
+    "kind": item$0.Kind;
+
+    /**
+     * Owner and Repo ("owner/name") are where launch defaults for the item are saved.
+     */
+    "owner": string;
+    "repo": string;
+
+    /**
+     * Trusted reports whether the item's author is trusted.
+     */
+    "trusted": boolean;
+
+    /**
+     * Agent is the coding agent, and AgentSource where it was chosen. AgentInherited is
+     * the agent without this launch's own choice, and AgentInheritedSource where that
+     * came from.
+     */
+    "agent": agent$0.Agent;
+    "agentSource": Source;
+    "agentInherited": agent$0.ID;
+    "agentInheritedSource": Source;
+    "profile": Setting;
+    "prompt": PromptChoice;
+    "model": Setting;
+    "effort": Setting;
+    "planMode": Toggle;
+    "worktree": Toggle;
+
+    /**
+     * EffortOff reports that the launch passes the agent no effort level whatever the
+     * layers say: the agent takes it only as a config override, and the app's settings
+     * leave that off, so it uses its own. Effort is then empty.
+     */
+    "effortOff": boolean;
+
+    /**
+     * Fast is whether the session starts in the agent's Fast mode: the launch's own
+     * choice, else the app's setting. It is off, from the agent, for one without.
+     */
+    "fast": Toggle;
+
+    /**
+     * ExtraArgs are every extra argument for the agent, in order: the profile's, the
+     * org's, the repository's, and the prompt's.
+     */
+    "extraArgs": string[] | null;
+
+    /**
+     * Warnings explain settings that were skipped, such as a repository default naming
+     * a profile that no longer exists.
+     */
+    "warnings": string[] | null;
+
+    /**
+     * Situations are the prompt a launch on a pull request would start with in each
+     * situation it can be in, in the order the settings list them, each as a launch for
+     * that situation with no choice of its own would resolve it; empty for an issue. They
+     * only name the prompt: a launch for a situation resolves its other settings itself.
+     */
+    "situations": SituationChoice[] | null;
+
+    /**
+     * Notice says, in a sentence or two the sheet shows as they are, what the app can't
+     * tell of the repository, or what the launch does differently there, such as that
+     * GitHub hasn't said whether the user can push to it; "" when there is nothing to say.
+     */
+    "notice": string;
+}
+
+/**
  * Resolution is what a launch on one item resolves to, each setting with where it came
  * from. Every field is a plain value.
  */
@@ -818,7 +939,8 @@ export const WorktreeAction = {
  */
 export interface WorktreePlan {
     /**
-     * Name is the worktree's name, pr-<n> or issue-<n>.
+     * Name is the worktree's name, pr-<n> or issue-<n>, or a repository's launch's, as
+     * deps-20261121.
      */
     "name": string;
 

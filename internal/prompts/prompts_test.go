@@ -167,7 +167,7 @@ func TestSeed(t *testing.T) {
 	assert.Equal(t, []string{
 		"Address review", "Fix checks", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro",
 		"Nudge", "Question", "Quick look", "Re-review", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK",
-		"Work on it",
+		"Upgrade deps", "Upgrade majors too", "Work on it",
 	}, nicknames(t, s))
 
 	review, work := byNickname(t, s, "Review"), byNickname(t, s, "Work on it")
@@ -200,7 +200,8 @@ func TestSeed(t *testing.T) {
 	require.NoError(t, Seed(ctx, s.store))
 	assert.Equal(t, []string{
 		"Address review", "Fix checks", "Fix dep security", "Heal Dependabot PR", "LGTM", "Needs changes", "Needs repro",
-		"Nudge", "Question", "Re-review", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK", "Work on it",
+		"Nudge", "Question", "Re-review", "Re-run failed jobs", "Resolve conflicts", "Review", "Update OK", "Upgrade deps",
+		"Upgrade majors too", "Work on it",
 	}, nicknames(t, s))
 }
 

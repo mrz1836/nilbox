@@ -65,6 +65,7 @@ const appliesText: Record<BundlePrompt['appliesTo'], string> = {
   pr: 'For pull requests',
   issue: 'For issues',
   any: 'For pull requests and issues',
+  repo: 'For repositories',
 }
 
 // settingsText lists a prompt's launch settings that are not inherited, as in "For pull

@@ -15,6 +15,10 @@ const (
 	otherSHA   = "0b1c3975011e66491785ace891c893e4fc716588"
 	sha256ID   = "4b825dc642cb6eb9a060e54bf8d69288fbee49044b825dc642cb6eb9a060e54b"
 	injection  = "--upload-pack=touch /srv/pwned"
+
+	// goMod and goSum are a Go module's manifest and lockfile at a tree's top.
+	goMod = "go.mod"
+	goSum = "go.sum"
 )
 
 // cloneChangingVerbs mirrors the git subcommands internal/repoguard's
@@ -28,15 +32,18 @@ func cloneChangingVerbs() []string {
 }
 
 // readOnlyForms are the git subcommands gitread may run, each with a word that keeps it
-// read-only: worktree only lists, tag only lists, config only gets, and symbolic-ref only
-// reads HEAD. An empty word needs none.
+// read-only: worktree only lists, tag only lists, config only gets, symbolic-ref only
+// reads HEAD, and cat-file only prints a blob as it is, through no filter or textconv. An
+// empty word needs none: ls-tree only lists.
 func readOnlyForms() map[string]string {
 	return map[string]string{
 		revParse: "", "status": "--porcelain", "symbolic-ref": "--short", "worktree": "list", configCmd: getFlag,
 		"rev-list": "--count", "merge-base": "--is-ancestor", "tag": "--list", lsRemote: remoteName,
 		// A diff writes nothing but its output; the external diff and the textconv the
-		// clone names are what it could run, so every diff turns both off.
-		"diff": "--no-ext-diff",
+		// clone names are what it could run, so every diff turns both off. A log is the
+		// same, and could check a signature too, which every log turns off (assertSafeDiff).
+		"diff": "--no-ext-diff", logCmd: "--no-ext-diff",
+		lsTreeCmd: "", catFileCmd: "blob",
 	}
 }
 
@@ -51,8 +58,14 @@ type samples struct {
 func slotSamples() map[slot]samples {
 	return map[slot]samples{
 		slotGitPath: {
-			good: []string{"MERGE_HEAD", "rebase-merge", "rebase-apply", "CHERRY_PICK_HEAD", "REVERT_HEAD", "hooks"},
-			bad:  []string{"index", "config", "../MERGE_HEAD", "hooks/../config", "MERGE_HEAD\n", "/srv/hooks"},
+			good: []string{
+				"MERGE_HEAD", "rebase-merge", "rebase-apply", "CHERRY_PICK_HEAD", "REVERT_HEAD", "hooks", "index.lock",
+				"FETCH_HEAD",
+			},
+			bad: []string{
+				"index", "config", "../MERGE_HEAD", "hooks/../config", "MERGE_HEAD\n", "/srv/hooks", "fetch_head",
+				"FETCH_HEAD/../config",
+			},
 		},
 		slotLocalRef: {
 			good: []string{"refs/heads/main", "refs/heads/feature/x", "refs/heads/release-1.4"},
@@ -139,6 +152,67 @@ func slotSamples() map[slot]samples {
 				strings.Repeat("a", maxNameLen+1),
 			},
 		},
+		slotTrackingCommit: {
+			good: []string{"refs/remotes/origin/main^{commit}", "refs/remotes/origin/feature/x^{commit}"},
+			// The branch on origin itself, and a commit ID peeled, are other entries' values.
+			bad: []string{
+				"refs/remotes/upstream/main^{commit}", "refs/remotes/origin/^{commit}", "refs/remotes/origin/a..b^{commit}",
+				"refs/remotes/origin/-x^{commit}", "refs/remotes/origin/main^{tree}", "refs/remotes/origin/main^{}",
+				"refs/heads/main^{commit}", "origin/main^{commit}", "HEAD^{commit}", "refs/remotes/origin/main~1^{commit}",
+			},
+		},
+		slotBlobID: {
+			good: []string{otherSHA, headSHA, sha256ID},
+			bad: []string{
+				"HEAD", "fc1c397", strings.Repeat("0", 40), strings.ToUpper(headSHA), headSHA + ":go.mod",
+				"HEAD:go.mod", headSHA + "^{blob}",
+			},
+		},
+		slotLiteralManifest: {good: literalManifests(), bad: badLiteralManifests()},
+		slotLiteralLockfile: {good: literalLockfiles(), bad: badLiteralLockfiles()},
+	}
+}
+
+// literalManifests are manifests' pathspecs a log takes, and badLiteralManifests
+// pathspecs it never takes in their place: a lockfile, another file, no :(literal), other
+// magic, and paths that leave the tree, could be read as an option or magic, or hold a
+// control character.
+func literalManifests() []string {
+	return []string{
+		":(literal)go.mod", ":(literal)tools/go.mod", ":(literal)web/package.json", ":(literal)my app/package.json",
+		":(literal)a*b/package.json", ":(literal)" + strings.Repeat("a/", 500) + goMod,
+	}
+}
+
+func badLiteralManifests() []string {
+	return append(badLiteralPaths(goMod),
+		":(literal)go.sum", ":(literal)README.md", ":(literal)go.mod.bak", ":(literal)xgo.mod", goMod,
+		":(glob)go.mod", ":(icase)package.json", ":(literal)package-lock.json")
+}
+
+// literalLockfiles are lockfiles' pathspecs a log takes, and badLiteralLockfiles
+// pathspecs it never takes in their place.
+func literalLockfiles() []string {
+	return []string{
+		":(literal)go.sum", ":(literal)tools/go.sum", ":(literal)web/pnpm-lock.yaml", ":(literal)package-lock.json",
+		":(literal)yarn.lock", ":(literal)bun.lock", ":(literal)apps/site/bun.lockb",
+	}
+}
+
+func badLiteralLockfiles() []string {
+	return append(badLiteralPaths(goSum),
+		":(literal)go.mod", ":(literal)package.json", ":(literal)npm-shrinkwrap.json", goSum, ":(glob)*.lock")
+}
+
+// badLiteralPaths are pathspecs of the file called name that no slot takes: outside the
+// tree, an option or magic in a part, an empty or dot part, a control character or a
+// backslash, not UTF-8, or too long.
+func badLiteralPaths(name string) []string {
+	return []string{
+		":(literal)../" + name, ":(literal)/" + name, ":(literal)a/../" + name, ":(literal)./" + name,
+		":(literal)-x/" + name, ":(literal):x/" + name, ":(literal)a//" + name, ":(literal)" + name + "/",
+		":(literal)a\n/" + name, ":(literal)a\x1b/" + name, ":(literal)a\\b/" + name, ":(literal)\xff/" + name,
+		":(literal)" + strings.Repeat("a/", 600) + name, ":(literal)", ":(literal)" + name + "\x00",
 	}
 }
 
@@ -178,7 +252,7 @@ func TestEverySlotHasAValidatorAndSamples(t *testing.T) {
 	checks := validators()
 	all := slotSamples()
 
-	for s := slotGitPath; s <= slotRemoteName; s++ {
+	for s := slotGitPath; s <= slotLiteralLockfile; s++ {
 		assert.Contains(t, checks, s, "slot %d has no validator", s)
 		assert.Contains(t, all, s, "slot %d has no samples", s)
 	}
@@ -342,18 +416,29 @@ func TestIsDir(t *testing.T) {
 	}
 }
 
-// assertSafeDiff checks that a diff runs no textconv the clone names, writes no file, and,
-// when it reads the worktree's files, runs with the clone's filter drivers off.
+// assertSafeDiff checks that a diff or a log runs no textconv the clone names and writes
+// no file; that a diff that reads the worktree's files runs with the clone's filter
+// drivers off; and that a log checks no signature, whose program the clone names, and
+// reads no worktree file.
 func assertSafeDiff(t *testing.T, c command, words []string) {
 	t.Helper()
 
-	if c.words[0].text != diffCmd {
+	verb := c.words[0].text
+	if verb != diffCmd && verb != logCmd {
 		return
 	}
 
-	assert.Contains(t, words, "--no-textconv", "%s: a diff runs no textconv the clone names", c.name)
+	assert.Contains(t, words, "--no-textconv", "%s: a %s runs no textconv the clone names", c.name, verb)
 	assert.False(t, slices.ContainsFunc(words, func(w string) bool { return strings.HasPrefix(w, "--output") }),
-		"%s: a diff writes no file", c.name)
+		"%s: a %s writes no file", c.name, verb)
+
+	if verb == logCmd {
+		assert.Contains(t, words, "--no-show-signature", "%s: a log checks no signature", c.name)
+		assert.False(t, readsFiles(fill(t, c, -1, "")), "%s: a log reads no worktree file", c.name)
+
+		return
+	}
+
 	assert.Equal(t, !slices.Contains(words, "--name-only"), readsFiles(fill(t, c, -1, "")),
 		"%s: a diff that reads the worktree's files runs with the clone's filters off", c.name)
 }

@@ -245,6 +245,16 @@ func boundaries() []boundary {
 				"settings through Settings, which core adapts; it starts runs through scriptrun, never the reverse",
 		},
 		{
+			pkg: "internal/manifests",
+			forbidden: append(slices.Clone(noService),
+				"internal/scriptrun", "internal/launcher", "internal/worktrees", "internal/desktop", "internal/notify",
+				"internal/release", "internal/hooks", "internal/scripts", "internal/setup", "internal/integrations"),
+			why: "manifests reads the clones through gitread and its own Clones, the pinned and muted repositories " +
+				"and the stored default branches through its own RuleSource and DefaultBranches, and opens the " +
+				"terminal and Finder through its own FolderOpener and Revealer, which core adapts; it keeps what it " +
+				"reads in memory, never in the store, starts no run, and asks nothing of GitHub or a registry",
+		},
+		{
 			pkg:       "internal/shellenv",
 			forbidden: noService,
 			why:       "shellenv reads the login shell's environment for whatever runs tools; it knows no service",

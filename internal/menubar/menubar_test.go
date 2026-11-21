@@ -177,6 +177,21 @@ func TestSummarizeListsTheSessionsWaitingFirst(t *testing.T) {
 	assert.Equal(t, "Waiting for you", WaitingTitle)
 }
 
+func TestARepositorysSessionWaitingIsNamedByItsTitle(t *testing.T) {
+	t.Parallel()
+
+	waiting := []sessions.Session{{
+		ID: "r1", Agent: agent.Claude, Repo: "acme-org/example-repo", Title: "Upgrade  dependencies",
+		URL: "https://github.com/acme-org/example-repo", State: sessions.StateNeedsApproval,
+	}}
+
+	assert.Equal(t, []Waiting{{
+		SessionID: "r1", URL: "https://github.com/acme-org/example-repo",
+		Label:   "example-repo · Upgrade dependencies · Claude needs approval",
+		Tooltip: "acme-org/example-repo · Upgrade dependencies · Claude needs approval",
+	}}, WaitingEntries(waiting), "no item's number, and a click with no item opens the repository's page")
+}
+
 func TestManySessionsWaitingShowHowManyMore(t *testing.T) {
 	t.Parallel()
 

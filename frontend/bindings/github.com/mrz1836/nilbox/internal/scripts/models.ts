@@ -185,6 +185,13 @@ export interface Entry {
     "release": boolean;
 
     /**
+     * Deps reports a command that upgrades the repository's dependencies in the clone
+     * itself, on whatever branch it is on: Deps does that in a fresh worktree, with a pull
+     * request, and the page points there; running it anyway takes RunRequest.Anyway.
+     */
+    "deps": boolean;
+
+    /**
      * Background reports a task that runs until stopped, and Note what the page says of
      * how it runs, as for dependencies VS Code runs side by side.
      */
@@ -360,7 +367,8 @@ export interface RunRequest {
     "remember": boolean;
 
     /**
-     * Anyway runs a command that bumps a version, which the page points to Release for.
+     * Anyway runs a command the page points elsewhere: one that bumps a version, which
+     * Release does, or one that upgrades the dependencies in the clone, which Deps does.
      */
     "anyway": boolean;
 }

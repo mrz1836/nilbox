@@ -1,6 +1,7 @@
 package gitread
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mrz1836/nilbox/internal/execpath"
 	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
@@ -390,6 +392,155 @@ func TestReadsARealClone(t *testing.T) {
 		require.Error(t, err)
 		assert.NotErrorIs(t, err, ErrGitCommandNotAllowed)
 	})
+}
+
+// manifestRepo is a repository of manifests, built by newManifestRepo: go.mod, then
+// go.sum, then a*b/package.json, then axb/package.json, then README.md, each committed
+// alone with its name as the subject, pushed to the bare origin; then big/package.json,
+// two mebibytes, committed only here.
+type manifestRepo struct {
+	git    *Git
+	root   string
+	origin string
+	repo   string
+
+	// mod is the commit that added go.mod, head the one that added README.md, and big the
+	// one on top of it.
+	mod  string
+	head string
+	big  string
+}
+
+// newManifestRepo builds a manifestRepo, or skips the test without git.
+func newManifestRepo(t *testing.T) manifestRepo {
+	t.Helper()
+
+	env := testutil.Git(t)
+	root := resolved(t, t.TempDir())
+	m := manifestRepo{
+		git: New(Config{Env: func() []string { return env }}), root: root,
+		origin: filepath.Join(root, "origin.git"), repo: filepath.Join(root, "repo"),
+	}
+
+	testutil.RunGit(t, root, "-c", "init.defaultBranch="+mainBranch, "init", "-q", "--bare", m.origin)
+	testutil.InitRepo(t, m.repo)
+
+	m.mod = testutil.Commit(t, m.repo, goMod, "module example.com/m\n")
+	testutil.Commit(t, m.repo, goSum, "example.com/x v1.0.0 h1:abc=\n")
+	testutil.Commit(t, m.repo, "a*b/package.json", "{}\n")
+	testutil.Commit(t, m.repo, "axb/package.json", "{\"name\": \"x\"}\n")
+	m.head = testutil.Commit(t, m.repo, "README.md", "readme\n")
+
+	testutil.RunGit(t, m.repo, "remote", "add", "origin", m.origin)
+	testutil.RunGit(t, m.repo, "push", "-q", "-u", "origin", mainBranch)
+
+	m.big = testutil.Commit(t, m.repo, "big/package.json", strings.Repeat("x", 2<<20))
+
+	return m
+}
+
+// TestReadsManifestsInARealClone runs the reads Deps makes against real git: the commit a
+// branch on origin names, a commit's tree, the newest commit to change a manifest or its
+// lockfile, a blob's contents, whether a clone is shallow, and where FETCH_HEAD is.
+func TestReadsManifestsInARealClone(t *testing.T) {
+	t.Parallel()
+
+	m := newManifestRepo(t)
+	g, ctx := m.git, t.Context()
+
+	tip, err := g.TrackingCommit(ctx, m.repo, mainBranch)
+	require.NoError(t, err)
+	assert.Equal(t, m.head, tip, "origin's main as last pushed, not the commit on top")
+
+	tip, err = g.TrackingCommit(ctx, m.repo, "nope")
+	require.NoError(t, err)
+	assert.Empty(t, tip)
+
+	entries, err := g.Tree(ctx, m.repo, m.big, nil)
+	require.NoError(t, err)
+
+	paths := make([]string, 0, len(entries))
+	for _, e := range entries {
+		paths = append(paths, e.Path)
+	}
+
+	assert.Equal(t, []string{"README.md", "a*b/package.json", "axb/package.json", "big/package.json", goMod, goSum}, paths)
+
+	mod := strings.TrimSpace(testutil.RunGit(t, m.repo, "rev-parse", m.big+":go.mod"))
+	assert.Equal(t, TreeEntry{Path: goMod, Mode: "100644", Type: "blob", Object: mod, Size: 21}, entries[4])
+	assert.True(t, entries[4].Regular())
+	assert.Equal(t, int64(2<<20), entries[3].Size)
+
+	kept, err := g.Tree(ctx, m.repo, m.big, func(path string) bool { return strings.HasSuffix(path, goMod) })
+	require.NoError(t, err)
+	assert.Equal(t, entries[4:5], kept)
+
+	contents, err := g.Blob(ctx, m.repo, mod)
+	require.NoError(t, err)
+	assert.Equal(t, "module example.com/m\n", string(contents))
+
+	_, err = g.Blob(ctx, m.repo, entries[3].Object)
+	require.ErrorIs(t, err, execpath.ErrOutputLimit, "git is stopped past the cap")
+}
+
+func TestReadsTheNewestChangeToAManifest(t *testing.T) {
+	t.Parallel()
+
+	m := newManifestRepo(t)
+
+	for _, tt := range []struct {
+		name, from, manifest, lockfile, want string
+	}{
+		{name: "the manifest alone", from: m.head, manifest: goMod, want: goMod},
+		{name: "its lockfile changed since", from: m.head, manifest: goMod, lockfile: goSum, want: goSum},
+		{name: "from before the lockfile", from: m.mod, manifest: goMod, lockfile: goSum, want: goMod},
+		{
+			name: "a folder named like a pattern is only itself", from: m.head, manifest: "a*b/package.json",
+			want: "a*b/package.json",
+		},
+		{name: "a newer commit elsewhere doesn't count", from: m.big, manifest: goMod, want: goMod},
+		{name: "a path no commit changed", from: m.head, manifest: "web/go.mod"},
+	} {
+		got, err := m.git.LastChange(t.Context(), m.repo, tt.from, tt.manifest, tt.lockfile)
+		require.NoError(t, err, tt.name)
+		assert.Equal(t, tt.want, got.Subject, tt.name)
+		assert.Equal(t, tt.want == "", got.At.IsZero(), tt.name)
+	}
+}
+
+func TestReadsAShallowCloneAndWhenItFetched(t *testing.T) {
+	t.Parallel()
+
+	m := newManifestRepo(t)
+	shallow := filepath.Join(m.root, "shallow")
+	testutil.RunGit(t, m.root, "clone", "-q", "--depth", "1", "file://"+m.origin, shallow)
+
+	yes, err := m.git.Shallow(t.Context(), shallow)
+	require.NoError(t, err)
+	assert.True(t, yes)
+
+	yes, err = m.git.Shallow(t.Context(), m.repo)
+	require.NoError(t, err)
+	assert.False(t, yes)
+
+	got, err := m.git.LastChange(t.Context(), shallow, m.head, goMod, goSum)
+	require.NoError(t, err)
+	assert.Equal(t, "README.md", got.Subject, "the history stops at the shallow commit, which reads as the first")
+
+	fetchHead, err := m.git.FetchHead(t.Context(), m.repo)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(m.repo, ".git", "FETCH_HEAD"), fetchHead)
+
+	_, err = os.Lstat(fetchHead)
+	require.ErrorIs(t, err, fs.ErrNotExist, "a clone that never fetched has none")
+
+	testutil.RunGit(t, shallow, "fetch", "-q", "origin")
+
+	fetchHead, err = m.git.FetchHead(t.Context(), shallow)
+	require.NoError(t, err)
+
+	_, err = os.Lstat(fetchHead)
+	require.NoError(t, err, "every fetch writes it")
 }
 
 func TestIndexLocked(t *testing.T) {

@@ -154,27 +154,23 @@ func Summarize(snap inbox.Snapshot, waiting []sessions.Session, autopilot Autopi
 
 // WaitingEntries are the rows of every session waiting for the user, in order, before
 // Summarize keeps the first PerSection. The desktop shell compares them with the ones it
-// last drew, so a session that changes nothing they show redraws nothing.
+// last drew, so a session that changes nothing they show redraws nothing. A row names what
+// the session works on as the session labels it (sessions.Session.Label), and its tooltip
+// adds an item's title; a repository's launch's session's label holds its title already.
 func WaitingEntries(waiting []sessions.Session) []Waiting {
 	out := make([]Waiting, 0, len(waiting))
 
 	for _, s := range waiting {
-		name := s.Repo
-		if i := strings.LastIndexByte(name, '/'); i >= 0 {
-			name = name[i+1:]
-		}
-
-		number := "#" + strconv.Itoa(s.Number)
 		what := agentName(s.Agent) + " " + s.State.Phrase()
 
-		tooltip := s.Repo + " " + number
-		if title := strings.Join(strings.Fields(s.Title), " "); title != "" {
+		tooltip := s.FullLabel()
+		if title := strings.Join(strings.Fields(s.Title), " "); title != "" && !s.IsRepo() {
 			tooltip += ": " + title
 		}
 
 		out = append(out, Waiting{
 			SessionID: s.ID, ItemID: s.ItemID, URL: s.URL,
-			Label: name + " " + number + " · " + what, Tooltip: tooltip + " · " + what,
+			Label: s.Label() + " · " + what, Tooltip: tooltip + " · " + what,
 		})
 	}
 

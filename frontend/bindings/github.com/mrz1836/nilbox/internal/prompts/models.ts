@@ -9,9 +9,10 @@ import * as agent$0 from "../agent/models.js";
 import * as item$0 from "../item/models.js";
 
 /**
- * AppliesTo is which kinds of item a prompt can launch.
+ * AppliesTo is which kinds of item a prompt can launch, or, for AppliesToRepo, that it
+ * launches for a repository rather than for an item.
  */
-export type AppliesTo = "pr" | "issue" | "any";
+export type AppliesTo = "pr" | "issue" | "any" | "repo";
 
 /**
  * The values of AppliesTo, by the names of their Go constants.
@@ -23,6 +24,13 @@ export const AppliesTo = {
     AppliesToPR: "pr",
     AppliesToIssue: "issue",
     AppliesToAny: "any",
+
+    /**
+     * AppliesToRepo is a prompt a repository's launch fills in, such as an upgrade of its
+     * dependencies: an agent prompt alone, which covers no kind of item (Covers), so no
+     * launch on a pull request or an issue can run it. The window calls it Repositories.
+     */
+    AppliesToRepo: "repo",
 } as const;
 
 /**
@@ -189,7 +197,8 @@ export interface CheckRequest {
     "input": Input;
 
     /**
-     * ItemID is the inbox item to preview with, or 0 for a sample item.
+     * ItemID is the inbox item to preview with, or 0 for a sample item. A prompt for
+     * repositories previews with a sample repository either way.
      */
     "itemId": number;
 
@@ -539,7 +548,8 @@ export interface Prompt {
     "nickname": string;
 
     /**
-     * AppliesTo is AppliesToPR, AppliesToIssue, or AppliesToAny.
+     * AppliesTo is AppliesToPR, AppliesToIssue, or AppliesToAny, or AppliesToRepo for an
+     * agent prompt a repository's launch fills in.
      */
     "appliesTo": AppliesTo;
 
@@ -844,4 +854,11 @@ export interface Variable {
      * PROnly reports that the value is empty (or zero, or false) for issues.
      */
     "prOnly": boolean;
+
+    /**
+     * ItemOnly reports that the value describes an item, or a routine's run on one, so it is
+     * empty (or zero, or false) for a repository's launch, which has neither. Every PROnly
+     * variable is one.
+     */
+    "itemOnly": boolean;
 }

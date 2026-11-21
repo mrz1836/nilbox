@@ -48,9 +48,10 @@ var (
 	errLinkedFolder = errors.New("its magefiles hold a link to a folder, which " + brand.Name + " can't check")
 )
 
-// commonTargets are the magex targets the page offers as chips, in its order.
+// commonTargets are the magex targets the page offers as chips, in its order: never one of
+// upgradeTargets, which Deps runs.
 func commonTargets() []string {
-	return []string{"format:fix", "lint", "lint:fix", "test", "test:race", "build", "deps:tidy", "deps:update"}
+	return []string{"format:fix", "lint", "lint:fix", "test", "test:race", "build", "deps:tidy"}
 }
 
 // wrapperNamespaces are the namespaces magex checks a function's name against, to leave

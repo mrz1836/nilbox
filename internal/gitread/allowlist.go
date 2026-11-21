@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -100,6 +101,28 @@ const (
 	// remote.origin.uploadpack in the clone's config can't replace, as the flag wins over
 	// the config and a -c setting doesn't (git takes the first uploadpack it reads).
 	uploadPackFlag = "--upload-pack=git-upload-pack"
+
+	// lsTreeCmd lists a commit's tree, logCmd reads its history, and catFileCmd reads a
+	// blob's contents from the object store: the reads of a clone's manifests, which
+	// never touch the worktree.
+	lsTreeCmd  = "ls-tree"
+	logCmd     = "log"
+	catFileCmd = "cat-file"
+
+	// lastChangeFormat prints a commit's committer time, in seconds since the epoch, and
+	// its subject, split by a byte no time holds.
+	lastChangeFormat = "--format=%ct%x01%s"
+
+	// literalMagic starts a pathspec git takes as the path it is, with no wildcard or other
+	// magic read in it: a path a repository names is passed to git only so.
+	literalMagic = ":(literal)"
+
+	// fetchHeadName is the file every fetch writes, whose modification time is when the
+	// clone last fetched.
+	fetchHeadName = "FETCH_HEAD"
+
+	// maxPathLen caps a path in a commit's tree gitread passes to git.
+	maxPathLen = 1024
 )
 
 // objectIDPattern is a full object ID, SHA-1 or SHA-256.
@@ -130,6 +153,10 @@ const (
 	slotTagCommit
 	slotCommitRange
 	slotRemoteName
+	slotTrackingCommit
+	slotBlobID
+	slotLiteralManifest
+	slotLiteralLockfile
 )
 
 // word is one word of an allowlisted command: text itself, or a value its slot accepts.
@@ -180,6 +207,10 @@ func allowlist() []command {
 		{name: "the common git folder", words: fixed(revParse, "--git-common-dir")},
 		{name: "a local branch", words: append(fixed(revParse, verifyFlag, quietFlag), value(slotLocalRef))},
 		{name: "a branch on origin", words: append(fixed(revParse, verifyFlag, quietFlag), value(slotTrackingRef))},
+		{
+			name:  "the commit a branch on origin names",
+			words: append(fixed(revParse, verifyFlag, quietFlag), value(slotTrackingCommit)),
+		},
 		{name: "a commit in the clone", words: append(fixed(revParse, verifyFlag, quietFlag), value(slotCommitPeel))},
 		{name: "a version tag's commit", words: append(fixed(revParse, verifyFlag, quietFlag), value(slotTagCommit))},
 		{name: "uncommitted changes", words: fixed(statusCmd, "--porcelain", "-z", ignoreSubmodulesDirty)},
@@ -214,6 +245,22 @@ func allowlist() []command {
 			words: append(fixed(diffCmd, "--no-ext-diff", "--no-textconv", "--no-color", "--no-renames",
 				ignoreSubmodulesDirty), value(slotCommitID), word{text: "--"}),
 		},
+		{name: "whether the clone is shallow", words: fixed(revParse, "--is-shallow-repository")},
+		{
+			name:  "every file in a commit's tree, with its object and size",
+			words: append(fixed(lsTreeCmd, "-r", "-z", "-l", "--full-tree"), value(slotCommitID)),
+		},
+		{
+			name:  "the newest commit to change a manifest",
+			words: append(fixed(lastChangeWords()...), value(slotCommitID), word{text: "--"}, value(slotLiteralManifest)),
+		},
+		{
+			// The lockfile comes first, so this command without its last word is no other.
+			name: "the newest commit to change a manifest or its lockfile",
+			words: append(fixed(lastChangeWords()...), value(slotCommitID), word{text: "--"}, value(slotLiteralLockfile),
+				value(slotLiteralManifest)),
+		},
+		{name: "a blob's contents", words: append(fixed(catFileCmd, "blob"), value(slotBlobID))},
 		{name: "the local version tags", words: append(fixed("tag", "--list"), value(slotVersionPattern))},
 		{name: "origin's branches and tags", words: fixed(lsRemote, uploadPackFlag, "--heads", tagsFlag, remoteName)},
 		{
@@ -250,20 +297,24 @@ func value(s slot) word {
 // validators returns what accepts a value of each slot.
 func validators() map[slot]func(string) bool {
 	return map[slot]func(string) bool{
-		slotGitPath:        isGitPathName,
-		slotLocalRef:       isLocalRef,
-		slotTrackingRef:    isTrackingRef,
-		slotCommitPeel:     isCommitPeel,
-		slotCommitID:       IsCommitID,
-		slotConfigKey:      isConfigKey,
-		slotBoolKey:        isBoolKey,
-		slotUnpushedRange:  isUnpushedRange,
-		slotVersionPattern: versionGlobPattern.MatchString,
-		slotTagRef:         isTagRef,
-		slotPeeledTagRef:   isPeeledTagRef,
-		slotTagCommit:      isTagCommit,
-		slotCommitRange:    isCommitRange,
-		slotRemoteName:     ValidRemoteName,
+		slotGitPath:         isGitPathName,
+		slotLocalRef:        isLocalRef,
+		slotTrackingRef:     isTrackingRef,
+		slotCommitPeel:      isCommitPeel,
+		slotCommitID:        IsCommitID,
+		slotConfigKey:       isConfigKey,
+		slotBoolKey:         isBoolKey,
+		slotUnpushedRange:   isUnpushedRange,
+		slotVersionPattern:  versionGlobPattern.MatchString,
+		slotTagRef:          isTagRef,
+		slotPeeledTagRef:    isPeeledTagRef,
+		slotTagCommit:       isTagCommit,
+		slotCommitRange:     isCommitRange,
+		slotRemoteName:      ValidRemoteName,
+		slotTrackingCommit:  isTrackingCommit,
+		slotBlobID:          isBlobID,
+		slotLiteralManifest: isLiteralManifest,
+		slotLiteralLockfile: isLiteralLockfile,
 	}
 }
 
@@ -279,14 +330,15 @@ func isDir(dir string) bool {
 }
 
 // gitPathNames are the git paths gitread resolves: the files and folders git keeps while
-// it is in the middle of something, the hooks folder, and the index's lock.
+// it is in the middle of something, the hooks folder, the index's lock, and FETCH_HEAD,
+// which every fetch writes.
 func gitPathNames() []string {
-	names := make([]string, 0, len(operationFiles())+2)
+	names := make([]string, 0, len(operationFiles())+3)
 	for _, f := range operationFiles() {
 		names = append(names, f.name)
 	}
 
-	return append(names, hooksName, indexLock)
+	return append(names, hooksName, indexLock, fetchHeadName)
 }
 
 // isGitPathName reports one of gitPathNames.
@@ -308,6 +360,13 @@ func isTrackingRef(ref string) bool {
 	return ok && validBranch(name)
 }
 
+// isTrackingCommit reports refs/remotes/origin/<branch>^{commit} with a well-formed branch.
+func isTrackingCommit(arg string) bool {
+	ref, ok := strings.CutSuffix(arg, commitSuffix)
+
+	return ok && isTrackingRef(ref)
+}
+
 // isCommitPeel reports <commit ID>^{commit}.
 func isCommitPeel(arg string) bool {
 	oid, ok := strings.CutSuffix(arg, commitSuffix)
@@ -321,6 +380,12 @@ func isCommitPeel(arg string) bool {
 // its commit IDs to it too.
 func IsCommitID(oid string) bool {
 	return objectIDPattern.MatchString(oid) && strings.Trim(oid, "0") != ""
+}
+
+// isBlobID reports a full object ID that can name a blob, as a tree lists one: a blob's
+// ID takes a commit's form, and the null ID names neither.
+func isBlobID(oid string) bool {
+	return IsCommitID(oid)
 }
 
 // plainKeys are the config keys gitread reads as text.
@@ -386,6 +451,69 @@ var remoteNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // bytes. internal/worktrees holds the remotes it fetches from to it too.
 func ValidRemoteName(name string) bool {
 	return len(name) <= maxNameLen && remoteNamePattern.MatchString(name) && !strings.Contains(name, "..")
+}
+
+// manifestNames are the manifests whose history and contents Deps reads: a Go module's
+// go.mod, and a JavaScript package's package.json.
+func manifestNames() []string {
+	return []string{"go.mod", "package.json"}
+}
+
+// lockfileNames are the lockfiles whose history Deps reads beside a manifest's: a Go
+// module's go.sum, and a JavaScript package's pnpm, npm, Yarn, or Bun lockfile.
+func lockfileNames() []string {
+	return []string{"go.sum", "pnpm-lock.yaml", "package-lock.json", "yarn.lock", "bun.lock", "bun.lockb"}
+}
+
+// ValidManifestPath reports the path, in a commit's tree, of a manifest gitread passes to
+// git: a go.mod or a package.json, as treePath has it. Deps holds what it reads to it.
+func ValidManifestPath(path string) bool {
+	return treePath(path, manifestNames())
+}
+
+// ValidLockfilePath reports the path, in a commit's tree, of a lockfile gitread passes to
+// git: a go.sum, pnpm-lock.yaml, package-lock.json, yarn.lock, bun.lock, or bun.lockb, as
+// treePath has it.
+func ValidLockfilePath(path string) bool {
+	return treePath(path, lockfileNames())
+}
+
+// treePath reports a path, as git names a file in a commit's tree from its top, that
+// can't be read as an option, a pattern's magic, or a place outside the tree: relative
+// and clean (filepath.IsLocal, and no part empty, "." or ".."), no part starting with "-"
+// or ":", valid UTF-8 with no control character or backslash, at most maxPathLen bytes,
+// and its file one of names.
+func treePath(path string, names []string) bool {
+	if path == "" || len(path) > maxPathLen || !utf8.ValidString(path) || !filepath.IsLocal(path) {
+		return false
+	}
+
+	if strings.ContainsFunc(path, unicode.IsControl) || strings.Contains(path, `\`) {
+		return false
+	}
+
+	parts := strings.Split(path, "/")
+
+	return !slices.ContainsFunc(parts, badPathPart) && slices.Contains(names, parts[len(parts)-1])
+}
+
+// badPathPart reports a part of a path between slashes that treePath refuses.
+func badPathPart(part string) bool {
+	return part == "" || part == "." || part == ".." || strings.HasPrefix(part, "-") || strings.HasPrefix(part, ":")
+}
+
+// isLiteralManifest reports :(literal)<path> with a manifest's path ValidManifestPath takes.
+func isLiteralManifest(arg string) bool {
+	path, ok := strings.CutPrefix(arg, literalMagic)
+
+	return ok && ValidManifestPath(path)
+}
+
+// isLiteralLockfile reports :(literal)<path> with a lockfile's path ValidLockfilePath takes.
+func isLiteralLockfile(arg string) bool {
+	path, ok := strings.CutPrefix(arg, literalMagic)
+
+	return ok && ValidLockfilePath(path)
 }
 
 // isVersionTag reports a tag name that starts with v and is otherwise a well-formed ref
@@ -527,4 +655,65 @@ func remoteTagsArgs() []string {
 
 func remoteTagArgs(tag string) []string {
 	return []string{lsRemote, uploadPackFlag, remoteName, tagsPrefix + tag, tagsPrefix + tag + peelSuffix}
+}
+
+func shallowArgs() []string { return []string{revParse, "--is-shallow-repository"} }
+
+func treeArgs(commit string) []string {
+	return []string{lsTreeCmd, "-r", "-z", "-l", "--full-tree", commit}
+}
+
+// lastChangeWords are a log's words before the commit it starts from: one commit, merges
+// left out, no signature checked (the program that checks one is the clone's to name), no
+// mailmap, no external diff or textconv, and the commit's time and subject alone.
+func lastChangeWords() []string {
+	return []string{
+		logCmd, "-1", "--no-merges", "--no-show-signature", "--no-mailmap", "--no-ext-diff", "--no-textconv",
+		lastChangeFormat,
+	}
+}
+
+func lastChangeArgs(from, manifest, lockfile string) []string {
+	args := append(lastChangeWords(), from, "--")
+	if lockfile != "" {
+		args = append(args, literalMagic+lockfile)
+	}
+
+	return append(args, literalMagic+manifest)
+}
+
+func blobArgs(oid string) []string { return []string{catFileCmd, "blob", oid} }
+
+// The most a commit's tree, a log of the newest commit to change a manifest, and a blob's
+// contents may print, in bytes, before git is stopped and the read fails: each is the
+// repository's to make as large as it likes.
+const (
+	// maxTreeListing holds the tree of a large monorepo, hundreds of thousands of files.
+	maxTreeListing = 64 << 20
+
+	// maxLastChange holds a commit's time and a long subject.
+	maxLastChange = 64 << 10
+
+	// maxBlob holds a manifest of up to a mebibyte, with room to spare.
+	maxBlob = 1<<20 + 64<<10
+)
+
+// outputLimit returns the most the allowlisted command args may print, in bytes, before
+// git is stopped and it fails, or 0 for no limit: a tree's listing, a log, and a blob's
+// contents are capped.
+func outputLimit(args []string) int {
+	if len(args) == 0 {
+		return 0
+	}
+
+	switch args[0] {
+	case lsTreeCmd:
+		return maxTreeListing
+	case logCmd:
+		return maxLastChange
+	case catFileCmd:
+		return maxBlob
+	default:
+		return 0
+	}
 }

@@ -59,6 +59,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/launchdefaults"
 	"github.com/mrz1836/nilbox/internal/launcher"
 	"github.com/mrz1836/nilbox/internal/logging"
+	"github.com/mrz1836/nilbox/internal/manifests"
 	"github.com/mrz1836/nilbox/internal/mcpserver"
 	"github.com/mrz1836/nilbox/internal/measure"
 	"github.com/mrz1836/nilbox/internal/milestones"
@@ -278,7 +279,7 @@ func assemble(l launch) (*application.App, *desktop.Shell, error) {
 
 	workers := []desktop.Worker{
 		c.WatchPasses, c.Scheduler, c.GHThreadsSyncer, c.ChecksFollower, c.MergeFollower, c.Sweeper, c.BudgetSaver,
-		c.Watcher, c.Rereads, c.ReleaseRefresher, c.ReleaseChecksFollower, c.HooksScans,
+		c.Watcher, c.Rereads, c.ReleaseRefresher, c.ReleaseChecksFollower, c.HooksScans, c.ManifestsScans,
 	}
 	shell := desktop.New(desktop.Config{
 		Frontend: ui,
@@ -478,6 +479,7 @@ func registerEvents() {
 	application.RegisterEvent[event.ReleasesProgress](event.NameReleasesProgress)
 	application.RegisterEvent[event.HooksUpdated](event.NameHooksUpdated)
 	application.RegisterEvent[event.WorktreesProgress](event.NameWorktreesProgress)
+	application.RegisterEvent[event.ManifestsProgress](event.NameManifestsProgress)
 	application.RegisterEvent[event.GHThreadsUpdated](event.NameGHThreadsUpdated)
 	application.RegisterEvent[event.ServiceStatusUpdated](event.NameServiceStatusUpdated)
 	application.RegisterEvent[event.UpdatesUpdated](event.NameUpdatesUpdated)
@@ -531,7 +533,7 @@ func binders() []func(svc any) (application.Service, bool) {
 		binder[integrations.Service], binder[scriptrun.Service], binder[releases.Service], binder[hooks.Service],
 		binder[scripts.Service], binder[ghthreads.Service], binder[backup.Service], binder[svcstatus.Service],
 		binder[setup.Service], binder[update.Service], binder[autopilot.Service], binder[milestones.Service],
-		binder[describeit.Service],
+		binder[describeit.Service], binder[manifests.Service],
 	}
 }
 

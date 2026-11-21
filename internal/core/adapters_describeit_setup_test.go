@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -114,7 +115,8 @@ func TestDescribeItsSnapshotHoldsTheSetupTheInboxsNamesAndTheVocabulary(t *testi
 
 	library, err := prompts.NewStore(c.DB, nil).All(ctx)
 	require.NoError(t, err)
-	require.Len(t, snap.Setup.Prompts, len(library), "the whole library, by its names")
+	require.Len(t, snap.Setup.Prompts, len(itemPrompts(library)),
+		"the whole library, by its names, but the prompts for repositories, which no routine runs")
 	assert.Contains(t, snap.Setup.Prompts, kit.Prompt{
 		Nickname: "Security", Name: "Security pass", Purpose: kit.PurposeAgent, AppliesTo: kit.AppliesToAny,
 	})
@@ -151,7 +153,7 @@ func TestDescribeItsSnapshotHoldsTheSetupTheInboxsNamesAndTheVocabulary(t *testi
 	assert.ElementsMatch(t, []string{"CI / test", "CI / lint", "CodeQL"}, snap.Inbox.Checks)
 
 	assert.Len(t, snap.Vocabulary.Templates, len(autopilot.Gallery()))
-	assert.Len(t, snap.Vocabulary.Starters, len(prompts.Starters()))
+	assert.Len(t, snap.Vocabulary.Starters, len(itemStarters()), "every starter a routine can run")
 	assert.Len(t, snap.Vocabulary.Variables, len(prompts.Variables()))
 
 	data, err := kit.EncodeSnapshot(snap)
@@ -183,7 +185,9 @@ func TestDescribeItsVocabularyIsTheBuildsOwn(t *testing.T) {
 		}
 	}
 
-	for i, st := range prompts.Starters() {
+	require.Len(t, v.Starters, len(itemStarters()), "no starter for repositories, which no routine runs")
+
+	for i, st := range itemStarters() {
 		assert.Equal(t, st.Key, v.Starters[i].Key)
 		assert.Equal(t, st.Nickname, v.Starters[i].Nickname)
 		assert.NotEmpty(t, v.Starters[i].Purpose, "a starter's \"\" purpose is an agent's, as the library reads it")
@@ -301,6 +305,13 @@ func promptSetValues() map[string]string {
 	}
 }
 
+// promptSetsKitLeavesOut are the constants of those types that kit's proposal never spells:
+// a prompt for repositories, which no routine runs, so Describe it neither offers nor
+// writes one.
+func promptSetsKitLeavesOut() []string {
+	return []string{"AppliesToRepo"}
+}
+
 // TestKitsPromptSetsAreThePromptLibrarys holds kit's closed sets of a new prompt's purpose,
 // review, and kinds, as its proposal's schema enumerates them, to the values of the
 // constants the prompts package declares of each type, read from its source: a value one
@@ -321,6 +332,10 @@ func TestKitsPromptSetsAreThePromptLibrarys(t *testing.T) {
 		library := make([]string, 0, len(names))
 
 		for _, name := range names {
+			if slices.Contains(promptSetsKitLeavesOut(), name) {
+				continue
+			}
+
 			value, known := values[name]
 			require.True(t, known, "prompts declares %s: add it to kit's closed set of %s, and to promptSetValues", name, key)
 

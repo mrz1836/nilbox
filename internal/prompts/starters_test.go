@@ -211,7 +211,8 @@ func TestStarterSanitizesValues(t *testing.T) {
 }
 
 // TestEveryStarterIsClean checks that every starter parses without a single diagnostic,
-// starts with a word, and fits the name limits.
+// starts with a word, and fits the name limits, and fills in cleanly for everything it
+// launches on: each kind of item it covers, or, for one for repositories, a repository.
 func TestEveryStarterIsClean(t *testing.T) {
 	t.Parallel()
 
@@ -234,14 +235,15 @@ func TestEveryStarterIsClean(t *testing.T) {
 			assert.LessOrEqual(t, utf8.RuneCountInString(st.Nickname), maxNicknameRunes)
 			assert.Empty(t, checkAppliesTo(st.AppliesTo, Usage{}))
 
-			for _, data := range sampleVariants(item.KindPR) {
-				if !st.AppliesTo.Covers(item.KindPR) {
-					break
-				}
+			sets := samplesFor(st.AppliesTo)
+			require.NotEmpty(t, sets, "a starter launches on something")
 
-				out, err := tmpl.Execute(data)
-				require.NoError(t, err)
-				assert.NotContains(t, out, "\n\n\n")
+			for _, set := range sets {
+				for _, data := range set.variants {
+					out, err := tmpl.Execute(data)
+					require.NoError(t, err, set.plural)
+					assert.NotContains(t, out, "\n\n\n")
+				}
 			}
 		})
 	}
@@ -686,7 +688,13 @@ func chosenFields(d *Data) []*string {
 // more for each with that text alone hostile, so a check that keeps one value out of a
 // command never hides another that gets in.
 func hostileData(kind item.Kind) []Data {
-	all := Sample(kind)
+	return hostileFrom(Sample(kind))
+}
+
+// hostileFrom returns base with every chosen text hostile, then once more for each with
+// that text alone hostile.
+func hostileFrom(base Data) []Data {
+	all := base
 	for _, field := range chosenFields(&all) {
 		*field = hostileText
 	}
@@ -695,7 +703,7 @@ func hostileData(kind item.Kind) []Data {
 	out = append(out, all)
 
 	for i := range chosenFields(&all) {
-		one := Sample(kind)
+		one := base
 		*chosenFields(&one)[i] = hostileText
 		out = append(out, one)
 	}
@@ -728,7 +736,10 @@ func TestStarterCommandsAreInert(t *testing.T) {
 			tmpl := starterTemplate(t, st.Key)
 			marked := mustParse(t, strings.ReplaceAll(st.Body, "`", commandMark), st.AppliesTo)
 
-			for _, data := range hostileLaunches(st.AppliesTo) {
+			launches := hostileLaunches(st.AppliesTo)
+			require.NotEmpty(t, launches, "a starter launches on something")
+
+			for _, data := range launches {
 				out, err := marked.Render(data)
 				require.NoError(t, err)
 
@@ -750,8 +761,12 @@ func TestStarterCommandsAreInert(t *testing.T) {
 
 // hostileLaunches returns hostileData for every kind appliesTo covers, from a member and
 // from an outside contributor, in the clone, in a worktree left at an older commit, and in
-// one at the pull request's head.
+// one at the pull request's head; for a prompt for repositories, hostileRepoLaunches.
 func hostileLaunches(appliesTo AppliesTo) []Data {
+	if appliesTo == AppliesToRepo {
+		return hostileRepoLaunches()
+	}
+
 	var out []Data
 
 	for _, kind := range item.Kinds() {
@@ -765,6 +780,20 @@ func hostileLaunches(appliesTo AppliesTo) []Data {
 				out = append(out, data, data.WithSession(true, false), data.WithSession(true, true))
 			}
 		}
+	}
+
+	return out
+}
+
+// hostileRepoLaunches returns the sample repository with every chosen text hostile, the
+// default branch and the clone's remote among them, then each alone, in the clone and in
+// its own worktree, as a repository's launch starts one.
+func hostileRepoLaunches() []Data {
+	hostile := hostileFrom(SampleRepo())
+	out := make([]Data, 0, 2*len(hostile))
+
+	for _, data := range hostile {
+		out = append(out, data.WithWorktree(""), data.WithWorktree(sampleRepoWorktree))
 	}
 
 	return out

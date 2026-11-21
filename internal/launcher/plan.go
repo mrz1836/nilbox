@@ -1,5 +1,5 @@
 // Package launcher starts a coding-agent session (Claude Code or Codex) on a pull
-// request or issue.
+// request or issue, or on a repository itself, in a new worktree of its own (repo.go).
 //
 // A launch is built in layers so each OS-specific piece stays small:
 //
@@ -36,6 +36,10 @@ import (
 var (
 	// ErrInvalidNumber is returned for an item number that is not positive.
 	ErrInvalidNumber = errors.New("item number must be positive")
+
+	// ErrInvalidTask is returned for a repository's launch whose task isn't one, or which
+	// names an item too.
+	ErrInvalidTask = errors.New("invalid repository task")
 
 	// ErrRelativePath is returned when a path that must be absolute is not.
 	ErrRelativePath = errors.New("path must be absolute")
@@ -150,6 +154,12 @@ type Request struct {
 	// or nil for a click's launch. A fenced run takes none of the profile's extra
 	// directories, and no extra argument that sets what the fence sets or loosens it.
 	Fence *Fence
+
+	// Task is a repository's launch's task, the base of its worktree's name, as
+	// deps-20261121, for a launch on a repository rather than on an item: Item then names
+	// the repository alone (Repo, URL, Title, Trusted), with no kind and number 0. "" for
+	// an item's launch.
+	Task string
 }
 
 // Plan is an OS-independent description of one launch. The prompt is passed first, or
@@ -159,6 +169,10 @@ type Plan struct {
 	// Kind and Number identify the item, for naming the launch files.
 	Kind   item.Kind
 	Number int
+
+	// Task is a repository's launch's task, whose date names its launch files in place of
+	// Kind and Number (repo-<YYYYMMDD>), or "" for an item's launch.
+	Task string
 
 	// Agent is the agent the plan starts.
 	Agent agent.ID
@@ -265,6 +279,7 @@ func BuildPlan(req Request) (Plan, error) {
 	plan := Plan{
 		Kind:       req.Item.Kind,
 		Number:     req.Item.Number,
+		Task:       req.Task,
 		Agent:      a.ID,
 		Dir:        req.Dir,
 		Binary:     req.BinaryPath,
@@ -312,14 +327,11 @@ func (p Plan) script() terminal.Script {
 	}
 }
 
-// validateRequest checks the request's item, agent, and paths, and returns the agent.
+// validateRequest checks what the request launches on (checkSubject), its agent, and its
+// paths, and returns the agent.
 func validateRequest(req Request) (agent.Agent, error) {
-	if !req.Item.Kind.Valid() {
-		return agent.Agent{}, fmt.Errorf("%w: %q", item.ErrInvalidKind, req.Item.Kind)
-	}
-
-	if req.Item.Number <= 0 {
-		return agent.Agent{}, fmt.Errorf("%w: %d", ErrInvalidNumber, req.Item.Number)
+	if err := checkSubject(req.Item.Kind, req.Item.Number, req.Task); err != nil {
+		return agent.Agent{}, err
 	}
 
 	a, err := agent.Lookup(req.Agent)
@@ -339,6 +351,24 @@ func validateRequest(req Request) (agent.Agent, error) {
 	}
 
 	return a, nil
+}
+
+// checkSubject checks what a launch is for, by its item's kind and number and its task: an
+// item of a kind with a positive number, or, for a repository's launch, a task
+// (taskPattern) with no kind and number 0.
+func checkSubject(kind item.Kind, number int, task string) error {
+	switch {
+	case task != "" && (!taskPattern.MatchString(task) || kind != "" || number != 0):
+		return fmt.Errorf("%w: %q", ErrInvalidTask, task)
+	case task != "":
+		return nil
+	case !kind.Valid():
+		return fmt.Errorf("%w: %q", item.ErrInvalidKind, kind)
+	case number <= 0:
+		return fmt.Errorf("%w: %d", ErrInvalidNumber, number)
+	default:
+		return nil
+	}
 }
 
 // addDirs checks a profile's extra directories: each must be a non-empty absolute path.

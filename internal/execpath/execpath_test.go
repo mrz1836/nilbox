@@ -265,6 +265,28 @@ func TestExecRun(t *testing.T) {
 				assert.Equal(t, os.Getenv("HOME"), string(stdout))
 			},
 		},
+		{
+			name: "output up to the limit is kept",
+			exec: Exec{Limit: 4},
+			argv: []string{writeScript(t, "printf abcd")},
+			check: func(t *testing.T, stdout, _ []byte, err error) {
+				t.Helper()
+
+				require.NoError(t, err)
+				assert.Equal(t, "abcd", string(stdout))
+			},
+		},
+		{
+			name: "output past the limit stops the program and keeps none of it",
+			exec: Exec{Limit: 64},
+			argv: []string{writeScript(t, "while :; do echo 0123456789; done")},
+			check: func(t *testing.T, stdout, _ []byte, err error) {
+				t.Helper()
+
+				require.ErrorIs(t, err, ErrOutputLimit)
+				assert.Nil(t, stdout)
+			},
+		},
 	}
 
 	for _, tt := range tests {
