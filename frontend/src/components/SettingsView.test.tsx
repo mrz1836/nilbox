@@ -1,6 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
@@ -32,6 +31,7 @@ import {
   signedOut,
 } from '../test/fixtures'
 import { platform } from '../test/platform'
+import { renderSaving } from '../test/settings'
 import { SettingsView, type SettingsSection, type SettingsViewProps } from './SettingsView'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -46,24 +46,6 @@ beforeEach(() => {
     }),
   )
 })
-
-// StoredSettings keeps the settings each save returns and shows the page with them, as App
-// does, so a second change starts from the first.
-function StoredSettings(props: SettingsViewProps) {
-  const { settings: initial, onSaved } = props
-  const [current, setCurrent] = useState(initial)
-
-  return (
-    <SettingsView
-      {...props}
-      settings={current}
-      onSaved={(next) => {
-        onSaved(next)
-        setCurrent(next)
-      }}
-    />
-  )
-}
 
 interface Options {
   section?: SettingsSection
@@ -92,28 +74,32 @@ function renderSettings({
   onThemeChange = vi.fn(() => Promise.resolve<Result<void>>({ ok: true, data: undefined })),
   engine,
 }: Options = {}) {
-  const onSaved = vi.fn()
   const onClose = vi.fn()
   const onLaunchChanged = vi.fn(() => Promise.resolve())
 
-  render(
-    <StoredSettings
-      {...(section === undefined ? {} : { initialSection: section })}
-      settings={current}
-      agents={coding}
-      profiles={profiles}
-      prompts={prompts()}
-      defaultPrompts={appPrompts}
-      launchDefaults={defaults}
-      account={who}
-      projectAccess={access}
-      theme={theme}
-      onThemeChange={onThemeChange}
-      onSaved={onSaved}
-      onLaunchChanged={onLaunchChanged}
-      onClose={onClose}
-      {...(engine === undefined ? {} : { autopilotEngine: engine })}
-    />,
+  // The page keeps the settings each save returns, as App does, so a second change starts
+  // from the first; it renders on the window's own clock.
+  const { onSaved } = renderSaving<Settings | null>(
+    (props) => (
+      <SettingsView
+        {...(section === undefined ? {} : { initialSection: section })}
+        agents={coding}
+        profiles={profiles}
+        prompts={prompts()}
+        defaultPrompts={appPrompts}
+        launchDefaults={defaults}
+        account={who}
+        projectAccess={access}
+        theme={theme}
+        onThemeChange={onThemeChange}
+        onLaunchChanged={onLaunchChanged}
+        onClose={onClose}
+        {...(engine === undefined ? {} : { autopilotEngine: engine })}
+        {...props}
+      />
+    ),
+    current,
+    { now: null },
   )
 
   return { onSaved, onClose, onLaunchChanged, onThemeChange }
