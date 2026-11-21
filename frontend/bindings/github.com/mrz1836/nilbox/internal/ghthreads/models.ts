@@ -214,12 +214,13 @@ export const SkipReason = {
 
     /**
      * SkipKept is a thread the user kept (Undo) at its update: it waits until it moves.
+     * No clear records it now.
      */
     SkipKept: "kept",
 
     /**
      * SkipFailed is a thread whose clear failed MaxAttempts times at its update: it waits
-     * until it moves, or the user clears it by hand.
+     * until it moves, or the user clears it by hand. No clear records it now.
      */
     SkipFailed: "failed",
 } as const;

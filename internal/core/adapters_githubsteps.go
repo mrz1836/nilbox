@@ -24,12 +24,13 @@ import (
 // githubSteps sends Autopilot's GitHub step through the sheets' own services
 // (autopilot.GitHubActions), never the client: a pull request's actions through the review
 // sheet, an issue's through the issue sheet, and Mark the GitHub notification done through
-// the mirror of the user's GitHub notifications, as the card's menu clears an item. Each
-// read and write says it is Autopilot's (github.PurposeAutopilot), and every write goes
-// through the inbox's Actor and the write gate, as the sheet's own do. The review sheet's
-// actions it sends are exactly reviewActionOf's: asking Dependabot to rebase, updating the
-// branch, and a comment; no merge, approval, request for changes, close, or approval of
-// workflow runs, which a guard test holds to.
+// the mirror of the user's GitHub notifications, which clears the item's threads by hand
+// (ghthreads.ClearItemThreads). Each read and write says it is Autopilot's
+// (github.PurposeAutopilot), and every write goes through the inbox's Actor and the write
+// gate, as the sheet's own do. The review sheet's actions it sends are exactly
+// reviewActionOf's: asking Dependabot to rebase, updating the branch, and a comment; no
+// merge, approval, request for changes, close, or approval of workflow runs, which a guard
+// test holds to.
 type githubSteps struct {
 	review  *review.Service
 	issues  *issues.Service
@@ -97,8 +98,8 @@ func (g githubSteps) Send(ctx context.Context, req autopilot.GitHubSend) (autopi
 	return g.sendIssue(ctx, req)
 }
 
-// MarkDone clears the item's GitHub notifications through the mirror, as the card's menu
-// clears an item's, and returns how many it queued.
+// MarkDone clears the item's GitHub notifications through the mirror, by hand
+// (ghthreads.ClearItemThreads), and returns how many it queued.
 func (g githubSteps) MarkDone(ctx context.Context, it autopilot.ItemRef) (int, error) {
 	ref := it.Ref()
 

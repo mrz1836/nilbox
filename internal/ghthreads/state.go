@@ -77,14 +77,14 @@ type syncState struct {
 	RulesSeen string `json:"rulesSeen,omitempty"`
 
 	// Backlog is how many clears the last pass that decided every thread would have queued
-	// but held back, more than its cap allows, for the user to review; 0 when it held none.
+	// but held back, more than its cap allows; 0 when it held none.
 	// BacklogRules is the fingerprint of the rules it was counted under: while they stand,
 	// a pass reads no item's state again only to count it in the backlog.
 	Backlog      int    `json:"backlog,omitempty"`
 	BacklogRules string `json:"backlogRules,omitempty"`
 }
 
-// backlogHeld reports whether a backlog counted under rules is still held for review.
+// backlogHeld reports whether a backlog counted under rules is still held back.
 func (st syncState) backlogHeld(rules threadrules.Rules) bool {
 	return st.Backlog > 0 && st.BacklogRules == fingerprint(rules)
 }

@@ -56,8 +56,8 @@ const (
 	HoldPad = 3 * time.Second
 
 	// FirstCap is the most clears the first pass after clearing turns on, or after the
-	// rules change, queues by itself, and Cap the most any later pass does: more wait for
-	// the user to review them.
+	// rules change, queues by itself, and Cap the most any later pass does: a pass that
+	// would queue more queues none and holds them back (the Backlog).
 	FirstCap = 25
 	Cap      = 150
 
@@ -151,16 +151,17 @@ const (
 	SkipStale SkipReason = "stale"
 
 	// SkipKept is a thread the user kept (Undo) at its update: it waits until it moves.
+	// No clear records it now.
 	SkipKept SkipReason = "kept"
 
 	// SkipFailed is a thread whose clear failed MaxAttempts times at its update: it waits
-	// until it moves, or the user clears it by hand.
+	// until it moves, or the user clears it by hand. No clear records it now.
 	SkipFailed SkipReason = "failed"
 )
 
 // clearRun is what one run's clearing steps share: the rules as the run read them, the
 // account whose threads it decides, its scope (nil for every thread), its time, the Undo
-// hold, and whether a backlog counted under these rules is held for review.
+// hold, and whether a backlog counted under these rules is still held back.
 type clearRun struct {
 	rules       threadrules.Rules
 	account     string
@@ -350,7 +351,7 @@ func (in *decideInputs) eligible(scope map[string]bool) []*decideRow {
 // run's threads are decided: a thread would clear on GitHub's word that it was merged or
 // closed, but that word was read more than StateFreshFor ago. Nothing is asked while
 // clearing on its own is off, nor while a backlog counted under the run's rules is held
-// for review: its clears aren't queued until the user reviews them, and reading their
+// back: its clears are more than clear on their own, so none is queued, and reading their
 // states again every hour would change nothing (queue counts them all the same).
 func (c *clearRun) staleRefs(in *decideInputs) []item.Ref {
 	if !c.rules.Auto || c.backlogHeld {
@@ -634,7 +635,8 @@ func (s *Service) insertClears(ctx context.Context, q *queries.Queries, rows []q
 }
 
 // held is what a run that decided every thread leaves of its caps: the fingerprint of the
-// rules seen, and the clears it held back for review, with the rules it counted them under.
+// rules seen, and the clears it held back, more than clear on their own, with the rules it
+// counted them under.
 type held struct {
 	seen         string
 	backlog      int

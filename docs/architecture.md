@@ -1268,7 +1268,7 @@ pass decides each pull request and issue thread with `threadrules.Decide` agains
 moment that could apply: the user's own, and GitHub's own merge or close
 (`outsideMoment`, only on a state read within `StateFreshFor`, an hour; one older that
 would clear is read again first, but not while a backlog counted under the same rules is
-held for review, `BacklogRules` in `ghthreads.sync`: such threads count toward the cap
+held back over its cap, `BacklogRules` in `ghthreads.sync`: such threads count toward it
 as they are, so a held backlog costs no state reads). A thread held back, unread and
 updated after the moment, has who acted after it checked once per update of the thread,
 and only while a bot's activity counts: the latest comment's author (`FetchLatestComment`,
