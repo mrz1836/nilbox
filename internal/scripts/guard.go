@@ -119,10 +119,11 @@ var (
 )
 
 // The parts of the package managers' patterns: any words of one command, up to a ;, &, |,
-// or parenthesis, and a program's flags after it, each a word that starts with a dash.
+// or parenthesis, and a program's flags after it, each a word that starts with a dash and,
+// as in pnpm --filter web up, its value after it.
 const (
 	oneCommandWords = `(\s+[^\s;&|()]+)*`
-	managerFlags    = `['"]?(\s+['"]?-[^\s'"]*['"]?)*`
+	managerFlags    = `['"]?(\s+['"]?-[^\s'"]*['"]?(\s+['"]?[^\s'";&|()-][^\s'";&|()]*['"]?)?)*`
 )
 
 // upgradeCommands are the package managers' commands that upgrade a repository's

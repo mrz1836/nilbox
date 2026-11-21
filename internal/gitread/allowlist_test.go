@@ -43,7 +43,7 @@ func readOnlyForms() map[string]string {
 		// clone names are what it could run, so every diff turns both off. A log is the
 		// same, and could check a signature too, which every log turns off (assertSafeDiff).
 		"diff": "--no-ext-diff", logCmd: "--no-ext-diff",
-		lsTreeCmd: "", catFileCmd: "blob",
+		lsTreeCmd: "", catFileCmd: blobType,
 	}
 }
 

@@ -121,8 +121,11 @@ type ResumableSession struct {
 	Agent   agent.ID
 	Profile string
 
-	// ItemID is the item the session was started on, or 0 for a repository's launch's.
+	// ItemID is the item the session was started on, or 0 for a repository's launch's, and
+	// Repo reports a session a repository's launch started, by its record's kind and
+	// number, which has no item to plan its resumption on.
 	ItemID int64
+	Repo   bool
 
 	// Dir is the directory it ran in, and Worktree the item's worktree there, or "" when
 	// it ran in the clone.
@@ -322,7 +325,7 @@ func (s *Service) resumeOf(ctx context.Context, req ResumeRequest) (ResumableSes
 	}
 
 	// A repository's launch's session has no item to plan its resumption on.
-	if prev.ItemID == 0 {
+	if prev.Repo {
 		return ResumableSession{}, nil, uierr.New("This session was started for a repository rather than for a pull "+
 			"request or an issue, so it can't be resumed from here. Copy the session's ID to resume it yourself.", ErrNoItem)
 	}

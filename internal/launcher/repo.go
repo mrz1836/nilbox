@@ -197,6 +197,9 @@ func (s *Service) PreviewRepo(ctx context.Context, req RepoLaunchRequest) (Previ
 //  4. trust the folder, write the prompt file and the script, open it in the terminal
 //     chosen in settings, and record the session, with no item, under the ID minted for it.
 //
+// A launch that fails once its worktree is made removes that worktree again, with its own
+// branch, where the worktree maker can (WorktreeDiscarder): it is new and unused, and a
+// retry makes another, so it would only be left behind under a name the next takes past.
 // The launcher itself runs only the clone's read-only remote lookup.
 func (s *Service) LaunchRepo(ctx context.Context, req RepoLaunchRequest) (LaunchResult, error) {
 	ref := sessionRef{id: s.newID()}
@@ -214,11 +217,39 @@ func (s *Service) LaunchRepo(ctx context.Context, req RepoLaunchRequest) (Launch
 		return LaunchResult{}, err
 	}
 
+	res, err := s.startRepo(ctx, p, ref)
+	if err != nil {
+		s.discardTask(ctx, p)
+	}
+
+	return res, err
+}
+
+// startRepo fills a repository's launch's prompt in for the worktree it made, and starts
+// its session there (start).
+func (s *Service) startRepo(ctx context.Context, p planned, ref sessionRef) (LaunchResult, error) {
+	var err error
+
 	if p.prompt, err = s.fillRepo(ctx, p); err != nil {
 		return LaunchResult{}, err
 	}
 
 	return s.start(ctx, p, ref, "")
+}
+
+// discardTask removes the task's worktree the planned launch made, which no session
+// started in, when the worktree maker can; one it refuses, as one a session works in, stays,
+// and the refusal is logged, since the launch's own error is what the user needs to hear.
+func (s *Service) discardTask(ctx context.Context, p planned) {
+	discarder, ok := s.worktrees.(WorktreeDiscarder)
+	if !ok || p.worktree == nil || p.worktree.Action != WorktreeCreate {
+		return
+	}
+
+	if err := discarder.DiscardWorktree(context.WithoutCancel(ctx), p.worktreeRequest(), *p.worktree); err != nil {
+		s.logger.WarnContext(ctx, "could not remove the worktree a failed repository launch made",
+			"worktree", p.worktreeName(), "error", err)
+	}
 }
 
 // planRepo works out a repository's launch of the session ref names, as plan does an

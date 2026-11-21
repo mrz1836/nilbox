@@ -183,6 +183,24 @@ describe('DepsUpgradeSheet', () => {
     expect(s.getByRole('button', { name: 'Start upgrade' })).toBeEnabled()
   })
 
+  it('waits to start until the launch is planned too, so a refusal only the plan finds shows first', async () => {
+    const planning = deferred<Awaited<ReturnType<typeof platform.previewRepoLaunch>>>()
+    platform.previewRepoLaunch.mockReturnValue(planning.promise)
+    renderSheet()
+
+    const s = await sheet()
+    expect(s.getByRole('button', { name: 'Start upgrade' })).toBeDisabled()
+
+    await act(async () => {
+      planning.reject(new Error('Every name for today’s worktree of ~/projects/api-server is taken.'))
+      await Promise.resolve()
+    })
+
+    expect(await s.findByText(/Every name for today’s worktree/)).toBeInTheDocument()
+    expect(s.getByRole('button', { name: 'Start upgrade' })).toBeDisabled()
+    expect(platform.launchRepo).not.toHaveBeenCalled()
+  })
+
   it('resolves and plans again for Majors too, and starts with it', async () => {
     const { onClose } = renderSheet()
     const s = await sheet()

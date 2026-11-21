@@ -92,7 +92,7 @@ func (s *Service) scan(ctx context.Context, roots localrepos.Roots, rules reporu
 
 	reads := make([]dirRead, len(dirs))
 
-	parallel(dirs, func(i int, dir string) {
+	parallel(dirs, scanParallel, func(i int, dir string) {
 		reads[i] = s.readDir(ctx, dir, rules)
 
 		told.Add(1)
@@ -109,19 +109,19 @@ func (s *Service) scan(ctx context.Context, roots localrepos.Roots, rules reporu
 	return assemble(reads), read, nil
 }
 
-// parallel calls fn for each of dirs, scanParallel at a time, and returns once all have.
-func parallel(dirs []string, fn func(i int, dir string)) {
+// parallel calls fn for each of items, n at a time, and returns once all have.
+func parallel[T any](items []T, n int, fn func(i int, item T)) {
 	var wg sync.WaitGroup
 
-	slots := make(chan struct{}, scanParallel)
+	slots := make(chan struct{}, n)
 
-	for i, dir := range dirs {
+	for i, item := range items {
 		slots <- struct{}{}
 
 		wg.Go(func() {
 			defer func() { <-slots }()
 
-			fn(i, dir)
+			fn(i, item)
 		})
 	}
 

@@ -418,7 +418,7 @@ func TestRunRefusesCommandsOutsideTheAllowlist(t *testing.T) {
 		{catFileCmd, "-p", headSHA},
 		{catFileCmd, "--textconv", headSHA + ":go.mod"},
 		{catFileCmd, "--filters", headSHA + ":go.mod"},
-		{catFileCmd, "blob", "HEAD:go.mod"},
+		{catFileCmd, blobType, "HEAD:go.mod"},
 		{catFileCmd, "--batch"},
 	}
 
@@ -792,10 +792,10 @@ func TestHelpersReadGitsAnswers(t *testing.T) {
 			replies: map[string]reply{words(treeArgs(headSHA)): {out: treeListing}},
 			run:     func(g *Git) (any, error) { return g.Tree(ctx, repoDir, headSHA, nil) },
 			want: []TreeEntry{
-				{Path: goMod, Mode: "100644", Type: "blob", Object: otherSHA, Size: 123},
+				{Path: goMod, Mode: "100644", Type: blobType, Object: otherSHA, Size: 123},
 				{Path: "third_party/lib", Mode: "160000", Type: "commit", Object: headSHA, Size: -1},
-				{Path: "web/my app/package.json", Mode: "120000", Type: "blob", Object: otherSHA, Size: 10},
-				{Path: "tab\tin/package.json", Mode: "100755", Type: "blob", Object: sha256ID, Size: 2},
+				{Path: "web/my app/package.json", Mode: "120000", Type: blobType, Object: otherSHA, Size: 10},
+				{Path: "tab\tin/package.json", Mode: "100755", Type: blobType, Object: sha256ID, Size: 2},
 			},
 		},
 		{
@@ -804,7 +804,7 @@ func TestHelpersReadGitsAnswers(t *testing.T) {
 			run: func(g *Git) (any, error) {
 				return g.Tree(ctx, repoDir, headSHA, func(path string) bool { return path == goMod })
 			},
-			want: []TreeEntry{{Path: goMod, Mode: "100644", Type: "blob", Object: otherSHA, Size: 123}},
+			want: []TreeEntry{{Path: goMod, Mode: "100644", Type: blobType, Object: otherSHA, Size: 123}},
 		},
 		{
 			name:    "an empty tree",

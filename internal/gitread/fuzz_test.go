@@ -214,6 +214,7 @@ func FuzzParseTree(f *testing.F) {
 		{"100644 blob " + fuzzOID + "     123\tgo.mod\x00160000 commit " + fuzzOID + "       -\tsub\x00", "a b/go.mod", 7},
 		{"100644 blob " + fuzzOID + " 1\ttab\there\x00\x00\t\x00x y z\tw\x00", "tab\there", 1 << 40},
 		{"100644 blob " + fuzzOID + "      -1\tneg\x00100644 blob " + strings.Repeat("a", 64) + " 9\tsha256", "-x", 9},
+		{"100644 blob " + fuzzOID + "     BAD\tgo.mod\x00100644 blob " + fuzzOID + " bad\tx", goMod, 3},
 	} {
 		f.Add([]byte(seed.out), seed.path, seed.size)
 	}
@@ -237,9 +238,23 @@ func FuzzParseTree(f *testing.F) {
 		}
 
 		listed := "100644 blob " + fuzzOID + " " + strconv.FormatInt(size, 10) + "\t" + path + "\x00"
-		assert.Equal(t, []TreeEntry{{Path: path, Mode: "100644", Type: "blob", Object: fuzzOID, Size: size}},
+		assert.Equal(t, []TreeEntry{{Path: path, Mode: "100644", Type: blobType, Object: fuzzOID, Size: size}},
 			parseTree([]byte(listed), func(p string) bool { return p == path }))
 	})
+}
+
+// TestParseTreeKeepsABlobAPartialCloneLacks reads the size `git ls-tree -l` lists for a blob
+// it can't read, BAD, as one a partial clone never fetched: the entry is kept, Missing, with
+// no size, so a manifest the clone lacks still counts, rather than vanishing from the page.
+func TestParseTreeKeepsABlobAPartialCloneLacks(t *testing.T) {
+	t.Parallel()
+
+	listed := "100644 blob " + fuzzOID + "     BAD\tgo.mod\x00100644 blob " + fuzzOID + "      12\tgo.sum\x00"
+
+	assert.Equal(t, []TreeEntry{
+		{Path: goMod, Mode: "100644", Type: blobType, Object: fuzzOID, Size: -1, Missing: true},
+		{Path: "go.sum", Mode: "100644", Type: blobType, Object: fuzzOID, Size: 12},
+	}, parseTree([]byte(listed), nil))
 }
 
 // FuzzParseLastChange checks that any log output either fails as unexpected output or

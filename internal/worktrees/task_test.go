@@ -65,6 +65,45 @@ func TestEnsureMakesATasksWorktreeFromTheDefaultBranch(t *testing.T) {
 	assert.Empty(t, strings.TrimSpace(testutil.RunGit(t, f.clone, "status", "--porcelain")), "and so is its checkout")
 }
 
+func TestDiscardRemovesATasksWorktreeAFailedLaunchMade(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	f := newRemoteFixture(t, e)
+	m, _ := e.maker(&fakeLaunches{})
+
+	got, err := m.Ensure(t.Context(), f.task())
+	require.NoError(t, err)
+
+	res, err := m.Discard(t.Context(), f.clone, got.Path, got.Branch)
+	require.NoError(t, err)
+	assert.True(t, res.Removed)
+	assert.Equal(t, []string{depsBranch}, res.DeletedBranches, "its own branch, which held nothing of its own")
+	assert.NoDirExists(t, got.Path)
+	assert.NotContains(t, branches(t, f.clone), depsBranch)
+
+	again, err := m.Ensure(t.Context(), f.task())
+	require.NoError(t, err)
+	assert.Equal(t, depsTask, again.Task, "the next launch takes its name back")
+}
+
+func TestDiscardLeavesATasksWorktreeThatHoldsWork(t *testing.T) {
+	t.Parallel()
+
+	e := newEnv(t)
+	f := newRemoteFixture(t, e)
+	m, _ := e.maker(&fakeLaunches{})
+
+	got, err := m.Ensure(t.Context(), f.task())
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(got.Path, "work.txt"), []byte("an agent's work\n"), 0o600))
+
+	_, err = m.Discard(t.Context(), f.clone, got.Path, got.Branch)
+	require.Error(t, err, "git refuses a worktree with files it doesn't track")
+	assert.DirExists(t, got.Path)
+	assert.Contains(t, branches(t, f.clone), depsBranch)
+}
+
 // TestATasksWorktreeIsMadeUnderGitreadsGuards makes a task's worktree as core does, under
 // gitread's guards, in a clone whose own hooks folder and file system monitor are planted:
 // it is made with neither running, every command on the clone runs one git, and a clone

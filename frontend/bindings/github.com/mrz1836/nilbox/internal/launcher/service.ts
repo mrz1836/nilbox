@@ -84,6 +84,9 @@ export function Launch(req: $models.LaunchRequest): $CancellablePromise<$models.
  *  4. trust the folder, write the prompt file and the script, open it in the terminal
  *     chosen in settings, and record the session, with no item, under the ID minted for it.
  *
+ * A launch that fails once its worktree is made removes that worktree again, with its own
+ * branch, where the worktree maker can (WorktreeDiscarder): it is new and unused, and a
+ * retry makes another, so it would only be left behind under a name the next takes past.
  * The launcher itself runs only the clone's read-only remote lookup.
  */
 export function LaunchRepo(req: $models.RepoLaunchRequest): $CancellablePromise<$models.LaunchResult> {

@@ -26,6 +26,15 @@ import (
 // So a second task the same day takes <base>-2, and one after a worktree removed with its
 // branch kept takes the next name too.
 
+// Discard removes a task's worktree a launch made but couldn't start its session in, at
+// path in the clone, with its own branch, as Remove removes one: refused while a session
+// works there or it holds uncommitted changes, and its branch deleted only while nothing
+// on it would be lost. A launch that failed after its worktree was made would otherwise
+// leave it behind, unlinked, for the user to find, and its retry would make another.
+func (m *Maker) Discard(ctx context.Context, clone, path, branch string) (RemoveResult, error) {
+	return m.s.Remove(ctx, clone, path, []string{branch})
+}
+
 // findTask works out a task's new worktree, changing nothing and asking no remote: under
 // the first free name (freeTaskName), on a new branch of its own, from the repository's
 // default branch, the request's when it is a branch's name, else the one the clone last

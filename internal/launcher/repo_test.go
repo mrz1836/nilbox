@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,6 +31,9 @@ const (
 	upgradeDeps  = "Upgrade deps"
 	exampleOwner = "acme-org/example-repo"
 )
+
+// errOpen is a terminal that couldn't open a launch's script, once its worktree was made.
+var errOpen = errors.New("the terminal couldn't run the script")
 
 // unknownPush is what the launch sheet says of a repository whose access GitHub hasn't told.
 const unknownPush = "GitHub hasn't said whether you can push to acme-org/example-repo. If you can't, the agent stops at " +
@@ -554,6 +558,74 @@ func TestLaunchRepoWaitsForASessionInItsFolder(t *testing.T) {
 	assert.Equal(t, repoTask, res.Worktree, "started beside it once confirmed")
 }
 
+// discardingMaker is the harness's worktree maker, which can also remove a task's worktree
+// a failed launch made: it records each one it is asked to, and answers err.
+type discardingMaker struct {
+	*fakeMaker
+
+	discarded *[]Worktree
+	err       error
+}
+
+func (m discardingMaker) DiscardWorktree(_ context.Context, _ WorktreeRequest, wt Worktree) error {
+	*m.discarded = append(*m.discarded, wt)
+
+	return m.err
+}
+
+// withDiscards has the harness's worktree maker remove the worktrees failed launches made,
+// answering err, and returns the list of those it was asked to remove.
+func (h *launchHarness) withDiscards(err error) *[]Worktree {
+	discarded := &[]Worktree{}
+	h.cfg.Worktrees = discardingMaker{fakeMaker: h.maker, discarded: discarded, err: err}
+
+	return discarded
+}
+
+func TestLaunchRepoRemovesTheWorktreeAFailedStartMade(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name    string
+		discard error
+	}{
+		{name: "removed", discard: nil},
+		{name: "refused", discard: assert.AnError},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newLaunchHarness(t)
+			discarded := h.withDiscards(tt.discard)
+			h.iterm.err = errOpen
+
+			_, err := h.service().LaunchRepo(t.Context(), h.repoRequest(t))
+			require.ErrorIs(t, err, errOpen, "the launch's own error, whatever the removal said")
+			require.Len(t, *discarded, 1, "the worktree it made, which no session started in")
+			assert.Equal(t, h.taskWorktree(repoTask), (*discarded)[0].Path)
+			assert.Equal(t, "worktree-"+repoTask, (*discarded)[0].Branch)
+			assert.Empty(t, h.ledger.all(), "no session to follow")
+		})
+	}
+}
+
+func TestLaunchRepoKeepsTheWorktreeItsSessionStartedIn(t *testing.T) {
+	t.Parallel()
+
+	h := newLaunchHarness(t)
+	discarded := h.withDiscards(nil)
+
+	h.launchRepo(t, h.repoRequest(t))
+	assert.Empty(t, *discarded)
+
+	h.iterm.err = errOpen
+	h.cfg.RepoFacts = fakeRepoFacts{facts: map[string]StoredRepo{"acme-org/example-repo": {Found: true, Archived: true}}}
+
+	_, err := h.service().LaunchRepo(t.Context(), h.repoRequest(t))
+	require.ErrorIs(t, err, ErrRepoClosed)
+	assert.Empty(t, *discarded, "a launch refused before it made a worktree removes none")
+}
+
 func TestRepoLaunchNeedsTheWorktreeMaker(t *testing.T) {
 	t.Parallel()
 
@@ -583,16 +655,24 @@ func TestResumeRefusesARepositorysSession(t *testing.T) {
 	t.Parallel()
 
 	h := newLaunchHarness(t)
-	h.ledger.resumable = map[string]ResumableSession{testSessionID: {
-		ID: testSessionID, AgentSessionID: testSessionID, Agent: agent.Claude, Profile: profiles.DefaultName,
-		Dir: h.taskWorktree(repoTask), Worktree: repoTask,
-	}}
+	h.ledger.resumable = map[string]ResumableSession{
+		testSessionID: {
+			ID: testSessionID, AgentSessionID: testSessionID, Agent: agent.Claude, Profile: profiles.DefaultName,
+			Repo: true, Dir: h.taskWorktree(repoTask), Worktree: repoTask,
+		},
+		// An item's session whose item ID was never stored is an item's all the same.
+		"item-0": {ID: "item-0", AgentSessionID: "item-0", Agent: agent.Claude, Profile: profiles.DefaultName},
+	}
 
 	_, err := h.service().Resume(t.Context(), ResumeRequest{SessionID: testSessionID})
 	require.ErrorIs(t, err, ErrNoItem)
 	assert.Equal(t, "This session was started for a repository rather than for a pull request or an issue, so it "+
 		"can't be resumed from here. Copy the session's ID to resume it yourself.", uierr.Message(err))
 	assert.Empty(t, h.iterm.opened)
+
+	_, err = h.service().Resume(t.Context(), ResumeRequest{SessionID: "item-0"})
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrNoItem, "refused as an item's, for its own reason")
 }
 
 func TestARepositorysLaunchPlanNamesItsFilesByItsTask(t *testing.T) {

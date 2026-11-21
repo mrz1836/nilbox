@@ -42,11 +42,14 @@ const (
 	ScanTimeout = 5 * time.Minute
 
 	// cloneTimeout bounds the read of one clone, its origin's included, so one on a disk
-	// that stopped answering doesn't hold up the rest.
-	cloneTimeout = 30 * time.Second
+	// that stopped answering doesn't hold up the rest. A clone whose time runs out keeps the
+	// modules it read; the others say they weren't.
+	cloneTimeout = 60 * time.Second
 
-	// scanParallel is how many clones are read at once.
-	scanParallel = 4
+	// scanParallel is how many clones are read at once, and moduleParallel how many of one
+	// clone's modules: a large monorepo's hundred histories then fit its time.
+	scanParallel   = 4
+	moduleParallel = 4
 
 	// maxModules is how many of a clone's modules are read, the shallowest first; a clone
 	// with more is marked Truncated.

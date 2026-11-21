@@ -159,14 +159,18 @@ type TreeEntry struct {
 	Type string
 
 	// Object is its object's ID, and Size a blob's size in bytes, or -1 for a submodule,
-	// which git gives no size.
+	// which git gives no size, and for a blob the clone doesn't hold.
 	Object string
 	Size   int64
+
+	// Missing reports a blob the clone doesn't hold, as a partial clone may lack one it
+	// never fetched: its history can be read, but not its contents.
+	Missing bool
 }
 
 // Regular reports a file whose contents are its own: a blob that isn't a symbolic link.
 func (e TreeEntry) Regular() bool {
-	return e.Type == "blob" && (e.Mode == "100644" || e.Mode == "100755")
+	return e.Type == blobType && (e.Mode == "100644" || e.Mode == "100755")
 }
 
 // Commit is a commit as LastChange reads it: when it was committed, and its subject, the

@@ -235,26 +235,35 @@ func parseTree(out []byte, keep func(path string) bool) []TreeEntry {
 }
 
 // treeEntry reads the fields before an entry's path, and reports whether they are in the
-// shape git lists them.
+// shape git lists them. A blob the clone doesn't hold, as a partial clone may lack one with
+// lazy fetches off, lists its size as BAD: it is kept, Missing, with no size.
 func treeEntry(meta, path string) (TreeEntry, bool) {
 	fields := strings.Fields(meta)
 	if len(fields) != treeFields || !objectIDPattern.MatchString(fields[2]) {
 		return TreeEntry{}, false
 	}
 
-	size := int64(-1)
+	e := TreeEntry{Path: path, Mode: fields[0], Type: fields[1], Object: fields[2], Size: -1}
 
-	if fields[3] != "-" {
+	switch fields[3] {
+	case "-":
+	case missingSize:
+		e.Missing = true
+	default:
 		n, err := strconv.ParseInt(fields[3], 10, 64)
 		if err != nil || n < 0 {
 			return TreeEntry{}, false
 		}
 
-		size = n
+		e.Size = n
 	}
 
-	return TreeEntry{Path: path, Mode: fields[0], Type: fields[1], Object: fields[2], Size: size}, true
+	return e, true
 }
+
+// missingSize is the size `git ls-tree -l` lists for a blob it can't read, as one a partial
+// clone never fetched.
+const missingSize = "BAD"
 
 // parseLastChange reads a log's "<committer time>\x01<subject>" line, the time in seconds
 // since the epoch: the newest commit to change the paths asked about, or the zero Commit

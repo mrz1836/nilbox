@@ -221,7 +221,9 @@ func (s *Service) contentsAt(ctx context.Context, c candidate, commit string) (k
 
 // readContents reads what Deps reads in the clone at dir at commit: its tree, each module
 // the tree holds, stalest first, and the tools the clone is set up for. settled is false
-// when a read in it failed in a way the next may not; a read cut short fails.
+// when a read in it failed in a way the next may not, as one the clone's time ran out on,
+// which keeps the modules it read and says of each other one that it wasn't read; a tree
+// that couldn't be read fails.
 func (s *Service) readContents(ctx context.Context, dir, commit string) (contents, bool, error) {
 	pick := newPicker()
 
@@ -231,22 +233,14 @@ func (s *Service) readContents(ctx context.Context, dir, commit string) (content
 	}
 
 	files := pick.files(entries)
-	r := moduleReader{git: s.git, dir: dir, commit: commit, files: files}
-	modules := make([]Module, 0, len(files.manifests))
-
-	for _, e := range files.manifests {
-		modules = append(modules, r.read(ctx, e))
-	}
-
-	if err = ctx.Err(); err != nil {
-		return contents{}, false, err
-	}
+	r := &moduleReader{git: s.git, dir: dir, commit: commit, files: files}
+	modules := r.readAll(ctx, files.manifests)
 
 	sortModules(modules)
 
 	return contents{
 		modules: modules, tools: toolsOf(files, modules), workspaces: files.workspaces, truncated: files.truncated,
-	}, !r.unsettled, nil
+	}, !r.unsettled.Load(), nil
 }
 
 // fetchHead returns where the clone c keeps FETCH_HEAD, or "" when git can't say.

@@ -76,6 +76,15 @@ func (m worktreeMaker) EnsureWorktree(ctx context.Context, req launcher.Worktree
 	return launcherWorktree(got), err
 }
 
+// DiscardWorktree removes a task's worktree a repository's launch made but couldn't start
+// its session in, with its own branch, as the Worktrees tab's Remove does. It implements
+// launcher.WorktreeDiscarder.
+func (m worktreeMaker) DiscardWorktree(ctx context.Context, req launcher.WorktreeRequest, wt launcher.Worktree) error {
+	_, err := m.maker.Discard(ctx, req.Clone, wt.Path, wt.Branch)
+
+	return err
+}
+
 // ensureRequest converts the launcher's request for the worktrees package.
 func ensureRequest(req launcher.WorktreeRequest) worktrees.EnsureRequest {
 	return worktrees.EnsureRequest{

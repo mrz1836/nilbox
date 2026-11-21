@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path"
 	"slices"
+	"sync/atomic"
 
 	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -22,16 +23,43 @@ const (
 	maxPattern = 200
 )
 
-// moduleReader reads the modules of one clone at one commit.
+// moduleReader reads the modules of one clone at one commit, moduleParallel at a time.
 type moduleReader struct {
 	git    Git
 	dir    string
 	commit string
 	files  treeFiles
 
-	// unsettled reports a read that failed in a way the next may not, so what was read
-	// isn't kept for the next scan.
-	unsettled bool
+	// unsettled reports a read that failed in a way the next may not, as one the clone's
+	// time ran out on, so what was read isn't kept for the next scan.
+	unsettled atomic.Bool
+}
+
+// readAll reads the module of each manifest, moduleParallel at a time, in their order.
+func (r *moduleReader) readAll(ctx context.Context, manifests []gitread.TreeEntry) []Module {
+	modules := make([]Module, len(manifests))
+
+	parallel(manifests, moduleParallel, func(i int, e gitread.TreeEntry) {
+		modules[i] = r.readInTime(ctx, e)
+	})
+
+	return modules
+}
+
+// readInTime reads the module whose manifest is e, or, when the clone's time ran out
+// before its turn, says so: the modules already read are still shown, and the next scan
+// reads them all again.
+func (r *moduleReader) readInTime(ctx context.Context, e gitread.TreeEntry) Module {
+	if ctx.Err() != nil {
+		r.unsettled.Store(true)
+
+		return Module{
+			Kind: kindOf(e.Path), Path: e.Path, Workspaces: []string{},
+			Problem: "This " + path.Base(e.Path) + " wasn't read: reading this clone took too long.",
+		}
+	}
+
+	return r.read(ctx, e)
 }
 
 // read reads the module whose manifest is e: its manifest, then its lockfile, which its
@@ -62,12 +90,19 @@ func kindOf(file string) Kind {
 	return KindJS
 }
 
-// parse reads the module's manifest into m, when its size in the tree is at most
-// maxManifest, or says in m.Problem why it couldn't.
+// parse reads the module's manifest into m, when the clone holds it and its size in the
+// tree is at most maxManifest, or says in m.Problem why it couldn't. A partial clone may
+// not hold it, and no read here fetches it: its history is still read.
 func (r *moduleReader) parse(ctx context.Context, e gitread.TreeEntry, m *Module) {
 	name := path.Base(e.Path)
 
-	if e.Size > maxManifest {
+	switch {
+	case e.Missing:
+		m.Problem = "This clone doesn't hold this " + name + "'s contents, as a partial clone may not, so only " +
+			"when it last changed was read."
+
+		return
+	case e.Size > maxManifest:
 		m.Problem = "This " + name + " is larger than 1 MiB, so it wasn't read."
 
 		return
@@ -112,7 +147,7 @@ func (r *moduleReader) history(ctx context.Context, m *Module) {
 // more than the read holds, which it will again at the same commit.
 func (r *moduleReader) failed(err error) {
 	if !errors.Is(err, execpath.ErrOutputLimit) {
-		r.unsettled = true
+		r.unsettled.Store(true)
 	}
 }
 

@@ -165,7 +165,10 @@ export function DepsUpgradeSheet({ clone, onOpenPrompts, onClose }: DepsUpgradeS
   const resolveFailed = !resolved.pending && resolved.error !== ''
   const planFailed = !planned.pending && planned.error !== ''
   const starting = state.kind === 'starting'
-  const canStart = resolution !== undefined && !resolved.pending && !resolveFailed && !planFailed && !starting
+  // Start waits for the plan too, so a refusal only the plan finds, as every name for
+  // today's worktree being taken, shows before Start rather than after it.
+  const canStart =
+    resolution !== undefined && !resolved.pending && !planned.pending && !resolveFailed && !planFailed && !starting
   const error =
     state.kind === 'failed' ? state.message : resolveFailed ? resolved.error : planFailed ? planned.error : ''
   // agentName names the agent the upgrade starts: the one chosen, else the one resolved.

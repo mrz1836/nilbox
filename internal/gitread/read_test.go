@@ -467,7 +467,7 @@ func TestReadsManifestsInARealClone(t *testing.T) {
 	assert.Equal(t, []string{"README.md", "a*b/package.json", "axb/package.json", "big/package.json", goMod, goSum}, paths)
 
 	mod := strings.TrimSpace(testutil.RunGit(t, m.repo, "rev-parse", m.big+":go.mod"))
-	assert.Equal(t, TreeEntry{Path: goMod, Mode: "100644", Type: "blob", Object: mod, Size: 21}, entries[4])
+	assert.Equal(t, TreeEntry{Path: goMod, Mode: "100644", Type: blobType, Object: mod, Size: 21}, entries[4])
 	assert.True(t, entries[4].Regular())
 	assert.Equal(t, int64(2<<20), entries[3].Size)
 

@@ -337,6 +337,51 @@ func TestModulesThatCantBeReadSaySo(t *testing.T) {
 	assert.Equal(t, 1, r.git.counted()[callTree], "a read that may go otherwise next time isn't kept")
 }
 
+func TestAManifestAPartialCloneLacksKeepsItsAge(t *testing.T) {
+	t.Parallel()
+
+	r := newRig(t)
+	commit := commitID(1)
+	fr := treeRepo(commit, map[string]string{mainBranch: commit})
+	missing := entry(goModFile, 0)
+	missing.Size, missing.Missing = -1, true
+	fr.trees[commit] = append(fr.trees[commit], missing)
+	fr.changes = map[string]gitread.Commit{changeKey(goModFile, ""): {At: daysAgo(40), Subject: "bump the modules"}}
+	r.clone("partial", fr)
+
+	c := r.list(false).Clones[0]
+	require.Len(t, c.Modules, 1, "a manifest the clone lacks still counts")
+	assert.Equal(t, "This clone doesn't hold this go.mod's contents, as a partial clone may not, so only when it "+
+		"last changed was read.", c.Modules[0].Problem)
+	assert.Equal(t, "bump the modules", c.Modules[0].Subject, "its history is read")
+	assert.NotEmpty(t, c.Oldest)
+	assert.Zero(t, r.git.counted()[callBlob], "and its contents aren't asked for, which would fetch them")
+}
+
+func TestModulesTheClonesTimeRanOutBeforeSaySo(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	g := newFakeGit()
+	r := &moduleReader{git: g, dir: "/nowhere", commit: commitID(1)}
+
+	modules := r.readAll(ctx, []gitread.TreeEntry{entry(goModFile, 10), entry(webPackage, 10)})
+	assert.Equal(t, []Module{
+		{
+			Kind: KindGo, Path: goModFile, Workspaces: []string{},
+			Problem: "This go.mod wasn't read: reading this clone took too long.",
+		},
+		{
+			Kind: KindJS, Path: webPackage, Workspaces: []string{},
+			Problem: "This package.json wasn't read: reading this clone took too long.",
+		},
+	}, modules, "each in its place, so the modules read before are still shown")
+	assert.True(t, r.unsettled.Load(), "and the next scan reads them all again")
+	assert.Empty(t, g.counted(), "no git is run once the time is out")
+}
+
 func TestAManifestGitPrintsTooMuchOfIsKept(t *testing.T) {
 	t.Parallel()
 

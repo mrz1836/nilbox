@@ -104,6 +104,15 @@ type WorktreeMaker interface {
 	EnsureWorktree(ctx context.Context, req WorktreeRequest) (Worktree, error)
 }
 
+// WorktreeDiscarder removes a task's new worktree a repository's launch made but couldn't
+// start its session in, with its own branch, refused while a session works there or it
+// holds uncommitted changes. A WorktreeMaker that offers it lets a launch that fails after
+// making its worktree leave none behind, since a task's worktree is made new each time and
+// its retry would make another.
+type WorktreeDiscarder interface {
+	DiscardWorktree(ctx context.Context, req WorktreeRequest, wt Worktree) error
+}
+
 // SessionRecorder records each session started in an item's worktree. *worklog.Store
 // implements it.
 type SessionRecorder interface {

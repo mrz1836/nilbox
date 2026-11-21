@@ -109,6 +109,9 @@ const (
 	logCmd     = "log"
 	catFileCmd = "cat-file"
 
+	// blobType is a file's object type, as a tree lists it and cat-file reads it.
+	blobType = "blob"
+
 	// lastChangeFormat prints a commit's committer time, in seconds since the epoch, and
 	// its subject, split by a byte no time holds.
 	lastChangeFormat = "--format=%ct%x01%s"
@@ -260,7 +263,7 @@ func allowlist() []command {
 			words: append(fixed(lastChangeWords()...), value(slotCommitID), word{text: "--"}, value(slotLiteralLockfile),
 				value(slotLiteralManifest)),
 		},
-		{name: "a blob's contents", words: append(fixed(catFileCmd, "blob"), value(slotBlobID))},
+		{name: "a blob's contents", words: append(fixed(catFileCmd, blobType), value(slotBlobID))},
 		{name: "the local version tags", words: append(fixed("tag", "--list"), value(slotVersionPattern))},
 		{name: "origin's branches and tags", words: fixed(lsRemote, uploadPackFlag, "--heads", tagsFlag, remoteName)},
 		{
@@ -682,7 +685,7 @@ func lastChangeArgs(from, manifest, lockfile string) []string {
 	return append(args, literalMagic+manifest)
 }
 
-func blobArgs(oid string) []string { return []string{catFileCmd, "blob", oid} }
+func blobArgs(oid string) []string { return []string{catFileCmd, blobType, oid} }
 
 // The most a commit's tree, a log of the newest commit to change a manifest, and a blob's
 // contents may print, in bytes, before git is stopped and the read fails: each is the
