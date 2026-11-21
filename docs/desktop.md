@@ -1284,13 +1284,14 @@ isn't shown on Scripts: each page searches in itself.
 - **The rail** lists the pages: **Release** while mage-x is on, counting the repositories with
   unreleased changes; **Hooks** while go-pre-commit is on, counting the repositories that need
   attention, with an amber dot; **Repo scripts** while Scripts is on (automatically, while
-  mage-x or go-pre-commit is); and **Runs**, counting the runs in progress. Its foot lists each
+  mage-x or go-pre-commit is); **Deps** while Scripts is on too, counting the clones whose
+  dependencies are stale; and **Runs**, counting the runs in progress. Its foot lists each
   tool's status, and **Manage in Settings** opens Settings → Integrations.
 - **It opens** on the page you picked last, even after a restart, or the first page that's on
   when that one is off now. The tab keeps its page and an open release sheet while you switch
   tabs.
-- **Headings stay in view:** a group's heading on Release and Hooks, and a section's on Repo
-  scripts, stays at the top of the page while its rows scroll under it, so you can still see
+- **Headings stay in view:** a group's heading on Release, Hooks, and Deps, and a section's on
+  Repo scripts, stays at the top of the page while its rows scroll under it, so you can still see
   which group you're in, and fold it, from anywhere in its list.
 - **A page whose tool can't be used** says why in place of its list (*magex isn't on this
   Mac.*), with the way to fix it in Settings.
@@ -1616,9 +1617,17 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
 - **A version bump** (a command naming `version:bump` or another target that tags) shows
   *Release does this, with checks* and **Open Release** instead of Run; its ⋯ menu still has
   **Run it anyway**.
+- **A dependency upgrade** (a command naming magex's `deps:update` or `mod:update`, `go get -u`,
+  or a package manager's update, such as `pnpm update`, `npm update`, `yarn upgrade`, `bun
+  update`, or `ncu -u`) shows *Deps upgrades in a fresh worktree and opens a pull request* and
+  **Open Deps** instead of Run: run here, it would upgrade the clone itself, on whatever branch
+  it's on, and leave the changes uncommitted. Its ⋯ menu still has **Run it anyway**, here or in
+  the other place, and Run again runs one you ran anyway the same way. `deps:tidy` only tidies,
+  and runs as before. See [Deps](#deps).
 - **magex:** the common targets as chips that run at once (one that bumps a version opens a
-  menu instead, with **Open Release** and **Run it anyway**), then **This repository's targets**
-  and **All magex commands**, folded and searched together, with an **Arguments** field for
+  menu instead, with **Open Release** and **Run it anyway**; `deps:update` isn't one, since Deps
+  does it), then **This repository's targets** and **All magex commands**, folded and
+  searched together, with an **Arguments** field for
   `key=value` pairs, which magex's own targets run with. A note says that magex targets run the
   repository's own code and its `.github/env` settings, as any build does.
 
@@ -1636,7 +1645,7 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
   command never has to quote a path. The default branch is the one Nilbox knows from GitHub,
   else the one the clone's `origin/HEAD` names, else `main` or `master` when the clone is on
   it. One that bumps a
-  version points to Release, like any other.
+  version points to Release, and one that upgrades the dependencies to Deps, like any other.
 - **Each one's ⋯ menu** has **Edit…**, **Duplicate** (a copy right after it), **Move up** and
   **Move down** (past the nearest of yours shown in that clone), and **Delete…**, which asks
   first; its runs stay in Runs. Run again runs a script as it is saved now, and refuses one
@@ -1669,6 +1678,164 @@ origin, with one `git ls-remote` whose answer is kept five minutes.
 - **A clone with nothing to show** says why: its `t3.json` or `.vscode/tasks.json` lists no
   commands, it has neither file, or the sources are turned off in Settings → Integrations, with
   **Open Settings**.
+
+<br>
+
+## Deps
+
+**Deps** lists every clone in the [repository locations](#repository-locations) whose `origin`
+is on GitHub, with each Go module's `go.mod` and each JavaScript package's `package.json` in it
+and how long ago their dependencies last changed, and upgrades any of them with a coding agent
+that works in a fresh worktree and opens a pull request. The page reads your clones' own git
+history alone: it never asks GitHub or a package registry what is out of date, so it works
+offline and signed out, and finding what is outdated is the agent's job.
+
+**The page.**
+
+- **What it reads:** each clone at its origin's default branch as the clone last fetched it,
+  such as `origin/main`, so a clone that is behind, or on another branch, still shows what is on
+  GitHub, at the commit an upgrade starts from. The default branch is the one Nilbox knows from
+  GitHub, else the one the clone's `origin/HEAD` names, else `main` or `master`, whichever
+  origin has. A clone without that branch from origin (one that never fetched it, say) is read
+  at its HEAD, and its row says so and why. Your files on disk are never read, so a change you
+  haven't pushed and fetched doesn't count.
+- **How old:** a module's age is the newest commit, merges left out, that changed its manifest
+  or its lockfile: a `go.mod`'s `go.sum` beside it, or the nearest `pnpm-lock.yaml`,
+  `package-lock.json`, `yarn.lock`, or `bun.lock` to a `package.json`, in its folder or one
+  above. A manifest under `vendor/`, `node_modules/`, or `testdata/` is another project's, and
+  left out. A clone is as old as its stalest module.
+- **Groups:** **Stale** (over three months), open, then **Aging** (one to three months) and
+  **Fresh** (under a month), folded, each with its count, a month being 30 days. A clone whose
+  age isn't known, as one that couldn't be read, goes in Stale too, last in the Oldest order, so
+  nothing hides it. Each heading's legend says what its rows' edges mean: orange for *over 3
+  months*, amber for *1–3 months*, green for *under a month*, and faint grey for *age unknown*.
+  Stale shows even with nothing in it (*No clone has stale dependencies.*); an empty Aging or
+  Fresh doesn't. A group you open or fold stays that way, when you come back and after a
+  restart. The rail's badge counts the clones in Stale, those whose age isn't known included.
+- **Sort:** **Oldest** (the dependencies that changed longest ago first, to start with),
+  **A–Z** (by `owner/name`, ignoring case), or **Modules** (the most `go.mod` and
+  `package.json` files first) orders every group, and the repositories you
+  [pinned](#pinned-and-muted-repositories-and-orgs) come first in each, whichever you pick. The
+  order you pick stays after a restart, though a [backup](#backing-up-your-setup) doesn't hold
+  it.
+- **Search** filters every group by `owner/name`, opening each while it searches. The **Go**
+  and **JS** chips count the clones the search leaves with that kind of module, and a click
+  keeps only those (*Show only the 12 clones with a Go module*); a second click shows every
+  clone again.
+- **The head** says how many clones and modules the page lists and when it read them (*175
+  clones · 318 modules · read 2m ago*), and under it which clones it leaves out, the
+  repositories you [muted](#pinned-and-muted-repositories-and-orgs), those whose origin isn't on
+  GitHub, and those with no manifest at the commit read (*14 muted and 3 not on GitHub left out
+  · 37 with no go.mod or package.json*). While it reads, the counts give way to how far it has
+  got (*Finding your clones…*, then *Reading go.mod and package.json · 45 of 151 clones*), so the
+  rows never move.
+- **Read again** reads every clone now. Otherwise the page serves its last read for five
+  minutes, and reading again a clone whose commit hasn't moved costs only a look at its refs,
+  so it stays quick across hundreds of clones. The Scripts tab reads it each time it shows,
+  whichever page is open, so the rail's count is current. A read that fails keeps the last
+  one, marked *Couldn’t read the clones · 14m old*, with why in its tooltip.
+
+**Each row** is one clone on one line, its parts in columns its whole group shares, so they line
+up down the list. When the list is narrow, the stalest manifest and the notes move to a second
+line under the name, and narrower still the counts and the tools join them there. From the left:
+
+- **The edge,** in its group's color, or faint grey when the clone's age isn't known.
+- **The repository:** its owner, muted, and its name, with the clone's folder in its tooltip, and
+  a pin after it when you pinned it.
+- **Its modules,** counted by kind (*Go 3 · JS 1*), and **the tools** it is set up for (*magex ·
+  pnpm*: magex by its files, a JavaScript package manager by the packages that use it).
+- **Its stalest manifest,** the one whose dependencies changed longest ago, or, in amber, why the
+  clone couldn't be read.
+- **Its notes:** an upgrade an agent works on there, as in *Claude · working · 4m* (its prompt
+  and worktree in its tooltip), then how the clone was read: *age unknown* (no commit that
+  changed its manifests was found, or why not), *read at HEAD* (and why), *shallow* (its history
+  stops at its shallow commits, so its dependencies may be older than shown), and *not all read*
+  (it holds more manifests than Deps reads, 200, and those nearest its top were read). Each says
+  more in its tooltip.
+- **The age** of that manifest's last change; its tooltip gives the date, the commit's subject,
+  and what was read (*As of origin/master, fetched 3d ago*, or *Read at HEAD* and why).
+- **Upgrade…** opens the sheet. It stays quiet until you point at the row or move the focus into
+  it.
+- **The chevron** unfolds the row's drawer, and so does a click anywhere else on the row (a click
+  that ends selecting its words opens nothing); from the keyboard, → unfolds it, ← folds it, and
+  ↑ and ↓ move between the rows, across the groups. Several drawers can be open at once, and
+  they stay open when the page reads again.
+
+**The drawer** has a line for each module, stalest first: its kind (*GO* or *JS*), its manifest's
+path (its module path or package name, toolchain, lockfile, and workspaces in its tooltip), its
+Go version (*go 1.22*) or package manager, its dependencies (*4 direct · 9 indirect*, or *48
+deps · 12 dev*, with any peer and optional ones), the subject of the commit that last changed it
+and its age, and a **Reveal in Finder** button that shows that manifest. A manifest over 1 MiB,
+one that doesn't parse, or one whose history couldn't be read says so in amber under its line.
+The clone's workspace files follow (*Workspaces: go.work · pnpm-workspace.yaml*), and at its foot
+**Open in Terminal** opens your terminal in the clone, running nothing, and **Upgrade
+dependencies…** opens the sheet.
+
+**The Upgrade sheet** starts a coding agent on the repository itself rather than on a pull
+request or an issue. Under its title it names the clone and its manifests by kind (*Go: go.mod,
+tools/go.mod (magex) · JS: frontend/package.json (pnpm)*), and what the app can't tell of the
+repository (below); then:
+
+- **What it upgrades:** **Minor and patch**, chosen to start with (*Newest versions within each
+  major; the PR lists the majors found.*), or **Majors too** (*Also moves to new majors,
+  refactoring code where needed. Bigger, and it may break things.*), which keeps only the majors
+  whose checks pass after a reasonable fix. Each is a starter in [Prompts](#prompts), for
+  repositories, offered while your library keeps it, and its **Edit** closes the sheet and opens
+  the Prompts tab. **Another prompt** offers any other prompt for repositories you wrote. With no
+  prompt for repositories at all, the sheet says so, with **Open the Prompts page**.
+- **The agent, profile, model, and effort,** plan mode, and Codex's Fast mode, exactly as the
+  launch menu offers them, starting from the repository's [launch defaults](#launch-defaults) and
+  the prompt (both starters start out of plan mode). There is no situation, and no outside
+  contributor's override, since a repository's launch is trusted, and nothing is saved as a
+  default, where its choices would change every launch on the repository's items too.
+- **Where it runs,** in place of the worktree choice: *Runs in a new worktree, deps-20261121,
+  off origin/main. Your clone isn’t touched.* The sheet plans the launch as it opens, so this
+  names the worktree it would make (`deps-20261121-2` for another the same day, and so on) and
+  the branch it starts from, and anything that would refuse the launch, such as every name for
+  today's worktree being taken, shows at once. The worktree is always new, on a branch of its
+  own (`worktree-deps-20261121`), made from the default branch, fetched first, so an upgrade
+  never builds on commits a merged pull request already took.
+- **Preview the launch** shows exactly what it would run, the prompt filled in, without starting
+  anything.
+- **The notice** says what the app can't tell: that GitHub hasn't said whether you can push to
+  the repository (if you can't, the agent stops at the push and says so), or that the repository
+  is a fork, so the pull request opens on the fork itself. A repository GitHub says is archived,
+  disabled, or locked, or where your access is read or triage alone, can't be upgraded: the sheet
+  says why, and **Start upgrade** stays disabled, as it does while the settings are being worked
+  out, or when they or the plan fail.
+- **Start upgrade** starts it. As with any launch, a session already running in the folder it
+  would start in holds it back (*A session is already running here*), with **Show in terminal**
+  and **Start another**, which starts beside it. Once the upgrade starts, the sheet closes, as a
+  launch from a card says nothing; it stays open only when the launch worked something around,
+  to say so (*The upgrade started in deps-20261121.*, then what it worked around).
+
+Only one sheet is open over the tab at a time: a release the app opens for you, or a run it
+shows you, takes the upgrade sheet's place.
+
+**After it starts:**
+
+1. Your terminal opens with the agent in the new worktree. It reads the repository's own rules
+   and its recent pull requests, upgrades the Go modules (with `magex deps:update` where the
+   repository uses magex) and the JavaScript packages (with the manager its lockfile or
+   `packageManager` names), runs the repository's own checks, commits, pushes the branch under
+   its own name (`git push -u <remote> HEAD`), and opens the pull request against the default
+   branch (`gh pr create --repo <repo> --base <default>`): what moved, in a table per manifest,
+   what it held back, the advisories it fixes, what it ran to check it, and the open Dependabot
+   or Renovate pull requests it supersedes. It never force-pushes, pushes to the default branch,
+   or merges, and when it's blocked, it stops and says what you need to do.
+2. The [Worktrees view](#the-worktrees-view) lists the worktree, and once its branch is pushed
+   and the pull request open, links it to that pull request by its branch.
+3. The pull request shows in the inbox under **Yours**.
+4. After it merges, the worktree is cleaned up like any other the app made, while **Clean up
+   after merging** is on, with the branches **Settings → Worktrees** deletes.
+
+The session is followed like any other ([Following a session](#following-a-session)): the
+clone's row shows how it stands (the newest still running, or one that ended in the last day),
+and the menu bar and the banners name it by its repository and prompt, as in **example-repo ·
+Upgrade dependencies**; with no pull request or issue to start on, it can't be resumed from the
+app. A `git fetch --prune` of your own that drops the branch's remote-tracking copy (as it does
+once GitHub deletes the merged branch) before the cleanup sees the merge leaves the worktree
+linked to nothing: remove it by hand on the Worktrees tab.
 
 <br>
 
@@ -3388,7 +3555,9 @@ you have.
   routine's mode, as a GitHub action does, with the routine's tries and runs a day, and takes
   no agent's slot. A script set to **Ask before running** waits for your OK every time it
   would run, on Autopilot too (*"Lint" asks before each run: run it?*), and your OK is for the
-  script as you saw it: one you edited since asks again. A script that doesn't show in the
+  script as you saw it: one you edited since asks again. A script that would bump a version or
+  upgrade the dependencies, which Repo scripts points to Release or Deps, fails its step: a
+  routine never runs one anyway. A script that doesn't show in the
   item's clone, or that you deleted, fails its step and says so; with no clone, or Scripts
   turned off, the match waits. A script you renamed since you picked it waits for you to pick
   it again (*The script picked as "Lint" is now "Lint all": pick it again in the routine.*),
@@ -4453,8 +4622,9 @@ dark menu bar. Click it for its menu:
 
 - **Open Nilbox** brings the window forward.
 - Agent sessions waiting for your approval or input, under **Waiting for you**, such as
-  **example-repo #12 · Claude needs approval**. Click one to bring its terminal tab forward
-  (see [Following a session](#following-a-session)).
+  **example-repo #12 · Claude needs approval**, or, for an upgrade from [Deps](#deps),
+  **example-repo · Upgrade dependencies · Claude needs approval**. Click one to bring its
+  terminal tab forward (see [Following a session](#following-a-session)).
 - Up to five items from each list that need you, under the list's name, **Review requested**
   or **Yours** (a native section heading on macOS 14 and later), and **N more…** for the rest. Hover an item for its full title. Click it to bring the window forward with the
   item in view: its list opens at the tab that holds it, and its row scrolls into view,
@@ -4750,9 +4920,11 @@ set them; extra directories and environment come from the profile only.
 The **Prompts** tab is the prompt library: every prompt a launch can fill in. Each prompt has a
 **title** (its full name, such as "Review a pull request"), a **nickname** of up to 20
 characters (the short label the launch button and menu show, such as "Review"), what it is
-**for** (pull requests, issues, or both), its **text**, and optional **launch settings**.
+**for** (**Pull requests**, **Issues**, **Both**, or, for an agent prompt, **Repositories**: a
+prompt an [upgrade on Deps](#deps) fills in for a clone rather than for an item), its **text**,
+and optional **launch settings**.
 
-**Starter prompts.** The app adds ten starters, each once: **Review** (review a pull request),
+**Starter prompts.** The app adds twelve starters, each once: **Review** (review a pull request),
 **Work on it** (work on an issue), **Quick look** (a fast read of a pull request's diff for
 blockers only, set to Sonnet at low effort without a worktree), **Fix checks** (find and fix
 a pull request's failing checks, then push the fix), and **Fix dep security** (fix the failing
@@ -4768,7 +4940,14 @@ silencing a check, and push as Fix dep security does), **Address review** (work 
 changes a review asked for, acting only on members' and collaborators' requests), **Resolve
 conflicts** (merge the base branch in, never a rebase, and push as Fix dep security does), and
 **Re-run failed jobs** (re-run a pull request's failed jobs once with `gh run rerun --failed`,
-changing nothing else, set to Haiku at low effort). A
+changing nothing else, set to Haiku at low effort). Two more are for repositories, the ones
+[Deps](#deps)' upgrade sheet offers as **Minor and patch** and **Majors too**: **Upgrade deps**
+(upgrade a repository's Go and JavaScript dependencies within their major versions, run its
+checks, commit, push its branch, and open a pull request that lists the newer majors it left
+alone) and **Upgrade majors too** (the same, major versions included, keeping only those whose
+checks pass after a reasonable fix). Both start in a worktree, out of plan mode; each names the
+clone's remote in its push only when that name is plain, and otherwise commits and stops, and
+names the default branch in `gh pr create --base` only when it is one plain word. A
 starter new in a later version is added to your library once, as these were, and a starter
 whose text you never changed takes the new text when a later version changes it, keeping the
 title and settings you gave it. Review and Work
@@ -4781,7 +4960,8 @@ starter you delete, stays as you left it. From then on every prompt is yours to 
 or delete; a deleted starter is not added back. **Reset to original** restores a changed
 starter's title, text, and settings.
 
-**The page.** The library is on the left, grouped by what each prompt is for, with search; a
+**The page.** The library is on the left, grouped by what each prompt is for (**Pull
+requests**, **Issues**, **Both**, and **Repositories**), with search; a
 star marks the app's defaults, a situation's among them, "Default in N places" counts the
 org and repository defaults that name one, for a kind or a situation, and "Used by N routines"
 the [Autopilot](#autopilot) routines that run it. A prompt a
@@ -4801,7 +4981,8 @@ The **⋯** menu holds **Make the default for pull requests** (or issues), **Dup
 the app's default for a kind or a situation, or an org's or repository's default, lists where
 it is used instead (as in "acme-org's prompt when checks fail"), so the defaults can be changed
 first. For the same reason, a prompt that is a default
-for pull requests must keep applying to them.
+for pull requests must keep applying to them, and a prompt a routine runs can't be made one for
+repositories, since a routine runs its prompts on pull requests and issues.
 
 **Writing a prompt.** A prompt is a Go [text/template](https://pkg.go.dev/text/template). The
 editor colors it as you type: variables tinted, unknown names red, keywords and functions in
@@ -4820,7 +5001,12 @@ syntax snippet in the cheat sheet inserts it at the caret.
 
 An item's description and comments are deliberately not variables: the agent reads them with
 `gh`, so their text stays information rather than instructions. Every value is a single line
-of plain text: control characters become spaces and bidirectional controls are removed.
+of plain text: control characters become spaces and bidirectional controls are removed. A
+prompt for repositories has no item, so only the repository's variables (`.Repo`, `.Owner`,
+`.RepoName`, `.DefaultBranch`, `.Remote`, `.RemoteIsPlain`) and the session's (`.InWorktree`,
+`.Worktree`, `.Profile`, `.Me`) are filled in there; every other is always empty, so the
+cheat sheet dims it, marked **Item only** (or **PR only**), and the editor warns where one is
+used.
 
 A prompt can use `{{if}}`, `{{else}}`, `{{with}}`, comments, trim markers (`{{- -}}`), and
 the functions `and`, `or`, `not`, `eq`, `ne`, `lt`, `le`, `gt`, `ge`, `len`, `print`,
@@ -4849,8 +5035,10 @@ underlined in the text; clicking it selects the spot. An unknown variable sugges
 one ("`.Titel` isn't a variable. Did you mean `.Title`?"), an `{{if}}` that is never closed
 points at that `{{if}}`, and errors that only show when a prompt runs (comparing text with a
 number, say) are found by filling the prompt in with sample data for every kind and session it
-applies to. Warnings, such as a pull-request-only variable in an issue prompt, or a prompt that
-starts with a variable, don't block saving; errors do.
+applies to, or, for a prompt for repositories, for a sample repository, in the clone and in a
+worktree. Warnings, such as a pull-request-only variable in an issue prompt, an item's variable
+in a prompt for repositories, or a prompt that starts with a variable, don't block saving;
+errors do.
 
 **Preview.** The preview fills the prompt in for a real inbox item (or a sample), exactly as a
 launch would, in the text's own frame and at its size, with the item to fill it in for and
@@ -4858,12 +5046,17 @@ switches for **In a worktree** and **At the PR's head** above it. For an outside
 contributor's item it also shows the line every such prompt ends with. Below it are its
 length and **Copy**, which copies the text as a launch sends it, that line included. The
 text and its undo history are kept while previewing, so Edit picks up where it was. A review
-reply previews as the review sheet fills it in, with no session switches.
+reply previews as the review sheet fills it in, with no session switches. No inbox item is a
+repository, so a prompt for repositories previews with **A sample repository** alone,
+acme-org/example-repo (its default branch `main`, its remote `origin`), in the clone, or, with
+**In a worktree**, in `deps-20260115`, as an upgrade names its worktree, and the cheat sheet's
+values are the sample repository's.
 
 **Launch settings.** A prompt can set a model and extra flags for each coding agent, on a tab
 per agent, and the effort, plan mode, and worktree for every agent; they win over the org's and
 repository's defaults whenever it is chosen. A prompt never chooses the agent or the profile,
-so a prompt can't put a repository on the wrong account.
+so a prompt can't put a repository on the wrong account. A prompt for repositories' worktree
+setting changes nothing: a launch for a repository always starts in a new worktree of its own.
 
 ### Review replies
 
@@ -5432,7 +5625,10 @@ names, whatever the clone's own refspecs say, so a launch never moves one of you
 a partial clone, the checkout fetches the files it writes from the clone's promisor remote,
 under the same guards. Every worktree made or adopted is
 recorded with its item, and each session started in it with its agent and time, so the
-[Worktrees view](#the-worktrees-view) links it and its cleanup finds it.
+[Worktrees view](#the-worktrees-view) links it and its cleanup finds it. An
+[upgrade from Deps](#deps) is the exception: it has no item, so it makes a new worktree of its
+own every time, from the default branch, which nothing resumes and no record names, and its
+pushed branch links it to its pull request instead.
 
 ### What a clone's own config may hold
 

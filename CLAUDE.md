@@ -168,8 +168,8 @@ build when broken.
   only `internal/worktrees/create.go` fetches or runs `git worktree add`, and the only
   exceptions, each on the user's click, are a release's magex and Repo scripts' **Pull**
   (`internal/scripts/pull.go`). A branch is deleted only with the conditional `git update-ref
-  -d <ref> <oid>`, never `git branch -d/-D`. Release, hooks, and Repo scripts read git only
-  through `internal/gitread`'s allowlist, and the commands that change a clone (a worktree's
+  -d <ref> <oid>`, never `git branch -d/-D`. Release, hooks, Repo scripts, and Deps read git
+  only through `internal/gitread`'s allowlist, and the commands that change a clone (a worktree's
   creation, Pull) run under its guarded setups.
 - **Clone locks.** Every job that changes a clone holds that clone's lock from
   `internal/clonelock`, one `Set` that core builds and hands to each, keyed by
@@ -255,8 +255,9 @@ bytes).
   headless and conversation halves, version, and sign-in.
 - `internal/procs`, `internal/execpath`, `internal/shellenv`: running processes; finding and
   starting programs; the login shell's environment.
-- `internal/clock`, `periodic`, `flight`, `paths`, `progress`, `textutil`: the clock, the
-  interval runner, one call per key, paths, progress, and text and shell quoting.
+- `internal/clock`, `periodic`, `flight`, `paths`, `progress`, `textutil`, `toolsigns`: the
+  clock, the interval runner, one call per key, paths, progress, text and shell quoting, and
+  tools' marker files.
 - `internal/testutil`, `internal/scriptrun/scriptruntest`,
   `internal/localrepos/localrepostest`, `internal/assignees/assigneestest`: the shared test
   fakes and fixtures; only tests import them.
@@ -328,6 +329,8 @@ bytes).
 - [`internal/release`](docs/architecture.md#internalrelease): the Release page.
 - [`internal/hooks`](docs/architecture.md#internalhooks): the Hooks page.
 - [`internal/scripts`](docs/architecture.md#internalscripts): Repo scripts, and Pull.
+- [`internal/manifests`](docs/architecture.md#internalmanifests): the Deps page: each clone's
+  go.mod and package.json files and their ages.
 
 **Updates**
 

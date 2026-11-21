@@ -35,7 +35,7 @@ export is a section of the file; one you leave unticked is absent.
     "pinned": ["acme-org/example-repo"],
     "muted": []
   },
-  "prompts": {"format": "nilbox.prompts", "version": 3, "prompts": []},
+  "prompts": {"format": "nilbox.prompts", "version": 4, "prompts": []},
   "launchDefaults": {"format": "nilbox.launch-defaults", "version": 2, "defaults": []},
   "scripts": {
     "scripts": [
@@ -204,8 +204,8 @@ stored as the app writes one, its lists sorted and its texts trimmed.
 - **Script trust.** A file from elsewhere could otherwise pre-approve a repository's command,
   so each repository command asks again before its first run.
 - **The window's memory.** Its size, folded sections, tips put away, the Notifications page's
-  tab, the Scripts tab's last page and clone, and the order the Release page lists its
-  repositories in.
+  tab, the Scripts tab's last page and clone, the order the Release page lists its
+  repositories in, and the order the Deps page lists its clones in.
 - **Tool detection and install records.** The app finds the tools again.
 - **The app's own updates.** When it last checked, the version it last told you of, Later, and
   the downloaded update: the next check finds them again.
