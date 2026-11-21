@@ -109,10 +109,10 @@ func TestTheRoutinesSayWhatOfThemCouldntBeRead(t *testing.T) {
 	_, err = r.svc.List(ctx)
 	assert.Equal(t, "Autopilot's history couldn't be read.", uierr.Message(err))
 
-	// A reorder reads them in its own transaction.
+	// A copy reads them in its own transaction, to place itself.
 	gone := newRig(t, autopilotprefs.ModeAsk)
 	testutil.Exec(t, gone.db, `DROP TABLE autopilot_routines`)
 
-	_, err = gone.svc.Reorder(ctx, nil)
+	_, err = gone.svc.Duplicate(ctx, 1)
 	require.ErrorContains(t, err, "read the routines")
 }

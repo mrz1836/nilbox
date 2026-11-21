@@ -461,49 +461,6 @@ func (s *Service) change(ctx context.Context, id int64,
 	return s.Get(ctx, id)
 }
 
-// Reorder puts the routines ids names first, in that order, and the others after them as
-// they were, and returns the list. An id named twice counts once; one that is gone or
-// deleted is refused, and nothing moves.
-func (s *Service) Reorder(ctx context.Context, ids []int64) ([]Routine, error) {
-	err := s.reorder(ctx, func(_ *queries.Queries, rows []queries.AutopilotRoutine) ([]queries.AutopilotRoutine, error) {
-		return ordered(rows, ids)
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	s.changed(ctx)
-
-	return s.List(ctx)
-}
-
-// ordered returns rows with those ids names first, in that order, each once, and the
-// others after them as they were, refusing an id no row has.
-func ordered(rows []queries.AutopilotRoutine, ids []int64) ([]queries.AutopilotRoutine, error) {
-	order := make([]queries.AutopilotRoutine, 0, len(rows))
-	placed := map[int64]bool{}
-
-	for _, id := range ids {
-		i := slices.IndexFunc(rows, func(r queries.AutopilotRoutine) bool { return r.ID == id })
-
-		switch {
-		case i < 0:
-			return nil, goneError(id)
-		case !placed[id]:
-			order = append(order, rows[i])
-			placed[id] = true
-		}
-	}
-
-	for _, r := range rows {
-		if !placed[r.ID] {
-			order = append(order, r)
-		}
-	}
-
-	return order, nil
-}
-
 // reorder runs change in one transaction over the routines as stored, in their order, and
 // stores the order it returns.
 func (s *Service) reorder(ctx context.Context,

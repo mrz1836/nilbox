@@ -222,6 +222,7 @@ func TestDuplicateMakesAnOffCopyRightAfterIt(t *testing.T) {
 
 	_, err = r.svc.Duplicate(t.Context(), 999)
 	require.ErrorIs(t, err, autopilot.ErrNotFound)
+	assert.Equal(t, []int64{first.ID, again.ID, copied.ID, last.ID}, ids(r.list(t)), "nothing moves")
 }
 
 func TestSetEnabledAndSetMode(t *testing.T) {
@@ -268,24 +269,6 @@ func TestSetEnabledAndSetMode(t *testing.T) {
 
 	_, err = r.svc.SetEnabled(t.Context(), 999, true, autopilot.CurrentRun)
 	require.ErrorIs(t, err, autopilot.ErrNotFound)
-}
-
-func TestReorder(t *testing.T) {
-	t.Parallel()
-
-	r := newRig(t, autopilotprefs.ModeAsk)
-	a := r.save(t, draft("A", notifySpec()))
-	b := r.save(t, draft("B", notifySpec()))
-	c := r.save(t, draft("C", notifySpec()))
-
-	got, err := r.svc.Reorder(t.Context(), []int64{c.ID, a.ID, c.ID})
-	require.NoError(t, err)
-	assert.Equal(t, []int64{c.ID, a.ID, b.ID}, ids(got), "those named first, in order, and the rest as they were")
-	assert.Equal(t, ids(got), ids(r.list(t)))
-
-	_, err = r.svc.Reorder(t.Context(), []int64{b.ID, 999})
-	require.ErrorIs(t, err, autopilot.ErrNotFound)
-	assert.Equal(t, []int64{c.ID, a.ID, b.ID}, ids(r.list(t)), "nothing moves")
 }
 
 func TestARoutineOfAnotherAccountIsMarked(t *testing.T) {
@@ -361,7 +344,8 @@ func TestASpecFromANewerBuildLoadsAsBrokenAndIsNeverRewritten(t *testing.T) {
 	_, err = r.svc.SetEnabled(t.Context(), id, false, autopilot.CurrentRun)
 	require.NoError(t, err, "it can always be switched off")
 
-	_, err = r.svc.Reorder(t.Context(), []int64{id, fine.ID})
+	// A copy of the other goes right after it, which renumbers this one's row.
+	_, err = r.svc.Duplicate(t.Context(), fine.ID)
 	require.NoError(t, err)
 
 	_, err = r.svc.Get(t.Context(), id)
@@ -423,19 +407,21 @@ func TestEveryChangeRewritesTheCopy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{firstName, "First copy"}, copyNames(t, r.file))
 
-	_, err = r.svc.Reorder(t.Context(), []int64{copied.ID})
+	// Another copy goes right after the routine, ahead of the first copy: the copy keeps
+	// the list's order.
+	_, err = r.svc.Duplicate(t.Context(), rt.ID)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"First copy", firstName}, copyNames(t, r.file))
+	assert.Equal(t, []string{firstName, "First copy 2", "First copy"}, copyNames(t, r.file))
 
 	_, err = r.svc.SetEnabled(t.Context(), rt.ID, true, autopilot.CurrentRun)
 	require.NoError(t, err)
 
 	b, err := r.file.Load()
 	require.NoError(t, err)
-	assert.True(t, b.Routines[1].Enabled)
+	assert.True(t, b.Routines[0].Enabled)
 
 	require.NoError(t, r.svc.Delete(t.Context(), copied.ID))
-	assert.Equal(t, []string{firstName}, copyNames(t, r.file))
+	assert.Equal(t, []string{firstName, "First copy 2"}, copyNames(t, r.file))
 }
 
 func TestARoutineWithoutADatabaseIsRefused(t *testing.T) {

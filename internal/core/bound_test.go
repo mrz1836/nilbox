@@ -780,9 +780,6 @@ func autopilotBoundCalls(t *testing.T) map[string]boundCall {
 		"autopilot.Service.SetMode": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Autopilot.SetMode(ctx, boundRoutine(ctx, t, c, "Bound mode").ID, autopilotprefs.ModeDryRun, autopilot.CurrentRun)
 		},
-		"autopilot.Service.Reorder": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
-			return c.Autopilot.Reorder(ctx, []int64{boundRoutine(ctx, t, c, "Bound order").ID})
-		},
 		"autopilot.Service.Suggest": func(ctx context.Context, c *Core, _ seededItems) (any, error) {
 			return c.Autopilot.Suggest(ctx)
 		},
