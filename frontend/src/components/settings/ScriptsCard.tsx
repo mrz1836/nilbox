@@ -11,9 +11,9 @@ import {
   type ScriptSources,
   type Settings,
 } from '../../platform'
-import { Switch } from '../controls'
+import { ErrorText, Switch } from '../controls'
 import { cardMatchClass, headingMatchClass, useSetting } from './match'
-import { ErrorText, joinIds } from './rows'
+import { joinIds } from './rows'
 
 // switchCaption says what the Scripts switch means: on or off as the user set it, or,
 // while automatic, on or off with mage-x and go-pre-commit, once the tools are known.

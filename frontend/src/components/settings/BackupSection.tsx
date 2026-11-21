@@ -16,9 +16,9 @@ import {
   type Settings,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass } from '../controls'
+import { buttonClass, ErrorText } from '../controls'
 import { ExportIcon, ImportIcon } from '../icons'
-import { ErrorText, Note, SectionIntro } from './rows'
+import { Note, SectionIntro } from './rows'
 import { ImportBackupDialog } from './ImportBackupDialog'
 
 export interface BackupSectionProps {

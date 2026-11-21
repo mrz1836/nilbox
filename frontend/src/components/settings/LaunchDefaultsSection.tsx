@@ -36,6 +36,7 @@ import {
   buttonClass,
   chipClass,
   describedBy,
+  ErrorText,
   Field,
   fieldClass,
   primaryButtonClass,
@@ -44,7 +45,7 @@ import {
 } from '../controls'
 import { PlusIcon } from '../icons'
 import { LaunchOverrideFields, type LaunchOverrides } from '../LaunchOverrideFields'
-import { ErrorText, groupClass, SectionIntro } from './rows'
+import { groupClass, SectionIntro } from './rows'
 
 export interface LaunchDefaultsSectionProps {
   settings: Settings

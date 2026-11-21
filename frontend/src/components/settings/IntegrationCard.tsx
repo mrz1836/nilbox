@@ -26,13 +26,13 @@ import {
   type ToolState,
 } from '../../platform'
 import { CommandLine } from '../CommandLine'
-import { buttonClass, fieldClass, primaryButtonClass, quietButtonClass, Switch } from '../controls'
+import { buttonClass, ErrorText, fieldClass, primaryButtonClass, quietButtonClass, Switch } from '../controls'
 import { AlertIcon, CheckIcon, ChevronRightIcon, ExternalIcon, XIcon } from '../icons'
 import { RunPanel } from '../scripts/RunPanel'
 import { Spinner } from '../Spinner'
 import { InstallDialog, type InstallKind } from './InstallDialog'
 import { cardMatchClass, headingMatchClass, useSetting } from './match'
-import { ErrorText, joinIds } from './rows'
+import { joinIds } from './rows'
 import { TrashCopy } from './TrashCopy'
 
 // sourceLabels names where a copy of a tool came from.

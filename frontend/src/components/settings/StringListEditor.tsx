@@ -1,8 +1,8 @@
 import { useId, type ReactNode } from 'react'
 
-import { buttonClass, fieldClass } from '../controls'
+import { buttonClass, ErrorText, fieldClass } from '../controls'
 import { XIcon } from '../icons'
-import { ErrorText, Group, joinIds } from './rows'
+import { Group, joinIds } from './rows'
 
 export interface StringListEditorProps {
   // label names the list for assistive tech.

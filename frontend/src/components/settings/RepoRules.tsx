@@ -5,9 +5,9 @@ import { ownRule, parseTarget, ruleRows, targetKey, withRepoRule, type RuleRow }
 import { useQuery } from '../../lib/useQuery'
 import type { SettingsSave } from '../../lib/useSettingsSave'
 import { listLaunchTargets, setRepoRule, type LaunchTarget, type RepoRule, type Settings } from '../../platform'
-import { buttonClass, fieldClass, Segmented, type SegmentOption } from '../controls'
+import { buttonClass, ErrorText, fieldClass, Segmented, type SegmentOption } from '../controls'
 import { MuteIcon, PinIcon, XIcon } from '../icons'
-import { ErrorText, Group, joinIds, Note, SectionIntro } from './rows'
+import { Group, joinIds, Note, SectionIntro } from './rows'
 
 export interface RepoRulesProps {
   // settings are the settings as shown, with every change still being saved applied, and

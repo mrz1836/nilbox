@@ -14,13 +14,13 @@ import {
   type Info,
   type Settings,
 } from '../../platform'
-import { buttonClass, dangerButtonClass } from '../controls'
+import { buttonClass, dangerButtonClass, ErrorText } from '../controls'
 import { ExternalIcon, ResetIcon } from '../icons'
 import { Logo } from '../Logo'
 import { InspectorCard } from './InspectorCard'
 import { cardMatchClass, useSetting } from './match'
 import { ResetDialog } from './ResetDialog'
-import { ErrorText, Group, Note, SectionIntro } from './rows'
+import { Group, Note, SectionIntro } from './rows'
 import { UpdatesCard } from './UpdatesCard'
 
 // aboutRows is what the About page lists: the release version and build number, the

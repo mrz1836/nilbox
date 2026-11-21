@@ -19,11 +19,11 @@ import {
   type StatusProvider,
   type StatusProviderID,
 } from '../../platform'
-import { Switch } from '../controls'
+import { ErrorText, Switch } from '../controls'
 import { ExternalIcon } from '../icons'
 import { cardMatchClass, headingMatchClass, useSetting } from './match'
 import { everyWords, refreshDefaults } from './RefreshingSection'
-import { ErrorText, Group, joinIds, Note, rowDescribedBy, SectionIntro, SettingRow } from './rows'
+import { Group, joinIds, Note, rowDescribedBy, SectionIntro, SettingRow } from './rows'
 import type { SectionProps } from './types'
 
 // dotFill colors a provider's live state: green while what it watches works, amber or red

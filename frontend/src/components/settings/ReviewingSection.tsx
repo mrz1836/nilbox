@@ -17,8 +17,8 @@ import {
   type PeopleSummary,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, Segmented, type SegmentOption } from '../controls'
-import { ChoiceRow, ErrorText, Group, groupClass, joinIds, Note, SectionIntro, SettingRow, SwitchRow } from './rows'
+import { buttonClass, ErrorText, Segmented, type SegmentOption } from '../controls'
+import { ChoiceRow, Group, groupClass, joinIds, Note, SectionIntro, SettingRow, SwitchRow } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
 import { useListChange } from './useListChange'

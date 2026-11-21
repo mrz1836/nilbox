@@ -17,9 +17,9 @@ import {
   type DescribePluginState,
   type Profile,
 } from '../../platform'
-import { buttonClass } from '../controls'
+import { buttonClass, ErrorText } from '../controls'
 import { rowMatchClass, useSetting } from './match'
-import { ErrorText, Group, rowDescribedBy, SectionIntro } from './rows'
+import { Group, rowDescribedBy, SectionIntro } from './rows'
 
 // agentLabel and pluginLabel name the group's two rows, as "Find a setting" finds them.
 const agentLabel = 'Describe it’s agent'

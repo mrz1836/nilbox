@@ -13,10 +13,10 @@ import {
   type SensitiveCategory,
   type SensitiveScope,
 } from '../../platform'
-import { Segmented, Switch } from '../controls'
+import { ErrorText, Segmented, Switch } from '../controls'
 import { ChevronRightIcon } from '../icons'
 import { PathTester } from './PathTester'
-import { ChoiceRow, ErrorText, Group, groupClass, joinIds, Note, SectionIntro } from './rows'
+import { ChoiceRow, Group, groupClass, joinIds, Note, SectionIntro } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
 import { useListChange } from './useListChange'

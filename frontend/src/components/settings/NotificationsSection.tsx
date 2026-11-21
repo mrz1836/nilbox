@@ -20,9 +20,9 @@ import {
   setToastSeconds,
   type NotificationKind,
 } from '../../platform'
-import { buttonClass } from '../controls'
+import { buttonClass, ErrorText } from '../controls'
 import { maxToastSeconds, minToastSeconds } from '../Toast'
-import { ChoiceRow, ErrorText, Group, joinIds, Note, rowDescribedBy, SectionIntro, SettingRow, SwitchRow } from './rows'
+import { ChoiceRow, Group, joinIds, Note, rowDescribedBy, SectionIntro, SettingRow, SwitchRow } from './rows'
 import type { SectionProps } from './types'
 
 // secondsText says a toast's length in words, for the slider's assistive text.
