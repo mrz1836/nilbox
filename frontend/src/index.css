@@ -1,5 +1,9 @@
 @import 'tailwindcss';
 @import './generated/theme.css';
+/* A hue's tints (bg, border, ring, outline, from, via, to, and divide on accent, info,
+   success, warning, caution, and danger) take their alpha from one ladder: /5, /10, /14,
+   /22, /45, and /60. A new tint takes the nearest step, the lower one on a tie, and none
+   goes past /60. The neutral tokens' alphas (such as bg-raised/40) are not on it. */
 @import './nil.css';
 
 /* Tailwind finds class names by scanning the project's files. Tests, their fixtures, and the
@@ -17,6 +21,73 @@
    closed gives focus back without it (lib/focusBack.ts), so neither keeps the card lit once
    the pointer leaves. */
 @custom-variant card-lit (&:where(.group:is(:hover, :has(:focus-visible), :has([aria-haspopup][aria-expanded='true'])) *));
+
+/* The tokens the components share. Each is written out as a literal, so a utility carries
+   its value itself rather than reading a variable. */
+@theme inline {
+  /* The type scale. No size sets a line height, so a text keeps the line height it
+     inherits or its leading- class gives it. */
+  --text-micro: 0.5rem;
+  --text-badge: 0.625rem;
+  --text-marker: 0.65625rem;
+  --text-caption: 0.6875rem;
+  --text-meta: 0.71875rem;
+  --text-small: 0.75rem;
+  --text-control: 0.78125rem;
+  --text-body: 0.8125rem;
+  --text-body-lg: 0.84375rem;
+  --text-heading-sm: 0.875rem;
+  --text-heading: 0.9375rem;
+
+  /* Elevation: Tailwind's shadow shapes with their color written in, one for each kind of
+     thing that floats: a menu or popover panel, a card chip's panel, a pill over a row, a
+     toast, the terminal figure, a tinted button, and a drawer. A tinted button's top edge
+     also catches the light (inset-shadow-control). */
+  --shadow-menu: 0 20px 25px -5px rgb(0 0 0 / 0.2), 0 8px 10px -6px rgb(0 0 0 / 0.2);
+  --shadow-card: 0 20px 25px -5px rgb(0 0 0 / 0.25), 0 8px 10px -6px rgb(0 0 0 / 0.25);
+  --shadow-float: 0 10px 15px -3px rgb(0 0 0 / 0.2), 0 4px 6px -4px rgb(0 0 0 / 0.2);
+  --shadow-toast: 0 20px 25px -5px rgb(0 0 0 / 0.3), 0 8px 10px -6px rgb(0 0 0 / 0.3);
+  --shadow-terminal: 0 25px 50px -12px rgb(0 0 0 / 0.4);
+  --shadow-control: 0 1px 2px 0 rgb(0 0 0 / 0.15);
+  --shadow-drawer: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --inset-shadow-control: inset 0 1px 0 rgb(255 255 255 / 0.06);
+
+  /* The dim behind a modal dialog. It stays a literal: before Safari 17.4, ::backdrop sees
+     none of the page's custom properties. */
+  --color-scrim: rgb(0 0 0 / 0.4);
+
+  /* Paper is white in both themes: the knob of a switch, the dot of a radio button, and
+     the thumb of a slider. */
+  --color-paper: #ffffff;
+}
+
+/* A wash is a hue mixed into the surface, a fill that reads as the hue at a glance, such
+   as a card's state track. The raised wash is the neutral one. */
+@utility wash-success {
+  background-color: color-mix(in oklab, var(--color-success) 16%, var(--color-surface));
+}
+
+@utility wash-danger {
+  background-color: color-mix(in oklab, var(--color-danger) 16%, var(--color-surface));
+}
+
+@utility wash-accent {
+  background-color: color-mix(in oklab, var(--color-accent) 16%, var(--color-surface));
+}
+
+@utility wash-warning {
+  background-color: color-mix(in oklab, var(--color-warning) 14%, var(--color-surface));
+}
+
+@utility wash-raised {
+  background-color: color-mix(in oklab, var(--color-raised) 40%, var(--color-surface));
+}
+
+/* The layer a popover or menu panel opens on: over the toolbar (z-30), under a toast
+   (z-50). */
+@utility layer-popover {
+  z-index: 40;
+}
 
 @theme inline {
   /* Popovers and menus grow out of their trigger. */
@@ -244,7 +315,7 @@
   }
 
   .radio:checked {
-    background-image: radial-gradient(circle, white 0 26%, transparent 31%);
+    background-image: radial-gradient(circle, var(--color-paper) 0 26%, transparent 31%);
   }
 
   .checkbox:disabled,
@@ -284,7 +355,7 @@
     margin-top: calc((4px - 1rem) / 2);
     border: 1px solid color-mix(in oklab, var(--color-muted) 45%, transparent);
     border-radius: 9999px;
-    background-color: white;
+    background-color: var(--color-paper);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
     transition: transform 120ms ease-out;
   }
