@@ -14,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/integrationprefs"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -115,7 +116,7 @@ func (u UserScript) includes(name repo.Name, goModule bool) bool {
 	case ScopeGo:
 		return goModule
 	case ScopeRepos:
-		return name.Valid() && slices.ContainsFunc(u.Repos, func(r string) bool { return strings.EqualFold(r, name.String()) })
+		return name.Valid() && textutil.ContainsFold(u.Repos, name.String())
 	}
 
 	return false

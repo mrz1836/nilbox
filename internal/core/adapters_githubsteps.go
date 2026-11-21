@@ -17,6 +17,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/prompts"
 	"github.com/mrz1836/nilbox/internal/review"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -278,9 +279,7 @@ func (g githubSteps) issueLabels(ctx context.Context, req autopilot.GitHubSend, 
 // labelChanges are the labels to add that the item doesn't have, and those to take off
 // that it has, ignoring case, so an action sends nothing the labels are already.
 func labelChanges(l spec.LabelsAction, have []string) ([]string, []string) {
-	has := func(name string) bool {
-		return slices.ContainsFunc(have, func(h string) bool { return strings.EqualFold(h, name) })
-	}
+	has := func(name string) bool { return textutil.ContainsFold(have, name) }
 
 	add := slices.DeleteFunc(slices.Clone(l.Add), has)
 	remove := slices.DeleteFunc(slices.Clone(l.Remove), func(name string) bool { return !has(name) })

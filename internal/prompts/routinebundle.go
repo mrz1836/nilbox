@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 // RoutinePrompts carries the text of the prompts an Autopilot export names, in the prompts'
@@ -39,7 +41,7 @@ func (r *RoutinePrompts) Bundled(ctx context.Context, nicknames []string) ([]byt
 	var ids []int64
 
 	for _, p := range lib.Prompts {
-		if slices.ContainsFunc(nicknames, func(n string) bool { return strings.EqualFold(n, p.Nickname) }) {
+		if textutil.ContainsFold(nicknames, p.Nickname) {
 			ids = append(ids, p.ID)
 		}
 	}
