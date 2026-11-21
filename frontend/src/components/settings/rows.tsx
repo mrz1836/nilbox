@@ -1,10 +1,13 @@
 import type { ReactNode } from 'react'
 
-import { Switch } from '../controls'
+import { ErrorText, Switch } from '../controls'
 import { headingMatchClass, rowMatchClass, useSetting } from './match'
 
 // The building blocks every settings section lays itself out with: cards of rows, the
-// heading over a part of a section, the note under one, and the text of a refusal.
+// heading over a part of a section, and the note under one. The text of a refusal,
+// ErrorText, is a control the whole window shares; it is exported here too, for the
+// sections that import it from here.
+export { ErrorText }
 
 // joinIds joins the ids a control points aria-describedby at, leaving out those not shown
 // (false), or returns undefined when none are left.
@@ -18,28 +21,6 @@ export function joinIds(...ids: (string | false)[]): string | undefined {
 // error while it shows one, then any ids the section adds.
 export function rowDescribedBy(controlId: string, error: string, ...more: (string | false)[]): string | undefined {
   return joinIds(`${controlId}-help`, error !== '' && `${controlId}-error`, ...more)
-}
-
-interface ErrorTextProps {
-  // id is what a control's aria-describedby points at, so the error is read with it.
-  id?: string | undefined
-  // error is why a change was refused; nothing shows while it is ''.
-  error: string
-  // className places the text, such as a margin.
-  className?: string
-}
-
-// ErrorText is why a change was refused, announced as soon as it shows.
-export function ErrorText({ id, error, className = '' }: ErrorTextProps) {
-  if (error === '') {
-    return null
-  }
-
-  return (
-    <p id={id} role="alert" className={`${className} text-xs text-danger`.trim()}>
-      {error}
-    </p>
-  )
 }
 
 // Group is a card of setting rows.

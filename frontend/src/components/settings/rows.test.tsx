@@ -1,9 +1,14 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
+import { ErrorText as SharedErrorText } from '../controls'
 import { ErrorText, Group } from './rows'
 
 describe('ErrorText', () => {
+  it('is the shared control, for the sections that import it from here', () => {
+    expect(ErrorText).toBe(SharedErrorText)
+  })
+
   it('shows nothing while there is no error', () => {
     const { container } = render(<ErrorText id="save-error" error="" className="mt-1" />)
 

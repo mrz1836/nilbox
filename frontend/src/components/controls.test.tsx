@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   dangerIconButtonClass,
   describedBy,
+  ErrorText,
   Field,
   fromTriState,
   ghostButtonClass,
@@ -326,6 +327,47 @@ describe('tri-state settings', () => {
   })
 })
 
+describe('ErrorText', () => {
+  it('shows nothing while there is no error, prefix or not', () => {
+    const { container } = render(
+      <ErrorText id="save-error" error="" className="mt-1">
+        Couldn’t save:{' '}
+      </ErrorText>,
+    )
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('announces the error after its prefix, under the id a control points at', () => {
+    render(
+      <>
+        <input aria-label="Name" aria-describedby="save-error" />
+        <ErrorText id="save-error" error="the disk is full." className="mt-1">
+          Couldn’t save:{' '}
+        </ErrorText>
+      </>,
+    )
+
+    const alert = screen.getByRole('alert')
+    expect(alert.tagName).toBe('P')
+    expect(alert).toHaveTextContent('Couldn’t save: the disk is full.')
+    expect(alert).toHaveAttribute('id', 'save-error')
+    expect(alert).toHaveAttribute('class', 'mt-1 text-xs text-danger')
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveAccessibleDescription(
+      'Couldn’t save: the disk is full.',
+    )
+  })
+
+  it('needs no id, placement, or prefix', () => {
+    render(<ErrorText error="Too long." />)
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(/^Too long\.$/)
+    expect(alert).not.toHaveAttribute('id')
+    expect(alert).toHaveAttribute('class', 'text-xs text-danger')
+  })
+})
+
 describe('Field', () => {
   it('labels a control and shows its hint, or its error instead', () => {
     const { rerender } = render(
@@ -344,6 +386,8 @@ describe('Field', () => {
     )
 
     expect(screen.getByRole('alert')).toHaveTextContent('Too long.')
+    expect(screen.getByRole('alert')).toHaveAttribute('id', 'nick-error')
+    expect(screen.getByRole('alert')).toHaveAttribute('class', 'text-xs text-danger')
     expect(screen.getByRole('textbox', { name: 'Nickname' })).toHaveAccessibleDescription('Too long.')
     expect(screen.queryByText('Shown on the button.')).not.toBeInTheDocument()
   })

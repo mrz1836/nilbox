@@ -286,6 +286,31 @@ export function fromTriState(v: TriState): boolean | null {
   return v === 'on'
 }
 
+interface ErrorTextProps {
+  // id is what a control's aria-describedby points at, so the error is read with it.
+  id?: string | undefined
+  // error is why a change was refused; nothing shows while it is ''.
+  error: string
+  // className places the text, such as a margin.
+  className?: string
+  // children are fixed words the error follows, such as "Couldn't save: ", if any.
+  children?: ReactNode
+}
+
+// ErrorText is why a change was refused, announced as soon as it shows.
+export function ErrorText({ id, error, className = '', children }: ErrorTextProps) {
+  if (error === '') {
+    return null
+  }
+
+  return (
+    <p id={id} role="alert" className={`${className} text-xs text-danger`.trim()}>
+      {children}
+      {error}
+    </p>
+  )
+}
+
 export interface FieldProps {
   label: string
   // controlId is the id of the control the label names.
@@ -312,9 +337,7 @@ export function Field({ label, controlId, hint, error = '', aside, children }: F
       </div>
       {children}
       {error !== '' ? (
-        <p id={`${controlId}-error`} role="alert" className="text-xs text-danger">
-          {error}
-        </p>
+        <ErrorText id={`${controlId}-error`} error={error} />
       ) : (
         hint !== undefined && (
           <p id={`${controlId}-hint`} className="text-xs text-muted">
