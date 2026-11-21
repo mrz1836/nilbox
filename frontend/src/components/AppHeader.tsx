@@ -11,6 +11,7 @@ import type { Account, AppNotification, BudgetGauge, NotificationsTab, Settings 
 import { AccountMenu } from './AccountMenu'
 import { BetaBadge } from './BetaBadge'
 import { BudgetMenu } from './BudgetMenu'
+import { toolbarClass } from './controls'
 import { GitHubThreadsMenu } from './GitHubThreadsMenu'
 import { Logo } from './Logo'
 import { NotificationsMenu } from './NotificationsMenu'
@@ -219,7 +220,7 @@ export function AppHeader(props: AppHeaderProps) {
   } = props
 
   return (
-    <header className="relative z-30 flex h-[52px] shrink-0 items-center gap-4 border-b border-border bg-surface pr-3 pl-[80px] select-none [--wails-draggable:drag]">
+    <header className={`${toolbarClass} relative z-30`}>
       <h1 className="flex shrink-0">
         <Logo />
       </h1>
