@@ -292,8 +292,11 @@ func claudeFenceSettings(f *Fence, built fence.Fence, program, runDir string) cl
 	if sb := built.Sandbox; sb != nil {
 		s.Sandbox = &claudeSandbox{
 			Enabled: true, FailIfUnavailable: true, ExcludedCommands: claudeCommands(sb.Excluded, " *"),
-			Filesystem: claudeFilesystem{AllowWrite: nonNil(sb.Write), DenyWrite: nonNil(sb.DenyWrite), DenyRead: nonNil(sb.DenyRead)},
-			Network:    claudeNetwork{AllowedDomains: nonNil(sb.Domains), AllowLocalBinding: true},
+			Filesystem: claudeFilesystem{
+				AllowWrite: textutil.NonNil(sb.Write), DenyWrite: textutil.NonNil(sb.DenyWrite),
+				DenyRead: textutil.NonNil(sb.DenyRead),
+			},
+			Network: claudeNetwork{AllowedDomains: textutil.NonNil(sb.Domains), AllowLocalBinding: true},
 		}
 	}
 
@@ -368,14 +371,4 @@ func claudeCommands(cmds []fence.Command, suffix string) []string {
 // settings file.
 func claudeAbs(path string) string {
 	return "/" + path
-}
-
-// nonNil returns list, or an empty list for nil, so the settings write [] rather than
-// null.
-func nonNil(list []string) []string {
-	if list == nil {
-		return []string{}
-	}
-
-	return list
 }
