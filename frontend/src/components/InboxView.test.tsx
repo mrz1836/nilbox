@@ -1677,7 +1677,7 @@ describe('InboxView empty lists', () => {
 
     view.rerender(<Harness launch={launchOptions} clock={fixedNow} />)
 
-    expect(await section('Review requested')).toBeTruthy()
+    expect(await screen.findByRole('region', { name: 'Review requested' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
   })
 })
@@ -2153,7 +2153,7 @@ describe('InboxView filtering', () => {
     await userEvent.click(yours.getByRole('tab', { name: 'Snoozed 1' }))
     view.rerender(<Harness launch={launchOptions} clock={fixedNow} query="widget" />)
 
-    expect(await section('Review requested')).toBeTruthy()
+    expect(await screen.findByRole('region', { name: 'Review requested' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Yours' })).not.toBeInTheDocument()
 
     view.rerender(<Harness launch={launchOptions} clock={fixedNow} />)
@@ -2957,7 +2957,10 @@ describe('InboxView triage in the sheets', () => {
     await userEvent.click(assigned.getByRole('tab', { name: 'Dismissed 1' }))
     await userEvent.click(assigned.getByRole('button', { name: 'Parser drops the trailing newline' }))
     const sheet = await screen.findByRole('dialog', { name: 'Parser drops the trailing newline' })
-    expect(within(sheet).queryByRole('button', { name: 'Dismiss' }), 'a dismissed card is brought back').toBeNull()
+    expect(
+      within(sheet).queryByRole('button', { name: 'Dismiss' }),
+      'a dismissed card is brought back',
+    ).not.toBeInTheDocument()
 
     await userEvent.click(within(sheet).getByRole('button', { name: 'Restore' }))
 

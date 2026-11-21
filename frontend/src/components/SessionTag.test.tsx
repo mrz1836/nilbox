@@ -113,12 +113,12 @@ describe('SessionTag', () => {
     expect(newest).toHaveTextContent('default profile · Review prompt')
     expect(newest).toHaveTextContent('I need to run the test suite. May I?')
     expect(within(newest).getByRole('button', { name: 'Show in terminal' })).toBeEnabled()
-    expect(within(newest).queryByRole('button', { name: 'Resume' })).toBeNull()
+    expect(within(newest).queryByRole('button', { name: 'Resume' })).not.toBeInTheDocument()
 
     expect(older).toHaveTextContent('Codex')
     expect(older).toHaveTextContent('work profile · resumed')
     expect(older).toHaveTextContent('ended')
-    expect(within(older).queryByRole('button', { name: 'Show in terminal' })).toBeNull()
+    expect(within(older).queryByRole('button', { name: 'Show in terminal' })).not.toBeInTheDocument()
     expect(within(older).getByRole('button', { name: 'Resume' })).toBeEnabled()
   })
 
@@ -284,7 +284,7 @@ describe('SessionTag', () => {
     expect(show).toHaveAttribute('title', `Show ~/projects/.${brand.slug}/worktrees/example-repo/pr-7 in Finder`)
     await user.click(show)
     expect(platform.showSessionFolder).toHaveBeenCalledWith('0f8c1e2a-5b4d-4c3e-9a1f-2b3c4d5e6f70')
-    expect(within(running).queryByRole('alert')).toBeNull()
+    expect(within(running).queryByRole('alert')).not.toBeInTheDocument()
 
     platform.showSessionFolder.mockRejectedValueOnce(
       new Error(`~/projects/.${brand.slug}/worktrees/example-repo/pr-7 isn't there anymore.`),
@@ -306,8 +306,8 @@ describe('SessionTag', () => {
     const [running = document.body, stuck = document.body, done = document.body] = entries(3)
 
     // Only a session that ended can be removed; a failed one still counts as running.
-    expect(within(running).queryByRole('button', { name: 'Remove this session' })).toBeNull()
-    expect(within(stuck).queryByRole('button', { name: 'Remove this session' })).toBeNull()
+    expect(within(running).queryByRole('button', { name: 'Remove this session' })).not.toBeInTheDocument()
+    expect(within(stuck).queryByRole('button', { name: 'Remove this session' })).not.toBeInTheDocument()
 
     const remove = within(done).getByRole('button', { name: 'Remove this session' })
     expect(remove).toHaveAttribute('title', 'Remove this ended session from the list')
@@ -322,7 +322,7 @@ describe('SessionTag', () => {
 
     await user.click(remove)
     expect(platform.forgetSession).toHaveBeenCalledTimes(2)
-    expect(within(done).queryByRole('alert')).toBeNull()
+    expect(within(done).queryByRole('alert')).not.toBeInTheDocument()
     // The panel stays open for the other sessions; the list reads again once the app says
     // the sessions changed.
     entries(3)
@@ -375,10 +375,10 @@ describe('SessionTag', () => {
     await user.click(screen.getByRole('button', { name: 'Resume' }))
 
     expect(await screen.findByRole('status')).toHaveTextContent('started from the last fetched main')
-    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Copy session ID' }))
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('clears what went wrong once a later action works', async () => {
@@ -397,11 +397,11 @@ describe('SessionTag', () => {
 
     await user.click(screen.getByRole('button', { name: 'Show in terminal' }))
     expect(platform.focusSession).toHaveBeenCalledTimes(2)
-    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Copy session ID' }))
     expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument()
-    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('asks before resuming where a session runs, and confirms each hold apart', async () => {
@@ -429,7 +429,7 @@ describe('SessionTag', () => {
       alongside: running.key,
       confirmed: files.key,
     })
-    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('goes to the running session instead of resuming beside it', async () => {
@@ -448,7 +448,7 @@ describe('SessionTag', () => {
 
     expect(platform.focusSession).toHaveBeenCalledWith(running.running[0]?.sessionId)
     expect(platform.resumeSession).toHaveBeenCalledOnce()
-    expect(screen.queryByRole('dialog', { name: 'A session is already running here' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'A session is already running here' })).not.toBeInTheDocument()
   })
 
   it('cancels a held resume, and says why one failed', async () => {
@@ -464,7 +464,7 @@ describe('SessionTag', () => {
     await user.click(screen.getByRole('button', { name: 'Resume' }))
     await user.click(await screen.findByRole('button', { name: 'Cancel' }))
 
-    expect(screen.queryByRole('dialog', { name: 'A session is already running here' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'A session is already running here' })).not.toBeInTheDocument()
     expect(platform.resumeSession).toHaveBeenCalledOnce()
 
     await user.click(screen.getByRole('button', { name: 'Resume' }))
@@ -500,8 +500,8 @@ describe('SessionTag for an agent working in the background', () => {
     await user.click(screen.getByRole('button', { name: /Claude session/ }))
 
     const [run = document.body] = entries(1)
-    expect(within(run).queryByRole('button', { name: 'Show in terminal' })).toBeNull()
-    expect(within(run).queryByRole('button', { name: 'Resume' })).toBeNull()
+    expect(within(run).queryByRole('button', { name: 'Show in terminal' })).not.toBeInTheDocument()
+    expect(within(run).queryByRole('button', { name: 'Resume' })).not.toBeInTheDocument()
 
     await user.click(within(run).getByRole('button', { name: 'Watch' }))
     expect(onWatch).toHaveBeenCalledExactlyOnceWith('run')
@@ -550,7 +550,7 @@ describe('SessionTag for an agent working in the background', () => {
     await user.click(
       within(screen.getByRole('dialog', { name: 'Take over this run?' })).getByRole('button', { name: 'Cancel' }),
     )
-    expect(screen.queryByRole('dialog', { name: 'Take over this run?' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Take over this run?' })).not.toBeInTheDocument()
   })
 
   it('takes an ended run over without stopping it, and offers no Stop', async () => {
@@ -569,7 +569,7 @@ describe('SessionTag for an agent working in the background', () => {
     await user.click(screen.getByRole('button', { name: /Claude session/ }))
 
     const [run = document.body] = entries(1)
-    expect(within(run).queryByRole('button', { name: 'Stop' })).toBeNull()
+    expect(within(run).queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
 
     await user.click(within(run).getByRole('button', { name: 'Take over' }))
     expect(await screen.findByRole('dialog', { name: 'Take over this conversation?' })).toBeInTheDocument()

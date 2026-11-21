@@ -673,7 +673,7 @@ describe('App', () => {
 
     expect(listed.getByText(/Codex/)).toHaveTextContent(/^Codex · \S+ ago$/)
     // Pull request #8 is not in the inbox, so its worktree has no launch control.
-    expect(row('worktree-pr-8').queryByRole('button', { name: 'Open in Claude' })).toBeNull()
+    expect(row('worktree-pr-8').queryByRole('button', { name: 'Open in Claude' })).not.toBeInTheDocument()
 
     // The row's verb opens the launch options every launch control opens, worktree on.
     await userEvent.click(listed.getByRole('button', { name: 'Open in Claude' }))

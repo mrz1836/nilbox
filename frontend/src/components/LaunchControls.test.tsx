@@ -1119,7 +1119,7 @@ describe('LaunchControls', () => {
 
     await userEvent.click(first.getByRole('button', { name: 'Watch it' }))
     expect(onWatch).toHaveBeenCalledTimes(2)
-    expect(screen.queryByRole('dialog', { name: 'Autopilot’s agent is working here' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Autopilot’s agent is working here' })).not.toBeInTheDocument()
 
     await userEvent.click((await held()).getByRole('button', { name: 'Take over' }))
     await userEvent.click(

@@ -49,9 +49,9 @@ describe('WorkLine’s Autopilot line', () => {
 
   it('says nothing of a match with no background run, nor without the rows’ Autopilot', () => {
     showLine(autopilotMatch())
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
 
     renderAt(<WorkLine worktree={undefined} sessions={[]} agents={agents()} itemId={1} />)
-    expect(screen.queryByText(/Fix failing checks/)).toBeNull()
+    expect(screen.queryByText(/Fix failing checks/)).not.toBeInTheDocument()
   })
 })
