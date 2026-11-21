@@ -26,7 +26,7 @@ import {
   type WorktreeLinkKind,
   type WorktreeRepo,
 } from '../../platform'
-import { quietButtonClass } from '../controls'
+import { linkClass, quietButtonClass } from '../controls'
 import { AlertIcon, CopyIcon, FolderIcon, LockIcon, ScissorsIcon, TerminalIcon, TrashIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
 import { Changes, NotOnGitHub, waiting } from './ChangeLists'
@@ -81,7 +81,7 @@ function ItemLine({ item, facts }: { item: LinkedItem; facts: ItemFacts | undefi
         onClick={() => {
           openExternal(item.url)
         }}
-        className="text-accent hover:underline"
+        className={linkClass}
       >
         {itemRef(item)}
       </button>{' '}

@@ -7,6 +7,7 @@ import { filterWorktrees } from '../lib/worktreeFilter'
 import { factsOf, itemFacts, liveSessions } from '../lib/worktreeParts'
 import { attentionSort } from '../lib/worktrees'
 import type { AgentID, BranchRules, InboxItem, LinkedItem, SessionsSnapshot } from '../platform'
+import { linkClass } from './controls'
 import { ErrorBanner } from './ErrorBanner'
 import type { LaunchPlace } from './LaunchControls'
 import { BranchResults } from './worktrees/BranchResults'
@@ -195,7 +196,7 @@ export function WorktreesView({
                   onClick={() => {
                     onQuery('')
                   }}
-                  className="text-accent hover:underline"
+                  className={linkClass}
                 >
                   Clear the filter
                 </button>
