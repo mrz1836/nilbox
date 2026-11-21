@@ -25,5 +25,6 @@
     "erasableSyntaxOnly": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "bindings"]
+  "include": ["src", "bindings"],
+  "exclude": ["src/test/devtoolsAgent.test.ts"]
 }

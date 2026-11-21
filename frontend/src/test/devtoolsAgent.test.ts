@@ -1,6 +1,6 @@
-// The test reads and runs the agent with Node's own modules, whose types tsconfig.app.json
-// leaves out.
-/// <reference types="node" />
+// The test reads and runs the agent with Node's own modules, so it is type-checked in a
+// project of its own, tsconfig.test-node.json, the one that has Node's types:
+// tsconfig.app.json leaves both it and those types out of the window's code.
 
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'

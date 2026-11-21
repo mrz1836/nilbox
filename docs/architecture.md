@@ -5708,14 +5708,16 @@ font size, which only rem follows, and the shell passes the stored size in the p
 on px text. Only chrome lined up with the native window, such as the toolbar's height and
 its inset beside the window controls, and hairlines stay in px.
 
-**The build and its checks.** The root `tsconfig.json` only references two projects:
+**The build and its checks.** The root `tsconfig.json` only references three projects.
 `tsconfig.app.json` checks `src/` and `bindings/` against the browser (lib ES2023 and DOM, the
-`vite/client` types), and `tsconfig.node.json` checks `vite.config.ts` and the two Vitest
-configs against Node (its types, no DOM), both with the same strict flags and `noEmit`.
+`vite/client` types, and none of Node's, so the window's code can't name `process` or
+`Buffer`); `tsconfig.node.json` checks `vite.config.ts` and the two Vitest configs against
+Node (its types, no DOM); and `tsconfig.test-node.json` checks the one test that runs Node's
+own modules, `src/test/devtoolsAgent.test.ts`, which the app's project leaves out, against
+both (DOM and Node's types). All three keep the same strict flags and `noEmit`.
 `pnpm typecheck` checks each with `tsc -p`, so nothing writes build info, and typescript-eslint's
 `projectService` opens every linted file in the project that includes it, with no default
-project to fall back on; a test that needs Node's own modules names their types itself
-(`test/devtoolsAgent.test.ts`). ESLint bans importing `useMemo` and `useCallback` anywhere in
+project to fall back on. ESLint bans importing `useMemo` and `useCallback` anywhere in
 `src/` (`noMemoHooks` in `eslint.config.js`). The gate (`magex frontend:gate`) runs the format
 check, lint, the typecheck, the tests with coverage, the render check, and last the production
 build, which `chunkLimit` in `vite.config.ts` fails on a JS chunk over `chunkSizeWarningLimit`
