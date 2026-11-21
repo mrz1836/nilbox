@@ -418,7 +418,7 @@ function BackupList({ id, backups, pending, error, choice, onPick }: BackupListP
               <li key={b.path}>
                 <label
                   title={`${formatFull(b.at)}\n${b.path}`}
-                  className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 rounded-md border border-border px-3 py-2 has-checked:border-accent/60 has-checked:bg-accent/8 has-disabled:cursor-default has-disabled:opacity-60"
+                  className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 rounded-md border border-border px-3 py-2 has-checked:border-accent/60 has-checked:bg-accent/10 has-disabled:cursor-default has-disabled:opacity-60"
                 >
                   <input
                     type="radio"

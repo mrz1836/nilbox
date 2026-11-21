@@ -354,7 +354,7 @@ export function PromptLibrary({
                               {badges.map((badge) => (
                                 <span
                                   key={badge}
-                                  className="rounded-full bg-accent/15 px-1.5 text-caption leading-[1.125rem] font-medium text-text"
+                                  className="rounded-full bg-accent/14 px-1.5 text-caption leading-[1.125rem] font-medium text-text"
                                 >
                                   {badge}
                                 </span>

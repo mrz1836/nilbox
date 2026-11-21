@@ -143,7 +143,7 @@ export function PromptPreview({
               {result.preview}
             </pre>
             {result.notice !== '' && (
-              <div className="mt-3 rounded-md border border-warning/40 bg-warning/5 px-3 py-2">
+              <div className="mt-3 rounded-md border border-warning/45 bg-warning/5 px-3 py-2">
                 <p className="text-caption font-semibold tracking-wide text-warning uppercase">
                   Added for outside contributors
                 </p>

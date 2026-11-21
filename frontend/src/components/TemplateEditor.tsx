@@ -293,7 +293,7 @@ export function TemplateEditor({
           setCompletion(null)
         }}
         onScroll={syncScroll}
-        className={`${surfaceClass} resize-none bg-transparent text-transparent caret-text outline-none selection:bg-accent/25 placeholder:text-muted/70`}
+        className={`${surfaceClass} resize-none bg-transparent text-transparent caret-text outline-none selection:bg-accent/22 placeholder:text-muted/70`}
       />
       {open && (
         <div

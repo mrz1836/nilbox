@@ -661,7 +661,7 @@ export function LaunchControls({
     // A pill, the split's first part, narrows within the slot, its mark held and its words
     // cut short, so nothing of it ever runs past its border.
     const pill = `inline-flex min-w-0 items-center gap-1.75 rounded-l-lg px-2.5 font-semibold ${partRing}`
-    const done = `${pill} border border-success/30 bg-success/11 text-success transition-colors hover:bg-success/18`
+    const done = `${pill} border border-success/22 bg-success/10 text-success transition-colors hover:bg-success/14`
     // words are a pill's words, then how long the session has been as it is, after a dot
     // when dotted, as one line that truncates at its end, so the age is cut before the
     // words are; a list narrower than 48rem leaves the age out (and CardActions the words,
