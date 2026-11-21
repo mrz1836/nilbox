@@ -100,7 +100,7 @@ func TestValidateNamesThePartAndTheField(t *testing.T) {
 		},
 		{
 			name:   "a settle time out of range",
-			mutate: func(s *spec.Spec) { s.Trigger.SettleMinutes = ptr(61) },
+			mutate: func(s *spec.Spec) { s.Trigger.SettleMinutes = new(61) },
 			want:   []string{"trigger.settleMinutes"},
 		},
 		{
@@ -189,14 +189,14 @@ func TestValidateNamesThePartAndTheField(t *testing.T) {
 		{
 			name: "a budget out of range",
 			mutate: func(s *spec.Spec) {
-				s.Steps[0].Agent.Fence.Budget = &spec.Budget{USD: ptr(80.0)}
+				s.Steps[0].Agent.Fence.Budget = &spec.Budget{USD: new(80.0)}
 			},
 			want: []string{"steps[0].agent.fence.budget.usd"},
 		},
 		{
 			name: "a budget in both units",
 			mutate: func(s *spec.Spec) {
-				s.Steps[0].Agent.Fence.Budget = &spec.Budget{USD: ptr(3.0), Tokens: ptr(int64(50_000))}
+				s.Steps[0].Agent.Fence.Budget = &spec.Budget{USD: new(3.0), Tokens: new(int64(50_000))}
 			},
 			want: []string{"steps[0].agent.fence.budget"},
 		},
@@ -214,7 +214,7 @@ func TestValidateNamesThePartAndTheField(t *testing.T) {
 		},
 		{
 			name:   "tries out of range",
-			mutate: func(s *spec.Spec) { s.Limits.TriesPerItem = ptr(11) },
+			mutate: func(s *spec.Spec) { s.Limits.TriesPerItem = new(11) },
 			want:   []string{"limits.triesPerItem"},
 		},
 		{
@@ -333,7 +333,7 @@ func TestValidateHoldsTheStepsToTheirOrder(t *testing.T) {
 		},
 		{
 			name:  "plan mode in the background",
-			steps: []spec.Step{{Agent: &spec.AgentStep{Prompt: spec.PromptRef{Starter: "fix-checks"}, PlanMode: ptr(true)}}},
+			steps: []spec.Step{{Agent: &spec.AgentStep{Prompt: spec.PromptRef{Starter: "fix-checks"}, PlanMode: new(true)}}},
 			want:  []string{"steps[0].agent"},
 		},
 	}
@@ -412,8 +412,8 @@ func TestValidationErrorSaysTheFirstProblem(t *testing.T) {
 	t.Parallel()
 
 	s := loadTemplate(t, flagship)
-	s.Limits.TriesPerItem = ptr(0)
-	s.Limits.RunsPerDay = ptr(0)
+	s.Limits.TriesPerItem = new(0)
+	s.Limits.RunsPerDay = new(0)
 
 	err := spec.Validate(s)
 	require.Error(t, err)

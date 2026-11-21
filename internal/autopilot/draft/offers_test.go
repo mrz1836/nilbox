@@ -1,6 +1,7 @@
 package draft_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,13 +39,7 @@ func TestTheCatalogsOffersAreWhatItMarksOffered(t *testing.T) {
 
 // contains reports whether list holds v.
 func contains[T comparable](list []T, v T) bool {
-	for _, e := range list {
-		if e == v {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(list, v)
 }
 
 func TestAnAgentRunsOnlyWhereThisBuildRunsOne(t *testing.T) {

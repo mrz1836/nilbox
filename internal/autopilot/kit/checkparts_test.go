@@ -176,10 +176,10 @@ func TestASettingsChangeSaysEachSettingItChangesInTheWindowsWords(t *testing.T) 
 
 	auto := autopilotprefs.ModeAuto
 	s := settingsChecked(t, kit.SettingsChange{
-		DefaultMode: &auto, AgentsAtOnce: someNumber(1), RunsPerDay: someNumber(100), ActionsPerDay: someNumber(50),
+		DefaultMode: &auto, AgentsAtOnce: new(1), RunsPerDay: new(100), ActionsPerDay: new(50),
 		DailyCap:  &autopilotprefs.DailyCap{Amount: 2_000_000, Unit: autopilotprefs.UnitTokens},
-		KeepAwake: someNumber(true), HoldOnOutage: someNumber(false), CatchUpHours: someNumber(168),
-		HistoryDays: someNumber(14),
+		KeepAwake: new(true), HoldOnOutage: new(false), CatchUpHours: new(168),
+		HistoryDays: new(14),
 	})
 
 	assert.Empty(t, s.Problems)
@@ -202,7 +202,7 @@ func TestASettingsChangeSaysEachSettingItChangesInTheWindowsWords(t *testing.T) 
 	}
 	assert.Equal(t, want, s.After, "the whole of the settings once applied")
 
-	both := settingsChecked(t, kit.SettingsChange{HistoryDays: someNumber(30), LogDays: someNumber(7)})
+	both := settingsChecked(t, kit.SettingsChange{HistoryDays: new(30), LogDays: new(7)})
 	assert.Equal(t, 7, both.After.LogDays, "logs it names come after the history")
 	assert.Empty(t, both.Problems)
 
@@ -215,10 +215,10 @@ func TestASettingsChangeSaysWhatItSetsWhateverTheSettingsAreNow(t *testing.T) {
 
 	auto := autopilotprefs.ModeAuto
 	every := kit.SettingsChange{
-		DefaultMode: &auto, AgentsAtOnce: someNumber(2), RunsPerDay: someNumber(100), ActionsPerDay: someNumber(50),
+		DefaultMode: &auto, AgentsAtOnce: new(2), RunsPerDay: new(100), ActionsPerDay: new(50),
 		DailyCap:  &autopilotprefs.DailyCap{Amount: 5, Unit: autopilotprefs.UnitUSD},
-		KeepAwake: someNumber(true), HoldOnOutage: someNumber(true), CatchUpHours: someNumber(168),
-		HistoryDays: someNumber(14), LogDays: someNumber(7),
+		KeepAwake: new(true), HoldOnOutage: new(true), CatchUpHours: new(168),
+		HistoryDays: new(14), LogDays: new(7),
 	}
 
 	assert.Equal(t, []kit.SettingChange{
@@ -269,10 +269,10 @@ func TestASettingsChangeIsCheckedAsSettingsChecksIt(t *testing.T) {
 		want   []string
 	}{
 		"nothing changes": {
-			kit.SettingsChange{AgentsAtOnce: someNumber(2)}, []string{"It changes nothing: each setting it names is already so."},
+			kit.SettingsChange{AgentsAtOnce: new(2)}, []string{"It changes nothing: each setting it names is already so."},
 		},
 		"out of range": {
-			kit.SettingsChange{AgentsAtOnce: someNumber(4)}, []string{"Agents at once is out of range: 4; choose 1 to 3."},
+			kit.SettingsChange{AgentsAtOnce: new(4)}, []string{"Agents at once is out of range: 4; choose 1 to 3."},
 		},
 		"a mode": {
 			kit.SettingsChange{DefaultMode: someNumber(autopilotprefs.Mode("always"))},
@@ -283,10 +283,10 @@ func TestASettingsChangeIsCheckedAsSettingsChecksIt(t *testing.T) {
 			[]string{`Say "usd" or "tokens" for dailyCap's unit.`},
 		},
 		"logs past the history": {
-			kit.SettingsChange{LogDays: someNumber(91)}, []string{"Days of run logs is out of range: 91; choose 1 to 90."},
+			kit.SettingsChange{LogDays: new(91)}, []string{"Days of run logs is out of range: 91; choose 1 to 90."},
 		},
 		"logs longer than the history": {
-			kit.SettingsChange{HistoryDays: someNumber(30), LogDays: someNumber(60)},
+			kit.SettingsChange{HistoryDays: new(30), LogDays: new(60)},
 			[]string{"The run logs can't be kept longer than the history: 60 days of logs, 30 of history."},
 		},
 	} {

@@ -49,8 +49,8 @@ func formatTypes() []reflect.Type {
 		seen[typ] = true
 		types = append(types, typ)
 
-		for i := range typ.NumField() {
-			if inner := structOf(typ.Field(i).Type); inner != nil && !seen[inner] {
+		for field := range typ.Fields() {
+			if inner := structOf(field.Type); inner != nil && !seen[inner] {
 				queue = append(queue, inner)
 			}
 		}
@@ -67,8 +67,7 @@ func structKeys() ([]string, []string) {
 	for _, typ := range formatTypes() {
 		lines = append(lines, typ.String())
 
-		for i := range typ.NumField() {
-			f := typ.Field(i)
+		for f := range typ.Fields() {
 			name := jsonName(f)
 			keys = append(keys, name)
 			lines = append(lines, fmt.Sprintf("  %s: %s", name, f.Type))

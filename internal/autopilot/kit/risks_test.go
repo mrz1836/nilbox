@@ -127,13 +127,13 @@ func TestRiskLinesArePinned(t *testing.T) {
 		},
 		"agent-budget-and-time-over-the-defaults": func(t *testing.T) []kit.Risk {
 			return routineRisksOf(t, newRoutine("Fix", checksFailSpec(backgroundAgent(&spec.Fence{
-				Budget: dollars(10), TimeoutMinutes: someNumber(120), Tools: catalog.PresetEditTest,
+				Budget: dollars(10), TimeoutMinutes: new(120), Tools: catalog.PresetEditTest,
 				Allow: []string{"docker", "make", "a", "b", "c", "d", "e"},
 			}))))
 		},
 		"agent-budget-raised-from-its-own": func(t *testing.T) []kit.Risk {
-			before := checksFailSpec(backgroundAgent(&spec.Fence{Budget: dollars(5), TimeoutMinutes: someNumber(45)}))
-			after := checksFailSpec(backgroundAgent(&spec.Fence{Budget: dollars(8), TimeoutMinutes: someNumber(90)}))
+			before := checksFailSpec(backgroundAgent(&spec.Fence{Budget: dollars(5), TimeoutMinutes: new(45)}))
+			after := checksFailSpec(backgroundAgent(&spec.Fence{Budget: dollars(8), TimeoutMinutes: new(90)}))
 
 			return kit.RoutineRisks(&kit.Routine{Spec: before}, after, nil, nil)
 		},
@@ -196,17 +196,17 @@ func TestRiskLinesArePinned(t *testing.T) {
 		},
 		"limits-raised-over-the-defaults": func(t *testing.T) []kit.Risk {
 			return routineRisksOf(t, newRoutine("Busy", withLimits(spec.Limits{
-				TriesPerItem: someNumber(5), RunsPerDay: someNumber(50), WaitMinutes: someNumber(0),
+				TriesPerItem: new(5), RunsPerDay: new(50), WaitMinutes: new(0),
 			})))
 		},
 		"limits-loosened-from-its-own": func(t *testing.T) []kit.Risk {
 			before := withLimits(spec.Limits{
-				TriesPerItem: someNumber(3), RunsPerDay: someNumber(20), WaitMinutes: someNumber(60),
+				TriesPerItem: new(3), RunsPerDay: new(20), WaitMinutes: new(60),
 				ActiveHours:  &spec.ActiveHours{Days: []catalog.Weekday{"mon", "tue", "wed", "thu", "fri"}, From: "09:00", To: "17:00"},
 				BudgetPerDay: dollars(5),
 			})
 			after := withLimits(spec.Limits{
-				TriesPerItem: someNumber(4), RunsPerDay: someNumber(40), WaitMinutes: someNumber(15),
+				TriesPerItem: new(4), RunsPerDay: new(40), WaitMinutes: new(15),
 				ActiveHours: &spec.ActiveHours{From: "08:00", To: "20:00"}, BudgetPerDay: dollars(20),
 			})
 
@@ -354,9 +354,9 @@ func TestRisksWeighWhatAChangeAdds(t *testing.T) {
 	assert.Equal(t, "warning: It takes off “triage” on GitHub; a label can start a repository's label-triggered "+
 		"workflows.\n", riskLines(kit.RoutineRisks(nil, off, nil, nil)))
 
-	waited := withLimits(spec.Limits{WaitMinutes: someNumber(30)})
+	waited := withLimits(spec.Limits{WaitMinutes: new(30)})
 	assert.Equal(t, "warning: It tries again on one item without waiting, where it waited 30 minutes.\n",
-		riskLines(kit.RoutineRisks(&kit.Routine{Spec: waited}, withLimits(spec.Limits{WaitMinutes: someNumber(0)}), nil, nil)))
+		riskLines(kit.RoutineRisks(&kit.Routine{Spec: waited}, withLimits(spec.Limits{WaitMinutes: new(0)}), nil, nil)))
 
 	lower := kit.RoutineRisks(&kit.Routine{Spec: withLimits(spec.Limits{BudgetPerDay: dollars(20)})},
 		withLimits(spec.Limits{BudgetPerDay: dollars(5)}), nil, nil)

@@ -40,8 +40,7 @@ func namedStringFields() []namedField {
 	var out []namedField
 
 	for _, typ := range formatTypes() {
-		for i := range typ.NumField() {
-			f := typ.Field(i)
+		for f := range typ.Fields() {
 			if held := namedString(f.Type); held != nil {
 				out = append(out, namedField{path: typ.String() + "." + jsonName(f), held: held})
 			}
@@ -158,8 +157,8 @@ func TestTheStructuralSetsAreTheFormatsKeys(t *testing.T) {
 
 	keys := func(typ reflect.Type) []string {
 		out := make([]string, 0, typ.NumField())
-		for i := range typ.NumField() {
-			out = append(out, jsonName(typ.Field(i)))
+		for field := range typ.Fields() {
+			out = append(out, jsonName(field))
 		}
 
 		return out

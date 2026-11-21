@@ -222,14 +222,14 @@ func goldenHistories() []namedHistory {
 	return []namedHistory{
 		{name: "fresh", history: eval.History{}},
 		{name: "seen", history: eval.History{
-			Tries: 2, LastOutcome: catalog.OutcomeFailed, FirstHead: otherHead, OwnHeads: []string{}, CommentsSeen: ptr(3),
+			Tries: 2, LastOutcome: catalog.OutcomeFailed, FirstHead: otherHead, OwnHeads: []string{}, CommentsSeen: new(3),
 		}},
 		{name: "own-push", history: eval.History{
 			Tries: 1, LastOutcome: catalog.OutcomeDone, FirstHead: otherHead, OwnHeads: []string{strings.ToUpper(head)},
-			CommentsSeen: ptr(4),
+			CommentsSeen: new(4),
 		}},
-		{name: "working", history: eval.History{FirstHead: otherHead, OwnHeads: []string{}, Working: true, CommentsSeen: ptr(9)}},
-		{name: "first-head", history: eval.History{FirstHead: strings.ToUpper(head), OwnHeads: []string{}, CommentsSeen: ptr(0)}},
+		{name: "working", history: eval.History{FirstHead: otherHead, OwnHeads: []string{}, Working: true, CommentsSeen: new(9)}},
+		{name: "first-head", history: eval.History{FirstHead: strings.ToUpper(head), OwnHeads: []string{}, CommentsSeen: new(0)}},
 		{name: "manual", history: eval.History{Manual: "click-7", OwnHeads: []string{}}},
 	}
 }
@@ -351,11 +351,11 @@ func greenRow() facts.Row {
 	row.HeadRef = "dependabot/npm_and_yarn/lodash-4.17.21"
 	row.UpdatedAt = now.Add(-10 * 24 * time.Hour)
 	row.InAssigned = true
-	row.ReviewRequestedAt, row.AssignedAt = ptr(now.Add(-time.Hour)), ptr(now.Add(-2*time.Hour))
-	row.PinnedAt = ptr(now.Add(-time.Hour))
+	row.ReviewRequestedAt, row.AssignedAt = new(now.Add(-time.Hour)), new(now.Add(-2*time.Hour))
+	row.PinnedAt = new(now.Add(-time.Hour))
 	row.Repository = facts.RepoRow{
-		Read: true, Visibility: "PRIVATE", Permission: "WRITE", AllowUpdateBranch: true, Language: ptr("TypeScript"),
-		HasClone: ptr(true),
+		Read: true, Visibility: "PRIVATE", Permission: "WRITE", AllowUpdateBranch: true, Language: new("TypeScript"),
+		HasClone: new(true),
 	}
 	row.Details = &facts.DetailsRow{
 		HeadOID: head, BaseRef: "main", Mergeable: "MERGEABLE", MergeState: "BEHIND", ReviewDecision: "APPROVED",
@@ -364,7 +364,7 @@ func greenRow() facts.Row {
 		AutoMerge: true,
 	}
 	row.Checks = &facts.ChecksRow{Head: head, Complete: true, Checks: []facts.CheckRow{
-		{Name: "test", Workflow: "CI", Outcome: facts.CheckPassed, Required: ptr(true), CompletedAt: now.Add(-3 * time.Hour)},
+		{Name: "test", Workflow: "CI", Outcome: facts.CheckPassed, Required: new(true), CompletedAt: now.Add(-3 * time.Hour)},
 		{Name: "lint", Workflow: "CI", Outcome: facts.CheckPassed, CompletedAt: now.Add(-4 * time.Hour)},
 	}}
 	row.Files = &facts.FilesRow{Head: head, Complete: true, Files: []sensitive.File{{Path: "package.json"}, {Path: "pnpm-lock.yaml"}}}
@@ -388,7 +388,7 @@ func partialRow() facts.Row {
 		Labels: []string{"bug"}, ChangesRequested: 2,
 	}
 	row.Checks = &facts.ChecksRow{Head: head, Checks: []facts.CheckRow{
-		{Name: "test", Workflow: "CI", Outcome: facts.CheckFailed, Required: ptr(false), CompletedAt: now.Add(-time.Minute)},
+		{Name: "test", Workflow: "CI", Outcome: facts.CheckFailed, Required: new(false), CompletedAt: now.Add(-time.Minute)},
 		{Name: "lint", Workflow: "CI", Outcome: facts.CheckPending},
 	}}
 	row.Files = &facts.FilesRow{Head: head, Files: []sensitive.File{{Path: ".github/workflows/ci.yml"}, {Path: "docs/login.md"}}}
@@ -473,14 +473,14 @@ func triggerCases() []goldenTrigger {
 		{name: "appears once per head", trigger: on(catalog.EventAppears), once: catalog.OncePerHeadCommit, click: true},
 		{name: "appears once per day", trigger: on(catalog.EventAppears), once: catalog.OncePerDay, click: true},
 		{name: "new commits", trigger: on(catalog.EventNewCommits), history: true},
-		{name: "new commits, not the first", trigger: spec.Trigger{Event: catalog.EventNewCommits, FirstToo: ptr(false)}, history: true},
-		{name: "new commits, own pushes too", trigger: spec.Trigger{Event: catalog.EventNewCommits, OwnPushesToo: ptr(true)}, history: true},
+		{name: "new commits, not the first", trigger: spec.Trigger{Event: catalog.EventNewCommits, FirstToo: new(false)}, history: true},
+		{name: "new commits, own pushes too", trigger: spec.Trigger{Event: catalog.EventNewCommits, OwnPushesToo: new(true)}, history: true},
 		{name: "checks fail", trigger: on(catalog.EventChecksFailed), click: true},
-		{name: "checks fail, not waiting", trigger: spec.Trigger{Event: catalog.EventChecksFailed, WaitForChecks: ptr(false)}},
-		{name: "checks fail, settling 30m", trigger: spec.Trigger{Event: catalog.EventChecksFailed, SettleMinutes: ptr(30)}},
+		{name: "checks fail, not waiting", trigger: spec.Trigger{Event: catalog.EventChecksFailed, WaitForChecks: new(false)}},
+		{name: "checks fail, settling 30m", trigger: spec.Trigger{Event: catalog.EventChecksFailed, SettleMinutes: new(30)}},
 		{name: "checks fail, then paths and size", trigger: on(catalog.EventChecksFailed), conditions: paths},
 		{name: "checks pass", trigger: on(catalog.EventChecksPassed)},
-		{name: "checks pass, settling 0m", trigger: spec.Trigger{Event: catalog.EventChecksPassed, SettleMinutes: ptr(0)}},
+		{name: "checks pass, settling 0m", trigger: spec.Trigger{Event: catalog.EventChecksPassed, SettleMinutes: new(0)}},
 		{name: "checks pass once per day", trigger: on(catalog.EventChecksPassed), once: catalog.OncePerDay},
 		{name: "changes requested", trigger: on(catalog.EventChangesRequested)},
 		{name: "approved", trigger: on(catalog.EventApproved)},
@@ -493,9 +493,9 @@ func triggerCases() []goldenTrigger {
 		{name: "review requested", trigger: on(catalog.EventReviewRequested)},
 		{name: "assigned", trigger: on(catalog.EventAssigned)},
 		{name: "new comments", trigger: on(catalog.EventNewComments), history: true},
-		{name: "new comments, 5", trigger: spec.Trigger{Event: catalog.EventNewComments, Count: ptr(5)}, history: true},
+		{name: "new comments, 5", trigger: spec.Trigger{Event: catalog.EventNewComments, Count: new(5)}, history: true},
 		{name: "goes quiet", trigger: on(catalog.EventGoesQuiet)},
-		{name: "goes quiet, 1 day", trigger: spec.Trigger{Event: catalog.EventGoesQuiet, Days: ptr(1)}},
+		{name: "goes quiet, 1 day", trigger: spec.Trigger{Event: catalog.EventGoesQuiet, Days: new(1)}},
 		{name: "manual", trigger: on(catalog.EventManual), click: true},
 	}
 }
@@ -752,8 +752,8 @@ func newerCases() []listCase {
 // reversed returns names in the opposite order.
 func reversed(names []string) []string {
 	out := make([]string, 0, len(names))
-	for i := len(names) - 1; i >= 0; i-- {
-		out = append(out, names[i])
+	for _, name := range slices.Backward(names) {
+		out = append(out, name)
 	}
 
 	return out

@@ -40,7 +40,7 @@ func benchRows(n int) []facts.Row {
 			row.Author, row.AuthorType, row.Association = "octo-user", "User", "MEMBER"
 			row.Title, row.HeadRef = "Fix the login flow", "fix/login"
 			row.Details.ReviewDecision = decisions[(i/10)%len(decisions)]
-			row.SnoozedUntil = ptr(now.Add(time.Hour))
+			row.SnoozedUntil = new(now.Add(time.Hour))
 		}
 
 		rows = append(rows, row)

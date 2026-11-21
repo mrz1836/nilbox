@@ -199,8 +199,8 @@ func wordsNamesOf[E any](list []E, name func(E) string) []string {
 func wordsJSONKeys(t reflect.Type) []string {
 	var out []string
 
-	for i := range t.NumField() {
-		if name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ","); name != "" && name != "-" {
+	for field := range t.Fields() {
+		if name, _, _ := strings.Cut(field.Tag.Get("json"), ","); name != "" && name != "-" {
 			out = append(out, name)
 		}
 	}

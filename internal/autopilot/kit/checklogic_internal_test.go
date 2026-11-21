@@ -62,8 +62,8 @@ func jsonNames[T any]() []string {
 	t := reflect.TypeFor[T]()
 	names := make([]string, 0, t.NumField())
 
-	for i := range t.NumField() {
-		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+	for field := range t.Fields() {
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		names = append(names, name)
 	}
 

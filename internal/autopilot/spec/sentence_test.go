@@ -43,16 +43,16 @@ func TestSentenceSaysEveryTrigger(t *testing.T) {
 	}{
 		{spec.Trigger{Event: catalog.EventAppears}, "When a pull request by Dependabot in acme-org appears, pin it."},
 		{
-			spec.Trigger{Event: catalog.EventNewCommits, FirstToo: ptr(false), OwnPushesToo: ptr(true)},
+			spec.Trigger{Event: catalog.EventNewCommits, FirstToo: new(false), OwnPushesToo: new(true)},
 			"When a pull request by Dependabot in acme-org gets new commits, after the first one, a routine's own " +
 				"included, pin it.",
 		},
 		{
-			spec.Trigger{Event: catalog.EventChecksFailed, WaitForChecks: ptr(false)},
+			spec.Trigger{Event: catalog.EventChecksFailed, WaitForChecks: new(false)},
 			"When checks fail on pull requests by Dependabot in acme-org, pin it.",
 		},
 		{
-			spec.Trigger{Event: catalog.EventChecksFailed, SettleMinutes: ptr(0)},
+			spec.Trigger{Event: catalog.EventChecksFailed, SettleMinutes: new(0)},
 			"When checks fail on pull requests by Dependabot in acme-org, once every check has finished, pin it.",
 		},
 		{spec.Trigger{Event: catalog.EventChecksPassed}, "When checks pass on pull requests by Dependabot in acme-org, pin it."},
@@ -84,7 +84,7 @@ func TestSentenceSaysEveryTrigger(t *testing.T) {
 		{spec.Trigger{Event: catalog.EventAssigned}, "When a pull request by Dependabot in acme-org is assigned to you, pin it."},
 		{spec.Trigger{Event: catalog.EventNewComments}, "When a pull request by Dependabot in acme-org gets a new comment, pin it."},
 		{
-			spec.Trigger{Event: catalog.EventNewComments, Count: ptr(5)},
+			spec.Trigger{Event: catalog.EventNewComments, Count: new(5)},
 			"When a pull request by Dependabot in acme-org gets 5 new comments, pin it.",
 		},
 		{
