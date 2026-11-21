@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import type { SensitiveGroup } from '../platform'
 import { agentGroup, fileCheck, workflowsGroup } from '../test/fixtures'
-import { changeText, changeTone, changeWords, filesChip, sensitiveCount } from './sensitive'
+import { changeText, changeTone, changeWords, filesChip, levelDot, sensitiveCount } from './sensitive'
+
+describe('levelDot', () => {
+  it('colors each level’s dot, and a category with no level muted', () => {
+    expect(levelDot).toEqual({ danger: 'bg-danger', warning: 'bg-warning', '': 'bg-muted' })
+  })
+})
 
 describe('filesChip', () => {
   it('names the categories of the sensitive files, red when any runs', () => {
