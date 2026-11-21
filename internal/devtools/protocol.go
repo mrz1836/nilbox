@@ -168,5 +168,3 @@ func (e EventEntry) when() time.Time { return e.Time }
 func (e ConsoleEntry) when() time.Time { return e.Time }
 
 func (e TrailEntry) when() time.Time { return e.Time }
-
-func (n Note) when() time.Time { return n.Time }
