@@ -18,7 +18,7 @@ import type {
   AutopilotSource,
   AutopilotTestSearch,
 } from '../../../platform'
-import { fieldClass, quietButtonClass } from '../../controls'
+import { dangerIconButtonClass, fieldClass, quietButtonClass } from '../../controls'
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon, TrashIcon } from '../../icons'
 import { Block, Notes, type BuilderKit } from './parts'
 import { TokenField } from './TokenField'
@@ -169,7 +169,7 @@ function RemoveSource({ index, onRemove }: { index: number; onRemove: (() => voi
       aria-label={`Remove source ${String(index + 1)}`}
       title="Remove"
       onClick={onRemove}
-      className="ml-auto rounded-md p-1 text-muted hover:bg-raised hover:text-danger"
+      className={`${dangerIconButtonClass} ml-auto`}
     >
       <TrashIcon className="size-3.5" />
     </button>

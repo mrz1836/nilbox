@@ -2,7 +2,7 @@ import { useId, type ReactNode } from 'react'
 
 import { canSwitch, editable, modeHelp, modeLabels, modeOrder, type StatusLine } from '../../lib/autopilot'
 import type { AutopilotMode, AutopilotRoutine } from '../../platform'
-import { captionClass, primaryButtonClass, quietButtonClass, Segmented, Switch } from '../controls'
+import { captionClass, iconButtonClass, primaryButtonClass, quietButtonClass, Segmented, Switch } from '../controls'
 import { MoreIcon, RoutineIcon, SparkIcon } from '../icons'
 import { MenuButton } from '../Menu'
 import { describeTitle, graduateText, routineMenu, Status, type RoutineActions } from './RoutineList'
@@ -74,7 +74,7 @@ export function RoutinePane({
             label={`More for ${r.name}`}
             align="right"
             items={() => routineMenu(r, actions)}
-            className="flex size-7 items-center justify-center rounded-md text-muted hover:bg-raised hover:text-text"
+            className={iconButtonClass}
           >
             <MoreIcon className="size-4" />
           </MenuButton>

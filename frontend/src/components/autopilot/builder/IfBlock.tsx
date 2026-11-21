@@ -9,7 +9,7 @@ import type {
   AutopilotOpID,
   ItemKind,
 } from '../../../platform'
-import { fieldClass, quietButtonClass, Select, type SelectOption } from '../../controls'
+import { dangerIconButtonClass, fieldClass, quietButtonClass, Select, type SelectOption } from '../../controls'
 import { PlusIcon, TrashIcon } from '../../icons'
 import { Block, Notes, type BuilderKit } from './parts'
 import { TokenField, type TokenOption } from './TokenField'
@@ -109,7 +109,7 @@ function ConditionList({ kit, kinds, conditions, onChange, path, top, onRemove }
               aria-label="Remove the group"
               title="Remove the group"
               onClick={onRemove}
-              className="ml-auto rounded-md p-1 text-muted hover:bg-raised hover:text-danger"
+              className={`${dangerIconButtonClass} ml-auto`}
             >
               <TrashIcon className="size-3.5" />
             </button>
@@ -324,7 +324,7 @@ function Condition({ kit, kinds, clause, path, index, onChange, onRemove }: Cond
           aria-label={`Remove condition ${String(index + 1)}`}
           title="Remove"
           onClick={onRemove}
-          className="ml-auto rounded-md p-1 text-muted hover:bg-raised hover:text-danger"
+          className={`${dangerIconButtonClass} ml-auto`}
         >
           <TrashIcon className="size-3.5" />
         </button>

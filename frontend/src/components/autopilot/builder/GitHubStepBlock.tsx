@@ -11,7 +11,7 @@ import type {
   ItemKind,
   Prompt,
 } from '../../../platform'
-import { fieldClass, quietButtonClass } from '../../controls'
+import { dangerIconButtonClass, fieldClass, quietButtonClass } from '../../controls'
 import { PlusIcon, TrashIcon } from '../../icons'
 import { MenuButton, type MenuItem } from '../../Menu'
 import { Notes, type BuilderKit } from './parts'
@@ -159,7 +159,7 @@ export function GitHubStepBlock({ kit, prompts, path, kinds, actions, onChange }
                     onClick={() => {
                       onChange(actions.filter((_, k) => k !== j))
                     }}
-                    className="rounded-md p-1 text-muted hover:bg-raised hover:text-danger"
+                    className={dangerIconButtonClass}
                   >
                     <TrashIcon className="size-3.5" />
                   </button>
