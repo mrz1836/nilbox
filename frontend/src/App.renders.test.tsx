@@ -7,7 +7,7 @@ import type { ItemRowProps } from './components/ItemRow'
 import { triageList } from './lib/triage'
 import type { AutopilotMatch, AutopilotState, CardDensity, InboxItem, InboxSnapshot, ListKey } from './platform'
 import { deferred, nextTask } from './test/async'
-import { FIXED_NOW, fromNow } from './test/clock'
+import { FIXED_NOW, isoAgo } from './test/clock'
 import {
   autopilotMatch,
   avatarDataURL,
@@ -82,11 +82,6 @@ beforeEach(() => {
 
 const minute = 60_000
 
-// ago is a time minutes before FIXED_NOW.
-function ago(minutes: number): string {
-  return fromNow(-minutes * minute).toISOString()
-}
-
 // row is one of the inbox's items. About one in ten moved within the hour, so a minute
 // tick changes its age; the rest are hours to days old. A few are snoozed, back from a
 // snooze, dismissed, or pinned, and every seventh carries a sensitive-file check.
@@ -98,12 +93,12 @@ function row(id: number): InboxItem {
     number: id,
     title: `Item ${String(id)}`,
     url: `https://github.com/acme-org/example-repo/pull/${String(id)}`,
-    updatedAt: ago(minutes),
+    updatedAt: isoAgo({ m: minutes }),
     details: details(),
     files: id % 7 === 0 ? fileCheck() : null,
-    snoozedUntil: id % 13 === 0 ? ago(-3 * 24 * 60) : id % 17 === 0 ? ago(120) : '',
-    dismissedAt: id % 19 === 0 ? ago(600) : '',
-    pinnedAt: id % 23 === 0 ? ago(30) : '',
+    snoozedUntil: id % 13 === 0 ? isoAgo({ m: -3 * 24 * 60 }) : id % 17 === 0 ? isoAgo({ m: 120 }) : '',
+    dismissedAt: id % 19 === 0 ? isoAgo({ m: 600 }) : '',
+    pinnedAt: id % 23 === 0 ? isoAgo({ m: 30 }) : '',
   })
 }
 
@@ -116,7 +111,7 @@ function inbox(change: (item: InboxItem) => InboxItem = (i) => i): InboxSnapshot
     reviewRequested: list(ids(1, 100)),
     yours: list(ids(101, 200)),
     rate: { graphql: rate(), core: rate(), search: rate() },
-    lastRefreshedAt: ago(5),
+    lastRefreshedAt: isoAgo({ m: 5 }),
   })
 }
 

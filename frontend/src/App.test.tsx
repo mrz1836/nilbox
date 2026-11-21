@@ -15,6 +15,7 @@ import type {
   CardDensity,
 } from './platform'
 import { deferred } from './test/async'
+import { FIXED_NOW } from './test/clock'
 import {
   afterMerge,
   appInfo,
@@ -63,9 +64,6 @@ import {
 import { emit, listening, mocks, platform, renderApp, send } from './test/platform'
 
 vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platform))
-
-// FIXED_ISO is the test clock's time, when the session came to its state.
-const FIXED_ISO = '2026-06-15T12:00:00Z'
 
 // stored is every setting as the backend stores it after a change, as each setter returns
 // them.
@@ -171,7 +169,9 @@ describe('App', () => {
   })
 
   it('follows each item’s agent session on its card, without the worktrees view', async () => {
-    platform.listSessions.mockResolvedValue(sessionsSnapshot([agentSession({ state: 'working', stateAt: FIXED_ISO })]))
+    platform.listSessions.mockResolvedValue(
+      sessionsSnapshot([agentSession({ state: 'working', stateAt: FIXED_NOW.toISOString() })]),
+    )
 
     await renderApp()
 
@@ -696,7 +696,9 @@ describe('App', () => {
   })
 
   it('shows a running session’s terminal from its card, and how it stands on its worktree’s row, rather than starting another', async () => {
-    platform.listSessions.mockResolvedValue(sessionsSnapshot([agentSession({ state: 'working', stateAt: FIXED_ISO })]))
+    platform.listSessions.mockResolvedValue(
+      sessionsSnapshot([agentSession({ state: 'working', stateAt: FIXED_NOW.toISOString() })]),
+    )
     platform.listWorktrees.mockResolvedValue(
       worktreesSnapshot({
         repos: [

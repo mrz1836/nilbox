@@ -13,7 +13,7 @@ import type {
   WorktreeRepo,
 } from '../platform'
 import { deferred } from '../test/async'
-import { fixedNow, renderAt } from '../test/clock'
+import { FIXED_NOW, fixedNow, renderAt } from '../test/clock'
 import {
   agentSession,
   details as itemDetails,
@@ -565,7 +565,7 @@ describe('WorktreesView clones', () => {
   })
 
   it('lists each clone’s worktrees in attention order, newest commit first, without its main checkout', async () => {
-    const unix = (hours: number) => Date.parse('2026-06-15T12:00:00Z') / 1000 - hours * 3600
+    const unix = (hours: number) => FIXED_NOW.getTime() / 1000 - hours * 3600
     listing([
       finishedWorktree({ lastCommitUnix: unix(1) }),
       linked('open-old', { stage: 'active', lastCommitUnix: unix(30) }),
