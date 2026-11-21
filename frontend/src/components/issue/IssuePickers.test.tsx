@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { deferred } from '../../test/async'
 import { issue, repoLabels } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { IssueSummary } from './IssueSummary'
@@ -91,13 +92,8 @@ describe('LabelPicker', () => {
   })
 
   it('holds open while GitHub answers, and applies with ⌘↩', async () => {
-    let answer: (failed: string) => void = () => undefined
-    const onEdit = vi.fn(
-      () =>
-        new Promise<string>((resolve) => {
-          answer = resolve
-        }),
-    )
+    const answer = deferred<string>()
+    const onEdit = vi.fn(() => answer.promise)
     render(<IssueSummary issue={issue()} onEdit={onEdit} />)
 
     const panel = await picker('Edit labels', 'Labels')
@@ -112,7 +108,7 @@ describe('LabelPicker', () => {
     await userEvent.click(document.body)
     expect(screen.getByRole('dialog', { name: 'Labels' }), 'its outcome shows there').toBeInTheDocument()
 
-    answer('GitHub is down')
+    answer.resolve('GitHub is down')
     expect(await panel.findByRole('alert')).toHaveTextContent('GitHub is down')
 
     await userEvent.click(panel.getByRole('button', { name: 'Cancel' }))
@@ -142,18 +138,14 @@ describe('LabelPicker', () => {
   })
 
   it('says how the labels are coming, and when there are more than it shows', async () => {
-    let answer: (labels: ReturnType<typeof repoLabels>) => void = () => undefined
-    platform.issueLabels.mockReturnValueOnce(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const answer = deferred<ReturnType<typeof repoLabels>>()
+    platform.issueLabels.mockReturnValueOnce(answer.promise)
     render(<IssueSummary issue={issue()} onEdit={vi.fn()} />)
 
     const panel = await picker('Edit labels', 'Labels')
     expect(panel.getByText('Reading them from GitHub…')).toBeInTheDocument()
 
-    answer(repoLabels({ total: 5 }))
+    answer.resolve(repoLabels({ total: 5 }))
     expect(await panel.findByText('The first 3 labels, of 5.')).toBeInTheDocument()
 
     await userEvent.type(panel.getByRole('searchbox', { name: 'Filter labels' }), 'nothing')

@@ -9,6 +9,7 @@ import { useReviewDrafts } from '../../lib/reviewDrafts'
 import { approvalWait } from '../../lib/useReview'
 import { isTopmost } from '../../lib/useModalDialog'
 import type { InboxItem, Review, ReviewResult, Settings } from '../../platform'
+import { deferred } from '../../test/async'
 import { at } from '../../test/clock'
 import {
   agentSession,
@@ -215,19 +216,15 @@ describe('ReviewSheet', () => {
   })
 
   it('keeps one reading banner, counting on, as the inbox’s copy arrives mid-read', async () => {
-    let opened: (r: ReturnType<typeof review>) => void = () => undefined
-    platform.openReview.mockReturnValue(
-      new Promise((resolve) => {
-        opened = resolve
-      }),
-    )
+    const opened = deferred<ReturnType<typeof review>>()
+    platform.openReview.mockReturnValue(opened.promise)
     platform.refreshReview.mockReturnValue(new Promise(() => undefined))
     render(<Harness />)
 
     const banner = screen.getByRole('region', { name: 'Reading from GitHub' })
 
     act(() => {
-      opened(review({ body: '', fetchedAt: '', files: [] }))
+      opened.resolve(review({ body: '', fetchedAt: '', files: [] }))
     })
 
     expect(await screen.findByRole('article', { name: 'Description' })).toBeInTheDocument()
@@ -257,12 +254,8 @@ describe('ReviewSheet', () => {
     render(<Harness />)
     expect(await screen.findByText('cache')).toBeInTheDocument()
 
-    let answer: (r: ReturnType<typeof review>) => void = () => undefined
-    platform.readReviewAgain.mockReturnValueOnce(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const answer = deferred<ReturnType<typeof review>>()
+    platform.readReviewAgain.mockReturnValueOnce(answer.promise)
     const refresh = screen.getByRole('button', { name: 'Read it from GitHub again' })
     await userEvent.click(refresh)
 
@@ -277,7 +270,7 @@ describe('ReviewSheet', () => {
     expect(platform.readReviewAgain).toHaveBeenCalledOnce()
 
     act(() => {
-      answer(review({ body: 'Adds a **faster cache**.' }))
+      answer.resolve(review({ body: 'Adds a **faster cache**.' }))
     })
 
     expect(await screen.findByText('faster cache')).toBeInTheDocument()
@@ -311,12 +304,8 @@ describe('ReviewSheet', () => {
   })
 
   it('shows each step while an action runs, and waits for it', async () => {
-    let finish: (result: ReviewResult) => void = () => undefined
-    platform.actOnReview.mockReturnValue(
-      new Promise<ReviewResult>((resolve) => {
-        finish = resolve
-      }),
-    )
+    const finish = deferred<ReviewResult>()
+    platform.actOnReview.mockReturnValue(finish.promise)
     const onClose = vi.fn()
     const onDone = vi.fn()
     render(<Harness onClose={onClose} onDone={onDone} />)
@@ -353,7 +342,7 @@ describe('ReviewSheet', () => {
     expect(screen.getByRole('heading', { name: 'Add the widget cache', hidden: true })).toBeInTheDocument()
 
     act(() => {
-      finish(reviewResult())
+      finish.resolve(reviewResult())
     })
 
     await waitFor(() => {
@@ -1423,12 +1412,8 @@ describe('ReviewSheet', () => {
   })
 
   it('never lets a default reply that comes after you typed replace what you wrote', async () => {
-    let fill: (text: string) => void = () => undefined
-    platform.fillReply.mockReturnValue(
-      new Promise<string>((resolve) => {
-        fill = resolve
-      }),
-    )
+    const fill = deferred<string>()
+    platform.fillReply.mockReturnValue(fill.promise)
     const onDone = vi.fn()
     render(<Harness onDone={onDone} />)
 
@@ -1441,7 +1426,7 @@ describe('ReviewSheet', () => {
 
     // The default reply answers only now, after the first keystroke made the text yours.
     await act(async () => {
-      fill('Reviewed and approved. Thanks, @octo-other!')
+      fill.resolve('Reviewed and approved. Thanks, @octo-other!')
       await Promise.resolve()
     })
 
@@ -1541,13 +1526,9 @@ describe('ReviewSheet with workflow runs held for approval', () => {
   })
 
   it('says the progress panel leaves the sheet open', async () => {
-    let finish: (result: ReviewResult) => void = () => undefined
+    const finish = deferred<ReviewResult>()
     platform.refreshReview.mockResolvedValue(held())
-    platform.actOnReview.mockReturnValue(
-      new Promise<ReviewResult>((resolve) => {
-        finish = resolve
-      }),
-    )
+    platform.actOnReview.mockReturnValue(finish.promise)
     render(<Harness />)
 
     await userEvent.click(within(await runsBar()).getByRole('button', { name: 'Approve workflows to run' }))
@@ -1556,7 +1537,9 @@ describe('ReviewSheet with workflow runs held for approval', () => {
     expect(panel.closest('[role="status"]')).toHaveTextContent('the sheet stays open once it’s done')
 
     act(() => {
-      finish(reviewResult({ outcome: 'runs_approved', message: 'Approved 2 workflow runs on acme-org/example-repo#7' }))
+      finish.resolve(
+        reviewResult({ outcome: 'runs_approved', message: 'Approved 2 workflow runs on acme-org/example-repo#7' }),
+      )
     })
     await waitFor(() => {
       expect(screen.queryByRole('heading', { name: /^Approve workflows to run/ })).not.toBeInTheDocument()
@@ -2758,16 +2741,12 @@ describe('ReviewSheet that stays current', () => {
   })
 
   it('takes the inbox’s newer checks from the card’s change, then reads GitHub once', async () => {
-    let answer: (r: Review) => void = () => undefined
+    const answer = deferred<Review>()
     platform.refreshReview
       .mockResolvedValueOnce(
         review({ checks: [running], counts: { ...review().counts, state: 'PENDING', passed: 0, pending: 1 } }),
       )
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
-          answer = resolve
-        }),
-      )
+      .mockReturnValueOnce(answer.promise)
     platform.rebuildReview.mockResolvedValue(passed)
     const { rerender } = render(<Harness item={card('2026-06-15T11:59:00Z')} />)
 
@@ -2784,7 +2763,7 @@ describe('ReviewSheet that stays current', () => {
     expect(platform.refreshReview).toHaveBeenCalledTimes(2)
 
     act(() => {
-      answer(review())
+      answer.resolve(review())
     })
 
     await waitFor(() => {
@@ -2813,13 +2792,9 @@ describe('ReviewSheet that stays current', () => {
   })
 
   it('marks what an older copy holds as being read until GitHub answers', async () => {
-    let answer: (r: Review) => void = () => undefined
+    const answer = deferred<Review>()
     platform.openReview.mockResolvedValue({ ...passed, unrun: [heldRun('Deploy Preview', 101)] })
-    platform.refreshReview.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    platform.refreshReview.mockReturnValue(answer.promise)
     render(<Harness />)
 
     expect(await screen.findByText(/^Reading checks…/)).toHaveTextContent('Reading checks… · read 1h ago')
@@ -2830,7 +2805,7 @@ describe('ReviewSheet that stays current', () => {
     expect(await screen.findByText(/^Reading the conversation…/)).toBeInTheDocument()
 
     act(() => {
-      answer(review())
+      answer.resolve(review())
     })
 
     await waitFor(() => {
@@ -2841,12 +2816,10 @@ describe('ReviewSheet that stays current', () => {
   })
 
   it('reads once when the window comes back five minutes after the last read', async () => {
-    let answer: (r: Review) => void = () => undefined
-    platform.refreshReview.mockResolvedValueOnce(review({ fetchedAt: '2026-06-15T11:50:00Z' })).mockReturnValueOnce(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const answer = deferred<Review>()
+    platform.refreshReview
+      .mockResolvedValueOnce(review({ fetchedAt: '2026-06-15T11:50:00Z' }))
+      .mockReturnValueOnce(answer.promise)
     render(<Harness />)
 
     await waitFor(() => {
@@ -2863,7 +2836,7 @@ describe('ReviewSheet that stays current', () => {
     expect(platform.refreshReview).toHaveBeenCalledTimes(2)
 
     act(() => {
-      answer(review())
+      answer.resolve(review())
     })
 
     await waitFor(() => {

@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { useIssueDrafts } from '../../lib/issueDrafts'
 import type { LaunchOptions } from '../../lib/launch'
 import type { InboxItem, IssueResult } from '../../platform'
+import { deferred } from '../../test/async'
 import { at } from '../../test/clock'
 import {
   agentSession,
@@ -170,13 +171,9 @@ describe('IssueSheet', () => {
   })
 
   it('shows placeholders until it has a copy, and the reading banner while it first reads', async () => {
-    let answer: (v: ReturnType<typeof issue>) => void = () => undefined
+    const answer = deferred<ReturnType<typeof issue>>()
     platform.openIssue.mockReturnValue(new Promise(() => undefined))
-    platform.refreshIssue.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    platform.refreshIssue.mockReturnValue(answer.promise)
     render(<Harness />)
 
     expect(await screen.findByRole('region', { name: 'Reading from GitHub' })).toHaveTextContent(
@@ -185,7 +182,7 @@ describe('IssueSheet', () => {
     expect(screen.queryByRole('region', { name: 'Conversation' })).not.toBeInTheDocument()
 
     act(() => {
-      answer(issue())
+      answer.resolve(issue())
     })
 
     expect(await screen.findByRole('region', { name: 'Conversation' })).toBeInTheDocument()
@@ -423,12 +420,8 @@ describe('IssueSheet', () => {
   })
 
   it('closes as not planned once confirmed, posting the text first, and shows each step', async () => {
-    let finish: (r: IssueResult) => void = () => undefined
-    platform.actOnIssue.mockReturnValue(
-      new Promise((resolve) => {
-        finish = resolve
-      }),
-    )
+    const finish = deferred<IssueResult>()
+    platform.actOnIssue.mockReturnValue(finish.promise)
     const onDone = vi.fn()
     const onClose = vi.fn()
     render(<Harness onDone={onDone} onClose={onClose} />)
@@ -465,7 +458,7 @@ describe('IssueSheet', () => {
       leftInbox: true,
     })
     act(() => {
-      finish(closed)
+      finish.resolve(closed)
     })
 
     await waitFor(() => {

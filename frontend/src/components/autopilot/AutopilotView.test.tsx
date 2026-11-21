@@ -937,12 +937,9 @@ describe('Activity', () => {
 
     // While the tab is away, the routine matches again, and its notification asks for that.
     const recorded = autopilotMatch({ id: 20, effects: [], createdAt: '2026-06-15T11:58:00Z' })
-    let give: (page: ReturnType<typeof activityPage>) => void = () => undefined
-    const held = new Promise<ReturnType<typeof activityPage>>((done) => {
-      give = done
-    })
+    const held = deferred<ReturnType<typeof activityPage>>()
 
-    platform.autopilotActivity.mockReturnValueOnce(Object.assign(held, { cancel: vi.fn() }))
+    platform.autopilotActivity.mockReturnValueOnce(Object.assign(held.promise, { cancel: vi.fn() }))
     rerender(
       <Shown
         visible
@@ -957,7 +954,7 @@ describe('Activity', () => {
     expect(screen.queryByText('That is no longer in Autopilot’s history.')).not.toBeInTheDocument()
 
     await act(async () => {
-      give(
+      held.resolve(
         activityPage({
           days: [
             {
@@ -968,7 +965,7 @@ describe('Activity', () => {
           ],
         }),
       )
-      await held
+      await held.promise
     })
 
     await waitFor(() => {

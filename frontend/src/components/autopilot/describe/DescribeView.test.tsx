@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../../generated/brand'
 import type { AutopilotDraft, AutopilotRunEvent, DescribeConversation, Settings } from '../../../platform'
+import { deferred } from '../../../test/async'
 import { at } from '../../../test/clock'
 import {
   autopilotCatalog,
@@ -147,13 +148,9 @@ describe('DescribeView', () => {
 
   it('keeps what you typed while a message was sent', async () => {
     const user = userEvent.setup()
-    let answer: (c: DescribeConversation) => void = () => undefined
+    const answer = deferred<DescribeConversation>()
 
-    platform.sendToDescribeIt.mockReturnValueOnce(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    platform.sendToDescribeIt.mockReturnValueOnce(answer.promise)
     show()
 
     const box = composer().getByRole('textbox', { name: 'Tell Autopilot what you want' })
@@ -164,7 +161,7 @@ describe('DescribeView', () => {
     await user.type(box, ' And more.')
 
     await act(async () => {
-      answer(conversation([describeTurn({ text: 'First.', state: 'running' })], { running: true }))
+      answer.resolve(conversation([describeTurn({ text: 'First.', state: 'running' })], { running: true }))
       await Promise.resolve()
     })
     expect(box).toHaveValue('First. And more.')

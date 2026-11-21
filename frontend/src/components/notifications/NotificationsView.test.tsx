@@ -8,6 +8,7 @@ import { startLists, type NotificationLists } from '../../lib/notifications'
 import type { GitHubThreadsState } from '../../lib/useGitHubThreads'
 import type { NotificationsState } from '../../lib/useNotifications'
 import type { AppNotification, GitHubThread, GitHubThreadsSnapshot, NotificationsTab, Settings } from '../../platform'
+import { deferred } from '../../test/async'
 import { at } from '../../test/clock'
 import {
   autopilotAlert,
@@ -668,14 +669,9 @@ describe('NotificationsView', () => {
     })
 
     it('shows an Undo under way, and why it failed', async () => {
-      let answer: (value: Awaited<ReturnType<GitHubThreadsState['keep']>>) => void = () => undefined
+      const answer = deferred<Awaited<ReturnType<GitHubThreadsState['keep']>>>()
       const threads = mirror([], githubThreads({ queued: [queuedClear()] }), {
-        keep: vi.fn(
-          () =>
-            new Promise<Awaited<ReturnType<GitHubThreadsState['keep']>>>((resolve) => {
-              answer = resolve
-            }),
-        ),
+        keep: vi.fn(() => answer.promise),
       })
       renderPage({ tab: 'github', lists: cleared, threads })
 
@@ -684,7 +680,7 @@ describe('NotificationsView', () => {
       expect(screen.getByRole('button', { name: 'Undo: Add the widget cache' })).toHaveTextContent('Keeping…')
 
       await act(async () => {
-        answer({ ok: false, error: 'database is locked' })
+        answer.resolve({ ok: false, error: 'database is locked' })
         await Promise.resolve()
       })
 

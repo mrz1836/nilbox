@@ -8,6 +8,7 @@ import { HiddenLabelsContext, labelMatcher } from '../../lib/labels'
 import type { LaunchOptions } from '../../lib/launch'
 import type { TriageTab } from '../../lib/triage'
 import type { InboxItem } from '../../platform'
+import { deferred } from '../../test/async'
 import { at } from '../../test/clock'
 import {
   agentSession,
@@ -628,15 +629,10 @@ describe('CompactRow', () => {
   })
 
   it('fades the card under a note while an edit will likely take it out of the list', async () => {
-    let finish: () => void = () => undefined
+    const finish = deferred()
     const edits = {
       onCopyLink: vi.fn(),
-      onUnassign: vi.fn(
-        () =>
-          new Promise<void>((resolve) => {
-            finish = resolve
-          }),
-      ),
+      onUnassign: vi.fn(() => finish.promise),
       onRemoveReview: vi.fn(() => Promise.resolve()),
     }
     const row = mountCompact(item({ assigned: true, details: details() }), { triage: triageActions(), edits })
@@ -649,7 +645,7 @@ describe('CompactRow', () => {
     expect(row.querySelector('[data-hover-row]')).toHaveClass('opacity-100')
 
     await act(async () => {
-      finish()
+      finish.resolve()
       await Promise.resolve()
     })
 

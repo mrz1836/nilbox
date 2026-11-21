@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { deferred } from '../../test/async'
 import { at } from '../../test/clock'
 import { review, reviewerCandidates } from '../../test/fixtures'
 import { platform } from '../../test/platform'
@@ -108,13 +109,8 @@ describe('the reviewers list', () => {
   })
 
   it('fades a line while its edit runs, and says why one failed', async () => {
-    let finish: (why: string) => void = () => undefined
-    const edit = vi.fn(
-      () =>
-        new Promise<string>((resolve) => {
-          finish = resolve
-        }),
-    )
+    const finish = deferred<string>()
+    const edit = vi.fn(() => finish.promise)
     render(<ReviewSummary review={editable()} item={undefined} reviewers={editing(edit)} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Remove the review request for octo-asked' }))
@@ -126,7 +122,7 @@ describe('the reviewers list', () => {
       'one edit at a time',
     ).toBeDisabled()
 
-    finish('GitHub still asks octo-asked to review acme-org/example-repo#7.')
+    finish.resolve('GitHub still asks octo-asked to review acme-org/example-repo#7.')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('GitHub still asks octo-asked')
     expect(row).not.toHaveAttribute('aria-busy')
@@ -241,12 +237,8 @@ describe('ReviewerPicker', () => {
   })
 
   it('learns who works on the repository as it opens, when that is due, keeping what the user checked', async () => {
-    let learned: (r: Reviewers) => void = () => undefined
-    platform.learnReviewers.mockReturnValue(
-      new Promise<Reviewers>((resolve) => {
-        learned = resolve
-      }),
-    )
+    const learned = deferred<Reviewers>()
+    platform.learnReviewers.mockReturnValue(learned.promise)
     const edit = editing(
       vi.fn().mockResolvedValue(''),
       reviewerCandidates({ stale: true, people: [], teams: [], pulls: 0, readAt: '' }),
@@ -262,7 +254,7 @@ describe('ReviewerPicker', () => {
 
     await userEvent.click(panel.getByRole('checkbox', { name: /octo-asked/ }))
 
-    learned(reviewerCandidates())
+    learned.resolve(reviewerCandidates())
 
     expect(await panel.findByRole('checkbox', { name: /octo-member/ })).not.toBeChecked()
     expect(panel.queryByRole('status')).not.toBeInTheDocument()

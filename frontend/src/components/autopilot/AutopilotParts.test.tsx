@@ -10,6 +10,7 @@ import { useReviewDrafts } from '../../lib/reviewDrafts'
 import { useAutopilot, useAutopilotChips } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
 import { useInbox } from '../../lib/useInbox'
+import { deferred } from '../../test/async'
 import { at, clockAt, FIXED_NOW, withClock } from '../../test/clock'
 import {
   activityGroup,
@@ -172,20 +173,9 @@ function answer(page: ReturnType<typeof activityPage>): Answer {
 
 // heldAnswer is a page the test gives when it lets go.
 function heldAnswer() {
-  let give: (page: ReturnType<typeof activityPage>) => void = () => undefined
-  const call = Object.assign(
-    new Promise<ReturnType<typeof activityPage>>((done) => {
-      give = done
-    }),
-    { cancel: vi.fn() },
-  )
+  const d = deferred<ReturnType<typeof activityPage>>()
 
-  return {
-    call,
-    give: (page: ReturnType<typeof activityPage>) => {
-      give(page)
-    },
-  }
+  return { call: Object.assign(d.promise, { cancel: vi.fn() }), give: d.resolve }
 }
 
 // fakeLedger is a ledger of count matches, IDs count down to 1, which Activity reads as the

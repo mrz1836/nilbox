@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { formatClock } from '../../lib/time'
 import type { AutopilotRunEvents } from '../../platform'
+import { deferred } from '../../test/async'
 import { at } from '../../test/clock'
 import {
   agentMatch,
@@ -356,15 +357,11 @@ describe('RunView', () => {
   })
 
   it('reads one page at a time, the reads asked for meanwhile once it ends', async () => {
-    let answer: (page: AutopilotRunEvents) => void = () => undefined
+    const answer = deferred<AutopilotRunEvents>()
 
     platform.autopilotRunEvents
       .mockResolvedValueOnce(runEventsPage({ events: [say(1, 1)] }))
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
-          answer = resolve
-        }),
-      )
+      .mockReturnValueOnce(answer.promise)
       .mockResolvedValueOnce(runEventsPage({ events: [say(3, 3)], done: true }))
     renderView({}, null)
 
@@ -378,7 +375,7 @@ describe('RunView', () => {
     expect(platform.autopilotRunEvents).toHaveBeenCalledTimes(2)
 
     act(() => {
-      answer(runEventsPage({ events: [say(2, 2)] }))
+      answer.resolve(runEventsPage({ events: [say(2, 2)] }))
     })
 
     await screen.findByText('“Step 3”')
