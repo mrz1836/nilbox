@@ -100,7 +100,7 @@ function AgentRow({ defaultProfile, agents, profiles }: AgentRowProps) {
           onChange={(e) => {
             change(key, e.target.value)
           }}
-          className="min-w-0 rounded-md border border-border bg-surface px-2 py-1 text-sm disabled:opacity-60"
+          className="min-w-0 rounded-md border border-border bg-surface px-2 py-1 text-sm disabled:opacity-disabled"
         >
           <option value="">Inherit · {inherited}</option>
           {withValue(choices, value).map((c) => (

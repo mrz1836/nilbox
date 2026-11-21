@@ -157,7 +157,7 @@ function TerminalTiles({ terminals, chosen, onChoose }: TerminalTilesProps) {
         <label
           key={t.id}
           className={`flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 transition-colors has-checked:border-accent has-checked:bg-accent/10 has-focus-visible:outline-2 has-focus-visible:outline-accent ${
-            t.installed ? 'cursor-pointer hover:border-accent/50' : 'opacity-60'
+            t.installed ? 'cursor-pointer hover:border-accent/50' : 'opacity-disabled'
           }`}
         >
           <input

@@ -120,7 +120,7 @@ function ProviderCard({ provider, on, picked, live, checkOff, error, errorOn, on
     <section
       {...marks}
       aria-labelledby={`${id}-name`}
-      className={`rounded-lg border border-border bg-surface transition-opacity ${checkOff ? 'opacity-60' : ''} ${cardMatchClass}`}
+      className={`rounded-lg border border-border bg-surface transition-opacity ${checkOff ? 'opacity-disabled' : ''} ${cardMatchClass}`}
     >
       <div className="flex items-start justify-between gap-6 px-4 pt-3.5">
         <div className="min-w-0">

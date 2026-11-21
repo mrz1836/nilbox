@@ -119,7 +119,7 @@ describe('ServiceStatusSection', () => {
   it('greys every card while the check is off', () => {
     renderSection(settings({ refresh: { ...settings().refresh, serviceStatus: 0 } }))
 
-    expect(screen.getByRole('region', { name: 'GitHub' })).toHaveClass('opacity-60')
+    expect(screen.getByRole('region', { name: 'GitHub' })).toHaveClass('opacity-disabled')
     expect(card('GitHub').getByRole('switch', { name: 'GitHub' })).toBeDisabled()
     expect(card('Claude').getByRole('checkbox', { name: 'Claude API' })).toBeDisabled()
     expect(card('GitHub').getByText('Not checked: the check is off')).toBeInTheDocument()

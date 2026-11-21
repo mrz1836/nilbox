@@ -78,7 +78,7 @@ export function StringListEditor({
                 onClick={() => {
                   onRemove(item)
                 }}
-                className={`${dangerIconButtonClass} ml-auto disabled:opacity-50`}
+                className={`${dangerIconButtonClass} ml-auto disabled:opacity-disabled`}
               >
                 <XIcon className="size-3.5" />
               </button>

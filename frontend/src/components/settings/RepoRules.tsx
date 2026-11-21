@@ -199,7 +199,7 @@ function RuleRowItem({ row, nested, busy, onChange, onRemove }: RuleRowItemProps
         aria-label={`Remove the rule for ${row.target}`}
         title={`Remove the rule for ${row.target}`}
         onClick={onRemove}
-        className={`${dangerIconButtonClass} disabled:opacity-50`}
+        className={`${dangerIconButtonClass} disabled:opacity-disabled`}
       >
         <XIcon className="size-3.5" />
       </button>
