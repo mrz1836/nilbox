@@ -43,10 +43,9 @@ import {
   type AutopilotRunView,
   type TerminalID,
 } from '../../platform'
-import { iconButtonClass, quietButtonClass } from '../controls'
+import { ErrorText, iconButtonClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AutopilotIcon, DocumentIcon, ExternalIcon, FolderIcon, StopIcon, TerminalIcon, XIcon } from '../icons'
-import { ErrorText } from '../settings/rows'
 import { Spinner } from '../Spinner'
 import { TakeOverDialog } from './TakeOverDialog'
 

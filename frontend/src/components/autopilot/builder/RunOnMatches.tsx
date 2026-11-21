@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useMutation } from '../../../lib/useMutation'
 import { runOnMatches, type AutopilotDraft, type AutopilotMode, type AutopilotTestResult } from '../../../platform'
 import { ConfirmDialog } from '../../ConfirmDialog'
-import { buttonClass } from '../../controls'
+import { buttonClass, ErrorText } from '../../controls'
 
 export interface RunOnMatchesProps {
   // result is the last test, whose items the routine would run on now are offered.
@@ -99,11 +99,7 @@ export function RunOnMatches({ result, draft, saved, stale, mode }: RunOnMatches
             ))}
             {n > maxListed && <li className="text-xs text-muted">and {String(n - maxListed)} more</li>}
           </ul>
-          {run.error !== '' && (
-            <p role="alert" className="mt-2 text-xs text-danger">
-              {run.error}
-            </p>
-          )}
+          <ErrorText error={run.error} className="mt-2" />
         </ConfirmDialog>
       )}
     </div>

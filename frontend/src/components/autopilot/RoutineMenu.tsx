@@ -15,7 +15,7 @@ import {
   type InboxItem,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { fieldClass } from '../controls'
+import { ErrorText, fieldClass } from '../controls'
 import { RelativeTime } from '../RelativeTime'
 import { Toast, type ToastMessage } from '../Toast'
 import { TraceList } from './Trace'
@@ -276,9 +276,7 @@ function WhyDialog({ why, routines, onPick, onClose }: WhyDialogProps) {
               </select>
             </div>
             {explained.error !== '' ? (
-              <p role="alert" className="text-xs text-danger">
-                {explained.error}
-              </p>
+              <ErrorText error={explained.error} />
             ) : explained.data === undefined || explained.pending ? (
               <p className="text-xs">Reading what it decides…</p>
             ) : (

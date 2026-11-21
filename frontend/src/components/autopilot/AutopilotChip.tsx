@@ -14,7 +14,7 @@ import {
   type InboxItem,
   type TerminalID,
 } from '../../platform'
-import { quietButtonClass } from '../controls'
+import { ErrorText, quietButtonClass } from '../controls'
 import { AutopilotIcon } from '../icons'
 import { PopoverPanel } from '../PopoverPanel'
 import { RelativeTime } from '../RelativeTime'
@@ -124,11 +124,7 @@ function HistoryEntry({ match, onShow, onUndone }: HistoryEntryProps) {
           )}
         </p>
       ))}
-      {undo.error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {undo.error}
-        </p>
-      )}
+      <ErrorText error={undo.error} />
       {onShow !== undefined && inActivity(match) && (
         <button
           type="button"
@@ -156,9 +152,7 @@ function ItemHistory({ itemId, onShow }: { itemId: number; onShow: AutopilotRows
         Reading its history…
       </p>
     ) : (
-      <p role="alert" className="text-xs text-danger">
-        {history.error}
-      </p>
+      <ErrorText error={history.error} />
     )
   }
 

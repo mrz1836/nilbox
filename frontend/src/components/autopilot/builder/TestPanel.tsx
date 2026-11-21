@@ -15,7 +15,7 @@ import {
   type ItemKind,
 } from '../../../platform'
 import { PlannedLaunch } from '../../LaunchPreviewSection'
-import { buttonClass, captionClass, quietButtonClass } from '../../controls'
+import { buttonClass, captionClass, ErrorText, quietButtonClass } from '../../controls'
 import { ChevronDownIcon, ChevronRightIcon, RefreshIcon } from '../../icons'
 import { Spinner } from '../../Spinner'
 import { ResultMark, TraceList } from '../Trace'
@@ -104,9 +104,7 @@ function RunPreview({ draft, item }: RunPreviewProps) {
       {open && (
         <div id={`${id}-plan`} className="flex flex-col gap-2 rounded-md border border-border p-2.5">
           {plan.error !== '' ? (
-            <p role="alert" className="text-xs text-danger">
-              {plan.error}
-            </p>
+            <ErrorText error={plan.error} />
           ) : p === undefined || plan.pending ? (
             <p className="text-xs text-muted">Planning the run…</p>
           ) : (
@@ -220,11 +218,7 @@ export function TestPanel({
           {testedLabel(result)}
         </button>
       </div>
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
       {stale && !testing && (
         <p className="text-xs text-muted">
           What it watches, fires on, checks, or fires once per changed since this test: Test again to see what it
@@ -332,9 +326,7 @@ function ActionPreviews({ draft, itemId, name }: ActionPreviewsProps) {
         Building what it would send…
       </p>
     ) : (
-      <p role="alert" className="ml-6 py-1 text-xs text-danger">
-        {previews.error}
-      </p>
+      <ErrorText error={previews.error} className="ml-6 py-1" />
     )
   }
 

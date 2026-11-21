@@ -16,7 +16,7 @@ import {
   type Settings,
 } from '../../../platform'
 import { ConfirmDialog } from '../../ConfirmDialog'
-import { buttonClass, fieldClass, primaryButtonClass, quietButtonClass } from '../../controls'
+import { buttonClass, ErrorText, fieldClass, primaryButtonClass, quietButtonClass } from '../../controls'
 import { ErrorBanner } from '../../ErrorBanner'
 import { ChevronDownIcon, ChevronRightIcon, SparkIcon } from '../../icons'
 import { Composer } from './Composer'
@@ -152,11 +152,7 @@ function AgentForm({ initial, busy, error, onStart, onCancel }: AgentFormProps) 
       <p className="text-xs text-muted">
         Inherit takes what Settings → Autopilot chooses. Starting with them sets this conversation aside.
       </p>
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
       <div className="flex flex-wrap gap-2">
         <button type="submit" disabled={busy} className={primaryButtonClass}>
           Start a new conversation
@@ -343,11 +339,7 @@ export function DescribeView({
             }}
           />
         )}
-        {!changing && talk.newError !== '' && (
-          <p role="alert" className="text-xs text-danger">
-            {talk.newError}
-          </p>
-        )}
+        {!changing && <ErrorText error={talk.newError} />}
       </header>
       <OutsideProposals kit={kit} />
       {talk.error !== '' && c === undefined && <ErrorBanner>{talk.error}</ErrorBanner>}

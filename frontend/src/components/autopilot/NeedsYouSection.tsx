@@ -31,7 +31,7 @@ import {
   type CloneTarget,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, captionClass, primaryButtonClass, quietButtonClass } from '../controls'
+import { buttonClass, captionClass, ErrorText, primaryButtonClass, quietButtonClass } from '../controls'
 import { HoldDetails, holdTitle } from '../HoldDetails'
 import { AlertIcon, ClockIcon, RefreshIcon } from '../icons'
 import { Spinner } from '../Spinner'
@@ -451,11 +451,7 @@ export function NeedsYouSection({
 
   return (
     <div ref={listRef} className="flex flex-col gap-4">
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          Couldn’t read what waits for you: {error}
-        </p>
-      )}
+      <ErrorText error={error}>Couldn’t read what waits for you: </ErrorText>
       {(groups.waiting.length > 0 || groups.backlogs.length > 0 || groups.blocked.length > 0) && (
         <section aria-label="Needs you" className="flex flex-col gap-3">
           <h3 className="text-sm font-semibold">Needs you</h3>
@@ -559,12 +555,9 @@ export function NeedsYouSection({
                   />
                 ))}
               </ul>
-              {readiness.error !== '' && (
-                <p role="alert" className="flex items-center gap-1.5 text-xs text-danger">
-                  <AlertIcon className="size-3.5 shrink-0" />
-                  {readiness.error}
-                </p>
-              )}
+              <ErrorText error={readiness.error} className="flex items-center gap-1.5">
+                <AlertIcon className="size-3.5 shrink-0" />
+              </ErrorText>
             </div>
           )}
         </section>
@@ -614,11 +607,7 @@ export function NeedsYouSection({
             <code className="font-mono text-text">{`gh repo clone ${cloning.target.repo} ${cloning.target.dir}`}</code>,
             then {cloning.match.routine} runs on {itemText(cloning.match.item)} once it can.
           </p>
-          {clone.error !== '' && (
-            <p role="alert" className="mt-2 text-xs text-danger">
-              {clone.error}
-            </p>
-          )}
+          <ErrorText error={clone.error} className="mt-2" />
         </ConfirmDialog>
       )}
     </div>

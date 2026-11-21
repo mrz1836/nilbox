@@ -3,7 +3,7 @@ import { useId, type KeyboardEvent } from 'react'
 import { describeSeesText } from '../../../lib/autopilot'
 import type { Chip } from '../../../lib/describeit'
 import type { DescribeAttachRef, DescribeStatus } from '../../../platform'
-import { buttonClass, fieldClass, primaryButtonClass } from '../../controls'
+import { buttonClass, ErrorText, fieldClass, primaryButtonClass } from '../../controls'
 import { AlertIcon, StopIcon, XIcon } from '../../icons'
 
 export interface ComposerProps {
@@ -142,11 +142,7 @@ export function Composer({
           </button>
         )}
       </div>
-      {error !== '' && (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} />
     </form>
   )
 }
