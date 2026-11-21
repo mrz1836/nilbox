@@ -47,6 +47,7 @@ import {
 } from '../platform'
 import { useTakeOverTerminal, useWatch } from './autopilot/AutopilotChip'
 import { ConfirmDialog } from './ConfirmDialog'
+import { linkClass } from './controls'
 import { AlertIcon, AutopilotIcon, ChevronDownIcon, LockIcon, SparkIcon, TerminalIcon } from './icons'
 import { LaunchDialog, LaunchHoldDialog, LaunchMenu, preloadDialogs, TakeOverDialog } from './launchDialogs'
 import { RelativeTime } from './RelativeTime'
@@ -520,7 +521,7 @@ export function LaunchControls({
                   close()
                   onManagePrompts()
                 }}
-                className="self-start text-sm font-medium text-accent hover:underline"
+                className={`${linkClass} self-start text-sm`}
               >
                 Open the Prompts page
               </button>
@@ -826,7 +827,7 @@ export function LaunchControls({
               onClick={() => {
                 setConfirmingClone(true)
               }}
-              className="font-medium text-accent hover:underline"
+              className={linkClass}
             >
               {`Clone into ${state.target.dir}`}
             </button>
@@ -837,7 +838,7 @@ export function LaunchControls({
               onClick={() => {
                 void linkThenLaunch(state.target, state.request, state.target.elsewhere)
               }}
-              className="font-medium text-accent hover:underline"
+              className={linkClass}
             >
               {`Use ${state.target.elsewhere}`}
             </button>
@@ -847,7 +848,7 @@ export function LaunchControls({
             onClick={() => {
               void linkThenLaunch(state.target, state.request)
             }}
-            className="font-medium text-accent hover:underline"
+            className={linkClass}
           >
             It’s cloned elsewhere…
           </button>
@@ -1116,7 +1117,7 @@ function AddLocation({ className, linked, onAdd, onCancel }: AddLocationProps) {
         onClick={() => {
           onAdd(parent.path)
         }}
-        className="font-medium text-accent hover:underline"
+        className={linkClass}
       >
         {`Add ${parent.path}`}
       </button>
@@ -1125,7 +1126,7 @@ function AddLocation({ className, linked, onAdd, onCancel }: AddLocationProps) {
         onClick={() => {
           onAdd(linked.dir)
         }}
-        className="font-medium text-accent hover:underline"
+        className={linkClass}
       >
         Add only this clone
       </button>

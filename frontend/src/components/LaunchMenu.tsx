@@ -3,7 +3,7 @@ import { useId } from 'react'
 import { agentOf, effortLabel, modelLabel, planToggleLabel, promptApplies, sourceLabel } from '../lib/launch'
 import { savableChoices, withAgent, type Choices, type SaveStatus } from '../lib/launchChoices'
 import type { AgentInfo, InboxItem, LaunchSetting, Profile, Prompt, Resolution, Situation } from '../platform'
-import { buttonClass, primaryButtonClass, quietButtonClass } from './controls'
+import { buttonClass, linkClass, primaryButtonClass, quietButtonClass } from './controls'
 import { AlertIcon, StarIcon, TerminalIcon } from './icons'
 import { LaunchPreviewSection } from './LaunchPreviewSection'
 
@@ -440,7 +440,7 @@ export function LaunchMenu({
                   disabled={saving}
                   onClick={onUndo}
                   title="Put back the defaults this save replaced"
-                  className="font-medium text-accent hover:underline disabled:opacity-disabled"
+                  className={`${linkClass} disabled:opacity-disabled`}
                 >
                   Undo
                 </button>
