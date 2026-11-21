@@ -11,7 +11,7 @@ type Sort = 'recent' | 'status'
 
 // moveClass is a status's move up and move down buttons.
 const moveClass =
-  'flex size-6 items-center justify-center rounded text-muted transition-colors hover:bg-background hover:text-text disabled:pointer-events-none disabled:opacity-30'
+  'flex size-6 items-center justify-center rounded text-muted transition-colors hover:bg-background hover:text-text disabled:pointer-events-none disabled:opacity-disabled'
 
 export interface StatusSortProps {
   // title is the list's, which names the controls.

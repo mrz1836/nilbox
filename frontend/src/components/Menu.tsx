@@ -69,7 +69,7 @@ export interface MenuButtonProps {
 const noItems: readonly MenuItem[] = []
 
 const itemClass =
-  'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm whitespace-nowrap hover:bg-raised focus:bg-raised focus-visible:outline-none disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent aria-expanded:bg-raised'
+  'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm whitespace-nowrap hover:bg-raised focus:bg-raised focus-visible:outline-none disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent aria-expanded:bg-raised'
 
 // submenuGap is the least room a submenu keeps from the window's edges before it opens
 // the other way, in rem, so it follows the text size.
