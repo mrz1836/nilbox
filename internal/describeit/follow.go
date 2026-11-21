@@ -377,8 +377,8 @@ func lastLine(path string) string {
 
 	lines := strings.Split(string(tail), "\n")
 
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(lines[i])
+	for _, raw := range slices.Backward(lines) {
+		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "{") {
 			continue
 		}
