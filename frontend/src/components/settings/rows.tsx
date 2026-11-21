@@ -23,9 +23,13 @@ export function rowDescribedBy(controlId: string, error: string, ...more: (strin
   return joinIds(`${controlId}-help`, error !== '' && `${controlId}-error`, ...more)
 }
 
+// groupClass is a card of rows with a rule between each, for a section that draws its
+// own card rather than a Group, such as a list it lays out itself.
+export const groupClass = 'divide-y divide-border rounded-lg border border-border bg-surface'
+
 // Group is a card of setting rows.
 export function Group({ children }: { children: ReactNode }) {
-  return <div className="divide-y divide-border rounded-lg border border-border bg-surface">{children}</div>
+  return <div className={groupClass}>{children}</div>
 }
 
 // Note is the small print under a part of a section.
