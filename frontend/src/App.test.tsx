@@ -1664,8 +1664,11 @@ describe('App’s projects tip', () => {
       projectAccess: 'needs_scope',
     })
 
-  it('offers to show issue projects, and stores that the offer was put away', async () => {
+  beforeEach(() => {
     platform.getInboxSnapshot.mockResolvedValue(needsScope())
+  })
+
+  it('offers to show issue projects, and stores that the offer was put away', async () => {
     platform.setProjectsTipDismissed.mockResolvedValue(settings({ projectsTipDismissed: true }))
     await renderApp()
 
@@ -1676,7 +1679,6 @@ describe('App’s projects tip', () => {
   })
 
   it('offers nothing once the offer was put away', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(needsScope())
     platform.getSettings.mockResolvedValue(settings({ projectsTipDismissed: true }))
     await renderApp()
 
@@ -1685,7 +1687,6 @@ describe('App’s projects tip', () => {
   })
 
   it('keeps the command in Settings → Account', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(needsScope())
     await renderApp()
 
     await openSettingsFromMenu()

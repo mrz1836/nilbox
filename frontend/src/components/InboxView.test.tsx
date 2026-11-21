@@ -506,8 +506,11 @@ describe('InboxView collapsing', () => {
     ]),
   })
 
-  it('collapses a list from its header to just its tabs, and opens it again', async () => {
+  beforeEach(() => {
     platform.getInboxSnapshot.mockResolvedValue(authored)
+  })
+
+  it('collapses a list from its header to just its tabs, and opens it again', async () => {
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const list = await section('Yours')
@@ -538,7 +541,6 @@ describe('InboxView collapsing', () => {
   })
 
   it('opens with the lists collapsed the way they were left', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(authored)
     platform.getCollapsedSections.mockResolvedValue(['yours'])
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -551,7 +553,6 @@ describe('InboxView collapsing', () => {
 
   it('waits for the collapsed lists before showing any, so none flashes open', async () => {
     const collapsed = deferred<ListKey[]>()
-    platform.getInboxSnapshot.mockResolvedValue(authored)
     platform.getCollapsedSections.mockReturnValue(collapsed.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -570,7 +571,6 @@ describe('InboxView collapsing', () => {
   })
 
   it('opens a collapsed list when one of its tabs is chosen', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(authored)
     platform.getCollapsedSections.mockResolvedValue(['yours'])
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -593,6 +593,11 @@ describe('InboxView triage', () => {
   const fresh = item({ id: 1, title: 'Add the widget cache' })
   const snoozed = item({ id: 2, number: 8, title: 'Bump the parser', snoozedUntil: '2026-06-18T12:00:00Z' })
   const dismissed = item({ id: 3, number: 9, title: 'Rename the flag', dismissedAt: '2026-06-15T09:00:00Z' })
+
+  // Each test starts from an inbox holding fresh alone, unless it answers otherwise.
+  beforeEach(() => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
+  })
 
   it('sets a muted repository’s items apart in the Muted tab, out of the count', async () => {
     const quiet = item({ id: 4, number: 11, title: 'Quiet change', repo: 'acme-org/quiet', repoRule: 'muted' })
@@ -625,7 +630,6 @@ describe('InboxView triage', () => {
   })
 
   it('mutes a card’s org from its menu, and undoes it from the toast', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.setRepoRule.mockResolvedValue(settings({ repoRules: { pinned: [], muted: ['acme-org'] } }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -651,7 +655,6 @@ describe('InboxView triage', () => {
   })
 
   it('says why a rule could not be changed', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.setRepoRule.mockRejectedValue(new Error('database is locked'))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -668,7 +671,6 @@ describe('InboxView triage', () => {
   })
 
   it('opens the pinned and muted repositories in Settings from a card’s menu', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     const review = await section('Review requested')
@@ -718,7 +720,6 @@ describe('InboxView triage', () => {
   })
 
   it('explains empty tabs', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
     const review = await section('Review requested')
 
@@ -730,7 +731,6 @@ describe('InboxView triage', () => {
   })
 
   it('moves between tabs with the arrow keys', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
     const review = await section('Review requested')
     const inbox = review.getByRole('tab', { name: 'Review requested 1' })
@@ -764,7 +764,6 @@ describe('InboxView triage', () => {
   })
 
   it('dismisses an item, and undoes it from the toast', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.dismissItem.mockResolvedValue(
       snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: FIXED_NOW.toISOString() }]) }),
     )
@@ -787,7 +786,6 @@ describe('InboxView triage', () => {
   })
 
   it('snoozes for the default length in one click', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.snoozeItem.mockResolvedValue(
       snapshot({ reviewRequested: list([{ ...fresh, snoozedUntil: '2026-06-22T12:00:00Z' }]) }),
     )
@@ -810,7 +808,6 @@ describe('InboxView triage', () => {
   })
 
   it('snoozes for another length from the menu, or opens the default', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.snoozeItem.mockResolvedValue(
       snapshot({ reviewRequested: list([{ ...fresh, snoozedUntil: '2026-06-16T12:00:00Z' }]) }),
     )
@@ -999,7 +996,6 @@ describe('InboxView triage', () => {
   it('sets a dismissed item aside at once, before the backend answers', async () => {
     const dismissal = deferred<InboxSnapshot>()
     const dismissedNow = snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: FIXED_NOW.toISOString() }]) })
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.dismissItem.mockReturnValue(dismissal.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -1018,7 +1014,6 @@ describe('InboxView triage', () => {
   })
 
   it('says why a triage action failed', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.dismissItem.mockRejectedValue(new Error('item not found; refresh the inbox and try again'))
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -1035,7 +1030,6 @@ describe('InboxView triage', () => {
   })
 
   it('reports an undo that failed', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.snoozeItem.mockRejectedValue(new Error('database is locked'))
     platform.dismissItem.mockResolvedValue(snapshot({ reviewRequested: list([{ ...fresh, dismissedAt: '' }]) }))
     platform.restoreItem.mockRejectedValue(new Error('database is locked'))
@@ -1055,7 +1049,6 @@ describe('InboxView triage', () => {
   })
 
   it('says a snooze without a stored end was snoozed', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.snoozeItem.mockResolvedValue(snapshot())
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -1084,7 +1077,6 @@ describe('InboxView triage', () => {
   })
 
   it('says why a refreshed item left the inbox', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.refreshItem.mockResolvedValue(snapshot())
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -1098,7 +1090,6 @@ describe('InboxView triage', () => {
 
   it('holds the row controls while a refresh runs, and says why it failed', async () => {
     const refresh = deferred<InboxSnapshot>()
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.refreshItem.mockReturnValue(refresh.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -1195,7 +1186,6 @@ describe('InboxView triage', () => {
 
   it('never lets an older answer replace a newer one', async () => {
     const dismissal = deferred<InboxSnapshot>()
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([fresh]) }))
     platform.dismissItem.mockReturnValue(dismissal.promise)
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
@@ -1792,8 +1782,11 @@ describe('InboxView’s projects tip', () => {
       projectAccess: 'needs_scope',
     })
 
-  it('offers to show issue projects while the token cannot read them', async () => {
+  beforeEach(() => {
     platform.getInboxSnapshot.mockResolvedValue(needsScope())
+  })
+
+  it('offers to show issue projects while the token cannot read them', async () => {
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     expect(
@@ -1811,7 +1804,6 @@ describe('InboxView’s projects tip', () => {
   })
 
   it('checks again with a refresh, then says the projects are on and shows them', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(needsScope())
     platform.refreshInbox.mockResolvedValue(
       snapshot({
         yours: list([
@@ -1835,7 +1827,6 @@ describe('InboxView’s projects tip', () => {
   })
 
   it('puts the offer away for good', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(needsScope())
     render(<Harness launch={launchOptions} clock={fixedNow} />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Don’t show this again' }))
@@ -2629,10 +2620,14 @@ describe('InboxView issue sheet', () => {
     assigned: true,
   })
 
-  it('opens an issue from its title, and reports what the action came to', async () => {
-    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash]) }))
+  // The sheet reads crash, unless a test answers otherwise.
+  beforeEach(() => {
     platform.openIssue.mockResolvedValue(issue({ id: 2 }))
     platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
+  })
+
+  it('opens an issue from its title, and reports what the action came to', async () => {
+    platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash]) }))
     platform.actOnIssue.mockResolvedValue(
       issueResult({
         outcome: 'commented_not_closed',
@@ -2658,8 +2653,6 @@ describe('InboxView issue sheet', () => {
   it('steps from a pull request to an issue and back, switching sheets', async () => {
     const third = item({ id: 3, number: 9, title: 'Third' })
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([item({ id: 1 }), crash, third]) }))
-    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
-    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     platform.openReview.mockImplementation((id) =>
       Promise.resolve(review({ id, title: id === 3 ? 'Third' : 'Add the widget cache' })),
     )
@@ -2698,8 +2691,6 @@ describe('InboxView issue sheet', () => {
 
   it('lists both sheets’ conversations in the order chosen in either, and remembers it', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash, item({ id: 1 })]) }))
-    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
-    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     platform.openReview.mockResolvedValue(review({ id: 1, timeline: reviewTimeline() }))
     platform.refreshReview.mockResolvedValue(review({ id: 1, timeline: reviewTimeline() }))
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
@@ -2721,8 +2712,6 @@ describe('InboxView issue sheet', () => {
 
   it('opens an issue from its menu', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash]) }))
-    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
-    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
 
     const row = (await screen.findAllByRole('listitem')).find((li) =>
@@ -2736,8 +2725,6 @@ describe('InboxView issue sheet', () => {
 
   it('takes the user off the issue from its sheet, which closes, and says why it couldn’t', async () => {
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ yours: list([crash]) }))
-    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
-    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     platform.unassignItem.mockRejectedValueOnce(new Error('GitHub refused it.'))
     render(<Harness launch={launchOptions} clock={fixedNow} reviews />)
 
@@ -2760,8 +2747,6 @@ describe('InboxView issue sheet', () => {
   it('follows a link between the sheets, and steps back', async () => {
     const pull = item({ id: 1, number: 14, title: 'Keep the trailing newline' })
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ reviewRequested: list([pull]), yours: list([crash]) }))
-    platform.openIssue.mockResolvedValue(issue({ id: 2 }))
-    platform.refreshIssue.mockResolvedValue(issue({ id: 2 }))
     platform.openReview.mockResolvedValue(review({ id: 1, title: 'Keep the trailing newline', number: 14 }))
     platform.refreshReview.mockResolvedValue(
       review({
