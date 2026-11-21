@@ -225,10 +225,7 @@ func sameRows(a, b []Candidate) bool {
 // arrives while one is still running is skipped; failures are logged, and a panicking
 // round is recovered, so it keeps going until its context is canceled.
 type ChecksFollower struct {
-	follow func(ctx context.Context) error
-	every  periodic.Every
-	wake   chan struct{}
-	logger *slog.Logger
+	job *periodic.Job
 }
 
 // NewChecksFollower returns a ChecksFollower over s, as often as every says, logging
@@ -245,20 +242,17 @@ func newChecksFollower(follow func(ctx context.Context) error, every periodic.Ev
 		every = func(context.Context) time.Duration { return FollowChecksInterval }
 	}
 
-	return &ChecksFollower{follow: follow, every: every, wake: make(chan struct{}, 1), logger: logger}
+	return &ChecksFollower{job: periodic.NewJob(every, followChecksJob, follow, logger)}
 }
 
 // Run follows now and then as often as every says until ctx is canceled, then waits for a
 // round in flight to return. Its rounds find nothing to read until the page has read the
 // list from GitHub in this run.
 func (f *ChecksFollower) Run(ctx context.Context) {
-	periodic.RunEvery(ctx, f.every, f.wake, followChecksJob, f.follow, f.logger)
+	f.job.Run(ctx)
 }
 
 // Wake has the follower read how often to follow again, as when the user changed it.
 func (f *ChecksFollower) Wake() {
-	select {
-	case f.wake <- struct{}{}:
-	default:
-	}
+	f.job.Wake()
 }
