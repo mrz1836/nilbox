@@ -2,8 +2,9 @@
 #  Frontend
 #
 #  Purpose: Run the desktop frontend gate (frozen-lockfile install, format check,
-#  lint, typecheck, tests with coverage, and the render profile through the React
-#  Compiler) on an ubuntu runner.
+#  lint, typecheck, tests with coverage, the render profile through the React
+#  Compiler, and the production build, which fails on an oversize chunk) on an
+#  ubuntu runner.
 #
 #  The gate itself is the local `magex frontend:gate` target (magefiles/frontend.go),
 #  so CI and local checks cannot drift apart.

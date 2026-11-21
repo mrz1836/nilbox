@@ -308,6 +308,7 @@ func TestFrontendGate(t *testing.T) {
 		"run typecheck",
 		"run test:coverage",
 		"run test:renders",
+		"run build",
 	}
 
 	t.Run("installs, then runs every check in order", func(t *testing.T) {

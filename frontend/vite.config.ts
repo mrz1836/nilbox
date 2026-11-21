@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
 import react, { reactCompilerPreset } from '@vitejs/plugin-react'
@@ -18,10 +19,38 @@ function brandTitle(): Plugin {
   }
 }
 
+// chunkLimit fails the build when a JS chunk is over build.chunkSizeWarningLimit, in kB of
+// 1,000 bytes as Vite counts them: Vite only warns, and the frontend gate builds, so a chunk
+// that outgrows the limit stops the gate rather than scrolling past in its output. It
+// measures each chunk as written, after Vite's own generateBundle work (the preload lists
+// it fills in), as Vite's size report does.
+function chunkLimit(): Plugin {
+  let limit = 0
+
+  return {
+    name: 'chunk-limit',
+    apply: 'build',
+    configResolved(config) {
+      limit = config.build.chunkSizeWarningLimit
+    },
+    writeBundle(_options, bundle) {
+      const over = Object.values(bundle).flatMap((file) => {
+        const kB = file.type === 'chunk' ? Buffer.byteLength(file.code) / 1000 : 0
+
+        return kB > limit ? [`${file.fileName} (${kB.toFixed(2)} kB)`] : []
+      })
+
+      if (over.length > 0) {
+        this.error(`over the ${String(limit)} kB chunk limit (build.chunkSizeWarningLimit): ${over.join(', ')}`)
+      }
+    },
+  }
+}
+
 export default defineConfig({
   // React Compiler, run through Babel, memoizes components and hooks, so render
   // performance needs no hand-written useMemo or useCallback.
-  plugins: [react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss(), brandTitle()],
+  plugins: [react(), babel({ presets: [reactCompilerPreset()] }), tailwindcss(), brandTitle(), chunkLimit()],
   server: {
     host: '127.0.0.1',
     port: 9245,
@@ -41,9 +70,9 @@ export default defineConfig({
     // The bundle loads from the app binary, not over a network. The inbox's chunk is all
     // the window loads before its first paint; the other pages are chunks of their own,
     // loaded on their first visit (App.tsx), and so are the review and issue sheets,
-    // loaded once the inbox has painted (InboxView.tsx). The limit stays as a tripwire for
-    // unexpected growth of any chunk, set above the inbox's, about 706 kB since the inbox
-    // cards redesign.
+    // loaded once the inbox has painted (InboxView.tsx). The limit is a tripwire for
+    // unexpected growth of any chunk, set above the inbox's, about 696 kB, and chunkLimit
+    // above makes it an error, so the frontend gate's build fails on a chunk over it.
     chunkSizeWarningLimit: 750,
     rolldownOptions: {
       checks: {

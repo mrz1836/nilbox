@@ -1363,7 +1363,7 @@ magex format:fix
 magex lint
 magex test:race
 go-pre-commit run --all-files
-magex frontend:gate   # format, lint, typecheck, tests, and the compiled render check
+magex frontend:gate   # format, lint, typecheck, tests, the compiled render check, and the build
 magex db:check        # the generated queries are current and every query prepares
 magex app:check       # macOS, for a change to the desktop shell, the bound services, or the frontend
 ```
@@ -1456,11 +1456,11 @@ notes. The [Desktop Guide](docs/desktop.md#the-inspector) has the inspector in f
 <summary><strong>Frontend</strong>: install, build, and check the React window</summary>
 <br/>
 
-| Command                  | What it does                                                                                                                                            |
-|--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `magex frontend:install` | Install the frontend dependencies exactly as `pnpm-lock.yaml` pins them                                                                                 |
-| `magex frontend:build`   | Type-check the frontend and build it into `frontend/dist`                                                                                               |
-| `magex frontend:gate`    | The frontend gate: frozen-lockfile install, format check, lint, typecheck, tests with coverage, and the compiled render check; CI runs this same target |
+| Command                  | What it does                                                                                                                                                                                                              |
+|--------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `magex frontend:install` | Install the frontend dependencies exactly as `pnpm-lock.yaml` pins them                                                                                                                                                   |
+| `magex frontend:build`   | Type-check the frontend and build it into `frontend/dist`                                                                                                                                                                 |
+| `magex frontend:gate`    | The frontend gate: frozen-lockfile install, format check, lint, typecheck, tests with coverage, the compiled render check, and the production build, which fails on a chunk over its size limit; CI runs this same target |
 
 The Vite dev server runs with the app, under `magex app:dev`.
 
@@ -1627,7 +1627,7 @@ its own release workflow:
 - **fortress-coverage.yml** — Code coverage reporting to Codecov
 - **fortress.yml** — Runs every check above on pull requests, `master`, and `v*` tags; on a tag it publishes nothing here (`ENABLE_RELEASE=false`)
 - **desktop-release.yml** — On a `v*` tag, builds the macOS app on a macOS runner, waits for GoFortress to pass, then signs it in a separate job and publishes the release with its files
-- **frontend.yml** — The frontend gate (`magex frontend:gate`): install, format check, lint, typecheck, tests, and the render check
+- **frontend.yml** — The frontend gate (`magex frontend:gate`): install, format check, lint, typecheck, tests, the render check, and the build
 - **sqlc.yml** — Checks that the generated queries match their SQL and that every query prepares
 
 No check runs on macOS, so `magex app:check` runs locally; only the release workflow's jobs run on macOS.
@@ -1672,7 +1672,7 @@ Run all Go tests with race detector (slower):
 magex test:race
 ```
 
-Run the frontend gate (format check, lint, typecheck, tests with coverage, and the render check):
+Run the frontend gate (format check, lint, typecheck, tests with coverage, the render check, and the build):
 
 ```bash
 magex frontend:gate
