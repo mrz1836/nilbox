@@ -16,7 +16,7 @@ import { toneText } from '../lib/signals'
 import { useMutation } from '../lib/useMutation'
 import { usePopover, type Popover } from '../lib/usePopover'
 import { checkItemFiles, openExternal, type FileCheck, type SensitiveFile, type SensitiveGroup } from '../platform'
-import { inkLinkClass, quietButtonClass } from './controls'
+import { ErrorText, inkLinkClass, quietButtonClass } from './controls'
 import { ExternalIcon, RefreshIcon, ShieldAlertIcon, ShieldCheckIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
 import { RelativeTime } from './RelativeTime'
@@ -225,11 +225,7 @@ export function SensitiveFilesPanel({ itemId, check, onSettings, popover, id }: 
           </button>
         )}
       </div>
-      {error !== '' && (
-        <p role="alert" className="-mt-1.5 text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} className="-mt-1.5" />
     </PopoverPanel>
   )
 }

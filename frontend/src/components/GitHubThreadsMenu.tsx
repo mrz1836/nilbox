@@ -5,7 +5,7 @@ import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import { useNowAs } from '../lib/useNow'
 import { usePopover } from '../lib/usePopover'
 import { openExternal, type Settings } from '../platform'
-import { iconButtonClass, quietButtonClass, smallIconButtonClass, toolbarButtonClass } from './controls'
+import { ErrorText, iconButtonClass, quietButtonClass, smallIconButtonClass, toolbarButtonClass } from './controls'
 import { ExternalIcon, GitHubMarkIcon, HistoryIcon, RefreshIcon, SlidersIcon, XIcon } from './icons'
 import { Refused, TurnOnClearing } from './notifications/GitHubNotes'
 import { ThreadRow } from './notifications/ThreadRow'
@@ -136,11 +136,9 @@ export function GitHubThreadsMenu({
             <p className="border-b border-border px-4 py-2.5 text-xs text-warning">{status.lastError}</p>
           )
         )}
-        {checkError !== '' && (
-          <p role="alert" className="border-b border-border px-4 py-2 text-xs text-danger">
-            Could not check GitHub: {checkError}
-          </p>
-        )}
+        <ErrorText error={checkError} className="border-b border-border px-4 py-2">
+          Could not check GitHub:{' '}
+        </ErrorText>
         {markError !== '' && (
           <div
             role="alert"

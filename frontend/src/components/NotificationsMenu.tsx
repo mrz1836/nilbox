@@ -5,7 +5,7 @@ import { quickViewMax } from '../lib/notifications'
 import type { NotificationsState } from '../lib/useNotifications'
 import { usePopover } from '../lib/usePopover'
 import type { AppNotification } from '../platform'
-import { quietButtonClass, toolbarButtonClass } from './controls'
+import { ErrorText, quietButtonClass, toolbarButtonClass } from './controls'
 import { BellIcon, CheckIcon, HistoryIcon, SlidersIcon } from './icons'
 import { EntryRow } from './notifications/EntryRow'
 import { CountDot, PopoverPanel, ToolbarPopoverButton } from './PopoverPanel'
@@ -82,11 +82,7 @@ export function NotificationsMenu({ notifications, onOpen, onSettings, onViewAll
             </button>
           )}
         </div>
-        {failure !== '' && (
-          <p role="alert" className="border-b border-border px-4 py-2 text-xs text-danger">
-            {failure}
-          </p>
-        )}
+        <ErrorText error={failure} className="border-b border-border px-4 py-2" />
         {log.items.length === 0 ? (
           <div className="px-4 py-6 text-center">
             <p className="text-sm font-medium">No notifications yet</p>

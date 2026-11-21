@@ -19,7 +19,7 @@ import type { GitHubThreadsState } from '../../lib/useGitHubThreads'
 import { useNowAs } from '../../lib/useNow'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import { openExternal, setGitHubNotificationSwitch, type Settings } from '../../platform'
-import { buttonClass, iconButtonClass, quietButtonClass, Segmented, smallIconButtonClass } from '../controls'
+import { buttonClass, ErrorText, iconButtonClass, quietButtonClass, Segmented, smallIconButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { ExternalIcon, RefreshIcon, SlidersIcon, XIcon } from '../icons'
 import { Spinner } from '../Spinner'
@@ -285,11 +285,9 @@ export function GitHubNotificationsTab({
           GitHub holds more than 1,000 notifications for you. {brand.name} reads the newest 1,000.
         </p>
       )}
-      {checkError !== '' && (
-        <p role="alert" className={`${noteClass} text-xs text-danger`}>
-          Could not check GitHub: {checkError}
-        </p>
-      )}
+      <ErrorText error={checkError} className={noteClass}>
+        Could not check GitHub:{' '}
+      </ErrorText>
       {markError !== '' && (
         <div role="alert" className="flex items-start gap-2 border-b border-border py-2 pr-2 pl-4 text-xs text-danger">
           <p className="min-w-0 flex-1">{markError}</p>
