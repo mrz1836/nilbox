@@ -1,21 +1,15 @@
-import { render as renderPlain, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { timelineRows } from '../../lib/timeline'
 import type { TimelineEntry as TimelineEntryData } from '../../platform'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { issueComment, issueEvent, issueRef, lineComment, pullRef, reviewEntry } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { TimelineEntry } from './TimelineEntry'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
-
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
-}
 
 // entry renders one timeline entry of issue 12, or of pull request 7, whose line comments
 // jump with onJump.
@@ -26,7 +20,7 @@ function entry(item: TimelineEntryData, onQuote = vi.fn(), onJump?: (path: strin
     throw new Error('no row')
   }
 
-  return render(
+  return renderAt(
     <TimelineEntry row={row} repo="acme-org/example-repo" author="octo-other" onQuote={onQuote} onJump={onJump} />,
   )
 }
@@ -124,7 +118,7 @@ describe('TimelineEntry', () => {
       throw new Error('no row')
     }
 
-    render(<TimelineEntry row={row} repo="acme-org/example-repo" author="" onQuote={vi.fn()} />)
+    renderAt(<TimelineEntry row={row} repo="acme-org/example-repo" author="" onQuote={vi.fn()} />)
 
     const line = screen.getByText(/octo-other/).closest('p')
     expect(line).toHaveTextContent('octo-otherbotaddedbugandremovedtriage')

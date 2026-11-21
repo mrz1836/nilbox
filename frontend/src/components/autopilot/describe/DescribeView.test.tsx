@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Activity } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../../../generated/brand'
 import type { AutopilotDraft, AutopilotRunEvent, DescribeConversation, Settings } from '../../../platform'
 import { deferred } from '../../../test/async'
-import { at } from '../../../test/clock'
+import { renderAt } from '../../../test/clock'
 import {
   autopilotCatalog,
   describeAttachment,
@@ -57,9 +57,7 @@ function show(request?: DescribeRequest) {
     onShowRoutine: vi.fn<(id: number) => void>(),
     onSettingsSaved: vi.fn<(settings: Settings) => void>(),
   }
-  const view = render(<DescribeView {...(request === undefined ? {} : { request })} {...held()} {...calls} />, {
-    wrapper: at(),
-  })
+  const view = renderAt(<DescribeView {...(request === undefined ? {} : { request })} {...held()} {...calls} />)
 
   return { ...calls, ...view }
 }
@@ -504,11 +502,10 @@ describe('DescribeView', () => {
     const props = { onEditInBuilder: vi.fn(), onShowRoutine: vi.fn(), onSettingsSaved: vi.fn() }
     const inMode = (defaultMode: Settings['autopilot']['defaultMode']) =>
       settings({ autopilot: { ...settings().autopilot, defaultMode } })
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <Activity mode="visible">
         <DescribeView settings={inMode('ask')} catalog={autopilotCatalog()} {...props} />
       </Activity>,
-      { wrapper: at() },
     )
     const mode = () =>
       within(
@@ -534,7 +531,7 @@ describe('DescribeView', () => {
 
   it('starts a new routine in Ask first while the settings load', async () => {
     platform.describeItConversation.mockResolvedValue(conversation([describeTurn({ cards: [describeCard()] })]))
-    render(
+    renderAt(
       <DescribeView
         settings={null}
         catalog={undefined}
@@ -542,7 +539,6 @@ describe('DescribeView', () => {
         onShowRoutine={vi.fn()}
         onSettingsSaved={vi.fn()}
       />,
-      { wrapper: at() },
     )
 
     const row = within(await screen.findByRole('group', { name: 'Snooze passing bot PRs' }))

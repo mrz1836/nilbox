@@ -11,7 +11,7 @@ import { useAutopilot, useAutopilotChips } from '../../lib/useAutopilot'
 import { useAutopilotActivity } from '../../lib/useAutopilotActivity'
 import { useInbox } from '../../lib/useInbox'
 import { deferred } from '../../test/async'
-import { at, clockAt, FIXED_NOW, withClock } from '../../test/clock'
+import { at, clockAt, FIXED_NOW, renderAt, withClock } from '../../test/clock'
 import {
   activityGroup,
   activityPage,
@@ -64,9 +64,7 @@ describe('ActivityList', () => {
   const onToast = vi.fn()
 
   function renderList(lines: ActivityLine[]) {
-    render(<ActivityList lines={lines} onOpen={onOpen} onToast={onToast} empty={<p>Nothing</p>} />, {
-      wrapper: at(),
-    })
+    renderAt(<ActivityList lines={lines} onOpen={onOpen} onToast={onToast} empty={<p>Nothing</p>} />)
   }
 
   it('says what each match did in a word or two', () => {
@@ -626,7 +624,7 @@ describe('RoutinePane', () => {
   }
 
   function renderPane(r = routine()) {
-    render(
+    renderAt(
       <RoutinePane
         routine={r}
         status={{ text: 'Autopilot · 6 today', tone: 'muted' }}
@@ -636,7 +634,6 @@ describe('RoutinePane', () => {
         watching={<p>Watched</p>}
         activity={<p>Done</p>}
       />,
-      { wrapper: at() },
     )
   }
 

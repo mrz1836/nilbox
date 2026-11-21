@@ -9,7 +9,7 @@ import type { LaunchOptions } from '../../lib/launch'
 import type { TriageTab } from '../../lib/triage'
 import type { InboxItem } from '../../platform'
 import { deferred } from '../../test/async'
-import { at } from '../../test/clock'
+import { at, renderAt } from '../../test/clock'
 import {
   agentSession,
   agents,
@@ -503,13 +503,12 @@ describe('CompactRow', () => {
   })
 
   it('shows no unread dot while the cards show none', () => {
-    renderPlain(
+    renderAt(
       <CardPrefsContext value={{ ...defaultCardPrefs, density: 'compact', unread: false }}>
         <ul>
           <ItemRow item={asked({ unread: true })} launch={null} />
         </ul>
       </CardPrefsContext>,
-      { wrapper: at() },
     )
 
     expect(screen.getByRole('listitem')).toHaveAttribute('data-density', 'compact')

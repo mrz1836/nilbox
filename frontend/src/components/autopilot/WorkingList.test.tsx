@@ -1,10 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { chipOf } from '../../lib/autopilot'
 import type { AutopilotWorking } from '../../platform'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { agentRun, autopilotMatch, itemRef } from '../../test/fixtures'
 import { platform, send } from '../../test/platform'
 import { tokensText, WorkingList } from './WorkingList'
@@ -43,16 +43,14 @@ function renderList() {
 
   const onWatch = vi.fn()
 
-  render(<WorkingList onOpen={onOpen} onWatch={onWatch} watching={0} onToast={onToast} />, { wrapper: at() })
+  renderAt(<WorkingList onOpen={onOpen} onWatch={onWatch} watching={0} onToast={onToast} />)
 
   return { onOpen, onToast, onWatch }
 }
 
 describe('WorkingList', () => {
   it('shows nothing while no agent works', async () => {
-    const { container } = render(<WorkingList onOpen={vi.fn()} onWatch={vi.fn()} watching={0} onToast={vi.fn()} />, {
-      wrapper: at(),
-    })
+    const { container } = renderAt(<WorkingList onOpen={vi.fn()} onWatch={vi.fn()} watching={0} onToast={vi.fn()} />)
 
     await waitFor(() => {
       expect(platform.autopilotWorking).toHaveBeenCalled()

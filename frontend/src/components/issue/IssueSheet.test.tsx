@@ -1,13 +1,13 @@
-import { act, render as renderPlain, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState, type ReactElement } from 'react'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { useIssueDrafts } from '../../lib/issueDrafts'
 import type { LaunchOptions } from '../../lib/launch'
 import type { InboxItem, IssueResult } from '../../platform'
 import { deferred } from '../../test/async'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import {
   agentSession,
   agents,
@@ -36,11 +36,6 @@ const launch: LaunchOptions = {
   onDefaultsSaved: () => Promise.resolve(),
   onManagePrompts: () => undefined,
   onSettingsSaved: () => undefined,
-}
-
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
 }
 
 // card is issue 12's inbox card, or another issue's.
@@ -129,7 +124,7 @@ async function write(text: string) {
 describe('IssueSheet', () => {
   it('shows the issue: its conversation, where it stands, and its details', async () => {
     platform.refreshIssue.mockResolvedValue(issue({ body: 'It drops the **newline**.' }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('newline')).toBeInTheDocument()
     expect(sheet()).toHaveAttribute('open')
@@ -151,7 +146,7 @@ describe('IssueSheet', () => {
 
   it('shows each person’s picture beside their name, read once for everyone shown', async () => {
     platform.issueAvatars.mockResolvedValue({ 'octo-other': 'data:image/png;base64,b3RoZXI=' })
-    const { container } = render(<Harness />)
+    const { container } = renderAt(<Harness />)
 
     const conversation = await screen.findByRole('region', { name: 'Conversation' })
     await waitFor(() => {
@@ -174,7 +169,7 @@ describe('IssueSheet', () => {
     const answer = deferred<ReturnType<typeof issue>>()
     platform.openIssue.mockReturnValue(new Promise(() => undefined))
     platform.refreshIssue.mockReturnValue(answer.promise)
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByRole('region', { name: 'Reading from GitHub' })).toHaveTextContent(
       'Reading acme-org/example-repo#12 from GitHub…',
@@ -194,7 +189,7 @@ describe('IssueSheet', () => {
       issue({ fetchedAt: '', body: '', stale: true, timeline: issueTimeline({ items: [], before: '' }) }),
     )
     platform.refreshIssue.mockReturnValue(new Promise(() => undefined))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByRole('region', { name: 'Reading from GitHub' })).toBeInTheDocument()
     expect(screen.getByRole('article', { name: 'Description' })).not.toHaveTextContent('No description.')
@@ -203,7 +198,7 @@ describe('IssueSheet', () => {
 
   it('reads the issue again from the header, and opens a description cut short on GitHub', async () => {
     platform.refreshIssue.mockResolvedValue(issue({ bodyTrimmed: true }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Read it all on GitHub' }))
     expect(platform.openExternal).toHaveBeenCalledWith('https://github.com/acme-org/example-repo/issues/12')
@@ -216,7 +211,7 @@ describe('IssueSheet', () => {
 
   it('says an issue has no description once it read it', async () => {
     platform.refreshIssue.mockResolvedValue(issue({ body: '' }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('No description.')).toBeInTheDocument()
   })
@@ -224,7 +219,7 @@ describe('IssueSheet', () => {
   it('says a card it never read is not read yet, when the read fails', async () => {
     platform.openIssue.mockResolvedValue(issue({ fetchedAt: '', body: '', stale: true }))
     platform.refreshIssue.mockRejectedValue(new Error('GitHub is down'))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('GitHub is down')).toBeInTheDocument()
     expect(screen.getByText('Not read from GitHub yet.')).toBeInTheDocument()
@@ -232,7 +227,7 @@ describe('IssueSheet', () => {
 
   it('comments, and reports what the comment came to', async () => {
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     await write('Fixed in #14.')
     await userEvent.click(await actionButton('Comment'))
@@ -253,7 +248,7 @@ describe('IssueSheet', () => {
     platform.fillIssueReply.mockImplementation((_, replyId) =>
       Promise.resolve(replyId === 31 ? 'Looking into it, @octo-user.' : 'Thanks!'),
     )
-    render(<Harness onManageReplies={onManageReplies} />)
+    renderAt(<Harness onManageReplies={onManageReplies} />)
 
     const text = await screen.findByRole('textbox', { name: 'Your comment' })
     expect(text, 'no reply is picked for the user').toHaveValue('')
@@ -292,7 +287,7 @@ describe('IssueSheet', () => {
 
   it('says why a reply couldn’t be filled in', async () => {
     platform.fillIssueReply.mockRejectedValueOnce(new Error('the reply is gone'))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Choose a reply' }))
     await userEvent.click(screen.getByRole('menuitem', { name: 'Looking' }))
@@ -303,7 +298,7 @@ describe('IssueSheet', () => {
 
   it('says the library has no replies for issues', async () => {
     platform.issueReplies.mockResolvedValue([])
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await waitFor(() => {
       expect(platform.issueReplies).toHaveBeenCalled()
@@ -313,7 +308,7 @@ describe('IssueSheet', () => {
   })
 
   it('edits the labels, then reads the issue again once GitHub made any of it', async () => {
-    render(<Harness />)
+    renderAt(<Harness />)
 
     // labels opens the label picker and applies the flip of the label named name.
     const labels = async (name: string) => {
@@ -366,7 +361,7 @@ describe('IssueSheet', () => {
     })
     platform.openIssue.mockResolvedValue(shared)
     platform.refreshIssue.mockResolvedValue(shared)
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const assignees = await screen.findByRole('region', { name: 'Assignees' })
     expect(within(assignees).queryByRole('button', { name: 'Unassign octo-user' }), 'Unassign me does that').toBeNull()
@@ -386,7 +381,7 @@ describe('IssueSheet', () => {
   })
 
   it('runs the button with ⌘↩, and only once it can', async () => {
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await screen.findByRole('region', { name: 'Conversation' })
     await userEvent.keyboard('{Meta>}{Enter}{/Meta}')
@@ -400,7 +395,7 @@ describe('IssueSheet', () => {
   })
 
   it('greys the menu’s arrow while the button is held back, and tints it once the action can run', async () => {
-    render(<Harness />)
+    renderAt(<Harness />)
 
     // With nothing to say, Comment is held back, and its arrow looks it but still opens.
     expect(await actionButton('Comment')).toBeDisabled()
@@ -424,7 +419,7 @@ describe('IssueSheet', () => {
     platform.actOnIssue.mockReturnValue(finish.promise)
     const onDone = vi.fn()
     const onClose = vi.fn()
-    render(<Harness onDone={onDone} onClose={onClose} />)
+    renderAt(<Harness onDone={onDone} onClose={onClose} />)
 
     await write('Works as intended.')
     await choose('Close as not planned')
@@ -470,7 +465,7 @@ describe('IssueSheet', () => {
   })
 
   it('asks nothing when the close is cancelled', async () => {
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await choose('Close as completed')
     await userEvent.click(await actionButton('Close as completed'))
@@ -492,7 +487,7 @@ describe('IssueSheet', () => {
       }),
     )
     const onDone = vi.fn()
-    render(<Harness onDone={onDone} />)
+    renderAt(<Harness onDone={onDone} />)
 
     await write('Done.')
     await choose('Close as completed')
@@ -529,7 +524,7 @@ describe('IssueSheet', () => {
     platform.readIssueAgain.mockResolvedValue(closedIssue())
     const onDone = vi.fn()
     const onEnded = vi.fn()
-    render(<Harness onDone={onDone} onEnded={onEnded} />)
+    renderAt(<Harness onDone={onDone} onEnded={onEnded} />)
 
     await write('Fixed in #14.')
     await choose('Close as completed')
@@ -559,7 +554,7 @@ describe('IssueSheet', () => {
   it('hands on an issue a read finds closed, once, and shows an open one as before', async () => {
     platform.refreshIssue.mockResolvedValue(closedIssue())
     const onEnded = vi.fn()
-    const { unmount } = render(<Harness onEnded={onEnded} />)
+    const { unmount } = renderAt(<Harness onEnded={onEnded} />)
 
     await waitFor(() => {
       expect(onEnded).toHaveBeenCalledExactlyOnceWith(closedSince)
@@ -567,7 +562,7 @@ describe('IssueSheet', () => {
     unmount()
 
     platform.refreshIssue.mockResolvedValue(issue())
-    render(<Harness onEnded={onEnded} />)
+    renderAt(<Harness onEnded={onEnded} />)
 
     expect(await actionButton('Comment')).toBeInTheDocument()
     expect(onEnded).toHaveBeenCalledOnce()
@@ -575,7 +570,7 @@ describe('IssueSheet', () => {
 
   it('says why an action failed, only on the issue it ran on', async () => {
     platform.actOnIssue.mockRejectedValue(new Error('GitHub refused the comment.'))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await write('Hi.')
     await userEvent.click(await actionButton('Comment'))
@@ -589,7 +584,7 @@ describe('IssueSheet', () => {
 
   it('takes the user off the issue, and says why it couldn’t', async () => {
     const onUnassign = vi.fn<(it: InboxItem) => Promise<string>>().mockResolvedValue('GitHub refused it.')
-    render(<Harness onUnassign={onUnassign} />)
+    renderAt(<Harness onUnassign={onUnassign} />)
 
     await choose('Unassign me')
 
@@ -599,7 +594,7 @@ describe('IssueSheet', () => {
 
   it('offers no unassign for an issue the user isn’t assigned to', async () => {
     platform.refreshIssue.mockResolvedValue(issue({ assigned: false }))
-    render(<Harness onUnassign={vi.fn()} />)
+    renderAt(<Harness onUnassign={vi.fn()} />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'More issue actions' }))
     await waitFor(() => {
@@ -608,7 +603,7 @@ describe('IssueSheet', () => {
   })
 
   it('quotes a comment into the reply', async () => {
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const comment = await screen.findByRole('article', { name: 'octo-other’s comment' })
     await userEvent.click(within(comment).getByRole('button', { name: 'Quote reply' }))
@@ -622,7 +617,7 @@ describe('IssueSheet', () => {
     platform.issueEarlier.mockResolvedValue(
       issueTimeline({ items: [issueComment({ id: 'IC_0', body: 'The first comment.' })], before: '', total: 40 }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Show 37 earlier entries' }))
 
@@ -633,7 +628,7 @@ describe('IssueSheet', () => {
 
   it('says why the earlier entries could not be read', async () => {
     platform.issueEarlier.mockRejectedValue(new Error('GitHub is down'))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await userEvent.click(await screen.findByRole('button', { name: 'Show 37 earlier entries' }))
     expect(await screen.findByText('GitHub is down')).toBeInTheDocument()
@@ -643,7 +638,7 @@ describe('IssueSheet', () => {
     const scrolled = vi.spyOn(Element.prototype, 'scrollIntoView')
     const scrolledTop = vi.spyOn(Element.prototype, 'scrollTop', 'set').mockImplementation(() => undefined)
     platform.openIssue.mockResolvedValue(issue({ lastSeenAt: '2026-06-15T10:45:00Z' }))
-    render(<Harness />)
+    renderAt(<Harness />)
 
     const divider = await screen.findByRole('separator', { name: 'New since your last visit' })
     expect(divider.nextElementSibling).toHaveTextContent('Can repro on 1.4.')
@@ -666,7 +661,7 @@ describe('IssueSheet', () => {
   })
 
   it('says the issue changed since it was read, as its card says, and reads it again', async () => {
-    render(
+    renderAt(
       <Harness item={item({ ...card(1), updatedAt: '2026-06-15T11:30:00Z', details: details({ comments: 3 }) })} />,
     )
 
@@ -676,7 +671,7 @@ describe('IssueSheet', () => {
   })
 
   it('steps through its list, and from the header', async () => {
-    render(<Harness />)
+    renderAt(<Harness />)
 
     await screen.findByRole('region', { name: 'Conversation' })
     await userEvent.keyboard('{ArrowRight}')
@@ -688,7 +683,7 @@ describe('IssueSheet', () => {
 
   it('shows the work on the issue, and uses the agent’s words as the comment', async () => {
     platform.sessionLastWords.mockResolvedValue({ text: 'The **whole** verdict.', partial: false })
-    render(
+    renderAt(
       <Harness
         sessions={[agentSession({ kind: 'issue', number: 12, worktree: 'issue-12' })]}
         worktree={worktree({ branch: 'issue-12' })}
@@ -723,7 +718,7 @@ describe('IssueSheet', () => {
         },
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByText('Locked')).toBeInTheDocument()
     await write('Done.')
@@ -749,7 +744,7 @@ describe('IssueSheet', () => {
         },
       }),
     )
-    render(<Harness />)
+    renderAt(<Harness />)
 
     expect(await screen.findByRole('img', { name: 'Closed as not planned' })).toBeInTheDocument()
     expect(screen.getByText('Closed as not planned by octo-other')).toBeInTheDocument()

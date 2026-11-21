@@ -1,9 +1,9 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { DescribeCard } from '../../../platform'
-import { at } from '../../../test/clock'
+import { renderAt } from '../../../test/clock'
 import { autopilotCatalog, describeCard } from '../../../test/fixtures'
 import { listening, platform, send } from '../../../test/platform'
 import { OutsideProposals } from './OutsideProposals'
@@ -25,7 +25,7 @@ function outside(overrides: Partial<DescribeCard> = {}): DescribeCard {
 
 // show renders the cards from the user's own Claude Code.
 function show() {
-  return render(
+  return renderAt(
     <OutsideProposals
       kit={{
         defaultMode: 'ask',
@@ -36,7 +36,6 @@ function show() {
         describeDelay: 0,
       }}
     />,
-    { wrapper: at() },
   )
 }
 

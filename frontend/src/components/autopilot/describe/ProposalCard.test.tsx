@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi, type Mock } from 'vitest'
 
@@ -21,7 +21,7 @@ import {
   routineSpec,
   settings,
 } from '../../../test/fixtures'
-import { at } from '../../../test/clock'
+import { renderAt } from '../../../test/clock'
 import { platform } from '../../../test/platform'
 import type { CardKit } from './parts'
 import { ProposalCard } from './ProposalCard'
@@ -52,9 +52,7 @@ function kitOf(overrides: Partial<CardKit> = {}): Kit {
 
 // show renders card with kit, and returns the kit.
 function show(card: DescribeCard, kit: Kit = kitOf(), onDiscard?: () => Promise<string>): Kit {
-  render(<ProposalCard card={card} kit={kit} {...(onDiscard === undefined ? {} : { onDiscard })} />, {
-    wrapper: at(),
-  })
+  renderAt(<ProposalCard card={card} kit={kit} {...(onDiscard === undefined ? {} : { onDiscard })} />)
 
   return kit
 }

@@ -1,11 +1,11 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { formatClock } from '../../lib/time'
 import type { AutopilotRunEvents } from '../../platform'
 import { deferred } from '../../test/async'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import {
   agentMatch,
   agentRun,
@@ -41,7 +41,7 @@ function renderView(
     platform.autopilotRunEvents.mockResolvedValue(events)
   }
 
-  render(
+  renderAt(
     <RunView
       runId={81}
       terminal="iterm2"
@@ -51,7 +51,6 @@ function renderView(
       onClose={vi.fn()}
       {...props}
     />,
-    { wrapper: at() },
   )
 
   return { onToast, onOpenItem }

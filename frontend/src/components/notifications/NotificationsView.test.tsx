@@ -9,7 +9,7 @@ import type { GitHubThreadsState } from '../../lib/useGitHubThreads'
 import type { NotificationsState } from '../../lib/useNotifications'
 import type { AppNotification, GitHubThread, GitHubThreadsSnapshot, NotificationsTab, Settings } from '../../platform'
 import { deferred } from '../../test/async'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import {
   autopilotAlert,
   githubThread,
@@ -127,7 +127,7 @@ function Page({
 }
 
 function renderPage(options: PageOptions = {}) {
-  return render(<Page {...options} />, { wrapper: at() })
+  return renderAt(<Page {...options} />)
 }
 
 // own matches a row's own button by its title, never one of its actions.

@@ -1,21 +1,15 @@
-import { render as renderPlain, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { deferred } from '../../test/async'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { review, reviewerCandidates } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import type { Review, ReviewEntry, Reviewers } from '../../platform'
 import { ReviewSummary, type ReviewersEditing } from './ReviewSummary'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
-
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
-}
 
 // entry is a reviewer as the sheet lists them, with overrides.
 function entry(author: string, overrides: Partial<ReviewEntry> = {}): ReviewEntry {
@@ -62,18 +56,18 @@ async function picker() {
 
 describe('the reviewers list', () => {
   it('only shows while the user can’t change it', () => {
-    render(<ReviewSummary review={editable({ canEditReviewers: false })} item={undefined} reviewers={editing()} />)
+    renderAt(<ReviewSummary review={editable({ canEditReviewers: false })} item={undefined} reviewers={editing()} />)
 
     expect(screen.queryByRole('button', { name: 'Edit reviewers' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Remove the review request/ })).not.toBeInTheDocument()
 
-    render(<ReviewSummary review={review({ canEditReviewers: true })} item={undefined} />)
+    renderAt(<ReviewSummary review={review({ canEditReviewers: true })} item={undefined} />)
     expect(screen.queryByRole('button', { name: 'Edit reviewers' }), 'nothing to edit with').not.toBeInTheDocument()
   })
 
   it('takes a request off with ×, and asks someone who reviewed again with ↻', async () => {
     const edit = vi.fn().mockResolvedValue('')
-    render(<ReviewSummary review={editable()} item={undefined} reviewers={editing(edit)} />)
+    renderAt(<ReviewSummary review={editable()} item={undefined} reviewers={editing(edit)} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Remove the review request for octo-asked' }))
     expect(edit).toHaveBeenLastCalledWith([], ['octo-asked'])
@@ -91,7 +85,7 @@ describe('the reviewers list', () => {
   })
 
   it('never offers to ask the author, a bot, or the user again', () => {
-    render(
+    renderAt(
       <ReviewSummary
         review={editable({
           reviews: [
@@ -111,7 +105,7 @@ describe('the reviewers list', () => {
   it('fades a line while its edit runs, and says why one failed', async () => {
     const finish = deferred<string>()
     const edit = vi.fn(() => finish.promise)
-    render(<ReviewSummary review={editable()} item={undefined} reviewers={editing(edit)} />)
+    renderAt(<ReviewSummary review={editable()} item={undefined} reviewers={editing(edit)} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Remove the review request for octo-asked' }))
 
@@ -130,7 +124,7 @@ describe('the reviewers list', () => {
 
   it('offers its first suggestions as one-click requests while no one is asked', async () => {
     const edit = vi.fn().mockResolvedValue('')
-    render(<ReviewSummary review={review({ canEditReviewers: true })} item={undefined} reviewers={editing(edit)} />)
+    renderAt(<ReviewSummary review={review({ canEditReviewers: true })} item={undefined} reviewers={editing(edit)} />)
 
     const reviewers = screen.getByRole('region', { name: 'Reviewers' })
     expect(reviewers).toHaveTextContent('No one is asked to review yet.')
@@ -154,7 +148,7 @@ describe('the reviewers list', () => {
 
 describe('ReviewerPicker', () => {
   it('lists who is asked, whom GitHub suggests, who works on the repository, and its teams', async () => {
-    render(<ReviewSummary review={editable()} item={undefined} reviewers={editing()} />)
+    renderAt(<ReviewSummary review={editable()} item={undefined} reviewers={editing()} />)
 
     const panel = await picker()
     const section = (name: string) => within(panel.getByRole('group', { name }))
@@ -180,7 +174,7 @@ describe('ReviewerPicker', () => {
 
   it('filters on this Mac as the user types, and sends people and teams apart', async () => {
     const edit = vi.fn().mockResolvedValue('')
-    render(<ReviewSummary review={editable()} item={undefined} reviewers={editing(edit)} />)
+    renderAt(<ReviewSummary review={editable()} item={undefined} reviewers={editing(edit)} />)
 
     const panel = await picker()
     const field = panel.getByRole('searchbox', { name: 'Filter people and teams' })
@@ -209,7 +203,7 @@ describe('ReviewerPicker', () => {
 
   it('moves with ↑ and ↓, checks with Enter, and applies with ⌘↩', async () => {
     const edit = vi.fn().mockResolvedValue('')
-    render(<ReviewSummary review={editable()} item={undefined} reviewers={editing(edit)} />)
+    renderAt(<ReviewSummary review={editable()} item={undefined} reviewers={editing(edit)} />)
 
     const panel = await picker()
     const field = panel.getByRole('searchbox', { name: 'Filter people and teams' })
@@ -243,7 +237,7 @@ describe('ReviewerPicker', () => {
       vi.fn().mockResolvedValue(''),
       reviewerCandidates({ stale: true, people: [], teams: [], pulls: 0, readAt: '' }),
     )
-    render(<ReviewSummary review={editable()} item={undefined} reviewers={edit} />)
+    renderAt(<ReviewSummary review={editable()} item={undefined} reviewers={edit} />)
 
     const panel = await picker()
     expect(panel.getByRole('status')).toHaveTextContent('Learning who works on acme-org/example-repo…')
@@ -266,7 +260,7 @@ describe('ReviewerPicker', () => {
     platform.learnReviewers.mockRejectedValue(
       new Error('Couldn’t learn who works on acme-org/example-repo: GitHub is down.'),
     )
-    render(
+    renderAt(
       <ReviewSummary
         review={editable()}
         item={undefined}
@@ -283,7 +277,7 @@ describe('ReviewerPicker', () => {
   })
 
   it('says when no one matches, or the app knows no one yet', async () => {
-    render(
+    renderAt(
       <ReviewSummary
         review={editable({ reviews: [] })}
         item={undefined}

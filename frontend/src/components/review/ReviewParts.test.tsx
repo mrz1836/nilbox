@@ -1,10 +1,9 @@
-import { render as renderPlain, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { emptyDraft } from '../../lib/reviewDrafts'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import {
   agentSession,
   agents,
@@ -31,11 +30,6 @@ import { areasText, checksSummary, Readiness, ReviewSummary } from './ReviewSumm
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
 
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
-}
-
 describe('ReviewSummary', () => {
   it('says what a dependency update bumps, and how far', () => {
     const bump = {
@@ -48,7 +42,7 @@ describe('ReviewSummary', () => {
       level: 'major' as const,
       security: true,
     }
-    const { rerender } = render(<ReviewSummary review={review({ bump })} item={undefined} />)
+    const { rerender } = renderAt(<ReviewSummary review={review({ bump })} item={undefined} />)
 
     expect(screen.getByText('golang.org/x/net 0.30.0 → 1.0.0 · major · security')).toHaveClass('text-warning')
 
@@ -78,7 +72,7 @@ describe('ReviewSummary', () => {
   })
 
   it('lists the checks, the failing first, and the reviews', async () => {
-    render(
+    renderAt(
       <ReviewSummary
         review={review({
           checks: [
@@ -157,7 +151,7 @@ describe('ReviewSummary', () => {
   })
 
   it('names the workflow runs GitHub counts as not passing that ran no check', () => {
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <ReviewSummary
         review={review({
           unrun: [
@@ -230,7 +224,7 @@ describe('ReviewSummary', () => {
   })
 
   it('links each held run’s name to its run on GitHub, where it can be approved by hand', async () => {
-    render(
+    renderAt(
       <ReviewSummary
         review={review({
           unrun: [
@@ -271,7 +265,7 @@ describe('ReviewSummary', () => {
   })
 
   it('says when a commit has no checks', () => {
-    render(
+    renderAt(
       <ReviewSummary
         review={review({ checks: [], readiness: { state: 'closed', sentence: 'No longer open', needs: [] } })}
         item={undefined}
@@ -300,7 +294,7 @@ describe('ReviewSummary', () => {
       moved: true,
     })
     const summary = (text: string) => screen.getByText(text).tagName
-    const { rerender } = render(<ReviewSummary review={newer} item={undefined} mark="old" />)
+    const { rerender } = renderAt(<ReviewSummary review={newer} item={undefined} mark="old" />)
 
     expect(summary('4 checks · 1 failing')).toBe('SUMMARY')
     expect(screen.getByText(/^Checks as read/)).toHaveTextContent('Checks as read 1h ago')
@@ -320,7 +314,7 @@ describe('ReviewSummary', () => {
   })
 
   it('counts the checks of a pull request never read, and says the list is not read yet', () => {
-    render(
+    renderAt(
       <ReviewSummary
         review={review({
           fetchedAt: '',
@@ -345,7 +339,7 @@ describe('ReviewSummary', () => {
   })
 
   it('says how many checks GitHub lists past the list', async () => {
-    render(<ReviewSummary review={review({ moreChecks: 29 })} item={undefined} />)
+    renderAt(<ReviewSummary review={review({ moreChecks: 29 })} item={undefined} />)
 
     expect(screen.getByText(/^29 more checks on GitHub/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Open on GitHub' }))
@@ -362,7 +356,7 @@ describe('ReviewSummary', () => {
       required: false,
     })
     const ring = (el: Element | null) => el?.querySelector('.motion-safe\\:animate-ping') ?? null
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <ReviewSummary
         review={review({
           checks: [
@@ -408,7 +402,7 @@ describe('ReviewSummary', () => {
   })
 
   it('says how close it is to merging, in a line of its own', () => {
-    render(<Readiness review={review({ readiness: { state: 'closed', sentence: 'No longer open', needs: [] } })} />)
+    renderAt(<Readiness review={review({ readiness: { state: 'closed', sentence: 'No longer open', needs: [] } })} />)
 
     expect(screen.getByText('No longer open')).toHaveClass('text-muted')
   })
@@ -448,7 +442,7 @@ describe('MergeConfirmDialog', () => {
     ]
 
     for (const c of cases) {
-      const { unmount } = render(
+      const { unmount } = renderAt(
         <MergeConfirmDialog
           review={review({ mergeMethods: ['SQUASH', 'REBASE', ''] })}
           offer={offer({ action: c.action, confirm: true })}
@@ -469,7 +463,7 @@ describe('MergeConfirmDialog', () => {
 
   it('confirms with the method chosen', async () => {
     const onConfirm = vi.fn()
-    render(
+    renderAt(
       <MergeConfirmDialog
         review={review()}
         offer={offer({ action: 'merge_now', confirm: true })}
@@ -484,7 +478,7 @@ describe('MergeConfirmDialog', () => {
 
   it('names each rule a merge past them skips, and holds it until accepted', async () => {
     const onConfirm = vi.fn()
-    render(
+    renderAt(
       <MergeConfirmDialog
         review={review()}
         offer={offer({
@@ -514,7 +508,7 @@ describe('MergeConfirmDialog', () => {
 describe('ReviewHeader', () => {
   it('falls back to the card, and opens GitHub', async () => {
     const onClose = vi.fn()
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <ReviewHeader
         titleId="t"
         review={null}
@@ -570,7 +564,7 @@ describe('ReviewHeader', () => {
 
 describe('AgentVerdict', () => {
   it('shows nothing without a session, and says when it has said nothing', () => {
-    const { container, rerender } = render(<AgentVerdict sessions={undefined} agents={agents()} onUse={vi.fn()} />)
+    const { container, rerender } = renderAt(<AgentVerdict sessions={undefined} agents={agents()} onUse={vi.fn()} />)
     expect(container).toBeEmptyDOMElement()
 
     rerender(<AgentVerdict sessions={[agentSession({ lastMessage: '' })]} agents={agents()} onUse={vi.fn()} />)
@@ -579,7 +573,7 @@ describe('AgentVerdict', () => {
 
   it('says when the whole message could not be read', async () => {
     platform.sessionLastWords.mockRejectedValue(new Error('No such session'))
-    render(<AgentVerdict sessions={[agentSession()]} agents={agents()} onUse={vi.fn()} />)
+    renderAt(<AgentVerdict sessions={[agentSession()]} agents={agents()} onUse={vi.fn()} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Show all' }))
     expect(await screen.findByText('No such session')).toBeInTheDocument()
@@ -587,7 +581,7 @@ describe('AgentVerdict', () => {
 
   it('puts what it said into the sheet’s text, as its button names', async () => {
     const onUse = vi.fn()
-    render(
+    renderAt(
       <AgentVerdict
         sessions={[agentSession({ lastMessage: 'Fixed in the parser.' })]}
         agents={agents()}
@@ -603,7 +597,9 @@ describe('AgentVerdict', () => {
 
 describe('LineComment', () => {
   it('suggests a change after what was written', async () => {
-    render(<LineComment where="line 3" side="RIGHT" lines={['x := 1']} initial="" onAdd={vi.fn()} onCancel={vi.fn()} />)
+    renderAt(
+      <LineComment where="line 3" side="RIGHT" lines={['x := 1']} initial="" onAdd={vi.fn()} onCancel={vi.fn()} />,
+    )
 
     await userEvent.type(screen.getByRole('textbox', { name: 'Comment on line 3' }), 'Try')
     await userEvent.click(screen.getByRole('button', { name: 'Suggest a change' }))
@@ -616,7 +612,7 @@ describe('ActionButton', () => {
   it('lists every offer, with why one is off, and runs the one chosen', async () => {
     const onSelect = vi.fn()
     const onRun = vi.fn()
-    render(
+    renderAt(
       <ActionButton
         offers={[offer(), offer({ action: 'merge_now', label: 'Merge', enabled: false, reason: 'It’s behind main.' })]}
         selected="merge_now"
@@ -636,7 +632,7 @@ describe('ActionButton', () => {
   })
 
   it('says it is working', () => {
-    render(
+    renderAt(
       <ActionButton offers={[offer()]} selected="approve" onSelect={vi.fn()} onRun={vi.fn()} busy blocked={() => ''} />,
     )
 
@@ -647,7 +643,7 @@ describe('ActionButton', () => {
   it('greys the menu’s arrow with a button held back, and still opens the menu', async () => {
     const onSelect = vi.fn()
     const offers = [offer({ action: 'comment', label: 'Comment' }), offer()]
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <ActionButton
         offers={offers}
         selected="comment"
@@ -686,7 +682,7 @@ describe('ActionButton', () => {
   it('runs a close when it is picked, and never makes it the button or the choice', async () => {
     const onSelect = vi.fn()
     const onRun = vi.fn()
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <ActionButton
         offers={[offer(), closeOffer()]}
         selected="close"
@@ -728,7 +724,7 @@ describe('ActionButton', () => {
   it('runs Re-request my review when it is picked, and never makes it the button or the choice', async () => {
     const onSelect = vi.fn()
     const onRun = vi.fn()
-    render(
+    renderAt(
       <ActionButton
         offers={[offer(), rerequestOffer()]}
         selected="rerequest_review"
@@ -749,7 +745,7 @@ describe('ActionButton', () => {
 
   it('counts a close as nothing to do, keeping it in a menu beside the words', async () => {
     const onRun = vi.fn()
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <ActionButton
         offers={[offer({ enabled: false, reason: 'Not now.' }), closeOffer()]}
         selected=""
@@ -786,7 +782,7 @@ describe('ActionButton', () => {
     const onSelect = vi.fn()
     const onRun = vi.fn()
     const unassign = vi.fn()
-    render(
+    renderAt(
       <ActionButton
         offers={[
           { action: 'comment', label: 'Comment', enabled: true, reason: '', confirm: false },
@@ -822,7 +818,7 @@ describe('ActionButton', () => {
 
   it('keeps the items set apart in a menu beside the words when nothing else can run', async () => {
     const unassign = vi.fn()
-    render(
+    renderAt(
       <ActionButton
         offers={[offer({ enabled: false, reason: 'Not now.' })]}
         selected=""
@@ -842,7 +838,7 @@ describe('ActionButton', () => {
   })
 
   it('holds the items set apart back while an action runs, with no line above them when they stand alone', async () => {
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <ActionButton
         offers={[offer({ action: 'comment', label: 'Comment' })]}
         selected="comment"
@@ -879,7 +875,7 @@ describe('ActionButton', () => {
 
 describe('DiffView', () => {
   it('says why there are no files', () => {
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <DiffView
         review={review({ files: [], stale: true })}
         draft={emptyDraft}
@@ -944,7 +940,7 @@ describe('ReviewComposer', () => {
         sessions={undefined}
       />
     )
-    const { rerender } = render(composer(1))
+    const { rerender } = renderAt(composer(1))
 
     await userEvent.click(screen.getByRole('button', { name: /^Launch options/ }))
     await userEvent.selectOptions(
@@ -1054,7 +1050,7 @@ describe('ReviewSummary with many checks and reviewers', () => {
   }
 
   it('keeps the reviewers above the checks, and folds the checks that pass once they run long', async () => {
-    render(
+    renderAt(
       <ReviewSummary
         review={review({
           checks: [
@@ -1112,7 +1108,7 @@ describe('ReviewSummary with many checks and reviewers', () => {
   })
 
   it('shows every failing check, and folds the running once they don’t fit beside them', () => {
-    render(
+    renderAt(
       <ReviewSummary
         review={review({ checks: [...checks('failed', 3), ...checks('pending', 10), ...checks('passed', 2)] })}
         item={undefined}
@@ -1128,7 +1124,7 @@ describe('ReviewSummary with many checks and reviewers', () => {
   })
 
   it('lists a short list in full', () => {
-    render(
+    renderAt(
       <ReviewSummary review={review({ checks: [...checks('passed', 7), ...checks('failed', 1)] })} item={undefined} />,
     )
 

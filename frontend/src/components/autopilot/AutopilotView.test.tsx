@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Activity, useState } from 'react'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,7 +12,7 @@ import { useAutopilot } from '../../lib/useAutopilot'
 import { useInbox } from '../../lib/useInbox'
 import type { AutopilotMatch, AutopilotRoutine, KitOutcome, Settings } from '../../platform'
 import { deferred, nextTask } from '../../test/async'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import {
   activityGroup,
   activityPage,
@@ -134,7 +134,7 @@ function Tab({ stored = settingsOf(), request = null, listed = [] }: TabProps) {
 }
 
 function renderTab(props: TabProps = {}) {
-  return render(<Tab {...props} />, { wrapper: at() })
+  return renderAt(<Tab {...props} />)
 }
 
 // routines are the tab's routines: Snooze passing bot PRs, on; Investigate new bugs, off in
@@ -908,7 +908,7 @@ describe('Activity', () => {
       )
     }
 
-    const { rerender } = render(<Shown visible request={null} />, { wrapper: at() })
+    const { rerender } = renderAt(<Shown visible request={null} />)
 
     await screen.findByText('Snoozed 1')
     rerender(<Shown visible={false} request={null} />)
@@ -2321,7 +2321,7 @@ describe('the Autopilot tab’s Describe it', () => {
   it('opens Describe it with the item a request attaches, once per request', async () => {
     named()
     const first: AutopilotRequest = { seq: 1, target: activityTarget, describe: { itemId: 7 } }
-    const view = render(<Tab request={first} />, { wrapper: at() })
+    const view = renderAt(<Tab request={first} />)
 
     expect(await screen.findByRole('region', { name: 'Describe it' })).toBeInTheDocument()
     await waitFor(() => {
@@ -2372,7 +2372,7 @@ describe('the Autopilot tab’s Describe it', () => {
     const user = userEvent.setup()
     named()
     platform.listRoutines.mockResolvedValue(routines())
-    const view = render(<Tab />, { wrapper: at() })
+    const view = renderAt(<Tab />)
 
     await routineList()
     await user.click(nav().getByRole('button', { name: 'New routine' }))
@@ -2405,7 +2405,7 @@ describe('the Autopilot tab’s Describe it', () => {
     const user = userEvent.setup()
     named()
     platform.listRoutines.mockResolvedValue(routines())
-    const view = render(<Tab />, { wrapper: at() })
+    const view = renderAt(<Tab />)
 
     await routineList()
     await user.click(nav().getByRole('button', { name: 'New routine' }))

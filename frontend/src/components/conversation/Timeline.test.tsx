@@ -1,19 +1,13 @@
-import { render as renderPlain, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ReactElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { ConversationOrder, TimelinePage } from '../../platform'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { issueComment, reviewTimeline } from '../../test/fixtures'
 import { Timeline } from './Timeline'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
-
-// render renders on a clock that stands at now.
-function render(ui: ReactElement) {
-  return renderPlain(ui, { wrapper: at() })
-}
 
 // conversation renders page in order, the visit starting from lastSeenAt.
 function conversation(
@@ -22,7 +16,7 @@ function conversation(
   onOrder?: (o: ConversationOrder) => void,
   lastSeenAt = '',
 ) {
-  return render(
+  return renderAt(
     <Timeline
       lead={<p>The description.</p>}
       page={page}

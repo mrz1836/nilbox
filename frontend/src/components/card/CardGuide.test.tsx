@@ -1,8 +1,8 @@
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { CardPrefsContext, defaultCardPrefs, type CardPrefs } from '../../lib/cardPrefs'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { mocks } from '../../test/platform'
 import { followResizes } from '../../test/stubs'
 import { CardGuide, guideParts } from './CardGuide'
@@ -11,11 +11,10 @@ vi.mock('../../platform', () => import('../../test/platform').then((fake) => fak
 
 // showGuide renders the guide in variant, with the cards' settings as prefs says.
 function showGuide(variant: 'full' | 'compact', prefs: Partial<CardPrefs> = {}) {
-  return render(
+  return renderAt(
     <CardPrefsContext value={{ ...defaultCardPrefs, ...prefs }}>
       <CardGuide variant={variant} />
     </CardPrefsContext>,
-    { wrapper: at() },
   )
 }
 
