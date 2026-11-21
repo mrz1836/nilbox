@@ -25,7 +25,7 @@ import { IssueState } from './card/IssueState'
 import { RiskChip, trustTitle } from './card/RiskChip'
 import { SizeGlyph } from './card/SizeGlyph'
 import { StateTrack } from './card/StateTrack'
-import { inkLinkClass } from './controls'
+import { ghostButtonClass, inkLinkClass } from './controls'
 import { Highlight } from './Highlight'
 import { ChevronDownIcon, ExternalIcon, WorktreeIcon } from './icons'
 import { ItemMenu, type EditActions } from './ItemMenu'
@@ -33,7 +33,7 @@ import { LabelChip } from './ItemSignals'
 import { LaunchControls } from './LaunchControls'
 import { RelativeTime } from './RelativeTime'
 import { Spinner } from './Spinner'
-import { ghostClass, hoverClass, mutedTarget, openOnGitHub, TriageControls, type TriageActions } from './TriageControls'
+import { hoverClass, mutedTarget, openOnGitHub, TriageControls, type TriageActions } from './TriageControls'
 
 export interface ItemRowProps {
   item: InboxItem
@@ -598,7 +598,7 @@ export const ItemRow = memo(function ItemRow({
           aria-expanded={peeking}
           aria-controls={peeking ? peekId : undefined}
           onClick={togglePeek}
-          className={ghostClass}
+          className={ghostButtonClass}
         >
           <ChevronDownIcon className={`size-3.5 transition-transform ${peeking ? 'rotate-180' : ''}`} />
         </button>

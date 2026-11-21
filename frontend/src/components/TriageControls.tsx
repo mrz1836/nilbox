@@ -14,6 +14,7 @@ import {
 } from '../lib/triage'
 import { useClock, useNowAs } from '../lib/useNow'
 import { openExternal, type InboxItem, type RepoRule, type RepoRules } from '../platform'
+import { ghostButtonClass } from './controls'
 import {
   ArchiveIcon,
   ChevronDownIcon,
@@ -103,11 +104,9 @@ export function hoverClass(work: RowWork): string {
   return `flex items-center gap-0.5 transition-opacity card-lit:opacity-100 ${work === null ? 'opacity-0' : 'opacity-100'}`
 }
 
-// ghostShape is a quiet button without its text color, and ghostClass one in the muted
-// color that brightens on hover.
+// ghostShape is ghostButtonClass without its text color, for a pin in the accent color.
 const ghostShape =
   'inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium transition-colors hover:bg-raised aria-expanded:bg-raised'
-export const ghostClass = `${ghostShape} text-muted hover:text-text aria-expanded:text-text`
 
 // DefaultTag marks the Snooze button's own length in the menu.
 function DefaultTag() {
@@ -186,7 +185,7 @@ function PinButton({ item, actions }: { item: InboxItem; actions: TriageActions 
           actions.onPin(item)
         }
       }}
-      className={pinned ? `${ghostShape} text-accent` : ghostClass}
+      className={pinned ? `${ghostShape} text-accent` : ghostButtonClass}
     >
       <PinIcon filled={pinned} className="size-3.5" />
     </button>
@@ -224,7 +223,7 @@ function SnoozeSplit({ item, actions }: { item: InboxItem; actions: TriageAction
         onClick={() => {
           actions.onSnooze(item, snoozeDays)
         }}
-        className={`${ghostClass} rounded-r-none pr-1 focus-visible:-outline-offset-2`}
+        className={`${ghostButtonClass} rounded-r-none pr-1 focus-visible:-outline-offset-2`}
       >
         <ClockIcon className="size-3.5" />
         {snoozeShort(snoozeDays)}
@@ -234,7 +233,7 @@ function SnoozeSplit({ item, actions }: { item: InboxItem; actions: TriageAction
         title="Snooze for another length"
         heading="Snooze until"
         items={() => snoozeItems(item, actions)}
-        className={`${ghostClass} rounded-l-none px-1 focus-visible:-outline-offset-2`}
+        className={`${ghostButtonClass} rounded-l-none px-1 focus-visible:-outline-offset-2`}
       >
         <ChevronDownIcon className="size-3" />
       </MenuButton>
@@ -252,7 +251,7 @@ function DismissButton({ item, actions }: { item: InboxItem; actions: TriageActi
       onClick={() => {
         actions.onDismiss(item)
       }}
-      className={ghostClass}
+      className={ghostButtonClass}
     >
       <ArchiveIcon className="size-3.5" />
     </button>
@@ -319,7 +318,7 @@ function BringBack({
         aria-label={tab === 'muted' ? action.name : undefined}
         title={action.title}
         onClick={action.run}
-        className={ghostClass}
+        className={ghostButtonClass}
       >
         {tab === 'muted' ? <MuteIcon className="size-3.5" /> : <ResetIcon className="size-3.5" />}
         {action.label}
@@ -368,7 +367,7 @@ export function TriageControls({ item, tab, actions, work, start, mode = 'row' }
           title="Refresh this item from GitHub, without refreshing the rest of the inbox"
           disabled={work !== null}
           onClick={refresh}
-          className={`${ghostClass} disabled:cursor-default`}
+          className={`${ghostButtonClass} disabled:cursor-default`}
         >
           <RefreshIcon className={`size-3.5 ${refreshing ? 'motion-safe:animate-spin' : ''}`} />
         </button>

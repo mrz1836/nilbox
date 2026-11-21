@@ -8,6 +8,7 @@ import { leaving, workWords, type RowWork, type StartWork } from '../lib/rowWork
 import { isPinnedItself, type TriageTab } from '../lib/triage'
 import type { InboxItem } from '../platform'
 import { AutopilotMenuContext, type AutopilotMenu } from './autopilot/RoutineMenu'
+import { ghostButtonClass } from './controls'
 import {
   ArchiveIcon,
   AutopilotIcon,
@@ -34,7 +35,7 @@ import {
   UnassignIcon,
 } from './icons'
 import { MenuButton, type MenuItem } from './Menu'
-import { ghostClass, hoverClass, mutedTarget, openOnGitHub, snoozeItems, type TriageActions } from './TriageControls'
+import { hoverClass, mutedTarget, openOnGitHub, snoozeItems, type TriageActions } from './TriageControls'
 
 // EditActions are what a row's menu does beyond triage: copy the item's link, and the
 // edits it makes on GitHub. The inbox shares one set across every row.
@@ -456,7 +457,7 @@ export function ItemMenu({ item, tab, triage, edits, work, start }: ItemMenuProp
         label="More actions"
         title={work === null ? 'More actions' : workWords[work]}
         items={items}
-        className={`${ghostClass} px-1`}
+        className={`${ghostButtonClass} px-1`}
       >
         {editing ? (
           <span

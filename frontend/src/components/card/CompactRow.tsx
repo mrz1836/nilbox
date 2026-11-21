@@ -6,13 +6,13 @@ import { leaving, workWords, type RowWork, type StartWork } from '../../lib/rowW
 import { formatAge } from '../../lib/time'
 import { isPinned, type TriageTab } from '../../lib/triage'
 import type { AgentInfo, AgentSession, InboxItem, Label } from '../../platform'
-import { inkLinkClass } from '../controls'
+import { ghostButtonClass, inkLinkClass } from '../controls'
 import { Highlight } from '../Highlight'
 import { ChevronDownIcon } from '../icons'
 import { ItemMenu, type EditActions } from '../ItemMenu'
 import { RelativeTime } from '../RelativeTime'
 import { Spinner } from '../Spinner'
-import { ghostClass, hoverClass, openOnGitHub, TriageControls, type TriageActions } from '../TriageControls'
+import { hoverClass, openOnGitHub, TriageControls, type TriageActions } from '../TriageControls'
 import { CardActions, compactOutcomeClass } from './CardActions'
 import { KindMark } from './CardAvatar'
 import { LinkChip } from './CardLinks'
@@ -167,7 +167,7 @@ export function CompactRow({
         aria-expanded={peeking}
         aria-controls={peeking ? peekId : undefined}
         onClick={onTogglePeek}
-        className={ghostClass}
+        className={ghostButtonClass}
       >
         <ChevronDownIcon className={`size-3.5 transition-transform ${peeking ? 'rotate-180' : ''}`} />
       </button>
