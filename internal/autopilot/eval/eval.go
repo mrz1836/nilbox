@@ -3,7 +3,9 @@
 // held or didn't.
 //
 // Evaluate is pure: no I/O and no clock of its own, so the moment it decides for comes
-// with it. It decides in three values, as the builder promises:
+// with it. What it works out from the routine alone, Prepare works out once, for a cycle
+// that decides one routine on many items. It decides in three values, as the builder
+// promises:
 //
 //   - a condition on data not known yet (check names not read, files not checked) is
 //     unknown, and so is its negation: "a failed check's name doesn't contain X" is never
@@ -157,37 +159,10 @@ type Decision struct {
 
 // Evaluate decides whether s matches the item f describes at now, with what the
 // routine's ledger knows of it. s is a normalized, valid spec, as spec.Load returns it.
+// It prepares s for this one decision: a caller deciding s on many items prepares it once
+// (Prepare) and decides with the plan.
 func Evaluate(s spec.Spec, f facts.Facts, h History, now time.Time) Decision {
-	trig, key, trace := evalTrigger(s.Trigger, f, h, now)
-
-	d := Decision{Match: trig, Trace: []Trace{trace}, Needs: []facts.Need{}}
-
-	if trig == Yes {
-		d.FireKey = fireKey(s, key, f, h, now)
-	}
-
-	if trig == No {
-		return d
-	}
-
-	cond := evalList(s.Conditions, "conditions", f, h, now)
-	d.Trace = append(d.Trace, cond.traces...)
-	d.Match = All(trig, cond.result)
-
-	if d.Match == Unknown {
-		var missing []facts.Need
-		if trig == Unknown {
-			missing = append(missing, trace.Need)
-		}
-
-		if cond.result == Unknown {
-			missing = append(missing, cond.needs...)
-		}
-
-		d.Needs = ordered(missing)
-	}
-
-	return d
+	return Prepare(s).Evaluate(f, h, now)
 }
 
 // ordered returns needs without repeats or nothing, in the order the facts name them.

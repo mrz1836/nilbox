@@ -94,7 +94,9 @@ func TestDecisionsGoldenWritesEveryField(t *testing.T) {
 	assert.Equal(t, 5, reflect.TypeFor[eval.Trace]().NumField(), "writeDecision writes every field of a trace")
 }
 
-// decideSection decides every routine of a section on every item, with every history.
+// decideSection decides every routine of a section on every item, with every history, as
+// the engine's cycle does: each routine's plan prepared once, then decided on every item.
+// Each decision is checked against Evaluate's own, which prepares the routine afresh.
 func decideSection(t *testing.T, s goldenSection) string {
 	t.Helper()
 
@@ -108,12 +110,17 @@ func decideSection(t *testing.T, s goldenSection) string {
 	b.WriteString(goldenHeader)
 
 	for _, r := range s.routines {
+		plan := eval.Prepare(r.spec)
+
 		for _, f := range s.items {
 			for _, name := range append(append([]string{}, s.histories...), r.histories...) {
 				h, ok := histories[name]
 				require.True(t, ok, "%s names the history %q", r.name, name)
 
-				writeDecision(&b, r.name+" · "+f.name+" · "+name, eval.Evaluate(r.spec, f.facts, h, now))
+				d := plan.Evaluate(f.facts, h, now)
+				require.Equal(t, eval.Evaluate(r.spec, f.facts, h, now), d, "%s · %s · %s", r.name, f.name, name)
+
+				writeDecision(&b, r.name+" · "+f.name+" · "+name, d)
 			}
 		}
 	}

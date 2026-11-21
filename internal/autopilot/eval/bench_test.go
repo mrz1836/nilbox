@@ -52,8 +52,8 @@ func templates(b *testing.B) []spec.Spec {
 }
 
 // BenchmarkEvaluateACycle decides 20 routines on 500 pull requests, as one engine cycle
-// does: the two pattern routines, then every template routine, repeated as needed. The
-// target is under 20 ms a cycle.
+// does: the two pattern routines, then every template routine, repeated as needed, each
+// prepared once and decided on every item. The target is under 20 ms a cycle.
 func BenchmarkEvaluateACycle(b *testing.B) {
 	routines := patternRoutines()
 	for _, s := range routines {
@@ -73,8 +73,10 @@ func BenchmarkEvaluateACycle(b *testing.B) {
 
 	for b.Loop() {
 		for _, s := range routines[:20] {
+			plan := eval.Prepare(s)
+
 			for _, f := range items {
-				eval.Evaluate(s, f, eval.History{}, now)
+				plan.Evaluate(f, eval.History{}, now)
 			}
 		}
 	}

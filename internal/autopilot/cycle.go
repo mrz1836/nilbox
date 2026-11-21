@@ -77,10 +77,25 @@ type routineRun struct {
 	// firstPass a first pass after it changed, which caps what it queues.
 	fresh     bool
 	firstPass bool
+
+	// plan is its spec prepared for deciding, the first time it decides (decide). A run
+	// is built afresh from the stored routine each cycle, so it is never out of date.
+	plan *eval.Plan
 }
 
 // id returns the routine's ID.
 func (r *routineRun) id() int64 { return r.row.ID }
+
+// decide decides the routine on the item f describes, with history h, at now: its spec
+// is prepared once, so deciding it on every item it watches works out what its spec
+// alone says only once.
+func (r *routineRun) decide(f facts.Facts, h eval.History, now time.Time) eval.Decision {
+	if r.plan == nil {
+		r.plan = eval.Prepare(r.spec)
+	}
+
+	return r.plan.Evaluate(f, h, now)
+}
 
 // passKey is the fingerprint of what a first pass ran under: the spec, when the routine
 // was last switched on, and its mode, so switching it off and on, or changing its mode,
@@ -679,7 +694,7 @@ func (p *pass) waitsForSearches(ctx context.Context, r *routineRun) bool {
 func (p *pass) decideAll(r *routineRun) {
 	for _, id := range r.watched {
 		if f, ok := p.facts[id]; ok && !r.handsOff[id] {
-			r.decided[id] = eval.Evaluate(r.spec, f, p.historyOf(r, id), p.now)
+			r.decided[id] = r.decide(f, p.historyOf(r, id), p.now)
 		}
 	}
 }
@@ -692,7 +707,7 @@ func (p *pass) evaluateItem(ctx context.Context, r *routineRun, id int64, fromNo
 		return nil, nil //nolint:nilnil // an item not stored, or left alone, makes no match
 	}
 
-	d := eval.Evaluate(r.spec, f, p.historyOf(r, id), p.now)
+	d := r.decide(f, p.historyOf(r, id), p.now)
 	r.decided[id] = d
 
 	if err := p.see(ctx, r, f, d); err != nil {
