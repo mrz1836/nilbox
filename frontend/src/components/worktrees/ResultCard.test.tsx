@@ -7,6 +7,8 @@ import { BranchResults } from './BranchResults'
 import { BulkResults } from './BulkResults'
 import { ResultCard } from './ResultCard'
 
+vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
+
 describe('ResultCard', () => {
   it('says on one line what a change did in full, and puts itself away from Dismiss', async () => {
     const onDismiss = vi.fn()
