@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Activity, useState } from 'react'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import { activityTarget, type AutopilotRequest } from '../../lib/autopilot'
@@ -167,7 +167,12 @@ async function routineList() {
 }
 
 describe('the Autopilot tab', () => {
+  beforeEach(() => {
+    platform.listRoutines.mockResolvedValue(routines())
+  })
+
   it('explains Autopilot in its two sentences while there is no routine, then offers templates and the ways to start', async () => {
+    platform.listRoutines.mockImplementation(() => Promise.resolve([]))
     platform.listTemplates.mockResolvedValue([
       snoozeTemplate(),
       galleryTemplate({ suggested: '3 of your clones run go-fortress’s security checks.' }),
@@ -195,7 +200,6 @@ describe('the Autopilot tab', () => {
   })
 
   it('lists the routines with their status lines and switches, greying another account’s and saying why one is broken', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     renderTab()
 
     const list = await routineList()
@@ -210,7 +214,6 @@ describe('the Autopilot tab', () => {
   })
 
   it('switches a routine off at once, and on only after asking about what it matches now', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.routineMatching.mockResolvedValue({ count: 3, pullRequests: 3, issues: 0, unknown: 0, incomplete: false })
     renderTab()
 
@@ -239,7 +242,6 @@ describe('the Autopilot tab', () => {
   })
 
   it('runs on what matches now when asked to, asks nothing when nothing does, and Escape changes nothing', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.routineMatching.mockResolvedValue({ count: 1, pullRequests: 0, issues: 1, unknown: 0, incomplete: false })
     renderTab()
 
@@ -267,7 +269,6 @@ describe('the Autopilot tab', () => {
   })
 
   it('asks, too, when what matches can’t be told yet or not everything could be read', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.routineMatching.mockResolvedValue({ count: 0, pullRequests: 0, issues: 0, unknown: 2, incomplete: false })
     renderTab()
 
@@ -296,7 +297,6 @@ describe('the Autopilot tab', () => {
   })
 
   it('shows a refusal in its own words', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.routineMatching.mockResolvedValue({ count: 2, pullRequests: 2, issues: 0, unknown: 0, incomplete: false })
     platform.setRoutineEnabled.mockRejectedValue(
       new Error(`Autopilot is running in another copy of ${brand.name}; make this change there.`),
@@ -312,7 +312,6 @@ describe('the Autopilot tab', () => {
   })
 
   it('duplicates, puts in Dry run, and deletes a routine from its ⋯ menu, asking before it deletes', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     renderTab()
 
     const list = await routineList()
@@ -359,8 +358,11 @@ describe('the Autopilot tab', () => {
 })
 
 describe('Activity', () => {
-  it('lists today’s lines: the local steps grouped by routine with Undo, and what a Dry run would have done', async () => {
+  beforeEach(() => {
     platform.listRoutines.mockResolvedValue(routines())
+  })
+
+  it('lists today’s lines: the local steps grouped by routine with Undo, and what a Dry run would have done', async () => {
     platform.autopilotActivity.mockResolvedValue(activityPage())
     renderTab()
 
@@ -398,7 +400,6 @@ describe('Activity', () => {
       leftAlone: [leftAlone()],
     })
 
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(page)
     platform.autopilotActivityFrom.mockResolvedValue(page)
     renderTab()
@@ -421,7 +422,6 @@ describe('Activity', () => {
   })
 
   it('filters the lines by routine and by result', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(activityPage())
     renderTab()
 
@@ -439,7 +439,6 @@ describe('Activity', () => {
   })
 
   it('reads its days again whenever Autopilot changes', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     renderTab()
 
     expect(await screen.findByText('Nothing yet. What your routines do shows here, newest first.')).toBeInTheDocument()
@@ -451,7 +450,6 @@ describe('Activity', () => {
   })
 
   it('opens an item’s card in the inbox while it is listed, else its row in the routine’s Watching list', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(activityPage())
     platform.routineWatching.mockResolvedValue([2])
     platform.itemsByID.mockResolvedValue([
@@ -478,7 +476,6 @@ describe('Activity', () => {
 
   it('opens an item no routine watches in its sheet, a deleted routine’s too, and GitHub only on a click', async () => {
     // The line is a deleted routine's: routine 9 is in no list.
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(
       activityPage({
         days: [{ date: '2026-06-15', matches: [dryRunMatch({ routineId: 9, routine: 'Gone' })], groups: [] }],
@@ -523,7 +520,6 @@ describe('Activity', () => {
   })
 
   it('marks a watched row once, in the routine that watches it, and not when the routine is visited again', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(activityPage())
     platform.routineWatching.mockImplementation((rid) => Promise.resolve(rid === 3 ? [2] : []))
     platform.itemsByID.mockResolvedValue([
@@ -549,7 +545,6 @@ describe('Activity', () => {
   })
 
   it('asks every routine at once, and shows the item in the first in order that watches it', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(activityPage())
     // The Dry run line is routine 4's, which no longer watches the item; routines 3 and 5
     // both do, and 5 answers first.
@@ -578,7 +573,6 @@ describe('Activity', () => {
   })
 
   it('passes over a routine whose list couldn’t be read when it opens an item', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(activityPage())
     // The line's own routine, 4, would come first, but its list can't be read.
     platform.routineWatching.mockImplementation((rid) =>
@@ -599,7 +593,6 @@ describe('Activity', () => {
   })
 
   it('lets a Watching ask go once another routine or Activity is chosen, so it never lands later', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(activityPage())
     platform.routineWatching.mockImplementation((rid) => Promise.resolve(rid === 3 ? [2] : []))
     // The list's first read of its items is still on its way when Activity is chosen.
@@ -622,7 +615,6 @@ describe('Activity', () => {
 
   it('keeps the sheet of an item no list holds as the item is, after its own triage', async () => {
     // The line is a deleted routine's: routine 9 is in no list.
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(
       activityPage({
         days: [{ date: '2026-06-15', matches: [dryRunMatch({ routineId: 9, routine: 'Gone' })], groups: [] }],
@@ -667,7 +659,6 @@ describe('Activity', () => {
 
   it('keeps a Watching ask while the question about unsaved changes is open, and shows it on Discard', async () => {
     const user = userEvent.setup()
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(activityPage())
     platform.routineWatching.mockImplementation((rid) => Promise.resolve(rid === 3 ? [2] : []))
     platform.itemsByID.mockResolvedValue([
@@ -699,7 +690,6 @@ describe('Activity', () => {
 
   it('lets a Watching ask go once the question about unsaved changes is answered Keep editing', async () => {
     const user = userEvent.setup()
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(activityPage())
     platform.routineWatching.mockImplementation((rid) => Promise.resolve(rid === 3 ? [2] : []))
     platform.itemsByID.mockResolvedValue([
@@ -733,7 +723,6 @@ describe('Activity', () => {
   })
 
   it('says why Activity has no line for a match a request names', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(
       activityPage({
         days: [
@@ -758,7 +747,6 @@ describe('Activity', () => {
   })
 
   it('opens an agent’s run beside Activity when a request names it, as Agent finished does', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     renderTab({
       request: {
         seq: 1,
@@ -775,7 +763,6 @@ describe('Activity', () => {
   })
 
   it('opens a finished agent’s run from its line in Activity', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(
       activityPage({
         days: [
@@ -801,7 +788,6 @@ describe('Activity', () => {
   })
 
   it('opens a working agent’s run from Working’s Watch', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotWorking.mockResolvedValue({
       working: [
         {
@@ -829,7 +815,6 @@ describe('Activity', () => {
   })
 
   it('shows every line again once the filter is back to every routine', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(activityPage())
     renderTab()
 
@@ -860,7 +845,6 @@ describe('Activity', () => {
   })
 
   it('says, across the top, that Autopilot is paused, with Resume, and that another copy runs it', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.getAutopilotEngine.mockResolvedValue(autopilotEngine({ elsewhere: true, holds: false }))
     renderTab({ stored: settingsOf({ autopilot: { ...settingsOf().autopilot, paused: true } }) })
 
@@ -881,7 +865,6 @@ describe('Activity', () => {
   })
 
   it('pauses Autopilot from its header', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     renderTab()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Pause Autopilot' }))
@@ -891,7 +874,6 @@ describe('Activity', () => {
   })
 
   it('shows the match a request names, reading earlier pages until one holds it', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockImplementation((before, limit) =>
       Promise.resolve(
         limit <= 100 && before === 0
@@ -915,7 +897,6 @@ describe('Activity', () => {
   })
 
   it('looks for the match a request names in Activity as it is now, once the tab shows again', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(activityPage())
 
     // Shown is the tab as App holds it: kept, hidden, while another tab shows.
@@ -972,7 +953,6 @@ describe('Activity', () => {
   })
 
   it('reads earlier days on asking, and goes back to Activity from a routine', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(activityPage({ more: true, next: 12 }))
     renderTab()
 
@@ -989,7 +969,6 @@ describe('Activity', () => {
   })
 
   it('says why a routine couldn’t be copied or deleted, and deletes nothing on Cancel', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.duplicateRoutine.mockRejectedValue(new Error('The routine is gone.'))
     platform.deleteRoutine.mockRejectedValue(new Error('The routines couldn’t be saved.'))
     renderTab()
@@ -1016,7 +995,6 @@ describe('Activity', () => {
   })
 
   it('opens Settings → Autopilot', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     renderTab()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Autopilot settings' }))
@@ -1026,8 +1004,11 @@ describe('Activity', () => {
 })
 
 describe('a routine', () => {
-  it('shows its sentence, its mode, and what it watches as the inbox’s own rows, menus and all', async () => {
+  beforeEach(() => {
     platform.listRoutines.mockResolvedValue(routines())
+  })
+
+  it('shows its sentence, its mode, and what it watches as the inbox’s own rows, menus and all', async () => {
     platform.routineWatching.mockResolvedValue([1])
     platform.itemsByID.mockResolvedValue([item()])
     renderTab()
@@ -1064,7 +1045,6 @@ describe('a routine', () => {
       reviewRequest: 'none',
     })
 
-    platform.listRoutines.mockResolvedValue(routines())
     platform.routineWatching.mockResolvedValue([1])
     platform.itemsByID.mockResolvedValue([bump])
     platform.latestAutopilotMatches.mockResolvedValue([autopilotMatch()])
@@ -1108,7 +1088,6 @@ describe('a routine', () => {
   })
 
   it('says what it watches is empty, and its own Activity', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotActivity.mockResolvedValue(
       activityPage({ days: [{ date: '2026-06-15', matches: [], groups: [activityGroup()] }] }),
     )
@@ -1124,7 +1103,12 @@ describe('a routine', () => {
 })
 
 describe('the builder in the tab', () => {
+  beforeEach(() => {
+    platform.listRoutines.mockResolvedValue(routines())
+  })
+
   it('starts a routine from scratch on the empty tab, in the mode new routines start in, and makes it off', async () => {
+    platform.listRoutines.mockImplementation(() => Promise.resolve([]))
     const user = userEvent.setup()
     renderTab()
 
@@ -1159,7 +1143,6 @@ describe('the builder in the tab', () => {
 
   it('says why a new routine couldn’t be made, and Cancel leaves it', async () => {
     const user = userEvent.setup()
-    platform.listRoutines.mockResolvedValue(routines())
     platform.saveRoutine.mockRejectedValue(new Error('Another routine has that name.'))
     renderTab()
 
@@ -1184,7 +1167,6 @@ describe('the builder in the tab', () => {
     const user = userEvent.setup()
     const copy = deferred<AutopilotRoutine>()
     const made = routine({ id: 13, name: 'Snooze passing bot PRs copy', enabled: false, enabledAt: null })
-    platform.listRoutines.mockResolvedValue(routines())
     platform.duplicateRoutine.mockImplementation(() => copy.promise)
     platform.saveRoutine.mockRejectedValue(new Error('Another routine has that name.'))
     renderTab()
@@ -1212,7 +1194,6 @@ describe('the builder in the tab', () => {
 
   it('asks before leaving unsaved changes, keeps them on Keep editing, and keeps them across a visit elsewhere', async () => {
     const user = userEvent.setup()
-    platform.listRoutines.mockResolvedValue(routines())
     renderTab()
 
     const list = await routineList()
@@ -1247,7 +1228,6 @@ describe('the builder in the tab', () => {
 
   it('asks of a new routine with changes too', async () => {
     const user = userEvent.setup()
-    platform.listRoutines.mockResolvedValue(routines())
     renderTab()
 
     await (await routineList()).findByRole('button', { name: /^Snooze passing bot PRs/ })
@@ -1264,7 +1244,6 @@ describe('the builder in the tab', () => {
 
   it('saves a change to what an enabled routine watches only after asking about what it matches now', async () => {
     const user = userEvent.setup()
-    platform.listRoutines.mockResolvedValue(routines())
     platform.routineMatching.mockResolvedValue({ count: 3, pullRequests: 3, issues: 0, unknown: 1, incomplete: false })
     renderTab()
 
@@ -1301,7 +1280,6 @@ describe('the builder in the tab', () => {
 
   it('saves at once when nothing matches now, or when what it watches didn’t change', async () => {
     const user = userEvent.setup()
-    platform.listRoutines.mockResolvedValue(routines())
     renderTab()
 
     await user.click((await routineList()).getByRole('button', { name: /^Snooze passing bot PRs/ }))
@@ -1355,7 +1333,6 @@ describe('the builder in the tab', () => {
 
   it('keeps a new routine’s draft when New routine is clicked again', async () => {
     const user = userEvent.setup()
-    platform.listRoutines.mockResolvedValue(routines())
     renderTab()
 
     await (await routineList()).findByRole('button', { name: /^Snooze passing bot PRs/ })
@@ -1369,7 +1346,6 @@ describe('the builder in the tab', () => {
 
   it('shows each routine’s own test, never another’s', async () => {
     const user = userEvent.setup()
-    platform.listRoutines.mockResolvedValue(routines())
     renderTab()
 
     const list = await routineList()
@@ -1392,7 +1368,6 @@ describe('the builder in the tab', () => {
 
   it('says why a saved routine’s change wasn’t saved in its builder, as a new one’s, not in a toast', async () => {
     const user = userEvent.setup()
-    platform.listRoutines.mockResolvedValue(routines())
     platform.saveRoutine.mockRejectedValue(new Error('Another routine has that name.'))
     renderTab()
 
@@ -1417,7 +1392,6 @@ describe('the builder in the tab', () => {
 
   it('saves nothing more with ⌘S while the question a save asked is open', async () => {
     const user = userEvent.setup()
-    platform.listRoutines.mockResolvedValue(routines())
     platform.routineMatching.mockResolvedValue({ count: 3, pullRequests: 3, issues: 0, unknown: 0, incomplete: false })
     renderTab()
 
@@ -1436,7 +1410,6 @@ describe('the builder in the tab', () => {
 
   it('asks before a save that changes what the routine fires once per', async () => {
     const user = userEvent.setup()
-    platform.listRoutines.mockResolvedValue(routines())
     platform.routineMatching.mockResolvedValue({ count: 2, pullRequests: 2, issues: 0, unknown: 0, incomplete: false })
     renderTab()
 
@@ -1480,8 +1453,11 @@ async function needsYouSection() {
 }
 
 describe('Needs you', () => {
-  it('asks for the OK of what waits, runs or skips it, and lists what is queued', async () => {
+  beforeEach(() => {
     platform.listRoutines.mockResolvedValue(routines())
+  })
+
+  it('asks for the OK of what waits, runs or skips it, and lists what is queued', async () => {
     platform.autopilotNeedsYou.mockResolvedValue([
       open(21, 'waiting', 'ask', 'Waits for your OK, as Ask first does.'),
       open(22, 'queued', 'slot', 'Starts as soon as an agent slot frees.', { item: itemRef({ id: 2, number: 9 }) }),
@@ -1508,7 +1484,6 @@ describe('Needs you', () => {
   })
 
   it('shows a held start’s files as the hold dialog does, and Run confirms them at their commit', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotNeedsYou.mockResolvedValue([
       open(23, 'waiting', 'hold', 'Waits for you: the pull request changes agent configuration.', {
         hold: autopilotHold(),
@@ -1527,7 +1502,6 @@ describe('Needs you', () => {
   })
 
   it('says how many files a worktree has uncommitted, and runs there anyway on asking', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotNeedsYou.mockResolvedValue([
       open(24, 'waiting', 'dirty_worktree', 'Waits for you: its worktree has uncommitted changes.', {
         hold: autopilotHold({ reason: 'dirty', files: [], worktree: 'pr-88', dirty: 3 }),
@@ -1544,7 +1518,6 @@ describe('Needs you', () => {
   })
 
   it('clones a repository a match found no clone of, after asking, then runs it', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotNeedsYou.mockResolvedValue([
       open(25, 'waiting', 'no_clone', 'Waits for a clone of acme-org/example-repo on this Mac.'),
     ])
@@ -1573,7 +1546,6 @@ describe('Needs you', () => {
   })
 
   it('runs at once where the repository was cloned since, and says why it can’t clone onto something there', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotNeedsYou.mockResolvedValue([
       open(25, 'waiting', 'no_clone', 'Waits for a clone of acme-org/example-repo on this Mac.'),
     ])
@@ -1601,7 +1573,6 @@ describe('Needs you', () => {
   })
 
   it('checks this Mac again for what can’t start yet, and skips or opens it', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotNeedsYou.mockResolvedValue([
       open(26, 'blocked', 'not_ready', 'Can’t start: Claude isn’t installed on this Mac.'),
     ])
@@ -1625,7 +1596,6 @@ describe('Needs you', () => {
   })
 
   it('says what a GitHub action would send, and Send anyway accepts the warnings it shows', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotNeedsYou.mockResolvedValue([
       open(27, 'waiting', 'warning', 'Updating a Dependabot branch stops Dependabot from rebasing it.', {
         steps: [githubStep({ actions: ['reply', 'updateBranch'], sent: 1 })],
@@ -1646,7 +1616,6 @@ describe('Needs you', () => {
   })
 
   it('asks to merge a fix whose checks passed, showing the verdict, and opens the sheet for a review GitHub wants', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     const steps = [
       githubStep({ kind: 'agent', label: 'Run a coding agent', status: 'done', outcome: 'pushed', actions: [] }),
       githubStep({
@@ -1689,7 +1658,6 @@ describe('Needs you', () => {
   })
 
   it('shows the agent’s review, and posts it, as a comment, or skips it for the sheet', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     const review = { verdict: 'approve' as const, body: 'Looks good to me.', comments: [] }
     platform.autopilotNeedsYou.mockResolvedValue([
       open(32, 'waiting', 'ask', 'The agent’s review is ready: waiting for your OK to post it.', {
@@ -1734,7 +1702,6 @@ describe('Needs you', () => {
   })
 
   it('gathers a routine’s backlog in one card, whose Run on them lets every one go', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     const rebase = { steps: [githubStep()], step: 0 }
     const backlog = [21, 22, 23, 24, 25, 26, 27].map((id) =>
       open(id, 'waiting', 'backlog', '7 matched at once: run on them from Activity.', {
@@ -1770,7 +1737,6 @@ describe('Needs you', () => {
   })
 
   it('says when Skip them found some of the backlog it showed moved on already', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     const backlog = [21, 22, 23].map((id) =>
       open(id, 'waiting', 'backlog', '3 matched at once: run on them from Activity.', {
         item: itemRef({ id, number: id }),
@@ -1790,7 +1756,6 @@ describe('Needs you', () => {
   })
 
   it('says across the top how many routines this Mac can’t run, and what one lacks in the list', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.getAutopilotReadiness.mockResolvedValue(
       readiness({
         checks: [readyCheck(), claudeMissing()],
@@ -1808,7 +1773,6 @@ describe('Needs you', () => {
   })
 
   it('marks the card of an open match a request names, not a line of the history', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     platform.autopilotNeedsYou.mockResolvedValue([open(21, 'waiting', 'ask', 'Waits for your OK.')])
     renderTab({
       request: {
@@ -1827,7 +1791,6 @@ describe('Needs you', () => {
   })
 
   it('reads what waits again whenever Autopilot changes', async () => {
-    platform.listRoutines.mockResolvedValue(routines())
     renderTab()
 
     await routineList()
