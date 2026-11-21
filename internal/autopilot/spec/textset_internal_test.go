@@ -2,6 +2,7 @@ package spec
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,13 +50,10 @@ func TestTextSetContract(t *testing.T) {
 			in:   []string{iWithDot, dottedI, "i"}, want: []string{dottedI, "i", iWithDot},
 		},
 		{
-			// Past 12 values an unstable sort may reorder ties: textSet's is stable, so the
-			// dotted I written first stays first.
-			name: "ties stay in the order written past 12 values",
-			in: []string{
-				"n", "m", dottedI, "l", "k", "j", "h", "g", "f", "e", "d", "c", "b", "i", "a",
-			},
-			want: []string{"a", "b", "c", "d", "e", "f", "g", "h", dottedI, "i", "j", "k", "l", "m", "n"},
+			// Past 12 values an unstable sort reorders this tie (TestStableTieTellsTheSortsApart
+			// checks it still does): textSet's is stable, so the dotted I written first stays
+			// first.
+			name: "ties stay in the order written past 12 values", in: stableTieIn(), want: stableTieWant(),
 		},
 	}
 
@@ -74,6 +72,33 @@ func TestTextSetContract(t *testing.T) {
 			}
 		})
 	}
+}
+
+// stableTieIn is 13 values, none a repeat, with a tie (a dotted I written before an i)
+// that slices.SortFunc's unstable sort puts the other way round.
+func stableTieIn() []string {
+	return []string{dottedI, "l", "k", "j", "h", "g", "i", "f", "e", "d", "c", "b", "a"}
+}
+
+// stableTieWant is stableTieIn sorted by strings.ToLower, its tie in the order written.
+func stableTieWant() []string {
+	return []string{"a", "b", "c", "d", "e", "f", "g", "h", dottedI, "i", "j", "k", "l"}
+}
+
+// TestStableTieTellsTheSortsApart fails when slices.SortFunc, with textSet's comparison,
+// orders stableTieIn as a stable sort does, so the tie case above can't stop telling a
+// stable sort from an unstable one without failing: should a Go release change the
+// unstable sort, the case needs an input that this sort reorders.
+func TestStableTieTellsTheSortsApart(t *testing.T) {
+	t.Parallel()
+
+	unstable := stableTieIn()
+	slices.SortFunc(unstable, func(a, b string) int {
+		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+	})
+
+	assert.ElementsMatch(t, stableTieWant(), unstable)
+	assert.NotEqual(t, stableTieWant(), unstable, "an unstable sort reorders the tie, so only a stable one passes the case")
 }
 
 // TestTextSetIsWhatNormalizeStores pins that textSet is what Normalize stores for a list that is a
