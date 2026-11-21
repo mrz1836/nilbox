@@ -3,6 +3,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { DownloadAnswer, RestartAnswer, RunGoing, UpdateStatus } from '../platform'
+import { deferred } from '../test/async'
 import { runGoing, scriptRun, updateLocation, updateReady, updateStatus } from '../test/fixtures'
 import { emit, platform } from '../test/platform'
 import { finishingWords, settlingWords } from './update'
@@ -34,11 +35,6 @@ function refusedFor(runs: RunGoing[]): RestartAnswer {
   return { restarted: false, runsGoing: runs, message: '' }
 }
 
-// pending is a call that never answers, so a step stays under way.
-function pending<T>(): Promise<T> {
-  return new Promise<T>(() => undefined)
-}
-
 describe('useUpdate', () => {
   it('reads the status, and reads it again on every change', async () => {
     const { result } = renderHook(() => useUpdate())
@@ -59,14 +55,9 @@ describe('useUpdate', () => {
   })
 
   it('shows only the latest read’s answer, never one a newer read replaced', async () => {
-    let answerFirst: (status: UpdateStatus) => void = () => undefined
+    const first = deferred<UpdateStatus>()
     platform.getUpdateStatus
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            answerFirst = resolve
-          }),
-      )
+      .mockImplementationOnce(() => first.promise)
       .mockResolvedValueOnce(updateReady({ state: 'downloading', progress: 60 }))
     const { result } = renderHook(() => useUpdate())
 
@@ -78,7 +69,7 @@ describe('useUpdate', () => {
     })
 
     await act(async () => {
-      answerFirst(updateStatus())
+      first.resolve(updateStatus())
       await Promise.resolve()
     })
 
@@ -94,7 +85,7 @@ function flow(unsent: () => number = () => 0) {
 describe('useRestartToUpdate', () => {
   it('restarts at once when nothing would be lost', async () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady())
-    platform.restartToUpdateNow.mockReturnValue(pending())
+    platform.restartToUpdateNow.mockReturnValue(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
     act(() => {
@@ -112,7 +103,7 @@ describe('useRestartToUpdate', () => {
 
   it('shows the banner Later hid again before it restarts, so how the restart ends shows', async () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady({ bannerHidden: true }))
-    platform.restartToUpdateNow.mockReturnValue(pending())
+    platform.restartToUpdateNow.mockReturnValue(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
     act(() => {
@@ -176,7 +167,7 @@ describe('useRestartToUpdate', () => {
 
       return Promise.reject(failure('There’s no update ready to install yet.'))
     })
-    platform.restartToUpdateNow.mockReturnValueOnce(pending())
+    platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
     platform.downloadUpdate.mockResolvedValue(got(notify({ latest: '0.3.1' })))
     const { result } = flow(() => 1)
 
@@ -243,7 +234,7 @@ describe('useRestartToUpdate', () => {
 
   it('does nothing for a second start while one is under way', async () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady())
-    platform.restartToUpdateNow.mockReturnValue(pending())
+    platform.restartToUpdateNow.mockReturnValue(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
     act(() => {
@@ -262,13 +253,9 @@ describe('useRestartToUpdate', () => {
   })
 
   it('downloads a version only found first, showing it downloads, then restarts', async () => {
-    let downloaded: (answer: DownloadAnswer) => void = () => undefined
+    const download = deferred<DownloadAnswer>()
     platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', mode: 'notify' }))
-    platform.downloadUpdate.mockReturnValue(
-      new Promise((resolve) => {
-        downloaded = resolve
-      }),
-    )
+    platform.downloadUpdate.mockReturnValue(download.promise)
     const { result } = flow()
 
     act(() => {
@@ -280,7 +267,7 @@ describe('useRestartToUpdate', () => {
     expect(platform.restartToUpdateNow).not.toHaveBeenCalled()
 
     await act(async () => {
-      downloaded(got(updateReady()))
+      download.resolve(got(updateReady()))
       await Promise.resolve()
     })
 
@@ -342,12 +329,8 @@ describe('useRestartToUpdate', () => {
   })
 
   it('shows the check under way, and says what it found when it finds nothing', async () => {
-    let checked: (status: UpdateStatus) => void = () => undefined
-    platform.checkForUpdates.mockReturnValueOnce(
-      new Promise((resolve) => {
-        checked = resolve
-      }),
-    )
+    const check = deferred<UpdateStatus>()
+    platform.checkForUpdates.mockReturnValueOnce(check.promise)
     platform.checkForUpdates.mockResolvedValueOnce(updateStatus({ lastError: 'Couldn’t reach the releases.' }))
     const { result } = flow()
 
@@ -359,7 +342,7 @@ describe('useRestartToUpdate', () => {
     })
 
     await act(async () => {
-      checked(updateStatus())
+      check.resolve(updateStatus())
       await Promise.resolve()
     })
     await waitFor(() => {
@@ -439,7 +422,7 @@ describe('useRestartToUpdate', () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
-    platform.restartToUpdateNow.mockReturnValueOnce(pending())
+    platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
     act(() => {
@@ -465,7 +448,7 @@ describe('useRestartToUpdate', () => {
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing(), pull]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing(), pull]))
-    platform.restartToUpdateNow.mockReturnValueOnce(pending())
+    platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
     act(() => {
@@ -496,7 +479,7 @@ describe('useRestartToUpdate', () => {
   it('restarts unconfirmed when the runs it named ended while it asked', async () => {
     platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
-    platform.restartToUpdateNow.mockReturnValueOnce(pending())
+    platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
     act(() => {
@@ -521,7 +504,7 @@ describe('useRestartToUpdate', () => {
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([]))
-    platform.restartToUpdateNow.mockReturnValueOnce(pending())
+    platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
     act(() => {
@@ -639,13 +622,9 @@ describe('useRestartToUpdate', () => {
   })
 
   it('counts the sheets once the download is done, so text written meanwhile counts', async () => {
-    let downloaded: (answer: DownloadAnswer) => void = () => undefined
+    const download = deferred<DownloadAnswer>()
     platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', mode: 'notify' }))
-    platform.downloadUpdate.mockReturnValue(
-      new Promise((resolve) => {
-        downloaded = resolve
-      }),
-    )
+    platform.downloadUpdate.mockReturnValue(download.promise)
     const { result, rerender } = flow(() => 0)
 
     act(() => {
@@ -657,7 +636,7 @@ describe('useRestartToUpdate', () => {
 
     rerender({ count: () => 1 })
     await act(async () => {
-      downloaded(got(updateReady()))
+      download.resolve(got(updateReady()))
       await Promise.resolve()
     })
 
@@ -672,7 +651,7 @@ describe('useRestartToUpdate', () => {
     platform.listScriptRuns.mockRejectedValue(failure('The runs are busy.'))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
-    platform.restartToUpdateNow.mockReturnValueOnce(pending())
+    platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
     const { result, rerender } = flow(() => 1)
 
     act(() => {
@@ -729,13 +708,9 @@ describe('useRestartToUpdate', () => {
   })
 
   it('counts the text written while Go backed up, when it then refuses for the runs going', async () => {
-    let answered: (answer: RestartAnswer) => void = () => undefined
+    const restart = deferred<RestartAnswer>()
     platform.getUpdateStatus.mockResolvedValue(updateReady())
-    platform.restartToUpdateNow.mockReturnValueOnce(
-      new Promise<RestartAnswer>((resolve) => {
-        answered = resolve
-      }),
-    )
+    platform.restartToUpdateNow.mockReturnValueOnce(restart.promise)
     const { result, rerender } = flow(() => 0)
 
     act(() => {
@@ -747,7 +722,7 @@ describe('useRestartToUpdate', () => {
 
     rerender({ count: () => 1 })
     await act(async () => {
-      answered({ restarted: false, runsGoing: [runGoing()], message: '' })
+      restart.resolve({ restarted: false, runsGoing: [runGoing()], message: '' })
       await Promise.resolve()
     })
 
@@ -1090,14 +1065,10 @@ describe('useUpdateControl', () => {
   })
 
   it('hides a download’s banner on Later while it downloads, and shows the restart after', async () => {
-    let downloaded: (answer: DownloadAnswer) => void = () => undefined
+    const download = deferred<DownloadAnswer>()
     platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', mode: 'notify' }))
-    platform.downloadUpdate.mockReturnValue(
-      new Promise<DownloadAnswer>((resolve) => {
-        downloaded = resolve
-      }),
-    )
-    platform.restartToUpdateNow.mockReturnValue(pending())
+    platform.downloadUpdate.mockReturnValue(download.promise)
+    platform.restartToUpdateNow.mockReturnValue(deferred<RestartAnswer>().promise)
     const { result } = control()
 
     await waitFor(() => {
@@ -1117,7 +1088,7 @@ describe('useUpdateControl', () => {
     expect(platform.hideUpdateBanner).not.toHaveBeenCalled()
 
     await act(async () => {
-      downloaded(got(updateReady()))
+      download.resolve(got(updateReady()))
       await Promise.resolve()
     })
     await waitFor(() => {

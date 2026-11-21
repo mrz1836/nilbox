@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { deferred } from '../test/async'
 import { githubThread, githubThreadList, githubThreads, queuedClear, settledClear } from '../test/fixtures'
 import { emit, listening, platform } from '../test/platform'
 import { useGitHubThreads } from './useGitHubThreads'
@@ -85,12 +86,8 @@ describe('useGitHubThreads', () => {
       expect(result.current.snapshot).not.toBeNull()
     })
 
-    let answer: (value: ReturnType<typeof githubThreads>) => void = () => undefined
-    platform.markGitHubThreadsDone.mockReturnValueOnce(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const answer = deferred<ReturnType<typeof githubThreads>>()
+    platform.markGitHubThreadsDone.mockReturnValueOnce(answer.promise)
 
     let done: ReturnType<typeof result.current.markDone> | undefined
     act(() => {
@@ -104,7 +101,7 @@ describe('useGitHubThreads', () => {
     // GitHub took them; the mirror, read again, shows them gone.
     platform.githubThreadsSnapshot.mockResolvedValue(githubThreads({ status: { count: 2 } }))
     act(() => {
-      answer(githubThreads({ status: { count: 2 } }))
+      answer.resolve(githubThreads({ status: { count: 2 } }))
     })
 
     await waitFor(() => {

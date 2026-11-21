@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { MoveResult, UpdateLocationKind, UpdateStatus } from '../platform'
+import { deferred } from '../test/async'
 import { moveResult, updateLocation, updateReady, updateStatus } from '../test/fixtures'
 import { emit, platform } from '../test/platform'
 import { offerOf, type RestartStep } from './update'
@@ -16,17 +17,12 @@ function failure(message: string): Error {
 
 // held is a call that waits until released, then answers with result.
 function held(result: MoveResult) {
-  const gate: { open?: () => void } = {}
-  const call = new Promise<MoveResult>((resolve) => {
-    gate.open = () => {
-      resolve(result)
-    }
-  })
+  const d = deferred<MoveResult>()
 
   return {
-    call,
+    call: d.promise,
     release: () => {
-      gate.open?.()
+      d.resolve(result)
     },
   }
 }

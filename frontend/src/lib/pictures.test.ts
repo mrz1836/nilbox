@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { InboxItem, PictureBot } from '../platform'
+import { deferred, nextTask } from '../test/async'
 import { issue, issueComment, issueEvent, issueTimeline, item, review } from '../test/fixtures'
 import { platform } from '../test/platform'
 import {
@@ -100,12 +101,7 @@ function held(): Request[] {
 
   platform.cardPictures.mockImplementation((people, bots) => {
     const cancel = vi.fn()
-    let answer: (got: Pictures) => void = () => undefined
-    let fail: (err: unknown) => void = () => undefined
-    const promise = new Promise<Pictures>((resolve, reject) => {
-      answer = resolve
-      fail = reject
-    })
+    const { promise, resolve: answer, reject: fail } = deferred<Pictures>()
 
     requests.push({ people: people ?? [], bots: bots ?? [], answer, fail, cancel })
 
@@ -215,11 +211,7 @@ describe('useCardPictures', () => {
     rerender({ items: [person('octo-user'), bot('dependabot')] })
     const rendered = calls
     // A timer's turn comes after every answer already given.
-    await act(async () => {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 0)
-      })
-    })
+    await nextTask()
 
     expect(platform.cardPictures).toHaveBeenLastCalledWith(['octo-user'], [{ login: 'dependabot', url: botURL(1) }])
     expect(result.current).toBe(shown)

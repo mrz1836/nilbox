@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { deferred } from '../test/async'
 import { all, andThen, attempt, cancel, logFailure, serial, start } from './call'
 
 // cancellable is a call that records its cancellation, as a bound call does.
@@ -52,17 +53,12 @@ describe('logFailure', () => {
 
   it('handles a cancelled call’s rejection too', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    let refuse: (err: Error) => void = () => undefined
-    const call = Object.assign(
-      new Promise<void>((_, reject) => {
-        refuse = reject
-      }),
-      {
-        cancel: () => {
-          refuse(new Error('cancelled'))
-        },
+    const refused = deferred()
+    const call = Object.assign(refused.promise, {
+      cancel: () => {
+        refused.reject(new Error('cancelled'))
       },
-    )
+    })
 
     logFailure(call, 'could not keep running:')
     cancel(call)
@@ -139,15 +135,13 @@ describe('serial', () => {
   it('starts each task once the one before it has settled, however it ended', async () => {
     const queue = serial()
     const order: string[] = []
-    let fail: (err: Error) => void = () => undefined
+    const stuck = deferred()
 
-    const first = queue(
-      () =>
-        new Promise<void>((_, reject) => {
-          order.push('first')
-          fail = reject
-        }),
-    )
+    const first = queue(() => {
+      order.push('first')
+
+      return stuck.promise
+    })
     const second = queue(() => {
       order.push('second')
 
@@ -157,7 +151,7 @@ describe('serial', () => {
     await Promise.resolve()
     expect(order).toEqual(['first'])
 
-    fail(new Error('database is locked'))
+    stuck.reject(new Error('database is locked'))
 
     await expect(first).rejects.toThrow('database is locked')
     expect(await second).toBe('done')

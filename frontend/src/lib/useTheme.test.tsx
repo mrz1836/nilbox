@@ -2,23 +2,12 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Settings, Theme } from '../platform'
+import { deferred } from '../test/async'
 import { platform } from '../test/platform'
 import type { Result } from './call'
 import { useTheme } from './useTheme'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
-
-// deferred is a promise the test settles.
-function deferred<T>() {
-  let resolve: (value: T) => void = () => undefined
-  let reject: (err: unknown) => void = () => undefined
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-
-  return { promise, resolve, reject }
-}
 
 // fakeWindow is a window over a document of its own whose appearance the test controls,
 // with view transitions that run their update at once and are counted.

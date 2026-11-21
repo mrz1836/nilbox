@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { ListKey, Settings } from '../platform'
+import { deferred, type Deferred } from '../test/async'
 import { settings } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { useCollapsedSections } from './useCollapsedSections'
@@ -62,17 +63,16 @@ describe('useCollapsedSections', () => {
 
   it('stores changes one at a time, in the order they were made', async () => {
     const { result } = await loaded()
-    const finish: (() => void)[] = []
+    const finish: Deferred<Settings>[] = []
     const started: [string, boolean][] = []
 
     platform.setSectionCollapsed.mockImplementation((section, on) => {
       started.push([section, on])
 
-      return new Promise<Settings>((resolve) => {
-        finish.push(() => {
-          resolve(settings())
-        })
-      })
+      const stored = deferred<Settings>()
+      finish.push(stored)
+
+      return stored.promise
     })
 
     act(() => {
@@ -84,7 +84,7 @@ describe('useCollapsedSections', () => {
       expect(started).toEqual([['yours', true]])
     })
 
-    finish[0]?.()
+    finish[0]?.resolve(settings())
 
     await waitFor(() => {
       expect(started).toEqual([
@@ -128,18 +128,14 @@ describe('useCollapsedSections', () => {
   })
 
   it('ignores a load that finishes after unmounting', async () => {
-    let resolve: (sections: ListKey[]) => void = () => undefined
-    platform.getCollapsedSections.mockReturnValue(
-      new Promise<ListKey[]>((r) => {
-        resolve = r
-      }),
-    )
+    const load = deferred<ListKey[]>()
+    platform.getCollapsedSections.mockReturnValue(load.promise)
 
     const { result, unmount } = renderHook(() => useCollapsedSections())
     unmount()
 
     await act(async () => {
-      resolve(['reviewRequested'])
+      load.resolve(['reviewRequested'])
       await Promise.resolve()
     })
 
@@ -148,18 +144,14 @@ describe('useCollapsedSections', () => {
 
   it('ignores a failed load that finishes after unmounting', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    let reject: (err: Error) => void = () => undefined
-    platform.getCollapsedSections.mockReturnValue(
-      new Promise<ListKey[]>((_, r) => {
-        reject = r
-      }),
-    )
+    const load = deferred<ListKey[]>()
+    platform.getCollapsedSections.mockReturnValue(load.promise)
 
     const { result, unmount } = renderHook(() => useCollapsedSections())
     unmount()
 
     await act(async () => {
-      reject(new Error('database is locked'))
+      load.reject(new Error('database is locked'))
       await Promise.resolve()
     })
 

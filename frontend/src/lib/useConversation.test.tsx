@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AutopilotRunEvents, DescribeConversation } from '../platform'
+import { deferred } from '../test/async'
 import { describeConversation, describeTurn, runEvent, runEventsPage } from '../test/fixtures'
 import { emit, platform } from '../test/platform'
 import { useConversation } from './useConversation'
@@ -18,16 +19,6 @@ function page(from: number, count: number, done: boolean): AutopilotRunEvents {
       runEvent({ seq: from + i, offset: (from + i) * 100, text: `said ${String(from + i)}` }),
     ),
   })
-}
-
-// held is a promise the test settles itself.
-function held<T>() {
-  let settle: (value: T) => void = () => undefined
-  const promise = new Promise<T>((resolve) => {
-    settle = resolve
-  })
-
-  return { promise, settle }
 }
 
 // conversation is the current conversation with the turns given.
@@ -107,7 +98,7 @@ describe('useConversation', () => {
   })
 
   it('reads one turn’s events one at a time, with one more waiting', async () => {
-    const first = held<AutopilotRunEvents>()
+    const first = deferred<AutopilotRunEvents>()
 
     platform.describeItConversation.mockResolvedValue(
       conversation([describeTurn({ state: 'running' })], { running: true }),
@@ -134,7 +125,7 @@ describe('useConversation', () => {
     expect(platform.describeItEvents).toHaveBeenCalledOnce()
 
     await act(async () => {
-      first.settle(page(1, 2, false))
+      first.resolve(page(1, 2, false))
       await first.promise
     })
     await waitFor(() => {
@@ -147,7 +138,7 @@ describe('useConversation', () => {
   })
 
   it('reads the conversation one read at a time, with one more waiting', async () => {
-    const first = held<DescribeConversation>()
+    const first = deferred<DescribeConversation>()
 
     platform.describeItConversation.mockReturnValueOnce(first.promise).mockResolvedValue(conversation())
 
@@ -166,7 +157,7 @@ describe('useConversation', () => {
     expect(platform.describeItConversation).toHaveBeenCalledOnce()
 
     await act(async () => {
-      first.settle(describeConversation())
+      first.resolve(describeConversation())
       await first.promise
     })
     await waitFor(() => {
@@ -241,7 +232,7 @@ describe('useConversation', () => {
   })
 
   it('sends a message, showing the conversation it answers with, and follows its turn', async () => {
-    const sent = held<DescribeConversation>()
+    const sent = deferred<DescribeConversation>()
 
     platform.sendToDescribeIt.mockReturnValueOnce(sent.promise)
 
@@ -263,7 +254,7 @@ describe('useConversation', () => {
     })
 
     await act(async () => {
-      sent.settle(conversation([describeTurn({ text: 'Pin failing PRs.', state: 'running' })], { running: true }))
+      sent.resolve(conversation([describeTurn({ text: 'Pin failing PRs.', state: 'running' })], { running: true }))
       await went
     })
     expect(result.current.sending).toBe(false)
@@ -291,7 +282,7 @@ describe('useConversation', () => {
       expect(result.current.conversation?.id).toBe('')
     })
 
-    const stale = held<DescribeConversation>()
+    const stale = deferred<DescribeConversation>()
 
     platform.describeItConversation.mockReturnValueOnce(stale.promise)
     act(() => {
@@ -304,7 +295,7 @@ describe('useConversation', () => {
     expect(result.current.conversation?.running).toBe(true)
 
     await act(async () => {
-      stale.settle(describeConversation())
+      stale.resolve(describeConversation())
       await stale.promise
     })
     expect(result.current.conversation?.id).toBe(id)

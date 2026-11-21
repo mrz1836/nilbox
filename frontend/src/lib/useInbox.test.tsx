@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { InboxSnapshot } from '../platform'
+import { deferred } from '../test/async'
 import { at } from '../test/clock'
 import { item, list, snapshot } from '../test/fixtures'
 import { emit, platform } from '../test/platform'
@@ -9,18 +10,6 @@ import { findItem } from './triage'
 import { useInbox } from './useInbox'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
-
-// held is an answer the test lets go of, so what shows while a call is under way can be read.
-function held() {
-  let resolve: (value: InboxSnapshot) => void = () => undefined
-  let reject: (err: Error) => void = () => undefined
-  const promise = new Promise<InboxSnapshot>((done, fail) => {
-    resolve = done
-    reject = fail
-  })
-
-  return { promise, resolve, reject }
-}
 
 // marked is an inbox whose one item a routine snoozed and pinned.
 function marked() {
@@ -43,7 +32,7 @@ describe('useInbox’s triage', () => {
     async (_, run, call, after) => {
       platform.getInboxSnapshot.mockResolvedValue(marked())
 
-      const answer = held()
+      const answer = deferred<InboxSnapshot>()
 
       platform[call].mockReturnValue(answer.promise)
 
@@ -152,7 +141,7 @@ describe('useInbox’s refreshing', () => {
     })
 
     // A read goes out, the refresh starts, and the read, asked before it, answers after.
-    const answer = held()
+    const answer = deferred<InboxSnapshot>()
     platform.getInboxSnapshot.mockReturnValueOnce(answer.promise)
     act(() => {
       emit('inbox:updated')
@@ -211,7 +200,7 @@ describe('useInbox’s seen marks', () => {
   it('shows a read mark at once, and the inbox read back once it is stored', async () => {
     platform.getInboxSnapshot.mockResolvedValue(unreadInbox(true))
 
-    const stored = held()
+    const stored = deferred<InboxSnapshot>()
 
     platform.markItemsSeen.mockReturnValue(stored.promise.then(() => undefined))
 
@@ -270,7 +259,7 @@ describe('useInbox’s seen marks', () => {
   it('reverts a read mark that can’t be stored', async () => {
     platform.getInboxSnapshot.mockResolvedValue(unreadInbox(true))
 
-    const stored = held()
+    const stored = deferred<InboxSnapshot>()
 
     platform.markItemsSeen.mockReturnValue(stored.promise.then(() => undefined))
 
@@ -303,7 +292,7 @@ describe('useInbox’s seen marks', () => {
   it('reads the inbox back once the mark is stored, so a read asked while it was stored never shows the item unread', async () => {
     platform.getInboxSnapshot.mockResolvedValue(unreadInbox(true))
 
-    const stored = held()
+    const stored = deferred<InboxSnapshot>()
 
     platform.markItemsSeen.mockReturnValue(stored.promise.then(() => undefined))
 
@@ -321,7 +310,7 @@ describe('useInbox’s seen marks', () => {
 
     // An update's read goes out while the mark is being stored, and answers, from before
     // it, last of all.
-    const during = held()
+    const during = deferred<InboxSnapshot>()
 
     platform.getInboxSnapshot.mockReturnValueOnce(during.promise)
     act(() => {

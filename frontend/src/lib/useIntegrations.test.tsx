@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { IntegrationTools } from '../platform'
+import { deferred } from '../test/async'
 import { goPreCommitTool, integrationTool, integrationTools } from '../test/fixtures'
 import { emit, listening, platform } from '../test/platform'
 import { useIntegrations } from './useIntegrations'
@@ -76,12 +77,8 @@ describe('useIntegrations', () => {
   })
 
   it('checks again, showing what it found, and is checking until then', async () => {
-    let finish: (tools: IntegrationTools) => void = () => undefined
-    platform.checkIntegrationsAgain.mockReturnValue(
-      new Promise<IntegrationTools>((resolve) => {
-        finish = resolve
-      }),
-    )
+    const check = deferred<IntegrationTools>()
+    platform.checkIntegrationsAgain.mockReturnValue(check.promise)
 
     const { result } = renderHook(() => useIntegrations())
 
@@ -98,7 +95,7 @@ describe('useIntegrations', () => {
     expect(result.current.checking).toBe(true)
 
     await act(async () => {
-      finish(integrationTools({ tools: [integrationTool({ state: 'tooOld' })], shellRead: false }))
+      check.resolve(integrationTools({ tools: [integrationTool({ state: 'tooOld' })], shellRead: false }))
       await done
     })
 

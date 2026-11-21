@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { deferred } from '../test/async'
 import { at } from '../test/clock'
 import { details, heldRun, item, review, reviewFile } from '../test/fixtures'
 import { platform } from '../test/platform'
@@ -46,12 +47,8 @@ describe('useReview', () => {
   })
 
   it('shows what the sheet read before, then what GitHub says', async () => {
-    let answer: (r: ReturnType<typeof review>) => void = () => undefined
-    platform.refreshReview.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const answer = deferred<ReturnType<typeof review>>()
+    platform.refreshReview.mockReturnValue(answer.promise)
 
     const { result } = renderHook(() => useReview(1))
 
@@ -61,7 +58,7 @@ describe('useReview', () => {
     expect(result.current.checking).toBe(true)
 
     act(() => {
-      answer(review())
+      answer.resolve(review())
     })
 
     await waitFor(() => {
@@ -274,12 +271,8 @@ describe('useReview', () => {
   })
 
   it('builds the sheet again from what it read when the card changes, once a read under way answers', async () => {
-    let answer: (r: ReturnType<typeof review>) => void = () => undefined
-    platform.refreshReview.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve
-      }),
-    )
+    const answer = deferred<ReturnType<typeof review>>()
+    platform.refreshReview.mockReturnValue(answer.promise)
     const newer = review({ counts: { ...review().counts, passed: 2, newer: true } })
     platform.rebuildReview.mockResolvedValue(newer)
 
@@ -293,7 +286,7 @@ describe('useReview', () => {
     expect(platform.rebuildReview, 'a read under way is never cut short').not.toHaveBeenCalled()
 
     act(() => {
-      answer(review())
+      answer.resolve(review())
     })
 
     await waitFor(() => {
@@ -354,15 +347,11 @@ describe('useReview', () => {
 
     it('reads once more at most for however many card changes came during a read', async () => {
       vi.useFakeTimers()
-      let answer: (r: ReturnType<typeof review>) => void = () => undefined
+      const answer = deferred<ReturnType<typeof review>>()
       platform.rebuildReview.mockResolvedValueOnce(moved).mockResolvedValueOnce(moved).mockResolvedValue(still)
       const { rerender } = await open()
 
-      platform.refreshReview.mockReturnValueOnce(
-        new Promise((resolve) => {
-          answer = resolve
-        }),
-      )
+      platform.refreshReview.mockReturnValueOnce(answer.promise)
       rerender({ card: 'b' })
       await settle()
       expect(platform.refreshReview).toHaveBeenCalledTimes(2)
@@ -375,7 +364,7 @@ describe('useReview', () => {
       expect(platform.refreshReview).toHaveBeenCalledTimes(2)
 
       await act(async () => {
-        answer(review())
+        answer.resolve(review())
         await vi.advanceTimersByTimeAsync(0)
       })
       await settle()
@@ -474,12 +463,8 @@ describe('useReview', () => {
 
     it('reads nothing while a read is under way, nor once the sheet is closed', async () => {
       vi.useFakeTimers()
-      let answer: (r: ReturnType<typeof review>) => void = () => undefined
-      platform.refreshReview.mockReturnValueOnce(
-        new Promise((resolve) => {
-          answer = resolve
-        }),
-      )
+      const answer = deferred<ReturnType<typeof review>>()
+      platform.refreshReview.mockReturnValueOnce(answer.promise)
       const { result, unmount } = renderHook(() => useReview(1), { wrapper: at(new Date('2026-06-15T13:00:00Z')) })
 
       await settle()
@@ -488,7 +473,7 @@ describe('useReview', () => {
       expect(platform.refreshReview, 'the read under way brings it up to date').toHaveBeenCalledOnce()
 
       await act(async () => {
-        answer(review())
+        answer.resolve(review())
         await vi.advanceTimersByTimeAsync(0)
       })
       await settle()

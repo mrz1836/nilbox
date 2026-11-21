@@ -2,23 +2,12 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { NotificationLog } from '../platform'
+import { deferred } from '../test/async'
 import { notification } from '../test/fixtures'
 import { emit, listening, platform } from '../test/platform'
 import { useNotifications } from './useNotifications'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
-
-// deferred is a call the test settles.
-function deferred() {
-  let resolve: () => void = () => undefined
-  let reject: (err: unknown) => void = () => undefined
-  const promise = new Promise<void>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-
-  return { promise, resolve, reject }
-}
 
 beforeEach(() => {
   platform.listNotifications.mockResolvedValue({ items: [notification()], unread: 1 })
@@ -50,12 +39,8 @@ describe('useNotifications', () => {
   })
 
   it('shows only the latest load’s answer', async () => {
-    let answerFirst: (log: NotificationLog) => void = () => undefined
-    platform.listNotifications.mockReturnValueOnce(
-      new Promise((resolve) => {
-        answerFirst = resolve
-      }),
-    )
+    const first = deferred<NotificationLog>()
+    platform.listNotifications.mockReturnValueOnce(first.promise)
 
     const { result } = renderHook(() => useNotifications())
     platform.listNotifications.mockResolvedValue({ items: [], unread: 0 })
@@ -64,7 +49,7 @@ describe('useNotifications', () => {
     })
 
     await act(async () => {
-      answerFirst({ items: [notification()], unread: 1 })
+      first.resolve({ items: [notification()], unread: 1 })
       await Promise.resolve()
     })
 

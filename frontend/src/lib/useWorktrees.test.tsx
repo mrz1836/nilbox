@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { RemoveResult, WorktreesSnapshot } from '../platform'
+import { deferred } from '../test/async'
 import { mainWorktree, removeResult, worktree, worktreeRepo, worktreesSnapshot } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { useWorktrees } from './useWorktrees'
@@ -128,9 +129,9 @@ describe('useWorktrees', () => {
       expect(result.current.disabled).toBe(false)
     })
 
-    const removal = held<RemoveResult[]>()
+    const removal = deferred<RemoveResult[]>()
     platform.removeAllCleanWorktrees.mockReturnValue(removal.promise)
-    platform.listWorktrees.mockReturnValue(held<WorktreesSnapshot>().promise)
+    platform.listWorktrees.mockReturnValue(deferred<WorktreesSnapshot>().promise)
     act(() => {
       result.current.askRemoveAllClean()
     })
@@ -165,13 +166,3 @@ describe('useWorktrees', () => {
     expect(result.current.workOn(path('pr-9'))).toEqual({ state: 'left', text: 'Left in place', reason: '' })
   })
 })
-
-// held is a call that answers only once the test says.
-function held<T>() {
-  let resolve: (value: T) => void = () => undefined
-  const promise = new Promise<T>((res) => {
-    resolve = res
-  })
-
-  return { promise, resolve }
-}

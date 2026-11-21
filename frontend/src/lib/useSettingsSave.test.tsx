@@ -3,25 +3,14 @@ import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Settings } from '../platform'
+import { deferred } from '../test/async'
 import { settings } from '../test/fixtures'
 import { serial, type Result } from './call'
 import { SettingsQueue, useSettingsSave } from './useSettingsSave'
 
-// deferred is a setter call the test settles.
-function deferred() {
-  let resolve: (value: Settings) => void = () => undefined
-  let reject: (err: unknown) => void = () => undefined
-  const promise = new Promise<Settings>((res, rej) => {
-    resolve = res
-    reject = rej
-  })
-
-  return { promise, resolve, reject }
-}
-
 describe('useSettingsSave', () => {
   it('shows a change at once, then hands on the settings the setter returned', async () => {
-    const call = deferred()
+    const call = deferred<Settings>()
     const onSaved = vi.fn()
     const { result } = renderHook(() => useSettingsSave(settings({ menuBar: true }), onSaved))
 
@@ -44,7 +33,7 @@ describe('useSettingsSave', () => {
   })
 
   it('goes back to the stored settings, and says why, when a change is refused', async () => {
-    const call = deferred()
+    const call = deferred<Settings>()
     const onSaved = vi.fn()
     const { result } = renderHook(() => useSettingsSave(settings({ menuBar: true }), onSaved))
 
@@ -66,8 +55,8 @@ describe('useSettingsSave', () => {
   })
 
   it('stores changes one at a time, in the order they were made', async () => {
-    const first = deferred()
-    const second = deferred()
+    const first = deferred<Settings>()
+    const second = deferred<Settings>()
     const setter = vi.fn<(n: number) => Promise<Settings>>((n) => (n === 1 ? first.promise : second.promise))
     const onSaved = vi.fn()
     const { result } = renderHook(() => useSettingsSave(settings(), onSaved))
@@ -103,8 +92,8 @@ describe('useSettingsSave', () => {
   })
 
   it('shares the window’s queue, so saves made in two places still go one at a time, in order', async () => {
-    const first = deferred()
-    const second = deferred()
+    const first = deferred<Settings>()
+    const second = deferred<Settings>()
     const setter = vi.fn<(n: number) => Promise<Settings>>((n) => (n === 1 ? first.promise : second.promise))
     const onSaved = vi.fn()
     const queue = serial()
