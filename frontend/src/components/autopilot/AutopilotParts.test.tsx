@@ -27,7 +27,7 @@ import {
   routine,
   settings,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { emit, platform, send } from '../../test/platform'
 import { ActivityList } from './ActivityList'
 import { AutopilotRowsContext } from './AutopilotChip'
 import { RoutinePane } from './RoutinePane'
@@ -279,9 +279,7 @@ describe('useAutopilotActivity', () => {
     // 150 newer matches: only the first page is read again, from where it began, so it
     // meets the pages past it with nothing between.
     ledger.grow(150)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     await waitFor(() => {
       expect(loadedIds(result.current.days)[0]).toBe(850)
@@ -310,9 +308,7 @@ describe('useAutopilotActivity', () => {
     // The engine's next cycle reads the first page again, by its bounds, never as a fresh
     // first page, which would drop the page past it.
     ledger.grow(5)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     await waitFor(() => {
       expect(loadedIds(result.current.days)).toEqual(countdown(305, 101))
@@ -356,9 +352,7 @@ describe('useAutopilotActivity', () => {
     // 600 newer: the newest page becomes the first again, and the rest is read in slices
     // down to where the first page began, so nothing loaded goes.
     ledger.grow(600)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     await waitFor(() => {
       expect(loadedIds(result.current.days)).toEqual(countdown(900, 1))
@@ -373,9 +367,7 @@ describe('useAutopilotActivity', () => {
 
     // The next change reads that page alone again, a page and what came since.
     ledger.grow(1)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     await waitFor(() => {
       expect(loadedIds(result.current.days)).toEqual(countdown(901, 1))
@@ -390,9 +382,7 @@ describe('useAutopilotActivity', () => {
 
     // Cleared, the history starts again from ID 1, below every page loaded.
     ledger.clear(20)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     await waitFor(() => {
       expect(loadedIds(result.current.days)).toEqual(countdown(20, 1))
@@ -498,9 +488,7 @@ describe('useAutopilotActivity', () => {
 
     // With nothing past the first page, a read again is the first page's own, a page long.
     platform.autopilotActivity.mockReturnValueOnce(held.call)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     expect(platform.autopilotActivity).toHaveBeenLastCalledWith(0, 100)
 
@@ -636,9 +624,7 @@ describe('useAutopilotChips', () => {
     })
     expect(platform.latestAutopilotMatches).toHaveBeenCalledWith([1, 2])
 
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
     await waitFor(() => {
       expect(platform.latestAutopilotMatches).toHaveBeenCalledTimes(2)
     })
@@ -936,9 +922,7 @@ describe('WatchingList', () => {
     expect(await screen.findByText('Dismissed')).toBeInTheDocument()
 
     platform.itemsByID.mockResolvedValue([item({ dismissedAt: '2026-06-15T12:00:00Z' })])
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     expect(await screen.findByRole('button', { name: 'Restore' })).toBeInTheDocument()
   })
@@ -975,9 +959,7 @@ describe('WatchingList', () => {
     // An ask for an item it doesn't hold, once it has read what it watches, is handed back
     // at once, marking nothing, so it can't land later unasked.
     rerender(<Watching />)
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
     rerender(<Watching highlight={{ id: 9, seq: 2 }} />)
 
     await waitFor(() => {

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -6,7 +6,7 @@ import { chipOf } from '../../lib/autopilot'
 import type { AutopilotWorking } from '../../platform'
 import { at } from '../../test/clock'
 import { autopilotMatch, itemRef } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import { tokensText, WorkingList } from './WorkingList'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -120,9 +120,7 @@ describe('WorkingList', () => {
       expect(platform.autopilotWorking).toHaveBeenCalledOnce()
     })
 
-    act(() => {
-      emit('autopilot:run', { runId: 41 })
-    })
+    send('autopilot:run', { runId: 41 })
 
     await waitFor(() => {
       expect(platform.autopilotWorking).toHaveBeenCalledTimes(2)

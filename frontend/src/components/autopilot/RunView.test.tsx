@@ -18,7 +18,7 @@ import {
   runEvent,
   runEventsPage,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { emit, platform, send } from '../../test/platform'
 import { RunView } from './RunView'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -116,9 +116,7 @@ describe('RunView', () => {
     await screen.findByText('“Step 2”')
 
     platform.autopilotRunEvents.mockResolvedValueOnce(runEventsPage({ events: [say(3, 3)] }))
-    act(() => {
-      emit('autopilot:run', { runId: 81 })
-    })
+    send('autopilot:run', { runId: 81 })
 
     await screen.findByText('“Step 3”')
     expect(platform.autopilotRunEvents).toHaveBeenLastCalledWith(81, 2)
@@ -347,9 +345,7 @@ describe('RunView', () => {
     expect(await screen.findByText('This run’s events couldn’t be read.')).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'Timeline' })).getByText('Reading the run…')).toBeInTheDocument()
 
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     expect(await screen.findByText('“Step 1”')).toBeInTheDocument()
     expect(screen.queryByText('This run’s events couldn’t be read.')).toBeNull()
@@ -382,9 +378,7 @@ describe('RunView', () => {
     expect(platform.autopilotRunEvents).toHaveBeenCalledTimes(3)
     expect(platform.autopilotRunEvents).toHaveBeenLastCalledWith(81, 2)
 
-    act(() => {
-      emit('autopilot:run', { runId: 81 })
-    })
+    send('autopilot:run', { runId: 81 })
     expect(platform.autopilotRunEvents).toHaveBeenCalledTimes(3)
   })
 

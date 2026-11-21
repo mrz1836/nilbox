@@ -22,7 +22,7 @@ import {
   runEventsPage,
   settings,
 } from '../../../test/fixtures'
-import { emit, platform } from '../../../test/platform'
+import { platform, send } from '../../../test/platform'
 import { DescribeView, type DescribeRequest } from './DescribeView'
 
 vi.mock('../../../platform', () => import('../../../test/platform').then((fake) => fake.platform))
@@ -395,9 +395,7 @@ describe('DescribeView', () => {
         ],
       }),
     )
-    act(() => {
-      emit('describeit:updated', { conversationId: id, turn: 1 })
-    })
+    send('describeit:updated', { conversationId: id, turn: 1 })
     expect(await log.findByText('Checked 1 routine: no problems')).toBeInTheDocument()
     expect(log.getByText('Proposing it')).toBeInTheDocument()
     expect(log.getByRole('img', { name: 'under way' })).toBeInTheDocument()
@@ -412,9 +410,7 @@ describe('DescribeView', () => {
         events: [runEvent({ seq: 5, offset: 500, kind: 'toolResult', text: 'Proposed 1 routine.' })],
       }),
     )
-    act(() => {
-      emit('describeit:updated', { conversationId: id, turn: 1 })
-    })
+    send('describeit:updated', { conversationId: id, turn: 1 })
 
     expect(await log.findByText('Done: one routine, waiting for you.')).toBeInTheDocument()
     expect(log.queryByText('Claude is working on it…')).not.toBeInTheDocument()

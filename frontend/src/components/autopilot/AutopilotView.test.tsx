@@ -48,7 +48,7 @@ import {
   settings as settingsOf,
   snoozeTemplate,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import { AutopilotRowsContext } from './AutopilotChip'
 import AutopilotView from './AutopilotView'
 import type { RowsKit } from './WatchingList'
@@ -444,9 +444,7 @@ describe('Activity', () => {
     expect(await screen.findByText('Nothing yet. What your routines do shows here, newest first.')).toBeInTheDocument()
 
     platform.autopilotActivity.mockResolvedValue(activityPage())
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     expect(await screen.findByText('Snoozed 1')).toBeInTheDocument()
   })
@@ -659,9 +657,7 @@ describe('Activity', () => {
     expect(platform.dismissItem).toHaveBeenCalledWith(2)
     expect(platform.itemsByID).toHaveBeenCalledTimes(reads)
 
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     expect(await sheet.findByRole('button', { name: 'Restore' })).toBeInTheDocument()
     expect(sheet.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument()
@@ -1837,9 +1833,7 @@ describe('Needs you', () => {
     expect(screen.queryByRole('region', { name: 'Needs you' })).not.toBeInTheDocument()
 
     platform.autopilotNeedsYou.mockResolvedValue([open(21, 'waiting', 'ask', 'Waits for your OK.')])
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     expect(await screen.findByRole('region', { name: 'Needs you' })).toBeInTheDocument()
   })
@@ -2132,9 +2126,7 @@ describe('the Autopilot tab’s Describe it', () => {
     expect(nav().getByRole('button', { name: 'Describe it' })).not.toHaveTextContent(/\d/)
 
     platform.describeItStatus.mockResolvedValue(describeStatus({ pending: 2 }))
-    act(() => {
-      emit('describeit:proposals')
-    })
+    send('describeit:proposals')
 
     const counted = await nav().findByRole('button', {
       name: 'Describe it (2 proposals from your own Claude Code wait)',
@@ -2144,9 +2136,7 @@ describe('the Autopilot tab’s Describe it', () => {
     expect(counted).toHaveAttribute('title', '2 proposals from your own Claude Code wait')
 
     platform.describeItStatus.mockResolvedValue(describeStatus({ pending: 0 }))
-    act(() => {
-      emit('describeit:proposals')
-    })
+    send('describeit:proposals')
 
     expect(await nav().findByRole('button', { name: 'Describe it' })).not.toHaveTextContent(/\d/)
   })

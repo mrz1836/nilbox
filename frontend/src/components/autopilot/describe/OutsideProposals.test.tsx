@@ -1,11 +1,11 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { DescribeCard } from '../../../platform'
 import { at } from '../../../test/clock'
 import { autopilotCatalog, describeCard } from '../../../test/fixtures'
-import { emit, listening, platform } from '../../../test/platform'
+import { listening, platform, send } from '../../../test/platform'
 import { OutsideProposals } from './OutsideProposals'
 
 vi.mock('../../../platform', () => import('../../../test/platform').then((fake) => fake.platform))
@@ -56,9 +56,7 @@ describe('OutsideProposals', () => {
       outside(),
       outside({ ref: { source: 'outside', proposal: '20260615T115000Z-000000000004' }, where: '' }),
     ])
-    act(() => {
-      emit('describeit:proposals')
-    })
+    send('describeit:proposals')
 
     const region = within(await screen.findByRole('region', { name: 'From your Claude Code' }))
 
