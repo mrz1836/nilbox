@@ -1,8 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { useState } from 'react'
+import { Profiler, useState } from 'react'
 
 import { useCollapsedSections } from '../lib/useCollapsedSections'
 import { useInbox } from '../lib/useInbox'
@@ -61,7 +61,19 @@ describe('InboxView’s first party', () => {
       }),
     )
     platform.reachedNil.mockReturnValue(moment.promise)
-    render(<Inbox />)
+    // shown records, for each commit of the inbox, whether the party was on screen once it
+    // committed.
+    const shown: boolean[] = []
+    render(
+      <Profiler
+        id="inbox"
+        onRender={() => {
+          shown.push(screen.queryByRole('region', { name: 'inbox == nil' }) !== null)
+        }}
+      >
+        <Inbox />
+      </Profiler>,
+    )
 
     const review = within(await screen.findByRole('region', { name: 'Review requested' }))
     // The inbox loads the party's code once it has painted, long before the inbox is empty.
@@ -71,10 +83,19 @@ describe('InboxView’s first party', () => {
     await waitFor(() => {
       expect(platform.reachedNil).toHaveBeenCalledOnce()
     })
-    moment.resolve(nilMoment({ earned: true, cleared: 1 }))
 
-    // A party that showed its empty fallback first would wait out the 300 ms React holds a
-    // fallback's retry back for, so it could not show within 250.
-    expect(await screen.findByRole('region', { name: 'inbox == nil' }, { timeout: 250 })).toBeInTheDocument()
+    // The milestones answer inside act, which lands that answer and every commit it sets off.
+    const before = shown.length
+    await act(async () => {
+      moment.resolve(nilMoment({ earned: true, cleared: 1 }))
+      await moment.promise
+    })
+
+    // The commit that answer brings shows the party. A party that shows its empty fallback
+    // first commits without it, and only a commit later with it, which the window holds back
+    // for about 300 ms and act lets through at once: so the test reads the order of the
+    // commits, which no clock moves, rather than the time.
+    expect(shown.slice(before)[0]).toBe(true)
+    expect(screen.getByRole('region', { name: 'inbox == nil' })).toBeInTheDocument()
   })
 })
