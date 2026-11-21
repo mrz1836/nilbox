@@ -78,5 +78,6 @@ func TestFrontendTextFollowsTheTextSize(t *testing.T) {
 		found = append(found, hits(rel, text, fixesTextSize)...)
 	}
 
-	assert.Empty(t, found, "size text in rem (text-[0.6875rem], not text-[11px]), so it follows the text size setting")
+	assert.Empty(t, found, "size text in rem (text-caption, from the type scale, not text-[11px]), so it follows "+
+		"the text size setting")
 }

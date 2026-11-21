@@ -17,6 +17,13 @@ import (
 // initial), so a palette utility such as text-white or bg-red-500 builds to nothing, and
 // says so nowhere; TestFrontendStylesComeFromTokens fails on one first, and on the other
 // ways around the tokens.
+//
+// It reads each line on its own, so it misses what only a line's context makes a color: a
+// literal kept in a variable or a constant first and styled from there (const ink = '#fff',
+// then style={{ color: ink }}), a style property named at run time ({ [key]: '#fff' }), a
+// key that goes on past the style it names (colorDark: '#fff', see styleKey), a color put
+// together in a template (`#${hex}`), and the CSS color keywords other than white and black
+// (red, navy, ...), which no line of the window has ever needed.
 
 // paletteColor matches a color of Tailwind's own palette as a class or a variable names
 // it: white, black, or a hue at one of its steps (red-500, slate-50, stone-950).
@@ -32,8 +39,24 @@ const colorLiteral = `(?:#[0-9A-Fa-f]{3,8}(?:$|[^0-9A-Za-z])|(?:^|[^0-9A-Za-z])(
 const namedColor = `(?:^|[^\w-])(?:white|black)(?:$|[^\w-])`
 
 // classStart is where a class or a variant starts: a line's start, a space, a quote, a
-// backtick, or the colon after a variant.
-const classStart = "(?:^|[\\s'\"`:{(,])"
+// backtick, or the colon after a variant, and the ! that marks a class important.
+const classStart = "(?:^|[\\s'\"`:{(,!])"
+
+// styleKey matches a style property that takes a color, as a style object or an SVG
+// attribute names it: a color, fill, or stroke, a background, border, outline, or mask, a
+// shadow, a filter, or an image, after any prefix (backgroundColor, stopColor, boxShadow,
+// maskImage), and a border's sides (borderTop, borderInlineStart). The name ends the key,
+// so a key that only starts with one, such as filterHint or backgroundRun, is no style's,
+// and an issue's #1234 it holds reads as no color.
+const styleKey = `\b[A-Za-z]*(?:[Cc]olor|[Bb]ackground|[Bb]order(?:Top|Right|Bottom|Left|Block|Inline|Start|End)*|` +
+	`[Oo]utline|[Ss]hadow|[Ff]ill|[Ss]troke|[Ff]ilter|[Mm]ask|[Ii]mage)`
+
+// disabledVariant matches a variant that styles a disabled control: disabled itself, one
+// built on it (has-disabled, aria-disabled, group-disabled, peer-disabled), also for a
+// named group (group-disabled/row), and an arbitrary one that names it ([&:disabled],
+// data-[disabled]), even [&:not(:disabled)], which not-disabled says instead.
+const disabledVariant = "(?:(?:group|peer|in|has|aria|data)-)*" +
+	"(?:disabled|\\[[^\\s'\"`]*?disabled[^\\s'\"`]*?\\])(?:/[\\w-]+)?"
 
 // styleRule is one way around the tokens the guard refuses: what a hit says, whether it
 // is read in stylesheets, in scripts, or both, and the pattern of a line that breaks it.
@@ -83,10 +106,11 @@ func styleRules() []styleRule {
 			within:  literal,
 		},
 		{
-			// A style's color property, or an SVG's color attribute, given a string.
+			// A style's color property, quoted or not, a custom property a style object sets
+			// ('--glow'), or an SVG's color attribute, given a string.
 			says: "a color written into a style; read a --color-* token", script: true,
-			pattern: regexp.MustCompile(`\b[A-Za-z]*(?:[Cc]olor|[Bb]ackground|[Bb]order|[Oo]utline|[Ss]hadow|[Ff]ill|` +
-				`[Ss]troke|[Ff]ilter|[Mm]ask|[Ii]mage)[A-Za-z]*\s*[:=]\s*\{?\s*['"` + "`]([^'\"`]*)"),
+			pattern: regexp.MustCompile(`(?:` + styleKey + `['"]?|['"]--[\w-]+['"])\s*[:=]\s*\{?\s*['"` +
+				"`]([^'\"`]*)"),
 			within: regexp.MustCompile(colorLiteral + `|` + namedColor),
 		},
 		{
@@ -99,39 +123,45 @@ func styleRules() []styleRule {
 		},
 		{
 			says: "a dialog backdrop of its own; use backdrop:bg-scrim", css: true, script: true,
-			pattern: regexp.MustCompile(classStart + `backdrop:(?:[\w-]+:)*bg-\[`),
+			pattern: regexp.MustCompile(classStart + `backdrop:(?:[\w-]+:)*!?bg-\[`),
 		},
 		{
 			says: "a disabled fade of its own; fade it with opacity-disabled", css: true, script: true,
-			pattern: regexp.MustCompile(classStart + `(?:disabled|has-disabled|aria-disabled):(?:[\w-]+:)*opacity-(?:\d|\[)`),
+			pattern: regexp.MustCompile(classStart + disabledVariant + `:(?:[\w-]+:|\[[^\]\s]*\]:)*!?opacity-(?:\d|\[)`),
 		},
 	}
 }
 
 // styleException is a line the guard lets through, and why: a color no token can stand
-// for. line is a part of the line's text, and every exception must still match a line.
+// for. line matches the whole of the line's text, trimmed, so it lets through only the
+// shape it is for, and every exception must still match a line.
 type styleException struct {
-	file, line, why string
+	file string
+	line *regexp.Regexp
+	why  string
 }
 
 // styleExceptions are the only lines that write a color out, each with its reason.
 func styleExceptions() []styleException {
 	return []styleException{
 		{
-			file: "frontend/src/index.css", line: "stroke='white'",
+			file: "frontend/src/index.css",
+			line: regexp.MustCompile(`^background-image: url\("data:image/svg\+xml,[^"]*stroke='white'[^"]*"\);$`),
 			why: "a checkbox's check and dash are data-URL SVGs, which can't read a variable; they are white on the " +
 				"accent fill, as the paper knob of a switch is",
 		},
 		{
-			file: "frontend/src/index.css", line: "box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);",
+			file: "frontend/src/index.css", line: regexp.MustCompile(`^box-shadow: 0 1px 2px rgb\(0 0 0 / 0\.3\);$`),
 			why: "the slider thumb's lift, a shadow on a -webkit- pseudo-element that no shadow utility reaches",
 		},
 		{
-			file: "frontend/src/nil.css", line: "#000",
-			why: "the inbox-nil grid's masks: a mask reads only alpha, so black there means opaque, never a color on screen",
+			file: "frontend/src/nil.css",
+			line: regexp.MustCompile(`^mask-image: radial-gradient\([^#;]*, #000 [^#;]*\);$`),
+			why:  "the inbox-nil grid's masks: a mask reads only alpha, so black there means opaque, never a color on screen",
 		},
 		{
-			file: "frontend/src/lib/cardGuide.ts", line: "color: '#",
+			file: "frontend/src/lib/cardGuide.ts",
+			line: regexp.MustCompile(`^(?:labels: \[)?\{ name: '[\w-]+', color: '#[0-9a-f]{6}' \}\]?,$`),
 			why: "the card guide's sample labels carry GitHub label colors, data the card draws as GitHub sends a real " +
 				"label's, never a theme color",
 		},
@@ -323,7 +353,7 @@ func firstBroken(line string, css bool, rules []styleRule) (says string, ok bool
 // excepted returns the index of the exception that lets hit through, or -1.
 func excepted(hit styleHit, exceptions []styleException) int {
 	for i, e := range exceptions {
-		if e.file == hit.file && strings.Contains(hit.text, e.line) {
+		if e.file == hit.file && e.line.MatchString(hit.text) {
 			return i
 		}
 	}
@@ -373,7 +403,7 @@ func TestFrontendStylesComeFromTokens(t *testing.T) {
 		"(frontend/src/index.css and the generated theme)")
 
 	for i, e := range exceptions {
-		assert.True(t, used[i], "no line of %s holds %q any more; drop its exception", e.file, e.line)
+		assert.True(t, used[i], "no line of %s matches %s any more; drop its exception", e.file, e.line)
 	}
 }
 
@@ -404,11 +434,34 @@ func TestStyleRulesPatterns(t *testing.T) {
 		`className="backdrop:bg-[rgb(0_0_0/0.4)]"`:                                            true,
 		`className="disabled:opacity-50"`:                                                     true,
 		`className="has-disabled:opacity-[0.55]"`:                                             true,
+		`className="!bg-white"`:                                                               true,
+		`className="hover:!text-black"`:                                                       true,
+		`className="!text-[13px]"`:                                                            true,
+		`className="![color:#fff]"`:                                                           true,
+		`className="backdrop:!bg-[rgb(0_0_0/0.4)]"`:                                           true,
+		`className="disabled:!opacity-50"`:                                                    true,
+		`className="disabled:opacity-50!"`:                                                    true,
+		`className="group-disabled:opacity-50"`:                                               true,
+		`className="peer-disabled:opacity-40"`:                                                true,
+		`className="group-disabled/row:opacity-50"`:                                           true,
+		`className="[&:disabled]:opacity-50"`:                                                 true,
+		`className="data-[disabled]:opacity-[0.4]"`:                                           true,
+		`className="group-has-[:disabled]:hover:opacity-30"`:                                  true,
+		`style={{ '--x': '#fff' }}`:                                                           true,
+		`style={{ "--glow": "rgb(0 0 0 / 0.3)" }}`:                                            true,
+		`style={{ 'background-color': 'white' }}`:                                             true,
+		`style={{ borderBottom: '1px solid #000' }}`:                                          true,
 		`className="text-surface card-lit:text-surface"`:                                      false,
 		`className="bg-danger/10 border-warning/45 text-muted"`:                               false,
 		`className="bg-transparent text-current border-inherit"`:                              false,
 		`className="text-caption shadow-menu backdrop:bg-scrim"`:                              false,
 		`className="disabled:opacity-disabled aria-disabled:opacity-disabled"`:                false,
+		`className="group-disabled:opacity-disabled [&:disabled]:opacity-disabled"`:           false,
+		`className="opacity-60 not-disabled:hover:opacity-100"`:                               false,
+		`className="!font-medium disabled:cursor-not-allowed"`:                                false,
+		`style={{ '--tint': 'var(--color-accent)', '--delay': '120ms' }}`:                     false,
+		`const filterHint = '#1234'`:                                                          false,
+		`{ backgroundRun: 'Fix #214', imageAlt: 'PR #1234' }`:                                 false,
 		`className="whitespace-nowrap text-xs text-left"`:                                     false,
 		`className="max-w-[calc(100vw-2rem)] grid-cols-[minmax(0,1fr)_var(--x)]"`:             false,
 		"style={{ stopColor: `color-mix(in oklab, var(--color-accent) 60%, ${highlight})` }}": false,
@@ -437,6 +490,36 @@ func TestStyleRulesPatterns(t *testing.T) {
 
 	for line, want := range css {
 		assert.Equal(t, want, len(styleHits("frontend/src/a.css", line, rules)) > 0, line)
+	}
+}
+
+func TestStyleExceptionsLetThroughOnlyTheirShape(t *testing.T) {
+	t.Parallel()
+
+	checkbox := `background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' ` +
+		`fill='none' stroke='white'%3E%3Cpath d='M4.5 8h7'/%3E%3C/svg%3E");`
+	cases := []struct {
+		file, text string
+		want       bool
+	}{
+		{"frontend/src/index.css", checkbox, true},
+		{"frontend/src/index.css", `color: white; /* as stroke='white' draws */`, false},
+		{"frontend/src/index.css", `box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);`, true},
+		{"frontend/src/index.css", `box-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 0 0 1px #fff;`, false},
+		{"frontend/src/nil.css", `mask-image: radial-gradient(ellipse 70% 62% at 50% 26%, #000 20%, transparent 100%);`, true},
+		{"frontend/src/nil.css", `mask-image: radial-gradient(ellipse 38% 220% at 0% 50%, #000 10%, #fff 100%);`, false},
+		{"frontend/src/nil.css", `background: #000;`, false},
+		{"frontend/src/lib/cardGuide.ts", `{ name: 'fork-pr', color: '#6e40c9' },`, true},
+		{"frontend/src/lib/cardGuide.ts", `labels: [{ name: 'bug', color: '#d73a4a' }],`, true},
+		{"frontend/src/lib/cardGuide.ts", `style={{ color: '#d73a4a' }}`, false},
+		{"frontend/src/lib/cardGuide.ts", `{ name: 'bug', color: '#d73a4a', ink: { color: '#fff' } },`, false},
+		{"frontend/src/lib/tone.ts", `{ name: 'bug', color: '#d73a4a' },`, false},
+	}
+
+	exceptions := styleExceptions()
+
+	for _, c := range cases {
+		assert.Equal(t, c.want, excepted(styleHit{file: c.file, text: c.text}, exceptions) >= 0, "%s: %s", c.file, c.text)
 	}
 }
 
