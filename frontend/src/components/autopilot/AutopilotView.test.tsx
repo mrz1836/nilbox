@@ -21,6 +21,7 @@ import {
   autopilotEngine,
   autopilotHold,
   autopilotMatch,
+  autopilotTarget,
   claudeMissing,
   cloneTarget,
   describeCard,
@@ -747,7 +748,7 @@ describe('Activity', () => {
     renderTab({
       request: {
         seq: 1,
-        target: { routineId: 3, matchId: 12, runId: 0, createdAt: '2026-06-15T11:30:00Z', activity: false },
+        target: autopilotTarget({ routineId: 3, matchId: 12, createdAt: '2026-06-15T11:30:00Z' }),
       },
     })
 
@@ -761,7 +762,7 @@ describe('Activity', () => {
     renderTab({
       request: {
         seq: 1,
-        target: { routineId: 3, matchId: 12, runId: 81, createdAt: '2026-06-15T11:30:00Z', activity: false },
+        target: autopilotTarget({ routineId: 3, matchId: 12, runId: 81, createdAt: '2026-06-15T11:30:00Z' }),
       },
     })
 
@@ -901,7 +902,7 @@ describe('Activity', () => {
     renderTab({
       request: {
         seq: 1,
-        target: { routineId: 3, matchId: 12, runId: 0, createdAt: '2026-06-15T11:30:00Z', activity: false },
+        target: autopilotTarget({ routineId: 3, matchId: 12, createdAt: '2026-06-15T11:30:00Z' }),
       },
     })
 
@@ -941,7 +942,7 @@ describe('Activity', () => {
         visible
         request={{
           seq: 1,
-          target: { routineId: 3, matchId: 20, runId: 0, createdAt: '2026-06-15T11:58:00Z', activity: false },
+          target: autopilotTarget({ routineId: 3, matchId: 20, createdAt: '2026-06-15T11:58:00Z' }),
         }}
       />,
     )
@@ -1812,7 +1813,7 @@ describe('Needs you', () => {
     renderTab({
       request: {
         seq: 1,
-        target: { routineId: 3, matchId: 21, runId: 0, createdAt: '2026-06-15T11:50:00Z', activity: false },
+        target: autopilotTarget({ routineId: 3, matchId: 21, createdAt: '2026-06-15T11:50:00Z' }),
       },
     })
 

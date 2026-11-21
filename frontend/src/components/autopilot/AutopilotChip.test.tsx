@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { AutopilotMatch, AutopilotTarget, InboxItem } from '../../platform'
 import { at } from '../../test/clock'
-import { autopilotEffect, autopilotMatch, dryRunMatch, item } from '../../test/fixtures'
+import { autopilotEffect, autopilotMatch, autopilotTarget, dryRunMatch, item } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { expectWraps } from '../../test/wrap'
 import { ItemRow } from '../ItemRow'
@@ -97,13 +97,9 @@ describe('AutopilotChip', () => {
     expect(await panel.findByText('Put back 1 item.')).toBeInTheDocument()
 
     await userEvent.click(within(entries[0] as HTMLElement).getByRole('button', { name: 'Show in Activity' }))
-    expect(onShow).toHaveBeenCalledExactlyOnceWith({
-      routineId: 3,
-      matchId: 12,
-      runId: 0,
-      createdAt: '2026-06-15T11:30:00Z',
-      activity: false,
-    })
+    expect(onShow).toHaveBeenCalledExactlyOnceWith(
+      autopilotTarget({ routineId: 3, matchId: 12, createdAt: '2026-06-15T11:30:00Z' }),
+    )
   })
 
   it('wraps its sentences, opened from a card’s line that does not wrap', async () => {

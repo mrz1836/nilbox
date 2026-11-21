@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { chipOf } from '../../lib/autopilot'
 import type { AutopilotWorking } from '../../platform'
 import { at } from '../../test/clock'
-import { autopilotMatch, itemRef } from '../../test/fixtures'
+import { agentRun, autopilotMatch, itemRef } from '../../test/fixtures'
 import { platform, send } from '../../test/platform'
 import { tokensText, WorkingList } from './WorkingList'
 
@@ -139,43 +139,28 @@ describe('tokensText', () => {
 
 describe('chipOf', () => {
   it('says a Read only agent’s notes are ready', () => {
-    const run = {
+    const run = agentRun({
       id: 41,
-      matchId: 12,
-      step: 0,
-      runner: 'background',
-      agent: 'claude',
-      action: '',
       status: 'ended',
       outcome: 'done',
-      verdict: '' as const,
       headBefore: '',
-      commit: '',
-      headAfter: '',
       budget: 0.5,
-      unit: 'usd',
       cost: 0.12,
       costEstimated: true,
       tokensIn: 9000,
       tokensOut: 3300,
-      cacheRead: 0,
       turns: 3,
       summary: 'Finished: looks good.',
-      error: '',
-      manual: false,
       scriptRunId: 7,
       sessionId: 's',
       preset: 'readOnly',
-      profile: 'default',
-      command: '',
-      logCleared: false,
       model: '',
       effort: '',
       worktree: 'pr-1',
       queuedAt: '2026-06-15T11:56:00Z',
       startedAt: '2026-06-15T11:56:00Z',
       finishedAt: '2026-06-15T12:00:00Z',
-    }
+    })
 
     expect(chipOf(autopilotMatch({ effects: [], steps: [], runs: [run] }))).toEqual({
       label: 'Notes ready',
