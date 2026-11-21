@@ -2,12 +2,19 @@ import { useEffect, useId, useRef, useState } from 'react'
 
 import { moveStatus, statusKey, type Status } from '../lib/statusOrder'
 import { usePopover } from '../lib/usePopover'
-import { iconButtonClass, quietButtonClass, Segmented, smallIconButtonClass } from './controls'
+import { iconButtonClass, quietButtonClass, Segmented } from './controls'
 import { ChevronDownIcon, SortIcon } from './icons'
 import { PopoverPanel } from './PopoverPanel'
 
 // Sort is how a list orders its items.
 type Sort = 'recent' | 'status'
+
+// moveClass is a status's move up and move down buttons: the small icon button's shape,
+// but lit with the page's background on hover, since the row they sit in turns raised
+// under the pointer and the shared raised hover would vanish on it. An arrow that can't
+// move takes no pointer and fades as a disabled control does.
+const moveClass =
+  'flex size-6 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-background hover:text-text disabled:pointer-events-none disabled:opacity-disabled'
 
 export interface StatusSortProps {
   // title is the list's, which names the controls.
@@ -166,7 +173,7 @@ export function StatusSort({
                   onClick={() => {
                     move(name, -1)
                   }}
-                  className={`${smallIconButtonClass} disabled:pointer-events-none disabled:opacity-disabled`}
+                  className={moveClass}
                 >
                   <ChevronDownIcon className="size-3.5 rotate-180" />
                 </button>
@@ -179,7 +186,7 @@ export function StatusSort({
                   onClick={() => {
                     move(name, 1)
                   }}
-                  className={`${smallIconButtonClass} disabled:pointer-events-none disabled:opacity-disabled`}
+                  className={moveClass}
                 >
                   <ChevronDownIcon className="size-3.5" />
                 </button>
