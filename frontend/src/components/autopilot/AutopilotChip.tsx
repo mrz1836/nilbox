@@ -235,7 +235,7 @@ export function AutopilotChip({ item, align = 'left' }: AutopilotChipProps) {
         id={id}
         role="dialog"
         aria-label="Autopilot history"
-        className="z-20 flex max-h-[calc(100vh-8rem)] w-[24rem] max-w-[calc(100vw-2rem)] flex-col gap-1 overflow-y-auto p-3 text-left break-words whitespace-normal"
+        className="layer-popover flex max-h-[calc(100vh-8rem)] w-[24rem] max-w-[calc(100vw-2rem)] flex-col gap-1 overflow-y-auto p-3 text-left break-words whitespace-normal"
       >
         <p className="flex items-center gap-1.5 text-xs font-semibold text-text">
           <AutopilotIcon className="size-3.5 shrink-0 text-accent" />

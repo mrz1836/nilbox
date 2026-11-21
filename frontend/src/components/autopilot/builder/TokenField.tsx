@@ -235,7 +235,7 @@ export function TokenField({
           id={listId}
           role="listbox"
           aria-label={`${label} suggestions`}
-          className={`${panelClass} absolute top-full left-0 z-40 mt-1 max-h-64 w-64 overflow-y-auto p-1 text-sm`}
+          className={`${panelClass} absolute top-full left-0 layer-popover mt-1 max-h-64 w-64 overflow-y-auto p-1 text-sm`}
         >
           {options.map((o, i) => (
             <div
