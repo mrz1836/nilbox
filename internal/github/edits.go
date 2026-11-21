@@ -421,7 +421,7 @@ func (c *Client) removeReviewRequests(ctx context.Context, tok Token, ref item.R
 func (c *Client) reviewEdit(
 	ctx context.Context, tok Token, ref item.Ref, method string, r ReviewRequests,
 ) (restReviewAnswer, error) {
-	fields := map[string][]string{"reviewers": nonNilNames(r.Users)}
+	fields := map[string][]string{"reviewers": textutil.NonNil(r.Users)}
 	if len(r.Teams) > 0 {
 		fields["team_reviewers"] = r.Teams
 	}
@@ -502,15 +502,6 @@ func keptNames(dropped, still []string) []string {
 	}
 
 	return kept
-}
-
-// nonNilNames is names, or an empty list for nil, so it encodes as [] rather than null.
-func nonNilNames(names []string) []string {
-	if names == nil {
-		return []string{}
-	}
-
-	return names
 }
 
 // maxTeamSlug is the longest team slug the client sends.
