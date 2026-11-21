@@ -1,12 +1,11 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Settings } from '../../platform'
-import { renderAt } from '../../test/clock'
 import { claudeOutage, serviceProvider, serviceStatus, settings, statusWatch } from '../../test/fixtures'
 import { platform } from '../../test/platform'
+import { renderSaving } from '../../test/settings'
 import { ServiceStatusSection } from './ServiceStatusSection'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -14,23 +13,7 @@ vi.mock('../../platform', () => import('../../test/platform').then((fake) => fak
 // renderSection renders the section as the settings page holds it: the settings it saves
 // come back as the stored ones.
 function renderSection(saved: Settings = settings()) {
-  const onSaved = vi.fn<(settings: Settings) => void>()
-
-  function Section() {
-    const [current, setCurrent] = useState(saved)
-
-    return (
-      <ServiceStatusSection
-        settings={current}
-        onSaved={(next) => {
-          onSaved(next)
-          setCurrent(next)
-        }}
-      />
-    )
-  }
-
-  renderAt(<Section />)
+  const { onSaved } = renderSaving(ServiceStatusSection, saved)
 
   return { onSaved }
 }

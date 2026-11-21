@@ -1,12 +1,12 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { AutopilotConfig, AutopilotEngine, Settings } from '../../platform'
 import { deferred } from '../../test/async'
-import { FIXED_NOW, renderAt } from '../../test/clock'
+import { FIXED_NOW } from '../../test/clock'
 import {
   agents,
   autopilotEngine,
@@ -18,6 +18,7 @@ import {
   settings,
 } from '../../test/fixtures'
 import { platform, send } from '../../test/platform'
+import { renderSaving, type SavingProps } from '../../test/settings'
 import { AutopilotSection, clearedText, lastCheckedText } from './AutopilotSection'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -27,41 +28,41 @@ function withAutopilot(change: Partial<AutopilotConfig>): Settings {
   return settings({ autopilot: { ...settings().autopilot, ...change } })
 }
 
-// Harness keeps the settings as a settings page does: each one stored becomes the one shown.
-// engine is the engine as the window last read it.
-function Harness({
-  initial,
-  onSaved,
-  engine,
-}: {
-  initial: Settings
-  onSaved: (settings: Settings) => void
-  engine: AutopilotEngine | null
-}) {
-  const [current, setCurrent] = useState(initial)
-
-  return (
-    <AutopilotSection
-      settings={current}
-      onSaved={(next) => {
-        onSaved(next)
-        setCurrent(next)
-      }}
-      agents={agents()}
-      profiles={[profile(), profile({ agent: 'codex', name: 'default', folder: '~/.codex' })]}
-      engine={engine}
-    />
-  )
-}
-
-// renderSection shows the section with current, and engine as the window last read it;
-// showEngine shows it with another.
+// renderSection shows the section with current, as a settings page holds it, and engine as
+// the window last read it; showEngine shows it with another, keeping what was stored.
 function renderSection(current: Settings = settings(), engine: AutopilotEngine | null = autopilotEngine()) {
-  const onSaved = vi.fn()
-  const { rerender } = renderAt(<Harness initial={current} onSaved={onSaved} engine={engine} />)
+  let shown = engine
+  let changed: () => void = () => undefined
+
+  function WithEngine(props: SavingProps) {
+    const read = useSyncExternalStore(
+      (onChange) => {
+        changed = onChange
+
+        return () => {
+          changed = () => undefined
+        }
+      },
+      () => shown,
+    )
+
+    return (
+      <AutopilotSection
+        {...props}
+        agents={agents()}
+        profiles={[profile(), profile({ agent: 'codex', name: 'default', folder: '~/.codex' })]}
+        engine={read}
+      />
+    )
+  }
+
+  const { onSaved } = renderSaving(WithEngine, current)
 
   const showEngine = (next: AutopilotEngine | null) => {
-    rerender(<Harness initial={current} onSaved={onSaved} engine={next} />)
+    act(() => {
+      shown = next
+      changed()
+    })
   }
 
   return { onSaved, showEngine }

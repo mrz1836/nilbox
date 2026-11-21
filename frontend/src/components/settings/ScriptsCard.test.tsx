@@ -1,11 +1,11 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { IntegrationSwitch, IntegrationTools, Settings } from '../../platform'
 import { goPreCommitTool, integrationsConfig, integrationTool, integrationTools, settings } from '../../test/fixtures'
 import { platform } from '../../test/platform'
+import { renderSaving } from '../../test/settings'
 import { ScriptsCard } from './ScriptsCard'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -23,24 +23,7 @@ function stored(set: IntegrationSwitch = 'auto'): Settings {
 // renderCard renders the card as the settings page holds it: the settings it saves come
 // back as the stored ones.
 function renderCard(saved: Settings = stored(), tools: IntegrationTools | null = integrationTools()) {
-  const onSaved = vi.fn<(settings: Settings) => void>()
-
-  function Card() {
-    const [current, setCurrent] = useState(saved)
-
-    return (
-      <ScriptsCard
-        settings={current}
-        onSaved={(next) => {
-          onSaved(next)
-          setCurrent(next)
-        }}
-        tools={tools}
-      />
-    )
-  }
-
-  render(<Card />)
+  const { onSaved } = renderSaving((props) => <ScriptsCard {...props} tools={tools} />, saved, { now: null })
 
   return { onSaved, card: within(screen.getByRole('region', { name: 'Scripts' })) }
 }

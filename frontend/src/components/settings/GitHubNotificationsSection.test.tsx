@@ -1,6 +1,5 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
@@ -8,6 +7,7 @@ import type { Settings, ThreadRules } from '../../platform'
 import { renderAt } from '../../test/clock'
 import { githubThreads, settings } from '../../test/fixtures'
 import { platform } from '../../test/platform'
+import { renderSaving, type SavingProps } from '../../test/settings'
 import { useGitHubThreads } from '../../lib/useGitHubThreads'
 import { GitHubNotificationsSection } from './GitHubNotificationsSection'
 
@@ -18,34 +18,17 @@ function rulesOf(change: Partial<ThreadRules>): Settings {
   return settings({ githubNotifications: { ...settings().githubNotifications, ...change } })
 }
 
-interface StoredProps {
-  initial: Settings
-  onSaved: (settings: Settings) => void
-}
-
-// Stored keeps the settings each change stored, and the mirror of the notifications, as
-// the window does, so the section shows them once saved.
-function Stored({ initial, onSaved }: StoredProps) {
-  const [current, setCurrent] = useState(initial)
+// WithThreads is the section with the mirror of the notifications, as the window holds it.
+function WithThreads(props: SavingProps) {
   const threads = useGitHubThreads()
 
-  return (
-    <GitHubNotificationsSection
-      settings={current}
-      onSaved={(next) => {
-        onSaved(next)
-        setCurrent(next)
-      }}
-      threads={threads}
-    />
-  )
+  return <GitHubNotificationsSection {...props} threads={threads} />
 }
 
-// renderSection renders the section on a clock that stands at the tests' noon.
+// renderSection renders the section as the settings page holds it, the settings each
+// change stored shown once saved, on a clock that stands at the tests' noon.
 function renderSection(initial: Settings = settings()) {
-  const onSaved = vi.fn()
-
-  renderAt(<Stored initial={initial} onSaved={onSaved} />)
+  const { onSaved } = renderSaving(WithThreads, initial)
 
   return { onSaved }
 }
