@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Side } from '../lib/usePopover'
-import { CountDot, PopoverPanel, ToolbarPopoverButton } from './PopoverPanel'
+import { CountDot, panelClass, PopoverPanel, ToolbarPopoverButton } from './PopoverPanel'
 
 // state is a usePopover state for a panel open on side, keeping within maxHeight.
 function state(open: boolean, side: Side = 'below', maxHeight?: number) {
@@ -74,6 +74,28 @@ describe('PopoverPanel', () => {
     expect(screen.getByRole('dialog', { name: 'Panel' })).toHaveClass(...classes)
   })
 
+  it('floats on a menu’s shadow, or a card chip’s', () => {
+    const { rerender } = render(
+      <PopoverPanel state={state(true)} align="right" role="dialog" aria-label="Panel">
+        Inside
+      </PopoverPanel>,
+    )
+
+    const panel = screen.getByRole('dialog', { name: 'Panel' })
+    expect(panel).toHaveClass('shadow-menu')
+    expect(panel).not.toHaveClass('shadow-card')
+    expect(panel).not.toHaveAttribute('elevation')
+
+    rerender(
+      <PopoverPanel state={state(true)} align="right" role="dialog" aria-label="Panel" elevation="card">
+        Inside
+      </PopoverPanel>,
+    )
+
+    expect(panel).toHaveClass('shadow-card')
+    expect(panel).not.toHaveClass('shadow-menu')
+  })
+
   it('keeps within the height its state leaves it, beside the caller’s style', () => {
     render(
       <PopoverPanel
@@ -90,6 +112,20 @@ describe('PopoverPanel', () => {
     const panel = screen.getByRole('dialog', { name: 'Panel' })
     expect(panel.style.width).toBe('20rem')
     expect(panel.style.maxHeight).toBe('240px')
+  })
+})
+
+describe('panelClass', () => {
+  it('is the card a hand-drawn panel shares with PopoverPanel', () => {
+    expect(panelClass).toBe('rounded-lg border border-border bg-surface shadow-menu')
+
+    render(
+      <PopoverPanel state={state(true)} align="left" role="dialog" aria-label="Panel">
+        Inside
+      </PopoverPanel>,
+    )
+
+    expect(screen.getByRole('dialog', { name: 'Panel' })).toHaveClass(...panelClass.split(' '))
   })
 })
 

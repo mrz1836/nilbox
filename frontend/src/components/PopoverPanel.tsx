@@ -13,6 +13,14 @@ const placements = {
   },
 } as const
 
+// elevations are the shadows a panel floats on: a menu's, or a card chip's, a little
+// darker. Each is written out whole, so Tailwind finds it.
+const elevations = { menu: 'shadow-menu', card: 'shadow-card' } as const
+
+// panelClass is the card a hand-drawn panel shares with PopoverPanel, such as a submenu
+// or a field's list of suggestions: its edge, its fill, and a menu's elevation.
+export const panelClass = 'rounded-lg border border-border bg-surface shadow-menu'
+
 export interface PopoverPanelProps extends HTMLAttributes<HTMLDivElement> {
   // state is the panel's state from usePopover: whether it is open, its ref, the side it
   // opened on, and the height it keeps within, if any.
@@ -24,14 +32,25 @@ export interface PopoverPanelProps extends HTMLAttributes<HTMLDivElement> {
   }
   // align lines the panel's right or left edge up with the button's.
   align: 'left' | 'right'
+  // elevation is how the panel floats: "menu" (the default) for a menu or a toolbar's
+  // panel, "card" for the panel a card's chip opens, on a darker shadow-card.
+  elevation?: 'menu' | 'card'
 }
 
 // PopoverPanel is the floating card a popover button opens, rendered only while it is
 // open. The button and the panel share a positioned parent; className adds the panel's
-// size, layer, shadow, and layout. The panel takes focus itself (tabIndex -1), so a click
-// on a radio, checkbox, or button in it, which the desktop's WebKit focuses no control
-// for, leaves focus in the panel rather than on whatever holds it.
-export function PopoverPanel({ state, align, className = '', style, children, ...rest }: PopoverPanelProps) {
+// size, layer, and layout. The panel takes focus itself (tabIndex -1), so a click on a
+// radio, checkbox, or button in it, which the desktop's WebKit focuses no control for,
+// leaves focus in the panel rather than on whatever holds it.
+export function PopoverPanel({
+  state,
+  align,
+  elevation = 'menu',
+  className = '',
+  style,
+  children,
+  ...rest
+}: PopoverPanelProps) {
   const { open, panelRef, side, maxHeight } = state
 
   if (!open) {
@@ -44,7 +63,7 @@ export function PopoverPanel({ state, align, className = '', style, children, ..
       tabIndex={-1}
       {...rest}
       style={maxHeight === undefined ? style : { ...style, maxHeight }}
-      className={`absolute rounded-lg border border-border bg-surface shadow-xl outline-none motion-safe:animate-pop-in ${placements[side][align]} ${className}`}
+      className={`absolute rounded-lg border border-border bg-surface ${elevations[elevation]} outline-none motion-safe:animate-pop-in ${placements[side][align]} ${className}`}
     >
       {children}
     </div>
