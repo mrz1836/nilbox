@@ -22,6 +22,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilotprefs"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/mcpserver"
+	"github.com/mrz1836/nilbox/internal/testutil"
 )
 
 // toolConversation is the in-app conversation the tool mode's test serves.
@@ -159,13 +160,13 @@ func TestTheToolModeServesAndCreatesNothingButTheProposal(t *testing.T) {
 
 			require.NoError(t, os.WriteFile(filepath.Join(describe, "context.json"), toolSnapshot(t), 0o600))
 
-			before := listFiles(t, root)
+			before := testutil.Tree(t, root)
 			id := serveOneProposal(t, exe, home, cwd, tt.where, tt.args(describe))
 
 			file := filepath.Join(proposals, id+".json")
-			assert.Equal(t, sortedFiles(append(slices.Clone(before), file)), sortedFiles(listFiles(t, root)),
+			assert.Equal(t, sortedFiles(append(slices.Clone(before), file)), sortedFiles(testutil.Tree(t, root)),
 				"the tool mode writes the proposal file and nothing else: no temporary file left, no log")
-			assert.Equal(t, []string{home}, listFiles(t, home), "and nothing in home")
+			assert.Equal(t, []string{home}, testutil.Tree(t, home), "and nothing in home")
 
 			data, err := os.ReadFile(file) //nolint:gosec // the file the test's tool mode wrote
 			require.NoError(t, err)

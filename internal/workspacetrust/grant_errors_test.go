@@ -80,7 +80,7 @@ func TestGrantWritesNothingWhenAnotherProcessTrustedTheCloneWhileItWaited(t *tes
 	data, err := os.ReadFile(file) //nolint:gosec // a test file under a temp dir
 	require.NoError(t, err)
 	assert.Equal(t, trusted, string(data), "the file is not rewritten")
-	assert.ElementsMatch(t, []string{".claude.json", "example-repo"}, dirNames(t, home), "the lock is released")
+	assert.ElementsMatch(t, []string{".claude.json", "example-repo"}, testutil.DirNames(t, home), "the lock is released")
 }
 
 func TestGrantReportsAConfigItCannotRead(t *testing.T) {
@@ -98,7 +98,7 @@ func TestGrantReportsAConfigItCannotRead(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrPermission)
 	require.ErrorContains(t, err, "read "+file)
 	assert.False(t, changed)
-	assert.ElementsMatch(t, []string{".claude.json", "example-repo"}, dirNames(t, home), "the lock is released")
+	assert.ElementsMatch(t, []string{".claude.json", "example-repo"}, testutil.DirNames(t, home), "the lock is released")
 }
 
 func TestGrantReportsAConfigItCannotReplace(t *testing.T) {
@@ -124,8 +124,8 @@ func TestGrantReportsAConfigItCannotReplace(t *testing.T) {
 	data, err := os.ReadFile(target) //nolint:gosec // a test file under a temp dir
 	require.NoError(t, err)
 	assert.Equal(t, untrusted(clone), string(data), "the file it points at is left as it was")
-	assert.Equal(t, []string{"claude.json"}, dirNames(t, dotfiles))
-	assert.ElementsMatch(t, []string{".claude.json", "dotfiles", "example-repo"}, dirNames(t, home),
+	assert.Equal(t, []string{"claude.json"}, testutil.DirNames(t, dotfiles))
+	assert.ElementsMatch(t, []string{".claude.json", "dotfiles", "example-repo"}, testutil.DirNames(t, home),
 		"the lock is released")
 }
 
