@@ -5,7 +5,7 @@ import type { GitHubThreadsState } from '../lib/useGitHubThreads'
 import { useNowAs } from '../lib/useNow'
 import { usePopover } from '../lib/usePopover'
 import { openExternal, type Settings } from '../platform'
-import { quietButtonClass } from './controls'
+import { iconButtonClass, quietButtonClass, toolbarButtonClass } from './controls'
 import { ExternalIcon, GitHubMarkIcon, HistoryIcon, RefreshIcon, SlidersIcon, XIcon } from './icons'
 import { Refused, TurnOnClearing } from './notifications/GitHubNotes'
 import { ThreadRow } from './notifications/ThreadRow'
@@ -91,13 +91,7 @@ export function GitHubThreadsMenu({
 
   return (
     <div className="relative">
-      <ToolbarPopoverButton
-        popover={popover}
-        id={id}
-        label={label}
-        onClick={onToggle}
-        className="relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text"
-      >
+      <ToolbarPopoverButton popover={popover} id={id} label={label} onClick={onToggle} className={toolbarButtonClass}>
         <GitHubMarkIcon className="size-[1.125rem]" />
         {refused ? (
           <span
@@ -130,7 +124,7 @@ export function GitHubThreadsMenu({
             onClick={check}
             aria-label={checking ? 'Checking GitHub' : 'Check GitHub now'}
             title={checking ? 'Checking GitHub…' : 'Check GitHub now'}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:hover:bg-transparent"
+            className={`${iconButtonClass} disabled:cursor-default disabled:hover:bg-transparent`}
           >
             <RefreshIcon className={`size-4 ${checking ? 'text-accent motion-safe:animate-spin' : ''}`} />
           </button>

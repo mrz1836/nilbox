@@ -5,7 +5,7 @@ import { quickViewMax } from '../lib/notifications'
 import type { NotificationsState } from '../lib/useNotifications'
 import { usePopover } from '../lib/usePopover'
 import type { AppNotification } from '../platform'
-import { quietButtonClass } from './controls'
+import { quietButtonClass, toolbarButtonClass } from './controls'
 import { BellIcon, CheckIcon, HistoryIcon, SlidersIcon } from './icons'
 import { EntryRow } from './notifications/EntryRow'
 import { CountDot, PopoverPanel, ToolbarPopoverButton } from './PopoverPanel'
@@ -59,12 +59,7 @@ export function NotificationsMenu({ notifications, onOpen, onSettings, onViewAll
 
   return (
     <div className="relative">
-      <ToolbarPopoverButton
-        popover={popover}
-        id={id}
-        label={label}
-        className="relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text"
-      >
+      <ToolbarPopoverButton popover={popover} id={id} label={label} className={toolbarButtonClass}>
         <BellIcon className="size-[1.125rem]" />
         <CountDot count={log.unread} testId="notifications-unread" />
       </ToolbarPopoverButton>

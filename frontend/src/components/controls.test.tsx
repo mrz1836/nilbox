@@ -20,6 +20,7 @@ import {
   smallIconButtonClass,
   Switch,
   toolbarButtonClass,
+  toolbarButtonShape,
   toolbarClass,
   triState,
   type SelectOption,
@@ -57,6 +58,11 @@ describe('the shared classes', () => {
       toolbarButtonClass,
       'relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text',
     ],
+    [
+      'toolbarButtonShape',
+      toolbarButtonShape,
+      'flex size-8 items-center justify-center rounded-md transition-colors hover:bg-raised aria-expanded:bg-raised',
+    ],
     ['linkClass', linkClass, 'font-medium text-accent hover:underline'],
     ['inkLinkClass', inkLinkClass, 'text-text hover:text-accent hover:underline'],
     [
@@ -87,6 +93,19 @@ describe('the shared classes', () => {
 
     expect(diff(iconButtonClass, smallIconButtonClass)).toEqual(['size-6', 'size-7'])
     expect(diff(iconButtonClass, dangerIconButtonClass)).toEqual(['hover:text-danger', 'hover:text-text'])
+  })
+
+  it('shapes a toolbar button whose color says something as every toolbar button, without the colors', () => {
+    const shape = toolbarButtonShape.split(' ')
+    const toolbar = toolbarButtonClass.split(' ')
+
+    expect(shape.every((c) => toolbar.includes(c))).toBe(true)
+    expect(toolbar.filter((c) => !shape.includes(c))).toEqual([
+      'relative',
+      'text-muted',
+      'hover:text-text',
+      'aria-expanded:text-text',
+    ])
   })
 
   it('fades a small button while it is disabled, and leaves the fade to an icon button’s caller', () => {

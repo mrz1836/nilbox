@@ -19,7 +19,7 @@ import type { GitHubThreadsState } from '../../lib/useGitHubThreads'
 import { useNowAs } from '../../lib/useNow'
 import { useSettingsSave } from '../../lib/useSettingsSave'
 import { openExternal, setGitHubNotificationSwitch, type Settings } from '../../platform'
-import { buttonClass, quietButtonClass, Segmented } from '../controls'
+import { buttonClass, iconButtonClass, quietButtonClass, Segmented } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { ExternalIcon, RefreshIcon, SlidersIcon, XIcon } from '../icons'
 import { Spinner } from '../Spinner'
@@ -255,7 +255,7 @@ export function GitHubNotificationsTab({
           onClick={check}
           aria-label={checking ? 'Checking GitHub' : 'Check GitHub now'}
           title={checking ? 'Checking GitHub…' : 'Check GitHub now'}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:hover:bg-transparent"
+          className={`${iconButtonClass} disabled:cursor-default disabled:hover:bg-transparent`}
         >
           <RefreshIcon className={`size-4 ${checking ? 'text-accent motion-safe:animate-spin' : ''}`} />
         </button>

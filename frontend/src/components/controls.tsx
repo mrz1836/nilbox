@@ -56,9 +56,10 @@ export const ghostButtonClass =
 // muted and brightens on hover. iconButtonClass is the usual size, smallIconButtonClass
 // the one for a dense row, and dangerIconButtonClass a remove button, which turns the
 // danger color on hover. toolbarButtonClass is a toolbar's, which stays lit while the
-// panel it opens is open and holds a CountDot over its corner. A button that can be
-// disabled adds disabled:cursor-default disabled:opacity-disabled
-// disabled:hover:bg-transparent itself.
+// panel it opens is open and holds a CountDot over its corner; toolbarButtonShape is the
+// same button without its colors, for one whose color says something, such as the API
+// budget's level, which adds its own text color. A button that can be disabled adds
+// disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent itself.
 export const iconButtonClass =
   'flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text'
 export const smallIconButtonClass =
@@ -67,6 +68,8 @@ export const dangerIconButtonClass =
   'flex size-7 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-danger'
 export const toolbarButtonClass =
   'relative flex size-8 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text aria-expanded:bg-raised aria-expanded:text-text'
+export const toolbarButtonShape =
+  'flex size-8 items-center justify-center rounded-md transition-colors hover:bg-raised aria-expanded:bg-raised'
 
 // linkClass is a link or a link-like button in the accent color; inkLinkClass one in the
 // text's own color that takes the accent on hover, such as an item's title.

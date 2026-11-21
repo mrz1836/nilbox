@@ -18,7 +18,7 @@ import { usePopover } from '../lib/usePopover'
 import { useNowAs } from '../lib/useNow'
 import { formatAgo } from '../lib/time'
 import { openExternal, type ServiceProvider } from '../platform'
-import { buttonClass } from './controls'
+import { buttonClass, toolbarButtonShape } from './controls'
 import { AlertIcon, ExternalIcon } from './icons'
 import { PopoverPanel, ToolbarPopoverButton } from './PopoverPanel'
 
@@ -139,7 +139,7 @@ export function ServiceStatusMenu({ service, onChooseWatch }: ServiceStatusMenuP
         popover={popover}
         id={id}
         label={label}
-        className={`flex size-8 items-center justify-center rounded-md transition-colors hover:bg-raised aria-expanded:bg-raised ${toneText[tone]}`}
+        className={`${toolbarButtonShape} ${toneText[tone]}`}
       >
         <AlertIcon className="size-4" />
       </ToolbarPopoverButton>
