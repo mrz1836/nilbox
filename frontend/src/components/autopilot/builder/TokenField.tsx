@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type KeyboardEvent } from 'react'
 
 import { XIcon } from '../../icons'
+import { panelClass } from '../../PopoverPanel'
 
 // TokenOption is a value a token field suggests: what it stores, and how it shows.
 export interface TokenOption {
@@ -234,7 +235,7 @@ export function TokenField({
           id={listId}
           role="listbox"
           aria-label={`${label} suggestions`}
-          className="absolute top-full left-0 z-40 mt-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-border bg-surface p-1 text-sm shadow-xl shadow-black/20"
+          className={`${panelClass} absolute top-full left-0 z-40 mt-1 max-h-64 w-64 overflow-y-auto p-1 text-sm`}
         >
           {options.map((o, i) => (
             <div
