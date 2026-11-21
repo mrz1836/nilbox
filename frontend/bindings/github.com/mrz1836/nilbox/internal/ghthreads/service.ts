@@ -28,32 +28,11 @@ export function CheckNow(): $CancellablePromise<$models.Snapshot> {
 }
 
 /**
- * Clear clears the threads with threadIDs by the user's own hand, the cleanup sheet's
- * button: each one the mirror lists for the account the last pass read is queued to go at
- * once, with no hold and whether clearing on its own is on or off, and a clear already
- * queued for it goes at once instead. A thread about neither a pull request nor an issue,
- * one already read while clearing marks one read, and any while reading is off are left
- * alone. It returns the Snapshot, whose Queued lists them until they are sent.
- */
-export function Clear(threadIDs: number[] | null): $CancellablePromise<$models.Snapshot> {
-    return $Call.ByID(751692783, threadIDs);
-}
-
-/**
- * ClearItem clears, by the user's own hand, every thread about the pull request or issue
- * owner/name#number that the mirror lists for the account the last pass read, as Clear
- * does: the card's menu action.
- */
-export function ClearItem(owner: string, name: string, $number: number): $CancellablePromise<$models.Snapshot> {
-    return $Call.ByID(2554946024, owner, name, $number);
-}
-
-/**
- * ClearItemThreads clears the threads about the pull request or issue owner/name#number as
- * ClearItem does, and returns how many clears it queued: none while reading is off, before
- * a pass read the account, or when the mirror lists no thread about it that the rules don't
- * leave alone. Autopilot's Mark the GitHub notification done runs it, as the card's menu
- * runs ClearItem.
+ * ClearItemThreads clears, by the user's own hand, every thread about the pull request or
+ * issue owner/name#number that the mirror lists for the account the last pass read, as
+ * clearByHand does, and returns how many clears it queued: none while reading is off,
+ * before a pass read the account, or when the mirror lists no thread about it that the
+ * rules don't leave alone. Autopilot's Mark the GitHub notification done runs it.
  */
 export function ClearItemThreads(owner: string, name: string, $number: number): $CancellablePromise<number> {
     return $Call.ByID(2531590337, owner, name, $number);
@@ -100,14 +79,6 @@ export function MarkDone(ids: number[] | null): $CancellablePromise<$models.Snap
  */
 export function MarkRead(ids: number[] | null): $CancellablePromise<$models.Snapshot> {
     return $Call.ByID(2703849747, ids);
-}
-
-/**
- * Preview returns what clearing would do now, from the database alone: it never asks
- * GitHub.
- */
-export function Preview(): $CancellablePromise<$models.Preview> {
-    return $Call.ByID(238893682);
 }
 
 /**

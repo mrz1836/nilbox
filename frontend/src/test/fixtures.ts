@@ -1310,7 +1310,6 @@ export function settings(overrides: Partial<Settings> = {}): Settings {
       triggersOff: [],
       watching: true,
       botActivity: true,
-      cleanupCardDismissed: false,
     },
     refresh: { inbox: 300, checks: 45, releaseChecks: 45, worktrees: 300, notifications: 300, serviceStatus: 1800 },
     refreshChoices: {

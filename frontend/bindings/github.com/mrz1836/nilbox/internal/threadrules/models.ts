@@ -64,12 +64,6 @@ export interface Rules {
      * as seen, so it doesn't hold the notification back. On by default.
      */
     "botActivity": boolean;
-
-    /**
-     * CleanupCardDismissed is whether the user put away the card that first offers to
-     * clean up their notifications ("Not now").
-     */
-    "cleanupCardDismissed": boolean;
 }
 
 /**
@@ -185,8 +179,8 @@ export const Trigger = {
     TriggerUnassigned: "unassigned",
 
     /**
-     * TriggerByHand is the user clearing a notification themselves, from an item's menu
-     * or the cleanup sheet. It has no switch and no guard but the thread's own.
+     * TriggerByHand is the user clearing a notification themselves, as Autopilot's Mark
+     * the GitHub notification done does. It has no switch and no guard but the thread's own.
      */
     TriggerByHand: "by_hand",
 } as const;

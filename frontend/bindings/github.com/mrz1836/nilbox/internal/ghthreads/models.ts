@@ -75,97 +75,6 @@ export const ClearState = {
 } as const;
 
 /**
- * Preview is what clearing would do now, for the cleanup sheet and the card that first
- * offers it: the threads that would clear, by repository, and those held back, by reason.
- * It is decided as if clearing on its own were on, so it counts the candidates while it is
- * off, and it takes GitHub's last word on an item's state however old it is: a pass reads a
- * state again before it clears on it.
- */
-export interface Preview {
-    /**
-     * Reading is whether the app reads the user's notifications; off, nothing would clear.
-     */
-    "reading": boolean;
-
-    /**
-     * Auto is whether clearing on its own is on, and Action what clearing does.
-     */
-    "auto": boolean;
-    "action": threadrules$0.Action;
-
-    /**
-     * Count is how many threads would clear.
-     */
-    "count": number;
-
-    /**
-     * Repos are the threads that would clear, by repository, in the order of each one's
-     * most recently updated thread.
-     */
-    "repos": PreviewRepo[] | null;
-
-    /**
-     * Held are the threads a moment finished but that would not clear now, by reason, in
-     * the order each reason is first met.
-     */
-    "held": PreviewHeld[] | null;
-}
-
-/**
- * PreviewHeld is the threads held back from clearing for one reason.
- */
-export interface PreviewHeld {
-    "reason": SkipReason;
-    "count": number;
-    "threads": PreviewThread[] | null;
-}
-
-/**
- * PreviewRepo is one repository's threads that would clear.
- */
-export interface PreviewRepo {
-    "owner": string;
-    "name": string;
-    "threads": PreviewThread[] | null;
-}
-
-/**
- * PreviewThread is one thread in a Preview.
- */
-export interface PreviewThread {
-    /**
-     * ID is GitHub's ID of the thread, which Clear takes.
-     */
-    "id": number;
-
-    /**
-     * Owner and Name are its repository, Kind and Number the item it is about.
-     */
-    "owner": string;
-    "name": string;
-    "kind": item$0.Kind;
-    "number": number;
-
-    /**
-     * Title is the item's title, Reason GitHub's reason for the thread, and Unread whether
-     * it is unread.
-     */
-    "title": string;
-    "reason": string;
-    "unread": boolean;
-
-    /**
-     * UpdatedAt is when it last changed on GitHub, as RFC 3339.
-     */
-    "updatedAt": string;
-
-    /**
-     * Trigger is the moment that finished its item.
-     */
-    "trigger": threadrules$0.Trigger;
-}
-
-/**
  * QueuedClear is a clear waiting to be sent.
  */
 export interface QueuedClear {
@@ -338,8 +247,8 @@ export interface Snapshot {
     "queued": QueuedClear[] | null;
 
     /**
-     * Backlog is how many clears the last pass held back, more than clear on their own, for
-     * the user to review (Preview, then Clear); 0 when none waits.
+     * Backlog is how many clears the last pass held back, more than clear on their own; 0
+     * when none waits.
      */
     "backlog": number;
 
