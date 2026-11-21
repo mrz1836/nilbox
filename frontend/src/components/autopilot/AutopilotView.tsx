@@ -415,7 +415,7 @@ function AskBox({ status, error, checking, onCheck, onSend, onOpen }: AskBoxProp
                   setText(example)
                   box.current?.focus()
                 }}
-                className="rounded-full border border-border px-2.5 py-0.5 text-left text-xs text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
+                className="rounded-full border border-border px-2.5 py-0.5 text-left text-xs text-muted transition-colors hover:bg-raised hover:text-text disabled:cursor-default disabled:opacity-disabled disabled:hover:bg-transparent"
               >
                 {example}
               </button>

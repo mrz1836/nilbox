@@ -156,7 +156,7 @@ function StepRow({ kit, agentKit, steps, index, kinds, step, onChange, onMove, o
             onClick={() => {
               onMove(index - 1)
             }}
-            className="rounded-md px-1.5 py-0.5 text-sm text-muted hover:bg-raised hover:text-text disabled:opacity-40"
+            className="rounded-md px-1.5 py-0.5 text-sm text-muted hover:bg-raised hover:text-text disabled:opacity-disabled"
           >
             ↑
           </button>
@@ -168,7 +168,7 @@ function StepRow({ kit, agentKit, steps, index, kinds, step, onChange, onMove, o
             onClick={() => {
               onMove(index + 1)
             }}
-            className="rounded-md px-1.5 py-0.5 text-sm text-muted hover:bg-raised hover:text-text disabled:opacity-40"
+            className="rounded-md px-1.5 py-0.5 text-sm text-muted hover:bg-raised hover:text-text disabled:opacity-disabled"
           >
             ↓
           </button>
