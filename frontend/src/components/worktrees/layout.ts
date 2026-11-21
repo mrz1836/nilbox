@@ -10,7 +10,6 @@
 
 import { smallIconButtonClass } from '../controls'
 import type { LaunchPlace } from '../LaunchControls'
-import type { Tone } from '../../lib/worktreeParts'
 
 // worktreeGridClass is the page's list of clones: the container its rows' layout follows,
 // and the grid of its nine columns: the state, the branch, the item, the work, the agent,
@@ -163,23 +162,3 @@ export const historyAgeClass = `${historyCell} col-start-7 text-right text-xs te
 // is pointed at or holds the focus.
 export const historyActionsClass =
   'col-start-8 row-start-1 flex items-center gap-0.5 justify-self-end opacity-0 transition-opacity group-focus-within/cleanup:opacity-100 group-hover/cleanup:opacity-100'
-
-// toneText and toneBg color a part of the page by its tone, spelled out in full so
-// Tailwind finds them.
-export const toneText: Readonly<Record<Tone, string>> = {
-  info: 'text-info',
-  warning: 'text-warning',
-  caution: 'text-caution',
-  success: 'text-success',
-  danger: 'text-danger',
-  muted: 'text-muted',
-}
-
-export const toneBg: Readonly<Record<Tone, string>> = {
-  info: 'bg-info',
-  warning: 'bg-warning',
-  caution: 'bg-caution',
-  success: 'bg-success',
-  danger: 'bg-danger',
-  muted: 'bg-muted',
-}

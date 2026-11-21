@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { brand } from '../../generated/brand'
 import { shortCommit } from '../../lib/git'
 import { capitalize, formatAge, formatAgo, formatFull } from '../../lib/time'
+import { toneFill, toneText } from '../../lib/tone'
 import { useNow } from '../../lib/useNow'
 import type { RowWork } from '../../lib/useWorktrees'
 import {
@@ -19,6 +20,7 @@ import {
   type AgentLine,
   type ItemFacts,
   type KindIcon,
+  type Tone,
 } from '../../lib/worktreeParts'
 import { edgeTitle, laneOf, lanes, stateOf, workNotes, type StateGlyph, type WorkNote } from '../../lib/worktrees'
 import { openExternal, type AgentID, type AgentSession, type LinkedItem, type Worktree } from '../../platform'
@@ -48,8 +50,6 @@ import {
   itemCellClass,
   stateCellClass,
   tagClass,
-  toneBg,
-  toneText,
   workCellClass,
   workMarkClass,
 } from './layout'
@@ -84,20 +84,20 @@ export function Edge({ worktree }: { worktree: Worktree }) {
       aria-hidden="true"
       data-lane={lane}
       title={edgeTitle(worktree)}
-      className={`${edgeClass} ${toneBg[tone]} ${lane === 'running' ? 'motion-safe:animate-pulse' : ''}`}
+      className={`${edgeClass} ${toneFill[tone]} ${lane === 'running' ? 'motion-safe:animate-pulse' : ''}`}
     />
   )
 }
 
 // Glyph is the state's one mark.
-function Glyph({ glyph, tone }: { glyph: StateGlyph; tone: keyof typeof toneBg }) {
+function Glyph({ glyph, tone }: { glyph: StateGlyph; tone: Tone }) {
   const icon = 'size-3.5'
 
   switch (glyph) {
     case 'ping':
-      return <StatusDot color={toneBg[tone]} ping />
+      return <StatusDot color={toneFill[tone]} ping />
     case 'dot':
-      return <StatusDot color={toneBg[tone]} />
+      return <StatusDot color={toneFill[tone]} />
     case 'alert':
       return <AlertIcon className={icon} />
     case 'ghost':
@@ -225,7 +225,7 @@ function LinkedCell({ item, facts, copied }: LinkedCellProps) {
           title={`${checks.words}, as the inbox read them`}
           className="inline-flex shrink-0 cursor-help items-center px-1.5"
         >
-          <StatusDot color={toneBg[checks.tone]} ping={checks.pending} />
+          <StatusDot color={toneFill[checks.tone]} ping={checks.pending} />
           <span className="sr-only">{checks.words.toLowerCase()}</span>
         </span>
       )}
@@ -358,7 +358,7 @@ function AgentWords({ line }: { line: AgentLine }) {
 
       return (
         <>
-          <StatusDot color={toneBg[tone]} ping={ping} />
+          <StatusDot color={toneFill[tone]} ping={ping} />
           <span className="min-w-0 truncate">
             <span className="font-medium text-text">{line.name}</span>
             {line.version !== '' && <span className="font-mono text-caption @max-xl:hidden"> {line.version}</span>}

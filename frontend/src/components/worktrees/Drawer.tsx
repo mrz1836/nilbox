@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 
 import { counted } from '../../lib/format'
 import { formatAgo } from '../../lib/time'
+import { toneText } from '../../lib/tone'
 import { useNow } from '../../lib/useNow'
 import { asReadNow, readable, type DetailsRead } from '../../lib/useWorktreeDetails'
 import {
@@ -40,7 +41,6 @@ import {
   drawerColumnsClass,
   drawerFooterClass,
   skeletonClass,
-  toneText,
   verbButtonClass,
 } from './layout'
 import type { WorktreeRowActions } from './menus'

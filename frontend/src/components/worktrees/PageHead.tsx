@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { counted, formatCount } from '../../lib/format'
 import { unreadWords, whereClones } from '../../lib/locations'
 import { formatAgo } from '../../lib/time'
+import { toneFill } from '../../lib/tone'
 import type { Working } from '../../lib/useWorktrees'
 import { facetQuery, facetsOf } from '../../lib/worktreeParts'
 import { progressStep } from '../../lib/worktreeProgress'
@@ -12,7 +13,7 @@ import { AlertIcon, ChevronDownIcon, InfoIcon, RefreshIcon, XIcon } from '../ico
 import { MenuButton } from '../Menu'
 import { ProgressStatus } from '../ProgressStatus'
 import { RelativeTime } from '../RelativeTime'
-import { cleanUpButtonClass, toneBg, verbButtonClass } from './layout'
+import { cleanUpButtonClass, verbButtonClass } from './layout'
 import { cleanupMenuItems } from './menus'
 
 // sessionsUnknownWords say what a system that can't list its processes means for the page.
@@ -225,7 +226,7 @@ export function PageHead({
               }}
               className={chipClass}
             >
-              <span aria-hidden="true" className={`size-1.75 shrink-0 rounded-full ${toneBg[chip.tone]}`} />
+              <span aria-hidden="true" className={`size-1.75 shrink-0 rounded-full ${toneFill[chip.tone]}`} />
               <b className="font-semibold text-text tabular-nums">{formatCount(chip.n)}</b>
               {` ${chip.label}`}
               {chip.on && <XIcon className="size-3" />}
