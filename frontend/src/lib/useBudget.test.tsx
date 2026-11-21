@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { budgetGauge, reading } from '../test/fixtures'
-import { emit, platform } from '../test/platform'
+import { platform, send } from '../test/platform'
 import { useBudget } from './useBudget'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -18,9 +18,7 @@ describe('useBudget', () => {
     })
 
     platform.getBudget.mockResolvedValue(budgetGauge({ graphql: reading({ used: 25 }) }))
-    act(() => {
-      emit('budget:updated')
-    })
+    send('budget:updated')
 
     await waitFor(() => {
       expect(result.current.gauge?.graphql.used).toBe(25)

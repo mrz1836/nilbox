@@ -5,7 +5,7 @@ import { brand } from '../generated/brand'
 import type { DownloadAnswer, RestartAnswer, RunGoing, UpdateStatus } from '../platform'
 import { deferred } from '../test/async'
 import { runGoing, scriptRun, updateLocation, updateReady, updateStatus } from '../test/fixtures'
-import { emit, platform } from '../test/platform'
+import { platform, send } from '../test/platform'
 import { finishingWords, settlingWords } from './update'
 import { useRestartToUpdate, useUpdate, useUpdateControl, waitFor as waitForSettling } from './useUpdate'
 
@@ -45,9 +45,7 @@ describe('useUpdate', () => {
     })
 
     platform.getUpdateStatus.mockResolvedValue(updateReady())
-    act(() => {
-      emit('updates:updated')
-    })
+    send('updates:updated')
 
     await waitFor(() => {
       expect(result.current.status?.state).toBe('ready')
@@ -61,9 +59,7 @@ describe('useUpdate', () => {
       .mockResolvedValueOnce(updateReady({ state: 'downloading', progress: 60 }))
     const { result } = renderHook(() => useUpdate())
 
-    act(() => {
-      emit('updates:updated')
-    })
+    send('updates:updated')
     await waitFor(() => {
       expect(result.current.status?.progress).toBe(60)
     })
@@ -817,9 +813,7 @@ describe('useRestartToUpdate', () => {
     expect(result.current.step).toEqual({ step: 'waiting', message: settlingWords })
 
     // The start settling says the update changed; the restart can go ahead again.
-    act(() => {
-      emit('updates:updated')
-    })
+    send('updates:updated')
     expect(result.current.step).toEqual({ step: 'idle' })
 
     act(() => {
@@ -869,9 +863,7 @@ describe('useRestartToUpdate', () => {
       expect(result.current.step.step).toBe('failed')
     })
 
-    act(() => {
-      emit('updates:updated')
-    })
+    send('updates:updated')
     expect(result.current.step).toEqual({ step: 'failed', message: 'Couldn’t install 0.3.0.' })
   })
 
@@ -982,9 +974,7 @@ describe('useUpdateControl', () => {
 
     // A day on, the update stops hiding it, and so does the window.
     platform.getUpdateStatus.mockResolvedValue(updateReady())
-    act(() => {
-      emit('updates:updated')
-    })
+    send('updates:updated')
     await waitFor(() => {
       expect(result.current.banner).toEqual({ kind: 'ready', version: '0.3.0' })
     })
@@ -1006,9 +996,7 @@ describe('useUpdateControl', () => {
     expect(result.current.banner).toEqual({ kind: 'none' })
 
     // The menu bar's Update to 0.3.0… runs with the banner showing.
-    act(() => {
-      emit('updates:restart')
-    })
+    send('updates:restart')
     await waitFor(() => {
       expect(result.current.banner.kind).toBe('failed')
     })
@@ -1043,18 +1031,14 @@ describe('useUpdateControl', () => {
       expect(result.current.status?.bannerHidden).toBe(true)
     })
 
-    act(() => {
-      emit('updates:restart')
-    })
+    send('updates:restart')
     await waitFor(() => {
       expect(result.current.banner.kind).toBe('failed')
     })
     expect(platform.showUpdateBanner).toHaveBeenCalledOnce()
 
     // The update tells the window it shows the banner again, as it does once it lifts Later.
-    act(() => {
-      emit('updates:updated')
-    })
+    send('updates:updated')
     await waitFor(() => {
       expect(result.current.status?.bannerHidden).toBe(false)
     })
@@ -1296,18 +1280,14 @@ describe('useUpdateControl', () => {
     platform.restartToUpdateNow.mockResolvedValue({ restarted: false, runsGoing: [runGoing()], message: '' })
     const { result } = control()
 
-    act(() => {
-      emit('updates:restart')
-    })
+    send('updates:restart')
 
     await waitFor(() => {
       expect(result.current.flow).toEqual({ step: 'asking', question: { runs: [runGoing()], sheets: 0 } })
     })
 
     // Asked again while it asks, it does nothing.
-    act(() => {
-      emit('updates:restart')
-    })
+    send('updates:restart')
     expect(platform.restartToUpdateNow).toHaveBeenCalledOnce()
   })
 
@@ -1330,9 +1310,7 @@ describe('useUpdateControl', () => {
       expect(platform.restartToUpdateNow).toHaveBeenCalledOnce()
     })
     // The update tells the window it changed, as it does once it finishes.
-    act(() => {
-      emit('updates:updated')
-    })
+    send('updates:updated')
 
     await waitFor(() => {
       expect(result.current.banner).toEqual({

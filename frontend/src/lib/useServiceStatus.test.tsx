@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { deferred } from '../test/async'
 import { serviceIncident, serviceStatus, statusWatch } from '../test/fixtures'
-import { emit, platform } from '../test/platform'
+import { platform, send } from '../test/platform'
 import { useServiceStatus } from './useServiceStatus'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -18,9 +18,7 @@ describe('useServiceStatus', () => {
     })
 
     platform.getServiceStatus.mockResolvedValue(serviceIncident())
-    act(() => {
-      emit('servicestatus:updated')
-    })
+    send('servicestatus:updated')
 
     await waitFor(() => {
       expect(result.current.status?.state).toBe('major')

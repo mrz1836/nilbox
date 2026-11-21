@@ -5,7 +5,7 @@ import type { InboxSnapshot } from '../platform'
 import { deferred } from '../test/async'
 import { at } from '../test/clock'
 import { item, list, snapshot } from '../test/fixtures'
-import { emit, platform } from '../test/platform'
+import { platform, send } from '../test/platform'
 import { findItem } from './triage'
 import { useInbox } from './useInbox'
 
@@ -97,33 +97,25 @@ describe('useInbox’s refreshing', () => {
     expect(result.current.refreshing).toBe(false)
     expect(result.current.progress).toBeNull()
 
-    act(() => {
-      emit('inbox:progress', { phase: 'search', done: 0, total: 0 })
-    })
+    send('inbox:progress', { phase: 'search', done: 0, total: 0 })
 
     expect(result.current.refreshing).toBe(true)
     expect(result.current.progress).toEqual({ phase: 'search', done: 0, total: 0 })
 
-    act(() => {
-      emit('inbox:progress', { phase: 'details', done: 3, total: 8 })
-    })
+    send('inbox:progress', { phase: 'details', done: 3, total: 8 })
 
     expect(result.current.progress).toEqual({ phase: 'details', done: 3, total: 8 })
 
     // A read while it runs says so; the one the ending update brings says it ended.
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ refreshing: true }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     await waitFor(() => {
       expect(platform.getInboxSnapshot).toHaveBeenCalledTimes(2)
     })
     expect(result.current.refreshing).toBe(true)
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T12:00:00Z' }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     await waitFor(() => {
       expect(result.current.refreshing).toBe(false)
@@ -143,12 +135,8 @@ describe('useInbox’s refreshing', () => {
     // A read goes out, the refresh starts, and the read, asked before it, answers after.
     const answer = deferred<InboxSnapshot>()
     platform.getInboxSnapshot.mockReturnValueOnce(answer.promise)
-    act(() => {
-      emit('inbox:updated')
-    })
-    act(() => {
-      emit('inbox:progress', { phase: 'search', done: 0, total: 0 })
-    })
+    send('inbox:updated')
+    send('inbox:progress', { phase: 'search', done: 0, total: 0 })
     await act(async () => {
       answer.resolve(snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' }))
       await Promise.resolve()
@@ -170,18 +158,14 @@ describe('useInbox’s refreshing', () => {
     expect(result.current.caughtUp).toBe(false)
 
     platform.getInboxSnapshot.mockResolvedValue(snapshot({ lastRefreshedAt: '2026-06-15T12:00:00Z' }))
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
 
     await waitFor(() => {
       expect(result.current.caughtUp).toBe(true)
     })
 
     // A later refresh doesn't take it back.
-    act(() => {
-      emit('inbox:progress', { phase: 'search', done: 0, total: 0 })
-    })
+    send('inbox:progress', { phase: 'search', done: 0, total: 0 })
     expect(result.current.caughtUp).toBe(true)
   })
 })
@@ -313,9 +297,7 @@ describe('useInbox’s seen marks', () => {
     const during = deferred<InboxSnapshot>()
 
     platform.getInboxSnapshot.mockReturnValueOnce(during.promise)
-    act(() => {
-      emit('inbox:updated')
-    })
+    send('inbox:updated')
     platform.getInboxSnapshot.mockResolvedValue(unreadInbox(false))
     await act(async () => {
       stored.resolve(unreadInbox(false))

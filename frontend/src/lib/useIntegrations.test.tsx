@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { IntegrationTools } from '../platform'
 import { deferred } from '../test/async'
 import { goPreCommitTool, integrationTool, integrationTools } from '../test/fixtures'
-import { emit, listening, platform } from '../test/platform'
+import { listening, platform, send } from '../test/platform'
 import { useIntegrations } from './useIntegrations'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -30,9 +30,7 @@ describe('useIntegrations', () => {
     platform.listIntegrations.mockResolvedValue(
       integrationTools({ tools: [integrationTool({ state: 'update' }), goPreCommitTool({ state: 'missing' })] }),
     )
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     await waitFor(() => {
       expect(names(result.current.tools)).toEqual(['mage-x update', 'go-pre-commit missing'])

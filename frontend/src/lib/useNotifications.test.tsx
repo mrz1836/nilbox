@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NotificationLog } from '../platform'
 import { deferred } from '../test/async'
 import { notification } from '../test/fixtures'
-import { emit, listening, platform } from '../test/platform'
+import { listening, platform, send } from '../test/platform'
 import { useNotifications } from './useNotifications'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -25,9 +25,7 @@ describe('useNotifications', () => {
       items: [notification({ id: 2 }), notification({ read: true })],
       unread: 1,
     })
-    act(() => {
-      emit('notifications:updated')
-    })
+    send('notifications:updated')
 
     await waitFor(() => {
       expect(result.current.log.items).toHaveLength(2)
@@ -44,9 +42,7 @@ describe('useNotifications', () => {
 
     const { result } = renderHook(() => useNotifications())
     platform.listNotifications.mockResolvedValue({ items: [], unread: 0 })
-    act(() => {
-      emit('notifications:updated')
-    })
+    send('notifications:updated')
 
     await act(async () => {
       first.resolve({ items: [notification()], unread: 1 })

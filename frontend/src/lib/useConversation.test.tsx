@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AutopilotRunEvents, DescribeConversation } from '../platform'
 import { deferred } from '../test/async'
 import { describeConversation, describeTurn, runEvent, runEventsPage } from '../test/fixtures'
-import { emit, platform } from '../test/platform'
+import { platform, send } from '../test/platform'
 import { useConversation } from './useConversation'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -46,9 +46,7 @@ describe('useConversation', () => {
       [id, 2, 0],
     ])
 
-    act(() => {
-      emit('describeit:updated', { conversationId: id, turn: 0 })
-    })
+    send('describeit:updated', { conversationId: id, turn: 0 })
     await waitFor(() => {
       expect(platform.describeItConversation).toHaveBeenCalledTimes(2)
     })
@@ -70,27 +68,21 @@ describe('useConversation', () => {
       expect(result.current.eventsOf(1).events).toHaveLength(2)
     })
 
-    act(() => {
-      emit('describeit:updated', { conversationId: id, turn: 1 })
-    })
+    send('describeit:updated', { conversationId: id, turn: 1 })
     await waitFor(() => {
       expect(result.current.eventsOf(1).events).toHaveLength(3)
     })
     expect(platform.describeItEvents.mock.lastCall).toEqual([id, 1, 2])
 
     platform.describeItConversation.mockResolvedValue(conversation())
-    act(() => {
-      emit('describeit:updated', { conversationId: id, turn: 1 })
-    })
+    send('describeit:updated', { conversationId: id, turn: 1 })
     await waitFor(() => {
       expect(result.current.eventsOf(1).events).toHaveLength(4)
     })
     expect(platform.describeItEvents.mock.lastCall).toEqual([id, 1, 3])
     expect(result.current.conversation?.running).toBe(false)
 
-    act(() => {
-      emit('describeit:updated', { conversationId: id, turn: 1 })
-    })
+    send('describeit:updated', { conversationId: id, turn: 1 })
     await waitFor(() => {
       expect(platform.describeItConversation).toHaveBeenCalledTimes(4)
     })
@@ -114,9 +106,7 @@ describe('useConversation', () => {
     // Each read of the conversation asks for the turn's events again while the first read
     // of them is under way: one more waits, and the rest are that one.
     for (let i = 1; i <= 3; i++) {
-      act(() => {
-        emit('describeit:updated', { conversationId: id, turn: 1 })
-      })
+      send('describeit:updated', { conversationId: id, turn: 1 })
       await waitFor(() => {
         expect(platform.describeItConversation).toHaveBeenCalledTimes(1 + i)
       })
@@ -149,9 +139,7 @@ describe('useConversation', () => {
     })
 
     for (let i = 0; i < 3; i++) {
-      act(() => {
-        emit('describeit:updated', { conversationId: '', turn: 0 })
-      })
+      send('describeit:updated', { conversationId: '', turn: 0 })
     }
 
     expect(platform.describeItConversation).toHaveBeenCalledOnce()
@@ -176,16 +164,12 @@ describe('useConversation', () => {
     })
 
     platform.describeItConversation.mockResolvedValue(conversation())
-    act(() => {
-      emit('describeit:updated', { conversationId: id, turn: 1 })
-    })
+    send('describeit:updated', { conversationId: id, turn: 1 })
     await waitFor(() => {
       expect(result.current.conversation?.id).toBe(id)
     })
 
-    act(() => {
-      emit('describeit:updated', { conversationId: 'another', turn: 1 })
-    })
+    send('describeit:updated', { conversationId: 'another', turn: 1 })
     expect(platform.describeItConversation).toHaveBeenCalledTimes(2)
   })
 
@@ -200,9 +184,7 @@ describe('useConversation', () => {
     })
 
     platform.describeItConversation.mockResolvedValue(conversation())
-    act(() => {
-      emit('describeit:updated', { conversationId: '', turn: 0 })
-    })
+    send('describeit:updated', { conversationId: '', turn: 0 })
     await waitFor(() => {
       expect(result.current.eventsOf(1).error).toBe('The turn’s stream couldn’t be read.')
     })
@@ -223,9 +205,7 @@ describe('useConversation', () => {
       expect(logged).toHaveBeenCalledWith('could not follow the conversation', expect.any(Error))
     })
 
-    act(() => {
-      emit('describeit:updated', { conversationId: '', turn: 0 })
-    })
+    send('describeit:updated', { conversationId: '', turn: 0 })
     await waitFor(() => {
       expect(result.current.conversation?.id).toBe('')
     })
@@ -285,9 +265,7 @@ describe('useConversation', () => {
     const stale = deferred<DescribeConversation>()
 
     platform.describeItConversation.mockReturnValueOnce(stale.promise)
-    act(() => {
-      emit('describeit:updated', { conversationId: '', turn: 0 })
-    })
+    send('describeit:updated', { conversationId: '', turn: 0 })
 
     await act(async () => {
       await result.current.send({ text: 'Pin failing PRs.', attach: [] })
@@ -397,9 +375,7 @@ describe('useConversation', () => {
       describeConversation({ id: '00000000-0000-4000-8000-000000000002', turns: [describeTurn()] }),
     )
     platform.describeItEvents.mockResolvedValue(page(1, 2, true))
-    act(() => {
-      emit('describeit:updated', { conversationId: id, turn: 0 })
-    })
+    send('describeit:updated', { conversationId: id, turn: 0 })
     await waitFor(() => {
       expect(result.current.eventsOf(1).events).toHaveLength(2)
     })

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { deferred } from '../test/async'
 import { githubThread, githubThreadList, githubThreads, queuedClear, settledClear } from '../test/fixtures'
-import { emit, listening, platform } from '../test/platform'
+import { listening, platform, send } from '../test/platform'
 import { useGitHubThreads } from './useGitHubThreads'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -19,9 +19,7 @@ describe('useGitHubThreads', () => {
     })
 
     platform.githubThreadsSnapshot.mockResolvedValue(githubThreads({ status: { count: 4, unread: 2 } }))
-    act(() => {
-      emit('ghthreads:updated')
-    })
+    send('ghthreads:updated')
 
     await waitFor(() => {
       expect(result.current.snapshot?.status.count).toBe(4)
@@ -166,9 +164,7 @@ describe('useGitHubThreads', () => {
     expect(platform.githubThreadsList).not.toHaveBeenCalled()
     expect(result.current.list).toBeNull()
 
-    act(() => {
-      emit('ghthreads:updated')
-    })
+    send('ghthreads:updated')
     expect(platform.githubThreadsList).not.toHaveBeenCalled()
 
     rerender({ listing: true })
@@ -180,9 +176,7 @@ describe('useGitHubThreads', () => {
     platform.githubThreadsList.mockResolvedValue(
       githubThreadList({ threads: [githubThread(), githubThread({ id: 1002, unread: false })] }),
     )
-    act(() => {
-      emit('ghthreads:updated')
-    })
+    send('ghthreads:updated')
 
     await waitFor(() => {
       expect(result.current.list?.threads).toHaveLength(2)
@@ -212,9 +206,7 @@ describe('useGitHubThreads', () => {
 
     const stopped = platform.githubThreadsList.mock.calls.length
 
-    act(() => {
-      emit('ghthreads:updated')
-    })
+    send('ghthreads:updated')
     await waitFor(() => {
       expect(platform.githubThreadsSnapshot).toHaveBeenCalled()
     })

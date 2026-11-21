@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { MoveResult, UpdateLocationKind, UpdateStatus } from '../platform'
 import { deferred } from '../test/async'
 import { moveResult, updateLocation, updateReady, updateStatus } from '../test/fixtures'
-import { emit, platform } from '../test/platform'
+import { platform, send } from '../test/platform'
 import { offerOf, type RestartStep } from './update'
 import { useMoveToApplications } from './useMove'
 
@@ -237,9 +237,7 @@ describe('useMoveToApplications', () => {
     const { result } = move()
 
     // Asked before anything went ahead, the quit's question changes nothing here.
-    act(() => {
-      emit('app:quitRequested')
-    })
+    send('app:quitRequested')
     expect(result.current.dialog?.variant).toBe('move')
 
     act(() => {
@@ -249,9 +247,7 @@ describe('useMoveToApplications', () => {
       expect(result.current.dialog?.leaving).toBe(true)
     })
 
-    act(() => {
-      emit('app:quitRequested')
-    })
+    send('app:quitRequested')
     expect(result.current.dialog).toBeNull()
 
     platform.moveToApplications.mockResolvedValueOnce(moveResult({ outcome: 'exists' }))
@@ -271,9 +267,7 @@ describe('useMoveToApplications', () => {
     act(() => {
       result.current.confirm()
     })
-    act(() => {
-      emit('app:quitRequested')
-    })
+    send('app:quitRequested')
     expect(result.current.dialog?.work).toBe('moving')
 
     await act(async () => {

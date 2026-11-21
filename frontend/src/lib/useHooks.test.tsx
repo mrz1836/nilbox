@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { ScriptRun } from '../platform'
 import { hookRepo, hooksList, scriptRun } from '../test/fixtures'
-import { emit, listening, platform } from '../test/platform'
+import { listening, platform, send } from '../test/platform'
 import { useHooks } from './useHooks'
 
 vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
@@ -23,9 +23,7 @@ describe('useHooks', () => {
     expect(platform.listHooks).toHaveBeenCalledExactlyOnceWith(false)
 
     platform.listHooks.mockResolvedValue(hooksList({ repos: [hookRepo()] }))
-    act(() => {
-      emit('hooks:updated')
-    })
+    send('hooks:updated')
 
     await waitFor(() => {
       expect(result.current.list?.repos).toHaveLength(1)

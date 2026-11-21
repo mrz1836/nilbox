@@ -373,9 +373,7 @@ describe('useActionProgress', () => {
     })
 
     // Before any action, a step is no news.
-    act(() => {
-      emit('review:progress', { itemId: 7, step: 'Approving' })
-    })
+    send('review:progress', { itemId: 7, step: 'Approving' })
     expect(result.current[0]).toBeNull()
 
     act(() => {
