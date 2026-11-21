@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 
 import type { ScriptAsk } from '../../lib/useScriptRun'
 import type { RunsIn, ScriptEntry } from '../../platform'
-import { buttonClass } from '../controls'
+import { buttonClass, iconButtonClass } from '../controls'
 import {
   AlertIcon,
   BoxIcon,
@@ -209,11 +209,7 @@ export function ScriptRow({ command, about = '', more = [], ...menu }: ScriptRow
               Run
             </button>
           )}
-          <MenuButton
-            label={`More for ${entry.name}`}
-            items={() => rowMenu(menu, more)}
-            className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text"
-          >
+          <MenuButton label={`More for ${entry.name}`} items={() => rowMenu(menu, more)} className={iconButtonClass}>
             <MoreIcon className="size-4" />
           </MenuButton>
         </div>

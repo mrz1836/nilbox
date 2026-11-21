@@ -29,7 +29,7 @@ import {
   type RunsIn,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass } from '../controls'
+import { buttonClass, iconButtonClass } from '../controls'
 import { ChevronDownIcon, DotIcon, InfoIcon, MoreIcon } from '../icons'
 import { MenuButton, type MenuItem } from '../Menu'
 import { RelativeTime } from '../RelativeTime'
@@ -266,11 +266,7 @@ export function HookRow({ repo, version, watch, runsIn, onOpenRun }: HookRowProp
           </MenuButton>
         )}
         {repo.group === 'off' && <span className="text-xs text-muted">Turned on and off in .github/env/</span>}
-        <MenuButton
-          label={`More for ${repo.name}`}
-          items={moreItems}
-          className="flex size-7 items-center justify-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text"
-        >
+        <MenuButton label={`More for ${repo.name}`} items={moreItems} className={iconButtonClass}>
           <MoreIcon className="size-4" />
         </MenuButton>
       </div>

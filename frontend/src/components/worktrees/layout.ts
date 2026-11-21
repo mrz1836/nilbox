@@ -8,6 +8,7 @@
 // clips (no overflow on the grid, a section, or a list): the clone headings stick in the
 // page's scroll, and a menu's panel hangs out of its row.
 
+import { smallIconButtonClass } from '../controls'
 import type { LaunchPlace } from '../LaunchControls'
 import type { Tone } from '../../lib/worktreeParts'
 
@@ -84,9 +85,9 @@ export const noteClass = 'col-[2/-1] flex flex-col gap-0.5 pb-1.25 text-xs'
 // row, from the branch to the row's end (LaunchControls' row variant).
 export const launchPlace: LaunchPlace = { boxClass: verbCellClass, outcomeClass: 'col-[2/-1] pb-1' }
 
-// iconButtonClass is a quiet icon button: ›_, ⋯, and the chevron.
-export const iconButtonClass =
-  'inline-grid size-6 shrink-0 place-items-center rounded-md text-muted transition-colors hover:bg-raised hover:text-text disabled:opacity-disabled aria-expanded:bg-raised aria-expanded:text-text'
+// toolButtonClass is a row's small icon button, ›_, ⋯, or the chevron, or a cleaned-up
+// line's: lit while the menu or the drawer it opens is open.
+export const toolButtonClass = `${smallIconButtonClass} disabled:opacity-disabled aria-expanded:bg-raised aria-expanded:text-text`
 
 // buttonClass is a bordered button: the row's verb, and the drawer's Remove… and Force
 // remove…; cleanUpClass is Clean up's, in green.
