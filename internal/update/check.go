@@ -397,7 +397,7 @@ func reachWords(err error) string {
 
 // downloadWords says why a download failed, never repeating a raw error.
 func downloadWords(err error) string {
-	_, pathErr := errors.AsType[*fs.PathError](err)
+	_, isPathErr := errors.AsType[*fs.PathError](err)
 
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
@@ -406,7 +406,7 @@ func downloadWords(err error) string {
 		return "it didn't match the release's manifest, so it was thrown away."
 	case worded(err):
 		return uierr.Message(err)
-	case pathErr:
+	case isPathErr:
 		return "it couldn't be saved on this Mac."
 	default:
 		return tryAgain
