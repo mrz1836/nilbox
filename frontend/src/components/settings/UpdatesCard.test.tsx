@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -6,7 +6,7 @@ import { brand } from '../../generated/brand'
 import { settlingWords, type RestartStep } from '../../lib/update'
 import type { Settings, UpdateStatus } from '../../platform'
 import { deferred } from '../../test/async'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { settings, updateLocation, updateReady, updateStatus } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { moveOf, updateOf } from '../../test/query'
@@ -21,7 +21,7 @@ function card(status: UpdateStatus | null, flow: RestartStep = { step: 'idle' },
   const update = updateOf(status, flow)
   const onSaved = vi.fn()
 
-  render(<UpdatesCard update={update} settings={stored} onSaved={onSaved} />, { wrapper: at() })
+  renderAt(<UpdatesCard update={update} settings={stored} onSaved={onSaved} />)
 
   return { update, onSaved }
 }
@@ -282,9 +282,8 @@ describe('UpdatesCard', () => {
   it('says why the log couldn’t show, and offers none that wasn’t kept', async () => {
     platform.showInstallLog.mockRejectedValue(new Error('gone', { cause: { message: 'The log is gone.' } }))
     const failed = { version: '0.3.0', reason: 'It didn’t quit in time.', log: true, retryable: true }
-    const { unmount } = render(
+    const { unmount } = renderAt(
       <UpdatesCard update={updateOf(updateReady({ installFailed: failed }))} settings={null} onSaved={vi.fn()} />,
-      { wrapper: at() },
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Show log in Finder' }))
@@ -315,7 +314,7 @@ describe('UpdatesCard', () => {
   it('holds Move to Applications while the move is under way', () => {
     const status = updateStatus({ location: updateLocation('diskImage') })
 
-    render(
+    renderAt(
       <UpdatesCard
         update={updateOf(
           status,
@@ -327,7 +326,6 @@ describe('UpdatesCard', () => {
         settings={settings()}
         onSaved={vi.fn()}
       />,
-      { wrapper: at() },
     )
 
     expect(screen.getByRole('button', { name: 'Move to Applications' })).toBeDisabled()
@@ -396,22 +394,20 @@ describe('UpdatesCard', () => {
 
 describe('AboutSection’s updates', () => {
   it('shows the Updates card under the version, given the update', async () => {
-    render(<AboutSection update={updateOf(updateReady())} settings={settings()} onSaved={vi.fn()} />, {
-      wrapper: at(),
-    })
+    renderAt(<AboutSection update={updateOf(updateReady())} settings={settings()} onSaved={vi.fn()} />)
 
     expect(await screen.findByRole('button', { name: 'Restart to update' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'When a new version is out' })).toBeInTheDocument()
   })
 
   it('leaves the card out without the update', () => {
-    render(<AboutSection />, { wrapper: at() })
+    renderAt(<AboutSection />)
 
     expect(screen.queryByRole('button', check)).not.toBeInTheDocument()
   })
 
   it('shows the card without the settings, leaving the choice out', async () => {
-    render(<AboutSection update={updateOf(updateStatus())} />, { wrapper: at() })
+    renderAt(<AboutSection update={updateOf(updateStatus())} />)
 
     expect(await screen.findByRole('button', check)).toBeInTheDocument()
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()

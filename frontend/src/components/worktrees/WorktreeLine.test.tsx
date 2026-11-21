@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -11,7 +11,7 @@ import type { ItemFacts } from '../../lib/worktreeParts'
 import type { Lane } from '../../lib/worktrees'
 import type { AgentID, AgentSession, LinkedItem, Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
 import { deferred } from '../../test/async'
-import { at, FIXED_NOW } from '../../test/clock'
+import { FIXED_NOW, renderAt } from '../../test/clock'
 import {
   agentSession,
   copiedWorktree,
@@ -659,11 +659,10 @@ function renderLine(wt: Worktree, options: LineOptions = {}) {
     ...handlers,
     ...options,
   }
-  const view = render(
+  const view = renderAt(
     <ul>
       <WorktreeLine {...props} />
     </ul>,
-    { wrapper: at() },
   )
 
   return { ...view, ...handlers, props, line: within(screen.getAllByRole('listitem')[0] as HTMLElement) }
@@ -1114,7 +1113,7 @@ describe('WorktreeLine disclosure', () => {
 
   it('moves to the rows around it with ↓ and ↑, across clones', async () => {
     const shared = { details: readsNothing(), listing: 1, disabled: false, agentName, ...actions(), open: false }
-    render(
+    renderAt(
       <>
         <ul>
           <WorktreeLine repo={er} worktree={pr214} {...shared} />
@@ -1124,7 +1123,6 @@ describe('WorktreeLine disclosure', () => {
           <WorktreeLine repo={ag} worktree={issue88} {...shared} />
         </ul>
       </>,
-      { wrapper: at() },
     )
 
     const first = screen.getByRole('button', { name: 'Unfold worktree-pr-214' })
@@ -1212,7 +1210,7 @@ describe('WorktreeLine details', () => {
     const answer = deferred<WorktreeDetails>()
     platform.worktreeDetails.mockReturnValueOnce(answer.promise)
     const wt = row('pr-7', { dirty: true, dirtyCount: 30, files: worktreeFiles(12), canRemove: false })
-    render(<Page wt={wt} listing={1} />, { wrapper: at() })
+    renderAt(<Page wt={wt} listing={1} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Unfold worktree-pr-7' }))
 

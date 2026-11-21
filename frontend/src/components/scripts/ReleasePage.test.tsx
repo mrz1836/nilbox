@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -16,7 +16,7 @@ import type {
   Settings,
 } from '../../platform'
 import { deferred } from '../../test/async'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import {
   integrationTool,
   releaseCandidate,
@@ -52,7 +52,7 @@ function renderPage(props: Partial<Omit<PageProps, 'onRelease' | 'onOpenRun' | '
     onOpenSettings: vi.fn<(section: SettingsSection) => void>(),
   }
 
-  render(<Page tool={integrationTool()} {...handlers} {...props} />, { wrapper: at() })
+  renderAt(<Page tool={integrationTool()} {...handlers} {...props} />)
 
   return handlers
 }
@@ -117,7 +117,7 @@ function renderSorted(props: Partial<ReleasePageProps> = {}) {
       {...props}
     />
   )
-  const view = render(page(), { wrapper: at() })
+  const view = renderAt(page())
 
   return {
     onReleaseSort,
@@ -167,7 +167,7 @@ function holding(...names: string[]): unknown[] {
 describe('ReleasePage', () => {
   it('keeps each group open or folded as the user left it, across starts', async () => {
     const onSection = vi.fn<OnSection>()
-    render(
+    renderAt(
       <ReleasePage
         candidates={{
           list: releaseCandidates(),
@@ -186,7 +186,6 @@ describe('ReleasePage', () => {
         sections={{ 'release.unreleased': false, 'release.upToDate': true }}
         onSection={onSection}
       />,
-      { wrapper: at() },
     )
 
     expect(group(/^Unreleased changes · 1: 1 ready$/)).toHaveAttribute('aria-expanded', 'false')
@@ -278,7 +277,7 @@ describe('ReleasePage', () => {
     const saved = vi.fn<(settings: Settings) => void>()
     const rules: RepoRules = { pinned: [], muted: ['acme-org'] }
 
-    render(
+    renderAt(
       <ReleasePage
         candidates={{
           list: releaseCandidates({ repos: [releaseCandidate(), muted] }),
@@ -297,7 +296,6 @@ describe('ReleasePage', () => {
         repoRules={rules}
         onSettingsSaved={saved}
       />,
-      { wrapper: at() },
     )
 
     expect(group(/^Muted · 1/)).toHaveAttribute('aria-expanded', 'false')
@@ -326,7 +324,7 @@ describe('ReleasePage', () => {
       refresh: () => Promise.resolve(),
     }
 
-    render(
+    renderAt(
       <ReleasePage
         candidates={candidates}
         tool={integrationTool()}
@@ -338,7 +336,6 @@ describe('ReleasePage', () => {
         sections={{ 'release.muted': true }}
         repoRules={{ pinned: [], muted: ['beta/x'] }}
       />,
-      { wrapper: at() },
     )
 
     const list = within(screen.getByRole('list', { name: 'Muted' }))

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -6,7 +6,7 @@ import { brand } from '../../generated/brand'
 import type { DetailsRead } from '../../lib/useWorktreeDetails'
 import type { ItemFacts } from '../../lib/worktreeParts'
 import type { AgentID, AgentSession, Worktree, WorktreeDetails, WorktreeRepo } from '../../platform'
-import { at, FIXED_NOW } from '../../test/clock'
+import { FIXED_NOW, renderAt } from '../../test/clock'
 import {
   agentSession,
   copiedWorktree,
@@ -105,7 +105,7 @@ function renderDrawer(wt: Worktree, options: Partial<DrawerProps> = {}) {
     onPrune: vi.fn<(repo: WorktreeRepo) => void>(),
   }
 
-  render(
+  renderAt(
     <ul>
       <Drawer
         id="drawer"
@@ -122,7 +122,6 @@ function renderDrawer(wt: Worktree, options: Partial<DrawerProps> = {}) {
         {...options}
       />
     </ul>,
-    { wrapper: at() },
   )
 
   const li = screen.getAllByRole('listitem')[0] as HTMLElement

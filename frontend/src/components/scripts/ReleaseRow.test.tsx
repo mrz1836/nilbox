@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { CommitChecks, ReleaseCandidate, ReleaseCloneState } from '../../platform'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { releaseCandidate } from '../../test/fixtures'
 import { GroupHeading } from './GroupHeading'
 import { CandidateRow, MutedRow, ReadinessSummary, releaseListClass } from './ReleaseRow'
@@ -43,7 +43,7 @@ const muted = releaseCandidate({
 // renderRows renders rows in a group's list, as the page lists them, the clock at
 // FIXED_NOW.
 function renderRows(rows: ReactNode) {
-  return render(<ul className={releaseListClass}>{rows}</ul>, { wrapper: at() })
+  return renderAt(<ul className={releaseListClass}>{rows}</ul>)
 }
 
 // renderCandidate renders one candidate's row and returns it, with its Release… handler.

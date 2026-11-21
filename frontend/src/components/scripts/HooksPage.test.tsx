@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -8,7 +8,7 @@ import type { OnSection, StoredSections } from '../../lib/useSections'
 import { useHooks } from '../../lib/useHooks'
 import type { HookInstallAllResult, IntegrationTool, ScriptRun } from '../../platform'
 import { deferred } from '../../test/async'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { goPreCommitTool, hookInstallAll, hookRepo, hooksList, scriptRun, toolCopy } from '../../test/fixtures'
 import { platform, send } from '../../test/platform'
 import { HooksPage } from './HooksPage'
@@ -35,7 +35,7 @@ function renderPage(props: Partial<Omit<PageProps, 'onOpenRun' | 'onOpenSettings
     onOpenSettings: vi.fn<(section: SettingsSection) => void>(),
   }
 
-  render(<Page tool={goPreCommitTool()} {...handlers} {...props} />, { wrapper: at() })
+  renderAt(<Page tool={goPreCommitTool()} {...handlers} {...props} />)
 
   return handlers
 }
@@ -55,7 +55,7 @@ function rows(title: string): string[] {
 describe('HooksPage', () => {
   it('keeps each group open or folded as the user left it, across starts', async () => {
     const onSection = vi.fn<OnSection>()
-    const { unmount } = render(
+    const { unmount } = renderAt(
       <Page
         tool={goPreCommitTool()}
         onOpenRun={vi.fn()}
@@ -63,7 +63,6 @@ describe('HooksPage', () => {
         sections={{ 'hooks.attention': false, 'hooks.off': true }}
         onSection={onSection}
       />,
-      { wrapper: at() },
     )
 
     await screen.findByRole('list', { name: 'Ready' })

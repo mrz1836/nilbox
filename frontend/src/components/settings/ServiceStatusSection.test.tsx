@@ -1,10 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { Settings } from '../../platform'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { claudeOutage, serviceProvider, serviceStatus, settings, statusWatch } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { ServiceStatusSection } from './ServiceStatusSection'
@@ -30,7 +30,7 @@ function renderSection(saved: Settings = settings()) {
     )
   }
 
-  render(<Section />, { wrapper: at() })
+  renderAt(<Section />)
 
   return { onSaved }
 }

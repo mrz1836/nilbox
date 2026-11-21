@@ -1,11 +1,11 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { ScriptRun, ScriptRunStatus, TerminalID } from '../../platform'
 import { deferred } from '../../test/async'
-import { at, FIXED_NOW, fromNow } from '../../test/clock'
+import { FIXED_NOW, fromNow, renderAt } from '../../test/clock'
 import { checksRun, hookActionResult, hooksRun, scriptRun, scriptRunChunk } from '../../test/fixtures'
 import { listening, platform, send } from '../../test/platform'
 import { RunPanel } from './RunPanel'
@@ -43,9 +43,7 @@ function renderPanel(run: ScriptRun = ended(), terminal: TerminalID | null = 'it
   const onClose = vi.fn<() => void>()
 
   platform.getScriptRun.mockResolvedValue(run)
-  const { unmount } = render(<RunPanel id={1} terminal={terminal} onSelect={onSelect} onClose={onClose} />, {
-    wrapper: at(),
-  })
+  const { unmount } = renderAt(<RunPanel id={1} terminal={terminal} onSelect={onSelect} onClose={onClose} />)
 
   return { onSelect, onClose, unmount }
 }
@@ -196,7 +194,7 @@ describe('RunPanel', () => {
     platform.getScriptRun.mockRejectedValue(new Error('the run is no longer recorded'))
     const onClose = vi.fn<() => void>()
 
-    render(<RunPanel id={1} terminal="iterm2" onSelect={vi.fn()} onClose={onClose} />, { wrapper: at() })
+    renderAt(<RunPanel id={1} terminal="iterm2" onSelect={vi.fn()} onClose={onClose} />)
 
     expect(screen.getByText('Reading the run…')).toBeInTheDocument()
     expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t read the run: the run is no longer recorded')
@@ -361,7 +359,7 @@ describe('RunPanel', () => {
 
     it('has no close button where the panel closes with what holds it', async () => {
       platform.getScriptRun.mockResolvedValue(ended())
-      render(<RunPanel id={1} terminal="iterm2" onSelect={vi.fn()} />, { wrapper: at() })
+      renderAt(<RunPanel id={1} terminal="iterm2" onSelect={vi.fn()} />)
 
       await shownRun()
 

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -16,7 +16,7 @@ import type {
   TerminalID,
 } from '../../platform'
 import { deferred } from '../../test/async'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import {
   goPreCommitTool,
   hookInstallAll,
@@ -92,7 +92,7 @@ function Tab({
 
 function renderView(props: Partial<TabProps> = {}) {
   const onOpenSettings = vi.fn<(section: SettingsSection) => void>()
-  const view = render(<Tab onOpenSettings={onOpenSettings} {...props} />, { wrapper: at() })
+  const view = renderAt(<Tab onOpenSettings={onOpenSettings} {...props} />)
 
   return { onOpenSettings, view }
 }

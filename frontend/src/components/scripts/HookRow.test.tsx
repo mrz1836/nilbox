@@ -1,9 +1,9 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { HookRepo } from '../../platform'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { hookRepo, hooksList } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { HookRow } from './HookRow'
@@ -30,11 +30,10 @@ interface RowOptions {
 function renderRow(repo: HookRepo, { version = '1.12.3', watch = null }: RowOptions = {}) {
   const onOpenRun = vi.fn<(id: number) => void>()
 
-  render(
+  renderAt(
     <ul>
       <HookRow repo={repo} version={version} watch={watch} runsIn="app" onOpenRun={onOpenRun} />
     </ul>,
-    { wrapper: at() },
   )
 
   return { onOpenRun, item: within(screen.getByRole('listitem')) }

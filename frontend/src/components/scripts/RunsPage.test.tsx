@@ -1,11 +1,11 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../../generated/brand'
 import type { ScriptRun, TerminalID } from '../../platform'
-import { at, fromNow } from '../../test/clock'
+import { fromNow, renderAt } from '../../test/clock'
 import { scriptRun } from '../../test/fixtures'
 import { useScriptRuns } from '../../lib/useScriptRuns'
 import { platform, send } from '../../test/platform'
@@ -48,7 +48,7 @@ function Listed({ terminal }: { terminal: TerminalID | null }) {
 // renderPage shows the page with runs listed.
 function renderPage(runs: ScriptRun[] = [release, lint], terminal: TerminalID | null = 'iterm2') {
   platform.listScriptRuns.mockResolvedValue(runs)
-  render(<Listed terminal={terminal} />, { wrapper: at() })
+  renderAt(<Listed terminal={terminal} />)
 }
 
 // list is the list of runs, once it shows.
@@ -98,7 +98,7 @@ describe('RunsPage', () => {
 
   it('says why the runs couldn’t be listed', async () => {
     platform.listScriptRuns.mockRejectedValue(new Error('database is locked'))
-    render(<Listed terminal="iterm2" />, { wrapper: at() })
+    renderAt(<Listed terminal="iterm2" />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t list the runs: database is locked')
     expect(screen.queryByText('Listing the runs…')).not.toBeInTheDocument()

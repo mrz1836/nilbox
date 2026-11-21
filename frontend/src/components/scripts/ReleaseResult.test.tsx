@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -6,7 +6,7 @@ import { brand } from '../../generated/brand'
 import { CelebrationsContext } from '../../lib/celebrations'
 import type { Celebrations, ReleaseResult as Result, ScriptRun } from '../../platform'
 import { nextTask } from '../../test/async'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import { releaseFollow, releaseResult, releaseRun } from '../../test/fixtures'
 import { platform } from '../../test/platform'
 import { reduceMotion } from '../../test/stubs'
@@ -27,13 +27,12 @@ function renderResult(
 
   const handlers = { onTryAgain: vi.fn<() => void>(), onDone: vi.fn<() => void>() }
 
-  render(
+  renderAt(
     <CelebrationsContext value={celebrations}>
       <dialog open>
         <ReleaseResult run={run} repo="acme-org/sdk" {...handlers} />
       </dialog>
     </CelebrationsContext>,
-    { wrapper: at() },
   )
 
   return handlers
@@ -339,11 +338,10 @@ describe('ReleaseResult', () => {
     platform.getReleaseResult.mockResolvedValue(releaseResult({ follow: releaseFollow() }))
 
     const handlers = { onTryAgain: vi.fn<() => void>(), onDone: vi.fn<() => void>() }
-    const { rerender } = render(
+    const { rerender } = renderAt(
       <dialog open>
         <ReleaseResult run={following('following')} repo="acme-org/sdk" {...handlers} />
       </dialog>,
-      { wrapper: at() },
     )
 
     const c = await card()

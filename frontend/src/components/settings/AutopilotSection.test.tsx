@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { brand } from '../../generated/brand'
 import type { AutopilotConfig, AutopilotEngine, Settings } from '../../platform'
 import { deferred } from '../../test/async'
-import { at } from '../../test/clock'
+import { renderAt } from '../../test/clock'
 import {
   agents,
   autopilotEngine,
@@ -58,7 +58,7 @@ function Harness({
 // showEngine shows it with another.
 function renderSection(current: Settings = settings(), engine: AutopilotEngine | null = autopilotEngine()) {
   const onSaved = vi.fn()
-  const { rerender } = render(<Harness initial={current} onSaved={onSaved} engine={engine} />, { wrapper: at() })
+  const { rerender } = renderAt(<Harness initial={current} onSaved={onSaved} engine={engine} />)
 
   const showEngine = (next: AutopilotEngine | null) => {
     rerender(<Harness initial={current} onSaved={onSaved} engine={next} />)
