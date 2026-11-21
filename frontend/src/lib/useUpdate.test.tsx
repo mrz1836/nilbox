@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { DownloadAnswer, RestartAnswer, RunGoing, UpdateStatus } from '../platform'
@@ -806,9 +806,6 @@ describe('useRestartToUpdate', () => {
 
   it('waits quietly for the download too, and offers the update again after a while', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    onTestFinished(() => {
-      vi.useRealTimers()
-    })
     platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', mode: 'notify' }))
     platform.downloadUpdate.mockResolvedValue({ downloaded: false, refusal: 'settling', message: settling })
     const { result } = flow()

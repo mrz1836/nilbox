@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { deferred } from '../test/async'
 import { at } from '../test/clock'
@@ -40,10 +40,6 @@ async function wait(ms: number) {
 describe('useReview', () => {
   beforeEach(() => {
     platform.openReview.mockResolvedValue(review({ stale: true, fetchedAt: '' }))
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
   })
 
   it('shows what the sheet read before, then what GitHub says', async () => {

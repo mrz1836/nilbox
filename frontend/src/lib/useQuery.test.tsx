@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { deferred } from '../test/async'
 import { useDebouncedQuery, useQuery } from './useQuery'
@@ -40,10 +40,6 @@ function calls<T>() {
 
   return { made, load }
 }
-
-afterEach(() => {
-  vi.useRealTimers()
-})
 
 describe('useQuery', () => {
   it('is pending until the answer arrives, then holds it', async () => {

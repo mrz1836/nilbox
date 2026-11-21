@@ -20,7 +20,6 @@ function page(scrollTop: number, top: number) {
 
 afterEach(() => {
   document.body.replaceChildren()
-  vi.restoreAllMocks()
 })
 
 describe('scrollerOf', () => {

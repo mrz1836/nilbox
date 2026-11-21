@@ -1,15 +1,11 @@
 import { act, renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { InboxSnapshot } from '../platform'
 import { FIXED_NOW, withClock } from '../test/clock'
 import { item, list, snapshot } from '../test/fixtures'
 import { createClock } from './useNow'
 import { useTriage } from './useTriage'
-
-afterEach(() => {
-  vi.useRealTimers()
-})
 
 const inbox = snapshot({
   reviewRequested: list([item({ id: 1 }), item({ id: 2, number: 8, snoozedUntil: '2026-06-15T12:30:00Z' })]),
