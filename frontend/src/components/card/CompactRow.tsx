@@ -153,7 +153,7 @@ export function CompactRow({
   const hoverRow = (agent?: ReactNode) => (
     <div
       data-hover-row
-      className={`${hoverClass(work)} absolute inset-y-1 right-0 z-20 col-[1/-2] row-[1/2] w-max rounded-lg bg-surface p-0.5 shadow-lg ring-1 shadow-black/20 ring-border`}
+      className={`${hoverClass(work)} absolute inset-y-1 right-0 z-20 col-[1/-2] row-[1/2] w-max rounded-lg bg-surface p-0.5 shadow-float ring-1 ring-border`}
     >
       {triage !== undefined && (
         <TriageControls item={item} tab={tab} actions={triage} work={work} start={start} mode="card" />
@@ -262,7 +262,7 @@ export function CompactRow({
         <div data-row-status className="absolute inset-0 z-30 flex items-center justify-center">
           <p
             role="status"
-            className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text shadow-lg shadow-black/20 motion-safe:animate-pop-in"
+            className="flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text shadow-float motion-safe:animate-pop-in"
           >
             <Spinner className="size-3.5" />
             {workWords[work]}
