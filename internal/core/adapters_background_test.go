@@ -303,6 +303,19 @@ func (a *arunTouches) stamped() []time.Time {
 	return slices.Clone(a.stamps)
 }
 
+func TestCoreBuildsTheBackgroundAgentsOnTheAppsClock(t *testing.T) {
+	t.Parallel()
+
+	clk := testutil.NewClock(time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC))
+	touches := &arunTouches{}
+
+	b := newBackgroundAgents(Options{Home: "/srv/home", Clock: clk}, backgroundDeps{touch: touches}, nil)
+
+	assert.Same(t, clk, b.clock, "the runs' worktree records are stamped by the app's clock")
+	assert.Equal(t, "/srv/home", b.home)
+	assert.Same(t, touches, b.touch)
+}
+
 func TestABackgroundStartStampsItsAgentFromTheClock(t *testing.T) {
 	t.Parallel()
 
