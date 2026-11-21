@@ -112,6 +112,11 @@ func (r *rig) plan(run testutil.FakeRun) Plan {
 	return r.planFor(agent.Claude, run)
 }
 
+// FolderFor returns a run's own folder in root, <data>/agent-runs, named by its session.
+func FolderFor(root, sessionID string) string {
+	return filepath.Join(root, sessionID)
+}
+
 // planFor returns a background run of a fake agent id playing run in a fresh worktree.
 func (r *rig) planFor(id agent.ID, run testutil.FakeRun) Plan {
 	r.t.Helper()

@@ -133,11 +133,6 @@ func (p Plan) PromptPath() string {
 	return filepath.Join(p.Folder, promptFile)
 }
 
-// FolderFor returns a run's own folder in root, <data>/agent-runs, named by its session.
-func FolderFor(root, sessionID string) string {
-	return filepath.Join(root, sessionID)
-}
-
 // check returns why the plan can't start, if it can't.
 func (p Plan) check() error {
 	switch {
