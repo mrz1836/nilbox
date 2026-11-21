@@ -564,17 +564,7 @@ describe('useRestartToUpdate', () => {
       expect(result.current.step).toEqual({
         step: 'asking',
         question: {
-          runs: [
-            {
-              id: 7,
-              kind: 'release',
-              title: 'Release v1.2.0',
-              repo: 'acme-org/sdk',
-              dir: '~/projects/example-repo',
-              stopRefused: '',
-              outlives: false,
-            },
-          ],
+          runs: [runGoing({ dir: '~/projects/example-repo' })],
           sheets: 2,
         },
       })

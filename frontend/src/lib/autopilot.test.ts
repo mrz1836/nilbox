@@ -10,6 +10,7 @@ import {
   autopilotMatch,
   claudeMissing,
   dryRunMatch,
+  githubStep,
   itemRef,
   leftAlone,
   readiness,
@@ -329,27 +330,7 @@ describe('chipOf', () => {
       chipOf(
         autopilotMatch({
           effects: [],
-          steps: [
-            {
-              kind: 'notify',
-              label: 'Notify me',
-              status: 'done',
-              outcome: 'done',
-              note: '',
-              runId: 0,
-              actions: [],
-              sent: 0,
-              verdict: '',
-              review: null,
-              postAs: '',
-              reviewAs: '',
-              allowApprove: false,
-              merge: '',
-              autoMerge: false,
-              startedAt: null,
-              endedAt: null,
-            },
-          ],
+          steps: [githubStep({ kind: 'notify', label: 'Notify me', status: 'done', outcome: 'done', actions: [] })],
         }),
       ).label,
     ).toBe('Told you')
@@ -678,27 +659,7 @@ describe('the results', () => {
   const notice = autopilotMatch({
     id: 40,
     effects: [],
-    steps: [
-      {
-        kind: 'tellMe',
-        label: 'Tell me',
-        status: 'done',
-        outcome: '',
-        note: '',
-        runId: 0,
-        actions: [],
-        sent: 0,
-        verdict: '',
-        review: null,
-        postAs: '',
-        reviewAs: '',
-        allowApprove: false,
-        merge: '',
-        autoMerge: false,
-        startedAt: null,
-        endedAt: null,
-      },
-    ],
+    steps: [githubStep({ kind: 'tellMe', label: 'Tell me', status: 'done', actions: [] })],
   })
   const failed = autopilotMatch({ id: 41, effects: [], steps: [], reason: 'failed' })
   const ran = autopilotMatch({ id: 42, effects: [], steps: [] })

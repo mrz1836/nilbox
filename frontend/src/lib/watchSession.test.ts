@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import type { AutopilotTarget } from '../platform'
+import { autopilotTarget } from '../test/fixtures'
 import { platform } from '../test/platform'
 import { watchSessionWith } from './watchSession'
 
@@ -19,13 +20,7 @@ describe('watchSessionWith', () => {
 
     watch('run')
     await vi.waitFor(() => {
-      expect(open).toHaveBeenCalledExactlyOnceWith({
-        routineId: 0,
-        matchId: 0,
-        runId: 81,
-        createdAt: '',
-        activity: false,
-      })
+      expect(open).toHaveBeenCalledExactlyOnceWith(autopilotTarget({ runId: 81 }))
     })
     expect(platform.autopilotRunBySession).toHaveBeenCalledWith('run')
 

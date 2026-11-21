@@ -1,7 +1,7 @@
 import { CancellablePromise } from '@wailsio/runtime/cancellable'
 import { describe, expect, it, vi } from 'vitest'
 
-import { routineSpec } from '../test/fixtures'
+import { routineSpec, runGoing, scriptQuestion } from '../test/fixtures'
 import * as platform from './index'
 
 // The bound calls the platform hands out as generated need no test of their own; these
@@ -290,16 +290,7 @@ describe('runScript', () => {
     remember: false,
     anyway: false,
   }
-  const question: platform.ScriptQuestion = {
-    ref: 't3:Test',
-    name: 'Test',
-    source: 't3',
-    command: 'magex test',
-    trust: 'ask',
-    trusted: '',
-    trustNote: '',
-    sha256: 'c0ffee01',
-  }
+  const question = scriptQuestion()
 
   // refused is a run refused as the desktop runtime delivers it: the full text, and the
   // cause the backend encoded.
@@ -535,15 +526,7 @@ describe('the update’s calls', () => {
 })
 
 describe('restartToUpdateNow', () => {
-  const release: platform.RunGoing = {
-    id: 7,
-    kind: 'release',
-    title: 'Release v1.2.0',
-    repo: 'acme-org/sdk',
-    dir: '~/projects/sdk',
-    stopRefused: '',
-    outlives: false,
-  }
+  const release = runGoing()
 
   // refused is a restart refused as the desktop runtime delivers it: the full text, and
   // the cause the backend encoded.

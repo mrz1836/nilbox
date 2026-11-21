@@ -422,25 +422,16 @@ describe('runsGoingIn', () => {
     const agent = scriptRun({ id: 4, kind: 'agent', title: 'Fix checks', canStop: true, outlivesQuit: true })
 
     expect(runsGoingIn([going, held, ended, agent])).toEqual([
-      {
-        id: 1,
-        kind: 'release',
-        title: 'Release v1.2.0',
-        repo: going.repo,
-        dir: going.dir,
-        stopRefused: '',
-        outlives: false,
-      },
-      {
+      runGoing({ id: 1, repo: going.repo, dir: going.dir }),
+      runGoing({
         id: 2,
         kind: 'gitPull',
         title: 'Pull main',
         repo: held.repo,
         dir: held.dir,
         stopRefused: 'git is writing',
-        outlives: false,
-      },
-      { id: 4, kind: 'agent', title: 'Fix checks', repo: agent.repo, dir: agent.dir, stopRefused: '', outlives: true },
+      }),
+      runGoing({ id: 4, kind: 'agent', title: 'Fix checks', repo: agent.repo, dir: agent.dir, outlives: true }),
     ])
   })
 })
