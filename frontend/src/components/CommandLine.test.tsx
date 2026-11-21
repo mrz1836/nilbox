@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { platform } from '../test/platform'
 import { CommandLine, copiedMs } from './CommandLine'
@@ -10,10 +10,6 @@ vi.mock('../platform', () => import('../test/platform').then((fake) => fake.plat
 const command = 'gh auth refresh -s read:project'
 
 describe('CommandLine', () => {
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
   it('shows the command to run', () => {
     render(<CommandLine command={command} />)
 

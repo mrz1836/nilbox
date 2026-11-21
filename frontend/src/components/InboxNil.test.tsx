@@ -1,7 +1,7 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { StrictMode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import { earnedBurst, earnedQuip, firstQuip, quips, replayBurst, type Flourish } from '../lib/nil'
@@ -9,6 +9,7 @@ import { triageInbox } from '../lib/triage'
 import type { Celebrations, InboxSnapshot, NilMoment } from '../platform'
 import { at, FIXED_NOW } from '../test/clock'
 import { item, list, nilMoment, snapshot } from '../test/fixtures'
+import { reduceMotion } from '../test/stubs'
 import { InboxNil, type InboxNilProps } from './InboxNil'
 
 const empty = snapshot({ lastRefreshedAt: '2026-06-15T11:55:00Z' })
@@ -64,16 +65,6 @@ function nudging(name = 'go run ./party') {
 function flourish() {
   return party().dataset.flourish ?? null
 }
-
-// reduceMotion makes the system ask for less motion.
-function reduceMotion() {
-  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(prefers-reduced-motion: reduce)' }))
-}
-
-afterEach(() => {
-  vi.useRealTimers()
-  vi.unstubAllGlobals()
-})
 
 describe('InboxNil', () => {
   it('announces the inbox at nil with the badge, a quip, and the terminal', () => {

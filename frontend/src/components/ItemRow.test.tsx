@@ -27,6 +27,7 @@ import {
 } from '../test/fixtures'
 import { clipper, shownAway } from '../test/cardLit'
 import { platform } from '../test/platform'
+import { followResizes } from '../test/stubs'
 import { AutopilotRowsContext, type AutopilotRows } from './autopilot/AutopilotChip'
 import type { EditActions } from './ItemMenu'
 import { CardChips, ItemRow, TrustTag, WorktreeTag, type ItemRowProps } from './ItemRow'
@@ -443,24 +444,7 @@ describe('ItemRow labels', () => {
   })
 
   it('folds a label that would not show whole into the count, beside a long title', () => {
-    const resized: (() => void)[] = []
-
-    vi.stubGlobal(
-      'ResizeObserver',
-      class {
-        constructor(callback: () => void) {
-          resized.push(callback)
-        }
-
-        observe() {
-          // The test reports the layout itself.
-        }
-
-        disconnect() {
-          // Nothing to stop following.
-        }
-      },
-    )
+    const resizes = followResizes()
 
     const labels = [
       { name: 'bug-P3', color: '#d73a4a' },
@@ -479,11 +463,7 @@ describe('ItemRow labels', () => {
     layOut(first as HTMLElement, 408, 60)
     layOut(second as HTMLElement, 472, 150)
     layOut(strip.querySelector('[data-label-count]') as HTMLElement, 626, 14)
-    act(() => {
-      resized.forEach((callback) => {
-        callback()
-      })
-    })
+    resizes.resize()
 
     expect(first).not.toHaveAttribute('inert')
     expect(second, 'laid out unseen, to be measured').toHaveAttribute('inert')

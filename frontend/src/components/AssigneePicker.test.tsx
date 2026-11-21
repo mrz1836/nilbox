@@ -128,42 +128,38 @@ describe('AssigneePicker', () => {
   it('searches GitHub a pause after typing, and lists whom it found', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
 
-    try {
-      platform.searchIssueAssignees.mockResolvedValue(
-        assigneeCandidates({
-          people: [
-            {
-              login: 'octo-zed',
-              name: 'Octo Zed',
-              mine: false,
-              source: 'found',
-              reviewed: 0,
-              authored: 0,
-              committed: 0,
-              assignedAt: '',
-              lastAt: '',
-              where: '',
-            },
-          ],
-        }),
-      )
+    platform.searchIssueAssignees.mockResolvedValue(
+      assigneeCandidates({
+        people: [
+          {
+            login: 'octo-zed',
+            name: 'Octo Zed',
+            mine: false,
+            source: 'found',
+            reviewed: 0,
+            authored: 0,
+            committed: 0,
+            assignedAt: '',
+            lastAt: '',
+            where: '',
+          },
+        ],
+      }),
+    )
 
-      const { dialog } = await open([])
-      const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) })
+    const { dialog } = await open([])
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) })
 
-      await user.type(dialog.getByRole('searchbox', { name: 'Filter or search people' }), 'zed')
-      expect(platform.searchIssueAssignees, 'not while typing').not.toHaveBeenCalled()
-      expect(dialog.getByText('Searching…')).toBeInTheDocument()
+    await user.type(dialog.getByRole('searchbox', { name: 'Filter or search people' }), 'zed')
+    expect(platform.searchIssueAssignees, 'not while typing').not.toHaveBeenCalled()
+    expect(dialog.getByText('Searching…')).toBeInTheDocument()
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(300)
-      })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
 
-      expect(platform.searchIssueAssignees).toHaveBeenCalledExactlyOnceWith(1, 'zed')
-      expect(await dialog.findByRole('group', { name: 'Found on GitHub' })).toHaveTextContent('octo-zed')
-    } finally {
-      vi.useRealTimers()
-    }
+    expect(platform.searchIssueAssignees).toHaveBeenCalledExactlyOnceWith(1, 'zed')
+    expect(await dialog.findByRole('group', { name: 'Found on GitHub' })).toHaveTextContent('octo-zed')
   })
 
   it('never searches once the app holds everyone who can be assigned', async () => {

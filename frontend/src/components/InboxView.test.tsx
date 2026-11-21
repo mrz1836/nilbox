@@ -182,10 +182,6 @@ async function section(title: string) {
   return within(await screen.findByRole('region', { name: title }))
 }
 
-afterEach(() => {
-  vi.useRealTimers()
-})
-
 describe('InboxView', () => {
   it('links an issue and the pull request fixing it, each card showing the other', async () => {
     const fix = item({ id: 1, number: 8, title: 'Fix the flaky retry test', authored: true, details: details() })

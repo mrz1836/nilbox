@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Profiler, type ReactNode } from 'react'
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ItemRowProps } from './components/ItemRow'
 import { triageList } from './lib/triage'
@@ -78,10 +78,6 @@ vi.mock('./platform', () => import('./test/platform').then((fake) => fake.platfo
 // stepped the clock.
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'], now: FIXED_NOW })
-})
-
-afterAll(() => {
-  vi.useRealTimers()
 })
 
 const minute = 60_000

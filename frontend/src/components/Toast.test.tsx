@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { defaultToastSeconds, Toast, ToastQueue, type ToastMessage } from './Toast'
 
@@ -18,11 +18,6 @@ beforeEach(() => {
       vi.advanceTimersByTime(ms)
     },
   })
-})
-
-afterEach(() => {
-  vi.unstubAllGlobals()
-  vi.useRealTimers()
 })
 
 // user acts as a person would, its pauses moving the fake clock on.

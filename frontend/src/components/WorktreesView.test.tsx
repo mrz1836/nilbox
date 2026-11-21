@@ -1,6 +1,6 @@
 import { act, render, screen, within, type BoundFunctions, type queries } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type {
@@ -182,10 +182,6 @@ async function settle(fn: () => void) {
     await Promise.resolve()
   })
 }
-
-afterEach(() => {
-  vi.useRealTimers()
-})
 
 describe('WorktreesView head', () => {
   it('lists again only when Check again is clicked, never on a timer', async () => {

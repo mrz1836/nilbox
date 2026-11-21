@@ -118,26 +118,22 @@ describe('BudgetMenu', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     const onCheck = vi.fn()
 
-    try {
-      render(<BudgetMenu gauge={healthy} onCheck={onCheck} />, { wrapper: at() })
+    render(<BudgetMenu gauge={healthy} onCheck={onCheck} />, { wrapper: at() })
 
-      expect(onCheck).not.toHaveBeenCalled()
+    expect(onCheck).not.toHaveBeenCalled()
 
-      await userEvent.click(screen.getByRole('button', { name: /^API budget/ }))
-      expect(onCheck).toHaveBeenCalledOnce()
+    await userEvent.click(screen.getByRole('button', { name: /^API budget/ }))
+    expect(onCheck).toHaveBeenCalledOnce()
 
-      act(() => {
-        vi.advanceTimersByTime(checkEveryMs)
-      })
-      expect(onCheck).toHaveBeenCalledTimes(2)
+    act(() => {
+      vi.advanceTimersByTime(checkEveryMs)
+    })
+    expect(onCheck).toHaveBeenCalledTimes(2)
 
-      await userEvent.click(screen.getByRole('button', { name: /^API budget/ }))
-      act(() => {
-        vi.advanceTimersByTime(checkEveryMs * 3)
-      })
-      expect(onCheck).toHaveBeenCalledTimes(2)
-    } finally {
-      vi.useRealTimers()
-    }
+    await userEvent.click(screen.getByRole('button', { name: /^API budget/ }))
+    act(() => {
+      vi.advanceTimersByTime(checkEveryMs * 3)
+    })
+    expect(onCheck).toHaveBeenCalledTimes(2)
   })
 })
