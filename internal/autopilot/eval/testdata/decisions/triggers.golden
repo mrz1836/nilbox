@@ -1,0 +1,5415 @@
+# Every decision Evaluate makes here, with its whole trace, in the order it ran.
+# Rewrite with go test ./internal/autopilot/eval -run TestDecisionsGolden -update, and review the diff.
+
+== appears · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears · pr failing · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears · pr unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears · pr unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears · pr green · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears · pr green · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears · pr partial · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears · pr partial · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears · issue · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears · issue · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears · pr checks unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears · pr checks unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears · pr waiting on a maintainer · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears · pr waiting on a maintainer · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears · pr without checks · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears · pr without checks · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per item · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per item · pr failing · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per item · pr unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per item · pr unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per item · pr green · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per item · pr green · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per item · pr partial · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per item · pr partial · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per item · issue · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per item · issue · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per item · pr checks unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per item · pr checks unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per item · pr waiting on a maintainer · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per item · pr waiting on a maintainer · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per item · pr without checks · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per item · pr without checks · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per head · pr failing · fresh
+match: yes
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per head · pr failing · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per head · pr unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per head · pr unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per head · pr green · fresh
+match: yes
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per head · pr green · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per head · pr partial · fresh
+match: yes
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per head · pr partial · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per head · issue · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per head · issue · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per head · pr checks unread · fresh
+match: yes
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per head · pr checks unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per head · pr waiting on a maintainer · fresh
+match: yes
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per head · pr waiting on a maintainer · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per head · pr without checks · fresh
+match: yes
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per head · pr without checks · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per day · pr failing · fresh
+match: yes
+fireKey: appears:day:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per day · pr failing · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per day · pr unread · fresh
+match: yes
+fireKey: appears:day:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per day · pr unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per day · pr green · fresh
+match: yes
+fireKey: appears:day:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per day · pr green · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per day · pr partial · fresh
+match: yes
+fireKey: appears:day:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per day · pr partial · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per day · issue · fresh
+match: yes
+fireKey: appears:day:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per day · issue · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per day · pr checks unread · fresh
+match: yes
+fireKey: appears:day:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per day · pr checks unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per day · pr waiting on a maintainer · fresh
+match: yes
+fireKey: appears:day:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per day · pr waiting on a maintainer · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== appears once per day · pr without checks · fresh
+match: yes
+fireKey: appears:day:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== appears once per day · pr without checks · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: you ran it
+    need: ""
+
+== new commits · pr failing · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr failing · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr failing · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: a routine's own run pushed 0a1b2c3
+    need: ""
+
+== new commits · pr failing · working
+match: unknown
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: a routine's agent is working on it, so whether it pushed 0a1b2c3 is known once it ends
+    need: ""
+
+== new commits · pr failing · first-head
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits · pr unread · own-push
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits · pr unread · working
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits · pr unread · first-head
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits · pr green · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr green · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr green · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: a routine's own run pushed 0a1b2c3
+    need: ""
+
+== new commits · pr green · working
+match: unknown
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: a routine's agent is working on it, so whether it pushed 0a1b2c3 is known once it ends
+    need: ""
+
+== new commits · pr green · first-head
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr partial · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr partial · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr partial · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: a routine's own run pushed 0a1b2c3
+    need: ""
+
+== new commits · pr partial · working
+match: unknown
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: a routine's agent is working on it, so whether it pushed 0a1b2c3 is known once it ends
+    need: ""
+
+== new commits · pr partial · first-head
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits · issue · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits · issue · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits · issue · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits · pr checks unread · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr checks unread · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr checks unread · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: a routine's own run pushed 0a1b2c3
+    need: ""
+
+== new commits · pr checks unread · working
+match: unknown
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: a routine's agent is working on it, so whether it pushed 0a1b2c3 is known once it ends
+    need: ""
+
+== new commits · pr checks unread · first-head
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr waiting on a maintainer · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr waiting on a maintainer · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr waiting on a maintainer · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: a routine's own run pushed 0a1b2c3
+    need: ""
+
+== new commits · pr waiting on a maintainer · working
+match: unknown
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: a routine's agent is working on it, so whether it pushed 0a1b2c3 is known once it ends
+    need: ""
+
+== new commits · pr waiting on a maintainer · first-head
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr without checks · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr without checks · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits · pr without checks · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: a routine's own run pushed 0a1b2c3
+    need: ""
+
+== new commits · pr without checks · working
+match: unknown
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: a routine's agent is working on it, so whether it pushed 0a1b2c3 is known once it ends
+    need: ""
+
+== new commits · pr without checks · first-head
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's the first commit this routine has seen, 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr failing · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr failing · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: a routine's own run pushed 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr failing · working
+match: unknown
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: a routine's agent is working on it, so whether it pushed 0a1b2c3 is known once it ends
+    need: ""
+
+== new commits, not the first · pr failing · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's the first commit this routine has seen, 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits, not the first · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits, not the first · pr unread · own-push
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits, not the first · pr unread · working
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits, not the first · pr unread · first-head
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits, not the first · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's the first commit this routine has seen, 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr green · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr green · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: a routine's own run pushed 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr green · working
+match: unknown
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: a routine's agent is working on it, so whether it pushed 0a1b2c3 is known once it ends
+    need: ""
+
+== new commits, not the first · pr green · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's the first commit this routine has seen, 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's the first commit this routine has seen, 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr partial · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr partial · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: a routine's own run pushed 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr partial · working
+match: unknown
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: a routine's agent is working on it, so whether it pushed 0a1b2c3 is known once it ends
+    need: ""
+
+== new commits, not the first · pr partial · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's the first commit this routine has seen, 0a1b2c3
+    need: ""
+
+== new commits, not the first · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits, not the first · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits, not the first · issue · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits, not the first · issue · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits, not the first · issue · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits, not the first · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's the first commit this routine has seen, 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr checks unread · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr checks unread · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: a routine's own run pushed 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr checks unread · working
+match: unknown
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: a routine's agent is working on it, so whether it pushed 0a1b2c3 is known once it ends
+    need: ""
+
+== new commits, not the first · pr checks unread · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's the first commit this routine has seen, 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's the first commit this routine has seen, 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr waiting on a maintainer · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr waiting on a maintainer · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: a routine's own run pushed 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr waiting on a maintainer · working
+match: unknown
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: a routine's agent is working on it, so whether it pushed 0a1b2c3 is known once it ends
+    need: ""
+
+== new commits, not the first · pr waiting on a maintainer · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's the first commit this routine has seen, 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's the first commit this routine has seen, 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr without checks · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr without checks · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: a routine's own run pushed 0a1b2c3
+    need: ""
+
+== new commits, not the first · pr without checks · working
+match: unknown
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: a routine's agent is working on it, so whether it pushed 0a1b2c3 is known once it ends
+    need: ""
+
+== new commits, not the first · pr without checks · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's the first commit this routine has seen, 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr failing · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr failing · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr failing · own-push
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr failing · working
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr failing · first-head
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits, own pushes too · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits, own pushes too · pr unread · own-push
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits, own pushes too · pr unread · working
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits, own pushes too · pr unread · first-head
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new commits, own pushes too · pr green · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr green · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr green · own-push
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr green · working
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr green · first-head
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr partial · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr partial · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr partial · own-push
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr partial · working
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr partial · first-head
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits, own pushes too · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits, own pushes too · issue · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits, own pushes too · issue · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits, own pushes too · issue · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== new commits, own pushes too · pr checks unread · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr checks unread · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr checks unread · own-push
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr checks unread · working
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr checks unread · first-head
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr waiting on a maintainer · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr waiting on a maintainer · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr waiting on a maintainer · own-push
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr waiting on a maintainer · working
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr waiting on a maintainer · first-head
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr without checks · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr without checks · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr without checks · own-push
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr without checks · working
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== new commits, own pushes too · pr without checks · first-head
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+
+== checks fail · pr failing · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+
+== checks fail · pr failing · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: you ran it
+    need: ""
+
+== checks fail · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== checks fail · pr unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: you ran it
+    need: ""
+
+== checks fail · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== checks fail · pr green · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: you ran it
+    need: ""
+
+== checks fail · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== checks fail · pr partial · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: you ran it
+    need: ""
+
+== checks fail · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== checks fail · issue · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: you ran it
+    need: ""
+
+== checks fail · pr checks unread · fresh
+match: unknown
+fireKey: ""
+needs: [checks]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: the check names aren't read yet
+    need: checks
+
+== checks fail · pr checks unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: you ran it
+    need: ""
+
+== checks fail · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== checks fail · pr waiting on a maintainer · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: you ran it
+    need: ""
+
+== checks fail · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== checks fail · pr without checks · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: you ran it
+    need: ""
+
+== checks fail, not waiting · pr failing · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+
+== checks fail, not waiting · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== checks fail, not waiting · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== checks fail, not waiting · pr partial · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 1 check failed on 0a1b2c3
+    need: ""
+
+== checks fail, not waiting · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== checks fail, not waiting · pr checks unread · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+
+== checks fail, not waiting · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== checks fail, not waiting · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== checks fail, settling 30m · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: the last check finished 6 minutes ago, and the checks settle after 30 minutes
+    need: ""
+
+== checks fail, settling 30m · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== checks fail, settling 30m · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== checks fail, settling 30m · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== checks fail, settling 30m · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== checks fail, settling 30m · pr checks unread · fresh
+match: unknown
+fireKey: ""
+needs: [checks]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: the check names aren't read yet
+    need: checks
+
+== checks fail, settling 30m · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== checks fail, settling 30m · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== checks fail, then paths and size · pr failing · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[1]
+    condition: its size is XS or S
+    result: yes
+    actual: S
+    need: ""
+  - path: conditions.of[0]
+    condition: a changed path matches go.*
+    result: yes
+    actual: "go.mod", "go.sum"
+    need: ""
+
+== checks fail, then paths and size · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[1]
+    condition: its size is XS or S
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: a changed path matches go.*
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== checks fail, then paths and size · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== checks fail, then paths and size · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== checks fail, then paths and size · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== checks fail, then paths and size · pr checks unread · fresh
+match: unknown
+fireKey: ""
+needs: [checks, files]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: the check names aren't read yet
+    need: checks
+  - path: conditions.of[1]
+    condition: its size is XS or S
+    result: yes
+    actual: S
+    need: ""
+  - path: conditions.of[0]
+    condition: a changed path matches go.*
+    result: unknown
+    actual: the changed files aren't checked yet
+    need: files
+
+== checks fail, then paths and size · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== checks fail, then paths and size · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== checks pass · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 2 checks failed
+    need: ""
+
+== checks pass · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== checks pass · pr green · fresh
+match: yes
+fireKey: checks_passed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: yes
+    actual: every check passed on 0a1b2c3
+    need: ""
+
+== checks pass · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 1 check failed
+    need: ""
+
+== checks pass · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: it's an issue, and Checks pass fires only for pull requests
+    need: ""
+
+== checks pass · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 2 checks failed
+    need: ""
+
+== checks pass · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: workflow runs wait for a maintainer to approve them
+    need: ""
+
+== checks pass · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: it has no checks
+    need: ""
+
+== checks pass, settling 0m · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 2 checks failed
+    need: ""
+
+== checks pass, settling 0m · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== checks pass, settling 0m · pr green · fresh
+match: yes
+fireKey: checks_passed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: yes
+    actual: every check passed on 0a1b2c3
+    need: ""
+
+== checks pass, settling 0m · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 1 check failed
+    need: ""
+
+== checks pass, settling 0m · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: it's an issue, and Checks pass fires only for pull requests
+    need: ""
+
+== checks pass, settling 0m · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 2 checks failed
+    need: ""
+
+== checks pass, settling 0m · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: workflow runs wait for a maintainer to approve them
+    need: ""
+
+== checks pass, settling 0m · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: it has no checks
+    need: ""
+
+== checks pass once per day · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 2 checks failed
+    need: ""
+
+== checks pass once per day · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== checks pass once per day · pr green · fresh
+match: yes
+fireKey: checks_passed:day:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: yes
+    actual: every check passed on 0a1b2c3
+    need: ""
+
+== checks pass once per day · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 1 check failed
+    need: ""
+
+== checks pass once per day · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: it's an issue, and Checks pass fires only for pull requests
+    need: ""
+
+== checks pass once per day · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 2 checks failed
+    need: ""
+
+== checks pass once per day · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: workflow runs wait for a maintainer to approve them
+    need: ""
+
+== checks pass once per day · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: it has no checks
+    need: ""
+
+== changes requested · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: no one asked for changes
+    need: ""
+
+== changes requested · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== changes requested · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: no one asked for changes
+    need: ""
+
+== changes requested · pr partial · fresh
+match: yes
+fireKey: changes_requested:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567:requests:2
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: yes
+    actual: 2 requests for changes
+    need: ""
+
+== changes requested · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: it's an issue, and Changes requested fires only for pull requests
+    need: ""
+
+== changes requested · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: no one asked for changes
+    need: ""
+
+== changes requested · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: no one asked for changes
+    need: ""
+
+== changes requested · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: no one asked for changes
+    need: ""
+
+== approved · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it isn't approved
+    need: ""
+
+== approved · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== approved · pr green · fresh
+match: yes
+fireKey: approved:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: yes
+    actual: 1 approval
+    need: ""
+
+== approved · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it isn't approved
+    need: ""
+
+== approved · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it's an issue, and Approved fires only for pull requests
+    need: ""
+
+== approved · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it isn't approved
+    need: ""
+
+== approved · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it isn't approved
+    need: ""
+
+== approved · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it isn't approved
+    need: ""
+
+== approved, then paths and size · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it isn't approved
+    need: ""
+
+== approved, then paths and size · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[1]
+    condition: its size is XS or S
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: a changed path matches go.*
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== approved, then paths and size · pr green · fresh
+match: no
+fireKey: approved:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: yes
+    actual: 1 approval
+    need: ""
+  - path: conditions.of[1]
+    condition: its size is XS or S
+    result: no
+    actual: M
+    need: ""
+
+== approved, then paths and size · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it isn't approved
+    need: ""
+
+== approved, then paths and size · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it's an issue, and Approved fires only for pull requests
+    need: ""
+
+== approved, then paths and size · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it isn't approved
+    need: ""
+
+== approved, then paths and size · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it isn't approved
+    need: ""
+
+== approved, then paths and size · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it isn't approved
+    need: ""
+
+== merge conflicts · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== merge conflicts · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== merge conflicts · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== merge conflicts · pr partial · fresh
+match: yes
+fireKey: merge_conflicts:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: yes
+    actual: it conflicts with its base branch
+    need: ""
+
+== merge conflicts · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it's an issue, and Merge conflicts fires only for pull requests
+    need: ""
+
+== merge conflicts · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== merge conflicts · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== merge conflicts · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== falls behind · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it isn't behind its base branch
+    need: ""
+
+== falls behind · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== falls behind · pr green · fresh
+match: yes
+fireKey: falls_behind:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567:base:main
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: yes
+    actual: it's behind main
+    need: ""
+
+== falls behind · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it isn't behind its base branch
+    need: ""
+
+== falls behind · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it's an issue, and Falls behind fires only for pull requests
+    need: ""
+
+== falls behind · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it isn't behind its base branch
+    need: ""
+
+== falls behind · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it isn't behind its base branch
+    need: ""
+
+== falls behind · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it isn't behind its base branch
+    need: ""
+
+== labeled needs-review · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled needs-review
+    need: ""
+
+== labeled needs-review · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== labeled needs-review · pr green · fresh
+match: yes
+fireKey: labeled:label:needs-review
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: yes
+    actual: it's labeled needs-review
+    need: ""
+
+== labeled needs-review · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled needs-review
+    need: ""
+
+== labeled needs-review · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled needs-review
+    need: ""
+
+== labeled needs-review · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled needs-review
+    need: ""
+
+== labeled needs-review · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled needs-review
+    need: ""
+
+== labeled needs-review · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled needs-review
+    need: ""
+
+== labeled Bug · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled Bug
+    need: ""
+
+== labeled Bug · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== labeled Bug · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled Bug
+    need: ""
+
+== labeled Bug · pr partial · fresh
+match: yes
+fireKey: labeled:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: yes
+    actual: it's labeled Bug
+    need: ""
+
+== labeled Bug · issue · fresh
+match: yes
+fireKey: labeled:label:bug
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: yes
+    actual: it's labeled Bug
+    need: ""
+
+== labeled Bug · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled Bug
+    need: ""
+
+== labeled Bug · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled Bug
+    need: ""
+
+== labeled Bug · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled Bug
+    need: ""
+
+== ready for review · pr failing · fresh
+match: yes
+fireKey: ready_for_review:item
+needs: []
+trace:
+  - path: trigger
+    condition: Ready for review: isn't a draft, whether it opened ready or turned ready
+    result: yes
+    actual: it isn't a draft
+    need: ""
+
+== ready for review · pr unread · fresh
+match: yes
+fireKey: ready_for_review:item
+needs: []
+trace:
+  - path: trigger
+    condition: Ready for review: isn't a draft, whether it opened ready or turned ready
+    result: yes
+    actual: it isn't a draft
+    need: ""
+
+== ready for review · pr green · fresh
+match: yes
+fireKey: ready_for_review:item
+needs: []
+trace:
+  - path: trigger
+    condition: Ready for review: isn't a draft, whether it opened ready or turned ready
+    result: yes
+    actual: it isn't a draft
+    need: ""
+
+== ready for review · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Ready for review: isn't a draft, whether it opened ready or turned ready
+    result: no
+    actual: it's a draft
+    need: ""
+
+== ready for review · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Ready for review: isn't a draft, whether it opened ready or turned ready
+    result: no
+    actual: it's an issue, and Ready for review fires only for pull requests
+    need: ""
+
+== ready for review · pr checks unread · fresh
+match: yes
+fireKey: ready_for_review:item
+needs: []
+trace:
+  - path: trigger
+    condition: Ready for review: isn't a draft, whether it opened ready or turned ready
+    result: yes
+    actual: it isn't a draft
+    need: ""
+
+== ready for review · pr waiting on a maintainer · fresh
+match: yes
+fireKey: ready_for_review:item
+needs: []
+trace:
+  - path: trigger
+    condition: Ready for review: isn't a draft, whether it opened ready or turned ready
+    result: yes
+    actual: it isn't a draft
+    need: ""
+
+== ready for review · pr without checks · fresh
+match: yes
+fireKey: ready_for_review:item
+needs: []
+trace:
+  - path: trigger
+    condition: Ready for review: isn't a draft, whether it opened ready or turned ready
+    result: yes
+    actual: it isn't a draft
+    need: ""
+
+== review requested · pr failing · fresh
+match: yes
+fireKey: review_requested:listed
+needs: []
+trace:
+  - path: trigger
+    condition: Review requested: newly asks for your review
+    result: yes
+    actual: it's asking for your review
+    need: ""
+
+== review requested · pr unread · fresh
+match: yes
+fireKey: review_requested:listed
+needs: []
+trace:
+  - path: trigger
+    condition: Review requested: newly asks for your review
+    result: yes
+    actual: it's asking for your review
+    need: ""
+
+== review requested · pr green · fresh
+match: yes
+fireKey: review_requested:at:2026-11-16T11:00:00Z
+needs: []
+trace:
+  - path: trigger
+    condition: Review requested: newly asks for your review
+    result: yes
+    actual: it arrived 2026-11-16T11:00:00Z
+    need: ""
+
+== review requested · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Review requested: newly asks for your review
+    result: no
+    actual: it isn't asking for your review
+    need: ""
+
+== review requested · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Review requested: newly asks for your review
+    result: no
+    actual: it's an issue, and Review requested fires only for pull requests
+    need: ""
+
+== review requested · pr checks unread · fresh
+match: yes
+fireKey: review_requested:listed
+needs: []
+trace:
+  - path: trigger
+    condition: Review requested: newly asks for your review
+    result: yes
+    actual: it's asking for your review
+    need: ""
+
+== review requested · pr waiting on a maintainer · fresh
+match: yes
+fireKey: review_requested:listed
+needs: []
+trace:
+  - path: trigger
+    condition: Review requested: newly asks for your review
+    result: yes
+    actual: it's asking for your review
+    need: ""
+
+== review requested · pr without checks · fresh
+match: yes
+fireKey: review_requested:listed
+needs: []
+trace:
+  - path: trigger
+    condition: Review requested: newly asks for your review
+    result: yes
+    actual: it's asking for your review
+    need: ""
+
+== assigned · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Assigned to me: is newly assigned to you
+    result: no
+    actual: it isn't assigned to you
+    need: ""
+
+== assigned · pr unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Assigned to me: is newly assigned to you
+    result: no
+    actual: it isn't assigned to you
+    need: ""
+
+== assigned · pr green · fresh
+match: yes
+fireKey: assigned:at:2026-11-16T10:00:00Z
+needs: []
+trace:
+  - path: trigger
+    condition: Assigned to me: is newly assigned to you
+    result: yes
+    actual: it arrived 2026-11-16T10:00:00Z
+    need: ""
+
+== assigned · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Assigned to me: is newly assigned to you
+    result: no
+    actual: it isn't assigned to you
+    need: ""
+
+== assigned · issue · fresh
+match: yes
+fireKey: assigned:listed
+needs: []
+trace:
+  - path: trigger
+    condition: Assigned to me: is newly assigned to you
+    result: yes
+    actual: it's assigned to you
+    need: ""
+
+== assigned · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Assigned to me: is newly assigned to you
+    result: no
+    actual: it isn't assigned to you
+    need: ""
+
+== assigned · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Assigned to me: is newly assigned to you
+    result: no
+    actual: it isn't assigned to you
+    need: ""
+
+== assigned · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Assigned to me: is newly assigned to you
+    result: no
+    actual: it isn't assigned to you
+    need: ""
+
+== new comments · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments · pr failing · seen
+match: yes
+fireKey: new_comments:comments:4
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 1 new comment
+    need: ""
+
+== new comments · pr failing · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments · pr failing · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments · pr failing · first-head
+match: yes
+fireKey: new_comments:comments:4
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 4 new comments
+    need: ""
+
+== new comments · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new comments · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new comments · pr unread · own-push
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new comments · pr unread · working
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new comments · pr unread · first-head
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new comments · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments · pr green · seen
+match: yes
+fireKey: new_comments:comments:9
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 6 new comments
+    need: ""
+
+== new comments · pr green · own-push
+match: yes
+fireKey: new_comments:comments:9
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 5 new comments
+    need: ""
+
+== new comments · pr green · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments · pr green · first-head
+match: yes
+fireKey: new_comments:comments:9
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 9 new comments
+    need: ""
+
+== new comments · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments · pr partial · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments · pr partial · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments · pr partial · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments · pr partial · first-head
+match: yes
+fireKey: new_comments:comments:2
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 2 new comments
+    need: ""
+
+== new comments · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments · issue · seen
+match: yes
+fireKey: new_comments:comments:6
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 3 new comments
+    need: ""
+
+== new comments · issue · own-push
+match: yes
+fireKey: new_comments:comments:6
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 2 new comments
+    need: ""
+
+== new comments · issue · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments · issue · first-head
+match: yes
+fireKey: new_comments:comments:6
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 6 new comments
+    need: ""
+
+== new comments · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments · pr checks unread · seen
+match: yes
+fireKey: new_comments:comments:4
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 1 new comment
+    need: ""
+
+== new comments · pr checks unread · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments · pr checks unread · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments · pr checks unread · first-head
+match: yes
+fireKey: new_comments:comments:4
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 4 new comments
+    need: ""
+
+== new comments · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments · pr waiting on a maintainer · seen
+match: yes
+fireKey: new_comments:comments:4
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 1 new comment
+    need: ""
+
+== new comments · pr waiting on a maintainer · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments · pr waiting on a maintainer · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments · pr waiting on a maintainer · first-head
+match: yes
+fireKey: new_comments:comments:4
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 4 new comments
+    need: ""
+
+== new comments · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments · pr without checks · seen
+match: yes
+fireKey: new_comments:comments:4
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 1 new comment
+    need: ""
+
+== new comments · pr without checks · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments · pr without checks · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments · pr without checks · first-head
+match: yes
+fireKey: new_comments:comments:4
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 4 new comments
+    need: ""
+
+== new comments, 5 · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments, 5 · pr failing · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 1 new comment so far
+    need: ""
+
+== new comments, 5 · pr failing · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments, 5 · pr failing · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments, 5 · pr failing · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 4 new comments so far
+    need: ""
+
+== new comments, 5 · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new comments, 5 · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new comments, 5 · pr unread · own-push
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new comments, 5 · pr unread · working
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new comments, 5 · pr unread · first-head
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== new comments, 5 · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments, 5 · pr green · seen
+match: yes
+fireKey: new_comments:comments:9
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 6 new comments
+    need: ""
+
+== new comments, 5 · pr green · own-push
+match: yes
+fireKey: new_comments:comments:9
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 5 new comments
+    need: ""
+
+== new comments, 5 · pr green · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments, 5 · pr green · first-head
+match: yes
+fireKey: new_comments:comments:9
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 9 new comments
+    need: ""
+
+== new comments, 5 · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments, 5 · pr partial · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments, 5 · pr partial · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments, 5 · pr partial · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments, 5 · pr partial · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 2 new comments so far
+    need: ""
+
+== new comments, 5 · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments, 5 · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 3 new comments so far
+    need: ""
+
+== new comments, 5 · issue · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 2 new comments so far
+    need: ""
+
+== new comments, 5 · issue · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments, 5 · issue · first-head
+match: yes
+fireKey: new_comments:comments:6
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 6 new comments
+    need: ""
+
+== new comments, 5 · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments, 5 · pr checks unread · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 1 new comment so far
+    need: ""
+
+== new comments, 5 · pr checks unread · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments, 5 · pr checks unread · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments, 5 · pr checks unread · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 4 new comments so far
+    need: ""
+
+== new comments, 5 · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments, 5 · pr waiting on a maintainer · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 1 new comment so far
+    need: ""
+
+== new comments, 5 · pr waiting on a maintainer · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments, 5 · pr waiting on a maintainer · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments, 5 · pr waiting on a maintainer · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 4 new comments so far
+    need: ""
+
+== new comments, 5 · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== new comments, 5 · pr without checks · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 1 new comment so far
+    need: ""
+
+== new comments, 5 · pr without checks · own-push
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments, 5 · pr without checks · working
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== new comments, 5 · pr without checks · first-head
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 4 new comments so far
+    need: ""
+
+== goes quiet · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== goes quiet · pr unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== goes quiet · pr green · fresh
+match: yes
+fireKey: goes_quiet:since:2026-11-06T12:00:00Z
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: yes
+    actual: quiet for 10 days
+    need: ""
+
+== goes quiet · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 1 minute ago
+    need: ""
+
+== goes quiet · issue · fresh
+match: yes
+fireKey: goes_quiet:since:2026-11-02T12:00:00Z
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: yes
+    actual: quiet for 14 days
+    need: ""
+
+== goes quiet · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== goes quiet · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== goes quiet · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== goes quiet, 1 day · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== goes quiet, 1 day · pr unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== goes quiet, 1 day · pr green · fresh
+match: yes
+fireKey: goes_quiet:since:2026-11-06T12:00:00Z
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: yes
+    actual: quiet for 10 days
+    need: ""
+
+== goes quiet, 1 day · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 1 minute ago
+    need: ""
+
+== goes quiet, 1 day · issue · fresh
+match: yes
+fireKey: goes_quiet:since:2026-11-02T12:00:00Z
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: yes
+    actual: quiet for 14 days
+    need: ""
+
+== goes quiet, 1 day · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== goes quiet, 1 day · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== goes quiet, 1 day · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== manual · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: no
+    actual: it runs only when you run it
+    need: ""
+
+== manual · pr failing · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: yes
+    actual: you ran it
+    need: ""
+
+== manual · pr unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: no
+    actual: it runs only when you run it
+    need: ""
+
+== manual · pr unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: yes
+    actual: you ran it
+    need: ""
+
+== manual · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: no
+    actual: it runs only when you run it
+    need: ""
+
+== manual · pr green · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: yes
+    actual: you ran it
+    need: ""
+
+== manual · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: no
+    actual: it runs only when you run it
+    need: ""
+
+== manual · pr partial · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: yes
+    actual: you ran it
+    need: ""
+
+== manual · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: no
+    actual: it runs only when you run it
+    need: ""
+
+== manual · issue · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: yes
+    actual: you ran it
+    need: ""
+
+== manual · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: no
+    actual: it runs only when you run it
+    need: ""
+
+== manual · pr checks unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: yes
+    actual: you ran it
+    need: ""
+
+== manual · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: no
+    actual: it runs only when you run it
+    need: ""
+
+== manual · pr waiting on a maintainer · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: yes
+    actual: you ran it
+    need: ""
+
+== manual · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: no
+    actual: it runs only when you run it
+    need: ""
+
+== manual · pr without checks · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: Only when I run it: is picked from an item's menu by you
+    result: yes
+    actual: you ran it
+    need: ""
+
+== schedule every day at 09:00 · pr failing · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 09:00
+    need: ""
+
+== schedule every day at 09:00 · pr unread · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 09:00
+    need: ""
+
+== schedule every day at 09:00 · pr green · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 09:00
+    need: ""
+
+== schedule every day at 09:00 · pr partial · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 09:00
+    need: ""
+
+== schedule every day at 09:00 · issue · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 09:00
+    need: ""
+
+== schedule every day at 09:00 · pr checks unread · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 09:00
+    need: ""
+
+== schedule every day at 09:00 · pr waiting on a maintainer · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 09:00
+    need: ""
+
+== schedule every day at 09:00 · pr without checks · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 09:00
+    need: ""
+
+== schedule every weekday at 13:00 · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it's due at 13:00
+    need: ""
+
+== schedule every weekday at 13:00 · pr unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it's due at 13:00
+    need: ""
+
+== schedule every weekday at 13:00 · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it's due at 13:00
+    need: ""
+
+== schedule every weekday at 13:00 · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it's due at 13:00
+    need: ""
+
+== schedule every weekday at 13:00 · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it's due at 13:00
+    need: ""
+
+== schedule every weekday at 13:00 · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it's due at 13:00
+    need: ""
+
+== schedule every weekday at 13:00 · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it's due at 13:00
+    need: ""
+
+== schedule every weekday at 13:00 · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it's due at 13:00
+    need: ""
+
+== schedule every weekday at 11:59 · pr failing · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 11:59
+    need: ""
+
+== schedule every weekday at 11:59 · pr unread · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 11:59
+    need: ""
+
+== schedule every weekday at 11:59 · pr green · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 11:59
+    need: ""
+
+== schedule every weekday at 11:59 · pr partial · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 11:59
+    need: ""
+
+== schedule every weekday at 11:59 · issue · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 11:59
+    need: ""
+
+== schedule every weekday at 11:59 · pr checks unread · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 11:59
+    need: ""
+
+== schedule every weekday at 11:59 · pr waiting on a maintainer · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 11:59
+    need: ""
+
+== schedule every weekday at 11:59 · pr without checks · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 11:59
+    need: ""
+
+== schedule every Tuesday at 09:00 · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it isn't due today
+    need: ""
+
+== schedule every Tuesday at 09:00 · pr unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it isn't due today
+    need: ""
+
+== schedule every Tuesday at 09:00 · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it isn't due today
+    need: ""
+
+== schedule every Tuesday at 09:00 · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it isn't due today
+    need: ""
+
+== schedule every Tuesday at 09:00 · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it isn't due today
+    need: ""
+
+== schedule every Tuesday at 09:00 · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it isn't due today
+    need: ""
+
+== schedule every Tuesday at 09:00 · pr waiting on a maintainer · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it isn't due today
+    need: ""
+
+== schedule every Tuesday at 09:00 · pr without checks · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: no
+    actual: it isn't due today
+    need: ""
+
+== schedule every Monday at 08:30 · pr failing · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+
+== schedule every Monday at 08:30 · pr failing · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: you ran it
+    need: ""
+
+== schedule every Monday at 08:30 · pr unread · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+
+== schedule every Monday at 08:30 · pr unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: you ran it
+    need: ""
+
+== schedule every Monday at 08:30 · pr green · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+
+== schedule every Monday at 08:30 · pr green · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: you ran it
+    need: ""
+
+== schedule every Monday at 08:30 · pr partial · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+
+== schedule every Monday at 08:30 · pr partial · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: you ran it
+    need: ""
+
+== schedule every Monday at 08:30 · issue · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+
+== schedule every Monday at 08:30 · issue · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: you ran it
+    need: ""
+
+== schedule every Monday at 08:30 · pr checks unread · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+
+== schedule every Monday at 08:30 · pr checks unread · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: you ran it
+    need: ""
+
+== schedule every Monday at 08:30 · pr waiting on a maintainer · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+
+== schedule every Monday at 08:30 · pr waiting on a maintainer · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: you ran it
+    need: ""
+
+== schedule every Monday at 08:30 · pr without checks · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+
+== schedule every Monday at 08:30 · pr without checks · manual
+match: yes
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: you ran it
+    need: ""

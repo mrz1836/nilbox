@@ -1,0 +1,2732 @@
+# Every decision Evaluate makes here, with its whole trace, in the order it ran.
+# Rewrite with go test ./internal/autopilot/eval -run TestDecisionsGolden -update, and review the diff.
+
+== pattern-1 · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex "^build\\(deps(-dev)?\\): bump (\\S+) from v?[0-9.]+ to v?[0-9.]+( in \\S+)?$"
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== pattern-1 · pr failing · seen
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex "^build\\(deps(-dev)?\\): bump (\\S+) from v?[0-9.]+ to v?[0-9.]+( in \\S+)?$"
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== pattern-1 · pr unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex "^build\\(deps(-dev)?\\): bump (\\S+) from v?[0-9.]+ to v?[0-9.]+( in \\S+)?$"
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== pattern-1 · pr unread · seen
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex "^build\\(deps(-dev)?\\): bump (\\S+) from v?[0-9.]+ to v?[0-9.]+( in \\S+)?$"
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== pattern-1 · pr green · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex "^build\\(deps(-dev)?\\): bump (\\S+) from v?[0-9.]+ to v?[0-9.]+( in \\S+)?$"
+    result: no
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+
+== pattern-1 · pr green · seen
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex "^build\\(deps(-dev)?\\): bump (\\S+) from v?[0-9.]+ to v?[0-9.]+( in \\S+)?$"
+    result: no
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+
+== pattern-1 · pr partial · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex "^build\\(deps(-dev)?\\): bump (\\S+) from v?[0-9.]+ to v?[0-9.]+( in \\S+)?$"
+    result: no
+    actual: "Fix the login flow"
+    need: ""
+
+== pattern-1 · pr partial · seen
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex "^build\\(deps(-dev)?\\): bump (\\S+) from v?[0-9.]+ to v?[0-9.]+( in \\S+)?$"
+    result: no
+    actual: "Fix the login flow"
+    need: ""
+
+== pattern-1 · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex "^build\\(deps(-dev)?\\): bump (\\S+) from v?[0-9.]+ to v?[0-9.]+( in \\S+)?$"
+    result: no
+    actual: "Crash on start"
+    need: ""
+
+== pattern-1 · issue · seen
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex "^build\\(deps(-dev)?\\): bump (\\S+) from v?[0-9.]+ to v?[0-9.]+( in \\S+)?$"
+    result: no
+    actual: "Crash on start"
+    need: ""
+
+== pattern-2 · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: every changed path matches go.mod, go.sum, **/package.json, **/pnpm-lock.yaml, or vendor/
+    result: yes
+    actual: "go.mod", "go.sum"
+    need: ""
+
+== pattern-2 · pr failing · seen
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: every changed path matches go.mod, go.sum, **/package.json, **/pnpm-lock.yaml, or vendor/
+    result: yes
+    actual: "go.mod", "go.sum"
+    need: ""
+
+== pattern-2 · pr unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [details]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: every changed path matches go.mod, go.sum, **/package.json, **/pnpm-lock.yaml, or vendor/
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== pattern-2 · pr unread · seen
+match: unknown
+fireKey: appears:item
+needs: [details]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: every changed path matches go.mod, go.sum, **/package.json, **/pnpm-lock.yaml, or vendor/
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== pattern-2 · pr green · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: every changed path matches go.mod, go.sum, **/package.json, **/pnpm-lock.yaml, or vendor/
+    result: yes
+    actual: "package.json", "pnpm-lock.yaml"
+    need: ""
+
+== pattern-2 · pr green · seen
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: every changed path matches go.mod, go.sum, **/package.json, **/pnpm-lock.yaml, or vendor/
+    result: yes
+    actual: "package.json", "pnpm-lock.yaml"
+    need: ""
+
+== pattern-2 · pr partial · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: every changed path matches go.mod, go.sum, **/package.json, **/pnpm-lock.yaml, or vendor/
+    result: no
+    actual: ".github/workflows/ci.yml", "docs/login.md", and maybe more
+    need: ""
+
+== pattern-2 · pr partial · seen
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: every changed path matches go.mod, go.sum, **/package.json, **/pnpm-lock.yaml, or vendor/
+    result: no
+    actual: ".github/workflows/ci.yml", "docs/login.md", and maybe more
+    need: ""
+
+== pattern-2 · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: every changed path matches go.mod, go.sum, **/package.json, **/pnpm-lock.yaml, or vendor/
+    result: no
+    actual: it's an issue
+    need: ""
+
+== pattern-2 · issue · seen
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: every changed path matches go.mod, go.sum, **/package.json, **/pnpm-lock.yaml, or vendor/
+    result: no
+    actual: it's an issue
+    need: ""
+
+== template address-requested-changes · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: no one asked for changes
+    need: ""
+
+== template address-requested-changes · pr failing · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: no one asked for changes
+    need: ""
+
+== template address-requested-changes · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template address-requested-changes · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template address-requested-changes · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: no one asked for changes
+    need: ""
+
+== template address-requested-changes · pr green · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: no one asked for changes
+    need: ""
+
+== template address-requested-changes · pr partial · fresh
+match: yes
+fireKey: changes_requested:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567:requests:2
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: yes
+    actual: 2 requests for changes
+    need: ""
+
+== template address-requested-changes · pr partial · seen
+match: yes
+fireKey: changes_requested:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567:requests:2
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: yes
+    actual: 2 requests for changes
+    need: ""
+
+== template address-requested-changes · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: it's an issue, and Changes requested fires only for pull requests
+    need: ""
+
+== template address-requested-changes · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: it's an issue, and Changes requested fires only for pull requests
+    need: ""
+
+== template ask-dependabot-to-rebase · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== template ask-dependabot-to-rebase · pr failing · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== template ask-dependabot-to-rebase · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template ask-dependabot-to-rebase · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template ask-dependabot-to-rebase · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== template ask-dependabot-to-rebase · pr green · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== template ask-dependabot-to-rebase · pr partial · fresh
+match: yes
+fireKey: merge_conflicts:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: yes
+    actual: it conflicts with its base branch
+    need: ""
+
+== template ask-dependabot-to-rebase · pr partial · seen
+match: yes
+fireKey: merge_conflicts:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: yes
+    actual: it conflicts with its base branch
+    need: ""
+
+== template ask-dependabot-to-rebase · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it's an issue, and Merge conflicts fires only for pull requests
+    need: ""
+
+== template ask-dependabot-to-rebase · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it's an issue, and Merge conflicts fires only for pull requests
+    need: ""
+
+== template ask-for-a-repro-on-quiet-bugs · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== template ask-for-a-repro-on-quiet-bugs · pr failing · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== template ask-for-a-repro-on-quiet-bugs · pr unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== template ask-for-a-repro-on-quiet-bugs · pr unread · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== template ask-for-a-repro-on-quiet-bugs · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 10 days ago
+    need: ""
+
+== template ask-for-a-repro-on-quiet-bugs · pr green · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 10 days ago
+    need: ""
+
+== template ask-for-a-repro-on-quiet-bugs · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 1 minute ago
+    need: ""
+
+== template ask-for-a-repro-on-quiet-bugs · pr partial · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 1 minute ago
+    need: ""
+
+== template ask-for-a-repro-on-quiet-bugs · issue · fresh
+match: no
+fireKey: goes_quiet:since:2026-11-02T12:00:00Z
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: yes
+    actual: quiet for 14 days
+    need: ""
+  - path: conditions.of[0]
+    condition: the labels include bug
+    result: yes
+    actual: "bug", "Needs-Repro"
+    need: ""
+  - path: conditions.of[1]
+    condition: the labels don't include needs-repro
+    result: no
+    actual: "bug", "Needs-Repro"
+    need: ""
+
+== template ask-for-a-repro-on-quiet-bugs · issue · seen
+match: no
+fireKey: goes_quiet:since:2026-11-02T12:00:00Z
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: yes
+    actual: quiet for 14 days
+    need: ""
+  - path: conditions.of[0]
+    condition: the labels include bug
+    result: yes
+    actual: "bug", "Needs-Repro"
+    need: ""
+  - path: conditions.of[1]
+    condition: the labels don't include needs-repro
+    result: no
+    actual: "bug", "Needs-Repro"
+    need: ""
+
+== template fix-dependabot-security-then-merge · pr failing · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template fix-dependabot-security-then-merge · pr failing · seen
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template fix-dependabot-security-then-merge · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template fix-dependabot-security-then-merge · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template fix-dependabot-security-then-merge · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== template fix-dependabot-security-then-merge · pr green · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== template fix-dependabot-security-then-merge · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== template fix-dependabot-security-then-merge · pr partial · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== template fix-dependabot-security-then-merge · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== template fix-dependabot-security-then-merge · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== template fix-dependabot-security · pr failing · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template fix-dependabot-security · pr failing · seen
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template fix-dependabot-security · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template fix-dependabot-security · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template fix-dependabot-security · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== template fix-dependabot-security · pr green · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== template fix-dependabot-security · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== template fix-dependabot-security · pr partial · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== template fix-dependabot-security · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== template fix-dependabot-security · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== template fix-failing-checks-on-my-prs · pr failing · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+
+== template fix-failing-checks-on-my-prs · pr failing · seen
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+
+== template fix-failing-checks-on-my-prs · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+
+== template fix-failing-checks-on-my-prs · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+
+== template fix-failing-checks-on-my-prs · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== template fix-failing-checks-on-my-prs · pr green · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== template fix-failing-checks-on-my-prs · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== template fix-failing-checks-on-my-prs · pr partial · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== template fix-failing-checks-on-my-prs · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== template fix-failing-checks-on-my-prs · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== template heal-dependabot-then-merge · pr failing · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: the update type is minor or patch
+    result: yes
+    actual: minor
+    need: ""
+
+== template heal-dependabot-then-merge · pr failing · seen
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: the update type is minor or patch
+    result: yes
+    actual: minor
+    need: ""
+
+== template heal-dependabot-then-merge · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: the update type is minor or patch
+    result: unknown
+    actual: the author's type isn't read yet
+    need: ""
+
+== template heal-dependabot-then-merge · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: the update type is minor or patch
+    result: unknown
+    actual: the author's type isn't read yet
+    need: ""
+
+== template heal-dependabot-then-merge · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== template heal-dependabot-then-merge · pr green · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== template heal-dependabot-then-merge · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== template heal-dependabot-then-merge · pr partial · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== template heal-dependabot-then-merge · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== template heal-dependabot-then-merge · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== template investigate-new-bugs · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled bug
+    need: ""
+
+== template investigate-new-bugs · pr failing · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled bug
+    need: ""
+
+== template investigate-new-bugs · pr unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: it's an issue
+    result: no
+    actual: a pull request
+    need: ""
+
+== template investigate-new-bugs · pr unread · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: it's an issue
+    result: no
+    actual: a pull request
+    need: ""
+
+== template investigate-new-bugs · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled bug
+    need: ""
+
+== template investigate-new-bugs · pr green · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled bug
+    need: ""
+
+== template investigate-new-bugs · pr partial · fresh
+match: no
+fireKey: labeled:label:bug
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: yes
+    actual: it's labeled bug
+    need: ""
+  - path: conditions.of[0]
+    condition: it's an issue
+    result: no
+    actual: a pull request
+    need: ""
+
+== template investigate-new-bugs · pr partial · seen
+match: no
+fireKey: labeled:label:bug
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: yes
+    actual: it's labeled bug
+    need: ""
+  - path: conditions.of[0]
+    condition: it's an issue
+    result: no
+    actual: a pull request
+    need: ""
+
+== template investigate-new-bugs · issue · fresh
+match: yes
+fireKey: labeled:label:bug
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: yes
+    actual: it's labeled bug
+    need: ""
+  - path: conditions.of[0]
+    condition: it's an issue
+    result: yes
+    actual: an issue
+    need: ""
+
+== template investigate-new-bugs · issue · seen
+match: yes
+fireKey: labeled:label:bug
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: yes
+    actual: it's labeled bug
+    need: ""
+  - path: conditions.of[0]
+    condition: it's an issue
+    result: yes
+    actual: an issue
+    need: ""
+
+== template pre-review-what-asks-for-me · pr failing · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: its size is XS, S, M, or L
+    result: yes
+    actual: S
+    need: ""
+
+== template pre-review-what-asks-for-me · pr failing · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: its size is XS, S, M, or L
+    result: yes
+    actual: S
+    need: ""
+
+== template pre-review-what-asks-for-me · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: its size is XS, S, M, or L
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template pre-review-what-asks-for-me · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: its size is XS, S, M, or L
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template pre-review-what-asks-for-me · pr green · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: its size is XS, S, M, or L
+    result: yes
+    actual: M
+    need: ""
+
+== template pre-review-what-asks-for-me · pr green · seen
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: its size is XS, S, M, or L
+    result: yes
+    actual: M
+    need: ""
+
+== template pre-review-what-asks-for-me · pr partial · fresh
+match: no
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: no
+    actual: yes
+    need: ""
+
+== template pre-review-what-asks-for-me · pr partial · seen
+match: no
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: no
+    actual: yes
+    need: ""
+
+== template pre-review-what-asks-for-me · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== template pre-review-what-asks-for-me · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: no
+    actual: it's an issue, and New commits fires only for pull requests
+    need: ""
+
+== template re-run-flaky-checks-once · pr failing · fresh
+match: no
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: the failed checks' names include "e2e / browser" or "integration / flaky-suite"
+    result: no
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template re-run-flaky-checks-once · pr failing · seen
+match: no
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: the failed checks' names include "e2e / browser" or "integration / flaky-suite"
+    result: no
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template re-run-flaky-checks-once · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: the failed checks' names include "e2e / browser" or "integration / flaky-suite"
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template re-run-flaky-checks-once · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: the failed checks' names include "e2e / browser" or "integration / flaky-suite"
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template re-run-flaky-checks-once · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== template re-run-flaky-checks-once · pr green · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== template re-run-flaky-checks-once · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== template re-run-flaky-checks-once · pr partial · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== template re-run-flaky-checks-once · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== template re-run-flaky-checks-once · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== template resolve-merge-conflicts · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== template resolve-merge-conflicts · pr failing · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== template resolve-merge-conflicts · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template resolve-merge-conflicts · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template resolve-merge-conflicts · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== template resolve-merge-conflicts · pr green · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== template resolve-merge-conflicts · pr partial · fresh
+match: yes
+fireKey: merge_conflicts:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: yes
+    actual: it conflicts with its base branch
+    need: ""
+
+== template resolve-merge-conflicts · pr partial · seen
+match: yes
+fireKey: merge_conflicts:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: yes
+    actual: it conflicts with its base branch
+    need: ""
+
+== template resolve-merge-conflicts · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it's an issue, and Merge conflicts fires only for pull requests
+    need: ""
+
+== template resolve-merge-conflicts · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it's an issue, and Merge conflicts fires only for pull requests
+    need: ""
+
+== template review-members · pr failing · fresh
+match: no
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a member
+    result: no
+    actual: a trusted bot
+    need: ""
+
+== template review-members · pr failing · seen
+match: no
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a member
+    result: no
+    actual: a trusted bot
+    need: ""
+
+== template review-members · pr unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [details]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a member
+    result: unknown
+    actual: the author's association isn't read yet, so whether they're a member isn't known
+    need: ""
+  - path: conditions.of[2]
+    condition: the lines changed are under 400
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[1]
+    condition: no sensitive file changed
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template review-members · pr unread · seen
+match: unknown
+fireKey: appears:item
+needs: [details]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a member
+    result: unknown
+    actual: the author's association isn't read yet, so whether they're a member isn't known
+    need: ""
+  - path: conditions.of[2]
+    condition: the lines changed are under 400
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[1]
+    condition: no sensitive file changed
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template review-members · pr green · fresh
+match: no
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a member
+    result: no
+    actual: a trusted bot
+    need: ""
+
+== template review-members · pr green · seen
+match: no
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a member
+    result: no
+    actual: a trusted bot
+    need: ""
+
+== template review-members · pr partial · fresh
+match: no
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a member
+    result: no
+    actual: an outside contributor
+    need: ""
+
+== template review-members · pr partial · seen
+match: no
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a member
+    result: no
+    actual: an outside contributor
+    need: ""
+
+== template review-members · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a member
+    result: no
+    actual: an outside contributor
+    need: ""
+
+== template review-members · issue · seen
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a member
+    result: no
+    actual: an outside contributor
+    need: ""
+
+== template snooze-passing-bot-prs · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 2 checks failed
+    need: ""
+
+== template snooze-passing-bot-prs · pr failing · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 2 checks failed
+    need: ""
+
+== template snooze-passing-bot-prs · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[1]
+    condition: the update type is minor or patch
+    result: unknown
+    actual: the author's type isn't read yet
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a trusted bot
+    result: unknown
+    actual: the author's association isn't read yet, so whether they're a member isn't known
+    need: ""
+
+== template snooze-passing-bot-prs · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[1]
+    condition: the update type is minor or patch
+    result: unknown
+    actual: the author's type isn't read yet
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a trusted bot
+    result: unknown
+    actual: the author's association isn't read yet, so whether they're a member isn't known
+    need: ""
+
+== template snooze-passing-bot-prs · pr green · fresh
+match: yes
+fireKey: checks_passed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: yes
+    actual: every check passed on 0a1b2c3
+    need: ""
+  - path: conditions.of[1]
+    condition: the update type is minor or patch
+    result: yes
+    actual: patch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a trusted bot
+    result: yes
+    actual: a trusted bot
+    need: ""
+
+== template snooze-passing-bot-prs · pr green · seen
+match: yes
+fireKey: checks_passed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: yes
+    actual: every check passed on 0a1b2c3
+    need: ""
+  - path: conditions.of[1]
+    condition: the update type is minor or patch
+    result: yes
+    actual: patch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a trusted bot
+    result: yes
+    actual: a trusted bot
+    need: ""
+
+== template snooze-passing-bot-prs · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 1 check failed
+    need: ""
+
+== template snooze-passing-bot-prs · pr partial · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 1 check failed
+    need: ""
+
+== template snooze-passing-bot-prs · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: it's an issue, and Checks pass fires only for pull requests
+    need: ""
+
+== template snooze-passing-bot-prs · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: it's an issue, and Checks pass fires only for pull requests
+    need: ""
+
+== template tell-me-about-security-failures · pr failing · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template tell-me-about-security-failures · pr failing · seen
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template tell-me-about-security-failures · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template tell-me-about-security-failures · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template tell-me-about-security-failures · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== template tell-me-about-security-failures · pr green · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: no check failed
+    need: ""
+
+== template tell-me-about-security-failures · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== template tell-me-about-security-failures · pr partial · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: 2 checks are still running
+    need: ""
+
+== template tell-me-about-security-failures · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== template tell-me-about-security-failures · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: no
+    actual: it's an issue, and Checks fail fires only for pull requests
+    need: ""
+
+== template triage-busy-issues · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== template triage-busy-issues · pr failing · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 1 new comment so far
+    need: ""
+
+== template triage-busy-issues · pr unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[1]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 0
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex ^(bug|crash):
+    result: no
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== template triage-busy-issues · pr unread · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[1]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 2
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex ^(bug|crash):
+    result: no
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== template triage-busy-issues · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== template triage-busy-issues · pr green · seen
+match: no
+fireKey: new_comments:day:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 6 new comments
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 2
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex ^(bug|crash):
+    result: no
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+
+== template triage-busy-issues · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== template triage-busy-issues · pr partial · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: 0 new comments so far
+    need: ""
+
+== template triage-busy-issues · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== template triage-busy-issues · issue · seen
+match: no
+fireKey: new_comments:day:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: yes
+    actual: 3 new comments
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 2
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex ^(bug|crash):
+    result: no
+    actual: "Crash on start"
+    need: ""
+
+== template update-my-prs-when-behind · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it isn't behind its base branch
+    need: ""
+
+== template update-my-prs-when-behind · pr failing · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it isn't behind its base branch
+    need: ""
+
+== template update-my-prs-when-behind · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: the repository allows updating branches
+    result: unknown
+    actual: the repository isn't read yet
+    need: ""
+
+== template update-my-prs-when-behind · pr unread · seen
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: the repository allows updating branches
+    result: unknown
+    actual: the repository isn't read yet
+    need: ""
+
+== template update-my-prs-when-behind · pr green · fresh
+match: yes
+fireKey: falls_behind:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567:base:main
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: yes
+    actual: it's behind main
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: the repository allows updating branches
+    result: yes
+    actual: yes
+    need: ""
+
+== template update-my-prs-when-behind · pr green · seen
+match: yes
+fireKey: falls_behind:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567:base:main
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: yes
+    actual: it's behind main
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: the repository allows updating branches
+    result: yes
+    actual: yes
+    need: ""
+
+== template update-my-prs-when-behind · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it isn't behind its base branch
+    need: ""
+
+== template update-my-prs-when-behind · pr partial · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it isn't behind its base branch
+    need: ""
+
+== template update-my-prs-when-behind · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it's an issue, and Falls behind fires only for pull requests
+    need: ""
+
+== template update-my-prs-when-behind · issue · seen
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it's an issue, and Falls behind fires only for pull requests
+    need: ""
+
+== template weekday-nudge · pr failing · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+  - path: conditions.of[0]
+    condition: it's been quiet for more than 3 days
+    result: no
+    actual: 90 minutes
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the repository isn't muted
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: the checks' state is failing or erroring
+    result: yes
+    actual: failing
+    need: ""
+
+== template weekday-nudge · pr failing · seen
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+  - path: conditions.of[0]
+    condition: it's been quiet for more than 3 days
+    result: no
+    actual: 90 minutes
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the repository isn't muted
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: the checks' state is failing or erroring
+    result: yes
+    actual: failing
+    need: ""
+
+== template weekday-nudge · pr unread · fresh
+match: unknown
+fireKey: schedule:2026-11-16
+needs: [details]
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+  - path: conditions.of[0]
+    condition: it's been quiet for more than 3 days
+    result: no
+    actual: 90 minutes
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the repository isn't muted
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: the checks' state is failing or erroring
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template weekday-nudge · pr unread · seen
+match: unknown
+fireKey: schedule:2026-11-16
+needs: [details]
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+  - path: conditions.of[0]
+    condition: it's been quiet for more than 3 days
+    result: no
+    actual: 90 minutes
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the repository isn't muted
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: the checks' state is failing or erroring
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== template weekday-nudge · pr green · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+  - path: conditions.of[0]
+    condition: it's been quiet for more than 3 days
+    result: yes
+    actual: 10 days
+    need: ""
+
+== template weekday-nudge · pr green · seen
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+  - path: conditions.of[0]
+    condition: it's been quiet for more than 3 days
+    result: yes
+    actual: 10 days
+    need: ""
+
+== template weekday-nudge · pr partial · fresh
+match: no
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+  - path: conditions.of[0]
+    condition: it's been quiet for more than 3 days
+    result: no
+    actual: 1 minute
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the repository isn't muted
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: the checks' state is failing or erroring
+    result: no
+    actual: pending
+    need: ""
+
+== template weekday-nudge · pr partial · seen
+match: no
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+  - path: conditions.of[0]
+    condition: it's been quiet for more than 3 days
+    result: no
+    actual: 1 minute
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the repository isn't muted
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: the checks' state is failing or erroring
+    result: no
+    actual: pending
+    need: ""
+
+== template weekday-nudge · issue · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+  - path: conditions.of[0]
+    condition: it's been quiet for more than 3 days
+    result: yes
+    actual: 14 days
+    need: ""
+
+== template weekday-nudge · issue · seen
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+  - path: conditions.of[0]
+    condition: it's been quiet for more than 3 days
+    result: yes
+    actual: 14 days
+    need: ""

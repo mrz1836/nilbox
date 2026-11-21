@@ -1,0 +1,3446 @@
+# Every decision Evaluate makes here, with its whole trace, in the order it ran.
+# Rewrite with go test ./internal/autopilot/eval -run TestDecisionsGolden -update, and review the diff.
+
+== all, dearest first as written · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[2]
+    condition: the labels include dependencies
+    result: yes
+    actual: "dependencies"
+    need: ""
+  - path: conditions.of[1]
+    condition: a failed check's name contains security
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+  - path: conditions.of[0]
+    condition: a changed path matches go.*
+    result: yes
+    actual: "go.mod", "go.sum"
+    need: ""
+
+== all, dearest first as written · pr unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [details]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[2]
+    condition: the labels include dependencies
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[1]
+    condition: a failed check's name contains security
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: a changed path matches go.*
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== all, dearest first as written · pr green · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains bump
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[2]
+    condition: the labels include dependencies
+    result: yes
+    actual: "Needs-Review", "dependencies"
+    need: ""
+  - path: conditions.of[1]
+    condition: a failed check's name contains security
+    result: no
+    actual: none
+    need: ""
+
+== all, dearest first as written · pr partial · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains bump
+    result: no
+    actual: "Fix the login flow"
+    need: ""
+
+== all, dearest first as written · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains bump
+    result: no
+    actual: "Crash on start"
+    need: ""
+
+== all, dearest first as written · pr checks unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [checks, files]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[2]
+    condition: the labels include dependencies
+    result: yes
+    actual: "dependencies"
+    need: ""
+  - path: conditions.of[1]
+    condition: a failed check's name contains security
+    result: unknown
+    actual: the check names aren't read yet
+    need: checks
+  - path: conditions.of[0]
+    condition: a changed path matches go.*
+    result: unknown
+    actual: the changed files aren't checked yet
+    need: files
+
+== any, dearest first as written · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== any, dearest first as written · pr unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== any, dearest first as written · pr green · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains bump
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+
+== any, dearest first as written · pr partial · fresh
+match: unknown
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains bump
+    result: no
+    actual: "Fix the login flow"
+    need: ""
+  - path: conditions.of[2]
+    condition: the labels include dependencies
+    result: no
+    actual: "bug"
+    need: ""
+  - path: conditions.of[1]
+    condition: a failed check's name contains security
+    result: unknown
+    actual: "CI / test", and maybe more
+    need: ""
+  - path: conditions.of[0]
+    condition: a changed path matches go.*
+    result: unknown
+    actual: ".github/workflows/ci.yml", "docs/login.md", and maybe more
+    need: ""
+
+== any, dearest first as written · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains bump
+    result: no
+    actual: "Crash on start"
+    need: ""
+  - path: conditions.of[2]
+    condition: the labels include dependencies
+    result: no
+    actual: "bug", "Needs-Repro"
+    need: ""
+  - path: conditions.of[1]
+    condition: a failed check's name contains security
+    result: no
+    actual: it's an issue
+    need: ""
+  - path: conditions.of[0]
+    condition: a changed path matches go.*
+    result: no
+    actual: it's an issue
+    need: ""
+
+== any, dearest first as written · pr checks unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== all, one cost · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author's login is dependabot
+    result: yes
+    actual: "dependabot"
+    need: ""
+  - path: conditions.of[3]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains net
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== all, one cost · pr unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author's login is dependabot
+    result: yes
+    actual: "dependabot"
+    need: ""
+  - path: conditions.of[3]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains net
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== all, one cost · pr green · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author's login is dependabot
+    result: yes
+    actual: "dependabot"
+    need: ""
+  - path: conditions.of[3]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains net
+    result: no
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+
+== all, one cost · pr partial · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author's login is dependabot
+    result: no
+    actual: "octo-user"
+    need: ""
+
+== all, one cost · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author's login is dependabot
+    result: no
+    actual: "octo-contributor"
+    need: ""
+
+== all, one cost · pr checks unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author's login is dependabot
+    result: yes
+    actual: "dependabot"
+    need: ""
+  - path: conditions.of[3]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains net
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== all, one cost, written the other way · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: the author's login is dependabot
+    result: yes
+    actual: "dependabot"
+    need: ""
+  - path: conditions.of[0]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+  - path: conditions.of[1]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains net
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== all, one cost, written the other way · pr unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: the author's login is dependabot
+    result: yes
+    actual: "dependabot"
+    need: ""
+  - path: conditions.of[0]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+  - path: conditions.of[1]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains net
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== all, one cost, written the other way · pr green · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: the author's login is dependabot
+    result: yes
+    actual: "dependabot"
+    need: ""
+  - path: conditions.of[0]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+  - path: conditions.of[1]
+    condition: the title contains bump
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains net
+    result: no
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+
+== all, one cost, written the other way · pr partial · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: the author's login is dependabot
+    result: no
+    actual: "octo-user"
+    need: ""
+
+== all, one cost, written the other way · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: the author's login is dependabot
+    result: no
+    actual: "octo-contributor"
+    need: ""
+
+== all, one cost, written the other way · pr checks unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: the author's login is dependabot
+    result: yes
+    actual: "dependabot"
+    need: ""
+  - path: conditions.of[0]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+  - path: conditions.of[1]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[3]
+    condition: the title contains net
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== any, one cost · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author's login is dependabot
+    result: yes
+    actual: "dependabot"
+    need: ""
+
+== any, one cost · pr unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author's login is dependabot
+    result: yes
+    actual: "dependabot"
+    need: ""
+
+== any, one cost · pr green · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author's login is dependabot
+    result: yes
+    actual: "dependabot"
+    need: ""
+
+== any, one cost · pr partial · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author's login is dependabot
+    result: no
+    actual: "octo-user"
+    need: ""
+  - path: conditions.of[3]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+
+== any, one cost · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author's login is dependabot
+    result: no
+    actual: "octo-contributor"
+    need: ""
+  - path: conditions.of[3]
+    condition: it's a pull request
+    result: no
+    actual: an issue
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: no
+    actual: "Crash on start"
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains net
+    result: no
+    actual: "Crash on start"
+    need: ""
+
+== any, one cost · pr checks unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author's login is dependabot
+    result: yes
+    actual: "dependabot"
+    need: ""
+
+== all, with groups · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author is a bot
+    result: yes
+    actual: yes
+    need: ""
+  - path: conditions.of[0]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[3].group.of[1]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[3].group.of[0]
+    condition: the lines changed are under 100
+    result: yes
+    actual: 15
+    need: ""
+  - path: conditions.of[2].group.of[1]
+    condition: the labels include security
+    result: no
+    actual: "dependencies"
+    need: ""
+  - path: conditions.of[2].group.of[0]
+    condition: a failed check's name matches *Security*
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== all, with groups · pr unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [details]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author is a bot
+    result: unknown
+    actual: the author's type isn't read yet
+    need: ""
+  - path: conditions.of[0]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[3].group.of[1]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[3].group.of[0]
+    condition: the lines changed are under 100
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[2].group.of[1]
+    condition: the labels include security
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[2].group.of[0]
+    condition: a failed check's name matches *Security*
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== all, with groups · pr green · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author is a bot
+    result: yes
+    actual: yes
+    need: ""
+  - path: conditions.of[0]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[3].group.of[1]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[3].group.of[0]
+    condition: the lines changed are under 100
+    result: yes
+    actual: 52
+    need: ""
+  - path: conditions.of[2].group.of[1]
+    condition: the labels include security
+    result: no
+    actual: "Needs-Review", "dependencies"
+    need: ""
+  - path: conditions.of[2].group.of[0]
+    condition: a failed check's name matches *Security*
+    result: no
+    actual: none
+    need: ""
+
+== all, with groups · pr partial · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author is a bot
+    result: no
+    actual: no
+    need: ""
+
+== all, with groups · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author is a bot
+    result: no
+    actual: no
+    need: ""
+
+== all, with groups · pr checks unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [checks]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: the author is a bot
+    result: yes
+    actual: yes
+    need: ""
+  - path: conditions.of[0]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[3].group.of[1]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[3].group.of[0]
+    condition: the lines changed are under 100
+    result: yes
+    actual: 15
+    need: ""
+  - path: conditions.of[2].group.of[1]
+    condition: the labels include security
+    result: no
+    actual: "dependencies"
+    need: ""
+  - path: conditions.of[2].group.of[0]
+    condition: a failed check's name matches *Security*
+    result: unknown
+    actual: the check names aren't read yet
+    need: checks
+
+== all, with groups written the other way · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: the author is a bot
+    result: yes
+    actual: yes
+    need: ""
+  - path: conditions.of[3]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[0].group.of[1]
+    condition: the lines changed are under 100
+    result: yes
+    actual: 15
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: the labels include security
+    result: no
+    actual: "dependencies"
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: a failed check's name matches *Security*
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== all, with groups written the other way · pr unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [details]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: the author is a bot
+    result: unknown
+    actual: the author's type isn't read yet
+    need: ""
+  - path: conditions.of[3]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[0].group.of[1]
+    condition: the lines changed are under 100
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[1].group.of[0]
+    condition: the labels include security
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[1].group.of[1]
+    condition: a failed check's name matches *Security*
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== all, with groups written the other way · pr green · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: the author is a bot
+    result: yes
+    actual: yes
+    need: ""
+  - path: conditions.of[3]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[0].group.of[1]
+    condition: the lines changed are under 100
+    result: yes
+    actual: 52
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: the labels include security
+    result: no
+    actual: "Needs-Review", "dependencies"
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: a failed check's name matches *Security*
+    result: no
+    actual: none
+    need: ""
+
+== all, with groups written the other way · pr partial · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: the author is a bot
+    result: no
+    actual: no
+    need: ""
+
+== all, with groups written the other way · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: the author is a bot
+    result: no
+    actual: no
+    need: ""
+
+== all, with groups written the other way · pr checks unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [checks]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: the author is a bot
+    result: yes
+    actual: yes
+    need: ""
+  - path: conditions.of[3]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[0].group.of[1]
+    condition: the lines changed are under 100
+    result: yes
+    actual: 15
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: the labels include security
+    result: no
+    actual: "dependencies"
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: a failed check's name matches *Security*
+    result: unknown
+    actual: the check names aren't read yet
+    need: checks
+
+== any of groups · pr failing · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it's a draft
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: it's behind its base branch
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the sensitive categories touched include workflows
+    result: no
+    actual: dependencies
+    need: ""
+  - path: conditions.of[2]
+    condition: every changed path matches docs/
+    result: no
+    actual: "go.mod", "go.sum"
+    need: ""
+
+== any of groups · pr unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [details]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it's a draft
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: it's behind its base branch
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[1].group.of[1]
+    condition: the sensitive categories touched include workflows
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[2]
+    condition: every changed path matches docs/
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== any of groups · pr green · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it's a draft
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: it's behind its base branch
+    result: yes
+    actual: yes
+    need: ""
+
+== any of groups · pr partial · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it's a draft
+    result: yes
+    actual: yes
+    need: ""
+  - path: conditions.of[0].group.of[1]
+    condition: it has merge conflicts
+    result: yes
+    actual: yes
+    need: ""
+
+== any of groups · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it's a draft
+    result: no
+    actual: it's an issue
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: it's behind its base branch
+    result: no
+    actual: it's an issue
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the sensitive categories touched include workflows
+    result: no
+    actual: it's an issue
+    need: ""
+  - path: conditions.of[2]
+    condition: every changed path matches docs/
+    result: no
+    actual: it's an issue
+    need: ""
+
+== any of groups · pr checks unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [files]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it's a draft
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: it's behind its base branch
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the sensitive categories touched include workflows
+    result: unknown
+    actual: the changed files aren't checked yet
+    need: files
+  - path: conditions.of[2]
+    condition: every changed path matches docs/
+    result: unknown
+    actual: the changed files aren't checked yet
+    need: files
+
+== a group alone · pr failing · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0].group.of[1]
+    condition: it's behind its base branch
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it has merge conflicts
+    result: no
+    actual: no
+    need: ""
+
+== a group alone · pr unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [details]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0].group.of[1]
+    condition: it's behind its base branch
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0].group.of[0]
+    condition: it has merge conflicts
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== a group alone · pr green · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0].group.of[1]
+    condition: it's behind its base branch
+    result: yes
+    actual: yes
+    need: ""
+
+== a group alone · pr partial · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0].group.of[1]
+    condition: it's behind its base branch
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it has merge conflicts
+    result: yes
+    actual: yes
+    need: ""
+
+== a group alone · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0].group.of[1]
+    condition: it's behind its base branch
+    result: no
+    actual: it's an issue
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it has merge conflicts
+    result: no
+    actual: it's an issue
+    need: ""
+
+== a group alone · pr checks unread · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0].group.of[1]
+    condition: it's behind its base branch
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[0].group.of[0]
+    condition: it has merge conflicts
+    result: no
+    actual: no
+    need: ""
+
+== all of negations · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title isn't x
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[6]
+    condition: the author isn't an outside contributor
+    result: yes
+    actual: a trusted bot
+    need: ""
+  - path: conditions.of[5]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[2]
+    condition: the labels don't include blocked
+    result: yes
+    actual: "dependencies"
+    need: ""
+  - path: conditions.of[4]
+    condition: the lines changed aren't 0
+    result: yes
+    actual: 15
+    need: ""
+  - path: conditions.of[3]
+    condition: no failed check's name contains lint
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== all of negations · pr unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [details]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title isn't x
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[6]
+    condition: the author isn't an outside contributor
+    result: unknown
+    actual: the author's association isn't read yet, so whether they're a member isn't known
+    need: ""
+  - path: conditions.of[5]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[2]
+    condition: the labels don't include blocked
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[4]
+    condition: the lines changed aren't 0
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[3]
+    condition: no failed check's name contains lint
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== all of negations · pr green · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title isn't x
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[1]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[6]
+    condition: the author isn't an outside contributor
+    result: yes
+    actual: a trusted bot
+    need: ""
+  - path: conditions.of[5]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[2]
+    condition: the labels don't include blocked
+    result: yes
+    actual: "Needs-Review", "dependencies"
+    need: ""
+  - path: conditions.of[4]
+    condition: the lines changed aren't 0
+    result: yes
+    actual: 52
+    need: ""
+  - path: conditions.of[3]
+    condition: no failed check's name contains lint
+    result: yes
+    actual: none
+    need: ""
+
+== all of negations · pr partial · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title isn't x
+    result: yes
+    actual: "Fix the login flow"
+    need: ""
+  - path: conditions.of[1]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "Fix the login flow"
+    need: ""
+  - path: conditions.of[6]
+    condition: the author isn't an outside contributor
+    result: no
+    actual: an outside contributor
+    need: ""
+
+== all of negations · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title isn't x
+    result: yes
+    actual: "Crash on start"
+    need: ""
+  - path: conditions.of[1]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "Crash on start"
+    need: ""
+  - path: conditions.of[6]
+    condition: the author isn't an outside contributor
+    result: no
+    actual: an outside contributor
+    need: ""
+
+== all of negations · pr checks unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [checks]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title isn't x
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: the title doesn't contain wip
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[6]
+    condition: the author isn't an outside contributor
+    result: yes
+    actual: a trusted bot
+    need: ""
+  - path: conditions.of[5]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[2]
+    condition: the labels don't include blocked
+    result: yes
+    actual: "dependencies"
+    need: ""
+  - path: conditions.of[4]
+    condition: the lines changed aren't 0
+    result: yes
+    actual: 15
+    need: ""
+  - path: conditions.of[3]
+    condition: no failed check's name contains lint
+    result: unknown
+    actual: the check names aren't read yet
+    need: checks
+
+== any of the negations' opposites · pr failing · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title is x
+    result: no
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[4]
+    condition: the author is an outside contributor
+    result: no
+    actual: a trusted bot
+    need: ""
+  - path: conditions.of[3]
+    condition: it's a draft
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: the labels include blocked
+    result: no
+    actual: "dependencies"
+    need: ""
+  - path: conditions.of[2]
+    condition: a failed check's name contains lint
+    result: no
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+  - path: conditions.of[5]
+    condition: every changed path matches docs/
+    result: no
+    actual: "go.mod", "go.sum"
+    need: ""
+
+== any of the negations' opposites · pr unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [details]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title is x
+    result: no
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[4]
+    condition: the author is an outside contributor
+    result: unknown
+    actual: the author's association isn't read yet, so whether they're a member isn't known
+    need: ""
+  - path: conditions.of[3]
+    condition: it's a draft
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: the labels include blocked
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[2]
+    condition: a failed check's name contains lint
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[5]
+    condition: every changed path matches docs/
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== any of the negations' opposites · pr green · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title is x
+    result: no
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[4]
+    condition: the author is an outside contributor
+    result: no
+    actual: a trusted bot
+    need: ""
+  - path: conditions.of[3]
+    condition: it's a draft
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: the labels include blocked
+    result: no
+    actual: "Needs-Review", "dependencies"
+    need: ""
+  - path: conditions.of[2]
+    condition: a failed check's name contains lint
+    result: no
+    actual: none
+    need: ""
+  - path: conditions.of[5]
+    condition: every changed path matches docs/
+    result: no
+    actual: "package.json", "pnpm-lock.yaml"
+    need: ""
+
+== any of the negations' opposites · pr partial · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title is x
+    result: no
+    actual: "Fix the login flow"
+    need: ""
+  - path: conditions.of[4]
+    condition: the author is an outside contributor
+    result: yes
+    actual: an outside contributor
+    need: ""
+
+== any of the negations' opposites · issue · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title is x
+    result: no
+    actual: "Crash on start"
+    need: ""
+  - path: conditions.of[4]
+    condition: the author is an outside contributor
+    result: yes
+    actual: an outside contributor
+    need: ""
+
+== any of the negations' opposites · pr checks unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [checks, files]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title is x
+    result: no
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[4]
+    condition: the author is an outside contributor
+    result: no
+    actual: a trusted bot
+    need: ""
+  - path: conditions.of[3]
+    condition: it's a draft
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: the labels include blocked
+    result: no
+    actual: "dependencies"
+    need: ""
+  - path: conditions.of[2]
+    condition: a failed check's name contains lint
+    result: unknown
+    actual: the check names aren't read yet
+    need: checks
+  - path: conditions.of[5]
+    condition: every changed path matches docs/
+    result: unknown
+    actual: the changed files aren't checked yet
+    need: files
+
+== unknown before no · pr failing · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+  - path: conditions.of[1]
+    condition: the labels include dependencies
+    result: yes
+    actual: "dependencies"
+    need: ""
+  - path: conditions.of[0]
+    condition: the sensitive categories touched include workflows
+    result: no
+    actual: dependencies
+    need: ""
+
+== unknown before no · pr unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [details]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+  - path: conditions.of[1]
+    condition: the labels include dependencies
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: the sensitive categories touched include workflows
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== unknown before no · pr green · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+  - path: conditions.of[1]
+    condition: the labels include dependencies
+    result: yes
+    actual: "Needs-Review", "dependencies"
+    need: ""
+  - path: conditions.of[0]
+    condition: the sensitive categories touched include workflows
+    result: no
+    actual: build tooling, dependencies
+    need: ""
+
+== unknown before no · pr partial · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+  - path: conditions.of[1]
+    condition: the labels include dependencies
+    result: no
+    actual: "bug"
+    need: ""
+
+== unknown before no · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: it's a pull request
+    result: no
+    actual: an issue
+    need: ""
+
+== unknown before no · pr checks unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [files]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: it's a pull request
+    result: yes
+    actual: a pull request
+    need: ""
+  - path: conditions.of[1]
+    condition: the labels include dependencies
+    result: yes
+    actual: "dependencies"
+    need: ""
+  - path: conditions.of[0]
+    condition: the sensitive categories touched include workflows
+    result: unknown
+    actual: the changed files aren't checked yet
+    need: files
+
+== no conditions · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== no conditions · pr unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== no conditions · pr green · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== no conditions · pr partial · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== no conditions · issue · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== no conditions · pr checks unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== any of no conditions · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== any of no conditions · pr unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== any of no conditions · pr green · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== any of no conditions · pr partial · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== any of no conditions · issue · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== any of no conditions · pr checks unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+
+== the routine's history · pr failing · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: none yet
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 0
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== the routine's history · pr failing · seen
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: failed
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 2
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== the routine's history · pr failing · own-push
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: done
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 1
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== the routine's history · pr unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: none yet
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 0
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== the routine's history · pr unread · seen
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: failed
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 2
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== the routine's history · pr unread · own-push
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: done
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 1
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== the routine's history · pr green · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: none yet
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 0
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+
+== the routine's history · pr green · seen
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: failed
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 2
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+
+== the routine's history · pr green · own-push
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: done
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 1
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+
+== the routine's history · pr partial · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: none yet
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 0
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: no
+    actual: "Fix the login flow"
+    need: ""
+
+== the routine's history · pr partial · seen
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: failed
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 2
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: no
+    actual: "Fix the login flow"
+    need: ""
+
+== the routine's history · pr partial · own-push
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: done
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 1
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: no
+    actual: "Fix the login flow"
+    need: ""
+
+== the routine's history · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: none yet
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 0
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: no
+    actual: "Crash on start"
+    need: ""
+
+== the routine's history · issue · seen
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: failed
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 2
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: no
+    actual: "Crash on start"
+    need: ""
+
+== the routine's history · issue · own-push
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: done
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 1
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: no
+    actual: "Crash on start"
+    need: ""
+
+== the routine's history · pr checks unread · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: none yet
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 0
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== the routine's history · pr checks unread · seen
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: failed
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 2
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== the routine's history · pr checks unread · own-push
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[1]
+    condition: this routine's last outcome isn't gave up
+    result: yes
+    actual: done
+    need: ""
+  - path: conditions.of[0]
+    condition: this routine's tries are under 3
+    result: yes
+    actual: 1
+    need: ""
+  - path: conditions.of[2]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== an unknown trigger and unknown conditions · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== an unknown trigger and unknown conditions · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[2]
+    condition: the labels include dependencies
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[1]
+    condition: a failed check's name contains security
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: the sensitive categories touched include workflows
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== an unknown trigger and unknown conditions · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== an unknown trigger and unknown conditions · pr partial · fresh
+match: no
+fireKey: merge_conflicts:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: yes
+    actual: it conflicts with its base branch
+    need: ""
+  - path: conditions.of[2]
+    condition: the labels include dependencies
+    result: no
+    actual: "bug"
+    need: ""
+
+== an unknown trigger and unknown conditions · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it's an issue, and Merge conflicts fires only for pull requests
+    need: ""
+
+== an unknown trigger and unknown conditions · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== a trigger that doesn't hold · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it isn't approved
+    need: ""
+
+== a trigger that doesn't hold · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: a changed path matches go.*
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== a trigger that doesn't hold · pr green · fresh
+match: no
+fireKey: approved:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: yes
+    actual: 1 approval
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[1]
+    condition: a changed path matches go.*
+    result: no
+    actual: "package.json", "pnpm-lock.yaml"
+    need: ""
+
+== a trigger that doesn't hold · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it isn't approved
+    need: ""
+
+== a trigger that doesn't hold · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it's an issue, and Approved fires only for pull requests
+    need: ""
+
+== a trigger that doesn't hold · pr checks unread · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Approved: is approved: the decision, or a new approval
+    result: no
+    actual: it isn't approved
+    need: ""
+
+== newer: a field this build doesn't read · pr failing · fresh
+match: unknown
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: item.mood is happy
+    result: unknown
+    actual: it isn't a field this build reads
+    need: ""
+
+== newer: a field this build doesn't read · pr unread · fresh
+match: unknown
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: item.mood is happy
+    result: unknown
+    actual: it isn't a field this build reads
+    need: ""
+
+== newer: a field this build doesn't read · pr green · fresh
+match: unknown
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[1]
+    condition: item.mood is happy
+    result: unknown
+    actual: it isn't a field this build reads
+    need: ""
+
+== newer: a field this build doesn't read · pr partial · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: no
+    actual: "Fix the login flow"
+    need: ""
+
+== newer: a field this build doesn't read · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: no
+    actual: "Crash on start"
+    need: ""
+
+== newer: a field this build doesn't read · pr checks unread · fresh
+match: unknown
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: item.mood is happy
+    result: unknown
+    actual: it isn't a field this build reads
+    need: ""
+
+== newer: a field this build doesn't read, in a group · pr failing · fresh
+match: unknown
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: it's a draft
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the author is a bot
+    result: yes
+    actual: yes
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: item.mood is happy
+    result: unknown
+    actual: it isn't a field this build reads
+    need: ""
+
+== newer: a field this build doesn't read, in a group · pr unread · fresh
+match: unknown
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: it's a draft
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the author is a bot
+    result: unknown
+    actual: the author's type isn't read yet
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: item.mood is happy
+    result: unknown
+    actual: it isn't a field this build reads
+    need: ""
+
+== newer: a field this build doesn't read, in a group · pr green · fresh
+match: unknown
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: it's a draft
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the author is a bot
+    result: yes
+    actual: yes
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: item.mood is happy
+    result: unknown
+    actual: it isn't a field this build reads
+    need: ""
+
+== newer: a field this build doesn't read, in a group · pr partial · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: it's a draft
+    result: yes
+    actual: yes
+    need: ""
+
+== newer: a field this build doesn't read, in a group · issue · fresh
+match: no
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: it's a draft
+    result: no
+    actual: it's an issue
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the author is a bot
+    result: no
+    actual: no
+    need: ""
+
+== newer: a field this build doesn't read, in a group · pr checks unread · fresh
+match: unknown
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: it's a draft
+    result: no
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the author is a bot
+    result: yes
+    actual: yes
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: item.mood is happy
+    result: unknown
+    actual: it isn't a field this build reads
+    need: ""
+
+== newer: operators and values this build doesn't take · pr failing · fresh
+match: unknown
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: it's been open for more than forever
+    result: unknown
+    actual: 3 days
+    need: ""
+  - path: conditions.of[0]
+    condition: the title  ""
+    result: unknown
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[3]
+    condition: the title matches the regex (
+    result: unknown
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: the lines changed are over many
+    result: unknown
+    actual: 15
+    need: ""
+  - path: conditions.of[4]
+    condition: a changed path matches [z-a]
+    result: no
+    actual: "go.mod", "go.sum"
+    need: ""
+
+== newer: operators and values this build doesn't take · pr unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [details]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: it's been open for more than forever
+    result: unknown
+    actual: 3 days
+    need: ""
+  - path: conditions.of[0]
+    condition: the title  ""
+    result: unknown
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[3]
+    condition: the title matches the regex (
+    result: unknown
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: the lines changed are over many
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+  - path: conditions.of[4]
+    condition: a changed path matches [z-a]
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== newer: operators and values this build doesn't take · pr green · fresh
+match: unknown
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: it's been open for more than forever
+    result: unknown
+    actual: 3 days
+    need: ""
+  - path: conditions.of[0]
+    condition: the title  ""
+    result: unknown
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[3]
+    condition: the title matches the regex (
+    result: unknown
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[1]
+    condition: the lines changed are over many
+    result: unknown
+    actual: 52
+    need: ""
+  - path: conditions.of[4]
+    condition: a changed path matches [z-a]
+    result: no
+    actual: "package.json", "pnpm-lock.yaml"
+    need: ""
+
+== newer: operators and values this build doesn't take · pr partial · fresh
+match: unknown
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: it's been open for more than forever
+    result: unknown
+    actual: 3 days
+    need: ""
+  - path: conditions.of[0]
+    condition: the title  ""
+    result: unknown
+    actual: "Fix the login flow"
+    need: ""
+  - path: conditions.of[3]
+    condition: the title matches the regex (
+    result: unknown
+    actual: "Fix the login flow"
+    need: ""
+  - path: conditions.of[1]
+    condition: the lines changed are over many
+    result: unknown
+    actual: 550
+    need: ""
+  - path: conditions.of[4]
+    condition: a changed path matches [z-a]
+    result: unknown
+    actual: ".github/workflows/ci.yml", "docs/login.md", and maybe more
+    need: ""
+
+== newer: operators and values this build doesn't take · issue · fresh
+match: unknown
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: it's been open for more than forever
+    result: unknown
+    actual: 30 days
+    need: ""
+  - path: conditions.of[0]
+    condition: the title  ""
+    result: unknown
+    actual: "Crash on start"
+    need: ""
+  - path: conditions.of[3]
+    condition: the title matches the regex (
+    result: unknown
+    actual: "Crash on start"
+    need: ""
+  - path: conditions.of[1]
+    condition: the lines changed are over many
+    result: no
+    actual: it's an issue
+    need: ""
+  - path: conditions.of[4]
+    condition: a changed path matches [z-a]
+    result: no
+    actual: it's an issue
+    need: ""
+
+== newer: operators and values this build doesn't take · pr checks unread · fresh
+match: unknown
+fireKey: appears:item
+needs: [files]
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[2]
+    condition: it's been open for more than forever
+    result: unknown
+    actual: 3 days
+    need: ""
+  - path: conditions.of[0]
+    condition: the title  ""
+    result: unknown
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[3]
+    condition: the title matches the regex (
+    result: unknown
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: the lines changed are over many
+    result: unknown
+    actual: 15
+    need: ""
+  - path: conditions.of[4]
+    condition: a changed path matches [z-a]
+    result: unknown
+    actual: the changed files aren't checked yet
+    need: files
+
+== newer: a trigger this build doesn't read · pr failing · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: deployed
+    result: unknown
+    actual: it isn't a trigger this build reads
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: the sensitive categories touched include workflows
+    result: no
+    actual: dependencies
+    need: ""
+
+== newer: a trigger this build doesn't read · pr failing · manual
+match: no
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: ": "
+    result: yes
+    actual: you ran it
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: the sensitive categories touched include workflows
+    result: no
+    actual: dependencies
+    need: ""
+
+== newer: a trigger this build doesn't read · pr unread · fresh
+match: unknown
+fireKey: ""
+needs: [details]
+trace:
+  - path: trigger
+    condition: deployed
+    result: unknown
+    actual: it isn't a trigger this build reads
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: the sensitive categories touched include workflows
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== newer: a trigger this build doesn't read · pr unread · manual
+match: unknown
+fireKey: manual:click-7
+needs: [details]
+trace:
+  - path: trigger
+    condition: ": "
+    result: yes
+    actual: you ran it
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: the sensitive categories touched include workflows
+    result: unknown
+    actual: its details aren't read yet
+    need: details
+
+== newer: a trigger this build doesn't read · pr green · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: deployed
+    result: unknown
+    actual: it isn't a trigger this build reads
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[1]
+    condition: the sensitive categories touched include workflows
+    result: no
+    actual: build tooling, dependencies
+    need: ""
+
+== newer: a trigger this build doesn't read · pr green · manual
+match: no
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: ": "
+    result: yes
+    actual: you ran it
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "[Security] Bump lodash from 4.17.20 to 4.17.21"
+    need: ""
+  - path: conditions.of[1]
+    condition: the sensitive categories touched include workflows
+    result: no
+    actual: build tooling, dependencies
+    need: ""
+
+== newer: a trigger this build doesn't read · pr partial · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: deployed
+    result: unknown
+    actual: it isn't a trigger this build reads
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: no
+    actual: "Fix the login flow"
+    need: ""
+
+== newer: a trigger this build doesn't read · pr partial · manual
+match: no
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: ": "
+    result: yes
+    actual: you ran it
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: no
+    actual: "Fix the login flow"
+    need: ""
+
+== newer: a trigger this build doesn't read · issue · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: deployed
+    result: unknown
+    actual: it isn't a trigger this build reads
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: no
+    actual: "Crash on start"
+    need: ""
+
+== newer: a trigger this build doesn't read · issue · manual
+match: no
+fireKey: manual:click-7
+needs: []
+trace:
+  - path: trigger
+    condition: ": "
+    result: yes
+    actual: you ran it
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: no
+    actual: "Crash on start"
+    need: ""
+
+== newer: a trigger this build doesn't read · pr checks unread · fresh
+match: unknown
+fireKey: ""
+needs: [files]
+trace:
+  - path: trigger
+    condition: deployed
+    result: unknown
+    actual: it isn't a trigger this build reads
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: the sensitive categories touched include workflows
+    result: unknown
+    actual: the changed files aren't checked yet
+    need: files
+
+== newer: a trigger this build doesn't read · pr checks unread · manual
+match: unknown
+fireKey: manual:click-7
+needs: [files]
+trace:
+  - path: trigger
+    condition: ": "
+    result: yes
+    actual: you ran it
+    need: ""
+  - path: conditions.of[0]
+    condition: the title contains bump
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+  - path: conditions.of[1]
+    condition: the sensitive categories touched include workflows
+    result: unknown
+    actual: the changed files aren't checked yet
+    need: files

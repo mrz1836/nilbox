@@ -1,0 +1,582 @@
+# Every decision Evaluate makes here, with its whole trace, in the order it ran.
+# Rewrite with go test ./internal/autopilot/eval -run TestDecisionsGolden -update, and review the diff.
+
+== pattern-1 · bench pull 1 · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex "^build\\(deps(-dev)?\\): bump (\\S+) from v?[0-9.]+ to v?[0-9.]+( in \\S+)?$"
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== pattern-1 · bench pull 500 · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the title matches the regex "^build\\(deps(-dev)?\\): bump (\\S+) from v?[0-9.]+ to v?[0-9.]+( in \\S+)?$"
+    result: yes
+    actual: "build(deps): bump golang.org/x/net from 0.30.0 to 0.31.0"
+    need: ""
+
+== pattern-2 · bench pull 1 · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: every changed path matches go.mod, go.sum, **/package.json, **/pnpm-lock.yaml, or vendor/
+    result: yes
+    actual: "go.mod", "go.sum"
+    need: ""
+
+== pattern-2 · bench pull 500 · fresh
+match: yes
+fireKey: appears:item
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: every changed path matches go.mod, go.sum, **/package.json, **/pnpm-lock.yaml, or vendor/
+    result: yes
+    actual: "go.mod", "go.sum"
+    need: ""
+
+== template address-requested-changes · bench pull 1 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: no one asked for changes
+    need: ""
+
+== template address-requested-changes · bench pull 500 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: no one asked for changes
+    need: ""
+
+== template ask-dependabot-to-rebase · bench pull 1 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== template ask-dependabot-to-rebase · bench pull 500 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== template ask-for-a-repro-on-quiet-bugs · bench pull 1 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== template ask-for-a-repro-on-quiet-bugs · bench pull 500 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Goes quiet: has had no activity for a number of days
+    result: no
+    actual: its last activity was 90 minutes ago
+    need: ""
+
+== template fix-dependabot-security-then-merge · bench pull 1 · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template fix-dependabot-security-then-merge · bench pull 500 · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template fix-dependabot-security · bench pull 1 · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template fix-dependabot-security · bench pull 500 · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template fix-failing-checks-on-my-prs · bench pull 1 · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+
+== template fix-failing-checks-on-my-prs · bench pull 500 · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+
+== template heal-dependabot-then-merge · bench pull 1 · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: the update type is minor or patch
+    result: yes
+    actual: minor
+    need: ""
+
+== template heal-dependabot-then-merge · bench pull 500 · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: the update type is minor or patch
+    result: yes
+    actual: minor
+    need: ""
+
+== template investigate-new-bugs · bench pull 1 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled bug
+    need: ""
+
+== template investigate-new-bugs · bench pull 500 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Labeled: carries a given label
+    result: no
+    actual: it isn't labeled bug
+    need: ""
+
+== template pre-review-what-asks-for-me · bench pull 1 · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: its size is XS, S, M, or L
+    result: yes
+    actual: S
+    need: ""
+
+== template pre-review-what-asks-for-me · bench pull 500 · fresh
+match: yes
+fireKey: new_commits:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: New commits: has a head commit this routine hasn't seen
+    result: yes
+    actual: its head is 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: it isn't a draft
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1]
+    condition: its size is XS, S, M, or L
+    result: yes
+    actual: S
+    need: ""
+
+== template re-run-flaky-checks-once · bench pull 1 · fresh
+match: no
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: the failed checks' names include "e2e / browser" or "integration / flaky-suite"
+    result: no
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template re-run-flaky-checks-once · bench pull 500 · fresh
+match: no
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: the failed checks' names include "e2e / browser" or "integration / flaky-suite"
+    result: no
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template resolve-merge-conflicts · bench pull 1 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== template resolve-merge-conflicts · bench pull 500 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Merge conflicts: conflicts with its base branch
+    result: no
+    actual: it has no merge conflicts
+    need: ""
+
+== template review-members · bench pull 1 · fresh
+match: no
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a member
+    result: no
+    actual: a trusted bot
+    need: ""
+
+== template review-members · bench pull 500 · fresh
+match: no
+fireKey: appears:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Appears: is in the watch
+    result: yes
+    actual: it's in the watch
+    need: ""
+  - path: conditions.of[0]
+    condition: the author is a member
+    result: no
+    actual: a trusted bot
+    need: ""
+
+== template snooze-passing-bot-prs · bench pull 1 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 2 checks failed
+    need: ""
+
+== template snooze-passing-bot-prs · bench pull 500 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Checks pass: has every check passing, and settled, on its head commit
+    result: no
+    actual: 2 checks failed
+    need: ""
+
+== template tell-me-about-security-failures · bench pull 1 · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template tell-me-about-security-failures · bench pull 500 · fresh
+match: yes
+fireKey: checks_failed:commit:0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+needs: []
+trace:
+  - path: trigger
+    condition: Checks fail: has a failed or errored check on its head commit
+    result: yes
+    actual: 2 checks failed on 0a1b2c3
+    need: ""
+  - path: conditions.of[0]
+    condition: a failed check's name contains codeql, gitleaks, govulncheck, nancy, osv, or security
+    result: yes
+    actual: "CodeQL / Analyze (go)", "🔒 Security Scans / 🔒 Security Scans"
+    need: ""
+
+== template triage-busy-issues · bench pull 1 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== template triage-busy-issues · bench pull 500 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: New comments: gains new comments since the routine last fired, or since it first saw the item
+    result: no
+    actual: the routine counts new comments from when it first sees the item
+    need: ""
+
+== template update-my-prs-when-behind · bench pull 1 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it isn't behind its base branch
+    need: ""
+
+== template update-my-prs-when-behind · bench pull 500 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Falls behind: is behind its base branch, with no conflict
+    result: no
+    actual: it isn't behind its base branch
+    need: ""
+
+== template weekday-nudge · bench pull 1 · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+  - path: conditions.of[0]
+    condition: it's been quiet for more than 3 days
+    result: no
+    actual: 90 minutes
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the repository isn't muted
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: the checks' state is failing or erroring
+    result: yes
+    actual: failing
+    need: ""
+
+== template weekday-nudge · bench pull 500 · fresh
+match: yes
+fireKey: schedule:2026-11-16
+needs: []
+trace:
+  - path: trigger
+    condition: On a schedule: holds the conditions at a set time
+    result: yes
+    actual: it was due at 08:30
+    need: ""
+  - path: conditions.of[0]
+    condition: it's been quiet for more than 3 days
+    result: no
+    actual: 90 minutes
+    need: ""
+  - path: conditions.of[1].group.of[1]
+    condition: the repository isn't muted
+    result: yes
+    actual: no
+    need: ""
+  - path: conditions.of[1].group.of[0]
+    condition: the checks' state is failing or erroring
+    result: yes
+    actual: failing
+    need: ""
+
+== template address-requested-changes · bench pull 1 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: no one asked for changes
+    need: ""
+
+== template address-requested-changes · bench pull 500 · fresh
+match: no
+fireKey: ""
+needs: []
+trace:
+  - path: trigger
+    condition: Changes requested: gets a new request for changes, or its review decision turns to one
+    result: no
+    actual: no one asked for changes
+    need: ""
