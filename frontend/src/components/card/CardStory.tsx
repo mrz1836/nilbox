@@ -1,29 +1,19 @@
 import type { ReactNode } from 'react'
 
 import type { Edge, Story, StoryIcon } from '../../lib/nextStep'
+import { toneFill, toneText, type Tone } from '../../lib/tone'
 import { ArchiveIcon, AutopilotIcon, ClockIcon } from '../icons'
 import { StatusDot } from '../StatusDot'
 
-// edgeText is each edge's story color, and edgeDot its dot's, spelled out in full so
-// Tailwind finds them.
-const edgeText: Readonly<Record<Edge, string>> = {
-  urgent: 'text-warning',
-  blocked: 'text-danger',
-  yours: 'text-accent',
-  ready: 'text-success',
-  agent: 'text-info',
-  waiting: 'text-muted',
-  none: 'text-muted',
-}
-
-const edgeDot: Readonly<Record<Edge, string>> = {
-  urgent: 'bg-warning',
-  blocked: 'bg-danger',
-  yours: 'bg-accent',
-  ready: 'bg-success',
-  agent: 'bg-info',
-  waiting: 'bg-muted',
-  none: 'bg-muted',
+// edgeTone is each edge's tone: its story's color (toneText), and its dot's (toneFill).
+const edgeTone: Readonly<Record<Edge, Tone>> = {
+  urgent: 'warning',
+  blocked: 'danger',
+  yours: 'accent',
+  ready: 'success',
+  agent: 'info',
+  waiting: 'muted',
+  none: 'muted',
 }
 
 // edgeTint is each edge's tint behind a compact card's story chip, spelled out in full so
@@ -41,13 +31,15 @@ const edgeTint: Readonly<Record<Edge, string>> = {
 // Mark is the story's icon: a dot in the edge's color, one with a ring swelling out of it
 // for something at work or waiting now (StatusDot), or a clock, a bolt, or an archive box.
 function Mark({ icon, edge }: { icon: StoryIcon; edge: Edge }) {
+  const dot = toneFill[edgeTone[edge]]
+
   switch (icon) {
     case 'dot':
-      return <span aria-hidden="true" data-icon="dot" className={`size-1.5 shrink-0 rounded-full ${edgeDot[edge]}`} />
+      return <span aria-hidden="true" data-icon="dot" className={`size-1.5 shrink-0 rounded-full ${dot}`} />
     case 'ping':
       return (
         <span data-icon="ping" className="inline-flex">
-          <StatusDot color={edgeDot[edge]} ping />
+          <StatusDot color={dot} ping />
         </span>
       )
     case 'clock':
@@ -124,7 +116,7 @@ export function CardStory({ story, edge, children, chip = false }: CardStoryProp
     return (
       <span
         data-story-chip
-        className={`inline-flex h-5 max-w-60 min-w-0 items-center gap-1.25 rounded-md px-2 text-meta font-semibold whitespace-nowrap ${edgeText[edge]} ${edgeTint[edge]}`}
+        className={`inline-flex h-5 max-w-60 min-w-0 items-center gap-1.25 rounded-md px-2 text-meta font-semibold whitespace-nowrap ${toneText[edgeTone[edge]]} ${edgeTint[edge]}`}
       >
         <Mark icon={story.icon} edge={edge} />
         <span className="truncate">
@@ -138,7 +130,7 @@ export function CardStory({ story, edge, children, chip = false }: CardStoryProp
   return (
     <span
       data-guide="story"
-      className={`inline-flex shrink-0 items-center gap-1.5 font-semibold whitespace-nowrap ${edgeText[edge]}`}
+      className={`inline-flex shrink-0 items-center gap-1.5 font-semibold whitespace-nowrap ${toneText[edgeTone[edge]]}`}
     >
       <Mark icon={story.icon} edge={edge} />
       {story.text}
