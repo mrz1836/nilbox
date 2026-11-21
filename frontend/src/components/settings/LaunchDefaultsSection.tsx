@@ -475,7 +475,7 @@ function DefaultsEditor({
           })
         }
       }}
-      className="flex flex-col gap-4 rounded-lg border border-accent/40 bg-surface p-4 shadow-sm"
+      className="flex flex-col gap-4 rounded-lg border border-accent/45 bg-surface p-4 shadow-sm"
     >
       {editing.kind === 'new' ? (
         <Field

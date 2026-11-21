@@ -24,7 +24,7 @@ export function useSetting(label: string): [SettingMarks, boolean] {
 export const rowMatchClass = 'transition-colors first:rounded-t-lg last:rounded-b-lg data-match:bg-accent/10'
 
 // cardMatchClass rings a matching card.
-export const cardMatchClass = 'data-match:ring-2 data-match:ring-accent/40'
+export const cardMatchClass = 'data-match:ring-2 data-match:ring-accent/45'
 
 // headingMatchClass colors a matching heading.
 export function headingMatchClass(match: boolean): string {

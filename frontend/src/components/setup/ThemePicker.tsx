@@ -50,7 +50,7 @@ export function ThemePicker({ theme, onThemeChange }: ThemePickerProps) {
         {tiles.map(({ value, label, hint, Icon, turnIn }) => (
           <label
             key={value}
-            className="group flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-3.5 text-center transition-colors hover:border-accent/50 has-checked:border-accent has-checked:bg-accent/10 has-focus-visible:outline-2 has-focus-visible:outline-accent"
+            className="group flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-3.5 text-center transition-colors hover:border-accent/45 has-checked:border-accent has-checked:bg-accent/10 has-focus-visible:outline-2 has-focus-visible:outline-accent"
           >
             <input
               type="radio"

@@ -185,7 +185,7 @@ export function FinishStep({
 
   return (
     <section className="flex flex-col items-center text-center">
-      <p className="nil-rise inline-flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-3 py-1 text-xs font-semibold tracking-[0.14em] text-warning uppercase">
+      <p className="nil-rise inline-flex items-center gap-1.5 rounded-full border border-warning/45 bg-warning/10 px-3 py-1 text-xs font-semibold tracking-[0.14em] text-warning uppercase">
         <TrophyIcon className="size-3.5" />
         Achievement unlocked
       </p>
@@ -212,7 +212,7 @@ export function FinishStep({
                 onClick={() => {
                   onFix(line.step)
                 }}
-                className="shrink-0 rounded px-1.5 text-xs font-medium text-warning hover:bg-warning/15"
+                className="shrink-0 rounded px-1.5 text-xs font-medium text-warning hover:bg-warning/14"
               >
                 Fix
               </button>

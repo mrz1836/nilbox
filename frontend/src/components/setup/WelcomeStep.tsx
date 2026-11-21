@@ -174,7 +174,7 @@ export function WelcomeStep({
       <Greeting variant={variant} info={info} />
 
       {restored ? (
-        <div className="nil-rise mt-8 flex w-full max-w-md flex-col items-center gap-4 rounded-lg border border-success/50 bg-success/10 px-5 py-4">
+        <div className="nil-rise mt-8 flex w-full max-w-md flex-col items-center gap-4 rounded-lg border border-success/45 bg-success/10 px-5 py-4">
           <p role="status" className="text-sm font-medium">
             Your setup is back: review the steps, or finish now.
           </p>
