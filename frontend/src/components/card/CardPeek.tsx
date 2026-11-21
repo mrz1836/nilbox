@@ -24,7 +24,7 @@ import {
   type ProjectField,
 } from '../../platform'
 import { AutopilotRowsContext, useMarkedBy, useRoutineName } from '../autopilot/AutopilotChip'
-import { inkLinkClass, smallButtonClass } from '../controls'
+import { ErrorText, inkLinkClass, smallButtonClass } from '../controls'
 import { ArchiveIcon, AutopilotIcon, ClockIcon, DotIcon, ExternalIcon, PinIcon, RingIcon } from '../icons'
 import { FieldPill, LabelChip, ProgressBar, ProjectLink } from '../ItemSignals'
 import { RelativeTime } from '../RelativeTime'
@@ -633,11 +633,7 @@ export function CardPeek({
           </button>
         )}
       </div>
-      {error !== '' && (
-        <p role="alert" className="col-span-full -mt-3 text-xs text-danger">
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} className="col-span-full -mt-3" />
     </section>
   )
 }

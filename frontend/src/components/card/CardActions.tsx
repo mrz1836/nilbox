@@ -6,6 +6,7 @@ import type { Edge, Step, Verb } from '../../lib/nextStep'
 import type { TriageTab } from '../../lib/triage'
 import { focusSession, openExternal, type AgentInfo, type AgentSession, type InboxItem } from '../../platform'
 import { AutopilotRowsContext, useWatch } from '../autopilot/AutopilotChip'
+import { ErrorText } from '../controls'
 import { HandIcon, MergeIcon } from '../icons'
 import { SessionsButton } from '../SessionTag'
 import { bringBack, type TriageActions } from '../TriageControls'
@@ -406,11 +407,7 @@ export function CardActions({
           </div>
         </div>
       )}
-      {error !== '' && (
-        <p role="alert" className={`${compact ? compactOutcomeClass : cardOutcomeClass} text-xs text-danger`}>
-          {error}
-        </p>
-      )}
+      <ErrorText error={error} className={compact ? compactOutcomeClass : cardOutcomeClass} />
     </>
   )
 }
