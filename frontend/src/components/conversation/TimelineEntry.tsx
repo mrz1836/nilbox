@@ -12,7 +12,7 @@ import {
   type TimelineReviewState,
 } from '../../platform'
 import { PersonAvatar } from '../Avatar'
-import { quietButtonClass } from '../controls'
+import { iconButtonClass, quietButtonClass } from '../controls'
 import { ExternalIcon } from '../icons'
 import { ItemLink } from '../ItemLink'
 import { LabelChip } from '../ItemSignals'
@@ -85,7 +85,7 @@ function OpenOnGitHub({ url, what }: { url: string; what: string }) {
       onClick={() => {
         openExternal(url)
       }}
-      className={`${quietButtonClass} p-1`}
+      className={iconButtonClass}
     >
       <ExternalIcon className="size-3" />
     </button>
