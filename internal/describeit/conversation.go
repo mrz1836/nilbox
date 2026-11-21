@@ -159,22 +159,6 @@ func (s *Service) turnOfLocked(lt *liveTurn, id string) bool {
 	return s.rec != nil && s.rec.ID == id
 }
 
-// turnDone returns what closes once the turn running now has ended, closed already when
-// none runs.
-func (s *Service) turnDone() <-chan struct{} {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.live == nil {
-		done := make(chan struct{})
-		close(done)
-
-		return done
-	}
-
-	return s.live.done
-}
-
 // view returns the conversation rec as the window shows it, running or not: each turn
 // with its cards, read from their files and checked against the live snapshot, and what
 // it cost so far.
