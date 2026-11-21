@@ -12,7 +12,7 @@ function Words({ words }: { words: WordsData }) {
       part
     ) : (
       // A sentence's parts never move, so their places key them.
-      <code key={i} className="font-mono text-[0.71875rem]">
+      <code key={i} className="font-mono text-meta">
         {part.code}
       </code>
     ),
@@ -57,7 +57,7 @@ export function SafetyBand({ safety, className = 'border-b border-border/70' }: 
   return (
     <div
       data-tone={safety.tone}
-      className={`flex items-start gap-2.25 px-3 py-2 text-[0.78125rem] ${tone.band} ${className}`}
+      className={`flex items-start gap-2.25 px-3 py-2 text-control ${tone.band} ${className}`}
     >
       {safetyIcons[safety.icon](`mt-0.5 size-3.5 shrink-0 ${tone.icon}`)}
       <div className="flex min-w-0 flex-col">
@@ -68,7 +68,7 @@ export function SafetyBand({ safety, className = 'border-b border-border/70' }: 
           <span className="mt-1.25 inline-flex max-w-full min-w-0 items-center gap-1.5">
             <code
               title={safety.command}
-              className="min-w-0 truncate rounded-sm border border-border/70 bg-surface/80 px-1.25 font-mono text-[0.71875rem]"
+              className="min-w-0 truncate rounded-sm border border-border/70 bg-surface/80 px-1.25 font-mono text-meta"
             >
               {safety.command}
             </code>

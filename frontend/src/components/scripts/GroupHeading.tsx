@@ -52,7 +52,7 @@ export function GroupHeading(props: GroupHeadingProps) {
             <ChevronRightIcon className="size-3.5 shrink-0 text-muted" />
           )}
           {props.title === undefined ? (
-            <span className="shrink-0 text-[0.8125rem] font-normal tracking-normal normal-case">{props.name}</span>
+            <span className="shrink-0 text-body font-normal tracking-normal normal-case">{props.name}</span>
           ) : (
             <span className="truncate">
               {props.title} · {formatCount(props.count)}

@@ -7,7 +7,7 @@ import { AlertIcon, InfoIcon } from '../icons'
 
 // commandClass sets a command apart as the text that runs: monospace, kept whole.
 export const commandClass =
-  'rounded-md border border-border bg-background px-2.5 py-1.5 font-mono text-[0.8125rem] break-all whitespace-pre-wrap text-text'
+  'rounded-md border border-border bg-background px-2.5 py-1.5 font-mono text-body break-all whitespace-pre-wrap text-text'
 
 export interface TrustDialogProps {
   question: ScriptQuestion

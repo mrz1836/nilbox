@@ -183,7 +183,7 @@ function CountCell({ candidate }: { candidate: ReleaseCandidate }) {
       {kind !== '' && (
         <span
           title={bumpHint(headlines)}
-          className={`rounded-full border px-1.5 text-[0.6875rem] leading-4 font-semibold ${bumpChips[kind].className}`}
+          className={`rounded-full border px-1.5 text-caption leading-4 font-semibold ${bumpChips[kind].className}`}
         >
           {bumpChips[kind].text}
         </span>
@@ -200,7 +200,7 @@ function WaveBadge({ wave }: { wave: readonly string[] }) {
   return (
     <span
       title={`${String(wave.length)} of the listed repositories have this as their newest commit: ${wave.join(', ')}`}
-      className="shrink-0 rounded-full border border-border bg-raised px-1.5 text-[0.6875rem] leading-4 font-semibold tabular-nums"
+      className="shrink-0 rounded-full border border-border bg-raised px-1.5 text-caption leading-4 font-semibold tabular-nums"
     >
       <span aria-hidden="true">{`×${n}`}</span>
       <span className="sr-only">{`, the newest commit of ${n} listed repositories`}</span>

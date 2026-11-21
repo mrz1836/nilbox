@@ -147,7 +147,7 @@ function MagexBody({ section, ...place }: Omit<MagexSectionProps, 'headingId' | 
               onChange={(e) => {
                 setArgsText(e.target.value)
               }}
-              className={`${fieldClass} font-mono text-[0.8125rem]`}
+              className={`${fieldClass} font-mono text-body`}
             />
             <p id={`${id}-args-help`} className="text-xs text-muted">
               key=value pairs, separated by spaces, for magex’s own targets.

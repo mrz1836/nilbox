@@ -41,10 +41,7 @@ function CloneNote({ repo, shown, filtered }: CloneNoteProps) {
 
   return (
     <span className="flex min-w-0 items-center gap-2 text-xs whitespace-nowrap">
-      <span
-        title={repo.displayPath}
-        className="min-w-8 shrink truncate font-mono text-[0.71875rem] @max-[44rem]:hidden"
-      >
+      <span title={repo.displayPath} className="min-w-8 shrink truncate font-mono text-meta @max-[44rem]:hidden">
         {repo.displayPath}
       </span>{' '}
       {note !== null && (

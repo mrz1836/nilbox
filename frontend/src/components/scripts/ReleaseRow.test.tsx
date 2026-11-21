@@ -632,7 +632,7 @@ describe('GroupHeading', () => {
     expect(button).not.toHaveTextContent('·')
     expect(screen.getByText('example-repo').parentElement).toHaveClass(
       'shrink-0',
-      'text-[0.8125rem]',
+      'text-body',
       'tracking-normal',
       'normal-case',
     )

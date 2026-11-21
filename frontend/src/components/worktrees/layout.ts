@@ -43,7 +43,7 @@ export const stateCellClass = 'col-start-1 row-start-1 flex w-3.5 min-w-0 justif
 
 // branchCellClass holds the branch: its prefix gives way first, so the name stays readable.
 export const branchCellClass =
-  'col-start-2 row-start-1 flex min-w-0 items-center overflow-hidden text-[0.84375rem] whitespace-nowrap'
+  'col-start-2 row-start-1 flex min-w-0 items-center overflow-hidden text-body-lg whitespace-nowrap'
 
 // metaClass holds the item, the work, the agent, and the age: no box of its own while they
 // sit in the row's columns, and in a narrow grid the second line they share.
@@ -51,7 +51,7 @@ export const metaClass =
   'contents @max-xl:col-[2/-1] @max-xl:row-start-2 @max-xl:flex @max-xl:min-w-0 @max-xl:items-center @max-xl:gap-2.25 @max-xl:pr-1.5'
 
 export const itemCellClass =
-  'col-start-3 row-start-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-[0.78125rem] whitespace-nowrap @max-4xl:col-[2/4] @max-4xl:row-start-2 @max-xl:flex-auto'
+  'col-start-3 row-start-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-control whitespace-nowrap @max-4xl:col-[2/4] @max-4xl:row-start-2 @max-xl:flex-auto'
 
 export const workCellClass =
   'col-start-4 row-start-1 flex min-w-0 items-center gap-2.25 text-xs whitespace-nowrap tabular-nums @max-4xl:col-[4/9] @max-4xl:row-start-2 @max-4xl:justify-end @max-4xl:pr-1.5 @max-xl:shrink-0 @max-xl:pr-0'
@@ -101,7 +101,7 @@ export const dangerVerbButtonClass = `${buttonShape} border-border bg-surface te
 
 // tagClass is a small tag beside an item or a folder: draft, or Claude Code.
 export const tagClass =
-  'shrink-0 cursor-help rounded-full border border-border bg-raised px-1.5 text-[0.65625rem] leading-[0.9375rem] font-semibold text-muted'
+  'shrink-0 cursor-help rounded-full border border-border bg-raised px-1.5 text-marker leading-[0.9375rem] font-semibold text-muted'
 
 // drawerClass is a row's drawer, under it, from the branch's column to the row's end, on a
 // raised background; in a narrow grid, across the row under the state's column. It is the
@@ -118,7 +118,7 @@ export const drawerColumnClass =
 
 // columnHeadingClass is a drawer column's heading, in capitals.
 export const columnHeadingClass =
-  'mb-1.5 flex min-h-5 items-center gap-1.5 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase'
+  'mb-1.5 flex min-h-5 items-center gap-1.5 text-caption font-semibold tracking-wide text-muted uppercase'
 
 // columnNoneClass says a column has nothing to list.
 export const columnNoneClass = 'flex items-center gap-1.5 text-xs text-muted'
@@ -139,7 +139,7 @@ export const historyListClass =
   '@container grid grid-cols-[auto_fit-content(16rem)_minmax(0,1fr)_auto_fit-content(14rem)_auto_auto_auto] gap-x-3'
 
 export const historyRowClass =
-  'group/cleanup col-span-full grid min-h-7 grid-cols-subgrid items-center rounded-md py-0.5 pr-1 pl-2 text-[0.78125rem] hover:bg-raised/60 focus-within:bg-raised/60 @max-4xl:py-1'
+  'group/cleanup col-span-full grid min-h-7 grid-cols-subgrid items-center rounded-md py-0.5 pr-1 pl-2 text-control hover:bg-raised/60 focus-within:bg-raised/60 @max-4xl:py-1'
 
 // historyCell is what every cell of a cleaned-up line shares: one line, cut short.
 const historyCell = 'row-start-1 min-w-0 truncate'
@@ -154,7 +154,7 @@ export const historyHowClass = `${historyCell} col-start-4 text-xs text-muted @m
 
 export const historyBranchClass = `${historyCell} col-start-5 text-xs text-muted @max-4xl:col-[5/7] @max-4xl:row-start-2 @max-xl:hidden`
 
-export const historyCommitClass = `${historyCell} col-start-6 cursor-help font-mono text-[0.71875rem] text-muted @max-4xl:col-[7/-1] @max-4xl:row-start-2 @max-4xl:justify-self-end @max-4xl:pr-1.5`
+export const historyCommitClass = `${historyCell} col-start-6 cursor-help font-mono text-meta text-muted @max-4xl:col-[7/-1] @max-4xl:row-start-2 @max-4xl:justify-self-end @max-4xl:pr-1.5`
 
 export const historyAgeClass = `${historyCell} col-start-7 text-right text-xs text-muted tabular-nums`
 

@@ -242,7 +242,7 @@ export function ItemCell({ worktree, facts }: ItemCellProps) {
 
   return (
     <span className={itemCellClass}>
-      <span title={worktree.displayPath} className="min-w-0 truncate font-mono text-[0.71875rem] text-muted">
+      <span title={worktree.displayPath} className="min-w-0 truncate font-mono text-meta text-muted">
         {folderOf(worktree)}
       </span>
       {worktree.legacy && (
@@ -361,7 +361,7 @@ function AgentWords({ line }: { line: AgentLine }) {
           <StatusDot color={toneBg[tone]} ping={ping} />
           <span className="min-w-0 truncate">
             <span className="font-medium text-text">{line.name}</span>
-            {line.version !== '' && <span className="font-mono text-[0.6875rem] @max-xl:hidden"> {line.version}</span>}
+            {line.version !== '' && <span className="font-mono text-caption @max-xl:hidden"> {line.version}</span>}
             {' · '}
             <span className={toneText[tone]}>
               {line.state === '' ? `pid ${String(line.pid)}` : stateWords[line.state]}

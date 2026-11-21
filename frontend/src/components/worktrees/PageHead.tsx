@@ -30,7 +30,7 @@ function Banner({ tone, children }: { tone: 'warn' | 'quiet'; children: ReactNod
   return (
     <p
       role="note"
-      className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-[0.8125rem] ${tone === 'warn' ? 'border-warning/45 bg-warning/9 text-text' : 'border-border bg-surface text-muted'}`}
+      className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-body ${tone === 'warn' ? 'border-warning/45 bg-warning/9 text-text' : 'border-border bg-surface text-muted'}`}
     >
       {tone === 'warn' ? (
         <AlertIcon className="mt-0.5 size-3.5 shrink-0 text-warning" />

@@ -70,7 +70,7 @@ function Chosen({ chosen, onChange }: ChosenProps) {
         onChange={(e) => {
           setFilter(e.target.value)
         }}
-        className={`${fieldClass} py-1 text-[0.8125rem]`}
+        className={`${fieldClass} py-1 text-body`}
       />
       {names.data === undefined && names.error === '' && (
         <p role="status" className="flex items-center gap-2 px-1 text-xs text-muted">
@@ -200,7 +200,7 @@ export function ScriptEditor({ script, variables, onSaved, onCancel }: ScriptEdi
             onChange={(e) => {
               set({ command: e.target.value })
             }}
-            className={`${fieldClass} font-mono text-[0.8125rem]`}
+            className={`${fieldClass} font-mono text-body`}
           />
         </Field>
         <fieldset className="flex flex-col gap-1.5">

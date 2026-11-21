@@ -68,7 +68,7 @@ function InputField({ input, id, text, choice, onText, onChoice }: InputFieldPro
           onChange={(e) => {
             onText(e.target.value)
           }}
-          className={`${fieldClass} font-mono text-[0.8125rem]`}
+          className={`${fieldClass} font-mono text-body`}
         />
       </div>
     )
