@@ -7,7 +7,7 @@ import type { Query } from '../../lib/useQuery'
 import { openExternal, type GitHubSignIn } from '../../platform'
 import { PersonAvatar } from '../Avatar'
 import { CommandLine } from '../CommandLine'
-import { buttonClass, chipClass } from '../controls'
+import { buttonClass, chipClass, linkClass } from '../controls'
 import { AlertIcon, CircleCheckIcon, ExternalIcon, ProjectIcon, RefreshIcon } from '../icons'
 import { Spinner } from '../Spinner'
 
@@ -109,7 +109,7 @@ function State({ github }: { github: GitHubSignIn }) {
               onClick={() => {
                 openExternal(cliPage)
               }}
-              className="inline-flex items-center gap-0.5 font-medium text-accent hover:underline"
+              className={`${linkClass} inline-flex items-center gap-0.5`}
             >
               cli.github.com
               <ExternalIcon className="size-3" />

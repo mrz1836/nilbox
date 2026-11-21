@@ -17,7 +17,7 @@ import {
   type PeopleSummary,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, ErrorText, Segmented, type SegmentOption } from '../controls'
+import { buttonClass, ErrorText, linkClass, Segmented, type SegmentOption } from '../controls'
 import { ChoiceRow, Group, groupClass, joinIds, Note, SectionIntro, SettingRow, SwitchRow } from './rows'
 import { StringListEditor } from './StringListEditor'
 import type { SectionProps } from './types'
@@ -343,7 +343,7 @@ export function ReviewingSection({ settings: stored, onSaved, onManageReplies }:
           {onManageReplies === undefined ? (
             <span className="text-text">Prompts › Review replies</span>
           ) : (
-            <button type="button" onClick={onManageReplies} className="text-accent hover:underline">
+            <button type="button" onClick={onManageReplies} className={linkClass}>
               Prompts › Review replies
             </button>
           )}

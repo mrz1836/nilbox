@@ -26,7 +26,15 @@ import {
   type ToolState,
 } from '../../platform'
 import { CommandLine } from '../CommandLine'
-import { buttonClass, ErrorText, fieldClass, primaryButtonClass, quietButtonClass, Switch } from '../controls'
+import {
+  buttonClass,
+  ErrorText,
+  fieldClass,
+  linkClass,
+  primaryButtonClass,
+  quietButtonClass,
+  Switch,
+} from '../controls'
 import { AlertIcon, CheckIcon, ChevronRightIcon, ExternalIcon, XIcon } from '../icons'
 import { RunPanel } from '../scripts/RunPanel'
 import { Spinner } from '../Spinner'
@@ -180,7 +188,7 @@ function LinkButton({ url, children }: { url: string; children: string }) {
       onClick={() => {
         openExternal(url)
       }}
-      className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
+      className={`${linkClass} inline-flex items-center gap-1`}
     >
       {children}
       <ExternalIcon className="size-3" />
@@ -584,7 +592,7 @@ export function IntegrationCard({ tool, checking, onSaved, reload, onTools, term
                     onClick={() => {
                       setFollowed(showable)
                     }}
-                    className="shrink-0 font-medium text-accent hover:underline"
+                    className={`${linkClass} shrink-0`}
                   >
                     Show the run
                   </button>
