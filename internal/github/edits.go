@@ -14,6 +14,7 @@ import (
 
 	"github.com/mrz1836/nilbox/internal/item"
 	"github.com/mrz1836/nilbox/internal/repo"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -495,7 +496,7 @@ func keptNames(dropped, still []string) []string {
 	var kept []string
 
 	for _, name := range dropped {
-		if slices.ContainsFunc(still, func(s string) bool { return strings.EqualFold(s, name) }) {
+		if textutil.ContainsFold(still, name) {
 			kept = append(kept, name)
 		}
 	}

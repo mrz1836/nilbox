@@ -7,9 +7,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
+
+	"github.com/mrz1836/nilbox/internal/textutil"
 )
 
 const (
@@ -157,9 +158,7 @@ func checkPublicURL(rawURL string, hosts []string, refused error, want string) (
 		return nil, fmt.Errorf("%w: %w", refused, err)
 	}
 
-	if u.Scheme != "https" || u.User != nil || !slices.ContainsFunc(hosts, func(h string) bool {
-		return strings.EqualFold(u.Host, h)
-	}) {
+	if u.Scheme != "https" || u.User != nil || !textutil.ContainsFold(hosts, u.Host) {
 		return nil, fmt.Errorf("%w: want %s", refused, want)
 	}
 
