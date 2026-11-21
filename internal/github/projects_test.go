@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -122,6 +123,147 @@ func TestFetchDetailsAsksAgainWithoutTheProjectsWhenTheScopeIsMissing(t *testing
 	assert.Equal(t, int32(1), without.Load(), "asked once more, without the projects")
 	assert.Equal(t, 3, details.Items[issueID].Comments)
 	assert.Nil(t, details.Items[issueID].Projects)
+}
+
+// repoIssueNode is the details answer's node for the issue with the node ID it is formatted
+// with, read with its repository whole.
+const repoIssueNode = `{"__typename":"Issue","id":%q,"comments":{"totalCount":3},"labels":{"nodes":[]},
+  "repository":{"id":"R_a","name":"example-repo","owner":{"login":"acme-org"},
+    "defaultBranchRef":{"name":"main"},"viewerPermission":"WRITE"}}`
+
+// repoIssues is the details answer for the issues with the given node IDs, each read with
+// its repository whole.
+func repoIssues(ids ...string) string {
+	nodes := make([]string, 0, len(ids))
+	for _, id := range ids {
+		nodes = append(nodes, fmt.Sprintf(repoIssueNode, id))
+	}
+
+	return `{"data":{"nodes":[` + strings.Join(nodes, ",") +
+		`],"rateLimit":{"cost":1,"limit":5000,"remaining":4990,"used":10,"resetAt":"2026-01-10T13:00:00Z"}}}`
+}
+
+// detailsQueryName names which of the details queries query is, so a failure reads well.
+func detailsQueryName(query string) string {
+	switch query {
+	case detailsQuery:
+		return "plain"
+	case detailsProjectsQuery:
+		return "projects"
+	case detailsRepoQuery:
+		return "repository"
+	case detailsRepoProjectsQuery:
+		return "repository and projects"
+	default:
+		return "unknown"
+	}
+}
+
+// askedIDs returns the node IDs a details request asks about.
+func askedIDs(req graphQLRequest) []string {
+	asked, _ := req.Variables["ids"].([]any)
+
+	ids := make([]string, 0, len(asked))
+	for _, id := range asked {
+		s, _ := id.(string)
+		ids = append(ids, s)
+	}
+
+	return ids
+}
+
+func TestFetchDetailsAsksAgainForTheRepositoryWithoutTheProjects(t *testing.T) {
+	t.Parallel()
+
+	heard := &heardRequests{}
+	client := newTestClient(t, refusingProjects(t, heard, func(w http.ResponseWriter) {
+		_, _ = io.WriteString(w, repoIssues(issueID))
+	}))
+
+	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), []string{issueID},
+		DetailOptions{Projects: true, Repository: true})
+	require.NoError(t, err, "a missing read:project scope never fails the details")
+
+	assert.True(t, details.ProjectsRefused)
+	assert.Equal(t, 1, details.Requests)
+
+	requests := heard.all()
+	require.Len(t, requests, 2, "asked once more")
+	assert.Equal(t, "repository and projects", detailsQueryName(requests[0].Query))
+	assert.Equal(t, "repository", detailsQueryName(requests[1].Query),
+		"the second request leaves the projects out, and still reads the repository")
+
+	got := details.Items[issueID]
+	assert.Equal(t, 3, got.Comments)
+	assert.Nil(t, got.Projects)
+	require.NotNil(t, got.Repo, "the repository asked for comes back")
+	assert.Equal(t, "acme-org", got.Repo.Owner)
+	assert.Equal(t, "example-repo", got.Repo.Name)
+	assert.Equal(t, "main", got.Repo.Repo.DefaultBranch)
+}
+
+func TestFetchDetailsAsksAgainBatchByBatchWithoutTheProjects(t *testing.T) {
+	t.Parallel()
+
+	// failing is the ID whose batch's second try fails.
+	const failing = "I_fakeNodeId3"
+
+	ids := []string{"I_fakeNodeId1", "I_fakeNodeId2", failing}
+	heard := &heardRequests{}
+
+	client := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		req := heard.hear(t, r)
+		asked := askedIDs(req)
+
+		switch {
+		case readsProjects(req):
+			_, _ = io.WriteString(w, refusedProjects)
+		case slices.Contains(asked, failing):
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = io.WriteString(w, `{"message":"bad gateway"}`)
+		default:
+			_, _ = io.WriteString(w, repoIssues(asked...))
+		}
+	})
+
+	var told atomic.Int64
+
+	details, err := client.FetchDetails(t.Context(), NewToken(fakeToken), ids, DetailOptions{
+		Projects: true, Repository: true, Batch: 2, Partial: true,
+		Progress: func(n int) { told.Add(int64(n)) },
+	})
+	require.ErrorIs(t, err, ErrUnexpectedStatus, "the batch whose second try failed")
+	require.NotNil(t, details, "with Partial, what the other batch read is kept")
+
+	assert.True(t, details.ProjectsRefused)
+	assert.Equal(t, 1, details.Requests)
+	assert.Equal(t, int64(2), told.Load(), "progress is told of the batch read, once it is")
+	require.Len(t, details.Items, 2)
+
+	for _, id := range ids[:2] {
+		require.Contains(t, details.Items, id)
+		assert.NotNil(t, details.Items[id].Repo, "%s keeps its repository", id)
+	}
+
+	// ask is one request: which query, and the IDs it asked about.
+	type ask struct {
+		query string
+		ids   string
+	}
+
+	requests := heard.all()
+	asks := make([]ask, 0, len(requests))
+
+	for _, req := range requests {
+		asks = append(asks, ask{query: detailsQueryName(req.Query), ids: strings.Join(askedIDs(req), " ")})
+	}
+
+	assert.ElementsMatch(t, []ask{
+		{"repository and projects", "I_fakeNodeId1 I_fakeNodeId2"},
+		{"repository", "I_fakeNodeId1 I_fakeNodeId2"},
+		{"repository and projects", failing},
+		{"repository", failing},
+	}, asks, "each batch, of the size asked for, is asked again without the projects and with the repository")
 }
 
 func TestFetchDetailsKeepsTheDataGitHubSendsWithARefusal(t *testing.T) {
