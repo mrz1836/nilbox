@@ -87,10 +87,7 @@ export interface CardStoryProps {
 // lead, muted. A compact card's (chip) is cut short when it doesn't fit.
 function State({ state, chip }: { state: string; chip: boolean }) {
   return (
-    <span
-      data-story-state
-      className={`font-medium text-muted ${chip ? 'min-w-0 truncate text-[0.71875rem]' : 'shrink-0'}`}
-    >
+    <span data-story-state className={`font-medium text-muted ${chip ? 'min-w-0 truncate text-meta' : 'shrink-0'}`}>
       <span aria-hidden="true" className={`opacity-60 ${chip ? 'mr-1.25' : 'mr-2'}`}>
         ·
       </span>
@@ -127,7 +124,7 @@ export function CardStory({ story, edge, children, chip = false }: CardStoryProp
     return (
       <span
         data-story-chip
-        className={`inline-flex h-5 max-w-60 min-w-0 items-center gap-1.25 rounded-md px-2 text-[0.71875rem] font-semibold whitespace-nowrap ${edgeText[edge]} ${edgeTint[edge]}`}
+        className={`inline-flex h-5 max-w-60 min-w-0 items-center gap-1.25 rounded-md px-2 text-meta font-semibold whitespace-nowrap ${edgeText[edge]} ${edgeTint[edge]}`}
       >
         <Mark icon={story.icon} edge={edge} />
         <span className="truncate">

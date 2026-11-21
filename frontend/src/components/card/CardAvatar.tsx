@@ -99,7 +99,7 @@ export function CardAvatar({ item }: { item: InboxItem }) {
           <span
             aria-hidden="true"
             data-avatar="initials"
-            className={`grid size-7 place-items-center rounded-full text-[0.6875rem] font-semibold ${faceOf(item.author)} ${ring}`}
+            className={`grid size-7 place-items-center rounded-full text-caption font-semibold ${faceOf(item.author)} ${ring}`}
           >
             {initialsOf(item.author)}
           </span>

@@ -68,7 +68,7 @@ function SegmentBar({ segments }: { segments: readonly Segment[] }) {
 function Fact({ term, children }: { term: ReactNode; children: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <dt className="text-[0.71875rem] text-muted">{term}</dt>
+      <dt className="text-meta text-muted">{term}</dt>
       <dd className="min-w-0 text-text">{children}</dd>
     </div>
   )
@@ -79,7 +79,7 @@ function Fact({ term, children }: { term: ReactNode; children: ReactNode }) {
 function Area({ heading, children }: { heading: string; children: ReactNode }) {
   return (
     <section aria-label={heading} className="min-w-0">
-      <h3 className="mb-2 text-[0.6875rem] font-semibold tracking-wider text-muted uppercase">{heading}</h3>
+      <h3 className="mb-2 text-caption font-semibold tracking-wider text-muted uppercase">{heading}</h3>
       <dl className="flex flex-col gap-3">{children}</dl>
     </section>
   )

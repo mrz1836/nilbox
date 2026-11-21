@@ -270,7 +270,7 @@ function Sample({ markers }: { markers: boolean }) {
               data-marker={guide.part}
               hidden={spot === null}
               style={spot === null ? undefined : { left: spot.left, top: spot.top }}
-              className={`pointer-events-none absolute z-10 grid size-4.5 place-items-center rounded-full bg-accent text-[0.65625rem] leading-none font-bold text-background ring-3 ring-accent/25 ${spotClass[guide.side]}`}
+              className={`pointer-events-none absolute z-10 grid size-4.5 place-items-center rounded-full bg-accent text-marker leading-none font-bold text-background ring-3 ring-accent/25 ${spotClass[guide.side]}`}
             >
               {i + 1}
             </span>
@@ -332,12 +332,12 @@ function Legend() {
         <li key={guide.part} className="flex items-start gap-2.25">
           <span
             aria-hidden="true"
-            className="grid size-4.5 shrink-0 place-items-center rounded-full bg-accent text-[0.65625rem] leading-none font-bold text-background"
+            className="grid size-4.5 shrink-0 place-items-center rounded-full bg-accent text-marker leading-none font-bold text-background"
           >
             {i + 1}
           </span>
           <span>
-            <span className="block text-[0.8125rem] font-semibold text-text">{guide.title}</span>
+            <span className="block text-body font-semibold text-text">{guide.title}</span>
             {guide.text}
           </span>
         </li>
@@ -399,7 +399,7 @@ function Key() {
         <li className={keyRowClass}>
           <span
             aria-hidden="true"
-            className={`grid size-5 shrink-0 place-items-center rounded-full text-[0.5rem] font-semibold ${faceOf('contributor-a')}`}
+            className={`grid size-5 shrink-0 place-items-center rounded-full text-micro font-semibold ${faceOf('contributor-a')}`}
           >
             {initialsOf('contributor-a')}
           </span>

@@ -96,7 +96,7 @@ interface ChipProps {
 // the streak or the nil's number.
 function Chip({ chip, full, stamp }: ChipProps) {
   const entrance = stamp ? 'nil-stamp' : full ? 'nil-rise' : ''
-  const size = full ? 'mt-8 gap-1.5 px-3 py-1 text-xs' : 'gap-1 px-2 py-0.5 text-[0.625rem]'
+  const size = full ? 'mt-8 gap-1.5 px-3 py-1 text-xs' : 'gap-1 px-2 py-0.5 text-badge'
   const shape = `${entrance} ${size} inline-flex items-center rounded-full border font-semibold tracking-[0.14em] uppercase`
 
   if (chip.kind === 'note') {
@@ -362,7 +362,7 @@ export function InboxNil({
           <p
             aria-hidden="true"
             data-testid="nil-badge"
-            className="nil-rise mt-8 inline-flex overflow-hidden rounded-md font-mono text-[0.6875rem] leading-5 font-semibold"
+            className="nil-rise mt-8 inline-flex overflow-hidden rounded-md font-mono text-caption leading-5 font-semibold"
           >
             <span className="bg-raised px-2 text-muted">inbox</span>
             <span className="bg-success px-2 text-background">nil</span>
@@ -387,7 +387,7 @@ export function InboxNil({
 
         <figure
           aria-label="Terminal"
-          className="nil-rise mt-9 w-full max-w-xl overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-[0.8125rem] leading-6 text-text shadow-2xl shadow-black/40"
+          className="nil-rise mt-9 w-full max-w-xl overflow-hidden rounded-lg border border-border bg-surface text-left font-mono text-body leading-6 text-text shadow-2xl shadow-black/40"
           style={{ ...darkTokens, animationDelay: '320ms' }}
         >
           <div className="flex items-center gap-1.5 border-b border-border bg-raised px-3 py-2">

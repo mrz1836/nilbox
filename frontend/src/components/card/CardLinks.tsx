@@ -72,7 +72,7 @@ export function LinkChip({ item, compact = false }: { item: InboxItem; compact?:
       onClick={() => {
         open(first)
       }}
-      className={`relative z-10 inline-flex shrink-0 items-center gap-1 text-[0.6875rem] leading-4 font-medium text-muted tabular-nums transition-colors hover:text-accent ${compact ? 'rounded-sm' : 'rounded-full border border-border px-1.5 py-px hover:border-accent/50'}`}
+      className={`relative z-10 inline-flex shrink-0 items-center gap-1 text-caption leading-4 font-medium text-muted tabular-nums transition-colors hover:text-accent ${compact ? 'rounded-sm' : 'rounded-full border border-border px-1.5 py-px hover:border-accent/50'}`}
     >
       <LinkMark link={first} />
       {linkName(first, item.repo)}

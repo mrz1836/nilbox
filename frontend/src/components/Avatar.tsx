@@ -8,8 +8,8 @@ type AvatarSize = 'xs' | 'sm' | 'md' | 'lg'
 
 // Each size's box and the initial's type size, spelled out in full so Tailwind finds them.
 const boxes: Readonly<Record<AvatarSize, string>> = {
-  xs: 'size-5 text-[0.625rem]',
-  sm: 'size-6 text-[0.6875rem]',
+  xs: 'size-5 text-badge',
+  sm: 'size-6 text-caption',
   md: 'size-9 text-sm',
   lg: 'size-14 text-xl',
 }

@@ -135,7 +135,7 @@ function WorktreeChip({ wt }: { wt: Worktree }) {
   return (
     <span
       title={wt.displayPath}
-      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-[0.6875rem] leading-4 font-medium text-muted"
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-px text-caption leading-4 font-medium text-muted"
     >
       <WorktreeIcon className="size-3 shrink-0" />
       <span className="@max-3xl:sr-only">{words}</span>
@@ -167,7 +167,7 @@ export function CardChips({ chips }: { chips: readonly CardChip[] }) {
         <Fragment key={chip.key}>{chip.node}</Fragment>
       ))}
       {rest.length > 0 && (
-        <span title={names} className="shrink-0 text-[0.6875rem] font-medium">
+        <span title={names} className="shrink-0 text-caption font-medium">
           +{rest.length}
           <span className="sr-only"> more: {names}</span>
         </span>
@@ -225,7 +225,7 @@ function CardLabels({
         </span>
       ))}
       {rest.length > 0 ? (
-        <span data-label-count title={names} className="shrink-0 text-[0.6875rem] text-muted tabular-nums">
+        <span data-label-count title={names} className="shrink-0 text-caption text-muted tabular-nums">
           +{rest.length}
           <span className="sr-only"> more: {names}</span>
         </span>
@@ -233,7 +233,7 @@ function CardLabels({
         <span
           data-label-count
           aria-hidden="true"
-          className="invisible absolute w-max text-[0.6875rem] tabular-nums before:content-['+1']"
+          className="invisible absolute w-max text-caption tabular-nums before:content-['+1']"
         />
       )}
     </span>

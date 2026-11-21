@@ -14,7 +14,7 @@ import { pinnedTarget } from '../TriageControls'
 // set-aside card.
 
 // tagClass is a status tag: weight and color mark it, with no pill around it.
-export const tagClass = 'shrink-0 text-[0.6875rem] leading-4 font-medium'
+export const tagClass = 'shrink-0 text-caption leading-4 font-medium'
 
 export interface FilterTextProps {
   // filterKey and value are the filter the text adds, as in repo and its name; name

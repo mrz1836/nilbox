@@ -223,7 +223,7 @@ export function CompactRow({
               openOnGitHub(item, triage)
             }
           }}
-          className="relative z-10 min-w-[6ch] truncate text-left text-[0.8125rem] font-medium text-text hover:text-accent hover:underline"
+          className="relative z-10 min-w-[6ch] truncate text-left text-body font-medium text-text hover:text-accent hover:underline"
         >
           <Highlight text={item.title} marks={marks} />
         </button>
