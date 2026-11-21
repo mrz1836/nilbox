@@ -5717,12 +5717,14 @@ own modules, `src/test/devtoolsAgent.test.ts`, which the app's project leaves ou
 both (DOM and Node's types). All three keep the same strict flags and `noEmit`.
 `pnpm typecheck` checks each with `tsc -p`, so nothing writes build info, and typescript-eslint's
 `projectService` opens every linted file in the project that includes it, with no default
-project to fall back on. ESLint bans importing `useMemo` and `useCallback` anywhere in
-`src/` (`noMemoHooks` in `eslint.config.js`). The gate (`magex frontend:gate`) runs the format
-check, lint, the typecheck, the tests with coverage, the render check, and last the production
-build, which `chunkLimit` in `vite.config.ts` fails on a JS chunk over `chunkSizeWarningLimit`
-(750 kB, above the inbox's chunk, about 696 kB), where Vite only warns. The bundle targets
-Safari 16.4, the WebKit of the oldest supported macOS, 13.3.
+project to fall back on. `pnpm build` runs that typecheck before `vite build`, so
+`magex frontend:build`, `app:build`, and a release check all three projects too. ESLint bans
+importing `useMemo` and `useCallback` anywhere in `src/` (`noMemoHooks` in `eslint.config.js`).
+The gate (`magex frontend:gate`) runs the format check, lint, the typecheck, the tests with
+coverage, the render check, and last the production build, which `chunkLimit` in
+`vite.config.ts` fails on a JS chunk over `chunkSizeWarningLimit` (750 kB, above the inbox's
+chunk, about 696 kB), where Vite only warns. The bundle targets Safari 16.4, the WebKit of the
+oldest supported macOS, 13.3.
 
 **Shared hooks and helpers.** Each of these is the one way the pages do it, never a copy.
 `useOn` (`lib/useOn.ts`) hears a window event while the component is mounted (or `enabled`)
