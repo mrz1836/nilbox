@@ -12,11 +12,11 @@ import {
   usageWords,
 } from '../lib/sessions'
 import { formatAgo, formatFull } from '../lib/time'
+import { copyLabel, useCopy } from '../lib/useCopy'
 import { useMutation } from '../lib/useMutation'
 import { useQuery } from '../lib/useQuery'
 import {
   autopilotRunBySession,
-  copyText,
   focusSession,
   forgetSession,
   resumeSession,
@@ -68,8 +68,9 @@ function StateLine({ session }: { session: AgentSession }) {
   )
 }
 
-// Action is one of a session's buttons.
-type Action = 'focus' | 'resume' | 'folder' | 'copy' | 'forget' | 'stop'
+// Action is one of a session's buttons whose outcome shows below them; a copy says how it
+// went on its own button.
+type Action = 'focus' | 'resume' | 'folder' | 'forget' | 'stop'
 
 // stopRun stops the agent's background run a session is, by its session: the run Stop
 // of the Autopilot tab stops.
@@ -103,10 +104,10 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
   const focus = useMutation((id: string) => focusSession(id))
   const resume = useMutation((request: ResumeRequest) => resumeSession(request))
   const folder = useMutation((id: string) => showSessionFolder(id))
-  const copy = useMutation(() => copyText(session.agentSessionId))
   const forget = useMutation((id: string) => forgetSession(id))
   const stop = useMutation((id: string) => stopRun(id))
-  const actions = { focus, resume, folder, copy, forget, stop }
+  const actions = { focus, resume, folder, forget, stop }
+  const { copy, onCopy } = useCopy('session ID')
   const terminal = terminalName(session)
   const watch = useWatch()
   const takeOverIn = useTakeOverTerminal()
@@ -127,10 +128,8 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
     log: 'Could not read a session’s token counts',
   })
   const tokens = usageWords(usage.data)
-  // copied is whether the ID was just copied; it clears on the next copy.
-  const [copied, setCopied] = useState(false)
-  // last is the button pressed last. Only its outcome shows, so one that works clears
-  // what an earlier one said went wrong.
+  // last is the button pressed last, or null for none or a copy. Only its outcome shows,
+  // so one that works clears what an earlier one said went wrong, as a copy does.
   const [last, setLast] = useState<Action | null>(null)
   // notice is what the latest resume worked around, as a launch reports it, or ''.
   const [notice, setNotice] = useState('')
@@ -141,9 +140,9 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
   const presses = useRef(0)
   const error = last === null ? '' : actions[last].error
 
-  // press starts an action: it becomes the one whose outcome shows. It returns the
-  // press's number.
-  const press = (action: Action) => {
+  // press starts an action: it becomes the one whose outcome shows, or, for null, none
+  // does. It returns the press's number.
+  const press = (action: Action | null) => {
     presses.current += 1
     setLast(action)
     setNotice('')
@@ -180,10 +179,11 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
     void folder.run(session.id)
   }
 
-  const copyID = async () => {
-    press('copy')
-    setCopied(false)
-    setCopied((await copy.run()).ok)
+  // copyID copies the agent's session ID. Its button says how that went, for a moment, so
+  // the press clears what the last action said.
+  const copyID = () => {
+    press(null)
+    onCopy(session.agentSessionId)
   }
 
   // remove forgets the session once it ended; the list reads again when the app says the
@@ -322,16 +322,9 @@ function SessionEntry({ session, agents }: { session: AgentSession; agents: read
           Show in Finder
         </button>
         {session.agentSessionId !== '' && (
-          <button
-            type="button"
-            title={session.agentSessionId}
-            onClick={() => {
-              void copyID()
-            }}
-            className={quietButtonClass}
-          >
-            {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-            {copied ? 'Copied' : 'Copy session ID'}
+          <button type="button" title={session.agentSessionId} onClick={copyID} className={quietButtonClass}>
+            {copy === 'copied' ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+            {copy === 'idle' ? 'Copy session ID' : copyLabel[copy]}
           </button>
         )}
       </div>
