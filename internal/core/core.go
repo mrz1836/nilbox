@@ -640,7 +640,7 @@ func assemble(ctx context.Context, pool *sql.DB, info startup, opts Options, log
 	// leaves the app's own children out. The runner is filled in once the runs are built.
 	background := &backgroundAgents{
 		ledger: follow.ledger, git: shellGit, shellEnv: shellEnv.Env, home: opts.Home,
-		logger: logger, touch: workLog, program: ownExecutable(), changes: inboxStore,
+		logger: logger, clock: opts.Clock, touch: workLog, program: ownExecutable(), changes: inboxStore,
 	}
 
 	// A worktree's Open in Terminal goes through the terminal the runs open in, which is

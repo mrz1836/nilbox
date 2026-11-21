@@ -267,19 +267,22 @@ type arunTouch struct {
 	agent    agent.ID
 }
 
-// arunTouches records the agents each start records in its worktree, failing with err.
+// arunTouches records the agents each start records in its worktree, and when, failing
+// with err.
 type arunTouches struct {
-	mu   sync.Mutex
-	err  error
-	seen []arunTouch
+	mu     sync.Mutex
+	err    error
+	seen   []arunTouch
+	stamps []time.Time
 }
 
 // Touch records the agent in the worktree.
-func (a *arunTouches) Touch(_ context.Context, clonePath, worktree string, id agent.ID, _ time.Time) error {
+func (a *arunTouches) Touch(_ context.Context, clonePath, worktree string, id agent.ID, at time.Time) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	a.seen = append(a.seen, arunTouch{clone: clonePath, worktree: worktree, agent: id})
+	a.stamps = append(a.stamps, at)
 
 	return a.err
 }
@@ -290,6 +293,57 @@ func (a *arunTouches) touched() []arunTouch {
 	defer a.mu.Unlock()
 
 	return slices.Clone(a.seen)
+}
+
+// stamped returns when each agent was recorded, in order.
+func (a *arunTouches) stamped() []time.Time {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	return slices.Clone(a.stamps)
+}
+
+func TestABackgroundStartStampsItsAgentFromTheClock(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the clock it is given", func(t *testing.T) {
+		t.Parallel()
+
+		at := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+
+		r := newAgentRig(t)
+		r.planner.set(r.planner.plan(t, testutil.FakeRun{Stdout: agentFixture(t, "success-structured.jsonl")}))
+
+		touches := &arunTouches{}
+		r.agents.touch, r.agents.clock = touches, testutil.NewClock(at)
+
+		_, err := r.agents.Dispatch(t.Context(), agentJob(6))
+		require.NoError(t, err)
+
+		assert.Equal(t, []time.Time{at}, touches.stamped(), "the worktree's record is stamped by the app's clock")
+		assert.Equal(t, autopilot.RunDone, r.engine.end(t, 6).Outcome)
+	})
+
+	t.Run("no clock", func(t *testing.T) {
+		t.Parallel()
+
+		r := newAgentRig(t)
+		r.planner.set(r.planner.plan(t, testutil.FakeRun{Stdout: agentFixture(t, "success-structured.jsonl")}))
+
+		touches := &arunTouches{}
+		r.agents.touch = touches
+
+		before := time.Now()
+		_, err := r.agents.Dispatch(t.Context(), agentJob(6))
+		after := time.Now()
+
+		require.NoError(t, err)
+
+		stamps := touches.stamped()
+		require.Len(t, stamps, 1)
+		assert.False(t, stamps[0].Before(before) || stamps[0].After(after), "without one, the real clock stamps it")
+		assert.Equal(t, autopilot.RunDone, r.engine.end(t, 6).Outcome)
+	})
 }
 
 func TestABackgroundStartRecordsItsAgentInTheWorktree(t *testing.T) {

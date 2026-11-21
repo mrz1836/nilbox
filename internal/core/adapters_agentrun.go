@@ -22,6 +22,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/autopilot"
 	"github.com/mrz1836/nilbox/internal/autopilot/catalog"
 	"github.com/mrz1836/nilbox/internal/autopilot/spec"
+	"github.com/mrz1836/nilbox/internal/clock"
 	"github.com/mrz1836/nilbox/internal/clonelock"
 	"github.com/mrz1836/nilbox/internal/event"
 	"github.com/mrz1836/nilbox/internal/execpath"
@@ -67,6 +68,9 @@ type backgroundAgents struct {
 	shellEnv func() ([]string, bool)
 	home     string
 	logger   *slog.Logger
+
+	// clock stamps the agent each run records in its worktree; nil is the real clock.
+	clock clock.Clock
 
 	// program is the app's own executable, which a run's fence hook runs in its hook mode,
 	// and changes notes what a run's commits changed on its item (*inbox.Store), so a run
@@ -393,7 +397,7 @@ func (b *backgroundAgents) start(ctx context.Context, job autopilot.Job, step sp
 
 	if b.touch != nil {
 		worktree := item.WorktreeName(job.Item.Kind, job.Item.Number)
-		if err = b.touch.Touch(ctx, bp.Clone.Dir, worktree, bp.Plan.Agent, time.Now()); err != nil {
+		if err = b.touch.Touch(ctx, bp.Clone.Dir, worktree, bp.Plan.Agent, clock.Or(b.clock).Now()); err != nil {
 			b.logger.DebugContext(ctx, "could not record the agent in its worktree", "error", err)
 		}
 	}
