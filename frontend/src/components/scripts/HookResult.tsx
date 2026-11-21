@@ -5,6 +5,7 @@ import { useMutation } from '../../lib/useMutation'
 import { useQuery } from '../../lib/useQuery'
 import { getHookActionResult, replaceHook } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
+import { linkClass } from '../controls'
 import { ErrorText } from '../settings/rows'
 import { ToneIcon, toneWords } from './ToneIcon'
 
@@ -66,7 +67,7 @@ export function HookResult({ runId, onSelect }: HookResultProps) {
                 onClick={() => {
                   setAsking(true)
                 }}
-                className="font-medium text-accent hover:underline disabled:opacity-disabled"
+                className={`${linkClass} disabled:opacity-disabled`}
               >
                 Replace…
               </button>

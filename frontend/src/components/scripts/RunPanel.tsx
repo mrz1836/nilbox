@@ -24,7 +24,7 @@ import {
 } from '../../platform'
 import { terminalLabel } from '../../lib/terminals'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { iconButtonClass, quietButtonClass } from '../controls'
+import { iconButtonClass, linkClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, CheckIcon, CopyIcon, DocumentIcon, RefreshIcon, StopIcon, TerminalIcon, XIcon } from '../icons'
 import { ErrorText } from '../settings/rows'
@@ -102,7 +102,7 @@ function RunResult({ exitCode, result }: { exitCode: number | null; result: Scri
               onClick={() => {
                 setOpen(!open)
               }}
-              className="font-medium text-accent hover:underline"
+              className={linkClass}
             >
               {open ? 'Hide' : 'Show'}
             </button>

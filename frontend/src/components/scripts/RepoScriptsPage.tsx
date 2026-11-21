@@ -19,7 +19,7 @@ import {
   type TerminalID,
   type UserScript,
 } from '../../platform'
-import { buttonClass, quietButtonClass } from '../controls'
+import { buttonClass, linkClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, InfoIcon, PlusIcon, RefreshIcon } from '../icons'
 import { ErrorText } from '../settings/rows'
@@ -525,7 +525,7 @@ export function RepoScriptsPage({
           onClick={() => {
             follow(started)
           }}
-          className="font-medium text-accent hover:underline"
+          className={linkClass}
         >
           Show it
         </button>
@@ -536,7 +536,7 @@ export function RepoScriptsPage({
             onShowRuns(true)
             follow(started)
           }}
-          className="font-medium text-accent hover:underline"
+          className={linkClass}
         >
           Always show runs here
         </button>

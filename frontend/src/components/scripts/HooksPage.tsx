@@ -18,7 +18,7 @@ import {
   type ScriptsSection,
 } from '../../platform'
 import { CommandLine } from '../CommandLine'
-import { buttonClass, quietButtonClass } from '../controls'
+import { buttonClass, linkClass, quietButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, ChevronRightIcon, ExternalIcon, InfoIcon, RefreshIcon } from '../icons'
 import { RelativeTime } from '../RelativeTime'
@@ -74,7 +74,7 @@ function PathWarning({ dir }: { dir: string }) {
             onClick={() => {
               setOpen(!open)
             }}
-            className="inline-flex items-center gap-0.5 font-medium text-accent hover:underline"
+            className={`${linkClass} inline-flex items-center gap-0.5`}
           >
             How to fix
             <ChevronRightIcon
@@ -112,7 +112,7 @@ function ToolNote({ open, onToggle }: { open: boolean; onToggle: () => void }) {
             aria-expanded={open}
             aria-controls={`${id}-more`}
             onClick={onToggle}
-            className="inline-flex items-center gap-0.5 font-medium text-accent hover:underline"
+            className={`${linkClass} inline-flex items-center gap-0.5`}
           >
             More
             <ChevronRightIcon

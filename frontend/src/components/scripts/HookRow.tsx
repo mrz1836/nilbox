@@ -29,7 +29,7 @@ import {
   type RunsIn,
 } from '../../platform'
 import { ConfirmDialog } from '../ConfirmDialog'
-import { buttonClass, iconButtonClass } from '../controls'
+import { buttonClass, iconButtonClass, linkClass } from '../controls'
 import { ChevronDownIcon, DotIcon, InfoIcon, MoreIcon } from '../icons'
 import { MenuButton, type MenuItem } from '../Menu'
 import { RelativeTime } from '../RelativeTime'
@@ -235,7 +235,7 @@ export function HookRow({ repo, version, watch, runsIn, onOpenRun }: HookRowProp
                   onClick={() => {
                     onOpenRun(watch)
                   }}
-                  className="font-medium text-accent hover:underline"
+                  className={linkClass}
                 >
                   Watch
                 </button>

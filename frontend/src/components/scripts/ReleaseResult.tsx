@@ -17,7 +17,7 @@ import {
   type ScriptRun,
 } from '../../platform'
 import { Confetti, useConfetti } from '../Confetti'
-import { buttonClass, primaryButtonClass } from '../controls'
+import { buttonClass, linkClass, primaryButtonClass } from '../controls'
 import { ErrorBanner } from '../ErrorBanner'
 import { AlertIcon, CheckIcon, CircleCheckIcon, CopyIcon, ExternalIcon, InfoIcon, XIcon } from '../icons'
 import { ErrorText } from '../settings/rows'
@@ -141,7 +141,7 @@ function WorkflowLine({ line }: { line: FollowLine }) {
               onClick={() => {
                 openExternal(line.url)
               }}
-              className="inline-flex items-center gap-1 font-medium text-accent hover:underline"
+              className={`${linkClass} inline-flex items-center gap-1`}
             >
               View
               <ExternalIcon className="size-3" />

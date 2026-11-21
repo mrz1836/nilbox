@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 
 import type { ScriptAsk } from '../../lib/useScriptRun'
 import type { RunsIn, ScriptEntry } from '../../platform'
-import { buttonClass, iconButtonClass } from '../controls'
+import { buttonClass, iconButtonClass, linkClass } from '../controls'
 import {
   AlertIcon,
   BoxIcon,
@@ -179,7 +179,7 @@ export function ScriptRow({ command, about = '', more = [], ...menu }: ScriptRow
             {onOpenRelease !== null && (
               <>
                 {' · '}
-                <button type="button" onClick={onOpenRelease} className="font-medium text-accent hover:underline">
+                <button type="button" onClick={onOpenRelease} className={linkClass}>
                   Open Release
                 </button>
               </>
