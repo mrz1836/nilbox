@@ -3,6 +3,7 @@ import { useId, useState } from 'react'
 import { modeLabel } from '../../../lib/autopilot'
 import type { Result } from '../../../lib/call'
 import {
+  addsFirstWords,
   changeDraft,
   changedId,
   claudeModeHint,
@@ -30,6 +31,12 @@ export interface RoutineChangeProps extends RowProps<RoutinePart> {
   saveChange: (p: RoutinePart) => Promise<Result<AutopilotRoutine>>
   // saving reports the question's save under way.
   saving: boolean
+  // waitsOn are the nicknames of the prompts this card adds that the routine runs, while
+  // no one has dealt with them: its own button adds them first, through addFirst, which
+  // resolves with why it stopped. Until then the routine's problems are kit's, which counts
+  // the card's prompts in the library, as the live reading can't.
+  waitsOn: string[]
+  addFirst: () => Promise<Result<void>>
 }
 
 // changedName is the name of the routine a change changes, as Claude read it.
@@ -68,10 +75,12 @@ function Sentences({ p, sentence, saved = false }: { p: RoutinePart; sentence: s
 // quick setup reviews a draft: the name it takes here, New or which routine it changes
 // (and that it changed since Claude read it), what it does (for a change, as it is and as it
 // would be), the mode a new routine starts in, with Claude's suggestion as a hint (a change
-// keeps the routine's own mode and switch), its problems and warnings as read live, what
-// this Mac has for it, what it matches in the inbox now, its risks, and Add or Save changes
-// (asking first about what a routine that is on matches now), Edit in builder or Open the
-// routine, Test, and Discard.
+// keeps the routine's own mode and switch), its problems and warnings as read live (its
+// problems as kit read them while it runs prompts the card adds, which the library doesn't
+// have yet), that it runs those, what this Mac has for it, what it matches in the inbox
+// now, its risks, and Add or Save changes (adding those prompts first, and asking first
+// about what a routine that is on matches now), Edit in builder or Open the routine, Test,
+// and Discard.
 export function RoutineChange(props: RoutineChangeProps) {
   const id = useId()
 
@@ -101,14 +110,29 @@ function draftOf(p: RoutinePart, mode: AutopilotMode, defaultMode: AutopilotMode
 }
 
 // OpenRoutine is the body of a routine's row no one has dealt with yet, under its heading.
-function OpenRoutine({ p, held, onSettle, kit, mode, onMode, saveChange, saving }: RoutineChangeProps) {
+function OpenRoutine({
+  p,
+  held,
+  onSettle,
+  kit,
+  mode,
+  onMode,
+  saveChange,
+  saving,
+  waitsOn,
+  addFirst,
+}: RoutineChangeProps) {
   const act = useAct(p, onSettle)
   const [testing, setTesting] = useState(false)
   const edit = isEdit(p)
+  const label = edit ? 'Save changes' : 'Add'
   const draft = draftOf(p, mode, kit.defaultMode)
-  const review = useDraftReview(draft, kit.describeDelay)
+  // The live reading is read again once the prompts it waits on are dealt with, when the
+  // library may have them.
+  const review = useDraftReview(draft, kit.describeDelay, waitsOn.join('\n'))
   const reading = review.fresh ? review.reading : undefined
-  const problems = reading?.problems ?? p.checked.problems
+  const waits = waitsOn.length > 0
+  const problems = waits ? p.checked.problems : (reading?.problems ?? p.checked.problems)
   const warnings = reading?.warnings ?? p.checked.warnings
   const blocked = p.checked.gone || problems.length > 0
   const sentence = reading !== undefined && reading.sentence !== '' ? reading.sentence : p.checked.sentence
@@ -151,16 +175,25 @@ function OpenRoutine({ p, held, onSettle, kit, mode, onMode, saveChange, saving 
       )}
       <Notes problems={problems} warnings={warnings} />
       {blocked && <CantApply />}
+      {waits && <p className="text-xs text-muted">{addsFirstWords(waitsOn, label)}</p>}
       <ThisMac readiness={review.readiness} />
       {matchLine !== '' && <p className="text-xs text-muted">{matchLine}</p>}
       <Risks risks={p.checked.risks} />
       <RowActions
-        label={edit ? 'Save changes' : 'Add'}
+        label={label}
         blocked={blocked}
         busy={busy}
         error={act.error}
         onApply={() => {
           void act.act(edit ? 'saved' : 'added', async () => {
+            // The prompts it runs that the card adds go first, so the library has them
+            // when it is saved; one that fails stops it, saving nothing more.
+            const first = waits ? await addFirst() : { ok: true as const, data: undefined }
+
+            if (!first.ok) {
+              return first
+            }
+
             const saved = edit ? await saveChange(p) : await review.save()
 
             return saved.ok ? { ok: true, data: saved.data.id } : saved

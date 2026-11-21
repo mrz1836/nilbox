@@ -59,11 +59,12 @@ export interface DraftReview {
 type Tested = ReturnType<typeof testedKeys> & { result: AutopilotTestResult }
 
 // useDraftReview reviews draft as it changes: Describe reads it once it has rested for
-// describeDelay milliseconds, asking GitHub nothing; this Mac's readiness is read again as
-// its spec changes, never asking GitHub; Test reads its searches only when asked; and save
-// stores it as it is.
-export function useDraftReview(draft: AutopilotDraft, describeDelay = 300): DraftReview {
-  const key = canonical(draft)
+// describeDelay milliseconds, asking GitHub nothing, and again when also changes (what
+// else the reading leans on, such as the prompts a card adds before its routine); this
+// Mac's readiness is read again as its spec changes, never asking GitHub; Test reads its
+// searches only when asked; and save stores it as it is.
+export function useDraftReview(draft: AutopilotDraft, describeDelay = 300, also = ''): DraftReview {
+  const key = `${also}\n${canonical(draft)}`
   const described = useDebouncedQuery(() => describeRoutine(draft).then((d) => ({ key, d })), [key], describeDelay)
   const ready = useQuery(() => draftReadiness(draft), [canonical(draft.spec)], {
     log: 'could not check what this Mac has for the routine',

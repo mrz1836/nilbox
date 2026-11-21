@@ -29,6 +29,7 @@ import {
   type AutopilotDraft,
   type AutopilotMatching,
   type AutopilotMode,
+  type AutopilotPromptRef,
   type AutopilotRoutine,
   type AutopilotRunEvent,
   type AutopilotSpec,
@@ -51,7 +52,7 @@ import {
 } from '../platform'
 import { modeLabels } from './autopilot'
 import { all, attempt, type Result } from './call'
-import { counted, refText } from './format'
+import { counted, joinList, refText } from './format'
 
 // The app's own tools, as Claude Code names them: in a turn in the app, its tool server's
 // name joined to each tool's; in the user's own Claude Code, the plugin's server's, which
@@ -327,8 +328,43 @@ export function changedId(p: RoutinePart): number {
 
 // promptName is a new prompt by the name a launch menu shows it: its nickname, else its
 // name.
-function promptName(p: KitNewPrompt): string {
+export function promptName(p: KitNewPrompt): string {
   return p.nickname === '' ? p.name : p.nickname
+}
+
+// promptRefs are the prompts a spec runs: its agent steps', and each of its GitHub steps'
+// replies'.
+function promptRefs(spec: AutopilotSpec): AutopilotPromptRef[] {
+  return spec.steps.flatMap((st) => [
+    ...(st.agent == null ? [] : [st.agent.prompt]),
+    ...(st.github ?? []).flatMap((a) => (a.reply == null ? [] : [a.reply.prompt])),
+  ])
+}
+
+// promptsRun are the prompts among parts that the routine p runs, in the order they come:
+// each a new prompt a step names by its nickname, ignoring case, as kit counts a card's
+// prompts in the library it checks a routine against. A step that runs the item's own
+// prompt, or a starter's, names none of them, since a new prompt is no starter's copy.
+export function promptsRun(p: RoutinePart, parts: readonly CardPart[]): PromptPart[] {
+  const named = new Set(
+    promptRefs(p.checked.spec).flatMap((ref) =>
+      (ref.starter ?? '') === '' && ref.itemDefault !== true ? [(ref.nickname ?? '').trim().toLowerCase()] : [],
+    ),
+  )
+
+  return parts.filter((q): q is PromptPart => {
+    const nickname = q.part === 'prompt' ? q.checked.prompt.nickname.trim().toLowerCase() : ''
+
+    return nickname !== '' && named.has(nickname)
+  })
+}
+
+// addsFirstWords say that a routine runs prompts its card adds, which its own button adds
+// before it: "It runs “Sync OK”, which this card adds: Add adds it first."
+export function addsFirstWords(nicknames: readonly string[], button: string): string {
+  const named = joinList(nicknames.map((n) => `“${n}”`))
+
+  return `It runs ${named}, which this card adds: ${button} adds ${nicknames.length === 1 ? 'it' : 'them'} first.`
 }
 
 // changedName is the name of the routine a change changes, as Claude read it, else as the
@@ -634,10 +670,8 @@ export function settlePart(card: DescribeCard, p: CardPart, s: Settled): Promise
   )
 }
 
-// ApplyAllKit is what Apply all needs of the card it applies.
-export interface ApplyAllKit {
-  // settled reports a part the user already dealt with, which Apply all leaves alone.
-  settled: (p: CardPart) => boolean
+// ApplyKit is what applying a card's parts needs of the card.
+export interface ApplyKit {
   // modeOf is the mode a new routine starts in, as its row chose it.
   modeOf: (p: RoutinePart) => AutopilotMode
   // saveChange saves a change to one of the user's routines, asking first when it can act
@@ -649,11 +683,17 @@ export interface ApplyAllKit {
   onSettingsSaved: (settings: Settings) => void
 }
 
+// ApplyAllKit is what Apply all needs of the card it applies.
+export interface ApplyAllKit extends ApplyKit {
+  // settled reports a part the user already dealt with, which Apply all leaves alone.
+  settled: (p: CardPart) => boolean
+}
+
 // Applied is how Apply all ended: every part applied, or the part it stopped at and why.
 export type Applied = { ok: true } | { ok: false; part: CardPart; error: string }
 
 // applyPart applies one part of a card, resolving with what it records.
-async function applyPart(p: CardPart, kit: ApplyAllKit): Promise<Result<Settled>> {
+async function applyPart(p: CardPart, kit: ApplyKit): Promise<Result<Settled>> {
   const settled = (kind: KitOutcomeKind, routineId = 0): Result<Settled> => ({
     ok: true,
     data: { kind, words: settleWords(p, kind), routineId },
@@ -688,15 +728,21 @@ async function applyPart(p: CardPart, kit: ApplyAllKit): Promise<Result<Settled>
 }
 
 // applyAll applies every part of card no one has dealt with yet, in order (its prompts,
-// then its routines, its settings, and its rules), each through the binding its own row
-// uses, and records each as it goes. It stops at the first that fails, or that has
-// problems, saying which and why; what it applied before stays applied.
-export async function applyAll(card: DescribeCard, kit: ApplyAllKit): Promise<Applied> {
-  for (const p of cardParts(card)) {
-    if (kit.settled(p)) {
-      continue
-    }
+// then its routines, its settings, and its rules), as applyParts does.
+export function applyAll(card: DescribeCard, kit: ApplyAllKit): Promise<Applied> {
+  return applyParts(
+    card,
+    cardParts(card).filter((p) => !kit.settled(p)),
+    kit,
+  )
+}
 
+// applyParts applies parts of card in the order given, each through the binding its own
+// row uses, and records each as it goes: Apply all's parts, or the prompts a routine's row
+// adds before the routine. It stops at the first that fails, or that has problems, saying
+// which and why; what it applied before stays applied.
+export async function applyParts(card: DescribeCard, parts: readonly CardPart[], kit: ApplyKit): Promise<Applied> {
+  for (const p of parts) {
     const problems = partProblems(p)
 
     if (problems.length > 0) {

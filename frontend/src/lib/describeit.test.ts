@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
-import type { AutopilotRunEvent, DescribeCard, KitSettingKey } from '../platform'
+import type { AutopilotRunEvent, AutopilotSpec, DescribeCard, KitSettingKey } from '../platform'
 import {
   describeCard,
   kitChecked,
@@ -21,9 +21,11 @@ import {
 } from '../test/fixtures'
 import { platform } from '../test/platform'
 import {
+  addsFirstWords,
   agentWords,
   appliedWords,
   applyAll,
+  applyParts,
   applyRules,
   applySettings,
   appTool,
@@ -46,6 +48,7 @@ import {
   partProblems,
   promptInput,
   promptKindWords,
+  promptsRun,
   recorded,
   revisedCards,
   settlePart,
@@ -55,6 +58,7 @@ import {
   turnEntries,
   withChips,
   type ApplyAllKit,
+  type ApplyKit,
   type CardPart,
   type RoutinePart,
 } from './describeit'
@@ -777,6 +781,112 @@ describe('applyAll', () => {
       error: 'It was applied, but Claude won’t hear of it: The card is gone.',
     })
     expect(kit.onSettled).toHaveBeenCalledOnce()
+  })
+})
+
+describe('the prompts a routine runs that its card adds', () => {
+  // replies is a routine that replies with the prompts nicknamed, one GitHub step each.
+  function replies(...nicknames: string[]): AutopilotSpec {
+    return { ...routineSpec(), steps: nicknames.map((nickname) => ({ github: [{ reply: { prompt: { nickname } } }] })) }
+  }
+
+  // promptsCard is a card that adds the prompts nicknamed, and a routine whose spec is spec.
+  function promptsCard(spec: AutopilotSpec, ...nicknames: string[]): DescribeCard {
+    const prompts = nicknames.map((nickname) => kitNewPrompt({ nickname, purpose: 'reply', replyAction: 'comment' }))
+
+    return describeCard({
+      proposal: { summary: 'Reply.', prompts, routines: [{ name: 'Reply', spec }] },
+      checked: kitChecked({
+        prompts: prompts.map((p, index) => kitCheckedPrompt({ index, prompt: p })),
+        routines: [kitCheckedRoutine({ name: 'Reply', spec })],
+      }),
+    })
+  }
+
+  it('finds the prompts a routine names by nickname, ignoring case, in the card’s order', () => {
+    const spec: AutopilotSpec = {
+      ...routineSpec(),
+      steps: [
+        { agent: { prompt: { nickname: ' fix IT ' } } },
+        { github: [{ labels: { add: ['synced'] } }, { reply: { prompt: { nickname: 'sync ok' } } }] },
+        { agent: { prompt: { itemDefault: true } } },
+        { github: [{ reply: { prompt: { starter: 'Other' } } }, { reply: { prompt: {} } }] },
+        { snooze: { days: 1 } },
+      ],
+    }
+    const card = promptsCard(spec, 'Sync OK', 'Fix it', 'Other', '')
+    const parts = cardParts(card)
+
+    expect(promptsRun(routinePart(card, 0), parts).map(partKey)).toEqual(['prompt:0', 'prompt:1'])
+    // Only those it is given: the card's open ones.
+    expect(promptsRun(routinePart(card, 0), parts.slice(1)).map(partKey)).toEqual(['prompt:1'])
+    expect(promptsRun(routinePart(card, 0), [])).toEqual([])
+  })
+
+  it('finds none for a routine that runs no prompt, the item’s own, a starter, or one the card doesn’t add', () => {
+    const none = promptsCard(routineSpec(), 'Sync OK')
+
+    expect(promptsRun(routinePart(none, 0), cardParts(none))).toEqual([])
+
+    const own = promptsCard(
+      { ...routineSpec(), steps: [{ agent: { prompt: { itemDefault: true, nickname: 'Sync OK' } } }] },
+      'Sync OK',
+    )
+
+    expect(promptsRun(routinePart(own, 0), cardParts(own))).toEqual([])
+
+    const starter = promptsCard(
+      { ...routineSpec(), steps: [{ github: [{ reply: { prompt: { starter: 'sync-ok' } } }] }] },
+      'sync-ok',
+    )
+
+    expect(promptsRun(routinePart(starter, 0), cardParts(starter))).toEqual([])
+
+    const other = promptsCard(replies('Sync OK'), 'Fix it')
+
+    expect(promptsRun(routinePart(other, 0), cardParts(other))).toEqual([])
+  })
+
+  it('says the routine runs them, and that its button adds them first', () => {
+    expect(addsFirstWords(['Sync OK'], 'Add')).toBe('It runs “Sync OK”, which this card adds: Add adds it first.')
+    expect(addsFirstWords(['A', 'B'], 'Save changes')).toBe(
+      'It runs “A” and “B”, which this card adds: Save changes adds them first.',
+    )
+    expect(addsFirstWords(['A', 'B', 'C'], 'Add')).toBe(
+      'It runs “A”, “B”, and “C”, which this card adds: Add adds them first.',
+    )
+  })
+
+  it('adds just the parts it is given, in order, recording each, and stops at one that fails', async () => {
+    const card = promptsCard(replies('Sync OK', 'Fix it'), 'Sync OK', 'Fix it', 'Other')
+    const run = promptsRun(routinePart(card, 0), cardParts(card))
+    const kit: ApplyKit = {
+      modeOf: () => 'ask',
+      saveChange: () => Promise.resolve({ ok: true, data: routine() }),
+      onSettled: vi.fn(),
+      onSettingsSaved: vi.fn(),
+    }
+
+    expect(await applyParts(card, run, kit)).toEqual({ ok: true })
+    expect(platform.createPrompt.mock.calls.map(([input]) => input.nickname)).toEqual(['Sync OK', 'Fix it'])
+    expect(platform.settleDescribeItCard.mock.calls.map(([req]) => `${req.part}:${String(req.index)}`)).toEqual([
+      'prompt:0',
+      'prompt:1',
+    ])
+    expect(vi.mocked(kit.onSettled).mock.calls.map(([p, s]) => [partKey(p), s])).toEqual([
+      ['prompt:0', { kind: 'added', words: 'Added the prompt “Sync OK”', routineId: 0 }],
+      ['prompt:1', { kind: 'added', words: 'Added the prompt “Fix it”', routineId: 0 }],
+    ])
+    expect(platform.saveRoutine).not.toHaveBeenCalled()
+
+    platform.createPrompt.mockRejectedValueOnce(new Error('Another prompt has that nickname.'))
+
+    const stopped = await applyParts(card, run, kit)
+
+    expect(stopped.ok ? '' : appliedWords(stopped)).toBe(
+      'Stopped at the prompt “Sync OK”: Another prompt has that nickname.',
+    )
+    expect(platform.createPrompt).toHaveBeenCalledTimes(3)
   })
 })
 

@@ -102,7 +102,245 @@ function fullCard(): DescribeCard {
   })
 }
 
+// syncSpec is a routine that replies with Sync OK when checks pass.
+function syncSpec(): AutopilotSpec {
+  return { ...routineSpec(), steps: [{ github: [{ reply: { prompt: { nickname: 'Sync OK' } } }] }] }
+}
+
+// syncCard is a card that adds the reply Sync OK, and a routine that replies with it: a new
+// one, or, with change, a change to routine 3. Kit counts the card's prompt in the library,
+// so the routine has no problem.
+function syncCard(change = false): DescribeCard {
+  const reply = kitNewPrompt({
+    name: 'Say the sync is fine',
+    nickname: 'Sync OK',
+    purpose: 'reply',
+    replyAction: 'comment',
+    appliesTo: 'any',
+  })
+
+  return describeCard({
+    proposal: {
+      summary: 'Reply that the sync is fine.',
+      prompts: [reply],
+      routines: [
+        change
+          ? { id: 3, base: '2026-06-15T08:00:00Z', name: 'Snooze passing bot PRs', spec: syncSpec() }
+          : { name: 'Reply when it syncs', spec: syncSpec() },
+      ],
+    },
+    checked: kitChecked({
+      prompts: [kitCheckedPrompt({ prompt: reply })],
+      routines: [
+        kitCheckedRoutine({
+          name: change ? 'Snooze passing bot PRs' : 'Reply when it syncs',
+          spec: syncSpec(),
+          sentence: 'When checks pass on pull requests in Review requested, reply with “Sync OK”.',
+          ...(change ? { before: kitRoutine() } : {}),
+        }),
+      ],
+    }),
+  })
+}
+
+// readsTheLibrary has Describe read a draft against the prompt library as it is: one that
+// replies with Sync OK has a problem until Sync OK is added, and a warning either way.
+function readsTheLibrary(): void {
+  const warnings = [{ part: 'steps' as const, field: '[0]', message: 'it replies on every pull request' }]
+
+  platform.describeRoutine.mockImplementation(() =>
+    Promise.resolve(
+      platform.createPrompt.mock.calls.length > 0
+        ? described({ warnings })
+        : described({
+            sentence: '',
+            problems: [
+              {
+                part: 'steps',
+                field: '[0].github[0].reply.prompt',
+                message: 'No prompt in your library has the nickname “Sync OK”',
+              },
+            ],
+            warnings,
+          }),
+    ),
+  )
+}
+
 describe('ProposalCard', () => {
+  it('doesn’t hold a routine back on a prompt its card adds, and its Add adds the prompt first', async () => {
+    const user = userEvent.setup()
+
+    readsTheLibrary()
+
+    const card = syncCard()
+    const kit = show(card)
+    const row = within(screen.getByRole('group', { name: 'Reply when it syncs' }))
+    const promptRow = within(screen.getByRole('group', { name: 'Sync OK' }))
+
+    // The live reading is in, and drives the warnings, but not the library's problem.
+    expect(await row.findByText('It replies on every pull request.')).toBeInTheDocument()
+    expect(row.queryByText(/No prompt in your library/)).not.toBeInTheDocument()
+    expect(row.queryByText(/It can’t be applied like this/)).not.toBeInTheDocument()
+    expect(row.getByText('It runs “Sync OK”, which this card adds: Add adds it first.')).toBeInTheDocument()
+    expect(row.getByText(/reply with “Sync OK”/)).toBeInTheDocument()
+
+    await user.click(row.getByRole('button', { name: 'Add' }))
+
+    expect(await row.findByText('Added, switched off')).toBeInTheDocument()
+    expect(promptRow.getByText('Added to your prompts')).toBeInTheDocument()
+    expect(platform.createPrompt).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ nickname: 'Sync OK', purpose: 'reply', replyAction: 'comment' }),
+    )
+    expect(platform.saveRoutine).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ id: 0, name: 'Reply when it syncs', mode: 'ask', spec: syncSpec() }),
+    )
+    expect(platform.createPrompt.mock.invocationCallOrder[0]).toBeLessThan(
+      platform.saveRoutine.mock.invocationCallOrder[0] ?? 0,
+    )
+    expect(platform.settleDescribeItCard.mock.calls.map(([req]) => req)).toEqual([
+      { ref: card.ref, part: 'prompt', index: 0, kind: 'added', words: 'Added the prompt “Sync OK”', routineId: 0 },
+      {
+        ref: card.ref,
+        part: 'routine',
+        index: 0,
+        kind: 'added',
+        words: 'Added “Reply when it syncs”, switched off',
+        routineId: 11,
+      },
+    ])
+    expect(kit.onSettled).toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Apply all' })).not.toBeInTheDocument()
+  })
+
+  it('saves nothing when a prompt it adds first fails, and says why', async () => {
+    const user = userEvent.setup()
+
+    readsTheLibrary()
+    platform.createPrompt.mockRejectedValueOnce(new Error('Another prompt has that nickname.'))
+    show(syncCard())
+
+    const row = within(screen.getByRole('group', { name: 'Reply when it syncs' }))
+
+    expect(await row.findByText('It replies on every pull request.')).toBeInTheDocument()
+    await user.click(row.getByRole('button', { name: 'Add' }))
+
+    expect(await row.findByRole('alert')).toHaveTextContent(
+      'Stopped at the prompt “Sync OK”: Another prompt has that nickname.',
+    )
+    expect(platform.saveRoutine).not.toHaveBeenCalled()
+    expect(platform.settleDescribeItCard).not.toHaveBeenCalled()
+    expect(row.getByRole('button', { name: 'Add' })).toBeEnabled()
+    expect(row.getByText('It runs “Sync OK”, which this card adds: Add adds it first.')).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: 'Sync OK' })).getByRole('button', { name: 'Add' })).toBeEnabled()
+  })
+
+  it('holds the prompt’s own Add while the routine’s row adds it first', async () => {
+    const user = userEvent.setup()
+    let added: (() => void) | undefined
+
+    readsTheLibrary()
+    platform.createPrompt.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          added = () => {
+            resolve(undefined as never)
+          }
+        }),
+    )
+    show(syncCard())
+
+    const row = within(screen.getByRole('group', { name: 'Reply when it syncs' }))
+    const promptRow = within(screen.getByRole('group', { name: 'Sync OK' }))
+
+    expect(await row.findByText('It replies on every pull request.')).toBeInTheDocument()
+    await user.click(row.getByRole('button', { name: 'Add' }))
+
+    await waitFor(() => {
+      expect(promptRow.getByRole('button', { name: 'Add' })).toBeDisabled()
+    })
+
+    added?.()
+
+    expect(await row.findByText('Added, switched off')).toBeInTheDocument()
+    expect(platform.createPrompt).toHaveBeenCalledOnce()
+  })
+
+  it('reads a routine again once the prompt it waits on is added, and adds the routine alone', async () => {
+    const user = userEvent.setup()
+
+    readsTheLibrary()
+    show(syncCard())
+
+    const row = within(screen.getByRole('group', { name: 'Reply when it syncs' }))
+    const promptRow = within(screen.getByRole('group', { name: 'Sync OK' }))
+
+    expect(await row.findByText('It replies on every pull request.')).toBeInTheDocument()
+
+    const reads = platform.describeRoutine.mock.calls.length
+
+    await user.click(promptRow.getByRole('button', { name: 'Add' }))
+    expect(await promptRow.findByText('Added to your prompts')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(platform.describeRoutine.mock.calls.length).toBeGreaterThan(reads)
+    })
+    expect(row.queryByText(/which this card adds/)).not.toBeInTheDocument()
+    expect(row.queryByText(/No prompt in your library/)).not.toBeInTheDocument()
+
+    await user.click(row.getByRole('button', { name: 'Add' }))
+    expect(await row.findByText('Added, switched off')).toBeInTheDocument()
+    expect(platform.createPrompt).toHaveBeenCalledOnce()
+    expect(platform.saveRoutine).toHaveBeenCalledOnce()
+  })
+
+  it('holds a routine back on the library’s problem again once the prompt it waits on is discarded', async () => {
+    const user = userEvent.setup()
+
+    readsTheLibrary()
+    show(syncCard())
+
+    const row = within(screen.getByRole('group', { name: 'Reply when it syncs' }))
+    const promptRow = within(screen.getByRole('group', { name: 'Sync OK' }))
+
+    expect(await row.findByText('It replies on every pull request.')).toBeInTheDocument()
+    expect(row.getByRole('button', { name: 'Add' })).toBeEnabled()
+
+    await user.click(promptRow.getByRole('button', { name: 'Discard' }))
+    expect(await promptRow.findByText('Discarded')).toBeInTheDocument()
+
+    expect(await row.findByText('No prompt in your library has the nickname “Sync OK”.')).toBeInTheDocument()
+    expect(row.getByText(/It can’t be applied like this/)).toBeInTheDocument()
+    expect(row.getByRole('button', { name: 'Add' })).toBeDisabled()
+    expect(row.queryByText(/which this card adds/)).not.toBeInTheDocument()
+    expect(platform.createPrompt).not.toHaveBeenCalled()
+  })
+
+  it('adds the prompt a change runs before it saves the change', async () => {
+    const user = userEvent.setup()
+
+    readsTheLibrary()
+    platform.listRoutines.mockResolvedValue([routine({ id: 3, enabled: false })])
+    show(syncCard(true))
+
+    const row = within(screen.getByRole('group', { name: 'Snooze passing bot PRs' }))
+
+    expect(await row.findByText('It replies on every pull request.')).toBeInTheDocument()
+    expect(row.getByText('It runs “Sync OK”, which this card adds: Save changes adds it first.')).toBeInTheDocument()
+
+    await user.click(row.getByRole('button', { name: 'Save changes' }))
+
+    expect(await row.findByText('Changes saved')).toBeInTheDocument()
+    expect(platform.createPrompt.mock.invocationCallOrder[0]).toBeLessThan(
+      platform.saveRoutine.mock.invocationCallOrder[0] ?? 0,
+    )
+    expect(platform.saveRoutine.mock.lastCall?.[0]).toMatchObject({ id: 3, spec: syncSpec() })
+    expect(platform.settleDescribeItCard.mock.calls.map(([req]) => `${req.part}:${req.kind}`)).toEqual([
+      'prompt:added',
+      'routine:saved',
+    ])
+  })
+
   it('shows what Claude says and a new routine, and adds it switched off, in the mode chosen', async () => {
     const user = userEvent.setup()
 

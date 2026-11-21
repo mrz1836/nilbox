@@ -4,14 +4,18 @@ import { attempt, type Result } from '../../../lib/call'
 import {
   applyAll,
   appliedWords,
+  applyParts,
   cardParts,
   changeDraft,
   changedId,
   partKey,
   partProblems,
+  promptName,
+  promptsRun,
   recorded,
   settlePart,
   type CardPart,
+  type PromptPart,
   type RoutinePart,
   type Settled,
 } from '../../../lib/describeit'
@@ -43,9 +47,11 @@ function noop(): void {
 
 // ProposalCard is one of Claude's proposals: what Claude says it does, then its parts in
 // the order they apply (prompts, routines, settings, rules), each a row the user applies or
-// discards on its own, its outcome in place of its buttons once settled; and, for a card of
-// several parts, Apply all, which applies those left in order and stops at the first that
-// fails, saying which and why. A part with problems can't be applied, and the card says so.
+// discards on its own, its outcome in place of its buttons once settled (a routine's adding
+// first the prompts it runs that the card adds and no one dealt with yet); and, for a card
+// of several parts, Apply all, which applies those left in order and stops at the first
+// that fails, saying which and why. A part with problems can't be applied, and the card
+// says so.
 export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps) {
   const id = useId()
   const parts = cardParts(card)
@@ -54,6 +60,9 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
   const [applying, setApplying] = useState(false)
   const [stopped, setStopped] = useState('')
   const [discarding, setDiscarding] = useState(false)
+  // adding reports a routine's row adding the card's prompts it runs, before the routine:
+  // the card's other rows wait, so none of those prompts is added twice.
+  const [adding, setAdding] = useState(false)
   const changes = useRoutineChange(noop, noop)
   // waiting is the question a change waits on, resolving with how it went; asked, whether
   // the question was open the last time the card rendered.
@@ -76,7 +85,7 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
   const modeOf = (p: RoutinePart) => modes.get(p.index) ?? kit.defaultMode
   const left = parts.filter((p) => outcomeOf(p) === undefined)
   const blocked = left.filter((p) => partProblems(p).length > 0)
-  const held = applying || discarding
+  const held = applying || discarding || adding
 
   const record = (p: CardPart, s: Settled) => {
     setLocal((was) => new Map(was).set(partKey(p), s))
@@ -132,17 +141,13 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
     })
   }
 
+  const applyKit = { modeOf, saveChange, onSettled: record, onSettingsSaved: kit.onSettingsSaved }
+
   const applyEvery = async () => {
     setApplying(true)
     setStopped('')
 
-    const done = await applyAll(card, {
-      settled: (p) => outcomeOf(p) !== undefined,
-      modeOf,
-      saveChange,
-      onSettled: record,
-      onSettingsSaved: kit.onSettingsSaved,
-    })
+    const done = await applyAll(card, { ...applyKit, settled: (p) => outcomeOf(p) !== undefined })
 
     setApplying(false)
     kit.onSettled()
@@ -150,6 +155,19 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
     if (!done.ok) {
       setStopped(appliedWords(done))
     }
+  }
+
+  // addFirst adds the card's prompts a routine runs, before its row saves the routine, and
+  // records each as Apply all does, resolving with where it stopped and why.
+  const addFirst = async (prompts: readonly PromptPart[]): Promise<Result<void>> => {
+    setAdding(true)
+
+    const done = await applyParts(card, prompts, applyKit)
+
+    setAdding(false)
+    kit.onSettled()
+
+    return done.ok ? { ok: true, data: undefined } : { ok: false, error: appliedWords(done) }
   }
 
   const discardAll = async (discard: () => Promise<string>) => {
@@ -164,7 +182,9 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
     switch (p.part) {
       case 'prompt':
         return <PromptChange key={partKey(p)} p={p} {...shared} />
-      case 'routine':
+      case 'routine': {
+        const first = promptsRun(p, left)
+
         return (
           <RoutineChange
             key={partKey(p)}
@@ -176,8 +196,11 @@ export function ProposalCard({ card, kit, source, onDiscard }: ProposalCardProps
             }}
             saveChange={saveChange}
             saving={changes.busy !== 0 && changes.busy === changedId(p)}
+            waitsOn={first.map((q) => promptName(q.checked.prompt))}
+            addFirst={() => addFirst(first)}
           />
         )
+      }
       case 'settings':
         return <SettingsChange key={partKey(p)} p={p} {...shared} />
       case 'rules':
