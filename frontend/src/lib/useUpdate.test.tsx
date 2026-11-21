@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { brand } from '../generated/brand'
 import type { DownloadAnswer, RestartAnswer, RunGoing, UpdateStatus } from '../platform'
@@ -79,8 +79,12 @@ function flow(unsent: () => number = () => 0) {
 }
 
 describe('useRestartToUpdate', () => {
-  it('restarts at once when nothing would be lost', async () => {
+  // Every restart below starts from 0.3.0 ready unless a test says otherwise.
+  beforeEach(() => {
     platform.getUpdateStatus.mockResolvedValue(updateReady())
+  })
+
+  it('restarts at once when nothing would be lost', async () => {
     platform.restartToUpdateNow.mockReturnValue(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
@@ -187,7 +191,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('readies a newer version once, then says why the restart failed', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockImplementationOnce(() => {
       platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'available', latest: '0.3.1' }))
 
@@ -213,7 +216,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('goes back to nothing under way once Restart returns without quitting', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     const { result } = flow()
 
     act(() => {
@@ -229,7 +231,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('does nothing for a second start while one is under way', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockReturnValue(deferred<RestartAnswer>().promise)
     const { result } = flow()
 
@@ -310,6 +311,7 @@ describe('useRestartToUpdate', () => {
   })
 
   it('checks first when no newer version is known, as a Try again after a failed install may find', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateStatus())
     platform.checkForUpdates.mockResolvedValue(updateReady({ state: 'available', mode: 'notify' }))
     const { result } = flow()
 
@@ -325,6 +327,7 @@ describe('useRestartToUpdate', () => {
   })
 
   it('shows the check under way, and says what it found when it finds nothing', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateStatus())
     const check = deferred<UpdateStatus>()
     platform.checkForUpdates.mockReturnValueOnce(check.promise)
     platform.checkForUpdates.mockResolvedValueOnce(updateStatus({ lastError: 'Couldn’t reach the releases.' }))
@@ -355,6 +358,7 @@ describe('useRestartToUpdate', () => {
   })
 
   it('says why the check, the status, or a build that doesn’t update stopped it', async () => {
+    platform.getUpdateStatus.mockResolvedValue(updateStatus())
     platform.checkForUpdates.mockRejectedValueOnce(failure('This build can’t check.'))
     const { result } = flow()
 
@@ -415,7 +419,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('asks first while runs go, naming them, and restarts confirmed once Go names no other', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
@@ -440,7 +443,6 @@ describe('useRestartToUpdate', () => {
 
   it('asks again, naming it, about a run started while it asked, and stops it only once confirmed', async () => {
     const pull = runGoing({ id: 8, kind: 'gitPull', title: 'Pull main', repo: 'acme-org/api' })
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing(), pull]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing(), pull]))
@@ -473,7 +475,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('restarts unconfirmed when the runs it named ended while it asked', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockReturnValueOnce(deferred<RestartAnswer>().promise)
     const { result } = flow()
@@ -495,7 +496,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('stops the runs it asked about as a whole while Go still can’t list them, and asks once it can', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([]))
@@ -535,7 +535,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('asks about the runs as a whole when Go couldn’t list them', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockResolvedValueOnce({ restarted: false, runsGoing: [], message: '' })
     const { result } = flow()
 
@@ -549,7 +548,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('asks first while sheets hold unsent text, naming the runs going too, without asking Go', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.listScriptRuns.mockResolvedValue([
       scriptRun({ id: 7, kind: 'release', title: 'Release v1.2.0', repo: 'acme-org/sdk', canStop: true }),
       scriptRun({ id: 8 }),
@@ -584,7 +582,6 @@ describe('useRestartToUpdate', () => {
 
   it('asks again about a run started while it asked about the text and the runs it listed', async () => {
     const pull = runGoing({ id: 8, kind: 'gitPull', title: 'Pull main', repo: 'acme-org/api' })
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.listScriptRuns.mockResolvedValue([
       scriptRun({ id: 7, kind: 'release', title: 'Release v1.2.0', repo: 'acme-org/sdk', canStop: true }),
     ])
@@ -633,7 +630,6 @@ describe('useRestartToUpdate', () => {
 
   it('asks about the text alone when the runs can’t be listed, and stops no run it didn’t name', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.listScriptRuns.mockRejectedValue(failure('The runs are busy.'))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
     platform.restartToUpdateNow.mockResolvedValueOnce(refusedFor([runGoing()]))
@@ -673,7 +669,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('asks about a run started while it asked about the text alone', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockResolvedValueOnce({ restarted: false, runsGoing: [runGoing()], message: '' })
     const { result } = flow(() => 1)
 
@@ -695,7 +690,6 @@ describe('useRestartToUpdate', () => {
 
   it('counts the text written while Go backed up, when it then refuses for the runs going', async () => {
     const restart = deferred<RestartAnswer>()
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockReturnValueOnce(restart.promise)
     const { result, rerender } = flow(() => 0)
 
@@ -718,7 +712,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('confirms nothing unless it asks', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     const { result } = flow()
 
     act(() => {
@@ -733,7 +726,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('leaves everything as it was on Not now, and can start again', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockResolvedValue({ restarted: false, runsGoing: [runGoing()], message: '' })
     const { result } = flow()
 
@@ -758,7 +750,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('shows why a restart failed until it is put away', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockRejectedValue(failure('Couldn’t back up your data first: the disk is full.'))
     const { result } = flow()
 
@@ -785,7 +776,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('waits quietly while the last update is still finishing, until the update next changes', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockResolvedValue({ restarted: false, refusal: 'settling', message: settling })
     const { result } = flow()
 
@@ -842,7 +832,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('leaves a step that isn’t a wait as it is when the update changes', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockRejectedValue(failure('Couldn’t install 0.3.0.'))
     const { result } = flow()
 
@@ -858,7 +847,6 @@ describe('useRestartToUpdate', () => {
   })
 
   it('waits quietly while a restart whose quit was held sees the app out', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockResolvedValue({ restarted: false, refusal: 'finishing', message: quitting })
     const { result } = flow()
 
@@ -896,8 +884,12 @@ function control(unsent: () => number = () => 0) {
 }
 
 describe('useUpdateControl', () => {
-  it('shows the banner the status calls for', async () => {
+  // Every banner below starts from 0.3.0 ready unless a test says otherwise.
+  beforeEach(() => {
     platform.getUpdateStatus.mockResolvedValue(updateReady())
+  })
+
+  it('shows the banner the status calls for', async () => {
     const { result } = control()
 
     expect(result.current.banner).toEqual({ kind: 'none' })
@@ -926,7 +918,6 @@ describe('useUpdateControl', () => {
   })
 
   it('hides the banner at once on Later, and reads the status again', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     const { result } = control()
 
     await waitFor(() => {
@@ -972,7 +963,6 @@ describe('useUpdateControl', () => {
 
   it('shows the banner hidden with Later again once a restart is asked for', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.hideUpdateBanner.mockRejectedValue(failure('Locked.'))
     platform.restartToUpdateNow.mockRejectedValue(failure('Couldn’t install 0.3.0: no space.'))
     const { result } = control()
@@ -997,7 +987,6 @@ describe('useUpdateControl', () => {
   })
 
   it('shows the banner the update hid for Later again once a restart is asked for', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.hideUpdateBanner.mockImplementation(() => {
       platform.getUpdateStatus.mockResolvedValue(updateReady({ bannerHidden: true }))
 
@@ -1072,7 +1061,6 @@ describe('useUpdateControl', () => {
 
   it('keeps the banner hidden for the session when Later can’t be stored, and logs why', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.hideUpdateBanner.mockRejectedValue(failure('Locked.'))
     const { result } = control()
 
@@ -1090,7 +1078,6 @@ describe('useUpdateControl', () => {
   })
 
   it('shows the banner again for a notification’s click, lifting Later, and says whether it shows anything', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     const { result } = control()
 
     await waitFor(() => {
@@ -1121,7 +1108,6 @@ describe('useUpdateControl', () => {
 
   it('says whether the banner shows by the status it has when it can’t be shown again, and logs why', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.showUpdateBanner.mockRejectedValue(failure('Locked.'))
     const { result } = control()
 
@@ -1187,7 +1173,6 @@ describe('useUpdateControl', () => {
   })
 
   it('offers what the banner and About offer', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     const { result } = control()
 
     expect(result.current.offer.action).toBeNull()
@@ -1245,7 +1230,6 @@ describe('useUpdateControl', () => {
   })
 
   it('puts away a restart’s failure, showing the banner as it was', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockRejectedValue(failure('Couldn’t install 0.3.0: no space.'))
     const { result } = control()
 
@@ -1266,7 +1250,6 @@ describe('useUpdateControl', () => {
   })
 
   it('runs the same restart when the menu bar asks for one', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockResolvedValue({ restarted: false, runsGoing: [runGoing()], message: '' })
     const { result } = control()
 
@@ -1282,7 +1265,6 @@ describe('useUpdateControl', () => {
   })
 
   it('says the update is finishing once a held quit’s restart returns, with nothing to click', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockImplementation(() => {
       platform.getUpdateStatus.mockResolvedValue(updateReady({ state: 'finishing' }))
 
@@ -1315,7 +1297,6 @@ describe('useUpdateControl', () => {
   })
 
   it('offers only the release page after a restart refused for an update that fails for good', async () => {
-    platform.getUpdateStatus.mockResolvedValue(updateReady())
     platform.restartToUpdateNow.mockResolvedValue({
       restarted: false,
       refusal: 'uninstallable',

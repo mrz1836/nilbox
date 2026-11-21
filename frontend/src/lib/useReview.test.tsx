@@ -305,6 +305,10 @@ describe('useReview', () => {
   })
 
   describe('when the card’s checks move', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
     // moved is #7 rebuilt from a card whose checks moved since the sheet read it, at 11:59.
     const moved = review({ counts: { ...review().counts, passed: 2, newer: true }, moved: true })
     // still is #7 rebuilt from a card the inbox read again with nothing moved.
@@ -325,7 +329,6 @@ describe('useReview', () => {
     }
 
     it('reads GitHub once after the rebuild, and never for a card that moved nothing', async () => {
-      vi.useFakeTimers()
       platform.rebuildReview.mockResolvedValueOnce(still).mockResolvedValueOnce(moved).mockResolvedValue(still)
       const { result, rerender } = await open()
 
@@ -346,7 +349,6 @@ describe('useReview', () => {
     })
 
     it('reads once more at most for however many card changes came during a read', async () => {
-      vi.useFakeTimers()
       const answer = deferred<ReturnType<typeof review>>()
       platform.rebuildReview.mockResolvedValueOnce(moved).mockResolvedValueOnce(moved).mockResolvedValue(still)
       const { rerender } = await open()
@@ -377,7 +379,6 @@ describe('useReview', () => {
     })
 
     it('waits until 20 seconds after the last read, and a closed sheet never reads', async () => {
-      vi.useFakeTimers()
       platform.rebuildReview.mockResolvedValue(moved)
       const { rerender, unmount } = await open(new Date('2026-06-15T11:59:05Z'))
 
@@ -400,7 +401,6 @@ describe('useReview', () => {
     })
 
     it('makes no read again after one that failed, until the card moves on', async () => {
-      vi.useFakeTimers()
       platform.rebuildReview.mockResolvedValue(moved)
       const { result, rerender } = await open()
 
@@ -420,6 +420,10 @@ describe('useReview', () => {
   })
 
   describe('when the window comes back to the front', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
     // focus brings the window back to the front.
     async function focus() {
       await act(async () => {
@@ -441,7 +445,6 @@ describe('useReview', () => {
     }
 
     it('reads once when the last read is more than five minutes old', async () => {
-      vi.useFakeTimers()
       await open(new Date(Date.parse('2026-06-15T11:59:00Z') + oldAfter))
 
       await focus()
@@ -453,7 +456,6 @@ describe('useReview', () => {
     })
 
     it('reads nothing within five minutes of the last read', async () => {
-      vi.useFakeTimers()
       await open(new Date(Date.parse('2026-06-15T11:59:00Z') + oldAfter - 1000))
 
       await focus()
@@ -462,7 +464,6 @@ describe('useReview', () => {
     })
 
     it('reads nothing while a read is under way, nor once the sheet is closed', async () => {
-      vi.useFakeTimers()
       const answer = deferred<ReturnType<typeof review>>()
       platform.refreshReview.mockReturnValueOnce(answer.promise)
       const { result, unmount } = renderHook(() => useReview(1), { wrapper: at(new Date('2026-06-15T13:00:00Z')) })
