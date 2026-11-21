@@ -86,9 +86,11 @@ type Watch struct {
 }
 
 // WatchSource gives the routines' searches for the account with login, deduplicated by
-// key. It must answer at once, from what it keeps: a whole refresh asks as it starts.
+// key. It must answer at once, from what it keeps: a whole refresh asks as it starts,
+// with its own ctx, which a source that must build its searches again first builds them
+// under.
 type WatchSource interface {
-	Watches(login string) []Watch
+	Watches(ctx context.Context, login string) []Watch
 }
 
 // ItemKeeper names the stored items something outside the inbox refers to, which the
@@ -213,7 +215,7 @@ func (s *Service) startWatchPass(ctx context.Context) *watchJob {
 		return nil
 	}
 
-	searches := s.watchSource.Watches(login)
+	searches := s.watchSource.Watches(ctx, login)
 
 	s.passes.mu.Lock()
 	idle := len(searches) == 0 && s.passes.cleaned

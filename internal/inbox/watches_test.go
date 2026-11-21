@@ -35,7 +35,7 @@ type fakeWatches struct {
 	off     atomic.Bool
 }
 
-func (f *fakeWatches) Watches(string) []Watch {
+func (f *fakeWatches) Watches(context.Context, string) []Watch {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 

@@ -111,15 +111,16 @@ func (w *autopilotWatches) HoldsWatches() bool {
 	return w.searches == nil || w.searches.HoldsWatches()
 }
 
-// Watches returns the routines' searches for the account login.
-func (w *autopilotWatches) Watches(login string) []inbox.Watch {
+// Watches returns the routines' searches for the account login, built again under ctx
+// first when the snapshot is another account's; a ctx that has ended keeps the snapshot.
+func (w *autopilotWatches) Watches(ctx context.Context, login string) []inbox.Watch {
 	if w.searches == nil {
 		return nil
 	}
 
 	set := w.searches.Current()
 	if !strings.EqualFold(set.Login, login) {
-		set = w.searches.Rebuild(context.Background())
+		set = w.searches.Rebuild(ctx)
 	}
 
 	out := make([]inbox.Watch, 0, len(set.Searches))

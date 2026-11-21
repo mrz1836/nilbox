@@ -690,10 +690,10 @@ func (w *watchSource) HoldsWatches() bool {
 	return w.searches.HoldsWatches()
 }
 
-func (w *watchSource) Watches(login string) []inbox.Watch {
+func (w *watchSource) Watches(ctx context.Context, login string) []inbox.Watch {
 	set := w.searches.Current()
 	if !strings.EqualFold(set.Login, login) {
-		set = w.searches.Rebuild(context.Background())
+		set = w.searches.Rebuild(ctx)
 	}
 
 	out := make([]inbox.Watch, 0, len(set.Searches))

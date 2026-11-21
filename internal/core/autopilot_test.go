@@ -234,15 +234,47 @@ func TestTheInboxReadsTheRoutinesSearchesForTheAccountSignedIn(t *testing.T) {
 	require.NoError(t, err)
 
 	source := &autopilotWatches{searches: autopilot.NewSearches(c.Autopilot)}
-	assert.Empty(t, source.Watches(""), "no one is signed in, so your account names no one")
+	assert.Empty(t, source.Watches(ctx, ""), "no one is signed in, so your account names no one")
 
 	require.NoError(t, prefsstore.New(c.DB, nil).Set(ctx, "inbox.viewer", "octo-user"))
 
-	got := source.Watches("octo-user")
+	got := source.Watches(ctx, "octo-user")
 	require.Len(t, got, 1, "the account signed in changed, so the searches are built again")
 	assert.Contains(t, got[0].Query, "user:octo-user")
 	assert.True(t, got[0].Follow, "Checks fail reads the checks")
 	assert.NotNil(t, c.WatchPasses, "the desktop shell runs the watch passes")
+}
+
+func TestTheRoutinesSearchesAreBuiltAgainUnderTheRefreshsContext(t *testing.T) {
+	t.Parallel()
+
+	c := bootstrap(t, testOptions(t, ".claude"))
+	ctx := t.Context()
+
+	_, err := c.Settings.SetAutopilotEnabled(ctx, true)
+	require.NoError(t, err)
+
+	saved, err := c.Autopilot.Save(ctx, autopilot.Draft{Name: "Dependabot", Spec: myDependabotSpec()})
+	require.NoError(t, err)
+
+	_, err = c.Autopilot.SetEnabled(ctx, saved.ID, true, autopilot.CurrentRun)
+	require.NoError(t, err)
+
+	// The snapshot was built while no one was signed in; now octo-user is.
+	require.NoError(t, prefsstore.New(c.DB, nil).Set(ctx, "inbox.viewer", "octo-user"))
+
+	searches := autopilot.NewSearches(c.Autopilot)
+	source := &autopilotWatches{searches: searches}
+
+	ended, cancel := context.WithCancel(ctx)
+	cancel()
+
+	assert.Empty(t, source.Watches(ended, "octo-user"), "a refresh whose ctx has ended builds nothing")
+	assert.Empty(t, searches.Current().Login, "so the snapshot stays the one built for no one")
+
+	got := source.Watches(ctx, "octo-user")
+	require.Len(t, got, 1, "the refresh's live ctx builds the searches again")
+	assert.Equal(t, "octo-user", searches.Current().Login)
 }
 
 // myDependabotSpec is a routine that tells the user when a pull request Dependabot opened
@@ -292,7 +324,7 @@ func TestAutopilotIsOffAndInertOnAFreshInstall(t *testing.T) {
 	assert.False(t, c.AutopilotEngine.Enabled(), "the engine doesn't run")
 	assert.True(t, lockFree(t, opts.Paths.AutopilotLock), "and holds no lock")
 	assert.False(t, source.HoldsWatches(), "so the inbox sends no routine search")
-	assert.Empty(t, source.Watches("octo-user"), "and is handed none")
+	assert.Empty(t, source.Watches(ctx, "octo-user"), "and is handed none")
 
 	// The menu bar shows no Autopilot group, and the window's close quits as before.
 	shell, err := c.ShellAutopilot.State(ctx)

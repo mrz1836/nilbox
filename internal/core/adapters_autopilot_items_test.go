@@ -287,7 +287,7 @@ func TestTheRoutinesReadsOfTheInboxFailWhenItCantBeRead(t *testing.T) {
 	_, err = promptLibrary{prompts: prompts.NewStore(closed, nil)}.Prompts(t.Context())
 	require.Error(t, err)
 
-	assert.Nil(t, (&autopilotWatches{}).Watches(rigViewer), "before the routines are built, the inbox reads no search")
+	assert.Nil(t, (&autopilotWatches{}).Watches(t.Context(), rigViewer), "before the routines are built, the inbox reads no search")
 	assert.True(t, (&autopilotWatches{}).HoldsWatches())
 }
 
