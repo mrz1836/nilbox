@@ -15,13 +15,13 @@ function band(overrides: Partial<Safety> = {}): Safety {
 
 describe('SafetyBand', () => {
   it.each<[Safety['tone'], Safety['icon'], string, string]>([
-    ['success', 'shield', 'bg-success/9', 'text-success'],
+    ['success', 'shield', 'bg-success/10', 'text-success'],
     ['warning', 'alert', 'bg-warning/10', 'text-warning'],
     ['warning', 'up', 'bg-warning/10', 'text-warning'],
     ['warning', 'ring', 'bg-warning/10', 'text-warning'],
-    ['info', 'info', 'bg-info/11', 'text-info'],
-    ['danger', 'lock', 'bg-danger/9', 'text-danger'],
-    ['danger', 'ghost', 'bg-danger/9', 'text-danger'],
+    ['info', 'info', 'bg-info/10', 'text-info'],
+    ['danger', 'lock', 'bg-danger/10', 'text-danger'],
+    ['danger', 'ghost', 'bg-danger/10', 'text-danger'],
   ])('draws the %s tone with its %s mark', (tone, icon, background, mark) => {
     const { container } = render(<SafetyBand safety={band({ tone, icon })} />)
 

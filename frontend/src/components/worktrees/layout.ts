@@ -95,7 +95,7 @@ const buttonShape =
 
 export const verbButtonClass = `${buttonShape} border-border bg-surface text-text hover:bg-raised disabled:hover:bg-surface`
 
-export const cleanUpButtonClass = `${buttonShape} border-success/50 bg-success/8 text-success hover:bg-success/15 disabled:hover:bg-success/8`
+export const cleanUpButtonClass = `${buttonShape} border-success/45 bg-success/10 text-success hover:bg-success/14 disabled:hover:bg-success/10`
 
 export const dangerVerbButtonClass = `${buttonShape} border-border bg-surface text-danger hover:bg-raised disabled:hover:bg-surface`
 

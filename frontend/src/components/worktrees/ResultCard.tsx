@@ -23,7 +23,7 @@ export function ResultCard({ summary, onDismiss, children }: ResultCardProps) {
     <section
       role="status"
       aria-label={summary.title}
-      className={`flex min-w-0 flex-col rounded-lg border bg-surface py-1 pr-1.5 pl-3 text-body motion-safe:animate-pop-in ${done ? 'border-border' : 'border-warning/40'}`}
+      className={`flex min-w-0 flex-col rounded-lg border bg-surface py-1 pr-1.5 pl-3 text-body motion-safe:animate-pop-in ${done ? 'border-border' : 'border-warning/45'}`}
     >
       <div className="flex min-w-0 items-center gap-2">
         {done ? (

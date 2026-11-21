@@ -274,7 +274,7 @@ describe('CandidateRow', () => {
     const chip = within(row).getByText('feat')
 
     expect(chip).toHaveAttribute('title', '1 commit starts with feat:, which usually means a minor release.')
-    expect(chip).toHaveClass('text-info', 'border-info/40', 'bg-info/10', 'rounded-full')
+    expect(chip).toHaveClass('text-info', 'border-info/45', 'bg-info/10', 'rounded-full')
     expect(within(row).queryByText('breaking')).not.toBeInTheDocument()
   })
 
@@ -290,7 +290,7 @@ describe('CandidateRow', () => {
     const chip = within(row).getByText('breaking')
 
     expect(chip).toHaveAttribute('title', '1 commit is marked breaking (feat!:), which usually means a major release.')
-    expect(chip).toHaveClass('text-caution', 'border-caution/40', 'bg-caution/10')
+    expect(chip).toHaveClass('text-caution', 'border-caution/45', 'bg-caution/10')
     expect(within(row).queryByText('feat')).not.toBeInTheDocument()
   })
 

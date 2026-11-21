@@ -334,7 +334,7 @@ export function MergedBranchesDialog({ rules, now, onConfirm, onCancel }: Merged
               </span>
             </div>
             {unpushed.length > 0 && (
-              <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-md border border-warning/40 px-2.5 py-2 text-xs">
+              <label className="mt-2 flex cursor-pointer items-start gap-2.5 rounded-md border border-warning/45 px-2.5 py-2 text-xs">
                 <input
                   type="checkbox"
                   checked={anyway}

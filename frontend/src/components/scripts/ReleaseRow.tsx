@@ -104,8 +104,8 @@ const checksIcons: Readonly<Record<CommitChecks, ReactNode>> = {
 // bumpChips word and color the bump a row's commits suggest: breaking for a major one,
 // feat for a minor one.
 const bumpChips: Readonly<Record<'major' | 'minor', { text: string; className: string }>> = {
-  major: { text: 'breaking', className: 'border-caution/40 bg-caution/10 text-caution' },
-  minor: { text: 'feat', className: 'border-info/40 bg-info/10 text-info' },
+  major: { text: 'breaking', className: 'border-caution/45 bg-caution/10 text-caution' },
+  minor: { text: 'feat', className: 'border-info/45 bg-info/10 text-info' },
 }
 
 // noWave is the repositories sharing a headline when the row is given none.

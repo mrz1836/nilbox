@@ -34,10 +34,10 @@ const safetyIcons: Readonly<Record<SafetyIcon, (className: string) => ReactNode>
 // when work would be, or is only here, blue while something runs in it, and red for a real
 // problem, each spelled out in full so Tailwind finds it.
 const tones: Readonly<Record<Safety['tone'], { band: string; icon: string }>> = {
-  success: { band: 'bg-success/9', icon: 'text-success' },
+  success: { band: 'bg-success/10', icon: 'text-success' },
   warning: { band: 'bg-warning/10', icon: 'text-warning' },
-  info: { band: 'bg-info/11', icon: 'text-info' },
-  danger: { band: 'bg-danger/9', icon: 'text-danger' },
+  info: { band: 'bg-info/10', icon: 'text-info' },
+  danger: { band: 'bg-danger/10', icon: 'text-danger' },
 }
 
 export interface SafetyBandProps {

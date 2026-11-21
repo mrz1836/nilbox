@@ -51,7 +51,7 @@ describe('ResultCard', () => {
     )
 
     const card = screen.getByRole('status', { name: 'Removed 1 of 2 clean worktrees' })
-    expect(card).toHaveClass('border-warning/40')
+    expect(card).toHaveClass('border-warning/45')
     expect(card.querySelector('svg')).toHaveClass('text-warning')
     expect(within(card).getByText('1 branch deleted · 1 left in place, as noted below.')).toBeInTheDocument()
     const notes = within(card).getByRole('list', { name: 'Notes' })

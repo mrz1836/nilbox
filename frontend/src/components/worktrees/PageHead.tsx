@@ -22,7 +22,7 @@ const sessionsUnknownWords =
 // chipClass is a chip: a pill with its state's dot, its count, and its label, which turns
 // the accent while the toolbar's filter is it alone.
 const chipClass =
-  'inline-flex items-center gap-1.5 rounded-full border border-border bg-background py-0 pr-2.25 pl-2 text-xs leading-5 whitespace-nowrap text-muted transition-colors hover:bg-raised hover:text-text aria-pressed:border-accent/55 aria-pressed:bg-accent/10 aria-pressed:text-text'
+  'inline-flex items-center gap-1.5 rounded-full border border-border bg-background py-0 pr-2.25 pl-2 text-xs leading-5 whitespace-nowrap text-muted transition-colors hover:bg-raised hover:text-text aria-pressed:border-accent/60 aria-pressed:bg-accent/10 aria-pressed:text-text'
 
 // Banner is a note the listing carries, set under the title: amber for what it couldn't
 // read (warn), and quiet for what this system can't tell.
@@ -30,7 +30,7 @@ function Banner({ tone, children }: { tone: 'warn' | 'quiet'; children: ReactNod
   return (
     <p
       role="note"
-      className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-body ${tone === 'warn' ? 'border-warning/45 bg-warning/9 text-text' : 'border-border bg-surface text-muted'}`}
+      className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-body ${tone === 'warn' ? 'border-warning/45 bg-warning/10 text-text' : 'border-border bg-surface text-muted'}`}
     >
       {tone === 'warn' ? (
         <AlertIcon className="mt-0.5 size-3.5 shrink-0 text-warning" />
