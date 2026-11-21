@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { goPreCommitTool, integrationsConfig, integrationTool, integrationTools, scriptRun } from '../test/fixtures'
 import {
@@ -11,6 +11,8 @@ import {
   unusable,
   usable,
 } from './scriptsTab'
+
+vi.mock('../platform', () => import('../test/platform').then((fake) => fake.platform))
 
 // off is a tool switched off.
 const off = { switch: 'off' as const, on: false }
