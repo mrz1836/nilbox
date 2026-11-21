@@ -547,3 +547,18 @@ func TestValueOfAnUnfilledField(t *testing.T) {
 	v := facts.Build(prRow(), env()).Value(catalog.FieldTries)
 	assert.Equal(t, facts.StatusUnknown, v.Status, "the history is the ledger's, not the row's")
 }
+
+func TestAKnownListIsNeverNil(t *testing.T) {
+	t.Parallel()
+
+	none := facts.List(nil, true)
+	assert.Equal(t, facts.StatusKnown, none.Status)
+	assert.Equal(t, []string{}, none.List, "none is an empty list, so a trace carries [], never null")
+	assert.True(t, none.Partial)
+
+	values := []string{"bug"}
+	some := facts.List(values, false)
+	assert.Equal(t, values, some.List)
+	assert.Same(t, &values[0], &some.List[0], "a list that holds something is kept, not copied")
+	assert.False(t, some.Partial)
+}
