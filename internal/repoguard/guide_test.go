@@ -90,7 +90,7 @@ func markdownHeadings(text string) []string {
 
 	fenced := false
 
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if strings.HasPrefix(line, "```") {
 			fenced = !fenced
 

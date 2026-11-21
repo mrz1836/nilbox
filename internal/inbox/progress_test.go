@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -50,9 +51,9 @@ func phases(told []event.InboxProgress) []event.InboxPhase {
 func lastOf(t *testing.T, told []event.InboxProgress, phase event.InboxPhase) event.InboxProgress {
 	t.Helper()
 
-	for i := len(told) - 1; i >= 0; i-- {
-		if told[i].Phase == phase {
-			return told[i]
+	for _, t := range slices.Backward(told) {
+		if t.Phase == phase {
+			return t
 		}
 	}
 

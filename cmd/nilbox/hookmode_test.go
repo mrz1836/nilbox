@@ -80,8 +80,7 @@ func hookCall(t *testing.T, exe, home, runDir, tool string, input map[string]any
 
 	err = cmd.Run()
 
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 		return exit.ExitCode(), stdout.String(), stderr.String()
 	}
 

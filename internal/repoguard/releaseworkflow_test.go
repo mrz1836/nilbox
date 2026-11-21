@@ -36,7 +36,7 @@ func envSetting(text, key string) (string, bool) {
 		found bool
 	)
 
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		line = strings.TrimSpace(line)
 		if after, ok := strings.CutPrefix(line, key+"="); ok {
 			value, found = strings.Trim(strings.TrimSpace(after), `"'`), true
@@ -50,7 +50,7 @@ func envSetting(text, key string) (string, bool) {
 func codeOnly(text string) string {
 	var lines []string
 
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
 			lines = append(lines, line)
 		}
@@ -67,7 +67,7 @@ func jobBlock(text, job string) string {
 		inJobs, inIt bool
 	)
 
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		switch {
 		case line == "jobs:":
 			inJobs = true
