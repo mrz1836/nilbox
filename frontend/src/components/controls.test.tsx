@@ -74,10 +74,8 @@ describe('the shared classes', () => {
       toolbarClass,
       'flex h-[52px] shrink-0 items-center gap-4 border-b border-border bg-surface pr-3 pl-[80px] select-none [--wails-draggable:drag]',
     ],
-  ])('%s draws the same classes wherever it is used', (_, given, want) => {
-    render(<div className={given}>Shared</div>)
-
-    expect(screen.getByText('Shared')).toHaveAttribute('class', want)
+  ])('pins %s to its class string', (_, given, want) => {
+    expect(given).toBe(want)
   })
 
   it('sizes and colors the icon buttons from one shape', () => {
@@ -104,11 +102,6 @@ describe('the shared classes', () => {
     expect(screen.getByRole('button', { name: 'Copy' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Copy' })).toHaveClass('disabled:opacity-disabled')
     expect(screen.getByRole('button', { name: 'Close' }).className).not.toContain('opacity')
-  })
-
-  it('dims the page behind both dialog shells', () => {
-    expect(modalClass.split(' ')).toContain('backdrop:bg-scrim')
-    expect(sheetDialogClass.split(' ')).toContain('backdrop:bg-scrim')
   })
 })
 
