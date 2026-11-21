@@ -55,14 +55,18 @@ func TestGeneratedFilesAreCurrent(t *testing.T) {
 }
 
 // themeTokens parses the generated @theme block into each token's light and dark value,
-// keyed by the token's CSS name, failing on any line that is not a light-dark() token.
+// keyed by the token's CSS name, failing unless the block first resets Tailwind's own
+// palette, and on any other line that is not a light-dark() token.
 func themeTokens(t *testing.T, css string) map[string][2]string {
 	t.Helper()
 
 	body := cssRule(t, css, "@theme static")
 	tokens := map[string][2]string{}
 
-	for line := range strings.SplitSeq(strings.TrimSpace(body), "\n") {
+	reset, rest, _ := strings.Cut(strings.TrimSpace(body), "\n")
+	require.Equal(t, "--color-*: initial;", reset, "the theme resets Tailwind's own palette before its tokens")
+
+	for line := range strings.SplitSeq(rest, "\n") {
 		name, value, ok := strings.Cut(strings.TrimSpace(line), ": ")
 		require.Truef(t, ok, "malformed theme line %q", line)
 		require.Truef(t, strings.HasPrefix(name, themeVarPrefix), "%s is not a theme color", name)
