@@ -22,10 +22,6 @@ export function toneOf(state: ServiceState): Tone | null {
   }
 }
 
-// toneText and toneFill color a tone's text and its dot.
-export const toneText: Readonly<Record<Tone, string>> = { warning: 'text-warning', danger: 'text-danger' }
-export const toneFill: Readonly<Record<Tone, string>> = { warning: 'bg-warning', danger: 'bg-danger' }
-
 // stateWords are each state's words, the same Go's banners use.
 const stateWords: Readonly<Record<ServiceState, string>> = {
   off: 'Not checked',

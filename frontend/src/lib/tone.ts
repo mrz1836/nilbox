@@ -1,6 +1,6 @@
-// Tones: the theme colors the window marks a state with, and each tone's text, fill, and
-// border class, spelled out in full so Tailwind finds them. A tint, a tone at a low alpha
-// behind a chip or a tag, stays with the map of the domain that draws it.
+// Tones: the theme colors the window marks a state with, and each tone's text and fill
+// class, spelled out in full so Tailwind finds them. A tint, a tone at a low alpha behind a
+// chip or a tag, stays with the map of the domain that draws it.
 
 // Tone names a theme color (its --color-* token) by the state it marks; muted marks none.
 export type Tone = 'accent' | 'info' | 'success' | 'warning' | 'caution' | 'danger' | 'muted'
@@ -25,15 +25,4 @@ export const toneFill: Readonly<Record<Tone, string>> = {
   caution: 'bg-caution',
   danger: 'bg-danger',
   muted: 'bg-muted',
-}
-
-// toneBorder is each tone's border color.
-export const toneBorder: Readonly<Record<Tone, string>> = {
-  accent: 'border-accent',
-  info: 'border-info',
-  success: 'border-success',
-  warning: 'border-warning',
-  caution: 'border-caution',
-  danger: 'border-danger',
-  muted: 'border-muted',
 }
