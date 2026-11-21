@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/event"
+	"github.com/mrz1836/nilbox/internal/paths"
 )
 
 // maxHelperLog is how much of the end of the runtime's helper log is kept.
@@ -274,31 +274,10 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// readTail reads the last limit bytes of the regular file at path.
+// readTail reads the last limit bytes of the regular file at path, as paths.ReadTail
+// reads them, so a named pipe in the log's place is refused rather than waited on.
 func readTail(path string, limit int64) ([]byte, error) {
-	f, err := os.Open(path) //nolint:gosec // the runtime's helper log, named for a process of the app's
-	if err != nil {
-		return nil, fmt.Errorf("read the update's log: %w", err)
-	}
-
-	defer func() { _ = f.Close() }()
-
-	info, err := f.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("read the update's log: %w", err)
-	}
-
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("read the update's log: %w", appdata.ErrNotAFile)
-	}
-
-	if size := info.Size(); size > limit {
-		if _, err = f.Seek(size-limit, io.SeekStart); err != nil {
-			return nil, fmt.Errorf("read the update's log: %w", err)
-		}
-	}
-
-	data, err := io.ReadAll(io.LimitReader(f, limit))
+	data, _, err := paths.ReadTail(path, limit)
 	if err != nil {
 		return nil, fmt.Errorf("read the update's log: %w", err)
 	}

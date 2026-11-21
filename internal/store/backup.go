@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mrz1836/nilbox/internal/appdata"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/store/migrate"
 )
 
@@ -229,35 +230,28 @@ func checkBackup(path, backup string) error {
 		return fmt.Errorf("%w: %s is not a file", ErrNotABackup, name)
 	}
 
-	head, err := readHead(backup, len(sqliteHeader))
+	isDB, err := IsDatabase(backup)
 	if err != nil {
-		return err
+		return fmt.Errorf("read the backup: %w", err)
 	}
 
-	if !bytes.Equal(head, []byte(sqliteHeader)) {
+	if !isDB {
 		return fmt.Errorf("%w: %s is not a database", ErrNotABackup, name)
 	}
 
 	return nil
 }
 
-// readHead reads the first n bytes of the file at path, or fewer when it is shorter.
-func readHead(path string, n int) ([]byte, error) {
-	f, err := os.Open(path) //nolint:gosec // one of the database's own backups, beside it
+// IsDatabase reports whether the file at path starts with SQLite's header, as every
+// SQLite database file does. It reads the file as paths.ReadHead does, so anything but a
+// regular file, or a link to one, is refused with paths.ErrNotRegular and never waited on.
+func IsDatabase(path string) (bool, error) {
+	head, err := paths.ReadHead(path, int64(len(sqliteHeader)))
 	if err != nil {
-		return nil, fmt.Errorf("read the backup: %w", err)
+		return false, err
 	}
 
-	defer func() { _ = f.Close() }()
-
-	head := make([]byte, n)
-
-	read, err := io.ReadFull(f, head)
-	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("read the backup: %w", err)
-	}
-
-	return head[:read], nil
+	return bytes.Equal(head, []byte(sqliteHeader)), nil
 }
 
 // copyBeside copies the file at from into a user-only temporary file beside path, flushed

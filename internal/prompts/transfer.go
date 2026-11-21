@@ -1,11 +1,9 @@
 package prompts
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,12 +12,10 @@ import (
 	"github.com/mrz1836/nilbox/internal/appdata"
 	"github.com/mrz1836/nilbox/internal/brand"
 	"github.com/mrz1836/nilbox/internal/clock"
+	"github.com/mrz1836/nilbox/internal/paths"
 	"github.com/mrz1836/nilbox/internal/store"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
-
-// sqliteHeader starts every SQLite database file.
-const sqliteHeader = "SQLite format 3\x00"
 
 var (
 	// ErrUnknownBackup is returned when Import is pointed at a backup Backups does not list.
@@ -429,23 +425,20 @@ func readImportFile(ctx context.Context, path string) (Bundle, error) {
 	return readBundleFile(path)
 }
 
-// isDatabase reports whether the file at path starts as an SQLite database does.
+// isDatabase reports whether the file at path starts as an SQLite database does. A path
+// that is no regular file, such as a folder or a named pipe, is no prompt file either, and
+// is refused as one without being read.
 func isDatabase(path string) (bool, error) {
-	f, err := os.Open(path) //nolint:gosec // a file the user chose
-	if err != nil {
+	isDB, err := store.IsDatabase(path)
+
+	switch {
+	case errors.Is(err, paths.ErrNotRegular):
+		return false, fmt.Errorf("%w: read the file: %w", ErrNotBundle, err)
+	case err != nil:
 		return false, fmt.Errorf("read the file: %w", err)
 	}
 
-	defer func() { _ = f.Close() }()
-
-	head := make([]byte, len(sqliteHeader))
-
-	n, err := io.ReadFull(f, head)
-	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
-		return false, fmt.Errorf("read the file: %w", err)
-	}
-
-	return bytes.Equal(head[:n], []byte(sqliteHeader)), nil
+	return isDB, nil
 }
 
 // clonePlanner returns a copy of pl to plan with, leaving pl as it is.
