@@ -17,7 +17,7 @@ import {
   routineReady,
   settings,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import { AutopilotSection, clearedText, lastCheckedText } from './AutopilotSection'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -415,9 +415,7 @@ describe('This Mac', () => {
 
     await screen.findByRole('list', { name: 'This Mac' })
     platform.getAutopilotReadiness.mockResolvedValue(mac())
-    act(() => {
-      emit('autopilot:updated')
-    })
+    send('autopilot:updated')
 
     expect(await screen.findByText('Not ready here: Snooze passing bot PRs')).toBeInTheDocument()
   })

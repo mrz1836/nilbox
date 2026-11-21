@@ -1,10 +1,10 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { BranchState, BranchStatus } from '../../platform'
 import { branchStatus, scriptRun } from '../../test/fixtures'
-import { emit, listening, platform } from '../../test/platform'
+import { listening, platform, send } from '../../test/platform'
 import { BranchCheck } from './BranchCheck'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -153,9 +153,7 @@ describe('BranchCheck', () => {
 
     platform.getBranchStatus.mockResolvedValue(branchStatus())
     platform.getScriptRun.mockResolvedValue(scriptRun({ id: 51, kind: 'gitPull', status: 'succeeded' }))
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     expect(await screen.findByText('Up to date')).toBeVisible()
     expect(onPulled).toHaveBeenCalledOnce()
@@ -177,9 +175,7 @@ describe('BranchCheck', () => {
 
     platform.getBranchStatus.mockResolvedValue(branchStatus())
     platform.getScriptRun.mockRejectedValue(new Error('the run is gone'))
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     expect(await screen.findByText('Up to date')).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Pulling master' })).not.toBeInTheDocument()

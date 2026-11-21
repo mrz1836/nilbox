@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
@@ -8,7 +8,7 @@ import type { ScriptRun, TerminalID } from '../../platform'
 import { at, fromNow } from '../../test/clock'
 import { scriptRun } from '../../test/fixtures'
 import { useScriptRuns } from '../../lib/useScriptRuns'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import { RunsPage } from './RunsPage'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -154,9 +154,7 @@ describe('RunsPage', () => {
     await list()
 
     platform.listScriptRuns.mockResolvedValue([release, lint])
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     await waitFor(async () => {
       expect(await rows()).toHaveLength(2)

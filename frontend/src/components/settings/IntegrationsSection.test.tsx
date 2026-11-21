@@ -14,7 +14,7 @@ import {
   integrationTools,
   settings,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import { IntegrationsSection } from './IntegrationsSection'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -78,9 +78,7 @@ describe('IntegrationsSection', () => {
 
     await screen.findByRole('region', { name: 'mage-x' })
     platform.listIntegrations.mockResolvedValue(integrationTools({ tools: [integrationTool({ state: 'missing' })] }))
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     await waitFor(() => {
       expect(cards()).toEqual(['mage-x', 'Scripts'])

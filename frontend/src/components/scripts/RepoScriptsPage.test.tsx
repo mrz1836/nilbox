@@ -19,7 +19,7 @@ import {
   scriptRun,
   scriptSection,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import { RepoScriptsPage } from './RepoScriptsPage'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -1029,9 +1029,7 @@ describe('RepoScriptsPage', () => {
     platform.getScriptRun.mockResolvedValue(
       scriptRun({ ...pull, summary: 'Updated master from 1a2b3c4 to 5d6e7f8, 2 new commits.' }),
     )
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     expect(await screen.findByText('Up to date')).toBeInTheDocument()
     await waitFor(() => {
@@ -1108,9 +1106,7 @@ describe('RepoScriptsPage', () => {
 
     platform.getBranchStatus.mockResolvedValue(branchStatus())
     platform.getScriptRun.mockResolvedValue(scriptRun({ ...pull, summary: 'Updated master.' }))
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     expect(await screen.findByText('Up to date')).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Pull master' })).not.toBeInTheDocument()

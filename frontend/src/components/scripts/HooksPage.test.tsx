@@ -10,7 +10,7 @@ import type { HookInstallAllResult, IntegrationTool, ScriptRun } from '../../pla
 import { deferred } from '../../test/async'
 import { at } from '../../test/clock'
 import { goPreCommitTool, hookInstallAll, hookRepo, hooksList, scriptRun, toolCopy } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import { HooksPage } from './HooksPage'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -336,9 +336,7 @@ describe('HooksPage', () => {
 
     await screen.findByRole('list', { name: 'Needs attention' })
     platform.listHooks.mockResolvedValue(hooksList({ repos: [hookRepo()] }))
-    act(() => {
-      emit('hooks:updated')
-    })
+    send('hooks:updated')
 
     expect(await screen.findByText('Nothing needs attention.')).toBeInTheDocument()
   })

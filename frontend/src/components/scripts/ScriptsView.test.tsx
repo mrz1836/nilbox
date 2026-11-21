@@ -33,7 +33,7 @@ import {
   scriptClone,
   scriptRun,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import ScriptsView, { type ScriptsPage } from './ScriptsView'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -189,16 +189,12 @@ describe('ScriptsView', () => {
     expect(platform.listReleaseCandidates).not.toHaveBeenCalled()
 
     platform.listIntegrations.mockResolvedValue(integrationTools())
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
     await userEvent.click(await rail().findByRole('button', { name: /^Release/ }))
     expect(await screen.findByRole('heading', { name: 'Release', level: 2 })).toBeInTheDocument()
 
     magexOff()
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     expect(await screen.findByRole('heading', { name: 'Runs', level: 2 })).toBeInTheDocument()
     expect(rail().queryByRole('button', { name: /^Release/ })).not.toBeInTheDocument()
@@ -233,9 +229,7 @@ describe('ScriptsView', () => {
     expect(within(runs).getByText('3')).toBeInTheDocument()
 
     platform.listScriptRuns.mockResolvedValue([scriptRun({ id: 4, status: 'running' }), scriptRun({ id: 1 })])
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     expect(await rail().findByRole('button', { name: 'Runs (1 run in progress)' })).toBeInTheDocument()
   })
@@ -248,9 +242,7 @@ describe('ScriptsView', () => {
     expect(platform.listScriptRuns).toHaveBeenCalledExactlyOnceWith({ kinds: [], repo: '', withAgents: false })
 
     platform.listScriptRuns.mockResolvedValue([scriptRun({ id: 2, status: 'running' }), scriptRun()])
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     expect(await rail().findByRole('button', { name: 'Runs (1 run in progress)' })).toBeInTheDocument()
     expect(within(screen.getByRole('list', { name: 'Runs' })).getAllByRole('button')).toHaveLength(2)
@@ -311,9 +303,7 @@ describe('ScriptsView', () => {
     expect(await tools()).toHaveLength(2)
 
     platform.listIntegrations.mockResolvedValue(integrationTools({ tools: [integrationTool()] }))
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
 
     await waitFor(async () => {
       expect(await tools()).toEqual(['magex 1.29.5'])
@@ -367,9 +357,7 @@ describe('ScriptsView', () => {
 
     await screen.findByRole('list', { name: 'Runs' })
     platform.listIntegrations.mockResolvedValue(integrationTools())
-    act(() => {
-      emit('tools:updated')
-    })
+    send('tools:updated')
     await rail().findByRole('button', { name: /^Release/ })
 
     view.rerender(<Tab request={request(1)} onOpenSettings={onOpenSettings} />)
@@ -467,9 +455,7 @@ describe('ScriptsView', () => {
     platform.listReleaseCandidates.mockResolvedValue(
       releaseCandidates({ repos: [releaseCandidate({ group: 'upToDate', version: 'v1.4.3', ahead: 0 })] }),
     )
-    act(() => {
-      emit('releases:updated')
-    })
+    send('releases:updated')
 
     await waitFor(() => {
       expect(rail().getByRole('button', { name: 'Release' })).not.toHaveAttribute('title')
@@ -489,9 +475,7 @@ describe('ScriptsView', () => {
     platform.listReleaseCandidates.mockResolvedValue(
       releaseCandidates({ repos: [releaseCandidate({ group: 'upToDate', version: 'v1.4.3', ahead: 0 })] }),
     )
-    act(() => {
-      emit('releases:updated')
-    })
+    send('releases:updated')
 
     expect(await screen.findByText('No repository has unreleased changes.')).toBeInTheDocument()
   })
@@ -533,9 +517,7 @@ describe('ScriptsView', () => {
       expect(platform.listHooks).toHaveBeenCalledWith(false)
 
       platform.listHooks.mockResolvedValue(hooksList({ repos: [hookRepo()] }))
-      act(() => {
-        emit('hooks:updated')
-      })
+      send('hooks:updated')
 
       await waitFor(() => {
         expect(rail().getByRole('button', { name: 'Hooks' })).not.toHaveAttribute('title')
@@ -562,9 +544,7 @@ describe('ScriptsView', () => {
       expect(platform.listReleaseCandidates).not.toHaveBeenCalled()
 
       magexOff()
-      act(() => {
-        emit('tools:updated')
-      })
+      send('tools:updated')
 
       expect(await screen.findByRole('heading', { name: 'Runs', level: 2 })).toBeInTheDocument()
       expect(rail().queryByRole('button', { name: /^Hooks/ })).not.toBeInTheDocument()
@@ -644,9 +624,7 @@ describe('ScriptsView', () => {
       expect(platform.listHooks).toHaveBeenCalledOnce()
 
       platform.listScriptRuns.mockResolvedValue([hooksRun({ status: 'running', exitCode: null, finishedAt: '' })])
-      act(() => {
-        emit('scriptruns:updated')
-      })
+      send('scriptruns:updated')
 
       await waitFor(() => {
         expect(platform.listHooks).toHaveBeenCalledTimes(2)
@@ -665,9 +643,7 @@ describe('ScriptsView', () => {
       expect(rail().getByRole('button', { name: 'Repo scripts' })).toBeInTheDocument()
 
       magexOff()
-      act(() => {
-        emit('tools:updated')
-      })
+      send('tools:updated')
       await waitFor(() => {
         expect(rail().queryByRole('button', { name: 'Repo scripts' })).not.toBeInTheDocument()
       })

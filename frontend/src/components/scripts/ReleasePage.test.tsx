@@ -26,7 +26,7 @@ import {
   settings,
   toolCopy,
 } from '../../test/fixtures'
-import { emit, platform } from '../../test/platform'
+import { platform, send } from '../../test/platform'
 import { ReleasePage, type ReleasePageProps } from './ReleasePage'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -426,24 +426,16 @@ describe('ReleasePage', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('Listing your repositories…')
 
-    act(() => {
-      emit('releases:progress', { phase: 'clones', done: 0, total: 0 })
-    })
+    send('releases:progress', { phase: 'clones', done: 0, total: 0 })
     expect(screen.getByRole('status')).toHaveTextContent('Finding your clones…')
 
-    act(() => {
-      emit('releases:progress', { phase: 'github', done: 45, total: 151 })
-    })
+    send('releases:progress', { phase: 'github', done: 45, total: 151 })
     expect(screen.getByRole('status')).toHaveTextContent('Asking GitHub: 45 of 151 repositories…')
 
-    act(() => {
-      emit('releases:progress', { phase: 'compare', done: 1, total: 1 })
-    })
+    send('releases:progress', { phase: 'compare', done: 1, total: 1 })
     expect(screen.getByRole('status')).toHaveTextContent('Asking GitHub what changed: 1 of 1 repository…')
 
-    act(() => {
-      emit('releases:progress', { phase: 'checking', done: 3, total: 12 })
-    })
+    send('releases:progress', { phase: 'checking', done: 3, total: 12 })
     expect(screen.getByRole('status')).toHaveTextContent('Checking your clones: 3 of 12…')
 
     act(() => {
@@ -467,17 +459,13 @@ describe('ReleasePage', () => {
     expect(status).toHaveTextContent('From 2h ago · checking again…')
     expect(screen.queryByText(/Read 2h ago/)).not.toBeInTheDocument()
 
-    act(() => {
-      emit('releases:progress', { phase: 'github', done: 45, total: 151 })
-    })
+    send('releases:progress', { phase: 'github', done: 45, total: 151 })
     expect(status).toHaveTextContent('From 2h ago · checking again… Asking GitHub: 45 of 151 repositories…')
 
     platform.listReleaseCandidates.mockResolvedValue(
       releaseCandidates({ repos: [releaseCandidate({ repo: 'acme-org/cli', dir: '~/projects/cli' })] }),
     )
-    act(() => {
-      emit('releases:updated')
-    })
+    send('releases:updated')
 
     expect(await screen.findByRole('button', { name: 'Release acme-org/cli…' })).toBeInTheDocument()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
@@ -502,9 +490,7 @@ describe('ReleasePage', () => {
     const answer = heldList()
 
     await userEvent.click(screen.getByRole('button', { name: 'Read GitHub again' }))
-    act(() => {
-      emit('releases:progress', { phase: 'github', done: 15, total: 151 })
-    })
+    send('releases:progress', { phase: 'github', done: 15, total: 151 })
 
     expect(screen.getByRole('status')).toHaveTextContent('Asking GitHub: 15 of 151 repositories…')
     expect(screen.getByRole('list', { name: 'Unreleased changes' })).toBeInTheDocument()
@@ -552,9 +538,7 @@ describe('ReleasePage', () => {
     platform.listReleaseCandidates.mockResolvedValue(
       releaseCandidates({ repos: [releaseCandidate({ repo: 'acme-org/cli', dir: '~/projects/cli' })] }),
     )
-    act(() => {
-      emit('releases:updated')
-    })
+    send('releases:updated')
 
     expect(await screen.findByRole('button', { name: 'Release acme-org/cli…' })).toBeInTheDocument()
     expect(platform.listReleaseCandidates).toHaveBeenLastCalledWith(false)

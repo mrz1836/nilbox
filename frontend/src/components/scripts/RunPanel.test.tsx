@@ -7,7 +7,7 @@ import type { ScriptRun, ScriptRunStatus, TerminalID } from '../../platform'
 import { deferred } from '../../test/async'
 import { at, FIXED_NOW, fromNow } from '../../test/clock'
 import { checksRun, hookActionResult, hooksRun, scriptRun, scriptRunChunk } from '../../test/fixtures'
-import { emit, listening, platform } from '../../test/platform'
+import { listening, platform, send } from '../../test/platform'
 import { RunPanel } from './RunPanel'
 
 vi.mock('../../platform', () => import('../../test/platform').then((fake) => fake.platform))
@@ -159,9 +159,7 @@ describe('RunPanel', () => {
 
     await shownRun()
     platform.getScriptRun.mockResolvedValue(ended({ status: 'failed', summary: 'It exited with status 2.' }))
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent('FailedIt exited with status 2.')
@@ -185,14 +183,10 @@ describe('RunPanel', () => {
     const reads = platform.getScriptRun.mock.calls.length
 
     platform.getScriptRun.mockResolvedValue(running())
-    act(() => {
-      emit('scriptruns:progress', { id: 2 })
-    })
+    send('scriptruns:progress', { id: 2 })
     expect(platform.getScriptRun).toHaveBeenCalledTimes(reads)
 
-    act(() => {
-      emit('scriptruns:progress', { id: 1 })
-    })
+    send('scriptruns:progress', { id: 1 })
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled()
     })
@@ -221,9 +215,7 @@ describe('RunPanel', () => {
 
     await shownRun()
     platform.getScriptRun.mockRejectedValue(new Error('database is locked'))
-    act(() => {
-      emit('scriptruns:updated')
-    })
+    send('scriptruns:updated')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Couldn’t read the run again: database is locked')
     expect(screen.getByRole('heading', { name: 'magex lint' })).toBeInTheDocument()
@@ -254,9 +246,7 @@ describe('RunPanel', () => {
 
       await shownRun()
       platform.getScriptRun.mockResolvedValue(ended({ seen: true }))
-      act(() => {
-        emit('scriptruns:updated')
-      })
+      send('scriptruns:updated')
       await waitFor(() => {
         expect(screen.getByRole('status')).toHaveTextContent('Done')
       })
@@ -269,9 +259,7 @@ describe('RunPanel', () => {
 
       await shownRun()
       platform.getScriptRun.mockResolvedValue(ended({ status: 'failed', seen: false }))
-      act(() => {
-        emit('scriptruns:updated')
-      })
+      send('scriptruns:updated')
 
       await waitFor(() => {
         expect(platform.markScriptRunSeen).toHaveBeenCalledExactlyOnceWith(1)
@@ -333,9 +321,7 @@ describe('RunPanel', () => {
       expect(stop).toHaveAccessibleDescription(refused)
 
       platform.getScriptRun.mockResolvedValue(running())
-      act(() => {
-        emit('scriptruns:updated')
-      })
+      send('scriptruns:updated')
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled()
@@ -620,9 +606,7 @@ describe('RunPanel', () => {
       await screen.findByRole('heading', { name: /Installed the pre-commit hook in acme-org\/api\./ })
 
       for (let i = 0; i < 3; i++) {
-        act(() => {
-          emit('scriptruns:updated')
-        })
+        send('scriptruns:updated')
         await waitFor(() => {
           expect(platform.getScriptRun).toHaveBeenCalledTimes(i + 2)
         })
