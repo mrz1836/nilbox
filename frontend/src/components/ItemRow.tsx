@@ -588,7 +588,7 @@ export const ItemRow = memo(function ItemRow({
           line would reach the card's edge), is only what it is placed in. */}
       <div
         data-triage
-        className={`${hoverClass(work)} absolute inset-y-0 right-0 z-20 col-[4/5] row-[1/2] w-max rounded-lg bg-[color-mix(in_oklab,var(--color-raised)_40%,var(--color-surface))] p-0.5 @max-xl:col-[3/4]`}
+        className={`${hoverClass(work)} absolute inset-y-0 right-0 z-20 col-[4/5] row-[1/2] w-max rounded-lg wash-raised p-0.5 @max-xl:col-[3/4]`}
       >
         <button
           type="button"
