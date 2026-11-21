@@ -69,14 +69,6 @@ const (
 	StateBaseline State = "baseline"
 )
 
-// States returns every state, the open ones first.
-func States() []State {
-	return []State{
-		StateWaiting, StateBlocked, StateQueued, StateRunning, StateVerifying,
-		StateDone, StateSkipped, StateDismissed, StateClosed, StateBaseline,
-	}
-}
-
 // Open reports an open state: one the engine still acts on.
 func (s State) Open() bool {
 	switch s {

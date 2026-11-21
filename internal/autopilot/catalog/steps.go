@@ -62,14 +62,6 @@ const (
 	DispatchScripts Dispatcher = "scripts"
 )
 
-// Dispatchers returns every dispatcher.
-func Dispatchers() []Dispatcher {
-	return []Dispatcher{
-		DispatchTriage, DispatchNotices, DispatchGitHub, DispatchAgent, DispatchVerify, DispatchMerge, DispatchReview,
-		DispatchScripts,
-	}
-}
-
 // Outcome is how a step ended, which a later step's Only if names. A step whose Only if
 // doesn't hold is skipped, and the routine goes on.
 type Outcome string
