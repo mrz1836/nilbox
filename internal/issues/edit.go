@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/mrz1836/nilbox/internal/github"
+	"github.com/mrz1836/nilbox/internal/textutil"
 	"github.com/mrz1836/nilbox/internal/uierr"
 )
 
@@ -116,27 +117,12 @@ func planEdit(req EditRequest) *edit {
 
 // apart is add and remove without the names, ignoring case, that both hold.
 func apart(add, remove []string) ([]string, []string) {
-	in := func(list []string) func(string) bool {
-		return func(name string) bool {
-			return slices.ContainsFunc(list, func(n string) bool { return strings.EqualFold(n, name) })
-		}
-	}
-
-	return slices.DeleteFunc(slices.Clone(add), in(remove)), slices.DeleteFunc(slices.Clone(remove), in(add))
+	return textutil.ApartFold(add, remove), textutil.ApartFold(remove, add)
 }
 
 // names is list trimmed, without the empty names, and with each name once, ignoring case.
 func names(list []string) []string {
-	out := []string{}
-
-	for _, n := range list {
-		n = strings.TrimSpace(n)
-		if n != "" && !slices.ContainsFunc(out, func(o string) bool { return strings.EqualFold(o, n) }) {
-			out = append(out, n)
-		}
-	}
-
-	return out
+	return textutil.UniqueFold(list, strings.TrimSpace)
 }
 
 // assignedAfter counts the people an issue assigned to now would be assigned to once it
