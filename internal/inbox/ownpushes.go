@@ -2,6 +2,7 @@ package inbox
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 
@@ -128,9 +129,7 @@ func ownSince(commits []github.CommitAuthor, verdict, head, viewer string) (cove
 		return false, false
 	}
 
-	for i := len(commits) - 1; i >= 0; i-- {
-		c := commits[i]
-
+	for _, c := range slices.Backward(commits) {
 		switch {
 		case strings.EqualFold(c.OID, verdict):
 			return true, true

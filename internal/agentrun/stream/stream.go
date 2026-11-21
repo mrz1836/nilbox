@@ -11,6 +11,7 @@ package stream
 
 import (
 	"bytes"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -264,9 +265,9 @@ func (s *Parser) LastWords() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for i := len(s.events) - 1; i >= 0; i-- {
-		if s.events[i].Kind == runevent.KindText {
-			return s.events[i].Text
+	for _, v := range slices.Backward(s.events) {
+		if v.Kind == runevent.KindText {
+			return v.Text
 		}
 	}
 

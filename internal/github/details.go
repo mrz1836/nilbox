@@ -1050,8 +1050,8 @@ type graphQLHeadSuites struct {
 // suites returns the last commit's check suites, nulls included, or nil when there is no
 // commit.
 func (h graphQLHeadSuites) suites() []*graphQLSuite {
-	for i := len(h.Nodes) - 1; i >= 0; i-- {
-		if n := h.Nodes[i]; n != nil && n.Commit != nil {
+	for _, n := range slices.Backward(h.Nodes) {
+		if n != nil && n.Commit != nil {
 			return n.Commit.CheckSuites.Nodes
 		}
 	}
