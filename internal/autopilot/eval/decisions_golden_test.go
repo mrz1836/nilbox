@@ -67,15 +67,15 @@ type goldenSection struct {
 }
 
 // TestDecisionsGolden decides routines on items and pins every decision, its whole trace
-// included, in the golden files under testdata/decisions: the benchmark's cycle, the
-// template routines, every trigger, every field with every operator it takes, and lists
-// of conditions that order, group, and negate. Working out once per routine what
-// Evaluate works out per item must leave every one of them byte for byte the same.
+// included, in the golden files under testdata/decisions: the benchmark's routines, every
+// trigger, every field with every operator it takes, and lists of conditions that order,
+// group, and negate. Working out once per routine what Evaluate works out per item must
+// leave every one of them byte for byte the same.
 func TestDecisionsGolden(t *testing.T) {
 	t.Parallel()
 
 	for _, section := range []goldenSection{
-		benchSection(t), routinesSection(t), triggersSection(t), conditionsSection(t), listsSection(t),
+		routinesSection(t), triggersSection(t), conditionsSection(t), listsSection(t),
 	} {
 		t.Run(section.file, func(t *testing.T) {
 			t.Parallel()
@@ -234,32 +234,21 @@ func goldenHistories() []namedHistory {
 	}
 }
 
-// benchItem is the benchmark's pull request i, as BenchmarkEvaluateACycle builds it.
-func benchItem(i int) facts.Facts {
-	row := prRow()
-	row.ID, row.Number = int64(i+1), i+1
-
-	return build(row)
-}
-
-// benchRoutines are the benchmark's 20 routines, as BenchmarkEvaluateACycle builds them:
-// the two pattern routines, then every template, repeated as needed.
-func benchRoutines(t *testing.T) []namedSpec {
+// patternSpecs are the benchmark's two pattern routines, as BenchmarkEvaluateACycle
+// decides them: checked valid, and decided as written.
+func patternSpecs(t *testing.T) []namedSpec {
 	t.Helper()
 
-	routines := make([]namedSpec, 0, 20)
+	routines := patternRoutines()
+	out := make([]namedSpec, 0, len(routines))
 
-	for i, s := range patternRoutines() {
+	for i, s := range routines {
 		require.NoError(t, spec.Validate(spec.Normalize(s)))
 
-		routines = append(routines, namedSpec{name: fmt.Sprintf("pattern-%d", i+1), spec: s})
+		out = append(out, namedSpec{name: fmt.Sprintf("pattern-%d", i+1), spec: s})
 	}
 
-	for len(routines) < 20 {
-		routines = append(routines, templateSpecs(t)...)
-	}
-
-	return routines[:20]
+	return out
 }
 
 // templateSpecs loads every template fixture of the spec package, named after its file.
@@ -279,25 +268,14 @@ func templateSpecs(t *testing.T) []namedSpec {
 	return out
 }
 
-// benchSection is the benchmark's cycle: its 20 routines on its first and last pull
-// requests, which differ only in their ID and number.
-func benchSection(t *testing.T) goldenSection {
-	t.Helper()
-
-	return goldenSection{
-		file:      "bench.golden",
-		routines:  benchRoutines(t),
-		items:     []namedFacts{{name: "bench pull 1", facts: benchItem(0)}, {name: "bench pull 500", facts: benchItem(499)}},
-		histories: []string{"fresh"},
-	}
-}
-
-// routinesSection is every template routine and the benchmark's pattern routines on the
-// golden items, before and after a routine saw the item.
+// routinesSection is the benchmark's routines, its pattern routines and every template
+// routine, on the golden items, before and after a routine saw the item. The first item
+// is the benchmark's pull request, and its 500 differ only in their ID and number, which
+// no decision reads.
 func routinesSection(t *testing.T) goldenSection {
 	t.Helper()
 
-	routines := benchRoutines(t)[:2]
+	routines := patternSpecs(t)
 	routines = append(routines, templateSpecs(t)...)
 
 	return goldenSection{file: "routines.golden", routines: routines, items: goldenItems(), histories: []string{"fresh", "seen"}}
